@@ -40,7 +40,7 @@ class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
 // Internal helper ops
 //===----------------------------------------------------------------------===//
 
-def MOGG_ConcatOp : MOGG_LowerableOp<"concat", []> {
+def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [MO_HasDeviceInterface]> {
   let summary = "Concat Operation along axis zero";
   let description = [{
     Concat input tensors along axis zero.

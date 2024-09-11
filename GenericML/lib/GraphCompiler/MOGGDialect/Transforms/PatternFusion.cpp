@@ -545,12 +545,6 @@ struct ConcatZeroAxisPattern
       }
     }
 
-    if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(concat))) {
-      // TODO(#25626): Support outside of host.
-      return rewriter.notifyMatchFailure(
-          concat, "concat optimizations only supported on host");
-    }
-
     rewriter.replaceOpWithNewOp<MOGG::ConcatOp>(
         concat,
         /*outputTypes=*/concat->getResultTypes(),

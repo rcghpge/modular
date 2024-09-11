@@ -41,7 +41,6 @@ using namespace MOGG;
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  ASSERT_STREAM(MO::isOnHost(*this), << "mogg.concat is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
   // Gather the input buffers.
