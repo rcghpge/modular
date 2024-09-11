@@ -739,6 +739,10 @@ modular_cc_library(
     name = "MOGGTransforms",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
     copts = ["-iquoteexternal/"],
+    local_defines = select({
+        "//:kernel_e2e_gpu_profiling_setting": ["KERNEL_E2E_GPU_PROFILING"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":MOGGAnalysis",
         ":MOGGDialect",
