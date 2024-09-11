@@ -218,6 +218,7 @@ modular_cc_library(
         ":MGPDialect",
         ":MODialect",
         ":MOGGDialect.headers",
+        "//GraphRT:MIPDialect",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1205,6 +1206,7 @@ modular_cc_library(
         ":MOGGSupport",
         ":MOGGTransforms",
         ":MOToPrimitivesIncGen",
+        "//GraphRT:MIPDialect",
         "//KGEN:ToolCommon",
     ],
 )

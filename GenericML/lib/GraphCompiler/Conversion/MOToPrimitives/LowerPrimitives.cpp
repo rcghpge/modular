@@ -17,8 +17,10 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MIPDialect/MIP.h"
 #include "KGEN/CustomDialect/CustomDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/POPDialect/POPOps.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
@@ -60,7 +62,8 @@ static inline bool canFuseOp(Operation *op) {
     return false;
 
   // Allow for custom ops starting with "testfuse." for testing purposes.
-  return isa_and_nonnull<MGPDialect>(op->getDialect()) ||
+  return isa_and_nonnull<MGPDialect, KGEN::POP::POPDialect, MIP::MIPDialect,
+                         mlir::index::IndexDialect>(op->getDialect()) ||
          op->getName().getIdentifier().strref().starts_with("testfuse.");
 }
 
@@ -88,6 +91,20 @@ isLowerableToMOGGCall(MLIRContext *ctx,
   bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
       op->getName().getStringRef());
   return isRegistered;
+}
+
+static ErrorOr<Type> convertFromMLIRType(Type mlirType) {
+  // TODO, handle more types? so far, we only deal with bool and index type.
+  KGEN::KGENDType dtype = KGEN::KGENDType::invalid;
+  if (mlirType.isIndex())
+    dtype = KGEN::KGENDType::index;
+  else if (mlirType.isInteger(1))
+    dtype = KGEN::KGENDType::kBool;
+
+  if (dtype != KGEN::KGENDType::invalid)
+    return KGEN::POP::SIMDType::get(mlirType.getContext(), 1, dtype);
+
+  return Error("unhandled type.");
 }
 
 // Get a dictionary of the attributes for the lowered mogg call
@@ -281,15 +298,45 @@ void LowerPrimitivesPass::runOnOperation() {
     return buildMOGGCall(builder, inputs, op, loc, mojoLibraryAnalysis);
   };
 
-  auto indexOperationBuilder =
+  auto cloneOperationBuilder =
       [](OpBuilder &builder, Location loc, Operation *op,
          ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
-    // Simply clone the index operation into the compiled region.
+    // Simply clone the operation into the compiled region.
     mlir::IRMapping mapping;
     for (auto [from, to] : llvm::zip_equal(op->getOperands(), inputs))
       mapping.map(from, to);
     Operation *newOp = builder.clone(*op, mapping);
     return newOp->getResults();
+  };
+
+  auto mipOperationBuilder =
+      [](OpBuilder &builder, Location loc, Operation *op,
+         ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
+    // Convert arith operations into pop operations.
+    SmallVector<Value> popInputs;
+    for (Value input : inputs) {
+      ErrorOr<Type> converted = convertFromMLIRType(input.getType());
+      if (converted.isError())
+        return converted.takeError();
+      popInputs.push_back(builder.create<KGEN::POP::CastFromBuiltinOp>(
+          loc, converted.takeValue(), input));
+    }
+
+    Operation *popOp = nullptr;
+    if (isa<MIP::XOrOp, MIP::OrOp, MIP::AndOp>(op)) {
+      // Get the common part of the name, e.g., pop.[xor] as in mip.[xor]
+      StringRef popOpName = op->getName().stripDialect();
+      popOp = builder.create(loc, builder.getStringAttr("pop." + popOpName),
+                             popInputs, popInputs.front().getType());
+    }
+
+    if (popOp) {
+      return builder
+          .create<KGEN::POP::CastToBuiltinOp>(loc, op->getResultTypes(),
+                                              popOp->getResults())
+          ->getResults();
+    }
+    return Error("unhandled MIP operation");
   };
 
   mod.walk([&](Operation *op) {
@@ -318,10 +365,17 @@ void LowerPrimitivesPass::runOnOperation() {
     }
 
     CompiledRegionBodyBuilder bodyBuilder(nullptr);
-    if (op->getDialect() && isa<mlir::index::IndexDialect>(op->getDialect()))
-      bodyBuilder = indexOperationBuilder;
-    else if (isLowerableToMOGGCall(ctx, mojoLibraryAnalysis, op))
+    if (isa_and_nonnull<mlir::index::IndexDialect>(op->getDialect()) ||
+        (isa_and_nonnull<KGEN::POP::POPDialect>(op->getDialect()) &&
+         !op->getParentOfType<MOGG::GenericCompiledRegionOp>())) {
+      // Clone index operations and pop operations when necessary.
+      bodyBuilder = cloneOperationBuilder;
+    } else if (isa_and_nonnull<MIP::MIPDialect>(op->getDialect())) {
+      // Convert MIP operations to corresponding pop operations.
+      bodyBuilder = mipOperationBuilder;
+    } else if (isLowerableToMOGGCall(ctx, mojoLibraryAnalysis, op)) {
       bodyBuilder = moggCallBodyBuilder;
+    }
 
     if (bodyBuilder) {
       ErrorOr<MOGG::GenericCompiledRegionOp> newKernel =

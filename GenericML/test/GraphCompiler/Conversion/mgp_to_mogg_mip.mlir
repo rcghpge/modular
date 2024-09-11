@@ -173,7 +173,7 @@ mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // CHECK-LABEL: mgp.model @mip_and
-// CHECK: mogg.call "arith.andi"
+// CHECK: "mip.and"
 mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -186,12 +186,12 @@ mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
   %one = index.constant 1
   %lhs = index.bool.constant true
   %rhs = index.bool.constant true
-  %res1 = arith.andi %lhs, %rhs: i1
+  %res1 = "mip.and"(%lhs, %rhs): (i1, i1) -> i1
   mef.output %ch0, %res1: !mef.chain, i1
 }
 
 // CHECK-LABEL: mgp.model @mip_or
-// CHECK: mogg.call "arith.ori"
+// CHECK: "mip.or"
 mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -204,12 +204,12 @@ mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   %one = index.constant 1
   %lhs = index.bool.constant true
   %rhs = index.bool.constant false
-  %res1 = arith.ori %lhs, %rhs: i1
+  %res1 = "mip.or"(%lhs, %rhs) : (i1, i1) -> i1
   mef.output %ch0, %res1: !mef.chain, i1
 }
 
 // CHECK-LABEL: mgp.model @mip_xor
-// CHECK: mogg.call "arith.xori"
+// CHECK: "mip.xor"
 mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -222,12 +222,12 @@ mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
   %one = index.constant 1
   %lhs = index.bool.constant true
   %rhs = index.bool.constant false
-  %res1 = arith.xori %lhs, %rhs: i1
+  %res1 = "mip.xor"(%lhs, %rhs) : (i1, i1) -> i1
   mef.output %ch0, %res1: !mef.chain, i1
 }
 
 // CHECK-LABEL: mgp.model @mip_select
-// CHECK: mogg.call "arith.select"
+// CHECK: pop.select
 mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -239,7 +239,7 @@ mgp.model @mip_select : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %zero = index.constant 0
   %one = index.constant 1
   %cond = index.bool.constant true
-  %res1 = arith.select %cond, %one, %zero : index
+  %res1 = pop.select %cond, %one, %zero : index
   %ch1 = "test.sink"(%res1) : (index) -> !mef.chain
   mef.output %ch1: !mef.chain
 }

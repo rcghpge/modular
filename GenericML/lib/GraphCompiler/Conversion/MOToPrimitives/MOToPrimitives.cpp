@@ -17,7 +17,9 @@
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
+#include "GraphRT/MIPDialect/MIP.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/OperationUtils.h"
 #include "Support/MArchTarget/Host.h"
@@ -906,8 +908,7 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   auto ifPositive = [&](Value check, Value yes, Value no) -> Value {
     auto cond = opLoweringState.create<mlir::index::CmpOp>(
         mlir::index::IndexCmpPredicate::SLT, check, constant(0));
-    return opLoweringState.create<mlir::arith::SelectOp>(indexTy, cond, no,
-                                                         yes);
+    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, no, yes);
   };
 
   Value inChain =

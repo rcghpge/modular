@@ -8,6 +8,9 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MIPDialect/MIP.h"
+#include "KGEN/POPDialect/POPDialect.h"
+#include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -201,13 +204,13 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   case KGEN::POC::MulNuw:
     return mlir::index::MulOp::getOperationName();
   case KGEN::POC::And:
-    return mlir::arith::AndIOp::getOperationName();
+    return M::MIP::AndOp::getOperationName();
   case KGEN::POC::Or:
-    return mlir::arith::OrIOp::getOperationName();
+    return M::MIP::OrOp::getOperationName();
   case KGEN::POC::Xor:
-    return mlir::arith::XOrIOp::getOperationName();
+    return M::MIP::XOrOp::getOperationName();
   case KGEN::POC::Cond:
-    return mlir::arith::SelectOp::getOperationName();
+    return KGEN::POP::SelectOp::getOperationName();
   default:
     return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
   }
@@ -224,7 +227,7 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   Type resTy = opAttr.getType();
 
   // For non binary op
-  if (opNameAttr == mlir::arith::SelectOp::getOperationName())
+  if (opNameAttr == KGEN::POP::SelectOp::getOperationName())
     return builder.create(loc, opNameAttr, operands, {resTy})->getResult(0);
 
   if (opNameAttr == mlir::index::CmpOp::getOperationName()) {
@@ -274,10 +277,10 @@ Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
 namespace {
 
 bool isIndexOp(Operation *op) {
-  // We uses arith::AndI/OrI/XOrIOp instead of index::And/Or/XOr because they
-  // only IndexDialect operations only accept index-typed operands.
+  // We uses mip::And/Or/XOrOp instead of index::And/Or/XOr so that we can
+  // handle more than IndexType.
   return isa<mlir::index::IndexDialect>(op->getDialect()) ||
-         isa<mlir::arith::AndIOp, mlir::arith::OrIOp, mlir::arith::XOrIOp>(op);
+         isa<MIP::MIPDialect>(op->getDialect()) || isa<KGEN::POP::SelectOp>(op);
 }
 
 DenseSet<Operation *> getAncestors(Operation *root) {

@@ -114,10 +114,10 @@ mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]] : !mgp.tensor<?x?xf32>
 // CHECK:     %[[DIMS:[^:]*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?xf32>
 // CHECK-DAG: %[[BOOL:[^:]*]] = index.cmp sle(%[[DIMS]]#0, %[[DIMS]]#1)
-// CHECK-DAG: %[[VAL1:[^:]*]] = arith.select %[[BOOL]], %[[DIMS]]#0, %[[DIMS]]#1
-// CHECK-DAG: %[[VAL2:[^:]*]] = arith.select %[[BOOL]], %[[DIMS]]#1, %[[DIMS]]#0
+// CHECK-DAG: %[[VAL1:[^:]*]] = pop.select %[[BOOL]], %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK-DAG: %[[VAL2:[^:]*]] = pop.select %[[BOOL]], %[[DIMS]]#1, %[[DIMS]]#0
 // CHECK-DAG: %[[VAL3:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL4:[^:]*]] = arith.select %[[BOOL]], %[[VAL1]], %[[VAL3]]
+// CHECK:     %[[VAL4:[^:]*]] = pop.select %[[BOOL]], %[[VAL1]], %[[VAL3]]
 mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare B: i1 = <le(X, Y)>
   kgen.param.declare M0 = <cond(B, X, Y)>
@@ -133,9 +133,9 @@ mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK:     %[[DIMS:[^:]*]]:3 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?x?xf32>
 // CHECK-DAG: %[[VAL1:[^:]*]] = index.cmp eq(%[[DIMS]]#0, %[[DIMS]]#1)
 // CHECK-DAG: %[[VAL2:[^:]*]] = index.cmp eq(%[[DIMS]]#1, %[[DIMS]]#2)
-// CHECK-DAG: %[[VAL3:[^:]*]] = arith.ori %[[VAL1]], %[[VAL2]]
-// CHECK-DAG: %[[VAL4:[^:]*]] = arith.xori %[[VAL1]], %[[VAL2]]
-// CHECK-DAG: %[[VAL5:[^:]*]] = arith.andi %[[VAL1]], %[[VAL2]]
+// CHECK-DAG: %[[VAL3:[^:]*]] = "mip.or"
+// CHECK-DAG: %[[VAL4:[^:]*]] = "mip.xor"
+// CHECK-DAG: %[[VAL5:[^:]*]] = "mip.and"
 mo.graph @bool_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare E0: i1 = <eq(X, Y)>
   kgen.param.declare E1: i1 = <eq(Y, Z)>
