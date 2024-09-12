@@ -11,6 +11,7 @@
 #ifndef ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 #define ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 
+#include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
@@ -31,6 +32,18 @@ using DeviceRef = RCRef<const Device>;
 using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
+
+// RUNP-397: This should come as a form of a function dependent on the device
+static constexpr size_t kPreferredCUDAMemoryAlignment = 256;
+static constexpr size_t kPreferredCPUMemoryAlignment =
+    M::kPreferredMemoryAlignment;
+
+[[maybe_unused]] static size_t getPreferredAlignment(std::string label) {
+  if (label == "cpu")
+    return kPreferredCPUMemoryAlignment;
+  else
+    return kPreferredCUDAMemoryAlignment;
+}
 
 class Device : public ReferenceCounted<Device> {
 public:

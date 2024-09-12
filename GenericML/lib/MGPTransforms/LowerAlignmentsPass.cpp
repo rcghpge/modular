@@ -7,6 +7,7 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
 #include "./AsyncDataflowDependencies.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/Utils.h"
@@ -46,17 +47,9 @@ class LowerAlignmentsPass
 
   const int64_t kByteAlignment =
       1; // Means we can't infer anything about alignment
-  const int64_t kDefaultAlignmentCpu =
-      kPreferredMemoryAlignment; // Automatically use allocator alignment -
-                                 // kPreferredMemoryAlignment
-  const int64_t kDefaultAlignmentGpu =
-      0; // 0 just means use whatever gpuMalloc provided
 
   int64_t getDefaultAlignment(DeviceRefAttr deviceRef) {
-    if (deviceRef.getLabel() == kCPULabel)
-      return kDefaultAlignmentCpu;
-    else
-      return kDefaultAlignmentGpu;
+    return AsyncRT::getPreferredAlignment(deviceRef.getLabel().str());
   }
   // Create a new alignment mapping valid for the interior of a block given
   // the alignmentMap of the scope of the parent Op.
@@ -73,7 +66,7 @@ class LowerAlignmentsPass
       if (auto deviceType = dyn_cast<MGPHasDeviceTypeInterface>(arg.getType()))
         innerAlignments[arg] = getDefaultAlignment(deviceType.getDevice());
       else
-        innerAlignments[arg] = kDefaultAlignmentCpu;
+        innerAlignments[arg] = AsyncRT::kPreferredCPUMemoryAlignment;
       // If an outside operand exists and has scopedAlignments in the parent
       // scope we copy that for internal args
       if (block->getParentOp()->getNumOperands() > arg.getArgNumber()) {
@@ -141,7 +134,8 @@ class LowerAlignmentsPass
           if (valueArgDep[operand].empty()) {
             // If there are no argument it depends on, assume it is cpu (comes
             // from kgen input placeholder)
-            replacePlaceholder(placeholderOp, kDefaultAlignmentCpu);
+            replacePlaceholder(placeholderOp,
+                               AsyncRT::kPreferredCPUMemoryAlignment);
           } else {
             // Placeholder operand depend on arguments - infer from args. Always
             // try to get GCD of alignment from inputs (2, 16, 8 will have GCD
@@ -210,7 +204,8 @@ class LowerAlignmentsPass
           alignmentMap[extractBufferOp.getOutBuffer()] =
               alignmentMap.at(extractBufferOp.getTensor());
         else
-          alignmentMap[extractBufferOp.getOutBuffer()] = kDefaultAlignmentCpu;
+          alignmentMap[extractBufferOp.getOutBuffer()] =
+              AsyncRT::kPreferredCPUMemoryAlignment;
       } else if (auto createTensorOp = dyn_cast<MGP::TensorCreateOp>(op)) {
         // Pass-through to Tensor Value
         alignmentMap[createTensorOp.getOutTensor()] =
@@ -247,10 +242,12 @@ class LowerAlignmentsPass
   }
 
   // This populates alignment placeholders by doing a dataflow dependencies
-  // analysis Typical alignment assumes defaultAlignment which comes from device
-  // except in cases when MGP introduces ops that can invalidate alignment. In
-  // those cases, try to populate and keep track and populate alignment Several
-  // main types of behaviour: Conditional invalidation of alignment
+  // analysis. Typical alignment assumes a default alignment which comes from
+  // device except in cases when MGP introduces ops that can invalidate
+  // alignment. In those cases, try to populate and keep track and populate
+  // alignment Several main types of behaviour:
+  //
+  // Conditional invalidation of alignment
   //    conditionally from mgp.buffer.{split.borrow,slice}
   // Pass-through + read
   //    from mgp.buffer.{resize,unsize}

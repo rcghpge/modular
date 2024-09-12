@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
@@ -17,6 +18,7 @@
 #include <mlir/Dialect/Index/IR/IndexDialect.h>
 #include <mlir/Dialect/Index/IR/IndexOps.h>
 #include <mlir/Support/LLVM.h>
+#include <numeric>
 
 using namespace M;
 using namespace M::MGP;
@@ -655,9 +657,14 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
   // If static size is known, it's used for the output type
   std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
 
+  auto bufferDevice = bufferBuilder->getDevice(builder);
+  auto preferredAlignment =
+      M::AsyncRT::getPreferredAlignment(bufferDevice.getLabel().str());
+  if (bufferDevice.getLabel() == M::kCPULabel)
+    preferredAlignment = std::gcd(preferredAlignment, minimumCpuAlignment);
   return BufferizedTensor(
       bufferBuilder->bufferAlloc(builder, loc, context, inChain, numBytes,
-                                 minimumCpuAlignment, optSize),
+                                 preferredAlignment, optSize),
       tensorSpec);
 }
 

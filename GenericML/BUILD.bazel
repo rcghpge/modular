@@ -218,6 +218,7 @@ modular_cc_library(
         ":MGPDialect",
         ":MODialect",
         ":MOGGDialect.headers",
+        "//AsyncRT:DeviceContext",
         "//GraphRT:MIPDialect",
         "@llvm-project//llvm:Support",
     ],
@@ -718,6 +719,7 @@ modular_cc_library(
     deps = [
         ":MOGGDialect",
         ":Support",
+        "//AsyncRT:DeviceContext",
         "//KGEN:ObjectCompiler",
     ],
 )
@@ -747,6 +749,7 @@ modular_cc_library(
     deps = [
         ":MOGGAnalysis",
         ":MOGGDialect",
+        "//AsyncRT:DeviceContext",
     ],
 )
 
@@ -994,6 +997,7 @@ modular_cc_library(
         ":MGPTransformsIncGen",
         ":MOGGDialect",
         ":Support",
+        "//AsyncRT:DeviceContext",
         "//GraphRT:MEFDialect",
         "@llvm-project//llvm:Support",
     ],
