@@ -46,7 +46,7 @@ static bool haveSameContents(Tensor &lhs, Tensor &rhs) {
 TEST(Tensor, Borrow) {
   auto runtime = getRuntime();
   Tensor tensor = makeTensor(*runtime);
-  Tensor borrow = tensor.borrow(TensorBufferRef::kExecute);
+  Tensor borrow = tensor.borrow();
   ASSERT_TRUE(haveSameContents(tensor, borrow));
   incrementContents(tensor);
   ASSERT_TRUE(haveSameContents(tensor, borrow));

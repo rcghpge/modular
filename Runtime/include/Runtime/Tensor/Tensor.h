@@ -64,14 +64,11 @@ public:
   /// Creates a tensor whose buffer is at the given pointer. It is assumed the
   /// pointer has size appropriate for spec and lifetime exceeding that of
   /// the result tensor. The alignment will be used should the tensor need
-  /// to be deep copied. The given lifetime should be a sound approximation of
-  /// the lifetime of the buffer.
+  /// to be deep copied.
   static Tensor createBorrowed(void *buffer, TensorSpec spec,
-                               std::optional<size_t> alignment,
-                               TensorBufferRef::Lifetime lifetime);
+                               std::optional<size_t> alignment);
   static Tensor createBorrowed(const void *buffer, TensorSpec spec,
-                               std::optional<size_t> alignment,
-                               TensorBufferRef::Lifetime lifetime);
+                               std::optional<size_t> alignment);
 
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a Tensor.
@@ -101,10 +98,7 @@ public:
   /// from this tensor. This tensor may owning or itself be borrowing the
   /// buffer, and the underlying buffer must outlive the returned tensor. The
   /// result will have the given borrowLifetime.
-  ///
-  /// Assert fails if asking to borrow from a borrow whose lifetime is
-  /// not greater or equal to borrowLifetime.
-  Tensor borrow(TensorBufferRef::Lifetime borrowLifetime) const;
+  Tensor borrow() const;
 
   /// This prints the specified tensor data to stdout.
   ErrorOrSuccess print(ResultOutputStyle style, unsigned precision = 6) const;

@@ -31,23 +31,21 @@ Tensor Tensor::takeOwned(TensorSpec spec, AsyncRT::CompactRuntimePtr runtime,
 }
 
 Tensor Tensor::createBorrowed(void *buffer, TensorSpec spec,
-                              std::optional<size_t> alignment,
-                              TensorBufferRef::Lifetime lifetime) {
+                              std::optional<size_t> alignment) {
   return Tensor(TensorBufferRef::createWithNonTrackedMemory(
                     buffer, spec.getSizeInBytes(), alignment),
                 std::move(spec));
 }
 
 Tensor Tensor::createBorrowed(const void *buffer, TensorSpec spec,
-                              std::optional<size_t> alignment,
-                              TensorBufferRef::Lifetime lifetime) {
+                              std::optional<size_t> alignment) {
   return Tensor(
       TensorBufferRef::createWithNonTrackedMemory(
           const_cast<void *>(buffer), spec.getSizeInBytes(), alignment),
       std::move(spec));
 }
 
-Tensor Tensor::borrow(TensorBufferRef::Lifetime borrowLifetime) const {
+Tensor Tensor::borrow() const {
   return Tensor(bufferRef.borrow(), TensorSpec(spec));
 }
 

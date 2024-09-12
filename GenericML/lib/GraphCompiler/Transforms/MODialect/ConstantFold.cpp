@@ -272,8 +272,7 @@ static Tensor denseResourceAsTensor(AsyncRT::Runtime &runtime,
   }
 
   return Tensor::createBorrowed(blob->getData().data(), spec,
-                                blob->getDataAlignment(),
-                                TensorBufferRef::Lifetime::kConstant);
+                                blob->getDataAlignment());
 }
 
 /// Creates or retrieves an `ElementsAttr` with the same data as `ref`

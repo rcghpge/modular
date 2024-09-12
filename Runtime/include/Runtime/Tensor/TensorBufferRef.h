@@ -40,13 +40,6 @@ using BufferRefLifetimeProfilerEntry =
 /// storage which will be freed on deconstruction.
 class TensorBufferRef {
 public:
-  /// DEPRECATED.
-  enum Lifetime : uint8_t {
-    kLocal = 0,
-    kExecute = 1,
-    kConstant = 2,
-  };
-
   /// Constructs a reference in the 'null' state. Useful for references
   /// which are allocated lazily.
   TensorBufferRef() = default;

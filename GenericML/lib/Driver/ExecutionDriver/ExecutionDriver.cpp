@@ -358,7 +358,7 @@ buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
   args.reserve(generators.size());
   for (const auto &generator : generators) {
     args.emplace_back(AsyncValueRef<Tensor>::createReady(
-        runtime, generator->getNextTensor().borrow(TensorBufferRef::kExecute)));
+        runtime, generator->getNextTensor().borrow()));
   }
   return args;
 }
