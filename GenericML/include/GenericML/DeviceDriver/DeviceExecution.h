@@ -61,8 +61,7 @@ using GraphExecutionResultsTy =
 MODULAR_VISIBILITY_EXPORT
 GraphExecutionResultsTy
 processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
-               ExecutableModel *model, ContextRef maxContext,
-               RCRef<Device> device);
+               ExecutableModel *model);
 
 // Processes results and convert them into tensors.
 MODULAR_VISIBILITY_EXPORT SmallVector<M::Tensor>
@@ -76,7 +75,7 @@ ErrorOrSuccess passResultsToMojo(
     MutableArrayRef<std::variant<M::Tensor, DriverMojoValue>> results,
     decltype(addTensorToOutputList) addTensorToOutputListFn,
     decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
-    void *outputList, ContextRef maxContext, RCRef<Driver::Device> device);
+    void *outputList, ContextRef maxContext, Driver::Device *device);
 
 } // namespace M::Driver
 

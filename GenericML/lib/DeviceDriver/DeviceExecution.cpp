@@ -132,8 +132,7 @@ M::Driver::prepareInputs(Runtime &runtime,
 
 Driver::GraphExecutionResultsTy
 M::Driver::processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
-                          ExecutableModel *model, ContextRef maxContext,
-                          RCRef<Driver::Device> device) {
+                          ExecutableModel *model) {
   // First result is a chain.
   results = results.drop_front();
   llvm::SmallVector<AnyAsyncValueRef> outputRefs;
@@ -201,14 +200,14 @@ ErrorOrSuccess M::Driver::passResultsToMojo(
         results,
     decltype(addTensorToOutputList) addTensorToOutputListFn,
     decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
-    void *outputList, ContextRef maxContext, RCRef<Driver::Device> device) {
+    void *outputList, ContextRef maxContext, Driver::Device *device) {
   for (auto &output : results) {
     if (std::holds_alternative<Tensor>(output)) {
       // Convert tensor back to device memory and call the callback we got from
       // mojo. Here we take ownership of output.
       ErrorOr<Driver::DeviceMemory *> outputMemoryOr =
           M::Driver::constructDeviceMemoryFromTensor(
-              std::move(maxContext), device.getPointer(),
+              std::move(maxContext), device,
               std::move(std::get<M::Tensor>(output)));
 
       if (outputMemoryOr.isError())
