@@ -10,11 +10,18 @@
 #include "GenericML/DeviceDriver/Driver.h"
 #include "GenericML/Support/Model.h"
 #include "Runtime/MojoValue.h"
+#include "Support/ADT/SmartVariant.h"
 #include "Support/Context.h"
 #include "Support/ML/TensorSpec.h"
 #include "Support/SymbolExport.h"
 
 namespace M::Driver {
+
+/// Container holding the result of device execution.
+/// Each element is either a tensor or a Mojo value.
+using ExecResultType =
+    SmallVector<SmartVariant<Driver::DeviceMemory *, M::MojoValue *>>;
+
 // This is the bitwise equivalent C++ representation of _CMojoValue in
 // mojo side. We destructure M::MojoValue into this struct and then pass to
 // mojo and mojo can interpret it as _CMojoValue.
