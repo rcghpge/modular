@@ -22,11 +22,11 @@ def main():
 
     print("Running inference...")
     output = model.execute(
-        attention_mask=np.zeros((1, 1), dtype=np.int32),
-        input_ids=np.zeros((1, 1), dtype=np.int32),
-        token_type_ids=np.zeros((1, 1), dtype=np.int32),
+        np.zeros((1, 1), dtype=np.int32),
+        np.zeros((1, 1), dtype=np.int32),
+        np.zeros((1, 1), dtype=np.int32),
     )
-    print(output)
+    print([o.to_numpy() for o in output])
 
 
 if __name__ == "__main__":

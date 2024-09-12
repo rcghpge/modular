@@ -35,9 +35,9 @@ def without_custom_ops():
     model_path = Path(script_dir, "mo-custom-op-model.mlir")
     session = engine.InferenceSession()
     model = session.load(model_path)
-    output = model.execute(input=np.ones((5)))
-    assert "output" in output.keys()
-    print(f"Output: {output['output']}")
+    output = model.execute(np.ones((5)))
+    assert len(output) == 1
+    print(f"Output: {output[0].to_numpy()}")
 
 
 def with_custom_ops(custom_ops_path: str):
@@ -46,9 +46,9 @@ def with_custom_ops(custom_ops_path: str):
     model_path = Path(script_dir, "mo-custom-op-model.mlir")
     session = engine.InferenceSession()
     model = session.load(model_path, custom_ops_path=custom_ops_path)
-    output = model.execute(input=np.ones((5)))
-    assert "output" in output.keys()
-    print(f"Output: {output['output']}")
+    output = model.execute(np.ones((5)))
+    assert len(output) == 1
+    print(f"Output: {output[0].to_numpy()}")
 
 
 def parse_args() -> argparse.Namespace:

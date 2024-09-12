@@ -21,10 +21,10 @@ def main():
     model = session.load(model_path)
 
     print("Running inference...")
-    output = model.execute(input=np.random.rand(5))
-    assert "output" in output.keys()
-    print("Output dtype: ", output["output"].dtype)
-    print("Output shape: ", output["output"].shape)
+    output = model.execute(np.random.rand(5))
+    assert len(output) == 1
+    print("Output dtype: ", output[0].dtype)
+    print("Output shape: ", output[0].shape)
 
 
 if __name__ == "__main__":
