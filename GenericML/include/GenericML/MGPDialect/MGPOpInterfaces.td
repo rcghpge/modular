@@ -114,13 +114,6 @@ def MGP_InOutSemanticsOpInterface : OpInterface<"MGPInOutSemanticsOpInterface"> 
   ];
 }
 
-def MGP_KernelExecuteOpInterface : OpInterface<"MGPKernelExecuteOpInterface"> {
-  let description = [{
-    Interface for ops which execute a kernel, possibly indirectly.
-  }];
-  let cppNamespace = "::M::MGP";
-}
-
 def MGP_TensorExtractOpInterface : OpInterface<"MGPTensorExtractOpInterface"> {
   let description = [{
     Interface for ops which extract a buffer and a tensor spec from a tensor.
