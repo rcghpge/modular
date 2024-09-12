@@ -486,7 +486,7 @@ def MOGG_CallOp : MOGG_Op<"call"> {
   let description = [{
     This represents a call to a KGEN function. The kernel target will be a
     function we retrieve from the registered ops. The call can also take an
-    optional list of symbols in the from of `$params`. These are lambdas within
+    optional list of symbols in the form of `$params`. These are lambdas within
     this kernel which should be passed as parameters to the KGEN call.
 
     Example:
