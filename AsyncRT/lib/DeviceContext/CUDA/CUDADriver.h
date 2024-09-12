@@ -11,6 +11,8 @@
 #ifndef ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADRIVER_H
 #define ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADRIVER_H
 
+#include "Support/ErrorOr.h"
+
 #include <stddef.h>
 
 namespace M::AsyncRT {
@@ -93,7 +95,7 @@ public:
                            kernelParams, extra);
   }
 
-  static const CUDADriver *get();
+  static ErrorOr<const CUDADriver &> get();
 
 private:
   // Shared library name for the CUDA driver.
@@ -164,7 +166,7 @@ private:
                                  void **);
   tcuLaunchKernel *cuLaunchKernel_;
 
-  static const CUDADriver *allocAndInitDriver();
+  static ErrorOr<const CUDADriver &> allocAndInitDriver();
 };
 
 } // namespace M::AsyncRT

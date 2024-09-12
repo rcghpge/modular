@@ -19,7 +19,7 @@ namespace {
 
 TEST(CUDADeviceContextTest, Smoke) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda");
-  EXPECT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
@@ -29,7 +29,7 @@ TEST(CUDADeviceContextTest, Smoke) {
 
 TEST(CUDADeviceContextTest, DeviceBuffers) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda");
-  EXPECT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
@@ -169,7 +169,7 @@ $L__BB0_2:
 )PTX";
 
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda");
-  EXPECT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 

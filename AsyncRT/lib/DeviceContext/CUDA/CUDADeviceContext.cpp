@@ -259,19 +259,20 @@ const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
 }
 
 ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
-  const CUDADriver *driver = CUDADriver::get();
-  if (driver == nullptr) {
-    // TODO(iposva): Surface driver initialization error.
-    return Error("Driver initialization failed.");
+  ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
+  if (err_driver) {
+    return Error(llvm::Twine("CUDA Driver initialization failed: ") +
+                 err_driver.getError());
   }
+  const CUDADriver &driver = err_driver.get();
 
   CUcontext context;
-  CUDA_CHECK_ERR(driver->CtxCreate(&context, 0, id));
+  CUDA_CHECK_ERR(driver.CtxCreate(&context, 0, id));
 
   CUstream stream;
-  CUDA_CHECK_ERR(driver->StreamCreate(&stream, 0));
+  CUDA_CHECK_ERR(driver.StreamCreate(&stream, 0));
 
-  return CUDADeviceContextRef::create(*CUDADeviceRef::create(*driver, id),
+  return CUDADeviceContextRef::create(*CUDADeviceRef::create(driver, id),
                                       context, stream);
 }
 

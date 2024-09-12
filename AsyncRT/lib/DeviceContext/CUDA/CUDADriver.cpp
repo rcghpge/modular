@@ -10,8 +10,10 @@
 
 #include "CUDADriver.h"
 
+#include "Support/ErrorOr.h"
+#include "llvm/ADT/Twine.h"
+
 #include <dlfcn.h>
-#include <iostream>
 #include <stdlib.h>
 
 namespace M::AsyncRT {
@@ -27,17 +29,15 @@ const char CUDADriver::lib_name[] = "libcuda.so.1";
 #define GET_FUNC(name)                                                         \
   driver->name##_ = reinterpret_cast<t##name *>(dlsym(dl_lib, #name));         \
   if (driver->name##_ == nullptr) {                                            \
-    std::cerr << "Failed to find symbol \"" << #name << "\" in \"" << lib_name \
-              << "\"\n";                                                       \
-    return nullptr;                                                            \
+    return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
+                 "\" in \"" + lib_name + "\"");                                \
   }
 
-const CUDADriver *CUDADriver::allocAndInitDriver() {
+ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   // Attempt to open the shared library of the CUDA driver.
   void *dl_lib = dlopen(lib_name, RTLD_NOW);
   if (dl_lib == nullptr) {
-    std::cerr << "Failed to open library \"" << lib_name << "\"\n";
-    return nullptr;
+    return Error(llvm::Twine("Failed to open library \"") + lib_name + "\"");
   }
 
   // Allocate a driver and register all of the used shared library entry points.
@@ -64,16 +64,19 @@ const CUDADriver *CUDADriver::allocAndInitDriver() {
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
   if (err != SUCCESS) {
-    std::cerr << "Initializing CUDA Driver failed: " << err << "\n";
+    return Error(llvm::Twine("Call to cuInit failed with ") + llvm::Twine(err));
   }
 
-  return driver;
+  return *driver;
 }
 
-const CUDADriver *CUDADriver::get() {
-  static const CUDADriver *driver = allocAndInitDriver();
+ErrorOr<const CUDADriver &> CUDADriver::get() {
+  static ErrorOr<const CUDADriver &> err_or_driver = allocAndInitDriver();
 
-  return driver;
+  if (err_or_driver) {
+    return Error(err_or_driver.getError());
+  }
+  return err_or_driver.get();
 }
 
 } // namespace M::AsyncRT
