@@ -21,9 +21,11 @@ py_library(
 
 pkg_files(
     name = "python_files",
-    srcs = glob([
-        "**/*.py",
-    ]),
+    srcs = glob(
+        [
+            "**/*.py",
+        ],
+    ),
     prefix = "llama3",
     strip_prefix = strip_prefix.from_pkg(""),
 )
