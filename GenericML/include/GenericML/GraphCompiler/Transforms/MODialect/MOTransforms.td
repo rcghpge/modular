@@ -303,6 +303,8 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
      - Conflicts are resolved by inserting a mo.transfer op.
      - The results of a `mo.transfer` op may be shared, and `mo.transfer` has
        the expected transitivity and reflexivity rules.
+     - Currently mo.buffer inputs to graphs always inherit the target device of
+       the graph itself unless annotated otherwise.
 
     Note that this pass has no understanding of the devices themselves, and
     simply works on uninterpreted `#M.device_ref`s.

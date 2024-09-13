@@ -678,6 +678,16 @@ void MODialect::registerTypes() {
 // BufferType
 //===----------------------------------------------------------------------===//
 
+BufferType BufferType::cloneWith(DeviceRefAttr deviceRef) const {
+  return BufferType::get(getContext(), getShapeAttr(), getDtype(), deviceRef,
+                         getMetadata());
+}
+
+BufferType BufferType::cloneWithMetadataAndDeviceRef(BufferType source) const {
+  return BufferType::get(getContext(), getShapeAttr(), getDtype(),
+                         source.getDeviceRef(), source.getMetadata());
+}
+
 Type BufferType::parse(AsmParser &parser) {
   TensorLikeTypeParser bufferParser(parser);
 

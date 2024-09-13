@@ -41,7 +41,9 @@ class MO_ControlOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic, [MO_ControlOpInterface] # traits>;
 
 class MO_MutableOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [MO_MutableOpInterface, DeclareOpInterfaceMethods<MemoryEffectsOpInterface>] # traits>;
+  : MO_Op<mnemonic, [MO_MutableOpInterface,
+                     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+                     MO_HasDeviceInterface] # traits>;
 
 //===----------------------------------------------------------------------===//
 // IndexToTensorOp
@@ -4513,7 +4515,7 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
   let hasFolder = 1;
 }
 
-def MO_ChainCreateOp : MO_Op<"chain.create", [Pure]>
+def MO_ChainCreateOp : MO_Op<"chain.create", [Pure, MO_HasDeviceInterface]>
 {
   let summary = "Create a new chain conditioned on a variadic number of inputs";
   let description = [{
@@ -4597,7 +4599,7 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
   let hasCanonicalizer = 1;
 }
 
-def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice">
+def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>]>
 {
   let summary = "Stores a tensor to a slice of a buffer semantic tensor.";
   let description = [{

@@ -323,6 +323,11 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
       newResTy = funcOutTensorTy.cloneWithMetadataAndDeviceRef(newOutTensorTy);
     }
 
+    if (auto funcOutBufferTy = dyn_cast<BufferType>(funcOutTy)) {
+      auto newOutBufferTy = cast<BufferType>(newOutTy);
+      newResTy = funcOutBufferTy.cloneWithMetadataAndDeviceRef(newOutBufferTy);
+    }
+
     newResTypes.push_back(newResTy);
   }
 
@@ -3793,6 +3798,14 @@ void MutableStoreOp::getEffects(
 void MutableStoreSliceOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   effects.emplace_back(mlir::MemoryEffects::Write::get());
+}
+
+DeviceRefAttr MutableStoreSliceOp::getOperandDevice(size_t index) {
+  return (index == getStartMutable().getOperandNumber() ||
+          index == getStopMutable().getOperandNumber() ||
+          index == getStepMutable().getOperandNumber())
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
 }
 
 LogicalResult MutableStoreSliceOp::verify() {

@@ -312,6 +312,14 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
   ];
 
   let extraClassDeclaration = [{
+    /// Returns a clone of type with given #M.device_ref annotation. The
+    /// type must not already have such an annotation.
+    BufferType cloneWith(DeviceRefAttr deviceRef) const;
+
+    /// Clone the current type with the metadata and device_ref from
+    /// `source`.
+    BufferType cloneWithMetadataAndDeviceRef(BufferType source) const;
+
     /// Convert `mo.buffer` to the corresponding `mo.tensor` type
     static TensorType toTensorType(BufferType type);
   }];
