@@ -106,9 +106,8 @@ getMojoValueFromAsyncValue(AnyAsyncValueRef outputValue) {
 }
 
 SmallVector<AnyAsyncValueRef>
-M::Driver::prepareInputs(Runtime &runtime,
-                         M::Driver::DeviceMemory **inputMemories,
-                         TensorSpec *inputSpecs, size_t inputCount,
+M::Driver::prepareInputs(Runtime &runtime, Driver::DeviceMemory **inputMemories,
+                         const TensorSpec *inputSpecs, size_t inputCount,
                          DriverMojoValue *mojoValues, size_t mojoValuesCount) {
   SmallVector<AnyAsyncValueRef> inputs;
   inputs.reserve(inputCount + mojoValuesCount);

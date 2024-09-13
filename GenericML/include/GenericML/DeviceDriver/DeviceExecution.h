@@ -50,7 +50,7 @@ void addValueToOutputList(void *mojoExecutableGraph, void *outputList,
 // by an ExecutableModel.
 MODULAR_VISIBILITY_EXPORT SmallVector<AnyAsyncValueRef>
 prepareInputs(Runtime &runtime, DeviceMemory **inputMemories,
-              TensorSpec *inputSpecs, size_t inputCount,
+              const TensorSpec *inputSpecs, size_t inputCount,
               DriverMojoValue *mojoValues = nullptr,
               size_t mojoValuesCount = 0);
 
