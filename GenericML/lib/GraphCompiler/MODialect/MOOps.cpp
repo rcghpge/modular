@@ -387,6 +387,25 @@ LogicalResult TransferOp::canonicalize(TransferOp outerOp,
 }
 
 //===----------------------------------------------------------------------===//
+// MO_InvokeShapeFuncOp support
+//===----------------------------------------------------------------------===//
+DeviceRefAttr InvokeShapeFuncOp::getOperandDevice(size_t index) {
+  auto dataDeps = getDataDeptTensors();
+
+  if (!dataDeps)
+    return nullptr;
+
+  for (Attribute attr : dataDeps->getValue()) {
+    auto intAttr = cast<mlir::IntegerAttr>(attr);
+    if (static_cast<size_t>(intAttr.getInt()) == index) {
+      return MO::getHostDevice(getOperation());
+    }
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//
 OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {
