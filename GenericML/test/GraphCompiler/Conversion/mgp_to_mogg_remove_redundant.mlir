@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -allow-unregistered-dialect --remove-redundant-operands | FileCheck %s
+// RUN: mo-opt %s -allow-unregistered-dialect --remove-redundant-operands --split-input-file | FileCheck %s
 
 mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
@@ -23,3 +23,27 @@ mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] ini
 // CHECK-DAG: %[[INT0:[^ ]*]] = mogg.call{{.*}}(%[[ARG0]], %[[ARG1]])
 // CHECK-DAG: %[[INT1:[^ ]*]] = mogg.call{{.*}}(%[[INT0]], %[[ARG0]])
 // CHECK-DAG: inOutSignature = #M.inout_sig<"..">
+
+// -----
+
+mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.opaque<"cpu0_context">) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  %2 = mgp.runtime.create %0, %1[1]
+  mef.output %2, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.opaque<"cpu0_context">) -> (!mef.chain) {
+  %true = index.bool.constant true
+  %true_0 = index.bool.constant true
+  %0:2 = mogg.generic.compiled.region (%true, %true_0) : (%arg4: i1, %arg5: i1)  -> (!mef.chain, !mef.chain) {
+    %1 = mogg.call "mgp.assert"(%arg4) {message = "ASSERT_0" : !kgen.string} : i1 -> !mef.chain
+    %2 = mogg.call "mgp.assert"(%arg5) {message = "ASSERT_1" : !kgen.string} : i1 -> !mef.chain
+    mogg.output %1, %2 : !mef.chain, !mef.chain
+  } {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false, summary = "mgp.assert+mgp.assert"}
+  %res = "test.sink"(%0#0, %0#1) : (!mef.chain, !mef.chain) -> !mef.chain
+  mef.output %res : !mef.chain
+}
+
+// CHECK-LABEL: mgp.model @remove_redundant_chains
+// CHECK:         %[[OUT:[^ ]*]] = mogg.generic.compiled.region ({{.*}}) -> !mef.chain{
+// CHECK:           mogg.output %{{[^ ]*}} : !mef.chain
+// CHECK:         "test.sink"(%[[OUT]], %[[OUT]])
