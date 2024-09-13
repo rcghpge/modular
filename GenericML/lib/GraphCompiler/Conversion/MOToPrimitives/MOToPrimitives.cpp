@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -696,17 +697,50 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   if (elementsOr)
     return constOp->emitOpError(elementsOr.getError());
 
-  Value buffer = opLoweringState.bufferConstant(loweringState.getExecuteChain(),
-                                                *elementsOr,
-                                                constOp.getResult().getType());
   FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(constOp.getType());
   if (failed(tensorSpecOr))
     return failure();
-  opLoweringState.createOutputTensor(constOp.getResult(),
-                                     loweringState.getExecuteChain(), buffer,
-                                     *tensorSpecOr);
-  return success();
+  TypedValue<MGP::TensorSpecType> &tensorSpec = *tensorSpecOr;
+
+  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
+  auto moTensorType = cast<MO::TensorType>(constOp.getResult().getType());
+
+  DeviceRefAttr device =
+      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
+  DeviceRefAttr hostDevice = loweringState.getHostDevice();
+
+  // Create the mgp.buffer.constant op
+  Value hostBuffer = opLoweringState.hostBufferConstant(
+      loweringState.getExecuteChain(), *elementsOr,
+      constOp.getResult().getType());
+  // If targetDevice is on host, then we just create output tensor and return.
+  // Otherwise, we allocate a device buffer and explicitly transfer HtoD.
+  if (device == hostDevice) {
+    opLoweringState.createOutputTensor(constOp.getResult(),
+                                       loweringState.getExecuteChain(),
+                                       hostBuffer, *tensorSpecOr);
+    return success();
+  } else {
+    Value bufferSize =
+        opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
+    auto alignment = AsyncRT::getPreferredAlignment(device.getLabel().str());
+    Value deviceBuffer =
+        opLoweringState.bufferAlloc(loweringState.getExecuteChain(), bufferSize,
+                                    alignment, moTensorType, sizeInBytes);
+    // Use bufferTransferFromHost to also take care of the stream sync.
+    // Note that this is needlessly conservative because the constant external's
+    // lifetime is controlled outside the graph.
+    Value outChain = opLoweringState.bufferTransferFromHost(
+        loweringState.getExecuteChain(),
+        cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer), deviceBuffer,
+        constOp.getResult().getType());
+
+    opLoweringState.createOutputTensor(constOp.getResult(), outChain,
+                                       deviceBuffer, *tensorSpecOr);
+
+    return success();
+  }
 }
 
 LogicalResult
@@ -727,39 +761,35 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   auto moTensorType =
       cast<MO::TensorType>(constExternalOp.getResult().getType());
 
-  DeviceRefAttr device =
+  DeviceRefAttr targetDevice =
       MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
-  if (device == hostDevice) {
-    // Create the mgp.buffer.constant.external op directly on the host.
-    Value buffer = opLoweringState.bufferConstantExternal(
-        chain, name, sizeInBytes, alignment, moTensorType);
-    opLoweringState.createOutputTensor(constExternalOp.getResult(), chain,
-                                       buffer, *tensorSpecOr);
-
-    return success();
-  }
-
-  // Otherwise, first allocate a device buffer, then perform a host to device
-  // copy from the external host bufer.
+  // Create the mgp.buffer.constant.external op
   Value hostBuffer = opLoweringState.hostBufferConstantExternal(
       chain, name, sizeInBytes, alignment);
-  Value bufferSize =
-      opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
-  Value deviceBuffer = opLoweringState.bufferAlloc(chain, bufferSize, alignment,
-                                                   moTensorType, sizeInBytes);
 
-  // Use bufferTransferFromHost to also take care of the stream sync.
-  // Note that this is needlessly conservative because the constant external's
-  // lifetime is controlled outside the graph.
-  Value outChain = opLoweringState.bufferTransferFromHost(
-      chain, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer), deviceBuffer,
-      constExternalOp.getResult().getType());
+  // If targetDevice is on host, then we just create output tensor and return.
+  // Otherwise, we allocate a device buffer and explicitly transfer HtoD.
+  if (targetDevice == hostDevice) {
+    opLoweringState.createOutputTensor(constExternalOp.getResult(), chain,
+                                       hostBuffer, *tensorSpecOr);
+    return success();
+  } else {
+    Value bufferSize =
+        opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
+    Value deviceBuffer = opLoweringState.bufferAlloc(
+        chain, bufferSize, alignment, moTensorType, sizeInBytes);
+    // Use bufferTransferFromHost to also take care of the stream sync.
+    // Note that this is needlessly conservative because the constant external's
+    // lifetime is controlled outside the graph.
+    Value outChain = opLoweringState.bufferTransferFromHost(
+        chain, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
+        deviceBuffer, constExternalOp.getResult().getType());
 
-  opLoweringState.createOutputTensor(constExternalOp.getResult(), outChain,
-                                     deviceBuffer, *tensorSpecOr);
-
-  return success();
+    opLoweringState.createOutputTensor(constExternalOp.getResult(), outChain,
+                                       deviceBuffer, *tensorSpecOr);
+    return success();
+  }
 }
 
 LogicalResult

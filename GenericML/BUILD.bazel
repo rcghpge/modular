@@ -1210,6 +1210,7 @@ modular_cc_library(
         ":MOGGSupport",
         ":MOGGTransforms",
         ":MOToPrimitivesIncGen",
+        "//AsyncRT:DeviceContext",
         "//GraphRT:MIPDialect",
         "//KGEN:ToolCommon",
     ],

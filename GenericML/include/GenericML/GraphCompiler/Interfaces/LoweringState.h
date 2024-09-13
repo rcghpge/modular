@@ -609,18 +609,10 @@ struct MOOpLoweringState {
     return tensor;
   }
 
-  Value bufferConstant(TypedValue<MEF::ChainType> inChain, ElementsAttr value,
-                       Type moTensorType) {
-    return getStorageBufferBuilder(moTensorType)
-        ->bufferConstant(builder, loc, inChain, context, value);
-  }
-
-  Value bufferConstantExternal(TypedValue<MEF::ChainType> inChain,
-                               StringRef name, uint64_t size, uint64_t align,
-                               Type moTensorType) {
-    return getStorageBufferBuilder(moTensorType)
-        ->bufferConstantExternal(builder, loc, inChain, context,
-                                 weightsRegistry, name, size, align);
+  Value hostBufferConstant(TypedValue<MEF::ChainType> inChain,
+                           ElementsAttr value, Type moTensorType) {
+    return loweringState.getHostBufferBuilder()->bufferConstant(
+        builder, loc, inChain, context, value);
   }
 
   Value hostBufferConstantExternal(TypedValue<MEF::ChainType> inChain,
