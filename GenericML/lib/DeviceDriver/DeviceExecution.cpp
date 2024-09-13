@@ -7,6 +7,7 @@
 #include "GenericML/DeviceDriver/DeviceExecution.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "GenericML/DeviceDriver/CPUDriver.h"
+#include "Runtime/MojoValue.h"
 #include "Support/AssertStream.h"
 
 using namespace M;
@@ -160,35 +161,6 @@ M::Driver::processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
       Driver::DriverMojoValue value =
           getMojoValueFromAsyncValue(std::move(outputRef));
       outputs.push_back(value);
-    }
-  }
-
-  return outputs;
-}
-
-SmallVector<M::Tensor>
-M::Driver::processTensorResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
-                                ExecutableModel *model, ContextRef maxContext,
-                                RCRef<Device> device) {
-  // First result is a chain.
-  results = results.drop_front();
-  llvm::SmallVector<AnyAsyncValueRef> outputRefs;
-  outputRefs.reserve(results.size());
-  for (AnyAsyncValueRef &result : results) {
-    // Convert only outputs that are of tensor types.
-    if (result.isType<Tensor>()) {
-      // Each framework has their own way to convert to tensor. So call this
-      // function to get the generic form.
-      outputRefs.push_back(model->convertToGenericTensor(std::move(result)));
-    }
-  }
-  AsyncRT::await(outputRefs);
-
-  SmallVector<Tensor> outputs;
-
-  for (AnyAsyncValueRef &outputRef : outputRefs) {
-    if (outputRef.isType<Tensor>()) {
-      outputs.push_back(std::move(outputRef.get<Tensor>()));
     }
   }
 

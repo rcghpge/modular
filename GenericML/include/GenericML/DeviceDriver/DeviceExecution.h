@@ -7,9 +7,9 @@
 #ifndef GENERICML_DEVICEDRIVER_DEVICEEXECUTION
 #define GENERICML_DEVICEDRIVER_DEVICEEXECUTION
 
+#include "GenericML/API/max/c/types.h"
 #include "GenericML/DeviceDriver/Driver.h"
 #include "GenericML/Support/Model.h"
-#include "Runtime/MojoValue.h"
 #include "Support/ADT/SmartVariant.h"
 #include "Support/Context.h"
 #include "Support/ML/TensorSpec.h"
@@ -18,9 +18,9 @@
 namespace M::Driver {
 
 /// Container holding the result of device execution.
-/// Each element is either a tensor or a Mojo value.
+/// Each element is either a tensor or a Mojo value boxed by an AsyncValue.
 using ExecResultType =
-    SmallVector<SmartVariant<Driver::DeviceMemory *, M::MojoValue *>>;
+    SmallVector<SmartVariant<Driver::DeviceMemory *, M_AsyncValue *>>;
 
 // This is the bitwise equivalent C++ representation of _CMojoValue in
 // mojo side. We destructure M::MojoValue into this struct and then pass to
@@ -62,12 +62,6 @@ MODULAR_VISIBILITY_EXPORT
 GraphExecutionResultsTy
 processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
                ExecutableModel *model);
-
-// Processes results and convert them into tensors.
-MODULAR_VISIBILITY_EXPORT SmallVector<M::Tensor>
-processTensorResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
-                     ExecutableModel *model, ContextRef maxContext,
-                     RCRef<Device> device);
 
 // Writes results to mojo callback function
 MODULAR_VISIBILITY_EXPORT
