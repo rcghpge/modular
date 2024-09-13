@@ -71,6 +71,9 @@ struct DeviceMemory {
   /// which may reside on a different device.
   virtual ErrorOrSuccess copyTo(DeviceMemory &dst) const = 0;
 
+  /// Sets the contents of the device memory to the provided value.
+  virtual ErrorOrSuccess memset(int value) = 0;
+
 protected:
   void *ptr;
   M::TensorSpec spec;
