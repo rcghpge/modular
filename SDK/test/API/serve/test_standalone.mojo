@@ -258,7 +258,7 @@ def test_standalone_server_client[TEST_CASE: ModelTestCase]() -> None:
             print("[" + elapsed() + "]Client error : ", e)
             _ = client_completed.fetch_add(1)
 
-    var tg = TaskGroup[__lifetime_of(server)]()
+    var tg = TaskGroup()
     tg.create_task(server_impl())
 
     print("[" + elapsed() + "]Created server")
@@ -269,7 +269,7 @@ def test_standalone_server_client[TEST_CASE: ModelTestCase]() -> None:
         sleep(1)
     server.signal_stop()
 
-    tg.wait()
+    tg.wait[__lifetime_of(server)]()
     print("[" + elapsed() + "]Signalled stop")
     print("[" + elapsed() + "]Done!")
     _ = server^

@@ -38,7 +38,7 @@ fn test_batch():
     async fn submit(owned n: Int):
         _ = batcher.submit(n)
 
-    var tg = TaskGroup[__lifetime_of()]()
+    var tg = TaskGroup()
     for i in range(NUM_REQ):
         tg.create_task(submit(i))
     tg.wait()

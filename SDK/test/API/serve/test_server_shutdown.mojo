@@ -51,10 +51,10 @@ def run_shutdown_test():
             sleep(1)
         server.signal_stop()
 
-    var tg = TaskGroup[__lifetime_of(server_started)]()
+    var tg = TaskGroup()
     tg.create_task(server_impl())
     tg.create_task(shutdown_task_impl())
-    tg.wait()
+    tg.wait[__lifetime_of(server_started)]()
     _ = tg^
     _ = server^
     print("[" + elapsed() + "]Server terminated succesfully.")
