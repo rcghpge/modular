@@ -52,8 +52,9 @@ const char *check_ptr(void **result, ErrorOr<void *> err_or) {
 }
 
 MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_create(const DeviceContext **result, const char *kind) {
-  return check_ref(result, DeviceContext::create(kind));
+AsyncRT_DeviceContext_create(const DeviceContext **result, const char *kind,
+                             int id) {
+  return check_ref(result, DeviceContext::create(kind, id));
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceContext_release(const DeviceContext *ctx) {
@@ -75,8 +76,8 @@ AsyncRT_DeviceContext_freeHost(const DeviceContext *ctx, void *ptr) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_createBuffer(const DeviceBuffer **result,
                                    const DeviceContext *ctx, size_t len,
-                                   size_t size) {
-  return check_ref(result, ctx->createBuffer(len, size));
+                                   size_t elem_size) {
+  return check_ref(result, ctx->createBuffer(len, elem_size));
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(const DeviceBuffer *buffer) {
@@ -92,12 +93,14 @@ AsyncRT_DeviceContext_synchronize(const DeviceContext *ctx) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_HtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *dst, const void *src) {
+  assert((ctx == &dst->context()) && "ctx not matching dst");
   return check_success(ctx->enqueueCopyToDevice(*dst, src));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoH_async(const DeviceContext *ctx, void *dst,
                                  const DeviceBuffer *src) {
+  assert((ctx == &src->context()) && "ctx not matching src");
   return check_success(ctx->enqueueCopyFromDevice(dst, *src));
 }
 
