@@ -288,7 +288,8 @@ DependencyTreeNode *DependencyTree::get(Operation *op) const {
 }
 
 Block *DependencyTree::getBlock() const {
-  assert(root && root->op);
+  if (!root || !root->op)
+    return nullptr;
   return root->op->getBlock();
 }
 
