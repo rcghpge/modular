@@ -3617,6 +3617,46 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
   return nullptr;
 }
 
+ParseResult ChainCreateOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
+  SmallVector<Type, 4> types;
+
+  if (parser.parseLParen() || parser.parseOperandList(operands) ||
+      parser.parseRParen())
+    return failure();
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  if (!operands.empty()) {
+    if (parser.parseColon() || parser.parseTypeList(types))
+      return failure();
+
+    if (operands.size() != types.size())
+      return parser.emitError(parser.getNameLoc(),
+                              "mismatched number of operands and types");
+
+    if (parser.resolveOperands(operands, types, parser.getNameLoc(),
+                               result.operands))
+      return failure();
+  }
+
+  result.types.push_back(ChainType::get(parser.getContext()));
+
+  return success();
+}
+
+void ChainCreateOp::print(OpAsmPrinter &p) {
+  p << "(";
+  p.printOperands(getOperands());
+  p << ")";
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+  if (!getOperands().empty()) {
+    p << " : ";
+    llvm::interleaveComma(getOperandTypes(), p);
+  }
+}
+
 void AssertOp::build(OpBuilder &builder, OperationState &state, Value cond,
                      const Twine &message) {
   auto attr = StringAttr::get(message.str(),

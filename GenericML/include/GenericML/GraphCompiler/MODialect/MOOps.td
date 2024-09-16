@@ -4528,15 +4528,12 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [Pure, MO_HasDeviceInterface]>
     %ch0 = mo.assert ...
     %x = mo.matmul ....
 
-    %ch1 = mo.chain.create %ch0, %x
+    %ch1 = mo.chain.create(%ch0: !mo.chain, %x: mo.tensor)
   }];
 
   let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs MO_Chain:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` type($inputs)
-  }];
+  let hasCustomAssemblyFormat = 1;
 
   let hasFolder = 1;
 }

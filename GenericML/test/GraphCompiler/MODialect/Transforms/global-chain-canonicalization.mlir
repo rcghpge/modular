@@ -13,7 +13,7 @@
 // CHECK: mo.mutable.store([[ch2]],
 mo.graph @one_long_sequence(%buf0: !bt, %buf1: !bt, %rhs: !tt) -> (!bt, !bt)
 {
-  %ch0 = mo.chain.create(%buf0, %buf1) : !bt, !bt
+  %ch0 = mo.chain.create()
 
   %ch1, %vbuf = mo.mutable.load(%ch0, %buf0) : (!ct, !bt) -> (!ct, !tt)
   %res1 = mo.add(%rhs, %vbuf) : !tt
@@ -35,7 +35,7 @@ mo.graph @one_long_sequence(%buf0: !bt, %buf1: !bt, %rhs: !tt) -> (!bt, !bt)
 // CHECK-DAG: mo.mutable.store([[ch2]],
 mo.graph @interleaved_sequence(%buf0: !bt, %buf1: !bt, %lhs: !tt) -> (!bt, !bt)
 {
-  %ch0 = mo.chain.create(%buf0, %buf1) : !bt, !bt
+  %ch0 = mo.chain.create()
 
   %ch1, %vbuf = mo.mutable.load(%ch0, %buf0) : (!ct, !bt) -> (!ct, !tt)
   %ch2, %vbuf2 = mo.mutable.load(%ch1, %buf1) : (!ct, !bt) -> (!ct, !tt)
