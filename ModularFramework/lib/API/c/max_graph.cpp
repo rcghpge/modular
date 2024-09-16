@@ -312,6 +312,49 @@ MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeShapeGetDim(MlirType t,
   return wrap(cast<MO::TensorType>(unwrap(t)).getDim(dim));
 }
 
+MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,
+                                               bool ranked, MlirAttribute *dims,
+                                               int32_t rank) {
+  SmallVector<TypedAttr> dim_attrs;
+  for (int i = 0; i < rank; ++i)
+    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+
+  if (ranked) {
+    return wrap(MO::BufferType::get(dim_attrs, unwrap(dtype)));
+  }
+  return wrap(MO::BufferType::get(
+      KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))),
+      unwrap(dtype)));
+}
+
+MODULAR_API_EXPORT char *MAXG_bufferTypeGetDTypeAsString(MlirType type) {
+  auto bufferType = cast<MO::BufferType>(unwrap(type));
+  std::string dtypeStr = bufferType.getDtype().getAsString();
+  // Initialize to zeros so that result is null terminated.
+  char *result = new char[dtypeStr.size() + 1]{};
+  // Copy to a string owned by the caller.
+  dtypeStr.copy(result, dtypeStr.size());
+  return result;
+}
+
+MODULAR_API_EXPORT uint8_t MAXG_bufferTypeGetDType(MlirType t) {
+  auto bufferType = cast<MO::BufferType>(unwrap(t));
+  return bufferType.getDtype().getValue();
+}
+
+MODULAR_API_EXPORT bool MAXG_bufferTypeIsRanked(MlirType t) {
+  return cast<MO::BufferType>(unwrap(t)).toTensorType().hasRank();
+}
+
+MODULAR_API_EXPORT int64_t MAXG_bufferTypeGetRank(MlirType t) {
+  return cast<MO::BufferType>(unwrap(t)).toTensorType().getRank();
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_bufferTypeShapeGetDim(MlirType t,
+                                                            int64_t dim) {
+  return wrap(cast<MO::BufferType>(unwrap(t)).toTensorType().getDim(dim));
+}
+
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewDynamic(MlirContext context) {
   return wrap(KGEN::UnknownAttr::get(IndexType::get(unwrap(context))));
 }
@@ -381,6 +424,10 @@ MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t) {
 
 MODULAR_API_EXPORT bool MAXG_typeIsOpaque(MlirType t) {
   return isa<M::MO::OpaqueType>(unwrap(t));
+}
+
+MODULAR_API_EXPORT bool MAXG_typeIsBuffer(MlirType t) {
+  return isa<M::MO::BufferType>(unwrap(t));
 }
 
 MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,

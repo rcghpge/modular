@@ -309,6 +309,14 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
       "TypedAttr" : $shapeAttr,
       "DType" : $dtype,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "TypedAttr" : $shapeAttr,
+      "Type" : $elementType,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "ArrayRef<TypedAttr>" : $shape,
+      "Type" : $elementType,
+      CArg<"DictionaryAttr", "{}"> : $metadata)>,
   ];
 
   let extraClassDeclaration = [{
@@ -322,6 +330,7 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
 
     /// Convert `mo.buffer` to the corresponding `mo.tensor` type
     static TensorType toTensorType(BufferType type);
+    TensorType toTensorType();
   }];
 }
 

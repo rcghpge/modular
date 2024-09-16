@@ -111,6 +111,18 @@ MODULAR_API_EXPORT int64_t MAXG_tensorTypeGetRank(MlirType t);
 MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeShapeGetDim(MlirType t,
                                                             int64_t dim);
 
+/// Creates a new MO::BufferType (!mo.tensor).
+MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,
+                                               bool ranked, MlirAttribute *dims,
+                                               int32_t rank);
+/// Accessors for !mo.buffer.
+/// Gets the DType as a null-terminated string owned by the caller.
+MODULAR_API_EXPORT char *MAXG_bufferTypeGetDTypeAsString(MlirType type);
+MODULAR_API_EXPORT uint8_t MAXG_bufferTypeGetDType(MlirType t);
+MODULAR_API_EXPORT int64_t MAXG_bufferTypeGetRank(MlirType t);
+MODULAR_API_EXPORT MlirAttribute MAXG_bufferTypeShapeGetDim(MlirType t,
+                                                            int64_t dim);
+
 /// Create static or symbolic dimension attributes.
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewStatic(MlirContext context,
                                                    int64_t dim);
@@ -126,9 +138,10 @@ MODULAR_API_EXPORT bool MAXG_dimIsStatic(MlirAttribute a);
 MODULAR_API_EXPORT int64_t MAXG_dimStaticValue(MlirAttribute a);
 MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a);
 
-/// Query functions for tensor and opaque types.
+/// Query functions for tensor, buffer and opaque types.
 MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t);
 MODULAR_API_EXPORT bool MAXG_typeIsOpaque(MlirType t);
+MODULAR_API_EXPORT bool MAXG_typeIsBuffer(MlirType t);
 
 /// Creates a new MO::Opaque type (!mo.opaque).
 MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,

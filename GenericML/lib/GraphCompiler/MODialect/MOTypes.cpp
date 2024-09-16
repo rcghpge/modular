@@ -742,6 +742,22 @@ BufferType BufferType::get(TypedAttr shapeAttr, DType dtype,
   return get(ctx, shapeAttr, dtype, /*deviceRef=*/nullptr, metadata);
 }
 
+BufferType BufferType::get(TypedAttr shapeAttr, Type elementType,
+                           DictionaryAttr metadata) {
+  ErrorOr<DType> errOrDType = fromMLIRType(elementType);
+  ASSERT_STREAM(!errOrDType.isError(),
+                << "element type is not representable as a DType: "
+                << errOrDType.takeError());
+  return get(shapeAttr, *errOrDType, metadata);
+}
+
+BufferType BufferType::get(ArrayRef<TypedAttr> shape, Type elementType,
+                           DictionaryAttr metadata) {
+  auto ctx = elementType.getContext();
+  auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
+  return get(newShape, elementType, metadata);
+}
+
 TensorType BufferType::toTensorType(BufferType ty) {
   auto shapeAttr = ty.getShapeAttr();
   auto dtype = ty.getDtype();
@@ -750,6 +766,10 @@ TensorType BufferType::toTensorType(BufferType ty) {
 
   return TensorType::get(ty.getContext(), shapeAttr, dtype, deviceRef,
                          metadata);
+}
+
+TensorType BufferType::toTensorType() {
+  return BufferType::toTensorType(*this);
 }
 
 TensorType M::MO::castFromTensorLike(Type ty) {
