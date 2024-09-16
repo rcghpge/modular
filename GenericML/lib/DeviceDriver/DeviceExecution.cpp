@@ -105,6 +105,15 @@ getMojoValueFromAsyncValue(AnyAsyncValueRef outputValue) {
   return value;
 }
 
+AnyAsyncValueRef M::Driver::prepareInput(Runtime &runtime,
+                                         M::Driver::DeviceMemory *inputMemory,
+                                         const TensorSpec &inputSpec) {
+  // Convert inputs from device memory we received from mojo to AsyncValue
+  // of tensor as expected by graph. We take ownership of inputs here.
+  return AnyAsyncValueRef::createReady<Tensor>(
+      runtime, getTensorFromDeviceMemory(runtime, inputMemory, inputSpec));
+}
+
 SmallVector<AnyAsyncValueRef>
 M::Driver::prepareInputs(Runtime &runtime, Driver::DeviceMemory **inputMemories,
                          ArrayRef<const TensorSpec *> inputSpecs,
