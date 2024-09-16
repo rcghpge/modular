@@ -244,6 +244,26 @@ $L__BB0_2:
     EXPECT_EQ(out_host[i], static_cast<float>(i) + 2.0);
   }
 
+  // Check cache hit.
+  uint32_t ref_count = device_function->getNumReferences();
+  // One refcount for device_function and one ref count for the cache in
+  // CUDADeviceContext.
+  EXPECT_EQ(ref_count, 2);
+  {
+    ErrorOr<DeviceFunctionRef> err_fun =
+        ctx->compileFunction("vec_add", sig, vec_add_ptx);
+    EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
+    DeviceFunctionRef device_function2 = std::move(err_fun.get());
+    EXPECT_TRUE(device_function2);
+
+    EXPECT_EQ(device_function.getPointer(), device_function2.getPointer());
+    // Additional refcount for device_function2.
+    EXPECT_EQ(ref_count + 1, device_function->getNumReferences());
+    EXPECT_EQ(ref_count + 1, device_function2->getNumReferences());
+  }
+  // Make sure the local reference for device_function2 has been released.
+  EXPECT_EQ(ref_count, device_function->getNumReferences());
+
   // Check error cases of mismatched arguments being passed.
   err = ctx->enqueueFunctionExec(
       *device_function, length / block_dim, 1, 1, block_dim, 1, 1,

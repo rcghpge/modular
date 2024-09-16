@@ -15,8 +15,10 @@
 #include "CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
+#include "llvm/ADT/StringMap.h"
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -156,6 +158,9 @@ private:
   const CUDADriver &driver_;
   CUcontext context_;
   CUstream stream_;
+
+  mutable std::mutex mu_;
+  mutable llvm::StringMap<CUDADeviceFunctionRef> func_map_;
 };
 
 } // namespace M::AsyncRT

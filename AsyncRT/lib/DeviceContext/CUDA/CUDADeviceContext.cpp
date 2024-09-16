@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <mutex>
 #include <string>
 
 // TODO(iposva) : Switch error handling to using `std::source_location` once we
@@ -218,6 +219,15 @@ CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data) const {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto iter = func_map_.find(function_name);
+    if (iter != func_map_.end()) {
+      CUDADeviceFunctionRef result = iter->second;
+      return result;
+    }
+  }
+
   std::cerr << "CUDADeviceContext::compileFunction(" << function_name << "):\n"
             << reinterpret_cast<const char *>(data) << "\n";
   CUmodule module;
@@ -226,8 +236,23 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
   CUfunction function;
   CUDA_CHECK_ERR(driver_.ModuleGetFunction(&function, module, function_name));
 
-  return CUDADeviceFunctionRef::create(*this, std::string(function_name),
-                                       signature, module, function);
+  // Allocate func outside of the lock region to reduce the time spent under
+  // lock. If this function_name has been registered concurrently, then we will
+  // release this ref outside of the lock region before returning.
+  auto func = CUDADeviceFunctionRef::create(*this, std::string(function_name),
+                                            signature, module, function);
+  CUDADeviceFunctionRef result;
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto iter = func_map_.find(function_name);
+    if (iter != func_map_.end()) {
+      result = CUDADeviceFunctionRef::copy(iter->second.getPointer());
+    } else {
+      func_map_.insert({func->name(), func});
+      result = std::move(func);
+    }
+  }
+  return result;
 }
 
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
