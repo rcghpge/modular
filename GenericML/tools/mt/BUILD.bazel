@@ -5,7 +5,6 @@ modular_cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
     data = [
-        "//Faux/tools/faux",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
@@ -26,7 +25,6 @@ modular_cc_binary(
 rpath_shim(
     name = "rpaths",
     packages = [
-        "//Faux/tools/faux",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",

@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Cache/CachedTransform.h"
-#include "Faux/Dialect/FauxDialect.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOQDialect/MOQDialect.h"
@@ -41,9 +40,9 @@ int main(int argc, char **argv) {
       arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
       index::IndexDialect, LLVM::LLVMDialect, quant::QuantizationDialect,
       // Add the Modular Dialects.
-      MEF::MEFDialect, DebugInfo::DebugInfoDialect, Faux::FauxDialect,
-      GRT::GRTDialect, MDialect, MGP::MGPDialect, RMO::RMODialect,
-      MOSH::MOSHDialect, MO::MODialect, MOQ::MOQDialect, MOGG::MOGGDialect>();
+      MEF::MEFDialect, DebugInfo::DebugInfoDialect, GRT::GRTDialect, MDialect,
+      MGP::MGPDialect, RMO::RMODialect, MOSH::MOSHDialect, MO::MODialect,
+      MOQ::MOQDialect, MOGG::MOGGDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));

@@ -5,7 +5,6 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//Cache",
-        "//Faux:FauxDialect",
         "//GenericML:MODialect",
         "//GenericML:MOGGDialect",
         "//GenericML:MOQDialect",
