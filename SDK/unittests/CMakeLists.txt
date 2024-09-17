@@ -1,8 +1,0 @@
-##===----------------------------------------------------------------------===##
-#
-# This file is Modular Inc proprietary.
-#
-##===----------------------------------------------------------------------===##
-
-add_subdirectory(EngineAPI/python_bindings)
-add_subdirectory(EngineCLI)
