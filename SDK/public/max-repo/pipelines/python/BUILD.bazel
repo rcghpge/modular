@@ -39,6 +39,7 @@ pkg_filegroup(
     srcs = [
         ":python_files",
         "//SDK/public/max-repo/pipelines/python/llama3:python_files",
+        "//SDK/public/max-repo/pipelines/python/nn:python_files",
         "//SDK/public/max-repo/pipelines/python/text_streaming:python_files",
         "//SDK/public/max-repo/pipelines/python/utils:python_files",
     ],
