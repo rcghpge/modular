@@ -2457,17 +2457,9 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     SmallVector<Value> customOpInputs{query, key, value, gpuMask,
                                       normScalarAsFP32};
 
-    // We require the norm scalar to be on the host device. Done this way to
-    // to avoid dumb errors if we reorder inputs in custom op.
-    int64_t indexNormScalar =
-        llvm::find(customOpInputs, normScalarAsFP32) - customOpInputs.begin();
-    auto normScalarDevice =
-        MO::DeviceIndexAttr::get(indexNormScalar, getHostDevice(rootOp));
-
     auto customOp = rewriter.create<CustomOp>(
         rootOp.getLoc(), TypeRange{rootOp.getType().cloneWith(mhaOutputShape)},
-        customOpInputs, "masked_flash_attention_gpu",
-        SmallVector<DeviceIndexAttr>{normScalarDevice});
+        customOpInputs, "masked_flash_attention_gpu");
     auto mhaResult = cast<TensorValue>(customOp.getResult(0));
 
     // The mhaResult should be shape BSHD, however the rooted op is layout BHSD.
