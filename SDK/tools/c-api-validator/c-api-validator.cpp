@@ -9,7 +9,6 @@
 #include "GenericML/API/max/c/model.h"
 #include "GenericML/API/max/c/tensor.h"
 #include "GenericML/API/max/cpp/aliases.h"
-#include "GenericML/API/max/cpp/internal/aliases.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/Configuration.h"
