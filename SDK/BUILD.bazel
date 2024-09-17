@@ -12,6 +12,12 @@ load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_pybind")
 
 modular_pybind_library(
+    name = "DLPack",
+    srcs = ["//SDK/lib/API/python:dlpack_srcs"],
+    hdrs = glob(["include/SDK/DLPack/**/*.h"]),
+)
+
+modular_pybind_library(
     name = "ModularFrameworkPython",
     srcs = ["//SDK/lib/API/python:engine_srcs"],
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
@@ -23,6 +29,7 @@ modular_pybind_library(
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
+        "//SDK:DLPack",
     ],
 )
 
@@ -144,6 +151,7 @@ modular_pybind_library(
     deps = [
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
+        "//SDK:DLPack",
         "//Support:ML",
     ],
 )

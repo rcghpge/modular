@@ -2,8 +2,14 @@ load("@pip_deps//:requirements.bzl", "requirement")
 load("//bazel:api.bzl", "py_repl")
 
 filegroup(
+    name = "dlpack_srcs",
+    srcs = glob(["lib/DLPack/*.cpp"]),
+    visibility = ["//SDK:__pkg__"],
+)
+
+filegroup(
     name = "driver_srcs",
-    srcs = glob(["lib/Driver/*.cpp"]) + ["lib/Driver/dlpack.h"],
+    srcs = glob(["lib/Driver/*.cpp"]),
     visibility = ["//SDK:__pkg__"],
 )
 
