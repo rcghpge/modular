@@ -1288,7 +1288,10 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   Var inputNumElems = b.createVar(inputShape.getSymbolicNumElements());
   Var outputNumElems = b.createVar(outputShape.getSymbolicNumElements());
   b.createAssert(inputNumElems == outputNumElems,
-                 "[reshape] input and output number of elements must match");
+                 llvm::formatv("[reshape] input and output number of elements "
+                               "must match: {0} != {1}",
+                               inputShape, outputShape)
+                     .str());
   return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 

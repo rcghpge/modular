@@ -203,7 +203,7 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @scalar_to_tensor_reshapes_before_staticization<[[D18:.*]], [[D19:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D18]], [[D19]]], si32>) -> !mo.tensor<[[[D18]], [[D18]]], si32> {
-// CHECK-NEXT:   kgen.param.declare [[P29:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match" : !kgen.string}, eq(mul_nuw([[D18]], [[D18]]), mul_nuw([[D18]], [[D19]])))>
+// CHECK-NEXT: kgen.param.declare [[P29:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D18, D19]> : !mosh.ape != #mosh<ape[D18, D18]> : !mosh.ape" : !kgen.string}, eq(mul_nuw(D18, D18), mul_nuw(D18, D19)))>
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG0]]) : !mo.tensor<[[[D18]], [[D19]]], si32> -> !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT:   mo.output [[V0]] : !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT: }
@@ -1056,14 +1056,16 @@ mo.graph @reshape_neg_one_dim_in_const_shape<D0 -> D4, D5, D6>(
   %input: !mo.tensor<[D0, 4], si32>
 ) -> !mo.tensor<[D4, D5, D6], si32> {
 
-  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match" : !kgen.string}, eq(mul_nuw(div(mul_nuw([[D0]], 2), 3), 6), mul_nuw([[D0]], 4)))>
-  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]] = <div(mul_nuw([[D0]], 2), 3)>
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0:.*]], 4], si32> -> !mo.tensor<[3, [[EXPR]], 2], si32>
+  // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
+  // CHECK-SAME: {message = "[reshape] input and output number of elements must match:
+  // CHECK-SAME: #mosh<ape[D0, 4]> : !mosh.ape != #mosh<ape[3, var_div3, 2]> : !mosh.ape" : !kgen.string}, eq(mul_nuw(div(mul_nuw(D0, 2), 3), 6), mul_nuw(D0, 4)))>
+  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]] = <div(mul_nuw(D0, 2), 3)>
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[D0, 4], si32> -> !mo.tensor<[3, [[EXPR]], 2], si32>
   %shape = mo.constant {value = #M.dense_array<3, -1, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %res = mo.reshape<() -> D1, D2, D3>(%input, %shape) : (!mo.tensor<[D0, 4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D1, D2, D3], si32>
 
-  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]])
-  // CHECK-NEXT: mo.output<{{.*}}> %[[REB]]
+  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES:.*]]) : !mo.tensor<[3, [[EXPR]], 2], si32> -> !mo.tensor<[3, div(mul_nuw(D0, 2), 3), 2], si32>
+  // CHECK-NEXT: mo.output<div(mul_nuw(D0, 2), 3)> %[[REB]] : !mo.tensor<[3, div(mul_nuw(D0, 2), 3), 2], si32>
   mo.output<D1, D2, D3> %res : !mo.tensor<[D1, D2, D3], si32>
 }
 

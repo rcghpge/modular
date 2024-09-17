@@ -419,8 +419,9 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
-  // CHECK-SAME:  {message = "[reshape] input and output number of elements must match" : !kgen.string},
-  // CHECK-SAME:   eq(mul_nuw([[D0]], [[D1]]), mul_nuw([[D0]], 20)))>
+  // CHECK-SAME:  {message = "[reshape] input and output number of elements must match: 
+  // CHECK-SAME: #mosh<ape[D0, D1]> : !mosh.ape != #mosh<ape[D0, 4, 5]> : !mosh.ape" : !kgen.string},
+  // CHECK-SAME: eq(mul_nuw(D0, D1), mul_nuw(D0, 20)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D0]], 4, 5], f32>
