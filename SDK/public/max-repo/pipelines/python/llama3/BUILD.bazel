@@ -15,6 +15,7 @@ py_library(
         "//SDK/lib/API/python:max_dtype",
         "//SDK/lib/API/python:max_engine",
         "//SDK/lib/API/python:max_graph",
+        "//SDK/public/max-repo/pipelines/python/nn",
         "//SDK/public/max-repo/pipelines/python/utils",
     ],
 )
