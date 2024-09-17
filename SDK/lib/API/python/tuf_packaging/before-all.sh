@@ -21,8 +21,6 @@ source ./utils/start-modular.sh
 rm -rf .derived
 
 install_python_deps
-git-lfs install
-git-lfs pull
 
 arch=$(uname -m)
 
