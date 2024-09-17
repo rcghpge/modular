@@ -36,6 +36,3 @@ tools = [
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
-
-if "numpy" in sys.modules:
-    config.available_features.add("numpy")
