@@ -29,9 +29,9 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
-  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
 
 
   // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"(%{{.*}}, %[[INBUFFER]], %[[ALLOC0]])
@@ -73,9 +73,9 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
-  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSizeDifferent, align 16 : !mgp.buffer<>
+  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSizeDifferent, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
 
 
   // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])

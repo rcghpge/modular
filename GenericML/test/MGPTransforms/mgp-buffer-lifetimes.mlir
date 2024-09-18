@@ -16,9 +16,9 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
 
-  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
 
   // CHECK-DAG: %[[CH0:.*]] = "use_buffers"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])
   %outChain_0 = "use_buffers"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
@@ -51,9 +51,9 @@ mgp.model @parallel : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
 
-  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
 
   // CHECK-DAG: %[[CH0:.*]] = "use_buffers"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])
   %outChain_0 = "use_buffers"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
@@ -89,9 +89,9 @@ mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
 
-  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+  %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
 
   // CHECK-DAG: %[[CH0:.*]] = "use_buffers"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])
   %outChain_0 = "use_buffers"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
@@ -130,7 +130,7 @@ mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   %buf1 = mgp.buffer.constant %arg0, %arg1[1], #M.dense_array<1> : !M.array<1xui8>
   %b1 = mgp.buffer.to_bool %arg0, %arg1[1], %buf1 : !mgp.buffer<1>
 
-  %ifchain, %outbuf = grt.if %b1 (%arg0: !mef.chain, %arg1: !mgp.context, %inBuffer: !mgp.buffer<>, %inTensorSpec: !mgp.tensor_spec<?x?xf32>) -> (!mef.chain, !mgp.buffer<>) {
+  %ifchain, %outbuf = grt.if %b1 (%arg0: !mef.chain, %arg1: !mgp.context, %inBuffer: !mgp.buffer<>, %inTensorSpec: !mgp.tensor_spec<?x?xf32>, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<>) {
     %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
     %allocSize = index.mul %inDims#0, %inDims#1
@@ -138,9 +138,9 @@ mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
     // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
     // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
     // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
-    %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-    %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
-    %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, align 16 : !mgp.buffer<>
+    %alloc0 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+    %alloc1 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+    %alloc2 = mgp.buffer.alloc %arg0, %arg1[1], %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
 
     // CHECK-DAG: %[[CH0:.*]] = "use_buffers"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])
     %outChain_0 = "use_buffers"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain

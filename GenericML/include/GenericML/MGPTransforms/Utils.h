@@ -168,6 +168,11 @@ struct InitState {
   /// Returns the 'init' block's context.
   TypedValue<ContextType> getContext();
 
+  /// Returns the devices arguments to the 'init' block.
+  MutableArrayRef<mlir::BlockArgument> getDevices() {
+    return model.getInitDevices();
+  }
+
   /// Returns the weights registry argument to the 'init' block.
   TypedValue<MGP::OpaqueType> getWeightsRegistry() {
     return cast<TypedValue<MGP::OpaqueType>>(model.getInitWeightsRegistry());
@@ -190,6 +195,11 @@ struct ExecuteState {
 
   /// Returns MGP context argument to the 'execute' block.
   TypedValue<ContextType> getContext() const;
+
+  /// Returns the devices arguments to the 'execute' block.
+  MutableArrayRef<mlir::BlockArgument> getDevices() {
+    return model.getExecuteDevices();
+  }
 
   /// Returns the weights registry argument to the 'execute' block.
   TypedValue<MGP::OpaqueType> getWeightsRegistry() {

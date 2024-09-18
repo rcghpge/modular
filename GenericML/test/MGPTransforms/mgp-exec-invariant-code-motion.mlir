@@ -53,7 +53,7 @@ mgp.model @non_pure_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %c8 = index.constant 8
   %tmp = index.mul %out_dim0, %out_dim1
   %bytes = index.mul %c8, %tmp
-  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, align 16 : !mgp.buffer<>
+  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %ch2 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.buffer<16>, !mgp.tensor_spec<2x2xf32>, !mgp.buffer<>, !mgp.tensor_spec<?x?xf32>) -> !mef.chain
   %out_tensor = mgp.tensor.create %ch2, %ctx[1], %out_buf, %out_spec  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %out_tensor : !mef.chain, !mgp.tensor<?x?xf32>
@@ -83,7 +83,7 @@ mgp.model @dont_lift_if_no_computation_saved : mof devices [#M.device_ref<"cpu",
 
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<0>) {
   %size = index.constant 0
-  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %size, align 16 : !mgp.buffer<0>
+  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu, align 16 : !mgp.buffer<0>, !mgp.opaque<"cpu0_context">
   mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer<0>
 }
 
@@ -111,7 +111,7 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   %weight_buf = mgp.buffer.constant %ch0, %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
 
   %size = index.constant 37632
-  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %size, align 16 : !mgp.buffer<37632>
+  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu, align 16 : !mgp.buffer<37632>, !mgp.opaque<"cpu0_context">
   %out_spec = mgp.tensor_spec.create  : !mgp.tensor_spec<7x7x3x64xf32>
 
   %i42 = index.constant 42

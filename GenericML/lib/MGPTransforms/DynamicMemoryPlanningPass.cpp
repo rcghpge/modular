@@ -76,6 +76,14 @@ class DynamicMemoryPlanningPass
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
 
+    auto getExecDeviceContext = [&modelOp](DeviceRefAttr dev) {
+      for (auto [deviceRefAttr, deviceContext] :
+           llvm::zip(modelOp.getDevices(), modelOp.getExecuteDevices()))
+        if (deviceRefAttr == dev)
+          return std::optional<Value>(deviceContext);
+      return std::optional<Value>();
+    };
+
     auto analysis = getAnalysis<BufferLifetimeAnalysisPass>();
 
     BufferBuilderContext builderContext =
@@ -169,6 +177,8 @@ class DynamicMemoryPlanningPass
       execState.builder.setInsertionPointToStart(modelOp.getExecuteBlock());
 
       auto bufferBuilder = builderContext.getBufferBuilder(device);
+      auto deviceContext = getExecDeviceContext(device);
+      assert(deviceContext && "Could not find device context for device");
 
       // Create BufferPlanOp
       auto bufferPlanOp = execState.builder.create<BufferPlanOp>(
@@ -179,7 +189,7 @@ class DynamicMemoryPlanningPass
       auto superAlloc = bufferBuilder->bufferAlloc(
           execState.builder, loc, execState.getContext(),
           execState.getRootChain(), bufferPlanOp.getHighWatermark(),
-          totalAlignment);
+          deviceContext.value(), totalAlignment);
 
       // Replace all allocations with slices into the super alloc.
       // Since all planned runtimeSizes are not data-dependent, this shouldn't

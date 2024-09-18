@@ -62,9 +62,9 @@ func.func @buffer_constant(%ch: !mef.chain, %ctx : !mgp.context) {
 //
 
 // CHECK-LABEL: @buffer_alloc
-func.func @buffer_alloc(%ctx : !mgp.context, %ch : !mef.chain, %size : index) {
+func.func @buffer_alloc(%ctx : !mgp.context, %ch : !mef.chain, %size : index, %cpu : !mgp.opaque<"cpu0_context">) {
   // CHECK: %{{.*}} = mgp.buffer.alloc %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<, <"cuda", 3>>
-  %buf = mgp.buffer.alloc %ch, %ctx[1], %size : !mgp.buffer<, <"cuda", 3>>
+  %buf = mgp.buffer.alloc %ch, %ctx[1], %size, %cpu : !mgp.buffer<, <"cuda", 3>>, !mgp.opaque<"cpu0_context">
   mef.output %buf : !mgp.buffer<, <"cuda", 3>>
 }
 

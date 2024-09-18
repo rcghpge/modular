@@ -866,6 +866,12 @@ class ExecInvariantCodeMotionPass
     executeState->getContext().replaceUsesWithIf(initState->contextCreateOp,
                                                  isInInitBlock);
 
+    // Also replace all uses of the 'execute' block's device contexts with the
+    // device contexts from the 'init' block.
+    for (auto [execDeviceContext, initDeviceContext] :
+         llvm::zip(executeState->getDevices(), initState->getDevices()))
+      execDeviceContext.replaceUsesWithIf(initDeviceContext, isInInitBlock);
+
     // Also replace all uses of the 'execute' block's weights registry with the
     // weights registry from the 'init' block.
     executeState->getWeightsRegistry().replaceUsesWithIf(

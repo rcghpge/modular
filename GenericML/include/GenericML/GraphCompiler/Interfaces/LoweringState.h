@@ -224,12 +224,12 @@ public:
 
   /// Get the device context for a device ref in init.
   TypedValue<OpaqueType> getInitDevice(DeviceRefAttr dev) {
-    return devices[dev];
+    return initDevices[dev];
   }
 
   /// Set the device context form a device ref in init.
   void setInitDevice(DeviceRefAttr dev, TypedValue<OpaqueType> val) {
-    devices[dev] = val;
+    initDevices[dev] = val;
   }
 
   /// Return the builder for appending operations to the end of the invokable.
@@ -260,6 +260,15 @@ public:
   /// Return the MGP context appropriate for the 'execute' block.
   TypedValue<MGP::ContextType> getExecuteMgpContext() {
     return execute.mgpContext;
+  }
+
+  /// Get the device context for a device ref in init.
+  TypedValue<OpaqueType> getExecuteDevice(DeviceRefAttr dev) {
+    for (auto [deviceRefAttr, deviceContext] : llvm::zip(
+             common.modelOp.getDevices(), common.modelOp.getExecuteDevices()))
+      if (deviceRefAttr == dev)
+        return cast<TypedValue<MGP::OpaqueType>>(deviceContext);
+    assert(false && "Could not find device in model args");
   }
 
   /// Return the weights registry appropriate for the 'execute' block.
@@ -456,7 +465,10 @@ private:
   DenseMap<Value, SmallVector<Value>> placeholderMap;
 
   /// Mapping from device ref to value in init.
-  SmallDenseMap<DeviceRefAttr, TypedValue<OpaqueType>> devices;
+  SmallDenseMap<DeviceRefAttr, TypedValue<OpaqueType>> initDevices;
+
+  /// Mapping from device ref to value in exec.
+  SmallDenseMap<DeviceRefAttr, TypedValue<OpaqueType>> execDevices;
 };
 
 inline SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {
@@ -679,8 +691,11 @@ struct MOOpLoweringState {
   Value bufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,
                     uint64_t align, Type moTensorType,
                     std::optional<uint64_t> staticSize = std::nullopt) {
+    auto deviceRef = getStorageBufferBuilder(moTensorType)->getDevice();
+    auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(moTensorType)
-        ->bufferAlloc(builder, loc, context, inChain, size, align, staticSize);
+        ->bufferAlloc(builder, loc, context, inChain, size, deviceContext,
+                      align, staticSize);
   }
 };
 

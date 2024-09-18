@@ -198,8 +198,8 @@ class BufferBuilder {
 public:
   virtual ~BufferBuilder() = default;
 
-  /// Returns the device the builder represents.
-  virtual DeviceRefAttr getDevice(OpBuilder &builder) = 0;
+  /// Returns the device in the BufferBuilder
+  virtual DeviceRefAttr getDevice() = 0;
 
   /// Returns the !mgp.context appropriate for op, or null if none can be found.
   virtual TypedValue<ContextType> getContextForOp(Operation *op);
@@ -240,7 +240,7 @@ public:
   /// Returns the buffer of size. The alignment may be ignored for some devices.
   virtual Value bufferAlloc(OpBuilder &builder, Location loc,
                             TypedValue<ContextType> context, Value inChain,
-                            Value size, uint64_t alignment,
+                            Value size, Value deviceContext, uint64_t alignment,
                             std::optional<uint64_t> optSize = std::nullopt) = 0;
 
   /// Returns the chain indicating when srcBuffer on the host device has been
@@ -368,7 +368,7 @@ public:
 
   TypedValue<ContextType> getContextForOp(Operation *op) override;
 
-  DeviceRefAttr getDevice(OpBuilder &builder) override;
+  DeviceRefAttr getDevice() override;
 
   Value bufferConstant(OpBuilder &builder, Location loc,
                        TypedValue<MEF::ChainType> inChain,
@@ -398,7 +398,7 @@ public:
 
   Value bufferAlloc(OpBuilder &builder, Location loc,
                     TypedValue<ContextType> context, Value inChain, Value size,
-                    uint64_t alignment,
+                    Value deviceContext, uint64_t alignment,
                     std::optional<uint64_t> optSize = std::nullopt) override;
 
   Value bufferTransferFromHost(OpBuilder &builder, Location loc,

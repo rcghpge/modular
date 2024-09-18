@@ -519,15 +519,16 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        Index:$runtimeSize,
+                       MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aRuntimeSlot,                                 // 0
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign, // 1
                        MGP_OptDeviceRefAttr:$cDevice);                         // 2
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize
+    $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $deviceContext 
     ( `,` `align` $bRawAlign^ )? attr-dict
     `:` custom<BufferTypeToDevice>(
-          type($outBuffer), $cDevice, type($inChain))
+          type($outBuffer), $cDevice, type($inChain)) `,` type($deviceContext)
   }];
   let hasVerifier = 1;
 

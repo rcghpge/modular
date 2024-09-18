@@ -657,14 +657,15 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
   // If static size is known, it's used for the output type
   std::optional<uint64_t> optSize = tensorSpec.getType().getSizeInBytes();
 
-  auto bufferDevice = bufferBuilder->getDevice(builder);
+  auto bufferDevice = bufferBuilder->getDevice();
   auto preferredAlignment =
       M::AsyncRT::getPreferredAlignment(bufferDevice.getLabel().str());
   if (bufferDevice.getLabel() == M::kCPULabel)
     preferredAlignment = std::gcd(preferredAlignment, minimumCpuAlignment);
+  auto deviceContext = loweringState.getExecuteDevice(bufferDevice);
   return BufferizedTensor(
       bufferBuilder->bufferAlloc(builder, loc, context, inChain, numBytes,
-                                 preferredAlignment, optSize),
+                                 deviceContext, preferredAlignment, optSize),
       tensorSpec);
 }
 
