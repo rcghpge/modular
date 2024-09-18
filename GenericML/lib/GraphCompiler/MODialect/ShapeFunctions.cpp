@@ -12,6 +12,7 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
+#include "llvm/Support/FormatVariadic.h"
 #include <optional>
 #include <utility>
 
