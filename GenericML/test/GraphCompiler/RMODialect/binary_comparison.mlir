@@ -53,7 +53,7 @@ mo.graph @binary_comparison_not_ok_bad_cast_ui8_si8(%arg0: !mo.tensor<[7], si8>,
 // -----
 
 mo.graph @binary_elemwise_param_static_bad_shape<x, y>(%arg0: !mo.tensor<[1, x], si64>, %arg1: !mo.tensor<[y, 5], si64>) -> !mo.tensor<[y, 5], bool> {
-    // expected-error@below {{Input lhs (shape [1, x]) dimension at axis 1 (value x) and input rhs (shape [y, 5]) dimension at axis 1 (value 5) are neither equivalent nor broadcastable.}}
+    // expected-error@below {{'rmo.greater' op inferred type(s) '!mo.tensor<[y, x], bool>' are incompatible with return type(s) of operation '!mo.tensor<[y, 5], bool>'}}
     // expected-error@below {{'rmo.greater' op failed to infer returned types}}
     %1 = rmo.greater(%arg0, %arg1) : (!mo.tensor<[1, x], si64>, !mo.tensor<[y, 5], si64>) -> !mo.tensor<[y, 5], bool>
     mo.output %1: !mo.tensor<[y, 5], bool>
