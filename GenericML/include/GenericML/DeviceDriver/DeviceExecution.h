@@ -22,6 +22,9 @@ namespace M::Driver {
 using ExecResultType =
     SmallVector<SmartVariant<Driver::DeviceMemory *, M_AsyncValue *>>;
 
+/// Element type of a speclist; std::nullopt represents non-tensor inputs.
+using SpecType = std::optional<const M::TensorSpec *>;
+
 // This is the bitwise equivalent C++ representation of _CMojoValue in
 // mojo side. We destructure M::MojoValue into this struct and then pass to
 // mojo and mojo can interpret it as _CMojoValue.
