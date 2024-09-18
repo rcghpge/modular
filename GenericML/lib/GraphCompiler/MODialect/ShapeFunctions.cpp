@@ -1692,9 +1692,10 @@ propagateShape(ArrayRef<ParamBinding> bindings,
       StringAttr errMsg = condAndMsg.value().second;
 
       // Error if condition didn't fold to true.
-      auto boolAttr = dyn_cast<BoolAttr>(cond);
-      if (boolAttr && !boolAttr.getValue())
+      if (auto boolAttr = dyn_cast<BoolAttr>(cond);
+          !boolAttr || !boolAttr.getValue()) {
         return Error(errMsg.str());
+      }
     }
 
     // Otherwise remember this substitution.
