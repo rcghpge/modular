@@ -79,11 +79,6 @@ func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
 
 // -----
 
-// expected-error@+1 {{unable to represent DType 'f8' as an MLIR type.}}
-func.func @dtype_unrepresentable(%x : !mgp.tensor_spec<5x10xf8>) {}
-
-// -----
-
 //
 // mgp.model
 //

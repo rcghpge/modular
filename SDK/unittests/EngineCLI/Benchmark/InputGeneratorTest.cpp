@@ -378,9 +378,9 @@ TEST(UniformInputRandomDistribution, unsupportedType) {
   TestInputSchemaErrorReporter errorReporter;
   InputGenerationRandomUniform spec;
   auto dist =
-      createUniformInputRandomDistribution(DType::f8, spec, errorReporter);
+      createUniformInputRandomDistribution(DType::f8e5m2, spec, errorReporter);
   EXPECT_EQ(nullptr, dist);
-  EXPECT_EQ((std::vector<ReportedError>{{{}, "Unsupported dtype f8"}}),
+  EXPECT_EQ((std::vector<ReportedError>{{{}, "Unsupported dtype f8e5m2"}}),
             errorReporter.errors);
 }
 

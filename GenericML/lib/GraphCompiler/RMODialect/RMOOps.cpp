@@ -170,8 +170,6 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
     break;
   case kFloat:
     switch (bitWidth) {
-    case 8:
-      return DType::f8;
     case 16:
       if (inputBF16)
         return DType::bf16;
