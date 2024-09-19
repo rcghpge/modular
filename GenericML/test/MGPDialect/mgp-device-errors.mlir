@@ -26,10 +26,10 @@ func.func @buffer_constant_invalid_elem_type(%ch: !mef.chain, %ctx : !mgp.contex
 // mgp.buffer.host_to_device
 //
 
-func.func @buffer_host_to_device_mismatched_size(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<48>, %cuda_buf : !mgp.buffer<64, <"cuda", 3>>) {
+func.func @buffer_host_to_device_mismatched_size(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<48>, %cuda_buf : !mgp.buffer<64, <"cuda", 3>>, %gpu : !mgp.opaque<"cuda0_context">) {
   // expected-error@+1 {{'mgp.buffer.host_to_device' op host and other buffer sizes do not match (48 vs 64).}}
-  %ch1 = "mgp.buffer.host_to_device" (%ch0, %ctx, %cpu_buf, %cuda_buf) { aHostRuntimeSlot = 0 : ui64, bOtherRuntimeSlot = 1 : ui64, cHostDevice = #M.device_ref<"cpu", 0>, dOtherDevice = #M.device_ref<"cuda", 3> }
-           : (!mef.chain, !mgp.context, !mgp.buffer<48>, !mgp.buffer<64, <"cuda", 3>>) -> !mef.chain
+  %ch1 = "mgp.buffer.host_to_device" (%ch0, %ctx, %cpu_buf, %cuda_buf, %gpu) { aHostRuntimeSlot = 0 : ui64, bOtherRuntimeSlot = 1 : ui64, cHostDevice = #M.device_ref<"cpu", 0>, dOtherDevice = #M.device_ref<"cuda", 3> }
+           : (!mef.chain, !mgp.context, !mgp.buffer<48>, !mgp.buffer<64, <"cuda", 3>>, !mgp.opaque<"cuda0_context">) -> !mef.chain
   mef.output
 }
 

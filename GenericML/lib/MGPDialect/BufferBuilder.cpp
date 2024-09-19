@@ -215,8 +215,8 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
                                                TypedValue<ContextType> context,
                                                Value inChain,
                                                BufferBuilder *srcBuilder,
-                                               Value srcBuffer,
-                                               Value dstBuffer) {
+                                               Value srcBuffer, Value dstBuffer,
+                                               Value deviceContext) {
   Value copyChain =
       builder
           .create<BufferHostToDeviceOp>(
@@ -225,6 +225,7 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
               /*theContext=*/context,
               /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
               /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+              /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
               /*aHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
               /*bOtherRuntimeSlot=*/runtimeSlot,
               /*cHostDevice=*/hostBufferBuilder->device,
@@ -243,7 +244,8 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
                                              TypedValue<ContextType> context,
                                              Value inChain, Value srcBuffer,
                                              BufferBuilder *dstBuilder,
-                                             Value dstBuffer) {
+                                             Value dstBuffer,
+                                             Value deviceContext) {
   Value copyChain =
       builder
           .create<BufferDeviceToHostOp>(
@@ -252,6 +254,7 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
               /*theContext=*/context,
               /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
               /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+              /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
               /*aOtherRuntimeSlot=*/runtimeSlot,
               /*bHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
               /*cOtherDevice=*/device,
@@ -270,7 +273,8 @@ Value MGPBufferBuilder::bufferTransferDevice(OpBuilder &builder, Location loc,
                                              TypedValue<ContextType> context,
                                              Value inChain, Value srcBuffer,
                                              BufferBuilder *dstBufferBuilder,
-                                             Value dstBuffer) {
+                                             Value dstBuffer,
+                                             Value deviceContext) {
   auto dstMGPBufferBuilder = static_cast<MGPBufferBuilder *>(dstBufferBuilder);
   return builder.create<BufferDeviceToDeviceOp>(
       loc,
@@ -278,6 +282,7 @@ Value MGPBufferBuilder::bufferTransferDevice(OpBuilder &builder, Location loc,
       /*theContext=*/context,
       /*srcBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
       /*dstBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+      /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
       /*aSrcRuntimeSlot=*/runtimeSlot,
       /*bDstRuntimeSlot=*/dstMGPBufferBuilder->runtimeSlot,
       /*cSrcDevice=*/device,

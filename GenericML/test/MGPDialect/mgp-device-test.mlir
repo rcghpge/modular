@@ -62,9 +62,9 @@ func.func @buffer_constant(%ch: !mef.chain, %ctx : !mgp.context) {
 //
 
 // CHECK-LABEL: @buffer_alloc
-func.func @buffer_alloc(%ctx : !mgp.context, %ch : !mef.chain, %size : index, %cpu : !mgp.opaque<"cpu0_context">) {
-  // CHECK: %{{.*}} = mgp.buffer.alloc %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<, <"cuda", 3>>
-  %buf = mgp.buffer.alloc %ch, %ctx[1], %size, %cpu : !mgp.buffer<, <"cuda", 3>>, !mgp.opaque<"cpu0_context">
+func.func @buffer_alloc(%ctx : !mgp.context, %ch : !mef.chain, %size : index, %gpu : !mgp.opaque<"cuda0_context">) {
+  // CHECK: %{{.*}} = mgp.buffer.alloc %{{.*}}, %{{.*}}[1], %{{.*}} : !mgp.buffer<, <"cuda", 3>>, !mgp.opaque<"cuda0_context">
+  %buf = mgp.buffer.alloc %ch, %ctx[1], %size, %gpu : !mgp.buffer<, <"cuda", 3>>, !mgp.opaque<"cuda0_context">
   mef.output %buf : !mgp.buffer<, <"cuda", 3>>
 }
 
@@ -96,16 +96,16 @@ func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mef.chain) {
 //
 
 // CHECK-LABEL: @buffer_host_to_device_static
-func.func @buffer_host_to_device_static(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<48>, %cuda_buf : !mgp.buffer<48, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.buffer.host_to_device %{{.*}}, %{{.*}}[0, 1], %{{.*}}, %{{.*}} : !mgp.buffer<48> -> !mgp.buffer<48, <"cuda", 3>>
-  %ch1 = mgp.buffer.host_to_device %ch0, %ctx[0, 1], %cpu_buf, %cuda_buf : !mgp.buffer<48> -> !mgp.buffer<48, <"cuda", 3>>
+func.func @buffer_host_to_device_static(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<48>, %cuda_buf : !mgp.buffer<48, <"cuda", 3>>, %gpu : !mgp.opaque<"cuda0_context">) {
+  // CHECK: %{{.*}} = mgp.buffer.host_to_device %{{.*}}, %{{.*}}[0, 1], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.buffer<48> -> !mgp.buffer<48, <"cuda", 3>>, !mgp.opaque<"cuda0_context">
+  %ch1 = mgp.buffer.host_to_device %ch0, %ctx[0, 1], %cpu_buf, %cuda_buf, %gpu : !mgp.buffer<48> -> !mgp.buffer<48, <"cuda", 3>>, !mgp.opaque<"cuda0_context">
   mef.output %ch1 : !mef.chain
 }
 
 // CHECK-LABEL: @buffer_host_to_device_dynamic
-func.func @buffer_host_to_device_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<>, %cuda_buf : !mgp.buffer<, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.buffer.host_to_device %{{.*}}, %{{.*}}[0, 1], %{{.*}}, %{{.*}} : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>
-  %ch1 = mgp.buffer.host_to_device %ch0, %ctx[0, 1], %cpu_buf, %cuda_buf : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>
+func.func @buffer_host_to_device_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<>, %cuda_buf : !mgp.buffer<, <"cuda", 3>>, %gpu : !mgp.opaque<"cuda0_context">) {
+  // CHECK: %{{.*}} = mgp.buffer.host_to_device %{{.*}}, %{{.*}}[0, 1], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>, !mgp.opaque<"cuda0_context">
+  %ch1 = mgp.buffer.host_to_device %ch0, %ctx[0, 1], %cpu_buf, %cuda_buf, %gpu : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>, !mgp.opaque<"cuda0_context">
   mef.output %ch1 : !mef.chain
 }
 
@@ -114,16 +114,16 @@ func.func @buffer_host_to_device_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain,
 //
 
 // CHECK-LABEL: @buffer_device_to_host_static
-func.func @buffer_device_to_host_static(%ctx : !mgp.context, %ch0 : !mef.chain, %cuda_buf : !mgp.buffer<48, <"cuda", 3>>, %cpu_buf : !mgp.buffer<48>) {
-  // CHECK: %{{.*}} = mgp.buffer.device_to_host %{{.*}}, %{{.*}}[1, 0], %{{.*}}, %{{.*}} : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48>
-  %ch1 = mgp.buffer.device_to_host %ch0, %ctx[1, 0], %cuda_buf, %cpu_buf : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48>
+func.func @buffer_device_to_host_static(%ctx : !mgp.context, %ch0 : !mef.chain, %cuda_buf : !mgp.buffer<48, <"cuda", 3>>, %cpu_buf : !mgp.buffer<48>, %gpu : !mgp.opaque<"cuda0_context">) {
+  // CHECK: %{{.*}} = mgp.buffer.device_to_host %{{.*}}, %{{.*}}[1, 0], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48>, !mgp.opaque<"cuda0_context">
+  %ch1 = mgp.buffer.device_to_host %ch0, %ctx[1, 0], %cuda_buf, %cpu_buf, %gpu : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48>, !mgp.opaque<"cuda0_context">
   mef.output %ch1 : !mef.chain
 }
 
 // CHECK-LABEL: @buffer_device_to_host_dynamic
-func.func @buffer_device_to_host_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %cuda_buf : !mgp.buffer<, <"cuda", 3>>, %cpu_buf : !mgp.buffer<>) {
-  // CHECK: %{{.*}} = mgp.buffer.device_to_host %{{.*}}, %{{.*}}[1, 0], %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>
-  %ch1 = mgp.buffer.device_to_host %ch0, %ctx[1, 0], %cuda_buf, %cpu_buf : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>
+func.func @buffer_device_to_host_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %cuda_buf : !mgp.buffer<, <"cuda", 3>>, %cpu_buf : !mgp.buffer<>, %gpu : !mgp.opaque<"cuda0_context">) {
+  // CHECK: %{{.*}} = mgp.buffer.device_to_host %{{.*}}, %{{.*}}[1, 0], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>, !mgp.opaque<"cuda0_context">
+  %ch1 = mgp.buffer.device_to_host %ch0, %ctx[1, 0], %cuda_buf, %cpu_buf, %gpu : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>, !mgp.opaque<"cuda0_context">
   mef.output %ch1 : !mef.chain
 }
 
@@ -132,16 +132,16 @@ func.func @buffer_device_to_host_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain,
 //
 
 // CHECK-LABEL: @buffer_device_to_device_static
-func.func @buffer_device_to_device_static(%ctx : !mgp.context, %ch0 : !mef.chain, %buf0 : !mgp.buffer<48, <"cuda", 3>>, %buf1 : !mgp.buffer<48, <"cuda", 1>>) {
-  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1, 2], %{{.*}}, %{{.*}} : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 1>>
-  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1, 2], %buf0, %buf1 : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 1>>
+func.func @buffer_device_to_device_static(%ctx : !mgp.context, %ch0 : !mef.chain, %buf0 : !mgp.buffer<48, <"cuda", 3>>, %buf1 : !mgp.buffer<48, <"cuda", 1>>, %gpu : !mgp.opaque<"cuda0_context">) {
+  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1, 2], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 1>>, !mgp.opaque<"cuda0_context">
+  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1, 2], %buf0, %buf1, %gpu : !mgp.buffer<48, <"cuda", 3>> -> !mgp.buffer<48, <"cuda", 1>>, !mgp.opaque<"cuda0_context">
   mef.output %ch1 : !mef.chain
 }
 
 // CHECK-LABEL: @buffer_device_to_device_dynamic
-func.func @buffer_device_to_device_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %buf0 : !mgp.buffer<, <"cuda", 3>>, %buf1 : !mgp.buffer<, <"cuda", 1>>) {
-  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1, 2], %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>
-  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1, 2], %buf0, %buf1 : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>
+func.func @buffer_device_to_device_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %buf0 : !mgp.buffer<, <"cuda", 3>>, %buf1 : !mgp.buffer<, <"cuda", 1>>, %gpu : !mgp.opaque<"cuda0_context">) {
+  // CHECK: %{{.*}} = mgp.buffer.device_to_device %{{.*}}, %{{.*}}[1, 2], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>, !mgp.opaque<"cuda0_context">
+  %ch1 = mgp.buffer.device_to_device %ch0, %ctx[1, 2], %buf0, %buf1, %gpu : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>, !mgp.opaque<"cuda0_context">
   mef.output %ch1 : !mef.chain
 }
 

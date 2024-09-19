@@ -645,24 +645,31 @@ struct MOOpLoweringState {
   Value bufferTransferFromHost(Value inChain,
                                TypedValue<MGP::DeviceBufferType> srcBuffer,
                                Value dstBuffer, Type dstMoTensorType) {
+    auto deviceRef = getStorageBufferBuilder(dstMoTensorType)->getDevice();
+    auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(dstMoTensorType)
         ->bufferTransferFromHost(builder, loc, context, inChain,
                                  loweringState.getHostBufferBuilder(),
-                                 srcBuffer, dstBuffer);
+                                 srcBuffer, dstBuffer, deviceContext);
   }
   Value bufferTransferToHost(Value inChain, Value srcBuffer,
                              TypedValue<MGP::DeviceBufferType> dstBuffer,
                              Type srcMoTensorType) {
+    auto deviceRef = getStorageBufferBuilder(srcMoTensorType)->getDevice();
+    auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(srcMoTensorType)
         ->bufferTransferToHost(builder, loc, context, inChain, srcBuffer,
-                               loweringState.getHostBufferBuilder(), dstBuffer);
+                               loweringState.getHostBufferBuilder(), dstBuffer,
+                               deviceContext);
   }
   Value bufferTransferDevice(Value inChain, Value srcBuffer, Value dstBuffer,
                              Type srcMoTensorType, Type dstMoTensorType) {
+    auto deviceRef = getStorageBufferBuilder(srcMoTensorType)->getDevice();
+    auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(srcMoTensorType)
         ->bufferTransferDevice(builder, loc, context, inChain, srcBuffer,
                                getStorageBufferBuilder(dstMoTensorType),
-                               dstBuffer);
+                               dstBuffer, deviceContext);
   }
 
   Value bufferConcat(Value inChain, Value outBuffer, ArrayRef<Value> inBuffers,

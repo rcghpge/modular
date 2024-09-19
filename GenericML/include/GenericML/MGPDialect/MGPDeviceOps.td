@@ -222,7 +222,7 @@ def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
                        MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` `,` $deviceContext`:` type($deviceContext)
+    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` `,` $deviceContext`:` qualified(type($deviceContext))
     ( `device` $bDevice^ )?  attr-dict
   }];
   let hasVerifier = 1;
@@ -528,7 +528,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $deviceContext 
     ( `,` `align` $bRawAlign^ )? attr-dict
     `:` custom<BufferTypeToDevice>(
-          type($outBuffer), $cDevice, type($inChain)) `,` type($deviceContext)
+          type($outBuffer), $cDevice, type($inChain)) `,` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
 
@@ -717,6 +717,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$hostBuffer,
                        MGP_DeviceBufferType:$otherBuffer,
+                       MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aHostRuntimeSlot,          // 0
                        UI64Attr:$bOtherRuntimeSlot,         // 1
                        MGP_OptDeviceRefAttr:$cHostDevice,   // 2
@@ -724,10 +725,10 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aHostRuntimeSlot `,` $bOtherRuntimeSlot `]`
-    `,` $hostBuffer `,` $otherBuffer attr-dict
+    `,` $hostBuffer `,` $otherBuffer `,` $deviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($hostBuffer), type($otherBuffer),
-          $cHostDevice, $dOtherDevice, type($inChain))
+          $cHostDevice, $dOtherDevice, type($inChain)) `,` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
 
@@ -773,6 +774,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$otherBuffer,
                        MGP_DeviceBufferType:$hostBuffer,
+                       MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aOtherRuntimeSlot,        // 0
                        UI64Attr:$bHostRuntimeSlot,         // 1
                        MGP_OptDeviceRefAttr:$cOtherDevice, // 2
@@ -780,10 +782,10 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aOtherRuntimeSlot `,` $bHostRuntimeSlot `]`
-    `,` $otherBuffer `,` $hostBuffer attr-dict
+    `,` $otherBuffer `,` $hostBuffer `,` $deviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($otherBuffer), type($hostBuffer),
-          $cOtherDevice, $dHostDevice, type($inChain))
+          $cOtherDevice, $dHostDevice, type($inChain)) `,` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
 
@@ -826,6 +828,7 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$srcBuffer,
                        MGP_DeviceBufferType:$dstBuffer,
+                       MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aSrcRuntimeSlot,     // 0
                        UI64Attr:$bDstRuntimeSlot,     // 1
                        M_DeviceRefAttr:$cSrcDevice,   // 2
@@ -833,10 +836,10 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aSrcRuntimeSlot `,` $bDstRuntimeSlot `]` `,`
-    $srcBuffer `,` $dstBuffer attr-dict
+    $srcBuffer `,` $dstBuffer `,` $deviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($srcBuffer), type($dstBuffer),
-          $cSrcDevice, $dDstDevice, type($inChain))
+          $cSrcDevice, $dDstDevice, type($inChain)) `,` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
 

@@ -248,15 +248,16 @@ public:
   virtual Value bufferTransferFromHost(OpBuilder &builder, Location loc,
                                        TypedValue<ContextType> context,
                                        Value inChain, BufferBuilder *srcBuilder,
-                                       Value srcBuffer, Value dstBuffer) = 0;
+                                       Value srcBuffer, Value dstBuffer,
+                                       Value deviceContext) = 0;
 
   /// Returns the !mef.chain indicating when srcBuffer on this builder's
   /// device has been transferred to dstBuffer on the host.
   virtual Value bufferTransferToHost(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
                                      Value inChain, Value srcBuffer,
-                                     BufferBuilder *dstBuilder,
-                                     Value dstBuffer) = 0;
+                                     BufferBuilder *dstBuilder, Value dstBuffer,
+                                     Value deviceContext) = 0;
 
   /// Returns the chain indicating when srcBuffer on this builder's device has
   /// been transferred to dstBuffer (which resides on a different device).
@@ -265,7 +266,7 @@ public:
                                      TypedValue<ContextType> context,
                                      Value inChain, Value srcBuffer,
                                      BufferBuilder *dstBufferBuilder,
-                                     Value dstBuffer) = 0;
+                                     Value dstBuffer, Value deviceContext) = 0;
 
   /// Returns alias to buffer with the size dropped
   virtual Value bufferUnsize(OpBuilder &builder, Location loc,
@@ -404,17 +405,17 @@ public:
   Value bufferTransferFromHost(OpBuilder &builder, Location loc,
                                TypedValue<ContextType> context, Value inChain,
                                BufferBuilder *srcBuilder, Value srcBuffer,
-                               Value dstBuffer) override;
+                               Value dstBuffer, Value deviceContext) override;
 
   Value bufferTransferToHost(OpBuilder &builder, Location loc,
                              TypedValue<ContextType> context, Value inChain,
                              Value srcBuffer, BufferBuilder *dstBuilder,
-                             Value dstBuffer) override;
+                             Value dstBuffer, Value deviceContext) override;
 
   Value bufferTransferDevice(OpBuilder &builder, Location loc,
                              TypedValue<ContextType> context, Value inChain,
                              Value srcBuffer, BufferBuilder *dstBufferBuilder,
-                             Value dstBuffer) override;
+                             Value dstBuffer, Value deviceContext) override;
 
   Value bufferUnsize(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inBuffer) override;
