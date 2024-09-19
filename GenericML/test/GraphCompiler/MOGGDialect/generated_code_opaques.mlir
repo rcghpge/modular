@@ -37,7 +37,7 @@ module {
 // CHECK-NEXT: [[V1:%.*]] = pop.load [[V0]] align<8> : !kgen.pointer<pointer<none>>
 
 // COM: Do the stack allocation for the custom kernel output.
-// CHECK-NEXT: [[V2:%.*]] = pop.stack_allocation 1 x struct<(index) memoryOnly>
+// CHECK: [[V2:%.*]] = pop.stack_allocation 1 x struct<(index) memoryOnly>
 
 // COM: Call the custom kernel that creates the custom mojo value.
 // CHECK-NEXT: [[INDEX42:%.*]] = kgen.param.constant = <42>

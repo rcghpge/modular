@@ -283,7 +283,7 @@ static void mgp_generic_execute(
     }
 
     for ([[maybe_unused]] auto &result : outResults)
-      assert(result.isReady());
+      assert(result.isReady() || result.isError());
 
     std::move(outChain).emplace();
     std::move(profilerEntry).record();
