@@ -6,7 +6,7 @@
 
 import sys
 
-from memory import memcpy
+from memory import memcpy, UnsafePointer
 from python import Python, PythonObject
 
 from max.tensor import Tensor, TensorShape
