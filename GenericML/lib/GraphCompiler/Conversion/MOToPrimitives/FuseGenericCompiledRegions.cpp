@@ -63,11 +63,16 @@ static void fuseCompiledRegionsAndReplaceUses(
   DenseSet<Operation *> compiledRegionOpsToFuseTogetherAsSet(
       compiledRegionOpsToFuseTogether.begin(),
       compiledRegionOpsToFuseTogether.end());
+
+  bool isFirstChain = false;
   for (auto result : allResults) {
+    // We keep at least one chain output such that error could be  propagated
+    // properly. The duplicated chain will be removed later in the pipeline.
+    isFirstChain = isa<MEF::ChainType>(result.getType()) && !isFirstChain;
     if constexpr (allowDuplication) {
       // If none of the users of this result are in the fusion set, then it is
       // something that is solely used from the outside.
-      if (llvm::none_of(result.getUsers(), [&](auto user) {
+      if (isFirstChain || llvm::none_of(result.getUsers(), [&](auto user) {
             return compiledRegionOpsToFuseTogetherAsSet.contains(user);
           })) {
         resultsThatShouldBeReplaced.insert(result);
@@ -76,7 +81,7 @@ static void fuseCompiledRegionsAndReplaceUses(
     } else {
       // If any of the users of this result are used outside, then it must be
       // output too.
-      if (llvm::any_of(result.getUsers(), [&](auto user) {
+      if (isFirstChain || llvm::any_of(result.getUsers(), [&](auto user) {
             return !compiledRegionOpsToFuseTogetherAsSet.contains(user);
           })) {
         resultsThatShouldBeReplaced.insert(result);
