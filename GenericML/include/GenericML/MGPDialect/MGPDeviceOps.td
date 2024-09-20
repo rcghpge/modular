@@ -238,20 +238,21 @@ def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
 //===----------------------------------------------------------------------===//
 
 def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
-  let summary = "Shim to tag the start of a device context profiling rim";
+  let summary = "Shim to tag the start of a device context profiling run";
   let description = [{This is temporary op. to enable onnx profiling - Should use max-driver for this in future}];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
+                       MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aDeviceRuntimeSlot,   // 0
                        MGP_OptDeviceRefAttr:$bDevice,  // 1
                        StrAttr:$cTag,
                        StrAttr:$dFilePath); // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict
+    $inChain `,` $deviceContext `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
   let extraClassDefinition = [{
@@ -262,20 +263,21 @@ def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
 }
 
 def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
-  let summary = "Shim to tag the start of a device context profiling rim";
+  let summary = "Shim to tag the start of a device context profiling run";
   let description = [{This is temporary op. to enable onnx profiling - Should use max-driver for this in future}];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
+                       MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aDeviceRuntimeSlot,   // 0
                        MGP_OptDeviceRefAttr:$bDevice,  // 1
                        StrAttr:$cTag,
                        StrAttr:$dFilePath); // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict
+    $inChain `,` $deviceContext `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
   let extraClassDefinition = [{
