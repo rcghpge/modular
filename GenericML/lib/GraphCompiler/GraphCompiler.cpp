@@ -348,6 +348,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
   pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
   pm.addPass(MGP::createRemoveRedundantOperands());
+  pm.addPass(mlir::createCanonicalizerPass());
 
   MGP::LowerMOGGABIOptions abiOpts;
   abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
@@ -370,6 +371,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
   pm.addPass(MGP::createFixupOverhangsPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());

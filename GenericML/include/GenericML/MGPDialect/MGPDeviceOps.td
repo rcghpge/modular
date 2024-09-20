@@ -355,6 +355,22 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ModuleChainPlaceholder
+//===----------------------------------------------------------------------===//
+
+def ModuleLoadPlaceholderOp : MGP_Op<"module.load.placeholder"> {
+  let summary = "Placeholder for the module load";
+  let description = [{
+    A placeholder op to provide the chain for the module ops / runtimes.
+    This op is added just before lowering kernel ABI to provide a chain
+    to link the compiled execute to the module load op in init.
+
+    When we create the load module op we can remove it.
+  }];
+  let results = (outs ChainType: $outChain);
+}
+
+//===----------------------------------------------------------------------===//
 // BufferConstantExternalOp
 //===----------------------------------------------------------------------===//
 

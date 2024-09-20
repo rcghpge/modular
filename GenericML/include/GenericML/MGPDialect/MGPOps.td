@@ -285,7 +285,6 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
   }];
 
   let arguments = (ins MGP_ContextType:$theContext,
-                       ChainType:$inChain, // Needed to ensure that the execute happens after module creation
                        MGP_OpaqueType:$deviceContext,
                        Variadic<AnyType>:$args,
                        UI64Attr:$aRuntimeSlot,                        // 0

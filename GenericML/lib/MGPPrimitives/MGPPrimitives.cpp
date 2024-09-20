@@ -184,7 +184,7 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 static void mgp_generic_execute(
-    StateContext &ctx, Chain inChain, AnyAsyncValueRef deviceContext,
+    StateContext &ctx, AnyAsyncValueRef deviceContext,
     RemainingArguments operands, Result<Chain> outChain,
     RemainingResults outResults, MEFAttr<uint64_t> aSlot,
     MEFAttr<uint64_t> bModuleIndex, MEFAttr<uint64_t> cFunctionIndex,

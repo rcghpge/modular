@@ -97,7 +97,7 @@ struct LowerMOGGRegionCompilesPass
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
                                 MOGG::ExecuteCompiledOp &oldKernel,
-                                Value loadChain, Value deviceContext,
+                                Value deviceContext,
                                 std::optional<size_t> cuda_runtime_slot);
   void runOnOperation() override;
   DeviceContextState deviceContexts;
@@ -107,7 +107,7 @@ struct LowerMOGGRegionCompilesPass
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
     size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &oldKernel, Value loadChain, Value deviceContext,
+    MOGG::ExecuteCompiledOp &oldKernel, Value deviceContext,
     std::optional<size_t> cuda_runtime_slot) {
   auto ctx = oldKernel.getOperation()->getContext();
   SmallVector<Value> outputs;
@@ -124,9 +124,9 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), MEF::ChainType::get(ctx), resultTypes, context,
-      loadChain, deviceContext, oldKernel->getOperands(), runtimeSlot,
-      module_index, kernel_index, oldKernel.getSummary(),
-      oldKernel.getIsAsync(), oldKernel.getDeviceRef().getLabel() == kCUDALabel,
+      deviceContext, oldKernel->getOperands(), runtimeSlot, module_index,
+      kernel_index, oldKernel.getSummary(), oldKernel.getIsAsync(),
+      oldKernel.getDeviceRef().getLabel() == kCUDALabel,
       cuda_runtime_slot.value_or(0));
 
   uint64_t idx = 1;
@@ -168,6 +168,9 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     const auto cudaDevice = DeviceRefAttr::get(ctx, kCUDALabel, 0);
     std::optional<size_t> cuda_runtime_slot;
 
+    // Collect the chains for all module load and runtime creates.
+    SmallVector<Value> moduleLoadChains;
+
     // Track the RuntimeCreateOp and ModuleLoadOp and their last use
     // Mainly used to make sure we target the right module load and device
     // runtime for the executions
@@ -177,6 +180,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
         lastDeviceModuleLoadOp;
     llvm::SmallDenseMap<DeviceRefAttr, uint64_t> deviceModuleIndex;
     for (auto op : init.getOps<MGP::RuntimeCreateOp>()) {
+      moduleLoadChains.push_back(op.getResult());
       lastDeviceRuntimeOp[op.getDevice()] = op;
       deviceModuleIndex[op.getDevice()] = 0;
     }
@@ -185,6 +189,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     if (lastDeviceRuntimeOp.contains(cudaDevice))
       cuda_runtime_slot = lastDeviceRuntimeOp[cudaDevice].getSlot();
     for (auto op : init.getOps<MGP::ModuleLoadOp>()) {
+      moduleLoadChains.push_back(op.getResult());
       lastDeviceModuleLoadOp[op.getDevice()] = op;
       ASSERT_STREAM(deviceModuleIndex.contains(op.getDevice()),
                     << "Cannot have a ModuleLoadOp for a device: "
@@ -192,6 +197,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
                     << " without a corresponding RuntimeCreateOp");
       deviceModuleIndex[op.getDevice()]++;
     }
+
     llvm::SmallDenseMap<DeviceRefAttr, llvm::StringMap<size_t>>
         deviceKernelIndices;
     llvm::SmallDenseMap<DeviceRefAttr, SmallVector<StringAttr>>
@@ -239,19 +245,31 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           /*eDevice=*/hostDevice,
           /*fModuleIndex=*/deviceModuleIndex[hostDevice],
           /*gDebuginfo=*/loadKernels.getDebuginfo());
+      moduleLoadChains.push_back(loadArchive.getResult());
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
     }
+
+    // Remove the placeholder chain.
+    builder.setInsertionPointToStart(&init);
+    for (auto op : llvm::make_early_inc_range(
+             init.getOps<MGP::ModuleLoadPlaceholderOp>())) {
+
+      Value newChain;
+      if (moduleLoadChains.size() > 1) {
+        newChain =
+            builder.create<GRT::ChainCreateOp>(op.getLoc(), moduleLoadChains);
+      } else {
+        newChain = moduleLoadChains[0];
+      }
+      op.replaceAllUsesWith(newChain);
+      op.erase();
+    }
+
     // Rewrite the MOGG::ExecuteCompiledOp in both init and execute blocks.
     // Shunt all the executes for Init stage at the very end of init
     builder.setInsertionPoint(init.getTerminator());
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
-      Value inChain;
-      if (lastDeviceModuleLoadOp.find(hostDevice) !=
-          lastDeviceModuleLoadOp.end())
-        inChain = lastDeviceModuleLoadOp[hostDevice].getOutChain();
-      else
-        inChain = lastDeviceRuntimeOp[hostDevice].getOutChain();
       auto device = kernel.getDeviceRef();
       Value inDeviceContext =
           deviceContexts.getDeviceContext(device, init.getParent());
@@ -263,7 +281,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           lastDeviceRuntimeOp[hostDevice].getSlot(),
           deviceModuleIndex[hostDevice],
           deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
-          inChain, inDeviceContext, cuda_runtime_slot);
+          inDeviceContext, cuda_runtime_slot);
       // Since this execute op created the deviceContext, we should update the
       // value mapping.
       if (isCreator)
@@ -287,14 +305,13 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
                       << "Cannot find execute context in bounding region of "
                          "generic.execute");
       }
-      auto inChain = builder.create<GRT::ChainCreateOp>(kernel.getLoc());
       Value inDeviceContext = deviceContexts.getDeviceContext(
           kernel.getDeviceRef(), execute.getParent());
       rewriteExecuteCompiledOp(
           builder, executeContext, lastDeviceRuntimeOp[hostDevice].getSlot(),
           deviceModuleIndex[hostDevice],
           deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
-          inChain, inDeviceContext, cuda_runtime_slot);
+          inDeviceContext, cuda_runtime_slot);
     });
     // The introduction of generic execute may introduce unbound free-values.
     // Use fixupIsolatedFromAbove to rebind these.

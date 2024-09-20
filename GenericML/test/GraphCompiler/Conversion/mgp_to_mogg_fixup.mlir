@@ -24,7 +24,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 // CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][{{.*}}], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 
 // CHECK: } execute
-// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, !mgp.opaque{{.*}}, index, index) -> (!mef.chain, index)
+// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mgp.opaque{{.*}}, index, index) -> (!mef.chain, index)
 
 mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   "mogg.load_compiled_kernel"() {symbols = ["__gen_0"], value = dense_resource<fake_binary> : tensor<1xui8>} : () -> ()
@@ -50,4 +50,27 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%wei
 // CHECK: %[[KERNEL_CTX:.*]] = mgp.runtime.create
 // CHECK-NEXT: mgp.module.load %[[KERNEL_CTX]], %[[CTX]][{{.*}}], dense_resource<fake_binary> : tensor<1xui8>, ["__gen_0"]
 // CHECK: } execute
-// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mef.chain, !mgp.opaque{{.*}}, index, index) -> (!mef.chain, index)
+// CHECK: "mgp.generic.execute"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{{.*}}, dSummary = {{.*}}} : (!mgp.context, !mgp.opaque{{.*}}, index, index) -> (!mef.chain, index)
+
+
+// CHECK-LABEL: mgp.model @basic_init
+
+// CHECK: %[[CTX:.*]] = mgp.context.create
+// CHECK: %[[CHAIN:.*]] = mgp.runtime.create
+// CHECK: "mgp.generic.execute"(%[[CTX]], {{.*}}, %[[CHAIN]]) {aRuntimeSlot 
+
+mgp.model @basic_init : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  %out_chain = mgp.runtime.create %0, %1[1] device <"cpu", 0>
+
+  %ch = "mgp.module.load.placeholder"() : () -> !mef.chain
+
+  %cst = index.constant 42
+  %3 = "mogg.execute_kernel"(%cst, %ch) {device = #M.device_ref<"cpu", 0>, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, !mef.chain) -> index
+  %4 = "test.sink"(%3, %0) : (index, !mef.chain) -> !mef.chain
+
+  mef.output %4, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> !mef.chain {
+  mef.output %arg0 : !mef.chain
+}

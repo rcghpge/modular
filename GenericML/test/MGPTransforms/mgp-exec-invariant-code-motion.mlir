@@ -116,7 +116,7 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
 
   %i42 = index.constant 42
 
-  %ch2 = "mgp.generic.execute"(%ctx, %ch0, %cpu, %weight_buf, %out_buf) {
+  %ch2 = "mgp.generic.execute"(%ctx, %cpu, %weight_buf, %out_buf) {
     aRuntimeSlot = 0 : ui64,
     bModuleIndex = 0 : ui64,
     cFunctionIndex = 0 : ui64,
@@ -124,7 +124,7 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
     eIsAsync = false,
     fHasCuda = false,
     gCudaSlot = 0 : ui64
-  } : (!mgp.context, !mef.chain, !mgp.opaque<"cpu0_context">, !mgp.buffer<37632>, !mgp.buffer<37632>) -> (!mef.chain)
+  } : (!mgp.context, !mgp.opaque<"cpu0_context">, !mgp.buffer<37632>, !mgp.buffer<37632>) -> (!mef.chain)
 
   mef.output %ch2, %out_buf : !mef.chain, !mgp.buffer<37632>
 }
