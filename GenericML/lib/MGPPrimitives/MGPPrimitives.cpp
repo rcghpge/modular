@@ -272,6 +272,7 @@ static void mgp_generic_execute(
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));
 
+    assert(!outChain.isError());
     if (outChain.isError()) {
       for (auto &result : outResults) {
         if (result.isReady())
