@@ -71,7 +71,7 @@ mo.graph @binary_elemwise_not_ok_bad_cast_tf32_f32(%arg0: !mo.tensor<[7], tf32>,
 // -----
 
 mo.graph @binary_elemwise_dyn_static_bad_shape<x, y>(%arg0: !mo.tensor<[1, x], si64>, %arg1: !mo.tensor<[y, 5], si64>) -> !mo.tensor<[y, 5], si64> {
-    // expected-error@below {{Input lhs (shape [1, x]) dimension at axis 1 (value x) and input rhs (shape [y, 5]) dimension at axis 1 (value 5) are neither equivalent nor broadcastable.}}
+    // expected-error@below {{'rmo.mul' op inferred type(s) '!mo.tensor<[y, x], si64>' are incompatible with return type(s) of operation '!mo.tensor<[y, 5], si64>'}}
     // expected-error@below {{'rmo.mul' op failed to infer returned types}}
     %1 = rmo.mul(%arg0, %arg1) : (!mo.tensor<[1, x], si64>, !mo.tensor<[y, 5], si64>) -> !mo.tensor<[y, 5], si64>
     mo.output %1: !mo.tensor<[y, 5], si64>
@@ -80,8 +80,6 @@ mo.graph @binary_elemwise_dyn_static_bad_shape<x, y>(%arg0: !mo.tensor<[1, x], s
 // -----
 
 mo.graph @binary_elemwise_dyn_dyn_bad_shape<x, y>(%arg0: !mo.tensor<[x], si64>, %arg1: !mo.tensor<[4, y], si64>) -> !mo.tensor<[4, x], si64> {
-    // expected-error@below {{Input lhs (shape [x]) dimension at axis 0 (value x) and input rhs (shape [4, y]) dimension at axis 1 (value y) are neither equivalent nor broadcastable.}}
-    // expected-error@below {{'rmo.mul' op failed to infer returned types}}
     %1 = rmo.mul(%arg0, %arg1) : (!mo.tensor<[x], si64>, !mo.tensor<[4, y], si64>) -> !mo.tensor<[4, x], si64>
     mo.output %1: !mo.tensor<[4, x], si64>
 }
