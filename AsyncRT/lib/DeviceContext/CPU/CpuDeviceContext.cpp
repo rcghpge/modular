@@ -62,6 +62,7 @@ CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context, size_t len,
 CpuDeviceBuffer::~CpuDeviceBuffer() { free(ptr_); }
 
 void *CpuDeviceBuffer::cpu_ptr() const { return ptr_; }
+void *CpuDeviceBuffer::ptr() const { return cpu_ptr(); }
 
 const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CpuDeviceBuffer &>(buf);

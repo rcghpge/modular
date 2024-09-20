@@ -59,6 +59,7 @@ public:
   ~CUDADeviceBuffer() override;
 
   CUdeviceptr cuda_ptr() const;
+  void *ptr() const override;
 
   static const CUDADeviceBuffer &cast(const DeviceBuffer &buf);
 

@@ -46,6 +46,7 @@ public:
   ~CpuDeviceBuffer() override;
 
   void *cpu_ptr() const;
+  void *ptr() const override;
 
   static const CpuDeviceBuffer &cast(const DeviceBuffer &buf);
 

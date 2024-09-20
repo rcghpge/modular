@@ -85,6 +85,7 @@ CUDADeviceBuffer::~CUDADeviceBuffer() {
 }
 
 CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
+void *CUDADeviceBuffer::ptr() const { return cuda_ptr(); }
 
 const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CUDADeviceBuffer &>(buf);

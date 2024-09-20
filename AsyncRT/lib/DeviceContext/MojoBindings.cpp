@@ -85,6 +85,10 @@ MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(const DeviceBuffer *buffer) {
   DeviceBufferRef::take(buffer);
 }
 
+MODULAR_EXPORT void *AsyncRT_DeviceBuffer_ptr(const DeviceBuffer *buffer) {
+  return buffer->ptr();
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_synchronize(const DeviceContext *ctx) {
   return check_success(ctx->synchronize());

@@ -65,6 +65,8 @@ public:
 
   size_t len() const;
   size_t elem_size() const;
+  // Returns the raw device pointer, which is not safe to deref on the host
+  virtual void *ptr() const = 0;
 
 protected:
   DeviceBuffer(const DeviceContext &context, size_t len, size_t elem_size);
