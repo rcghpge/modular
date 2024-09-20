@@ -363,6 +363,7 @@ static ErrorOr<SmallVector<KGEN::ParamDeclareOp>>
 shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
 
   ShapeMaterializeResult result = op.materializeShapeDefs(inputAttrs);
+
   // Give up if we can't materialize the shape logic.
   if (result.isNonMaterializable())
     return SmallVector<KGEN::ParamDeclareOp>();
@@ -383,110 +384,67 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
     // - [D0, D1, ...]
     ArrayRef<KGEN::ParamDeclAttr> outputDecls = op.getOutputParamDecls();
 
-    // NOTE symbolicization currently can't handle dynamic output shape, since
-    // it relies on MOGG compiling the shape function down to KGEN IR, which
-    // relies on the mojo shape function (and the bottom part of our stack) to
-    // support dynamic rank.
-    //
-    // However, we need to support dynamic rank here in order to resolve
-    // pseudo-dynamic-rank which we might get from RMO or Torch.
-    // TODO(GRA-927) remove this branch.
-    if (isa<InvokeShapeFuncOp>(op)) {
+    if (outputDecls.size() == 1 &&
+        isa<ShapeType>(outputDecls.front().getType())) {
       // `outputShape` has the form `[N0, N1, ...]`
       ASSERT_STREAM(success.resultShapes.size() == 1,
                     << "expect a single output");
       ShapeAttr outputShape = success.resultShapes.front();
 
-      if (outputDecls.size() == 1 &&
-          isa<ShapeType>(outputDecls.front().getType())) {
-        // Create binding for the output shape parameter to output shape which
+      // Case 0 (output decl is a shape)
+      //   mo.reshape<() -> Sh0: !mosh.ape> : ... -> Sh0
+      //
+      // Create binding for the output shape parameter to output shape which
+      // models ops like the following:
+      //   kgen.param.decare Sh0 = <[N0, N1, ...]>
+      bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
+    } else {
+      llvm::DenseSet<ParamDeclAttr> outputDeclSet(outputDecls.begin(),
+                                                  outputDecls.end());
+      llvm::DenseSet<KGEN::ParamDeclRefAttr> processedDeclRefs;
+      for (auto [i, res, outputShape] :
+           llvm::enumerate(op->getResults(), success.resultShapes)) {
+        // Case 1 (output decls are dimensions)
+        //   mo.reshape<() -> D1, D2> : ... -> [D1, D2]
+        //   mo.reshape<() -> D1> : ... -> [10, D1]
+        //
+        // Create binding for the output shape parameter to output dims which
         // models ops like the following:
-        //   kgen.param.decare D0 = <[N0, N1, ...]>
-        bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
-
-      } else {
+        //   kgen.param.decare D1 = <N0>
+        //   kgen.param.decare D2 = <add(N1, 10)>
+        ShapeAttr annotatedOutShape =
+            cast<TensorType>(res.getType()).getTypedShapeAttr();
         size_t returnedRank = outputShape.getRank();
-        size_t annnotatedRank = outputDecls.size();
+        size_t annnotatedRank = annotatedOutShape.getRank();
         if (returnedRank != annnotatedRank) {
           std::stringstream ss;
-          ss << "shape function returned shape of rank " << returnedRank
-             << " but the type annotation has shape of rank " << annnotatedRank;
+          ss << "shape function result #" << i << " returned shape of rank "
+             << returnedRank << ", but the type annotation has shape of rank "
+             << annnotatedRank;
           return Error(ss.str());
         }
-        // Create binding from each output parameter to its dimension, to model
-        // ops like the following:
-        //   kgen.param.decare D0 = <N0>
-        //   kgen.param.decare D1 = <add(N1, 10)>
-        //   ...
-        for (auto [outputDimDecl, outputDim] :
-             llvm::zip(outputDecls, outputShape.getValues())) {
-          bindings.push_back(ParamBinding(outputDimDecl, outputDim));
-        }
-      }
+        // Given `outputShape` for
+        //   mo.reshape<() -> D1> : ... -> [10, D1]
+        // Generate
+        //   D1 = <outputShape[1]>
+        for (auto [axis, dim] :
+             llvm::enumerate(annotatedOutShape.getValues())) {
+          // Skip if `dim` is not a dimension parameter
+          auto paramDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
+          if (!paramDim)
+            continue;
 
-    } else {
-      if (outputDecls.size() == 1 &&
-          isa<ShapeType>(outputDecls.front().getType())) {
-        // `outputShape` has the form `[N0, N1, ...]`
-        ASSERT_STREAM(success.resultShapes.size() == 1,
-                      << "expect a single output");
-        ShapeAttr outputShape = success.resultShapes.front();
+          // Skip if already added binding to define this parameter.
+          if (auto [_, inserted] = processedDeclRefs.insert(paramDim);
+              !inserted)
+            continue;
 
-        // Case 0 (output decl is a shape)
-        //   mo.reshape<() -> Sh0: !mosh.ape> : ... -> Sh0
-        //
-        // Create binding for the output shape parameter to output shape which
-        // models ops like the following:
-        //   kgen.param.decare Sh0 = <[N0, N1, ...]>
-        bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
-      } else {
-        llvm::DenseSet<ParamDeclAttr> outputDeclSet(outputDecls.begin(),
-                                                    outputDecls.end());
-        llvm::DenseSet<KGEN::ParamDeclRefAttr> processedDeclRefs;
-        for (auto [i, res, outputShape] :
-             llvm::enumerate(op->getResults(), success.resultShapes)) {
-          // Case 1 (output decls are dimensions)
-          //   mo.reshape<() -> D1, D2> : ... -> [D1, D2]
-          //   mo.reshape<() -> D1> : ... -> [10, D1]
-          //
-          // Create binding for the output shape parameter to output dims which
-          // models ops like the following:
-          //   kgen.param.decare D1 = <N0>
-          //   kgen.param.decare D2 = <add(N1, 10)>
-          ShapeAttr annotatedOutShape =
-              cast<TensorType>(res.getType()).getTypedShapeAttr();
-          size_t returnedRank = outputShape.getRank();
-          size_t annnotatedRank = annotatedOutShape.getRank();
-          if (returnedRank != annnotatedRank) {
-            std::stringstream ss;
-            ss << "shape function result #" << i << " returned shape of rank "
-               << returnedRank << ", but the type annotation has shape of rank "
-               << annnotatedRank;
-            return Error(ss.str());
-          }
-          // Given `outputShape` for
-          //   mo.reshape<() -> D1> : ... -> [10, D1]
-          // Generate
-          //   D1 = <outputShape[1]>
-          for (auto [axis, dim] :
-               llvm::enumerate(annotatedOutShape.getValues())) {
-            // Skip if `dim` is not a dimension parameter
-            auto paramDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
-            if (!paramDim)
-              continue;
+          // Skip if `dim` is defined elsewhere.
+          auto paramDecl = KGEN::ParamDeclAttr::get(paramDim);
+          if (!outputDeclSet.contains(paramDecl))
+            continue;
 
-            // Skip if already added binding to define this parameter.
-            if (auto [_, inserted] = processedDeclRefs.insert(paramDim);
-                !inserted)
-              continue;
-
-            // Skip if `dim` is defined elsewhere.
-            auto paramDecl = KGEN::ParamDeclAttr::get(paramDim);
-            if (!outputDeclSet.contains(paramDecl))
-              continue;
-
-            bindings.push_back(ParamBinding(paramDecl, outputShape[axis]));
-          }
+          bindings.push_back(ParamBinding(paramDecl, outputShape[axis]));
         }
       }
     }
@@ -1020,9 +978,6 @@ struct PropagateShapesPass
         }
 
       } else if (auto shapeOfOp = dyn_cast<ShapeOfOp>(op)) {
-        // TODO merge this branch with the `InvokeShapeFuncOp` branch once we
-        // have a common interface to model shape function logic of MO ops.
-
         // Skip if input shape is still dynamically ranked. At this stage, it
         // indicates a rare scenario where there might be a real dynamic rank,
         // which our stack doesn't support at the moment.
