@@ -355,7 +355,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
 }
 
 //===----------------------------------------------------------------------===//
-// ModuleChainPlaceholder
+// ModuleLoadPlaceholder
 //===----------------------------------------------------------------------===//
 
 def ModuleLoadPlaceholderOp : MGP_Op<"module.load.placeholder"> {
