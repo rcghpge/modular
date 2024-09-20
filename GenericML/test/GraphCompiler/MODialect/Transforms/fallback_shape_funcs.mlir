@@ -41,7 +41,7 @@ mo.graph @avg_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-LABEL: mo.graph @avg_pool_fallback_shape_func
 // CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER_SHAPE:arg.]]: !mo.tensor<[2], si64>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["pool_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-NEXT: mo.invoke_shape_func["mo.avg_pool"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
@@ -70,7 +70,7 @@ mo.graph @avg_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-LABEL: mo.graph @avg_pool_ceil_mode_true_fallback_shape_func
 // CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER_SHAPE:arg.]]: !mo.tensor<[2], si64>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["pool_shape_ceil"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-NEXT: mo.invoke_shape_func["mo.avg_pool_ceil_mode_true"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
@@ -125,7 +125,7 @@ mo.graph @max_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-LABEL: mo.graph @max_pool_fallback_shape_func
 // CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER_SHAPE:arg.]]: !mo.tensor<[2], si64>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["pool_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-NEXT: mo.invoke_shape_func["mo.max_pool"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
@@ -154,7 +154,7 @@ mo.graph @max_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-LABEL: mo.graph @max_pool_ceil_mode_true_fallback_shape_func
 // CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER_SHAPE:arg.]]: !mo.tensor<[2], si64>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["pool_shape_ceil"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-NEXT: mo.invoke_shape_func["mo.max_pool_ceil_mode_true"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[FILTER_SHAPE]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)

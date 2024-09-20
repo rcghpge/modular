@@ -401,7 +401,7 @@ static ErrorOrSuccess buildForScatterNdLikeOp(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::AvgPoolOp op) {
-  buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
+  buildForOpResult(graph, builder, op, "mo.avg_pool", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
@@ -411,8 +411,8 @@ ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::AvgPoolCeilOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::AvgPoolCeilOp op) {
-  buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, "mo.avg_pool_ceil_mode_true",
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
@@ -571,7 +571,7 @@ ErrorOrSuccess Fallback<MO::MaxPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::MaxPoolOp op) {
 
-  buildForOpResult(graph, builder, op, "pool_shape", op.getOperands(),
+  buildForOpResult(graph, builder, op, "mo.max_pool", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
@@ -582,8 +582,8 @@ ErrorOrSuccess Fallback<MO::MaxPoolCeilOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::MaxPoolCeilOp op) {
 
-  buildForOpResult(graph, builder, op, "pool_shape_ceil", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, "mo.max_pool_ceil_mode_true",
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
