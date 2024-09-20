@@ -3583,8 +3583,13 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
   }
 
   SmallVector<Value> keptValues;
+  llvm::SmallPtrSet<Value, 4> seenValues;
 
   for (Value val : getInputs()) {
+    auto [_, inserted] = seenValues.insert(val);
+    if (!inserted)
+      continue;
+
     auto chainDefOp = val.getDefiningOp<MOSH::ParamToValueOp>();
 
     if (!chainDefOp) {
