@@ -58,4 +58,3 @@ fn main() raises:
 
     _printf["[ Sending %dx%d requests! ]\n"](num_workers, num_requests)
     parallelize[worker](num_workers)
-    _ = address^
