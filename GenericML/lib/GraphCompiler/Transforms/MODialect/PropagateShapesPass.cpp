@@ -462,12 +462,7 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
   return ops;
 }
 
-} // namespace
-
-struct PropagateShapesPass
-    : public MO::impl::PropagateShapesBase<PropagateShapesPass> {
-  using PropagateShapesBase::PropagateShapesBase;
-
+struct PropagateShapes {
   /// For each op inside `graphOp` (including nested blocks within), make sure
   /// any depended ops (SSA or parameter dependencies) appear before the op.
   void topoSortWithParameters(GraphOp graphOp) {
@@ -904,13 +899,8 @@ struct PropagateShapesPass
     return success();
   }
 
-  void runOnOperation() override {
+  LogicalResult propagateShape(GraphOp graphOp) {
     // Clear state variables (in case the pass instance is reused)
-    paramAttrToDepth.clear();
-    definitelyNonNegativeAttrs.clear();
-    exprToRegionToDeclRef.clear();
-
-    GraphOp graphOp = getOperation();
     topoSortWithParameters(graphOp);
 
     // There are 3 special cases for adding param mappings:
@@ -970,7 +960,7 @@ struct PropagateShapesPass
           // Short-circuit on fatal error.
           if (result.isError()) {
             op->emitError(result.getError());
-            return signalPassFailure();
+            return failure();
           }
           // Otherwise the op has been shape-inferred, continue to process the
           // new ops that were pushed onto the worklist.
@@ -1065,7 +1055,7 @@ struct PropagateShapesPass
         // Emit compile time error for any `mo.assert false`
         if (StringAttr errMsg = tryGetAssertFalseErrMsg(foldedRhsAttr)) {
           op->emitError(errMsg.strref());
-          return signalPassFailure();
+          return failure();
         }
       }
 
@@ -1083,7 +1073,6 @@ struct PropagateShapesPass
     updateGraphSignature(graphOp);
 
     // DCE on `kgen.param.declare`s for better readability/debuggability.
-    auto &paramCache = getAnalysis<KGEN::ParameterCollector::Analysis>();
     KGEN::ParameterUseDefGraph useDefGraph(graphOp.getRegion());
     useDefGraph.calculate(paramCache);
     removeDeadParamDeclares(graphOp, useDefGraph);
@@ -1105,7 +1094,7 @@ struct PropagateShapesPass
     //    many_ places, which might affect debugging, especially when we want to
     //    examine the output of frontend lowering (e.g., to check correctness or
     //    understand model semantics)
-    getOperation().walk([&](ShapeOfOp op) {
+    graphOp.walk([&](ShapeOfOp op) {
       ImplicitLocOpBuilder builder(op.getLoc(), op);
       TypedAttr inputShape = op.getInput().getType().getShapeAttr();
       auto shConst = builder.create<MOSH::ParamToValueOp>(inputShape);
@@ -1114,11 +1103,18 @@ struct PropagateShapesPass
       op.erase();
       return WalkResult::advance();
     });
+
+    return success();
   }
 
+  PropagateShapes(KGEN::ParameterCollector::Analysis &paramCache)
+      : paramCache{paramCache} {}
+
+  KGEN::ParameterCollector::Analysis &paramCache;
+
   // State variables used by the pass
-  DenseMap<KGEN::ParamOperatorAttr, size_t> paramAttrToDepth;
-  DenseSet<TypedAttr> definitelyNonNegativeAttrs;
+  DenseMap<KGEN::ParamOperatorAttr, size_t> paramAttrToDepth{};
+  DenseSet<TypedAttr> definitelyNonNegativeAttrs{};
   // This maps from
   // - expressions that we have processed, but decided not to inline (i.e.,
   //   we'll keep it as a `kgen.param.declare X = <expr>` and refer to `X`
@@ -1129,5 +1125,20 @@ struct PropagateShapesPass
   // - Reference to the definition parameter of the expression, for instance,
   //   given `kgen.param.declare X = <expr>`, this would be `X`.
   DenseMap<KGEN::ParamOperatorAttr, DenseMap<Region *, KGEN::ParamDeclRefAttr>>
-      exprToRegionToDeclRef;
+      exprToRegionToDeclRef{};
+};
+
+} // namespace
+
+struct PropagateShapesPass
+    : public MO::impl::PropagateShapesBase<PropagateShapesPass> {
+  using Base::Base;
+
+  void runOnOperation() override {
+    auto &paramCache = getAnalysis<KGEN::ParameterCollector::Analysis>();
+
+    PropagateShapes propagator(paramCache);
+    if (failed(propagator.propagateShape(getOperation())))
+      signalPassFailure();
+  }
 };
