@@ -161,3 +161,26 @@ mgp.model @while : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"cuda", 0
   mef.output %i : !mef.chain
 }
 
+// CHECK-LABEL: mgp.model @extend_lifetime : mof
+// CHECK: {{.*}} = mgp.extend.lifetime
+// CHECK:  } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
+mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"cuda", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.opaque<"cpu0_context">, %arg2: !mgp.opaque<"cuda0_context">) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  %2 = mgp.runtime.create %0, %1[0]
+  %3 = mgp.device.context.create %2, %1[0], %arg1 : !mgp.opaque<"cpu0_context">
+  %4 = mgp.runtime.create %2, %1[1] device <"cuda", 0>
+  %5 = mgp.device.context.create %4, %1[1], %arg2 : !mgp.opaque<"cuda0_context"> device <"cuda", 0>
+  mef.output %5, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, !mgp.opaque<"cuda0_context">
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.opaque<"cpu0_context">, %arg4: !mgp.opaque<"cuda0_context">, %arg5: !mgp.tensor<4xf32>) -> !mef.chain {
+  %idx16 = index.constant 16
+  %0 = mgp.tensor_spec.create  : !mgp.tensor_spec<4xf32>
+  %1 = mgp.buffer.constant %arg0, %arg1[0], #M.aligned_bytes<"0x000000000000803F0000004000004040", align 64> : !M.array<16xui8>
+  %2 = mgp.buffer.alloc %arg0, %arg1[1], %idx16, %arg4, align 256 : !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
+  %3 = mgp.buffer.host_to_device %arg0, %arg1[0, 1], %1, %2, %arg4 : !mgp.buffer<16> -> !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
+  %4 = mgp.sync(%3, %arg1, %arg4) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cuda", 0>} : (!mef.chain, !mgp.context, !mgp.opaque<"cuda0_context">) -> !mef.chain
+  %5 = mgp.extend.lifetime  %4, %1 : (!mef.chain, !mgp.buffer<16>) -> !mef.chain
+  %6 = mgp.tensor.create %4, %arg1[0], %2, %0 : !mgp.tensor<4xf32,<"cuda", 0>>
+  %7 = grt.chain.create(%5, %6: !mgp.tensor<4xf32, <"cuda", 0>>)
+  mef.output %7 : !mef.chain
+}

@@ -571,7 +571,8 @@ def GuardOp : MGP_Op<"guard", [
 }
 
 
-def ExtendLifetimeOp : MGP_Op<"extend.lifetime"> {
+def ExtendLifetimeOp : MGP_Op<"extend.lifetime",
+  [DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]> {
   let summary = "SSA-value guard operation";
 
   let description = [{

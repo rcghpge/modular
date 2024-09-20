@@ -64,8 +64,6 @@ bool isLiftableTrivialOp(Operation *op) {
   // Consider all pure ops to be trivial.
   if (isPure(op))
     return true;
-  if (isa<MGP::ExtendLifetimeOp>(op))
-    return true;
 
   // Liftable buffer ops declare whether they are trivial.
   if (auto liftableOp = dyn_cast<MGPLiftableBufferCreateOpInterface>(op))
@@ -297,8 +295,6 @@ private:
   void flowGeneric(Operation *op, DomainMap &domainMap) {
     // Is the op already considered unliftable by an earlier analysis?
     bool isAlreadyUnliftable = operationIndex->setContains(unliftableOps, op);
-    // Is the op's results unused?
-    bool isUnused = op->getUses().empty();
     // Is the op trivial to compute?
     bool isTrivial = isLiftableTrivialOp(op);
     // Are all uses of the op considered unliftable by this analysis?
@@ -308,15 +304,13 @@ private:
                                 analysis.getEntriesAndId(domainMap, &operand));
     }
     bool allUsesUnliftable = set.test(0); // distinguished always has index 0
-    bool isUnliftable =
-        isAlreadyUnliftable || isUnused || (isTrivial && allUsesUnliftable);
+    bool isUnliftable = isAlreadyUnliftable || (isTrivial && allUsesUnliftable);
     if (isUnliftable) {
       LLVM_DEBUG({
         llvm::dbgs() << "SuppressTrivialAnalysis: considering ";
         operationIndex->printV(llvm::dbgs(), op);
         llvm::dbgs() << " to be unliftable. isAlreadyUnliftable="
-                     << isAlreadyUnliftable << ", isUnused=" << isUnused
-                     << ", isTrivial=" << isTrivial
+                     << isAlreadyUnliftable << ", isTrivial=" << isTrivial
                      << ", allUsesUnliftable=" << allUsesUnliftable << "\n";
       });
       operationIndex->addToSet(unliftableOps, op);
