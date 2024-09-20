@@ -12,8 +12,9 @@
 
 using namespace M;
 
-MojoValue::MojoValue(size_t size, size_t align, DestructorFn destructor)
-    : MojoValue(allocateBuffer(size, align), destructor, true, true) {}
+MojoValue::MojoValue(size_t size, size_t align, DestructorFn destructor,
+                     Tag tag)
+    : MojoValue(allocateBuffer(size, align), destructor, true, true, tag) {}
 
 MojoValue::~MojoValue() {
   if (owning && data) {
@@ -41,6 +42,7 @@ void MojoValue::swap(MojoValue &rhs) {
   std::swap(destructor, rhs.destructor);
   std::swap(owning, rhs.owning);
   std::swap(shouldFree, rhs.shouldFree);
+  std::swap(tag, rhs.tag);
 }
 
 void *MojoValue::take() {
