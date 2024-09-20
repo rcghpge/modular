@@ -232,9 +232,10 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
               /*dOtherDevice=*/device)
           .getResult();
 
-  Value syncChain = builder.create<MGP::SyncOp>(loc, copyChain, context,
-                                                /*aRuntimeSlot=*/runtimeSlot,
-                                                /*bDevice=*/device);
+  Value syncChain =
+      builder.create<MGP::SyncOp>(loc, copyChain, context, deviceContext,
+                                  /*aRuntimeSlot=*/runtimeSlot,
+                                  /*bDevice=*/device);
 
   builder.create<MGP::ExtendLifetimeOp>(loc, ValueRange{syncChain, srcBuffer});
   return copyChain;
@@ -260,9 +261,10 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
               /*cOtherDevice=*/device,
               /*dHostDevice=*/hostBufferBuilder->device)
           .getResult();
-  Value syncChain = builder.create<MGP::SyncOp>(loc, copyChain, context,
-                                                /*aRuntimeSlot*/ runtimeSlot,
-                                                /*bDevice*/ device);
+  Value syncChain =
+      builder.create<MGP::SyncOp>(loc, copyChain, context, deviceContext,
+                                  /*aRuntimeSlot*/ runtimeSlot,
+                                  /*bDevice*/ device);
 
   builder.create<MGP::ExtendLifetimeOp>(
       loc, ValueRange{syncChain, srcBuffer, dstBuffer});
@@ -442,9 +444,12 @@ Value MGPBufferBuilder::bufferSetWithIndex(OpBuilder &builder, Location loc,
 }
 
 Value MGPBufferBuilder::sync(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context, Value chain) {
+                             TypedValue<ContextType> context,
+                             TypedValue<OpaqueType> deviceContext,
+                             Value chain) {
   return builder
-      .create<MGP::SyncOp>(loc, chain, context, /*aRuntimeSlot*/ runtimeSlot,
+      .create<MGP::SyncOp>(loc, chain, context, deviceContext,
+                           /*aRuntimeSlot*/ runtimeSlot,
                            /*bDevice*/ device)
       .getResult();
 }

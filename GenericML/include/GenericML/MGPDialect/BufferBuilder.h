@@ -340,7 +340,8 @@ public:
   /// Adds a device specific sync. Returns a ready chain once the device has
   /// synchronized.
   virtual Value sync(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context, Value chain) = 0;
+                     TypedValue<ContextType> context,
+                     TypedValue<OpaqueType> deviceContext, Value chain) = 0;
 
   virtual void vtableAnchor();
 };
@@ -462,7 +463,7 @@ public:
                            ArrayRef<Value> values) override;
 
   Value sync(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-             Value chain) override;
+             TypedValue<OpaqueType> deviceContext, Value chain) override;
 
   std::pair<uint64_t, uint64_t> getFunction(StringRef name) {
     auto itr = functionToIndexPair.find(name);

@@ -140,22 +140,22 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
 // CHECK-NEXT:  %{{.*}} = grt.chain.create ()
 // CHECK:       %{{.*}} = mgp.context.create 2
 
-mgp.model @while : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @while : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"cuda", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %gpu: !mgp.opaque<"cuda0_context">) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
-  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+  mef.output %ch2, %ctx, %weights, %cpu, %gpu: !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, !mgp.opaque<"cuda0_context">
 
-} execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain) {
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %gpu: !mgp.opaque<"cuda0_context">) -> (!mef.chain) {
 
-  %i, %j = grt.while (%ch: !mef.chain, %ctx: !mgp.context) {
+  %i, %j, %k = grt.while (%ch: !mef.chain, %ctx: !mgp.context, %gpu: !mgp.opaque<"cuda0_context">) {
     // Sync is a liftable op
-    %ch2 = mgp.sync(%ch, %ctx) {aRuntimeSlot = 2 : ui64, bDevice = #M.device_ref<"cuda", 0>} : (!mef.chain, !mgp.context) -> !mef.chain
+    %ch2 = mgp.sync(%ch, %ctx, %gpu) {aRuntimeSlot = 2 : ui64, bDevice = #M.device_ref<"cuda", 0>} : (!mef.chain, !mgp.context, !mgp.opaque<"cuda0_context">) -> !mef.chain
 
     %cond = "some.op"() : () -> i1
-    mef.output %ch2, %ctx, %cond : !mef.chain, !mgp.context, i1
+    mef.output %ch2, %ctx, %gpu, %cond : !mef.chain, !mgp.context, !mgp.opaque<"cuda0_context">, i1
   } do {
-    mef.output %ch, %ctx: !mef.chain, !mgp.context
+    mef.output %ch, %ctx, %gpu: !mef.chain, !mgp.context, !mgp.opaque<"cuda0_context">
   }
 
   mef.output %i : !mef.chain
