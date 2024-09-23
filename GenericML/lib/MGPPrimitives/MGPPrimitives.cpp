@@ -267,7 +267,7 @@ static void mgp_generic_execute(
     }
 
     MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy(),
-                                runtimePtr, cudaRuntimePtr, deviceContextPtr);
+                                runtimePtr, deviceContextPtr);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));
