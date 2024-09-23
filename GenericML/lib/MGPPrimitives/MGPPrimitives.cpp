@@ -252,22 +252,12 @@ static void mgp_generic_execute(
       kernelInputs.push_back(ptrToMarshalledValue.takeValue());
     }
 
-    MojoCallContext callContext(outChain.copy(), outChain.getLocation().copy(),
-                                runtimePtr, deviceContextPtr);
+    MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));
 
     assert(!outChain.isError());
-    if (outChain.isError()) {
-      for (auto &result : outResults) {
-        if (result.isReady())
-          continue;
-        std::move(result).setToError(EncodedDiagnostic(
-            outChain.copy().getDiagnostic().getMessage().copy(), loc.copy()));
-      }
-      return;
-    }
 
     for ([[maybe_unused]] auto &result : outResults)
       assert(result.isReady() || result.isError());
