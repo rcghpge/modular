@@ -217,7 +217,7 @@ def test_standalone_server_client[TEST_CASE: ModelTestCase]() -> None:
             )
 
             @parameter
-            fn server_started_fn() capturing -> NoneType:
+            fn server_started_fn() -> NoneType:
                 print("[" + elapsed() + "]Server started...")
                 _ = server_started.fetch_add(1)
                 return None

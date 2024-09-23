@@ -20,7 +20,8 @@ fn rand_sleep():
     sleep(l)
 
 
-fn count_batch(input: List[Int]) capturing -> List[Int]:
+@parameter
+fn count_batch(input: List[Int]) -> List[Int]:
     rand_sleep()
     var output = List[Int](capacity=len(input))
     for _ in input:
