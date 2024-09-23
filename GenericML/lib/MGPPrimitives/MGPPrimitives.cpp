@@ -14,8 +14,6 @@
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/List.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
-#include "Runtime/CUDA/CUDARuntime.h"
-#include "Runtime/CUDA/Globals/Globals.h"
 #include "Runtime/Tensor/StateContext.h"
 #include "Runtime/Tensor/StateSlot.h"
 #include "Runtime/Tensor/Tensor.h"
@@ -34,7 +32,6 @@
 
 using namespace M;
 using namespace M::GML;
-using namespace M::CUDA;
 
 //===----------------------------------------------------------------------===//
 // Helpers
@@ -203,7 +200,7 @@ static void mgp_generic_execute(
   // async because we pass a copy of the results.
   outResults.allocateIndirectResults();
 
-  auto runKernel = [kernelPtr, &ctx, &runtime,
+  auto runKernel = [kernelPtr, &runtime,
                     // outResults _must_ be copied
                     outResults = outResults.copyAsVector(),
                     // std::move(operands) does not work, must use takeAsVector
@@ -215,18 +212,7 @@ static void mgp_generic_execute(
                     runtimePtr = runtimePtr,
                     deviceContext = std::move(deviceContext),
                     loc = std::move(loc)]() mutable {
-    CUDARuntime *cudaRuntimePtr = nullptr;
     void *deviceContextPtr = deviceContext.getPointerToData();
-    if (hasCuda) {
-      // GRA-594: When Device Context is passed to the primitive directly, we
-      // don't need to set the runtime
-      cudaRuntimePtr = reinterpret_cast<CUDARuntime *>(
-          ctx.getStateSlot(static_cast<size_t>(cudaSlot))
-              .getUnderlyingPointer());
-      // GRA-604 - Before we move storage to mojo, need to ensure the mojo
-      // device context is held by runtime.
-      cudaRuntimePtr->deviceContext = deviceContext.copy();
-    }
     std::vector<void *> kernelInputs;
     kernelInputs.reserve(outResults.size() + takenOperands.size());
 
