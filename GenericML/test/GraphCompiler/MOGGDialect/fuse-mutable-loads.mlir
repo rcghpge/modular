@@ -54,3 +54,20 @@ mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.ten
   %2 = mo.mutable.store(%outChain, %buffer, %1) : (!mo.chain, !mo.buffer<[10, 10], f32>, !mo.tensor<[10, 10], f32>) -> !mo.chain
   mo.output
 }
+
+// CHECK-LABEL: mo.graph @same_kernel_multiple_fusions(
+// CHECK-SAME: [[buf1:%.*]]: !mo.buffer<[10, 10], f32>, [[buf2:%.*]]: !mo.buffer<[10, 10], f32>
+// CHECK: [[ch0:%.*]] = mo.chain.create()
+// CHECK: [[ch1:%.*]] = mo.chain.create([[ch0]], [[ch0]])
+// CHECK: mogg.kernel ([[buf1]], [[buf2]], [[ch1]])
+mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: !mo.buffer<[10, 10], f32>) {
+
+  %ch0 = mo.chain.create()
+
+  %ch1, %vbuf = mo.mutable.load(%ch0, %buf1) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> (!mo.chain, !mo.tensor<[10, 10], f32>)
+  %ch2, %vbuf2 = mo.mutable.load(%ch0, %buf2) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> (!mo.chain, !mo.tensor<[10, 10], f32>)
+  %res = mo.add(%vbuf, %vbuf2) : !mo.tensor<[10, 10], f32>
+  %chfinal = mo.mutable.store(%ch1, %buf2, %res) : (!mo.chain, !mo.buffer<[10, 10], f32>, !mo.tensor<[10, 10], f32>) -> (!mo.chain)
+
+  mo.output
+}

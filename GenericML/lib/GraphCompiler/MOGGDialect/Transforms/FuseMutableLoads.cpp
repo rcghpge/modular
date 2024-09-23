@@ -48,11 +48,28 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   if (!kernelOp)
     return std::nullopt;
 
+  auto buffer = loadOp.getInBuffer();
+
+  bool bufferIsAlreadyInput = llvm::any_of(
+      kernelOp.getOperands(), [buffer](Value val) { return val == buffer; });
+
+  // TODO(GRA-1032): Allow the same buffer to be passed to a kernel multiple
+  // times -- care needs to be taken about properly maintaining depedencies in
+  // these kinds of instances.
+  if (bufferIsAlreadyInput) {
+    LLVM_DEBUG(loadOp.emitRemark()
+               << "Mutable load fusion is currently disabled for this load op "
+                  "as the underlying buffer "
+                  "has already been load fused once with the same kernel.");
+
+    return std::nullopt;
+  }
+
   return kernelOp;
 }
 
-KernelOp fuseMutableLoadWithKernel(OpBuilder &builder, MO::MutableLoadOp loadOp,
-                                   KernelOp kernelOp) {
+KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
+                                 KernelOp kernelOp) {
   MLIRContext *ctx = builder.getContext();
 
   auto loc = kernelOp.getLoc();
@@ -184,6 +201,48 @@ KernelOp fuseMutableLoadWithKernel(OpBuilder &builder, MO::MutableLoadOp loadOp,
   return newKernelOp;
 }
 
+void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
+                    KernelOp kernelOp) {
+  auto buffer = loadOp.getInBuffer();
+  auto tensor = loadOp.getOutTensor();
+
+  ASSERT_STREAM(*tensor.getUsers().begin() == kernelOp,
+                "Expected value semantic tensor from load op to only be "
+                "consumed by current kernel op");
+
+  OpOperand &operand = *tensor.getUses().begin();
+  auto argIdx = operand.getOperandNumber();
+
+  auto newBufferArg = kernelOp.addOperandAtIndex(buffer, argIdx);
+
+  Block &kernelBody = kernelOp.getBody().front();
+
+  auto oldBlockArg = kernelBody.getArgument(argIdx + 1);
+  oldBlockArg.replaceAllUsesWith(newBufferArg);
+  kernelOp.removeOperandAtIndex(argIdx + 1);
+
+  loadOp.getOutChain().replaceAllUsesWith(kernelOp.getOutChain().value());
+
+  builder.setInsertionPoint(kernelOp);
+
+  auto newChain = builder.create<MO::ChainCreateOp>(
+      loadOp.getLoc(),
+      ValueRange{kernelOp.getInChain().value(), loadOp.getInChain()});
+
+  kernelOp.setOperand(kernelOp.getNumOperands() - 1, newChain);
+
+  loadOp.erase();
+}
+
+bool hasBufferOperand(KernelOp kernelOp) {
+  return llvm::any_of(kernelOp.getOperandTypes(),
+                      [](Type type) { return isa<MO::BufferType>(type); });
+}
+
+bool kernelWasLoadFused(KernelOp kernelOp) {
+  return kernelOp.getHasReadEffect() && hasBufferOperand(kernelOp);
+}
+
 struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
   using FuseMutableLoadsBase::FuseMutableLoadsBase;
   void runOnOperation() override {
@@ -198,8 +257,25 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
       auto maybeKernelOp = maybeGetCompatibleKernel(loadOp);
       if (!maybeKernelOp)
         continue;
+      auto kernelOp = maybeKernelOp.value();
 
-      fuseMutableLoadWithKernel(builder, loadOp, *maybeKernelOp);
+      // Transform logic is a bit more involved if load fusion hasn't already
+      // happened as we need to have the kernel both produce and consume a chain
+      // now.
+      //
+      // TODO(GRA-1031): Break the transforms this operation does into two steps
+      // -- rewriting the kernel body to accept and produce a chain and then
+      // performing the re-write from mo.tensor -> mo.buffer for the appropriate
+      // opereand index.
+      if (!kernelWasLoadFused(kernelOp)) {
+        fuseLoadBufferAndChains(builder, loadOp, kernelOp);
+      } else {
+        // Transform is much simpler in the case that load fusion has already
+        // occured as we just need to re-write the kernel body to use a buffer
+        // type (and possibly turn off input fusion for the buffer we're fusing
+        // in).
+        fuseLoadBuffer(builder, loadOp, kernelOp);
+      }
     }
   }
 };

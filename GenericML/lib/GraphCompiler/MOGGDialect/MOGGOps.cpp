@@ -953,14 +953,15 @@ void KernelOp::removeOperandAtIndex(size_t index) {
   }
 }
 
-/// Add an operand to the kernel and adds an argument to the kernel region.
-/// Fixes up the input fusion interfaces to disallow input fusion on this
-/// position. Returns the added kernel argument.
-Value KernelOp::addOperand(Value operand) {
+/// Add an operand to the kernel at the idx specified by insertIdx and adds an
+/// argument to the kernel region. Fixes up the input fusion interfaces to
+/// disallow input fusion on this position. Returns the added kernel argument.
+Value KernelOp::addOperandAtIndex(Value operand, size_t insertIdx) {
   SmallVector<Value> values = {operand};
-  (*this)->insertOperands(getNumOperands(), values);
-  Value blockArg =
-      getBody().front().addArgument(operand.getType(), operand.getLoc());
+  (*this)->insertOperands(insertIdx, values);
+
+  Value blockArg = getBody().front().insertArgument(
+      insertIdx, operand.getType(), operand.getLoc());
 
   std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
 
@@ -970,12 +971,21 @@ Value KernelOp::addOperand(Value operand) {
     SmallVector<Attribute> lambdaNames;
     for (StringAttr name : inputInterfaces->getAsRange<StringAttr>())
       lambdaNames.push_back(name);
+
     // Add an empty lambda name for the operand we just added.
-    lambdaNames.push_back(StringAttr::get(getContext(), ""));
+    lambdaNames.insert(lambdaNames.begin() + insertIdx,
+                       StringAttr::get(getContext(), ""));
     setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
   }
 
   return blockArg;
+}
+
+/// Add an operand to the kernel and adds an argument to the kernel region.
+/// Fixes up the input fusion interfaces to disallow input fusion on this
+/// position. Returns the added kernel argument.
+Value KernelOp::addOperand(Value operand) {
+  return addOperandAtIndex(operand, getNumOperands());
 }
 
 void KernelOp::setInputFusionInterface(size_t index, StringRef lambdaName) {

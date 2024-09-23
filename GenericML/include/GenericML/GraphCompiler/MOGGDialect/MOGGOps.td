@@ -267,6 +267,12 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     /// position if this kernel otherwise supports it.
     void removeOperandAtIndex(size_t index);
 
+    /// Add an operand to the kernel at the idx specified by insertIdx and adds an
+    /// argument to the kernel region. Fixes up the input fusion interfaces to
+    /// disallow input fusion on this position. Returns the added kernel argument.
+    /// NOTE: this is an O(n) operation.
+    Value addOperandAtIndex(Value operand, size_t insertIdx);
+
     /// Add an operand to the kernel and adds an argument to the kernel region.
     /// Fixes up the input fusion interfaces to disallow input fusion on this
     /// position. Returns the added kernel argument.
