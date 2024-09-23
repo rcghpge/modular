@@ -787,7 +787,7 @@ mo.graph @top_k_fallback_shape_func<() -> D0, D1, D2, D3>(
 }
 
 // CHECK-LABEL: mo.graph @top_k_fallback_shape_func
-// CHECK-NEXT:   mo.invoke_shape_func["top_k_shape"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>({{.*}}) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
+// CHECK-NEXT:   mo.invoke_shape_func["mo.top_k"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>({{.*}}) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
 // CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k(%[[INPUT:.*]], %[[K:.*]], %[[AXIS:.*]], %[[SORTED:.*]]) : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si64>)
 // CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> %[[VALUES]], %[[INDICES]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si64>
 
@@ -806,7 +806,7 @@ mo.graph @bottom_k_fallback_shape_func<() -> D0, D1, D2, D3>(
 }
 
 // CHECK-LABEL: mo.graph @bottom_k_fallback_shape_func
-// CHECK-NEXT:   mo.invoke_shape_func["top_k_shape"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>({{.*}}) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
+// CHECK-NEXT:   mo.invoke_shape_func["mo.bottom_k"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>({{.*}}) {dataDeptTensors = [1 : i32, 2 : i32]} : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
 // CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.bottom_k(%[[INPUT:.*]], %[[K:.*]], %[[AXIS:.*]], %[[SORTED:.*]]) : (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si64>)
 // CHECK-NEXT:   mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> %[[VALUES]], %[[INDICES]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>, !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], si64>
 

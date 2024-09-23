@@ -430,7 +430,7 @@ ErrorOrSuccess Fallback<MO::BatchMatmulOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::BottomKOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::BottomKOp op) {
-  buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
+  buildForOpResult(graph, builder, op.getValues(), "mo.bottom_k",
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
   // indices() guaranteed by verifier to have the same shape as values()
@@ -768,8 +768,8 @@ ErrorOrSuccess Fallback<MO::SqueezeShapeOp>::build(GraphOp &graph,
 
 ErrorOrSuccess Fallback<MO::TopKOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::TopKOp op) {
-  buildForOpResult(graph, builder, op.getValues(), "top_k_shape",
-                   op.getOperands(), op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op.getValues(), "mo.top_k", op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
 
   // indices() guaranteed by verifier to have the same shape as values()
