@@ -295,7 +295,7 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
                        DefaultValuedAttr<BoolAttr, "false">:$fHasCuda,// 5 // This should be removed once we have device context
                        UI64Attr:$gCudaSlot                            // 6
                        );
-  let results = (outs ChainType: $outChain, Variadic<AnyType>:$outResults);
+  let results = (outs Variadic<AnyType>:$outResults);
 }
 
 //===----------------------------------------------------------------------===//

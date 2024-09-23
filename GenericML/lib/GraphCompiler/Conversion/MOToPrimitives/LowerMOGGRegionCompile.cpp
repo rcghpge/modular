@@ -123,15 +123,14 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     device = DeviceRefAttr::getDefault(ctx);
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-      oldKernel.getLoc(), MEF::ChainType::get(ctx), resultTypes, context,
-      deviceContext, oldKernel->getOperands(), runtimeSlot, module_index,
-      kernel_index, oldKernel.getSummary(), oldKernel.getIsAsync(),
+      oldKernel.getLoc(), resultTypes, context, deviceContext,
+      oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
+      oldKernel.getSummary(), oldKernel.getIsAsync(),
       oldKernel.getDeviceRef().getLabel() == kCUDALabel,
       cuda_runtime_slot.value_or(0));
 
-  uint64_t idx = 1;
-  for (auto result : outputs)
-    result.replaceAllUsesWith(newExecuteOp.getResult(idx++));
+  for (auto [idx, result] : llvm::enumerate(outputs))
+    result.replaceAllUsesWith(newExecuteOp.getResult(idx));
 
   oldKernel.erase();
 }

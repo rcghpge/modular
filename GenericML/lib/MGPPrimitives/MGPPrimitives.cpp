@@ -180,13 +180,14 @@ static void mgp_tensor_spec_dims_dynamic(const TensorSpec &tensorSpec,
 using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
-static void mgp_generic_execute(
-    StateContext &ctx, AnyAsyncValueRef deviceContext,
-    RemainingArguments operands, Result<Chain> outChain,
-    RemainingResults outResults, MEFAttr<uint64_t> aSlot,
-    MEFAttr<uint64_t> bModuleIndex, MEFAttr<uint64_t> cFunctionIndex,
-    MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync, MEFAttr<bool> fHasCuda,
-    MEFAttr<uint64_t> gCudaSlot, Runtime &runtime, EncodedLocation loc) {
+static void
+mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
+                    RemainingArguments operands, RemainingResults outResults,
+                    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
+                    MEFAttr<uint64_t> cFunctionIndex,
+                    MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
+                    MEFAttr<bool> fHasCuda, MEFAttr<uint64_t> gCudaSlot,
+                    Runtime &runtime, EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
@@ -200,76 +201,73 @@ static void mgp_generic_execute(
   // async because we pass a copy of the results.
   outResults.allocateIndirectResults();
 
-  auto runKernel = [kernelPtr, &runtime,
-                    // outResults _must_ be copied
-                    outResults = outResults.copyAsVector(),
-                    // std::move(operands) does not work, must use takeAsVector
-                    takenOperands = operands.takeAsVector(),
-                    outChain = outChain.copyWithLocation(),
-                    summary = dSummary->str(), hasCuda = fHasCuda.get(),
-                    cudaSlot = gCudaSlot.get(),
-                    profilerEntry = std::move(profilerEntry),
-                    runtimePtr = runtimePtr,
-                    deviceContext = std::move(deviceContext),
-                    loc = std::move(loc)]() mutable {
-    void *deviceContextPtr = deviceContext.getPointerToData();
-    std::vector<void *> kernelInputs;
-    kernelInputs.reserve(outResults.size() + takenOperands.size());
+  auto runKernel =
+      [kernelPtr, &runtime,
+       // outResults _must_ be copied
+       outResults = outResults.copyAsVector(),
+       // std::move(operands) does not work, must use takeAsVector
+       takenOperands = operands.takeAsVector(), summary = dSummary->str(),
+       hasCuda = fHasCuda.get(), cudaSlot = gCudaSlot.get(),
+       profilerEntry = std::move(profilerEntry), runtimePtr = runtimePtr,
+       deviceContext = std::move(deviceContext),
+       loc = std::move(loc)]() mutable {
+        void *deviceContextPtr = deviceContext.getPointerToData();
+        std::vector<void *> kernelInputs;
+        kernelInputs.reserve(outResults.size() + takenOperands.size());
 
-    // Stack allocation needed to handle marshalling to ABIList.
-    // Holds references to ABIList wrapped in AnyAsyncValue.
-    SmallVector<AnyAsyncValueRef> listMemory;
+        // Stack allocation needed to handle marshalling to ABIList.
+        // Holds references to ABIList wrapped in AnyAsyncValue.
+        SmallVector<AnyAsyncValueRef> listMemory;
 
-    // For each associated ABIList, holds the ABITensors in the list.
-    SmallVector<SmallVector<ABITensor>> listTensorMemory;
+        // For each associated ABIList, holds the ABITensors in the list.
+        SmallVector<SmallVector<ABITensor>> listTensorMemory;
 
-    // For each associated ABITensor, holds the dimensions of the tensor.
-    // listDimMemory[1] --> the storage for the index 1 list
-    // listDimMemory[0][1] --> the storage for the index 0 lists's 1st tensor
-    // listDimMemory[0][1][2] --> the 2nd index dimension of the above
-    SmallVector<SmallVector<SmallVector<ssize_t>>> listDimMemory;
+        // For each associated ABITensor, holds the dimensions of the tensor.
+        // listDimMemory[1] --> the storage for the index 1 list
+        // listDimMemory[0][1] --> the storage for the index 0 lists's 1st
+        // tensor listDimMemory[0][1][2] --> the 2nd index dimension of the
+        // above
+        SmallVector<SmallVector<SmallVector<ssize_t>>> listDimMemory;
 
-    // Note we must be careful of reference invalidation with our SmallVectors
-    // as we typically pass pointers to the data directly. Therefore, reserve
-    // space to avoid issues.
-    size_t maxNumLists = takenOperands.size() + outResults.size();
-    listMemory.reserve(maxNumLists);
-    listTensorMemory.reserve(maxNumLists);
-    listDimMemory.reserve(maxNumLists);
+        // Note we must be careful of reference invalidation with our
+        // SmallVectors as we typically pass pointers to the data directly.
+        // Therefore, reserve space to avoid issues.
+        size_t maxNumLists = takenOperands.size() + outResults.size();
+        listMemory.reserve(maxNumLists);
+        listTensorMemory.reserve(maxNumLists);
+        listDimMemory.reserve(maxNumLists);
 
-    for (AnyAsyncValueRef &res :
-         llvm::concat<AnyAsyncValueRef>(takenOperands, outResults)) {
-      ErrorOr<void *> ptrToMarshalledValue = getAnyAsyncValueRefPtr(
-          res, listMemory, listTensorMemory, listDimMemory, runtime);
+        for (AnyAsyncValueRef &res :
+             llvm::concat<AnyAsyncValueRef>(takenOperands, outResults)) {
+          ErrorOr<void *> ptrToMarshalledValue = getAnyAsyncValueRefPtr(
+              res, listMemory, listTensorMemory, listDimMemory, runtime);
 
-      if (ptrToMarshalledValue.isError()) {
-        std::move(res).setToError(EncodedDiagnostic(
-            outChain.copy().getDiagnostic().getMessage().copy(), loc.copy()));
-        std::move(outChain).setToError(ptrToMarshalledValue.takeError().copy());
-        return;
-      }
+          if (ptrToMarshalledValue.isError()) {
+            for (auto &result : outResults) {
+              std::move(result).setToError(EncodedDiagnostic(
+                  ptrToMarshalledValue.takeError().copy(), loc.copy()));
+            }
+            return;
+          }
 
-      kernelInputs.push_back(ptrToMarshalledValue.takeValue());
-    }
+          kernelInputs.push_back(ptrToMarshalledValue.takeValue());
+        }
 
-    MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);
-    kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
-              reinterpret_cast<void *>(runtimePtr.get()),
-              reinterpret_cast<void *>(&callContext));
+        MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);
+        kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
+                  reinterpret_cast<void *>(runtimePtr.get()),
+                  reinterpret_cast<void *>(&callContext));
 
-    assert(!outChain.isError());
+        for ([[maybe_unused]] auto &result : outResults)
+          assert(result.isReady() || result.isError());
 
-    for ([[maybe_unused]] auto &result : outResults)
-      assert(result.isReady() || result.isError());
+        std::move(profilerEntry).record();
 
-    std::move(outChain).emplace();
-    std::move(profilerEntry).record();
-
-    // Make sure our profiling entry (or any which the Mojo kernel may have
-    // designated as 'current') does not escape the scope of the Mojo kernel
-    // call, either synchronous or up to first await point for asynchronous.
-    MGPProfilerEntry::clearCurrentId();
-  };
+        // Make sure our profiling entry (or any which the Mojo kernel may have
+        // designated as 'current') does not escape the scope of the Mojo kernel
+        // call, either synchronous or up to first await point for asynchronous.
+        MGPProfilerEntry::clearCurrentId();
+      };
 
   if (eIsAsync.get())
     runtime.getWorkQueue()->addTask(std::move(runKernel));
