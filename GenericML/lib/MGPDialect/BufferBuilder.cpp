@@ -55,16 +55,7 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
                                            /*theContext=*/context,
                                            /*aRuntimeSlot=*/runtimeSlot,
                                            /*cDevice=*/device);
-  auto chain = builder.create<MGP::DeviceContextCreateOp>(
-      loc,
-      /*outChain=*/
-      MEF::ChainType::get(builder.getContext()),
-      /*inChain=*/runtime.getOutChain(),
-      /*theContext=*/context,
-      /*deviceContext=*/inDevice,
-      /*aDeviceRuntimeSlot=*/runtimeSlot,
-      /*bDevice=*/device);
-  return chain;
+  return runtime.getOutChain();
 }
 
 void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,

@@ -44,15 +44,6 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
                   << hostDevice << "'");
   }
   auto inChain = cast<TypedValue<MEF::ChainType>>(loweringState.getInitChain());
-  // DANGER: init chain is the result of device context creation which is a
-  // result of runtime creation. If this is a gpu device, it does not actually
-  // depend on the device context.
-  auto deviceContextCreate =
-      loweringState.getInitChain().getDefiningOp<MGP::DeviceContextCreateOp>();
-  if (deviceContextCreate)
-    inChain = deviceContextCreate.getOperand(0)
-                  .getDefiningOp<MGP::RuntimeCreateOp>()
-                  .getOutChain();
   auto chain = bufferBuilder->setupForModel(
       loweringState.getModelOp(), hostBufferBuilder,
       loweringState.getInitOpBuilder(), loweringState.getGraph()->getLoc(),

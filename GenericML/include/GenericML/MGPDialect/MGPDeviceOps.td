@@ -190,50 +190,6 @@ def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
 
 
 //===----------------------------------------------------------------------===//
-// DeviceContextCreateOp
-//===----------------------------------------------------------------------===//
-
-def DeviceContextCreateOp : MGP_DeviceOp<"device.context.create"> {
-  let summary = "Creates Mojo-side device context.";
-  let description = [{
-    Store device context into the runtime and passed to every kernel call. The
-    context is treated as an opaque pointer.
-
-    device.context.create takes the KernelExecutionState in addition to the device
-    runtime because the KernelExecutionState is needed to run Mojo code.
-    device.context.create must come after the context has been created.
-
-    Example:
-    ```mlir
-      %ch0 : !mef.chain
-      %ctx : !mgp.context
-      %cpu : !mgp.opaque
-      %ch1 = mgp.device.context.create %ch0, %ctx[5], %cpu device <"cuda", 3>
-      %ch1 : !mef.chain
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       MGP_OpaqueType:$deviceContext,
-                       UI64Attr:$aDeviceRuntimeSlot,   // 0
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs ChainType:$outChain);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aDeviceRuntimeSlot `]` `,` $deviceContext`:` qualified(type($deviceContext))
-    ( `device` $bDevice^ )?  attr-dict
-  }];
-  let hasVerifier = 1;
-  let extraClassDefinition = [{
-    uint64_t DeviceContextCreateOp::getSlot() { return getADeviceRuntimeSlot(); }
-
-    M::DeviceRefAttr DeviceContextCreateOp::getDevice() { return getBDevice(); }
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // DeviceContextProfileStartOp
 //===----------------------------------------------------------------------===//
 

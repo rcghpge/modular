@@ -168,10 +168,8 @@ mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   %2 = mgp.runtime.create %0, %1[0]
-  %3 = mgp.device.context.create %2, %1[0], %arg1 : !mgp.opaque<"cpu0_context">
-  %4 = mgp.runtime.create %2, %1[1] device <"cuda", 0>
-  %5 = mgp.device.context.create %4, %1[1], %arg2 : !mgp.opaque<"cuda0_context"> device <"cuda", 0>
-  mef.output %5, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, !mgp.opaque<"cuda0_context">
+  %3 = mgp.runtime.create %2, %1[1] device <"cuda", 0>
+  mef.output %3, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, !mgp.opaque<"cuda0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.opaque<"cpu0_context">, %arg4: !mgp.opaque<"cuda0_context">, %arg5: !mgp.tensor<4xf32>) -> !mef.chain {
   %idx16 = index.constant 16
   %0 = mgp.tensor_spec.create  : !mgp.tensor_spec<4xf32>
