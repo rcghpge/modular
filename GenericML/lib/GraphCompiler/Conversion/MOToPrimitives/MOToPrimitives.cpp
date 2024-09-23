@@ -850,14 +850,44 @@ LogicalResult
 MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
 
+  OpBuilder b(printOp);
+  auto moTensorType = printOp.getInput().getType();
+  DeviceRefAttr targetDevice =
+      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
+  DeviceRefAttr hostDevice = loweringState.getHostDevice();
+
   // Get the bufferized input.
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(printOp.getInput());
 
-  Value outChain = opLoweringState.debugTensorPrint(
-      loweringState.getCurrentExecuteChain(), bufferizedInput.buffer,
-      bufferizedInput.tensorSpec, printOp.getLabelAttr(),
-      printOp.getInput().getType());
+  auto &buffer = bufferizedInput.buffer;
+  auto &tensorSpec = bufferizedInput.tensorSpec;
+  auto chain = loweringState.getCurrentExecuteChain();
+
+  if (printOp.getLabelAttr().empty() || targetDevice == hostDevice) {
+    auto outChain = opLoweringState.debugTensorPrint(
+        chain, buffer, tensorSpec, printOp.getLabelAttr(),
+        printOp.getInput().getType());
+    loweringState.setCurrentExecuteChain(
+        cast<TypedValue<MEF::ChainType>>(outChain));
+    return success();
+  }
+
+  // If the device we are trying to print from is not the host, insert an
+  // explicit DtoH + sync for the buffer before printing using the host.
+  // This is a safe assumption since the is what happens in the device
+  // version of the primitive already
+  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
+  Value bufferSize =
+      opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
+  Value hostBuffer = opLoweringState.hostBufferAlloc(
+      cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
+      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()), sizeInBytes);
+  auto transferChain = opLoweringState.bufferTransferToHost(
+      chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
+      moTensorType);
+  auto outChain = opLoweringState.hostDebugTensorPrint(
+      transferChain, hostBuffer, tensorSpec, printOp.getLabelAttr());
   loweringState.setCurrentExecuteChain(
       cast<TypedValue<MEF::ChainType>>(outChain));
   return success();

@@ -641,6 +641,12 @@ struct MOOpLoweringState {
         ->debugTensorPrint(builder, loc, context, inChain, buffer, tensorSpec,
                            label);
   }
+  Value hostDebugTensorPrint(Value inChain, Value buffer,
+                             TypedValue<TensorSpecType> tensorSpec,
+                             StringAttr label) {
+    return loweringState.getHostBufferBuilder()->debugTensorPrint(
+        builder, loc, context, inChain, buffer, tensorSpec, label);
+  }
 
   Value bufferTransferFromHost(Value inChain,
                                TypedValue<MGP::DeviceBufferType> srcBuffer,
@@ -693,6 +699,15 @@ struct MOOpLoweringState {
                            Type moTensorType) {
     return getStorageBufferBuilder(moTensorType)
         ->bufferSetWithIndex(builder, loc, context, buffer, values);
+  }
+
+  Value hostBufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,
+                        uint64_t align,
+                        std::optional<uint64_t> staticSize = std::nullopt) {
+    auto deviceContext =
+        loweringState.getExecuteDevice(loweringState.getHostDevice());
+    return loweringState.getHostBufferBuilder()->bufferAlloc(
+        builder, loc, context, inChain, size, deviceContext, align, staticSize);
   }
 
   Value bufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,

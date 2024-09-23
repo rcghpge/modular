@@ -315,9 +315,7 @@ static void mgp_debug_tensor_print_cpu(
         runtime.context->get<DebugTensorPrintOptions>();
     if (!options)
       options = &defaultOptions;
-    std::string labelWithDevice = (Twine(*bLabel) + "_" + kCPULabel).str();
-    if (auto errOr =
-            options->printTensor(buffer.getBuffer(), spec, labelWithDevice))
+    if (auto errOr = options->printTensor(buffer.getBuffer(), spec, *bLabel))
       return std::move(outChain).setToError(errOr.takeError());
   }
   std::move(outChain).emplace();
