@@ -93,6 +93,11 @@ public:
   /// for registration.
   KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name);
 
+  /// Looks up the Mojo symbol of a registered, labeled kernel function using
+  /// the name that was used for registration and the function label.
+  KGEN::GeneratorOp getRegisteredMojoFunctionFor(StringRef name,
+                                                 StringRef functionLabel);
+
   /// Looks up and returns a mojo function as is.
   KGEN::GeneratorOp getMojoFunctionNamed(StringRef name);
 
@@ -117,12 +122,6 @@ public:
   bool kernelUsesKernelAPI(KGEN::GeneratorOp kernel);
 
 private:
-  /// Get the materialized mojo kernel. If the kernel is not materialized, the
-  /// materialization happens in place.
-  KGEN::GeneratorOp
-  getRegisteredMojoFunctionFor(StringRef name,
-                               llvm::StringMap<std::string> &mapping);
-
   /// Load the user libraries lazily.
   ErrorOrSuccess
   loadUserProvidedKernels(ArrayRef<std::string> kernelLibraryPaths);
@@ -164,11 +163,16 @@ private:
         });
   }
 
-  /// Hold the symbol name mapping for registered mojo kernels.
+  /// Hold the symbol name mapping for registered mojo kernels. With
+  /// struct-based mojo kernels, this will map to the `execute` method.
   llvm::StringMap<std::string> registeredMojoKernelSymbol;
 
-  /// Hold the symbol name mapping for registered mojo shape functions.
-  llvm::StringMap<std::string> registeredShapeFunctionSymbol;
+  /// Hold the registered, labeled functions that can be attached to a kernel.
+  /// For struct-based mojo kernels, this will map to labeled struct member
+  /// methods.
+  /// The outer map key is the kernel name. The inner map key is the
+  /// function label (example: `mogg.shape` will map to the `shape` method).
+  llvm::StringMap<llvm::StringMap<std::string>> registeredKernelFunctionSymbols;
 
   /// MLIR bytecode readers for lazy loading the mojo libraries. Each library
   /// has a dedicated reader.

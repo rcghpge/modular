@@ -141,12 +141,15 @@ populateMetadata(Operation *module,
     rawMojoKernel[op.getSymName()] = op;
 }
 
-KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
-    StringRef name, llvm::StringMap<std::string> &mapping) {
-  auto registeredFunction = mapping.find(name.str());
-  if (registeredFunction == mapping.end())
-    return nullptr;
-
+KGEN::GeneratorOp
+MojoLibraryAnalysis::getRegisteredMojoFunctionFor(StringRef name,
+                                                  StringRef functionLabel) {
+  auto registeredFunctions = registeredKernelFunctionSymbols.find(name);
+  if (registeredFunctions == registeredKernelFunctionSymbols.end())
+    return {};
+  auto registeredFunction = registeredFunctions->second.find(functionLabel);
+  if (registeredFunction == registeredFunctions->second.end())
+    return {};
   auto symbolName = registeredFunction->getValue();
   return getMojoFunctionNamed(symbolName);
 }
@@ -372,6 +375,13 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     return Error(Twine("failed to load user-provided kernels: ") +
                  loadError.getError());
 
+  auto registerKernelFunction = [&](StringRef name, StringRef label,
+                                    StringRef symName) {
+    if (!registeredKernelFunctionSymbols.contains(name.str()))
+      registeredKernelFunctionSymbols[name.str()] = {};
+    registeredKernelFunctionSymbols[name.str()][label.str()] = symName.str();
+  };
+
   // Iterate over the available generators and check if each matches a mo
   // operation.
   DenseMap<StringRef, SmallVector<Candidate>> candidates;
@@ -393,18 +403,29 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
         candidate.priority = intPriority.getInt();
         candidates[asString].push_back(candidate);
       }
-    } else if (auto kernelName = generator->getAttrOfType<StringAttr>(
-                   KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel)) {
+    }
+    if (auto kernelName = generator->getAttrOfType<StringAttr>(
+            KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel)) {
       Candidate candidate = {generator};
       candidate.priority = 0;
       candidates[kernelName.strref()].push_back(candidate);
-    } else if (auto regs = generator->getAttrOfType<ArrayAttr>(
-                   KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
+    }
+    if (auto regs = generator->getAttrOfType<ArrayAttr>(
+            KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
       for (StringRef name : regs.getAsValueRange<StringAttr>())
-        registeredShapeFunctionSymbol[name] = generator.getSymName();
-    } else if (auto name = generator->getAttrOfType<StringAttr>(
-                   KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
-      registeredShapeFunctionSymbol[name] = generator.getSymName();
+        registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel,
+                               generator.getSymName());
+    }
+    if (auto name = generator->getAttrOfType<StringAttr>(
+            KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
+      registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel,
+                             generator.getSymName());
+    }
+    if (auto name = generator->getAttrOfType<StringAttr>(
+            KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
+      registerKernelFunction(
+          name, KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel,
+          generator.getSymName());
     }
   }
 
@@ -500,12 +521,18 @@ Operation *MojoLibraryAnalysis::lookup(StringRef name) {
 
 KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) {
-  return getRegisteredMojoFunctionFor(name, registeredMojoKernelSymbol);
+  auto registeredFunction = registeredMojoKernelSymbol.find(name.str());
+  if (registeredFunction == registeredMojoKernelSymbol.end())
+    return nullptr;
+
+  auto symbolName = registeredFunction->getValue();
+  return getMojoFunctionNamed(symbolName);
 }
 
 KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) {
-  return getRegisteredMojoFunctionFor(name, registeredShapeFunctionSymbol);
+  return getRegisteredMojoFunctionFor(
+      name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
 }
 
 bool MojoLibraryAnalysis::kernelIsElementwise(KGEN::GeneratorOp kernel) {
