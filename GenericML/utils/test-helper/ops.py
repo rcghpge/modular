@@ -129,9 +129,6 @@ class NumpyImpl(CommonImpls):
     def log1p(self, x):
         return np.log1p(x)
 
-    def max(self, x, limit):
-        return np.maximum(x, limit)
-
     def min(self, x, limit):
         return np.minimum(x, limit)
 
@@ -220,9 +217,6 @@ class TFImpl(CommonImpls):
 
     def log1p(self, x):
         return tf.math.log1p(x)
-
-    def max(self, x, limit):
-        return tf.math.maximum(x, limit)
 
     def min(self, x, limit):
         return tf.math.minimum(x, limit)
