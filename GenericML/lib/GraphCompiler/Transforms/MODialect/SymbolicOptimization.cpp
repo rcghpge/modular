@@ -226,6 +226,8 @@ struct CommuteBroadcastWithFlatennedArgNonzero
 ///   flat_lhs = reshape(lhs) : ... -> tensor<[12, 2]>
 ///   res_2d   = matmul(flat_lhs, rhs) : ... -> tensor<[12, 3]>
 ///   res      = reshape(res_2d) : ... -> tensor<[4, 3, 3]>
+///
+/// An optional transpose on a 2-D `rhs` is also supported
 struct ConvertBatchMatmulToMatmulPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, BatchMatmulOp> {
   ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
@@ -236,6 +238,8 @@ struct ConvertBatchMatmulToMatmulPattern
                              DeviceAwareRewriter &rewriter) const override {
     Value input, weight;
     Operation *broadcast = nullptr;
+    Operation *transposeOp = nullptr;
+    // auto weightMaybeTransposed = m_Optional(m_Op<TransposeOp>(&transposeOp));
     auto weightBcastP =
         m_Op<Static::BroadcastToOp>(&broadcast, m_MOMatrix(m_Any(&weight)));
     if (!m_Op<BatchMatmulOp>(
@@ -1991,6 +1995,77 @@ struct SinkSqueezeLikeReshapeThroughTranspose
   }
 };
 
+// If the previous operation was a reshape which simply padded rank
+// it is possible to just broadcast directly. This can be done if the
+// padded 1-dims were done of the LHS of the shape (as this is how)
+// broadcasting is defined to pad dimensions.
+//
+// Example:
+// %input: !mo.tensor<[A, B, C], f32>
+// %reshape = mo.static.reshape(%input): !mo.tensor<[A, B, C], f32>
+//    -> !mo.tensor<[1, 1, A, B, C], f32>
+// %bcast = mo.static.broadcast_to(%reshape): !mo.tensor<[1, 1, A, B, C], f32>
+//    -> !mo.tensor<[10, 10, A, B, C], f32>
+//
+// ----->
+// %bcast = mo.static.broadcast_to(%input): !mo.tensor<[A, B, C], f32>
+//    -> !mo.tensor<[10, 10, A, B, C], f32>
+struct RemoveExtraneousPaddingReshapeWithBroadcast
+    : public DeviceAwareRewritePattern<OpRewritePattern,
+                                       Static::BroadcastToOp> {
+
+  RemoveExtraneousPaddingReshapeWithBroadcast(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(Static::BroadcastToOp op,
+                             DeviceAwareRewriter &rewriter) const override {
+
+    auto reshapeOp = op.getInput().getDefiningOp<Static::ReshapeOp>();
+    if (!reshapeOp)
+      return rewriter.notifyMatchFailure(
+          op, "operation is not preceded by static reshape.");
+
+    TensorType reshapeInputTy = reshapeOp.getInput().getType();
+    TensorType reshapeOutputTy = reshapeOp.getType();
+
+    if (!reshapeInputTy.hasRank() || !reshapeOutputTy.hasRank())
+      return rewriter.notifyMatchFailure(
+          reshapeOp, "Reshape is not statically ranked fully.");
+
+    int64_t inputRank = reshapeInputTy.getRank();
+    int64_t outputRank = reshapeOutputTy.getRank();
+    if (inputRank >= outputRank)
+      return rewriter.notifyMatchFailure(
+          reshapeOp, "Reshape is not padding dims, output rank <= input rank.");
+
+    // Check all dimensions are the same same for the reshape except for the
+    // padded ones.
+    for (int64_t dimOutput = 0; dimOutput < outputRank; dimOutput++) {
+      // If negative, means not part of original dimensions
+      int64_t dimInput = dimOutput - outputRank + inputRank;
+
+      if (dimInput < 0) {
+        if (!reshapeOutputTy.isIntegerDim(dimOutput)) {
+          return rewriter.notifyMatchFailure(
+              reshapeOp, "Cannot prove padding dimension is 1.");
+        }
+        if (reshapeOutputTy.getIntDim(dimOutput) != 1) {
+          return rewriter.notifyMatchFailure(reshapeOp,
+                                             "Padding dimension is not 1.");
+        }
+      } else if (reshapeInputTy.getDim(dimInput) !=
+                 reshapeOutputTy.getDim(dimOutput)) {
+        return rewriter.notifyMatchFailure(
+            reshapeOp, "Reshape is not only padding dimensions.");
+      }
+    }
+
+    rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(op, op.getType(),
+                                                       reshapeOp.getInput());
+    return success();
+  }
+};
 /// A pattern that detects binary operator where one operand is the result
 /// of either a transpose or static reshape and the other is ultimately
 /// the result of operations on solely constant values.
@@ -4513,6 +4588,7 @@ struct SymbolicOptimizationPass
             Static::ReshapeOp>,
         SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp<RebindOp>,
         SinkSqueezeLikeReshapeThroughTranspose,
+        RemoveExtraneousPaddingReshapeWithBroadcast,
         SwimReshapeThroughBinaryOpWithConstantSubtree,
         SwimTransposeThroughBinaryOpWithConstantSubtree>(context);
 
