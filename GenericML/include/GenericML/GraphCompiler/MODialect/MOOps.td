@@ -4343,6 +4343,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 
   let arguments = (ins Variadic<AnyType>:$operands,
                        StrAttr:$symbol,
+                       DefaultValuedAttr<StrAttr, "\"\"">:$function,
                        // List of operand indices and the device they belong on.
                        // If an operand index is not in this array, it depends
                        // on the default policy of device assignment.
