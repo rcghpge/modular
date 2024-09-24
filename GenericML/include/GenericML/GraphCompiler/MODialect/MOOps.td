@@ -4325,6 +4325,9 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     this operation. This kernel must be decorated with the appropriate decorator
     with the exact same symbol string.
 
+    The `function` attribute specifies which labeled function the operation
+    refers to. Examples: `mogg.shape`, `mogg.pytorch_fallback`.
+
     Example:
 
     ```mlir
