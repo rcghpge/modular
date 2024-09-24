@@ -176,6 +176,9 @@ static bool isMaybeConstantFoldable(Operation *op) {
   if (isa<MO::TransferOp>(op))
     return false;
 
+  if (isa<MO::ConstantExternalOp>(op))
+    return false;
+
   // Skip ops with parameterized shape
   auto findParamDeclRefAttr = [](KGEN::ParamDeclRefAttr paramRef) {
     return WalkResult::interrupt();
