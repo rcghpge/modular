@@ -228,6 +228,21 @@ struct CommuteBroadcastWithFlatennedArgNonzero
 ///   res      = reshape(res_2d) : ... -> tensor<[4, 3, 3]>
 ///
 /// An optional transpose on a 2-D `rhs` is also supported
+///
+/// Finally if it was detected the `rhs` is a product of a transpose, the
+/// transform will still fire with the transpose still being kept. Note
+/// we expect the transpose to come *after* the static broadcast in this
+/// scenario due to the aggressiveness of transpose sinking in this pass:
+///
+///   bcast = broadcast(rhs) : ... -> tensor<[4, 3, 2]>
+///   transpose = transpose(rhs) : ... -> tensor<[4, 2, 3]>
+///   res   = batch_matmul(lhs, transpose) : ... -> tensor<[4, 3, 3]>
+/// ===>
+///   transpose = transpose(rhs) : ... -> tensor<[2, 3]>
+///   flat_lhs = reshape(lhs) : ... -> tensor<[12, 2]>
+///   res_2d   = matmul(flat_lhs, transpose) : ... -> tensor<[12, 3]>
+///   res      = reshape(res_2d) : ... -> tensor<[4, 3, 3]>
+///
 struct ConvertBatchMatmulToMatmulPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, BatchMatmulOp> {
   ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
@@ -236,33 +251,66 @@ struct ConvertBatchMatmulToMatmulPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::BatchMatmulOp op,
                              DeviceAwareRewriter &rewriter) const override {
-    Value input, weight;
+    Value input, bcastedTensor;
     Operation *broadcast = nullptr;
-    Operation *transposeOp = nullptr;
-    // auto weightMaybeTransposed = m_Optional(m_Op<TransposeOp>(&transposeOp));
-    auto weightBcastP =
-        m_Op<Static::BroadcastToOp>(&broadcast, m_MOMatrix(m_Any(&weight)));
-    if (!m_Op<BatchMatmulOp>(
-             m_Any(&input),
-             m_Optional(m_Op<RebindOp>(rewriter.pushOp(), weightBcastP),
-                        weightBcastP))
+    Operation *transposeOpCapture = nullptr;
+    auto weightBcastP = m_Op<Static::BroadcastToOp>(
+        &broadcast, m_MOMatrix(m_Any(&bcastedTensor)));
+    auto weightMaybeTransposed = m_Optional(
+        m_Op<TransposeOp>(&transposeOpCapture, weightBcastP, m_Any()),
+        weightBcastP);
+
+    if (!m_Op<BatchMatmulOp>(m_Any(&input),
+                             m_Optional(m_Op<RebindOp>(rewriter.pushOp(),
+                                                       weightMaybeTransposed),
+                                        weightMaybeTransposed))
              .match(op))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
+
+    TransposeOp transposeOp;
+    // The transpose op is assumed to only be transposing the inner-most 2 dims
+    // affected by the matmul (non-batch dims). Verify this.
+    if (transposeOpCapture) {
+      transposeOp = cast<TransposeOp>(transposeOpCapture);
+      std::optional<SmallVector<int64_t>> maybeInts =
+          tryGetConstantIntVector(transposeOp.getPerm());
+
+      if (!maybeInts.has_value())
+        return rewriter.notifyMatchFailure(
+            transposeOp, "Transpose does not have static perm.");
+
+      SmallVector<int64_t> &transposePerm = maybeInts.value();
+      int64_t permSize = static_cast<int64_t>(transposePerm.size());
+      for (int64_t i = 0; i < permSize; i++) {
+        if (i < permSize - 2 && transposePerm[i] != i)
+          return rewriter.notifyMatchFailure(
+              transposeOp, "Transpose affects more than matmul dims.");
+
+        // Edge case handling identity permutation
+        if (i >= permSize - 2 && transposePerm[i] == i)
+          return rewriter.notifyMatchFailure(
+              transposeOp, "Transpose is a identity permutation.");
+      }
+    }
+
+    // weight refers to the RHS input of the batched_matmul.
+    Value weight = transposeOp ? transposeOp.getResult() : bcastedTensor;
 
     if (!input || !weight)
       return rewriter.notifyMatchFailure(op, "null input value");
     auto inputTy = cast<MO::TensorType>(input.getType());
+    auto bcastedTensorTy = cast<MO::TensorType>(bcastedTensor.getType());
     auto weightTy = cast<MO::TensorType>(weight.getType());
     auto broadcastTy = cast<MO::TensorType>(broadcast->getResult(0).getType());
     auto bmmTy = cast<MO::TensorType>(op->getResult(0).getType());
-    if (inputTy.hasUnknownShape() || weightTy.hasUnknownShape() ||
+    if (inputTy.hasUnknownShape() || bcastedTensorTy.hasUnknownShape() ||
         bmmTy.hasUnknownShape() || !bmmTy.hasRank()) {
       return rewriter.notifyMatchFailure(
           op, "ops aren't parameterized, can't rewrite");
     }
     ArrayRef<TypedAttr> outDims =
         broadcastTy.getDims().drop_front(broadcastTy.getRank() - 2);
-    ArrayRef<TypedAttr> inDims = weightTy.getDims();
+    ArrayRef<TypedAttr> inDims = bcastedTensorTy.getDims();
 
     if (!inDims.equals(outDims)) {
       return rewriter.notifyMatchFailure(op, "Broadcast not on batch axis");
@@ -288,11 +336,27 @@ struct ConvertBatchMatmulToMatmulPattern
 
     ArrayRef<TypedAttr> weightShape = weightTy.getDims();
     MO::TensorType matmulTy =
-        bmmTy.cloneWith(ShapeAttr::get({newShape[0], weightShape[1]}, shapeTy));
+        bmmTy.cloneWith(ShapeAttr::get({batch, weightShape.back()}, shapeTy));
 
-    Value matmul =
-        rewriter.create<MatmulOp>(op->getLoc(), matmulTy, reshape, weight)
-            .getResult();
+    Value matmul;
+    if (transposeOp) {
+      auto perm =
+          rewriter.create<ConstantOp>(op->getLoc(), SmallVector<int64_t>{1, 0});
+      TensorType bcastedTensorTy = cast<TensorType>(bcastedTensor.getType());
+      ArrayRef<TypedAttr> oldbcastedTensorShape = bcastedTensorTy.getDims();
+      SmallVector<TypedAttr> newTensorShape = {oldbcastedTensorShape[1],
+                                               oldbcastedTensorShape[0]};
+      auto newWeight = rewriter.create<TransposeOp>(
+          op->getLoc(), bcastedTensorTy.cloneWith(newTensorShape),
+          bcastedTensor, perm);
+      matmul =
+          rewriter.create<MatmulOp>(op->getLoc(), matmulTy, reshape, newWeight)
+              .getResult();
+    } else {
+      matmul =
+          rewriter.create<MatmulOp>(op->getLoc(), matmulTy, reshape, weight)
+              .getResult();
+    }
 
     rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, bmmTy, matmul);
 

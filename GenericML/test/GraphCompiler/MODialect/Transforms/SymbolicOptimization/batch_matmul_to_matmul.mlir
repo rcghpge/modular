@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s | FileCheck %s
+// RUN: mo-opt --symbolic-optimize %s | FileCheck %s --enable-var-scope
 
 
 // CHECK:      mo.graph @bmm_no_rebind(
@@ -133,4 +133,48 @@ mo.graph @bmm_batch_size_ones_mixed_precision(
 
   // CHECK-NEXT: mo.output %[[OUTPUT]] : !mo.tensor<[1, 1, 1, 2, 2], si32>
   mo.output %res : !mo.tensor<[1, 1, 1, 2, 2], si32>
+}
+
+// CHECK-LABEL: @bmm_with_transpose
+// CHECK: [[TRANSPOSE_RESULT:%.*]] = mo.transpose({{.*}}) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+// CHECK-NEXT: [[MATMUL_RESULT:%.*]] = mo.matmul({{%[0-9]+}}, [[TRANSPOSE_RESULT]]) : (!mo.tensor<[12, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[12, 3], f32>
+// CHECK-NEXT: [[OUTPUT:%.*]] = mo.static.reshape([[MATMUL_RESULT]]) : !mo.tensor<[12, 3], f32> -> !mo.tensor<[4, 3, 3], f32>
+// CHECK-NEXT: mo.output [[OUTPUT]] : !mo.tensor<[4, 3, 3], f32>
+mo.graph @bmm_with_transpose(
+  %input: !mo.tensor<[4, 3, 2], f32>,
+  %weight: !mo.tensor<[3, 2], f32>
+) -> (!mo.tensor<[4, 3, 3], f32>) {
+  %perm = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[3, 2], f32> -> !mo.tensor<[4, 3, 2], f32>
+  %transpose = mo.transpose(%weight_bcast, %perm) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 2, 3], f32>
+  %res = mo.batch_matmul(%input, %transpose) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[4, 2, 3], f32>) -> !mo.tensor<[4, 3, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3, 3], f32>
+}
+
+// CHECK-LABEL: @fail_bmm_not_const_perm
+// CHECK-NOT: mo.matmul
+// CHECK: mo.batch_matmul
+mo.graph @fail_bmm_not_const_perm(
+  %input: !mo.tensor<[4, 3, 2], f32>,
+  %weight: !mo.tensor<[2, 3], f32>,
+  %perm: !mo.tensor<[3], si64>
+) -> (!mo.tensor<[4, 3, 3], f32>) {
+  %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[4, 2, 3], f32>
+  %transpose = mo.transpose(%weight_bcast, %perm) : (!mo.tensor<[4, 2, 3], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 2, 3], f32>
+  %res = mo.batch_matmul(%input, %transpose) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[4, 2, 3], f32>) -> !mo.tensor<[4, 3, 3], f32>
+  mo.output %res : !mo.tensor<[4, 3, 3], f32>
+}
+
+// CHECK-LABEL: @fail_bmm_transpose_affects_batch_dim
+// CHECK-NOT: mo.matmul
+// CHECK: mo.batch_matmul
+mo.graph @fail_bmm_transpose_affects_batch_dim(
+  %input: !mo.tensor<[4, 4, 4], f32>,
+  %weight: !mo.tensor<[4, 4], f32>
+) -> (!mo.tensor<[4, 4, 4], f32>) {
+  %perm = mo.constant {value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[4, 4], f32> -> !mo.tensor<[4, 4, 4], f32>
+  %transpose = mo.transpose(%weight_bcast, %perm) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 4, 4], f32>
+  %res = mo.batch_matmul(%input, %transpose) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[4, 4, 4], f32>) -> !mo.tensor<[4, 4, 4], f32>
+  mo.output %res : !mo.tensor<[4, 4, 4], f32>
 }
