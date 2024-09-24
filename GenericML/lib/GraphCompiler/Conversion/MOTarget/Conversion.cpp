@@ -22,7 +22,7 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       // Reuses the same graph region
       MO::GraphOp, MO::OutputOp,
       // Constants
-      MO::ConstantOp,
+      MO::ConstantOp, MO::ConstantExternalOp,
       // Control flow
       MO::IfOp, MO::YieldOp, MO::WhileOp,
       // List operations
