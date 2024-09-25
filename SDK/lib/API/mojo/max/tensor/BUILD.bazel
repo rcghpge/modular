@@ -8,3 +8,12 @@ mojo_library(
         "//Kernels/mojo/extensibility/tensor_internal",
     ],
 )
+
+filegroup(
+    name = "tensor.doc_group",
+    srcs = [
+        ":tensor",
+    ],
+    output_group = "docs",
+    visibility = ["//visibility:public"],
+)

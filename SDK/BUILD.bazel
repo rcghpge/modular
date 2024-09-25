@@ -11,6 +11,27 @@ load(
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_pybind")
 
+_MOJO_LIBS = [
+    "compiler",
+    "max",
+    "tensor",
+    "tensor_utils",
+]
+
+pkg_files(
+    name = "docs",
+    srcs = [
+        "//SDK/lib/API/mojo/max/" + lib + ":" + lib + ".doc_group"
+        for lib in _MOJO_LIBS
+    ],
+    prefix = "SDK/docs",
+    renames = {
+        "//SDK/lib/API/mojo/max/" + lib + ":" + lib + ".doc_group": lib
+        for lib in _MOJO_LIBS
+    },
+    visibility = ["//visibility:public"],
+)
+
 modular_pybind_library(
     name = "DLPack",
     srcs = ["//SDK/lib/API/python:dlpack_srcs"],
@@ -135,7 +156,7 @@ driver_option_tablegen(
 )
 
 pkg_files(
-    name = "docs",
+    name = "man-pages",
     srcs = [
         ":BenchmarkOptions.man_files",
         ":VisualizeOptions.man_files",

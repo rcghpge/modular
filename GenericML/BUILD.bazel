@@ -5,6 +5,28 @@ load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 
 package(default_visibility = ["//visibility:public"])
 
+pkg_files(
+    name = "docs",
+    srcs = [
+        ":MGPDialect.doc",
+        ":MGPTransformsIncGen.doc",
+        ":MODialect.doc",
+        ":MOGGDialect.doc",
+        ":MOGGDialectPassesIncGen.doc",
+        ":MONameInputDimsPassIncGen.doc",
+        ":MOQDialect.doc",
+        ":MOQTransformsIncGen.doc",
+        ":MOSHDialect.doc",
+        ":MOToMOGGIncGen.doc",
+        ":MOToPrimitivesIncGen.doc",
+        ":MOTransformsIncGen.doc",
+        ":RMODialect.doc",
+        ":RMOTransformsIncGen.doc",
+        ":TransformsIncGen.doc",
+    ],
+    prefix = "GenericML/docs",
+)
+
 td_library(
     name = "InterfacesTdFiles",
     srcs = glob(["include/GenericML/Interfaces/*.td"]),
@@ -765,6 +787,24 @@ td_library(
         ":MODialectTdFiles",
         ":MOGGDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "MGPDialect.doc",
+    includes = ["include"],
+    tbl_outs = [(
+        [
+            "-gen-dialect-doc",
+            "-dialect=mgp",
+        ],
+        "include/GenericML/MGPDialect/MGPDialect.md",
+    )],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/MGPDialect/MGP.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        "//GraphRT:GRTTdFiles",
     ],
 )
 

@@ -22,14 +22,17 @@ mojo_library(
 )
 
 filegroup(
-    name = "docs-group",
-    srcs = [":max"],
+    name = "max.doc_group",
+    srcs = [
+        ":max",
+    ],
     output_group = "docs",
+    visibility = ["//visibility:public"],
 )
 
 pkg_files(
     name = "docs",
-    srcs = [":docs-group"],
+    srcs = [":max.doc_group"],
     strip_prefix = strip_prefix.from_pkg("max.docs"),
 )
 
