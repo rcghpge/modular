@@ -70,6 +70,16 @@ py_library(
 )
 
 py_library(
+    name = "max_pipelines",
+    srcs = ["//SDK/lib/API/python/max/pipelines"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//SDK/lib/API/python/max/pipelines",
+    ],
+)
+
+py_library(
     name = "max_serve",
     srcs = ["//SDK/lib/API/python/max/serve"],
     imports = ["."],
@@ -89,6 +99,7 @@ py_repl(
     deps = [
         ":max_engine",
         ":max_graph",
+        ":max_pipelines",
         ":max_serve",
     ],
 )

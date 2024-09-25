@@ -76,6 +76,7 @@ setup(
         "max._driver",
         "max.engine",
         "max._engine",
+        "max.pipelines",
         "max.serve",
     ],
     include_package_data=True,
