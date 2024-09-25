@@ -410,7 +410,7 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
 // CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]], [[D4]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["gather_shape"]<() -> [[D5:.*]], [[D6:.*]], [[D7:.*]]>(%[[INPUT]], %[[INDICES]], %[[AXIS]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.gather"]<() -> [[D5:.*]], [[D6:.*]], [[D7:.*]]>(%[[INPUT]], %[[INDICES]], %[[AXIS]])
 // CHECK-SAME:   {dataDeptTensors = [2 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>, !mo.tensor<[], si32>)
 //

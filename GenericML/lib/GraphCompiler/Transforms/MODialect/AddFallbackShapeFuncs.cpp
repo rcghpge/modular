@@ -528,7 +528,7 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 
 ErrorOrSuccess Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::GatherOp op) {
-  buildForOpResult(graph, builder, op, "gather_shape", op.getOperands(),
+  buildForOpResult(graph, builder, op, "mo.gather", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
