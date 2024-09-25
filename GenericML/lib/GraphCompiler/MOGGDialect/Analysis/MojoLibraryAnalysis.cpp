@@ -376,10 +376,13 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
                  loadError.getError());
 
   auto registerKernelFunction = [&](StringRef name, StringRef label,
-                                    StringRef symName) {
+                                    StringRef symName, bool override = true) {
     if (!registeredKernelFunctionSymbols.contains(name.str()))
       registeredKernelFunctionSymbols[name.str()] = {};
-    registeredKernelFunctionSymbols[name.str()][label.str()] = symName.str();
+
+    if (override ||
+        !registeredKernelFunctionSymbols[name.str()].contains(label.str()))
+      registeredKernelFunctionSymbols[name.str()][label.str()] = symName.str();
   };
 
   // Iterate over the available generators and check if each matches a mo
@@ -413,8 +416,10 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     if (auto regs = generator->getAttrOfType<ArrayAttr>(
             KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
       for (StringRef name : regs.getAsValueRange<StringAttr>())
+        // Don't override NDBuffer shape functions, to ensure new KernelAPI
+        // functions are used when available.
         registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel,
-                               generator.getSymName());
+                               generator.getSymName(), /*override=*/false);
     }
     if (auto name = generator->getAttrOfType<StringAttr>(
             KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
