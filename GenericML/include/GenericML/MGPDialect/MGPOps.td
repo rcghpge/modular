@@ -292,8 +292,7 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
                        UI64Attr:$cFunctionIndex,                      // 2
                        StrAttr:$dSummary,                             // 3
                        DefaultValuedAttr<BoolAttr, "false">:$eIsAsync,// 4
-                       DefaultValuedAttr<BoolAttr, "false">:$fHasCuda,// 5 // This should be removed once we have device context
-                       UI64Attr:$gCudaSlot                            // 6
+                       DefaultValuedAttr<BoolAttr, "false">:$fHasCuda// 5 // This should be removed once we have device context
                        );
   let results = (outs Variadic<AnyType>:$outResults);
 }
@@ -729,6 +728,45 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   }];
   let hasRegionVerifier = 1;
   let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// RuntimeCreateOp
+//===----------------------------------------------------------------------===//
+
+def RuntimeCreateOp : MGP_Op<"runtime.create", [
+    DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,]> {
+  let summary = "Creates a runtime to coordinate execution.";
+  let description = [{
+    Creates a runtime within an `!mgp.context` slot.
+
+    Note that this operation accepts and returns `!mef.chain`s since it is
+    part of device setup on the host.
+
+    Example:
+    ```mlir
+      // Establish a runtime in slot 5.
+      %ch0 : !mef.chain
+      %ctx : !mgp.context
+      %ch1 = mgp.runtime.create %ch0, %ctx[5]
+      %ch1 : !mef.chain
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aRuntimeSlot);         // 1
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aRuntimeSlot `]` attr-dict
+  }];
+
+  let extraClassDefinition = [{
+    uint64_t RuntimeCreateOp::getSlot() { return getARuntimeSlot(); }
+
+  }];
 }
 
 include "GenericML/MGPDialect/MGPDeviceOps.td"

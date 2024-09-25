@@ -45,49 +45,6 @@ TensorBufferRef createBorrowedSlice(TensorBufferRef &borroweBufferRef,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.runtime.create.cpu
-//===----------------------------------------------------------------------===//
-
-void mgp_runtime_create_cpu(Chain inChain, StateContext &theContext,
-                            Result<Chain> outChain,
-                            MEFAttr<uint64_t> aRuntimeSlot,
-                            MEFAttr<uint64_t> bDeviceId, Runtime &runtime) {
-  // Establish an execution engine, to be shared amongst all loaded models
-  // across all models using this runtime.
-  //
-  // TODO(#30647): Currently there's no garbage collection of dylibs loaded into
-  //               this engine.
-  ErrorOr<KGEN::ExecutionEngine *> engineOr =
-      runtime.context->createIfMissing<KGEN::ExecutionEngine>(
-          [&]() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
-            // Initialize the host target.
-            llvm::InitializeNativeTarget();
-            llvm::InitializeNativeTargetAsmParser();
-            llvm::InitializeNativeTargetAsmPrinter();
-            auto targetMachineOr = getTargetMachineForHost();
-            if (targetMachineOr.isError())
-              return targetMachineOr.takeError();
-
-            // Create the execution engine.
-            KGEN::ExecutionEngineOptions options;
-            options.registerPerfPlugins =
-                runtime.getProfilerDebuginfo() ==
-                RuntimeOptions::ProfilerDebuginfo::kPerfProfiler;
-            return KGEN::ExecutionEngine::createWithStandardLayers(
-                std::move(options), **targetMachineOr);
-          });
-
-  if (engineOr.isError())
-    return std::move(outChain).setToError(engineOr.takeError());
-
-  theContext.emplaceStateSlot<KernelExecutionState>(
-      static_cast<size_t>(*aRuntimeSlot),
-      /*numBuffers=*/0, *engineOr);
-
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.module.load.cpu
 //===----------------------------------------------------------------------===//
 
@@ -340,7 +297,6 @@ static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
-  ADD_PRIMITIVE(registry, "mgp.runtime.create.cpu", mgp_runtime_create_cpu);
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.cpu", mgp_buffer_constant_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);

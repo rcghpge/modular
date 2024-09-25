@@ -32,6 +32,7 @@
 
 using namespace M;
 using namespace M::GML;
+using namespace M::MGP;
 
 //===----------------------------------------------------------------------===//
 // Helpers
@@ -186,8 +187,8 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
                     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
                     MEFAttr<uint64_t> cFunctionIndex,
                     MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
-                    MEFAttr<bool> fHasCuda, MEFAttr<uint64_t> gCudaSlot,
-                    Runtime &runtime, EncodedLocation loc) {
+                    MEFAttr<bool> fHasCuda, Runtime &runtime,
+                    EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
@@ -207,9 +208,8 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
        outResults = outResults.copyAsVector(),
        // std::move(operands) does not work, must use takeAsVector
        takenOperands = operands.takeAsVector(), summary = dSummary->str(),
-       hasCuda = fHasCuda.get(), cudaSlot = gCudaSlot.get(),
-       profilerEntry = std::move(profilerEntry), runtimePtr = runtimePtr,
-       deviceContext = std::move(deviceContext),
+       hasCuda = fHasCuda.get(), profilerEntry = std::move(profilerEntry),
+       runtimePtr = runtimePtr, deviceContext = std::move(deviceContext),
        loc = std::move(loc)]() mutable {
         void *deviceContextPtr = deviceContext.getPointerToData();
         std::vector<void *> kernelInputs;
@@ -615,10 +615,53 @@ static void mgp_nop(RemainingArguments operands, Result<Chain> outChain) {
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.runtime.create
+//===----------------------------------------------------------------------===//
+
+void mgp_runtime_create(Chain inChain, StateContext &theContext,
+                        Result<Chain> outChain, MEFAttr<uint64_t> aRuntimeSlot,
+                        Runtime &runtime) {
+  // Establish an execution engine, to be shared amongst all loaded models
+  // across all models using this runtime.
+  //
+  // TODO(#30647): Currently there's no garbage collection of dylibs loaded into
+  //               this engine.
+  ErrorOr<KGEN::ExecutionEngine *> engineOr =
+      runtime.context->createIfMissing<KGEN::ExecutionEngine>(
+          [&]() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
+            // Initialize the host target.
+            llvm::InitializeNativeTarget();
+            llvm::InitializeNativeTargetAsmParser();
+            llvm::InitializeNativeTargetAsmPrinter();
+            auto targetMachineOr = getTargetMachineForHost();
+            if (targetMachineOr.isError())
+              return targetMachineOr.takeError();
+
+            // Create the execution engine.
+            KGEN::ExecutionEngineOptions options;
+            options.registerPerfPlugins =
+                runtime.getProfilerDebuginfo() ==
+                M::AsyncRT::RuntimeOptions::ProfilerDebuginfo::kPerfProfiler;
+            return KGEN::ExecutionEngine::createWithStandardLayers(
+                std::move(options), **targetMachineOr);
+          });
+
+  if (engineOr.isError())
+    return std::move(outChain).setToError(engineOr.takeError());
+
+  theContext.emplaceStateSlot<KernelExecutionState>(
+      static_cast<size_t>(*aRuntimeSlot),
+      /*numBuffers=*/0, *engineOr);
+
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // registerMGPPrimitives
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
+  ADD_PRIMITIVE(registry, "mgp.runtime.create", mgp_runtime_create);
   ADD_PRIMITIVE(registry, "mgp.buffer.plan", mgp_buffer_plan);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);

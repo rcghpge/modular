@@ -2,7 +2,7 @@
 // RUN: mo-opt %s --allow-unregistered-dialect
 
 mgp.model @upsideDown : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
-  %2 = mgp.runtime.create %0, %1[1] device<"cpu", 0>
+  %2 = mgp.runtime.create %0, %1[1]
   %1 = mgp.context.create 1
   %0 = grt.chain.create ()
   mef.output %2, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">

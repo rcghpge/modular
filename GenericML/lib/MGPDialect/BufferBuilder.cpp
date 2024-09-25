@@ -48,15 +48,20 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
     return WalkResult::interrupt();
   });
 
-  // Create a runtime for the device.
-  auto runtime =
-      builder.create<MGP::RuntimeCreateOp>(loc,
-                                           /*inChain=*/inChain,
-                                           /*theContext=*/context,
-                                           /*aRuntimeSlot=*/runtimeSlot,
-                                           /*cDevice=*/device);
-  return runtime.getOutChain();
+  // Create a runtime for the host device.
+  if (this->hostBufferBuilder == this) {
+    auto runtime =
+        builder.create<MGP::RuntimeCreateOp>(loc,
+                                             /*inChain=*/inChain,
+                                             /*theContext=*/context,
+                                             /*aRuntimeSlot=*/runtimeSlot);
+    ;
+    return runtime.getOutChain();
+  }
+  return inChain;
 }
+
+DeviceRefAttr MGPBufferBuilder::getDevice() { return device; }
 
 void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,
                                         MGPBufferBuilder *hostBufferBuilder) {
@@ -65,8 +70,6 @@ void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,
   // Recover the runtime slot index from the unique mgp.runtime.create op
   // for this device.
   modelOp.walk([&](RuntimeCreateOp runtimeCreateOp) {
-    if (runtimeCreateOp.getBDevice() != device)
-      return WalkResult::skip();
     runtimeSlot = runtimeCreateOp.getARuntimeSlot();
     return WalkResult::interrupt();
   });
@@ -94,8 +97,6 @@ TypedValue<ContextType> MGPBufferBuilder::getContextForOp(Operation *op) {
     return hasSlotOp.getTheContext();
   return BufferBuilder::getContextForOp(op);
 }
-
-DeviceRefAttr MGPBufferBuilder::getDevice() { return device; }
 
 Value MGPBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
                                        TypedValue<MEF::ChainType> inChain,

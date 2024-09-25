@@ -97,8 +97,7 @@ struct LowerMOGGRegionCompilesPass
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
                                 MOGG::ExecuteCompiledOp &oldKernel,
-                                Value deviceContext,
-                                std::optional<size_t> cuda_runtime_slot);
+                                Value deviceContext);
   void runOnOperation() override;
   DeviceContextState deviceContexts;
 };
@@ -107,8 +106,7 @@ struct LowerMOGGRegionCompilesPass
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
     size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &oldKernel, Value deviceContext,
-    std::optional<size_t> cuda_runtime_slot) {
+    MOGG::ExecuteCompiledOp &oldKernel, Value deviceContext) {
   auto ctx = oldKernel.getOperation()->getContext();
   SmallVector<Value> outputs;
   SmallVector<Type> resultTypes;
@@ -126,8 +124,7 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
       oldKernel.getLoc(), resultTypes, context, deviceContext,
       oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
       oldKernel.getSummary(), oldKernel.getIsAsync(),
-      oldKernel.getDeviceRef().getLabel() == kCUDALabel,
-      cuda_runtime_slot.value_or(0));
+      oldKernel.getDeviceRef().getLabel() == kCUDALabel);
 
   for (auto [idx, result] : llvm::enumerate(outputs))
     result.replaceAllUsesWith(newExecuteOp.getResult(idx));
@@ -162,11 +159,6 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // need to make sure we use and count the right one for moduleIndex
     const auto hostDevice = DeviceRefAttr::get(ctx, kCPULabel, 0);
 
-    // TODO: (GRA-831) Remove cudaDevice and cuda_runtime_slot from
-    // generic.execute once device_context plumbed
-    const auto cudaDevice = DeviceRefAttr::get(ctx, kCUDALabel, 0);
-    std::optional<size_t> cuda_runtime_slot;
-
     // Collect the chains for all module load and runtime creates.
     SmallVector<Value> moduleLoadChains;
 
@@ -180,13 +172,11 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     llvm::SmallDenseMap<DeviceRefAttr, uint64_t> deviceModuleIndex;
     for (auto op : init.getOps<MGP::RuntimeCreateOp>()) {
       moduleLoadChains.push_back(op.getResult());
-      lastDeviceRuntimeOp[op.getDevice()] = op;
-      deviceModuleIndex[op.getDevice()] = 0;
+      lastDeviceRuntimeOp[hostDevice] = op;
+      deviceModuleIndex[hostDevice] = 0;
     }
     deviceContexts.init(model);
 
-    if (lastDeviceRuntimeOp.contains(cudaDevice))
-      cuda_runtime_slot = lastDeviceRuntimeOp[cudaDevice].getSlot();
     for (auto op : init.getOps<MGP::ModuleLoadOp>()) {
       moduleLoadChains.push_back(op.getResult());
       lastDeviceModuleLoadOp[op.getDevice()] = op;
@@ -280,7 +270,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           lastDeviceRuntimeOp[hostDevice].getSlot(),
           deviceModuleIndex[hostDevice],
           deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
-          inDeviceContext, cuda_runtime_slot);
+          inDeviceContext);
       // Since this execute op created the deviceContext, we should update the
       // value mapping.
       if (isCreator)
@@ -310,7 +300,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           builder, executeContext, lastDeviceRuntimeOp[hostDevice].getSlot(),
           deviceModuleIndex[hostDevice],
           deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
-          inDeviceContext, cuda_runtime_slot);
+          inDeviceContext);
     });
     // The introduction of generic execute may introduce unbound free-values.
     // Use fixupIsolatedFromAbove to rebind these.

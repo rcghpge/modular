@@ -138,55 +138,6 @@ class MGP_DeviceOp<string mnemonic, list<Trait> traits = []> :
 def MGP_OptDeviceRefAttr :
   DefaultValuedAttr<M_DeviceRefAttr, "kCPULabel, 0">;
 
-//===----------------------------------------------------------------------===//
-// RuntimeCreateOp
-//===----------------------------------------------------------------------===//
-
-def RuntimeCreateOp : MGP_DeviceOp<"runtime.create"> {
-  let summary = "Creates a runtime to coordinate execution on a particular "
-                "device.";
-  let description = [{
-    Creates a device-specific runtime within an `!mgp.context` slot appropriate
-    for the `#M.device_ref` attribute (the 'runtime slot').
-
-    All subsequent operations for this device must reference this runtime by the
-    same slot.
-
-    There is no universal representation for device runtimes in the host C++
-    runtime. Depending on device the op may accept additional attributes.
-
-    Note that this operation accepts and returns `!mef.chain`s since it is
-    part of device setup on the host.
-
-    Example:
-    ```mlir
-      // Establish a CUDA runtime in slot 5 using the gpu returned
-      // by cuDevice(3).
-      %ch0 : !mef.chain
-      %ctx : !mgp.context
-      %ch1 = mgp.runtime.create %ch0, %ctx[5] device <"cuda", 3>
-      %ch1 : !mef.chain
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,         // 1
-                       MGP_OptDeviceRefAttr:$bDevice); // 2
-  let results = (outs ChainType:$outChain);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]`
-    ( `device`  $bDevice^ )? attr-dict
-  }];
-
-  let extraClassDefinition = [{
-    uint64_t RuntimeCreateOp::getSlot() { return getARuntimeSlot(); }
-
-    M::DeviceRefAttr RuntimeCreateOp::getDevice() { return getBDevice(); }
-  }];
-}
 
 
 //===----------------------------------------------------------------------===//
@@ -499,7 +450,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
                        MGP_OptDeviceRefAttr:$cDevice);                         // 2
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $deviceContext 
+    $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $deviceContext
     ( `,` `align` $bRawAlign^ )? attr-dict
     `:` custom<BufferTypeToDevice>(
           type($outBuffer), $cDevice, type($inChain)) `,` qualified(type($deviceContext))
@@ -1378,7 +1329,7 @@ def MGP_SyncOp : MGP_DeviceOp<"sync",
 
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       MGP_OpaqueType:$deviceContext, 
+                       MGP_OpaqueType:$deviceContext,
                        UI64Attr:$aRuntimeSlot,                       // 0
                        MGP_OptDeviceRefAttr:$bDevice);               // 1
   let results = (outs ChainType: $outChain);
