@@ -971,6 +971,12 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
     return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, no, yes);
   };
 
+  auto ifZero = [&](Value check, Value yes, Value no) -> Value {
+    auto cond = opLoweringState.create<mlir::index::CmpOp>(
+        mlir::index::IndexCmpPredicate::EQ, check, constant(0));
+    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, yes, no);
+  };
+
   Value inChain =
       opLoweringState.getGuardChain(loweringState.getExecuteChain());
 
@@ -996,41 +1002,51 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   auto dataType = tensorType.getDtype();
   Value elemSize = constant(dataType.getSizeInBytes());
 
+  Value bufferSizeBytes = opLoweringState.create<MGP::CpuTensorSpecSizeOp>(
+      bufferizedInput.tensorSpec);
+  Value bufferSizeElems = div(bufferSizeBytes, elemSize);
+
   // Get size of the outermost dimension either as static constant or from
   // dims.dynamic op
   Value outermostDim;
+  Value outerStride;
   auto outermostDimStatic =
       bufferizedInput.tensorSpec.getType().getDims().front();
-  if (outermostDimStatic)
+  if (outermostDimStatic) {
     outermostDim = constant(outermostDimStatic.value());
-  else {
+    outerStride = div(bufferSizeElems, outermostDim);
+  } else {
     auto dynamicDims = opLoweringState.create<MGP::CpuTensorSpecDimsDynamicOp>(
         /*spec=*/bufferizedInput.tensorSpec,
         /*rawDims=*/bufferizedInput.tensorSpec.getType().getRawDims());
 
     outermostDim = dynamicDims->getResults().front();
+    // Prevent divide-by-zero
+    Value outermostDimOrOne =
+        opLoweringState.create<mlir::index::MaxSOp>(outermostDim, constant(1));
+    outerStride = div(bufferSizeElems, outermostDimOrOne);
+    outerStride = ifZero(outermostDim, outermostDim, outerStride);
   }
 
-  // Calculate stride assuming contiguous memory layout
-  // outerStride = (bufferSizeBytes / elemSize) / outermostDim
-  Value bufferSizeBytes = opLoweringState.create<MGP::CpuTensorSpecSizeOp>(
-      bufferizedInput.tensorSpec);
-  Value bufferSizeElems = div(bufferSizeBytes, elemSize);
-  Value outerStride = div(bufferSizeElems, outermostDim);
+  // If start or stop are negative, add outermostDim to make them positive
+  // start = start < 0 ? (start + outermostDim) : start
+  // stop = stop < 0 ? (stop + outermostDim) : stop
+  auto startAdded = add(start, outermostDim);
+  auto stopAdded = add(stop, outermostDim);
+  start = ifPositive(start, start, startAdded);
+  stop = ifPositive(stop, stop, stopAdded);
+
+  // Clamp start/stop indices to dimension size
+  // start = min(start, outermostDim)
+  // stop = min(stop, outermostDim)
+  start = opLoweringState.create<mlir::index::MinSOp>(start, outermostDim);
+  stop = opLoweringState.create<mlir::index::MinSOp>(stop, outermostDim);
 
   // Multiply start/stop by stride
   // start *= outerStride
   // stop *= outerStride
   start = mul(start, outerStride);
   stop = mul(stop, outerStride);
-
-  // If start or stop are negative, add bufferSize elems to make them positive
-  // start = start < 0 ? (start + bufferSizeElems) : start
-  // stop = stop < 0 ? (stop + bufferSizeElems) : stop
-  auto startAdded = add(start, bufferSizeElems);
-  auto stopAdded = add(stop, bufferSizeElems);
-  start = ifPositive(start, start, startAdded);
-  stop = ifPositive(stop, stop, stopAdded);
 
   // MGP buffer slice takes in a size, not a stop, so calculate the size
   // size = stop - start = stop + (-1 * start)

@@ -81,15 +81,75 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
 
     shape[i] = slice.getType().getDim(i);
 
-    // Create the new slice along just one dimension.
-    SliceDimOp newSlice = builder.create<SliceDimOp>(
-        slice.getLoc(), slice.getType().cloneWith(shape), lastVal, axis,
-        start.getResult(), stop.getResult(), step.getResult());
+    auto devRef = slice.getDeviceRef();
 
-    if (auto devRef = slice.getDeviceRef())
-      newSlice.setDeviceRef(devRef);
+    auto tryCreateSliceDimOuter = [&]() {
+      // In some special cases (for example axis=0, step=1, we can lower to a
+      // simple pointer offset implemented by SliceDimOuter)
 
-    lastVal = newSlice.getResult();
+      // This can only lower to an offset if all leading dimensions are 1
+      for (int j = 0; j < asInt; ++j) {
+        if (inputType.getIntDim(j) != 1)
+          return false;
+      }
+
+      // Give up if the step doesn't come from a constant
+      auto constStep = step.getInput().getDefiningOp<ConstantOp>();
+      if (!constStep)
+        return false;
+
+      auto maybeStepValue = tryGetConstantBlob<int64_t>(constStep.getValue(),
+                                                        stepScalar.getDtype());
+      // Give up if we can't get the step values
+      if (!maybeStepValue)
+        return false;
+
+      // Give up if any steps leading up to and including this axis are not 1
+      for (int j = 0; j <= asInt; ++j) {
+        if (maybeStepValue.value()[j] != 1)
+          return false;
+      }
+
+      auto lastTy = cast<TensorType>(lastVal.getType());
+
+      // Remove the leading singleton dimensions
+      auto squeezedInputTy =
+          lastTy.cloneWith(inputType.getDims().drop_front(i));
+      lastVal = builder.createOrFold<Static::ReshapeOp>(
+          slice.getLoc(), squeezedInputTy, lastVal);
+
+      ArrayRef<TypedAttr> shapeRef(shape);
+      auto squeezedSliceTy = slice.getType().cloneWith(shapeRef.drop_front(i));
+
+      // Create SliceDimOuter op now that the sliced dimension is the outermost
+      SliceDimOuterOp newSlice = builder.create<SliceDimOuterOp>(
+          slice.getLoc(), squeezedSliceTy, lastVal, start.getResult(),
+          stop.getResult());
+
+      if (devRef)
+        newSlice.setDeviceRef(devRef);
+
+      lastVal = newSlice.getResult();
+
+      // Restore the leading singleton dimensions
+      auto unsqueezedSliceTy = slice.getType().cloneWith(shape);
+      lastVal = builder.createOrFold<Static::ReshapeOp>(
+          slice.getLoc(), unsqueezedSliceTy, lastVal);
+
+      return true;
+    };
+
+    if (!tryCreateSliceDimOuter()) {
+      // Create the new slice along just one dimension.
+      SliceDimOp newSlice = builder.create<SliceDimOp>(
+          slice.getLoc(), slice.getType().cloneWith(shape), lastVal, axis,
+          start.getResult(), stop.getResult(), step.getResult());
+
+      if (devRef)
+        newSlice.setDeviceRef(devRef);
+
+      lastVal = newSlice.getResult();
+    }
   }
 
   slice.replaceAllUsesWith(lastVal);
