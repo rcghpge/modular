@@ -102,6 +102,10 @@ public:
                                  uint32_t blockZ,
                                  const CUDADeviceFunctionArguments &args,
                                  CUstream stream) const;
+  ErrorOrSuccess cuda_callKernelDirect(uint32_t gridX, uint32_t gridY,
+                                       uint32_t gridZ, uint32_t blockX,
+                                       uint32_t blockY, uint32_t blockZ,
+                                       void **args, CUstream stream) const;
 
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
 
@@ -144,6 +148,12 @@ public:
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                       uint32_t blockY, uint32_t blockZ,
                       const DeviceFunction::Arguments &args) const override;
+
+  ErrorOrSuccess enqueueFunctionExecDirect(const DeviceFunction &func,
+                                           uint32_t gridX, uint32_t gridY,
+                                           uint32_t gridZ, uint32_t blockX,
+                                           uint32_t blockY, uint32_t blockZ,
+                                           void **args) const override;
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;

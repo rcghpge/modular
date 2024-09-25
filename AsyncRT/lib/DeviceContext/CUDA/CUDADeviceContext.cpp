@@ -152,6 +152,17 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
   return success();
 }
 
+ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
+    uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
+    uint32_t blockY, uint32_t blockZ, void **args, CUstream stream) const {
+  const auto &cuda_context = CUDADeviceContext::cast(context());
+
+  CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernel(
+      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, 0, stream, args,
+      nullptr));
+  return success();
+}
+
 const std::string &CUDADeviceFunction::name() const { return name_; }
 
 const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
@@ -269,6 +280,15 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
   return cuda_func.cuda_callKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,
                                    CUDADeviceFunctionArguments::cast(args),
                                    stream_);
+}
+
+ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
+    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, void **args) const {
+  const auto &cuda_func = CUDADeviceFunction::cast(func);
+
+  return cuda_func.cuda_callKernelDirect(gridX, gridY, gridZ, blockX, blockY,
+                                         blockZ, args, stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {

@@ -114,3 +114,19 @@ AsyncRT_DeviceContext_DtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *src) {
   return check_success(ctx->enqueueCopyDeviceToDevice(*dst, *src));
 }
+
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_compileFunction(
+    const DeviceFunction **result, const DeviceContext *ctx,
+    const char *function_name, const void *data) {
+  DeviceFunction::SignatureBuilder sig;
+  return check_ref(result, ctx->compileFunction(function_name, sig, data));
+}
+
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
+    const DeviceContext *ctx, const DeviceFunction *func, uint32_t gridX,
+    uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,
+    uint32_t blockZ, void **args) {
+  assert((ctx == &func->context()) && "ctx not matching func");
+  return check_success(ctx->enqueueFunctionExecDirect(
+      *func, gridX, gridY, gridZ, blockX, blockY, blockZ, args));
+}

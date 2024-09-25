@@ -192,6 +192,11 @@ public:
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                       uint32_t blockY, uint32_t blockZ,
                       const DeviceFunction::Arguments &args) const = 0;
+  virtual ErrorOrSuccess
+  enqueueFunctionExecDirect(const DeviceFunction &func, uint32_t gridX,
+                            uint32_t gridY, uint32_t gridZ, uint32_t blockX,
+                            uint32_t blockY, uint32_t blockZ,
+                            void **args) const = 0;
 
   // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;
