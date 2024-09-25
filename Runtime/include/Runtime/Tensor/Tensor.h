@@ -23,6 +23,7 @@ enum class ResultOutputStyle {
   kFull,    // Display all the elements of result
   kBinary,  // Save results to .bin
   kNone,    // Do not display any tensor details
+  kBinaryMaxCheckpoint, // Save results to .max (saves tensor shape and dtype).
 };
 
 /// This prints the specified tensor data to stdout.

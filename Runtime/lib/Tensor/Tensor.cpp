@@ -349,6 +349,7 @@ ErrorOrSuccess M::printTensor(raw_ostream &os, const void *srcPtr,
   case ResultOutputStyle::kCompact:
     return printTensorCompact(os, srcPtr, spec, llvm::FloatStyle::Fixed, 4);
   case ResultOutputStyle::kBinary:
+  case ResultOutputStyle::kBinaryMaxCheckpoint:
   case ResultOutputStyle::kNone:
 
     // No-op.
