@@ -171,6 +171,10 @@ private:
           // PyTorch
           clEnumValN(FileFormat::kPTPickle, "torchscript",
                      "Input is a torchscript module file"),
+          clEnumValN(FileFormat::kTorchscriptModule, "torchscript-module",
+                     "Input is a torchscript module"),
+          clEnumValN(FileFormat::kTorchscriptFunction, "torchscript-function",
+                     "Input is a torchscript function"),
           clEnumValN(FileFormat::kTorchDialect, "torch",
                      "Input is a torch dialect file"),
           clEnumValN(FileFormat::kTorchATenDialect, "torch-aten",
