@@ -87,6 +87,13 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
       // In some special cases (for example axis=0, step=1, we can lower to a
       // simple pointer offset implemented by SliceDimOuter)
 
+      // We don't want to do this if the input is a view, since we don't want to
+      // block view fusion
+      Operation *definingOp = slice.getInput().getDefiningOp();
+      if (definingOp &&
+          isa<BroadcastToOp, TransposeOp, SliceOp, SliceDimOp>(definingOp))
+        return false;
+
       // This can only lower to an offset if all leading dimensions are 1
       for (int j = 0; j < asInt; ++j) {
         if (inputType.getIntDim(j) != 1)
