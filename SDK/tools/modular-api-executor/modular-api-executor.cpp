@@ -5,8 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/Runtime/Algorithms.h"
+#include "AsyncRT/Runtime/Utils.h"
 #include "AsyncRT/Support/FileLocationDecoder.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
+#include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Driver/Utils.h"
 #include "GenericML/Support/FormatYAML.h"
