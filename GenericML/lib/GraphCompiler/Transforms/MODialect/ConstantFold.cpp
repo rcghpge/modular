@@ -372,10 +372,16 @@ executeModel(MLIRContext *ctx, const Model *model,
 
   auto executableModel = executableModelOr.takeValue();
   auto setupErrorOrSuccess = executableModel->waitForModelSetup();
-  if (setupErrorOrSuccess.isError())
-    return AsyncRT::EncodedDiagnostic(
-        Error("Model setup failed, not ready for execution"),
-        model->getLocation().copy());
+  if (setupErrorOrSuccess.isError()) {
+    Error error("Model setup failed, not ready for execution"
+#ifndef MODULAR_PRODUCTION
+                ".  Modular internal detail: " +
+                Twine(setupErrorOrSuccess.getError())
+#endif
+    );
+    return AsyncRT::EncodedDiagnostic(std::move(error),
+                                      model->getLocation().copy());
+  }
 
   SmallVector<AnyAsyncValueRef> inputTensorsInMEFIndexOrder;
   for (const Subgraph &subgraph : subgraphsInfo.subgraphs) {
