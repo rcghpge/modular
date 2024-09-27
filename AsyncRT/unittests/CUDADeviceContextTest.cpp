@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 
 using namespace M::AsyncRT;
 using M::ErrorOr;
@@ -25,6 +26,14 @@ TEST(CUDADeviceContextTest, Smoke) {
 
   std::string device_name = ctx->device().name();
   EXPECT_NE(device_name.find("NVIDIA"), std::string::npos) << device_name;
+}
+
+TEST(CUDADeviceContextTest, NumDevices) {
+  ErrorOr<int> err_num = Device::numberOfDevices("cuda");
+  ASSERT_FALSE(err_num) << err_num.getError() << "\n";
+  EXPECT_GT(err_num.get(), 0);
+  EXPECT_LT(err_num.get(), 16);
+  std::cerr << "Number of CUDA devices: " << err_num.get() << "\n";
 }
 
 TEST(CUDADeviceContextTest, DeviceBuffers) {
@@ -54,7 +63,7 @@ TEST(CUDADeviceContextTest, DeviceBuffers) {
       'E',
   };
 
-  const size_t alloc_len = 256;
+  const int alloc_len = 256;
 
   ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
   EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
@@ -71,11 +80,15 @@ TEST(CUDADeviceContextTest, DeviceBuffers) {
   DeviceBufferRef c_buf = std::move(err_ref.get());
   EXPECT_TRUE(c_buf);
 
-  void *d_ptr = malloc(256);
+  char *d_ptr = static_cast<char *>(malloc(alloc_len));
   EXPECT_NE(d_ptr, nullptr);
+  // Initialize with known bad values.
+  for (int i = 0; i < alloc_len; i++) {
+    d_ptr[i] = -static_cast<char>((7 + i) & 127);
+  }
 
   // Copy between different buffers.
-  memcpy(a_ptr, check_data, 256);
+  memcpy(a_ptr, check_data, alloc_len);
   ErrorOrSuccess err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
   EXPECT_FALSE(err) << err.getError() << "\n";
   err = ctx->enqueueCopyDeviceToDevice(*c_buf, *b_buf);
@@ -87,7 +100,7 @@ TEST(CUDADeviceContextTest, DeviceBuffers) {
   err = ctx->synchronize();
   EXPECT_FALSE(err) << err.getError() << "\n";
 
-  EXPECT_EQ(memcmp(d_ptr, check_data, 256), 0);
+  EXPECT_EQ(memcmp(d_ptr, check_data, alloc_len), 0);
 
   free(d_ptr);
   err = ctx->free_host(a_ptr);
@@ -238,9 +251,6 @@ $L__BB0_2:
   EXPECT_FALSE(err) << err.getError() << "\n";
 
   for (size_t i = 0; i < length; i++) {
-    if (i < 10) {
-      std::cerr << "out_host[" << i << "]: " << out_host[i] << "\n";
-    }
     EXPECT_EQ(out_host[i], static_cast<float>(i) + 2.0);
   }
 
@@ -298,6 +308,103 @@ $L__BB0_2:
   free(out_host);
   free(in1_host);
   free(in0_host);
+}
+
+TEST(CUDADeviceContextTest, MultiContextCopies) {
+  ErrorOr<int> err_num = Device::numberOfDevices("cuda");
+  ASSERT_FALSE(err_num) << err_num.getError() << "\n";
+  int num_devices = err_num.get();
+  std::cerr << "Number of CUDA devices: " << num_devices << "\n";
+
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda", 0);
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  DeviceContextRef src_ctx = std::move(err_ctx.get());
+  ASSERT_TRUE(src_ctx);
+
+  for (int cur_device_id = -1; cur_device_id < num_devices; cur_device_id++) {
+    DeviceContextRef dst_ctx;
+    if (cur_device_id < 0) {
+      std::cerr << "Copying within the same device context.\n";
+      dst_ctx = DeviceContextRef::copy(src_ctx.getPointer());
+    } else {
+      std::cerr << "Copying from context on GPU[0] to context on GPU["
+                << cur_device_id << "].\n";
+
+      ErrorOr<DeviceContextRef> err_ctx =
+          DeviceContext::create("cuda", cur_device_id);
+      ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+      dst_ctx = std::move(err_ctx.get());
+    }
+    ASSERT_TRUE(dst_ctx);
+
+    char check_data[] = {
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D',
+        'E', 'F', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C',
+        'D', 'E', 'F', '0', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B',
+        'C', 'D', 'E', 'F', '0', '1', '3', '4', '5', '6', '7', '8', '9', 'A',
+        'B', 'C', 'D', 'E', 'F', '0', '1', '2', '4', '5', '6', '7', '8', '9',
+        'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '5', '6', '7', '8',
+        '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '4', '6', '7',
+        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '4', '5',
+        '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '4',
+        '5', '6', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3',
+        '4', '5', '6', '7', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2',
+        '3', '4', '5', '6', '7', '8', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1',
+        '2', '3', '4', '5', '6', '7', '8', '9', 'B', 'C', 'D', 'E', 'F', '0',
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'C', 'D', 'E', 'F',
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'D', 'E',
+        'F', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C',
+        'E', 'F', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B',
+        'C', 'D', 'F', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A',
+        'B', 'C', 'D', 'E',
+    };
+
+    const int alloc_len = 256;
+
+    ErrorOr<void *> err_ptr = src_ctx->malloc_host(alloc_len);
+    EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
+    void *src_ptr = err_ptr.get();
+    EXPECT_NE(src_ptr, nullptr);
+
+    ErrorOr<DeviceBufferRef> err_ref = src_ctx->createBuffer(alloc_len, 1);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef src_buf = std::move(err_ref.get());
+    EXPECT_TRUE(src_buf);
+
+    err_ref = dst_ctx->createBuffer(alloc_len, 1);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef dst_buf = std::move(err_ref.get());
+    EXPECT_TRUE(dst_buf);
+
+    char *dst_ptr = static_cast<char *>(malloc(alloc_len));
+    EXPECT_NE(dst_ptr, nullptr);
+    // Initialize with known bad values.
+    for (int i = 0; i < alloc_len; i++) {
+      dst_ptr[i] = -static_cast<char>((7 + i) & 127);
+    }
+
+    // Copy between different buffers.
+    memcpy(src_ptr, check_data, alloc_len);
+    ErrorOrSuccess err = src_ctx->enqueueCopyToDevice(*src_buf, src_ptr);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+    // Make sure to use the dst_ctx here to properly enqueue future work on
+    // dst_ctx within the stream.
+    err = dst_ctx->enqueueCopyDeviceToDevice(*dst_buf, *src_buf);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+    err = dst_ctx->enqueueCopyFromDevice(dst_ptr, *dst_buf);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    // Ensure that all copy operations have finished.
+    err = dst_ctx->synchronize();
+    err = src_ctx->synchronize();
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    EXPECT_EQ(memcmp(dst_ptr, check_data, alloc_len), 0);
+
+    free(dst_ptr);
+    err = src_ctx->free_host(src_ptr);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+  }
 }
 
 } // namespace

@@ -52,6 +52,11 @@ std::string CpuDevice::name() const {
   return "cpu";
 }
 
+ErrorOr<int> CpuDevice::numberOfDevices() {
+  // Only a single CpuDevice is supported.
+  return 1;
+}
+
 //
 // ===== CpuDeviceBuffer === //
 //

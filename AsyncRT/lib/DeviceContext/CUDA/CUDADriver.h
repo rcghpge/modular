@@ -30,6 +30,8 @@ public:
     SUCCESS = 0,
   };
 
+  Result DeviceGetCount(int *count) const { return cuDeviceGetCount_(count); }
+
   Result DeviceGetName(char *name, int len, CUdevice dev) const {
     return cuDeviceGetName_(name, len, dev);
   }
@@ -38,6 +40,7 @@ public:
     return cuCtxCreate_v2_(pctx, flags, dev);
   }
   Result CtxDestroy(CUcontext ctx) const { return cuCtxDestroy_(ctx); }
+  Result CtxSetCurrent(CUcontext ctx) const { return cuCtxSetCurrent_(ctx); }
 
   Result StreamCreate(CUstream *phStream, unsigned int flags) const {
     return cuStreamCreate_(phStream, flags);
@@ -73,6 +76,12 @@ public:
   Result MemcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice,
                          size_t bytesize, CUstream hStream) const {
     return cuMemcpyDtoDAsync_v2_(dstDevice, srcDevice, bytesize, hStream);
+  }
+  Result MemcpyPeerAsync(CUdeviceptr dstDevice, CUcontext dstContext,
+                         CUdeviceptr srcDevice, CUcontext srcContext,
+                         size_t bytesize, CUstream hStream) const {
+    return cuMemcpyPeerAsync_(dstDevice, dstContext, srcDevice, srcContext,
+                              bytesize, hStream);
   }
 
   Result ModuleLoadData(CUmodule *module, const void *image) const {
@@ -110,6 +119,9 @@ private:
   using tcuInit = Result(unsigned int);
   tcuInit *cuInit_;
 
+  using tcuDeviceGetCount = Result(int *);
+  tcuDeviceGetCount *cuDeviceGetCount_;
+
   using tcuDeviceGetName = Result(char *, int, CUdevice);
   tcuDeviceGetName *cuDeviceGetName_;
 
@@ -118,6 +130,9 @@ private:
 
   using tcuCtxDestroy = Result(CUcontext);
   tcuCtxDestroy *cuCtxDestroy_;
+
+  using tcuCtxSetCurrent = Result(CUcontext);
+  tcuCtxSetCurrent *cuCtxSetCurrent_;
 
   using tcuStreamCreate = Result(CUstream *, unsigned int);
   tcuStreamCreate *cuStreamCreate_;
@@ -150,6 +165,10 @@ private:
   using tcuMemcpyDtoDAsync_v2 = Result(CUdeviceptr, CUdeviceptr, size_t,
                                        CUstream);
   tcuMemcpyDtoDAsync_v2 *cuMemcpyDtoDAsync_v2_;
+
+  using tcuMemcpyPeerAsync = Result(CUdeviceptr, CUcontext, CUdeviceptr,
+                                    CUcontext, size_t, CUstream);
+  tcuMemcpyPeerAsync *cuMemcpyPeerAsync_;
 
   using tcuModuleLoadData = Result(CUmodule *, const void *);
   tcuModuleLoadData *cuModuleLoadData_;

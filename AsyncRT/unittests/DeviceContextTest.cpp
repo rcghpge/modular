@@ -18,7 +18,7 @@ namespace {
 
 TEST(DeviceContextTest, Smoke) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
-  EXPECT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
@@ -27,14 +27,20 @@ TEST(DeviceContextTest, Smoke) {
 
 TEST(DeviceContextTest, CreationFailure) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu", 1);
-  EXPECT_TRUE(err_ctx);
+  ASSERT_TRUE(err_ctx);
   EXPECT_EQ(strcmp(err_ctx.getError(), "CPU device only supports id == 0."), 0)
       << err_ctx.getError();
 
   err_ctx = DeviceContext::create("pcu");
-  EXPECT_TRUE(err_ctx);
+  ASSERT_TRUE(err_ctx);
   EXPECT_EQ(strcmp(err_ctx.getError(), "Unsupported device kind: pcu"), 0)
       << err_ctx.getError();
+}
+
+TEST(DeviceContextTest, NumDevices) {
+  ErrorOr<int> err_num = Device::numberOfDevices("cpu");
+  ASSERT_FALSE(err_num) << err_num.getError() << "\n";
+  EXPECT_EQ(err_num.get(), 1);
 }
 
 TEST(DeviceContextTest, DeviceBuffers) {

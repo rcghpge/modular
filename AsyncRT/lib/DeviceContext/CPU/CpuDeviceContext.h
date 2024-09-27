@@ -37,6 +37,8 @@ public:
   int id() const override;
 
   std::string name() const override;
+
+  static ErrorOr<int> numberOfDevices();
 };
 
 class CpuDeviceBuffer : public DeviceBuffer {

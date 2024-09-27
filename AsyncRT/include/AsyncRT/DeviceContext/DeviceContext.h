@@ -53,6 +53,8 @@ public:
 
   virtual std::string name() const = 0;
 
+  static ErrorOr<int> numberOfDevices(const char *kind);
+
 protected:
   Device() = default;
 };

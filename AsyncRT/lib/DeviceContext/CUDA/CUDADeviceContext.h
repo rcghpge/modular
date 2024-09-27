@@ -47,6 +47,8 @@ public:
 
   std::string name() const override;
 
+  static ErrorOr<int> numberOfDevices();
+
 private:
   const CUDADriver &driver_;
   CUdevice id_;
@@ -169,6 +171,8 @@ private:
   const CUDADriver &driver_;
   CUcontext context_;
   CUstream stream_;
+
+  CUDADriver::Result setCurrent() const;
 
   mutable std::mutex mu_;
   mutable llvm::StringMap<CUDADeviceFunctionRef> func_map_;

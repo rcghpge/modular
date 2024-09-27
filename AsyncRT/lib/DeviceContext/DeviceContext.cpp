@@ -150,4 +150,15 @@ ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind, int id) {
   return Error(llvm::Twine("Unsupported device kind: ") + kind);
 }
 
+ErrorOr<int> Device::numberOfDevices(const char *kind) {
+  // TODO(iposva): Implement dynamic registration mechanism.
+  if (strcmp(kind, "cuda") == 0) {
+    return CUDADevice::numberOfDevices();
+  } else if (strcmp(kind, "cpu") == 0) {
+    return CpuDevice::numberOfDevices();
+  }
+
+  return Error(llvm::Twine("Unsupported device kind: ") + kind);
+}
+
 } // namespace M::AsyncRT

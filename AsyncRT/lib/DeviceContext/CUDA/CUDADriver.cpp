@@ -43,9 +43,11 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   // Allocate a driver and register all of the used shared library entry points.
   CUDADriver *driver = new CUDADriver();
   GET_FUNC(cuInit);
+  GET_FUNC(cuDeviceGetCount);
   GET_FUNC(cuDeviceGetName);
   GET_FUNC(cuCtxCreate_v2);
   GET_FUNC(cuCtxDestroy);
+  GET_FUNC(cuCtxSetCurrent);
   GET_FUNC(cuStreamCreate);
   GET_FUNC(cuStreamDestroy);
   GET_FUNC(cuStreamSynchronize);
@@ -56,6 +58,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemcpyHtoDAsync_v2);
   GET_FUNC(cuMemcpyDtoHAsync_v2);
   GET_FUNC(cuMemcpyDtoDAsync_v2);
+  GET_FUNC(cuMemcpyPeerAsync);
   GET_FUNC(cuModuleLoadData);
   GET_FUNC(cuModuleUnload);
   GET_FUNC(cuModuleGetFunction);
