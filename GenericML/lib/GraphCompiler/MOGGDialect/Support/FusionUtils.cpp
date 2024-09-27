@@ -32,7 +32,9 @@ StringAttr getSummaryString(Operation *op) {
 
   std::string name;
   if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op)) {
-    name = shapeFuncOp.getShapeFuncName();
+    name = "shapeof(";
+    name += shapeFuncOp.getShapeFuncName();
+    name += ")";
   } else if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op)) {
     name = layoutTransformOp->getName().getIdentifier().getValue();
     name += "_";

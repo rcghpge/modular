@@ -401,8 +401,8 @@ static ErrorOrSuccess buildForScatterNdLikeOp(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::AvgPoolOp op) {
-  buildForOpResult(graph, builder, op, "mo.avg_pool", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::AvgPoolOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
@@ -411,7 +411,7 @@ ErrorOrSuccess Fallback<MO::AvgPoolOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::AvgPoolCeilOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::AvgPoolCeilOp op) {
-  buildForOpResult(graph, builder, op, "mo.avg_pool_ceil_mode_true",
+  buildForOpResult(graph, builder, op, MO::AvgPoolCeilOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
@@ -430,8 +430,9 @@ ErrorOrSuccess Fallback<MO::BatchMatmulOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::BottomKOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::BottomKOp op) {
-  buildForOpResult(graph, builder, op.getValues(), "mo.bottom_k",
-                   op.getOperands(), op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op.getValues(),
+                   MO::BottomKOp::getOperationName(), op.getOperands(),
+                   op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{1, 2});
   // indices() guaranteed by verifier to have the same shape as values()
   return success();
@@ -528,8 +529,8 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 
 ErrorOrSuccess Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::GatherOp op) {
-  buildForOpResult(graph, builder, op, "mo.gather", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::GatherOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
@@ -561,8 +562,8 @@ ErrorOrSuccess Fallback<MO::LayerNormOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::LinAlg::SolveOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::LinAlg::SolveOp op) {
-  buildForOpResult(graph, builder, op, "matrix_solve_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::LinAlg::SolveOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -571,8 +572,8 @@ ErrorOrSuccess Fallback<MO::MaxPoolOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::MaxPoolOp op) {
 
-  buildForOpResult(graph, builder, op, "mo.max_pool", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::MaxPoolOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
@@ -582,7 +583,7 @@ ErrorOrSuccess Fallback<MO::MaxPoolCeilOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::MaxPoolCeilOp op) {
 
-  buildForOpResult(graph, builder, op, "mo.max_pool_ceil_mode_true",
+  buildForOpResult(graph, builder, op, MO::MaxPoolCeilOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
@@ -593,7 +594,8 @@ ErrorOrSuccess
 Fallback<MO::NonMaximumSuppressionOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::NonMaximumSuppressionOp op) {
   SmallVector<Value> shapeFuncInputs({});
-  buildForOpResult(graph, builder, op, "non_maximum_suppression_shape",
+  buildForOpResult(graph, builder, op,
+                   MO::NonMaximumSuppressionOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0, 1, 2, 3, 4});
   return success();
@@ -633,16 +635,16 @@ ErrorOrSuccess Fallback<MO::RandomNormalOp>::build(GraphOp &graph,
                                                    OpBuilder &builder,
                                                    MO::RandomNormalOp op) {
   SmallVector<Value> shapeFuncInputs({op.getOperand(0)});
-  buildForOpResult(graph, builder, op, "random_shape", shapeFuncInputs,
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::RandomNormalOp::getOperationName(),
+                   shapeFuncInputs, op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 
 ErrorOrSuccess Fallback<MO::RangeOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::RangeOp op) {
-  buildForOpResult(graph, builder, op, "range_shape", op->getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::RangeOp::getOperationName(),
+                   op->getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0, 1, 2});
   return success();
 }
@@ -677,8 +679,8 @@ ErrorOrSuccess Fallback<MO::ReshapeOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::ResizeNearestOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::ResizeNearestOp op) {
-  buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::ResizeNearestOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -686,8 +688,8 @@ ErrorOrSuccess Fallback<MO::ResizeNearestOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::ResizeLinearOp>::build(GraphOp &graph,
                                                    OpBuilder &builder,
                                                    MO::ResizeLinearOp op) {
-  buildForOpResult(graph, builder, op, "resize_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::ResizeLinearOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -696,7 +698,7 @@ ErrorOrSuccess Fallback<MO::RoiAlignOp>::build(GraphOp &graph,
                                                OpBuilder &builder,
                                                MO::RoiAlignOp op) {
   // The shape function doesn't need spatial_scale and sampling_ratio.
-  buildForOpResult(graph, builder, op, "roi_align_shape",
+  buildForOpResult(graph, builder, op, MO::RoiAlignOp::getOperationName(),
                    op.getOperands().take_front(4), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
@@ -768,7 +770,8 @@ ErrorOrSuccess Fallback<MO::SqueezeShapeOp>::build(GraphOp &graph,
 
 ErrorOrSuccess Fallback<MO::TopKOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::TopKOp op) {
-  buildForOpResult(graph, builder, op.getValues(), "mo.top_k", op.getOperands(),
+  buildForOpResult(graph, builder, op.getValues(),
+                   MO::TopKOp::getOperationName(), op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
 
@@ -805,8 +808,8 @@ ErrorOrSuccess Fallback<MO::ArgNonzeroOp>::build(GraphOp &graph,
 
 ErrorOrSuccess Fallback<MO::TileOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::TileOp op) {
-  buildForOpResult(graph, builder, op, "tile_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::TileOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }

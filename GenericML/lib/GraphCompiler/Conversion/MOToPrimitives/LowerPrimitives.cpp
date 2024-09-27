@@ -365,9 +365,9 @@ void LowerPrimitivesPass::runOnOperation() {
     }
 
     CompiledRegionBodyBuilder bodyBuilder(nullptr);
-    if (isa_and_nonnull<mlir::index::IndexDialect>(op->getDialect()) ||
-        (isa_and_nonnull<KGEN::POP::POPDialect>(op->getDialect()) &&
-         !op->getParentOfType<MOGG::GenericCompiledRegionOp>())) {
+    if ((isa_and_nonnull<mlir::index::IndexDialect>(op->getDialect()) ||
+         isa_and_nonnull<KGEN::POP::POPDialect>(op->getDialect())) &&
+        !op->getParentOfType<MOGG::GenericCompiledRegionOp>()) {
       // Clone index operations and pop operations when necessary.
       bodyBuilder = cloneOperationBuilder;
     } else if (isa_and_nonnull<MIP::MIPDialect>(op->getDialect())) {

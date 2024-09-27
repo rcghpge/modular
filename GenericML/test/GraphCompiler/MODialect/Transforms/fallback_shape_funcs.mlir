@@ -213,7 +213,7 @@ mo.graph @matrix_solve<D0, D1, D2, D3, D4, D5 -> D6, D7, D8>(
 // CHECK-SAME:   %[[RHS:.*]]: !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D6]], [[D7]], [[D8]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["matrix_solve_shape"]<() -> [[D9:.*]], [[D10:.*]], [[D11:.*]]>(%[[LHS]], %[[RHS]])
+// CHECK-NEXT:   mo.invoke_shape_func["mo.linalg.solve"]<() -> [[D9:.*]], [[D10:.*]], [[D11:.*]]>(%[[LHS]], %[[RHS]])
 // CHECK-SAME:     {dataDeptTensors = []}
 // CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>)
 //
@@ -536,7 +536,7 @@ mo.graph @range(%start: !mo.tensor<[], si32>, %stop: !mo.tensor<[], si32>, %step
 }
 // CHECK-LABEL: mo.graph @range
 // CHECK:(%[[START:.*]]: !mo.tensor<[], si32>, %[[STOP:.*]]: !mo.tensor<[], si32>, %[[STEP:.*]]: !mo.tensor<[], si32>)
-// CHECK-NEXT: mo.invoke_shape_func["range_shape"]<() -> [[RANGE_PARAM:.*]]>(%[[START]], %[[STOP]], %[[STEP]]) {dataDeptTensors = [0 : i32, 1 : i32, 2 : i32]} : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>)
+// CHECK-NEXT: mo.invoke_shape_func["mo.range"]<() -> [[RANGE_PARAM:.*]]>(%[[START]], %[[STOP]], %[[STEP]]) {dataDeptTensors = [0 : i32, 1 : i32, 2 : i32]} : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>)
 // CHECK-NEXT: mo.range(%[[START]], %[[STOP]], %[[STEP]]) : (!mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[RANGE_PARAM]]], si32>
 
 mo.graph @reduce_add_fallback_shape_func<D0, D1 -> D2, D3>(
@@ -825,7 +825,7 @@ mo.graph @tile_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-LABEL: mo.graph @tile_fallback_shape_func
 // CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT:.*]]: !mo.tensor<[2, 3, 7, 11], f32>, %[[REPEATS:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["tile_shape"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
+// CHECK-NEXT: mo.invoke_shape_func["mo.tile"]<() -> [[D4:.*]], [[D5:.*]], [[D6:.*]], [[D7:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[REPEATS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[2, 3, 7, 11], f32>, !mo.tensor<[4], si64>)
@@ -863,7 +863,7 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
 // CHECK-NEXT:  %[[SAMPLING_RATIO:.*]] = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
 // CHECK-NEXT:  %[[ROIS:.*]] = mo.constant {value = #M.dense_array<0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
 //
-// CHECK-NEXT:  mo.invoke_shape_func["roi_align_shape"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(
+// CHECK-NEXT:  mo.invoke_shape_func["mo.roi_align"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(
 // CHECK-SAME:    %[[INPUT]], %[[ROIS]], %[[OUTPUT_HEIGHT]], %[[OUTPUT_HEIGHT]])
 // CHECK-SAME:    {dataDeptTensors = [2 : i32, 3 : i32]}
 // CHECK-SAME:    : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>)
