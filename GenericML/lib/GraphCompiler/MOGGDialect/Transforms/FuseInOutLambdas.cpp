@@ -24,13 +24,12 @@ namespace M::MOGG {
 
 namespace {
 
-// TODO(#22349): Remove checks when matmul/conv/concat kernels respect the
-// fusion contract.
-static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
+// TODO(#22349): Remove checks when matmul/conv kernels respect the fusion
+// contract.
+static bool containsMatmulOrConvolution(MOGG::KernelOp kernel) {
   if (kernel.getIsKGEN().value_or(false)) {
     StringRef summary = kernel.getSummaryAttr().strref();
-    if (summary.contains(MO::ConcatOp::getOperationName()) ||
-        summary.contains(MO::MatmulOp::getOperationName()) ||
+    if (summary.contains(MO::MatmulOp::getOperationName()) ||
         summary.contains(MO::BatchMatmulOp::getOperationName()) ||
         summary.contains(MO::ConvOp::getOperationName()) ||
         summary.contains(MO::ConvTransposeOp::getOperationName()))
@@ -38,8 +37,7 @@ static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
   } else {
     for (auto call : kernel.getOps<MOGG::CallOp>()) {
       auto target = call.getMojoKernelTarget();
-      if (target == MO::ConcatOp::getOperationName() ||
-          target == MO::MatmulOp::getOperationName() ||
+      if (target == MO::MatmulOp::getOperationName() ||
           target == MO::BatchMatmulOp::getOperationName() ||
           target == MO::ConvOp::getOperationName() ||
           target == MO::ConvTransposeOp::getOperationName())
@@ -354,8 +352,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     OutputPlaceholdersOp originalOuts = kernelToFuseInto.getOutputPlaceholder();
     OutputPlaceholdersOp userOuts = userToFuseIn.getOutputPlaceholder();
 
-    const bool isMatmulOrConvOrConcat =
-        containsMatmulOrConvOrConcat(kernelToFuseInto);
+    const bool isMatmulOrConvolution =
+        containsMatmulOrConvolution(kernelToFuseInto);
 
     const bool isMixedPrecision =
         originalOuts.getResult(0).getType() != userOuts.getResult(0).getType();
@@ -622,7 +620,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // precision, we need another buffer to do the accumulation. This results
     // in the kernel op having two return values to trigger allocations in
     // later passes.
-    if (isMatmulOrConvOrConcat && isMixedPrecision) {
+    if (isMatmulOrConvolution && isMixedPrecision) {
       auto loc = kernelToFuseInto.getLoc();
 
       builder.setInsertionPoint(originalOuts);
@@ -706,8 +704,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     IRMapping oldToNew;
 
-    const bool isMatmulOrConvOrConcat =
-        containsMatmulOrConvOrConcat(kernelToFuseInto);
+    const bool isMatmulOrConvolution =
+        containsMatmulOrConvolution(kernelToFuseInto);
     // Elementwise fusion expects shapes to be identical but data types can
     // change.
     const bool isMixedPrecision =
@@ -718,7 +716,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // precision, remap references to the old outputs to the new values. This
     // effectively gets rid of the output placeholder of `kernelToFuseInto`
     // after mergning the kernels.
-    if (!isMatmulOrConvOrConcat)
+    if (!isMatmulOrConvolution)
       oldToNew.map(originalOuts.getResult(0), oldOuts.getResult(0));
     else if (!isMixedPrecision)
       oldToNew.map(oldOuts.getResult(0), originalOuts.getResult(0));
@@ -791,7 +789,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       // TODO(#22349)
       // If we are fusing into a matmul/conv and it isn't mixed precision, then
       // skip the placeholder.
-      if (isMatmulOrConvOrConcat && !isMixedPrecision &&
+      if (isMatmulOrConvolution && !isMixedPrecision &&
           isa<MOGG::OutputPlaceholdersOp>(op)) {
         return true;
       }
@@ -873,14 +871,14 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         break;
       }
     }
-    assert((isMatmulOrConvOrConcat && !isMixedPrecision) || newPlaceholder);
+    assert((isMatmulOrConvolution && !isMixedPrecision) || newPlaceholder);
 
     Location loc = kernelToFuseInto.getLoc();
     // TODO(#22349)
     // Three cases:
     // Not a matmul/conv (good case): Simply create a new output op (in case
     // data types change) and change the output type of `kernelToFuseInto`.
-    if (!isMatmulOrConvOrConcat) {
+    if (!isMatmulOrConvolution) {
       builder.setInsertionPoint(oldOutputOp);
       builder.create<MOGG::OutputOp>(loc, newPlaceholder->getResult(0));
       kernelToFuseInto.getResult(0).setType(
