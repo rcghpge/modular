@@ -4,7 +4,6 @@ lit_tests(
     name = "test",
     srcs = glob(["**/*.mojo"]),
     data = [
-        "//:libpython",
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
