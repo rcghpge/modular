@@ -14,9 +14,9 @@
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <string>
 
 namespace M::AsyncRT {
@@ -71,6 +71,21 @@ void *CpuDeviceBuffer::ptr() const { return cpu_ptr(); }
 
 const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CpuDeviceBuffer &>(buf);
+}
+
+// ===== CpuDeviceTimer ===== //
+CpuDeviceTimer::CpuDeviceTimer(
+    const CpuDeviceContext &context,
+    std::chrono::time_point<std::chrono::steady_clock> start)
+    : DeviceTimer(context), start_(start) {}
+
+std::chrono::time_point<std::chrono::steady_clock>
+CpuDeviceTimer::cpu_start() const {
+  return start_;
+}
+
+const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
+  return static_cast<const CpuDeviceTimer &>(timer);
 }
 
 //
@@ -154,6 +169,16 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
 ErrorOrSuccess CpuDeviceContext::synchronize() const {
   // Currently we do not schedule asynchronous work.
   return success();
+}
+
+ErrorOr<DeviceTimerRef> CpuDeviceContext::startTimer() const {
+  return CpuDeviceTimerRef::create(*this, std::chrono::steady_clock::now());
+}
+
+ErrorOr<std::chrono::nanoseconds>
+CpuDeviceContext::stopTimer(const DeviceTimer &timer) const {
+  return std::chrono::steady_clock::now() -
+         CpuDeviceTimer::cast(timer).cpu_start();
 }
 
 const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {

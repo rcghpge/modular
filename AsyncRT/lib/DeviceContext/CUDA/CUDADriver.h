@@ -23,6 +23,7 @@ using CUdeviceptr = void *;
 using CUfunction = struct CUfunc_st *;
 using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
+using CUevent = struct CUevent_st *;
 
 class CUDADriver {
 public:
@@ -104,6 +105,22 @@ public:
                            kernelParams, extra);
   }
 
+  Result EventCreate(CUevent *phEvent, unsigned int flags) const {
+    return cuEventCreate_(phEvent, flags);
+  }
+  Result EventDestroy(CUevent hEvent) const { return cuEventDestroy_(hEvent); }
+  Result EventRecord(CUevent hEvent, CUstream hStream) const {
+    return cuEventRecord_(hEvent, hStream);
+  }
+  Result EventQuery(CUevent hEvent) const { return cuEventQuery_(hEvent); }
+  Result EventSynchronize(CUevent hEvent) const {
+    return cuEventSynchronize_(hEvent);
+  }
+  Result EventElapsedTime(float *pMilliseconds, CUevent hStart,
+                          CUevent hEnd) const {
+    return cuEventElapsedTime_(pMilliseconds, hStart, hEnd);
+  }
+
   static ErrorOr<const CUDADriver &> get();
 
 private:
@@ -112,7 +129,7 @@ private:
 
   // Once created, the CUDADriver object cannot be deleted.
   CUDADriver() = default;
-  ~CUDADriver() = delete;
+  ~CUDADriver() = default;
 
   // Driver is only initialized from internal code.
   Result Init(unsigned int flags) const { return cuInit_(flags); }
@@ -184,6 +201,24 @@ private:
                                  unsigned int, unsigned int, CUstream, void **,
                                  void **);
   tcuLaunchKernel *cuLaunchKernel_;
+
+  using tcuEventCreate = Result(CUevent *, unsigned int);
+  tcuEventCreate *cuEventCreate_;
+
+  using tcuEventDestroy = Result(CUevent);
+  tcuEventDestroy *cuEventDestroy_;
+
+  using tcuEventRecord = Result(CUevent, CUstream);
+  tcuEventRecord *cuEventRecord_;
+
+  using tcuEventQuery = Result(CUevent);
+  tcuEventQuery *cuEventQuery_;
+
+  using tcuEventSynchronize = Result(CUevent);
+  tcuEventSynchronize *cuEventSynchronize_;
+
+  using tcuEventElapsedTime = Result(float *, CUevent, CUevent);
+  tcuEventElapsedTime *cuEventElapsedTime_;
 
   static ErrorOr<const CUDADriver &> allocAndInitDriver();
 };

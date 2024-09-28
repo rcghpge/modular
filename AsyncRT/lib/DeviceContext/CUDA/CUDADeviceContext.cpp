@@ -181,6 +181,25 @@ const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const CUDADeviceFunction &>(func);
 }
 
+// ===== CUDADeviceTimer ===== //
+CUDADeviceTimer::CUDADeviceTimer(const CUDADeviceContext &context,
+                                 CUevent start, CUevent stop)
+    : DeviceTimer(context), start_(start), stop_(stop) {}
+
+CUDADeviceTimer::~CUDADeviceTimer() {
+  const auto &cuda_context = CUDADeviceContext::cast(context());
+
+  CUDA_CHECK(cuda_context.cuda_driver().EventDestroy(start_));
+  CUDA_CHECK(cuda_context.cuda_driver().EventDestroy(stop_));
+}
+
+CUevent CUDADeviceTimer::cuda_start_event() const { return start_; }
+CUevent CUDADeviceTimer::cuda_stop_event() const { return stop_; }
+
+const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
+  return static_cast<const CUDADeviceTimer &>(timer);
+}
+
 // ===== CUDADeviceContext ===== //
 CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                      CUcontext context, CUstream stream)
@@ -324,6 +343,36 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
   return success();
+}
+
+ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() const {
+  CUevent start;
+  CUevent stop;
+
+  CUDA_CHECK_ERR(driver_.EventCreate(&start, 0));
+  CUDA_CHECK_ERR(driver_.EventCreate(&stop, 0));
+
+  auto timer = CUDADeviceTimerRef::create(*this, start, stop);
+
+  CUDA_CHECK_ERR(driver_.EventRecord(timer->cuda_start_event(), stream_));
+
+  return timer;
+}
+
+ErrorOr<std::chrono::nanoseconds>
+CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
+  const auto &cuda_timer = CUDADeviceTimer::cast(timer);
+
+  CUDA_CHECK_ERR(driver_.EventRecord(cuda_timer.cuda_stop_event(), stream_));
+  CUDA_CHECK_ERR(driver_.EventSynchronize(cuda_timer.cuda_stop_event()));
+
+  float millis;
+  CUDA_CHECK_ERR(driver_.EventElapsedTime(
+      &millis, cuda_timer.cuda_start_event(), cuda_timer.cuda_stop_event()));
+
+  constexpr double nanos_per_millisecond = 1000.0 * 1000.0;
+  double nanos = static_cast<double>(millis) * nanos_per_millisecond;
+  return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
 const CUDADriver &CUDADeviceContext::cuda_driver() const { return driver_; }

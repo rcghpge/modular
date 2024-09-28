@@ -17,6 +17,7 @@
 #include "Support/RCRef.h"
 #include "llvm/ADT/StringMap.h"
 
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -29,12 +30,14 @@ class CUDADeviceBuffer;
 class CUDADeviceContext;
 class CUDADeviceFunction;
 class CUDADeviceFunctionArguments;
+class CUDADeviceTimer;
 
 using CUDADeviceRef = RCRef<const CUDADevice>;
 using CUDADeviceBufferRef = RCRef<const CUDADeviceBuffer>;
 using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
 using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
+using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
 class CUDADevice : public Device {
 public:
@@ -117,6 +120,22 @@ private:
   std::string name_;
 };
 
+class CUDADeviceTimer : public DeviceTimer {
+public:
+  CUDADeviceTimer(const CUDADeviceContext &context, CUevent start,
+                  CUevent stop);
+  ~CUDADeviceTimer() override;
+
+  CUevent cuda_start_event() const;
+  CUevent cuda_stop_event() const;
+
+  static const CUDADeviceTimer &cast(const DeviceTimer &timer);
+
+private:
+  CUevent start_;
+  CUevent stop_;
+};
+
 class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(const CUDADevice &device, CUcontext context,
@@ -159,6 +178,10 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;
+
+  ErrorOr<DeviceTimerRef> startTimer() const override;
+  ErrorOr<std::chrono::nanoseconds>
+  stopTimer(const DeviceTimer &timer) const override;
 
   const CUDADriver &cuda_driver() const;
   CUstream cuda_stream() const;

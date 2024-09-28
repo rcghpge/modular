@@ -310,6 +310,52 @@ $L__BB0_2:
   free(in0_host);
 }
 
+TEST(CUDADeviceContextTest, Timers) {
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda");
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  DeviceContextRef ctx = std::move(err_ctx.get());
+  ASSERT_TRUE(ctx);
+
+  ErrorOr<DeviceTimerRef> err_timer = ctx->startTimer();
+  EXPECT_FALSE(err_timer) << err_timer.getError() << "\n";
+  DeviceTimerRef timer = std::move(err_timer.get());
+  ASSERT_TRUE(timer);
+
+  { // Run some memory copies within the timer.
+    const size_t alloc_len = 1024 * 1024;
+
+    ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
+    EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
+    void *a_ptr = err_ptr.get();
+    EXPECT_NE(a_ptr, nullptr);
+
+    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(256, 1);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef b_buf = std::move(err_ref.get());
+    EXPECT_TRUE(b_buf);
+
+    ErrorOrSuccess err;
+    for (int i = 0; i < 20; i++) {
+      err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+    }
+    err = ctx->synchronize();
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    err = ctx->free_host(a_ptr);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+  }
+
+  ErrorOr<std::chrono::nanoseconds> err_nanos = ctx->stopTimer(*timer);
+  EXPECT_FALSE(err_nanos) << err_nanos.getError() << "\n";
+  int64_t elapsed_nanos = err_nanos.get().count();
+
+  std::cerr << "Timer measured: " << elapsed_nanos << "ns\n";
+
+  EXPECT_GT(elapsed_nanos, 0);
+  EXPECT_LT(elapsed_nanos, 60 * 1000ll * 1000ll * 1000ll); // less than a minute
+}
+
 TEST(CUDADeviceContextTest, MultiContextCopies) {
   ErrorOr<int> err_num = Device::numberOfDevices("cuda");
   ASSERT_FALSE(err_num) << err_num.getError() << "\n";

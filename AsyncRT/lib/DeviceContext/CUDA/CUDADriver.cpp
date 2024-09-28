@@ -63,10 +63,17 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuModuleUnload);
   GET_FUNC(cuModuleGetFunction);
   GET_FUNC(cuLaunchKernel);
+  GET_FUNC(cuEventCreate);
+  GET_FUNC(cuEventDestroy);
+  GET_FUNC(cuEventRecord);
+  GET_FUNC(cuEventQuery);
+  GET_FUNC(cuEventSynchronize);
+  GET_FUNC(cuEventElapsedTime);
 
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
   if (err != SUCCESS) {
+    delete driver;
     return Error(llvm::Twine("Call to cuInit failed with ") + llvm::Twine(err));
   }
 

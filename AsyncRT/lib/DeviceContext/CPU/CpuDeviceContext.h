@@ -15,6 +15,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 
+#include <chrono>
 #include <cstdint>
 #include <stddef.h>
 #include <string>
@@ -24,10 +25,12 @@ namespace M::AsyncRT {
 class CpuDevice;
 class CpuDeviceBuffer;
 class CpuDeviceContext;
+class CpuDeviceTimer;
 
 using CpuDeviceRef = RCRef<const CpuDevice>;
 using CpuDeviceBufferRef = RCRef<const CpuDeviceBuffer>;
 using CpuDeviceContextRef = RCRef<const CpuDeviceContext>;
+using CpuDeviceTimerRef = RCRef<const CpuDeviceTimer>;
 
 class CpuDevice : public Device {
 public:
@@ -54,6 +57,20 @@ public:
 
 private:
   void *ptr_;
+};
+
+class CpuDeviceTimer : public DeviceTimer {
+public:
+  CpuDeviceTimer(const CpuDeviceContext &context,
+                 std::chrono::time_point<std::chrono::steady_clock> start);
+  ~CpuDeviceTimer() override = default;
+
+  std::chrono::time_point<std::chrono::steady_clock> cpu_start() const;
+
+  static const CpuDeviceTimer &cast(const DeviceTimer &timer);
+
+private:
+  const std::chrono::time_point<std::chrono::steady_clock> start_;
 };
 
 class CpuDeviceContext : public DeviceContext {
@@ -96,6 +113,10 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;
+
+  ErrorOr<DeviceTimerRef> startTimer() const override;
+  ErrorOr<std::chrono::nanoseconds>
+  stopTimer(const DeviceTimer &timer) const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 

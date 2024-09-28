@@ -11,6 +11,8 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "Support/SymbolExport.h"
 
+#include <chrono>
+
 using namespace M;
 using namespace M::AsyncRT;
 
@@ -40,9 +42,10 @@ const char *check_ref(const T **result, ErrorOr<R> err_or) {
   return nullptr;
 }
 
-const char *check_ptr(void **result, ErrorOr<void *> err_or) {
+template <typename T, typename V>
+const char *check_val(T *result, V err_val, ErrorOr<T> err_or) {
   if (err_or) {
-    *result = nullptr;
+    *result = err_val;
     // Make a malloc'd copy of the string, so that we can safely free the
     // pointer from Mojo.
     return strdup(err_or.getError());
@@ -65,7 +68,7 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_release(const DeviceContext *ctx) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_mallocHost(void **result, const DeviceContext *ctx,
                                  size_t size) {
-  return check_ptr(result, ctx->malloc_host(size));
+  return check_val(result, nullptr, ctx->malloc_host(size));
 }
 
 MODULAR_EXPORT const char *
@@ -129,4 +132,25 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
   assert((ctx == &func->context()) && "ctx not matching func");
   return check_success(ctx->enqueueFunctionExecDirect(
       *func, gridX, gridY, gridZ, blockX, blockY, blockZ, args));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_startTimer(const DeviceTimer **result,
+                                 const DeviceContext *ctx) {
+  return check_ref(result, ctx->startTimer());
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_stopTimer(int64_t *result, const DeviceContext *ctx,
+                                const DeviceTimer *timer) {
+  std::chrono::nanoseconds elapsed_nanos;
+  const char *err_msg = check_val(&elapsed_nanos, std::chrono::nanoseconds{0},
+                                  ctx->stopTimer(*timer));
+  *result = elapsed_nanos.count();
+  return err_msg;
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
+  // Decrement the reference count by adopting it in the ref.
+  DeviceTimerRef::take(timer);
 }

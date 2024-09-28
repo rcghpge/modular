@@ -16,6 +16,7 @@
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
+#include <chrono>
 #include <cstdint>
 #include <stddef.h>
 #include <string>
@@ -27,11 +28,13 @@ class Device;
 class DeviceBuffer;
 class DeviceContext;
 class DeviceFunction;
+class DeviceTimer;
 
 using DeviceRef = RCRef<const Device>;
 using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
+using DeviceTimerRef = RCRef<const DeviceTimer>;
 
 // RUNP-397: This should come as a form of a function dependent on the device
 static constexpr size_t kPreferredCUDAMemoryAlignment = 256;
@@ -161,6 +164,19 @@ private:
   void checkArg(int index, const DeviceBuffer &val);
 };
 
+class DeviceTimer : public ReferenceCounted<DeviceTimer> {
+public:
+  virtual ~DeviceTimer() = default;
+
+  const DeviceContext &context() const;
+
+protected:
+  DeviceTimer(const DeviceContext &context);
+
+private:
+  DeviceContextRef context_;
+};
+
 class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
   virtual ~DeviceContext() = default;
@@ -202,6 +218,10 @@ public:
 
   // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;
+
+  virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
+  virtual ErrorOr<std::chrono::nanoseconds>
+  stopTimer(const DeviceTimer &timer) const = 0;
 
   static ErrorOr<DeviceContextRef> create(const char *kind, int id = 0);
 

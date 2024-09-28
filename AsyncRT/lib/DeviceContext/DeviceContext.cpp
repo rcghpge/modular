@@ -132,6 +132,14 @@ void DeviceFunction::Arguments::checkArg(int index, const DeviceBuffer &val) {
 }
 
 //
+// ===== DeviceTimer ===== //
+//
+DeviceTimer::DeviceTimer(const DeviceContext &context)
+    : context_(DeviceContextRef::copy(&context)) {}
+
+const DeviceContext &DeviceTimer::context() const { return *context_; }
+
+//
 // ===== DeviceContext ===== //
 //
 DeviceContext::DeviceContext(const Device &device)
