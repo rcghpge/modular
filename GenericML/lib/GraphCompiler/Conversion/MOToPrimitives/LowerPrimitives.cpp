@@ -324,10 +324,11 @@ void LowerPrimitivesPass::runOnOperation() {
 
     Operation *popOp = nullptr;
     if (isa<MIP::XOrOp, MIP::OrOp, MIP::AndOp>(op)) {
-      // Get the common part of the name, e.g., pop.[xor] as in mip.[xor]
+      // Get the common part of the name, e.g., pop.simd.[xor] as in mip.[xor]
       StringRef popOpName = op->getName().stripDialect();
-      popOp = builder.create(loc, builder.getStringAttr("pop." + popOpName),
-                             popInputs, popInputs.front().getType());
+      popOp =
+          builder.create(loc, builder.getStringAttr("pop.simd." + popOpName),
+                         popInputs, popInputs.front().getType());
     }
 
     if (popOp) {
