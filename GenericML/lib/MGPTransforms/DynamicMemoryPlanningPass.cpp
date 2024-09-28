@@ -9,6 +9,7 @@
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/Utils.h"
+#include "GraphRT/MIPDialect/MIP.h"
 #include "Support/AssertStream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
@@ -51,6 +52,8 @@ bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
 
   // If the producing op isn't trivial, this isn't a trivial value
   bool isTrivialOp =
+      isa<MIP::MIPDialect>(*producer->getDialect()) ||
+      isa<mlir::index::IndexDialect>(*producer->getDialect()) ||
       isa<TensorExtractTensorSpecOp, CpuTensorSpecSizeOp, CpuTensorSpecCreateOp,
           CpuTensorSpecDimsDynamicOp, BufferAllocOp>(*producer);
   if (!isTrivialOp)
@@ -195,9 +198,17 @@ class DynamicMemoryPlanningPass
       // Since all planned runtimeSizes are not data-dependent, this shouldn't
       // introduce any graph cycles.
       for (size_t i = 0; i < allocs.size(); ++i) {
-        auto slice = execState.builder.create<BufferSliceOp>(
+        Value slice = execState.builder.create<BufferSliceOp>(
             loc, superAlloc, bufferPlanOp.getOffsets()[i],
             allocs[i].runtimeSize);
+
+        // Resolve potential type mismatch.
+        DeviceBufferType originalTp = allocs[i].alloc.getOutBuffer().getType();
+        std::optional<uint64_t> staticSz = originalTp.getOptSize();
+        if (staticSz)
+          slice = execState.builder.create<BufferResizeOp>(
+              loc, originalTp, slice, *staticSz, originalTp.getDevice());
+
         allocs[i].alloc.getOutBuffer().replaceAllUsesWith(slice);
       }
 
