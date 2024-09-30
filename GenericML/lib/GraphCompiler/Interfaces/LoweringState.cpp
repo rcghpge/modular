@@ -591,11 +591,9 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
 
 FailureOr<TypedValue<MGP::TensorSpecType>>
 MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
-  if (!moTensorType.hasRank()) {
-    opBeingLowered->emitOpError(
+  if (!moTensorType.hasRank())
+    return opBeingLowered->emitOpError(
         "dynamically ranked MO tensors are not yet supported");
-    return failure();
-  }
   MGP::TensorSpecType tensorSpecType =
       MGP::createCpuTensorSpecType(moTensorType);
   if (tensorSpecType.getSizeInBytes()) {
@@ -609,10 +607,8 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
   // Dynamically shaped.
   auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
       opBeingLowered->getParentRegion(), moTensorType.getTypedShapeAttr(), loc);
-  if (runtimeDimsOr) {
-    opBeingLowered->emitOpError(runtimeDimsOr.getError());
-    return failure();
-  }
+  if (runtimeDimsOr)
+    return opBeingLowered->emitOpError(runtimeDimsOr.getError());
   return builder
       .create<MGP::CpuTensorSpecCreateOp>(loc,
                                           /*spec=*/tensorSpecType,
