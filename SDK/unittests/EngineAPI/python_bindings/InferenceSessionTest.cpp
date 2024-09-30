@@ -108,12 +108,8 @@ TEST_F(InferenceSessionTest, DTypePybindConversionTest) {
   EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_UINT8)), M_UINT8);
   EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_UINT16)), M_UINT16);
   EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_UINT64)), M_UINT64);
+  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_FLOAT16)), M_FLOAT16);
   EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_FLOAT32)), M_FLOAT32);
   EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_FLOAT64)), M_FLOAT64);
-
-  // we convert M_FLOAT16 to a pybind::dtype::of<float> which gets converted to
-  // M_FLOAT32 this is a stop-gap until we have full float16 support. See issue
-  // https://github.com/modularml/modular/issues/10844
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_FLOAT16)), M_FLOAT32);
   EXPECT_THROW(core::mapDType(M_UNKNOWN), std::runtime_error);
 }

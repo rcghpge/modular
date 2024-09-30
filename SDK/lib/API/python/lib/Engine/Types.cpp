@@ -27,6 +27,8 @@ M_Dtype M::core::mapPybind11Type(pybind11::dtype dtype) {
     return M_UINT32;
   else if (dtype.is(pybind11::dtype::of<uint64_t>()))
     return M_UINT64;
+  else if (dtype.is(pybind11::dtype("half")))
+    return M_FLOAT16;
   else if (dtype.is(pybind11::dtype::of<float>()))
     return M_FLOAT32;
   else if (dtype.is(pybind11::dtype::of<double>()))
@@ -56,8 +58,9 @@ pybind11::dtype M::core::mapDType(M_Dtype dtype) {
   case M_UINT64:
     return pybind11::dtype::of<uint64_t>();
   case M_FLOAT16:
+    return pybind11::dtype("half");
   case M_BFLOAT16:
-    // TODO(10844): Figure out float16 and bfloat16 support using pybind casting
+    // TODO(10844): Figure out bfloat16 support using pybind casting
     // utilities
     return pybind11::dtype::of<float>();
   case M_FLOAT32:
