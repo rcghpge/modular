@@ -13,11 +13,10 @@
 #include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
-#include <llvm/ADT/STLExtras.h>
-#include <mlir/Dialect/Arith/IR/Arith.h>
-#include <mlir/Dialect/Index/IR/IndexDialect.h>
-#include <mlir/Dialect/Index/IR/IndexOps.h>
-#include <mlir/Support/LLVM.h>
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/Support/LLVM.h"
+#include "llvm/ADT/STLExtras.h"
 #include <numeric>
 
 using namespace M;
