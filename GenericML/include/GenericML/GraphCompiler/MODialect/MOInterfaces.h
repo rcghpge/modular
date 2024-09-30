@@ -86,7 +86,8 @@ public:
     Success() = default;
     Success(SmallVector<ParamBinding> &&bindings,
             SmallVector<ShapeAttr> &&resultShapes)
-        : bindings(std::move(bindings)), resultShapes(resultShapes) {}
+        : bindings(std::move(bindings)), resultShapes(std::move(resultShapes)) {
+    }
 
     // Disable copy and move.
     Success(const Success &) = delete;
@@ -141,9 +142,7 @@ private:
     result.emplace<Success>(std::move(bindings), std::move(resultShapes));
   }
   ShapeMaterializeResult() { result = NonMaterializable{}; }
-  ShapeMaterializeResult(const Twine &errMsg) {
-    result.emplace<Error>(errMsg.str());
-  }
+  ShapeMaterializeResult(const Twine &errMsg) { result.emplace<Error>(errMsg); }
   std::variant<Success, NonMaterializable, Error> result;
 };
 

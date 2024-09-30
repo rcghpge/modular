@@ -32,11 +32,16 @@ public:
                    SmallVector<ParamBinding> *createdOps)
       : graphOp(graphOp), loc(loc), createdOps(createdOps) {}
 
+  /// No copy and no move. The builder classes need pointer stability for
+  /// the Var mechanism to work correctly.
+  ParamExprBuilder(const ParamExprBuilder &other) = delete;
+  ParamExprBuilder(ParamExprBuilder &&other) = delete;
+
   /// Create a Var that wraps around given `attr`, and allows one to build more
   /// parameter expression with the returned Var.
   Var createVar(TypedAttr attr);
 
-  /// Create a Var that wraps around a newly `IntegerAttr` that contains
+  /// Create a Var that wraps around a newly created `IntegerAttr` that contains
   /// `n`, and allows one to build more parameter expression with the returned
   /// Var.
   Var createVar(int64_t n);

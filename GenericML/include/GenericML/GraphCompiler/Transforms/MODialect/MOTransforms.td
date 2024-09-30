@@ -40,6 +40,27 @@ def AddFallbackShapeFunctions :
   ];
 }
 
+def InvokeShapePackingFunctions : Pass<"invoke-shape-packing-funcs", "GraphOp"> {
+  let summary = "Process fallback shape functions for packing operations";
+
+  let description = [{
+    Attempts to process the fallback shape functions for packing operations.
+    Internally, this will call into a C++ re-implmentation of the shape
+    calculations.
+  }];
+
+  let options = [
+    Option<"useHostSystem", "use-host-system", "bool",
+      /*default=*/"true",
+      "Force the transform to use target information for the host system, "
+      "otherwise the GraphOp is inspected for a M.device attribute.">,
+  ];
+
+  let dependentDialects = [
+    "M::KGEN::KGENDialect"
+  ];
+}
+
 def SymbolicizeFallbackShapeFunctions :
     Pass<"symbolicize-fallback-shape-funcs", "mlir::ModuleOp"> {
   let summary = "Symbolically fold fallback shape functions in the graph";
