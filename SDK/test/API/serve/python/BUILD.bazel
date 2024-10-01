@@ -10,5 +10,6 @@ modular_py_test(
         requirement("pytest-asyncio"),
         requirement("sseclient-py"),
         requirement("transformers"),
+        requirement("async-asgi-testclient"),
     ],
 )
