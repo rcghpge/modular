@@ -291,6 +291,12 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
     }
   }
 
+  // TODO(iposva): Remove once not needed for debugging.
+  if (false) {
+    std::cerr << "CUDADeviceContext::compileFunction(" << function_name
+              << "):\n"
+              << reinterpret_cast<const char *>(data) << "\n";
+  }
   CUmodule module;
   CUDA_CHECK_ERR(driver_.ModuleLoadData(&module, data));
 
