@@ -365,38 +365,18 @@ TensorType TensorType::get(MLIRContext *context, ArrayRef<TypedAttr> shape,
   return get(newShape, dtype, deviceRef, metadata);
 }
 
-TensorType TensorType::getScalarF32Type(MLIRContext *ctx,
-                                        DictionaryAttr metadata) {
-  return get(ArrayRef<TypedAttr>{}, Float32Type::get(ctx), /*deviceRef=*/{},
-             metadata);
-}
-
-TensorType TensorType::getScalarF64Type(MLIRContext *ctx,
-                                        DictionaryAttr metadata) {
-  return get(ArrayRef<TypedAttr>{}, Float64Type::get(ctx), /*deviceRef=*/{},
-             metadata);
-}
-
-TensorType TensorType::getScalarSI32Type(MLIRContext *ctx,
-                                         DictionaryAttr metadata) {
-  auto si32Ty =
-      IntegerType::get(ctx, /*width=*/32, /*signedness=*/IntegerType::Signed);
-  return get(ArrayRef<TypedAttr>{}, si32Ty, /*deviceRef=*/{}, metadata);
-}
-
-TensorType TensorType::getScalarSI64Type(MLIRContext *ctx,
-                                         DictionaryAttr metadata) {
-  auto si64Ty =
-      IntegerType::get(ctx, /*width=*/64, /*signedness=*/IntegerType::Signed);
-  return get(ArrayRef<TypedAttr>{}, si64Ty, /*deviceRef=*/{}, metadata);
+TensorType TensorType::getScalarType(Type elementType, DeviceRefAttr deviceRef,
+                                     DictionaryAttr metadata) {
+  return get(ArrayRef<TypedAttr>{}, elementType, deviceRef, metadata);
 }
 
 TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
+                                         DeviceRefAttr deviceRef,
                                          DictionaryAttr metadata) {
   auto si64Ty = IntegerType::get(ctx, 64, IntegerType::Signed);
   auto idxTy = IndexType::get(ctx);
-  return get(SmallVector<TypedAttr>(1, IntegerAttr::get(idxTy, size)), si64Ty,
-             /*deviceRef=*/{}, metadata);
+  return get(ArrayRef<TypedAttr>{IntegerAttr::get(idxTy, size)}, si64Ty,
+             deviceRef, metadata);
 }
 
 LayoutAttr TensorType::getLayoutAttr() {
@@ -405,7 +385,8 @@ LayoutAttr TensorType::getLayoutAttr() {
 }
 
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
-                                 Type dtype, DictionaryAttr metadata) const {
+                                 Type dtype, DeviceRefAttr deviceRef,
+                                 DictionaryAttr metadata) const {
   auto shapeTy = ShapeType::get(getContext());
 
   TypedAttr shapeRef;
@@ -418,7 +399,7 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   ASSERT_STREAM(!errOrDType.isError(),
                 << "element type is not representable as an M::DType: "
                 << errOrDType.takeError());
-  return TensorType::get(shapeRef, *errOrDType, /*deviceRef=*/{}, metadata);
+  return TensorType::get(shapeRef, *errOrDType, deviceRef, metadata);
 }
 
 TensorType TensorType::cloneWith(ArrayRef<TypedAttr> shapeDims) const {

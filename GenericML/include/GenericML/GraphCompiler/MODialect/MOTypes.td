@@ -99,7 +99,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns a clone with a new integer shape and element dtype.
     TensorType cloneWith(
       std::optional<ArrayRef<int64_t>> shape, Type dtype,
-      DictionaryAttr metadata = {}) const;
+      DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {}) const;
 
     /// Returns a clone with a new dimensions for shape.
     TensorType cloneWith(
@@ -204,25 +204,21 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Supports parametric and unknown shapes, but not dynamic rank.
     static ErrorOr<TensorType> broadcastShapes(TensorType x, TensorType y);
 
-    /// Short-hand to create an SI32 scalar tensor type.
-    static TensorType getScalarSI32Type(MLIRContext *ctx,
-      DictionaryAttr metadata = {});
+    /// Short-hand to create a scalar tensor type.
+    static TensorType getScalarType(Type elementType,
+      DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {});
 
-    /// Short-hand to create an SI64 scalar tensor type.
-    static TensorType getScalarSI64Type(MLIRContext *ctx,
-      DictionaryAttr metadata = {});
-
-    /// Short-hand to create an F32 scalar tensor type.
-    static TensorType getScalarF32Type(MLIRContext *ctx,
-      DictionaryAttr metadata = {});
-
-    /// Short-hand to create an F64 scalar tensor type.
-    static TensorType getScalarF64Type(MLIRContext *ctx,
-      DictionaryAttr metadata = {});
+    /// Short-hand to create a signed integer scalar tensor type.
+    template<unsigned int width>
+    static TensorType getScalarSIntType(MLIRContext *ctx,
+        DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {}) {
+      return getScalarType(
+        IntegerType::get(ctx, width, IntegerType::Signed), deviceRef, metadata);
+    }
 
     /// Short-hand to create a SI64 vector tensor type.
     static TensorType getVectorSI64Type(MLIRContext *ctx, int64_t size,
-      DictionaryAttr metadata = {});
+      DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {});
 
     /// Return the layout attribute carried by this tensor type. If no layout
     /// attribute is specified, return a null attribute `LayoutAttr{}`.

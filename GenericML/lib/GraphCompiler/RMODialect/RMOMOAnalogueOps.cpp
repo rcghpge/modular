@@ -126,7 +126,7 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
   for (size_t i = 0, e = ty1.getRank(); i < e; i++)
     newDims.push_back(refineDim(i));
 
-  return TensorType::get(ty1.getContext(), newDims, dtype, {},
+  return TensorType::get(ty1.getContext(), newDims, dtype, /*deviceRef=*/{},
                          ty1.getMetadata());
 }
 
