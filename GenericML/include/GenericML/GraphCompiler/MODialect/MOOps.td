@@ -4602,8 +4602,6 @@ def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-
-  let hasCanonicalizer = 1;
 }
 
 def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
@@ -4629,8 +4627,6 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-
-  let hasCanonicalizer = 1;
 }
 
 def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>]>
@@ -4683,8 +4679,6 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [DeclareOpInter
     functional-type(operands, results)
   }];
   let hasVerifier = 1;
-
-  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//

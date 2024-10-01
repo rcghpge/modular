@@ -144,6 +144,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // MO pipeline:
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(MO::createCanonicalizeChainSequences());
 
   if (opts.genVizSpec)
     pm.addPass(MO::createGenVizSpec({opts.vizOutputPath}));

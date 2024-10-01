@@ -467,4 +467,42 @@ def DecomposeViewOps : Pass<"decompose-views", "ModuleOp"> {
   }];
 }
 
+def CanonicalizeChainSequences : Pass<"canonicalize-chain-sequences", "GraphOp"> {
+  let summary = "Optimize linear chains of side-effecting operations.";
+  let description = [{
+    Will optimize a linear chain of side-effecting operations.
+
+    Consider a case where we have two separate mo.buffers and the following
+    sequence of operations:
+
+    ```mlir
+    %ch1, %vbuf = mo.mutable.load(%ch0, %buf0)
+    ...
+    %ch2 = mo.mutable.store(%ch1, %buf0, %res1)
+    ...
+    %ch3, %vbuf2 = mo.mutable.load(%ch2, %buf1)
+    ...
+    %ch4 = mo.mutable.store(%ch3, %buf1, %res2)
+    ```
+
+    Even though `%buf0` and `%buf1` are entirely different mo.buffer values the
+    fact that operations on them are ordered by the same sequence of chains
+    means the side-effecting operations on `%buf1` must unnecesarily wait for
+    the operations on `%buf1` to complete.
+
+    This pass will try to take such sequences of chains and perform a series of
+    local transforms that will ultimately end with something like:
+
+    ```mlir
+    %ch1, %vbuf = mo.mutable.load(%ch0, %buf0)
+    ...
+    %ch2 = mo.mutable.store(%ch1, %buf0, %res1)
+    ...
+    %ch3, %vbuf2 = mo.mutable.load(%ch0, %buf1) // <- note the difference here
+    ...
+    %ch4 = mo.mutable.store(%ch3, %buf1, %res2)
+    ```
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
