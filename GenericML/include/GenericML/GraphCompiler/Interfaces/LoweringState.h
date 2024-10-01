@@ -268,7 +268,7 @@ public:
              common.modelOp.getDevices(), common.modelOp.getExecuteDevices()))
       if (deviceRefAttr == dev)
         return cast<TypedValue<MGP::OpaqueType>>(deviceContext);
-    llvm_unreachable("could not find device in model args");
+    llvm_unreachable("Could not find device in model args");
   }
 
   /// Return the weights registry appropriate for the 'execute' block.
