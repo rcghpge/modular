@@ -18,7 +18,6 @@
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
-#include "GraphRT/MIPDialect/MIP.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"

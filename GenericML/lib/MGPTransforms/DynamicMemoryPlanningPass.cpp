@@ -9,7 +9,7 @@
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/Utils.h"
-#include "GraphRT/MIPDialect/MIP.h"
+#include "KGEN/POPDialect/POPDialect.h"
 #include "Support/AssertStream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
@@ -52,7 +52,7 @@ bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
 
   // If the producing op isn't trivial, this isn't a trivial value
   bool isTrivialOp =
-      isa<MIP::MIPDialect>(*producer->getDialect()) ||
+      isa<KGEN::POP::POPDialect>(*producer->getDialect()) ||
       isa<mlir::index::IndexDialect>(*producer->getDialect()) ||
       isa<TensorExtractTensorSpecOp, CpuTensorSpecSizeOp, CpuTensorSpecCreateOp,
           CpuTensorSpecDimsDynamicOp, BufferAllocOp>(*producer);

@@ -1,6 +1,6 @@
 // RUN: mo-opt %s -allow-unregistered-dialect --lower-primitives | FileCheck %s
 
-//--- Test lowering of MIP Index Primitives
+//--- Test lowering of Index Primitives
 
 //--- index.constant will be tested throughtout the tests ---/
 
@@ -173,7 +173,7 @@ mgp.model @mip_mul : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // CHECK-LABEL: mgp.model @mip_and
-// CHECK: "mip.and"
+// CHECK: pop.and
 mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -186,12 +186,12 @@ mgp.model @mip_and : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
   %one = index.constant 1
   %lhs = index.bool.constant true
   %rhs = index.bool.constant true
-  %res1 = "mip.and"(%lhs, %rhs): (i1, i1) -> i1
+  %res1 = pop.and %lhs, %rhs
   mef.output %ch0, %res1: !mef.chain, i1
 }
 
 // CHECK-LABEL: mgp.model @mip_or
-// CHECK: "mip.or"
+// CHECK: pop.or
 mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -204,12 +204,12 @@ mgp.model @mip_or : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   %one = index.constant 1
   %lhs = index.bool.constant true
   %rhs = index.bool.constant false
-  %res1 = "mip.or"(%lhs, %rhs) : (i1, i1) -> i1
+  %res1 = pop.or %lhs, %rhs
   mef.output %ch0, %res1: !mef.chain, i1
 }
 
 // CHECK-LABEL: mgp.model @mip_xor
-// CHECK: "mip.xor"
+// CHECK: pop.xor
 mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
     %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -222,7 +222,7 @@ mgp.model @mip_xor : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
   %one = index.constant 1
   %lhs = index.bool.constant true
   %rhs = index.bool.constant false
-  %res1 = "mip.xor"(%lhs, %rhs) : (i1, i1) -> i1
+  %res1 = pop.xor %lhs, %rhs
   mef.output %ch0, %res1: !mef.chain, i1
 }
 

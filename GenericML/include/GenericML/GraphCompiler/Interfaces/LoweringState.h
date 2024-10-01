@@ -420,7 +420,7 @@ private:
   // Parameter lowering helpers.
   //===-----------------------------------------------------------------===//
 
-  /// Maps KGEN::POC opcodes to mip.index.* op names.
+  /// Maps KGEN::POC opcodes to pop/index.* op names.
   static ErrorOr<StringRef> pocToMopIndexOp(KGEN::POC poc);
 
   /// Lowers an operator attribute to the appropriate mop index op.
@@ -428,7 +428,7 @@ private:
                                            KGEN::ParamOperatorAttr opAttr,
                                            ValueRange operands);
 
-  /// Lowers an integer attribute to a mip constant op.
+  /// Lowers an integer attribute to a index constant op.
   static Operation *lowerIntAttr(OpBuilder &builder, Location loc,
                                  IntegerAttr intAttr);
 

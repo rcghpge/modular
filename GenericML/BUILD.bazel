@@ -241,7 +241,6 @@ modular_cc_library(
         ":MODialect",
         ":MOGGDialect.headers",
         "//AsyncRT:DeviceContext",
-        "//GraphRT:MIPDialect",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1251,7 +1250,6 @@ modular_cc_library(
         ":MOGGTransforms",
         ":MOToPrimitivesIncGen",
         "//AsyncRT:DeviceContext",
-        "//GraphRT:MIPDialect",
         "//KGEN:ToolCommon",
     ],
 )

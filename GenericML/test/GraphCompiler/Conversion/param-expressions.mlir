@@ -133,9 +133,9 @@ mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
 // CHECK:     %[[DIMS:[^:]*]]:3 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?x?xf32>
 // CHECK-DAG: %[[VAL1:[^:]*]] = index.cmp eq(%[[DIMS]]#0, %[[DIMS]]#1)
 // CHECK-DAG: %[[VAL2:[^:]*]] = index.cmp eq(%[[DIMS]]#1, %[[DIMS]]#2)
-// CHECK-DAG: %[[VAL3:[^:]*]] = "mip.or"
-// CHECK-DAG: %[[VAL4:[^:]*]] = "mip.xor"
-// CHECK-DAG: %[[VAL5:[^:]*]] = "mip.and"
+// CHECK-DAG: %[[VAL3:[^:]*]] = pop.or
+// CHECK-DAG: %[[VAL4:[^:]*]] = pop.xor
+// CHECK-DAG: %[[VAL5:[^:]*]] = pop.and
 mo.graph @bool_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare E0: i1 = <eq(X, Y)>
   kgen.param.declare E1: i1 = <eq(Y, Z)>

@@ -9,7 +9,6 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MIPDialect/MIP.h"
 #include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
@@ -205,11 +204,11 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   case KGEN::POC::MulNuw:
     return mlir::index::MulOp::getOperationName();
   case KGEN::POC::And:
-    return M::MIP::AndOp::getOperationName();
+    return KGEN::POP::AndOp::getOperationName();
   case KGEN::POC::Or:
-    return M::MIP::OrOp::getOperationName();
+    return KGEN::POP::OrOp::getOperationName();
   case KGEN::POC::Xor:
-    return M::MIP::XOrOp::getOperationName();
+    return KGEN::POP::XOrOp::getOperationName();
   case KGEN::POC::Cond:
     return KGEN::POP::SelectOp::getOperationName();
   default:
@@ -278,10 +277,11 @@ Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
 namespace {
 
 bool isIndexOp(Operation *op) {
-  // We uses mip::And/Or/XOrOp instead of index::And/Or/XOr so that we can
+  // We uses POP::And/Or/XOrOp instead of index::And/Or/XOr so that we can
   // handle more than IndexType.
   return isa<mlir::index::IndexDialect>(op->getDialect()) ||
-         isa<MIP::MIPDialect>(op->getDialect()) || isa<KGEN::POP::SelectOp>(op);
+         isa<KGEN::POP::SelectOp, KGEN::POP::AndOp, KGEN::POP::OrOp,
+             KGEN::POP::XOrOp>(op);
 }
 
 DenseSet<Operation *> getAncestors(Operation *root) {

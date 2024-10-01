@@ -25,7 +25,6 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
   ];
   let dependentDialects = ["MEF::MEFDialect",
                            "MGP::MGPDialect",
-                           "MIP::MIPDialect",
                            "GRT::GRTDialect"];
 }
 

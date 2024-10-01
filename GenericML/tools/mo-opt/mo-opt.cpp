@@ -9,7 +9,6 @@
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
-#include "GraphRT/MIPDialect/MIP.h"
 #include "Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -30,7 +29,7 @@ int main(int argc, char **argv) {
   DialectRegistry registry;
   MO::loadDialects(registry);
   registry.insert<mlir::func::FuncDialect, MEF::MEFDialect, GRT::GRTDialect,
-                  MIP::MIPDialect, MGP::MGPDialect>();
+                  MGP::MGPDialect>();
 
   MO::registerPasses();
 

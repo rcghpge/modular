@@ -17,7 +17,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MIPDialect/MIP.h"
 #include "KGEN/CustomDialect/CustomDialect.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
@@ -53,7 +52,8 @@ struct LowerPrimitivesPass
   void runOnOperation() override;
 };
 
-// All MIP and MGP Primitives that are registered we will allow fusion of.
+// All POP, index and MGP Primitives that are registered we will allow fusion
+// of.
 static inline bool canFuseOp(Operation *op) {
   if (isa<MGP::SyncOp>(op))
     return false;
@@ -62,8 +62,9 @@ static inline bool canFuseOp(Operation *op) {
     return false;
 
   // Allow for custom ops starting with "testfuse." for testing purposes.
-  return isa_and_nonnull<MGPDialect, KGEN::POP::POPDialect, MIP::MIPDialect,
+  return isa_and_nonnull<MGPDialect, KGEN::POP::POPDialect,
                          mlir::index::IndexDialect>(op->getDialect()) ||
+         isa<KGEN::ParamConstantOp>(op) ||
          op->getName().getIdentifier().strref().starts_with("testfuse.");
 }
 
@@ -91,20 +92,6 @@ isLowerableToMOGGCall(MLIRContext *ctx,
   bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
       op->getName().getStringRef());
   return isRegistered;
-}
-
-static ErrorOr<Type> convertFromMLIRType(Type mlirType) {
-  // TODO, handle more types? so far, we only deal with bool and index type.
-  KGEN::KGENDType dtype = KGEN::KGENDType::invalid;
-  if (mlirType.isIndex())
-    dtype = KGEN::KGENDType::index;
-  else if (mlirType.isInteger(1))
-    dtype = KGEN::KGENDType::kBool;
-
-  if (dtype != KGEN::KGENDType::invalid)
-    return KGEN::POP::SIMDType::get(mlirType.getContext(), 1, dtype);
-
-  return Error("unhandled type.");
 }
 
 // Get a dictionary of the attributes for the lowered mogg call
@@ -309,37 +296,6 @@ void LowerPrimitivesPass::runOnOperation() {
     return newOp->getResults();
   };
 
-  auto mipOperationBuilder =
-      [](OpBuilder &builder, Location loc, Operation *op,
-         ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
-    // Convert arith operations into pop operations.
-    SmallVector<Value> popInputs;
-    for (Value input : inputs) {
-      ErrorOr<Type> converted = convertFromMLIRType(input.getType());
-      if (converted.isError())
-        return converted.takeError();
-      popInputs.push_back(builder.create<KGEN::POP::CastFromBuiltinOp>(
-          loc, converted.takeValue(), input));
-    }
-
-    Operation *popOp = nullptr;
-    if (isa<MIP::XOrOp, MIP::OrOp, MIP::AndOp>(op)) {
-      // Get the common part of the name, e.g., pop.simd.[xor] as in mip.[xor]
-      StringRef popOpName = op->getName().stripDialect();
-      popOp =
-          builder.create(loc, builder.getStringAttr("pop.simd." + popOpName),
-                         popInputs, popInputs.front().getType());
-    }
-
-    if (popOp) {
-      return builder
-          .create<KGEN::POP::CastToBuiltinOp>(loc, op->getResultTypes(),
-                                              popOp->getResults())
-          ->getResults();
-    }
-    return Error("unhandled MIP operation");
-  };
-
   mod.walk([&](Operation *op) {
     Location opLoc = op->getLoc();
     OpBuilder builder{op};
@@ -367,13 +323,11 @@ void LowerPrimitivesPass::runOnOperation() {
 
     CompiledRegionBodyBuilder bodyBuilder(nullptr);
     if ((isa_and_nonnull<mlir::index::IndexDialect>(op->getDialect()) ||
-         isa_and_nonnull<KGEN::POP::POPDialect>(op->getDialect())) &&
+         isa_and_nonnull<KGEN::POP::POPDialect>(op->getDialect()) ||
+         isa<KGEN::ParamConstantOp>(op)) &&
         !op->getParentOfType<MOGG::GenericCompiledRegionOp>()) {
       // Clone index operations and pop operations when necessary.
       bodyBuilder = cloneOperationBuilder;
-    } else if (isa_and_nonnull<MIP::MIPDialect>(op->getDialect())) {
-      // Convert MIP operations to corresponding pop operations.
-      bodyBuilder = mipOperationBuilder;
     } else if (isLowerableToMOGGCall(ctx, mojoLibraryAnalysis, op)) {
       bodyBuilder = moggCallBodyBuilder;
     }
