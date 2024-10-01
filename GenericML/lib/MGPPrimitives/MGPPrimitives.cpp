@@ -187,8 +187,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
                     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
                     MEFAttr<uint64_t> cFunctionIndex,
                     MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
-                    MEFAttr<bool> fHasCuda, Runtime &runtime,
-                    EncodedLocation loc) {
+                    Runtime &runtime, EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
@@ -208,8 +207,8 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
        outResults = outResults.copyAsVector(),
        // std::move(operands) does not work, must use takeAsVector
        takenOperands = operands.takeAsVector(), summary = dSummary->str(),
-       hasCuda = fHasCuda.get(), profilerEntry = std::move(profilerEntry),
-       runtimePtr = runtimePtr, deviceContext = std::move(deviceContext),
+       profilerEntry = std::move(profilerEntry), runtimePtr = runtimePtr,
+       deviceContext = std::move(deviceContext),
        loc = std::move(loc)]() mutable {
         void *deviceContextPtr = deviceContext.getPointerToData();
         std::vector<void *> kernelInputs;
