@@ -862,7 +862,8 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
 
   auto &buffer = bufferizedInput.buffer;
   auto &tensorSpec = bufferizedInput.tensorSpec;
-  auto chain = loweringState.getCurrentExecuteChain();
+  auto chain =
+      opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
 
   if (printOp.getLabelAttr().empty() || targetDevice == hostDevice) {
     auto outChain = opLoweringState.debugTensorPrint(
