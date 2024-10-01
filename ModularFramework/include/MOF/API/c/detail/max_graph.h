@@ -142,6 +142,7 @@ MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a);
 MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t);
 MODULAR_API_EXPORT bool MAXG_typeIsOpaque(MlirType t);
 MODULAR_API_EXPORT bool MAXG_typeIsBuffer(MlirType t);
+MODULAR_API_EXPORT bool MAXG_typeIsChain(MlirType t);
 
 /// Creates a new MO::Opaque type (!mo.opaque).
 MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
@@ -149,5 +150,8 @@ MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
 
 /// Accessors for !mo.opaque.
 MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t);
+
+/// Accessors for !mo.chain
+MODULAR_API_EXPORT MlirType MAXG_chainTypeNew(MlirContext context);
 
 #endif // MOF_API_C_DETAIL_MAX_GRAPH_H
