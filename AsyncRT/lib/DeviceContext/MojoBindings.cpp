@@ -78,18 +78,16 @@ AsyncRT_DeviceContext_freeHost(const DeviceContext *ctx, void *ptr) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_createBuffer(const DeviceBuffer **result,
-                                   const DeviceContext *ctx, size_t len,
-                                   size_t elem_size) {
-  return check_ref(result, ctx->createBuffer(len, elem_size));
+                                   void **device_ptr, const DeviceContext *ctx,
+                                   size_t len, size_t elem_size) {
+  const char *err_msg = check_ref(result, ctx->createBuffer(len, elem_size));
+  *device_ptr = (*result)->ptr();
+  return err_msg;
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(const DeviceBuffer *buffer) {
   // Decrement the reference count by adopting it in the ref.
   DeviceBufferRef::take(buffer);
-}
-
-MODULAR_EXPORT void *AsyncRT_DeviceBuffer_ptr(const DeviceBuffer *buffer) {
-  return buffer->ptr();
 }
 
 MODULAR_EXPORT const char *
