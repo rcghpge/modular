@@ -335,7 +335,7 @@ static ErrorOrSuccess buildForReductionOp(GraphOp &graph, OpBuilder &builder,
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op->getOperands(), "reduce_shape", shapeParams,
+      op.getLoc(), op->getOperands(), op->getName().getStringRef(), shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 
