@@ -321,75 +321,74 @@ TypedAttr M::MO::getShape(Type ty) {
 }
 
 TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
-                           DictionaryAttr metadata) {
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   MLIRContext *ctx = shapeAttr.getContext();
   if (!metadata)
     metadata = DictionaryAttr::get(ctx);
-  return get(ctx, shapeAttr, dtype, /*deviceRef=*/nullptr, metadata);
+  return get(ctx, shapeAttr, dtype, deviceRef, metadata);
 }
 
 TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
-                           DictionaryAttr metadata) {
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
   ASSERT_STREAM(!errOrDType.isError(),
                 << "element type is not representable as a DType: "
                 << errOrDType.takeError());
-  return get(shapeAttr, *errOrDType, metadata);
+  return get(shapeAttr, *errOrDType, deviceRef, metadata);
 }
 
 TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
-                           DictionaryAttr metadata) {
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
-  return get(newShape, elementType, metadata);
+  return get(newShape, elementType, deviceRef, metadata);
 }
 
 TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
-                           DictionaryAttr metadata) {
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
-  return get(newShape, elementType, metadata);
-}
-
-TensorType TensorType::get(MLIRContext *context, TypedAttr shape, DType dtype,
-                           DictionaryAttr metadata) {
-  return get(shape, dtype, metadata);
+  return get(newShape, elementType, deviceRef, metadata);
 }
 
 TensorType TensorType::get(MLIRContext *context, ArrayRef<int64_t> shape,
-                           DType dtype, DictionaryAttr metadata) {
+                           DType dtype, DeviceRefAttr deviceRef,
+                           DictionaryAttr metadata) {
   auto newShape = ShapeAttr::get(shape, ShapeType::get(context));
-  return get(newShape, dtype, metadata);
+  return get(newShape, dtype, deviceRef, metadata);
 }
 
 TensorType TensorType::get(MLIRContext *context, ArrayRef<TypedAttr> shape,
-                           DType dtype, DictionaryAttr metadata) {
+                           DType dtype, DeviceRefAttr deviceRef,
+                           DictionaryAttr metadata) {
   auto newShape = ShapeAttr::get(shape, ShapeType::get(context));
-  return get(newShape, dtype, metadata);
+  return get(newShape, dtype, deviceRef, metadata);
 }
 
 TensorType TensorType::getScalarF32Type(MLIRContext *ctx,
                                         DictionaryAttr metadata) {
-  return get(SmallVector<TypedAttr>{}, Float32Type::get(ctx), metadata);
+  return get(ArrayRef<TypedAttr>{}, Float32Type::get(ctx), /*deviceRef=*/{},
+             metadata);
 }
 
 TensorType TensorType::getScalarF64Type(MLIRContext *ctx,
                                         DictionaryAttr metadata) {
-  return get(SmallVector<TypedAttr>{}, Float64Type::get(ctx), metadata);
+  return get(ArrayRef<TypedAttr>{}, Float64Type::get(ctx), /*deviceRef=*/{},
+             metadata);
 }
 
 TensorType TensorType::getScalarSI32Type(MLIRContext *ctx,
                                          DictionaryAttr metadata) {
   auto si32Ty =
       IntegerType::get(ctx, /*width=*/32, /*signedness=*/IntegerType::Signed);
-  return get(SmallVector<TypedAttr>{}, si32Ty, metadata);
+  return get(ArrayRef<TypedAttr>{}, si32Ty, /*deviceRef=*/{}, metadata);
 }
 
 TensorType TensorType::getScalarSI64Type(MLIRContext *ctx,
                                          DictionaryAttr metadata) {
   auto si64Ty =
       IntegerType::get(ctx, /*width=*/64, /*signedness=*/IntegerType::Signed);
-  return get(SmallVector<TypedAttr>{}, si64Ty, metadata);
+  return get(ArrayRef<TypedAttr>{}, si64Ty, /*deviceRef=*/{}, metadata);
 }
 
 TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
@@ -397,7 +396,7 @@ TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
   auto si64Ty = IntegerType::get(ctx, 64, IntegerType::Signed);
   auto idxTy = IndexType::get(ctx);
   return get(SmallVector<TypedAttr>(1, IntegerAttr::get(idxTy, size)), si64Ty,
-             metadata);
+             /*deviceRef=*/{}, metadata);
 }
 
 LayoutAttr TensorType::getLayoutAttr() {
@@ -419,47 +418,42 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   ASSERT_STREAM(!errOrDType.isError(),
                 << "element type is not representable as an M::DType: "
                 << errOrDType.takeError());
-  return TensorType::get(shapeRef, *errOrDType, metadata);
+  return TensorType::get(shapeRef, *errOrDType, /*deviceRef=*/{}, metadata);
 }
 
 TensorType TensorType::cloneWith(ArrayRef<TypedAttr> shapeDims) const {
   auto shapeTy = ShapeType::get(getContext());
   auto shapeAttr = ShapeAttr::get(shapeDims, shapeTy);
-  return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
-                         getDeviceRef(), getMetadata());
+  return TensorType::get(shapeAttr, getDtype(), getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWith(TypedAttr shapeAttr) const {
-  return TensorType::get(shapeAttr.getContext(), shapeAttr, getDtype(),
-                         getDeviceRef(), getMetadata());
+  return TensorType::get(shapeAttr, getDtype(), getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWith(DType dtype) const {
-  return TensorType::get(getContext(), getShapeAttr(), dtype, getDeviceRef(),
-                         getMetadata());
+  return TensorType::get(getShapeAttr(), dtype, getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.set(kLayoutMetadataName, layoutAttr);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
-  return TensorType::get(getContext(), getShapeAttr(), getDtype(),
-                         getDeviceRef(), newMetadata);
+  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
+                         newMetadata);
 }
 
 TensorType TensorType::cloneWith(DictionaryAttr metadataAttr) const {
-  return TensorType::get(getContext(), getShapeAttr(), getDtype(),
-                         getDeviceRef(), metadataAttr);
+  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
+                         metadataAttr);
 }
 
 TensorType TensorType::cloneWith(DeviceRefAttr deviceRef) const {
-  return TensorType::get(getContext(), getShapeAttr(), getDtype(), deviceRef,
-                         getMetadata());
+  return TensorType::get(getShapeAttr(), getDtype(), deviceRef, getMetadata());
 }
 
 TensorType TensorType::cloneWithUnknownRank() const {
-  return TensorType::get(getContext(),
-                         KGEN::UnknownAttr::get(ShapeType::get(getContext())),
+  return TensorType::get(KGEN::UnknownAttr::get(ShapeType::get(getContext())),
                          getDtype(), getDeviceRef(), getMetadata());
 }
 
@@ -467,13 +461,13 @@ TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
   SmallVector<TypedAttr> shapes(
       rank, KGEN::UnknownAttr::get(IndexType::get(getContext())));
   return TensorType::get(
-      getContext(), MOSH::ShapeAttr::get(shapes, ShapeType::get(getContext())),
-      getDtype(), getDeviceRef(), getMetadata());
+      MOSH::ShapeAttr::get(shapes, ShapeType::get(getContext())), getDtype(),
+      getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWithMetadataAndDeviceRef(TensorType source) const {
-  return TensorType::get(getContext(), getShapeAttr(), getDtype(),
-                         source.getDeviceRef(), source.getMetadata());
+  return TensorType::get(getShapeAttr(), getDtype(), source.getDeviceRef(),
+                         source.getMetadata());
 }
 
 bool TensorType::isDynamicallyRanked() const { return !hasRank(); }
@@ -611,7 +605,7 @@ ErrorOr<TensorType> TensorType::broadcastShapes(TensorType x, TensorType y) {
   if (resultOr.isError())
     return resultOr.takeError();
 
-  return MO::TensorType::get(std::move(*resultOr), x.getElementType());
+  return MO::TensorType::get(*resultOr, x.getElementType());
 }
 
 TensorType TensorType::cloneWithNewDim(uint64_t dim, uint64_t size) {
@@ -739,7 +733,7 @@ BufferType BufferType::get(TypedAttr shapeAttr, DType dtype,
   MLIRContext *ctx = shapeAttr.getContext();
   if (!metadata)
     metadata = DictionaryAttr::get(ctx);
-  return get(ctx, shapeAttr, dtype, /*deviceRef=*/nullptr, metadata);
+  return get(ctx, shapeAttr, dtype, /*deviceRef=*/{}, metadata);
 }
 
 BufferType BufferType::get(TypedAttr shapeAttr, Type elementType,
@@ -764,8 +758,7 @@ TensorType BufferType::toTensorType(BufferType ty) {
   auto deviceRef = ty.getDeviceRef();
   auto metadata = ty.getMetadata();
 
-  return TensorType::get(ty.getContext(), shapeAttr, dtype, deviceRef,
-                         metadata);
+  return TensorType::get(shapeAttr, dtype, deviceRef, metadata);
 }
 
 TensorType BufferType::toTensorType() {
@@ -775,17 +768,15 @@ TensorType BufferType::toTensorType() {
 TensorType M::MO::castFromTensorLike(Type ty) {
   if (auto tensorTy = dyn_cast<TensorType>(ty))
     return tensorTy;
-  else
-    return BufferType::toTensorType(cast<MO::BufferType>(ty));
+  return BufferType::toTensorType(cast<MO::BufferType>(ty));
 }
 
 TensorType M::MO::dynCastFromTensorLike(Type ty) {
   if (auto tensorTy = dyn_cast<TensorType>(ty))
     return tensorTy;
-  else if (auto bufferTy = dyn_cast<BufferType>(ty))
+  if (auto bufferTy = dyn_cast<BufferType>(ty))
     return BufferType::toTensorType(bufferTy);
-  else
-    return nullptr;
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

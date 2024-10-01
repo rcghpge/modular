@@ -67,30 +67,32 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "ArrayRef<int64_t>" : $shape,
       "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "ArrayRef<TypedAttr>" : $shape,
       "Type" : $elementType,
-      CArg<"DictionaryAttr", "{}"> : $metadata)>,
-    TypeBuilder<(ins
-      "TypedAttr" : $shapeAttr,
-      "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilder<(ins
       "ArrayRef<int64_t>" : $shape,
       "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilder<(ins
       "ArrayRef<TypedAttr>" : $shape,
       "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>];
 
   let extraClassDeclaration = [{

@@ -63,9 +63,8 @@ static TensorType
 getRankedParamTensorType(int64_t rank, DType dtype, MO::GraphOp graphOp,
                          SmallVectorImpl<KGEN::ParamDeclAttr> &newParamDecls) {
   SmallVector<TypedAttr> newShape;
-  for (int64_t i = 0; i < rank; i++) {
+  for (int64_t i = 0; i < rank; i++)
     newShape.push_back(createDynamicDimensionType(graphOp, newParamDecls));
-  }
   TensorType outputTy = TensorType::get(graphOp->getContext(), newShape, dtype);
   return outputTy;
 }
@@ -89,6 +88,8 @@ static DType getDType(std::optional<ValueRange> values, size_t index,
 /// from both existing types
 TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
                                      DType dtype) {
+  ASSERT_STREAM(ty1.getDeviceRef() == ty2.getDeviceRef(),
+                << " tried to refine types with different devices");
   ASSERT_STREAM(!ty1.hasUnknownShape() && !ty2.hasUnknownShape(),
                 << " no question marks should be here");
   bool ty1Ranked = ty1.hasRank();
@@ -125,7 +126,8 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
   for (size_t i = 0, e = ty1.getRank(); i < e; i++)
     newDims.push_back(refineDim(i));
 
-  return TensorType::get(ty1.getContext(), newDims, dtype, ty1.getMetadata());
+  return TensorType::get(ty1.getContext(), newDims, dtype, {},
+                         ty1.getMetadata());
 }
 
 // Return a TensorType with refined shape information given ty1 and ty2 which
