@@ -4317,7 +4317,8 @@ def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure]> {
 
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
 ]> {
   let summary = "User-defined operation";
   let description = [{

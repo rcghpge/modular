@@ -3900,6 +3900,15 @@ mlir::SmallVector<Value> CustomOp::getBufferOperands() {
   return result;
 }
 
+void CustomOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+
+  if (!getBufferOperands().empty() && getInChain() && getOutChain()) {
+    effects.emplace_back(mlir::MemoryEffects::Write::get());
+    effects.emplace_back(mlir::MemoryEffects::Read::get());
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // MO Mutable tensor operations
 //===----------------------------------------------------------------------===//
