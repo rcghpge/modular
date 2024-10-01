@@ -467,7 +467,7 @@ mo.graph @pad_constant_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[6], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["pad_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.pad.constant"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[6], si32>)
 //
@@ -493,7 +493,7 @@ mo.graph @pad_reflect_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[6], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["pad_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.pad.reflect"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[6], si32>)
 //
@@ -519,7 +519,7 @@ mo.graph @pad_repeat_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[6], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["pad_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.pad.repeat"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[6], si32>)
 //
