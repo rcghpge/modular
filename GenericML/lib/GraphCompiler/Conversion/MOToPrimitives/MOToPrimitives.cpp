@@ -690,6 +690,56 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
   return success();
 }
 
+/// Takes a constant op's result buffer on host and:
+/// - allocates device memory,
+/// - copies from host to device, then,
+/// - creates the output tensor.
+/// If the target device is host, then just creates the output tensor.
+static LogicalResult
+constHostBufferToTarget(MGP::MOOpLoweringState &opLoweringState,
+                        MGP::MOGraphLoweringState &graphLoweringState,
+                        Value hostBuffer, TypedValue<MEF::ChainType> chain,
+                        TypedValue<MO::TensorType> opResult,
+                        std::optional<uint64_t> maybeAlignment = std::nullopt) {
+  MO::TensorType moTensorType = opResult.getType();
+  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
+      opLoweringState.createTensorSpec(moTensorType);
+  if (failed(tensorSpecOr))
+    return failure();
+  TypedValue<MGP::TensorSpecType> tensorSpec = *tensorSpecOr;
+
+  DeviceRefAttr device =
+      MO::getDeviceOrDefault(graphLoweringState.getGraph(), moTensorType);
+  DeviceRefAttr hostDevice = graphLoweringState.getHostDevice();
+
+  // If targetDevice is on host, then we just create output tensor and return.
+  // Otherwise, we allocate a device buffer and explicitly transfer HtoD.
+  if (device == hostDevice) {
+    opLoweringState.createOutputTensor(opResult, chain, hostBuffer, tensorSpec);
+    return success();
+  }
+
+  // Default alignment to the preferred alignment for device if not passed.
+  uint64_t alignment = maybeAlignment.value_or(
+      AsyncRT::getPreferredAlignment(device.getLabel().str()));
+
+  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
+  Value bufferSize =
+      opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
+  Value deviceBuffer = opLoweringState.bufferAlloc(chain, bufferSize, alignment,
+                                                   moTensorType, sizeInBytes);
+  // Use bufferTransferFromHost to also take care of the stream sync.
+  // Note that this is needlessly conservative because the constant external's
+  // lifetime is controlled outside the graph.
+  Value outChain = opLoweringState.bufferTransferFromHost(
+      chain, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer), deviceBuffer,
+      moTensorType);
+
+  opLoweringState.createOutputTensor(opResult, outChain, deviceBuffer,
+                                     tensorSpec);
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, constOp);
 
@@ -697,99 +747,32 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
   if (elementsOr)
     return constOp->emitOpError(elementsOr.getError());
 
-  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
-      opLoweringState.createTensorSpec(constOp.getType());
-  if (failed(tensorSpecOr))
-    return failure();
-  TypedValue<MGP::TensorSpecType> &tensorSpec = *tensorSpecOr;
+  TypedValue<MO::TensorType> opResult = constOp.getResult();
+  TypedValue<MEF::ChainType> chain = loweringState.getExecuteChain();
 
-  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
-  auto moTensorType = cast<MO::TensorType>(constOp.getResult().getType());
-
-  DeviceRefAttr device =
-      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
-  DeviceRefAttr hostDevice = loweringState.getHostDevice();
-
-  // Create the mgp.buffer.constant op
-  Value hostBuffer = opLoweringState.hostBufferConstant(
-      loweringState.getExecuteChain(), *elementsOr,
-      constOp.getResult().getType());
-  // If targetDevice is on host, then we just create output tensor and return.
-  // Otherwise, we allocate a device buffer and explicitly transfer HtoD.
-  if (device == hostDevice) {
-    opLoweringState.createOutputTensor(constOp.getResult(),
-                                       loweringState.getExecuteChain(),
-                                       hostBuffer, *tensorSpecOr);
-    return success();
-  } else {
-    Value bufferSize =
-        opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
-    auto alignment = AsyncRT::getPreferredAlignment(device.getLabel().str());
-    Value deviceBuffer =
-        opLoweringState.bufferAlloc(loweringState.getExecuteChain(), bufferSize,
-                                    alignment, moTensorType, sizeInBytes);
-    // Use bufferTransferFromHost to also take care of the stream sync.
-    // Note that this is needlessly conservative because the constant external's
-    // lifetime is controlled outside the graph.
-    Value outChain = opLoweringState.bufferTransferFromHost(
-        loweringState.getExecuteChain(),
-        cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer), deviceBuffer,
-        constOp.getResult().getType());
-
-    opLoweringState.createOutputTensor(constOp.getResult(), outChain,
-                                       deviceBuffer, *tensorSpecOr);
-
-    return success();
-  }
+  // Create the mgp.buffer.constant op.
+  Value hostBuffer = opLoweringState.hostBufferConstant(chain, *elementsOr,
+                                                        opResult.getType());
+  return constHostBufferToTarget(opLoweringState, loweringState, hostBuffer,
+                                 chain, opResult);
 }
 
 LogicalResult
 MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, constExternalOp);
 
-  // Use the tensor spec to get the external constant's size and result type.
-  auto tensorSpecOr =
-      opLoweringState.createTensorSpec(constExternalOp.getType());
-  if (failed(tensorSpecOr))
-    return failure();
-  TypedValue<MGP::TensorSpecType> &tensorSpec = *tensorSpecOr;
-
   TypedValue<MEF::ChainType> chain = loweringState.getExecuteChain();
-  StringRef name = constExternalOp.getName();
-  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
+  TypedValue<MO::TensorType> opResult = constExternalOp.getResult();
+  uint64_t sizeInBytes = opResult.getType().getDtype().getSizeInBytes() *
+                         (*opResult.getType().getNumElements());
   uint64_t alignment = constExternalOp.getAlign();
-  auto moTensorType =
-      cast<MO::TensorType>(constExternalOp.getResult().getType());
 
-  DeviceRefAttr targetDevice =
-      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
-  DeviceRefAttr hostDevice = loweringState.getHostDevice();
-  // Create the mgp.buffer.constant.external op
+  // Create the mgp.buffer.constant.external op.
   Value hostBuffer = opLoweringState.hostBufferConstantExternal(
-      chain, name, sizeInBytes, alignment);
+      chain, constExternalOp.getName(), sizeInBytes, alignment);
 
-  // If targetDevice is on host, then we just create output tensor and return.
-  // Otherwise, we allocate a device buffer and explicitly transfer HtoD.
-  if (targetDevice == hostDevice) {
-    opLoweringState.createOutputTensor(constExternalOp.getResult(), chain,
-                                       hostBuffer, *tensorSpecOr);
-    return success();
-  } else {
-    Value bufferSize =
-        opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
-    Value deviceBuffer = opLoweringState.bufferAlloc(
-        chain, bufferSize, alignment, moTensorType, sizeInBytes);
-    // Use bufferTransferFromHost to also take care of the stream sync.
-    // Note that this is needlessly conservative because the constant external's
-    // lifetime is controlled outside the graph.
-    Value outChain = opLoweringState.bufferTransferFromHost(
-        chain, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
-        deviceBuffer, constExternalOp.getResult().getType());
-
-    opLoweringState.createOutputTensor(constExternalOp.getResult(), outChain,
-                                       deviceBuffer, *tensorSpecOr);
-    return success();
-  }
+  return constHostBufferToTarget(opLoweringState, loweringState, hostBuffer,
+                                 chain, opResult, alignment);
 }
 
 LogicalResult
