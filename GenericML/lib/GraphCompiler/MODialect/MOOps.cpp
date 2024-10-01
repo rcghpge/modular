@@ -3823,7 +3823,81 @@ LogicalResult CustomOp::verify() {
     assignedIndex[index] = true;
   }
 
+  auto chainIsLastIfPresent = [](auto &&rng) {
+    auto chainIter =
+        llvm::find_if(rng, [](Type t) { return isa<MO::ChainType>(t); });
+
+    return chainIter == rng.end() || std::next(chainIter) == rng.end();
+  };
+
+  if (!chainIsLastIfPresent(getOperandTypes())) {
+    return emitError(
+        "If an input chain is present it must be the final operand.");
+  }
+
+  if (!chainIsLastIfPresent(getResultTypes())) {
+    return emitError(
+        "If an output chain is present it must be the final result.");
+  }
+
+  // May have to revisit this if we start allowing custom shape functions
+  // operating directly on mo.buffer values.
+  //
+  // Could also be addressed by allow mo.rebind to take mo.buffer
+  // values as input (GRA-1065).
+  if (getBufferOperands().size() >= 1) {
+    auto inChain = getInChain();
+    auto outChain = getOutChain();
+
+    if (!inChain) {
+      return emitError(
+          "Any custom op taking buffer inputs must have an input chain");
+    }
+
+    if (!outChain) {
+      return emitError(
+          "Any custom op taking buffer inputs must have an output chain");
+    }
+  }
+
   return success();
+}
+
+std::optional<ChainValue> CustomOp::getInChain() {
+  if (getNumOperands() == 0)
+    return std::nullopt;
+
+  // Any chain operand must be last in the verifier due to a limitation in the
+  // current kernel lowering (GRA-868).
+  auto finalOperand = getOperand(getNumOperands() - 1);
+  if (auto chain = dyn_cast<ChainValue>(finalOperand))
+    return chain;
+
+  return std::nullopt;
+}
+
+std::optional<ChainValue> CustomOp::getOutChain() {
+  if (getNumResults() == 0)
+    return std::nullopt;
+
+  // Any chain result must be last in the verifier due to a limitation in the
+  // current kernel lowering (GRA-868).
+  auto finalResult = getResult(getNumResults() - 1);
+  if (auto chain = dyn_cast<ChainValue>(finalResult))
+    return chain;
+
+  return std::nullopt;
+}
+
+mlir::SmallVector<Value> CustomOp::getBufferOperands() {
+  SmallVector<Value> result;
+
+  for (Value val : getOperands()) {
+    if (isa<MO::BufferType>(val.getType()))
+      result.push_back(val);
+  }
+
+  return result;
 }
 
 //===----------------------------------------------------------------------===//

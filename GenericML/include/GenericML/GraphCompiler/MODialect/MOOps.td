@@ -4342,6 +4342,27 @@ def MO_CustomOp : MO_TensorOp<"custom", [
       fn foo(...):
         pass
     ```
+
+    Also allows the definition of custom kernels that have side-effects on
+    mo.buffer values via the use of chains.
+    (Currently limited to NDBuffer based kernels).
+
+    Nothing needs to change about the kernel definition, but now the custom op
+    must take a `mo.buffer` operand for the value it wants to mutate and
+    produce an output chain as it's final result and take an input chain as its
+    final operand.
+
+    Example:
+
+    ```mlir
+    %ch1 = mo.custom {symbol = "test_mutable_op"}(%arg0, %ch0) :
+      (!mo.buffer<[D1, D2], f32>, !mo.chain) -> !mo.chain
+    ```
+    ```mojo
+      @mogg_register("test_custom_op")
+      fn foo(...):
+        pass
+    ```
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands,
@@ -4358,6 +4379,17 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)` `:`
        functional-type(operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+    /// Returns the sole input chain (if present) and std::nullopt otherwise.
+    std::optional<ChainValue> getInChain();
+
+    /// Returns the sole output chain (if present) and std::nullopt otherwise.
+    std::optional<ChainValue> getOutChain();
+
+    /// Collects all operands of type !mo.buffer.
+    mlir::SmallVector<Value> getBufferOperands();
   }];
 
   let hasVerifier = 1;
