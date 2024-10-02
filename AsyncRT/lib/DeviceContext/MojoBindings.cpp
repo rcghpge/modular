@@ -60,9 +60,14 @@ AsyncRT_DeviceContext_create(const DeviceContext **result, const char *kind,
   return check_ref(result, DeviceContext::create(kind, id));
 }
 
+MODULAR_EXPORT void AsyncRT_DeviceContext_retain(const DeviceContext *ctx) {
+  // Increment the low-level reference count.
+  DeviceContextRef::lowLevelAddRef(ctx);
+}
+
 MODULAR_EXPORT void AsyncRT_DeviceContext_release(const DeviceContext *ctx) {
-  // Decrement the reference count by adopting it in the ref.
-  DeviceContextRef::take(ctx);
+  // Decrement the low-level reference count.
+  DeviceContextRef::lowLevelDropRef(ctx);
 }
 
 MODULAR_EXPORT const char *
@@ -85,9 +90,18 @@ AsyncRT_DeviceContext_createBuffer(const DeviceBuffer **result,
   return err_msg;
 }
 
+MODULAR_EXPORT void AsyncRT_DeviceBuffer_retain(const DeviceBuffer *buffer) {
+  // Increment the low-level reference count.
+  DeviceBufferRef::lowLevelAddRef(buffer);
+}
+
 MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(const DeviceBuffer *buffer) {
-  // Decrement the reference count by adopting it in the ref.
-  DeviceBufferRef::take(buffer);
+  // Decrement the low-level reference count.
+  DeviceBufferRef::lowLevelDropRef(buffer);
+}
+
+MODULAR_EXPORT int64_t AsyncRT_DeviceBuffer_len(const DeviceBuffer *buffer) {
+  return buffer->len();
 }
 
 MODULAR_EXPORT const char *
@@ -148,7 +162,12 @@ AsyncRT_DeviceContext_stopTimer(int64_t *result, const DeviceContext *ctx,
   return err_msg;
 }
 
+MODULAR_EXPORT void AsyncRT_DeviceTimer_retain(const DeviceTimer *timer) {
+  // Increment the low-level reference count.
+  DeviceTimerRef::lowLevelAddRef(timer);
+}
+
 MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
-  // Decrement the reference count by adopting it in the ref.
-  DeviceTimerRef::take(timer);
+  // Decrement the low-level reference count.
+  DeviceTimerRef::lowLevelDropRef(timer);
 }
