@@ -345,8 +345,10 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 //===----------------------------------------------------------------------===//
 
 void TransferOp::build(OpBuilder &builder, OperationState &state,
-                       TensorValue inputValue, DeviceRefAttr destDevice) {
-  build(builder, state, inputValue.getType().cloneWith(destDevice), inputValue);
+                       TensorValue inputValue, DeviceRefAttr destDevice,
+                       bool alwaysElideSameDeviceCopy) {
+  build(builder, state, inputValue.getType().cloneWith(destDevice), inputValue,
+        alwaysElideSameDeviceCopy);
 }
 
 LogicalResult TransferOp::verify() {
@@ -362,17 +364,24 @@ LogicalResult TransferOp::verify() {
   return success();
 }
 
-LogicalResult TransferOp::canonicalize(TransferOp outerOp,
+LogicalResult TransferOp::canonicalize(TransferOp op,
                                        PatternRewriter &rewriter) {
   // transfer(transfer(input)) = input, provided devices line up.
-  TypedValue<TensorType> intermediate = outerOp.getInput();
-  if (auto innerOp = intermediate.getDefiningOp<TransferOp>()) {
-    TypedValue<TensorType> input = innerOp.getInput();
-    TypedValue<TensorType> output = outerOp.getResult();
-    if (output.getType().getDeviceRef() == input.getType().getDeviceRef()) {
-      rewriter.replaceOp(outerOp, input);
+  TypedValue<TensorType> input = op.getInput();
+  TypedValue<TensorType> output = op.getResult();
+  if (auto prevOp = input.getDefiningOp<TransferOp>()) {
+    TypedValue<TensorType> newInput = prevOp.getInput();
+    if (output.getType().getDeviceRef() == newInput.getType().getDeviceRef()) {
+      rewriter.replaceOp(op, newInput);
       return success();
     }
+  }
+
+  // If the source and destination device are the same, we can elide.
+  if (op.getAlwaysElideSameDeviceCopy() &&
+      output.getType() == output.getType()) {
+    rewriter.replaceOp(op, input);
+    return success();
   }
 
   return failure();

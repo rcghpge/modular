@@ -82,9 +82,10 @@ def MO_TransferOp : MO_Op<"transfer", [Pure]> {
     contents of the operand tensor available on the (virtual) device of the
     result tensor.
 
-    It is valid for the source and destination devices to be identical. It is
-    implementation defined as to whether the result tensor is a copy or alias of
-    the operand tensor.
+    It is valid for the source and destination devices to be identical. If the
+    `alwaysElideSameDeviceCopy` flag is not set, it is implementation defined as
+    to whether the result tensor is a copy or alias of the operand tensor; if
+    this flag is true, transfers to the same device never result in a copy.
 
     It is also valid for the source or destination devices to be unspecified
     (i.e. null). This means that the device has not been assigned yet.
@@ -102,7 +103,10 @@ def MO_TransferOp : MO_Op<"transfer", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input);
+  let arguments = (ins
+    MO_Tensor:$input,
+    DefaultValuedAttr<BoolAttr, "false">:$alwaysElideSameDeviceCopy
+  );
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -114,7 +118,8 @@ def MO_TransferOp : MO_Op<"transfer", [Pure]> {
   let hasCanonicalizeMethod = 1;
 
   let builders = [
-    OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice)>,
+    OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice,
+      CArg<"bool", "false">:$alwaysElideSameDeviceCopy)>,
   ];
 }
 

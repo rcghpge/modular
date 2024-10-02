@@ -246,6 +246,19 @@ mo.graph @transfer_fold_implicit(%arg0 : !mo.tensor<[7], f32>) -> !mo.tensor<[7]
   mo.output %1 : !mo.tensor<[7], f32>
 }
 
+// CHECK-LABEL: mo.graph @transfer_elide_copy
+mo.graph @transfer_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.tensor<[4, 5], f32, cuda:3> {
+  // CHECK-NEXT: mo.output
+  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cuda", 3> {alwaysElideSameDeviceCopy = true}
+  mo.output %0 : !mo.tensor<[4, 5], f32, cuda:3>
+}
+
+// CHECK-LABEL: mo.graph @transfer_no_elide_copy
+mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.tensor<[4, 5], f32, cuda:3> {
+  // CHECK-NEXT: mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cuda", 3>
+  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cuda", 3>
+  mo.output %0 : !mo.tensor<[4, 5], f32, cuda:3>
+}
 
 {-#
   dialect_resources: {
