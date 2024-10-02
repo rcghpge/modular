@@ -481,6 +481,20 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
     other attributes of the tensor are statically known.
     In a given mo.graph, mo.constant.external ops should be uniquely named.
 
+    Currently, the `device` attribute on the op determines which device the
+    weights registry pointers reside on.
+    This should be checked at runtime.
+    The device attribute and result type can mismatch only when the `device`
+    attribute is on the host.
+    This is to support mmap'ed weights, a common use case for external
+    constants.
+
+    TODO(MSDK-1060): implement the runtime check by storing device alongside
+    runtime pointer in the weights registry.
+    And emit an explicit mo.transfer in the graph API instead of implicitly
+    inserting an HtoD copy in converting mo.constant.external to
+    mgp.buffer.constant.external.
+
     Example:
 
     ```mlir

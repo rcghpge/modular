@@ -532,7 +532,7 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   auto &outputStorage = (*loweredOutputStorageOr)[0];
   [[maybe_unused]] auto bufType =
       dyn_cast<MGP::DeviceBufferType>(outputStorage.buffer.getType());
-  ASSERT_STREAM(bufType && bufType.getDevice().getLabel() == "cpu",
+  ASSERT_STREAM(bufType && bufType.getDevice().getLabel() == kCPULabel,
                 << "expecting !mgp.buffer on host but it is on "
                 << bufType.getDevice());
 
@@ -765,13 +765,46 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   uint64_t sizeInBytes = opResult.getType().getDtype().getSizeInBytes() *
                          (*opResult.getType().getNumElements());
   uint64_t alignment = constExternalOp.getAlign();
+  StringRef name = constExternalOp.getName();
 
-  // Create the mgp.buffer.constant.external op.
-  Value hostBuffer = opLoweringState.hostBufferConstantExternal(
-      chain, constExternalOp.getName(), sizeInBytes, alignment);
+  // Lower mo.constant.external depending on its device attribute.
+  DeviceRefAttr opDevice = constExternalOp.getDeviceRef();
+  // If not present, use the default host device.
+  opDevice =
+      opDevice ? opDevice : DeviceRefAttr::getDefault(chain.getContext());
+  if (opDevice.getLabel() == kCPULabel) {
+    // If the external constant is on CPU, lower similarly to mo.constant.
 
-  return constHostBufferToTarget(opLoweringState, loweringState, hostBuffer,
-                                 chain, opResult, alignment);
+    // Create the mgp.buffer.constant.external op.
+    Value hostBuffer = opLoweringState.hostBufferConstantExternal(
+        chain, name, sizeInBytes, alignment);
+
+    return constHostBufferToTarget(opLoweringState, loweringState, hostBuffer,
+                                   chain, opResult, alignment);
+  }
+
+  // If the external constant is already on device, it should stay on device.
+  DeviceRefAttr resultDevice =
+      MO::getDeviceOrDefault(loweringState.getGraph(), opResult.getType());
+  if (resultDevice != opDevice)
+    return constExternalOp->emitOpError(
+        Twine("expected op device ") + opDevice.getLabel() +
+        " and result device " + resultDevice.getLabel() + " to match");
+
+  // Create the MGP device buffer without copying or allocations.
+  Value deviceBuffer = opLoweringState.deviceBufferConstantExternal(
+      opDevice, chain, name, sizeInBytes, alignment);
+
+  MO::TensorType moTensorType = opResult.getType();
+  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
+      opLoweringState.createTensorSpec(moTensorType);
+  if (failed(tensorSpecOr))
+    return failure();
+  TypedValue<MGP::TensorSpecType> tensorSpec = *tensorSpecOr;
+
+  opLoweringState.createOutputTensor(opResult, chain, deviceBuffer, tensorSpec);
+
+  return success();
 }
 
 LogicalResult

@@ -634,6 +634,14 @@ struct MOOpLoweringState {
         builder, loc, inChain, context, weightsRegistry, name, size, align);
   }
 
+  Value deviceBufferConstantExternal(DeviceRefAttr device,
+                                     TypedValue<MEF::ChainType> inChain,
+                                     StringRef name, uint64_t size,
+                                     uint64_t align) {
+    return loweringState.getBufferBuilder(device)->bufferConstantExternal(
+        builder, loc, inChain, context, weightsRegistry, name, size, align);
+  }
+
   Value debugTensorPrint(Value inChain, Value buffer,
                          TypedValue<TensorSpecType> tensorSpec,
                          StringAttr label, Type moTensorType) {
