@@ -379,7 +379,7 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
 
   // If the source and destination device are the same, we can elide.
   if (op.getAlwaysElideSameDeviceCopy() &&
-      output.getType() == output.getType()) {
+      input.getType() == output.getType()) {
     rewriter.replaceOp(op, input);
     return success();
   }

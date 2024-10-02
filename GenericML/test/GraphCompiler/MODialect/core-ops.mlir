@@ -253,6 +253,14 @@ mo.graph @transfer_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.te
   mo.output %0 : !mo.tensor<[4, 5], f32, cuda:3>
 }
 
+// CHECK-LABEL: mo.graph @transfer_no_elide_with_flag
+mo.graph @transfer_no_elide_with_flag(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.tensor<[4, 5], f32, cpu:0> {
+  // CHECK-NEXT: mo.transfer
+  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cpu", 0> {alwaysElideSameDeviceCopy = true}
+  // CHECK-NEXT: mo.output
+  mo.output %0 : !mo.tensor<[4, 5], f32, cpu:0>
+}
+
 // CHECK-LABEL: mo.graph @transfer_no_elide_copy
 mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.tensor<[4, 5], f32, cuda:3> {
   // CHECK-NEXT: mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cuda", 3>
