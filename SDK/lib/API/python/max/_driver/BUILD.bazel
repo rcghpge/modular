@@ -1,22 +1,10 @@
-load("//bazel:api.bzl", "copy_files", "modular_pybind_extension", "modular_pybind_py_library")
+load("//bazel:api.bzl", "modular_pybind_extension", "modular_pybind_py_library")
 
 package(default_visibility = ["//visibility:public"])
 
-copy_files(
-    name = "py_srcs",
-    srcs = ["//SDK/lib/API/python/bindings/max/_driver"],
-    outs = [
-        "__init__.py",
-        "core.pyi",
-    ],
-)
-
-# max._driver C extension module.
 modular_pybind_extension(
     name = "core",
-    srcs = [
-        "//SDK/lib/API/python/bindings/max/_driver:core_srcs",
-    ],
+    srcs = glob(["*.cpp"]),
     pybind_deps = [
         "//SDK:DriverPython",
     ],
@@ -27,18 +15,8 @@ modular_pybind_extension(
 )
 
 modular_pybind_py_library(
-    name = "_driver_pybind",
-    srcs = [],
-    pybind_data = [":core"],
-)
-
-py_library(
     name = "_driver",
-    srcs = [],
-    data = [
-        "py_srcs",
-    ],
-    deps = [
-        ":_driver_pybind",
-    ],
+    srcs = glob(["*.py"]),
+    data = glob(["*.pyi"]),
+    pybind_data = [":core"],
 )

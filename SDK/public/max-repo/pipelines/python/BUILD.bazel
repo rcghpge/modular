@@ -17,7 +17,7 @@ py_binary(
     imports = ["."],
     deps = [
         requirement("click"),
-        "//SDK/lib/API/python:max_serve",
+        "//SDK/lib/API/python/max/serve",
         "//SDK/public/max-repo/pipelines/python/llama3",
         "//SDK/public/max-repo/pipelines/python/nn",
         "//SDK/public/max-repo/pipelines/python/text_streaming",

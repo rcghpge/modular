@@ -16,7 +16,7 @@ modular_py_test(
     ],
     tags = ["manual"],
     deps = [
-        "//SDK/lib/API/python:max_engine",
+        "//SDK/lib/API/python/max/engine",
         requirement("numpy"),
         requirement("diffusers"),
         requirement("transformers"),

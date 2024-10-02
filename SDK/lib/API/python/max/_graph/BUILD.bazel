@@ -1,29 +1,32 @@
-load("//bazel:api.bzl", "copy_files", "modular_pybind_extension", "modular_pybind_py_library")
+load("//bazel:api.bzl", "modular_pybind_extension", "modular_pybind_library", "modular_pybind_py_library")
 
-package(default_visibility = ["//visibility:public"])
-
-copy_files(
-    name = "py_srcs",
-    srcs = ["//SDK/lib/API/python/bindings/max/_graph"],
-    outs = [
-        "__init__.py",
-        "core.pyi",
+modular_pybind_library(
+    name = "MODialectPybind",
+    srcs = [
+        "mo.cpp",
+        "//SDK:MODialectPybindInc",
+    ],
+    pybind_deps = [
+        "//SDK:GraphPython",
+    ],
+    deps = [
+        "//GenericML:GraphCompiler",
+        "//GenericML:modular-framework-common",
+        "//ModularFramework/tools/mof",
+        "@llvm-project//mlir:IR",
     ],
 )
 
-# max._graph C extension module.
 modular_pybind_extension(
     name = "core",
-    srcs = [
-        "//SDK/lib/API/python/bindings/max/_graph:core_srcs",
-    ],
+    srcs = ["core.cpp"],
     local_defines = [
         # Set definition used in Interop.h to prefix the MLIR package.
         "MLIR_PYTHON_PACKAGE_PREFIX=max._mlir.",
     ],
     pybind_deps = [
         "//SDK:GraphPython",
-        "//SDK/lib/API/python/bindings/max/_graph:MODialectPybind",
+        ":MODialectPybind",
     ],
     deps = [
         "//GenericML:GraphCompiler",
@@ -33,20 +36,9 @@ modular_pybind_extension(
 )
 
 modular_pybind_py_library(
-    name = "_graph_pybind",
-    srcs = [],
+    name = "_graph",
+    srcs = glob(["*.py"]),
+    data = glob(["*.pyi"]),
     pybind_data = [":core"],
     visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "_graph",
-    srcs = [],
-    data = [
-        "py_srcs",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":_graph_pybind",
-    ],
 )

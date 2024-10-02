@@ -13,13 +13,13 @@ load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_pybind")
 
 modular_pybind_library(
     name = "DLPack",
-    srcs = ["//SDK/lib/API/python:dlpack_srcs"],
+    srcs = glob(["lib/API/python/lib/DLPack/*.cpp"]),
     hdrs = glob(["include/SDK/DLPack/**/*.h"]),
 )
 
 modular_pybind_library(
     name = "ModularFrameworkPython",
-    srcs = ["//SDK/lib/API/python:engine_srcs"],
+    srcs = glob(["lib/API/python/lib/Engine/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     pybind_deps = [
@@ -146,7 +146,7 @@ pkg_files(
 
 modular_pybind_library(
     name = "DriverPython",
-    srcs = ["//SDK/lib/API/python:driver_srcs"],
+    srcs = glob(["lib/API/python/lib/Driver/*.cpp"]),
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
     deps = [
         "//GenericML:DeviceDriver",
@@ -158,7 +158,7 @@ modular_pybind_library(
 
 modular_pybind_library(
     name = "GraphPython",
-    srcs = ["//SDK/lib/API/python:graph_srcs"],
+    srcs = glob(["lib/API/python/lib/Graph/*.cpp"]),
     hdrs = glob(["include/SDK/GraphAPI/python/*.h"]),
     pybind_deps = [
         "//:MLIRBindingsPythonHeaders",
@@ -191,9 +191,10 @@ py_repl(
     ],
     tags = ["manual"],
     deps = [
-        "//SDK/lib/API/python:max_engine",
-        "//SDK/lib/API/python:max_graph",
-        "//SDK/lib/API/python:max_serve",
+        "//SDK/lib/API/python/max/engine",
+        "//SDK/lib/API/python/max/graph",
+        "//SDK/lib/API/python/max/pipelines",
+        "//SDK/lib/API/python/max/serve",
         "//SDK/public/max-repo/pipelines/python:pipelines",
         requirement("hypothesis"),
         requirement("notebook"),
