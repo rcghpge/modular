@@ -151,7 +151,7 @@ MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
 /// Accessors for !mo.opaque.
 MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t);
 
-/// Accessors for !mo.chain
+/// Creates a new MO::Chain type (!mo.chain)
 MODULAR_API_EXPORT MlirType MAXG_chainTypeNew(MlirContext context);
 
 #endif // MOF_API_C_DETAIL_MAX_GRAPH_H
