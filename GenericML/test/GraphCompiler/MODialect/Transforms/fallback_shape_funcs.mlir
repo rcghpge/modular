@@ -580,7 +580,7 @@ mo.graph @reshape_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME:   %[[TARGET_SHAPE:.*]]: !mo.tensor<[3], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["reshape_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[TARGET_SHAPE]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.reshape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[TARGET_SHAPE]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[3], si32>)
 //

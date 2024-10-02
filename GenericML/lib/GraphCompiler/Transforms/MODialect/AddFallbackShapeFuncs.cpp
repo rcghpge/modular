@@ -670,8 +670,8 @@ BUILD_REDUCTION_OP(MO::ReduceMinOp)
 ErrorOrSuccess Fallback<MO::ReshapeOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::ReshapeOp op) {
-  buildForOpResult(graph, builder, op, "reshape_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::ReshapeOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }

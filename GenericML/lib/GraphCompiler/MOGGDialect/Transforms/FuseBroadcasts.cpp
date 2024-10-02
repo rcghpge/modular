@@ -29,13 +29,33 @@ namespace M::MOGG {
 
 namespace {
 
+/**
+This pass fuses view ops into other kernels. There are two code paths: The
+regular code path for kernels that have `mogg.` ops in them and the one for KGEN
+kernels.
+
+For the regular path:
+1. Fuse compatible view ops into other kernels.
+2. Lower `mo.static.reshape` ops into a kernel and fuse them into other kernels.
+The reason this is done as a separate step is because reshape ops are not
+lowered and they must be the last view op fused into a kernel because the kernel
+implementation expects contiguous strides. Therefore, bcast -> reshape will
+yield invalid results.
+
+For the KGEN path:
+1. Fuse compatible view ops that are not reshapes (we inspect the kernel summary
+string). This is a gross hack that will go away when the kernel translation is
+done.
+2. Fuse reshape ops into other kernels. This is for the same reasons as in the
+regular path except here, the `mo.static.reshape` ops are already lowered.
+ */
+
 struct FuseBroadcastsPass
     : public impl::FuseBroadcastsBase<FuseBroadcastsPass> {
   using FuseBroadcastsBase::FuseBroadcastsBase;
 
-  void runOnOperation() override {
-    MO::GraphOp graph = getOperation();
-    MLIRContext *ctx = graph.getContext();
+  template <bool AvoidReshapeOps>
+  void runOnOperationImpl(MO::GraphOp graph, MLIRContext *ctx) {
 
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
       bool isView = kernel.getIsViewOp().value_or(false);
@@ -58,7 +78,7 @@ struct FuseBroadcastsPass
 
       // Traverse from the back to simplify removing operands.
       while (index >= 0) {
-        if (!canFuseOperand(index, kernel)) {
+        if (!canFuseOperand<AvoidReshapeOps>(index, kernel)) {
           index--;
           continue;
         }
@@ -90,67 +110,69 @@ struct FuseBroadcastsPass
       return false;
     };
 
-    // Once we have fused the views we can fuse reshapes into the kernel. This
-    // is technically a view but it must come last as it only can reshape
-    // contigious inputs and can always be fused regardless of whether or not
-    // the kernel has opted into fusion or not as it returns a contigious tensor
-    // with the same number of elements.
-    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
-      // Don't fuse kernels with parameter decls.
-      if (!kernel.getOutputParamDecls().empty())
-        continue;
-
-      // Don't fuse reshapes into new API kernels because we will handle it in
-      // another pass.
-      if (kernel.getIsKGEN().value_or(false))
-        continue;
-
-      if (kernel.isInPlaceAlloc())
-        continue;
-
-      int32_t preFuseNumOperands = kernel.getNumOperands();
-
-      // For safety we check which have already been fused and won't fuse
-      // something again.
-      DenseMap<Value, Value> alreadyFused;
-
-      // Start from the end so we can safely remove and append arguments.
-      for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
-        // Get the creator of this operand.
-        Value operand = kernel.getOperand(index);
-        Operation *op = operand.getDefiningOp();
-
-        auto itr = alreadyFused.find(operand);
-        if (itr != alreadyFused.end()) {
-          replaceArg(kernel, index, itr->second);
+    if (AvoidReshapeOps) {
+      // Once we have fused the views we can fuse reshapes into the kernel. This
+      // is technically a view but it must come last as it only can reshape
+      // contigious inputs and can always be fused regardless of whether or not
+      // the kernel has opted into fusion or not as it returns a contigious
+      // tensor with the same number of elements.
+      for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
+        // Don't fuse kernels with parameter decls.
+        if (!kernel.getOutputParamDecls().empty())
           continue;
-        }
 
-        if (auto reshape = dyn_cast_or_null<MO::Static::ReshapeOp>(op)) {
-          MO::TensorType outType = reshape.getResult().getType();
-          MO::TensorType inType = reshape.getInput().getType();
+        // Don't fuse reshapes into new API kernels because we will handle it in
+        // another pass.
+        if (kernel.getIsKGEN().value_or(false))
+          continue;
 
-          // We can't fuse this if there are any fancy symbolic dims.
-          if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
+        if (kernel.isInPlaceAlloc())
+          continue;
+
+        int32_t preFuseNumOperands = kernel.getNumOperands();
+
+        // For safety we check which have already been fused and won't fuse
+        // something again.
+        DenseMap<Value, Value> alreadyFused;
+
+        // Start from the end so we can safely remove and append arguments.
+        for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
+          // Get the creator of this operand.
+          Value operand = kernel.getOperand(index);
+          Operation *op = operand.getDefiningOp();
+
+          auto itr = alreadyFused.find(operand);
+          if (itr != alreadyFused.end()) {
+            replaceArg(kernel, index, itr->second);
             continue;
+          }
 
-          // Insert after the output placeholders.
-          mlir::OpBuilder builder{ctx};
-          kernel.setInsertionPointToTop(builder);
+          if (auto reshape = dyn_cast_or_null<MO::Static::ReshapeOp>(op)) {
+            MO::TensorType outType = reshape.getResult().getType();
+            MO::TensorType inType = reshape.getInput().getType();
 
-          // Add the old reshape argument to this kernel.
-          Value reshapeInput = kernel.addOperand(reshape.getInput());
+            // We can't fuse this if there are any fancy symbolic dims.
+            if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
+              continue;
 
-          // Add the new reshape.
-          MOGG::CallOp newReshape =
-              createMOGGReshape(builder, reshape.getLoc(), reshapeInput,
-                                outType, "ndbuffer_reshape");
+            // Insert after the output placeholders.
+            mlir::OpBuilder builder{ctx};
+            kernel.setInsertionPointToTop(builder);
 
-          // Replace all uses of the old operand and then remove it from this
-          // kernel.
-          replaceArg(kernel, index, newReshape->getResult(0));
+            // Add the old reshape argument to this kernel.
+            Value reshapeInput = kernel.addOperand(reshape.getInput());
 
-          alreadyFused[reshape.getResult()] = newReshape->getResult(0);
+            // Add the new reshape.
+            MOGG::CallOp newReshape =
+                createMOGGReshape(builder, reshape.getLoc(), reshapeInput,
+                                  outType, "ndbuffer_reshape");
+
+            // Replace all uses of the old operand and then remove it from this
+            // kernel.
+            replaceArg(kernel, index, newReshape->getResult(0));
+
+            alreadyFused[reshape.getResult()] = newReshape->getResult(0);
+          }
         }
       }
     }
@@ -169,6 +191,7 @@ struct FuseBroadcastsPass
     });
   }
 
+  template <bool AvoidReshapeOps>
   /// Return the index of the input to fuse or -1 if nothing can be fused.
   bool canFuseOperand(int32_t index, MOGG::KernelOp kernel) {
     // Block arguments have no defining op and obviously cant be fused.
@@ -195,25 +218,35 @@ struct FuseBroadcastsPass
     if (edge->getParentRegion() != kernel->getParentRegion())
       return false;
 
-    if (auto otherKernel = dyn_cast<KernelOp>(edge)) {
-      // Should be unreachable.
-      if (otherKernel.getOutputPlaceholder() == nullptr)
-        return false;
+    auto otherKernel = dyn_cast<KernelOp>(edge);
+    if (!otherKernel)
+      return false;
 
-      // Make sure both kernels are compatible regarding KGEN.
-      if (kernel.getIsKGENAttr() != otherKernel.getIsKGENAttr())
-        return false;
+    // Should be unreachable.
+    if (otherKernel.getOutputPlaceholder() == nullptr)
+      return false;
 
-      // For KGEN view fusion, the src kernel must only have 1 output.
-      if (kernel.getIsKGEN().value_or(false) &&
-          otherKernel.getNumResults() != 1)
-        return false;
+    // Make sure both kernels are compatible regarding KGEN.
+    if (kernel.getIsKGENAttr() != otherKernel.getIsKGENAttr())
+      return false;
 
-      // Only fuse view operations.
-      if (otherKernel.getIsViewOp().value_or(false))
-        return true;
+    // For KGEN view fusion, the src kernel must only have 1 output.
+    if (kernel.getIsKGEN().value_or(false) && otherKernel.getNumResults() != 1)
+      return false;
+
+    // Only fuse view operations.
+    if (!otherKernel.getIsViewOp().value_or(false))
+      return false;
+
+    if constexpr (AvoidReshapeOps) {
+      return !kernel.getSummary()->contains(
+                 MO::Static::ReshapeOp::getOperationName()) &&
+             !otherKernel.getSummary()->contains(
+                 MO::Static::ReshapeOp::getOperationName());
+    } else {
+      return otherKernel.getSummary()->contains(
+          MO::Static::ReshapeOp::getOperationName());
     }
-    return false;
   }
 
   // Fuse at the given index.
@@ -291,8 +324,9 @@ struct FuseBroadcastsPass
           }
         } else if (isa<MOGG::OutputOp>(op)) {
           // Do nothing.
-        } else
+        } else {
           MOGG::cloneKgenOpsIntoMOGG(builder, &op, paramMapping, remapper);
+        }
       }
       ASSERT_STREAM(producerKernelToKGEN,
                     << "Could not find ToKGENOp for producer kernel");
@@ -330,13 +364,15 @@ struct FuseBroadcastsPass
           if (funcName.starts_with(Utils::DPSTensorCopy)) {
             stackAlloc = callOp->getOperand(1);
             toDelete.insert(callOp);
+            // Always remove the first one because in case we fuse a view into a
+            // view, we want to maintain the second one.
+            return WalkResult::interrupt();
           }
+          return WalkResult::advance();
         });
       }
       ASSERT_STREAM(stackAlloc != nullptr, "stack view not found !");
 
-      target.replaceAllUsesWith(stackAlloc);
-      leaf.removeOperandAtIndex(idx);
       alreadyFused[operand] = stackAlloc;
 
       Type bindType;
@@ -394,6 +430,8 @@ struct FuseBroadcastsPass
       // leaf that are cloned from the `producerKernel`.
       for (Operation *op : toDelete)
         op->erase();
+
+      leaf.removeOperandAtIndex(idx);
 
       MOGG::remapTypesAndAttrs(leaf, paramMapping);
     };
@@ -453,6 +491,17 @@ struct FuseBroadcastsPass
 
     // Update the leaf's summary to capture the producer's summary.
     leaf.setSummaryAttr(getSummaryString({producerKernel, leaf}));
+  }
+
+  void runOnOperation() override {
+    auto graph = getOperation();
+    auto ctx = graph.getContext();
+
+    // First ignore kernels that have the `mo.static.reshape` string in their
+    // summary.
+    runOnOperationImpl<true>(graph, ctx);
+    // Then, only fuse the reshapes.
+    runOnOperationImpl<false>(graph, ctx);
   }
 };
 

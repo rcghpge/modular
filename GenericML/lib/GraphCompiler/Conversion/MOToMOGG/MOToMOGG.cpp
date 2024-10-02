@@ -36,6 +36,18 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
   // Replaces almost all rebinds which do not operate with unknown shapes.
   // Returns whether we were successful.
   bool replaceMORebinds() {
+    // Load mojo library analysis
+    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
+        analysis.initIfNeeded(&getContext(), kernelLibraryPaths, withDebuginfo);
+    if (errOr.isError()) {
+      emitError(getOperation().getLoc(),
+                Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
+                    errOr.getError());
+      return false;
+    }
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+
     auto res = getOperation().walk([&](MO::RebindOp op) {
       // Don't mess any rebind that deals with `?`. When this pass is run
       // this exists due to PT, we need the rebind to give dimensions a proper
@@ -57,7 +69,8 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
         if (isa<MO::RebindOp>(user))
           continue;
 
-        auto errOrHasLowering = M::MOToMOGGUtils::hasMOGGLowering(user);
+        auto errOrHasLowering =
+            M::MOToMOGGUtils::hasMOGGLowering(user, mojoLibraryAnalysis);
         if (errOrHasLowering.isError()) {
           op->emitError(errOrHasLowering.getError());
           return WalkResult::interrupt();
