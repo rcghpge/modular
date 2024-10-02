@@ -879,9 +879,12 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
 LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, transferOp);
 
-  DeviceRefAttr srcDevice = getDeviceOrDefault(loweringState.getGraph(),
-                                               transferOp.getInput().getType());
-  DeviceRefAttr dstDevice = transferOp.getDestDeviceAttr();
+  DeviceRefAttr srcDevice = transferOp.getInput().getType().getDeviceRef();
+  DeviceRefAttr dstDevice = transferOp.getResult().getType().getDeviceRef();
+  if (!srcDevice || !dstDevice)
+    return transferOp->emitOpError(
+        "should have explicit devices before lowering");
+
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
 
   MGP::BufferizedTensor bufferizedInput =

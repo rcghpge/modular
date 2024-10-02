@@ -75,40 +75,47 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
 // TransferOp
 //===----------------------------------------------------------------------===//
 
-def MO_TransferOp : MO_Op<"transfer", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-]> {
+def MO_TransferOp : MO_Op<"transfer", [Pure]> {
   let summary = "Device transfer operation";
   let description = [{
     This op represents a possible copy or aliasing operation to make the
-    contents of the operand tensor available on the (virtual) device given by
-    the operand `#M.device_ref` attribute. The result tensor type is identical
-    to the operand tensor type except for the device annotation.
+    contents of the operand tensor available on the (virtual) device of the
+    result tensor.
 
-    The operand tensor type must have a device annotation. It is valid for the
-    source and destination devices to be identical. It is implementation defined
-    as to whether the result tensor is a copy or alias of the operand tensor.
+    It is valid for the source and destination devices to be identical. It is
+    implementation defined as to whether the result tensor is a copy or alias of
+    the operand tensor.
+
+    It is also valid for the source or destination devices to be unspecified
+    (i.e. null). This means that the device has not been assigned yet.
 
     Example:
 
     ```mlir
-      %arg : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 3> }>
-      %res = mo.transfer %arg : !mo.tensor<[N, 8], f32,
-              { device = #M.device_ref<"cuda", 3> }> to <"cuda", 1>
-      %res : !mo.tensor<[N, 8], f32, { device = #M.device_ref<"cuda", 1> }>
+      %arg : !mo.tensor<[N, 8], f32, cuda:3>
+      %onOtherDevice = mo.transfer %arg : !mo.tensor<[N, 8], f32, cuda:3> to <"cuda", 1>
+      %onHost = mo.transfer %arg : !mo.tensor<[N, 8], f32, cuda:0> to <"cpu", 1>
+      %onUnspecified = mo.transfer %arg : !mo.tensor<[N, 8], f32, cuda:0> to unspecified
+
+      %arg2 : !mo.tensor<[N, 8], f32>
+      %fromUnspecified = mo.transfer %arg2 : !mo.tensor<[N, 8], f32> to <"cuda", 0>
     ```
   }];
 
-  let arguments = (ins MO_Tensor:$input, M_DeviceRefAttr:$destDevice);
+  let arguments = (ins MO_Tensor:$input);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    $input `:` qualified(type($input)) `to` $destDevice attr-dict
+    $input `:` qualified(type($input)) `to`
+    custom<TransferResult>(ref(type($input)), type($result)) attr-dict
   }];
 
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
+
+  let builders = [
+    OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

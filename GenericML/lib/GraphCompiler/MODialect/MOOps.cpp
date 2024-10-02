@@ -344,33 +344,21 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 // TransferOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult TransferOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  ASSERT_STREAM(operands.size() == 1, << "mismatched operand arity");
-  auto sourceType = dyn_cast<TensorType>(operands[0].getType());
-  ASSERT_STREAM(sourceType, << "mismatched operand types");
-  auto destDeviceAttr = dyn_cast_if_present<DeviceRefAttr>(
-      attributes.get(getDestDeviceAttrName(name)));
-  ASSERT_STREAM(destDeviceAttr, << "mismatched operand types");
-  inferredReturnTypes.emplace_back(sourceType.cloneWith(destDeviceAttr));
-  return success();
+void TransferOp::build(OpBuilder &builder, OperationState &state,
+                       TensorValue inputValue, DeviceRefAttr destDevice) {
+  build(builder, state, inputValue.getType().cloneWith(destDevice), inputValue);
 }
 
 LogicalResult TransferOp::verify() {
-  if (!getInput().getType().getDeviceRef())
+  TensorType inputType = getInput().getType();
+  TensorType resultType = getResult().getType();
+  TensorType resTypeWithInputDevice =
+      resultType.cloneWith(inputType.getDeviceRef());
+  if (resTypeWithInputDevice != inputType) {
     return emitError()
-           << "expected input tensor type to have a #M.device_ref annotation";
-  if (!getResult().getType().getDeviceRef())
-    return emitError()
-           << "expected result tensor type to have a #M.device_ref annotation";
-  if (getResult().getType().getDeviceRef() != getDestDeviceAttr())
-    return emitError() << "expected result tensor type to have same "
-                          "#M.device_ref annotation as transfer destination ("
-                       << getDestDeviceAttr() << " vs "
-                       << getResult().getType().getDeviceRef() << ").";
+           << "expected result type to only differ from input type in device ("
+           << inputType << " vs " << resultType << ").";
+  }
   return success();
 }
 
@@ -378,17 +366,39 @@ LogicalResult TransferOp::canonicalize(TransferOp outerOp,
                                        PatternRewriter &rewriter) {
   // transfer(transfer(input)) = input, provided devices line up.
   TypedValue<TensorType> intermediate = outerOp.getInput();
-  auto innerOp = intermediate.getDefiningOp<TransferOp>();
-  if (!innerOp)
-    return failure();
-  TypedValue<TensorType> input = innerOp.getInput();
-  if (outerOp.getDestDeviceAttr() !=
-      MO::getDeviceOrDefault(outerOp->getParentOfType<GraphOp>(),
-                             input.getType()))
-    return failure();
+  if (auto innerOp = intermediate.getDefiningOp<TransferOp>()) {
+    TypedValue<TensorType> input = innerOp.getInput();
+    TypedValue<TensorType> output = outerOp.getResult();
+    if (output.getType().getDeviceRef() == input.getType().getDeviceRef()) {
+      rewriter.replaceOp(outerOp, input);
+      return success();
+    }
+  }
 
-  rewriter.replaceOp(outerOp, input);
+  return failure();
+}
+
+/// Print the result tensor device in MO::TransferOp.
+static ParseResult parseTransferResult(AsmParser &p, Type inputType,
+                                       Type &resultType) {
+  DeviceRefAttr deviceRef;
+  if (failed(p.parseOptionalKeyword("unspecified"))) {
+    if (Attribute parsedDevice = DeviceRefAttr::parse(p, /*odsType=*/{}))
+      deviceRef = cast<DeviceRefAttr>(parsedDevice);
+    else
+      return failure();
+  }
+  resultType = cast<TensorType>(inputType).cloneWith(deviceRef);
   return success();
+}
+
+/// Print the result tensor device in MO::TransferOp.
+static void printTransferResult(AsmPrinter &p, Operation *op,
+                                TensorType inputType, TensorType resultType) {
+  if (DeviceRefAttr deviceRef = resultType.getDeviceRef())
+    deviceRef.print(p);
+  else
+    p << "unspecified";
 }
 
 //===----------------------------------------------------------------------===//
