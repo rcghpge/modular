@@ -117,26 +117,27 @@ CpuDeviceContext::createBuffer(size_t len, size_t elem_size) const {
   return CpuDeviceBufferRef::create(*this, len, elem_size, ptr);
 }
 
-ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                                     const void *src) const {
+ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
+                                              const void *src,
+                                              SyncMode mode) const {
   void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
   size_t byte_size = dst.len() * dst.elem_size();
   memcpy(dst_ptr, src, byte_size);
   return success();
 }
 
-ErrorOrSuccess
-CpuDeviceContext::enqueueCopyFromDevice(void *dst,
-                                        const DeviceBuffer &src) const {
+ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
+                                                const DeviceBuffer &src,
+                                                SyncMode mode) const {
   void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
   size_t byte_size = src.len() * src.elem_size();
   memcpy(dst, src_ptr, byte_size);
   return success();
 }
 
-ErrorOrSuccess
-CpuDeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                            const DeviceBuffer &src) const {
+ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
+                                                    const DeviceBuffer &src,
+                                                    SyncMode mode) const {
   void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
   void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
   size_t byte_size = dst.len() * dst.elem_size();

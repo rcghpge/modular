@@ -36,6 +36,30 @@ TEST(CUDADeviceContextTest, NumDevices) {
   std::cerr << "Number of CUDA devices: " << err_num.get() << "\n";
 }
 
+static void init_with_data(void *dst, size_t dst_len, const void *check_data,
+                           size_t check_data_len) {
+  char *cur = static_cast<char *>(dst);
+  size_t remaining = dst_len;
+  while (remaining > 0) {
+    size_t to_copy = std::min(remaining, check_data_len);
+    memcpy(cur, check_data, to_copy);
+    remaining -= to_copy;
+    cur += to_copy;
+  }
+}
+
+static void compare_with_data(const void *dst, size_t dst_len,
+                              const void *check_data, size_t check_data_len) {
+  const char *cur = static_cast<const char *>(dst);
+  size_t remaining = dst_len;
+  while (remaining > 0) {
+    size_t to_check = std::min(remaining, check_data_len);
+    EXPECT_EQ(memcmp(cur, check_data, to_check), 0);
+    remaining -= to_check;
+    cur += to_check;
+  }
+}
+
 TEST(CUDADeviceContextTest, DeviceBuffers) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda");
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
@@ -63,48 +87,68 @@ TEST(CUDADeviceContextTest, DeviceBuffers) {
       'E',
   };
 
-  const int alloc_len = 256;
+  const int copy_lengths[] = {256, 1024 * 1024};
 
-  ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
-  EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
-  void *a_ptr = err_ptr.get();
-  EXPECT_NE(a_ptr, nullptr);
+  for (int i = 0; i < 4; i++) {
+    bool sync_copies = i & 1;
+    int alloc_len = copy_lengths[(i >> 1) & 1];
 
-  ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(256, 1);
-  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-  DeviceBufferRef b_buf = std::move(err_ref.get());
-  EXPECT_TRUE(b_buf);
+    std::cerr << "DeviceContext copies(len: " << alloc_len
+              << ", sync: " << sync_copies << ")\n";
 
-  err_ref = ctx->createBuffer(16, 16);
-  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-  DeviceBufferRef c_buf = std::move(err_ref.get());
-  EXPECT_TRUE(c_buf);
+    ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
+    EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
+    void *a_ptr = err_ptr.get();
+    EXPECT_NE(a_ptr, nullptr);
 
-  char *d_ptr = static_cast<char *>(malloc(alloc_len));
-  EXPECT_NE(d_ptr, nullptr);
-  // Initialize with known bad values.
-  for (int i = 0; i < alloc_len; i++) {
-    d_ptr[i] = -static_cast<char>((7 + i) & 127);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(alloc_len, 1);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef b_buf = std::move(err_ref.get());
+    EXPECT_TRUE(b_buf);
+
+    err_ref = ctx->createBuffer(alloc_len / 16, 16);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef c_buf = std::move(err_ref.get());
+    EXPECT_TRUE(c_buf);
+
+    char *d_ptr = static_cast<char *>(malloc(alloc_len));
+    EXPECT_NE(d_ptr, nullptr);
+
+    // Initialize with known good and bad values.
+    init_with_data(a_ptr, alloc_len, check_data, sizeof(check_data));
+
+    for (int i = 0; i < alloc_len; i++) {
+      d_ptr[i] = -static_cast<char>((7 + i) & 127);
+    }
+
+    ErrorOrSuccess err;
+    if (sync_copies) {
+      // Copy between different buffers.
+      err = ctx->copyToDevice(*b_buf, a_ptr);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+      err = ctx->copyDeviceToDevice(*c_buf, *b_buf);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+      err = ctx->copyFromDevice(d_ptr, *c_buf);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+    } else {
+      // Copy between different buffers.
+      err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+      err = ctx->enqueueCopyDeviceToDevice(*c_buf, *b_buf);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+      err = ctx->enqueueCopyFromDevice(d_ptr, *c_buf);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+
+      // Ensure that all copy operations have finished.
+      err = ctx->synchronize();
+      EXPECT_FALSE(err) << err.getError() << "\n";
+    }
+    compare_with_data(d_ptr, alloc_len, check_data, sizeof(check_data));
+
+    free(d_ptr);
+    err = ctx->free_host(a_ptr);
+    EXPECT_FALSE(err) << err.getError() << "\n";
   }
-
-  // Copy between different buffers.
-  memcpy(a_ptr, check_data, alloc_len);
-  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-  err = ctx->enqueueCopyDeviceToDevice(*c_buf, *b_buf);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-  err = ctx->enqueueCopyFromDevice(d_ptr, *c_buf);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-
-  // Ensure that all copy operations have finished.
-  err = ctx->synchronize();
-  EXPECT_FALSE(err) << err.getError() << "\n";
-
-  EXPECT_EQ(memcmp(d_ptr, check_data, alloc_len), 0);
-
-  free(d_ptr);
-  err = ctx->free_host(a_ptr);
-  EXPECT_FALSE(err) << err.getError() << "\n";
 }
 
 TEST(CUDADeviceContextTest, DeviceExec) {

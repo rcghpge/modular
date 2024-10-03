@@ -113,21 +113,44 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_HtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *dst, const void *src) {
   assert((ctx == &dst->context()) && "ctx not matching dst");
-  return check_success(ctx->enqueueCopyToDevice(*dst, src));
+  return check_success(ctx->copyToDevice(*dst, src, DeviceContext::ASYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoH_async(const DeviceContext *ctx, void *dst,
                                  const DeviceBuffer *src) {
   assert((ctx == &src->context()) && "ctx not matching src");
-  return check_success(ctx->enqueueCopyFromDevice(dst, *src));
+  return check_success(ctx->copyFromDevice(dst, *src, DeviceContext::ASYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *dst,
                                  const DeviceBuffer *src) {
-  return check_success(ctx->enqueueCopyDeviceToDevice(*dst, *src));
+  return check_success(
+      ctx->copyDeviceToDevice(*dst, *src, DeviceContext::ASYNC));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_HtoD_sync(const DeviceContext *ctx,
+                                const DeviceBuffer *dst, const void *src) {
+  assert((ctx == &dst->context()) && "ctx not matching dst");
+  return check_success(ctx->copyToDevice(*dst, src, DeviceContext::SYNC));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_DtoH_sync(const DeviceContext *ctx, void *dst,
+                                const DeviceBuffer *src) {
+  assert((ctx == &src->context()) && "ctx not matching src");
+  return check_success(ctx->copyFromDevice(dst, *src, DeviceContext::SYNC));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_DtoD_sync(const DeviceContext *ctx,
+                                const DeviceBuffer *dst,
+                                const DeviceBuffer *src) {
+  return check_success(
+      ctx->copyDeviceToDevice(*dst, *src, DeviceContext::SYNC));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_compileFunction(

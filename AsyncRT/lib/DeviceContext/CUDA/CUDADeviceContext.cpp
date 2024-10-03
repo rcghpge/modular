@@ -234,30 +234,39 @@ CUDADeviceContext::createBuffer(size_t len, size_t elem_size) const {
   return CUDADeviceBufferRef::create(*this, len, elem_size, dptr);
 }
 
-ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                                      const void *src) const {
+ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,
+                                               const void *src,
+                                               SyncMode mode) const {
   CUDA_CHECK_ERR(setCurrent());
 
   CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
   size_t byte_size = dst.len() * dst.elem_size();
-  CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byte_size, stream_));
+  if (mode == ASYNC) {
+    CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byte_size, stream_));
+  } else {
+    CUDA_CHECK_ERR(driver_.MemcpyHtoD(dst_ptr, src, byte_size));
+  }
   return success();
 }
 
-ErrorOrSuccess
-CUDADeviceContext::enqueueCopyFromDevice(void *dst,
-                                         const DeviceBuffer &src) const {
+ErrorOrSuccess CUDADeviceContext::copyFromDevice(void *dst,
+                                                 const DeviceBuffer &src,
+                                                 SyncMode mode) const {
   CUDA_CHECK_ERR(setCurrent());
 
   CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cuda_ptr();
   size_t byte_size = src.len() * src.elem_size();
-  CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byte_size, stream_));
+  if (mode == ASYNC) {
+    CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byte_size, stream_));
+  } else {
+    CUDA_CHECK_ERR(driver_.MemcpyDtoH(dst, src_ptr, byte_size));
+  }
   return success();
 }
 
-ErrorOrSuccess
-CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                             const DeviceBuffer &src) const {
+ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
+                                                     const DeviceBuffer &src,
+                                                     SyncMode mode) const {
   CUDA_CHECK_ERR(setCurrent());
 
   const auto &src_buffer = CUDADeviceBuffer::cast(src);
@@ -269,12 +278,21 @@ CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
   CUdeviceptr dst_ptr = dst_buffer.cuda_ptr();
   size_t byte_size = dst.len() * dst.elem_size();
   if (src_ctx.context_ != dst_ctx.context_) {
-    CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dst_ptr, dst_ctx.context_, src_ptr,
-                                           src_ctx.context_, byte_size,
-                                           stream_));
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dst_ptr, dst_ctx.context_, src_ptr,
+                                             src_ctx.context_, byte_size,
+                                             stream_));
+    } else {
+      CUDA_CHECK_ERR(driver_.MemcpyPeer(dst_ptr, dst_ctx.context_, src_ptr,
+                                        src_ctx.context_, byte_size));
+    }
   } else {
-    CUDA_CHECK_ERR(
-        driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(
+          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
+    } else {
+      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, byte_size));
+    }
   }
   return success();
 }

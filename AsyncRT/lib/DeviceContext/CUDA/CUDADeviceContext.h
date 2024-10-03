@@ -151,13 +151,13 @@ public:
                                         size_t elem_size) const override;
 
   // DeviceBuffer copies.
-  ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
-                                     const void *src) const override;
-  ErrorOrSuccess enqueueCopyFromDevice(void *dst,
-                                       const DeviceBuffer &src) const override;
-  ErrorOrSuccess
-  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                            const DeviceBuffer &src) const override;
+  ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
+                              SyncMode mode) const override;
+  ErrorOrSuccess copyFromDevice(void *dst, const DeviceBuffer &src,
+                                SyncMode mode) const override;
+  ErrorOrSuccess copyDeviceToDevice(const DeviceBuffer &dst,
+                                    const DeviceBuffer &src,
+                                    SyncMode mode) const override;
 
   // DeviceFunction compilation and execution.
   ErrorOr<DeviceFunctionRef>

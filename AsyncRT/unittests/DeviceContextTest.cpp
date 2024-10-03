@@ -44,7 +44,31 @@ TEST(DeviceContextTest, NumDevices) {
   EXPECT_EQ(err_num.get(), 1);
 }
 
-TEST(DeviceContextTest, DeviceBuffers) {
+static void init_with_data(void *dst, size_t dst_len, const void *check_data,
+                           size_t check_data_len) {
+  char *cur = static_cast<char *>(dst);
+  size_t remaining = dst_len;
+  while (remaining > 0) {
+    size_t to_copy = std::min(remaining, check_data_len);
+    memcpy(cur, check_data, to_copy);
+    remaining -= to_copy;
+    cur += to_copy;
+  }
+}
+
+static void compare_with_data(const void *dst, size_t dst_len,
+                              const void *check_data, size_t check_data_len) {
+  const char *cur = static_cast<const char *>(dst);
+  size_t remaining = dst_len;
+  while (remaining > 0) {
+    size_t to_check = std::min(remaining, check_data_len);
+    EXPECT_EQ(memcmp(cur, check_data, to_check), 0);
+    remaining -= to_check;
+    cur += to_check;
+  }
+}
+
+TEST(DeviceContextTest, DeviceBuffersAsync) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
@@ -71,44 +95,63 @@ TEST(DeviceContextTest, DeviceBuffers) {
       'E',
   };
 
-  const size_t alloc_len = 256;
+  const int copy_lengths[] = {256, 1024 * 1024};
 
-  ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
-  EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
-  void *a_ptr = err_ptr.get();
-  EXPECT_NE(a_ptr, nullptr);
+  for (int i = 0; i < 4; i++) {
+    DeviceContext::SyncMode sync_mode =
+        ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
+    int alloc_len = copy_lengths[(i >> 1) & 1];
 
-  ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(256, 1);
-  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-  DeviceBufferRef b_buf = std::move(err_ref.get());
-  EXPECT_TRUE(b_buf);
+    std::cerr << "DeviceContext copies(len: " << alloc_len << ", sync_mode: "
+              << ((sync_mode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
+              << ")\n";
 
-  err_ref = ctx->createBuffer(16, 16);
-  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-  DeviceBufferRef c_buf = std::move(err_ref.get());
-  EXPECT_TRUE(c_buf);
+    ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
+    EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
+    void *a_ptr = err_ptr.get();
+    EXPECT_NE(a_ptr, nullptr);
 
-  void *d_ptr = malloc(256);
-  EXPECT_NE(d_ptr, nullptr);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(alloc_len, 1);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef b_buf = std::move(err_ref.get());
+    EXPECT_TRUE(b_buf);
 
-  // Copy between different buffers.
-  memcpy(a_ptr, check_data, 256);
-  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-  err = ctx->enqueueCopyDeviceToDevice(*c_buf, *b_buf);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-  err = ctx->enqueueCopyFromDevice(d_ptr, *c_buf);
-  EXPECT_FALSE(err) << err.getError() << "\n";
+    err_ref = ctx->createBuffer(alloc_len / 16, 16);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef c_buf = std::move(err_ref.get());
+    EXPECT_TRUE(c_buf);
 
-  // Ensure that all copy operations have finished.
-  err = ctx->synchronize();
-  EXPECT_FALSE(err) << err.getError() << "\n";
+    char *d_ptr = static_cast<char *>(malloc(alloc_len));
+    EXPECT_NE(d_ptr, nullptr);
 
-  EXPECT_EQ(memcmp(d_ptr, check_data, 256), 0);
+    // Initialize with known good and bad values.
+    init_with_data(a_ptr, alloc_len, check_data, sizeof(check_data));
 
-  free(d_ptr);
-  err = ctx->free_host(a_ptr);
-  EXPECT_FALSE(err) << err.getError() << "\n";
+    for (int i = 0; i < alloc_len; i++) {
+      d_ptr[i] = -static_cast<char>((7 + i) & 127);
+    }
+
+    ErrorOrSuccess err;
+    // Copy between different buffers.
+    err = ctx->copyToDevice(*b_buf, a_ptr, sync_mode);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+    err = ctx->copyDeviceToDevice(*c_buf, *b_buf, sync_mode);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+    err = ctx->copyFromDevice(d_ptr, *c_buf, sync_mode);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    if (sync_mode == DeviceContext::ASYNC) {
+      // Ensure that all copy operations have finished.
+      err = ctx->synchronize();
+      EXPECT_FALSE(err) << err.getError() << "\n";
+    }
+
+    compare_with_data(d_ptr, alloc_len, check_data, sizeof(check_data));
+
+    free(d_ptr);
+    err = ctx->free_host(a_ptr);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+  }
 }
 
 TEST(DeviceContextTest, DeviceExec) {

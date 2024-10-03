@@ -66,6 +66,11 @@ public:
     return cuMemFreeAsync_(dptr, hStream);
   }
 
+  Result MemAlloc(CUdeviceptr *pdptr, size_t bytesize) const {
+    return cuMemAlloc_(pdptr, bytesize);
+  }
+  Result MemFree(CUdeviceptr dptr) const { return cuMemFree_(dptr); }
+
   Result MemcpyHtoDAsync(CUdeviceptr dstDevice, const void *srcHost,
                          size_t bytesize, CUstream hStream) const {
     return cuMemcpyHtoDAsync_v2_(dstDevice, srcHost, bytesize, hStream);
@@ -83,6 +88,25 @@ public:
                          size_t bytesize, CUstream hStream) const {
     return cuMemcpyPeerAsync_(dstDevice, dstContext, srcDevice, srcContext,
                               bytesize, hStream);
+  }
+
+  Result MemcpyHtoD(CUdeviceptr dstDevice, const void *srcHost,
+                    size_t bytesize) const {
+    return cuMemcpyHtoD_v2_(dstDevice, srcHost, bytesize);
+  }
+  Result MemcpyDtoH(void *dstHost, CUdeviceptr srcDevice,
+                    size_t bytesize) const {
+    return cuMemcpyDtoH_v2_(dstHost, srcDevice, bytesize);
+  }
+  Result MemcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice,
+                    size_t bytesize) const {
+    return cuMemcpyDtoD_v2_(dstDevice, srcDevice, bytesize);
+  }
+  Result MemcpyPeer(CUdeviceptr dstDevice, CUcontext dstContext,
+                    CUdeviceptr srcDevice, CUcontext srcContext,
+                    size_t bytesize) const {
+    return cuMemcpyPeer_(dstDevice, dstContext, srcDevice, srcContext,
+                         bytesize);
   }
 
   Result ModuleLoadData(CUmodule *module, const void *image) const {
@@ -175,6 +199,12 @@ private:
   using tcuMemFreeAsync = Result(CUdeviceptr, CUstream);
   tcuMemFreeAsync *cuMemFreeAsync_;
 
+  using tcuMemAlloc = Result(CUdeviceptr *, size_t);
+  tcuMemAlloc *cuMemAlloc_;
+
+  using tcuMemFree = Result(CUdeviceptr);
+  tcuMemFree *cuMemFree_;
+
   using tcuMemcpyHtoDAsync_v2 = Result(CUdeviceptr, const void *, size_t,
                                        CUstream);
   tcuMemcpyHtoDAsync_v2 *cuMemcpyHtoDAsync_v2_;
@@ -189,6 +219,19 @@ private:
   using tcuMemcpyPeerAsync = Result(CUdeviceptr, CUcontext, CUdeviceptr,
                                     CUcontext, size_t, CUstream);
   tcuMemcpyPeerAsync *cuMemcpyPeerAsync_;
+
+  using tcuMemcpyHtoD_v2 = Result(CUdeviceptr, const void *, size_t);
+  tcuMemcpyHtoD_v2 *cuMemcpyHtoD_v2_;
+
+  using tcuMemcpyDtoH_v2 = Result(void *, CUdeviceptr, size_t);
+  tcuMemcpyDtoH_v2 *cuMemcpyDtoH_v2_;
+
+  using tcuMemcpyDtoD_v2 = Result(CUdeviceptr, CUdeviceptr, size_t);
+  tcuMemcpyDtoD_v2 *cuMemcpyDtoD_v2_;
+
+  using tcuMemcpyPeer = Result(CUdeviceptr, CUcontext, CUdeviceptr, CUcontext,
+                               size_t);
+  tcuMemcpyPeer *cuMemcpyPeer_;
 
   using tcuModuleLoadData = Result(CUmodule *, const void *);
   tcuModuleLoadData *cuModuleLoadData_;
