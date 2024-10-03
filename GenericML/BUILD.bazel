@@ -765,6 +765,7 @@ modular_cc_library(
     copts = ["-iquoteexternal/"],
     local_defines = select({
         "//:kernel_e2e_gpu_profiling_setting": ["KERNEL_E2E_GPU_PROFILING"],
+        "//:kernel_e2e_gpu_profiling_detailed_setting": ["KERNEL_E2E_GPU_PROFILING_DETAILED"],
         "//conditions:default": [],
     }),
     deps = [
