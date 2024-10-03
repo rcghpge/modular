@@ -118,8 +118,8 @@ public:
   /// Returns true if the kernel implementation is in the deprecated Tensor API.
   bool kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel);
 
-  /// Returns true if the kernel implementation is in the Tensor API.
-  bool kernelUsesKernelAPI(KGEN::GeneratorOp kernel);
+  /// Returns true if the kernel implementation is in the Extensibility API.
+  bool kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel);
 
 private:
   /// Load the user libraries lazily.

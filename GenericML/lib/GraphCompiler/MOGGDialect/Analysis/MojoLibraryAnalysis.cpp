@@ -557,6 +557,6 @@ bool MojoLibraryAnalysis::kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel) {
          kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
 }
 
-bool MojoLibraryAnalysis::kernelUsesKernelAPI(KGEN::GeneratorOp kernel) {
+bool MojoLibraryAnalysis::kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel) {
   return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
 }
