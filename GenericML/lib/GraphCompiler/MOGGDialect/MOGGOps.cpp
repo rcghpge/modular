@@ -985,6 +985,13 @@ Value KernelOp::addOperandAtIndex(Value operand, size_t insertIdx) {
 /// Fixes up the input fusion interfaces to disallow input fusion on this
 /// position. Returns the added kernel argument.
 Value KernelOp::addOperand(Value operand) {
+  // TODO(GRA-868): Make mogg.kernel lowering work with an input chains that
+  // aren't the final operand.
+  //
+  // For now, keep the chain as last if it exists.
+  if (getInChain().has_value())
+    return addOperandAtIndex(operand, getNumOperands() - 1);
+
   return addOperandAtIndex(operand, getNumOperands());
 }
 

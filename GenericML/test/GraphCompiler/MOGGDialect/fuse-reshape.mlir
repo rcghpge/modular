@@ -79,3 +79,23 @@ mo.graph @dontFuseCompound<N, M>(%arg0 : !mo.tensor<[M], ui32>, %arg1 : !mo.tens
 // CHECK-LABEL: mo.graph @dontFuseCompound<N, M>
 // CHECK-NEXT: [[REBIND:%.*]] = mo.rebind
 // CHECK-NEXT: mogg.kernel ([[REBIND]], %arg1) : (%{{.*}}: !mo.tensor<[N], ui32>, %{{.*}}: !mo.tensor<[N], ui32>) -> !mo.tensor<[N], ui32>{
+
+// Example with multiple view operations fused into a mutable slice
+mo.graph @in_place_slice<d0, d1, d2>(%arg0: !mo.buffer<[3, 3, 3], f32>, %arg1: !mo.tensor<[27], f32>, %arg2: !mo.tensor<[d0, d1, d2], f32>, %arg3: !mo.tensor<[3], si64>, %arg4: !mo.tensor<[1], si32>, %arg5: !mo.tensor<[2], si32>, %arg6: !mo.tensor<[3], si32>) -> !mo.buffer<[3, 3, 3], f32> {
+  %0 = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %1 = mo.constant {value = #M.dense_array<3, 3, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %2 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %3 = mo.chain.create(%arg0) : !mo.buffer<[3, 3, 3], f32>
+
+  %outChain, %outTensor = mo.mutable.load(%3, %arg0) : (!mo.chain, !mo.buffer<[3, 3, 3], f32>) -> (!mo.chain, !mo.tensor<[3, 3, 3], f32>)
+  %4 = mo.negative(%outTensor) : !mo.tensor<[3, 3, 3], f32>
+  %5 = mo.static.reshape(%4): !mo.tensor<[3, 3, 3], f32> -> !mo.tensor<[27], f32>
+  %10 = mo.add(%5, %arg1) : !mo.tensor<[27], f32>
+  %11 = mo.static.reshape(%10) : !mo.tensor<[27], f32> -> !mo.tensor<[3, 3, 3], f32>
+  %13 = mo.mutable.store.slice(%outChain, %arg0, %11, %2, %1, %arg3) : (!mo.chain, !mo.buffer<[3, 3, 3], f32>, !mo.tensor<[3, 3, 3], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.chain
+
+  mo.output %arg0 : !mo.buffer<[3, 3, 3], f32>
+}
+// Just make sure this doesn't crash/violate invariants around the chain appearing last in mogg.kernels
+// CHECK-LABEL: @in_place_slice
+// CHECK-NOT: mogg.kernel{{.*!mo.chain,}}
