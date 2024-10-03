@@ -782,8 +782,8 @@ ErrorOrSuccess Fallback<MO::TopKOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::TransposeOp>::build(GraphOp &graph,
                                                 OpBuilder &builder,
                                                 MO::TransposeOp op) {
-  buildForOpResult(graph, builder, op, "transpose_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::TransposeOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
