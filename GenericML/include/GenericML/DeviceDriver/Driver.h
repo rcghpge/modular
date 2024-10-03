@@ -133,7 +133,7 @@ struct Device : M::ReferenceCounted<Device> {
   virtual DeviceKind getKind() const = 0;
 
   /// Gets utilization stats for the device.
-  virtual std::string getStats() = 0;
+  virtual ErrorOr<std::string> getStats() = 0;
 
   DeviceSpec deviceSpecification;
   std::string deviceDescription;

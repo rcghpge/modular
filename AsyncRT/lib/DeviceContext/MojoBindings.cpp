@@ -171,3 +171,9 @@ MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
   // Decrement the low-level reference count.
   DeviceTimerRef::lowLevelDropRef(timer);
 }
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
+                                    size_t *total) {
+  return check_success(ctx->getMemoryInfo(free, total));
+}

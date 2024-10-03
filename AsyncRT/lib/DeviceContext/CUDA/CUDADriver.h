@@ -120,6 +120,9 @@ public:
                           CUevent hEnd) const {
     return cuEventElapsedTime_(pMilliseconds, hStart, hEnd);
   }
+  Result GetMemInfo(size_t *free, size_t *total) const {
+    return cuMemGetInfo_(free, total);
+  }
 
   static ErrorOr<const CUDADriver &> get();
 
@@ -219,6 +222,9 @@ private:
 
   using tcuEventElapsedTime = Result(float *, CUevent, CUevent);
   tcuEventElapsedTime *cuEventElapsedTime_;
+
+  using tcuMemGetInfo = Result(size_t *, size_t *);
+  tcuMemGetInfo *cuMemGetInfo_;
 
   static ErrorOr<const CUDADriver &> allocAndInitDriver();
 };

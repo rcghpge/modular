@@ -223,6 +223,8 @@ public:
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
 
+  virtual ErrorOrSuccess getMemoryInfo(size_t *free, size_t *total) const = 0;
+
   static ErrorOr<DeviceContextRef> create(const char *kind, int id = 0);
 
 protected:

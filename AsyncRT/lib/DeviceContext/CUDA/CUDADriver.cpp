@@ -69,6 +69,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuEventQuery);
   GET_FUNC(cuEventSynchronize);
   GET_FUNC(cuEventElapsedTime);
+  GET_FUNC(cuMemGetInfo);
 
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
