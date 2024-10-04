@@ -88,8 +88,9 @@ static DType getDType(std::optional<ValueRange> values, size_t index,
 /// from both existing types
 TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
                                      DType dtype) {
-  ASSERT_STREAM(ty1.getDeviceRef() == ty2.getDeviceRef(),
-                << " tried to refine types with different devices");
+  // TODO(GRA-1100): Re-enable this check when RMO hooks propagate devices.
+  // ASSERT_STREAM(ty1.getDeviceRef() == ty2.getDeviceRef(),
+  //               << " tried to refine types with different devices");
   ASSERT_STREAM(!ty1.hasUnknownShape() && !ty2.hasUnknownShape(),
                 << " no question marks should be here");
   bool ty1Ranked = ty1.hasRank();
