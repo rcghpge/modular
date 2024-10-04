@@ -485,7 +485,7 @@ ErrorOrSuccess Fallback<MO::ConcatFromListOp>::build(GraphOp &graph,
 
 ErrorOrSuccess Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::ConvOp op) {
-  buildForOpResult(graph, builder, op, "conv_shape", op.getOperands(),
+  buildForOpResult(graph, builder, op, "mo.conv", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
