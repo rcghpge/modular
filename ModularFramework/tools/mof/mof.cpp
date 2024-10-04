@@ -31,6 +31,7 @@
 #include "MOF/Driver/DriverImpl.h"
 #include "MOF/ModularModel/ModularModelFile.h"
 #include "Support/DeviceSpecs.h"
+#include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -255,8 +256,11 @@ bool M_isBinary(FrameworkContextHandle ctx, M::BufferRef file,
 static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
                                          mlir::PassManager &moToMgpPasses,
                                          bool enableMEFMetadata) {
-  if (failed(moToMgpPasses.run(moduleOp)))
-    return Error::getStaticString("failed to run the MOToMGP pass manager");
+  FormatScopedDiagnosticHandler diagnostics(moToMgpPasses.getContext());
+  if (failed(moToMgpPasses.run(moduleOp))) {
+    return Error(Twine("Failed to run the MOToMGP pass manager:\n") +
+                 diagnostics.formatMessage());
+  }
 
   // Save MGP IR pre export to MEF.
   writeIntermediateFileIfRequested("mgp", moduleOp, /*options=*/nullptr,
@@ -440,8 +444,10 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
 
       mofLoweringOptions.setupContext(compileCtx.context.copy());
 
+      FormatScopedDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
       if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions)))
-        return Error("unable to lower MO to MGP");
+        return Error(Twine("unable to lower MO to MGP") +
+                     diagnostics.formatMessage());
       writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
                                        mofContext->getCommonCLOptions(),
                                        file.copy());
