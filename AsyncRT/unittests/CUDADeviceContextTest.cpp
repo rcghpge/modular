@@ -106,7 +106,7 @@ TEST(CUDADeviceContextTest, DeviceBuffers) {
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
 
-    err_ref = ctx->createBuffer(alloc_len / 16, 16);
+    err_ref = ctx->enqueueCreateBuffer(alloc_len / 16, 16);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef c_buf = std::move(err_ref.get());
     EXPECT_TRUE(c_buf);
@@ -123,6 +123,10 @@ TEST(CUDADeviceContextTest, DeviceBuffers) {
 
     ErrorOrSuccess err;
     if (sync_copies) {
+      // Ensure that all setup has finished.
+      err = ctx->synchronize();
+      EXPECT_FALSE(err) << err.getError() << "\n";
+
       // Copy between different buffers.
       err = ctx->copyToDevice(*b_buf, a_ptr);
       EXPECT_FALSE(err) << err.getError() << "\n";
@@ -256,17 +260,18 @@ $L__BB0_2:
         static_cast<float>(i) * 2.0; // Write a value that is not expected.
   }
 
-  ErrorOr<DeviceBufferRef> err_buf = ctx->createBuffer(length, elem_size);
+  ErrorOr<DeviceBufferRef> err_buf =
+      ctx->enqueueCreateBuffer(length, elem_size);
   EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
   DeviceBufferRef in0_device = std::move(err_buf.get());
   EXPECT_TRUE(in0_device);
 
-  err_buf = ctx->createBuffer(length, elem_size);
+  err_buf = ctx->enqueueCreateBuffer(length, elem_size);
   EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
   DeviceBufferRef in1_device = std::move(err_buf.get());
   EXPECT_TRUE(in1_device);
 
-  err_buf = ctx->createBuffer(length, elem_size);
+  err_buf = ctx->enqueueCreateBuffer(length, elem_size);
   EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
   DeviceBufferRef out_device = std::move(err_buf.get());
   EXPECT_TRUE(out_device);
@@ -373,7 +378,7 @@ TEST(CUDADeviceContextTest, Timers) {
     void *a_ptr = err_ptr.get();
     EXPECT_NE(a_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(256, 1);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(256, 1);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
@@ -456,12 +461,13 @@ TEST(CUDADeviceContextTest, MultiContextCopies) {
     void *src_ptr = err_ptr.get();
     EXPECT_NE(src_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = src_ctx->createBuffer(alloc_len, 1);
+    ErrorOr<DeviceBufferRef> err_ref =
+        src_ctx->enqueueCreateBuffer(alloc_len, 1);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef src_buf = std::move(err_ref.get());
     EXPECT_TRUE(src_buf);
 
-    err_ref = dst_ctx->createBuffer(alloc_len, 1);
+    err_ref = dst_ctx->enqueueCreateBuffer(alloc_len, 1);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef dst_buf = std::move(err_ref.get());
     EXPECT_TRUE(dst_buf);

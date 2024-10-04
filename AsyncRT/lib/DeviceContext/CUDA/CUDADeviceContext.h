@@ -147,8 +147,8 @@ public:
   ErrorOrSuccess free_host(void *ptr) const override;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> createBuffer(size_t len,
-                                        size_t elem_size) const override;
+  ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size,
+                                        SyncMode mode) const override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,

@@ -67,7 +67,7 @@ public:
   }
 
   Result MemAlloc(CUdeviceptr *pdptr, size_t bytesize) const {
-    return cuMemAlloc_(pdptr, bytesize);
+    return cuMemAlloc_v2_(pdptr, bytesize);
   }
   Result MemFree(CUdeviceptr dptr) const { return cuMemFree_(dptr); }
 
@@ -199,8 +199,8 @@ private:
   using tcuMemFreeAsync = Result(CUdeviceptr, CUstream);
   tcuMemFreeAsync *cuMemFreeAsync_;
 
-  using tcuMemAlloc = Result(CUdeviceptr *, size_t);
-  tcuMemAlloc *cuMemAlloc_;
+  using tcuMemAlloc_v2 = Result(CUdeviceptr *, size_t);
+  tcuMemAlloc_v2 *cuMemAlloc_v2_;
 
   using tcuMemFree = Result(CUdeviceptr);
   tcuMemFree *cuMemFree_;

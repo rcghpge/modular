@@ -107,8 +107,9 @@ ErrorOrSuccess CpuDeviceContext::free_host(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef>
-CpuDeviceContext::createBuffer(size_t len, size_t elem_size) const {
+ErrorOr<DeviceBufferRef> CpuDeviceContext::createBuffer(size_t len,
+                                                        size_t elem_size,
+                                                        SyncMode mode) const {
   size_t bytesize = len * elem_size;
   void *ptr = malloc(bytesize);
   if (ptr == nullptr) {

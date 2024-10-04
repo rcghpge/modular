@@ -55,7 +55,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemFreeHost);
   GET_FUNC(cuMemAllocAsync);
   GET_FUNC(cuMemFreeAsync);
-  GET_FUNC(cuMemAlloc);
+  GET_FUNC(cuMemAlloc_v2);
   GET_FUNC(cuMemFree);
   GET_FUNC(cuMemcpyHtoDAsync_v2);
   GET_FUNC(cuMemcpyDtoHAsync_v2);

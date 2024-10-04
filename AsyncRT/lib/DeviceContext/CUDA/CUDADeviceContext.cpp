@@ -224,13 +224,18 @@ ErrorOrSuccess CUDADeviceContext::free_host(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef>
-CUDADeviceContext::createBuffer(size_t len, size_t elem_size) const {
+ErrorOr<DeviceBufferRef> CUDADeviceContext::createBuffer(size_t len,
+                                                         size_t elem_size,
+                                                         SyncMode mode) const {
   CUDA_CHECK_ERR(setCurrent());
 
   size_t bytesize = len * elem_size;
   CUdeviceptr dptr;
-  CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
+  if (mode == ASYNC) {
+    CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
+  } else {
+    CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
+  }
   return CUDADeviceBufferRef::create(*this, len, elem_size, dptr);
 }
 

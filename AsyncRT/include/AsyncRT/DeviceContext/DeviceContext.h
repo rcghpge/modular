@@ -196,8 +196,11 @@ public:
   virtual ErrorOrSuccess free_host(void *ptr) const = 0;
 
   // DeviceBuffer allocation.
-  virtual ErrorOr<DeviceBufferRef> createBuffer(size_t len,
-                                                size_t elem_size) const = 0;
+  ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t len,
+                                               size_t elem_size) const;
+  ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size) const;
+  virtual ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size,
+                                                SyncMode mode) const = 0;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
@@ -264,6 +267,14 @@ private:
 // Internal implementation details follow.
 //
 // Inline helpers.
+inline ErrorOr<DeviceBufferRef>
+DeviceContext::enqueueCreateBuffer(size_t len, size_t elem_size) const {
+  return createBuffer(len, elem_size, ASYNC);
+}
+inline ErrorOr<DeviceBufferRef>
+DeviceContext::createBuffer(size_t len, size_t elem_size) const {
+  return createBuffer(len, elem_size, SYNC);
+}
 inline ErrorOrSuccess
 DeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                    const void *src) const {

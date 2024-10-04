@@ -111,12 +111,13 @@ TEST(DeviceContextTest, DeviceBuffersAsync) {
     void *a_ptr = err_ptr.get();
     EXPECT_NE(a_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(alloc_len, 1);
+    ErrorOr<DeviceBufferRef> err_ref =
+        ctx->createBuffer(alloc_len, 1, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
 
-    err_ref = ctx->createBuffer(alloc_len / 16, 16);
+    err_ref = ctx->createBuffer(alloc_len / 16, 16, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef c_buf = std::move(err_ref.get());
     EXPECT_TRUE(c_buf);
@@ -264,7 +265,7 @@ TEST(DeviceContextTest, Timers) {
     void *a_ptr = err_ptr.get();
     EXPECT_NE(a_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(256, 1);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(256, 1);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
