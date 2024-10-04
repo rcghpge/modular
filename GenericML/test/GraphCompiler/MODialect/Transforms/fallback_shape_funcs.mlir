@@ -186,7 +186,7 @@ mo.graph @layer_norm<D0, D1 -> D2, D3>(
 // CHECK-SAME:   %[[EPSILON:.*]]: !mo.tensor<[], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["layer_norm_shape"]<() -> [[D4:.*]], [[D5:.*]]>(
+// CHECK-NEXT:   mo.invoke_shape_func["mo.layer_norm"]<() -> [[D4:.*]], [[D5:.*]]>(
 // CHECK-SAME:     %[[INPUT]], %[[GAMMA]], %[[BETA]], %[[EPSILON]]) {dataDeptTensors = []} :
 // CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
 //

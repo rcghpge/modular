@@ -552,7 +552,7 @@ ErrorOrSuccess Fallback<MO::GatherNdOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::LayerNormOp>::build(GraphOp &graph,
                                                 OpBuilder &builder,
                                                 MO::LayerNormOp op) {
-  buildForOpResult(graph, builder, op, "layer_norm_shape", op.getOperands(),
+  buildForOpResult(graph, builder, op, "mo.layer_norm", op.getOperands(),
                    op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
