@@ -16,7 +16,7 @@ mo.graph @unimplemented_custom_op<D0, D1, D2, D3, D4, D5>(
   %target_shape: !mo.tensor<[D0], si32>
 ) {
   // expected-error @+1 {{'mo.invoke_shape_func' op [MO_TO_MOGG] dynamic rank isn't supported in shape function}}
-  mo.invoke_shape_func["batch_matmul_shape"]<() -> Sh3: !mosh.ape>(%lhs, %rhs)
+  mo.invoke_shape_func["mo.batch_matmul"]<() -> Sh3: !mosh.ape>(%lhs, %rhs)
     {dataDeptTensors = []} :
     (!mo.tensor<[D0, D1, D2], f32>, !mo.tensor<[D3, D4, D5], f32>)
   mo.output

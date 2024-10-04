@@ -3803,13 +3803,12 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
   let arguments = (ins
     MO_Tensor:$input_a,
     MO_Tensor:$input_b,
-    OptionalAttr<BoolAttr>:$transpose_b,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let builders = [
     /// Create matmul with default attribute flags off.
-    OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b)>,
     OpBuilder<(ins "Type":$type, "Value":$input_a, "Value":$input_b, "ArrayRef<KGEN::ParamDeclAttr>":$decls)>,
   ];
 

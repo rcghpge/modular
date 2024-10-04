@@ -98,7 +98,7 @@ mo.graph @batch_matmul<D0, D1, D2, D3, D4, D5 -> D6, D7, D8>(
 // CHECK-SAME:   %[[RHS:.*]]: !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D6]], [[D7]], [[D8]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["batch_matmul_shape"]<() -> [[D9:.*]], [[D10:.*]], [[D11:.*]]>(%[[LHS]], %[[RHS]])
+// CHECK-NEXT:   mo.invoke_shape_func["mo.batch_matmul"]<() -> [[D9:.*]], [[D10:.*]], [[D11:.*]]>(%[[LHS]], %[[RHS]])
 // CHECK-SAME:     {dataDeptTensors = []}
 // CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>)
 //

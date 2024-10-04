@@ -421,8 +421,8 @@ ErrorOrSuccess Fallback<MO::AvgPoolCeilOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::BatchMatmulOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::BatchMatmulOp op) {
-  buildForOpResult(graph, builder, op, "batch_matmul_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::BatchMatmulOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }

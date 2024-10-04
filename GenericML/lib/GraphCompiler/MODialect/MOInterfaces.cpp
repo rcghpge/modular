@@ -76,7 +76,7 @@ LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
   // They will change some of the shapes (i.e allowing values to be transposed
   // implicitly).
   if (auto bmm = dyn_cast<BatchMatmulOp>(op))
-    if (bmm.getTransposeB().value_or(false))
+    if (bmm.getTransposeB())
       return success();
 
   // The op created from the framework should have no layout attributes and we
