@@ -122,9 +122,11 @@ MojoLibraryAnalysis::getRegisteredMojoFunctionFor(StringRef name,
   auto registeredFunctions = registeredKernelFunctionSymbols.find(name);
   if (registeredFunctions == registeredKernelFunctionSymbols.end())
     return {};
+
   auto registeredFunction = registeredFunctions->second.find(functionLabel);
   if (registeredFunction == registeredFunctions->second.end())
     return {};
+
   auto symbolName = registeredFunction->getValue();
   return getMojoFunctionNamed(symbolName);
 }
@@ -387,6 +389,9 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       Candidate candidate = {generator};
       candidate.priority = 0;
       candidates[kernelName.strref()].push_back(candidate);
+      registerKernelFunction(kernelName,
+                             KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel,
+                             generator.getSymName());
     }
     if (auto regs = generator->getAttrOfType<ArrayAttr>(
             KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
@@ -533,5 +538,10 @@ bool MojoLibraryAnalysis::kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel) {
 }
 
 bool MojoLibraryAnalysis::kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel) {
-  return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
+  return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel) ||
+         kernel->hasAttr(KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
+
+  // TODO(GRA-1057): support once opaque type support is landed.
+  // PT functions depend on opaque `PythonObjects`
+  // || kernel->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
 }

@@ -12,7 +12,7 @@ mo.graph @custom_op(
   // We can't symbolicize the fallback shape function call because it contains a
   // side-effecting print statement.
   // TODO: consider inlining some commonly known side-effecting ops like print.
-  // CHECK-NEXT: mo.invoke_shape_func["test_unary_kernel_shape_func"]<() -> [[D2:.*]], [[D3:.*]]>(%[[INPUT]])
+  // CHECK-NEXT: mo.invoke_shape_func["test_custom_op"]<() -> [[D2:.*]], [[D3:.*]]>(%[[INPUT]])
   // CHECK-SAME:   {dataDeptTensors = [0 : i32], kgenParams = {output_idx = 0 : index}} : (!mo.tensor<[[[D0]], [[D1]]], f32>)
 
   // CHECK-NEXT:  %[[RES:.*]] = mo.custom {symbol = "test_custom_op"}(%[[INPUT]]) :

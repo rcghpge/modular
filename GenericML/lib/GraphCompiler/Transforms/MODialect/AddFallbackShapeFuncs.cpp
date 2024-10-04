@@ -508,17 +508,11 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
   // Mark all inputs by default.
   SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
 
-  auto shapeFunction =
-      mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
-  if (!shapeFunction)
-    return Error("Couldn't find shape function for mojo kernel");
-  StringRef shapeFunctionName = shapeFunction.getName();
-
   SmallVector<int32_t> dataDepInputIdxs(operands.size());
   std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
 
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
-    buildForOpResult(graph, builder, cast<TensorValue>(res), shapeFunctionName,
+    buildForOpResult(graph, builder, cast<TensorValue>(res), op.getSymbol(),
                      operands, op.getOutputParamDecls(),
                      /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
                      /*dataDepInputIdxs=*/dataDepInputIdxs);
