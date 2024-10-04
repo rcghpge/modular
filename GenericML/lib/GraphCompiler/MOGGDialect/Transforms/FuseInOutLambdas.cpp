@@ -392,7 +392,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Major mapper we use to clone all kinds of the operators in the user
     // kernel.
-    IRMapping kgenOldToNew;
     MOGG::ToKGENOp newOutsToKgenOp;
     OutputPlaceholdersOp newOuts;
 
@@ -409,7 +408,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         if (newToKgen.getInput() == newOuts.getResult(0))
           newOutsToKgenOp = newToKgen;
 
-        kgenOldToNew.map(toKgen.getResults(), newToKgen.getResults());
         oldToNew.map(toKgen.getResults(), newToKgen.getResults());
       } else if (isa<KGEN::POP::StackAllocationOp>(op)) {
         // We clone StackAllocationOp and track its mapping. Both
@@ -417,7 +415,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         // the KGEN calls.
         Operation *newAlloc = builder.clone(op, oldToNew);
         oldToNew.map(op.getResults(), newAlloc->getResults());
-        kgenOldToNew.map(op.getResults(), newAlloc->getResults());
       } else if (isa<MOGG::OutputPlaceholdersOp>(op)) {
         // OutputPlaceholdersOp is the first operator in the user kernel to
         // clone.
@@ -479,7 +476,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         if (auto lambdaOp = userSymTable.lookup(userInputLambdaNameAttr))
           // For non-fusion input lambda, we don't remove its symbol attribute
           // so other passes can still use SymbolTable to visit them.
-          builder.clone(*lambdaOp, kgenOldToNew);
+          builder.clone(*lambdaOp, oldToNew);
       }
     }
 
@@ -532,24 +529,23 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // placeholder in the src kernel.
     for (auto toKgenOp : userToFuseIn.getOps<MOGG::ToKGENOp>()) {
       if (toKgenOp.getInput() == userBlock.getArgument(fusionOperandIdx))
-        kgenOldToNew.map(toKgenOp->getResult(0), newOutsToKgenOp->getResult(0));
+        oldToNew.map(toKgenOp->getResult(0), newOutsToKgenOp->getResult(0));
     }
 
     // Remap the SIMD indices of the simd_store_internal in the output lambda.
-    kgenOldToNew.map(userSimdStoreOp.getOperand(1),
-                     srcSimdStoreOp.getOperand(1));
+    oldToNew.map(userSimdStoreOp.getOperand(1), srcSimdStoreOp.getOperand(1));
 
     // Remap SIMD indices for the COMPUTE_OUTLINED call.
     builder.setInsertionPointAfter(newInputLambdaOp);
     for (Value operand : outlinedCallOp->getOperands()) {
       if (isa<mlir::BlockArgument>(operand)) {
-        kgenOldToNew.map(operand, srcSimdStoreOp.getOperand(1));
+        oldToNew.map(operand, srcSimdStoreOp.getOperand(1));
         // FIXME(GRA-865): FuseBroadcasts might have inserted a rebind.
       } else if (auto rebind = operand.getDefiningOp<KGEN::RebindOp>();
                  rebind && elementwiseOp.getBodyRegion().isAncestor(
                                rebind->getParentRegion())) {
-        kgenOldToNew.map(operand, cast<KGEN::RebindOp>(
-                                      builder.clone(*rebind, kgenOldToNew)));
+        oldToNew.map(operand,
+                     cast<KGEN::RebindOp>(builder.clone(*rebind, oldToNew)));
       }
     }
 
@@ -558,7 +554,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       StringAttr regionName = declRegion.getParamDeclAttr().getName();
       if (!lambdaSkipSet.contains(regionName)) {
         auto newRegion = cast<KGEN::ParamDeclareRegionOp>(
-            builder.clone(*declRegion.getOperation(), kgenOldToNew));
+            builder.clone(*declRegion.getOperation(), oldToNew));
         newRegion->removeAttr(mlir::SymbolTable::getSymbolAttrName());
       }
     }
@@ -567,12 +563,11 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // clone the user kernel's SIMD store into the src kernel to account for the
     // mixed precision case.
     KGEN::CallOp newOutlinedCallOp = cast<KGEN::CallOp>(
-        builder.clone(*outlinedCallOp.getOperation(), kgenOldToNew));
+        builder.clone(*outlinedCallOp.getOperation(), oldToNew));
 
-    kgenOldToNew.map(userSimdStoreOp.getOperand(2),
-                     newOutlinedCallOp.getResult(0));
+    oldToNew.map(userSimdStoreOp.getOperand(2), newOutlinedCallOp.getResult(0));
     auto newSimdStoreOp = cast<KGEN::CallOp>(
-        builder.clone(*userSimdStoreOp.getOperation(), kgenOldToNew));
+        builder.clone(*userSimdStoreOp.getOperation(), oldToNew));
 
     // Step 5: Remap all the template parameters of the two new calls inserted
     // (COMPUTE_OUTLINED and SIMD store).
