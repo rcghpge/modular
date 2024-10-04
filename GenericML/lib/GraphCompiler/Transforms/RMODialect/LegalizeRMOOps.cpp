@@ -268,7 +268,8 @@ struct LegalizeMutableStoreSliceOp
                                      op.getStop(), op.getStep()};
 
       rewriter.create<MO::InvokeShapeFuncOp>(
-          op.getLoc(), operands, rewriter.getStringAttr("slice_shape"),
+          op.getLoc(), operands,
+          rewriter.getStringAttr(MO::SliceOp::getOperationName()),
           KGEN::ParamDeclArrayAttr::get(op->getContext(), sliceInputDecls),
           nullptr, rewriter.getI32ArrayAttr({1, 2, 3}));
 

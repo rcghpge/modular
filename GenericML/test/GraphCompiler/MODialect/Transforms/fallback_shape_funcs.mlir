@@ -676,7 +676,7 @@ mo.graph @slice_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-SAME: %[[STEP:.*]]: !mo.tensor<[3], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["slice_shape"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
+// CHECK-NEXT: mo.invoke_shape_func["mo.slice"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(
 // CHECK-SAME:   %[[INPUT]], %[[START]], %[[STOP]], %[[STEP]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>)

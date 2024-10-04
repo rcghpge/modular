@@ -739,8 +739,8 @@ BUILD_SCATTER_ND_LIKE_OP(MO::ScatterNdMulOp)
 
 ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SliceOp op) {
-  buildForOpResult(graph, builder, op, "slice_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::SliceOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
