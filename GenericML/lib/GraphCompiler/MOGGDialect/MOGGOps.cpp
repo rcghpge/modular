@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
@@ -32,6 +33,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 
 using namespace M;
 using namespace MOGG;
@@ -1356,6 +1358,52 @@ void KernelOp::getEffects(
     effects.emplace_back(mlir::MemoryEffects::Write::get());
   if (hasReadEffect)
     effects.emplace_back(mlir::MemoryEffects::Read::get());
+}
+
+void KernelOp::setKGENKernelParamValueIfPresent(MojoLibraryAnalysis &analysis,
+                                                StringRef paramLabel,
+                                                TypedAttr value) {
+  // Collect name of parameter declarations we need to reset.
+  llvm::StringSet<> paramsToReset;
+  for (KGEN::CallOp call : this->getOps<KGEN::CallOp>()) {
+    auto callee = call.getCallee();
+    auto callName = callee.getSymbol().getLeafReference();
+
+    // For handling calls to custom op symbols.
+    auto funcRef = analysis.getRegisteredMojoKernelFor(callName);
+    // For handling calls to inline kgen.
+    if (!funcRef)
+      funcRef = analysis.getMojoFunctionNamed(callName);
+    ASSERT_STREAM(funcRef, << " could not find "
+                           << callee.getSymbol().getLeafReference()
+                           << " in the mojo libraries given!");
+
+    // Find the index of the parameter
+    if (auto param =
+            cast_or_null<ParamDeclAttr>(funcRef->getAttr(paramLabel))) {
+      auto inputParams = funcRef.getInputParams();
+      size_t callParamIndex =
+          llvm::find(inputParams, param) - inputParams.begin();
+      // Check the the param is found. Unused parameters might be optimized
+      // away, but the function attr is still present.
+      if (callParamIndex < inputParams.size()) {
+
+        auto paramAsRef = dyn_cast<KGEN::ParamDeclRefAttr>(
+            call.getParamValues()[callParamIndex]);
+
+        // It is assumed each KGEN parameter is unique to each call
+        paramsToReset.insert(paramAsRef.getName());
+      }
+    }
+  }
+
+  if (paramsToReset.empty())
+    return;
+
+  // Update the parameter declarations.
+  for (KGEN::ParamDeclareOp decl : this->getOps<KGEN::ParamDeclareOp>())
+    if (paramsToReset.contains(decl.getName()))
+      decl.setValueAttr(value);
 }
 
 //===----------------------------------------------------------------------===//

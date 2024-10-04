@@ -180,7 +180,26 @@ def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
     An elementwise kernel can be directly fused into the lambda body of another
     kernel. I.E fused directly into a matmul output loop.
   }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
+
+  // Balloons due to dependency on MojoLibrarryAnalysis
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::Custom::CustomDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::HLCF::HLCFDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::index::IndexDialect",
+  ];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+  ];
 }
 
 def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {

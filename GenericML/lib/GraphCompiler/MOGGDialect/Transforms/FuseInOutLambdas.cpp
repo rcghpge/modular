@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -318,7 +319,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   // Fuse the user of `kernelToFuseInto` into the src kernel with KGEN.
   KernelOp fuseIntoOutputLambdaKGEN(KernelOp kernelToFuseInto,
                                     StringAttr outputLambdaName,
-                                    SmallVector<KernelOp> &opsToErase) {
+                                    SmallVector<KernelOp> &opsToErase,
+                                    MojoLibraryAnalysis &analysis) {
 
     // In brief, we have several steps to implement this fusion:
 
@@ -616,6 +618,11 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Disable future output fusion.
     kernelToFuseInto.removeOutputFusionInterfaceAttr();
+
+    // Update the lambdas_have_fusion parameter for the extensibility kernels
+    kernelToFuseInto.setKGENKernelParamValueIfPresent(
+        analysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
+        BoolAttr::get(&getContext(), true));
 
     // Matmul with mixed precision (bad case): Matmul kernels actually take in
     // an output buffer despite having a lambda. Therefore, in mixed
@@ -956,6 +963,16 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   void runOnOperation() override {
     MO::GraphOp moGraph = getOperation();
 
+    auto &loadAnalysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+    auto res =
+        loadAnalysis.initIfNeeded(&getContext(), kernelLibraryPaths, false);
+    if (res.isError()) {
+      mlir::emitError(moGraph->getLoc(),
+                      "Unable to initialize MojoLibraryAnalysis");
+      signalPassFailure();
+    }
+    MojoLibraryAnalysis *analysis = res.get();
+
     SmallVector<MOGG::KernelOp> kernelOpsToErase;
     for (MOGG::KernelOp kernelToFuseInto : moGraph.getOps<MOGG::KernelOp>()) {
       [[maybe_unused]] DeviceRefAttr beforeDevice =
@@ -971,8 +988,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         if (canDoOutputFusion(kernelToFuseInto, lambdas)) {
           StringAttr outputLambdaName = cast<StringAttr>(lambdas[0]);
           if (kernelToFuseInto.getIsKGEN().value_or(false))
-            kernelToFuseInto = fuseIntoOutputLambdaKGEN(
-                kernelToFuseInto, outputLambdaName, kernelOpsToErase);
+            kernelToFuseInto =
+                fuseIntoOutputLambdaKGEN(kernelToFuseInto, outputLambdaName,
+                                         kernelOpsToErase, *analysis);
           else
             kernelToFuseInto = fuseIntoOutputLambdaMOGG(
                 kernelToFuseInto, outputLambdaName, kernelOpsToErase);

@@ -26,6 +26,8 @@ class ParamDeclareRegionOp;
 } // namespace M::KGEN
 
 namespace M::MOGG {
+class MojoLibraryAnalysis;
+
 SmallVector<KGEN::ParamDeclRefAttr>
 getKernelUsedParameters(MOGG::CompilableKernel kernel);
 } // namespace M::MOGG
