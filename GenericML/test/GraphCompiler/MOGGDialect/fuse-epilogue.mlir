@@ -43,7 +43,7 @@ mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f
         mogg.call "simd_store"(%2, %arg4, %arg5) : !mo.tensor<[M, N], f32>, !mogg.indices, !mogg.simd<f32>
         mogg.output
     }
-    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_in_1 = false, single_thread_blocking_override = false, transpose_in_1 = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
+    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
   } {outputFusionInterface = ["output_0_fn"]}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
@@ -80,7 +80,7 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
         mogg.call "simd_store"(%2, %arg4, %arg5) : !mo.tensor<[M, N], f32>, !mogg.indices, !mogg.simd<f32>
         mogg.output
     }
-    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_in_1 = false, single_thread_blocking_override = false, transpose_in_1 = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
+    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
   }
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
@@ -117,7 +117,7 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
         mogg.call "simd_store"(%2, %arg4, %arg5) : !mo.tensor<[M, N], f32>, !mogg.indices, !mogg.simd<f32>
         mogg.output
     }
-    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_in_1 = false, single_thread_blocking_override = false, transpose_in_1 = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
+    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
   } {outputFusionInterface = ["output_0_fn"]}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
@@ -154,7 +154,7 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
       mogg.call "simd_store"(%2, %arg4, %arg5) : !mo.tensor<[2, 2], ui32>, !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_in_1 = false, single_thread_blocking_override = false, transpose_in_1 = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
+    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
     mogg.output %2 : !mo.tensor<[2, 2], ui32>
   } {outputFusionInterface = ["output_0_fn"]}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[2, 2], ui32>) -> !mo.tensor<[2, 2], f32>{
@@ -190,7 +190,7 @@ mo.graph @fused_mixed_precision_cuda_device(%arg0: !mo.tensor<[2, 2], ui32>, %ar
       mogg.call "simd_store"(%2, %arg4, %arg5) : !mo.tensor<[2, 2], ui32>, !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_in_1 = false, single_thread_blocking_override = false, transpose_in_1 = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
+    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
     mogg.output %2 : !mo.tensor<[2, 2], ui32>
   } {device = #M.device_ref<"cuda", 0>, outputFusionInterface = ["output_0_fn"]}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[2, 2], ui32>) -> !mo.tensor<[2, 2], f32>{
@@ -227,7 +227,7 @@ mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], ui32>, %
       mogg.call "simd_store"(%2, %arg4, %arg5) : !mo.tensor<[2, 2], ui32>, !mogg.indices, !mogg.simd<ui32>
       mogg.output
     }
-    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_in_1 = false, single_thread_blocking_override = false, transpose_in_1 = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
+    mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
     mogg.output %2 : !mo.tensor<[2, 2], ui32>
   } {outputFusionInterface = ["output_0_fn"]}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[2, 2], ui32>) -> !mo.tensor<[2, 2], f32>{

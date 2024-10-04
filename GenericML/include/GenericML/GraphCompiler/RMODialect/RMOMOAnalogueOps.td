@@ -2669,9 +2669,9 @@ def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
   DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>
 ]>
 {
-  let arguments = (ins MO_Chain:$inChain, 
-                       MO_Buffer:$inBuffer, 
-                       MO_Tensor:$inTensor, 
+  let arguments = (ins MO_Chain:$inChain,
+                       MO_Buffer:$inBuffer,
+                       MO_Tensor:$inTensor,
                        MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Chain:$outChain);

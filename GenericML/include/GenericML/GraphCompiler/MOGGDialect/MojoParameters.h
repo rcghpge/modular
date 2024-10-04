@@ -18,9 +18,9 @@ static constexpr llvm::StringLiteral PARAMETER_LAMBDAS_HAVE_FUSION =
 
 /// Matmul and BatchMatmul op
 static constexpr llvm::StringLiteral PARAMETER_MATMUL_TRANSPOSED_WEIGHTS =
-    "transpose_in_1";
+    "transpose_b";
 static constexpr llvm::StringLiteral PARAMETER_MATMUL_PACKED_WEIGHTS =
-    "packed_in_1";
+    "packed_b";
 
 /// Conv op
 static constexpr llvm::StringLiteral PARAMETER_CONV_PACKED_FILTER =
