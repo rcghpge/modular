@@ -23,6 +23,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/POPDialect/POPOps.h"
+#include "KGEN/POPDialect/POPTypes.h"
 #include "Support/AssertStream.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -690,6 +691,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // in MGP.
   SmallVector<MOGG::ParamShapeToValueOp> shapes(
       kernelBody.getOps<MOGG::ParamShapeToValueOp>());
+  auto si64ScalarTy = KGEN::POP::SIMDType::get(ctx, 1, DType::si64);
+  auto indexScalarTy = KGEN::POP::SIMDType::get(ctx, 1, KGEN::KGENDType::index);
   for (auto getShape : shapes) {
     builder.setInsertionPointAfter(getShape);
     SmallVector<Value> dimensions;
@@ -699,13 +702,18 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       auto param = loweredParams.find(dim);
       if (param == loweredParams.end())
         return getShape->emitError("Parameter has not been lowered: ") << dim;
-      dimensions.push_back(param->second);
+
+      auto asIndexScalar = builder.create<KGEN::POP::CastFromBuiltinOp>(
+          getShape->getLoc(), indexScalarTy, param->second);
+      auto asI64Scalar = builder.create<KGEN::POP::CastOp>(
+          getShape.getLoc(), si64ScalarTy, asIndexScalar);
+      dimensions.push_back(asI64Scalar);
     }
 
     // NOTE(GRA-531): Right now we assume a rank0 tensor maps to a shape of [1].
     if (dimensions.empty()) {
       auto kgenOne = builder.create<KGEN::ParamConstantOp>(
-          getShape->getLoc(), IntegerAttr::get(builder.getIndexType(), 1));
+          getShape->getLoc(), KGEN::POP::SIMDAttr::get(1, si64ScalarTy));
       dimensions.push_back(kgenOne);
     }
 
@@ -716,7 +724,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         getShape.getLoc(), TypeRange(getShape.getResult().getType()), values);
     getShape.replaceAllUsesWith(toMOGG.getResult());
     getShape->erase();
-  };
+  }
 
   DenseMap<int, MOGG::ToKGENOp> outIdxToKgenTensorOp;
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
