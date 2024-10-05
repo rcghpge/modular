@@ -424,6 +424,8 @@ AnyAsyncValueRef getAsyncValue(ValuePtr value,
     return AnyAsyncValueRef::createReady<GML::Tuple>(
         runtime, getTupleFromValue(api, value.get(), runtime));
   case M_UNKNOWN_VALUE:
+  case M_MOJO_VALUE:
+  case M_PYTHON_MOJO_VALUE:
     break;
   }
   AsyncRT::EncodedDiagnostic diagnostic =
