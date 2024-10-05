@@ -118,7 +118,7 @@ public:
   ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const override;
 
-  ErrorOrSuccess getMemoryInfo(size_t *free, size_t *total) const override;
+  ErrorOr<DeviceMemInfo> getMemoryInfo() const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 

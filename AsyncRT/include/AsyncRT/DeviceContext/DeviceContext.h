@@ -177,6 +177,12 @@ private:
   DeviceContextRef context_;
 };
 
+struct DeviceMemInfo {
+  DeviceMemInfo() : total(0), free(0) {}
+  size_t total;
+  size_t free;
+};
+
 class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
   enum class SyncMode {
@@ -246,7 +252,7 @@ public:
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
 
-  virtual ErrorOrSuccess getMemoryInfo(size_t *free, size_t *total) const = 0;
+  virtual ErrorOr<DeviceMemInfo> getMemoryInfo() const = 0;
 
   static ErrorOr<DeviceContextRef> create(const char *kind, int id = 0);
 

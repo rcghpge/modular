@@ -183,7 +183,7 @@ public:
   ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const override;
 
-  ErrorOrSuccess getMemoryInfo(size_t *free, size_t *total) const override;
+  ErrorOr<DeviceMemInfo> getMemoryInfo() const override;
 
   const CUDADriver &cuda_driver() const;
   CUstream cuda_stream() const;

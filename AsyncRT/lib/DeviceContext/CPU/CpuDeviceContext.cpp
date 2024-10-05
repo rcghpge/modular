@@ -183,10 +183,9 @@ CpuDeviceContext::stopTimer(const DeviceTimer &timer) const {
          CpuDeviceTimer::cast(timer).cpu_start();
 }
 
-ErrorOrSuccess CpuDeviceContext::getMemoryInfo(size_t *free,
-                                               size_t *total) const {
+ErrorOr<DeviceMemInfo> CpuDeviceContext::getMemoryInfo() const {
   // TODO: Implement get memory info for CPU device context.
-  return success();
+  return DeviceMemInfo();
 }
 
 const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {

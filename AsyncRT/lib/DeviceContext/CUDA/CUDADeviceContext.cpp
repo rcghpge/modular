@@ -404,10 +404,10 @@ CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
-ErrorOrSuccess CUDADeviceContext::getMemoryInfo(size_t *free,
-                                                size_t *total) const {
-  CUDA_CHECK_ERR(driver_.GetMemInfo(free, total));
-  return success();
+ErrorOr<DeviceMemInfo> CUDADeviceContext::getMemoryInfo() const {
+  DeviceMemInfo mem_info;
+  CUDA_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
+  return mem_info;
 }
 
 const CUDADriver &CUDADeviceContext::cuda_driver() const { return driver_; }

@@ -207,5 +207,10 @@ MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
                                     size_t *total) {
-  return check_success(ctx->getMemoryInfo(free, total));
+  DeviceMemInfo mem_info;
+  const char *err_msg =
+      check_val(&mem_info, DeviceMemInfo(), ctx->getMemoryInfo());
+  *free = mem_info.free;
+  *total = mem_info.total;
+  return err_msg;
 }
