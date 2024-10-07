@@ -319,9 +319,8 @@ MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,
   for (int i = 0; i < rank; ++i)
     dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
 
-  if (ranked) {
+  if (ranked)
     return wrap(MO::BufferType::get(dim_attrs, unwrap(dtype)));
-  }
   return wrap(MO::BufferType::get(
       KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))),
       unwrap(dtype)));

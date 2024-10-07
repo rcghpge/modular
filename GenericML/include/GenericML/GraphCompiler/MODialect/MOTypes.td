@@ -296,14 +296,17 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "DType" : $dtype,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "ArrayRef<TypedAttr>" : $shape,
       "Type" : $elementType,
+      CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
   ];
 
@@ -311,10 +314,6 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
     /// Returns a clone of type with given #M.device_ref annotation. The
     /// type must not already have such an annotation.
     BufferType cloneWith(DeviceRefAttr deviceRef) const;
-
-    /// Clone the current type with the metadata and device_ref from
-    /// `source`.
-    BufferType cloneWithMetadataAndDeviceRef(BufferType source) const;
 
     /// Convert `mo.buffer` to the corresponding `mo.tensor` type
     static TensorType toTensorType(BufferType type);

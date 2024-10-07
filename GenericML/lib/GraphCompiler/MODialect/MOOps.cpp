@@ -327,7 +327,10 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 
     if (auto funcOutBufferTy = dyn_cast<BufferType>(funcOutTy)) {
       auto newOutBufferTy = cast<BufferType>(newOutTy);
-      newResTy = funcOutBufferTy.cloneWithMetadataAndDeviceRef(newOutBufferTy);
+
+      newResTy = BufferType::get(
+          funcOutBufferTy.getShapeAttr(), funcOutBufferTy.getDtype(),
+          newOutBufferTy.getDeviceRef(), newOutBufferTy.getMetadata());
     }
 
     newResTypes.push_back(newResTy);

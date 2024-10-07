@@ -637,11 +637,6 @@ BufferType BufferType::cloneWith(DeviceRefAttr deviceRef) const {
                          getMetadata());
 }
 
-BufferType BufferType::cloneWithMetadataAndDeviceRef(BufferType source) const {
-  return BufferType::get(getContext(), getShapeAttr(), getDtype(),
-                         source.getDeviceRef(), source.getMetadata());
-}
-
 Type BufferType::parse(AsmParser &parser) {
   TensorLikeTypeParser bufferParser(parser);
 
@@ -689,27 +684,27 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 BufferType BufferType::get(TypedAttr shapeAttr, DType dtype,
-                           DictionaryAttr metadata) {
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   MLIRContext *ctx = shapeAttr.getContext();
   if (!metadata)
     metadata = DictionaryAttr::get(ctx);
-  return get(ctx, shapeAttr, dtype, /*deviceRef=*/{}, metadata);
+  return get(ctx, shapeAttr, dtype, deviceRef, metadata);
 }
 
 BufferType BufferType::get(TypedAttr shapeAttr, Type elementType,
-                           DictionaryAttr metadata) {
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
   ASSERT_STREAM(!errOrDType.isError(),
                 << "element type is not representable as a DType: "
                 << errOrDType.takeError());
-  return get(shapeAttr, *errOrDType, metadata);
+  return get(shapeAttr, *errOrDType, deviceRef, metadata);
 }
 
 BufferType BufferType::get(ArrayRef<TypedAttr> shape, Type elementType,
-                           DictionaryAttr metadata) {
+                           DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
-  return get(newShape, elementType, metadata);
+  return get(newShape, elementType, deviceRef, metadata);
 }
 
 TensorType BufferType::toTensorType(BufferType ty) {
