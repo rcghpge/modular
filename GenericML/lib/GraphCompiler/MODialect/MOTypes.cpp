@@ -574,21 +574,6 @@ std::optional<int64_t> TensorType::getNumElements() const {
   return resultElements.getInt();
 }
 
-ErrorOr<TensorType> TensorType::broadcastShapes(TensorType x, TensorType y) {
-  if (!x.hasRank() || !y.hasRank())
-    return Error("Guards should have rejected unranked inputs.");
-  if (x.getElementType() != y.getElementType())
-    return Error("Tensors must have the same element type for "
-                 "MO::TensorType::broadcastShapes.");
-
-  auto resultOr =
-      ShapeAttr::broadcastShapes(x.getTypedShapeAttr(), y.getTypedShapeAttr());
-  if (resultOr.isError())
-    return resultOr.takeError();
-
-  return MO::TensorType::get(*resultOr, x.getElementType());
-}
-
 TensorType TensorType::cloneWithNewDim(uint64_t dim, uint64_t size) {
   SmallVector<TypedAttr> shape(getDims());
   shape[dim] = mlir::IntegerAttr::get(shape.front().getType(), size);

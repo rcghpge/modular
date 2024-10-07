@@ -200,10 +200,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     // Otherwise returns no value.
     std::optional<int64_t> getNumElements() const;
 
-    /// Computes the common broadcast shape of the shapes of given tensors.
-    /// Supports parametric and unknown shapes, but not dynamic rank.
-    static ErrorOr<TensorType> broadcastShapes(TensorType x, TensorType y);
-
     /// Short-hand to create a scalar tensor type.
     static TensorType getScalarType(Type elementType,
       DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {});
