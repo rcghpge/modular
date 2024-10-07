@@ -73,6 +73,7 @@ modular_cc_library(
 modular_cc_library(
     name = "MojoLLDBPublic.headers",
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
+    tags = ["no-clang-tidy-headers"],
     visibility = ["//visibility:private"],
 )
 
@@ -142,6 +143,7 @@ modular_cc_library(
     name = "ExecutionDriver",
     srcs = glob(["lib/Driver/ExecutionDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
+    tags = ["no-clang-tidy-headers"],
     deps = [
         ":Support",
         "//Support:Base",
@@ -153,6 +155,7 @@ modular_cc_library(
 modular_cc_library(
     name = "GraphCompilerMatchers",
     hdrs = ["include/GenericML/GraphCompiler/Matchers.h"],
+    tags = ["no-clang-tidy-headers"],
     deps = [
         "@llvm-project//llvm:Support",
     ],
@@ -169,6 +172,7 @@ modular_cc_library(
         # Deal with a circular dependency.
         exclude = ["include/GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"],
     ),
+    tags = ["no-clang-tidy-headers"],
     deps = [
         ":MOToPrimitivesIncGen",
         "//Support:Base",
@@ -471,6 +475,7 @@ modular_cc_library(
         "lib/GraphCompiler/Transforms/MODialect/*.h",
     ]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
+    tags = ["no-clang-tidy-headers"],
     deps = [
         ":CommonDriver",
         ":DeviceDriver",
@@ -702,6 +707,7 @@ modular_cc_library(
         "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
         "include/GenericML/GraphCompiler/Interfaces/*.h",
     ]),
+    tags = ["no-clang-tidy-headers"],
     visibility = ["//visibility:private"],
     deps = [
         ":GraphCompilerConversion",
@@ -1101,6 +1107,7 @@ modular_shared_library(
         "include/GenericML/Support/*.h",
     ]),
     output_name = "GenericMLSupportGlobals",
+    tags = ["no-clang-tidy-headers"],
     deps = [
         "//Support:Base",
         "//Support:SymbolExport",
@@ -1371,16 +1378,19 @@ modular_cc_library(
     name = "MaxAPI",
     hdrs = glob(["include/GenericML/API/max/**/*.h"]),
     strip_include_prefix = "include/GenericML/API",
+    tags = ["no-clang-tidy-headers"],
 )
 
 modular_cc_library(
     name = "API.headers",
     hdrs = glob(["include/GenericML/API/**/*.h"]),
+    tags = ["no-clang-tidy-headers"],
 )
 
 pkg_files(
     name = "API.c.headers",
     srcs = glob(["include/GenericML/API/max/c/*.h"]),
+    tags = ["no-clang-tidy-headers"],
 )
 
 filegroup(

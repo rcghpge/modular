@@ -2648,7 +2648,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     DeviceRefAttr targetDeviceRef =
         targetDevice == ""
-            ? NULL
+            ? nullptr
             : DeviceRefAttr::get(ctx, targetDevice.getValue(), 0);
 
     PackParamCache cache;

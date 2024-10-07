@@ -26,6 +26,7 @@ modular_pybind_library(
         "//:MLIRBindingsPythonHeaders",
         "//SDK:DriverPython",
     ],
+    tags = ["no-clang-tidy-headers"],
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
