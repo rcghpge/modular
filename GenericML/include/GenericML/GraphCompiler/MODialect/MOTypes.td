@@ -98,8 +98,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
   let extraClassDeclaration = [{
     /// Returns a clone with a new integer shape and element dtype.
     TensorType cloneWith(
-      std::optional<ArrayRef<int64_t>> shape, Type dtype,
-      DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {}) const;
+      std::optional<ArrayRef<int64_t>> shape, Type dtype) const;
 
     /// Returns a clone with a new dimensions for shape.
     TensorType cloneWith(
@@ -117,8 +116,7 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns clone with a new metadata attribute.
     TensorType cloneWith(DictionaryAttr metadataAttr) const;
 
-    /// Returns a clone of type with given #M.device_ref annotation. The
-    /// type must not already have such an annotation.
+    /// Returns a clone of type with given device annotation.
     TensorType cloneWith(DeviceRefAttr device) const;
 
     /// Returns clone with a shape of unknown rank.
@@ -126,10 +124,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
 
     /// Returns clone with a shape of known rank, but unknown dims
     TensorType cloneWithUnknownDims(int64_t rank) const;
-
-    /// Clone the current type with the metadata and device_ref from
-    /// `source`.
-    TensorType cloneWithMetadataAndDeviceRef(TensorType source) const;
 
     /// Checks if the tensor is statically ranked.
     bool isDynamicallyRanked() const;

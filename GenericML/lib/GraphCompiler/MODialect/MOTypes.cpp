@@ -385,8 +385,7 @@ LayoutAttr TensorType::getLayoutAttr() {
 }
 
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
-                                 Type dtype, DeviceRefAttr deviceRef,
-                                 DictionaryAttr metadata) const {
+                                 Type dtype) const {
   auto shapeTy = ShapeType::get(getContext());
 
   TypedAttr shapeRef;
@@ -399,7 +398,7 @@ TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   ASSERT_STREAM(!errOrDType.isError(),
                 << "element type is not representable as an M::DType: "
                 << errOrDType.takeError());
-  return TensorType::get(shapeRef, *errOrDType, deviceRef, metadata);
+  return TensorType::get(shapeRef, *errOrDType, getDeviceRef(), getMetadata());
 }
 
 TensorType TensorType::cloneWith(ArrayRef<TypedAttr> shapeDims) const {
@@ -444,11 +443,6 @@ TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
   return TensorType::get(
       MOSH::ShapeAttr::get(shapes, ShapeType::get(getContext())), getDtype(),
       getDeviceRef(), getMetadata());
-}
-
-TensorType TensorType::cloneWithMetadataAndDeviceRef(TensorType source) const {
-  return TensorType::get(getShapeAttr(), getDtype(), source.getDeviceRef(),
-                         source.getMetadata());
 }
 
 bool TensorType::isDynamicallyRanked() const { return !hasRank(); }

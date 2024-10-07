@@ -320,7 +320,9 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 
     if (auto funcOutTensorTy = dyn_cast<TensorType>(funcOutTy)) {
       auto newOutTensorTy = cast<TensorType>(newOutTy);
-      newResTy = funcOutTensorTy.cloneWithMetadataAndDeviceRef(newOutTensorTy);
+      newResTy = TensorType::get(
+          funcOutTensorTy.getShapeAttr(), funcOutTensorTy.getDtype(),
+          newOutTensorTy.getDeviceRef(), newOutTensorTy.getMetadata());
     }
 
     if (auto funcOutBufferTy = dyn_cast<BufferType>(funcOutTy)) {
