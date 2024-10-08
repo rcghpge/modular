@@ -95,6 +95,40 @@ def SymbolicizeFallbackShapeFunctions :
   ];
 }
 
+def MergeDuplicateShapeMaterializations : Pass<"merge-duplicate-shape-materializations", "GraphOp"> {
+  let summary = "Merges duplicate shape materialization operations";
+  let description = [{
+    This pass goes through ops that implement the Staticization interface and
+    ensures that only a single op of its type is operating on the same
+    operands, thus ensuring that multple shape parameters are not being
+    constructed for the same value.
+    Example:
+    ```
+    mo.graph @example<N1 -> O1>(%arg0: !mo.tensor<[], bf16>, %arg1: !mo.tensor<[N1], bool>) -> !mo.tensor<[O1], bf16> {
+      %0 = mo.shape_of(%arg1) : (!mo.tensor<[N1], bool>) -> !mo.tensor<[1], si32>
+      %1 = mo.broadcast_to<() -> D1>(%arg0, %0) : (!mo.tensor<[], bf16>, !mo.tensor<[1], si32>) -> !mo.tensor<[D1], bf16>
+      %2 = mo.rebind(%1) : !mo.tensor<[D1], bf16> -> !mo.tensor<[N1], bf16>
+      %3 = mo.broadcast_to<() -> D2>(%arg0, %0) : (!mo.tensor<[], bf16>, !mo.tensor<[1], si32>) -> !mo.tensor<[D2], bf16>
+      %4 = mo.rebind(%3) : !mo.tensor<[D2], bf16> -> !mo.tensor<[N1], bf16>
+      %5 = mo.select(%arg1, %2, %4) : (!mo.tensor<[N1], bool>, !mo.tensor<[N1], bf16>, !mo.tensor<[N1], bf16>) -> !mo.tensor<[N1], bf16>
+      mo.output<N1> %5 : !mo.tensor<[N1], bf16>
+    }
+    ```
+    becomes
+    ```
+    mo.graph @example<N1 -> O1>(%arg0: !mo.tensor<[], bf16>, %arg1: !mo.tensor<[N1], bool>) -> !mo.tensor<[O1], bf16> {
+      %0 = mo.shape_of(%arg1) : (!mo.tensor<[N1], bool>) -> !mo.tensor<[1], si32>
+      %1 = mo.broadcast_to<() -> D1>(%arg0, %0) : (!mo.tensor<[], bf16>, !mo.tensor<[1], si32>) -> !mo.tensor<[D1], bf16>
+      %2 = mo.rebind(%1) : !mo.tensor<[D1], bf16> -> !mo.tensor<[N1], bf16>
+      %3 = mo.rebind(%1) : !mo.tensor<[D1], bf16> -> !mo.tensor<[N1], bf16>
+      %4 = mo.select(%arg1, %2, %3) : (!mo.tensor<[N1], bool>, !mo.tensor<[N1], bf16>, !mo.tensor<[N1], bf16>) -> !mo.tensor<[N1], bf16>
+      mo.output<N1> %4 : !mo.tensor<[N1], bf16>
+    }
+    ```
+    Canonicalization and CSE can take this one step further and eliminate a number of additional operations.
+  }];
+}
+
 def PropagateShapes : Pass<"propagate-shapes", "GraphOp"> {
   let summary = "Propagates shape parameters through the graph.";
   let description = [{
