@@ -20,7 +20,9 @@ include "GenericML/GraphCompiler/MODialect/MOEnums.td"
 include "mlir/IR/BuiltinAttributes.td"
 
 class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
-  : RMO_Op<"mo." # mnemonic, traits # [DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>]> {
+  : RMO_Op<"mo." # mnemonic, traits # [
+    DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>
+  ]> {
   let builders = [
     /// This builder is an implicit return type based on "inferMOTypes" from
     /// the RMO_MOAnalogue interface.

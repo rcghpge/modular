@@ -116,6 +116,13 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
     TensorType targetType = cast<TensorType>(op->getResultTypes()[i]);
 
     TensorValue newTensorValue = dyn_cast<TensorValue>(newValue);
+
+    // For now, we don't have very strong verifiers around devices. To avoid
+    // rebinds which change the device reference, copy the device in the
+    // output annotation.
+    newTensorValue.setType(
+        newTensorValue.getType().cloneWith(targetType.getDeviceRef()));
+
     if (!newTensorValue) {
       rewriter.replaceAllUsesWith(oldValue, newValue);
       continue;
