@@ -26,7 +26,7 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"
-#include "mlir/Dialect/Quant/QuantOps.h"
+#include "mlir/Dialect/Quant/IR/Quant.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Tools/mlir-lsp-server/MlirLspServerMain.h"
 
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
   registry.insert<
       // Add the MLIR Dialects.
       arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
-      index::IndexDialect, LLVM::LLVMDialect, quant::QuantizationDialect,
+      index::IndexDialect, LLVM::LLVMDialect, quant::QuantDialect,
       // Add the Modular Dialects.
       MEF::MEFDialect, DebugInfo::DebugInfoDialect, GRT::GRTDialect, MDialect,
       MGP::MGPDialect, RMO::RMODialect, MOSH::MOSHDialect, MO::MODialect,

@@ -24,7 +24,7 @@
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Support/LogicalResult.h"

@@ -12,7 +12,7 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFToMLIR.h"
 #include "GraphRT/MLIRToMEF.h"
-#include "mlir/Dialect/Quant/QuantOps.h"
+#include "mlir/Dialect/Quant/IR/Quant.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
@@ -21,7 +21,7 @@ using namespace M;
 int main(int argc, char **argv) {
   DialectRegistry extraDialectsForMLIRToMEF;
   extraDialectsForMLIRToMEF.insert<GRT::GRTDialect>();
-  extraDialectsForMLIRToMEF.insert<mlir::quant::QuantizationDialect>();
+  extraDialectsForMLIRToMEF.insert<mlir::quant::QuantDialect>();
   registerMLIRToMEFTranslation(extraDialectsForMLIRToMEF);
 
   registerMEFToMLIRTranslation();

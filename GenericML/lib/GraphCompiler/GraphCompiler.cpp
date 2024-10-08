@@ -124,7 +124,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
-  pm.addPass(MO::createNameInputDimsPass({opts.dimNames}));
+  pm.addPass(MO::createNameInputDimsPass(
+      {llvm::to_vector_of<std::string>(opts.dimNames)}));
 
   // MOQ pipeline:
   // TODO: rename createLegalizeMOQOpsToMO to createLegalizeMOQOpsToRMO
@@ -164,7 +165,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   ShapeInferenceOptions shapeInferenceOpts;
   shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   shapeInferenceOpts.constantFold = opts.constantFold;
-  shapeInferenceOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+  shapeInferenceOpts.kernelLibraryPaths = kernelLibraryPaths;
   shapeInferenceOpts.withDebuginfo = opts.withDebuginfo;
   if (opts.useShapeInference)
     buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
@@ -185,7 +188,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  pm.addPass(MO::createAddFallbackShapeFunctions({opts.kernelLibraryPaths}));
+  pm.addPass(MO::createAddFallbackShapeFunctions({kernelLibraryPaths}));
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -213,9 +216,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // Layout optimizations in `PatternFusion` might add new shape function
     // invocation for the inserted layout transformations, and in most (if not
     // all) cases we can fold them away.
-    SymbolicizeFallbackShapeFunctionsOptions symbolizationOpts{
-        opts.kernelLibraryPaths, opts.withDebuginfo};
-    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(symbolizationOpts));
+    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
+        {kernelLibraryPaths, opts.withDebuginfo}));
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
@@ -224,7 +226,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MO::AssignDevicesPassOptions assignDevicesPassOpt;
   assignDevicesPassOpt.targetDevice = opts.defaultDeviceLabel;
   assignDevicesPassOpt.smallTensorLimit = opts.smallTensorLimit;
-  assignDevicesPassOpt.kernelLibraryPaths = opts.kernelLibraryPaths;
+  assignDevicesPassOpt.kernelLibraryPaths = kernelLibraryPaths;
   assignDevicesPassOpt.withDebuginfo = opts.withDebuginfo;
   assignDevicesPassOpt.defaultDeviceTargetTriple =
       opts.defaultDeviceTargetTriple;
@@ -249,7 +251,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(MO::createMOToMOGG(
-      {opts.kernelLibraryPaths, opts.withDebuginfo, opts.forceSync}));
+      {kernelLibraryPaths, opts.withDebuginfo, opts.forceSync}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -269,14 +271,14 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
     // Fuse into big ops. I.E epilogue fusion into matmul.
-    pm.addPass(MOGG::createFuseInOutLambdas({opts.kernelLibraryPaths}));
+    pm.addPass(MOGG::createFuseInOutLambdas({kernelLibraryPaths}));
     pm.addPass(mlir::createCSEPass());
     pm.addPass(MOGG::createSimplifyKernelOperands());
   }
 
   if (opts.performTrivialKernelOpt) {
     // Mark trivial kernels as being synchronous.
-    pm.addPass(MOGG::createMarkTrivialKernels({opts.kernelLibraryPaths}));
+    pm.addPass(MOGG::createMarkTrivialKernels({kernelLibraryPaths}));
 
     // Soft fuse trivial and non-host kernels where possible.
     if (opts.fuseJitKernels) {
@@ -287,7 +289,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
       MOGG::KernelSequenceFuseOptions sequenceFusionOpts;
       sequenceFusionOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
-      sequenceFusionOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+      sequenceFusionOpts.kernelLibraryPaths = kernelLibraryPaths;
       sequenceFusionOpts.withDebuginfo = opts.withDebuginfo;
       pm.addPass(MOGG::createKernelSequenceFuse(sequenceFusionOpts));
 
@@ -313,7 +315,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
 
   MOGG::TranslateMOGGToKGENOptions translationOpts;
-  translationOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  translationOpts.kernelLibraryPaths = kernelLibraryPaths;
   translationOpts.withDebuginfo = opts.withDebuginfo;
   translationOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   pm.addPass(MOGG::createTranslateMOGGToKGEN(translationOpts));
@@ -347,7 +349,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createAddDeviceContextProfilingPass());
 
   MGP::LowerPrimitivesOptions lowerPrimOpts;
-  lowerPrimOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.withDebuginfo = opts.withDebuginfo;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
   MGP::FuseGenericCompiledRegionsOptions fuseOpts;
@@ -357,7 +359,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
 
   MGP::LowerMOGGABIOptions abiOpts;
-  abiOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  abiOpts.kernelLibraryPaths = kernelLibraryPaths;
   abiOpts.withDebuginfo = opts.withDebuginfo;
   pm.addPass(MGP::createLowerMOGGABI(abiOpts));
 
@@ -366,7 +368,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   jitOpts.saveTempPrefix = opts.saveTempPrefix;
   jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
-  jitOpts.kernelLibraryPaths = opts.kernelLibraryPaths;
+  jitOpts.kernelLibraryPaths = kernelLibraryPaths;
   jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
   jitOpts.skipJitCompileMiddle = opts.skipJitCompileMiddle;
   jitOpts.debugKGENStubs = opts.debugKGENStubs;
@@ -384,7 +386,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 void M::MO::buildShapeInferencePipelineDefaultOpts(
     mlir::OpPassManager &pm, const ShapeInferenceOptions &opts) {
   MoToMgpOptions moToMgpOptions;
-  moToMgpOptions.kernelLibraryPaths = opts.kernelLibraryPaths;
+  moToMgpOptions.kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
   moToMgpOptions.withDebuginfo = opts.withDebuginfo;
   moToMgpOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   buildShapeInferencePipeline(pm, opts, moToMgpOptions);

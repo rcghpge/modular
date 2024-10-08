@@ -15,7 +15,7 @@
 #include "Support/MDialect/MAttrs.h"
 #include "Support/MDialect/MTypes.h"
 #include "mlir/AsmParser/AsmParser.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
