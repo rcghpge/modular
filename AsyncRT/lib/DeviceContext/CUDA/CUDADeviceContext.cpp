@@ -20,18 +20,6 @@
 #include <mutex>
 #include <string>
 
-// TODO(iposva) : Switch error handling to using `std::source_location` once we
-// are using C++ 20.
-namespace M::AsyncRT {
-namespace {
-Error formatError(const char *file, int line, const char *func,
-                  CUDADriver::Result result) {
-  return Error(llvm::Twine(file) + ":" + llvm::Twine(line) +
-               " - CUDA call in " + func + " failed: " + llvm::Twine(result));
-}
-} // namespace
-} // namespace M::AsyncRT
-
 #define CUDA_CHECK_ERR(cuda_call)                                              \
   do {                                                                         \
     CUDADriver::Result cuda_result = cuda_call;                                \
@@ -51,6 +39,14 @@ Error formatError(const char *file, int line, const char *func,
   } while (0)
 
 namespace M::AsyncRT {
+
+// TODO(iposva) : Switch error handling to using `std::source_location` once we
+// are using C++ 20.
+static Error formatError(const char *file, int line, const char *func,
+                         CUDADriver::Result result) {
+  return Error(llvm::Twine(file) + ":" + llvm::Twine(line) +
+               " - CUDA call in " + func + " failed: " + llvm::Twine(result));
+}
 
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, CUdevice id)
@@ -297,6 +293,35 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
           driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
     } else {
       CUDA_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, byte_size));
+    }
+  }
+  return success();
+}
+
+ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
+                                            uint32_t val, size_t elem_size,
+                                            SyncMode mode) const {
+  void *ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
+  size_t len = dst.len();
+  if (elem_size == 1) {
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(
+          driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val), len, stream_));
+    } else {
+      CUDA_CHECK_ERR(driver_.MemsetD8(ptr, static_cast<uint8_t>(val), len));
+    }
+  } else if (elem_size == 2) {
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(driver_.MemsetD16Async(ptr, static_cast<uint16_t>(val),
+                                            len, stream_));
+    } else {
+      CUDA_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
+    }
+  } else {
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, val, len, stream_));
+    } else {
+      CUDA_CHECK_ERR(driver_.MemsetD32(ptr, val, len));
     }
   }
   return success();

@@ -146,6 +146,27 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
   return success();
 }
 
+ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
+                                           uint32_t val, size_t elem_size,
+                                           SyncMode mode) const {
+  void *ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
+  size_t len = dst.len();
+  if (elem_size == 1) {
+    memset(ptr, static_cast<uint8_t>(val), len);
+  } else if (elem_size == 2) {
+    uint16_t *cur_ptr = static_cast<uint16_t *>(ptr);
+    for (size_t i = 0; i < len; i++) {
+      *cur_ptr++ = static_cast<uint16_t>(val);
+    }
+  } else {
+    uint32_t *cur_ptr = static_cast<uint32_t *>(ptr);
+    for (size_t i = 0; i < len; i++) {
+      *cur_ptr++ = val;
+    }
+  }
+  return success();
+}
+
 ErrorOr<DeviceFunctionRef> CpuDeviceContext::compileFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data) const {

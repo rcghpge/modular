@@ -229,6 +229,9 @@ public:
                                             const DeviceBuffer &src,
                                             SyncMode mode) const = 0;
 
+  virtual ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
+                                   size_t elem_size, SyncMode mode) const = 0;
+
   // DeviceFunction compilation and execution.
   virtual ErrorOr<DeviceFunctionRef>
   compileFunction(const char *function_name,

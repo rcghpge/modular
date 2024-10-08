@@ -109,6 +109,29 @@ public:
                          bytesize);
   }
 
+  Result MemsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N,
+                       CUstream hStream) const {
+    return cuMemsetD8Async_(dstDevice, uc, N, hStream);
+  }
+  Result MemsetD16Async(CUdeviceptr dstDevice, unsigned short us, size_t N,
+                        CUstream hStream) const {
+    return cuMemsetD16Async_(dstDevice, us, N, hStream);
+  }
+  Result MemsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N,
+                        CUstream hStream) const {
+    return cuMemsetD32Async_(dstDevice, ui, N, hStream);
+  }
+
+  Result MemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N) const {
+    return cuMemsetD8_v2_(dstDevice, uc, N);
+  }
+  Result MemsetD16(CUdeviceptr dstDevice, unsigned short us, size_t N) const {
+    return cuMemsetD16_v2_(dstDevice, us, N);
+  }
+  Result MemsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N) const {
+    return cuMemsetD32_v2_(dstDevice, ui, N);
+  }
+
   Result ModuleLoadData(CUmodule *module, const void *image) const {
     return cuModuleLoadData_(module, image);
   }
@@ -233,6 +256,25 @@ private:
   using tcuMemcpyPeer = Result(CUdeviceptr, CUcontext, CUdeviceptr, CUcontext,
                                size_t);
   tcuMemcpyPeer *cuMemcpyPeer_;
+
+  using tcuMemsetD8Async = Result(CUdeviceptr, unsigned char, size_t, CUstream);
+  tcuMemsetD8Async *cuMemsetD8Async_;
+
+  using tcuMemsetD16Async = Result(CUdeviceptr, unsigned short, size_t,
+                                   CUstream);
+  tcuMemsetD16Async *cuMemsetD16Async_;
+
+  using tcuMemsetD32Async = Result(CUdeviceptr, unsigned int, size_t, CUstream);
+  tcuMemsetD32Async *cuMemsetD32Async_;
+
+  using tcuMemsetD8_v2 = Result(CUdeviceptr, unsigned char, size_t);
+  tcuMemsetD8_v2 *cuMemsetD8_v2_;
+
+  using tcuMemsetD16_v2 = Result(CUdeviceptr, unsigned short, size_t);
+  tcuMemsetD16_v2 *cuMemsetD16_v2_;
+
+  using tcuMemsetD32_v2 = Result(CUdeviceptr, unsigned int, size_t);
+  tcuMemsetD32_v2 *cuMemsetD32_v2_;
 
   using tcuModuleLoadData = Result(CUmodule *, const void *);
   tcuModuleLoadData *cuModuleLoadData_;

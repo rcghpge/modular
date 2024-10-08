@@ -95,6 +95,9 @@ public:
                                     const DeviceBuffer &src,
                                     SyncMode mode) const override;
 
+  ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
+                           size_t elem_size, SyncMode mode) const override;
+
   // DeviceFunction compilation and execution.
   ErrorOr<DeviceFunctionRef>
   compileFunction(const char *function_name,

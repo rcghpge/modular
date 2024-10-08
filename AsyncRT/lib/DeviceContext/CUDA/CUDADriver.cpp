@@ -45,18 +45,22 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuInit);
   GET_FUNC(cuDeviceGetCount);
   GET_FUNC(cuDeviceGetName);
+
   GET_FUNC(cuCtxCreate_v2);
   GET_FUNC(cuCtxDestroy);
   GET_FUNC(cuCtxSetCurrent);
+
   GET_FUNC(cuStreamCreate);
   GET_FUNC(cuStreamDestroy);
   GET_FUNC(cuStreamSynchronize);
+
   GET_FUNC(cuMemAllocHost_v2);
   GET_FUNC(cuMemFreeHost);
   GET_FUNC(cuMemAllocAsync);
   GET_FUNC(cuMemFreeAsync);
   GET_FUNC(cuMemAlloc_v2);
   GET_FUNC(cuMemFree);
+
   GET_FUNC(cuMemcpyHtoDAsync_v2);
   GET_FUNC(cuMemcpyDtoHAsync_v2);
   GET_FUNC(cuMemcpyDtoDAsync_v2);
@@ -65,16 +69,26 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemcpyDtoH_v2);
   GET_FUNC(cuMemcpyDtoD_v2);
   GET_FUNC(cuMemcpyPeer);
+
+  GET_FUNC(cuMemsetD8Async);
+  GET_FUNC(cuMemsetD16Async);
+  GET_FUNC(cuMemsetD32Async);
+  GET_FUNC(cuMemsetD8_v2);
+  GET_FUNC(cuMemsetD16_v2);
+  GET_FUNC(cuMemsetD32_v2);
+
   GET_FUNC(cuModuleLoadData);
   GET_FUNC(cuModuleUnload);
   GET_FUNC(cuModuleGetFunction);
   GET_FUNC(cuLaunchKernel);
+
   GET_FUNC(cuEventCreate);
   GET_FUNC(cuEventDestroy);
   GET_FUNC(cuEventRecord);
   GET_FUNC(cuEventQuery);
   GET_FUNC(cuEventSynchronize);
   GET_FUNC(cuEventElapsedTime);
+
   GET_FUNC(cuMemGetInfo_v2);
 
   // Initialize the driver and return the newly allocated driver if successful.
