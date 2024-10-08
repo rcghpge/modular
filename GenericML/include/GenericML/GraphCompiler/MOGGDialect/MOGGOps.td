@@ -100,6 +100,27 @@ def MOGG_SplitOp : MOGG_LowerableOp<"split", []> {
 }
 
 //===----------------------------------------------------------------------===//
+// TupleCreateOp
+//===----------------------------------------------------------------------===//
+
+def MOGG_TupleCreateOp
+    : MOGG_Op<"tuple.create", [Pure]> {
+  let summary = "MOGG tuple creation operation";
+  let description = [{
+    The "mogg.tuple.create" operation create tuple of values that will be later
+    been translated to mojo's StaticTuple.
+
+    ```mlir
+    %r = mogg.create.tuple(%t1, %2: mo.tensor<...>, mo.tensor<...>) : tuple<mo.tensor<...>, mo.tensor<...>>
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$tupleElements);
+  let results = (outs AnyTuple:$result);
+  let assemblyFormat = "attr-dict `(`$tupleElements `:` type($tupleElements)`)` `->` type($result)";
+}
+
+//===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
 
