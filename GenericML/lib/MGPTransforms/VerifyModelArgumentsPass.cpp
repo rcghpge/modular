@@ -65,7 +65,7 @@ class VerifyModelArgumentsPass
       if (!tensorArg.hasRank())
         continue;
 
-      if (tensorArg.getNumDynamicDims() == tensorArg.getRank())
+      if (tensorArg.getNumDynamicDims() == (size_t)tensorArg.getRank())
         continue;
 
       BufferBuilder *bufferBuilder =
