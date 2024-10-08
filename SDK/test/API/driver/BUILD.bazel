@@ -7,7 +7,6 @@ lit_tests(
     data = [
         "//GenericML:DeviceDriver",
         "//KGEN:CompilerRT",
-        "//KGEN:CompilerRT.distributable",
         "@llvm-project//compiler-rt:orc_rt",
     ],
     gpu_only_srcs = glob(["mojo/cuda/*.mojo"]),
