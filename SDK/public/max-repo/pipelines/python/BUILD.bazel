@@ -1,19 +1,16 @@
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files")
+load("//bazel:api.bzl", "modular_py_binary")
 
 package(default_visibility = ["//visibility:public"])
 
-py_binary(
+modular_py_binary(
     name = "pipelines",
     srcs = ["pipelines.py"],
     data = [
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
     ],
-    env = {
-        "MODULAR_MOJO_MAX_ORCRT_PATH": "$(location @llvm-project//compiler-rt:orc_rt)",
-        "MODULAR_MOJO_MAX_COMPILERRT_PATH": "$(location //KGEN:CompilerRT)",
-    },
     imports = ["."],
     deps = [
         requirement("click"),
