@@ -117,7 +117,7 @@ def MOGG_TupleCreateOp
 
   let arguments = (ins Variadic<AnyType>:$tupleElements);
   let results = (outs AnyTuple:$result);
-  let assemblyFormat = "attr-dict `(`$tupleElements `:` type($tupleElements)`)` `->` type($result)";
+  let assemblyFormat = "attr-dict `(`$tupleElements `)` `:` type($tupleElements) `->` type($result)";
 }
 
 //===----------------------------------------------------------------------===//
