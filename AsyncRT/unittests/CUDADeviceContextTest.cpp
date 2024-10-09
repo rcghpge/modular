@@ -288,7 +288,7 @@ $L__BB0_2:
   constexpr uint32_t block_dim = 32;
 
   err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
+      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
       *device_function->buildArguments(*out_device, *in0_device, *in1_device,
                                        length));
   EXPECT_FALSE(err) << err.getError() << "\n";
@@ -325,7 +325,7 @@ $L__BB0_2:
 
   // Check error cases of mismatched arguments being passed.
   err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
+      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
       *device_function->buildArguments(*out_device, *in0_device, 12, length));
   EXPECT_TRUE(err);
   EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 3th position: "
@@ -334,7 +334,7 @@ $L__BB0_2:
       << err.getError();
 
   err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
+      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
       *device_function->buildArguments(*out_device, *in0_device, *in1_device,
                                        *in1_device));
   EXPECT_TRUE(err);
@@ -344,7 +344,7 @@ $L__BB0_2:
       << err.getError();
 
   err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1,
+      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
       *device_function->buildArguments(*out_device, *in0_device, *in1_device,
                                        length, length));
   EXPECT_TRUE(err);

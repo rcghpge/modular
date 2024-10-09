@@ -104,13 +104,14 @@ public:
 
   ErrorOrSuccess cuda_callKernel(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
                                  uint32_t blockX, uint32_t blockY,
-                                 uint32_t blockZ,
+                                 uint32_t blockZ, uint32_t sharedMemBytes,
                                  const CUDADeviceFunctionArguments &args,
                                  CUstream stream) const;
   ErrorOrSuccess cuda_callKernelDirect(uint32_t gridX, uint32_t gridY,
                                        uint32_t gridZ, uint32_t blockX,
                                        uint32_t blockY, uint32_t blockZ,
-                                       void **args, CUstream stream) const;
+                                       uint32_t sharedMemBytes, void **args,
+                                       CUstream stream) const;
 
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
 
@@ -163,20 +164,22 @@ public:
                            size_t elem_size, SyncMode mode) const override;
 
   // DeviceFunction compilation and execution.
-  ErrorOr<DeviceFunctionRef>
-  compileFunction(const char *function_name,
-                  const DeviceFunction::SignatureBuilder &signature,
-                  const void *data) const override;
+  ErrorOr<DeviceFunctionRef> compileFunction(
+      const char *function_name,
+      const DeviceFunction::SignatureBuilder &signature, const void *data,
+      int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
+      int32_t cache_config, int32_t max_dynamic_shared_bytes) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                      uint32_t blockY, uint32_t blockZ,
+                      uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
                       const DeviceFunction::Arguments &args) const override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(const DeviceFunction &func,
                                            uint32_t gridX, uint32_t gridY,
                                            uint32_t gridZ, uint32_t blockX,
                                            uint32_t blockY, uint32_t blockZ,
+                                           uint32_t sharedMemBytes,
                                            void **args) const override;
 
   // Synchronize asynchronous operations.

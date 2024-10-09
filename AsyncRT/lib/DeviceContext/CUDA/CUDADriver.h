@@ -25,6 +25,26 @@ using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
 
+enum class CUjit_option {
+  JIT_MAX_REGISTERS = 0,
+  JIT_THREADS_PER_BLOCK = 1,
+  JIT_OPTIMIZATION_LEVEL = 7,
+  JIT_GENERATE_DEBUG_INFO = 11,
+  JIT_GENERATE_LINE_INFO = 13,
+  JIT_CACHE_MODE = 14,
+};
+
+enum class CUfunction_attribute {
+  FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES = 8,
+};
+
+enum class CUfunc_cache {
+  FUNC_CACHE_PREFER_NONE = 0,
+  FUNC_CACHE_PREFER_SHARED = 1,
+  FUNC_CACHE_PREFER_L1 = 2,
+  FUNC_CACHE_PREFER_EQUAL = 3,
+};
+
 class CUDADriver {
 public:
   enum Result {
@@ -135,10 +155,23 @@ public:
   Result ModuleLoadData(CUmodule *module, const void *image) const {
     return cuModuleLoadData_(module, image);
   }
+  Result ModuleLoadDataEx(CUmodule *module, const void *image,
+                          unsigned int numOptions, CUjit_option *options,
+                          void **optionValues) const {
+    return cuModuleLoadDataEx_(module, image, numOptions, options,
+                               optionValues);
+  }
   Result ModuleUnload(CUmodule hmod) const { return cuModuleUnload_(hmod); }
   Result ModuleGetFunction(CUfunction *hfunc, CUmodule hmod,
                            const char *name) const {
     return cuModuleGetFunction_(hfunc, hmod, name);
+  }
+  Result FuncSetAttribute(CUfunction hfunc, CUfunction_attribute attrib,
+                          int value) const {
+    return cuFuncSetAttribute_(hfunc, attrib, value);
+  }
+  Result FuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config) const {
+    return cuFuncSetCacheConfig_(hfunc, config);
   }
 
   Result LaunchKernel(CUfunction f, unsigned int gridDimX,
@@ -279,11 +312,21 @@ private:
   using tcuModuleLoadData = Result(CUmodule *, const void *);
   tcuModuleLoadData *cuModuleLoadData_;
 
+  using tcuModuleLoadDataEx = Result(CUmodule *, const void *, unsigned int,
+                                     CUjit_option *, void **);
+  tcuModuleLoadDataEx *cuModuleLoadDataEx_;
+
   using tcuModuleUnload = Result(CUmodule);
   tcuModuleUnload *cuModuleUnload_;
 
   using tcuModuleGetFunction = Result(CUfunction *, CUmodule, const char *);
   tcuModuleGetFunction *cuModuleGetFunction_;
+
+  using tcuFuncSetAttribute = Result(CUfunction, CUfunction_attribute, int);
+  tcuFuncSetAttribute *cuFuncSetAttribute_;
+
+  using tcuFuncSetCacheConfig = Result(CUfunction hfunc, CUfunc_cache config);
+  tcuFuncSetCacheConfig *cuFuncSetCacheConfig_;
 
   using tcuLaunchKernel = Result(CUfunction, unsigned int, unsigned int,
                                  unsigned int, unsigned int, unsigned int,

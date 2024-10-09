@@ -150,24 +150,25 @@ CUDADeviceFunction::allocateArguments(const DeviceFunction &fn) const {
 
 ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-    uint32_t blockY, uint32_t blockZ, const CUDADeviceFunctionArguments &args,
-    CUstream stream) const {
+    uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    const CUDADeviceFunctionArguments &args, CUstream stream) const {
   const auto &cuda_context = CUDADeviceContext::cast(context());
 
   CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernel(
-      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, 0, stream,
-      args.cuda_args().data(), nullptr));
+      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
+      stream, args.cuda_args().data(), nullptr));
   return success();
 }
 
 ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-    uint32_t blockY, uint32_t blockZ, void **args, CUstream stream) const {
+    uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes, void **args,
+    CUstream stream) const {
   const auto &cuda_context = CUDADeviceContext::cast(context());
 
   CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernel(
-      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, 0, stream, args,
-      nullptr));
+      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
+      stream, args, nullptr));
   return success();
 }
 
@@ -329,7 +330,9 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
     const char *function_name,
-    const DeviceFunction::SignatureBuilder &signature, const void *data) const {
+    const DeviceFunction::SignatureBuilder &signature, const void *data,
+    int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
+    int32_t cache_config, int32_t max_dynamic_shared_bytes) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
     auto iter = func_map_.find(function_name);
@@ -346,10 +349,49 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
               << reinterpret_cast<const char *>(data) << "\n";
   }
   CUmodule module;
-  CUDA_CHECK_ERR(driver_.ModuleLoadData(&module, data));
+  unsigned int num_options = 0;
+  CUjit_option option_kind[10];
+  void *option_values[10];
+
+  if (max_registers >= 0) {
+    option_kind[num_options] = CUjit_option::JIT_MAX_REGISTERS;
+    option_values[num_options] = reinterpret_cast<void *>(max_registers);
+    num_options++;
+  }
+
+  if (threads_per_block >= 0) {
+    option_kind[num_options] = CUjit_option::JIT_THREADS_PER_BLOCK;
+    option_values[num_options] = reinterpret_cast<void *>(threads_per_block);
+    num_options++;
+  }
+
+  if (cache_mode >= 0) {
+    option_kind[num_options] = CUjit_option::JIT_CACHE_MODE;
+    option_values[num_options] = reinterpret_cast<void *>(cache_mode);
+    num_options++;
+  }
+
+  if (num_options > 0) {
+    CUDA_CHECK_ERR(driver_.ModuleLoadDataEx(&module, data, num_options,
+                                            option_kind, option_values));
+  } else {
+    CUDA_CHECK_ERR(driver_.ModuleLoadData(&module, data));
+  }
 
   CUfunction function;
   CUDA_CHECK_ERR(driver_.ModuleGetFunction(&function, module, function_name));
+
+  if (cache_config >= 0) {
+    CUDA_CHECK_ERR(driver_.FuncSetCacheConfig(
+        function, static_cast<CUfunc_cache>(cache_config)));
+  }
+
+  if (max_dynamic_shared_bytes >= 0) {
+    CUDA_CHECK_ERR(driver_.FuncSetAttribute(
+        function,
+        CUfunction_attribute::FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+        max_dynamic_shared_bytes));
+  }
 
   // Allocate func outside of the lock region to reduce the time spent under
   // lock. If this function_name has been registered concurrently, then we will
@@ -372,7 +414,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
 
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const DeviceFunction::Arguments &args) const {
   if (args.hasError()) {
     return Error(args.getError().getError());
@@ -380,18 +422,19 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
 
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
-  return cuda_func.cuda_callKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,
-                                   CUDADeviceFunctionArguments::cast(args),
-                                   stream_);
+  return cuda_func.cuda_callKernel(
+      gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
+      CUDADeviceFunctionArguments::cast(args), stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ, void **args) const {
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    void **args) const {
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
   return cuda_func.cuda_callKernelDirect(gridX, gridY, gridZ, blockX, blockY,
-                                         blockZ, args, stream_);
+                                         blockZ, sharedMemBytes, args, stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {

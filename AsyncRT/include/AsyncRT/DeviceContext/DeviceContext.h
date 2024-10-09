@@ -236,17 +236,20 @@ public:
   virtual ErrorOr<DeviceFunctionRef>
   compileFunction(const char *function_name,
                   const DeviceFunction::SignatureBuilder &signature,
-                  const void *data) const = 0;
+                  const void *data, int32_t max_registers = -1,
+                  int32_t threads_per_block = -1, int32_t cache_mode = -1,
+                  int32_t cache_config = -1,
+                  int32_t max_dynamic_shared_bytes = -1) const = 0;
   virtual ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                      uint32_t blockY, uint32_t blockZ,
+                      uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
                       const DeviceFunction::Arguments &args) const = 0;
   virtual ErrorOrSuccess
   enqueueFunctionExecDirect(const DeviceFunction &func, uint32_t gridX,
                             uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                             uint32_t blockY, uint32_t blockZ,
-                            void **args) const = 0;
+                            uint32_t sharedMemBytes, void **args) const = 0;
 
   // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;

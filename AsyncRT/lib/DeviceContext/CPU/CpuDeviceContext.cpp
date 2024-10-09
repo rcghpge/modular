@@ -169,14 +169,16 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
 
 ErrorOr<DeviceFunctionRef> CpuDeviceContext::compileFunction(
     const char *function_name,
-    const DeviceFunction::SignatureBuilder &signature, const void *data) const {
+    const DeviceFunction::SignatureBuilder &signature, const void *data,
+    int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
+    int32_t cache_config, int32_t max_dynamic_shared_bytes) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueFunctionExec(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const DeviceFunction::Arguments &args) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
@@ -184,7 +186,8 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExec(
 
 ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ, void **args) const {
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    void **args) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }

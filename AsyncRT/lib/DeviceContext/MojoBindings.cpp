@@ -180,18 +180,24 @@ AsyncRT_DeviceContext_setMemory_sync(const DeviceContext *ctx,
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_compileFunction(
     const DeviceFunction **result, const DeviceContext *ctx,
-    const char *function_name, const void *data) {
+    const char *function_name, const void *data, int32_t max_registers,
+    int32_t threads_per_block, int32_t cache_mode, int32_t cache_config,
+    int32_t max_dynamic_shared_bytes) {
   DeviceFunction::SignatureBuilder sig;
-  return check_ref(result, ctx->compileFunction(function_name, sig, data));
+  return check_ref(
+      result, ctx->compileFunction(function_name, sig, data, max_registers,
+                                   threads_per_block, cache_mode, cache_config,
+                                   max_dynamic_shared_bytes));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
     const DeviceContext *ctx, const DeviceFunction *func, uint32_t gridX,
     uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,
-    uint32_t blockZ, void **args) {
+    uint32_t blockZ, uint32_t sharedMemBytes, void **args) {
   assert((ctx == &func->context()) && "ctx not matching func");
-  return check_success(ctx->enqueueFunctionExecDirect(
-      *func, gridX, gridY, gridZ, blockX, blockY, blockZ, args));
+  return check_success(
+      ctx->enqueueFunctionExecDirect(*func, gridX, gridY, gridZ, blockX, blockY,
+                                     blockZ, sharedMemBytes, args));
 }
 
 MODULAR_EXPORT const char *
