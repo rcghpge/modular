@@ -256,6 +256,88 @@ def RMO_NotEqualOp : RMO_PureBinaryComparisonOp<"not_equal", [Commutative]> {
   }];
 }
 
+class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []>
+    : RMO_Op<name, traits # [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let arguments = (ins
+    MO_BooleanMask:$input_x,
+    MO_BooleanMask:$input_y,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_BooleanMask:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let extraClassDefinition = [{
+    LogicalResult
+    $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+                            ValueRange operands, DictionaryAttr attributes,
+                            mlir::OpaqueProperties properties, RegionRange regions,
+                            SmallVectorImpl<Type> &inferredReturnTypes) {
+      return inferReturnTypesBinaryLogicalImpl<$cppClass>(
+          context, location, operands, attributes, properties, regions,
+          inferredReturnTypes);
+    }
+  }];
+}
+
+def RMO_AndOp : RMO_PureBinaryLogicalOp<"and", [Commutative]> {
+  let summary = "Flexible and op";
+  let description = [{
+    A flexible binary elementwise and comparison operation with implicit broadcasting.
+
+    Returns elementwise `x & y`, where `x` and `y` are boolean input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = rmo.and(%lhs, %rhs) : (!mo.tensor<[2, 2, 3], bool>,
+                                    !mo.tensor<[2, 3], bool>
+                                    ) -> !mo.tensor<[2, 2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_OrOp : RMO_PureBinaryLogicalOp<"or", [Commutative]> {
+  let summary = "Flexible or op";
+  let description = [{
+    A flexible binary elementwise or comparison operation with implicit broadcasting.
+
+    Returns elementwise `x | y`, where `x` and `y` are boolean input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = rmo.or(%lhs, %rhs) : (!mo.tensor<[2, 2, 3], bool>,
+                                    !mo.tensor<[2, 3], bool>
+                                    ) -> !mo.tensor<[2, 2, 3], bool>
+    ```
+  }];
+}
+
+def RMO_XorOp : RMO_PureBinaryLogicalOp<"xor", [Commutative]> {
+  let summary = "Flexible xor op";
+  let description = [{
+    A flexible binary elementwise xor comparison operation with implicit broadcasting.
+
+    Returns elementwise `x ^ y`, where `x` and `y` are boolean input tensors.
+
+    Example:
+
+    ```mlir
+      %lhs: !mo.tensor<[2, 2, 3], bool>
+      %rhs: !mo.tensor<[2, 3], bool>
+      %res = rmo.xor(%lhs, %rhs) : (!mo.tensor<[2, 2, 3], bool>,
+                                    !mo.tensor<[2, 3], bool>
+                                    ) -> !mo.tensor<[2, 2, 3], bool>
+    ```
+  }];
+}
+
 def RMO_BroadcastLikeOp : RMO_Op<"broadcast_like", [Pure]> {
   let summary = "Broadcast the `input` tensor to be the same shape as `like`.";
   let description = [{

@@ -19,7 +19,8 @@
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/ML/RangeUtils.h"
-#include <llvm/Support/ErrorHandling.h>
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/include/llvm/Support/FormatVariadic.h"
 #include <optional>
 
 using namespace M;
@@ -382,6 +383,25 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
   inferredReturnTypes.push_back(
       TensorType::get(resultShapesOr->front(), DType::kBool));
   return success();
+}
+
+template <typename OpT>
+static LogicalResult inferReturnTypesBinaryLogicalImpl(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto xType = cast<TensorType>(operands[0].getType());
+  auto yType = cast<TensorType>(operands[1].getType());
+
+  if (!xType.getDtype().isBool() || !yType.getDtype().isBool())
+    return mlir::emitOptionalError(
+        location, llvm::formatv("{0}: Inputs must be bools, got {1}, {2}",
+                                OpT::getOperationName(), xType.getDtype(),
+                                yType.getDtype()));
+
+  return inferReturnTypesBinaryComparisonImpl<OpT>(
+      context, location, operands, attributes, properties, regions,
+      inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//

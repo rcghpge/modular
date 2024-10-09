@@ -1044,6 +1044,9 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::GreaterOp, RMO::MOGreaterOp>,
         LowerCompositeBinaryComparisonOp<RMO::GreaterEqualOp,
                                          RMO::MOGreaterEqualOp>,
+        LowerCompositeBinaryComparisonOp<RMO::AndOp, RMO::MOAndOp>,
+        LowerCompositeBinaryComparisonOp<RMO::OrOp, RMO::MOOrOp>,
+        LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
         LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
         LowerMatmul, LowerBroadcastTo, LowerSelect, LowerShapeToTensor>(
         context);
