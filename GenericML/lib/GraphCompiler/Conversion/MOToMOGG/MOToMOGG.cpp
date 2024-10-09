@@ -114,7 +114,15 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
       ErrorOr<Operation *> &results = maybeOp.value();
       if (results.isError()) {
         // Lowering error, abort pass!
-        op->emitOpError("[MO_TO_MOGG] ") << results.getError();
+        //
+        // NOTE: getError() returns a `const char*`, which InFlightDiagnostics
+        // lazily adds to report, storing only the pointer. As a result, if the
+        // Error is deallocated and the memory goes along with it, we get
+        // corrupted information.
+        //
+        // To get around this, force a copy by the InFlightDiagnostics by
+        // wrapping things in Twine.
+        op->emitOpError("[MO_TO_MOGG] ") << llvm::Twine(results.getError());
         return WalkResult::interrupt();
       } else {
         op->replaceAllUsesWith(results.takeValue()->getResults());

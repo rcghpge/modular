@@ -32,7 +32,7 @@ MOGraphLoweringState::getDeviceSpecs() {
   if (deviceSpecsOr)
     return graph.emitOpError(
                "unable to determine the devices specs for graph: ")
-           << deviceSpecsOr.getError() << "\n";
+           << llvm::Twine(deviceSpecsOr.getError()) << "\n";
   return *deviceSpecsOr;
 }
 
