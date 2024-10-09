@@ -92,8 +92,10 @@ DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
 
   // Add the buffer builders for other supported devices.
   SmallVector<DeviceRefAttr> otherDevices;
-  otherDevices.push_back(
-      DeviceRefAttr::get(modelOp->getContext(), kCUDALabel, 0));
+  for (auto device : modelOp.getDevices()) {
+    if (device != hostDevice)
+      otherDevices.push_back(dyn_cast<DeviceRefAttr>(device));
+  }
 
   // Recover all the other buffer builders.
   for (auto device : otherDevices) {

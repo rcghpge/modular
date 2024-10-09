@@ -1428,6 +1428,7 @@ modular_shared_library(
         ":CommonDriver",
         ":Support",
         ":rpaths",
+        "//AsyncRT:DeviceContext",
         "//Init",
         "//Kernels:DeviceContext",
     ],
