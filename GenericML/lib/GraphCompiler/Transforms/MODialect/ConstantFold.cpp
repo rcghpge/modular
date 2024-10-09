@@ -841,6 +841,7 @@ struct ConstantFoldPass
     cacheDir = origOpts.cacheDir;
     kernelLibraryPaths =
         origOpts.kernelLibraryPaths.operator ArrayRef<std::string>();
+    defaultDeviceLabel = origOpts.defaultDeviceLabel;
   }
 
 private:
@@ -853,6 +854,7 @@ private:
   std::shared_ptr<const ConstantFoldPolicy> policy;
   // Label used to load and handle buffers created by the framework.
   std::string compiledFrameworkLabel;
+  std::string defaultDeviceLabel;
   std::optional<std::string> cacheDir;
   std::optional<std::vector<std::string>> kernelLibraryPaths;
 };
@@ -872,8 +874,9 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   moOpts.enableCompiledRegionsFusion = false;
   // Use MOF executor so we don't depend on a framework.
   moOpts.compiledFrameworkLabel = "mof";
-  // Set default device label to cpu
-  moOpts.defaultDeviceLabel = kCPULabel;
+  // Set default device label.
+  moOpts.defaultDeviceLabel =
+      defaultDeviceLabel.empty() ? defaultDeviceLabel : kCPULabel;
   // Force all kernels to be synchronous. This prevents higher memory usage.
   moOpts.forceSync = true;
   MO::buildMoToMgpPipeline(pm, moOpts);

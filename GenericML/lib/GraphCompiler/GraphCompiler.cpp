@@ -232,8 +232,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   assignDevicesPassOpt.defaultDeviceTargetTriple =
       opts.defaultDeviceTargetTriple;
   assignDevicesPassOpt.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
-  if (assignDevicesPassOpt.targetDevice == "cpu")
-    assignDevicesPassOpt.targetDevice = "";
   assignDevicesPassOpt.copyFromHost = !opts.inputsAndOutputsOnDevice;
   pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
 
