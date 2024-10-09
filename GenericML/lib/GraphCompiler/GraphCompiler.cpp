@@ -266,7 +266,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
     // Fuse broadcasts.
-    pm.addPass(MOGG::createFuseBroadcasts());
+    pm.addPass(
+        MOGG::createFuseBroadcasts({kernelLibraryPaths, opts.withDebuginfo}));
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
     pm.addPass(MOGG::createSimplifyKernelOperands());

@@ -124,7 +124,28 @@ def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
     operations into the consumer kernel, thereby eliminating the copying at the
     end of the original view kernel.
   }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
+  ];
+
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::Custom::CustomDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::HLCF::HLCFDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::index::IndexDialect",
+  ];
 }
 
 def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {

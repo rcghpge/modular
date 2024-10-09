@@ -8,11 +8,13 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Runtime/Tensor/Tensor.h"
@@ -30,34 +32,47 @@ namespace M::MOGG {
 namespace {
 
 /**
-This pass fuses view ops into other kernels. There are two code paths: The
-regular code path for kernels that have `mogg.` ops in them and the one for KGEN
-kernels.
-
-For the regular path:
 1. Fuse compatible view ops into other kernels.
 2. Lower `mo.static.reshape` ops into a kernel and fuse them into other kernels.
 The reason this is done as a separate step is because reshape ops are not
 lowered and they must be the last view op fused into a kernel because the kernel
 implementation expects contiguous strides. Therefore, bcast -> reshape will
 yield invalid results.
+3. Raise mogg.kernels that used to be mo.static.reshape back into reshapes. This
+step is optional for correctness but necessary for performance. Reshapes, as
+with other views, copy data. A later pass, MOToPrimitives, will turn the reshape
+into a primitive that does not copy.
 
-For the KGEN path:
-1. Fuse compatible view ops that are not reshapes (we inspect the kernel summary
-string). This is a gross hack that will go away when the kernel translation is
-done.
-2. Fuse reshape ops into other kernels. This is for the same reasons as in the
-regular path except here, the `mo.static.reshape` ops are already lowered.
+All in all, this pass fuses views into other views or kernels that aren't
+reshapes. Then, reshapes are fused and the remaining ones will be later lowered
+to a fast primitive.
+
+GUARANTEES:
+- All remaining reshapes are `mo.static.reshape.
+- No view fuses into a reshape kernel.
  */
 
 struct FuseBroadcastsPass
     : public impl::FuseBroadcastsBase<FuseBroadcastsPass> {
   using FuseBroadcastsBase::FuseBroadcastsBase;
 
-  template <bool AvoidReshapeOps>
-  void runOnOperationImpl(MO::GraphOp graph, MLIRContext *ctx) {
+  static bool hasCompoundParameters(MO::TensorType t) {
+    for (TypedAttr symbolicDim : t.getDims()) {
+      if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
+            isa<IntegerAttr>(symbolicDim)))
+        return true;
+    }
+    return false;
+  };
+
+  void runOnOperationImpl(
+      MO::GraphOp graph, MLIRContext *ctx,
+      const DenseMap<KernelOp, MO::Static::ReshapeOp> &reshapeKernels) {
 
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
+      if (reshapeKernels.contains(kernel))
+        continue;
+
       bool isView = kernel.getIsViewOp().value_or(false);
 
       // Only allow fusion if the kernel exposes an input lambda or is a view.
@@ -78,7 +93,7 @@ struct FuseBroadcastsPass
 
       // Traverse from the back to simplify removing operands.
       while (index >= 0) {
-        if (!canFuseOperand<AvoidReshapeOps>(index, kernel)) {
+        if (!canFuseOperand(index, kernel)) {
           index--;
           continue;
         }
@@ -101,78 +116,67 @@ struct FuseBroadcastsPass
       kernel.removeOperandAtIndex(index);
     };
 
-    auto hasCompoundParameters = [](MO::TensorType t) {
-      for (TypedAttr symbolicDim : t.getDims()) {
-        if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
-              isa<IntegerAttr>(symbolicDim)))
-          return true;
-      }
-      return false;
-    };
+    // Once we have fused the views we can fuse reshapes into the kernel. This
+    // is technically a view but it must come last as it only can reshape
+    // contigious inputs and can always be fused regardless of whether or not
+    // the kernel has opted into fusion or not as it returns a contigious
+    // tensor with the same number of elements.
+    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
+      // Don't fuse kernels with parameter decls.
+      if (!kernel.getOutputParamDecls().empty())
+        continue;
 
-    if (AvoidReshapeOps) {
-      // Once we have fused the views we can fuse reshapes into the kernel. This
-      // is technically a view but it must come last as it only can reshape
-      // contigious inputs and can always be fused regardless of whether or not
-      // the kernel has opted into fusion or not as it returns a contigious
-      // tensor with the same number of elements.
-      for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
-        // Don't fuse kernels with parameter decls.
-        if (!kernel.getOutputParamDecls().empty())
+      // Don't fuse reshapes into new API kernels because we will handle it in
+      // another pass.
+      if (kernel.getIsKGEN().value_or(false))
+        continue;
+
+      if (kernel.isInPlaceAlloc())
+        continue;
+
+      int32_t preFuseNumOperands = kernel.getNumOperands();
+
+      // For safety we check which have already been fused and won't fuse
+      // something again.
+      DenseMap<Value, Value> alreadyFused;
+
+      // Start from the end so we can safely remove and append arguments.
+      for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
+        // Get the creator of this operand.
+        Value operand = kernel.getOperand(index);
+        Operation *op = operand.getDefiningOp();
+
+        auto itr = alreadyFused.find(operand);
+        if (itr != alreadyFused.end()) {
+          replaceArg(kernel, index, itr->second);
           continue;
+        }
 
-        // Don't fuse reshapes into new API kernels because we will handle it in
-        // another pass.
-        if (kernel.getIsKGEN().value_or(false))
-          continue;
+        if (auto reshape = dyn_cast_or_null<MO::Static::ReshapeOp>(op)) {
+          MO::TensorType outType = reshape.getResult().getType();
+          MO::TensorType inType = reshape.getInput().getType();
 
-        if (kernel.isInPlaceAlloc())
-          continue;
-
-        int32_t preFuseNumOperands = kernel.getNumOperands();
-
-        // For safety we check which have already been fused and won't fuse
-        // something again.
-        DenseMap<Value, Value> alreadyFused;
-
-        // Start from the end so we can safely remove and append arguments.
-        for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
-          // Get the creator of this operand.
-          Value operand = kernel.getOperand(index);
-          Operation *op = operand.getDefiningOp();
-
-          auto itr = alreadyFused.find(operand);
-          if (itr != alreadyFused.end()) {
-            replaceArg(kernel, index, itr->second);
+          // We can't fuse this if there are any fancy symbolic dims.
+          if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
             continue;
-          }
 
-          if (auto reshape = dyn_cast_or_null<MO::Static::ReshapeOp>(op)) {
-            MO::TensorType outType = reshape.getResult().getType();
-            MO::TensorType inType = reshape.getInput().getType();
+          // Insert after the output placeholders.
+          mlir::OpBuilder builder{ctx};
+          kernel.setInsertionPointToTop(builder);
 
-            // We can't fuse this if there are any fancy symbolic dims.
-            if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
-              continue;
+          // Add the old reshape argument to this kernel.
+          Value reshapeInput = kernel.addOperand(reshape.getInput());
 
-            // Insert after the output placeholders.
-            mlir::OpBuilder builder{ctx};
-            kernel.setInsertionPointToTop(builder);
+          // Add the new reshape.
+          MOGG::CallOp newReshape =
+              createMOGGReshape(builder, reshape.getLoc(), reshapeInput,
+                                outType, "ndbuffer_reshape");
 
-            // Add the old reshape argument to this kernel.
-            Value reshapeInput = kernel.addOperand(reshape.getInput());
+          // Replace all uses of the old operand and then remove it from this
+          // kernel.
+          replaceArg(kernel, index, newReshape->getResult(0));
 
-            // Add the new reshape.
-            MOGG::CallOp newReshape =
-                createMOGGReshape(builder, reshape.getLoc(), reshapeInput,
-                                  outType, "ndbuffer_reshape");
-
-            // Replace all uses of the old operand and then remove it from this
-            // kernel.
-            replaceArg(kernel, index, newReshape->getResult(0));
-
-            alreadyFused[reshape.getResult()] = newReshape->getResult(0);
-          }
+          alreadyFused[reshape.getResult()] = newReshape->getResult(0);
         }
       }
     }
@@ -191,7 +195,6 @@ struct FuseBroadcastsPass
     });
   }
 
-  template <bool AvoidReshapeOps>
   /// Return the index of the input to fuse or -1 if nothing can be fused.
   bool canFuseOperand(int32_t index, MOGG::KernelOp kernel) {
     // Block arguments have no defining op and obviously cant be fused.
@@ -238,15 +241,7 @@ struct FuseBroadcastsPass
     if (!otherKernel.getIsViewOp().value_or(false))
       return false;
 
-    if constexpr (AvoidReshapeOps) {
-      return !kernel.getSummary()->contains(
-                 MO::Static::ReshapeOp::getOperationName()) &&
-             !otherKernel.getSummary()->contains(
-                 MO::Static::ReshapeOp::getOperationName());
-    } else {
-      return otherKernel.getSummary()->contains(
-          MO::Static::ReshapeOp::getOperationName());
-    }
+    return true;
   }
 
   // Fuse at the given index.
@@ -493,15 +488,64 @@ struct FuseBroadcastsPass
     leaf.setSummaryAttr(getSummaryString({producerKernel, leaf}));
   }
 
+  DenseMap<KernelOp, MO::Static::ReshapeOp> lowerReshapeOps(MO::GraphOp graph) {
+    auto ctx = graph.getContext();
+    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
+        analysis.initIfNeeded(ctx, kernelLibraryPaths, withDebuginfo);
+    DenseMap<KernelOp, MO::Static::ReshapeOp> reshapeKernels;
+    if (errOr.isError())
+      return reshapeKernels;
+
+    // If the lowering for the reshape op is not the extensibility API, do not
+    // lower it.
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+    if (!mojoLibraryAnalysis.kernelUsesExtensibilityAPI(
+            mojoLibraryAnalysis.getRegisteredMojoKernelFor(
+                MO::Static::ReshapeOp::getOperationName()))) {
+      return reshapeKernels;
+    }
+
+    mlir::OpBuilder builder{ctx};
+    graph.walk([&](MO::Static::ReshapeOp reshapeOp) {
+      MO::MOGGKernelBuilder lowerer(reshapeOp, builder, false,
+                                    mojoLibraryAnalysis);
+
+      auto kernelOp = lowerer.lowerToKernel();
+      ASSERT_STREAM(!kernelOp.isError(), << "Could not lower reshape op");
+
+      reshapeKernels[*kernelOp] = reshapeOp;
+      reshapeOp->replaceAllUsesWith(*kernelOp);
+    });
+
+    return reshapeKernels;
+  }
+
+  static void raiseBackReshapeKernels(
+      DenseMap<KernelOp, MO::Static::ReshapeOp> &reshapeOps) {
+    for (auto &[kernelOp, reshapeOp] : reshapeOps) {
+      kernelOp->replaceAllUsesWith(reshapeOp);
+      kernelOp.erase();
+    }
+  }
+
   void runOnOperation() override {
     auto graph = getOperation();
     auto ctx = graph.getContext();
 
-    // First ignore kernels that have the `mo.static.reshape` string in their
-    // summary.
-    runOnOperationImpl<true>(graph, ctx);
-    // Then, only fuse the reshapes.
-    runOnOperationImpl<false>(graph, ctx);
+    // First fuse all kernels that are view ops.
+    DenseMap<KernelOp, MO::Static::ReshapeOp> reshapeKernels;
+    runOnOperationImpl(graph, ctx, reshapeKernels);
+
+    reshapeKernels = lowerReshapeOps(graph);
+    // Do not attempt the next step if there are no reshape kernels (probably
+    // because they would not be lowered to the extensibility/kernel API).
+    if (!reshapeKernels.empty()) {
+      // Then, lower mo.static.reshape to mogg.kernel and fuse things into them.
+      runOnOperationImpl(graph, ctx, reshapeKernels);
+      // Then, bring back the mo.static.reshape.
+      raiseBackReshapeKernels(reshapeKernels);
+    }
   }
 };
 
