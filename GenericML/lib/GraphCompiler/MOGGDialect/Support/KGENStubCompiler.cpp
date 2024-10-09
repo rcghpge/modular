@@ -90,6 +90,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableLLVMPerFunctionSplitting = false;
   compilationOptions.optimizationLevel = superOpt ? 4 : 3;
+  compilationOptions.saveTempsPrefix = saveTempsPrefix;
 
   if (debugKGENStubs || hasDebuginfo(kernelBuildType))
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
