@@ -3334,6 +3334,8 @@ LogicalResult LayoutTransformOp::canonicalize(LayoutTransformOp op,
 /// device the operand is on.
 bool DebugTensorPrintOp::preferResultsDevice() { return true; }
 
+bool DebugTensorUnsafePrintOp::preferResultsDevice() { return true; }
+
 //===----------------------------------------------------------------------===//
 // List ops
 //===----------------------------------------------------------------------===//

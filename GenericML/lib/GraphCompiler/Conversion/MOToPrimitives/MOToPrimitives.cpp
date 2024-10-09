@@ -131,6 +131,10 @@ public:
   /// Lowers mo.debug.tensor.print op.
   LogicalResult lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp);
 
+  /// Lowers mo.debug.tensor.unsafe.print op.
+  LogicalResult
+  lowerDebugTensorUnsafePrint(MO::DebugTensorUnsafePrintOp unsafePrintOp);
+
   /// Lowers mo.transfer op.
   LogicalResult lowerTransfer(MO::TransferOp transferOp);
 
@@ -877,13 +881,64 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
 
   auto &buffer = bufferizedInput.buffer;
   auto &tensorSpec = bufferizedInput.tensorSpec;
-  auto chain =
-      opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
+  auto chain = opLoweringState.getGuardChain(
+      loweringState.lookupExecuteLoweredValue(printOp.getInChain()));
 
   if (printOp.getLabelAttr().empty() || targetDevice == hostDevice) {
     auto outChain = opLoweringState.debugTensorPrint(
         chain, buffer, tensorSpec, printOp.getLabelAttr(),
         printOp.getInput().getType());
+    loweringState.setCurrentExecuteChain(
+        cast<TypedValue<MEF::ChainType>>(outChain));
+
+    loweringState.emplaceExecuteLoweredValue(printOp.getOutChain(), outChain);
+    return success();
+  }
+
+  // If the device we are trying to print from is not the host, insert an
+  // explicit DtoH + sync for the buffer before printing using the host.
+  // This is a safe assumption since the is what happens in the device
+  // version of the primitive already
+  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
+  Value bufferSize =
+      opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
+  Value hostBuffer = opLoweringState.hostBufferAlloc(
+      cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
+      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()), sizeInBytes);
+  auto transferChain = opLoweringState.bufferTransferToHost(
+      chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
+      moTensorType);
+  auto outChain = opLoweringState.hostDebugTensorPrint(
+      transferChain, hostBuffer, tensorSpec, printOp.getLabelAttr());
+  loweringState.setCurrentExecuteChain(
+      cast<TypedValue<MEF::ChainType>>(outChain));
+  loweringState.emplaceExecuteLoweredValue(printOp.getOutChain(), outChain);
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerDebugTensorUnsafePrint(
+    MO::DebugTensorUnsafePrintOp unsafePrintOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, unsafePrintOp);
+
+  OpBuilder b(unsafePrintOp);
+  auto moTensorType = unsafePrintOp.getInput().getType();
+  DeviceRefAttr targetDevice =
+      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
+  DeviceRefAttr hostDevice = loweringState.getHostDevice();
+
+  // Get the bufferized input.
+  MGP::BufferizedTensor bufferizedInput =
+      opLoweringState.getBufferizedInput(unsafePrintOp.getInput());
+
+  auto &buffer = bufferizedInput.buffer;
+  auto &tensorSpec = bufferizedInput.tensorSpec;
+  auto chain =
+      opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
+
+  if (unsafePrintOp.getLabelAttr().empty() || targetDevice == hostDevice) {
+    auto outChain = opLoweringState.debugTensorPrint(
+        chain, buffer, tensorSpec, unsafePrintOp.getLabelAttr(),
+        unsafePrintOp.getInput().getType());
     loweringState.setCurrentExecuteChain(
         cast<TypedValue<MEF::ChainType>>(outChain));
     return success();
@@ -903,7 +958,7 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
       chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
       moTensorType);
   auto outChain = opLoweringState.hostDebugTensorPrint(
-      transferChain, hostBuffer, tensorSpec, printOp.getLabelAttr());
+      transferChain, hostBuffer, tensorSpec, unsafePrintOp.getLabelAttr());
   loweringState.setCurrentExecuteChain(
       cast<TypedValue<MEF::ChainType>>(outChain));
   return success();
@@ -1628,6 +1683,13 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto debugTensorPrintOp = dyn_cast<MO::DebugTensorPrintOp>(op)) {
       if (failed(lowerDebugTensorPrint(debugTensorPrintOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto debugTensorUnsafePrintOp =
+            dyn_cast<MO::DebugTensorUnsafePrintOp>(op)) {
+      if (failed(lowerDebugTensorUnsafePrint(debugTensorUnsafePrintOp)))
         return failure();
       continue;
     }

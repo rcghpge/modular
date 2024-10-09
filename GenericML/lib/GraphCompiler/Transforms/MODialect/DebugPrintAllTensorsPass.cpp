@@ -43,10 +43,14 @@ struct DebugPrintAllTensorsPass
     mlir::sortTopologically(block);
 
     builder.setInsertionPointToStart(block);
+
+    Value currentChain = builder.create<MO::ChainCreateOp>(loc, ValueRange{});
+
     for (Value arg : block->getArguments()) {
       if (isa<MO::TensorType>(arg.getType())) {
-        builder.create<MO::DebugTensorPrintOp>(loc, /*input=*/arg,
-                                               /*label=*/valueToLabel(arg));
+        currentChain = builder.create<MO::DebugTensorPrintOp>(
+            loc, /*inChain=*/currentChain, /*input=*/arg,
+            /*label=*/valueToLabel(arg));
       }
     }
 
@@ -57,15 +61,33 @@ struct DebugPrintAllTensorsPass
       builder.setInsertionPointAfter(&op);
       for (Value res : op.getResults()) {
         if (isa<MO::TensorType>(res.getType())) {
-          builder.create<MO::DebugTensorPrintOp>(op.getLoc(), /*input=*/res,
-                                                 /*label=*/valueToLabel(res));
+          currentChain = builder.create<MO::DebugTensorPrintOp>(
+              op.getLoc(), /*inChain=*/currentChain, /*input=*/res,
+              /*label=*/valueToLabel(res));
         }
       }
     }
   }
 
+  bool hasDebugPrints(GraphOp graphOp) {
+    bool hasDebugPrint = false;
+
+    graphOp.walk([&hasDebugPrint](DebugTensorPrintOp printOp) {
+      hasDebugPrint = true;
+      return WalkResult::interrupt();
+    });
+
+    return hasDebugPrint;
+  }
+
   void runOnOperation() override {
     GraphOp graphOp = getOperation();
+    if (hasDebugPrints(graphOp)) {
+      graphOp->emitError(
+          "debug-print-all-tensors should only be invoked on graphs that don't "
+          "already have mo.debug.tensor.print ops");
+      return signalPassFailure();
+    }
     OpBuilder builder(graphOp->getContext());
     process(builder, graphOp.getLoc(), graphOp.getBodyBlock());
   }
