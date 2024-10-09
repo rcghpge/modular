@@ -27,13 +27,14 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
       reshapeType.hasRank(),
       << "reshapeType needs to be a statically ranked tensor type but it is "
       << reshapeType);
-  auto type = TensorType::get({(int64_t)reshapeType.getRank()}, elemType);
+  auto shapeType = TensorType::get({(int64_t)reshapeType.getRank()}, elemType,
+                                   reshapeType.getDeviceRef());
 
   auto valueAttr = builder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(reshapeType.getIntDims()), mlir::IntegerType::Signed);
 
-  auto reshapeShapeValue =
-      builder.create<MO::ConstantOp>(loc, type, cast<ElementsAttr>(valueAttr));
+  auto reshapeShapeValue = builder.create<MO::ConstantOp>(
+      loc, shapeType, cast<ElementsAttr>(valueAttr));
 
   auto reshapedValue = builder.create<RMO::MOReshapeOp>(loc, reshapeType, from,
                                                         reshapeShapeValue);
@@ -46,7 +47,8 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   ArrayRef<int64_t> reshapeShape,
                                   TensorValue to) {
   TensorType type = from.getType();
-  TensorType reshapeType = TensorType::get(reshapeShape, type.getElementType());
+  TensorType reshapeType =
+      TensorType::get(reshapeShape, type.getElementType(), type.getDeviceRef());
   return reshapeAndBroadcastTo(builder, loc, from, reshapeType, to);
 }
 
@@ -63,7 +65,9 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   ArrayRef<int64_t> reshapeDims,
                                   TensorValue reshapeShape, TensorValue to) {
   auto reshapedValue = builder.create<RMO::MOReshapeOp>(
-      loc, MO::TensorType::get(reshapeDims, from.getType().getElementType()),
+      loc,
+      MO::TensorType::get(reshapeDims, from.getType().getElementType(),
+                          from.getType().getDeviceRef()),
       from, reshapeShape);
   return broadcastTo(builder, loc, reshapedValue, to);
 }
@@ -75,8 +79,8 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
     return type;
   SmallVector<TypedAttr> result{type.getDims()};
   ShapeType shapeTy = type.getTypedShapeAttr().getType();
-  auto shapedAttr = ShapeAttr::get(type.getContext(), result, shapeTy);
-  return TensorType::get(shapedAttr, type.getDtype());
+  auto shapeAttr = ShapeAttr::get(type.getContext(), result, shapeTy);
+  return type.cloneWith(shapeAttr);
 }
 
 /// Broadcast `x` and `y` to a common dynamic shape given by `bcastCommonShape`.
@@ -84,23 +88,31 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
 static std::pair<TensorValue, TensorValue>
 broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
                         ShapeAttr bcastCommonShape) {
-  auto intType = builder.getIntegerType(64, /*isSigned=*/true);
-  auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType);
-
   // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
   assert(xType.hasRank());
 
-  auto xShape = builder.create<RMO::MOShapeOfOp>(
-      x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
-
   TensorType yType = y.getType();
   assert(yType.hasRank());
-  auto yShape = builder.create<RMO::MOShapeOfOp>(
-      y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
 
+  DeviceRefAttr deviceRef = xType.getDeviceRef();
+  assert(deviceRef == yType.getDeviceRef());
+
+  // We propagate device refs explicitly to keep shapes on the same device.
+  auto intType = builder.getIntegerType(64, /*isSigned=*/true);
+
+  auto xShapeType =
+      TensorType::get({(int64_t)xType.getRank()}, intType, deviceRef);
+  auto xShape = builder.create<RMO::MOShapeOfOp>(x.getLoc(), xShapeType, x);
+
+  auto yShapeType =
+      TensorType::get({(int64_t)yType.getRank()}, intType, deviceRef);
+  auto yShape = builder.create<RMO::MOShapeOfOp>(y.getLoc(), yShapeType, y);
+
+  auto bcastShapeType = TensorType::get({(int64_t)bcastCommonShape.getRank()},
+                                        intType, deviceRef);
   auto bcastShape = builder.create<RMO::MOBroadcastShapeOp>(
-      x.getLoc(), shape, xShape.getShape(), yShape.getShape());
+      x.getLoc(), bcastShapeType, xShape.getShape(), yShape.getShape());
 
   auto bcastXOp = builder.create<RMO::MOBroadcastToOp>(
       x.getLoc(), x.getType().cloneWith(bcastCommonShape), x, bcastShape);
@@ -116,25 +128,36 @@ static std::tuple<TensorValue, TensorValue, TensorValue>
 broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
                         TensorValue z, ShapeAttr xyCommonShape,
                         ShapeAttr bcastCommonShape) {
-  auto intType = builder.getIntegerType(64, /*isSigned=*/true);
-  auto xyShape = TensorType::get({(int64_t)xyCommonShape.getRank()}, intType);
-  auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType);
-
-  // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
   assert(xType.hasRank());
-  auto xShape = builder.create<RMO::MOShapeOfOp>(
-      x.getLoc(), TensorType::get({(int64_t)xType.getRank()}, intType), x);
-
   TensorType yType = y.getType();
   assert(yType.hasRank());
-  auto yShape = builder.create<RMO::MOShapeOfOp>(
-      y.getLoc(), TensorType::get({(int64_t)yType.getRank()}, intType), y);
-
   TensorType zType = z.getType();
   assert(zType.hasRank());
+
+  DeviceRefAttr deviceRef = xType.getDeviceRef();
+  assert(deviceRef == yType.getDeviceRef());
+  assert(deviceRef == zType.getDeviceRef());
+
+  auto intType = builder.getIntegerType(64, /*isSigned=*/true);
+  auto xyShape =
+      TensorType::get({(int64_t)xyCommonShape.getRank()}, intType, deviceRef);
+  auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType,
+                               deviceRef);
+
+  // Get the shapes of the inputs at runtime
+
+  auto xShape = builder.create<RMO::MOShapeOfOp>(
+      x.getLoc(),
+      TensorType::get({(int64_t)xType.getRank()}, intType, deviceRef), x);
+
+  auto yShape = builder.create<RMO::MOShapeOfOp>(
+      y.getLoc(),
+      TensorType::get({(int64_t)yType.getRank()}, intType, deviceRef), y);
+
   auto zShape = builder.create<RMO::MOShapeOfOp>(
-      z.getLoc(), TensorType::get({(int64_t)zType.getRank()}, intType), z);
+      z.getLoc(),
+      TensorType::get({(int64_t)zType.getRank()}, intType, deviceRef), z);
 
   auto bcastXYShape = builder.create<RMO::MOBroadcastShapeOp>(
       x.getLoc(), xyShape, xShape.getShape(), yShape.getShape());
@@ -152,7 +175,8 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
 TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
                                    TensorValue x, ShapeAttr s) {
-  auto constOp = builder.create<MO::ConstantOp>(loc, s.getIntDims());
+  auto constOp = builder.create<MO::ConstantOp>(loc, s.getIntDims(),
+                                                x.getType().getDeviceRef());
   return builder.create<RMO::MOBroadcastToOp>(loc, x.getType().cloneWith(s), x,
                                               constOp);
 }
@@ -248,8 +272,8 @@ TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
   auto graphOp = cast<MO::GraphOp>(toVal.getParentBlock()->getParentOp());
   auto toShape = builder.create<RMO::MOShapeOfOp>(loc, toVal, graphOp);
 
-  auto scalarConst =
-      builder.create<MO::ConstantOp>(loc, scalar, toTy.getElementType());
+  auto scalarConst = builder.create<MO::ConstantOp>(
+      loc, scalar, toTy.getElementType(), toTy.getDeviceRef());
   return builder.create<RMO::MOBroadcastToOp>(loc, toTy, scalarConst, toShape);
 }
 

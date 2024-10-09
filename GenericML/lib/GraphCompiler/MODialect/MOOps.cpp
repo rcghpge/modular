@@ -1079,10 +1079,10 @@ LogicalResult ConstantOp::verify() {
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       ArrayRef<int64_t> values) {
-  auto type =
-      MO::TensorType::get({(int64_t)values.size()},
-                          odsBuilder.getIntegerType(64, /*isSigned=*/true));
+                       ArrayRef<int64_t> values, DeviceRefAttr deviceRef) {
+  auto type = MO::TensorType::get(
+      {(int64_t)values.size()},
+      odsBuilder.getIntegerType(64, /*isSigned=*/true), deviceRef);
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       values, mlir::IntegerType::Signed);
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
@@ -1138,8 +1138,10 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       APFloat value, Type elementType) {
-  auto type = MO::TensorType::get(SmallVector<int64_t>{}, elementType);
+                       APFloat value, Type elementType,
+                       DeviceRefAttr deviceRef) {
+  auto type =
+      MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
   auto valueAttr =
       FloatArrayElementsAttr::get({std::move(value)}, type.getElementType());
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));

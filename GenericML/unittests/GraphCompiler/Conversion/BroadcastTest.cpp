@@ -34,8 +34,8 @@ protected:
 
   void TearDown() override { module->erase(); }
 
-  MO::TensorValue getTestValue(ShapeAttr shape) {
-    auto type = MO::TensorType::get(shape, FloatType::getF32(&ctx));
+  MO::TensorValue getTestValue(ShapeAttr shape, DeviceRefAttr deviceRef = {}) {
+    auto type = MO::TensorType::get(shape, FloatType::getF32(&ctx), deviceRef);
     SmallVector<APFloat> values(1, APFloat(0.f));
     MO::TensorValue out = builder.create<ConstantOp>(
         loc, ArrayRef<APFloat>(values), FloatType::getF32(&ctx));
@@ -44,16 +44,18 @@ protected:
     return out;
   }
 
-  MO::TensorValue getTestValue(ArrayRef<int64_t> shape) {
+  MO::TensorValue getTestValue(ArrayRef<int64_t> shape,
+                               DeviceRefAttr deviceRef = {}) {
     auto shapeTy = builder.getType<ShapeType>();
     auto shapeAttr = ShapeAttr::get(shape, shapeTy);
-    return getTestValue(shapeAttr);
+    return getTestValue(shapeAttr, deviceRef);
   }
 
-  MO::TensorValue getTestValue(ArrayRef<TypedAttr> shape) {
+  MO::TensorValue getTestValue(ArrayRef<TypedAttr> shape,
+                               DeviceRefAttr deviceRef = {}) {
     auto shapeTy = builder.getType<ShapeType>();
     auto shapeAttr = builder.getAttr<ShapeAttr>(shape, shapeTy);
-    return getTestValue(shapeAttr);
+    return getTestValue(shapeAttr, deviceRef);
   }
 
   TypedAttr getParametricDim(const std::string &name) {
@@ -118,18 +120,31 @@ TEST_F(BroadcastTest, Dynamic1) {
 }
 
 TEST_F(BroadcastTest, Dynamic2) {
-  MO::TensorValue x = getTestValue(SmallVector<TypedAttr>{
-      getIntegerDim(5ll), getUnknownDim(), getUnknownDim()});
-  MO::TensorValue y = getTestValue(SmallVector<TypedAttr>{
-      getIntegerDim(1ll), getUnknownDim(), getIntegerDim(1ll)});
+  auto deviceRef = DeviceRefAttr::getDefault(&ctx);
+  MO::TensorValue x = getTestValue(
+      ArrayRef<TypedAttr>{getIntegerDim(5ll), getUnknownDim(), getUnknownDim()},
+      deviceRef);
+  MO::TensorValue y =
+      getTestValue(ArrayRef<TypedAttr>{getIntegerDim(1ll), getUnknownDim(),
+                                       getIntegerDim(1ll)},
+                   deviceRef);
   auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
   auto refDims = SmallVector<TypedAttr>{getIntegerDim(5ll), getUnknownDim(),
                                         getUnknownDim()};
   ASSERT_EQ(bcastX.getType().getDims(), ArrayRef<TypedAttr>(refDims));
   ASSERT_EQ(bcastY.getType().getDims(), ArrayRef<TypedAttr>(refDims));
+  ASSERT_EQ(bcastX.getType().getDeviceRef(), deviceRef);
+  ASSERT_EQ(bcastY.getType().getDeviceRef(), deviceRef);
+
+  // Also test that the devices are correctly set within the pattern.
+  for (Type opType : bcastX.getDefiningOp()->getOperandTypes())
+    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
+  for (Type opType : bcastY.getDefiningOp()->getOperandTypes())
+    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
 }
 
 TEST_F(BroadcastTest, Parametric) {
+  auto deviceRef = DeviceRefAttr::getDefault(&ctx);
   auto shapeTy = builder.getType<ShapeType>();
   SmallVector<TypedAttr> shapeX{getParametricDim("n"), getIntegerDim(1),
                                 getParametricDim("m")};
@@ -141,28 +156,48 @@ TEST_F(BroadcastTest, Parametric) {
                                   getParametricDim("m")};
   ShapeAttr shapeRefAttr = builder.getAttr<ShapeAttr>(shapeRef, shapeTy);
 
-  MO::TensorValue x = getTestValue(shapeX);
-  MO::TensorValue y = getTestValue(shapeY);
+  MO::TensorValue x = getTestValue(shapeX, deviceRef);
+  MO::TensorValue y = getTestValue(shapeY, deviceRef);
 
   auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
   ASSERT_EQ(bcastX.getType().getTypedShapeAttr(), shapeRefAttr);
   ASSERT_EQ(bcastY.getType().getTypedShapeAttr(), shapeRefAttr);
+  ASSERT_EQ(bcastX.getType().getDeviceRef(), deviceRef);
+  ASSERT_EQ(bcastY.getType().getDeviceRef(), deviceRef);
+
+  // Also test that the devices are correctly set within the pattern.
+  for (Type opType : bcastX.getDefiningOp()->getOperandTypes())
+    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
+  for (Type opType : bcastY.getDefiningOp()->getOperandTypes())
+    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
 }
 
 TEST_F(BroadcastTest, ReshapeAndBroadcast) {
-  MO::TensorValue x = getTestValue({5});
-  MO::TensorValue y = getTestValue({3, 5, 1});
+  auto deviceRef = DeviceRefAttr::getDefault(&ctx);
+  MO::TensorValue x = getTestValue({5}, deviceRef);
+  MO::TensorValue y = getTestValue({3, 5, 1}, deviceRef);
 
   auto [bcastX1, bcastY1] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
 
   SmallVector<int64_t> refDims1{3, 5, 5};
   SmallVector<int64_t> refDims2{3, 5, 1};
 
-  ASSERT_EQ(bcastX1.getType().getIntDims(), refDims1);
-  ASSERT_EQ(bcastY1.getType().getIntDims(), refDims1);
+  TensorType x1Type = bcastX1.getType();
+  TensorType y1Type = bcastY1.getType();
+  ASSERT_EQ(x1Type.getIntDims(), refDims1);
+  ASSERT_EQ(y1Type.getIntDims(), refDims1);
+  ASSERT_EQ(x1Type.getDeviceRef(), deviceRef);
+  ASSERT_EQ(y1Type.getDeviceRef(), deviceRef);
 
   auto bcastX2 = RMO::reshapeAndBroadcastTo(builder, loc, x,
                                             SmallVector<int64_t>{1, 5, 1}, y);
 
   ASSERT_EQ(bcastX2.getType().getIntDims(), refDims2);
+  ASSERT_EQ(bcastX2.getType().getDeviceRef(), deviceRef);
+
+  // Also test that the devices are correctly set within the pattern.
+  for (Type opType : bcastX2.getDefiningOp()->getOperandTypes()) {
+    llvm::errs() << bcastX2.getDefiningOp();
+    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
+  }
 }
