@@ -1,9 +1,10 @@
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("//bazel:api.bzl", "modular_py_library")
 
 package(default_visibility = ["//visibility:public"])
 
-py_library(
+modular_py_library(
     name = "llama3",
     srcs = glob(["**/*.py"]),
     imports = [".."],
