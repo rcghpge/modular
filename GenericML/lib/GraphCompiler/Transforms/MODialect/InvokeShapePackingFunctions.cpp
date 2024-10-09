@@ -32,18 +32,15 @@ static ShapeInferenceFunction
 getShapeInferencePackingFunction(InvokeShapeFuncOp invoke) {
   if (invoke.getShapeFuncName() == "pack_matmul_b_shape_func")
     return materializePackMatmulShapeFunc;
+  if (invoke.getShapeFuncName() == "pack_conv_filter_shape")
+    return materializePackConvFilterShape;
   return nullptr;
 }
 
 static void initLLVM() {
   static std::once_flag flag;
 
-  std::call_once(flag, []() {
-    llvm::InitializeNativeTarget();
-    llvm::InitializeAllTargets();
-    llvm::InitializeAllTargetInfos();
-    llvm::InitializeAllTargetMCs();
-  });
+  std::call_once(flag, []() { llvm::InitializeNativeTarget(); });
 }
 
 /// Try to pull target info off of the graph operation.

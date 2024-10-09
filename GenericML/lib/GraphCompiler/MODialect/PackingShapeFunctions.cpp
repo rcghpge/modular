@@ -4,7 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/PackingShapeFunctions.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 #include "llvm/ADT/SmallVector.h"
 
@@ -13,20 +15,14 @@ using namespace M::MO;
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
-// pack_matmul_b_shape_func
+// Utilities
 //===----------------------------------------------------------------------===//
 
-struct PackMatmulShapeKgenAttrs {
-  SmallVector<int64_t> aShape;
-  SmallVector<int64_t> bShape;
-  SmallVector<int64_t> cShape;
-
-  TypeAttr aType;
-  TypeAttr bType;
-  TypeAttr cType;
-
-  BoolAttr transposeIn0;
-};
+#define PARSE_FIELD(result, field, name, parser)                               \
+  auto(field) = parser(kgenAttrs, name);                                       \
+  if (!(field))                                                                \
+    return {};                                                                 \
+  (result).field = std::move(*(field));
 
 static std::optional<SmallVector<int64_t>> unpackDims(DictionaryAttr attr,
                                                       StringRef name) {
@@ -44,48 +40,19 @@ static std::optional<AttrType> unpack(DictionaryAttr attr, StringRef name) {
   return result;
 }
 
-std::optional<PackMatmulShapeKgenAttrs>
-unpackMatmulKgenAttrs(DictionaryAttr kgenAttrs) {
-  PackMatmulShapeKgenAttrs result;
-
-#define PARSE_FIELD(field, name, parser)                                       \
-  auto(field) = parser(kgenAttrs, name);                                       \
-  if (!(field))                                                                \
-    return {};                                                                 \
-  result.field = std::move(*(field));
-
-  PARSE_FIELD(aShape, "a_shape", unpackDims);
-  PARSE_FIELD(bShape, "b_shape", unpackDims);
-  PARSE_FIELD(cShape, "c_shape", unpackDims);
-
-  PARSE_FIELD(aType, "a_type", unpack<TypeAttr>);
-  PARSE_FIELD(bType, "b_type", unpack<TypeAttr>);
-  PARSE_FIELD(cType, "c_type", unpack<TypeAttr>);
-
-  PARSE_FIELD(transposeIn0, "transpose_in_0", unpack<BoolAttr>);
-
-#undef PARSE_FIELD
-
-  return result;
-}
-
+/// Provide some high-level queries for various target features based on the
+/// given `TargetInfoAttr`.
 class TargetQueries {
 public:
   TargetQueries(TargetInfoAttr target) : targetInfo{target} {
     assert(target != nullptr);
   }
 
-  bool hasFeature(StringRef feat) const {
-    return targetInfo && targetInfo.hasFeature(feat);
-  }
+  bool hasFeature(StringRef feat) const { return targetInfo.hasFeature(feat); }
 
-  bool isArch(StringRef arch) const {
-    return targetInfo && targetInfo.getArch() == arch;
-  }
+  bool isArch(StringRef arch) const { return targetInfo.getArch() == arch; }
 
-  bool isOS(StringRef os) const {
-    return targetInfo && targetInfo.getOS() == os;
-  }
+  bool isOS(StringRef os) const { return targetInfo.getOS() == os; }
 
   int64_t simdBitWidth() const {
     if (!targetInfo)
@@ -115,16 +82,16 @@ private:
 
 static bool useVnniFn(const TargetQueries &target, Type aType, Type bType,
                       Type cType) {
-  if (target.hasNeonInt8Dotprod() && !target.hasNeonInt8Matmul()) {
+  if (target.hasNeonInt8Dotprod() && !target.hasNeonInt8Matmul())
     return ((aType.isSignedInteger(8) && bType.isSignedInteger(8)) ||
             (aType.isUnsignedInteger(8) && bType.isUnsignedInteger(8))) &&
            cType.isSignedInteger(32);
-  } else if (target.hasFeature("avx2")) {
+
+  if (target.hasFeature("avx2"))
     return aType.isUnsignedInteger(8) && bType.isSignedInteger(8) &&
            cType.isSignedInteger(32);
-  } else {
-    return false;
-  }
+
+  return false;
 }
 
 static bool useI8mmFn(const TargetQueries &target, Type aType, Type bType,
@@ -138,6 +105,247 @@ static bool useI8mmFn(const TargetQueries &target, Type aType, Type bType,
       (aType.isSignedInteger(8) && bType.isSignedInteger(8));
 
   return hasNeonInt8Matmul && neonTypesMatch;
+}
+
+static int64_t ceilDiv(int64_t numerator, int64_t denominator) {
+  return (numerator + denominator - 1) / denominator;
+}
+
+static int64_t alignDown(int64_t value, int64_t alignment) {
+  return (value / alignment) * alignment;
+}
+
+static int64_t alignUp(int64_t numerator, int64_t alignment) {
+  return ceilDiv(numerator, alignment) * alignment;
+}
+
+//===----------------------------------------------------------------------===//
+// pack_conv_filter_shape
+//===----------------------------------------------------------------------===//
+
+struct PackConvFilterShapeKgenAttrs {
+  SmallVector<int64_t> dilations;
+  SmallVector<int64_t> filterShape;
+  SmallVector<int64_t> inputShape;
+  SmallVector<int64_t> outputShape;
+  SmallVector<int64_t> paddings;
+  SmallVector<int64_t> strides;
+
+  IntegerAttr numGroups;
+};
+
+std::optional<PackConvFilterShapeKgenAttrs>
+unpackConvFilterKgenAttrs(DictionaryAttr kgenAttrs) {
+  PackConvFilterShapeKgenAttrs result;
+
+  PARSE_FIELD(result, dilations, "dilations", unpackDims);
+  PARSE_FIELD(result, filterShape, "filter_shape", unpackDims);
+  PARSE_FIELD(result, inputShape, "input_shape", unpackDims);
+  PARSE_FIELD(result, outputShape, "output_shape", unpackDims);
+  PARSE_FIELD(result, paddings, "paddings", unpackDims);
+  PARSE_FIELD(result, strides, "strides", unpackDims);
+
+  PARSE_FIELD(result, numGroups, "num_groups", unpack<IntegerAttr>);
+
+  return result;
+}
+
+struct PadConvInfoStatic {
+  SmallVector<int64_t> pad;
+  SmallVector<int64_t> stride;
+  SmallVector<int64_t> dilation;
+  int64_t numGroups;
+
+  bool allKnown() const {
+    return !ShapedType::isDynamicShape(pad) &&
+           !ShapedType::isDynamicShape(stride) &&
+           !ShapedType::isDynamicShape(dilation) &&
+           !ShapedType::isDynamic(numGroups);
+  }
+};
+
+/// See `get_micro_kernel_shape` in Kernels/mojo/nn/conv_utils.mojo
+static SmallVector<int64_t>
+getMicroKernelShape(const TargetQueries &target, int64_t rank, int64_t WO,
+                    int64_t F, const PadConvInfoStatic &convAttr,
+                    int64_t simdSize) {
+  const bool optimizeStaticShapes = !ShapedType::isDynamic(WO) &&
+                                    !ShapedType::isDynamic(F) &&
+                                    convAttr.allKnown();
+
+  constexpr int64_t numAvx512Registers = 32;
+  constexpr int64_t numAvx2Registers = 16;
+
+  auto isNonZero = [](int64_t x) -> bool { return x != 0; };
+
+  if (optimizeStaticShapes) {
+    SmallVector<int64_t> padHVal = {convAttr.pad[0], convAttr.pad[2]};
+    SmallVector<int64_t> padWVal = {convAttr.pad[1], convAttr.pad[3]};
+    const bool hasPadding =
+        llvm::any_of(padHVal, isNonZero) || llvm::any_of(padWVal, isNonZero);
+
+    if (target.hasFeature("avx512f")) {
+      if (hasPadding) {
+        for (int64_t n : llvm::seq<int64_t>(2, 6)) {
+          auto m = (numAvx512Registers - 1) / n - 1;
+          if (F % (n * simdSize) == 0 && WO <= m)
+            return {WO, n};
+        }
+      }
+
+      return {6, 4};
+    }
+
+    if (target.hasFeature("avx2")) {
+      if (hasPadding) {
+        int64_t minNumResidual = 3 * WO * F;
+        int64_t microKernelHeight = -1;
+        int64_t microKernelWidth = -1;
+
+        for (int64_t n : llvm::seq<int64_t>(2, 4)) {
+          int64_t m = (numAvx2Registers - 1) / n - 1;
+          int64_t numResidual = WO * (F % (n * simdSize)) + (WO % m) * F;
+
+          if (numResidual < minNumResidual) {
+            microKernelHeight = m;
+            microKernelWidth = n;
+            minNumResidual = numResidual;
+          }
+        }
+
+        return {microKernelHeight, microKernelWidth};
+      }
+
+      return {4, 3};
+    }
+
+    if (target.isNeoverseN1())
+      return {8, 2};
+
+    if (target.hasFeature("neon"))
+      return {6, 4};
+
+    return {6, 2};
+  } else {
+    if (target.hasFeature("avx512f"))
+      return {6, 4};
+
+    if (target.isNeoverseN1())
+      return {8, 2};
+
+    if (target.hasFeature("neon"))
+      return {6, 4};
+
+    return {4, 3};
+  }
+}
+
+static SmallVector<int64_t> reorderPadding(int64_t rank,
+                                           ArrayRef<int64_t> pad) {
+  if (rank == 1)
+    return to_vector(pad);
+
+  if (rank == 2)
+    return {pad[0], pad[2], pad[1], pad[3]};
+
+  return {pad[0], pad[2], pad[4], pad[1], pad[3], pad[5]};
+}
+
+std::optional<SmallVector<int64_t>>
+M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
+                                      TargetInfoAttr targetAttr) {
+  std::optional<PackConvFilterShapeKgenAttrs> maybeAttrs =
+      unpackConvFilterKgenAttrs(invoke.getKgenParamsAttr());
+
+  if (!maybeAttrs) {
+    invoke.emitError("malformed 'pack_conv_filter_shape' shape invocation");
+    return {};
+  }
+
+  TargetQueries target(targetAttr);
+
+  MO::TensorType filterType = invoke.getInputTensor(0).getType();
+  Type filterElementType = filterType.getElementType();
+  int64_t filterRank = filterType.getRank();
+
+  int64_t simdSize = target.simdWidthOf(filterElementType);
+  int64_t F = filterType.getIntDims()[filterRank - 1];
+
+  if (ShapedType::isDynamic(F))
+    return {};
+
+  PackConvFilterShapeKgenAttrs &attrs = *maybeAttrs;
+
+  int64_t numGroups = attrs.numGroups.getInt();
+
+  if (F % numGroups != 0) {
+    invoke.emitError(
+        "number of filtes F must be divisible by number of groups");
+    return {};
+  }
+
+  int64_t FPerGroup = F / numGroups;
+
+  auto convAttr =
+      PadConvInfoStatic{/*pad=*/reorderPadding(filterRank - 2, attrs.paddings),
+                        /*stride=*/attrs.strides,
+                        /*dilation=*/attrs.dilations,
+                        /*numGroups=*/numGroups};
+
+  int64_t WO = filterRank == 4 ? attrs.outputShape[2] : ShapedType::kDynamic;
+
+  SmallVector<int64_t> microKernelShape = getMicroKernelShape(
+      target, filterRank - 2, WO, attrs.outputShape[filterRank - 1], convAttr,
+      simdSize);
+
+  int64_t microKernelWidth = microKernelShape[1];
+  int64_t microKernelFSize = microKernelWidth * simdSize;
+
+  SmallVector<int64_t> packedShape(filterRank + 1, 0);
+  packedShape[0] = numGroups * ceilDiv(FPerGroup, microKernelFSize);
+  packedShape[filterRank] = microKernelFSize;
+
+  for (int64_t i : llvm::seq<int64_t>(filterRank - 1))
+    packedShape[i + 1] = filterType.getIntDim(i);
+
+  // Unable to infer a static shape.
+  if (llvm::any_of(packedShape, [](int64_t x) { return x < 0; }))
+    return {};
+
+  return packedShape;
+}
+
+//===----------------------------------------------------------------------===//
+// pack_matmul_b_shape_func
+//===----------------------------------------------------------------------===//
+
+struct PackMatmulShapeKgenAttrs {
+  SmallVector<int64_t> aShape;
+  SmallVector<int64_t> bShape;
+  SmallVector<int64_t> cShape;
+
+  TypeAttr aType;
+  TypeAttr bType;
+  TypeAttr cType;
+
+  BoolAttr transposeIn0;
+};
+
+std::optional<PackMatmulShapeKgenAttrs>
+unpackMatmulKgenAttrs(DictionaryAttr kgenAttrs) {
+  PackMatmulShapeKgenAttrs result;
+
+  PARSE_FIELD(result, aShape, "a_shape", unpackDims);
+  PARSE_FIELD(result, bShape, "b_shape", unpackDims);
+  PARSE_FIELD(result, cShape, "c_shape", unpackDims);
+
+  PARSE_FIELD(result, aType, "a_type", unpack<TypeAttr>);
+  PARSE_FIELD(result, bType, "b_type", unpack<TypeAttr>);
+  PARSE_FIELD(result, cType, "c_type", unpack<TypeAttr>);
+
+  PARSE_FIELD(result, transposeIn0, "transpose_in_0", unpack<BoolAttr>);
+
+  return result;
 }
 
 static bool getKernelType(const TargetQueries &target, int64_t m, int64_t n,
@@ -244,18 +452,6 @@ static int64_t getPackDataSize(const TargetQueries &target, Type type) {
   return (256 * KB) / sizeOfType;
 }
 
-static int64_t ceilDiv(int64_t numerator, int64_t denominator) {
-  return (numerator + denominator - 1) / denominator;
-}
-
-static int64_t alignDown(int64_t value, int64_t alignment) {
-  return (value / alignment) * alignment;
-}
-
-static int64_t alignUp(int64_t numerator, int64_t alignment) {
-  return ceilDiv(numerator, alignment) * alignment;
-}
-
 static int64_t getMatmulArchFactor(bool useVnni, bool useI8mm) {
   if (useI8mm)
     return 8;
@@ -297,8 +493,8 @@ static bool useAppleAccelerateLib(const TargetQueries &target, Type cType,
 }
 
 std::optional<SmallVector<int64_t>>
-materializePackMatmulShapeFunc(InvokeShapeFuncOp invoke,
-                               TargetInfoAttr targetAttr) {
+M::MO::materializePackMatmulShapeFunc(InvokeShapeFuncOp invoke,
+                                      TargetInfoAttr targetAttr) {
   std::optional<PackMatmulShapeKgenAttrs> maybeAttrs =
       unpackMatmulKgenAttrs(invoke.getKgenParamsAttr());
 
