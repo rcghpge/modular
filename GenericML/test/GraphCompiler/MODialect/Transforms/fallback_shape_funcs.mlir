@@ -768,7 +768,7 @@ mo.graph @arg_nonzero<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<
 }
 // CHECK-LABEL: mo.graph @arg_nonzero
 // CHECK:(%[[IN:.*]]: !mo.tensor<[[[IN_PARAM:.*]], 10], f32>) -> !mo.tensor<[[[OUT_PARAM:.*]], 2], si64>
-// CHECK-NEXT: mo.invoke_shape_func["arg_nonzero_shape"]<() -> [[WHERE_PARAM:.*]], [[UNUSED_PARAM:.*]]>(%[[IN]]) {dataDeptTensors = [0 : i32]}
+// CHECK-NEXT: mo.invoke_shape_func["mo.arg_nonzero"]<() -> [[WHERE_PARAM:.*]], [[UNUSED_PARAM:.*]]>(%[[IN]]) {dataDeptTensors = [0 : i32]}
 // CHECK-NEXT: %[[WHERE:.*]] = mo.arg_nonzero(%[[IN]]) : (!mo.tensor<[[[IN_PARAM]], 10], f32>) -> !mo.tensor<[[[WHERE_PARAM]], 2], si64>
 // CHECK-NEXT: mo.output<[[WHERE_PARAM]]> %[[WHERE]] : !mo.tensor<[[[WHERE_PARAM]], 2], si64>
 

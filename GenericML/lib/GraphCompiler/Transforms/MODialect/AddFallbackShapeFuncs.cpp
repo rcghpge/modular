@@ -794,8 +794,8 @@ ErrorOrSuccess Fallback<MO::UnsqueezeShapeOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::ArgNonzeroOp>::build(GraphOp &graph,
                                                  OpBuilder &builder,
                                                  MO::ArgNonzeroOp op) {
-  buildForOpResult(graph, builder, op, "arg_nonzero_shape", op->getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::ArgNonzeroOp::getOperationName(),
+                   op->getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{0});
   return success();
 }
