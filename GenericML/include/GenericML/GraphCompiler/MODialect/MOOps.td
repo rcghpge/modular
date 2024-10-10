@@ -4664,6 +4664,8 @@ def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [

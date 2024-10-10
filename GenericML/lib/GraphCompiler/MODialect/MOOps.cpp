@@ -3935,6 +3935,36 @@ void CustomOp::getEffects(
 // MO Mutable tensor operations
 //===----------------------------------------------------------------------===//
 
+// In instances of two sequential loads on the same buffer this will
+// canonicalize the two loads to just one. This replaces the uses of the current
+// load op's chain and tensor with the upstream load op's chain and tensor.
+LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
+                                          mlir::PatternRewriter &rewriter) {
+  auto inChain = loadOp.getInChain();
+  auto upstreamLoadOp =
+      dyn_cast_or_null<MutableLoadOp>(inChain.getDefiningOp());
+
+  if (!upstreamLoadOp) {
+    return rewriter.notifyMatchFailure(
+        loadOp.getLoc(), "Upstream op (on chain) is not a mo.mutable.load op.");
+  }
+
+  if (upstreamLoadOp.getInBuffer() != loadOp.getInBuffer()) {
+    return rewriter.notifyMatchFailure(
+        loadOp.getLoc(),
+        "Upstream mo.mutable.load op does not operate on same buffer.");
+  }
+
+  rewriter.replaceAllUsesWith(loadOp.getOutChain(),
+                              upstreamLoadOp.getOutChain());
+  rewriter.replaceAllUsesWith(loadOp.getOutTensor(),
+                              upstreamLoadOp.getOutTensor());
+
+  // DCE in the canonicalization pass will take care of deleting loadOp
+
+  return success();
+}
+
 void MutableLoadOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   effects.emplace_back(mlir::MemoryEffects::Read::get());
