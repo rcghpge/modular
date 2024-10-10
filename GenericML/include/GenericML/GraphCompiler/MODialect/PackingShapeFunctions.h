@@ -16,13 +16,17 @@ namespace M::MO {
 /// Materialize the shape logic for
 ///     `mo.invoke_shape_func["pack_matmul_b_shape_func"]`
 std::optional<llvm::SmallVector<int64_t>>
-materializePackMatmulShapeFunc(M::MO::InvokeShapeFuncOp invoke,
-                               M::TargetInfoAttr targetAttr);
+materializePackMatmulShapeFunc(InvokeShapeFuncOp invoke,
+                               TargetInfoAttr targetAttr);
 
 /// Materialize the shape logic for
 ///     `mo.invoke_shape_func["pack_filter_shape_func"]`
 std::optional<llvm::SmallVector<int64_t>>
-materializePackConvFilterShape(M::MO::InvokeShapeFuncOp invoke,
-                               M::TargetInfoAttr targetAttr);
+materializePackConvFilterShape(InvokeShapeFuncOp invoke,
+                               TargetInfoAttr targetAttr);
+
+std::optional<SmallVector<int64_t>>
+materializePackConvTransposeFilterShape(InvokeShapeFuncOp invoke,
+                                        TargetInfoAttr targetAttr);
 
 } // namespace M::MO

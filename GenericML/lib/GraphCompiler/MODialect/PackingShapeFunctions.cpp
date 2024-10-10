@@ -316,6 +316,63 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
 }
 
 //===----------------------------------------------------------------------===//
+// pack_conv_transpose_filter_shape
+//===----------------------------------------------------------------------===//
+
+static int64_t getDirectConvMicroKernelWidth(const TargetQueries &target) {
+  if (target.hasFeature("avx512f"))
+    return 4;
+  if (target.isNeoverseN1())
+    return 2;
+  if (target.hasFeature("neon"))
+    return 4;
+  return 3;
+}
+
+/// Computation taken from pack_filter_shape in:
+///     Kernels/mojo/nn/conv_transpose.mojo
+std::optional<SmallVector<int64_t>>
+M::MO::materializePackConvTransposeFilterShape(InvokeShapeFuncOp invoke,
+                                               TargetInfoAttr targetAttr) {
+  TargetQueries target(targetAttr);
+
+  Value filter = invoke.getInputTensor(0);
+  TensorType filterTensor = cast<TensorType>(filter.getType());
+
+  Type filterType = filterTensor.getElementType();
+  int64_t filterRank = filterTensor.getRank();
+  SmallVector<int64_t> filterDims = filterTensor.getIntDims();
+
+  if (llvm::any_of(filterDims, ShapedType::isDynamic))
+    return {};
+
+  int64_t simdSize = target.simdWidthOf(filterType);
+  int64_t microKernelWidth = getDirectConvMicroKernelWidth(target);
+  int64_t microKernelFSize = microKernelWidth * simdSize;
+
+  int64_t F = filterDims[filterRank - 2];
+
+  constexpr int64_t numGroups = 1;
+
+  int64_t FPerGroup = F / numGroups;
+
+  // FRSCf layout.
+  SmallVector<int64_t> packedShape(filterRank + 1, 0);
+  packedShape.resize(filterRank + 1, 0);
+
+  packedShape[0] = numGroups * ceilDiv(FPerGroup, microKernelFSize);
+  packedShape[filterRank] = microKernelFSize;
+
+  // Input channel
+  packedShape[filterRank - 1] = filterDims[filterRank - 1];
+
+  for (int64_t i : llvm::seq<int64_t>(filterRank - 2))
+    packedShape[i + 1] = filterDims[i];
+
+  return packedShape;
+}
+
+//===----------------------------------------------------------------------===//
 // pack_matmul_b_shape_func
 //===----------------------------------------------------------------------===//
 

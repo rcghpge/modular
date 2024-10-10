@@ -34,6 +34,8 @@ getShapeInferencePackingFunction(InvokeShapeFuncOp invoke) {
     return materializePackMatmulShapeFunc;
   if (invoke.getShapeFuncName() == "pack_conv_filter_shape")
     return materializePackConvFilterShape;
+  if (invoke.getShapeFuncName() == "pack_conv_transpose_filter_shape")
+    return materializePackConvTransposeFilterShape;
   return nullptr;
 }
 
