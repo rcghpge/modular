@@ -116,8 +116,8 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
 
 // TODO update this to account for general view operation (e.g., transpose in
 // addition to broadcast)
-def FuseBroadcasts: Pass<"fuse-bcasts", "MO::GraphOp"> {
-  let summary = "Fuse broadcasts into other kernels";
+def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
+  let summary = "Fuse views into other views or kernels";
   let description = [{
     This pass identifies kernels that (1). contains only view operations and
     (2). are consumed by some other non-view kernel; then it fuses the view

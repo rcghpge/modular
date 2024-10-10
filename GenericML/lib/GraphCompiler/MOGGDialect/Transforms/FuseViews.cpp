@@ -26,7 +26,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_FUSEBROADCASTS
+#define GEN_PASS_DEF_FUSEVIEWS
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
@@ -52,9 +52,8 @@ GUARANTEES:
 - No view fuses into a reshape kernel.
  */
 
-struct FuseBroadcastsPass
-    : public impl::FuseBroadcastsBase<FuseBroadcastsPass> {
-  using FuseBroadcastsBase::FuseBroadcastsBase;
+struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
+  using FuseViewsBase::FuseViewsBase;
 
   static bool hasCompoundParameters(MO::TensorType t) {
     for (TypedAttr symbolicDim : t.getDims()) {
