@@ -1148,9 +1148,9 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       float value) {
+                       float value, DeviceRefAttr deviceRef) {
   Type dtype = odsBuilder.getF32Type();
-  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype);
+  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype, deviceRef);
   SmallVector<APFloat> data;
   data.emplace_back(value);
   auto valueAttr = FloatArrayElementsAttr::get(data, dtype);
@@ -1158,9 +1158,9 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       double value) {
+                       double value, DeviceRefAttr deviceRef) {
   Type dtype = odsBuilder.getF64Type();
-  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype);
+  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype, deviceRef);
   SmallVector<APFloat> data;
   data.emplace_back(value);
   auto valueAttr = FloatArrayElementsAttr::get(data, dtype);

@@ -713,7 +713,8 @@ struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
 
     TensorValue x = op.getInput();
 
-    TensorValue one = rewriter.create<MO::ConstantOp>(loc, 1.0f);
+    TensorValue one =
+        rewriter.create<MO::ConstantOp>(loc, 1.0f, x.getType().getDeviceRef());
 
     TensorValue oneAsInputDtype =
         rewriter.create<RMO::MOCastOp>(loc, one, x.getType().getDtype());
