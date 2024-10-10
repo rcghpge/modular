@@ -1298,7 +1298,7 @@ LogicalResult ConcatOp::verify() {
     tensors.emplace_back(cast<TensorValue>(input));
 
   tensors.emplace_back(getResult());
-  if (failed(impl::verifyMatchingRanks(tensors))) {
+  if (failed(::Impl::verifyMatchingRanks(tensors))) {
     return emitError(
         "input and output ranks must be all dynamic, or all static and match");
   }
@@ -1399,7 +1399,7 @@ LogicalResult SplitOp::verify() {
   for (Value output : getResults())
     tensors.emplace_back(cast<TensorValue>(output));
 
-  if (failed(impl::verifyMatchingRanks(tensors))) {
+  if (failed(::Impl::verifyMatchingRanks(tensors))) {
     return emitError(
         "input and output ranks must be all dynamic, or all static and match");
   }
@@ -1911,7 +1911,8 @@ LogicalResult ConvOp::verify() {
   // The sliding window interface already checks that the input and result
   // have matching ranks, so we can be more specific with the error message
   // here.
-  if (failed(impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
+  if (failed(
+          ::Impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
     return emitError("filter, input and output ranks must be all dynamic, or "
                      "all static and match");
 
@@ -1923,7 +1924,8 @@ LogicalResult ConvTransposeOp::verify() {
   // The sliding window interface already checks that the input and result
   // have matching ranks, so we can be more specific with the error message
   // here.
-  if (failed(impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
+  if (failed(
+          ::Impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
     return emitError("filter, input and output ranks must be all dynamic, or "
                      "all static and match");
 
@@ -3211,8 +3213,8 @@ LogicalResult LinAlg::SolveOp::verify() {
     if (inMatShape[0] != inMatShape[1])
       return emitOpError("first operand must be a batch of square matrices");
   }
-  return impl::checkMatmulCompatibility(getOperation(), getInput(), getResult(),
-                                        getRhs());
+  return ::Impl::checkMatmulCompatibility(getOperation(), getInput(),
+                                          getResult(), getRhs());
 }
 
 LogicalResult Shape::ToTensorOp::canonicalize(Shape::ToTensorOp op,

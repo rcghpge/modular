@@ -27,7 +27,7 @@
 
 using namespace M;
 using namespace MO;
-using namespace graph_compiler::matchers;
+using namespace GraphCompiler::Matchers;
 
 namespace M::MO {
 #define GEN_PASS_DEF_SYMBOLICOPTIMIZATION

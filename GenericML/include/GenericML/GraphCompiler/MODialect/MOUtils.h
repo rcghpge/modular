@@ -29,7 +29,7 @@ namespace M::MO {
 // MO Utilities
 //===----------------------------------------------------------------------===//
 
-namespace detail {
+namespace Detail {
 template <typename inT, typename outT>
 static std::optional<SmallVector<outT>>
 denseResourceAttrToVecDirect(DenseResourceElementsAttr attr) {
@@ -75,14 +75,14 @@ denseResourceAttrToVecSpecialFloat(DenseResourceElementsAttr attr,
       });
   return out;
 }
-} // namespace detail
+} // namespace Detail
 
 /// If `attr` represents a blob of constants, return them in a vector,
 /// else return None.
 template <typename T>
 static std::optional<SmallVector<T>> tryGetConstantBlob(mlir::ElementsAttr attr,
                                                         DType dType) {
-  using namespace detail;
+  using namespace Detail;
   if (auto floatElemsAttr = dyn_cast<FloatArrayElementsAttr>(attr)) {
     SmallVector<double> blob = llvm::map_to_vector(
         floatElemsAttr.getValues(),

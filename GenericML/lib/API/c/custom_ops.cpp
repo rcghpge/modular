@@ -19,8 +19,8 @@ void M_useKernelsFrom(M_CompileConfig *compileConfig, const char *path,
   auto kernelLibraryPath = std::filesystem::path(strPath);
   std::error_code ec;
   if (!std::filesystem::exists(kernelLibraryPath, ec)) {
-    detail::setError(status,
-                     Error("invalid path to kernel library: " + strPath));
+    M::Detail::setError(status,
+                        Error("invalid path to kernel library: " + strPath));
     return;
   }
 

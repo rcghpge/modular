@@ -23,7 +23,7 @@
 
 using namespace M;
 using namespace M::MO;
-using namespace graph_compiler::matchers;
+using namespace GraphCompiler::Matchers;
 
 namespace M::MOGG {
 
@@ -901,7 +901,7 @@ struct LayerNormPattern
 };
 
 std::string
-getPatternMatchingError(graph_compiler::Logger &patternMatcherLogger) {
+getPatternMatchingError(GraphCompiler::Logger &patternMatcherLogger) {
   std::string errMsg;
   llvm::raw_string_ostream st(errMsg);
   patternMatcherLogger.print(st);
@@ -978,7 +978,7 @@ private:
   Operation *optCast1 = nullptr;
   Operation *optCast2 = nullptr;
 
-  graph_compiler::Logger patternMatcherLogger;
+  GraphCompiler::Logger patternMatcherLogger;
   MultiHeadAttentionEpilogueMatcher() = default;
 
 public:
@@ -1087,7 +1087,7 @@ private:
   // For internal reshapes
   Operation *optReshape1 = nullptr;
 
-  graph_compiler::Logger patternMatcherLogger;
+  GraphCompiler::Logger patternMatcherLogger;
 
   MultiHeadAttentionSelectMaskingMatcher() = default;
 
@@ -1254,7 +1254,7 @@ private:
   // For internal reshapes
   Operation *optReshape1 = nullptr;
 
-  graph_compiler::Logger patternMatcherLogger;
+  GraphCompiler::Logger patternMatcherLogger;
 
   MultiHeadAttentionExplicitMaskingMatcher() = default;
 
@@ -1546,7 +1546,7 @@ public:
   static ErrorOr<MultiHeadAttentionNormalizationMatcher>
   match(Operation *producingOp, bool allowUnsafeBCast,
         bool allowInternalReshape) {
-    graph_compiler::Logger patternMatcherLogger;
+    GraphCompiler::Logger patternMatcherLogger;
 
     MultiHeadAttentionNormalizationMatcher matcher;
     auto scalarConstant = m_Any(&matcher.scalarConstant);
@@ -1657,7 +1657,7 @@ private:
   TensorValue query, // Q   , layout B,H,s,D
       keyT;          // K^T , layout B,H,D,S
 
-  graph_compiler::Logger patternMatcherLogger;
+  GraphCompiler::Logger patternMatcherLogger;
   MultiHeadAttentionPrologueMatcher() = default;
 
 public:

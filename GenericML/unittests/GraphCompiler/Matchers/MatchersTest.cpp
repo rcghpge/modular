@@ -18,7 +18,7 @@
 using namespace M;
 using namespace M::MO;
 using namespace mlir;
-using namespace graph_compiler::matchers;
+using namespace GraphCompiler::Matchers;
 
 class MatchersTest : public ::testing::Test {
 public:
@@ -178,7 +178,7 @@ TEST_F(MatchersTest, Typed) {
 
 TEST_F(MatchersTest, Logging) {
   auto pattern = m_Op<SubOp>(m_Op<SubOp>(m_Any(), m_Any()), m_Any());
-  graph_compiler::Logger log;
+  GraphCompiler::Logger log;
 
   pattern.match(D.getDefiningOp(), &log);
 

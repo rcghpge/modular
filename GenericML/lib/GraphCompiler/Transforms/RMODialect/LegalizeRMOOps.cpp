@@ -17,7 +17,7 @@
 #include "llvm/ADT/SetOperations.h"
 
 using namespace M;
-using namespace graph_compiler::matchers;
+using namespace GraphCompiler::Matchers;
 
 namespace M::RMO {
 #define GEN_PASS_DEF_LEGALIZERMOOPS

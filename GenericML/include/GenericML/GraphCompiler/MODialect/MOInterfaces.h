@@ -158,7 +158,7 @@ constexpr StringRef kOperationDeviceRefAttrName = "device";
 /// the 'device' attribute.
 constexpr StringRef kOperationViaHostAttrName = "via_host";
 
-namespace impl {
+namespace Impl {
 /// Verify that ranks are either all static and match or all dynamic.
 LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);
 /// Check compatiblity of shapes for the expression AB = C, supporting leading
@@ -195,7 +195,7 @@ ShapeMaterializeResult
 materializeScatterNdLikeShapeDefs(ScatterNdLike op,
                                   ArrayRef<TypedAttr> inputAttrs);
 
-} // namespace impl
+} // namespace Impl
 
 template <typename ConcreteType>
 class MOSameOperandsAndResultElementType
@@ -203,7 +203,7 @@ class MOSameOperandsAndResultElementType
                                       MOSameOperandsAndResultElementType> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
-    return impl::verifyMOSameOperandsAndResultElementType(op);
+    return Impl::verifyMOSameOperandsAndResultElementType(op);
   }
 };
 
@@ -213,7 +213,7 @@ class MOSameOperandsAndResultShapeAttr
                                       MOSameOperandsAndResultShapeAttr> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
-    return impl::verifyMOSameOperandsAndResultShapeAttr(op);
+    return Impl::verifyMOSameOperandsAndResultShapeAttr(op);
   }
 };
 
@@ -222,7 +222,7 @@ class MOSameOperandsElementType
     : public mlir::OpTrait::TraitBase<ConcreteType, MOSameOperandsElementType> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
-    return impl::verifyMOSameOperandsElementType(op);
+    return Impl::verifyMOSameOperandsElementType(op);
   }
 };
 
@@ -232,7 +232,7 @@ class MOSameFirstOperandAndResultsElementType
                                       MOSameFirstOperandAndResultsElementType> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
-    return impl::verifyMOSameFirstOperandAndResultsElementType(op);
+    return Impl::verifyMOSameFirstOperandAndResultsElementType(op);
   }
 };
 
@@ -245,7 +245,7 @@ public:
 
   ShapeMaterializeResult materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
     auto reduction = mlir::cast<Reduction>(this->getOperation());
-    return impl::materializeReductionShapeDefs(reduction, inputAttrs);
+    return Impl::materializeReductionShapeDefs(reduction, inputAttrs);
   }
 };
 
@@ -258,7 +258,7 @@ public:
 
   ShapeMaterializeResult materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
     auto scatterLike = mlir::cast<ScatterLike>(this->getOperation());
-    return impl::materializeScatterLikeShapeDefs(scatterLike, inputAttrs);
+    return Impl::materializeScatterLikeShapeDefs(scatterLike, inputAttrs);
   }
 };
 
@@ -271,7 +271,7 @@ public:
 
   ShapeMaterializeResult materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
     auto scatterNdLike = mlir::cast<ScatterNdLike>(this->getOperation());
-    return impl::materializeScatterNdLikeShapeDefs(scatterNdLike, inputAttrs);
+    return Impl::materializeScatterNdLikeShapeDefs(scatterNdLike, inputAttrs);
   }
 };
 

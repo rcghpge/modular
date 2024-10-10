@@ -27,7 +27,7 @@ using namespace MO;
 // MatMulLike
 //===----------------------------------------------------------------------===//
 
-LogicalResult impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
+LogicalResult Impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
   SmallVector<size_t> staticRanks;
   for (auto v : values) {
     TensorType t = v.getType();
@@ -47,7 +47,7 @@ LogicalResult impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
   return success(allDynamicRanks);
 }
 
-LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
+LogicalResult Impl::checkMatmulCompatibility(Operation *op, TensorValue A,
                                              TensorValue B, TensorValue C) {
   // We check that statically known ranks match each other (implicit
   // broadcasting is not supported).
@@ -114,7 +114,7 @@ LogicalResult impl::checkMatmulCompatibility(Operation *op, TensorValue A,
   return success();
 }
 
-LogicalResult impl::verifyMatmulLike(MatmulLike op) {
+LogicalResult Impl::verifyMatmulLike(MatmulLike op) {
   return checkMatmulCompatibility(op.getOperation(), op.getTensorA(),
                                   op.getTensorB(), op.getTensorResult());
 }
@@ -123,7 +123,7 @@ LogicalResult impl::verifyMatmulLike(MatmulLike op) {
 // Reduction
 //===----------------------------------------------------------------------===//
 
-LogicalResult impl::verifyReduction(Reduction op) {
+LogicalResult Impl::verifyReduction(Reduction op) {
   // TODO: test
   if (failed(verifyMatchingRanks({op.getInput(), op.getResult()})))
     return op.emitOpError("input and output must either both have dynamic "
@@ -178,7 +178,7 @@ static LogicalResult verifyGenericScatterInputOutputShapes(Operation *op,
 }
 
 ShapeMaterializeResult
-impl::materializeReductionShapeDefs(Reduction op,
+Impl::materializeReductionShapeDefs(Reduction op,
                                     ArrayRef<TypedAttr> inputAttrs) {
   auto graphOp = op->getParentOfType<GraphOp>();
   Location loc = op->getLoc();
@@ -191,13 +191,13 @@ impl::materializeReductionShapeDefs(Reduction op,
 // ScatterLike
 //===----------------------------------------------------------------------===//
 
-LogicalResult impl::verifyScatterLike(ScatterLike op) {
+LogicalResult Impl::verifyScatterLike(ScatterLike op) {
   return verifyGenericScatterInputOutputShapes(op, op.getInput().getType(),
                                                op.getResult().getType());
 }
 
 ShapeMaterializeResult
-impl::materializeScatterLikeShapeDefs(ScatterLike op,
+Impl::materializeScatterLikeShapeDefs(ScatterLike op,
                                       ArrayRef<TypedAttr> inputAttrs) {
   auto graphOp = op->getParentOfType<GraphOp>();
   Location loc = op->getLoc();
@@ -213,13 +213,13 @@ impl::materializeScatterLikeShapeDefs(ScatterLike op,
 // ScatterNdLike
 //===----------------------------------------------------------------------===//
 
-LogicalResult impl::verifyScatterNdLike(ScatterNdLike op) {
+LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
   return verifyGenericScatterInputOutputShapes(op, op.getInput().getType(),
                                                op.getResult().getType());
 }
 
 ShapeMaterializeResult
-impl::materializeScatterNdLikeShapeDefs(ScatterNdLike op,
+Impl::materializeScatterNdLikeShapeDefs(ScatterNdLike op,
                                         ArrayRef<TypedAttr> inputAttrs) {
   auto graphOp = op->getParentOfType<GraphOp>();
   Location loc = op->getLoc();
@@ -269,7 +269,7 @@ SlidingWindow::verifyWindowParamSizes(ArrayRef<TensorValue> values) {
   return success();
 }
 
-LogicalResult impl::verifySlidingWindow(SlidingWindow op) {
+LogicalResult Impl::verifySlidingWindow(SlidingWindow op) {
   if (failed(op.verifyWindowParamShape(op.getStrides(), "strides")))
     return failure();
   if (failed(op.verifyWindowParamShape(op.getDilations(), "dilations")))
@@ -297,7 +297,7 @@ static Type getElementType(Value v) {
 }
 
 /// This follows the builtin verifySameOperandsAndResultElementType.
-LogicalResult impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
+LogicalResult Impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
   if (failed(mlir::OpTrait::impl::verifyAtLeastNOperands(op, 1)) ||
       failed(mlir::OpTrait::impl::verifyAtLeastNResults(op, 1)))
     return failure();
@@ -332,7 +332,7 @@ static TypedAttr getShapeAttr(Value v) {
   return cast<MO::TensorType>(v.getType()).getShapeAttr();
 }
 
-LogicalResult impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
+LogicalResult Impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
   if (failed(mlir::OpTrait::impl::verifyAtLeastNOperands(op, 1)) ||
       failed(mlir::OpTrait::impl::verifyAtLeastNResults(op, 1)))
     return failure();
@@ -363,7 +363,7 @@ LogicalResult impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
 //===----------------------------------------------------------------------===//
 
 /// This follows the builtin verifySameOperandsAndResultElementType.
-LogicalResult impl::verifyMOSameOperandsElementType(Operation *op) {
+LogicalResult Impl::verifyMOSameOperandsElementType(Operation *op) {
   if (failed(mlir::OpTrait::impl::verifyAtLeastNOperands(op, 1)) ||
       failed(mlir::OpTrait::impl::verifyAtLeastNResults(op, 1)))
     return failure();
@@ -384,7 +384,7 @@ LogicalResult impl::verifyMOSameOperandsElementType(Operation *op) {
 
 /// This follows the builtin verifySameOperandsAndResultElementType.
 LogicalResult
-impl::verifyMOSameFirstOperandAndResultsElementType(Operation *op) {
+Impl::verifyMOSameFirstOperandAndResultsElementType(Operation *op) {
   if (failed(mlir::OpTrait::impl::verifyAtLeastNOperands(op, 1)) ||
       failed(mlir::OpTrait::impl::verifyAtLeastNResults(op, 1)))
     return failure();
@@ -404,7 +404,7 @@ impl::verifyMOSameFirstOperandAndResultsElementType(Operation *op) {
 // PadLike
 //===----------------------------------------------------------------------===//
 
-LogicalResult impl::verifyPadLike(PadLike op) {
+LogicalResult Impl::verifyPadLike(PadLike op) {
   TensorType inputTy = op.getInput().getType();
   TensorType paddingsTy = op.getPaddings().getType();
   TensorType resTy = op.getType();

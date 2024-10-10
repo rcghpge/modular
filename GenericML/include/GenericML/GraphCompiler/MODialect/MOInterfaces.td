@@ -310,7 +310,7 @@ def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
       [{ return ::llvm::cast<TensorValue>($_op.getOutputTensor(0)); }]>
   ];
 
-  let verify = [{ return impl::verifyMatmulLike(cast<MatmulLike>($_op)); }];
+  let verify = [{ return Impl::verifyMatmulLike(cast<MatmulLike>($_op)); }];
 }
 
 def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
@@ -334,7 +334,7 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
     LogicalResult verifyWindowParamSizes(ArrayRef<TensorValue> values);
   }];
 
-  let verify = [{ return impl::verifySlidingWindow(cast<SlidingWindow>($_op)); }];
+  let verify = [{ return Impl::verifySlidingWindow(cast<SlidingWindow>($_op)); }];
 }
 
 def MO_ElementWiseUnary : MO_TensorOpInterfaceBase<"ElementWiseUnary"> {
@@ -398,7 +398,7 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
       "TensorValue", "getResult", (ins)>
   ];
 
-  let verify = [{ return impl::verifyReduction(cast<Reduction>($_op)); }];
+  let verify = [{ return Impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
 
@@ -430,7 +430,7 @@ def MO_ScatterLike : MO_TensorOpInterfaceBase<"ScatterLike",
       "TensorValue", "getResult", (ins)>
   ];
 
-  let verify = [{ return impl::verifyScatterLike(cast<ScatterLike>($_op)); }];
+  let verify = [{ return Impl::verifyScatterLike(cast<ScatterLike>($_op)); }];
 }
 
 def MO_ScatterNdLike : MO_TensorOpInterfaceBase<"ScatterNdLike",
@@ -457,7 +457,7 @@ def MO_ScatterNdLike : MO_TensorOpInterfaceBase<"ScatterNdLike",
       "TensorValue", "getResult", (ins)>
   ];
 
-  let verify = [{ return impl::verifyScatterNdLike(cast<ScatterNdLike>($_op)); }];
+  let verify = [{ return Impl::verifyScatterNdLike(cast<ScatterNdLike>($_op)); }];
 }
 
 def MO_DefaultParameterization : MO_TensorOpInterfaceBase<
@@ -474,7 +474,7 @@ def MO_DefaultParameterization : MO_TensorOpInterfaceBase<
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
       auto paramInterface =
         llvm::cast<ParameterizationInterface>(this->getOperation());
-      return impl::defaultResolveUnknownParameters(paramInterface, rewriter);
+      return Impl::defaultResolveUnknownParameters(paramInterface, rewriter);
     }
   }];
 }
@@ -492,7 +492,7 @@ def MO_SameInputOutputShapesParameterization : MO_TensorOpInterfaceBase<
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
       auto paramInterface =
         llvm::cast<ParameterizationInterface>(this->getOperation());
-      return impl::resolveSameOperandsAndResultShapeUnknownParameters(
+      return Impl::resolveSameOperandsAndResultShapeUnknownParameters(
         paramInterface, rewriter);
     }
   }];
@@ -511,7 +511,7 @@ def MO_SameFirstArgumentOutputShapesParameterization : MO_TensorOpInterfaceBase<
     LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
       auto paramInterface =
         llvm::cast<ParameterizationInterface>(this->getOperation());
-      return impl::resolveSameFirstOperandAndResultShapeUnknownParameters(
+      return Impl::resolveSameFirstOperandAndResultShapeUnknownParameters(
         paramInterface, rewriter);
     }
   }];
@@ -531,7 +531,7 @@ def MO_PadLike : MO_TensorOpInterfaceBase<"PadLike", [MO_ParamDeclaration]> {
       "TensorType", "getType", (ins)>
   ];
 
-  let verify = [{ return impl::verifyPadLike(cast<PadLike>($_op)); }];
+  let verify = [{ return Impl::verifyPadLike(cast<PadLike>($_op)); }];
 }
 
 //===----------------------------------------------------------------------===//

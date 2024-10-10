@@ -32,7 +32,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <string>
 
-namespace graph_compiler {
+namespace GraphCompiler {
 
 template <typename UnnamedType>
 std::string stringifyMLIRObject(UnnamedType &&obj) {
@@ -93,7 +93,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os, Logger &log) {
   return os;
 }
 
-namespace detail {
+namespace Detail {
 
 /// Terminal matcher, always returns true.
 struct AnyValueMatcher {
@@ -107,7 +107,7 @@ using has_compatible_matcher_t = decltype(std::declval<T>().match(
 
 /// Statically switch to a Value matcher.
 template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+std::enable_if_t<llvm::is_detected<Detail::has_compatible_matcher_t,
                                    MatcherClass, mlir::Value>::value,
                  bool>
 matchOperandOrValue(mlir::Value op, MatcherClass &matcher,
@@ -117,7 +117,7 @@ matchOperandOrValue(mlir::Value op, MatcherClass &matcher,
 
 /// Statically switch to an Operation matcher.
 template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+std::enable_if_t<llvm::is_detected<Detail::has_compatible_matcher_t,
                                    MatcherClass, mlir::Operation *>::value,
                  bool>
 matchOperandOrValue(mlir::Value op, MatcherClass &matcher,
@@ -129,7 +129,7 @@ matchOperandOrValue(mlir::Value op, MatcherClass &matcher,
 
 /// Statically switch to a Value matcher.
 template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+std::enable_if_t<llvm::is_detected<Detail::has_compatible_matcher_t,
                                    MatcherClass, mlir::Value>::value,
                  bool>
 matchOperandOrValueAtIndex(mlir::Operation *op, unsigned idx,
@@ -139,7 +139,7 @@ matchOperandOrValueAtIndex(mlir::Operation *op, unsigned idx,
 
 /// Statically switch to an Operation matcher.
 template <typename MatcherClass>
-std::enable_if_t<llvm::is_detected<detail::has_compatible_matcher_t,
+std::enable_if_t<llvm::is_detected<Detail::has_compatible_matcher_t,
                                    MatcherClass, mlir::Operation *>::value,
                  bool>
 matchOperandOrValueAtIndex(mlir::Operation *op, unsigned idx,
@@ -159,7 +159,7 @@ constexpr void enumerateImpl(TupleT &&tuple, CallbackT &&callback,
 
 template <typename... Tys, typename CallbackT>
 constexpr void enumerate(std::tuple<Tys...> &tuple, CallbackT &&callback) {
-  detail::enumerateImpl(tuple, std::forward<CallbackT>(callback),
+  Detail::enumerateImpl(tuple, std::forward<CallbackT>(callback),
                         std::make_index_sequence<sizeof...(Tys)>{});
 }
 
@@ -562,88 +562,88 @@ struct constant_op_binder {
 };
 
 template <typename AttrT>
-inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
-  return detail::constant_op_binder<AttrT>(bind_value);
+inline Detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
+  return Detail::constant_op_binder<AttrT>(bind_value);
 }
 
-} // namespace detail
+} // namespace Detail
 
-namespace matchers {
+namespace Matchers {
 
 template <typename OpType, typename... Matchers>
 auto m_Op(Matchers... matchers) {
-  return detail::RecursivePatternMatcher<OpType, Matchers...>(matchers...);
+  return Detail::RecursivePatternMatcher<OpType, Matchers...>(matchers...);
 }
 
 template <typename OpType, typename... Matchers>
 auto m_Op(mlir::Operation **bindDest, Matchers... matchers) {
-  return detail::Capture(bindDest, m_Op<OpType, Matchers...>(matchers...));
+  return Detail::Capture(bindDest, m_Op<OpType, Matchers...>(matchers...));
 }
 
 template <typename... Matchers>
 auto m_Op(llvm::StringRef opName, Matchers... matchers) {
-  return detail::UnregisteredRecursivePatternMatcher<Matchers...>(opName,
+  return Detail::UnregisteredRecursivePatternMatcher<Matchers...>(opName,
                                                                   matchers...);
 }
 
 template <typename... Matchers>
 auto m_Op(mlir::Operation **bindDest, llvm::StringRef opName,
           Matchers... matchers) {
-  return detail::Capture(bindDest, m_Op(opName, matchers...));
+  return Detail::Capture(bindDest, m_Op(opName, matchers...));
 }
 
 template <typename Matcher>
 auto m_StringAttr(llvm::StringRef attrName, llvm::StringRef opName,
                   Matcher matcher) {
-  return detail::StringAttrMatcher(attrName, opName, matcher);
+  return Detail::StringAttrMatcher(attrName, opName, matcher);
 }
 
 template <typename... Matchers>
 auto m_StringAttr(mlir::Operation **bindDest, llvm::StringRef attrName,
                   llvm::StringRef opName, Matchers... matchers) {
-  return detail::Capture(bindDest, m_StringAttr(attrName, opName, matchers...));
+  return Detail::Capture(bindDest, m_StringAttr(attrName, opName, matchers...));
 }
 
 template <typename Matcher>
 auto m_Ranked(int64_t targetRank, Matcher matcher) {
-  return detail::MORankedValueMatcher<Matcher>(targetRank, matcher);
+  return Detail::MORankedValueMatcher<Matcher>(targetRank, matcher);
 }
 
 template <typename T>
 auto m_ScalarConstant(T targetValue) {
-  return detail::MOScalarConstantMatcher<T>(targetValue);
+  return Detail::MOScalarConstantMatcher<T>(targetValue);
 }
 
 template <typename T>
 auto m_ScalarConstant(mlir::Value *val, T targetValue) {
-  return detail::Capture(val, m_ScalarConstant(targetValue));
+  return Detail::Capture(val, m_ScalarConstant(targetValue));
 }
 
 template <typename T>
 auto m_SplatConstant(T targetValue) {
-  return detail::MOSplatConstantMatcher<T, true>(targetValue);
+  return Detail::MOSplatConstantMatcher<T, true>(targetValue);
 }
 
 template <typename T>
 auto m_SplatConstant(mlir::Value *val, T targetValue) {
-  return detail::Capture(val,
-                         detail::MOSplatConstantMatcher<T, true>(targetValue));
+  return Detail::Capture(val,
+                         Detail::MOSplatConstantMatcher<T, true>(targetValue));
 }
 
 template <typename T>
 auto m_SplatConstantOfAnyType(T targetValue) {
-  return detail::MOSplatConstantMatcher<T, false>(targetValue);
+  return Detail::MOSplatConstantMatcher<T, false>(targetValue);
 }
 
 template <typename T>
 auto m_SplatConstantOfAnyType(mlir::Value *val, T targetValue) {
-  return detail::Capture(val,
-                         detail::MOSplatConstantMatcher<T, false>(targetValue));
+  return Detail::Capture(val,
+                         Detail::MOSplatConstantMatcher<T, false>(targetValue));
 }
 
 template <typename Matcher1, typename Matcher2>
 auto m_Optional(Matcher1 matcher1, Matcher2 matcher2) {
-  return detail::OptionalMatcher<Matcher1, Matcher2>(matcher1, matcher2);
+  return Detail::OptionalMatcher<Matcher1, Matcher2>(matcher1, matcher2);
 }
 
 template <typename Matcher, typename... Matchers>
@@ -666,12 +666,12 @@ auto m_SplatOrBroadcastedConstantOfAnyType(mlir::Value *val, T targetValue) {
 
 template <typename T, typename Matcher>
 auto m_Typed(Matcher matcher) {
-  return detail::TypeMatcher<T, Matcher>(matcher);
+  return Detail::TypeMatcher<T, Matcher>(matcher);
 }
 
 template <typename T, typename Matcher>
 auto m_Typed(mlir::Value *val, Matcher matcher) {
-  return detail::Capture(val, m_Typed<T, Matcher>(matcher));
+  return Detail::Capture(val, m_Typed<T, Matcher>(matcher));
 }
 
 template <typename Matcher>
@@ -697,20 +697,20 @@ auto m_BinaryCommutativeOp(mlir::Operation **bindDest, Matcher1 matcher1,
                     m_Op<OpType>(bindDest, matcher2, matcher1));
 }
 
-inline auto m_Any() { return detail::AnyValueMatcher(); }
-inline auto m_Any(mlir::Value *val) { return detail::Capture(val, m_Any()); }
+inline auto m_Any() { return Detail::AnyValueMatcher(); }
+inline auto m_Any(mlir::Value *val) { return Detail::Capture(val, m_Any()); }
 
-inline auto m_Constant() { return detail::constant_op_matcher(); }
+inline auto m_Constant() { return Detail::constant_op_matcher(); }
 
 inline auto m_Constant(mlir::Value *val) {
-  return detail::Capture(val, m_Constant());
+  return Detail::Capture(val, m_Constant());
 }
 
 /// Matches a value from a constant foldable operation and writes the value to
 /// bind_value.
 template <typename AttrT>
-inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
-  return detail::constant_op_binder<AttrT>(bind_value);
+inline Detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
+  return Detail::constant_op_binder<AttrT>(bind_value);
 }
 /// Entry point for matching a pattern over a Value.
 template <typename Pattern>
@@ -729,8 +729,8 @@ inline bool matchPattern(mlir::Operation *op, const Pattern &pattern) {
   return const_cast<Pattern &>(pattern).match(op);
 }
 
-} // namespace matchers
-} // namespace graph_compiler
+} // namespace Matchers
+} // namespace GraphCompiler
 
 namespace M {
 namespace MO {
