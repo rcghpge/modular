@@ -282,7 +282,18 @@ void LowerPrimitivesPass::runOnOperation() {
   auto moggCallBodyBuilder = [&mojoLibraryAnalysis](OpBuilder &builder,
                                                     Location loc, Operation *op,
                                                     ValueRange inputs) {
-    return buildMOGGCall(builder, inputs, op, loc, mojoLibraryAnalysis);
+    SmallVector<Value> inputVec(inputs);
+    if (auto bufferConcat = dyn_cast<MGP::BufferConcatOp>(op)) {
+      // Packs the variadic input buffers into tuple.
+      ValueRange inBuffers =
+          inputs.take_back(bufferConcat.getInBuffers().size());
+      Value tuple = builder.create<MOGG::TupleCreateOp>(
+          op->getLoc(), builder.getTupleType(inBuffers.getTypes()), inBuffers);
+
+      inputVec.pop_back_n(inBuffers.size());
+      inputVec.push_back(tuple);
+    }
+    return buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
   };
 
   auto cloneOperationBuilder =
