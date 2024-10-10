@@ -209,16 +209,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     patternFusionOpts.targetDevice = opts.defaultDeviceLabel;
     pm.addPass(MOGG::createPatternFusion(patternFusionOpts));
 
-    // Front-run the SymbolicizeFallbackShapeFunctions transform.
-    // TODO(GRA-829) Remove SymbolicizeFallbackShapeFunctions once all packing
-    // functions are implemented.
     pm.addPass(MO::createInvokeShapePackingFunctions());
-
-    // Layout optimizations in `PatternFusion` might add new shape function
-    // invocation for the inserted layout transformations, and in most (if not
-    // all) cases we can fold them away.
-    pm.addPass(MO::createSymbolicizeFallbackShapeFunctions(
-        {kernelLibraryPaths, opts.withDebuginfo}));
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());

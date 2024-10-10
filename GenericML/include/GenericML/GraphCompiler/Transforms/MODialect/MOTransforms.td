@@ -61,40 +61,6 @@ def InvokeShapePackingFunctions : Pass<"invoke-shape-packing-funcs", "GraphOp"> 
   ];
 }
 
-def SymbolicizeFallbackShapeFunctions :
-    Pass<"symbolicize-fallback-shape-funcs", "mlir::ModuleOp"> {
-  let summary = "Symbolically fold fallback shape functions in the graph";
-  let description = [{
-    This pass examines all fallback shape function calls in the `mo.graph` ops,
-    and attempts to interpret the shape function body symbolically; if
-    succeeded, replaces the shape function call with `kgen.param.declare`s for
-    the shape function call's output parameters (and assertions in the shape
-    function).
-  }];
-
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
-    Option<"withDebuginfo", "with-debuginfo", "bool",
-      /*default=*/"false",
-      "Should kernels and stubs be built with debuginfo.">,
-  ];
-
-  let dependentDialects = [
-    "mlir::LLVM::LLVMDialect",
-    "mlir::index::IndexDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "M::HLCF::HLCFDialect",
-    "M::KGEN::Custom::CustomDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "mlir::NVVM::NVVMDialect",
-  ];
-}
-
 def MergeDuplicateShapeMaterializations : Pass<"merge-duplicate-shape-materializations", "GraphOp"> {
   let summary = "Merges duplicate shape materialization operations";
   let description = [{
