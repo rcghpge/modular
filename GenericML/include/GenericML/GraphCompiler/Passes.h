@@ -204,6 +204,11 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc(
           "Create debuginfo for stubs so they show up in the debugger."),
       llvm::cl::init(false)};
+  Option<bool> sanityCheckShapeFuncs{
+      *this, "sanity-check-shape-funcs",
+      llvm::cl::desc(
+          "Insert runtime checks which compare C++ and Mojo shape functions."),
+      llvm::cl::init(false)};
   // This is currently only used with the torch backend since lowering models
   // with torch.compile doesn't support passing cl options to MLIR utilities
   Option<std::string> mlirTimingOutDir{

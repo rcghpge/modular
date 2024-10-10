@@ -53,7 +53,13 @@ def InvokeShapePackingFunctions : Pass<"invoke-shape-packing-funcs", "GraphOp"> 
     Option<"useHostSystem", "use-host-system", "bool",
       /*default=*/"true",
       "Force the transform to use target information for the host system, "
-      "otherwise the GraphOp is inspected for a M.device attribute.">,
+      "otherwise the GraphOp is inspected for a M.device attribute. "
+      "Disable this for FileCheck tests where you need deterministic output.">,
+
+    Option<"sanityCheckShapeFuncs", "sanity-check-shape-funcs", "bool",
+      /*default=*/"false",
+      "Emit sanity checks into the IR asserting that the computed shapes "
+      "from the C++ implementations match those from the Mojo implementation.">,
   ];
 
   let dependentDialects = [

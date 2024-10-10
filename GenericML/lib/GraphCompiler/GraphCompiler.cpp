@@ -209,7 +209,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     patternFusionOpts.targetDevice = opts.defaultDeviceLabel;
     pm.addPass(MOGG::createPatternFusion(patternFusionOpts));
 
-    pm.addPass(MO::createInvokeShapePackingFunctions());
+    InvokeShapePackingFunctionsOptions shapeFuncOptions;
+    shapeFuncOptions.sanityCheckShapeFuncs = opts.sanityCheckShapeFuncs;
+
+    pm.addPass(MO::createInvokeShapePackingFunctions(shapeFuncOptions));
     pm.addPass(MO::createPropagateShapes());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());

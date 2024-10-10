@@ -41,5 +41,6 @@ lit_tests(
         "//GenericML/tools/mo-opt",
         "//GenericML/tools/model-specification-validator",
         "//GenericML/tools/mosh-opt",
+        "//GenericML/tools/mt",
     ],
 )

@@ -29,7 +29,7 @@ public:
   /// - `loc` is used for newly created ops like `kgen.param.declare X = <...>`.
   /// - `createdOps` will be appended with newly created ops.
   ParamExprBuilder(GraphOp graphOp, Location loc,
-                   SmallVector<ParamBinding> *createdOps)
+                   SmallVectorImpl<ParamBinding> *createdOps)
       : graphOp(graphOp), loc(loc), createdOps(createdOps) {}
 
   /// No copy and no move. The builder classes need pointer stability for
@@ -110,7 +110,7 @@ public:
 private:
   GraphOp graphOp;
   Location loc;
-  SmallVector<ParamBinding> *createdOps;
+  SmallVectorImpl<ParamBinding> *createdOps;
 };
 
 /// This class wraps around a parameter attribute and allows one to build new
