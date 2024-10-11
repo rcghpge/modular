@@ -3696,10 +3696,11 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
   if (getInputs().empty())
     return nullptr;
 
-  if (getNumOperands() == 1 && isa<ChainType>(getOperand(0).getType())) {
+  // Forward the input if its just a single chain value.
+  if (getNumOperands() == 1 && isa<ChainType>(getOperand(0).getType()))
     return getOperand(0);
-  }
 
+  // Try to de-duplicate repeated values to the chain create.
   SmallVector<Value> keptValues;
   llvm::SmallPtrSet<Value, 4> seenValues;
 
@@ -3736,6 +3737,11 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
     return nullptr;
 
   getOperation()->setOperands(keptValues);
+
+  // De-duplication may have simplified the chain to have just a single operand,
+  // check again if its a chain and if so forward it.
+  if (getNumOperands() == 1 && isa<ChainType>(getOperand(0).getType()))
+    return getOperand(0);
 
   return nullptr;
 }

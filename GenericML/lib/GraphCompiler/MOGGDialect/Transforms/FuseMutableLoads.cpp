@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/Support/Debug.h>
 #include <mlir/IR/IRMapping.h>
@@ -47,23 +48,6 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
 
   if (!kernelOp)
     return std::nullopt;
-
-  auto buffer = loadOp.getInBuffer();
-
-  bool bufferIsAlreadyInput = llvm::any_of(
-      kernelOp.getOperands(), [buffer](Value val) { return val == buffer; });
-
-  // TODO(GRA-1032): Allow the same buffer to be passed to a kernel multiple
-  // times -- care needs to be taken about properly maintaining depedencies in
-  // these kinds of instances.
-  if (bufferIsAlreadyInput) {
-    LLVM_DEBUG(loadOp.emitRemark()
-               << "Mutable load fusion is currently disabled for this load op "
-                  "as the underlying buffer "
-                  "has already been load fused once with the same kernel.");
-
-    return std::nullopt;
-  }
 
   return kernelOp;
 }
@@ -225,7 +209,7 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
 
   builder.setInsertionPoint(kernelOp);
 
-  auto newChain = builder.create<MO::ChainCreateOp>(
+  auto newChain = builder.createOrFold<MO::ChainCreateOp>(
       loadOp.getLoc(),
       ValueRange{kernelOp.getInChain().value(), loadOp.getInChain()});
 
@@ -233,6 +217,62 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
 
   loadOp.erase();
 }
+
+/// Turns a mo.mutable.load op with n uses into n mo.mutable.load ops each with
+/// a single use of their value semantic tensor output.
+struct ParallelizeLoadsWithMultipleUsers
+    : MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MutableLoadOp> {
+  ParallelizeLoadsWithMultipleUsers(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 1) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::MutableLoadOp loadOp,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    auto tensor = loadOp.getOutTensor();
+
+    if (tensor.use_empty() || tensor.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          loadOp.getLoc(),
+          "Output value semantic tensor has <= 1 uses, skipping "
+          "parallelization pattern.");
+    }
+
+    auto chainType = MO::ChainType::get(loadOp.getContext());
+    auto outTensor = loadOp.getOutTensor();
+
+    llvm::SmallVector<Value> chains;
+    llvm::SmallVector<OpOperand *> opOperands;
+    for (OpOperand &use : outTensor.getUses())
+      opOperands.push_back(&use);
+
+    for (OpOperand *use : opOperands) {
+      auto newLoadOp = rewriter.create<MO::MutableLoadOp>(
+          loadOp.getLoc(), chainType, outTensor.getType(), loadOp.getInChain(),
+          loadOp.getInBuffer());
+
+      rewriter.modifyOpInPlace(use->getOwner(), [&newLoadOp, &use]() {
+        use->set(newLoadOp.getOutTensor());
+      });
+
+      chains.push_back(newLoadOp.getOutChain());
+    }
+
+    // Want the generated mo.chain.create to show up in a semi-reasonable spot.
+    for (Operation *user : loadOp.getOutChain().getUsers()) {
+      rewriter.setInsertionPoint(user);
+      break;
+    }
+
+    Value newChain =
+        rewriter.create<MO::ChainCreateOp>(loadOp.getLoc(), ValueRange{chains});
+
+    rewriter.replaceAllUsesWith(loadOp.getOutChain(), newChain);
+
+    loadOp.erase();
+
+    return success();
+  }
+};
 
 bool hasBufferOperand(KernelOp kernelOp) {
   return llvm::any_of(kernelOp.getOperandTypes(),
@@ -249,6 +289,16 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
     MO::GraphOp moGraph = getOperation();
     MLIRContext *ctx = moGraph->getContext();
     OpBuilder builder{ctx};
+
+    RewritePatternSet patterns{ctx};
+    patterns.add<ParallelizeLoadsWithMultipleUsers>(ctx);
+
+    if (failed(
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+      return signalPassFailure();
+
+    LLVM_DEBUG(llvm::dbgs() << "Graph after load parallelization:\n";
+               moGraph.print(llvm::dbgs()););
 
     SmallVector<MO::MutableLoadOp> loadOps;
     moGraph.walk([&](MO::MutableLoadOp loadOp) { loadOps.push_back(loadOp); });

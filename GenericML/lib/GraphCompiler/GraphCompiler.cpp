@@ -303,6 +303,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   if (opts.fuseMutableLoadStore) {
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(MOGG::createFuseMutableLoads());
     pm.addPass(MOGG::createFuseMutableStores());
   }

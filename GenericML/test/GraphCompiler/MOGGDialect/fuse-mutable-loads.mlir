@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --canonicalize --fuse-mutable-loads %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
@@ -41,10 +41,8 @@ mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK-LABEL: mo.graph @multiple_chain_users(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
-// CHECK: mo.chain.create([[ch0]])
 // CHECK: [[out:%.*]]:2 = mogg.kernel ([[rhs]], [[buffer]], [[ch0]])
 // CHECK-DAG: mo.mutable.store([[out]]#1, [[buffer]], [[out]]#0)
-// CHECK-DAG: mo.chain.create([[out]]#1)
 mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
   mo.chain.create(%0) : !mo.chain
@@ -58,8 +56,7 @@ mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.ten
 // CHECK-LABEL: mo.graph @same_kernel_multiple_fusions(
 // CHECK-SAME: [[buf1:%.*]]: !mo.buffer<[10, 10], f32>, [[buf2:%.*]]: !mo.buffer<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: [[ch1:%.*]] = mo.chain.create([[ch0]], [[ch0]])
-// CHECK: mogg.kernel ([[buf1]], [[buf2]], [[ch1]])
+// CHECK: mogg.kernel ([[buf1]], [[buf2]], [[ch0]])
 mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: !mo.buffer<[10, 10], f32>) {
 
   %ch0 = mo.chain.create()
@@ -70,4 +67,44 @@ mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: 
   %chfinal = mo.mutable.store(%ch1, %buf2, %res) : (!mo.chain, !mo.buffer<[10, 10], f32>, !mo.tensor<[10, 10], f32>) -> (!mo.chain)
 
   mo.output
+}
+
+// CHECK-LABEL: multiple_load_fusion
+// CHECK-SAME: [[buf:%.*]]: !mo.buffer
+// [[ch0:%.*]] = mo.chain.create()
+// CHECK-NOT: mo.mutable.load
+// CHECK-NOT: mo.mutable.load
+// CHECK-NOT: mo.mutable.load
+// CHECK: mogg.kernel ([[buf]], [[ch0]])
+// CHECK: mogg.kernel ([[buf]], [[ch0]])
+// CHECK: mogg.kernel ([[buf]], [[buf]], [[ch0]])
+mo.graph @multiple_load_fusion(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+{
+  %0 = mo.chain.create()
+  %outChain, %outTensor = mo.mutable.load(%0, %buf) : (!mo.chain, !mo.buffer<[2, 2], f32>) -> (!mo.chain, !mo.tensor<[2, 2], f32>)
+  %outChain_0, %outTensor_1 = mo.mutable.load(%outChain, %buf) : (!mo.chain, !mo.buffer<[2, 2], f32>) -> (!mo.chain, !mo.tensor<[2, 2], f32>)
+  %outChain_2, %outTensor_3 = mo.mutable.load(%outChain_0, %buf) : (!mo.chain, !mo.buffer<[2, 2], f32>) -> (!mo.chain, !mo.tensor<[2, 2], f32>)
+  %outChain_3, %outTensor_4 = mo.mutable.load(%outChain_2, %buf) : (!mo.chain, !mo.buffer<[2, 2], f32>) -> (!mo.chain, !mo.tensor<[2, 2], f32>)
+
+  %1 = mo.negative(%outTensor) : !mo.tensor<[2, 2], f32>
+  %2 = mo.abs(%outTensor_1) : !mo.tensor<[2, 2], f32>
+  %3 = mo.add(%outTensor_3, %outTensor_3) : !mo.tensor<[2, 2], f32>
+
+  mo.output %1, %2, %3 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK-LABEL: fusion_with_slice
+// CHECK-SAME: [[buf:%.*]]: !mo.buffer
+// [[ch0:%.*]] = mo.chain.create()
+// CHECK-NOT: mo.mutable.load
+// CHECK: mogg.kernel ([[buf]]
+mo.graph @fusion_with_slice(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.tensor<[3, 3], f32> {
+  %0 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %1 = mo.constant {value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2 = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %3 = mo.chain.create()
+  %outChain, %outTensor = mo.mutable.load(%3, %arg0) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> (!mo.chain, !mo.tensor<[10, 10], f32>)
+  %4 = mo.slice(%outTensor, %2, %1, %0) : (!mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 3], f32>
+  %5 = mo.negative(%4) : !mo.tensor<[3, 3], f32>
+  mo.output %5 : !mo.tensor<[3, 3], f32>
 }

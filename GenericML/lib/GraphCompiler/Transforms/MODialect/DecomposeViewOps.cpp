@@ -89,9 +89,15 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
 
       // We don't want to do this if the input is a view, since we don't want to
       // block view fusion
+      //
+      // We also don't want to do this in the case that the tensor was produced
+      // by a mutable.load op as in the case of a load + slice a full copy of
+      // the tensor will be materialized as only ops that lower to a mogg.kernel
+      // can be fused into.
       Operation *definingOp = slice.getInput().getDefiningOp();
       if (definingOp &&
-          isa<BroadcastToOp, TransposeOp, SliceOp, SliceDimOp>(definingOp))
+          isa<BroadcastToOp, TransposeOp, SliceOp, SliceDimOp, MutableLoadOp>(
+              definingOp))
         return false;
 
       // This can only lower to an offset if all leading dimensions are 1
