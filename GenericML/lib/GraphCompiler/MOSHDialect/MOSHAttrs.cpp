@@ -167,6 +167,14 @@ LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
              << " but got " << valueTy << " at position " << idx;
     }
   }
+
+  auto elementTypes =
+      llvm::map_range(values, [](TypedAttr value) { return value.getType(); });
+
+  // Ensure all elements of the ShapeAttr have the same type.
+  if (!llvm::all_equal(elementTypes))
+    return emitError() << "expected all elements to have the same type";
+
   return success();
 }
 
