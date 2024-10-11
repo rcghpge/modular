@@ -67,17 +67,25 @@ public:
   virtual ~DeviceBuffer() = default;
 
   const DeviceContext &context() const;
+  const DeviceBuffer *parent() const;
 
   size_t len() const;
   size_t elem_size() const;
+
   // Returns the raw device pointer, which is not safe to deref on the host
   virtual void *ptr() const = 0;
 
+  virtual ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
+                                                   size_t elem_size) const = 0;
+
 protected:
   DeviceBuffer(const DeviceContext &context, size_t len, size_t elem_size);
+  DeviceBuffer(const DeviceContext &context, const DeviceBuffer &parent,
+               size_t len, size_t elem_size);
 
 private:
   DeviceContextRef context_;
+  DeviceBufferRef parent_;
   size_t len_;
   size_t elem_size_;
 };

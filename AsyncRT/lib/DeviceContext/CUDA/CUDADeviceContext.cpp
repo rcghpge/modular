@@ -38,14 +38,25 @@
     }                                                                          \
   } while (0)
 
+#define RAISE_ERROR(msg)                                                       \
+  do {                                                                         \
+    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+  } while (0)
+
 namespace M::AsyncRT {
 
 // TODO(iposva) : Switch error handling to using `std::source_location` once we
 // are using C++ 20.
 static Error formatError(const char *file, int line, const char *func,
+                         const llvm::Twine &msg) {
+  return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
+               " - " + msg);
+}
+
+static Error formatError(const char *file, int line, const char *func,
                          CUDADriver::Result result) {
-  return Error(llvm::Twine(file) + ":" + llvm::Twine(line) +
-               " - CUDA call in " + func + " failed: " + llvm::Twine(result));
+  return formatError(file, line, func,
+                     llvm::Twine("CUDA call failed: ") + llvm::Twine(result));
 }
 
 // ===== CUDADevice ===== //
@@ -85,15 +96,41 @@ CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
                                    size_t elem_size, CUdeviceptr dptr)
     : DeviceBuffer(context, len, elem_size), dptr_(dptr) {}
 
-CUDADeviceBuffer::~CUDADeviceBuffer() {
-  const auto &cuda_context = CUDADeviceContext::cast(context());
+CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
+                                   const CUDADeviceBuffer &parent, size_t len,
+                                   size_t elem_size, CUdeviceptr dptr)
+    : DeviceBuffer(context, parent, len, elem_size), dptr_(dptr) {}
 
+CUDADeviceBuffer::~CUDADeviceBuffer() {
+  if (parent() != nullptr) {
+    // Parent owns the device memory.
+    return;
+  }
+
+  const auto &cuda_context = CUDADeviceContext::cast(context());
   CUDA_CHECK(cuda_context.cuda_driver().MemFreeAsync(
       dptr_, cuda_context.cuda_stream()));
 }
 
 CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
 void *CUDADeviceBuffer::ptr() const { return cuda_ptr(); }
+
+ErrorOr<DeviceBufferRef>
+CUDADeviceBuffer::createSubBuffer(size_t offset, size_t len,
+                                  size_t elem_size) const {
+  char *orig_ptr = static_cast<char *>(this->cuda_ptr());
+  size_t orig_byte_size = this->len() * this->elem_size();
+
+  size_t byte_offset = offset * elem_size;
+  size_t byte_size = len * elem_size;
+  if ((byte_size > orig_byte_size) ||
+      (orig_byte_size - byte_size < byte_offset)) {
+    RAISE_ERROR("offset, len and elem_size are out of range");
+  }
+  return CUDADeviceBufferRef::create(
+      CUDADeviceContext::cast(context()), *this, len, elem_size,
+      static_cast<CUdeviceptr>(orig_ptr + byte_offset));
+}
 
 const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CUDADeviceBuffer &>(buf);

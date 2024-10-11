@@ -61,10 +61,16 @@ class CUDADeviceBuffer : public DeviceBuffer {
 public:
   CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
                    size_t elem_size, CUdeviceptr ptr);
+  CUDADeviceBuffer(const CUDADeviceContext &context,
+                   const CUDADeviceBuffer &parent, size_t len, size_t elem_size,
+                   CUdeviceptr ptr);
   ~CUDADeviceBuffer() override;
 
   CUdeviceptr cuda_ptr() const;
   void *ptr() const override;
+
+  ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
+                                           size_t elem_size) const override;
 
   static const CUDADeviceBuffer &cast(const DeviceBuffer &buf);
 

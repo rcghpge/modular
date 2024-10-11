@@ -48,10 +48,16 @@ class CpuDeviceBuffer : public DeviceBuffer {
 public:
   CpuDeviceBuffer(const CpuDeviceContext &context, size_t len, size_t elem_size,
                   void *ptr);
+  CpuDeviceBuffer(const CpuDeviceContext &context,
+                  const CpuDeviceBuffer &parent, size_t len, size_t elem_size,
+                  void *ptr);
   ~CpuDeviceBuffer() override;
 
   void *cpu_ptr() const;
   void *ptr() const override;
+
+  ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
+                                           size_t elem_size) const override;
 
   static const CpuDeviceBuffer &cast(const DeviceBuffer &buf);
 

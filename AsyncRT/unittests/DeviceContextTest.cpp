@@ -68,7 +68,7 @@ static void compare_with_data(const void *dst, size_t dst_len,
   }
 }
 
-TEST(DeviceContextTest, DeviceBuffersAsync) {
+TEST(DeviceContextTest, DeviceBuffers) {
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
@@ -153,6 +153,82 @@ TEST(DeviceContextTest, DeviceBuffersAsync) {
     err = ctx->free_host(a_ptr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
+}
+
+TEST(CUDADeviceContextTest, SubBuffer) {
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  DeviceContextRef ctx = std::move(err_ctx.get());
+  ASSERT_TRUE(ctx);
+
+  int alloc_len = 256;
+
+  int sub_offset = 0;
+  int sub_alloc_len = 3;
+
+  std::cerr << "DeviceContext sub buffer copies(len: " << alloc_len << ")\n";
+
+  char *a_ptr = static_cast<char *>(malloc(alloc_len));
+  EXPECT_NE(a_ptr, nullptr);
+
+  ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(alloc_len, 1);
+  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+  DeviceBufferRef b_buf = std::move(err_ref.get());
+  EXPECT_TRUE(b_buf);
+
+  err_ref = b_buf->createSubBuffer(sub_offset, sub_alloc_len, 4);
+  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+  DeviceBufferRef c_buf = std::move(err_ref.get());
+  EXPECT_TRUE(c_buf);
+
+  char *d_ptr = static_cast<char *>(malloc(alloc_len));
+  EXPECT_NE(d_ptr, nullptr);
+
+  float *e_ptr = static_cast<float *>(malloc(sub_alloc_len * sizeof(float)));
+  EXPECT_NE(e_ptr, nullptr);
+
+  // Initialize with known good and bad values.
+  for (int i = 0; i < alloc_len; i++) {
+    a_ptr[i] = static_cast<char>(i & 127);
+    d_ptr[i] = -static_cast<char>((7 + i) & 127);
+  }
+
+  for (int i = 0; i < sub_alloc_len; i++) {
+    e_ptr[i] = static_cast<float>(i) * (((i & 1) == 0) ? -1.0 : 1.0);
+  }
+
+  // Copy base pattern into base buffer.
+  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  // Copy overlay pattern into sub buffer.
+  err = ctx->enqueueCopyToDevice(*c_buf, e_ptr);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  // Copy base buffer back to host memory.
+  err = ctx->enqueueCopyFromDevice(d_ptr, *b_buf);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  uint32_t *d_int_ptr = reinterpret_cast<uint32_t *>(d_ptr);
+  uint32_t expected_vals[] = {0x80000000, 0x3f800000, 0xc0000000};
+  for (int i = 0; i < (sub_alloc_len); i++) {
+    uint32_t val = d_int_ptr[i];
+    std::cerr << "SubBuffer: d[" << std::dec << i << "] = 0x" << std::hex << val
+              << "\n";
+    EXPECT_EQ(val, expected_vals[i]);
+  }
+  for (int i = sub_alloc_len * 4; i < alloc_len; i++) {
+    int val = d_ptr[i];
+    if (i < 20) {
+      std::cerr << "Original: d[" << std::dec << i << "] = 0x" << std::hex
+                << val << "\n";
+    }
+    EXPECT_EQ(val, i & 127);
+  }
+
+  free(e_ptr);
+  free(d_ptr);
+  free(a_ptr);
 }
 
 TEST(DeviceContextTest, DeviceExec) {

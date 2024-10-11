@@ -99,6 +99,15 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
   return err_msg;
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceBuffer_createSubBuffer(
+    const DeviceBuffer **result, void **device_ptr, const DeviceBuffer *buf,
+    size_t offset, size_t len, size_t elem_size) {
+  const char *err_msg =
+      check_ref(result, buf->createSubBuffer(offset, len, elem_size));
+  *device_ptr = (*result)->ptr();
+  return err_msg;
+}
+
 MODULAR_EXPORT void AsyncRT_DeviceBuffer_retain(const DeviceBuffer *buffer) {
   // Increment the low-level reference count.
   DeviceBufferRef::lowLevelAddRef(buffer);

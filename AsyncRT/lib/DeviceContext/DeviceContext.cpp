@@ -25,7 +25,18 @@ DeviceBuffer::DeviceBuffer(const DeviceContext &context, size_t len,
     : context_(DeviceContextRef::copy(&context)), len_(len),
       elem_size_(elem_size) {}
 
+DeviceBuffer::DeviceBuffer(const DeviceContext &context,
+                           const DeviceBuffer &parent, size_t len,
+                           size_t elem_size)
+    : context_(DeviceContextRef::copy(&context)),
+      parent_(DeviceBufferRef::copy(&parent)), len_(len),
+      elem_size_(elem_size) {}
+
 const DeviceContext &DeviceBuffer::context() const { return *context_; }
+
+const DeviceBuffer *DeviceBuffer::parent() const {
+  return parent_.getPointer();
+}
 
 size_t DeviceBuffer::len() const { return len_; }
 

@@ -63,11 +63,37 @@ ErrorOr<int> CpuDevice::numberOfDevices() {
 CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context, size_t len,
                                  size_t elem_size, void *ptr)
     : DeviceBuffer(context, len, elem_size), ptr_(ptr) {}
+CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
+                                 const CpuDeviceBuffer &parent, size_t len,
+                                 size_t elem_size, void *ptr)
+    : DeviceBuffer(context, parent, len, elem_size), ptr_(ptr) {}
 
-CpuDeviceBuffer::~CpuDeviceBuffer() { free(ptr_); }
+CpuDeviceBuffer::~CpuDeviceBuffer() {
+  if (parent() != nullptr) {
+    // Parent owns the memory.
+    return;
+  }
+  free(ptr_);
+}
 
 void *CpuDeviceBuffer::cpu_ptr() const { return ptr_; }
 void *CpuDeviceBuffer::ptr() const { return cpu_ptr(); }
+
+ErrorOr<DeviceBufferRef>
+CpuDeviceBuffer::createSubBuffer(size_t offset, size_t len,
+                                 size_t elem_size) const {
+  char *orig_ptr = static_cast<char *>(this->cpu_ptr());
+  size_t orig_byte_size = this->len() * this->elem_size();
+
+  size_t byte_offset = offset * elem_size;
+  size_t byte_size = len * elem_size;
+  if ((byte_size > orig_byte_size) ||
+      (orig_byte_size - byte_size < byte_offset)) {
+    RAISE_ERROR_MESSAGE("offset, len and elem_size are out of range");
+  }
+  return CpuDeviceBufferRef::create(CpuDeviceContext::cast(context()), *this,
+                                    len, elem_size, orig_ptr + byte_offset);
+}
 
 const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CpuDeviceBuffer &>(buf);
