@@ -161,6 +161,10 @@ public:
     return cuModuleLoadDataEx_(module, image, numOptions, options,
                                optionValues);
   }
+  Result ModuleGetGlobal(CUdeviceptr *dptr, size_t *sizeptr, CUmodule hmod,
+                         const char *name) const {
+    return cuModuleGetGlobal_v2_(dptr, sizeptr, hmod, name);
+  }
   Result ModuleUnload(CUmodule hmod) const { return cuModuleUnload_(hmod); }
   Result ModuleGetFunction(CUfunction *hfunc, CUmodule hmod,
                            const char *name) const {
@@ -311,6 +315,10 @@ private:
 
   using tcuModuleLoadData = Result(CUmodule *, const void *);
   tcuModuleLoadData *cuModuleLoadData_;
+
+  using tcuModuleGetGlobal_v2 = Result(CUdeviceptr *, size_t *, CUmodule,
+                                       const char *);
+  tcuModuleGetGlobal_v2 *cuModuleGetGlobal_v2_;
 
   using tcuModuleLoadDataEx = Result(CUmodule *, const void *, unsigned int,
                                      CUjit_option *, void **);

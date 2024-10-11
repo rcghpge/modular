@@ -104,6 +104,9 @@ public:
 
   virtual const std::string &name() const = 0;
 
+  virtual ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
+                                             size_t byte_size) const = 0;
+
   template <typename... Ts>
   ArgumentsRef buildArguments(const Ts &...ts) const;
 

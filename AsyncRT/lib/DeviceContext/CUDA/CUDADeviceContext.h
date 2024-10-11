@@ -105,6 +105,9 @@ public:
 
   const std::string &name() const override;
 
+  ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
+                                     size_t byte_size) const override;
+
   DeviceFunction::Arguments *
   allocateArguments(const DeviceFunction &fn) const override;
 

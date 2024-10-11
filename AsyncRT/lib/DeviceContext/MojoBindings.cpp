@@ -199,6 +199,13 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_compileFunction(
                                    max_dynamic_shared_bytes));
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceFunction_copyToConstantMemory(const DeviceFunction *func,
+                                            const char *name, const void *data,
+                                            size_t byte_size) {
+  return check_success(func->copyToNamedConstant(name, data, byte_size));
+}
+
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
     const DeviceContext *ctx, const DeviceFunction *func, uint32_t gridX,
     uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,

@@ -79,6 +79,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
 
   GET_FUNC(cuModuleLoadData);
   GET_FUNC(cuModuleLoadDataEx);
+  GET_FUNC(cuModuleGetGlobal_v2);
   GET_FUNC(cuModuleUnload);
   GET_FUNC(cuModuleGetFunction);
   GET_FUNC(cuFuncSetAttribute);

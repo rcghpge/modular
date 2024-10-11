@@ -211,6 +211,24 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
 
 const std::string &CUDADeviceFunction::name() const { return name_; }
 
+ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
+                                                       const void *data,
+                                                       size_t byte_size) const {
+  CUdeviceptr device_ptr;
+  size_t device_size;
+  const auto &cuda_context = CUDADeviceContext::cast(context());
+  CUDA_CHECK_ERR(cuda_context.cuda_driver().ModuleGetGlobal(
+      &device_ptr, &device_size, module_, name));
+
+  if (device_size < byte_size) {
+    RAISE_ERROR("byte_size too big");
+  }
+
+  CUDA_CHECK_ERR(cuda_context.cuda_driver().MemcpyHtoDAsync(
+      device_ptr, data, byte_size, cuda_context.cuda_stream()));
+  return success();
+}
+
 const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const CUDADeviceFunction &>(func);
 }
