@@ -44,7 +44,7 @@ TEST(testRMOOpHelpers, testRefineShape) {
   auto paramDimAttr = KGEN::ParamDeclRefAttr::get(
       KGEN::ParamDeclAttr::get("D", mlir::IndexType::get(&ctx)));
   auto paramExprDimAttr = KGEN::ParamOperatorAttr::get(
-      POC::Mul, SmallVector<TypedAttr>{paramDimAttr, paramDimAttr});
+      KGEN::POC::Mul, SmallVector<TypedAttr>{paramDimAttr, paramDimAttr});
   auto paramIntegerAttr = mlir::IntegerAttr::get(IndexType::get(&ctx), 42);
 
   // Take the cross product of `dimTypes` and split into two streams of dims

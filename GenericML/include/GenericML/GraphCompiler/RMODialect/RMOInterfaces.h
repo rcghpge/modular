@@ -13,7 +13,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 
-using namespace M::KGEN;
+using M::KGEN::ParamDefValue;
 using M::MO::TensorValue;
 
 namespace M::RMO {
