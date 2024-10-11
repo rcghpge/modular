@@ -97,6 +97,18 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
           continue;
         }
 
+        // If we are fusing in reshapes, then we skip things that aren't
+        // reshapes. This avoids cases like:
+        //   non-reshape -> reshape -> non-reshape
+        //     non-reshape -> reshape+non-reshape (first iteration)
+        //       non-reshape+reshape+non-reshape  (second iteration)
+        if (!reshapeKernels.empty() &&
+            !reshapeKernels.contains(
+                cast<KernelOp>(kernel.getOperand(index).getDefiningOp()))) {
+          index--;
+          continue;
+        }
+
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
         fuseInputAtIndex(kernel, index, alreadyFused);
