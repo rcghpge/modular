@@ -599,8 +599,8 @@ ErrorOrSuccess Fallback<MO::PadConstantOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::PadConstantOp op) {
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
-  buildForOpResult(graph, builder, op, "mo.pad.constant", shapeFuncInputs,
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::PadConstantOp::getOperationName(),
+                   shapeFuncInputs, op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -609,8 +609,8 @@ ErrorOrSuccess Fallback<MO::PadReflectOp>::build(GraphOp &graph,
                                                  OpBuilder &builder,
                                                  MO::PadReflectOp op) {
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
-  buildForOpResult(graph, builder, op, "mo.pad.reflect", shapeFuncInputs,
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::PadReflectOp::getOperationName(),
+                   shapeFuncInputs, op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -619,8 +619,8 @@ ErrorOrSuccess Fallback<MO::PadRepeatOp>::build(GraphOp &graph,
                                                 OpBuilder &builder,
                                                 MO::PadRepeatOp op) {
   SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
-  buildForOpResult(graph, builder, op, "mo.pad.repeat", shapeFuncInputs,
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::PadRepeatOp::getOperationName(),
+                   shapeFuncInputs, op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
