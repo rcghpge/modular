@@ -3439,7 +3439,8 @@ def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
 //===----------------------------------------------------------------------===//
 
 // Base class for ArgMin and ArgMax.
-class MO_ArgMinMaxOp<string mnemonic> : MO_ReductionOp<mnemonic> {
+class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []> 
+    : MO_ReductionOp<mnemonic, traits> {
   let arguments = (ins
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$axis,
@@ -3453,7 +3454,9 @@ class MO_ArgMinMaxOp<string mnemonic> : MO_ReductionOp<mnemonic> {
   let hasVerifier = 1;
 }
 
-def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
+def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
   let summary = "Maximum-value indices operation";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -3480,7 +3483,9 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
     }];
 }
 
-def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
+def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min", [
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+]> {
   let summary = "Minimum-value indices operation";
   let description = [{
     This op is equivalent to reduce_min, but returns indices instead of values.

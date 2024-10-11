@@ -1824,6 +1824,12 @@ void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ArgMaxOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
+DeviceRefAttr ArgMaxOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // MO::ArgMinOp
 //===----------------------------------------------------------------------===//
@@ -1841,6 +1847,12 @@ void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                      TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<ArgMinOp>(odsBuilder, odsState, input, axis, outputTy);
+}
+
+DeviceRefAttr ArgMinOp::getOperandDevice(size_t index) {
+  return index == getAxisMutable().getOperandNumber()
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
 }
 
 //===----------------------------------------------------------------------===//
