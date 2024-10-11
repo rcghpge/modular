@@ -66,11 +66,11 @@ denseResourceAttrToVecSpecialFloat(DenseResourceElementsAttr attr,
   ArrayRef<uintStorageType> data =
       attr.getRawHandle().getBlob()->getDataAs<uintStorageType>();
   SmallVector<outputType> out =
-      llvm::map_to_vector(data, [&](const uintStorageType &dim) {
+      llvm::map_to_vector(data, [&](const uintStorageType &elem) {
         // Note this will fail an assert if the semantic float cannot always
         // convert to a double losslessly
         double result =
-            APFloat(semantic, APInt(numBitsIn, dim)).convertToDouble();
+            APFloat(semantic, APInt(numBitsIn, elem)).convertToDouble();
         return static_cast<outputType>(result);
       });
   return out;
@@ -80,50 +80,58 @@ denseResourceAttrToVecSpecialFloat(DenseResourceElementsAttr attr,
 /// If `attr` represents a blob of constants, return them in a vector,
 /// else return None.
 template <typename T>
-static std::optional<SmallVector<T>> tryGetConstantBlob(mlir::ElementsAttr attr,
-                                                        DType dType) {
+std::optional<SmallVector<T>> tryGetConstantBlob(mlir::ElementsAttr attr,
+                                                 DType dType) {
   using namespace Detail;
+  using namespace detail;
   if (auto floatElemsAttr = dyn_cast<FloatArrayElementsAttr>(attr)) {
     SmallVector<double> blob = llvm::map_to_vector(
         floatElemsAttr.getValues(),
-        [](const llvm::APFloat &dim) { return dim.convertToDouble(); });
+        [](const llvm::APFloat &elem) { return elem.convertToDouble(); });
     return SmallVector<T>(blob.begin(), blob.end());
   }
 
   if (auto intElemsAttr = dyn_cast<IntArrayElementsAttr>(attr)) {
     SmallVector<int64_t> blob = llvm::map_to_vector(
         intElemsAttr.getValues(),
-        [](const llvm::APInt &dim) { return dim.getSExtValue(); });
+        [](const llvm::APInt &elem) { return elem.getSExtValue(); });
     return SmallVector<T>(blob.begin(), blob.end());
   }
 
-  if (auto axisValueAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
+  if (auto denseAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
     return dType.dispatch<std::optional<SmallVector<T>>>()
         .template when<M::DType::si32>([&]() {
-          return denseResourceAttrToVecDirect<int32_t, T>(axisValueAttr);
+          return denseResourceAttrToVecDirect<int32_t, T>(denseAttr);
         })
         .template when<M::DType::si64>([&]() {
-          return denseResourceAttrToVecDirect<int64_t, T>(axisValueAttr);
+          return denseResourceAttrToVecDirect<int64_t, T>(denseAttr);
         })
         .template when<M::DType::bf16>([&]() {
           return denseResourceAttrToVecSpecialFloat<uint16_t, T>(
-              axisValueAttr, APFloat::BFloat());
+              denseAttr, APFloat::BFloat());
         })
         .template when<M::DType::f16>([&]() {
           return denseResourceAttrToVecSpecialFloat<uint16_t, T>(
-              axisValueAttr, APFloat::IEEEhalf());
+              denseAttr, APFloat::IEEEhalf());
         })
-        .template when<M::DType::f32>([&]() {
-          return denseResourceAttrToVecDirect<float, T>(axisValueAttr);
-        })
+        .template when<M::DType::f32>(
+            [&]() { return denseResourceAttrToVecDirect<float, T>(denseAttr); })
         .template when<M::DType::f64>([&]() {
-          return denseResourceAttrToVecDirect<double, T>(axisValueAttr);
+          return denseResourceAttrToVecDirect<double, T>(denseAttr);
         })
         .otherwise([&]() { return std::nullopt; });
   }
 
   return std::nullopt;
 }
+
+template <>
+std::optional<SmallVector<APFloat>>
+tryGetConstantBlob<APFloat>(mlir::ElementsAttr attr, DType dType);
+
+template <>
+std::optional<SmallVector<APInt>>
+tryGetConstantBlob<APInt>(mlir::ElementsAttr attr, DType dType);
 
 } // namespace M::MO
 

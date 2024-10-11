@@ -127,8 +127,8 @@ std::optional<float> M::MO::tryGetConstantFloat(TensorValue val) {
 }
 
 std::optional<double> M::MO::tryGetConstantDouble(TensorValue val) {
-  if (auto maybeDoubleBlobl = tryGetConstantOfRank<double>(val, 0))
-    return maybeDoubleBlobl.value().front();
+  if (auto maybeDoubleBlob = tryGetConstantOfRank<double>(val, 0))
+    return maybeDoubleBlob.value().front();
   return std::nullopt;
 }
 
@@ -141,6 +141,18 @@ std::optional<int64_t> M::MO::tryGetConstantInt(TensorValue val) {
 std::optional<bool> M::MO::tryGetConstantBool(TensorValue val) {
   if (auto maybeIntBlob = tryGetConstantOfRank<int64_t>(val, 0))
     return maybeIntBlob.value().front();
+  return std::nullopt;
+}
+
+std::optional<APFloat> M::MO::tryGetConstantAPFloat(TensorValue val) {
+  if (auto maybeBlob = tryGetConstantOfRank<APFloat>(val, 0))
+    return maybeBlob.value().front();
+  return std::nullopt;
+}
+
+std::optional<APInt> M::MO::tryGetConstantAPInt(TensorValue val) {
+  if (auto maybeBlob = tryGetConstantOfRank<APInt>(val, 0))
+    return maybeBlob.value().front();
   return std::nullopt;
 }
 
@@ -163,6 +175,44 @@ M::MO::tryGetConstantIntVector(ListValue val) {
     if (!moTensorVal)
       return std::nullopt;
     auto maybeVal = tryGetConstantInt(moTensorVal);
+    if (!maybeVal)
+      return std::nullopt;
+    vec.push_back((*maybeVal));
+  }
+  return vec;
+}
+
+std::optional<SmallVector<APFloat>>
+M::MO::tryGetConstantAPFloatVector(ListValue val) {
+  auto listCreateOp = dyn_cast_or_null<ListCreateOp>(val.getDefiningOp());
+  if (!listCreateOp)
+    return std::nullopt;
+
+  SmallVector<APFloat> vec;
+  for (auto inp : listCreateOp->getOperands()) {
+    auto moTensorVal = dyn_cast<TensorValue>(inp);
+    if (!moTensorVal)
+      return std::nullopt;
+    auto maybeVal = tryGetConstantAPFloat(moTensorVal);
+    if (!maybeVal)
+      return std::nullopt;
+    vec.push_back((*maybeVal));
+  }
+  return vec;
+}
+
+std::optional<SmallVector<APInt>>
+M::MO::tryGetConstantAPIntVector(ListValue val) {
+  auto listCreateOp = dyn_cast_or_null<ListCreateOp>(val.getDefiningOp());
+  if (!listCreateOp)
+    return std::nullopt;
+
+  SmallVector<APInt> vec;
+  for (auto inp : listCreateOp->getOperands()) {
+    auto moTensorVal = dyn_cast<TensorValue>(inp);
+    if (!moTensorVal)
+      return std::nullopt;
+    auto maybeVal = tryGetConstantAPInt(moTensorVal);
     if (!maybeVal)
       return std::nullopt;
     vec.push_back((*maybeVal));
@@ -1099,7 +1149,17 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       ArrayRef<APInt> values, Type elementType) {
+  assert(elementType.isInteger());
+  auto rankedAttrTy = RankedTensorType::get(values.size(), elementType);
+  auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
+  auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, values);
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        ArrayRef<APFloat> values, Type elementType) {
+  assert(elementType.isIntOrFloat() && !elementType.isInteger());
   auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
   auto valueAttr = FloatArrayElementsAttr::get(values, type.getElementType());
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
@@ -1140,10 +1200,22 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        APFloat value, Type elementType,
                        DeviceRefAttr deviceRef) {
+  assert(elementType.isIntOrFloat() && !elementType.isInteger());
   auto type =
       MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
   auto valueAttr =
       FloatArrayElementsAttr::get({std::move(value)}, type.getElementType());
+  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       APInt value, Type elementType, DeviceRefAttr deviceRef) {
+  assert(elementType.isInteger());
+  auto type =
+      MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
+  auto rankedAttrTy = RankedTensorType::get(1, elementType);
+  auto valueAttr =
+      IntArrayElementsAttr::get(rankedAttrTy, ArrayRef<APInt>(value));
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 
@@ -3551,9 +3623,19 @@ LogicalResult ConcatFromListOp::verify() {
 
 LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
                                              PatternRewriter &rewriter) {
-  if (auto constList = tryGetConstantIntVector(op.getInput())) {
-    rewriter.replaceOpWithNewOp<ConstantOp>(op, *constList);
-    return success();
+  auto resultType = cast<TensorType>(op->getResultTypes()[0]);
+  if (resultType.getElementType().isInteger()) {
+    if (auto constData = tryGetConstantAPIntVector(op.getInput())) {
+      rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
+                                              resultType.getElementType());
+      return success();
+    }
+  } else if (resultType.getElementType().isIntOrFloat()) {
+    if (auto constData = tryGetConstantAPFloatVector(op.getInput())) {
+      rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
+                                              resultType.getElementType());
+      return success();
+    }
   }
   return failure();
 }

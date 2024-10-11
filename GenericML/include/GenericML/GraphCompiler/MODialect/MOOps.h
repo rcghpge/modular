@@ -93,35 +93,53 @@ static std::optional<SmallVector<T>> tryGetConstantOfRank(TensorValue val,
   return vec;
 }
 
-/// If `val` comes from a constant float scalar tensor (defined by a
+/// If `val` comes from a constant scalar tensor (defined by a
 /// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
 /// float, else return None.
 std::optional<float> tryGetConstantFloat(TensorValue val);
 std::optional<double> tryGetConstantDouble(TensorValue val);
 
-/// If `val` comes from a constant integer scalar tensor (defined by a
+/// If `val` comes from a constant scalar tensor (defined by a
 /// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
 /// integer, else return None.
 std::optional<int64_t> tryGetConstantInt(TensorValue val);
 
-/// If `val` comes from a constant boolean scalar tensor (defined by a
+/// If `val` comes from a constant scalar tensor (defined by a
 /// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
 /// boolean, else return None.
 std::optional<bool> tryGetConstantBool(TensorValue val);
 
-/// If `val` comes from a constant integer 1D tensor (defined by a ConstantOp or
+/// If `val` comes from a constant scalar tensor (defined by a
+/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
+/// APFloat, else return None.
+std::optional<APFloat> tryGetConstantAPFloat(TensorValue val);
+
+/// If `val` comes from a constant scalar tensor (defined by a
+/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
+/// APInt, else return None.
+std::optional<APInt> tryGetConstantAPInt(TensorValue val);
+
+/// If `val` comes from a constant 1D tensor (defined by a ConstantOp or
 /// RebindOp that takes in a ConstantOp), convert it to an integer vector, else
 /// return None.
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TensorValue val);
-
-/// If `val` comes from a list.create op whose inputs are all scalar integer
-/// constants, convert it to an integer vector, else return None.
-std::optional<SmallVector<int64_t>> tryGetConstantIntVector(ListValue val);
 
 /// If `val` comes from a constant integer 1D tensor (defined by a ConstantOp or
 /// RebindOp that takes in a ConstantOp), convert it to a boolean vector, else
 /// return None.
 std::optional<SmallVector<bool>> tryGetConstantBoolVector(TensorValue val);
+
+/// If `val` comes from a list.create op whose inputs are all scalar
+/// constants, convert it to an integer vector, else return None.
+std::optional<SmallVector<int64_t>> tryGetConstantIntVector(ListValue val);
+
+/// If `val` comes from a list.create op whose inputs are all scalar
+/// constants, convert it to an APFloat vector, else return None.
+std::optional<SmallVector<APFloat>> tryGetConstantAPFloatVector(ListValue val);
+
+/// If `val` comes from a list.create op whose inputs are all scalar
+/// constants, convert it to an APInt vector, else return None.
+std::optional<SmallVector<APInt>> tryGetConstantAPIntVector(ListValue val);
 
 /// Convert `val` to a value (of MOSH::ShapeType) if possible, else return
 /// `null`.
