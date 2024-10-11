@@ -1850,7 +1850,6 @@ public:
         return Error(errMsgRoot + Twine("is nullptr!"));
 
       if (!topOfPattern.hasOneUse()) {
-        llvm::dbgs() << errMsgRoot << "\n";
         return Error(errMsgRoot + Twine("has more than one use!"));
       }
 
