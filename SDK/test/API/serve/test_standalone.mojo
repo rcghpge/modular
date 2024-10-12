@@ -269,7 +269,7 @@ def test_standalone_server_client[TEST_CASE: ModelTestCase]() -> None:
         sleep(1)
     server.signal_stop()
 
-    tg.wait[__lifetime_of(server)]()
+    tg.wait[__origin_of(server)]()
     print("[" + elapsed() + "]Signalled stop")
     print("[" + elapsed() + "]Done!")
     _ = server^
