@@ -286,7 +286,10 @@ OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
                       (normalizedAxis < static_cast<int64_t>(values.size())),
                   "Normalized axis must be in range [0, "
                       << values.size() << "] but it is " << normalizedAxis);
-    return values[normalizedAxis];
+    TypedAttr value = values[normalizedAxis];
+    if (value.getType() == getType())
+      return value;
+    return {};
   }
   return {};
 }

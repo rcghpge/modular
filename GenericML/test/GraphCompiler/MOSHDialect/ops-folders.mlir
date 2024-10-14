@@ -164,6 +164,25 @@ kgen.generator @get_dim_fold<Sh1: !mosh.ape, D1>() -> (index, index, index, inde
   kgen.return %d10, %d20, %d21, %d22 : index, index, index, index
 }
 
+// CHECK-LABEL: kgen.generator @get_dim_nofold
+// CHECK: <[[SH1:.*]]: i64>
+kgen.generator @get_dim_nofold<D1: i64>() -> (index, index) {
+  // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <0>
+  // CHECK-DAG: %[[C1:.*]] = mosh.param.to_value = <1>
+  // CHECK-DAG: %[[S0:.*]] = mosh.param.to_value: !mosh.ape = <[:i64 42, :i64 [[SH1]]]>
+  // CHECK-DAG: %[[D0:.*]] = mosh.get_dim(%[[S0]])[%[[C0]]]
+  // CHECK-DAG: %[[D1:.*]] = mosh.get_dim(%[[S0]])[%[[C1]]]
+  // CHECK: kgen.return %[[D0]], %[[D1]]
+
+  %i0 = mosh.param.to_value = <0>
+  %i1 = mosh.param.to_value = <1>
+  %shape = mosh.param.to_value: !mosh.ape = <[:i64 42, :i64 D1]>
+
+  %d0 = mosh.get_dim(%shape)[%i0]
+  %d1 = mosh.get_dim(%shape)[%i1]
+  kgen.return %d0, %d1 : index, index
+}
+
 // CHECK: kgen.generator @get_rank_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]]>()
 kgen.generator @get_rank_fold<Sh1: !mosh.ape, D1>() -> (index, index, index) {
   // CHECK-DAG: %[[V1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH1]]>
