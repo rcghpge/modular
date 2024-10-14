@@ -167,8 +167,12 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                     SyncMode mode) const {
   void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
   void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
-  size_t byte_size = dst.len() * dst.elem_size();
-  memcpy(dst_ptr, src_ptr, byte_size);
+  size_t dst_byte_size = dst.len() * dst.elem_size();
+  size_t src_byte_size = src.len() * src.elem_size();
+  if (src_byte_size < dst_byte_size) {
+    RAISE_ERROR_MESSAGE("not enough data in src");
+  }
+  memcpy(dst_ptr, src_ptr, dst_byte_size);
   return success();
 }
 

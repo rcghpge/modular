@@ -333,22 +333,26 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 
   CUdeviceptr src_ptr = src_buffer.cuda_ptr();
   CUdeviceptr dst_ptr = dst_buffer.cuda_ptr();
-  size_t byte_size = dst.len() * dst.elem_size();
+  size_t dst_byte_size = dst.len() * dst.elem_size();
+  size_t src_byte_size = src.len() * src.elem_size();
+  if (src_byte_size < dst_byte_size) {
+    RAISE_ERROR("not enough data in src");
+  }
   if (src_ctx.context_ != dst_ctx.context_) {
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dst_ptr, dst_ctx.context_, src_ptr,
-                                             src_ctx.context_, byte_size,
+                                             src_ctx.context_, dst_byte_size,
                                              stream_));
     } else {
       CUDA_CHECK_ERR(driver_.MemcpyPeer(dst_ptr, dst_ctx.context_, src_ptr,
-                                        src_ctx.context_, byte_size));
+                                        src_ctx.context_, dst_byte_size));
     }
   } else {
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(
-          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, byte_size, stream_));
+          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, dst_byte_size, stream_));
     } else {
-      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, byte_size));
+      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, dst_byte_size));
     }
   }
   return success();

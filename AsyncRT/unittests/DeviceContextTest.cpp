@@ -6,6 +6,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include <cstring>
@@ -152,6 +153,62 @@ TEST(DeviceContextTest, DeviceBuffers) {
     free(d_ptr);
     err = ctx->free_host(a_ptr);
     EXPECT_FALSE(err) << err.getError() << "\n";
+  }
+}
+
+TEST(DeviceContextTest, FailDeviceBuffers) {
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
+  DeviceContextRef ctx = std::move(err_ctx.get());
+  ASSERT_TRUE(ctx);
+
+  const int copy_lengths[] = {256};
+
+  for (int i = 0; i < 2; i++) {
+    DeviceContext::SyncMode sync_mode =
+        ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
+    int alloc_len = copy_lengths[(i >> 1) & 1];
+
+    std::cerr << "DeviceContext failing copies(len: " << alloc_len
+              << ", sync_mode: "
+              << ((sync_mode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
+              << ")\n";
+
+    char *a_ptr = static_cast<char *>(malloc(alloc_len));
+    EXPECT_NE(a_ptr, nullptr);
+
+    // Create a source buffer that is too small.
+    ErrorOr<DeviceBufferRef> err_ref =
+        ctx->createBuffer(alloc_len - 32, 1, sync_mode);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef b_buf = std::move(err_ref.get());
+    EXPECT_TRUE(b_buf);
+
+    err_ref = ctx->createBuffer(alloc_len / 16, 16, sync_mode);
+    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
+    DeviceBufferRef c_buf = std::move(err_ref.get());
+    EXPECT_TRUE(c_buf);
+
+    // Initialize with known good and bad values.
+    for (int i = 0; i < alloc_len; i++) {
+      a_ptr[i] = static_cast<char>(i & 127);
+    }
+
+    ErrorOrSuccess err;
+    // Copy between different buffers.
+    err = ctx->copyToDevice(*b_buf, a_ptr, sync_mode);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+    err = ctx->copyDeviceToDevice(*c_buf, *b_buf, sync_mode);
+    EXPECT_TRUE(err);
+    EXPECT_THAT(err.getError(), testing::HasSubstr("not enough data in src"));
+
+    if (sync_mode == DeviceContext::ASYNC) {
+      // Ensure that all copy operations have finished.
+      err = ctx->synchronize();
+      EXPECT_FALSE(err) << err.getError() << "\n";
+    }
+
+    free(a_ptr);
   }
 }
 
