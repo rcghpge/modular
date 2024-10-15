@@ -1,4 +1,4 @@
-// RUN: mo-opt %s  --jit-compile-kernels --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s  --mo-to-primitives | FileCheck %s
 // Test invoking `mo-to-primitives` removes any lit register ops.
 
 mo.graph @empty() -> () {
