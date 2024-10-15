@@ -364,7 +364,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
   jitOpts.kernelLibraryPaths = kernelLibraryPaths;
   jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
-  jitOpts.skipJitCompileMiddle = opts.skipJitCompileMiddle;
   jitOpts.debugKGENStubs = opts.debugKGENStubs;
   jitOpts.withDebuginfo = opts.withDebuginfo;
 

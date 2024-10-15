@@ -94,8 +94,7 @@ struct JitCompileKernels
 
     // For each (virtual) device used by the graph...
     auto err = compileToBinary(
-        graph, mojoLibraryAnalysis, unusedOverrideMap,
-        skipJitCompileMiddle.getValue(), dumpStub.getValue(),
+        graph, mojoLibraryAnalysis, unusedOverrideMap, dumpStub.getValue(),
         createMOGGReproducers.getValue(), saveTempPrefix.getValue(),
         minimumCpuAlignment.getValue(), splitBinaryCompile.getValue(),
         timeMOGGCompile.getValue(), dryRun.getValue(),
