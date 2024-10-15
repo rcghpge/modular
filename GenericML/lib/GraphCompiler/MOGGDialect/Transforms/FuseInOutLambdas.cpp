@@ -236,6 +236,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Delete the <operand, argument> pair from which we fused.
     dstKernel.removeOperandAtIndex(inputIdx);
+    dstKernel.setSummaryAttr(getSummaryString({srcKernel, dstKernel}));
 
     // Delete the cloned kernel.
     opsToErase.push_back(srcKernel);
