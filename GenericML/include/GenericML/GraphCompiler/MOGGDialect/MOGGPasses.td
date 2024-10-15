@@ -145,6 +145,16 @@ def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
   ];
 }
 
+def FuseAffineViews: Pass<"fuse-affine-views", "MO::GraphOp"> {
+  let summary = "Fuse affine views into kernels";
+  let description = [{
+    A subset of view operations can be directly represented as affine expressions
+    on index operations. These can fuse both into normal view operations and into
+    elementwise lambdas.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {
   let summary = "Fold constants into the jit kernels";
   let description = [{

@@ -2216,6 +2216,19 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
   ];
 }
 
+def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [Pure]> {
+  let summary = "Add a singleton dimension to a tensor shape";
+  let description = [{
+    Adds a dimension of `1` to a shape at the given axis.
+  }];
+  let arguments = (ins MO_Tensor:$input, Builtin_IntegerAttr:$axis);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `[` $axis `]``(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,

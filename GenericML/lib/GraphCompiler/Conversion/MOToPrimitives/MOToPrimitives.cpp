@@ -125,9 +125,6 @@ public:
   /// Lowers mo.constant.scalar op.
   LogicalResult lowerConstantScalar(MO::ConstantScalarOp constOp);
 
-  /// Lowers mo.static.reshape op.
-  LogicalResult lowerStaticReshape(MO::Static::ReshapeOp reshapeOp);
-
   /// Lowers mo.debug.tensor.print op.
   LogicalResult lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp);
 
@@ -840,28 +837,26 @@ MOGraphLowering::lowerConstantScalar(MO::ConstantScalarOp constOp) {
   return success();
 }
 
-LogicalResult
-MOGraphLowering::lowerStaticReshape(MO::Static::ReshapeOp reshapeOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
-
+static LogicalResult lowerReshapeImpl(MGP::MOOpLoweringState &opLoweringState,
+                                      Value input, Value output, Value chain,
+                                      MO::TensorType outputType) {
   // Get the bufferized input.
   MGP::BufferizedTensor bufferizedInput =
-      opLoweringState.getBufferizedInput(reshapeOp.getInput());
+      opLoweringState.getBufferizedInput(input);
   Value buffer = bufferizedInput.buffer;
 
   // Create a tensor result with spec matching the result type.
   FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
-      opLoweringState.createTensorSpec(reshapeOp.getType());
+      opLoweringState.createTensorSpec(outputType);
   if (failed(tensorSpecOr))
     return failure();
 
   // The input chain is propagated to also guard the users of the reshaped
   // buffer.
-  Value inChain =
-      opLoweringState.getGuardChain(loweringState.getExecuteChain());
+  Value inChain = opLoweringState.getGuardChain(chain);
 
-  opLoweringState.createOutputTensor(reshapeOp.getResult(), inChain, buffer,
-                                     *tensorSpecOr);
+  opLoweringState.createOutputTensor(output, inChain, buffer, *tensorSpecOr);
+
   return success();
 }
 
@@ -1676,7 +1671,21 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     }
 
     if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(op)) {
-      if (failed(lowerStaticReshape(reshapeOp)))
+      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
+
+      if (failed(lowerReshapeImpl(
+              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
+              loweringState.getExecuteChain(), reshapeOp.getType())))
+        return failure();
+      continue;
+    }
+
+    if (auto reshapeOp = dyn_cast<MO::AddSingletonDimOp>(op)) {
+      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
+
+      if (failed(lowerReshapeImpl(
+              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
+              loweringState.getExecuteChain(), reshapeOp.getType())))
         return failure();
       continue;
     }

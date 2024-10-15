@@ -169,6 +169,55 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
   slice.erase();
 }
 
+static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
+  builder.setInsertionPointAfter(reshape);
+  TensorType outType = reshape.getType();
+
+  // Remove all `1`s from the reshape by adding a singleton dimension after.
+  SmallVector<TypedAttr> newOutShape;
+  MOSH::ShapeAttr outShapeAttr = outType.getTypedShapeAttr();
+  for (size_t idx = 0; idx < outShapeAttr.getSize(); ++idx) {
+    TypedAttr dimVal = outShapeAttr[idx];
+    auto asInt = dyn_cast<IntegerAttr>(dimVal);
+    if (!asInt || asInt.getValue() != 1)
+      newOutShape.push_back(dimVal);
+  }
+
+  TensorType outShapeWithoutOnes = outType.cloneWith(newOutShape);
+
+  TypedValue<TensorType> output = reshape.getResult();
+  output.setType(outShapeWithoutOnes);
+
+  // The shape to progressively add the ones back in.
+  TensorType rollingShape = outShapeWithoutOnes;
+
+  // Create a new reshape built up from just these new ranks.
+  for (size_t idx = 0; idx < outShapeAttr.getSize(); ++idx) {
+    TypedAttr dimVal = outShapeAttr[idx];
+    auto asInt = dyn_cast<IntegerAttr>(dimVal);
+    if (!asInt || asInt.getValue() != 1)
+      continue;
+
+    MOSH::ShapeAttr shapeAttr = rollingShape.getTypedShapeAttr();
+    SmallVector<TypedAttr> newShape{shapeAttr.getValues()};
+    newShape.insert(newShape.begin() + idx, builder.getIndexAttr(1));
+    rollingShape = rollingShape.cloneWith(newShape);
+
+    auto op = builder.create<AddSingletonDimOp>(
+        reshape.getLoc(), rollingShape, output,
+        /*axis*/ builder.getIndexAttr(idx));
+
+    output.replaceAllUsesExcept(op.getResult(), op);
+    output = op.getResult();
+  }
+
+  // If the reshape is now a no-op, remove it.
+  if (reshape.getType() == reshape.getInput().getType()) {
+    reshape.getResult().replaceAllUsesWith(reshape.getInput());
+    reshape.erase();
+  }
+}
+
 struct DecomposeViewsPass
     : public impl::DecomposeViewOpsBase<DecomposeViewsPass> {
   using DecomposeViewOpsBase::DecomposeViewOpsBase;
@@ -180,6 +229,8 @@ struct DecomposeViewsPass
 
       if (auto sliceOp = dyn_cast<SliceOp>(op))
         decomposeSlice(sliceOp, builder);
+      else if (auto reshape = dyn_cast<Static::ReshapeOp>(op))
+        decomposeReshape(reshape, builder);
     });
   }
 };

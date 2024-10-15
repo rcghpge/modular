@@ -771,17 +771,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     IRMapping &remapper = oldToNew;
 
-    // Before we fuse remove any store to the output in the lambda we
-    // are fusing into. The lambda coming in already does that.
     auto outputLambdaToFuseInto =
         cast<LambdaOp>(symTable.lookup(outputLambdaName));
-    for (auto store : llvm::make_early_inc_range(
-             outputLambdaToFuseInto.getOps<MOGG::CallOp>())) {
-      if (store.getMojoKernelTarget() == Utils::MOGGSimdStoreTarget &&
-          store.getOperand(0) == originalOuts->getResult(0)) {
-        store.erase();
-      }
-    }
 
     // Don't fuse in the elementwise kernel invoke directly.
     auto skipElementwise = [&](Operation *op) {
@@ -821,6 +812,26 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     builder.setInsertionPoint(&lambdaBody, lambdaBody.begin());
 
+    SmallVector<Operation *> toRemove;
+
+    // Look for the store to the output and insert right before that, using the
+    // same indices as it uses. We also remove the store as the incoming lambda
+    // already does that.
+    for (auto store : outputLambdaToFuseInto.getOps<MOGG::CallOp>()) {
+      // Skip non simd loads.
+      if (store.getMojoKernelTarget() != Utils::MOGGSimdStoreTarget)
+        continue;
+
+      // Look for the store to the output.
+      if (store.getOperand(0) == originalOuts->getResult(0)) {
+        indices = store.getOperand(1);
+        builder.setInsertionPoint(store);
+
+        // Can't remove yet as it is the insertion point for the new lambda.
+        toRemove.push_back(store);
+      }
+    }
+
     // Invoke the new lambda.
     auto invoke = builder.create<MOGG::LambdaInvokeOp>(
         fusedLambda.getLoc(), TypeRange{},
@@ -831,6 +842,11 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     auto newValues = inlineInvoke(invoke, fusedLambda);
     fusedLambda.erase();
     invoke.erase();
+
+    // Clear up the extra stores. They are added because both the source and the
+    // dst have a store.
+    for (Operation *o : toRemove)
+      o->erase();
 
     // Replace any SIMD loads of the output with the value.
     for (auto load : llvm::make_early_inc_range(
@@ -982,14 +998,14 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         // Fuse into the output lambdas if possible.
         if (canDoOutputFusion(kernelToFuseInto, lambdas)) {
           StringAttr outputLambdaName = cast<StringAttr>(lambdas[0]);
-          if (kernelToFuseInto.getIsKGEN().value_or(false))
+          if (kernelToFuseInto.getIsKGEN().value_or(false)) {
             kernelToFuseInto =
                 fuseIntoOutputLambdaKGEN(kernelToFuseInto, outputLambdaName,
                                          kernelOpsToErase, *analysis);
-          else
+          } else {
             kernelToFuseInto = fuseIntoOutputLambdaMOGG(
                 kernelToFuseInto, outputLambdaName, kernelOpsToErase);
-          ;
+          }
         }
       }
       ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto),

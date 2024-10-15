@@ -1,4 +1,4 @@
-// RUN: mo-opt --decompose-views --cse --split-input-file %s | FileCheck %s
+// RUN: mo-opt --decompose-views --cse %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mo.graph @slice
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[3, 11, 5], si32>, %[[START:.*]]: !mo.tensor<[3], si32>, %[[END:.*]]: !mo.tensor<[3], si32>, %[[STEP:.*]]: !mo.tensor<[3], si32>
@@ -35,8 +35,6 @@ mo.graph @slice(%input: !mo.tensor<[3, 11, 5], si32>, %start: !mo.tensor<[3], si
 	%res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[3, 11, 5], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[2, 7, 3], si32>
 	mo.output %res : !mo.tensor<[2, 7, 3], si32>
 }
-
-// -----
 
 // CHECK-LABEL: mo.graph @slice_offset_only_inner_dim
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[3, 11, 5], si32>
@@ -78,8 +76,6 @@ mo.graph @slice_offset_only_inner_dim(%input: !mo.tensor<[3, 11, 5], si32>) -> (
 	mo.output %res : !mo.tensor<[2, 7, 3], si32>
 }
 
-// -----
-
 // CHECK-LABEL: mo.graph @slice_offset_only_outer_dim
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[1, 11, 5], si32>
 // CHECK-NEXT: %[[START:.*]] = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
@@ -119,4 +115,28 @@ mo.graph @slice_offset_only_outer_dim(%input: !mo.tensor<[1, 11, 5], si32>) -> (
 	%step = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
 	%res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[1, 11, 5], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[1, 7, 3], si32>
 	mo.output %res : !mo.tensor<[1, 7, 3], si32>
+}
+
+// CHECK-LABEL: mo.graph @singleton_dims_scalar
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.add_singleton_dim[0 : index] (%[[ARG0]]) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.add_singleton_dim[1 : index] (%[[V0]]) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1, 1], si32>
+// CHECK-NEXT: %[[V2:.*]] = mo.add_singleton_dim[2 : index] (%[[V1]]) : (!mo.tensor<[1, 1], si32>) -> !mo.tensor<[1, 1, 1], si32>
+// CHECK-NEXT: mo.output %[[V2]]
+
+mo.graph @singleton_dims_scalar(%input: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 1, 1], si32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[], si32> -> !mo.tensor<[1, 1, 1], si32>
+	mo.output %res : !mo.tensor<[1, 1, 1], si32>
+}
+
+// CHECK-LABEL: mo.graph @singleton_dims_2<N, K, L>
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[N, K, L], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.add_singleton_dim[0 : index] (%[[ARG0]]) : (!mo.tensor<[N, K, L], si32>) -> !mo.tensor<[1, N, K, L], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.add_singleton_dim[3 : index] (%[[V0]]) : (!mo.tensor<[1, N, K, L], si32>) -> !mo.tensor<[1, N, K, 1, L], si32>
+// CHECK-NEXT: %[[V2:.*]] = mo.add_singleton_dim[5 : index] (%[[V1]]) : (!mo.tensor<[1, N, K, 1, L], si32>) -> !mo.tensor<[1, N, K, 1, L, 1], si32>
+// CHECK-NEXT: mo.output %[[V2]]
+
+mo.graph @singleton_dims_2<N, K, L>(%input: !mo.tensor<[N, K, L], si32>) -> (!mo.tensor<[1, N, K, 1, L, 1], si32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[N, K, L], si32> -> !mo.tensor<[1, N, K, 1, L, 1], si32>
+	mo.output %res : !mo.tensor<[1, N, K, 1, L, 1], si32>
 }

@@ -41,3 +41,24 @@ mo.graph @multi_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1:
   %3 = mo.static.reshape(%2) : !mo.tensor<[D5, D4], f32> -> !mo.tensor<[D7, D7], f32>
   mo.output %3 : !mo.tensor<[D7, D7], f32>
 }
+
+// CHECK-LABEL: mgp.model @reshape_singleton_dims 
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, {{.*}}, %[[ARG3:.*]]: !mgp.tensor<si32>)
+
+// CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][0], %[[ARG3]] : !mgp.tensor<si32>
+
+// CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1xsi32>
+// CHECK: %[[T:.*]] = mgp.tensor.create %[[CH0]], %[[CTX]][0], %[[IN_BUF]], %[[SPEC]] : !mgp.tensor<1xsi32>
+
+// CHECK: %[[BUF_RESHAPED:.*]] = mgp.tensor.extract.buffer %[[CTX]][0], %[[T]] : !mgp.tensor<1xsi32>
+
+// CHECK: %[[SPEC2:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1x1xsi32>
+
+// CHECK: %[[CH:.*]] = grt.chain.create (%[[CH0]], %[[CH0]])
+// CHECK: mgp.tensor.create %[[CH]], %[[CTX]][0], %[[BUF_RESHAPED]], %[[SPEC2]] : !mgp.tensor<1x1xsi32>
+
+mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 1], si32>) {
+  %1 = mo.add_singleton_dim[0 : index] (%in1) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
+  %2 = mo.add_singleton_dim[1 : index] (%1) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1, 1], si32>
+  mo.output %2 : !mo.tensor<[1, 1], si32>
+}
