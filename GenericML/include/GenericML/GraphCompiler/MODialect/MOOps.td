@@ -4769,6 +4769,34 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [DeclareOpInter
 }
 
 //===----------------------------------------------------------------------===//
+// Collective ops
+//===----------------------------------------------------------------------===//
+
+class MO_DistributedOp<string name, list<Trait> traits = []>
+    : MO_TensorOp<name, traits # [MO_Distributed]> {
+  let arguments = (ins Variadic<MO_Tensor>:$inputs);
+  let results   = (outs Variadic<MO_Tensor>:$outputs);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
+  Pure, 
+  MO_HasDeviceInterface, 
+  MO_SameOperandsAndResultShape]>
+{
+  let summary = "Take a collection of tensors across devices and perform an allreduce.sum";
+  let description = [{
+      Allreduce takes in inputs each coming from a different device with the same shape as the final output
+      and performs a reduction operation across the devices.  The output is the replicated across the same
+      devices. 
+  }];
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//
 

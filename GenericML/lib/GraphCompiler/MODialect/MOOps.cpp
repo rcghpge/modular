@@ -4111,6 +4111,37 @@ LogicalResult MutableStoreSliceOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MO_AllReduceSumOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AllReduceSumOp::verify() {
+  // Number of inputs and outputs need to match in all-reduce
+  if (getInputs().size() != getOutputs().size())
+    return emitError(
+        "number of inputs and outputs should match for all-reduce");
+
+  // Device for inputs and outputs must match 1:1
+  for (auto [input, output] : llvm::zip(getInputs(), getOutputs())) {
+    auto inputDeviceRef = dyn_cast<TensorType>(input.getType());
+    auto outputDeviceRef = dyn_cast<TensorType>(output.getType());
+    if (inputDeviceRef != outputDeviceRef)
+      return emitError("Input and Output device type needs to match");
+  }
+
+  return success();
+}
+
+LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
+                                   SmallVectorImpl<OpFoldResult> &results) {
+  // If the all-reduce has 1 input -- identity
+  if (getNumResults() == 1 &&
+      getInputs()[0].getType() == getOutputs()[0].getType()) {
+    results.push_back(getInputs()[0]);
+    return success();
+  }
+  return failure();
+}
+//===----------------------------------------------------------------------===//
 // MO_LayerNormOp
 //===----------------------------------------------------------------------===//
 

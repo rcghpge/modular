@@ -401,6 +401,13 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return Impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
+def MO_Distributed : MO_TensorOpInterfaceBase<"Distributed"> {
+  let description = [{
+    Interface for modeling distributed operations which have
+    variadic number of inputs and outputs which can be on different devices.
+  }];
+}
+
 
 def MO_ScatterLike : MO_TensorOpInterfaceBase<"ScatterLike",
     [MO_ParamDeclaration,]> {
