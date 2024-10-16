@@ -24,7 +24,6 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
   mo.output %out : !mo.tensor<[1, seq_len, 4096], f32>
 }
 
-
 // CHECK-LABEL: mo.graph @mixed_precision<seq_len>
 // CHECK-NEXT: mogg.kernel
 

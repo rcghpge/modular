@@ -140,3 +140,13 @@ mo.graph @singleton_dims_2<N, K, L>(%input: !mo.tensor<[N, K, L], si32>) -> (!mo
     %res = mo.static.reshape(%input) : !mo.tensor<[N, K, L], si32> -> !mo.tensor<[1, N, K, 1, L, 1], si32>
 	mo.output %res : !mo.tensor<[1, N, K, 1, L, 1], si32>
 }
+
+// CHECK-LABEL: mo.graph @split_dim<N, K>
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[N, K], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.split_dim[0 : index] (%[[ARG0]]) : (!mo.tensor<[N, K], si32>) -> !mo.tensor<[4, 8, K], si32>
+// CHECK-NEXT: mo.output %[[V0]]
+
+mo.graph @split_dim<N, K>(%input: !mo.tensor<[N, K], si32>) -> (!mo.tensor<[4, 8, K], si32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[N, K], si32> -> !mo.tensor<[4, 8, K], si32>
+	mo.output %res : !mo.tensor<[4, 8, K], si32>
+}

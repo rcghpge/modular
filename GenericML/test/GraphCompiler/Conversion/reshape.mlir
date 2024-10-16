@@ -62,3 +62,16 @@ mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 
   %2 = mo.add_singleton_dim[1 : index] (%1) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1, 1], si32>
   mo.output %2 : !mo.tensor<[1, 1], si32>
 }
+
+// CHECK-LABEL: mgp.model @split_dim_mgp 
+// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
+
+// CHECK: %[[BUF:.*]] = mgp.tensor.extract.buffer
+// CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<10x5xsi32>
+// CHECK: %[[RESIZE:.*]] = mgp.buffer.resize %[[BUF]] : !mgp.buffer<200>
+// CHECK: mgp.tensor.create %[[CH0]], %[[CTX]][0], %[[RESIZE]], %[[SPEC]] : !mgp.tensor<10x5xsi32>
+
+mo.graph @split_dim_mgp<N>(%arg0: !mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32> {
+  %0 = mo.split_dim[0 : index] (%arg0) : (!mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32>
+  mo.output %0 : !mo.tensor<[10, 5], si32>
+}

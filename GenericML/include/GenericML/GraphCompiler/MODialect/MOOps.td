@@ -2229,6 +2229,24 @@ def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [Pure]> {
   }];
 }
 
+def MO_SplitDimOp : MO_TensorOp<"split_dim", [Pure]> {
+  let summary = "Splits a single dimensions of a tensor into two";
+  let description = [{
+    Splits tensor at `axis` into two dimensions. Example:
+    Input=[N, K], Axis=0
+
+    Output=[S1, S2, K], where S1 = N / S2.
+
+    Value of S2 is taken from the output shape.
+  }];
+  let arguments = (ins MO_Tensor:$input, Builtin_IntegerAttr:$axis);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `[` $axis `]``(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,

@@ -1690,6 +1690,16 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
+    if (auto reshapeOp = dyn_cast<MO::SplitDimOp>(op)) {
+      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
+
+      if (failed(lowerReshapeImpl(
+              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
+              loweringState.getExecuteChain(), reshapeOp.getType())))
+        return failure();
+      continue;
+    }
+
     if (auto debugTensorPrintOp = dyn_cast<MO::DebugTensorPrintOp>(op)) {
       if (failed(lowerDebugTensorPrint(debugTensorPrintOp)))
         return failure();

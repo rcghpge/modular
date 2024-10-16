@@ -59,103 +59,158 @@ struct FuseAffineViewsPass
     return true;
   }
 
+  void addSingletonDimTransform(Value indices, MO::TensorType outputTensorType,
+                                MO::AddSingletonDimOp addDim,
+                                OpBuilder &builder) {
+    mlir::NamedAttrList attrs;
+    attrs.set("rank", builder.getIndexAttr(outputTensorType.getRank()));
+    attrs.set("axis", addDim.getAxis());
+    attrs.set("value", builder.getIndexAttr(0));
+
+    auto call = builder.create<MOGG::CallOp>(
+        addDim.getLoc(), TypeRange{indices.getType()}, "insert_index",
+        ValueRange{indices}, mlir::ArrayAttr{},
+        /*kgenAttrs=*/builder.getDictionaryAttr(attrs));
+
+    indices.replaceUsesWithIf(call->getResult(0), [&](OpOperand &operand) {
+      if (operand.getOwner() == call)
+        return false;
+      return true;
+    });
+  }
+
+  void addSplitDim(Value indices, MO::TensorType outputTensorType,
+                   MO::SplitDimOp splitDim, Operation *insertPt,
+                   OpBuilder &builder) {
+    mlir::MLIRContext *ctx = builder.getContext();
+
+    mlir::NamedAttrList attrs;
+    attrs.set("rank", builder.getIndexAttr(outputTensorType.getRank()));
+    attrs.set("axis", splitDim.getAxis());
+
+    int64_t i = splitDim.getAxis().getValue().getLimitedValue();
+
+    // Insert the shape calculation outside of the lambda so the index is
+    // captured by the lambda rather than the pointer to the shape.
+    OpBuilder shapeCalcBuilder{ctx};
+    shapeCalcBuilder.setInsertionPointAfter(insertPt);
+
+    // Create the shape, this is just the dimension we are splitting by. For
+    // insance for [N] -> [n1, n2], this value refers to `n2`.
+    SmallVector<TypedAttr> dims;
+    dims.push_back(splitDim.getType().getDims()[i + 1]);
+    auto shapeTy = MOGG::ShapeType::get(
+        ctx, MOSH::ShapeAttr::get(dims, MOSH::ShapeType::get(ctx)));
+    Value shape = shapeCalcBuilder.create<MOGG::ParamShapeToValueOp>(
+        splitDim.getLoc(), shapeTy);
+
+    // Convert into individual index operations.
+    auto getDim = shapeCalcBuilder.create<MOGG::DimFromShapeOp>(
+        splitDim.getLoc(), TypeRange{builder.getIndexType()}, shape);
+
+    // Add the actual indices transfrom into the lambda expression.
+    auto call = builder.create<MOGG::CallOp>(
+        splitDim.getLoc(), TypeRange{indices.getType()}, "split_dim_indices",
+        ValueRange{indices, getDim.getResult(0)}, mlir::ArrayAttr{},
+        /*kgenAttrs=*/builder.getDictionaryAttr(attrs));
+
+    indices.replaceUsesWithIf(call->getResult(0), [&](OpOperand &operand) {
+      if (operand.getOwner() == call)
+        return false;
+      return true;
+    });
+  }
+
+  template <typename ViewOp>
+  void fuseViewOpDim(MOGG::KernelOp kernel, ViewOp viewOp, Value result,
+                     Operation *user) {
+    MO::TensorType newType = viewOp.getResult().getType();
+
+    OutputPlaceholdersOp outPh = kernel.getOutputPlaceholder();
+    Value outTensor = outPh.getResults()[0];
+    auto oldType = cast<MO::TensorType>(outTensor.getType());
+
+    // Update the internal placeholder op.
+    outTensor.setType(newType);
+
+    // Insert a view to the old shape and replace everything EXCEPT the
+    // output return and the internal simd store with this view.
+    OpBuilder builder{outPh};
+    builder.setInsertionPointAfter(outPh);
+
+    auto shapeTy =
+        MOGG::ShapeType::get(kernel.getContext(), oldType.getTypedShapeAttr());
+    Value shape =
+        builder.create<MOGG::ParamShapeToValueOp>(outPh.getLoc(), shapeTy);
+
+    auto reshape = builder.create<MOGG::CallOp>(
+        outPh.getLoc(), TypeRange{oldType}, "reshape_contiguous_buffer",
+        ValueRange{outTensor, shape}, mlir::ArrayAttr{},
+        /*kgenAttrs=*/mlir::DictionaryAttr{});
+    Value reshapedOutput = reshape.getResult(0);
+
+    outTensor.replaceUsesWithIf(reshapedOutput, [&](OpOperand &operand) {
+      Operation *usr = operand.getOwner();
+
+      // Don't replace the reshape we just added, ofc.
+      if (usr == reshape)
+        return false;
+
+      // Output should be returning the same shape as the graph level
+      // expects.
+      if (isa<MOGG::OutputOp>(usr))
+        return false;
+
+      // The store should be operating on the tensor with the same
+      // dimension as the output expects.
+      if (auto callOp = dyn_cast<MOGG::CallOp>(usr)) {
+        if (callOp.getMojoKernelTarget() == Utils::MOGGSimdStoreTarget &&
+            callOp.getOperand(0) == outTensor) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // 2.Transform the indices of the output lambda by fusing in the view
+    // operation.
+    StringAttr lambdaName = kernel.getOutputFusionInterfaceAt(0);
+
+    kernel.walk([&](MOGG::LambdaOp lambda) {
+      // Insert call to inverse of the view op to invert the indices.
+      if (lambda.getSymName() == lambdaName) {
+        mlir::Block &block = lambda.getBodyRegion().front();
+        Value indices = block.getArgument(0);
+        builder.setInsertionPoint(&block, block.begin());
+
+        if constexpr (std::is_same_v<ViewOp, MO::AddSingletonDimOp>)
+          addSingletonDimTransform(indices, oldType, viewOp, builder);
+        else if (std::is_same_v<ViewOp, MO::SplitDimOp>)
+          addSplitDim(indices, oldType, viewOp, reshape, builder);
+      }
+    });
+
+    // Change the graph level type of the mogg kernel op and replace the
+    // old view.
+    result.setType(newType);
+    viewOp.getResult().replaceAllUsesWith(result);
+  }
+
   void runOnOperation() override {
     auto graph = getOperation();
-    MLIRContext *ctx = graph.getContext();
 
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
 
-      if (!isFusibleNonElementwise(kernel))
-        continue;
+      if (isFusibleNonElementwise(kernel)) {
+        Value result = kernel.getResult(0);
+        Operation *user = *result.getUsers().begin();
 
-      Value result = kernel.getResult(0);
-      Operation *user = *result.getUsers().begin();
-
-      // 1. Fuse the view operation as a view on the output buffer. Clone the
-      // kernel to operate on the new shape.
-      if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user)) {
-        MO::TensorType newType = addDim.getResult().getType();
-
-        OutputPlaceholdersOp outPh = kernel.getOutputPlaceholder();
-        Value outTensor = outPh.getResults()[0];
-        auto oldType = cast<MO::TensorType>(outTensor.getType());
-
-        // Update the internal placeholder op.
-        outTensor.setType(newType);
-
-        // Insert a view to the old shape and replace everything EXCEPT the
-        // output return and the internal simd store with this view.
-        OpBuilder builder{outPh};
-        builder.setInsertionPointAfter(outPh);
-
-        auto shapeTy = MOGG::ShapeType::get(ctx, oldType.getTypedShapeAttr());
-        Value shape =
-            builder.create<MOGG::ParamShapeToValueOp>(outPh.getLoc(), shapeTy);
-
-        auto call = builder.create<MOGG::CallOp>(
-            outPh.getLoc(), TypeRange{oldType}, "reshape_contiguous_buffer",
-            ValueRange{outTensor, shape}, mlir::ArrayAttr{},
-            /*kgenAttrs=*/mlir::DictionaryAttr{});
-        Value reshapedOutput = call.getResult(0);
-
-        outTensor.replaceUsesWithIf(reshapedOutput, [&](OpOperand &operand) {
-          Operation *usr = operand.getOwner();
-
-          // Don't replace the reshape we just added, ofc.
-          if (usr == call)
-            return false;
-
-          // Output should be returning the same shape as the graph level
-          // expects.
-          if (isa<MOGG::OutputOp>(usr))
-            return false;
-
-          // The store should be operating on the tensor with the same
-          // dimension as the output expects.
-          if (auto callOp = dyn_cast<MOGG::CallOp>(usr)) {
-            if (callOp.getMojoKernelTarget() == Utils::MOGGSimdStoreTarget &&
-                callOp.getOperand(0) == outTensor) {
-              return false;
-            }
-          }
-          return true;
-        });
-
-        // 2.Transform the indices of the output lambda by fusing in the view
-        // operation.
-        StringAttr lambdaName = kernel.getOutputFusionInterfaceAt(0);
-
-        kernel.walk([&](MOGG::LambdaOp lambda) {
-          // Insert call to inverse of the view op to invert the indices.
-          if (lambda.getSymName() == lambdaName) {
-
-            mlir::Block &block = lambda.getBodyRegion().front();
-            Value indices = block.getArgument(0);
-            builder.setInsertionPoint(&block, block.begin());
-
-            mlir::NamedAttrList attrs;
-            attrs.set("rank", builder.getIndexAttr(oldType.getRank()));
-            attrs.set("axis", addDim.getAxis());
-            attrs.set("value", builder.getIndexAttr(0));
-
-            auto call = builder.create<MOGG::CallOp>(
-                outPh.getLoc(), TypeRange{indices.getType()}, "insert_index",
-                ValueRange{indices}, mlir::ArrayAttr{},
-                /*kgenAttrs=*/builder.getDictionaryAttr(attrs));
-
-            indices.replaceUsesWithIf(call->getResult(0),
-                                      [&](OpOperand &operand) {
-                                        if (operand.getOwner() == call)
-                                          return false;
-                                        return true;
-                                      });
-          }
-        });
-
-        // Change the graph level type of the mogg kernel op and replace the
-        // old view.
-        result.setType(newType);
-        addDim.getResult().replaceAllUsesWith(result);
+        // 1. Fuse the view operation as a view on the output buffer. Clone the
+        // kernel to operate on the new shape.
+        if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user))
+          fuseViewOpDim(kernel, addDim, result, user);
+        else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user))
+          fuseViewOpDim(kernel, split, result, user);
       }
     }
   }

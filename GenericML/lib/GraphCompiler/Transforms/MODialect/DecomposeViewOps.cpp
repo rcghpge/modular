@@ -215,6 +215,30 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
   if (reshape.getType() == reshape.getInput().getType()) {
     reshape.getResult().replaceAllUsesWith(reshape.getInput());
     reshape.erase();
+    return;
+  }
+
+  size_t inRank = reshape.getInput().getType().getRank();
+  size_t outRank = reshape.getType().getRank();
+
+  // Try split dimension. Super specific for 2D -> 3D split for now.
+  if (inRank == 2 && outRank == 3) {
+    MOSH::ShapeAttr outShapeAttr = reshape.getType().getTypedShapeAttr();
+    MOSH::ShapeAttr inShapeAttr =
+        reshape.getInput().getType().getTypedShapeAttr();
+
+    // Pattern match [N, K] -> [n1, n2, K]
+    if (outShapeAttr[0] != inShapeAttr[0] &&
+        outShapeAttr[1] != inShapeAttr[1] &&
+        outShapeAttr[1] != inShapeAttr[0] &&
+        outShapeAttr[2] == inShapeAttr[1]) {
+
+      Value split = builder.create<SplitDimOp>(
+          reshape.getLoc(), reshape.getType(), reshape.getInput(),
+          /*axis*/ builder.getIndexAttr(0));
+      reshape.replaceAllUsesWith(split);
+      reshape.erase();
+    }
   }
 }
 
