@@ -169,6 +169,14 @@ modular_pybind_library(
     ],
 )
 
+modular_pybind_library(
+    name = "ProfilerPython",
+    hdrs = glob(["include/SDK/Profiler/python/*.h"]),
+    deps = [
+        "//Kernels:Tracing",
+    ],
+)
+
 tblgen_pybind(
     name = "MODialectPybindInc",
     src = "//GenericML:mo_json",

@@ -1,0 +1,18 @@
+load("//bazel:api.bzl", "modular_pybind_extension", "modular_pybind_py_library")
+
+modular_pybind_extension(
+    name = "core",
+    srcs = ["core.cpp"],
+    deps = [
+        "//GenericML:modular-framework-common",
+        "//SDK:ProfilerPython",
+    ],
+)
+
+modular_pybind_py_library(
+    name = "_profiler",
+    srcs = glob(["*.py"]),
+    data = glob(["*.pyi"]),
+    pybind_data = [":core"],
+    visibility = ["//visibility:public"],
+)
