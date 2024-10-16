@@ -369,6 +369,18 @@ MODULAR_API_EXPORT MlirAttribute MAXG_dimNewSymbolic(MlirContext context,
       KGEN::ParamDeclRefAttr::get(name, IndexType::get(unwrap(context))));
 }
 
+MODULAR_API_EXPORT MlirAttribute MAXG_dimNewAlgebraic(MlirContext context,
+                                                      uint32_t opcode,
+                                                      MlirAttribute lhs,
+                                                      MlirAttribute rhs) {
+  auto lhs_attr = cast<TypedAttr>(unwrap(lhs));
+  auto rhs_attr = cast<TypedAttr>(unwrap(rhs));
+  SmallVector<TypedAttr, 2> args = {lhs_attr, rhs_attr};
+
+  return wrap(KGEN::ParamOperatorAttr::get(static_cast<KGEN::POC>(opcode), args,
+                                           IndexType::get(unwrap(context))));
+}
+
 MODULAR_API_EXPORT bool MAXG_dimIsDynamic(MlirAttribute a) {
   auto attr = cast<TypedAttr>(unwrap(a));
   return isa<KGEN::UnknownAttr>(attr);
@@ -379,7 +391,7 @@ MODULAR_API_EXPORT bool MAXG_dimIsSymbolic(MlirAttribute a) {
   return isa<KGEN::ParamDeclRefAttr>(attr);
 }
 
-MODULAR_API_EXPORT bool MAXG_dimIsSymbolicExpression(MlirAttribute a) {
+MODULAR_API_EXPORT bool MAXG_dimIsAlgebraic(MlirAttribute a) {
   auto attr = cast<TypedAttr>(unwrap(a));
   return isa<KGEN::ParamOperatorAttr>(attr);
 }

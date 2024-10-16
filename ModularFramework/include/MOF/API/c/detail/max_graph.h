@@ -128,10 +128,14 @@ MODULAR_API_EXPORT MlirAttribute MAXG_dimNewStatic(MlirContext context,
                                                    int64_t dim);
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewSymbolic(MlirContext context,
                                                      llvm::StringRef name);
+MODULAR_API_EXPORT MlirAttribute MAXG_dimNewAlgebraic(MlirContext context,
+                                                      uint32_t opcode,
+                                                      MlirAttribute lhs,
+                                                      MlirAttribute rhs);
 
 /// Query functions for the type of a given dim.
 MODULAR_API_EXPORT bool MAXG_dimIsSymbolic(MlirAttribute a);
-MODULAR_API_EXPORT bool MAXG_dimIsSymbolicExpression(MlirAttribute a);
+MODULAR_API_EXPORT bool MAXG_dimIsAlgebraic(MlirAttribute a);
 MODULAR_API_EXPORT bool MAXG_dimIsStatic(MlirAttribute a);
 
 /// Accessors for dim attributes.
