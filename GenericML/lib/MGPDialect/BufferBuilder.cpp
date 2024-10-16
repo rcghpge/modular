@@ -230,6 +230,16 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
                                   /*bDevice=*/device);
 
   builder.create<MGP::ExtendLifetimeOp>(loc, ValueRange{syncChain, srcBuffer});
+  // return the copyChain and not the syncChain here because we can continue to
+  // run ops that use the same deviceContext and their execution is enqueued
+  // after the h2d copy. Note that this is different than bufferTransferToHost.
+  // Care needs to be taken on d2d's using this result as the src buffer. In
+  // that case, the copyChain is not sufficient because the d2d copy runs on a
+  // different stream and does not wait for us to finish writing to this op's
+  // dst buffer.
+  // We could return the syncChain here, but that would be inefficient when only
+  // one deviceContext is in use (would prevent us from enqueu'ing a bunch of
+  // ops on the stream in advance of them actually running on the stream).
   return copyChain;
 }
 
@@ -260,6 +270,10 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
 
   builder.create<MGP::ExtendLifetimeOp>(
       loc, ValueRange{syncChain, srcBuffer, dstBuffer});
+
+  // return the syncChain here because the dstBuffer is not available on the
+  // host until the d2h copy is complete. Note that this is different from
+  // bufferTransferFromHost.
   return syncChain;
 }
 

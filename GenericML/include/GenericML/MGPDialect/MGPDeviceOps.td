@@ -1320,7 +1320,7 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
 def MGP_SyncOp : MGP_DeviceOp<"sync",
   [DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>]
 > {
-  let summary = "Schedules a device specifc sync";
+  let summary = "Schedules a device specific sync";
   let description = [{
     Returns a ready chain once the device has synchronized. In
     cpu this is a nop as the sync happens with the chain, on

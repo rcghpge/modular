@@ -586,6 +586,12 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
       bufferBuilder->tensorExtractBuffer(builder, loc, context, loweredTensor);
   auto tensorSpec = bufferBuilder->tensorExtractTensorSpec(
       builder, loc, context, loweredTensor);
+
+  // we are extracting a buffer from a tensor, so the buffer needs to be guarded
+  // by the same chain as the tensor
+  loweringState.guardValueWithChain(
+      buffer, loweringState.getChainGuardingValueOrNull(loweredTensor));
+
   return BufferizedTensor(buffer, tensorSpec);
 }
 

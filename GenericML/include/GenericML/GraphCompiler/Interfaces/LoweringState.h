@@ -20,6 +20,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/Support/Diagnostic.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
@@ -617,7 +618,8 @@ struct MOOpLoweringState {
     Value tensor =
         getStorageBufferBuilder(moTensorType)
             ->tensorCreate(builder, loc, context, inChain, buffer, tensorSpec);
-    loweringState.guardValueWithChain(tensor, inChain);
+    loweringState.guardValueWithChain(
+        tensor, loweringState.getChainGuardingValueOrNull(buffer));
     return tensor;
   }
 
@@ -661,10 +663,13 @@ struct MOOpLoweringState {
                                Value dstBuffer, Type dstMoTensorType) {
     auto deviceRef = getStorageBufferBuilder(dstMoTensorType)->getDevice();
     auto deviceContext = loweringState.getExecuteDevice(deviceRef);
-    return getStorageBufferBuilder(dstMoTensorType)
-        ->bufferTransferFromHost(builder, loc, context, inChain,
-                                 loweringState.getHostBufferBuilder(),
-                                 srcBuffer, dstBuffer, deviceContext);
+    auto chain =
+        getStorageBufferBuilder(dstMoTensorType)
+            ->bufferTransferFromHost(builder, loc, context, inChain,
+                                     loweringState.getHostBufferBuilder(),
+                                     srcBuffer, dstBuffer, deviceContext);
+    loweringState.guardValueWithChain(dstBuffer, chain);
+    return chain;
   }
   Value bufferTransferToHost(Value inChain, Value srcBuffer,
                              TypedValue<MGP::DeviceBufferType> dstBuffer,
@@ -678,12 +683,59 @@ struct MOOpLoweringState {
   }
   Value bufferTransferDevice(Value inChain, Value srcBuffer, Value dstBuffer,
                              Type srcMoTensorType, Type dstMoTensorType) {
-    auto deviceRef = getStorageBufferBuilder(srcMoTensorType)->getDevice();
-    auto deviceContext = loweringState.getExecuteDevice(deviceRef);
-    return getStorageBufferBuilder(srcMoTensorType)
-        ->bufferTransferDevice(builder, loc, context, inChain, srcBuffer,
-                               getStorageBufferBuilder(dstMoTensorType),
-                               dstBuffer, deviceContext);
+    // *Note that this is currently the only op that can operate on 2 devices!*
+
+    // Since the devices are async wrt each other (they each use a different
+    // stream), we need to insert additional synchronization when multiple
+    // streams are in use.
+    //  *dstBuffer* - The d2d uses the dst device, so we don't need to worry
+    //  about dstBuffer synchronization (the d2d will be enqueued on the stream
+    //  after any outstanding reads/writes to dstBuffer).
+    //  *srcBuffer* - On the other hand, the src buffer is on a different
+    //  device, so it is not implicitly synchronized with the d2d. We need to
+    //  insert a chain that waits for the last write to the src buffer to
+    //  complete. Then it is safe to enqueue the d2d because we know that the
+    //  src buffer isn't being written to at the same time. It would be more
+    //  efficient to use cudaEvents here instead of using mgp.sync which will
+    //  block on the host.
+    DeviceRefAttr srcDeviceRef =
+        getStorageBufferBuilder(srcMoTensorType)->getDevice();
+    DeviceRefAttr dstDeviceRef =
+        getStorageBufferBuilder(dstMoTensorType)->getDevice();
+    auto dstDeviceContext = loweringState.getExecuteDevice(dstDeviceRef);
+    auto srcDeviceContext = loweringState.getExecuteDevice(srcDeviceRef);
+
+    Value preD2DChain = inChain;
+    if (srcDeviceRef != dstDeviceRef) {
+      Value srcMutChain = loweringState.getChainGuardingValueOrNull(srcBuffer);
+      Value syncChain = builder.create<MGP::SyncOp>(loc, srcMutChain, context,
+                                                    srcDeviceContext,
+                                                    /*aRuntimeSlot=*/0,
+                                                    /*bDevice=*/srcDeviceRef);
+      preD2DChain =
+          create<M::GRT::ChainCreateOp>(ValueRange{inChain, syncChain})
+              .getResult();
+    }
+    Value postD2DChain = getStorageBufferBuilder(srcMoTensorType)
+                             ->bufferTransferDevice(
+                                 builder, loc, context, preD2DChain, srcBuffer,
+                                 getStorageBufferBuilder(dstMoTensorType),
+                                 dstBuffer, dstDeviceContext);
+    // if srcDeviceRef == dstDeviceRef, the srcDeviceRef free will be enqueued
+    // on the dst deviceContext stream, after the d2d runs, so no lifetime
+    // extension is needed.
+    if (srcDeviceRef != dstDeviceRef) {
+      Value syncChain = builder.create<MGP::SyncOp>(loc, postD2DChain, context,
+                                                    srcDeviceContext,
+                                                    /*aRuntimeSlot=*/0,
+                                                    /*bDevice=*/srcDeviceRef);
+      // d2d runs on dst device so dstBuffer's lifetime doesn't need to be
+      // manually extended because the free is enqueued on the same stream as
+      // the copy.
+      builder.create<MGP::ExtendLifetimeOp>(loc,
+                                            ValueRange{syncChain, srcBuffer});
+    }
+    return postD2DChain;
   }
 
   Value bufferConcat(Value inChain, Value outBuffer, ArrayRef<Value> inBuffers,
