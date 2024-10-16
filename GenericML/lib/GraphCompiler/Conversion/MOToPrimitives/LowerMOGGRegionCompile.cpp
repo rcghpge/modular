@@ -134,10 +134,7 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
 // Take all the compiled JIT Kernels and lower them
 // -- Lower MOGG::LoadCompiledKernelOp to MGP::ModuleLoadOp
 //    1. Determine the potential insertion point based off following rules
-//       a. If there is ModuleLoadOp for the device --> After ModuleLoadOp +
-//       keep track of Module Index for the host device (skipping non-host)
-//       b. If no ModuleLoadOp for the specific device --> After
-//       RuntimeCreateOp
+//       --> After RuntimeCreateOp
 //    2. Housekeeping to keep track of the kernel index
 // -- Lower MOGG::ExecuteCompiledOp to MGP::ExecuteGenericOp
 //    1. Special consideration has to be taken into account for init block and
@@ -161,62 +158,40 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // Collect the chains for all module load and runtime creates.
     SmallVector<Value> moduleLoadChains;
 
-    // Track the RuntimeCreateOp and ModuleLoadOp and their last use
+    // Track the RuntimeCreateOp
     // Mainly used to make sure we target the right module load and device
     // runtime for the executions
-    llvm::SmallDenseMap<DeviceRefAttr, MGP::RuntimeCreateOp>
-        lastDeviceRuntimeOp;
-    llvm::SmallDenseMap<DeviceRefAttr, MGP::ModuleLoadOp>
-        lastDeviceModuleLoadOp;
-    llvm::SmallDenseMap<DeviceRefAttr, uint64_t> deviceModuleIndex;
+    MGP::RuntimeCreateOp lastDeviceRuntimeOp;
+    uint64_t deviceModuleIndex;
     for (auto op : init.getOps<MGP::RuntimeCreateOp>()) {
       moduleLoadChains.push_back(op.getResult());
-      lastDeviceRuntimeOp[hostDevice] = op;
-      deviceModuleIndex[hostDevice] = 0;
+      lastDeviceRuntimeOp = op;
+      deviceModuleIndex = 0;
     }
     deviceContexts.init(model);
 
-    for (auto op : init.getOps<MGP::ModuleLoadOp>()) {
-      moduleLoadChains.push_back(op.getResult());
-      lastDeviceModuleLoadOp[op.getDevice()] = op;
-      ASSERT_STREAM(deviceModuleIndex.contains(op.getDevice()),
-                    << "Cannot have a ModuleLoadOp for a device: "
-                    << op.getDevice()
-                    << " without a corresponding RuntimeCreateOp");
-      deviceModuleIndex[op.getDevice()]++;
-    }
-
-    llvm::SmallDenseMap<DeviceRefAttr, llvm::StringMap<size_t>>
-        deviceKernelIndices;
-    llvm::SmallDenseMap<DeviceRefAttr, SmallVector<StringAttr>>
-        deviceKernelNameAttrs;
+    llvm::StringMap<size_t> deviceKernelIndices;
+    SmallVector<StringAttr> deviceKernelNameAttrs;
     MGP::ModuleLoadOp loadArchive;
     for (auto loadKernels : llvm::make_early_inc_range(
              init.getOps<MOGG::LoadCompiledKernelOp>())) {
       // Determine the kernelIndices and kernelNameAttrs
-      deviceKernelIndices[hostDevice] = llvm::StringMap<size_t>();
-      deviceKernelNameAttrs[hostDevice] = SmallVector<StringAttr>();
+      deviceKernelIndices = llvm::StringMap<size_t>();
+      deviceKernelNameAttrs = SmallVector<StringAttr>();
       for (StringAttr attr :
            loadKernels.getSymbols().getAsRange<StringAttr>()) {
-        deviceKernelIndices[hostDevice][attr] =
-            deviceKernelIndices[hostDevice].size();
-        deviceKernelNameAttrs[hostDevice].push_back(attr);
+        deviceKernelIndices[attr] = deviceKernelIndices.size();
+        deviceKernelNameAttrs.push_back(attr);
       }
     }
 
     // Rewrite the MOGG::LoadCompiledKernelOp in init blocks.
     for (auto loadKernels : llvm::make_early_inc_range(
              init.getOps<MOGG::LoadCompiledKernelOp>())) {
-      Operation *insertionOp = lastDeviceRuntimeOp[hostDevice].getOperation();
-      size_t runtimeSlot = lastDeviceRuntimeOp[hostDevice].getSlot();
-      Value opContext = lastDeviceRuntimeOp[hostDevice].getTheContext();
-      Value inChain = lastDeviceRuntimeOp[hostDevice].getResult();
-      if (lastDeviceModuleLoadOp.contains(hostDevice)) {
-        insertionOp = lastDeviceModuleLoadOp[hostDevice].getOperation();
-        runtimeSlot = lastDeviceModuleLoadOp[hostDevice].getSlot();
-        opContext = lastDeviceModuleLoadOp[hostDevice].getTheContext();
-        inChain = lastDeviceModuleLoadOp[hostDevice].getResult();
-      }
+      Operation *insertionOp = lastDeviceRuntimeOp.getOperation();
+      size_t runtimeSlot = lastDeviceRuntimeOp.getSlot();
+      Value opContext = lastDeviceRuntimeOp.getTheContext();
+      Value inChain = lastDeviceRuntimeOp.getResult();
 
       // Rewrite the MOGG::LoadCompiledKernelOp into a MGP::ModuleLoadOp
       builder.setInsertionPointAfter(insertionOp);
@@ -227,11 +202,11 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
           /*aSlot=*/runtimeSlot,
           /*bArchive=*/loadKernels.getValue(),
           /*cKernelNames=*/
-          MultiLineStringAttr::get(ctx, deviceKernelNameAttrs[hostDevice]),
+          MultiLineStringAttr::get(ctx, deviceKernelNameAttrs),
           /*dConstantSymbols=*/
           MultiLineStringAttr::get(ctx, SmallVector<StringAttr>()),
           /*eDevice=*/hostDevice,
-          /*fModuleIndex=*/deviceModuleIndex[hostDevice],
+          /*fModuleIndex=*/deviceModuleIndex,
           /*gDebuginfo=*/loadKernels.getDebuginfo());
       moduleLoadChains.push_back(loadArchive.getResult());
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
@@ -264,12 +239,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       bool isCreator = inDeviceContext.getDefiningOp() == kernel;
       if (isCreator)
         inDeviceContext = deviceContexts.getDeviceContextFromInitArgs(device);
-      rewriteExecuteCompiledOp(
-          builder, lastDeviceRuntimeOp[hostDevice].getTheContext(),
-          lastDeviceRuntimeOp[hostDevice].getSlot(),
-          deviceModuleIndex[hostDevice],
-          deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
-          inDeviceContext);
+      rewriteExecuteCompiledOp(builder, lastDeviceRuntimeOp.getTheContext(),
+                               lastDeviceRuntimeOp.getSlot(), deviceModuleIndex,
+                               deviceKernelIndices[kernel.getKernelName()],
+                               kernel, inDeviceContext);
       // Since this execute op created the deviceContext, we should update the
       // value mapping.
       if (isCreator)
@@ -295,11 +268,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       }
       Value inDeviceContext = deviceContexts.getDeviceContext(
           kernel.getDeviceRef(), execute.getParent());
-      rewriteExecuteCompiledOp(
-          builder, executeContext, lastDeviceRuntimeOp[hostDevice].getSlot(),
-          deviceModuleIndex[hostDevice],
-          deviceKernelIndices[hostDevice][kernel.getKernelName()], kernel,
-          inDeviceContext);
+      rewriteExecuteCompiledOp(builder, executeContext,
+                               lastDeviceRuntimeOp.getSlot(), deviceModuleIndex,
+                               deviceKernelIndices[kernel.getKernelName()],
+                               kernel, inDeviceContext);
     });
     // The introduction of generic execute may introduce unbound free-values.
     // Use fixupIsolatedFromAbove to rebind these.
