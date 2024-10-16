@@ -417,6 +417,27 @@ MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a) {
   return wrap(cast<KGEN::ParamDeclRefAttr>(attr).getName());
 }
 
+MODULAR_API_EXPORT int64_t MAXG_dimAlgebraicOpcode(MlirAttribute a) {
+  auto attr = cast<KGEN::ParamOperatorAttr>(unwrap(a));
+  return static_cast<int64_t>(attr.getOpcode());
+}
+
+MODULAR_API_EXPORT size_t MAXG_dimAlgebraicNumOperands(MlirAttribute a) {
+  auto attr = cast<KGEN::ParamOperatorAttr>(unwrap(a));
+  return attr.getNumOperands();
+}
+
+MODULAR_API_EXPORT void MAXG_dimAlgebraicOperands(MlirAttribute a,
+                                                  MlirAttribute *out,
+                                                  size_t out_size) {
+  auto attr = cast<KGEN::ParamOperatorAttr>(unwrap(a));
+  auto operands = attr.getOperands();
+  assert(out_size == attr.getNumOperands());
+  for (size_t i = 0; i < out_size; ++i) {
+    out[i] = wrap(operands[i]);
+  }
+}
+
 MODULAR_API_EXPORT MlirType MAXG_listTypeNew(MlirContext ctx, MlirType eltype) {
   return wrap(MO::ListType::get(unwrap(ctx), unwrap(eltype)));
 }

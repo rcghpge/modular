@@ -141,6 +141,10 @@ MODULAR_API_EXPORT bool MAXG_dimIsStatic(MlirAttribute a);
 /// Accessors for dim attributes.
 MODULAR_API_EXPORT int64_t MAXG_dimStaticValue(MlirAttribute a);
 MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a);
+MODULAR_API_EXPORT int64_t MAXG_dimAlgebraicOpcode(MlirAttribute a);
+MODULAR_API_EXPORT size_t MAXG_dimAlgebraicNumOperands(MlirAttribute a);
+MODULAR_API_EXPORT void
+MAXG_dimAlgebraicOperands(MlirAttribute a, MlirAttribute *out, size_t out_size);
 
 /// Query functions for tensor, buffer and opaque types.
 MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t);
