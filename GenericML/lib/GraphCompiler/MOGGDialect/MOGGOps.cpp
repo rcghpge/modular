@@ -974,22 +974,37 @@ void KernelOp::fuseBodyIntoNewWithSkip(
       builder.setInsertionPointAfter(newLambda);
       oldLambdaNamesToNew[lambda.getSymName()] = newLambda.getSymName();
     } else if (auto call = dyn_cast<CallOp>(op)) {
+      // Helper lambda to translate remap the lambda name.
+      auto translateLambdaSym = [&](SymbolRefAttr sym) {
+        StringRef name = sym.getLeafReference().strref();
+        auto itr = oldLambdaNamesToNew.find(name);
+        ASSERT_STREAM(
+            itr != oldLambdaNamesToNew.end(),
+            << "First use of lambda inserted before the lambda itself");
+
+        return FlatSymbolRefAttr::get(getContext(), itr->second);
+      };
+
       // Lambdas will have been inlined. The only place we can have
       // a lambda reference is in a call.
       auto newCall = dyn_cast<CallOp>(builder.clone(op, remapper));
-
       SmallVector<Attribute> newAttrs;
 
       // Remap any lambda references to point to the new lambda name.
       std::optional<ArrayAttr> params = newCall.getParams();
       if (params) {
-        for (SymbolRefAttr sym : params->getAsRange<SymbolRefAttr>()) {
-          StringRef name = sym.getLeafReference().strref();
-          auto itr = oldLambdaNamesToNew.find(name);
-          ASSERT_STREAM(
-              itr != oldLambdaNamesToNew.end(),
-              << "First use of lambda inserted before the lambda itself");
-          newAttrs.push_back(FlatSymbolRefAttr::get(getContext(), itr->second));
+        for (auto symOrArray : params->getAsRange<Attribute>()) {
+          if (auto sym = dyn_cast<SymbolRefAttr>(symOrArray)) {
+            newAttrs.push_back(translateLambdaSym(sym));
+          } else {
+            // Must be a tuple of lambda for tuple inputs. (e.g., concat).
+            SmallVector<Attribute> newTuple;
+            auto arraySym = cast<ArrayAttr>(symOrArray);
+            for (auto sym : arraySym.getAsRange<SymbolRefAttr>())
+              newTuple.push_back(translateLambdaSym(sym));
+            // Repack the lambda tuple.
+            newAttrs.push_back(builder.getArrayAttr(newTuple));
+          }
         }
         newCall.setParamsAttr(builder.getArrayAttr(newAttrs));
       }
