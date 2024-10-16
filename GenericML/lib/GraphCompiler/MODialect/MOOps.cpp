@@ -439,6 +439,37 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
     return success();
   }
 
+  DeviceRefAttr inputDevice = input.getType().getDeviceRef();
+  // If the transfer feeds directly into a cast to a larger bit type then we
+  // should rotate the cast to cast first on the CPU then transfer the smaller
+  // size.
+  if (output.hasOneUse() && inputDevice == getHostDevice(op)) {
+    Operation *user = *output.getUsers().begin();
+
+    if (auto cast = dyn_cast<MO::CastOp>(user)) {
+      TypedValue<TensorType> castOut = cast.getResult();
+
+      Type srcTy = output.getType().getElementType();
+      Type dstTy = castOut.getType().getElementType();
+
+      if (srcTy.isF32() && dstTy.isBF16()) {
+        // Switch the cast to run on the cpu and convert the transfer input.
+        cast.setDeviceRef(inputDevice);
+        cast->setOperand(0, input);
+        castOut.setType(castOut.getType().cloneWith(inputDevice));
+
+        // Make the transfer take the cast as input.
+        op->setOperand(0, castOut);
+        output.setType(
+            output.getType().cloneWith(castOut.getType().getDtype()));
+
+        cast->moveBefore(op);
+        castOut.replaceAllUsesExcept(output, op);
+        return success();
+      }
+    }
+  }
+
   return failure();
 }
 
