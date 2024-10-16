@@ -10,11 +10,8 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
-#include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
-#include "Support/MArchTarget/MArchTargetMinimal.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/TargetParser/Host.h"
 
 #include <optional>
 #include <utility>
@@ -32,8 +29,8 @@ Var ParamExprBuilder::createVar(TypedAttr attr) {
 }
 
 Var ParamExprBuilder::createVar(int64_t n) {
-  auto indexTy = IndexType::get(graphOp.getContext());
-  return createVar(IntegerAttr::get(indexTy, n));
+  IntegerAttr indexValue = ShapeAttr::getDimensionAttr(graphOp.getContext(), n);
+  return createVar(indexValue);
 }
 
 TypedAttr ParamExprBuilder::createKgenExpr(KGEN::POC poc,
@@ -202,8 +199,7 @@ expandMatmulInputsForBroadcasting(ShapeAttr lhsShape, ShapeAttr rhsShape) {
 
   size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
 
-  auto idxTy = IndexType::get(lhsShape.getContext());
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  auto intDim1 = ShapeAttr::getDimensionAttr(lhsShape.getContext(), 1ll);
   SmallVector<TypedAttr> lhsFullShape(fullRank, intDim1);
   SmallVector<TypedAttr> rhsFullShape(fullRank, intDim1);
   if (lhsRank == 1) {
@@ -310,8 +306,7 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
   // The new dimensions will just be static 1 dimensions.
   size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
 
-  auto idxTy = IndexType::get(ctx);
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  auto intDim1 = ShapeAttr::getDimensionAttr(ctx, 1ll);
   auto [lhsFullShape, rhsFullShape] =
       expandMatmulInputsForBroadcasting(lhsShape, rhsShape);
 
@@ -366,8 +361,7 @@ materializeRmoBinaryElementwiseShape(GraphOp graphOp, Location loc,
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  auto idxTy = IndexType::get(graphOp.getContext());
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  auto intDim1 = ShapeAttr::getDimensionAttr(graphOp.getContext(), 1ll);
   size_t maxRank = std::max(lhsShape.getRank(), rhsShape.getRank());
 
   auto getFromEnd = [](ShapeAttr shape, size_t i) -> TypedAttr {
@@ -415,8 +409,7 @@ ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  auto idxTy = IndexType::get(graphOp.getContext());
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  auto intDim1 = ShapeAttr::getDimensionAttr(graphOp.getContext(), 1ll);
   size_t maxRank = std::max(condShape.getRank(),
                             std::max(xShape.getRank(), yShape.getRank()));
 
@@ -1443,6 +1436,7 @@ ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
   Var splitSizesSum = b.createVar(0);
   for (TypedAttr splitSize : splitSizes.getValues())
     splitSizesSum = splitSizesSum + b.createVar(splitSize);
+
   b.createAssert(
       splitSizesSum == b.createVar(inputShape[axis]),
       "[split] sum of split sizes must match input dimension at split axis");

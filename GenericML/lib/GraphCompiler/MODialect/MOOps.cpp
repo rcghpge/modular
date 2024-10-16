@@ -27,17 +27,12 @@
 #include "Support/ML/RangeUtils.h"
 #include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/ODSSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
-#include "mlir/Interfaces/FunctionImplementation.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
-
-#include <numeric>
 
 using namespace M;
 using namespace MO;
@@ -47,11 +42,38 @@ using namespace MO;
 //===----------------------------------------------------------------------===//
 
 namespace M::MO {
+
+static ParseResult
+parseParamDeclElement(OpAsmParser &parser,
+                      SmallVectorImpl<ParamDeclAttr> &decls) {
+  auto dimType = ShapeAttr::getDimensionType(parser.getContext());
+
+  StringAttr name;
+  Type type;
+  if (KGEN::parseParamName(parser, name) ||
+      KGEN::parseColonTypeOrDefault(parser, type, dimType))
+    return failure();
+
+  decls.push_back(ParamDeclAttr::get(name, type));
+  return success();
+}
+
+static void printParamDeclElement(OpAsmPrinter &printer,
+                                  KGEN::ParamDeclAttr decl) {
+  auto dimType = ShapeAttr::getDimensionType(decl.getContext());
+  KGEN::printParamName(printer, decl.getName());
+  KGEN::printColonTypeOrDefault(printer, decl.getType(), dimType);
+}
+
 ParseResult parseParamDecls(OpAsmParser &p,
                             KGEN::ParamDeclArrayAttr &paramDecls) {
+  auto parserHook = [&](SmallVectorImpl<ParamDeclAttr> &decls) -> ParseResult {
+    return parseParamDeclElement(p, decls);
+  };
+
   if (succeeded(p.parseOptionalLess()) && failed(p.parseOptionalGreater())) {
     if (p.parseLParen() || p.parseRParen() || p.parseArrow() ||
-        KGEN::parseParamDecls(p, paramDecls) || p.parseGreater())
+        KGEN::parseParamDecls(p, paramDecls, parserHook) || p.parseGreater())
       return failure();
   } else {
     paramDecls = KGEN::ParamDeclArrayAttr::get(p.getContext(), {});
@@ -61,9 +83,13 @@ ParseResult parseParamDecls(OpAsmParser &p,
 
 void printParamDecls(OpAsmPrinter &p, Operation *,
                      KGEN::ParamDeclArrayAttr paramDecls) {
+  auto printerHook = [&](KGEN::ParamDeclAttr decl) {
+    printParamDeclElement(p, decl);
+  };
+
   if (!paramDecls.empty()) {
     p << "<() -> ";
-    printParamDecls(p, paramDecls);
+    KGEN::printParamDecls(p, paramDecls, printerHook);
     p << '>';
   }
 }
@@ -297,8 +323,7 @@ TypedAttr M::MO::tryGetDimAttr(Value val) {
   if (!maybeConst.has_value())
     return {};
 
-  OpBuilder builder(val.getContext());
-  return builder.getIndexAttr(*maybeConst);
+  return MOSH::ShapeAttr::getDimensionAttr(val.getContext(), *maybeConst);
 }
 
 template <typename SliceTy, typename AdaptorTy>
@@ -607,11 +632,16 @@ static ParseResult parseGraphOp(OpAsmParser &p, StringAttr &name,
   if (p.parseSymbolName(name))
     return failure();
 
+  auto parserHook = [&](SmallVectorImpl<ParamDeclAttr> &decls) -> ParseResult {
+    return parseParamDeclElement(p, decls);
+  };
+
   SmallVector<OpAsmParser::Argument> args;
   KGEN::SignatureType signature;
   FunctionType functionType;
   if (KGEN::parseFunctionSignature(p, args, inputParams, resultParams,
-                                   functionType, signature))
+                                   functionType, signature,
+                                   /*parseDeclElt=*/parserHook))
     return failure();
   signatureAttr = TypeAttr::get(signature);
   functionTypeAttr = TypeAttr::get(functionType);
@@ -627,10 +657,16 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
                          KGEN::ParamDeclArrayAttr inputParams,
                          KGEN::ParamDeclArrayAttr resultParams,
                          DictionaryAttr attrs, Region &body) {
+  auto printerHook = [&](KGEN::ParamDeclAttr decl) {
+    printParamDeclElement(p, decl);
+  };
+
   p.printSymbolName(name);
   printFunctionSignature(p, &body, inputParams, resultParams,
                          cast<FunctionType>(functionType.getValue()),
-                         cast<SignatureType>(signature.getValue()));
+                         cast<SignatureType>(signature.getValue()),
+                         /*printInputElt=*/printerHook,
+                         /*printResultElt=*/printerHook);
 
   auto graph = cast<GraphOp>(op);
   SmallVector<StringRef, 6> elidedAttrs{
@@ -669,7 +705,8 @@ LogicalResult GraphOp::verify() {
 }
 
 KGEN::ParamDeclAttr GraphOp::getNewDimParam(const Twine &prefix) {
-  return getNewParamOfType(prefix, IndexType::get(getContext()));
+  auto dimType = MOSH::ShapeAttr::getDimensionType(getContext());
+  return getNewParamOfType(prefix, dimType);
 }
 
 KGEN::ParamDeclAttr GraphOp::getNewShapeParam(const Twine &prefix) {
@@ -713,7 +750,7 @@ static ParseResult parseOutputValues(AsmParser &p,
                                      KGEN::ParameterExprArrayAttr &valuesAttr) {
   SmallVector<TypedAttr> values;
   auto parseFn = [&]() -> ParseResult {
-    Type type = p.getBuilder().getIndexType();
+    Type type = ShapeAttr::getDimensionType(p.getContext());
     if (succeeded(p.parseOptionalColon()) && KGEN::parseKGENType(p, type))
       return failure();
     if (succeeded(p.parseOptionalQuestion())) {
@@ -736,7 +773,7 @@ static void printOutputValues(AsmPrinter &p, Operation *op,
     return;
   p << '<';
   llvm::interleaveComma(values, p, [&](TypedAttr value) {
-    if (Type type = value.getType(); !type.isIndex()) {
+    if (Type type = value.getType(); !ShapeAttr::isDimensionType(type)) {
       p << ':';
       KGEN::printKGENType(p, type);
       p << ' ';
@@ -2173,8 +2210,8 @@ LogicalResult RangeOp::verify() {
   if (!paramDecls.empty()) {
     if (paramDecls.size() != 1)
       return emitError("cannot declare more than one parameter");
-    if (!paramDecls[0].getType().isIndex())
-      return emitError("can only declare index parameters");
+    if (!ShapeAttr::isDimensionType(paramDecls[0].getType()))
+      return emitError("can only declare dimension parameters");
   }
   return success();
 }
@@ -2212,8 +2249,9 @@ static LogicalResult materializeShapeInference(RebindOp op,
 
   TypedAttr outputShapeAttr = op.getResult().getType().getShapeAttr();
   auto outputDimAttrs = dyn_cast<ShapeAttr>(outputShapeAttr);
-  bool allDeclsAreDimAttrs = llvm::all_of(
-      paramDecls, [](auto decl) { return isa<IndexType>(decl.getType()); });
+  bool allDeclsAreDimAttrs = llvm::all_of(paramDecls, [](ParamDeclAttr decl) {
+    return ShapeAttr::isDimensionType(decl.getType());
+  });
   if (allDeclsAreDimAttrs && outputDimAttrs) {
     llvm::SmallDenseMap<StringAttr, KGEN::ParamDeclAttr> nameToParamDecl;
     for (KGEN::ParamDeclAttr paramDecl : paramDecls)

@@ -62,6 +62,24 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   ];
 
   let extraClassDeclaration = [{
+    /// Get the integer type representing the preferred type for dimensions
+    /// of a shape.
+    static IndexType getDimensionType(MLIRContext* ctx);
+
+    /// Create an attribute to represent the given values as a dimension in
+    /// shaped type.
+    static IntegerAttr getDimensionAttr(MLIRContext* ctx, int64_t value);
+
+    /// Is the given type a legal dimension?
+    static bool isDimensionType(Type type) {
+      return type.isIndex();
+    }
+
+    /// Is the given attribute able to represent a dimension.
+    static bool isDimensionAttr(TypedAttr attr) {
+      return isDimensionType(attr.getType());
+    }
+
     /// Returns the rank (i.e. size) of the shape.
     size_t getRank() const { return getSize(); }
 

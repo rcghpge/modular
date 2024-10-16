@@ -91,17 +91,35 @@ int64_t M::MOSH::findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl) {
   return -1;
 }
 
+static ParseResult parseColonTypeOrDimension(AsmParser &parser, Type &type) {
+  auto dimType = ShapeAttr::getDimensionType(parser.getContext());
+  return KGEN::parseColonTypeOrDefault(parser, type, dimType);
+}
+
+static ParseResult parseShapeValueElement(AsmParser &p, TypedAttr &value) {
+  Type type;
+  if (parseColonTypeOrDimension(p, type) ||
+      KGEN::parseParamValue(p, value, type))
+    return failure();
+
+  return success();
+}
+
 ParseResult M::MOSH::parseShapeValue(AsmParser &p,
                                      SmallVectorImpl<TypedAttr> &values) {
   values.clear();
-  IndexType idxTy = p.getBuilder().getIndexType();
-  return p.parseCommaSeparatedList([&]() -> ParseResult {
-    if (succeeded(p.parseOptionalQuestion())) {
-      values.push_back(KGEN::UnknownAttr::get(idxTy));
-      return success();
-    }
-    return KGEN::parseColonTypeParamValue(p, values.emplace_back());
-  });
+  auto idxTy = ShapeAttr::getDimensionType(p.getContext());
+
+  if (p.parseCommaSeparatedList([&]() -> ParseResult {
+        if (succeeded(p.parseOptionalQuestion())) {
+          values.push_back(KGEN::UnknownAttr::get(idxTy));
+          return success();
+        }
+        return parseShapeValueElement(p, values.emplace_back());
+      }))
+    return failure();
+
+  return success();
 }
 
 ParseResult M::MOSH::parseShapeValue(AsmParser &p,
@@ -110,11 +128,24 @@ ParseResult M::MOSH::parseShapeValue(AsmParser &p,
   return parseShapeValue(p, values);
 }
 
+/// print `:<type> ` or elide it entirely if type is an `index` type.
+static void printColonTypeOrDimensionPrefix(AsmPrinter &p, Type type) {
+  // Index type is the default so it doesn't print.
+  if (ShapeAttr::isDimensionType(type))
+    return;
+  p << ':';
+  KGEN::printKGENType(p, type);
+  p << ' ';
+}
+
 void M::MOSH::printDimensionValue(AsmPrinter &p, TypedAttr value) {
-  if (isa<KGEN::UnknownAttr>(value))
+  if (isa<KGEN::UnknownAttr>(value)) {
     p << '?';
-  else
-    KGEN::printColonTypeParamValue(p, value);
+    return;
+  }
+
+  printColonTypeOrDimensionPrefix(p, value.getType());
+  KGEN::printParamValue(p, value);
 }
 
 void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values) {
@@ -127,14 +158,26 @@ void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
   printShapeValue(p, values);
 }
 
+IndexType ShapeAttr::getDimensionType(MLIRContext *ctx) {
+  // return IntegerType::get(ctx, 64,
+  // IntegerType::SignednessSemantics::Signless);
+  return IndexType::get(ctx);
+}
+
+IntegerAttr ShapeAttr::getDimensionAttr(MLIRContext *ctx, int64_t value) {
+  return IntegerAttr::get(getDimensionType(ctx), value);
+}
+
 ShapeAttr ShapeAttr::get(ArrayRef<int64_t> values, ShapeType type) {
-  auto idxTy = IndexType::get(type.getContext());
+  auto idxTy = getDimensionType(type.getContext());
   SmallVector<TypedAttr> newValues;
+  newValues.reserve(values.size());
+
   for (auto v : values) {
     if (mlir::ShapedType::isDynamic(v))
-      newValues.emplace_back(KGEN::UnknownAttr::get(idxTy));
+      newValues.push_back(KGEN::UnknownAttr::get(idxTy));
     else
-      newValues.emplace_back(IntegerAttr::get(idxTy, v));
+      newValues.push_back(IntegerAttr::get(idxTy, v));
   }
   return get(type.getContext(), newValues, type);
 }
@@ -195,7 +238,7 @@ SmallVector<int64_t> ShapeAttr::getIntDims() const {
 
 TypedAttr ShapeAttr::getSymbolicNumElements() const {
   if (getRank() == 0)
-    return OpBuilder(getContext()).getIndexAttr(1);
+    return ShapeAttr::getDimensionAttr(getContext(), 1);
   return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, getValues());
 }
 
@@ -207,8 +250,7 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
   if (xSh == ySh) // Short circuit.
     return ySh;
 
-  auto idxTy = IndexType::get(xSh.getContext());
-  auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+  auto intDim1 = getDimensionAttr(xSh.getContext(), 1ll);
 
   SmallVector<TypedAttr> result;
   ArrayRef<TypedAttr> xShDims = xSh.getValues();
@@ -366,7 +408,7 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
 }
 
 ShapeAttr ShapeAttr::fromInts(ArrayRef<int64_t> values, ShapeType type) {
-  auto idxTy = IndexType::get(type.getContext());
+  auto idxTy = getDimensionType(type.getContext());
   SmallVector<TypedAttr> newValues =
       llvm::map_to_vector(values, [&](int64_t val) -> TypedAttr {
         return IntegerAttr::get(idxTy, val);

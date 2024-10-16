@@ -248,11 +248,11 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
     return success();
   }
 
-  auto attr = llvm::dyn_cast<ShapeAttr>(shapeAttr);
-  if (!attr)
+  auto shape = llvm::dyn_cast<ShapeAttr>(shapeAttr);
+  if (!shape)
     return emitError() << "invalid shape attribute " << shapeAttr;
 
-  for (TypedAttr dimAttr : attr.getValues()) {
+  for (TypedAttr dimAttr : shape.getValues()) {
     if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
       if (dimIntAttr.getInt() < 0)
         return emitError()
@@ -260,6 +260,9 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                << dimIntAttr.getInt();
     }
   }
+
+  if (!llvm::all_of(shape.getValues(), ShapeAttr::isDimensionAttr))
+    return emitError() << "tensor dimensions must be a getDimensionType()";
 
   // The device specification used to reside in the metadata dictionary,
   // sanity check that the tensor type is not using the old format.
@@ -438,8 +441,9 @@ TensorType TensorType::cloneWithUnknownRank() const {
 }
 
 TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
-  SmallVector<TypedAttr> shapes(
-      rank, KGEN::UnknownAttr::get(IndexType::get(getContext())));
+  auto dimType = MOSH::ShapeAttr::getDimensionType(getContext());
+
+  SmallVector<TypedAttr> shapes(rank, KGEN::UnknownAttr::get(dimType));
   return TensorType::get(
       MOSH::ShapeAttr::get(shapes, ShapeType::get(getContext())), getDtype(),
       getDeviceRef(), getMetadata());
@@ -521,7 +525,7 @@ bool TensorType::isParameterizedDimParam(TypedAttr attr) {
 }
 
 bool TensorType::isIntegerDimParam(TypedAttr attr) {
-  return llvm::isa<IntegerAttr>(attr) && attr.getType().isIndex();
+  return llvm::isa<IntegerAttr>(attr) && ShapeAttr::isDimensionAttr(attr);
 }
 
 SmallVector<int64_t> TensorType::getIntDims() const {

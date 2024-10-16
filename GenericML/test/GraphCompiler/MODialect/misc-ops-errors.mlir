@@ -522,7 +522,7 @@ mo.graph @range_too_many_params<() -> K>(
 mo.graph @range_not_index_param<() -> K>(
   %arg0: !mo.tensor<[], si32>, %arg1: !mo.tensor<[], si32>, %arg2: !mo.tensor<[], si32>
 ) -> !mo.tensor<[?], f32> {
-  // expected-error@+1 {{can only declare index parameters}}
+  // expected-error@+1 {{can only declare dimension parameters}}
   %res = mo.range<() -> Sh1: !mosh.ape>(%arg0, %arg1, %arg2) : (
     !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<Sh1, si32>
   %resreb = mo.rebind<() -> N>(%res) : !mo.tensor<Sh1, si32> -> !mo.tensor<[N], si32>
