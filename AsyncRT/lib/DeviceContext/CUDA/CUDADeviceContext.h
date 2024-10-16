@@ -108,6 +108,8 @@ public:
   ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
                                      size_t byte_size) const override;
 
+  ErrorOr<int32_t> TEST_ONLY_getAttribute(int32_t code) const override;
+
   DeviceFunction::Arguments *
   allocateArguments(const DeviceFunction &fn) const override;
 
@@ -116,11 +118,11 @@ public:
                                  uint32_t blockZ, uint32_t sharedMemBytes,
                                  const CUDADeviceFunctionArguments &args,
                                  CUstream stream) const;
-  ErrorOrSuccess cuda_callKernelDirect(uint32_t gridX, uint32_t gridY,
-                                       uint32_t gridZ, uint32_t blockX,
-                                       uint32_t blockY, uint32_t blockZ,
-                                       uint32_t sharedMemBytes, void **args,
-                                       CUstream stream) const;
+  ErrorOrSuccess
+  cuda_callKernelDirect(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+                        uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+                        uint32_t sharedMemBytes, CUlaunchAttribute *attrs,
+                        uint32_t num_attrs, void **args, CUstream stream) const;
 
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
 
@@ -188,7 +190,8 @@ public:
                                            uint32_t gridX, uint32_t gridY,
                                            uint32_t gridZ, uint32_t blockX,
                                            uint32_t blockY, uint32_t blockZ,
-                                           uint32_t sharedMemBytes,
+                                           uint32_t sharedMemBytes, void *attrs,
+                                           uint32_t num_attrs,
                                            void **args) const override;
 
   // Synchronize asynchronous operations.

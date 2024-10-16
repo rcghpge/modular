@@ -107,6 +107,8 @@ public:
   virtual ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
                                              size_t byte_size) const = 0;
 
+  virtual ErrorOr<int32_t> TEST_ONLY_getAttribute(int32_t code) const = 0;
+
   template <typename... Ts>
   ArgumentsRef buildArguments(const Ts &...ts) const;
 
@@ -260,7 +262,8 @@ public:
   enqueueFunctionExecDirect(const DeviceFunction &func, uint32_t gridX,
                             uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                             uint32_t blockY, uint32_t blockZ,
-                            uint32_t sharedMemBytes, void **args) const = 0;
+                            uint32_t sharedMemBytes, void *attrs,
+                            uint32_t num_attrs, void **args) const = 0;
 
   // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;

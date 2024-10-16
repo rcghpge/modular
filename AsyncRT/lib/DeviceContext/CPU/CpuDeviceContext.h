@@ -119,7 +119,8 @@ public:
                                            uint32_t gridX, uint32_t gridY,
                                            uint32_t gridZ, uint32_t blockX,
                                            uint32_t blockY, uint32_t blockZ,
-                                           uint32_t sharedMemBytes,
+                                           uint32_t sharedMemBytes, void *attrs,
+                                           uint32_t num_attrs,
                                            void **args) const override;
 
   // Synchronize asynchronous operations.

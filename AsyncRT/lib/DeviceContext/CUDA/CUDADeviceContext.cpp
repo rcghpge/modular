@@ -199,13 +199,25 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
 
 ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-    uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes, void **args,
+    uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    CUlaunchAttribute *attrs, uint32_t num_attrs, void **args,
     CUstream stream) const {
   const auto &cuda_context = CUDADeviceContext::cast(context());
 
-  CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernel(
-      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      stream, args, nullptr));
+  CUlaunchConfig config;
+  config.gridDimX = gridX;
+  config.gridDimY = gridY;
+  config.gridDimZ = gridZ;
+  config.blockDimX = blockX;
+  config.blockDimY = blockY;
+  config.blockDimZ = blockZ;
+  config.sharedMemBytes = sharedMemBytes;
+  config.hStream = stream;
+  config.attrs = attrs;
+  config.numAttrs = num_attrs;
+
+  CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernelEx(&config, function_,
+                                                           args, nullptr));
   return success();
 }
 
@@ -227,6 +239,16 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
   CUDA_CHECK_ERR(cuda_context.cuda_driver().MemcpyHtoDAsync(
       device_ptr, data, byte_size, cuda_context.cuda_stream()));
   return success();
+}
+
+ErrorOr<int32_t>
+CUDADeviceFunction::TEST_ONLY_getAttribute(int32_t code) const {
+  int32_t result;
+  const auto &cuda_context = CUDADeviceContext::cast(context());
+
+  CUDA_CHECK_ERR(cuda_context.cuda_driver().FuncGetAttribute(
+      &result, static_cast<CUfunction_attribute>(code), function_));
+  return result;
 }
 
 const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
@@ -489,11 +511,12 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void **args) const {
+    void *attrs, uint32_t num_attrs, void **args) const {
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
-  return cuda_func.cuda_callKernelDirect(gridX, gridY, gridZ, blockX, blockY,
-                                         blockZ, sharedMemBytes, args, stream_);
+  return cuda_func.cuda_callKernelDirect(
+      gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
+      reinterpret_cast<CUlaunchAttribute *>(attrs), num_attrs, args, stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {

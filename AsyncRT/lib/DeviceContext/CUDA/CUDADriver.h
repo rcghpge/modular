@@ -45,6 +45,30 @@ enum class CUfunc_cache {
   FUNC_CACHE_PREFER_EQUAL = 3,
 };
 
+enum class CUlaunchAttributeID {
+  CU_LAUNCH_ATTRIBUTE_IGNORE = 0,
+  CU_LAUNCH_ATTRIBUTE_ACCESS_POLICY_WINDOW = 1,
+};
+
+using CUlaunchAttribute = struct CUlaunchAttribute_st {
+  CUlaunchAttributeID id;
+  char pad[8 - sizeof(CUlaunchAttributeID)];
+  char value[64]; // a union of size 64 bytes
+};
+
+using CUlaunchConfig = struct CUlaunchConfig_st {
+  unsigned int gridDimX;
+  unsigned int gridDimY;
+  unsigned int gridDimZ;
+  unsigned int blockDimX;
+  unsigned int blockDimY;
+  unsigned int blockDimZ;
+  unsigned int sharedMemBytes;
+  CUstream hStream;
+  CUlaunchAttribute *attrs;
+  unsigned int numAttrs;
+};
+
 class CUDADriver {
 public:
   enum Result {
@@ -170,6 +194,10 @@ public:
                            const char *name) const {
     return cuModuleGetFunction_(hfunc, hmod, name);
   }
+  Result FuncGetAttribute(int *pi, CUfunction_attribute attrib,
+                          CUfunction hfunc) const {
+    return cuFuncGetAttribute_(pi, attrib, hfunc);
+  }
   Result FuncSetAttribute(CUfunction hfunc, CUfunction_attribute attrib,
                           int value) const {
     return cuFuncSetAttribute_(hfunc, attrib, value);
@@ -187,6 +215,10 @@ public:
     return cuLaunchKernel_(f, gridDimX, gridDimY, gridDimZ, blockDimX,
                            blockDimY, blockDimZ, sharedMemBytes, hStream,
                            kernelParams, extra);
+  }
+  Result LaunchKernelEx(const CUlaunchConfig *config, CUfunction hfunc,
+                        void **kernelParams, void **extra) const {
+    return cuLaunchKernelEx_(config, hfunc, kernelParams, extra);
   }
 
   Result EventCreate(CUevent *phEvent, unsigned int flags) const {
@@ -330,6 +362,10 @@ private:
   using tcuModuleGetFunction = Result(CUfunction *, CUmodule, const char *);
   tcuModuleGetFunction *cuModuleGetFunction_;
 
+  using tcuFuncGetAttribute = Result(int *pi, CUfunction_attribute attrib,
+                                     CUfunction hfunc);
+  tcuFuncGetAttribute *cuFuncGetAttribute_;
+
   using tcuFuncSetAttribute = Result(CUfunction, CUfunction_attribute, int);
   tcuFuncSetAttribute *cuFuncSetAttribute_;
 
@@ -341,6 +377,11 @@ private:
                                  unsigned int, unsigned int, CUstream, void **,
                                  void **);
   tcuLaunchKernel *cuLaunchKernel_;
+
+  using tcuLaunchKernelEx = Result(const CUlaunchConfig *config,
+                                   CUfunction hfunc, void **kernelParams,
+                                   void **extra);
+  tcuLaunchKernelEx *cuLaunchKernelEx_;
 
   using tcuEventCreate = Result(CUevent *, unsigned int);
   tcuEventCreate *cuEventCreate_;
