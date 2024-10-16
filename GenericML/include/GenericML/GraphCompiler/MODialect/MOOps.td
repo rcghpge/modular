@@ -2689,7 +2689,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<1xsi64>
       } : !mo.tensor<[], si64>
-      %res = mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
+      %res:2 = mo.split[%axis: !mo.tensor<[], si64>](%input, %splitSizes) : (
         !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
       ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
     ```
