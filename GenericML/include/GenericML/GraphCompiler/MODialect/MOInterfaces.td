@@ -401,6 +401,20 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return Impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
+def MO_StaticTupleInputs : MO_TensorOpInterfaceBase<"StaticTupleInputs"> {
+  let description = [{
+    Trait to indicate the inputs would be lowered to a `mogg.tuple` at the 
+    call site from `mogg.call`
+  }];
+}
+
+def MO_StaticTupleOutputs : MO_TensorOpInterfaceBase<"StaticTupleOutputs"> {
+  let description = [{
+    Trait to indicate the outputs would be lowered to a `mogg.tuple` at the 
+    call site from `mogg.call`
+  }];
+}
+
 def MO_Distributed : MO_TensorOpInterfaceBase<"Distributed"> {
   let description = [{
     Interface for modeling distributed operations which have

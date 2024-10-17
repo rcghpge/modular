@@ -2612,6 +2612,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_StaticTupleInputs>,
 ]> {
   let summary = "Concatenation operation";
   let description = [{
@@ -4802,7 +4803,10 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
 def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   Pure, 
   MO_HasDeviceInterface, 
-  MO_SameOperandsAndResultShape]>
+  MO_SameOperandsAndResultShape,
+  MO_StaticTupleInputs,
+  MO_StaticTupleOutputs,
+  ]>
 {
   let summary = "Take a collection of tensors across devices and perform an allreduce.sum";
   let description = [{
