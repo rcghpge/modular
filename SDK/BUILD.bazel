@@ -1,13 +1,5 @@
-load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
-load(
-    "//bazel:api.bzl",
-    "driver_option_tablegen",
-    "modular_cc_library",
-    "modular_pybind_library",
-    "py_repl",
-    "td_library",
-)
+load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "modular_pybind_library", "py_repl", "requirement", "td_library")
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_pybind")
 

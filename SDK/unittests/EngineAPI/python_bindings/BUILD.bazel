@@ -1,5 +1,4 @@
-load("@pip_deps//:requirements.bzl", "requirement")
-load("//bazel:api.bzl", "modular_pybind_library_test")
+load("//bazel:api.bzl", "modular_pybind_library_test", "requirement")
 
 modular_pybind_library_test(
     name = "tests",
