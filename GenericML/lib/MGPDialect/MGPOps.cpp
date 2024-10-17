@@ -235,40 +235,6 @@ static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
   return success();
 }
 
-static ParseResult parseTensorTypeToDeviceSpecOrShape(OpAsmParser &p,
-                                                      BoolAttr isShapeOnly,
-                                                      Type &tensor,
-                                                      DeviceRefAttr &device,
-                                                      Type &shape) {
-  Type buffer;
-  return parseTensorTypeToDeviceBufferSpecImpl(
-      isShapeOnly && isShapeOnly.getValue(), p, tensor, device, buffer, shape,
-      {});
-}
-
-static void printTensorTypeToDeviceSpecOrShape(OpAsmPrinter &p, Operation *op,
-                                               BoolAttr isShapeOnly,
-                                               DeviceTensorType tensor,
-                                               DeviceRefAttr device,
-                                               TensorSpecType shape) {
-  p << tensor;
-}
-
-static ParseResult parseTensorTypeToDeviceBuffer(OpAsmParser &p, Type &tensor,
-                                                 DeviceRefAttr &device,
-                                                 Type &buffer) {
-  Type tensorSpec;
-  return parseTensorTypeToDeviceBufferSpecImpl(/*isShapeOnly=*/false, p, tensor,
-                                               device, buffer, tensorSpec, {});
-}
-
-static void printTensorTypeToDeviceBuffer(OpAsmPrinter &p, Operation *op,
-                                          DeviceTensorType tensor,
-                                          DeviceRefAttr device,
-                                          DeviceBufferType buffer) {
-  p << tensor;
-}
-
 static ParseResult parseTensorTypeToDeviceBufferSpec(OpAsmParser &p,
                                                      DeviceRefAttr &device,
                                                      Type &buffer,
@@ -628,6 +594,82 @@ static bool isSubtype(Type ty1, Type ty2) {
   if (tensorTy1 && tensorTy2)
     return isSubtype(tensorTy1.getTensorSpec(), tensorTy2.getTensorSpec());
   return ty1 == ty2;
+}
+
+//===----------------------------------------------------------------------===//
+// TensorExtractBufferOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorExtractBufferOp::verify() {
+  DeviceBufferType expectedBufferType =
+      DeviceBufferType::get(getTensor().getType());
+  if (expectedBufferType != getOutBuffer().getType()) {
+    return emitOpError("expected the result buffer to match the type "
+                       "implied by the tensor type (")
+           << getOutBuffer().getType() << " vs " << expectedBufferType << ").";
+  }
+  return success();
+}
+
+LogicalResult TensorExtractBufferOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto tensorType = dyn_cast<DeviceTensorType>(operands[0].getType());
+  if (!tensorType) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected tensor operand.");
+  }
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(tensorType));
+  return success();
+}
+
+bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getTensorMutable().getOperandNumber();
+}
+
+OpFoldResult TensorExtractBufferOp::fold(FoldAdaptor adaptor) {
+  Operation *tensorProducer = getTensor().getDefiningOp();
+  if (auto create = dyn_cast_or_null<TensorCreateOp>(tensorProducer))
+    return create.getBuffer();
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// TensorExtractTensorSpecOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorExtractTensorSpecOp::verify() {
+  TensorSpecType expectedSpecType = getTensor().getType().getTensorSpec();
+  if (expectedSpecType != getOutSpec().getType()) {
+    return emitOpError("expected the result tensor spec to match the type "
+                       "implied by the tensor type (")
+           << getOutSpec().getType() << " vs " << expectedSpecType << ").";
+  }
+  return success();
+}
+
+LogicalResult TensorExtractTensorSpecOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  auto tensorType = dyn_cast<DeviceTensorType>(operands[0].getType());
+  if (!tensorType) {
+    return mlir::emitError(location.value_or(operands[0].getLoc()),
+                           "expected tensor operand.");
+  }
+  inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
+  return success();
+}
+
+OpFoldResult TensorExtractTensorSpecOp::fold(FoldAdaptor adaptor) {
+  Operation *tensorProducer = getTensor().getDefiningOp();
+  if (auto create = dyn_cast_or_null<TensorCreateOp>(tensorProducer))
+    return create.getTensorSpec();
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

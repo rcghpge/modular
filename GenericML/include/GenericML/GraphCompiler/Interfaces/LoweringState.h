@@ -604,10 +604,10 @@ struct MOOpLoweringState {
     BufferBuilder *bufferBuilder = getStorageBufferBuilder(moTensorType);
     // Be careful the evaluation order of the function args is unspecified
     // in the c++ standard. Define them separately to enforce the op order.
-    auto buffer = bufferBuilder->tensorExtractBuffer(builder, loc, context,
-                                                     loweredTensor);
-    auto spec = bufferBuilder->tensorExtractTensorSpec(builder, loc, context,
-                                                       loweredTensor);
+    auto buffer =
+        bufferBuilder->tensorExtractBuffer(builder, loc, loweredTensor);
+    auto spec =
+        bufferBuilder->tensorExtractTensorSpec(builder, loc, loweredTensor);
     loweringState.guardValueWithChain(
         buffer, loweringState.getChainGuardingValueOrNull(loweredTensor));
     return std::make_pair(buffer, spec);

@@ -85,18 +85,6 @@ static LogicalResult getElementsAttr(Location location,
   return success();
 }
 
-/// Assigns to flag from attribute with name in attrs.
-static LogicalResult getBoolAttr(Location location, DictionaryAttr attributes,
-                                 StringAttr name, bool &flag) {
-  auto boolAttr = dyn_cast_if_present<BoolAttr>(attributes.get(name));
-  if (!boolAttr) {
-    return mlir::emitError(location, "expected a bool for attribute '")
-           << name << "'";
-  }
-  flag = boolAttr.getValue();
-  return success();
-}
-
 /// Returns a description of optSize.
 static std::string optSizeToString(std::optional<uint64_t> optSize) {
   if (optSize)
@@ -673,100 +661,6 @@ LogicalResult TensorCreateOp::inferReturnTypes(
 
 bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getBufferMutable().getOperandNumber();
-}
-
-//===----------------------------------------------------------------------===//
-// TensorExtractBufferOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult TensorExtractBufferOp::verify() {
-  DeviceBufferType expectedBufferType =
-      DeviceBufferType::get(getTensor().getType());
-  if (expectedBufferType != getOutBuffer().getType()) {
-    return emitOpError("expected the result buffer to match the type "
-                       "implied by the tensor type (")
-           << getOutBuffer().getType() << " vs " << expectedBufferType << ").";
-  }
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
-}
-
-LogicalResult TensorExtractBufferOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  if (operands.size() != 2) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected two operands.");
-  }
-  auto tensorType = dyn_cast<DeviceTensorType>(operands[1].getType());
-  if (!tensorType) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected tensor operand.");
-  }
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getBDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceBufferType::get(tensorType));
-  return success();
-}
-
-bool TensorExtractBufferOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-  return operandIndex == getTensorMutable().getOperandNumber();
-}
-
-OpFoldResult TensorExtractBufferOp::fold(FoldAdaptor adaptor) {
-  Operation *tensorProducer = getTensor().getDefiningOp();
-  if (auto create = dyn_cast_or_null<TensorCreateOp>(tensorProducer))
-    return create.getBuffer();
-
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
-// TensorExtractTensorSpecOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult TensorExtractTensorSpecOp::verify() {
-  TensorSpecType expectedSpecType =
-      getTensor().getType().getTensorSpec(getCIsShapeOnly());
-  if (expectedSpecType != getOutSpec().getType()) {
-    return emitOpError("expected the result tensor spec to match the type "
-                       "implied by the tensor type (")
-           << getOutSpec().getType() << " vs " << expectedSpecType << ").";
-  }
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
-}
-
-LogicalResult TensorExtractTensorSpecOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  if (operands.size() != 2) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected two operands.");
-  }
-  auto tensorType = dyn_cast<DeviceTensorType>(operands[1].getType());
-  if (!tensorType) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected tensor operand.");
-  }
-  bool isShapeOnly = false;
-  if (failed(getBoolAttr(location.value_or(operands[0].getLoc()), attributes,
-                         getCIsShapeOnlyAttrName(name), isShapeOnly)))
-    return failure();
-  inferredReturnTypes.emplace_back(tensorType.getTensorSpec(isShapeOnly));
-  return success();
-}
-
-OpFoldResult TensorExtractTensorSpecOp::fold(FoldAdaptor adaptor) {
-  Operation *tensorProducer = getTensor().getDefiningOp();
-  if (auto create = dyn_cast_or_null<TensorCreateOp>(tensorProducer))
-    return create.getTensorSpec();
-  return {};
 }
 
 //===----------------------------------------------------------------------===//

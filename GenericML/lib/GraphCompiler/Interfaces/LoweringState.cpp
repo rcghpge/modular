@@ -40,9 +40,8 @@ TypedValue<MGP::TensorSpecType>
 MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
-  return getBufferBuilder(device)->tensorExtractTensorSpec(
-      builder, loc, getExecuteMgpContext(), loweredTensor,
-      /*isShapeOnly=*/true);
+  return getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
+                                                           loweredTensor);
 }
 
 MGP::CpuTensorSpecDimsDynamicOp
@@ -53,8 +52,8 @@ MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
   // loweredTensor's buffer in which case we'll be emitting a full
   // tensor.extract op anyway.
   TypedValue<MGP::TensorSpecType> tensorSpec =
-      getBufferBuilder(device)->tensorExtractTensorSpec(
-          builder, loc, getExecuteMgpContext(), loweredTensor);
+      getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
+                                                        loweredTensor);
   return builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
       loc, /*spec=*/tensorSpec, /*rawDims=*/tensorSpec.getType().getRawDims());
 }
@@ -582,10 +581,9 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
 
   MO::TensorType ty = MO::castFromTensorLike(moTensor.getType());
   BufferBuilder *bufferBuilder = getStorageBufferBuilder(ty);
-  auto buffer =
-      bufferBuilder->tensorExtractBuffer(builder, loc, context, loweredTensor);
-  auto tensorSpec = bufferBuilder->tensorExtractTensorSpec(
-      builder, loc, context, loweredTensor);
+  auto buffer = bufferBuilder->tensorExtractBuffer(builder, loc, loweredTensor);
+  auto tensorSpec =
+      bufferBuilder->tensorExtractTensorSpec(builder, loc, loweredTensor);
 
   // we are extracting a buffer from a tensor, so the buffer needs to be guarded
   // by the same chain as the tensor

@@ -21,27 +21,27 @@ module {
     %3 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
     %4 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %5 = mgp.tensor.create %arg0, %arg1[1], %3 , %4 : !mgp.tensor<8xf32>
-    %bufferResult = mgp.tensor.extract.buffer %arg1[1], %2 : !mgp.tensor<8xf32>
-    %tensorSpecResult = mgp.tensor.extract.tensor_spec %arg1[1], %2 : !mgp.tensor<8xf32>
-    %bufferResult_0 = mgp.tensor.extract.buffer %arg1[1], %5 : !mgp.tensor<8xf32>
-    %tensorSpecResult_1 = mgp.tensor.extract.tensor_spec %arg1[1], %5 : !mgp.tensor<8xf32>
+    %bufferResult = mgp.tensor.extract.buffer %2 : !mgp.tensor<8xf32>
+    %tensorSpecResult = mgp.tensor.extract.tensor_spec %2 : <8xf32>
+    %bufferResult_0 = mgp.tensor.extract.buffer %5 : !mgp.tensor<8xf32>
+    %tensorSpecResult_1 = mgp.tensor.extract.tensor_spec %5 : <8xf32>
     %size = index.constant 32
     %6 = mgp.buffer.alloc %arg0, %arg1[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
     %7 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %8 = "mop.kernels.mul"(%arg0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %6, %7) : (!mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
     %9 = mgp.tensor.create %8, %arg1[1], %6 , %7 : !mgp.tensor<8xf32>
-    %bufferResult_2 = mgp.tensor.extract.buffer %arg1[1], %9 : !mgp.tensor<8xf32>
-    %tensorSpecResult_3 = mgp.tensor.extract.tensor_spec %arg1[1], %9 : !mgp.tensor<8xf32>
-    %bufferResult_4 = mgp.tensor.extract.buffer %arg1[1], %5 : !mgp.tensor<8xf32>
-    %tensorSpecResult_5 = mgp.tensor.extract.tensor_spec %arg1[1], %5 : !mgp.tensor<8xf32>
+    %bufferResult_2 = mgp.tensor.extract.buffer %9 : !mgp.tensor<8xf32>
+    %tensorSpecResult_3 = mgp.tensor.extract.tensor_spec %9 : <8xf32>
+    %bufferResult_4 = mgp.tensor.extract.buffer %5 : !mgp.tensor<8xf32>
+    %tensorSpecResult_5 = mgp.tensor.extract.tensor_spec %5 : <8xf32>
     %10 = mgp.buffer.alloc %arg0, %arg1[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
     %11 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %12 = "mop.kernels.mul"(%8, %bufferResult_2, %tensorSpecResult_3, %bufferResult_4, %tensorSpecResult_5, %10, %11) : (!mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
     %13 = mgp.tensor.create %12, %arg1[1], %10 , %11 : !mgp.tensor<8xf32>
-    %bufferResult_6 = mgp.tensor.extract.buffer %arg1[1], %13 : !mgp.tensor<8xf32>
-    %tensorSpecResult_7 = mgp.tensor.extract.tensor_spec %arg1[1], %13 : !mgp.tensor<8xf32>
-    %bufferResult_8 = mgp.tensor.extract.buffer %arg1[1], %5 : !mgp.tensor<8xf32>
-    %tensorSpecResult_9 = mgp.tensor.extract.tensor_spec %arg1[1], %5 : !mgp.tensor<8xf32>
+    %bufferResult_6 = mgp.tensor.extract.buffer %13 : !mgp.tensor<8xf32>
+    %tensorSpecResult_7 = mgp.tensor.extract.tensor_spec %13 : <8xf32>
+    %bufferResult_8 = mgp.tensor.extract.buffer %5 : !mgp.tensor<8xf32>
+    %tensorSpecResult_9 = mgp.tensor.extract.tensor_spec %5 : <8xf32>
     %14 = mgp.buffer.alloc %arg0, %arg1[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
     %15 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %16 = "mop.kernels.add"(%12, %bufferResult_6, %tensorSpecResult_7, %bufferResult_8, %tensorSpecResult_9, %14, %15) : (!mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
@@ -63,7 +63,7 @@ mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
   %1 = mgp.context.create 2
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<1234x5678xf32>) -> (!mef.chain, !mgp.tensor<1234x5678xf32>) {
-  %spec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor: !mgp.tensor<1234x5678xf32>
+  %spec = mgp.tensor.extract.tensor_spec %inTensor: <1234x5678xf32>
   %size0 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
   %size1 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
   %ch0 = "test.sink"(%size0, %arg0) : (index, !mef.chain) -> !mef.chain
@@ -83,8 +83,8 @@ mgp.model @tensor_extract_fold : mof devices [#M.device_ref<"cpu", 0>] init (%we
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %in_spec: !mgp.tensor_spec<si32>, %in_buf: !mgp.buffer<4>) -> (!mef.chain, !mgp.buffer<4>, !mgp.tensor_spec<si32>) {
   %0 = mgp.tensor.create %arg0, %arg1[1], %in_buf, %in_spec  : !mgp.tensor<si32>
-  %buf = mgp.tensor.extract.buffer %arg1[1], %0 : !mgp.tensor<si32>
-  %spec = mgp.tensor.extract.tensor_spec %arg1[1], %0 : !mgp.tensor<si32>
+  %buf = mgp.tensor.extract.buffer %0 : !mgp.tensor<si32>
+  %spec = mgp.tensor.extract.tensor_spec %0 : <si32>
   mef.output %arg0, %buf, %spec : !mef.chain, !mgp.buffer<4>, !mgp.tensor_spec<si32>
 }
 

@@ -3,11 +3,11 @@
 // CHECK-LABEL:  mgp.model @static
 // CHECK:        } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<2x4xf32>, %[[ARG3:.*]]: !mgp.tensor<2x4xf32>) -> (!mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>) {
-// CHECK-NEXT:     %[[EXTRACT1:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[ARG2]] shape_only true : !mgp.tensor<2x4xf32>
-// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.tensor_spec<2x4xunk>
+// CHECK-NEXT:     %[[EXTRACT1:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <2x4xf32>
+// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.tensor_spec<2x4xf32>
 // CHECK-NEXT:     %[[ASSERT1:.*]] = mgp.assert %[[EQUAL1:.*]]
-// CHECK-NEXT:     %[[EXTRACT2:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[ARG3]] shape_only true : !mgp.tensor<2x4xf32>
-// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.tensor_spec<2x4xunk>
+// CHECK-NEXT:     %[[EXTRACT2:.*]] = mgp.tensor.extract.tensor_spec %[[ARG3]] : <2x4xf32>
+// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.tensor_spec<2x4xf32>
 // CHECK-NEXT:     %[[ASSERT2:.*]] = mgp.assert %[[EQUAL2]]
 // CHECK-NEXT:     mef.output %[[CH0]], %[[ARG2]], %[[ARG3]] : !mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>
 // CHECK-NEXT:   }
@@ -37,11 +37,11 @@ mgp.model @dynamic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 // CHECK-LABEL:  mgp.model @mixed
 // CHECK:        } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<?x4xf32>, %[[ARG3:.*]]: !mgp.tensor<?x4xf32>) -> (!mef.chain, !mgp.tensor<?x4xf32>, !mgp.tensor<?x4xf32>) {
-// CHECK-NEXT:     %[[EXTRACT1:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[ARG2]] shape_only true : !mgp.tensor<?x4xf32>
-// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.tensor_spec<?x4xunk>
+// CHECK-NEXT:     %[[EXTRACT1:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x4xf32>
+// CHECK-NEXT:     %[[EQUAL1:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT1]] : !mgp.tensor_spec<?x4xf32>
 // CHECK-NEXT:     %[[ASSERT1:.*]] = mgp.assert %[[EQUAL1:.*]]
-// CHECK-NEXT:     %[[EXTRACT2:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][1], %[[ARG3]] shape_only true : !mgp.tensor<?x4xf32>
-// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.tensor_spec<?x4xunk>
+// CHECK-NEXT:     %[[EXTRACT2:.*]] = mgp.tensor.extract.tensor_spec %[[ARG3]] : <?x4xf32>
+// CHECK-NEXT:     %[[EQUAL2:.*]] = mgp.tensor_spec.equal.static %[[EXTRACT2]] : !mgp.tensor_spec<?x4xf32>
 // CHECK-NEXT:     %[[ASSERT2:.*]] = mgp.assert %[[EQUAL2]]
 // CHECK-NEXT:     mef.output %[[CH0]], %[[ARG2]], %[[ARG3]] : !mef.chain, !mgp.tensor<?x4xf32>, !mgp.tensor<?x4xf32>
 // CHECK-NEXT:   }

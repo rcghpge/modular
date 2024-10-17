@@ -71,8 +71,8 @@ class VerifyModelArgumentsPass
       BufferBuilder *bufferBuilder =
           builderContext.getBufferBuilder(tensorArg.getDevice());
       auto expectedTensorSpec = tensorArg.getTensorSpec();
-      auto runtimeTensorSpec = bufferBuilder->tensorExtractTensorSpec(
-          builder, loc, executeState.getContext(), arg, /*isShapeOnly=*/true);
+      auto runtimeTensorSpec =
+          bufferBuilder->tensorExtractTensorSpec(builder, loc, arg);
       auto areEqual =
           builder
               .create<CpuTensorSpecEqualStaticOp>(

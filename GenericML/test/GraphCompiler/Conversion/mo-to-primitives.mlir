@@ -27,9 +27,9 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
 // CHECK: } execute (
 // CHECK-SAME: %[[ARG0:.*]]: !mef.chain, %[[ARG1:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<1x?xf32>, %[[ARG3:.*]]: !mgp.tensor<?xf32>) -> !mef.chain {
-// CHECK:   %[[VAL0:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][0], %[[ARG2]] : !mgp.tensor<1x?xf32>
+// CHECK:   %[[VAL0:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <1x?xf32>
 // CHECK:   %[[VAL1:.*]] = mgp.tensor_spec.dims.dynamic %[[VAL0]] : !mgp.tensor_spec<1x?xf32>
-// CHECK:   %[[VAL2:.*]] = mgp.tensor.extract.tensor_spec %[[ARG1]][0], %[[ARG3]] : !mgp.tensor<?xf32>
+// CHECK:   %[[VAL2:.*]] = mgp.tensor.extract.tensor_spec %[[ARG3]] : <?xf32>
 // CHECK:   %[[VAL3:.*]] = mgp.tensor_spec.dims.dynamic %[[VAL2]] : !mgp.tensor_spec<?xf32>
 // CHECK:   mef.output %[[ARG0:.*]] : !mef.chain
 mo.graph @foo<N>(%arg0: !mo.tensor<[1, N], f32>, %arg1: !mo.tensor<[N], f32>) {

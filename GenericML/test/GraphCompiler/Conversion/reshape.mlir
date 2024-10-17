@@ -6,14 +6,14 @@
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK-SAME: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>, %[[ARG3:.*]]: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
 
-// CHECK:   %[[SPEC3:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG2]]
+// CHECK:   %[[SPEC3:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]]
 // CHECK:   %[[DIMS:.:*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC3]]
 
-// CHECK:   %[[SPEC1:.*]] = mgp.tensor.extract.tensor_spec %[[CTX]][0], %[[ARG3]]
+// CHECK:   %[[SPEC1:.*]] = mgp.tensor.extract.tensor_spec %[[ARG3]]
 // CHECK:   %[[RESIZED_DIMS:.:*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC1]]
 
 
-// CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][0], %[[ARG2]]
+// CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]]
 // CHECK:   %[[NEW_SPEC:.*]] = mgp.tensor_spec.create %[[RESIZED_DIMS]]#0, %[[RESIZED_DIMS]]#1 : !mgp.tensor_spec<?x?xf32>
 
 // CHECK:   %[[OUT:.*]] = mgp.tensor.create %[[CH0]], %[[CTX]][0], %[[BUF]], %[[NEW_SPEC]] : !mgp.tensor<?x?xf32>
@@ -45,12 +45,12 @@ mo.graph @multi_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1:
 // CHECK-LABEL: mgp.model @reshape_singleton_dims 
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, {{.*}}, %[[ARG3:.*]]: !mgp.tensor<si32>)
 
-// CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[CTX]][0], %[[ARG3]] : !mgp.tensor<si32>
+// CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[ARG3]] : <si32>
 
 // CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1xsi32>
 // CHECK: %[[T:.*]] = mgp.tensor.create %[[CH0]], %[[CTX]][0], %[[IN_BUF]], %[[SPEC]] : !mgp.tensor<1xsi32>
 
-// CHECK: %[[BUF_RESHAPED:.*]] = mgp.tensor.extract.buffer %[[CTX]][0], %[[T]] : !mgp.tensor<1xsi32>
+// CHECK: %[[BUF_RESHAPED:.*]] = mgp.tensor.extract.buffer %[[T]] : <1xsi32>
 
 // CHECK: %[[SPEC2:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1x1xsi32>
 

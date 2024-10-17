@@ -220,15 +220,12 @@ public:
 
   /// Returns the buffer held by tensor.
   virtual Value tensorExtractBuffer(OpBuilder &builder, Location loc,
-                                    TypedValue<ContextType> context,
                                     Value tensor) = 0;
 
   /// Returns the tensor spec (or just 'shape' if isShapeOnly is true) of
   /// tensor.
   virtual TypedValue<TensorSpecType>
-  tensorExtractTensorSpec(OpBuilder &builder, Location loc,
-                          TypedValue<ContextType> context, Value tensor,
-                          bool isShapeOnly = false) = 0;
+  tensorExtractTensorSpec(OpBuilder &builder, Location loc, Value tensor) = 0;
 
   /// Return the tensor constructed from buffer and tensor spec. If necessary
   /// the buffer will be 'unsized' or 'resized' to match the tensorSpec type.
@@ -385,13 +382,11 @@ public:
                                uint64_t align) override;
 
   Value tensorExtractBuffer(OpBuilder &builder, Location loc,
-                            TypedValue<ContextType> context,
                             Value tensor) override;
 
-  TypedValue<TensorSpecType>
-  tensorExtractTensorSpec(OpBuilder &builder, Location loc,
-                          TypedValue<ContextType> context, Value tensor,
-                          bool isShapeOnly) override;
+  TypedValue<TensorSpecType> tensorExtractTensorSpec(OpBuilder &builder,
+                                                     Location loc,
+                                                     Value tensor) override;
 
   Value tensorCreate(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inChain,

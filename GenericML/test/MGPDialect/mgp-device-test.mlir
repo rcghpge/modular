@@ -224,8 +224,8 @@ func.func @tensor_create(%ctx : !mgp.context, %ch : !mef.chain, %buf : !mgp.buff
 
 // CHECK-LABEL: @tensor_extract_buffer
 func.func @tensor_extract_buffer(%ctx : !mgp.context, %tensor : !mgp.tensor<3x5xf32, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.tensor.extract.buffer %{{.*}}[1], %{{.*}} : !mgp.tensor<3x5xf32, <"cuda", 3>>
-  %buf = mgp.tensor.extract.buffer %ctx[1], %tensor : !mgp.tensor<3x5xf32, <"cuda", 3>>
+  // CHECK: %{{.*}} = mgp.tensor.extract.buffer %{{.*}} : <3x5xf32, <"cuda", 3>>
+  %buf = mgp.tensor.extract.buffer %tensor : <3x5xf32, <"cuda", 3>>
   mef.output %buf : !mgp.buffer<60, <"cuda", 3>>
 }
 
@@ -235,16 +235,9 @@ func.func @tensor_extract_buffer(%ctx : !mgp.context, %tensor : !mgp.tensor<3x5x
 
 // CHECK-LABEL: @tensor_extract_tensor_spec
 func.func @tensor_extract_tensor_spec(%ctx : !mgp.context, %tensor : !mgp.tensor<3x?xf32, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.tensor.extract.tensor_spec %{{.*}}[1], %{{.*}} : !mgp.tensor<3x?xf32, <"cuda", 3>>
-  %shape = mgp.tensor.extract.tensor_spec %ctx[1], %tensor : !mgp.tensor<3x?xf32, <"cuda", 3>>
+  // CHECK: %{{.*}} = mgp.tensor.extract.tensor_spec %{{.*}} : <3x?xf32, <"cuda", 3>>
+  %shape = mgp.tensor.extract.tensor_spec %tensor : <3x?xf32, <"cuda", 3>>
   mef.output %shape : !mgp.tensor_spec<3x?xf32>
-}
-
-// CHECK-LABEL: @tensor_extract_shape
-func.func @tensor_extract_shape(%ctx : !mgp.context, %tensor : !mgp.tensor<3x?xf32, <"cuda", 3>>) {
-  // CHECK: %{{.*}} = mgp.tensor.extract.tensor_spec %{{.*}}[1], %{{.*}} shape_only true : !mgp.tensor<3x?xf32, <"cuda", 3>>
-  %shape = mgp.tensor.extract.tensor_spec %ctx[1], %tensor shape_only true : !mgp.tensor<3x?xf32, <"cuda", 3>>
-  mef.output %shape : !mgp.tensor_spec<3x?xunk>
 }
 
 //

@@ -91,6 +91,73 @@ def StateSlotCreateOp : MGP_Op<"state_slot.create"> {
   }];
 }
 
+
+//===----------------------------------------------------------------------===//
+// TensorExtractBufferOp
+//===----------------------------------------------------------------------===//
+
+def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
+    Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+]> {
+  let summary = "Extracts the `!mgp.buffer` from an `!mgp.tensor`.";
+  let description = [{
+    Returns the `!mgp.buffer` component of tensor.
+
+    If this op holds the only reference to the tensor then the buffer will be
+    moved out of the tensor. Otherwise a deep copy of the buffer is returned.
+
+    Example:
+    ```mlir
+    %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
+    %buf = mgp.tensor.extract.buffer %tensor : <8x64xf32, <"cuda", 3>>
+    %buf : !mgp.buffer<2048, <"cuda", 3>>
+    ```
+  }];
+
+  let arguments = (ins MGP_DeviceTensorType:$tensor);
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $tensor attr-dict `:` type($tensor)
+  }];
+  let hasFolder = 1;
+  let hasVerifier = 1;
+}
+
+
+//===----------------------------------------------------------------------===//
+// TensorExtractTensorSpecOp
+//===----------------------------------------------------------------------===//
+
+def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
+    Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Extracts the `!mgp.tensor_spec` from a `!mgp.tensor`.";
+  let description = [{
+    Returns the `!mgp.tensor_spec` of a tensor. If requested, the dtype
+    can be replaced with `unk` to represent the tensor's 'shape'.
+
+    Example:
+    ```mlir
+    %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
+    %shape0 = mgp.tensor.extract.tensor_spec %tensor : <8x64xf32, <"cuda", 3>>
+    %shape0 : !mgp.tensor_spec<8x64xk32>
+    %shape1 = mgp.tensor.extract.tensor_spec %tensor : <8x64xf32, <"cuda", 3>>
+    %shape1 : !mgp.tensor_spec<8x64xunk>
+    ```
+  }];
+
+  let arguments = (ins MGP_DeviceTensorType: $tensor);
+  let results = (outs MGP_TensorSpecType:$outSpec);
+  let assemblyFormat = [{
+    $tensor attr-dict `:` type($tensor)
+  }];
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//

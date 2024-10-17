@@ -8,14 +8,14 @@
 // CHECK: execute
 // CHECK-SAME: !mgp.opaque{{.*}}, [[buf:%.*]]: !mgp.tensor<2x2xf32>, [[rhs:%.*]]: !mgp.tensor<2x2xf32>)
 // CHECK: grt.chain.create ([[buf]]
-// CHECK: [[ebuf:%.*]] = mgp.tensor.extract.buffer{{.*}} [[buf]] : !mgp.tensor<2x2xf32>
+// CHECK: [[ebuf:%.*]] = mgp.tensor.extract.buffer{{.*}} [[buf]]
 // The check below corresponds to the (lowered) mo.mutable.load
 // CHECK: mgp.buffer.device_to_device{{.*}}[[ebuf]] 
 // CHECK: mogg.generic.compiled.region
 // CHECK: summary = "mo.add
 // CHECK: mogg.generic.compiled.region
 // CHECK: summary = "mo.negative
-// CHECK: [[ebuf2:%.*]] = mgp.tensor.extract.buffer{{.*}} [[buf]] : !mgp.tensor<2x2xf32>
+// CHECK: [[ebuf2:%.*]] = mgp.tensor.extract.buffer [[buf]]
 // CHECK: mgp.buffer.device_to_device{{.*}}[[ebuf2]]
 mo.graph @unfused_mutable_load_store(%buf: !bt, %rhs: !tt) -> !bt
 {

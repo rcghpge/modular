@@ -130,27 +130,18 @@ Value MGPBufferBuilder::bufferConstantExternal(
 }
 
 Value MGPBufferBuilder::tensorExtractBuffer(OpBuilder &builder, Location loc,
-                                            TypedValue<ContextType> context,
                                             Value tensor) {
   return builder.create<TensorExtractBufferOp>(
       loc,
-      /*theContext=*/context,
-      /*tensor=*/cast<TypedValue<DeviceTensorType>>(tensor),
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bDevice=*/device);
+      /*tensor=*/cast<TypedValue<DeviceTensorType>>(tensor));
 }
 
 TypedValue<TensorSpecType>
 MGPBufferBuilder::tensorExtractTensorSpec(OpBuilder &builder, Location loc,
-                                          TypedValue<ContextType> context,
-                                          Value tensor, bool isShapeOnly) {
+                                          Value tensor) {
   return builder.create<TensorExtractTensorSpecOp>(
       loc,
-      /*theContext=*/context,
-      /*tensor=*/cast<TypedValue<DeviceTensorType>>(tensor),
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bDevice=*/device,
-      /*cIsShapeOnly=*/isShapeOnly);
+      /*tensor=*/cast<TypedValue<DeviceTensorType>>(tensor));
 }
 
 Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,

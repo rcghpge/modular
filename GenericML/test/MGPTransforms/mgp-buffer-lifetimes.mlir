@@ -6,9 +6,9 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
-  %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
-  %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
+  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
+  %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
+  %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
   %allocSize = index.mul %inDims#0, %inDims#1
@@ -41,9 +41,9 @@ mgp.model @parallel : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
-  %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
-  %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
+  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
+  %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
+  %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
   %allocSize = index.mul %inDims#0, %inDims#1
@@ -79,9 +79,9 @@ mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
-  %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
-  %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
+  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
+  %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
+  %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
   %allocSize = index.mul %inDims#0, %inDims#1
@@ -97,8 +97,8 @@ mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%
   %outChain_0 = "use_buffers"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
 
   %alias0_tensor = mgp.tensor.create %outChain_0, %arg1[1], %alloc0, %inTensorSpec : !mgp.tensor<?x?xf32>
-  // CHECK-DAG: %[[ALIAS0:.*]] = mgp.tensor.extract.buffer {{.*}} : !mgp.tensor<?x?xf32>
-  %alias0 = mgp.tensor.extract.buffer %arg1[1], %alias0_tensor : !mgp.tensor<?x?xf32>
+  // CHECK-DAG: %[[ALIAS0:.*]] = mgp.tensor.extract.buffer {{.*}}
+  %alias0 = mgp.tensor.extract.buffer %alias0_tensor : <?x?xf32>
 
   // CHECK-DAG: %[[CH1:.*]] = "use_buffers"({{.*}}, %[[ALLOC0]], %[[ALLOC1]])
   %outChain_1 = "use_buffers"(%outChain_0, %alloc0, %alloc1) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
@@ -123,9 +123,9 @@ mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
-  %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
-  %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
+  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
+  %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
+  %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
 
   %buf1 = mgp.buffer.constant %arg0, %arg1[1], #M.dense_array<1> : !M.array<1xui8>
   %b1 = mgp.buffer.to_bool %arg0, %arg1[1], %buf1 : !mgp.buffer<1>

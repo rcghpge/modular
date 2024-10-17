@@ -18,9 +18,9 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
-  %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
-  %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
+  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
+  %inBuffer = mgp.tensor.extract.buffer %inTensor : !mgp.tensor<?x?xf32>
+  %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
   %allocSize = index.mul %inDims#0, %inDims#1
@@ -59,9 +59,9 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer {{.*}}
-  %inBuffer = mgp.tensor.extract.buffer %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
-  %inTensorSpec = mgp.tensor.extract.tensor_spec %arg1[1], %inTensor : !mgp.tensor<?x?xf32>
+  // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
+  %inBuffer = mgp.tensor.extract.buffer %inTensor : !mgp.tensor<?x?xf32>
+  %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
   %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
   %allocSize = index.mul %inDims#0, %inDims#1
