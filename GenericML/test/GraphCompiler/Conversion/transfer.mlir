@@ -33,7 +33,7 @@ mo.graph @transfer_with_unknown_dims(
 //       CHECK: } execute ([[CH:%.*]]: !mef.chain, [[CTX:%.*]]: !mgp.context, {{.*}}
 // CHECK: [[CPY_CH:%.*]] = mgp.buffer.device_to_host {{.*}}, [[DBUF:%.*]], [[HBUF:%.*]], {{.*}} : !mgp.buffer
 // CHECK-NEXT: [[SYNC_CH:%.*]] = mgp.sync([[CPY_CH]]
-// CHECK-NEXT: mgp.extend.lifetime [[SYNC_CH]], [[DBUF]], [[HBUF]]
+// CHECK-NEXT: mgp.extend.lifetime [[SYNC_CH]], [[HBUF]]
 
 // COM: Device to host needs to wait on the sync before using the host buffer.
 

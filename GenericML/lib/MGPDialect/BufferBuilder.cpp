@@ -259,8 +259,7 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
                                   /*aRuntimeSlot*/ runtimeSlot,
                                   /*bDevice*/ device);
 
-  builder.create<MGP::ExtendLifetimeOp>(
-      loc, ValueRange{syncChain, srcBuffer, dstBuffer});
+  builder.create<MGP::ExtendLifetimeOp>(loc, ValueRange{syncChain, dstBuffer});
 
   // return the syncChain here because the dstBuffer is not available on the
   // host until the d2h copy is complete. Note that this is different from
