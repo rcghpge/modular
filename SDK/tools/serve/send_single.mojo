@@ -29,7 +29,7 @@ fn test_basic_add_request(
     _ = b^
 
     var outputs = response.get_output_tensors()
-    # TODO: Update for Formatter
+    # TODO: Update for Writer
     # print(outputs)
 
     var actual = outputs.get[DType.float32](req_outputs[0])
