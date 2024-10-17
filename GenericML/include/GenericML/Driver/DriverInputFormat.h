@@ -37,16 +37,6 @@ enum class FileFormat : uint8_t {
   /// This looks like a textual MLIR file with the faux dialect in it.
   kFauxDialect,
 
-  /// This looks like a textual MLIR file with the tfp dialect in it.
-  kTFPDialect,
-
-  /// This looks like a textual MLIR file with the tensorflow graph dialect in
-  /// it.
-  kTFDialect,
-
-  /// This is a TensorFlow SavedModel directory.
-  kTFSavedModel,
-
   /// This is a MLIR file with the mo dialect in it.
   kMODialect,
 
@@ -107,15 +97,6 @@ inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
 /// represent.
 FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
 
-/// Check if the given directory is a TensorFlow SavedModel directory.
-bool isTFSavedModelDirectory(const std::filesystem::path &dirPath);
-
-/// Canonicalize a saved model path as provided by a user to a directory.  Also
-/// does some smoke tests on the path to see if it is a valid saved model, and
-/// provides diagnostics appropriate for surfacing to a user if not.
-ErrorOr<std::filesystem::path>
-canonicalizeTFSavedModelPath(std::filesystem::path path);
-
 struct DriverInputFormatOptions {
 public:
   /// Allow the user to override the input file format.  The default is to
@@ -151,14 +132,6 @@ private:
                      "Input is a faux dialect file"),
           clEnumValN(FileFormat::kMGPDialect, "mgp",
                      "Input is an mgp dialect file"),
-
-          // TensorFlow
-          clEnumValN(FileFormat::kTFSavedModel, "tf-saved-model",
-                     "Input is a TF SavedModel directory"),
-          clEnumValN(FileFormat::kTFDialect, "tf",
-                     "Input is a TF dialect file"),
-          clEnumValN(FileFormat::kTFPDialect, "tf-p",
-                     "Input is a TF primitives dialect file"),
 
           // ONNX
           clEnumValN(FileFormat::kONNXProtobuf, "onnx-proto",

@@ -39,12 +39,6 @@ M::ErrorOr<std::string> M::getFileContentIdentity(const BufferRef &file,
   switch (format) {
   default:
     return "input has unknown contents";
-  case FileFormat::kTFDialect:
-    return "input is a TensorFlow model in MLIR form";
-  case FileFormat::kTFSavedModel:
-    return "input is a TensorFlow model in SavedModel form";
-  case FileFormat::kTFPDialect:
-    return "input is a compiled TensorFlow MEF model in MLIR form";
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
   case FileFormat::kMONNXDialect:

@@ -82,8 +82,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
     // comments (e.g. CHECK lines), for example.
     if (fileContents.contains("monnx.graph"))
       return FileFormat::kMONNXDialect;
-    if (fileContents.contains("func.func") && fileContents.contains("tf."))
-      return FileFormat::kTFDialect;
     if (fileContents.contains("ir_version: "))
       return FileFormat::kONNXTextProtobuf;
     // Ignore commented out lines for file format sniffing.
@@ -109,8 +107,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
                     .value) {
         case CompiledFrameworkLabel::kUnknown:
           return FileFormat::kUnknown;
-        case CompiledFrameworkLabel::kTensorFlowModel:
-          return FileFormat::kTFPDialect;
         case CompiledFrameworkLabel::kFauxModel:
           return FileFormat::kFauxDialect;
         case CompiledFrameworkLabel::kModularModel:
@@ -145,61 +141,4 @@ DriverInputFormatOptions::getInputFormat(StringRef fileExtension,
   if (inputFormat != FileFormat::kUnknown)
     return inputFormat;
   return sniffInputFormat(fileExtension, fileContents);
-}
-
-static constexpr const char *kSavedModelFilenames[] = {
-    // From:
-    // https://github.com/tensorflow/tensorflow/blob/847bf3aee436d72f530d855a0112c6ee614d5f58/tensorflow/cc/saved_model/loader.cc#L500-L510
-    "saved_model.pb",    // Normal case
-    "saved_model.cpb",   // Chunked
-    "saved_model.pbtxt", // Text format
-};
-
-bool M::isTFSavedModelDirectory(const std::filesystem::path &dirPath) {
-  std::error_code ec;
-  if (!std::filesystem::is_directory(dirPath, ec) || ec)
-    return false;
-
-  for (auto filename : kSavedModelFilenames) {
-    if (std::filesystem::exists(dirPath / filename, ec) && !ec)
-      return true;
-  }
-  return false;
-}
-
-static bool isTFSavedModelPbFilename(StringRef filename) {
-  for (auto known : kSavedModelFilenames) {
-    if (filename == known)
-      return true;
-  }
-  return false;
-}
-
-ErrorOr<std::filesystem::path>
-M::canonicalizeTFSavedModelPath(std::filesystem::path path) {
-  std::error_code ec;
-  auto status = std::filesystem::status(path, ec);
-  if (status.type() == std::filesystem::file_type::none)
-    return Error(Twine("unable to access path ") + path.string() + ": " +
-                 ec.message());
-  if (status.type() == std::filesystem::file_type::not_found)
-    return Error(Twine(path.string()) + " does not exist");
-  if (status.type() == std::filesystem::file_type::regular &&
-      isTFSavedModelPbFilename(path.filename().string()))
-    path = path.parent_path();
-  else if (status.type() != std::filesystem::file_type::directory)
-    return Error(Twine(path.string()) +
-                 " is not a directory and cannot be loaded as a SavedModel");
-  bool hasFile = false;
-  for (auto filename : kSavedModelFilenames) {
-    status = std::filesystem::status(path / filename, ec);
-    if (status.type() == std::filesystem::file_type::regular) {
-      hasFile = true;
-      break;
-    }
-  }
-  if (!hasFile)
-    return Error(Twine(path.string()) +
-                 " does not contain the required file 'saved_model.pb'");
-  return path;
 }

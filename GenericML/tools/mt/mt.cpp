@@ -96,12 +96,6 @@ getFileContentIdentity(M::BufferRef file, FileFormat format,
   switch (format) {
   default:
     return "input has unknown contents";
-  case FileFormat::kTFDialect:
-    return "input is a TensorFlow model in MLIR form";
-  case FileFormat::kTFSavedModel:
-    return "input is a TensorFlow model in SavedModel form";
-  case FileFormat::kTFPDialect:
-    return "input is a compiled TensorFlow MEF model in MLIR form";
   case FileFormat::kFauxDialect:
     return "input is Faux model in MLIR form";
   case FileFormat::kMODialect:
@@ -180,21 +174,17 @@ int main(int argc, char **argv) {
             " (error code: " + Twine(errorCode.message()) + ")");
       }
 
-      if (info.isInputDirectory) {
-        if (isTFSavedModelDirectory(info.inputPath))
-          info.format = FileFormat::kTFSavedModel;
-        else
-          return options.reportError("unable to detect input model format");
-      } else {
-        // The input file is not a directory, so we open and sniff the format.
-        // In case the input file is MEF, it has to be aligned to the maximum
-        // attribute alignment.
-        std::unique_ptr<llvm::MemoryBuffer> inputFile =
-            options.openInputFileOrExit(inputFilename, maxAttributeAlignment());
-        info.file = Buffer::take(std::move(inputFile));
-        info.format = options.getInputFormat(
-            info.inputPath.extension().string(), info.file->getBuffer());
-      }
+      if (info.isInputDirectory)
+        return options.reportError("unable to detect input model format");
+
+      // The input file is not a directory, so we open and sniff the format.
+      // In case the input file is MEF, it has to be aligned to the maximum
+      // attribute alignment.
+      std::unique_ptr<llvm::MemoryBuffer> inputFile =
+          options.openInputFileOrExit(inputFilename, maxAttributeAlignment());
+      info.file = Buffer::take(std::move(inputFile));
+      info.format = options.getInputFormat(info.inputPath.extension().string(),
+                                           info.file->getBuffer());
 
       inputsInfo.push_back(std::move(info));
     }
