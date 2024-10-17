@@ -10,6 +10,8 @@
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include <unordered_map>
+
 using namespace M;
 using namespace MO;
 
