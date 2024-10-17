@@ -249,6 +249,20 @@ MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
 }
 
 MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_isCompatibleWithMAX(const DeviceContext *ctx) {
+  return check_success(ctx->isCompatibleWithMAX());
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_computeCapability(int32_t *result,
+                                        const DeviceContext *ctx) {
+  int compute;
+  const char *err_msg = check_val(&compute, 0, ctx->computeCapability());
+  *result = compute;
+  return err_msg;
+}
+
+MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
                                     size_t *total) {
   DeviceMemInfo mem_info;

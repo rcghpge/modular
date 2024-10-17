@@ -208,6 +208,9 @@ public:
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
 
+  ErrorOrSuccess isCompatibleWithMAX() const override;
+  ErrorOr<int> computeCapability() const override;
+
   static ErrorOr<CUDADeviceContextRef> create(int id);
 
 private:

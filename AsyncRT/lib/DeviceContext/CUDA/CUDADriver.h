@@ -25,6 +25,11 @@ using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
 
+enum class CUdevice_attribute {
+  COMPUTE_CAPABILITY_MAJOR = 75,
+  COMPUTE_CAPABILITY_MINOR = 76,
+};
+
 enum class CUjit_option {
   JIT_MAX_REGISTERS = 0,
   JIT_THREADS_PER_BLOCK = 1,
@@ -74,6 +79,15 @@ public:
   enum Result {
     SUCCESS = 0,
   };
+
+  Result DriverGetVersion(int *version) const {
+    return cuDriverGetVersion_(version);
+  }
+
+  Result DeviceGetAttribute(int *pi, CUdevice_attribute attrib,
+                            CUdevice dev) const {
+    return cuDeviceGetAttribute_(pi, attrib, dev);
+  }
 
   Result DeviceGetCount(int *count) const { return cuDeviceGetCount_(count); }
 
@@ -255,6 +269,12 @@ private:
   Result Init(unsigned int flags) const { return cuInit_(flags); }
   using tcuInit = Result(unsigned int);
   tcuInit *cuInit_;
+
+  using tcuDriverGetVersion = Result(int *);
+  tcuDriverGetVersion *cuDriverGetVersion_;
+
+  using tcuDeviceGetAttribute = Result(int *, CUdevice_attribute, CUdevice);
+  tcuDeviceGetAttribute *cuDeviceGetAttribute_;
 
   using tcuDeviceGetCount = Result(int *);
   tcuDeviceGetCount *cuDeviceGetCount_;

@@ -572,6 +572,38 @@ const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CUDADeviceContext &>(ctx);
 }
 
+ErrorOrSuccess CUDADeviceContext::isCompatibleWithMAX() const {
+  // We only support CUDA architectures sm_80 and above.
+  auto compute = computeCapability();
+  if (compute.isError())
+    return compute.takeError();
+  constexpr int MIN_COMPUTE_CAPABILITY = 80;
+  if (*compute < MIN_COMPUTE_CAPABILITY) {
+    return Error("MAX only supports CUDA Ampere architectures or higher");
+  }
+
+  // We only support CUDA versions 12.0 and above.
+  int driver_version = 0;
+  constexpr int MIN_DRIVER_VERSION = 12.0;
+  CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
+  if (driver_version < MIN_DRIVER_VERSION) {
+    return Error("MAX not supported using current GPU driver");
+  }
+
+  return success();
+}
+
+ErrorOr<int> CUDADeviceContext::computeCapability() const {
+  int compute_major = 0, compute_minor = 0;
+  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
+      &compute_major, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
+      device().id()));
+  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
+      &compute_minor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
+      device().id()));
+  return 10 * compute_major + compute_minor;
+}
+
 ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
   ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
   if (err_driver) {

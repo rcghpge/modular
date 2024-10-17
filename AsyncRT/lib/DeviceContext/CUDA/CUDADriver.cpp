@@ -43,6 +43,10 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   // Allocate a driver and register all of the used shared library entry points.
   CUDADriver *driver = new CUDADriver();
   GET_FUNC(cuInit);
+
+  GET_FUNC(cuDriverGetVersion);
+
+  GET_FUNC(cuDeviceGetAttribute);
   GET_FUNC(cuDeviceGetCount);
   GET_FUNC(cuDeviceGetName);
 

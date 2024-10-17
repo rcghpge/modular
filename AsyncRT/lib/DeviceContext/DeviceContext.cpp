@@ -158,6 +158,13 @@ DeviceContext::DeviceContext(const Device &device)
 
 const Device &DeviceContext::device() const { return *device_; }
 
+ErrorOrSuccess DeviceContext::isCompatibleWithMAX() const { return success(); }
+
+ErrorOr<int> DeviceContext::computeCapability() const {
+  // RUNP-494 Remove this, compute capability is a CUDA-specific concept.
+  return 0;
+}
+
 ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (strcmp(kind, "cuda") == 0) {
