@@ -1215,7 +1215,6 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/CUDAPrimitives/*.h"]),
     deps = [
         ":MGPPrimitives",
-        "//Runtime:CUDAGlobals",
     ],
 )
 

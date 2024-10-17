@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library")
+load("//bazel:api.bzl", "modular_cc_library")
 
 modular_cc_library(
     name = "Runtime",
@@ -10,23 +10,11 @@ modular_cc_library(
     ],
 )
 
-modular_shared_library(
-    name = "CUDAGlobals",
-    srcs = glob(["lib/CUDA/Globals/*.cpp"]),
-    hdrs = glob(["include/Runtime/CUDA/Globals/*.h"]),
-    output_name = "CUDAGlobals",
-    deps = [
-        "//Support:Base",
-        "//third-party/nvidia-headers-cudart",
-    ],
-)
-
 modular_cc_library(
     name = "CUDA",
     srcs = glob(["lib/CUDA/*.cpp"]),
     hdrs = glob(["include/Runtime/CUDA/*.h"]),
     deps = [
-        ":CUDAGlobals",
         "//AsyncRT:Runtime",
         "//AsyncRT:Support",
         "//Runtime",
