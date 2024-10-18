@@ -1,4 +1,4 @@
-// RUN: mosh-opt %s | mosh-opt | FileCheck %s
+// RUN: mo-opt %s | mo-opt | FileCheck %s
 
 // CHECK: kgen.func @broadcast(%[[SH0:.*]]: !mosh.ape, %[[SH1:.*]]: !mosh.ape) -> !mosh.ape {
 kgen.func @broadcast(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !mosh.ape {

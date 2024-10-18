@@ -1,5 +1,5 @@
-// RUN: mosh-opt --allow-unregistered-dialect %s -o %t
-// RUN: mosh-opt --allow-unregistered-dialect %t | FileCheck %s
+// RUN: mo-opt --allow-unregistered-dialect %s -o %t
+// RUN: mo-opt --allow-unregistered-dialect %t | FileCheck %s
 
 // CHECK: kgen.generator @shape_attr_and_type() {
 kgen.generator @shape_attr_and_type() {

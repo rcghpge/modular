@@ -1,4 +1,4 @@
-// RUN: mosh-opt %s --canonicalize --cse | FileCheck %s
+// RUN: mo-opt %s --canonicalize --cse | FileCheck %s
 
 // CHECK: kgen.generator @concat_fold<[[SH1:.*]]: !mosh.ape, [[D1:.*]], [[D2:.*]]>(
 kgen.generator @concat_fold<Sh1: !mosh.ape, D1, D2>(
