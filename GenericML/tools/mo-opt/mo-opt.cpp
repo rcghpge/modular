@@ -28,8 +28,7 @@ int main(int argc, char **argv) {
 
   DialectRegistry registry;
   MO::loadDialects(registry);
-  registry.insert<mlir::func::FuncDialect, MEF::MEFDialect, GRT::GRTDialect,
-                  MGP::MGPDialect>();
+  registry.insert<mlir::func::FuncDialect, MEF::MEFDialect>();
 
   MO::registerPasses();
 
