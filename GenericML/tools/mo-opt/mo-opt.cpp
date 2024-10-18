@@ -6,14 +6,10 @@
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "GenericML/MGPDialect/MGPDialect.h"
-#include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "Init/Init.h"
 #include "Support/LLVMCompilerForwardDecls.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "llvm/Support/PrettyStackTrace.h"
 
