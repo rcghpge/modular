@@ -13,10 +13,10 @@ import pytest
 from max.dtype import DType
 from max.graph import Graph, TensorType
 from nn import (
+    MLP,
     Attention,
     Embedding,
     Linear,
-    MLP,
     RMSNorm,
     RotaryEmbedding,
     Transformer,

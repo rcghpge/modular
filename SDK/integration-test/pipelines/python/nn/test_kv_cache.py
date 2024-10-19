@@ -8,14 +8,10 @@ import pytest
 from max.driver import CPU, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession
-from max.graph import (
-    Graph,
-    TensorType,
-)
-
+from max.graph import Graph, TensorType
 from nn.kv_cache import (
-    KVCacheParams,
     FetchContinuousBatchingKVCacheCollection,
+    KVCacheParams,
     KVCacheStrategy,
     load_kv_manager,
 )

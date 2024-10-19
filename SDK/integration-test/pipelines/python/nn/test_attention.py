@@ -8,9 +8,9 @@
 import numpy as np
 import pytest
 import torch
-from conftest import modular_graph_test
 from max.dtype import DType
 from max.graph import BufferType, Graph, TensorType, TensorValue, ops
+from modular_graph_test import modular_graph_test
 from nn import Attention, Linear, RotaryEmbedding
 from torch import nn
 from transformers import StaticCache
