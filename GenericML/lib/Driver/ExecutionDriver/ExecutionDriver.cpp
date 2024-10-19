@@ -236,8 +236,10 @@ static LogicalResult outputResults(const ExecutableModel *model,
                 << "first result must be a chain");
   results = results.drop_front();
 
-  if (results.empty())
+  if (results.empty()) {
+    os << '\n';
     return success();
+  }
 
   convertResultsToGenericValues(model, results);
 

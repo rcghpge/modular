@@ -251,6 +251,13 @@ func.func @debug_tensor_print(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mg
   mef.output %ch1 : !mef.chain
 }
 
+// CHECK-LABEL: @debug_print
+func.func @debug_print(%ctx : !mgp.context, %ch0 : !mef.chain) {
+  // CHECK: %{{.*}} = mgp.debug.print %{{.*}}, %{{.*}}, "debug string", "label"
+  %ch1 = mgp.debug.print %ch0, %ctx, "debug string", "label"
+  mef.output %ch1 : !mef.chain
+}
+
 {-#
   dialect_resources: {
     builtin: {

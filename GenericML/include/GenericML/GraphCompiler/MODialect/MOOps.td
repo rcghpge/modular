@@ -4088,6 +4088,35 @@ def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
 }
 
 //===----------------------------------------------------------------------===//
+// DebugPrintOp
+//===----------------------------------------------------------------------===//
+def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
+  MemoryEffects<[MemWrite]>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["preferResultsDevice"]>,
+]> {
+  let summary = "Printing operation";
+  let description = [{
+    Prints a debug string. If a label attribute is supplied the string is printed with that label.
+    Otherwise just the string is printed. For debugging and testing only.
+
+    Example:
+    ```mlir
+      %ch0: !mo.chain
+      %ch1 = mo.debug.print(%ch0) {value = "message", label = "label"}
+    ```
+  }];
+
+  let arguments = (ins MO_Chain: $inChain, StrAttr: $value,
+                   DefaultValuedAttr<StrAttr, "\"\"">: $label);
+  let results = (outs MO_Chain:$outChain);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
 

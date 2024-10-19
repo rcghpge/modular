@@ -644,6 +644,11 @@ struct MOOpLoweringState {
         builder, loc, inChain, context, weightsRegistry, name, size, align);
   }
 
+  Value hostDebugPrint(Value inChain, StringAttr data, StringAttr label) {
+    return loweringState.getHostBufferBuilder()->debugPrint(
+        builder, loc, context, inChain, data, label);
+  }
+
   Value debugTensorPrint(Value inChain, Value buffer,
                          TypedValue<TensorSpecType> tensorSpec,
                          StringAttr label, Type moTensorType) {
@@ -778,6 +783,14 @@ struct MOOpLoweringState {
     return getStorageBufferBuilder(moTensorType)
         ->bufferAlloc(builder, loc, context, inChain, size, deviceContext,
                       align, staticSize);
+  }
+
+  Value sync(Value chain) {
+    auto device = MO::getDeviceOrDefault(loweringState.getGraph());
+    auto deviceContext = loweringState.getExecuteDevice(device);
+    auto bufferBuilder = loweringState.getBufferBuilder(device);
+
+    return bufferBuilder->sync(builder, loc, context, deviceContext, chain);
   }
 };
 

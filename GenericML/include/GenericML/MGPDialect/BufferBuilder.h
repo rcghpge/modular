@@ -274,6 +274,11 @@ public:
   virtual Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
                              uint64_t size) = 0;
 
+  /// Return the chain indicating the debug string has been printed.
+  virtual Value debugPrint(OpBuilder &builder, Location loc,
+                           TypedValue<ContextType> context, Value inChain,
+                           StringAttr debugString, StringAttr label) = 0;
+
   /// Return the chain indicating tensor, in the form of buffer and tensor spec,
   /// has been printed.
   virtual Value debugTensorPrint(OpBuilder &builder, Location loc,
@@ -418,6 +423,10 @@ public:
 
   Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
                      uint64_t size) override;
+
+  Value debugPrint(OpBuilder &builder, Location loc,
+                   TypedValue<ContextType> context, Value inChain,
+                   StringAttr debugString, StringAttr label) override;
 
   Value debugTensorPrint(OpBuilder &builder, Location loc,
                          TypedValue<ContextType> context, Value inChain,

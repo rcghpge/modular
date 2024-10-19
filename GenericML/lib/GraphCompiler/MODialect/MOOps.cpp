@@ -3481,12 +3481,16 @@ LogicalResult LayoutTransformOp::canonicalize(LayoutTransformOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// DebugPrintOp
 // DebugTensorPrintOp
+// DebugTensorUnsafePrintOp
 //===----------------------------------------------------------------------===//
 
 /// This method is misnamed and should be 'prefer result or operands'. In
 /// this case we just want AssignDevicesPass to place the print on whatever
 /// device the operand is on.
+bool DebugPrintOp::preferResultsDevice() { return true; }
+
 bool DebugTensorPrintOp::preferResultsDevice() { return true; }
 
 bool DebugTensorUnsafePrintOp::preferResultsDevice() { return true; }

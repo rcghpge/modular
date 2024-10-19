@@ -304,6 +304,17 @@ Value MGPBufferBuilder::bufferResize(OpBuilder &builder, Location loc,
       /*bDevice=*/device);
 }
 
+Value MGPBufferBuilder::debugPrint(OpBuilder &builder, Location loc,
+                                   TypedValue<ContextType> context,
+                                   Value inChain, StringAttr debugString,
+                                   StringAttr label) {
+  return builder.create<DebugPrintOp>(loc,
+                                      /*inChain=*/inChain,
+                                      /*theContext=*/context,
+                                      /*aDebugString=*/debugString,
+                                      /*bLabel=*/label);
+}
+
 Value MGPBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
                                          TypedValue<ContextType> context,
                                          Value inChain, Value buffer,

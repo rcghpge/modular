@@ -125,6 +125,9 @@ public:
   /// Lowers mo.constant.scalar op.
   LogicalResult lowerConstantScalar(MO::ConstantScalarOp constOp);
 
+  /// Lowers mo.debug.print op.
+  LogicalResult lowerDebugPrint(MO::DebugPrintOp printOp);
+
   /// Lowers mo.debug.tensor.print op.
   LogicalResult lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp);
 
@@ -857,6 +860,31 @@ static LogicalResult lowerReshapeImpl(MGP::MOOpLoweringState &opLoweringState,
 
   opLoweringState.createOutputTensor(output, inChain, buffer, *tensorSpecOr);
 
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerDebugPrint(MO::DebugPrintOp printOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
+
+  OpBuilder b(printOp);
+  MO::GraphOp graphOp = loweringState.getGraph();
+  DeviceRefAttr targetDevice = MO::getDeviceOrDefault(graphOp);
+  DeviceRefAttr hostDevice = loweringState.getHostDevice();
+
+  auto chain = opLoweringState.getGuardChain(
+      loweringState.lookupExecuteLoweredValue(printOp.getInChain()));
+
+  if (targetDevice != hostDevice)
+    chain = opLoweringState.sync(chain);
+
+  auto outChain =
+      cast<TypedValue<MEF::ChainType>>(opLoweringState.hostDebugPrint(
+          chain, printOp.getValueAttr(), printOp.getLabelAttr()));
+
+  loweringState.setCurrentExecuteChain(
+      cast<TypedValue<MEF::ChainType>>(outChain));
+
+  loweringState.emplaceExecuteLoweredValue(printOp.getOutChain(), outChain);
   return success();
 }
 
@@ -1696,6 +1724,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       if (failed(lowerReshapeImpl(
               opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
               loweringState.getExecuteChain(), reshapeOp.getType())))
+        return failure();
+      continue;
+    }
+
+    if (auto debugPrintOp = dyn_cast<MO::DebugPrintOp>(op)) {
+      if (failed(lowerDebugPrint(debugPrintOp)))
         return failure();
       continue;
     }

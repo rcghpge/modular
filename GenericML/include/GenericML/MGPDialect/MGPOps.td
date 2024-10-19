@@ -835,6 +835,42 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// DebugPrintOp
+//===----------------------------------------------------------------------===//
+
+def DebugPrintOp : MGP_Op<"debug.print"> {
+  let summary = "Prints a debug string. For debugging and testing only.";
+  let description = [{
+    Prints a debug string. If a label attribute is supplied
+    the string is printed with that label.
+
+    For debugging and testing only.
+
+    Note this op accepts and returns `!mef.chain`s since printing is managed
+    by the host.
+
+    Example:
+    ```mlir
+    %ch0: !mef.chain
+    %ctx: !mgp.context
+    %ch1 = mgp.debug.print %ch0, %ctx, "debug string", "label"
+    %ch1: !mef.chain
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       StrAttr: $aDebugString,                        // 0
+                       DefaultValuedAttr<StrAttr, "\"\"">: $bLabel);  // 1
+  let results = (outs ChainType: $outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `,` $aDebugString ( `,` $bLabel^ )? attr-dict
+  }];
+}
+
 include "GenericML/MGPDialect/MGPDeviceOps.td"
 
 #endif  // GENERICML_MGPDIALECT_MGPOPS_TD
