@@ -199,6 +199,16 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_compileFunction(
                                    max_dynamic_shared_bytes));
 }
 
+MODULAR_EXPORT void AsyncRT_DeviceFunction_retain(const DeviceFunction *func) {
+  // Increment the low-level reference count.
+  DeviceFunctionRef::lowLevelAddRef(func);
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceFunction_release(const DeviceFunction *func) {
+  // Decrement the low-level reference count.
+  DeviceFunctionRef::lowLevelDropRef(func);
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceFunction_copyToConstantMemory(const DeviceFunction *func,
                                             const char *name, const void *data,
