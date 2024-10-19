@@ -100,8 +100,18 @@ CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
                                    const CUDADeviceBuffer &parent, size_t len,
                                    size_t elem_size, CUdeviceptr dptr)
     : DeviceBuffer(context, parent, len, elem_size), dptr_(dptr) {}
+CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
+                                   size_t elem_size, CUdeviceptr dptr,
+                                   bool owning)
+    : DeviceBuffer(context, len, elem_size), dptr_(dptr), owning_(owning) {}
 
 CUDADeviceBuffer::~CUDADeviceBuffer() {
+  if (!owning_) {
+    // TODO: Remove the V1 compatibility.
+    // This is a device buffer created by pointer in Mojo while ownership is
+    // maintained elsewhere.
+    return;
+  }
   if (parent() != nullptr) {
     // Parent owns the device memory.
     return;
@@ -114,6 +124,12 @@ CUDADeviceBuffer::~CUDADeviceBuffer() {
 
 CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
 void *CUDADeviceBuffer::ptr() const { return cuda_ptr(); }
+
+// TODO: Remove the V1 compatibility.
+void CUDADeviceBuffer::releasePtr() const {
+  dptr_ = nullptr;
+  owning_ = false;
+}
 
 ErrorOr<DeviceBufferRef>
 CUDADeviceBuffer::createSubBuffer(size_t offset, size_t len,
@@ -311,6 +327,13 @@ ErrorOr<DeviceBufferRef> CUDADeviceContext::createBuffer(size_t len,
     CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
   }
   return CUDADeviceBufferRef::create(*this, len, elem_size, dptr);
+}
+
+DeviceBufferRef CUDADeviceContext::createBufferOwning(void *ptr, size_t len,
+                                                      size_t elem_size,
+                                                      bool owning) const {
+  CUdeviceptr dptr = static_cast<CUdeviceptr>(ptr);
+  return CUDADeviceBufferRef::create(*this, len, elem_size, dptr, owning);
 }
 
 ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,

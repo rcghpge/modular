@@ -64,10 +64,15 @@ public:
   CUDADeviceBuffer(const CUDADeviceContext &context,
                    const CUDADeviceBuffer &parent, size_t len, size_t elem_size,
                    CUdeviceptr ptr);
+  // TODO: Remove the V1 compatibility.
+  CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
+                   size_t elem_size, CUdeviceptr ptr, bool owning);
   ~CUDADeviceBuffer() override;
 
   CUdeviceptr cuda_ptr() const;
   void *ptr() const override;
+  // TODO: Remove the V1 compatibility.
+  void releasePtr() const override;
 
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
                                            size_t elem_size) const override;
@@ -75,7 +80,9 @@ public:
   static const CUDADeviceBuffer &cast(const DeviceBuffer &buf);
 
 private:
-  CUdeviceptr dptr_;
+  // TODO: Remove the V1 compatibility.
+  mutable CUdeviceptr dptr_;
+  mutable bool owning_ = true;
 };
 
 class CUDADeviceFunctionArguments : public DeviceFunction::Arguments {
@@ -161,6 +168,8 @@ public:
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size,
                                         SyncMode mode) const override;
+  DeviceBufferRef createBufferOwning(void *ptr, size_t len, size_t elem_size,
+                                     bool owning) const override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,

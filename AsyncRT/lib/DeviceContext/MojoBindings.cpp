@@ -99,6 +99,13 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
   return err_msg;
 }
 
+// TODO: Remove the V1 compatibility.
+MODULAR_EXPORT void AsyncRT_DeviceContext_createBuffer_owning(
+    const DeviceBuffer **result, const DeviceContext *ctx, void *device_ptr,
+    size_t len, size_t elem_size, bool owning) {
+  *result =
+      ctx->createBufferOwning(device_ptr, len, elem_size, owning).release();
+}
 MODULAR_EXPORT const char *AsyncRT_DeviceBuffer_createSubBuffer(
     const DeviceBuffer **result, void **device_ptr, const DeviceBuffer *buf,
     size_t offset, size_t len, size_t elem_size) {
@@ -116,6 +123,12 @@ MODULAR_EXPORT void AsyncRT_DeviceBuffer_retain(const DeviceBuffer *buffer) {
 MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(const DeviceBuffer *buffer) {
   // Decrement the low-level reference count.
   DeviceBufferRef::lowLevelDropRef(buffer);
+}
+
+// TODO: Remove the V1 compatibility.
+MODULAR_EXPORT void
+AsyncRT_DeviceBuffer_release_ptr(const DeviceBuffer *buffer) {
+  buffer->releasePtr();
 }
 
 MODULAR_EXPORT int64_t AsyncRT_DeviceBuffer_len(const DeviceBuffer *buffer) {

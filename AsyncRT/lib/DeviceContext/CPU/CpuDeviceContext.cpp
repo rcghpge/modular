@@ -67,8 +67,18 @@ CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
                                  const CpuDeviceBuffer &parent, size_t len,
                                  size_t elem_size, void *ptr)
     : DeviceBuffer(context, parent, len, elem_size), ptr_(ptr) {}
+// TODO: Remove the V1 compatibility.
+CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context, size_t len,
+                                 size_t elem_size, void *ptr, bool owning)
+    : DeviceBuffer(context, len, elem_size), ptr_(ptr), owning_(owning) {}
 
 CpuDeviceBuffer::~CpuDeviceBuffer() {
+  if (!owning_) {
+    // TODO: Remove the V1 compatibility.
+    // This is a device buffer created by pointer in Mojo while ownership is
+    // maintained elsewhere.
+    return;
+  }
   if (parent() != nullptr) {
     // Parent owns the memory.
     return;
@@ -78,6 +88,12 @@ CpuDeviceBuffer::~CpuDeviceBuffer() {
 
 void *CpuDeviceBuffer::cpu_ptr() const { return ptr_; }
 void *CpuDeviceBuffer::ptr() const { return cpu_ptr(); }
+
+// TODO: Remove the V1 compatibility.
+void CpuDeviceBuffer::releasePtr() const {
+  ptr_ = nullptr;
+  owning_ = false;
+}
 
 ErrorOr<DeviceBufferRef>
 CpuDeviceBuffer::createSubBuffer(size_t offset, size_t len,
@@ -142,6 +158,12 @@ ErrorOr<DeviceBufferRef> CpuDeviceContext::createBuffer(size_t len,
     RAISE_ERROR();
   }
   return CpuDeviceBufferRef::create(*this, len, elem_size, ptr);
+}
+
+DeviceBufferRef CpuDeviceContext::createBufferOwning(void *ptr, size_t len,
+                                                     size_t elem_size,
+                                                     bool owning) const {
+  return CpuDeviceBufferRef::create(*this, len, elem_size, ptr, owning);
 }
 
 ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,

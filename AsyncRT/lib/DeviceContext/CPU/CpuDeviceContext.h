@@ -51,10 +51,15 @@ public:
   CpuDeviceBuffer(const CpuDeviceContext &context,
                   const CpuDeviceBuffer &parent, size_t len, size_t elem_size,
                   void *ptr);
+  // TODO: Remove the V1 compatibility.
+  CpuDeviceBuffer(const CpuDeviceContext &context, size_t len, size_t elem_size,
+                  void *ptr, bool owning);
   ~CpuDeviceBuffer() override;
 
   void *cpu_ptr() const;
   void *ptr() const override;
+  // TODO: Remove the V1 compatibility.
+  void releasePtr() const override;
 
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
                                            size_t elem_size) const override;
@@ -62,7 +67,9 @@ public:
   static const CpuDeviceBuffer &cast(const DeviceBuffer &buf);
 
 private:
-  void *ptr_;
+  // TODO: Remove the V1 compatibility.
+  mutable void *ptr_;
+  mutable bool owning_ = true;
 };
 
 class CpuDeviceTimer : public DeviceTimer {
@@ -91,6 +98,9 @@ public:
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size,
                                         SyncMode mode) const override;
+  // TODO: Remove the V1 compatibility.
+  DeviceBufferRef createBufferOwning(void *ptr, size_t len, size_t elem_size,
+                                     bool owning) const override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
