@@ -641,11 +641,12 @@ def ExtendLifetimeOp : MGP_Op<"extend.lifetime",
   let summary = "SSA-value guard operation";
 
   let description = [{
-    This operation consumes a chain and a variadic list of values and forwards
-    the non-chain inputs through.
+    This operation consumes a chain and a variadic list of values. Returns a
+    chain when all inputs are ready. This extends the lifetime of the input
+    values to match the lifetime of the input chain.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$inputs);
+  let arguments = (ins ChainType:$gate, Variadic<AnyType>:$inputs);
   let results = (outs ChainType:$results);
   let assemblyFormat = [{
     ` ` operands ` ` attr-dict `:` functional-type(operands, results)

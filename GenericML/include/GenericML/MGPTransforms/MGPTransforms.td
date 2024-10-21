@@ -34,6 +34,28 @@ def LowerAlignmentsPass : Pass<"lower-alignments", "MGP::ModelOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// RemoveExtendLifetimes
+//===----------------------------------------------------------------------===//
+
+def SimplifyExtendLifetimes : Pass<"simplify-extend-lifetimes", "MGP::ModelOp"> {
+  let summary = "Simplify extend lifetime ops";
+  let description = [{
+    Given:
+    ```mlir
+      %ch1 = mogg.generic.compiled.region(...) -> !mgp.chain
+      %ch2 = mgp.extend.lifetime %ch1, %t1, ... %tn
+      op(%ch2)
+    ```
+    We can fuse these into simply:
+    ```mlir
+      %ch1 = mogg.generic.compiled.region(..., %t1, ... %tn) -> !mgp.chain
+      op(%ch1)
+    ```
+    Provided they are not then removed for being unused. So we must run this pass last.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // SimplifyChainsPass
 //===----------------------------------------------------------------------===//
 
