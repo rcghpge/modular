@@ -128,12 +128,6 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// other, we must return an error, as whether the dimension is broadcasted
     /// depends on runtime values.
     static ErrorOr<SmallVector<int64_t>> getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape);
-
-    /// Construct a `ShapeAttr` from given integers and shape type, without
-    /// considering `mlir::ShapedType::kDynamic` (i.e., all dimensions will be
-    /// known integer attributes).
-    /// TODO(#15938) remove once we have a better representation of symbolic ints
-    static ShapeAttr fromInts(ArrayRef<int64_t> values, ShapeType type);
   }];
 
   let genVerifyDecl = 1;

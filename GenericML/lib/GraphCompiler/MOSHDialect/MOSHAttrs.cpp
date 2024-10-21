@@ -407,15 +407,6 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
   return answer;
 }
 
-ShapeAttr ShapeAttr::fromInts(ArrayRef<int64_t> values, ShapeType type) {
-  auto idxTy = getDimType(type.getContext());
-  SmallVector<TypedAttr> newValues =
-      llvm::map_to_vector(values, [&](int64_t val) -> TypedAttr {
-        return IntegerAttr::get(idxTy, val);
-      });
-  return get(type.getContext(), newValues, type);
-}
-
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
