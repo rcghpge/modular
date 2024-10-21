@@ -192,7 +192,7 @@ struct InvokeShapePackingFunctions
       // parameter of the `mo.invoke_shape_func` to an inferred value.
       OpBuilder rewriter(invoke);
       for (auto [decl, value] : llvm::zip(outputDecls, inferredShapes)) {
-        auto valueAttr = rewriter.getIndexAttr(value);
+        auto valueAttr = ShapeAttr::getDim(&getContext(), value);
         auto newDecl = rewriter.create<KGEN::ParamDeclareOp>(invoke.getLoc(),
                                                              decl, valueAttr);
         newDecls.push_back(newDecl);

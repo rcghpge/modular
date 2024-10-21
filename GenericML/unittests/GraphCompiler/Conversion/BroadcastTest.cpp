@@ -65,13 +65,13 @@ protected:
   }
 
   TypedAttr getUnknownDim() {
-    auto idxTy = MOSH::ShapeAttr::getDimensionType(builder.getContext());
+    auto idxTy = MOSH::ShapeAttr::getDimType(builder.getContext());
     TypedAttr typeAttr = KGEN::UnknownAttr::get(idxTy);
     return typeAttr;
   }
 
   TypedAttr getIntegerDim(int64_t v) {
-    return MOSH::ShapeAttr::getDimensionAttr(builder.getContext(), v);
+    return MOSH::ShapeAttr::getDim(builder.getContext(), v);
   }
 
   MLIRContext ctx{MLIRContext::Threading::DISABLED};

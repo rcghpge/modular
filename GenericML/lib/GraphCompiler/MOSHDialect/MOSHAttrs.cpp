@@ -92,7 +92,7 @@ int64_t M::MOSH::findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl) {
 }
 
 static ParseResult parseColonTypeOrDimension(AsmParser &parser, Type &type) {
-  auto dimType = ShapeAttr::getDimensionType(parser.getContext());
+  auto dimType = ShapeAttr::getDimType(parser.getContext());
   return KGEN::parseColonTypeOrDefault(parser, type, dimType);
 }
 
@@ -108,7 +108,7 @@ static ParseResult parseShapeValueElement(AsmParser &p, TypedAttr &value) {
 ParseResult M::MOSH::parseShapeValue(AsmParser &p,
                                      SmallVectorImpl<TypedAttr> &values) {
   values.clear();
-  auto idxTy = ShapeAttr::getDimensionType(p.getContext());
+  auto idxTy = ShapeAttr::getDimType(p.getContext());
 
   if (p.parseCommaSeparatedList([&]() -> ParseResult {
         if (succeeded(p.parseOptionalQuestion())) {
@@ -158,18 +158,18 @@ void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
   printShapeValue(p, values);
 }
 
-IndexType ShapeAttr::getDimensionType(MLIRContext *ctx) {
+IndexType ShapeAttr::getDimType(MLIRContext *ctx) {
   // return IntegerType::get(ctx, 64,
   // IntegerType::SignednessSemantics::Signless);
   return IndexType::get(ctx);
 }
 
-IntegerAttr ShapeAttr::getDimensionAttr(MLIRContext *ctx, int64_t value) {
-  return IntegerAttr::get(getDimensionType(ctx), value);
+IntegerAttr ShapeAttr::getDim(MLIRContext *ctx, int64_t value) {
+  return IntegerAttr::get(getDimType(ctx), value);
 }
 
 ShapeAttr ShapeAttr::get(ArrayRef<int64_t> values, ShapeType type) {
-  auto idxTy = getDimensionType(type.getContext());
+  auto idxTy = getDimType(type.getContext());
   SmallVector<TypedAttr> newValues;
   newValues.reserve(values.size());
 
@@ -238,7 +238,7 @@ SmallVector<int64_t> ShapeAttr::getIntDims() const {
 
 TypedAttr ShapeAttr::getSymbolicNumElements() const {
   if (getRank() == 0)
-    return ShapeAttr::getDimensionAttr(getContext(), 1);
+    return ShapeAttr::getDim(getContext(), 1);
   return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, getValues());
 }
 
@@ -250,7 +250,7 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
   if (xSh == ySh) // Short circuit.
     return ySh;
 
-  auto intDim1 = getDimensionAttr(xSh.getContext(), 1ll);
+  auto intDim1 = getDim(xSh.getContext(), 1ll);
 
   SmallVector<TypedAttr> result;
   ArrayRef<TypedAttr> xShDims = xSh.getValues();
@@ -408,7 +408,7 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
 }
 
 ShapeAttr ShapeAttr::fromInts(ArrayRef<int64_t> values, ShapeType type) {
-  auto idxTy = getDimensionType(type.getContext());
+  auto idxTy = getDimType(type.getContext());
   SmallVector<TypedAttr> newValues =
       llvm::map_to_vector(values, [&](int64_t val) -> TypedAttr {
         return IntegerAttr::get(idxTy, val);

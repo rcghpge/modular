@@ -47,7 +47,7 @@ DeviceRefAttr getDeviceFromOperands(AdaptorTy &operands) {
 
 /// Create a new attribute representing a static integer dimension.
 static TypedAttr createStaticDimensionType(MO::GraphOp op, int64_t dimSize) {
-  return ShapeAttr::getDimensionAttr(op.getContext(), dimSize);
+  return ShapeAttr::getDim(op.getContext(), dimSize);
 }
 
 /// Create a new parameter representing a parameterized dimension.
@@ -419,7 +419,7 @@ static TensorType inferReduceOpReturnType(
   int64_t axis = normalizeAxis(*maybeAxis, inputTy.getRank());
   SmallVector<TypedAttr> outputShape(inputTy.getTypedShapeAttr().getValues());
   if (axis >= 0 && axis < int64_t(inputTy.getRank()))
-    outputShape[axis] = ShapeAttr::getDimensionAttr(ctx, 1);
+    outputShape[axis] = ShapeAttr::getDim(ctx, 1);
   return TensorType::get(
       MOSH::ShapeAttr::get(outputShape, MOSH::ShapeType::get(ctx)), outputDtype,
       dev);
@@ -1069,7 +1069,7 @@ void MOTileOp::inferMOTypesImpl(
   SmallVector<KGEN::ParamDeclAttr> permParamDecls;
   if (rank.has_value()) {
     // repeats has static shape [rank].
-    TypedAttr dimAttr = ShapeAttr::getDimensionAttr(context, *rank);
+    TypedAttr dimAttr = ShapeAttr::getDim(context, *rank);
     moOperandTypes.push_back(
         repeats.getType().cloneWith(SmallVector<TypedAttr>{dimAttr}));
   } else {
@@ -1170,7 +1170,7 @@ void MOTransposeOp::inferMOTypesImpl(
   SmallVector<KGEN::ParamDeclAttr> permParamDecls;
   if (rank.has_value()) {
     // perm has static shape [rank].
-    TypedAttr dimAttr = ShapeAttr::getDimensionAttr(context, *rank);
+    TypedAttr dimAttr = ShapeAttr::getDim(context, *rank);
     moOperandTypes.push_back(
         perm.getType().cloneWith(SmallVector<TypedAttr>{dimAttr}));
   } else {

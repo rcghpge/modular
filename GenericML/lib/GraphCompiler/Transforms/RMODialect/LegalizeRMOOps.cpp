@@ -664,7 +664,7 @@ struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
 
       // Add a 1 to the shapes to multiply to ensure the denominator is valid
       SmallVector<TypedAttr> mulDims = nonNegOneDims;
-      mulDims.emplace_back(rewriter.getIndexAttr(1));
+      mulDims.emplace_back(ShapeAttr::getDim(getContext(), 1));
       Var denominator =
           b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims));
 
@@ -784,8 +784,7 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
           loc, rhsType.cloneWith(rhsReshapeShape), rhs);
 
     // Calculated broadcast shapes and broadcast outer dims.
-    auto idxTy = IndexType::get(lhsShape.getContext());
-    auto intDim1 = IntegerAttr::get(idxTy, 1ll);
+    auto intDim1 = MOSH::ShapeAttr::getDim(lhsShape.getContext(), 1ll);
     SmallVector<TypedAttr> lhsBroadcastTarget{lhsReshapeTarget};
     SmallVector<TypedAttr> rhsBroadcastTarget{rhsReshapeTarget};
     for (size_t i = 0; i < fullRank - 2; ++i) {

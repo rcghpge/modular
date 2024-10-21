@@ -29,7 +29,7 @@ Var ParamExprBuilder::createVar(TypedAttr attr) {
 }
 
 Var ParamExprBuilder::createVar(int64_t n) {
-  IntegerAttr indexValue = ShapeAttr::getDimensionAttr(graphOp.getContext(), n);
+  IntegerAttr indexValue = ShapeAttr::getDim(graphOp.getContext(), n);
   return createVar(indexValue);
 }
 
@@ -199,7 +199,7 @@ expandMatmulInputsForBroadcasting(ShapeAttr lhsShape, ShapeAttr rhsShape) {
 
   size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
 
-  auto intDim1 = ShapeAttr::getDimensionAttr(lhsShape.getContext(), 1ll);
+  auto intDim1 = ShapeAttr::getDim(lhsShape.getContext(), 1ll);
   SmallVector<TypedAttr> lhsFullShape(fullRank, intDim1);
   SmallVector<TypedAttr> rhsFullShape(fullRank, intDim1);
   if (lhsRank == 1) {
@@ -306,7 +306,7 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
   // The new dimensions will just be static 1 dimensions.
   size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
 
-  auto intDim1 = ShapeAttr::getDimensionAttr(ctx, 1ll);
+  auto intDim1 = ShapeAttr::getDim(ctx, 1ll);
   auto [lhsFullShape, rhsFullShape] =
       expandMatmulInputsForBroadcasting(lhsShape, rhsShape);
 
@@ -361,7 +361,7 @@ materializeRmoBinaryElementwiseShape(GraphOp graphOp, Location loc,
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  auto intDim1 = ShapeAttr::getDimensionAttr(graphOp.getContext(), 1ll);
+  auto intDim1 = ShapeAttr::getDim(graphOp.getContext(), 1ll);
   size_t maxRank = std::max(lhsShape.getRank(), rhsShape.getRank());
 
   auto getFromEnd = [](ShapeAttr shape, size_t i) -> TypedAttr {
@@ -409,7 +409,7 @@ ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  auto intDim1 = ShapeAttr::getDimensionAttr(graphOp.getContext(), 1ll);
+  auto intDim1 = ShapeAttr::getDim(graphOp.getContext(), 1ll);
   size_t maxRank = std::max(condShape.getRank(),
                             std::max(xShape.getRank(), yShape.getRank()));
 

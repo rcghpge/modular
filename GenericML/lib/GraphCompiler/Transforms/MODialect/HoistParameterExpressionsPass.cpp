@@ -74,9 +74,9 @@ struct RewriteParamExprTypes : public RewritePattern {
         std::string expr_name = graphOp.getNewParamName("param_expr_");
         regionToExprToParam[parentRegion][paramOp] = expr_name;
         // Declare the new parameters with values of complex expression.
+        auto dimType = ShapeAttr::getDimType(op->getContext());
         rewriter.create<KGEN::ParamDeclareOp>(
-            op->getLoc(),
-            KGEN::ParamDeclAttr::get(expr_name, rewriter.getIndexType()),
+            op->getLoc(), KGEN::ParamDeclAttr::get(expr_name, dimType),
             paramOp);
       }
     }
@@ -114,9 +114,10 @@ struct RewriteParamExprTypes : public RewritePattern {
       Region *parentRegion = op->getParentRegion();
       if (regionToExprToParam.contains(parentRegion)) {
         if (auto it = regionToExprToParam[parentRegion].find(paramOp);
-            it != regionToExprToParam[parentRegion].end())
-          return KGEN::ParamDeclRefAttr::get(it->second,
-                                             rewriter.getIndexType());
+            it != regionToExprToParam[parentRegion].end()) {
+          auto dimType = ShapeAttr::getDimType(op->getContext());
+          return KGEN::ParamDeclRefAttr::get(it->second, dimType);
+        }
       }
       return paramOp;
     });

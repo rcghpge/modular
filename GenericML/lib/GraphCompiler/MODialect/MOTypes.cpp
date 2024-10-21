@@ -262,7 +262,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   }
 
   if (!llvm::all_of(shape.getValues(), ShapeAttr::isDimensionAttr))
-    return emitError() << "tensor dimensions must be a getDimensionType()";
+    return emitError() << "tensor dimensions must be a getDimType()";
 
   // The device specification used to reside in the metadata dictionary,
   // sanity check that the tensor type is not using the old format.
@@ -441,7 +441,7 @@ TensorType TensorType::cloneWithUnknownRank() const {
 }
 
 TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
-  auto dimType = MOSH::ShapeAttr::getDimensionType(getContext());
+  auto dimType = MOSH::ShapeAttr::getDimType(getContext());
 
   SmallVector<TypedAttr> shapes(rank, KGEN::UnknownAttr::get(dimType));
   return TensorType::get(

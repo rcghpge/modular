@@ -46,7 +46,7 @@ namespace M::MO {
 static ParseResult
 parseParamDeclElement(OpAsmParser &parser,
                       SmallVectorImpl<ParamDeclAttr> &decls) {
-  auto dimType = ShapeAttr::getDimensionType(parser.getContext());
+  auto dimType = ShapeAttr::getDimType(parser.getContext());
 
   StringAttr name;
   Type type;
@@ -60,7 +60,7 @@ parseParamDeclElement(OpAsmParser &parser,
 
 static void printParamDeclElement(OpAsmPrinter &printer,
                                   KGEN::ParamDeclAttr decl) {
-  auto dimType = ShapeAttr::getDimensionType(decl.getContext());
+  auto dimType = ShapeAttr::getDimType(decl.getContext());
   KGEN::printParamName(printer, decl.getName());
   KGEN::printColonTypeOrDefault(printer, decl.getType(), dimType);
 }
@@ -323,7 +323,7 @@ TypedAttr M::MO::tryGetDimAttr(Value val) {
   if (!maybeConst.has_value())
     return {};
 
-  return MOSH::ShapeAttr::getDimensionAttr(val.getContext(), *maybeConst);
+  return MOSH::ShapeAttr::getDim(val.getContext(), *maybeConst);
 }
 
 template <typename SliceTy, typename AdaptorTy>
@@ -705,7 +705,7 @@ LogicalResult GraphOp::verify() {
 }
 
 KGEN::ParamDeclAttr GraphOp::getNewDimParam(const Twine &prefix) {
-  auto dimType = MOSH::ShapeAttr::getDimensionType(getContext());
+  auto dimType = MOSH::ShapeAttr::getDimType(getContext());
   return getNewParamOfType(prefix, dimType);
 }
 
@@ -750,7 +750,7 @@ static ParseResult parseOutputValues(AsmParser &p,
                                      KGEN::ParameterExprArrayAttr &valuesAttr) {
   SmallVector<TypedAttr> values;
   auto parseFn = [&]() -> ParseResult {
-    Type type = ShapeAttr::getDimensionType(p.getContext());
+    Type type = ShapeAttr::getDimType(p.getContext());
     if (succeeded(p.parseOptionalColon()) && KGEN::parseKGENType(p, type))
       return failure();
     if (succeeded(p.parseOptionalQuestion())) {
