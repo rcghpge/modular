@@ -249,23 +249,23 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
         deviceContexts.init(model);
     });
 
-    Value executeContext = nullptr;
-    Region *parentRegion = nullptr;
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
       builder.setInsertionPoint(kernel);
+      Region *parentRegion = kernel->getParentRegion();
+      Value executeContext = nullptr;
+
       // For execute block, need to account for the bounding region in the
       // case of control flow or other bounding operations.
-      if (parentRegion != kernel->getParentRegion()) {
-        parentRegion = kernel->getParentRegion();
-        executeContext = nullptr;
+      while (parentRegion && !executeContext) {
         for (Value arg : parentRegion->getArguments()) {
           if (isa<MGP::ContextType>(arg.getType()))
             executeContext = arg;
         }
-        ASSERT_STREAM(executeContext,
-                      << "Cannot find execute context in bounding region of "
-                         "generic.execute");
+        parentRegion = parentRegion->getParentRegion();
       }
+      ASSERT_STREAM(executeContext,
+                    << "Cannot find execute context in bounding region of "
+                       "generic.execute");
       Value inDeviceContext = deviceContexts.getDeviceContext(
           kernel.getDeviceRef(), execute.getParent());
       rewriteExecuteCompiledOp(builder, executeContext,

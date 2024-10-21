@@ -222,8 +222,7 @@ public:
   virtual Value tensorExtractBuffer(OpBuilder &builder, Location loc,
                                     Value tensor) = 0;
 
-  /// Returns the tensor spec (or just 'shape' if isShapeOnly is true) of
-  /// tensor.
+  /// Returns the tensor spec of the given tensor.
   virtual TypedValue<TensorSpecType>
   tensorExtractTensorSpec(OpBuilder &builder, Location loc, Value tensor) = 0;
 

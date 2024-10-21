@@ -27,7 +27,7 @@
 // ** Don't alloc add output till about to run it.
 // CHECK: %[[OUT_BUF_3:.*]] = mgp.buffer.alloc %[[CH3]]
 // CHECK-NEXT: %[[CH4:.*]] = "add"(%[[CH3]], %[[OUT_BUF_2]], %[[OUT_BUF_1]], %[[OUT_BUF_3]])
-// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.tensor.create %[[CH4]], %[[CTX]][1], %[[OUT_BUF_3]], %{{.*}}
+// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.tensor.create %[[CH4]], %[[OUT_BUF_3]], %{{.*}}
 // CHECK-NEXT: mef.output %[[CH0]], %[[OUT_TENSOR]]
 // CHECK-NEXT: }
 
@@ -39,30 +39,30 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<8xf32>) {
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
-  %2 = mgp.tensor.create %ch0, %ctx[1], %0, %spec : !mgp.tensor<8xf32>
+  %2 = mgp.tensor.create %ch0, %0, %spec : !mgp.tensor<8xf32>
   %3 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
-  %5 = mgp.tensor.create %ch0, %ctx[1], %3, %spec : !mgp.tensor<8xf32>
+  %5 = mgp.tensor.create %ch0, %3, %spec : !mgp.tensor<8xf32>
   %buf0 = mgp.tensor.extract.buffer %2 : <8xf32>
   %buf1 = mgp.tensor.extract.buffer %5 : <8xf32>
   %size = index.constant 32
   %6 = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
 
   %ch2 = "mul"(%ch0, %buf0, %buf1, %6) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %9 = mgp.tensor.create %ch2, %ctx[1], %6, %spec : !mgp.tensor<8xf32>
+  %9 = mgp.tensor.create %ch2, %6, %spec : !mgp.tensor<8xf32>
   %buf2 = mgp.tensor.extract.buffer %9 : <8xf32>
   %buf3 = mgp.tensor.extract.buffer %5 : <8xf32>
   %10 = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
 
   %cmb_ch = grt.chain.create (%ch0, %ch2)
   %ch3 = "sub"(%cmb_ch, %buf2, %buf3, %10) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %13 = mgp.tensor.create %ch3, %ctx[1], %10, %spec : !mgp.tensor<8xf32>
+  %13 = mgp.tensor.create %ch3, %10, %spec : !mgp.tensor<8xf32>
   %buf4 = mgp.tensor.extract.buffer %13 : <8xf32>
   %buf5 = mgp.tensor.extract.buffer %9 : <8xf32>
   %14 = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
 
   %cmb_ch2 = grt.chain.create (%ch0, %ch2, %ch3)
   %ch4 = "add"(%cmb_ch2, %buf4, %buf5, %14) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %17 = mgp.tensor.create %ch4, %ctx[1], %14, %spec : !mgp.tensor<8xf32>
+  %17 = mgp.tensor.create %ch4, %14, %spec : !mgp.tensor<8xf32>
   mef.output %ch0, %17 : !mef.chain, !mgp.tensor<8xf32>
 }
 
@@ -89,7 +89,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 // CHECK: %[[CH9:.*]] = grt.chain.create (%[[CH2]], %[[CH8]])
 // CHECK-NEXT: %[[OUT_BUF_3:.*]] = mgp.buffer.alloc %[[CH9]]
 // CHECK-NEXT: %[[CH10:.*]] = "add"(%[[CH9]], %[[OUT_BUF_2]], %[[OUT_BUF_1]], %[[OUT_BUF_3]])
-// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.tensor.create %[[CH10]], %[[CTX]][1], %[[OUT_BUF_3]], %{{.*}}
+// CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.tensor.create %[[CH10]], %[[OUT_BUF_3]], %{{.*}}
 // CHECK-NEXT: mef.output %[[CH10]], %[[OUT_TENSOR]]
 
 mgp.model @divergent : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
@@ -104,9 +104,9 @@ mgp.model @divergent : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mg
   %ch5 = "some.op"() : () -> !mef.chain
   %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
-  %2 = mgp.tensor.create %ch4, %ctx[1], %0, %spec : !mgp.tensor<8xf32>
+  %2 = mgp.tensor.create %ch4, %0, %spec : !mgp.tensor<8xf32>
   %3 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
-  %5 = mgp.tensor.create %ch5, %ctx[1], %3, %spec : !mgp.tensor<8xf32>
+  %5 = mgp.tensor.create %ch5, %3, %spec : !mgp.tensor<8xf32>
   %buf0 = mgp.tensor.extract.buffer %2 : <8xf32>
   %buf1 = mgp.tensor.extract.buffer %5 : <8xf32>
 
@@ -114,21 +114,21 @@ mgp.model @divergent : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mg
   %size = index.constant 32
   %6 = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
   %ch6 = "mul"(%combined_ch, %buf0, %buf1, %6) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %9 = mgp.tensor.create %ch6, %ctx[1], %6, %spec : !mgp.tensor<8xf32>
+  %9 = mgp.tensor.create %ch6, %6, %spec : !mgp.tensor<8xf32>
   %buf2 = mgp.tensor.extract.buffer %9 : <8xf32>
   %buf3 = mgp.tensor.extract.buffer %5 : <8xf32>
   %10 = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
 
   %combined_ch2 = grt.chain.create (%ch2, %ch6, %ch5)
   %ch7 = "sub"(%combined_ch2, %buf2, %buf3, %10) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %13 = mgp.tensor.create %ch7, %ctx[1], %10, %spec : !mgp.tensor<8xf32>
+  %13 = mgp.tensor.create %ch7, %10, %spec : !mgp.tensor<8xf32>
   %buf4 = mgp.tensor.extract.buffer %13 : <8xf32>
   %buf5 = mgp.tensor.extract.buffer %9 : <8xf32>
   %14 = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
 
   %ch8 = grt.chain.create (%ch2, %ch7, %ch6, %ch3)
   %ch9 = "add"(%ch8, %buf4, %buf5, %14) { tempInOutSig=#M.inout_sig<"iiio"> } : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %17 = mgp.tensor.create %ch9, %ctx[1], %14, %spec : !mgp.tensor<8xf32>
+  %17 = mgp.tensor.create %ch9, %14, %spec : !mgp.tensor<8xf32>
   mef.output %ch9, %17 : !mef.chain, !mgp.tensor<8xf32>
 }
 

@@ -617,22 +617,15 @@ LogicalResult BufferPlanOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorCreateOp::verify() {
-  auto expectedOutTensorType =
-      DeviceTensorType::get(getBDevice(), getTensorSpec().getType());
+  auto expectedOutTensorType = DeviceTensorType::get(
+      getBuffer().getType().getDevice(), getTensorSpec().getType());
   if (expectedOutTensorType != getOutTensor().getType()) {
     return emitOpError("expected output tensor type does not match "
                        "actual output tensor type (")
            << expectedOutTensorType << " vs " << getOutTensor().getType()
            << ").";
   }
-  DeviceBufferType expectedBufferType =
-      DeviceBufferType::get(getOutTensor().getType());
-  if (getBuffer().getType() != expectedBufferType) {
-    return emitOpError(
-               "expected buffer type to match type implied by tensor spec (")
-           << getBuffer().getType() << " vs " << expectedBufferType << ").";
-  }
-  return verifyConsistentDevices(getOperation(), {getBDevice()});
+  return success();
 }
 
 LogicalResult TensorCreateOp::inferReturnTypes(
@@ -640,20 +633,14 @@ LogicalResult TensorCreateOp::inferReturnTypes(
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
-  if (operands.size() != 4) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected four operands.");
-  }
-  auto tensorSpecType = dyn_cast<TensorSpecType>(operands[3].getType());
+  auto tensorSpecType = dyn_cast<TensorSpecType>(operands[2].getType());
   if (!tensorSpecType) {
     return mlir::emitError(location.value_or(operands[0].getLoc()),
                            "expected tensor spec operand.");
   }
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getBDeviceAttrName(name),
-                                    device)))
-    return failure();
+
+  DeviceRefAttr device =
+      cast<DeviceBufferType>(operands[1].getType()).getDevice();
   inferredReturnTypes.emplace_back(
       DeviceTensorType::get(device, tensorSpecType));
   return success();

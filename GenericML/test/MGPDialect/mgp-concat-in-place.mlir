@@ -19,7 +19,7 @@
 // CHECK: %[[CH3:.*]] = "sub"(%[[CH0]], %{{.*}}, %{{.*}}, %[[RESIZED]])
 // CHECK: %[[CH4:.*]] = grt.chain.create (%[[CH2]], %[[CH3]])
 // CHECK: %[[RESIZED_BUF:.*]] = mgp.buffer.resize %[[OUT_BUF]] : !mgp.buffer<64>
-// CHECK: %[[TEN:.*]] = mgp.tensor.create %[[CH4]], %[[CTX]][1], %[[RESIZED_BUF]], %{{.*}}
+// CHECK: %[[TEN:.*]] = mgp.tensor.create %[[CH4]], %[[RESIZED_BUF]]
 // CHECK: mef.output %[[CH0]], %[[TEN]]
 
 mgp.model @dynamic_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
@@ -43,7 +43,7 @@ mgp.model @dynamic_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights
   %16 = grt.chain.create(%6: !mef.chain, %12: !mef.chain)
   %17 = mgp.buffer.concat %16, %ctx[1], %15, %4, %10 : (!mgp.buffer<>, !mgp.buffer<32>) -> !mgp.buffer<>
   %resized_buf = mgp.buffer.resize %15 : !mgp.buffer<64>
-  %18 = mgp.tensor.create %17, %ctx[1], %resized_buf, %14 : !mgp.tensor<16xf32>
+  %18 = mgp.tensor.create %17, %resized_buf, %14 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }
 
@@ -73,7 +73,7 @@ mgp.model @concat_with_shared_input_buffer : mof devices [#M.device_ref<"cpu", 0
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %16 = grt.chain.create(%6: !mef.chain, %12: !mef.chain)
   %17 = mgp.buffer.concat %16, %ctx[1], %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
-  %18 = mgp.tensor.create %17, %ctx[1], %14, %15 : !mgp.tensor<16xf32>
+  %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }
 
@@ -102,7 +102,7 @@ mgp.model @non_trivial_chains : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %14 = mgp.buffer.alloc %12, %ctx[1], %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %17 = mgp.buffer.concat %12, %ctx[1], %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
-  %18 = mgp.tensor.create %17, %ctx[1], %14, %15 : !mgp.tensor<16xf32>
+  %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }
 
@@ -128,6 +128,6 @@ mgp.model @dont_trigger_since_duplicate_buffers : mof devices [#M.device_ref<"cp
   %14 = mgp.buffer.alloc %ch0, %ctx[1], %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %17 = mgp.buffer.concat %6, %ctx[1], %14, %4, %4 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
-  %18 = mgp.tensor.create %17, %ctx[1], %14, %15 : !mgp.tensor<16xf32>
+  %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }

@@ -16,7 +16,7 @@
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]]
 // CHECK:   %[[NEW_SPEC:.*]] = mgp.tensor_spec.create %[[RESIZED_DIMS]]#0, %[[RESIZED_DIMS]]#1 : !mgp.tensor_spec<?x?xf32>
 
-// CHECK:   %[[OUT:.*]] = mgp.tensor.create %[[CH0]], %[[CTX]][0], %[[BUF]], %[[NEW_SPEC]] : !mgp.tensor<?x?xf32>
+// CHECK:   %[[OUT:.*]] = mgp.tensor.create %[[CH0]], %[[BUF]], %[[NEW_SPEC]] : !mgp.tensor<?x?xf32>
 // CHECK:   mef.output %[[CH0]], %[[OUT]]
 
 mo.graph @static_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1: !mo.tensor<[D6, D7], f32>) -> !mo.tensor<[D6, D7], f32> {
@@ -48,14 +48,14 @@ mo.graph @multi_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1:
 // CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer %[[ARG3]] : <si32>
 
 // CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1xsi32>
-// CHECK: %[[T:.*]] = mgp.tensor.create %[[CH0]], %[[CTX]][0], %[[IN_BUF]], %[[SPEC]] : !mgp.tensor<1xsi32>
+// CHECK: %[[T:.*]] = mgp.tensor.create %[[CH0]], %[[IN_BUF]], %[[SPEC]] : !mgp.tensor<1xsi32>
 
 // CHECK: %[[BUF_RESHAPED:.*]] = mgp.tensor.extract.buffer %[[T]] : <1xsi32>
 
 // CHECK: %[[SPEC2:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1x1xsi32>
 
 // CHECK: %[[CH:.*]] = grt.chain.create (%[[CH0]], %[[CH0]])
-// CHECK: mgp.tensor.create %[[CH]], %[[CTX]][0], %[[BUF_RESHAPED]], %[[SPEC2]] : !mgp.tensor<1x1xsi32>
+// CHECK: mgp.tensor.create %[[CH]], %[[BUF_RESHAPED]], %[[SPEC2]] : !mgp.tensor<1x1xsi32>
 
 mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 1], si32>) {
   %1 = mo.add_singleton_dim[0 : index] (%in1) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
@@ -69,7 +69,7 @@ mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 
 // CHECK: %[[BUF:.*]] = mgp.tensor.extract.buffer
 // CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<10x5xsi32>
 // CHECK: %[[RESIZE:.*]] = mgp.buffer.resize %[[BUF]] : !mgp.buffer<200>
-// CHECK: mgp.tensor.create %[[CH0]], %[[CTX]][0], %[[RESIZE]], %[[SPEC]] : !mgp.tensor<10x5xsi32>
+// CHECK: mgp.tensor.create %[[CH0]], %[[RESIZE]], %[[SPEC]] : !mgp.tensor<10x5xsi32>
 
 mo.graph @split_dim_mgp<N>(%arg0: !mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32> {
   %0 = mo.split_dim[0 : index] (%arg0) : (!mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32>

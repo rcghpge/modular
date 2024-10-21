@@ -93,6 +93,47 @@ def StateSlotCreateOp : MGP_Op<"state_slot.create"> {
 
 
 //===----------------------------------------------------------------------===//
+// TensorCreateOp
+//===----------------------------------------------------------------------===//
+
+def TensorCreateOp : MGP_Op<"tensor.create", [
+    Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+    DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
+]> {
+  let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
+                "`!mgp.buffer`.";
+  let description = [{
+    Creates an `!mgp.tensor` from an `!mgp.buffer` and a `!mgp.tensor_spec`.
+
+    If this op holds the only reference to the buffer then it is moved into
+    the tensor. Otherwise a deep copy of the buffer is taken.
+
+    Example:
+    ```mlir
+    %ctx : !mef.context
+    %ch : !mgp.chain<<"cuda", 3>>
+    %buf : !mgp.buffer<256, <"cuda", 3>>
+    %spec : !mgp.tensor_spec<4x16xf32>
+    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"cuda", 3>>
+    %tensor : !mgp.tensor<4x16xf32, <"cuda", 3>>
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_DeviceBufferType:$buffer,
+                       MGP_TensorSpecType:$tensorSpec);
+  let results = (outs MGP_DeviceTensorType: $outTensor);
+  let assemblyFormat = [{
+    $inChain `,` $buffer `,` $tensorSpec attr-dict
+    `:` custom<TensorTypeToDeviceBufferSpec>(type($outTensor),
+          type($buffer), type($tensorSpec), type($inChain))
+  }];
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // TensorExtractBufferOp
 //===----------------------------------------------------------------------===//
 

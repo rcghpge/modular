@@ -171,11 +171,8 @@ Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
   }
   return builder.create<TensorCreateOp>(loc,
                                         /*inChain=*/inChain,
-                                        /*theContext=*/context,
                                         /*buffer=*/deviceBuffer,
-                                        /*tensorSpec=*/tensorSpec,
-                                        /*aRuntimeSlot=*/runtimeSlot,
-                                        /*bDevice=*/device);
+                                        /*tensorSpec=*/tensorSpec);
 }
 
 Value MGPBufferBuilder::bufferAlloc(OpBuilder &builder, Location loc,

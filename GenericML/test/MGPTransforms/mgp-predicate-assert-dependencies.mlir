@@ -33,7 +33,7 @@ mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %7 = index.mul %c8, %tmp
   %8 = mgp.buffer.alloc %ch0, %ctx[1], %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
-  %10 = mgp.tensor.create %9, %ctx[1], %8, %6  : !mgp.tensor<?x?xf32>
+  %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }
 
@@ -71,7 +71,7 @@ mgp.model @two_asserts : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %7 = index.mul %tmp, %c8
   %8 = mgp.buffer.alloc %ch0, %ctx[1], %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
-  %10 = mgp.tensor.create %9, %ctx[1], %8, %6  : !mgp.tensor<?x?xf32>
+  %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }
 
@@ -110,7 +110,7 @@ mgp.model @assert_depends_on_control_flow : mof devices [#M.device_ref<"cpu", 0>
   %7 = index.mul %0#0, %0#1 {constInt = 8 : si64}
   %8 = mgp.buffer.alloc %ch0, %ctx[1], %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
-  %10 = mgp.tensor.create %9, %ctx[1], %8, %6  : !mgp.tensor<?x?xf32>
+  %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }
 
@@ -157,7 +157,7 @@ mgp.model @assert_in_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (
   %7 = index.mul %tmp, %c8
   %8 = mgp.buffer.alloc %ch0, %ctx[1], %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
-  %10 = mgp.tensor.create %9, %ctx[1], %8, %6  : !mgp.tensor<?x?xf32>
+  %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }
 

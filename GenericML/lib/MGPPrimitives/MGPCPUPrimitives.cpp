@@ -209,19 +209,10 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
 // mgp.tensor.create.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_tensor_create_cpu(Chain inChain, StateContext &theContext,
-                                  AsyncValueRef<TensorBufferRef> buffer,
-                                  TensorSpec tensorSpec,
-                                  Result<Tensor> outTensor,
-                                  MEFAttr<uint64_t> aRuntimeSlot,
-                                  MEFAttr<uint64_t> bDeviceId, Runtime &runtime,
-                                  EncodedLocation loc) {
-  size_t expectedSize = tensorSpec.getSizeInBytes();
-  size_t actualSize = buffer->getSize();
-  if (expectedSize != actualSize)
-    return std::move(outTensor).setToError(
-        Twine("buffer size should match spec size (") + Twine(actualSize) +
-        " vs " + Twine(expectedSize) + ")");
+static void mgp_tensor_create(Chain inChain,
+                              AsyncValueRef<TensorBufferRef> buffer,
+                              TensorSpec tensorSpec, Result<Tensor> outTensor,
+                              EncodedLocation loc) {
   std::move(outTensor).emplace(buffer->borrow(), std::move(tensorSpec));
 }
 
@@ -294,7 +285,7 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.get_cached.cpu",
                 mgp_buffer_get_cached_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
-  ADD_PRIMITIVE(registry, "mgp.tensor.create.cpu", mgp_tensor_create_cpu);
+  ADD_PRIMITIVE(registry, "mgp.tensor.create", mgp_tensor_create);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer",
                 mgp_tensor_extract_buffer);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.tensor_spec",

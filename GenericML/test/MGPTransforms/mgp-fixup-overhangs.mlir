@@ -35,7 +35,7 @@ mgp.model @if : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaqu
     mef.output %13, %13, %11, %arg8 : !mef.chain, !mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<32xui8>
   }
   // CHECK: %[[OUT:[^ ]+]] = mgp.tensor.create {{.*}} %[[IF_OUTS]]#2, %[[IF_OUTS]]#3 : !mgp.tensor<32xui8>
-  %10 = mgp.tensor.create %arg0, %arg1[1], %buf, %spec : !mgp.tensor<32xui8>
+  %10 = mgp.tensor.create %arg0, %buf, %spec : !mgp.tensor<32xui8>
   // CHECK: %[[MERGED_CHAIN:[^ ]+]] = grt.chain.create (%arg0, %[[IF_OUTS]]#0, %[[IF_OUTS]]#1)
   // CHECK-NEXT: mef.output %[[MERGED_CHAIN]], %[[OUT]] : !mef.chain, !mgp.tensor<32xui8>
   mef.output %arg0, %10 : !mef.chain, !mgp.tensor<32xui8>

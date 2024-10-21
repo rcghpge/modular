@@ -196,7 +196,7 @@ mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 // CHECK: %[[TWO:[^:]*]] = index.constant 2
 // CHECK: %[[TWOd0:[^:]*]] = index.mul %[[D0]], %[[TWO]]
 // CHECK: %[[OUT_SPEC:[^:]*]] = mgp.tensor_spec.create %[[TWOd0]] : !mgp.tensor_spec<?x2xf32>
-// CHECK: %[[OUT_TENSOR:[^:]*]] = mgp.tensor.create %{{.*}}, %[[CTX]][0], %[[BUF]], %[[OUT_SPEC]]  : !mgp.tensor<?x2xf32>
+// CHECK: %[[OUT_TENSOR:[^:]*]] = mgp.tensor.create %{{.*}}, %[[BUF]], %[[OUT_SPEC]]  : !mgp.tensor<?x2xf32>
 // CHECK: mef.output %[[CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x2xf32>
 mo.graph @param_expr_in_output_shape<D0>(
   %arg0: !mo.tensor<[D0, 4], f32>

@@ -212,9 +212,9 @@ func.func @buffer_set_with_index_variadic(%ctx :  !mgp.context, %buf: !mgp.buffe
 //
 
 // CHECK-LABEL: @tensor_create
-func.func @tensor_create(%ctx : !mgp.context, %ch : !mef.chain, %buf : !mgp.buffer<60, <"cuda", 3>>, %spec : !mgp.tensor_spec<3x5xf32>) {
-  // CHECK: %{{.*}} = mgp.tensor.create %{{.*}}, %{{.*}}[1], %{{.*}}, %{{.*}} : !mgp.tensor<3x5xf32, <"cuda", 3>>
-  %0 = mgp.tensor.create %ch, %ctx[1], %buf, %spec : !mgp.tensor<3x5xf32, <"cuda", 3>>
+func.func @tensor_create(%ch : !mef.chain, %buf : !mgp.buffer<60, <"cuda", 3>>, %spec : !mgp.tensor_spec<3x5xf32>) {
+  // CHECK: %{{.*}} = mgp.tensor.create %{{.*}}, %{{.*}}, %{{.*}} : !mgp.tensor<3x5xf32, <"cuda", 3>>
+  %0 = mgp.tensor.create %ch, %buf, %spec : !mgp.tensor<3x5xf32, <"cuda", 3>>
   mef.output %0 : !mgp.tensor<3x5xf32, <"cuda", 3>>
 }
 

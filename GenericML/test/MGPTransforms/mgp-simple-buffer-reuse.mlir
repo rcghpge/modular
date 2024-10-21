@@ -42,8 +42,8 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   // CHECK-NEXT: %[[CH2:.*]] = "kernel_execute"(%[[CH1]], %[[ALLOC1]], %[[ALLOC0]])
   %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
 
-  // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]], {{.*}}
-  %outTensor = mgp.tensor.create %outChain_2, %arg1[1], %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
+  // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]]
+  %outTensor = mgp.tensor.create %outChain_2, %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
   mef.output %arg0, %outTensor : !mef.chain, !mgp.tensor<?x?xf32>
 }
 
@@ -85,7 +85,7 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   // CHECK-NEXT: %[[CH2:.*]] = "kernel_execute"(%[[CH1]], %[[ALLOC1]], %[[ALLOC2]])
   %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
 
-  // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]], {{.*}}
-  %outTensor = mgp.tensor.create %outChain_2, %arg1[1], %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
+  // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]]
+  %outTensor = mgp.tensor.create %outChain_2, %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
   mef.output %arg0, %outTensor : !mef.chain, !mgp.tensor<?x?xf32>
 }

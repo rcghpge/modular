@@ -1123,56 +1123,6 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 }
 
 //===----------------------------------------------------------------------===//
-// TensorCreateOp
-//===----------------------------------------------------------------------===//
-
-def TensorCreateOp : MGP_DeviceOp<"tensor.create", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-    DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
-]> {
-  let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
-                "`!mgp.buffer`.";
-  let description = [{
-    Creates an `!mgp.tensor` from an `!mgp.buffer` and a `!mgp.tensor_spec`.
-
-    If this op holds the only reference to the buffer then it is moved into
-    the tensor. Otherwise a deep copy of the buffer is taken.
-
-    Example:
-    ```mlir
-    %ctx : !mef.context
-    %ch : !mgp.chain<<"cuda", 3>>
-    %buf : !mgp.buffer<256, <"cuda", 3>>
-    %spec : !mgp.tensor_spec<4x16xf32>
-    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"cuda", 3>>
-    %tensor : !mgp.tensor<4x16xf32, <"cuda", 3>>
-    ```
-  }];
-
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       MGP_DeviceBufferType:$buffer,
-                       MGP_TensorSpecType:$tensorSpec,
-                       UI64Attr:$aRuntimeSlot,         // 0
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs MGP_DeviceTensorType: $outTensor);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer `,` $tensorSpec attr-dict
-    `:` custom<TensorTypeToDeviceBufferSpec>(type($outTensor), $bDevice,
-          type($buffer), type($tensorSpec), type($inChain))
-  }];
-  let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    uint64_t TensorCreateOp::getSlot() { return getARuntimeSlot(); }
-
-    M::DeviceRefAttr TensorCreateOp::getDevice() { return getBDevice(); }
-}];
-}
-
-//===----------------------------------------------------------------------===//
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
 

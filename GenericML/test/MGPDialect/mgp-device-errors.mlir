@@ -44,16 +44,3 @@ func.func @buffer_unsize(%in_buf : !mgp.buffer<64, <"cuda", 3>>) {
   %out_buf = "mgp.buffer.unsize" (%in_buf) : (!mgp.buffer<64, <"cuda", 3>>) -> !mgp.buffer<32, <"cuda", 3>>
   mef.output %out_buf : !mgp.buffer<32, <"cuda", 3>>
 }
-
-// -----
-
-//
-// mgp.tensor.create
-//
-
-func.func @tensor_create_mismatched_size(%ctx : !mgp.context, %ch : !mef.chain, %buf : !mgp.buffer<61, <"cuda", 3>>, %spec : !mgp.tensor_spec<3x5xf32>) {
-  // expected-error@+1 {{'mgp.tensor.create' op expected buffer type to match type implied by tensor spec ('!mgp.buffer<61, <"cuda", 3>>' vs '!mgp.buffer<60, <"cuda", 3>>').}}
-  %tensor = "mgp.tensor.create" (%ch, %ctx, %buf, %spec) { aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cuda", 3> }
-              : (!mef.chain, !mgp.context, !mgp.buffer<61, <"cuda", 3>>, !mgp.tensor_spec<3x5xf32>) -> !mgp.tensor<3x5xf32, <"cuda", 3>>
-  mef.output %tensor : !mgp.tensor<3x5xf32, <"cuda", 3>>
-}

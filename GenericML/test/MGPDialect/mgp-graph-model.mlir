@@ -10,7 +10,7 @@ mgp.model @upsideDown : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %spec = mgp.tensor_spec.create : !mgp.tensor_spec<8xf32>
   %size = index.constant 32
   %buf = mgp.buffer.alloc %ch0, %arg1[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
-  %3 = mgp.tensor.create %ch0, %arg1[1], %buf, %spec : !mgp.tensor<8xf32>
+  %3 = mgp.tensor.create %ch0, %buf, %spec : !mgp.tensor<8xf32>
   %2 = "mop.kernels.add"(%ch0, %bufferResult, %tensorSpecResult, %bufferResult_0, %tensorSpecResult_1, %0, %1) : (!mef.chain, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>, !mgp.buffer<32>, !mgp.tensor_spec<8xf32>) -> !mef.chain
   %1 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
   %0 = mgp.buffer.alloc %ch0, %arg1[1], %size, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
@@ -36,6 +36,6 @@ mgp.model @external_weights : mof
            %input: !mgp.tensor<4xf32>) -> (!mef.chain, !mgp.tensor<4xf32>) {
   %spec = mgp.tensor.extract.tensor_spec %input : <4xf32>
   %input_buf = mgp.tensor.extract.buffer %input : <4xf32>
-  %output = mgp.tensor.create %chain, %mgp_ctx[0], %input_buf, %spec : !mgp.tensor<4xf32>
+  %output = mgp.tensor.create %chain, %input_buf, %spec : !mgp.tensor<4xf32>
   mef.output %chain, %output : !mef.chain, !mgp.tensor<4xf32>
 }

@@ -15,7 +15,7 @@
 //  CHECK-NEXT:   [[OUT_CH:%.*]] = mgp.buffer.host_to_device [[CH]], [[CTX]][0, 1], [[IN_BUF]], [[NEW_BUF]], {{.*}} : !mgp.buffer<> -> !mgp.buffer<, <"cpu", 1>>
 //  CHECK-NEXT:   [[SYNC:%.*]] = mgp.sync([[OUT_CH]]
 //  CHECK-NEXT:   mgp.extend.lifetime [[SYNC]], [[IN_BUF]]
-//  CHECK-NEXT:   [[OUTPUT:%.*]] = mgp.tensor.create [[OUT_CH]], [[CTX]][1], [[NEW_BUF]], [[IN_SPEC]] : !mgp.tensor<?xsi64, <"cpu", 1>>
+//  CHECK-NEXT:   [[OUTPUT:%.*]] = mgp.tensor.create [[OUT_CH]], [[NEW_BUF]], [[IN_SPEC]] : !mgp.tensor<?xsi64, <"cpu", 1>>
 //  CHECK-NEXT:   mef.output [[CH]], [[OUTPUT]]
 mo.graph @transfer_with_unknown_dims(
   %input: !mo.tensor<[?], si64, cpu:0>

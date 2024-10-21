@@ -213,8 +213,8 @@ static void printBufferTypeToChain(OpAsmPrinter &p, Operation *op,
 /// tensor spec type, and assigns chain the type !mgp.chain<device>.
 /// If isShapeOnly is true, the tensor spec will have 'unk' dtype.
 static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
-    bool isShapeOnly, OpAsmParser &p, Type &tensor, DeviceRefAttr &device,
-    Type &buffer, Type &tensorSpec, ArrayRef<Type *> chains) {
+    OpAsmParser &p, Type &tensor, DeviceRefAttr &device, Type &buffer,
+    Type &tensorSpec, ArrayRef<Type *> chains) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(tensor))
     return failure();
@@ -222,13 +222,8 @@ static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
   if (tensorType == nullptr)
     return p.emitError(loc) << "expected an !mgp.tensor type.";
   device = tensorType.getDevice();
-  if (isShapeOnly) {
-    tensorSpec = TensorSpecType::get(p.getContext(),
-                                     tensorType.getTensorSpec().getDims(),
-                                     std::optional<DType>());
-  } else {
-    tensorSpec = tensorType.getTensorSpec();
-  }
+
+  tensorSpec = tensorType.getTensorSpec();
   buffer = DeviceBufferType::get(tensorType);
   for (Type *chain : chains)
     *chain = MEF::ChainType::get(p.getContext());
@@ -240,8 +235,8 @@ static ParseResult parseTensorTypeToDeviceBufferSpec(OpAsmParser &p,
                                                      Type &buffer,
                                                      Type &tensorSpec) {
   Type tensor;
-  return parseTensorTypeToDeviceBufferSpecImpl(/*isShapeOnly=*/false, p, tensor,
-                                               device, buffer, tensorSpec, {});
+  return parseTensorTypeToDeviceBufferSpecImpl(p, tensor, device, buffer,
+                                               tensorSpec, {});
 }
 
 static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
@@ -252,17 +247,17 @@ static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
   p << tensorType;
 }
 
-static ParseResult
-parseTensorTypeToDeviceBufferSpec(OpAsmParser &p, Type &tensor,
-                                  DeviceRefAttr &device, Type &buffer,
-                                  Type &tensorSpec, Type &chain) {
-  return parseTensorTypeToDeviceBufferSpecImpl(
-      /*isShapeOnly=*/false, p, tensor, device, buffer, tensorSpec, {&chain});
+static ParseResult parseTensorTypeToDeviceBufferSpec(OpAsmParser &p,
+                                                     Type &tensor, Type &buffer,
+                                                     Type &tensorSpec,
+                                                     Type &chain) {
+  DeviceRefAttr device;
+  return parseTensorTypeToDeviceBufferSpecImpl(p, tensor, device, buffer,
+                                               tensorSpec, {&chain});
 }
 
 static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
                                               DeviceTensorType tensorType,
-                                              DeviceRefAttr device,
                                               DeviceBufferType buffer,
                                               TensorSpecType tensorSpec,
                                               MEF::ChainType chain) {

@@ -21,8 +21,8 @@
 // CHECK-NEXT:   %[[SPLIT_SIZE2:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC2]]
 // CHECK-NEXT:   %[[SLICE2:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[SPLIT_SIZE1]], %[[SPLIT_SIZE2]]
 
-// CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.tensor.create %[[CH]], %[[CTX]][0], %[[SLICE]], %[[SPLIT_SPEC1]]
-// CHECK-NEXT:   %[[SPLIT_TENSOR2:.*]] = mgp.tensor.create %[[CH]], %[[CTX]][0], %[[SLICE2]], %[[SPLIT_SPEC2]]
+// CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.tensor.create %[[CH]], %[[SLICE]], %[[SPLIT_SPEC1]]
+// CHECK-NEXT:   %[[SPLIT_TENSOR2:.*]] = mgp.tensor.create %[[CH]], %[[SLICE2]], %[[SPLIT_SPEC2]]
 // CHECK-NEXT:   mef.output %[[CH]], %[[SPLIT_TENSOR1]], %[[SPLIT_TENSOR2]]
 
 // We pass in the output shape parameters of split to separate how we derived

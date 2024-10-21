@@ -55,7 +55,7 @@ mgp.model @non_pure_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %bytes = index.mul %c8, %tmp
   %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %ch2 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.buffer<16>, !mgp.tensor_spec<2x2xf32>, !mgp.buffer<>, !mgp.tensor_spec<?x?xf32>) -> !mef.chain
-  %out_tensor = mgp.tensor.create %ch2, %ctx[1], %out_buf, %out_spec  : !mgp.tensor<?x?xf32>
+  %out_tensor = mgp.tensor.create %ch2, %out_buf, %out_spec  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %out_tensor : !mef.chain, !mgp.tensor<?x?xf32>
 }
 
@@ -177,7 +177,7 @@ mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref
   %3 = mgp.buffer.host_to_device %arg0, %arg1[0, 1], %1, %2, %arg4 : !mgp.buffer<16> -> !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
   %4 = mgp.sync(%3, %arg1, %arg4) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cuda", 0>} : (!mef.chain, !mgp.context, !mgp.opaque<"cuda0_context">) -> !mef.chain
   %5 = mgp.extend.lifetime  %4, %1 : (!mef.chain, !mgp.buffer<16>) -> !mef.chain
-  %6 = mgp.tensor.create %4, %arg1[0], %2, %0 : !mgp.tensor<4xf32,<"cuda", 0>>
+  %6 = mgp.tensor.create %4, %2, %0 : !mgp.tensor<4xf32,<"cuda", 0>>
   %7 = grt.chain.create(%5, %6: !mgp.tensor<4xf32, <"cuda", 0>>)
   mef.output %7 : !mef.chain
 }
