@@ -119,7 +119,8 @@ public:
       const char *function_name,
       const DeviceFunction::SignatureBuilder &signature, const void *data,
       int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-      int32_t cache_config, int32_t max_dynamic_shared_bytes) const override;
+      int32_t cache_config, int32_t max_dynamic_shared_bytes,
+      const char *debug_level, int32_t optimization_level) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,

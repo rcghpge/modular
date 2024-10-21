@@ -223,7 +223,8 @@ ErrorOr<DeviceFunctionRef> CpuDeviceContext::compileFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
     int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-    int32_t cache_config, int32_t max_dynamic_shared_bytes) const {
+    int32_t cache_config, int32_t max_dynamic_shared_bytes,
+    const char *debug_level, int32_t optimization_level) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }

@@ -436,7 +436,8 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
     int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-    int32_t cache_config, int32_t max_dynamic_shared_bytes) const {
+    int32_t cache_config, int32_t max_dynamic_shared_bytes,
+    const char *debug_level, int32_t optimization_level) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
     auto iter = func_map_.find(function_name);
@@ -455,29 +456,56 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
   CUmodule module;
   unsigned int num_options = 0;
   CUjit_option option_kind[10];
-  void *option_values[10];
+  uintptr_t option_values[10];
 
   if (max_registers >= 0) {
     option_kind[num_options] = CUjit_option::JIT_MAX_REGISTERS;
-    option_values[num_options] = reinterpret_cast<void *>(max_registers);
+    option_values[num_options] = max_registers;
     num_options++;
   }
 
   if (threads_per_block >= 0) {
     option_kind[num_options] = CUjit_option::JIT_THREADS_PER_BLOCK;
-    option_values[num_options] = reinterpret_cast<void *>(threads_per_block);
+    option_values[num_options] = threads_per_block;
     num_options++;
   }
 
   if (cache_mode >= 0) {
     option_kind[num_options] = CUjit_option::JIT_CACHE_MODE;
-    option_values[num_options] = reinterpret_cast<void *>(cache_mode);
+    option_values[num_options] = cache_mode;
     num_options++;
   }
 
+  if (strcmp(debug_level, "full") == 0) {
+    option_kind[num_options] = CUjit_option::JIT_GENERATE_DEBUG_INFO;
+    option_values[num_options] = 1;
+    num_options++;
+  } else if (strcmp(debug_level, "line-tables") == 0) {
+    option_kind[num_options] = CUjit_option::JIT_GENERATE_LINE_INFO;
+    option_values[num_options] = 1;
+    num_options++;
+  }
+
+  if (optimization_level >= 0) {
+    if (optimization_level < 3) {
+      // Note that NVidia's optimization level goes up to (and defaults to)
+      // 4, while ours only goes up to (and defaults to) 3.
+      if ((strcmp(debug_level, "full") == 0) && (optimization_level > 0)) {
+        // Note that the PTX compiler complains if debug_level=full and
+        // optimization level is something other than 0 or default.
+        RAISE_ERROR("debug_level of \"full\" requires optimization_level of "
+                    "zero (or default)");
+      }
+      option_kind[num_options] = CUjit_option::JIT_OPTIMIZATION_LEVEL;
+      option_values[num_options] = optimization_level;
+      num_options++;
+    }
+  }
+
   if (num_options > 0) {
-    CUDA_CHECK_ERR(driver_.ModuleLoadDataEx(&module, data, num_options,
-                                            option_kind, option_values));
+    CUDA_CHECK_ERR(
+        driver_.ModuleLoadDataEx(&module, data, num_options, option_kind,
+                                 reinterpret_cast<void **>(option_values)));
   } else {
     CUDA_CHECK_ERR(driver_.ModuleLoadData(&module, data));
   }
