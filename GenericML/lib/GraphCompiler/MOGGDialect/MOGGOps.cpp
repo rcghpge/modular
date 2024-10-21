@@ -513,8 +513,10 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), asTensor,
                                                      operands);
     } else if (auto asListTy = dyn_cast<MO::ListType>(oldTy)) {
-      return builder.create<MOGG::ToListFromMGPOp>(input.getLoc(), oldTy,
-                                                   input);
+      // Assume the new extensibility API uses KGEN types.
+      bool useExtensibilityAPI = getIsKGEN().value_or(false);
+      return builder.create<MOGG::ToListFromMGPOp>(input.getLoc(), oldTy, input,
+                                                   useExtensibilityAPI);
     } else {
       ASSERT_STREAM(false, << "Unknown type " << oldTy << " with value "
                            << input);

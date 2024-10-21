@@ -765,7 +765,10 @@ def MOGG_ToOpaqueFromMGPOp : MOGG_Op<"to_opaque_from_mgp", [Pure]> {
 }
 
 def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
-  let arguments = (ins AnyType:$dataPointer);
+  let arguments = (
+    ins AnyType:$dataPointer,
+    DefaultValuedAttr<BoolAttr, "false">:$useExtensibilityAPI
+  );
   let results = (outs AnyType:$result);
   let summary = "Represents the construction of an list type from a pointer";
   let description = [{
@@ -775,6 +778,9 @@ def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
 
     At the implementation level, it's just a rebind since we define the ABI for
     both objects the same way (ABIList).
+
+    `useExtensibilityAPI` if true, tells lowering of this stub to use the
+    expected lowering for the API which uses `ManagedTensorSlice.`
   }];
 
   let assemblyFormat = [{
