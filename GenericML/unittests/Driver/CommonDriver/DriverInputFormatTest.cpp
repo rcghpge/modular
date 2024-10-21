@@ -64,11 +64,3 @@ const std::filesystem::path &TemporaryDirectory::path() const {
 }
 
 } // namespace
-
-static testing::AssertionResult touchFile(const std::filesystem::path &path) {
-  std::ofstream of(path, std::ios::app);
-  if (of.fail())
-    return testing::AssertionFailure()
-           << "Unable to open path " << path << " for appending";
-  return testing::AssertionSuccess();
-}
