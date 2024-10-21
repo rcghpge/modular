@@ -621,18 +621,18 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
     host device to an `!mgp.buffer` on a non-host device. The two buffers must
     agree on their runtime size.
 
-    Note that the input chain is on the host device, and the output chain
-    on the other device.
+    The output chain is ready when the copy has been scheduled, but not
+    necessarily when it has completed on the device.
 
     Example:
     ```mlir
-      %ch0 : !mgp.chain
+      %ch0 : !mef.chain
       %ctx : !mgp.context
       %host_buf : !mgp.buffer<>
       %other_buf : !mgp.buffer<, <"cuda", 3>>
       %ch1 = mgp.buffer.host_to_device %ch0, %ctx[4, 5], %host_buf, %other_buf
                : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>
-      %ch1 : !mgp.chain<<"cuda", 3>>
+      %ch1 : !mef.chain
     ```
   }];
 
@@ -678,12 +678,13 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
     non-host device to an `!mgp.buffer` on the host device. The two buffers
     must agree on their runtime size.
 
-    Note that the input chain is on the other device, and the output chain
-    on the host device.
+    The output chain is ready when the copy has been scheduled, but not
+    necessarily when it has completed. The device must be synchronized with
+    `mgp.sync` before the host buffer can be read.
 
     Example:
     ```mlir
-      %ch0 : !mgp.chain<<"cuda", 3>>
+      %ch0 : !mef.chain
       %ctx : !mgp.context
       %other_buf : !mgp.buffer<, <"cuda", 3>>
       %host_buf : !mgp.buffer<>
@@ -735,15 +736,18 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     another `!mgp.buffer`. The two buffers must have the same device label,
     but may be on distinct virtual devices.
 
+    The output chain is ready when the copy has been scheduled, but not
+    necessarily when it has completed on the device.
+
     Example:
     ```mlir
-      %ch0 : !mgp.chain<<"cuda", 3>>
+      %ch0 : !mef.chain
       %ctx : !mgp.context
       %src_buf : !mgp.buffer<, <"cuda", 3>>
       %dst_buf : !mgp.buffer<, <"cuda", 1>>
       %ch1 = mgp.buffer.device_to_device %ch0, %ctx[5, 3], %src_buf, %dst_buf
                : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>
-      %ch1 : !mgp.chain<<"cuda", 1>>
+      %ch1 : !mef.chain
     ```
   }];
 
