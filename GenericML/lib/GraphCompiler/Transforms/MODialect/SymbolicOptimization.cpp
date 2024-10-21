@@ -1149,12 +1149,14 @@ static bool isValueFromReshapeThatSqueezesFinalDims(Value val) {
   auto inputShape = dyn_cast<MO::ShapeAttr>(inputTy.getShapeAttr());
   auto outputShape = dyn_cast<MO::ShapeAttr>(outputTy.getShapeAttr());
 
+  auto inputRank = inputShape.getRank();
   auto inputShapeHasTrailingOne = inputShape && inputShape.getRank() > 0 &&
-                                  inputShape.getIntDims().back() == 1;
+                                  inputShape.getIntDim(inputRank - 1) == 1;
 
+  auto outputRank = outputShape.getRank();
   auto outputShapeHasNoTrailingOne =
-      outputShape &&
-      (outputShape.getRank() == 0 || outputShape.getIntDims().back() != 1);
+      outputShape && (outputShape.getRank() == 0 ||
+                      outputShape.getIntDim(outputRank - 1) != 1);
 
   return inputShapeHasTrailingOne && outputShapeHasNoTrailingOne;
 }
@@ -2817,7 +2819,9 @@ struct MergeParallelMatmulPattern
       weightsToConcatenate.push_back(matmulOp.getInputB());
       TensorType matmulType = matmulOp.getType();
       matmulTypes.push_back(matmulType);
-      columnsInEachMatmul.push_back(matmulType.getIntDims().back());
+
+      size_t matmulRank = matmulType.getRank();
+      columnsInEachMatmul.push_back(matmulType.getIntDim(matmulRank - 1));
       totalColumns += columnsInEachMatmul.back();
     }
 

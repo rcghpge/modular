@@ -562,7 +562,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     Value oldOut = oldOutputs.getResult(inPlaceIdx);
     if (auto asTensor = dyn_cast<MO::TensorType>(oldOut.getType())) {
-      SmallVector<int64_t> dynamicShape(asTensor.getIntDims().size(), 1);
+      SmallVector<int64_t> dynamicShape(asTensor.getRank(), 1);
       auto dynamicTensorTy =
           MO::TensorType::get(dynamicShape, asTensor.getElementType());
       internalTensorAllocTypes.push_back(dynamicTensorTy);
