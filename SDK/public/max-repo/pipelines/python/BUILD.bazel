@@ -16,6 +16,7 @@ modular_py_binary(
         "//SDK/lib/API/python/max/serve",
         "//SDK/public/max-repo/pipelines/python/llama3",
         "//SDK/public/max-repo/pipelines/python/nn",
+        "//SDK/public/max-repo/pipelines/python/replit",
         "//SDK/public/max-repo/pipelines/python/text_streaming",
         "//SDK/public/max-repo/pipelines/python/utils",
     ],
