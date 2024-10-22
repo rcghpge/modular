@@ -3,6 +3,10 @@ load("//bazel:api.bzl", "mojo_binary")
 mojo_binary(
     name = "run_server",
     srcs = ["run_server.mojo"],
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
