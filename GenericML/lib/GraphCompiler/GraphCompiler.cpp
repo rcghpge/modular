@@ -282,11 +282,14 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       softFuseOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
       pm.addPass(MOGG::createSoftFuse(softFuseOpts));
 
-      MOGG::KernelSequenceFuseOptions sequenceFusionOpts;
-      sequenceFusionOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
-      sequenceFusionOpts.kernelLibraryPaths = kernelLibraryPaths;
-      sequenceFusionOpts.withDebuginfo = opts.withDebuginfo;
-      pm.addPass(MOGG::createKernelSequenceFuse(sequenceFusionOpts));
+      if (opts.enableCompiledRegionsFusion) {
+        MOGG::KernelSequenceFuseOptions sequenceFusionOpts;
+        sequenceFusionOpts.nonHostKernelLimit =
+            opts.softFusionNonHostKernelLimit;
+        sequenceFusionOpts.kernelLibraryPaths = kernelLibraryPaths;
+        sequenceFusionOpts.withDebuginfo = opts.withDebuginfo;
+        pm.addPass(MOGG::createKernelSequenceFuse(sequenceFusionOpts));
+      }
 
       pm.addPass(mlir::createCanonicalizerPass());
       pm.addPass(mlir::createCSEPass());
