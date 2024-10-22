@@ -279,9 +279,9 @@ void LowerPrimitivesPass::runOnOperation() {
     return signalPassFailure();
   MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
-  auto moggCallBodyBuilder = [&mojoLibraryAnalysis](OpBuilder &builder,
-                                                    Location loc, Operation *op,
-                                                    ValueRange inputs) {
+  auto moggCallBodyBuilder =
+      [&mojoLibraryAnalysis](OpBuilder &builder, Location loc, Operation *op,
+                             ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
     SmallVector<Value> inputVec(inputs);
     if (auto bufferConcat = dyn_cast<MGP::BufferConcatOp>(op)) {
       // Packs the variadic input buffers into tuple.
@@ -292,6 +292,27 @@ void LowerPrimitivesPass::runOnOperation() {
 
       inputVec.pop_back_n(inBuffers.size());
       inputVec.push_back(tuple);
+    } else if (auto getCachedBuf = dyn_cast<MGP::BufferGetCachedOp>(op)) {
+      // This is the storage_ref handle to the buffer.
+      Value asyncRef = builder.create<MOGG::AnyAsyncRefPlaceholderOp>(loc);
+      inputVec.push_back(asyncRef);
+      ErrorOr<SmallVector<Value>> errOr =
+          buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
+      if (errOr)
+        return errOr;
+
+      // Instead of creating a new AsyncValue for the buffer, we extend the
+      // lifetime of a cached buffer.
+      SmallVector<Value> outputs = errOr.takeValue();
+      ValueRange ret =
+          builder
+              .create<MOGG::BufferBorrowOp>(loc, getCachedBuf.getType(),
+                                            outputs.front(), asyncRef)
+              ->getResults();
+
+      // Override the result.
+      outputs.assign(ret.begin(), ret.end());
+      return outputs;
     }
     return buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
   };

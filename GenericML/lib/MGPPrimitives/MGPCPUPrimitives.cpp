@@ -29,12 +29,6 @@ using namespace M::MGP;
 // Helpers
 //===----------------------------------------------------------------------===//
 
-static std::optional<size_t> getRuntimeSize(uint64_t rawSize) {
-  return hasRawSize(rawSize)
-             ? std::optional<size_t>(rawSizeToRuntimeSize(rawSize))
-             : std::nullopt;
-}
-
 TensorBufferRef createBorrowedSlice(TensorBufferRef &borroweBufferRef,
                                     size_t offset, size_t size) {
   const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
@@ -165,29 +159,6 @@ static void mgp_buffer_cache_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.get_cached.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_get_cached_cpu(Chain inChain, StateContext &theContext,
-                                      Result<TensorBufferRef> outBuffer,
-                                      MEFAttr<uint64_t> aRuntimeSlot,
-                                      MEFAttr<uint64_t> bBufferSlot,
-                                      MEFAttr<uint64_t> cRawSize,
-                                      MEFAttr<uint64_t> dDeviceId) {
-  auto &stateSlot = theContext.getStateSlot(*bBufferSlot);
-  ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
-  if (errOr)
-    return std::move(outBuffer).setToError(errOr.takeError());
-  std::optional<size_t> optExpectedSize = getRuntimeSize(*cRawSize);
-  if (optExpectedSize && errOr->getSize() != *optExpectedSize)
-    return std::move(outBuffer).setToError(
-        Twine("buffer cached at slot ") + Twine(*bBufferSlot) +
-        " has different size than expected (" + Twine(errOr->getSize()) +
-        " vs " + Twine(*optExpectedSize) + ")");
-  std::move(outBuffer).emplace(std::move(*errOr));
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.buffer.resize.cpu
 //===----------------------------------------------------------------------===//
 
@@ -282,8 +253,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.cpu", mgp_buffer_constant_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.get_cached.cpu",
-                mgp_buffer_get_cached_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create", mgp_tensor_create);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer",

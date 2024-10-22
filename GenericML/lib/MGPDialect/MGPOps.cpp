@@ -137,19 +137,6 @@ static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
   return success();
 }
 
-static ParseResult parseBufferTypeToRawSizeDevice(OpAsmParser &p, Type &buffer,
-                                                  IntegerAttr &rawSize,
-                                                  DeviceRefAttr &device) {
-  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device, {});
-}
-
-static void printBufferTypeToRawSizeDevice(OpAsmPrinter &p, Operation *op,
-                                           DeviceBufferType buffer,
-                                           IntegerAttr rawSize,
-                                           DeviceRefAttr device) {
-  p << buffer;
-}
-
 static ParseResult parseStaticBufferTypeToSizeDeviceBuffer(
     OpAsmParser &p, Type &staticBuffer, IntegerAttr &size,
     DeviceRefAttr &device, Type &dynamicBuffer) {

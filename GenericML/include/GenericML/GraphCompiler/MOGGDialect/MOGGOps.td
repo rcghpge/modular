@@ -21,6 +21,7 @@ include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
 include "GenericML/MGPDialect/MGPOpInterfaces.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
+include "KGEN/KGENDialect/KGENTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
@@ -886,6 +887,18 @@ def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
   }];
 
 }
+
+def MOGG_AnyAsyncRefPlaceholderOp : MOGG_Op<"any_async_ref_placeholder", [Pure]> {
+  // Allocate a `void *`, returning a `void **`
+  let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
+  let summary = "Returns a placeholder for holding a AsyncRT::AnyAsyncValueRef";
+  let description = [{
+    This is resolved to an pop.stack_allocation during lowering.
+  }];
+
+  let assemblyFormat = [{attr-dict}];
+}
+
 
 def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
   let results = (outs AnyType:$result);

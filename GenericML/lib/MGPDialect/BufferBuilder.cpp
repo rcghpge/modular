@@ -394,12 +394,9 @@ Value MGPBufferBuilder::getCached(OpBuilder &builder, Location loc,
                                   uint64_t bufferSlot,
                                   Type expectedBufferType) {
   return builder.create<BufferGetCachedOp>(
-      loc, /*inChain=*/inChain, /*theContext=*/context,
+      loc, expectedBufferType, /*inChain=*/inChain, /*theContext=*/context,
       /*aRuntimeSlot=*/runtimeSlot,
-      /*bBufferSlot=*/bufferSlot,
-      /*cRawSize=*/
-      cast<DeviceBufferType>(expectedBufferType).getRawSize().getUInt(),
-      /*dDevice=*/device);
+      /*bBufferSlot=*/bufferSlot);
 }
 
 Value MGPBufferBuilder::bufferConcat(OpBuilder &builder, Location loc,

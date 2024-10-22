@@ -878,6 +878,50 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 }
 
 //===----------------------------------------------------------------------===//
+// BufferGetCachedOp
+//===----------------------------------------------------------------------===//
+
+def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
+    Pure,
+    DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>]> {
+  let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
+  let description = [{
+    Returns (a borrow of) the `!mgp.buffer` in the state slot with the given
+    index. The buffer should have already been cached by `mgp.buffer.cache`.
+    Returns an error if the cached buffer's size (if any) or device do not
+    agree with the `!mgp.buffer` type annotation.
+
+    Note this op is gated by a `!mef.chain` since the cache is held on the
+    host.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %ch0 : !mef.chain
+    // Returns the buffer cached in slot index 42, using the CUDA runtime
+    // established in slot 5, which should correspond to the CUDA GPU with
+    // virtual id 3.
+    %buf = mgp.buffer.get_cached %ch0, %ctx[5, 42] : !mgp.buffer<256, <"cuda", 3>>
+    %buf : !mgp.buffer<256, <"cuda", 3>>
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$aRuntimeSlot,         // 0
+                       UI64Attr:$bBufferSlot);         // 1
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bBufferSlot `]` attr-dict
+    `:` qualified(type($outBuffer))
+  }];
+
+  let extraClassDefinition = [{
+    uint64_t BufferGetCachedOp::getSlot() { return getARuntimeSlot(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // DebugPrintOp
 //===----------------------------------------------------------------------===//
 

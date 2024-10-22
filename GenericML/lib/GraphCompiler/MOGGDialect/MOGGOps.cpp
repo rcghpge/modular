@@ -1497,5 +1497,6 @@ void MOGGDialect::registerOperations() {
       >();
 }
 
+using PointerType = KGEN::PointerType;
 #define GET_OP_CLASSES
 #include "GenericML/GraphCompiler/MOGGDialect/MOGG.cpp.inc"

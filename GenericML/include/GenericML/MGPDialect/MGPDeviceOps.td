@@ -138,8 +138,6 @@ class MGP_DeviceOp<string mnemonic, list<Trait> traits = []> :
 def MGP_OptDeviceRefAttr :
   DefaultValuedAttr<M_DeviceRefAttr, "kCPULabel, 0">;
 
-
-
 //===----------------------------------------------------------------------===//
 // DeviceContextProfileStartOp
 //===----------------------------------------------------------------------===//
@@ -519,59 +517,6 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
      uint64_t BufferCacheOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferCacheOp::getDevice() { return getCDevice(); }
-}];
-}
-
-//===----------------------------------------------------------------------===//
-// BufferGetCachedOp
-//===----------------------------------------------------------------------===//
-
-def BufferGetCachedOp : MGP_DeviceOp<"buffer.get_cached", [
-    Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-]> {
-  let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
-  let description = [{
-    Returns (a borrow of) the `!mgp.buffer` in the state slot with the given
-    index. The buffer should have already been cached by `mgp.buffer.cache`.
-    Returns an error if the cached buffer's size (if any) or device do not
-    agree with the `!mgp.buffer` type annotation.
-
-    Note this op is gated by a `!mef.chain` since the cache is held on the
-    host.
-
-    Example:
-    ```mlir
-    %ctx : !mgp.context
-    %ch0 : !mef.chain
-    // Returns the buffer cached in slot index 42, using the CUDA runtime
-    // established in slot 5, which should correspond to the CUDA GPU with
-    // virtual id 3.
-    %buf = mgp.buffer.get_cached %ch0, %ctx[5, 42] : !mgp.buffer<256, <"cuda", 3>>
-    %buf : !mgp.buffer<256, <"cuda", 3>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
-                       UI64Attr:$aRuntimeSlot,         // 0
-                       UI64Attr:$bBufferSlot,          // 1
-                       UI64Attr:$cRawSize,             // 2
-                       MGP_OptDeviceRefAttr:$dDevice); // 3
-  let results = (outs MGP_DeviceBufferType:$outBuffer);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bBufferSlot `]` attr-dict
-    `:` custom<BufferTypeToRawSizeDevice>(
-          type($outBuffer), $cRawSize, $dDevice)
-  }];
-  let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    uint64_t BufferGetCachedOp::getSlot() { return getARuntimeSlot(); }
-
-    M::DeviceRefAttr BufferGetCachedOp::getDevice() { return getDDevice(); }
 }];
 }
 

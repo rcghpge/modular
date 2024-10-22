@@ -60,19 +60,6 @@ static LogicalResult getSizeAttr(Location location, DictionaryAttr attributes,
   return success();
 }
 
-/// Assigns to optSize from attribute with name in attrs.
-static LogicalResult getRawSizeAttr(Location location,
-                                    DictionaryAttr attributes, StringAttr name,
-                                    std::optional<uint64_t> &optSize) {
-  auto rawSizeAttr = dyn_cast_if_present<IntegerAttr>(attributes.get(name));
-  if (!rawSizeAttr) {
-    return mlir::emitError(location, "expected a uint64_t for attribute '")
-           << name << "'";
-  }
-  optSize = rawSizeToOptSize(rawSizeAttr.getUInt());
-  return success();
-}
-
 /// Assigns to elements from attribute with name in attrs.
 static LogicalResult getElementsAttr(Location location,
                                      DictionaryAttr attributes, StringAttr name,
@@ -286,38 +273,6 @@ void BufferAllocOp::setInChain(Value chain) {
 
 LogicalResult BufferCacheOp::verify() {
   return verifyConsistentDevices(getOperation(), {getCDevice()});
-}
-
-//===----------------------------------------------------------------------===//
-// BufferGetCachedOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult BufferGetCachedOp::verify() {
-  std::optional<uint64_t> optSize = rawSizeToOptSize(getCRawSize());
-  auto expectedBufferType = DeviceBufferType::get(getDDevice(), optSize);
-  if (expectedBufferType != getOutBuffer().getType()) {
-    return emitOpError("output buffer type does not match expected (")
-           << getOutBuffer().getType() << " vs " << expectedBufferType << ").";
-  }
-  return verifyConsistentDevices(getOperation(), {getDDevice()});
-}
-
-LogicalResult BufferGetCachedOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  std::optional<uint64_t> optSize;
-  if (failed(getRawSizeAttr(location.value_or(operands[0].getLoc()), attributes,
-                            getCRawSizeAttrName(name), optSize)))
-    return failure();
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getDDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
