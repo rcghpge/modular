@@ -270,7 +270,7 @@ TEST(CUDADeviceContextTest, SubBuffer) {
   uint32_t expected_vals[] = {0x80000000, 0x3f800000, 0xc0000000};
   for (int i = 0; i < (sub_alloc_len); i++) {
     uint32_t val = d_int_ptr[i];
-    std::cerr << "SubBuffer: d[" << std::dec << i << "] = 0x" << std::hex << val
+    std::cerr << "SubBuffer: d[" << i << "] = 0x" << std::hex << val << std::dec
               << "\n";
     EXPECT_EQ(val, expected_vals[i]);
   }
@@ -278,7 +278,7 @@ TEST(CUDADeviceContextTest, SubBuffer) {
     int val = d_ptr[i];
     if (i < 20) {
       std::cerr << "Original: d[" << std::dec << i << "] = 0x" << std::hex
-                << val << "\n";
+                << val << std::dec << "\n";
     }
     EXPECT_EQ(val, i & 127);
   }
@@ -363,129 +363,138 @@ $L__BB0_2:
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
-  std::cerr << "Compiling vec_add_ptx...\n";
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addUInt64();
-  ErrorOr<DeviceFunctionRef> err_fun =
-      ctx->compileFunction("vec_add", sig, vec_add_ptx);
-  EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
-  DeviceFunctionRef device_function = std::move(err_fun.get());
-  EXPECT_TRUE(device_function);
+  // Check reference count.
+  EXPECT_EQ(ctx->getNumReferences(), 1);
 
-  constexpr size_t length = 1024;
-  constexpr size_t elem_size = sizeof(float);
-
-  float *in0_host = reinterpret_cast<float *>(malloc(length * elem_size));
-  float *in1_host = reinterpret_cast<float *>(malloc(length * elem_size));
-  float *out_host = reinterpret_cast<float *>(malloc(length * elem_size));
-
-  for (size_t i = 0; i < length; i++) {
-    in0_host[i] = static_cast<float>(i);
-    in1_host[i] = 2.0;
-    out_host[i] =
-        static_cast<float>(i) * 2.0; // Write a value that is not expected.
-  }
-
-  ErrorOr<DeviceBufferRef> err_buf =
-      ctx->enqueueCreateBuffer(length, elem_size);
-  EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
-  DeviceBufferRef in0_device = std::move(err_buf.get());
-  EXPECT_TRUE(in0_device);
-
-  err_buf = ctx->enqueueCreateBuffer(length, elem_size);
-  EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
-  DeviceBufferRef in1_device = std::move(err_buf.get());
-  EXPECT_TRUE(in1_device);
-
-  err_buf = ctx->enqueueCreateBuffer(length, elem_size);
-  EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
-  DeviceBufferRef out_device = std::move(err_buf.get());
-  EXPECT_TRUE(out_device);
-
-  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*in0_device, in0_host);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-  err = ctx->enqueueCopyToDevice(*in1_device, in1_host);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-  // This copy is not strictly necessary, but fill out_device with known bad
-  // values.
-  err = ctx->enqueueCopyToDevice(*out_device, out_host);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-
-  constexpr uint32_t block_dim = 32;
-
-  err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-      *device_function->buildArguments(*out_device, *in0_device, *in1_device,
-                                       length));
-  EXPECT_FALSE(err) << err.getError() << "\n";
-
-  err = ctx->enqueueCopyFromDevice(out_host, *out_device);
-  EXPECT_FALSE(err) << err.getError() << "\n";
-
-  err = ctx->synchronize();
-  EXPECT_FALSE(err) << err.getError() << "\n";
-
-  for (size_t i = 0; i < length; i++) {
-    EXPECT_EQ(out_host[i], static_cast<float>(i) + 2.0);
-  }
-
-  // Check cache hit.
-  uint32_t ref_count = device_function->getNumReferences();
-  // One refcount for device_function and one ref count for the cache in
-  // CUDADeviceContext.
-  EXPECT_EQ(ref_count, 2);
   {
+    std::cerr << "Compiling vec_add_ptx...\n";
+    DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                               .addBuffer()
+                                               .addBuffer()
+                                               .addBuffer()
+                                               .addUInt64();
     ErrorOr<DeviceFunctionRef> err_fun =
         ctx->compileFunction("vec_add", sig, vec_add_ptx);
     EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
-    DeviceFunctionRef device_function2 = std::move(err_fun.get());
-    EXPECT_TRUE(device_function2);
+    DeviceFunctionRef device_function = std::move(err_fun.get());
+    EXPECT_TRUE(device_function);
 
-    EXPECT_EQ(device_function.getPointer(), device_function2.getPointer());
-    // Additional refcount for device_function2.
-    EXPECT_EQ(ref_count + 1, device_function->getNumReferences());
-    EXPECT_EQ(ref_count + 1, device_function2->getNumReferences());
+    // One reference count from ctx and one from device_function.
+    EXPECT_EQ(ctx->getNumReferences(), 2);
+    EXPECT_EQ(device_function->getNumReferences(), 1);
+
+    constexpr size_t length = 1024;
+    constexpr size_t elem_size = sizeof(float);
+
+    float *in0_host = reinterpret_cast<float *>(malloc(length * elem_size));
+    float *in1_host = reinterpret_cast<float *>(malloc(length * elem_size));
+    float *out_host = reinterpret_cast<float *>(malloc(length * elem_size));
+
+    for (size_t i = 0; i < length; i++) {
+      in0_host[i] = static_cast<float>(i);
+      in1_host[i] = 2.0;
+      out_host[i] =
+          static_cast<float>(i) * 2.0; // Write a value that is not expected.
+    }
+
+    ErrorOr<DeviceBufferRef> err_buf =
+        ctx->enqueueCreateBuffer(length, elem_size);
+    EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
+    DeviceBufferRef in0_device = std::move(err_buf.get());
+    EXPECT_TRUE(in0_device);
+
+    err_buf = ctx->enqueueCreateBuffer(length, elem_size);
+    EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
+    DeviceBufferRef in1_device = std::move(err_buf.get());
+    EXPECT_TRUE(in1_device);
+
+    err_buf = ctx->enqueueCreateBuffer(length, elem_size);
+    EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
+    DeviceBufferRef out_device = std::move(err_buf.get());
+    EXPECT_TRUE(out_device);
+
+    ErrorOrSuccess err = ctx->enqueueCopyToDevice(*in0_device, in0_host);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+    err = ctx->enqueueCopyToDevice(*in1_device, in1_host);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+    // This copy is not strictly necessary, but fill out_device with known bad
+    // values.
+    err = ctx->enqueueCopyToDevice(*out_device, out_host);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    constexpr uint32_t block_dim = 32;
+
+    err = ctx->enqueueFunctionExec(
+        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
+        *device_function->buildArguments(*out_device, *in0_device, *in1_device,
+                                         length));
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    err = ctx->enqueueCopyFromDevice(out_host, *out_device);
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    err = ctx->synchronize();
+    EXPECT_FALSE(err) << err.getError() << "\n";
+
+    for (size_t i = 0; i < length; i++) {
+      EXPECT_EQ(out_host[i], static_cast<float>(i) + 2.0);
+    }
+
+    // Check cache hit.
+    {
+      ErrorOr<DeviceFunctionRef> err_fun =
+          ctx->compileFunction("vec_add", sig, vec_add_ptx);
+      EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
+      DeviceFunctionRef device_function2 = std::move(err_fun.get());
+      EXPECT_TRUE(device_function2);
+
+      // A cache hit will point to the same backing store for the function (e.g.
+      // name).
+      EXPECT_EQ(&device_function->name(), &device_function2->name());
+      // Even with a cache hit, we do get different DeviceFunction objects.
+      EXPECT_EQ(device_function->getNumReferences(), 1);
+      EXPECT_EQ(device_function2->getNumReferences(), 1);
+    }
+
+    // Check error cases of mismatched arguments being passed.
+    err = ctx->enqueueFunctionExec(
+        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
+        *device_function->buildArguments(*out_device, *in0_device, 12, length));
+    EXPECT_TRUE(err);
+    EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 3th position: "
+                                     "Expected DeviceBuffer, got uint64."),
+              0)
+        << err.getError();
+
+    err = ctx->enqueueFunctionExec(
+        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
+        *device_function->buildArguments(*out_device, *in0_device, *in1_device,
+                                         *in1_device));
+    EXPECT_TRUE(err);
+    EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 4th position: "
+                                     "Expected uint64, got DeviceBuffer."),
+              0)
+        << err.getError();
+
+    err = ctx->enqueueFunctionExec(
+        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
+        *device_function->buildArguments(*out_device, *in0_device, *in1_device,
+                                         length, length));
+    EXPECT_TRUE(err);
+    EXPECT_EQ(
+        strcmp(
+            err.getError(),
+            "Argument count mismatch at 5th position: Expected 4 arguments."),
+        0)
+        << err.getError();
+
+    free(out_host);
+    free(in1_host);
+    free(in0_host);
   }
-  // Make sure the local reference for device_function2 has been released.
-  EXPECT_EQ(ref_count, device_function->getNumReferences());
 
-  // Check error cases of mismatched arguments being passed.
-  err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-      *device_function->buildArguments(*out_device, *in0_device, 12, length));
-  EXPECT_TRUE(err);
-  EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 3th position: "
-                                   "Expected DeviceBuffer, got uint64."),
-            0)
-      << err.getError();
-
-  err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-      *device_function->buildArguments(*out_device, *in0_device, *in1_device,
-                                       *in1_device));
-  EXPECT_TRUE(err);
-  EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 4th position: "
-                                   "Expected uint64, got DeviceBuffer."),
-            0)
-      << err.getError();
-
-  err = ctx->enqueueFunctionExec(
-      *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-      *device_function->buildArguments(*out_device, *in0_device, *in1_device,
-                                       length, length));
-  EXPECT_TRUE(err);
-  EXPECT_EQ(
-      strcmp(err.getError(),
-             "Argument count mismatch at 5th position: Expected 4 arguments."),
-      0)
-      << err.getError();
-
-  free(out_host);
-  free(in1_host);
-  free(in0_host);
+  // Check cached functions do not keep reference count on context.
+  EXPECT_EQ(ctx->getNumReferences(), 1);
 }
 
 TEST(CUDADeviceContextTest, Timers) {

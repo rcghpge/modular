@@ -182,19 +182,30 @@ CUDADeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
   return static_cast<const CUDADeviceFunctionArguments &>(args);
 }
 
-// ===== CUDADeviceFunction ===== //
-CUDADeviceFunction::CUDADeviceFunction(
-    const CUDADeviceContext &context, std::string name,
-    const DeviceFunction::SignatureBuilder &signature, CUmodule module,
-    CUfunction function)
-    : DeviceFunction(context, signature), module_(module), function_(function),
+// ===== CUDAModuleFunction ===== //
+CUDAModuleFunction::CUDAModuleFunction(const std::string name,
+                                       const CUDADriver &driver,
+                                       CUmodule module, CUfunction function)
+    : driver_(driver), module_(module), function_(function),
       name_(std::move(name)) {}
 
-CUDADeviceFunction::~CUDADeviceFunction() {
-  const auto &cuda_context = CUDADeviceContext::cast(context());
-
-  CUDA_CHECK(cuda_context.cuda_driver().ModuleUnload(module_));
+CUDAModuleFunction::~CUDAModuleFunction() {
+  CUDA_CHECK(cuda_driver().ModuleUnload(module_));
 }
+
+const std::string &CUDAModuleFunction::name() const { return name_; }
+const CUDADriver &CUDAModuleFunction::cuda_driver() const { return driver_; }
+CUmodule CUDAModuleFunction::cuda_module() const { return module_; }
+CUfunction CUDAModuleFunction::cuda_function() const { return function_; }
+
+// ===== CUDADeviceFunction ===== //
+CUDADeviceFunction::CUDADeviceFunction(
+    const CUDADeviceContext &context,
+    const DeviceFunction::SignatureBuilder &signature,
+    CUDAModuleFunctionRef mod_func)
+    : DeviceFunction(context, signature),
+      module_function_(std::move(mod_func)) {}
+CUDADeviceFunction::~CUDADeviceFunction() {}
 
 DeviceFunction::Arguments *
 CUDADeviceFunction::allocateArguments(const DeviceFunction &fn) const {
@@ -205,11 +216,9 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const CUDADeviceFunctionArguments &args, CUstream stream) const {
-  const auto &cuda_context = CUDADeviceContext::cast(context());
-
-  CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernel(
-      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      stream, args.cuda_args().data(), nullptr));
+  CUDA_CHECK_ERR(module_function_->cuda_driver().LaunchKernel(
+      module_function_->cuda_function(), gridX, gridY, gridZ, blockX, blockY,
+      blockZ, sharedMemBytes, stream, args.cuda_args().data(), nullptr));
   return success();
 }
 
@@ -218,8 +227,6 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     CUlaunchAttribute *attrs, uint32_t num_attrs, void **args,
     CUstream stream) const {
-  const auto &cuda_context = CUDADeviceContext::cast(context());
-
   CUlaunchConfig config;
   config.gridDimX = gridX;
   config.gridDimY = gridY;
@@ -232,12 +239,14 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
   config.attrs = attrs;
   config.numAttrs = num_attrs;
 
-  CUDA_CHECK_ERR(cuda_context.cuda_driver().LaunchKernelEx(&config, function_,
-                                                           args, nullptr));
+  CUDA_CHECK_ERR(module_function_->cuda_driver().LaunchKernelEx(
+      &config, module_function_->cuda_function(), args, nullptr));
   return success();
 }
 
-const std::string &CUDADeviceFunction::name() const { return name_; }
+const std::string &CUDADeviceFunction::name() const {
+  return module_function_->name();
+}
 
 ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
                                                        const void *data,
@@ -246,7 +255,7 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
   size_t device_size;
   const auto &cuda_context = CUDADeviceContext::cast(context());
   CUDA_CHECK_ERR(cuda_context.cuda_driver().ModuleGetGlobal(
-      &device_ptr, &device_size, module_, name));
+      &device_ptr, &device_size, module_function_->cuda_module(), name));
 
   if (device_size < byte_size) {
     RAISE_ERROR("byte_size too big");
@@ -260,10 +269,9 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
 ErrorOr<int32_t>
 CUDADeviceFunction::TEST_ONLY_getAttribute(int32_t code) const {
   int32_t result;
-  const auto &cuda_context = CUDADeviceContext::cast(context());
-
-  CUDA_CHECK_ERR(cuda_context.cuda_driver().FuncGetAttribute(
-      &result, static_cast<CUfunction_attribute>(code), function_));
+  CUDA_CHECK_ERR(module_function_->cuda_driver().FuncGetAttribute(
+      &result, static_cast<CUfunction_attribute>(code),
+      module_function_->cuda_function()));
   return result;
 }
 
@@ -300,6 +308,8 @@ CUDADeviceContext::~CUDADeviceContext() {
   // We do not need to synchronize on possible work queued on this stream.
   // Resources will be released automatically once work has been completed.
   CUDA_CHECK(driver_.StreamDestroy(stream_));
+  // Destroy the function map before destroying the context.
+  func_map_.clear();
   CUDA_CHECK(driver_.CtxDestroy(context_));
 }
 
@@ -442,8 +452,9 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
     std::lock_guard<std::mutex> lock(mu_);
     auto iter = func_map_.find(function_name);
     if (iter != func_map_.end()) {
-      CUDADeviceFunctionRef result = iter->second;
-      return result;
+      CUDAModuleFunctionRef module_func = iter->second;
+      return CUDADeviceFunctionRef::create(*this, signature,
+                                           std::move(module_func));
     }
   }
 
@@ -528,17 +539,20 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
   // Allocate func outside of the lock region to reduce the time spent under
   // lock. If this function_name has been registered concurrently, then we will
   // release this ref outside of the lock region before returning.
-  auto func = CUDADeviceFunctionRef::create(*this, std::string(function_name),
-                                            signature, module, function);
+  auto module_func = CUDAModuleFunctionRef::create(
+      std::string(function_name), this->cuda_driver(), module, function);
   CUDADeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
     auto iter = func_map_.find(function_name);
     if (iter != func_map_.end()) {
-      result = CUDADeviceFunctionRef::copy(iter->second.getPointer());
+      result = CUDADeviceFunctionRef::create(
+          *this, signature,
+          CUDAModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      func_map_.insert({func->name(), func});
-      result = std::move(func);
+      func_map_.insert({module_func->name(), module_func});
+      result = CUDADeviceFunctionRef::create(*this, signature,
+                                             std::move(module_func));
     }
   }
   return result;

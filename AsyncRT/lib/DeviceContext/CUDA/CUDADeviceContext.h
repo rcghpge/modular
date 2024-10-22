@@ -15,6 +15,7 @@
 #include "CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
+#include "Support/include/Support/ReferenceCounted.h"
 #include "llvm/ADT/StringMap.h"
 
 #include <chrono>
@@ -28,6 +29,7 @@ namespace M::AsyncRT {
 class CUDADevice;
 class CUDADeviceBuffer;
 class CUDADeviceContext;
+class CUDAModuleFunction;
 class CUDADeviceFunction;
 class CUDADeviceFunctionArguments;
 class CUDADeviceTimer;
@@ -35,6 +37,7 @@ class CUDADeviceTimer;
 using CUDADeviceRef = RCRef<const CUDADevice>;
 using CUDADeviceBufferRef = RCRef<const CUDADeviceBuffer>;
 using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
+using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
 using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
 using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
@@ -103,11 +106,29 @@ private:
   std::vector<DeviceBufferRef> refs_;
 };
 
+class CUDAModuleFunction : public ReferenceCounted<CUDAModuleFunction> {
+public:
+  CUDAModuleFunction(const std::string name, const CUDADriver &driver,
+                     CUmodule module, CUfunction function);
+  ~CUDAModuleFunction();
+
+  const std::string &name() const;
+  const CUDADriver &cuda_driver() const;
+  CUmodule cuda_module() const;
+  CUfunction cuda_function() const;
+
+private:
+  const CUDADriver &driver_;
+  CUmodule module_;
+  CUfunction function_;
+  std::string name_;
+};
+
 class CUDADeviceFunction : public DeviceFunction {
 public:
-  CUDADeviceFunction(const CUDADeviceContext &context, std::string name,
+  CUDADeviceFunction(const CUDADeviceContext &context,
                      const DeviceFunction::SignatureBuilder &signature,
-                     CUmodule module, CUfunction function);
+                     CUDAModuleFunctionRef mod_func);
   ~CUDADeviceFunction() override;
 
   const std::string &name() const override;
@@ -134,9 +155,9 @@ public:
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
 
 private:
-  CUmodule module_;
-  CUfunction function_;
-  std::string name_;
+  // The module_function_ holds the CUDA specific implementation. Methods on
+  // CUDADeviceFunction forward to module_function_ as needed.
+  CUDAModuleFunctionRef module_function_;
 };
 
 class CUDADeviceTimer : public DeviceTimer {
@@ -230,8 +251,11 @@ private:
 
   CUDADriver::Result setCurrent() const;
 
+  // The function cache holds the lower-level CUDAModuleFunction references
+  // which do not keep contain a device context reference to avoid reference
+  // counting cycles.
   mutable std::mutex mu_;
-  mutable llvm::StringMap<CUDADeviceFunctionRef> func_map_;
+  mutable llvm::StringMap<CUDAModuleFunctionRef> func_map_;
 };
 
 } // namespace M::AsyncRT
