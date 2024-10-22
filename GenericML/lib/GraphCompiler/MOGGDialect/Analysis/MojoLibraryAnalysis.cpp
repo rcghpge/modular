@@ -8,7 +8,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
-#include "llvm/ADT/StringExtras.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "AsyncRT/Runtime/Runtime.h"
@@ -16,19 +15,13 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/Compiler/KGENCompiler.h"
-#include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MojoParser/EntryPoint.h"
-#include "KGEN/Support/Configuration.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
-#include "Support/Compiler/BytecodeReaderWriter.h"
-#include "Support/Compiler/OperationUtils.h"
-#include "Support/Config.h"
 #include "Support/Context.h"
 #include "Support/Filesystem/Paths.h"
 #include "Support/HashUtils.h"
-#include "Support/MDialect/MDialect.h"
 
 using namespace M;
 using namespace MOGG;
@@ -57,6 +50,18 @@ getEmbeddingsSourceBuffer(bool withDebuginfo) {
       llvm::MemoryBuffer::getMemBuffer(withDebuginfo
                                            ? Embeddings::sourceWithDebugInfo()
                                            : Embeddings::source(),
+                                       "embedded MOGG bindings",
+                                       /*RequiresNullTerminator=*/false));
+}
+
+static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+getEmbeddingsNewAPISourceBuffer(bool withDebuginfo) {
+  if (withDebuginfo)
+    return Error(
+        "New Extensibility API does not build with debug at this time.");
+
+  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
+      llvm::MemoryBuffer::getMemBuffer(Embeddings::newAPISource(),
                                        "embedded MOGG bindings",
                                        /*RequiresNullTerminator=*/false));
 }
@@ -319,14 +324,23 @@ struct Candidate {
   int64_t priority = -1;
 };
 
+static bool envVarExistsAndIsTrue(const char *envVar) {
+  const char *c_str = std::getenv(envVar);
+  if (c_str == nullptr)
+    return false;
+  std::string str(c_str);
+  std::transform(str.begin(), str.end(), str.begin(), tolower);
+  return str == "true" || str == "1";
+}
+
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
+  // Load MOGG.mojo
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
       getEmbeddingsSourceBuffer(withDebuginfo);
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled MOGG.mojo: ") +
                  bufferOr.getError());
-
   llvm::MemoryBufferRef bufferRef = internMLIRFile(bufferOr.takeValue());
   ErrorOr<Operation *> moduleOr =
       loadMLIRKernels(bufferRef, rawMojoKernel, "the standard library");
@@ -334,11 +348,11 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     return moduleOr.takeError();
   module = cast<ModuleOp>(moduleOr.takeValue());
 
+  // Load MOGGPrimitives.mojo
   bufferOr = getEmbeddingsPrimitiveSourceBuffer(withDebuginfo);
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled MOGGPrimitives.mojo: ") +
                  bufferOr.getError());
-
   bufferRef = internMLIRFile(bufferOr.takeValue());
   llvm::StringMap<KGEN::GeneratorOp> primitiveRawMojoKernel;
   moduleOr = loadMLIRKernels(bufferRef, primitiveRawMojoKernel,
@@ -347,6 +361,23 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     return moduleOr.takeError();
   Operation *primitiveModule = moduleOr.takeValue();
   updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
+
+  // Load new API kernels by default, gated under env flag
+  // TODO(GRA-1159): remove the need for this.
+  if (envVarExistsAndIsTrue("MODULAR_ENABLE_NEW_EXTENSIBILITY_API")) {
+    bufferOr = getEmbeddingsNewAPISourceBuffer(withDebuginfo);
+    if (failed(bufferOr))
+      return Error(Twine("failed to load compiled MOGGKernelAPI.mojo: ") +
+                   bufferOr.getError());
+    bufferRef = internMLIRFile(bufferOr.takeValue());
+    moduleOr = loadMLIRKernels(bufferRef, primitiveRawMojoKernel,
+                               "the standard library");
+    if (failed(moduleOr))
+      return moduleOr.takeError();
+
+    Operation *primitiveModule = moduleOr.takeValue();
+    updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
+  }
 
   if (auto loadError = loadUserProvidedKernels(kernelLibraryPaths))
     return Error(Twine("failed to load user-provided kernels: ") +
