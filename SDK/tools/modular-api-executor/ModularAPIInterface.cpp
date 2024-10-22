@@ -18,15 +18,11 @@ namespace {
 #if defined(_WIN32)
 constexpr std::string_view modularFrameworkLibraryName =
     "modular-framework-common.dll";
-constexpr std::string_view modularONNXExtensionLibraryName =
-    "modular-framework-onnx-ext.dll";
 constexpr std::string_view modularTorchExtensionLibraryName =
     "modular-framework-torch-ext.dll";
 #elif defined(__APPLE__)
 constexpr std::string_view modularFrameworkLibraryName =
     "libmodular-framework-common.dylib";
-constexpr std::string_view modularONNXExtensionLibraryName =
-    "libmodular-framework-onnx-ext.dylib";
 constexpr std::string_view modularTorchExtensionLibraryName =
     "libmodular-framework-torch-ext.dylib";
 #else
