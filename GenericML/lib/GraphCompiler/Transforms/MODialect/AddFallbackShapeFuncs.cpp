@@ -465,7 +465,7 @@ ErrorOrSuccess Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
   auto inputRankAttr = builder.getIndexAttr(inputTensorTy.getRank());
 
   buildForOpResult(
-      graph, builder, op, "concat_shape", op.getOperands(),
+      graph, builder, op, MO::ConcatOp::getOperationName(), op.getOperands(),
       op.getOutputParamDecls(),
       /*kgenParams=*/
       {{"input_type", inputDTypeAttr}, {"input_rank", inputRankAttr}},
@@ -476,7 +476,7 @@ ErrorOrSuccess Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::ConcatFromListOp>::build(GraphOp &graph,
                                                      OpBuilder &builder,
                                                      MO::ConcatFromListOp op) {
-  buildForOpResult(graph, builder, op, "concat_from_list_shape",
+  buildForOpResult(graph, builder, op, MO::ConcatFromListOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{0, 1});

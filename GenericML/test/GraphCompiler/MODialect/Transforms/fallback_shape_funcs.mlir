@@ -295,7 +295,7 @@ mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
 // CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D4]], [[D5]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["concat_shape"]<() -> [[D6:.*]], [[D7:.*]]>(%[[AXIS]], %[[INPUT1]], %[[INPUT2]])
+// CHECK-NEXT:   mo.invoke_shape_func["mo.concat"]<() -> [[D6:.*]], [[D7:.*]]>(%[[AXIS]], %[[INPUT1]], %[[INPUT2]])
 // CHECK-SAME:     {dataDeptTensors = [0 : i32], kgenParams = {input_rank = 2 : index, input_type = f32}} :
 // CHECK-SAME:     (!mo.tensor<[], si32>, !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>)
 //
@@ -321,7 +321,7 @@ mo.graph @concat_from_list<() -> D0, D1>(
 // CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["concat_from_list_shape"]<() -> [[D2:.*]], [[D3:.*]]>(%[[INPUT]], %[[AXIS]])
+// CHECK-NEXT:   mo.invoke_shape_func["mo.concat_from_list"]<() -> [[D2:.*]], [[D3:.*]]>(%[[INPUT]], %[[AXIS]])
 // CHECK-SAME:     {dataDeptTensors = [0 : i32, 1 : i32]} :
 // CHECK-SAME:     (!mo.list<!mo.tensor<[?, ?], f32>>, !mo.tensor<[], si32>)
 //
