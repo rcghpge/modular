@@ -454,6 +454,13 @@ struct BatchMatmulAdjBPattern
                              MO::DeviceAwareRewriter &rewriter) const override {
     Value input, weight, perm;
 
+    DeviceRefAttr device = op.getInputA().getType().getDeviceRef();
+    bool runsOnGPU = device && device.getLabel() == M::kCUDALabel;
+    if (runsOnGPU)
+      return rewriter.notifyMatchFailure(
+          op,
+          "Do not support GPU for batch matmul transpose_b=true at this time");
+
     if (isBMMSmall(op))
       return rewriter.notifyMatchFailure(op, "BatchedMatmul is too small");
 
