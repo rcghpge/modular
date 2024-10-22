@@ -348,35 +348,19 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         }
       });
 
-      bool isMOGGTensor =
-          isa<KGEN::PointerType>(producerKernelToKGEN.getResult().getType());
-
-      // For MOGGTensor, We find the pop.stack_allocation that relates to the
-      // output of the `producerKernel`.
-      // For DPS, we find the call to the view_copy function.
       Value stackAlloc;
-      if (isMOGGTensor) {
-        leaf.walk([&](MOGG::TensorCopyOp tensorCopy) {
-          if (kgenOut.contains(tensorCopy.getDst())) {
-            stackAlloc = tensorCopy.getSrc();
-            toDelete.insert(tensorCopy);
-          }
-        });
-      } else {
-        leaf.walk([&](KGEN::CallOp callOp) {
-          StringRef funcName =
-              cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol())
-                  .getValue();
-          if (funcName.starts_with(Utils::DPSTensorCopy)) {
-            stackAlloc = callOp->getOperand(1);
-            toDelete.insert(callOp);
-            // Always remove the first one because in case we fuse a view into a
-            // view, we want to maintain the second one.
-            return WalkResult::interrupt();
-          }
-          return WalkResult::advance();
-        });
-      }
+      leaf.walk([&](KGEN::CallOp callOp) {
+        StringRef funcName =
+            cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
+        if (funcName.starts_with(Utils::DPSTensorCopy)) {
+          stackAlloc = callOp->getOperand(1);
+          toDelete.insert(callOp);
+          // Always remove the first one because in case we fuse a view into a
+          // view, we want to maintain the second one.
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
       ASSERT_STREAM(stackAlloc != nullptr, "stack view not found !");
 
       alreadyFused[operand] = stackAlloc;
