@@ -3,7 +3,6 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-# UNSUPPORTED: system-windows
 # RUN: %mojo %s
 # REQUIRES: manual
 from max.tensor import TensorSpec, Tensor, TensorShape
