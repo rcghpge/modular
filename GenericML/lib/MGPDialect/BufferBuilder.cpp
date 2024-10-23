@@ -102,14 +102,7 @@ Value MGPBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
                                        TypedValue<MEF::ChainType> inChain,
                                        TypedValue<ContextType> context,
                                        ElementsAttr value) {
-  bool isOnHost = this == hostBufferBuilder;
-  return builder.create<BufferConstantOp>(loc,
-                                          /*inChain*/ inChain,
-                                          /*theContext=*/context,
-                                          /*aRuntimeSlot=*/runtimeSlot,
-                                          /*bValue=*/value,
-                                          /*dDevice=*/device,
-                                          /*eIsTrivial=*/isOnHost);
+  return builder.create<BufferConstantOp>(loc, /*aValue=*/value);
 }
 
 Value MGPBufferBuilder::bufferConstantExternal(

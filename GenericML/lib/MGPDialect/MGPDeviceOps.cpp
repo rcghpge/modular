@@ -152,11 +152,8 @@ LogicalResult BufferConstantExternalOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                             Value inChain, Value theContext,
-                             uint64_t aRuntimeSlot, ElementsAttr bValue,
-                             DeviceRefAttr dDevice, bool eIsTrivial) {
-  return build(odsBuilder, odsState, inChain, theContext, aRuntimeSlot, bValue,
-               getRawAlign(bValue), dDevice, eIsTrivial);
+                             ElementsAttr aValue) {
+  return build(odsBuilder, odsState, aValue, getRawAlign(aValue));
 }
 
 /// Verifies the attribute and result types are consistent, and the attribute
@@ -164,7 +161,7 @@ void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 LogicalResult BufferConstantOp::verify() {
   // We can only construct from attributes which are dense arrays (ie rank-1)
   // of uint8_ts.
-  ElementsAttr value = getBValue();
+  ElementsAttr value = getAValue();
   ShapedType shapedType = cast<ShapedType>(value.getType());
   if (value.size() != shapedType.getNumElements())
     return emitOpError("does not support splat attributes.");
@@ -178,8 +175,9 @@ LogicalResult BufferConstantOp::verify() {
   // The resulting constant's type must be sized, and the size must match
   // the attribute's size.
   uint64_t actualSize = static_cast<uint64_t>(value.getNumElements());
+  DeviceRefAttr device = DeviceRefAttr::getDefault(value.getContext());
   auto expectedBufferType =
-      DeviceBufferType::get(getDDevice(), std::optional<uint64_t>(actualSize));
+      DeviceBufferType::get(device, std::optional<uint64_t>(actualSize));
   if (expectedBufferType != getOutBuffer().getType()) {
     return emitOpError("expected result buffer type does not match actual "
                        "result buffer type (")
@@ -196,15 +194,17 @@ LogicalResult BufferConstantOp::verify() {
     return emitOpError("invalid alignment ") << **errOrOptAlign << ".";
 
   // The implied alignment must match the actual attribute alignment.
-  if (getOptAlign().has_value() != errOrOptAlign->has_value())
+  if (getOptAlign().has_value() != errOrOptAlign->has_value()) {
     return emitOpError("expected alignment operand if and only if value "
                        "operand has alignment.");
-  if (getOptAlign().has_value() && *getOptAlign() != **errOrOptAlign)
+  }
+  if (getOptAlign().has_value() && *getOptAlign() != **errOrOptAlign) {
     return emitOpError(
                "expected operand alignment to match attribute's alignment (")
            << *getOptAlign() << " vs " << **errOrOptAlign << ").";
+  }
 
-  return verifyConsistentDevices(getOperation(), {getDDevice()});
+  return success();
 }
 
 LogicalResult BufferConstantOp::inferReturnTypes(
@@ -213,23 +213,19 @@ LogicalResult BufferConstantOp::inferReturnTypes(
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   mlir::OperationName name(getOperationName(), context);
   ElementsAttr elementsAttr;
-  if (failed(getElementsAttr(location.value_or(operands[0].getLoc()),
-                             attributes, getBValueAttrName(name),
-                             elementsAttr)))
+  if (failed(getElementsAttr(location.value(), attributes,
+                             getAValueAttrName(name), elementsAttr)))
     return failure();
   std::optional<uint64_t> optSize = elementsAttr.size();
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getDDeviceAttrName(name),
-                                    device)))
-    return failure();
+  DeviceRefAttr device = DeviceRefAttr::getDefault(context);
+  ;
   inferredReturnTypes.emplace_back(
       DeviceBufferType::get(context, device, optSize));
   return success();
 }
 
 std::optional<uint64_t> BufferConstantOp::getOptAlign() {
-  return rawSizeToOptSize(getCRawAlign());
+  return rawSizeToOptSize(getBRawAlign());
 }
 
 //===----------------------------------------------------------------------===//

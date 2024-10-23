@@ -46,7 +46,7 @@ mgp.model @non_pure_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
-  %const_buf = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
+  %const_buf = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
   %const_spec = mgp.tensor_spec.create  : !mgp.tensor_spec<2x2xf32>
   %out_spec = "foo.side_effect_op"(%const_spec) : (!mgp.tensor_spec<2x2xf32>) -> !mgp.tensor_spec<?x?xf32>
   %out_dim0, %out_dim1 = mgp.tensor_spec.dims.dynamic %out_spec : !mgp.tensor_spec<?x?xf32>
@@ -108,7 +108,7 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<37632>) {
-  %weight_buf = mgp.buffer.constant %ch0, %ctx[1], dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
+  %weight_buf = mgp.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
 
   %size = index.constant 37632
   %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu, align 16 : !mgp.buffer<37632>, !mgp.opaque<"cpu0_context">
@@ -172,7 +172,7 @@ mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.opaque<"cpu0_context">, %arg4: !mgp.opaque<"cuda0_context">, %arg5: !mgp.tensor<4xf32>) -> !mef.chain {
   %idx16 = index.constant 16
   %0 = mgp.tensor_spec.create  : !mgp.tensor_spec<4xf32>
-  %1 = mgp.buffer.constant %arg0, %arg1[0], #M.aligned_bytes<"0x000000000000803F0000004000004040", align 64> : !M.array<16xui8>
+  %1 = mgp.buffer.constant #M.aligned_bytes<"0x000000000000803F0000004000004040", align 64> : !M.array<16xui8>
   %2 = mgp.buffer.alloc %arg0, %arg1[1], %idx16, %arg4, align 256 : !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
   %3 = mgp.buffer.host_to_device %arg0, %arg1[0, 1], %1, %2, %arg4 : !mgp.buffer<16> -> !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
   %4 = mgp.sync(%3, %arg1, %arg4) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cuda", 0>} : (!mef.chain, !mgp.context, !mgp.opaque<"cuda0_context">) -> !mef.chain

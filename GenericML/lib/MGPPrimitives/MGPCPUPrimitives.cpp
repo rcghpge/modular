@@ -117,21 +117,17 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 // mgp.buffer.constant.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_buffer_constant_cpu(Chain inChain, StateContext &theContext,
-                                    Result<TensorBufferRef> outBuffer,
-                                    MEFAttr<uint64_t> aRuntimeSlot,
-                                    MEFAttr<ArrayRef<uint8_t>> bValue,
-                                    MEFAttr<uint64_t> cRawAlign,
-                                    MEFAttr<uint64_t> dDeviceId,
-                                    MEFAttr<bool> eIsTrivial) {
+static void mgp_buffer_constant(Result<TensorBufferRef> outBuffer,
+                                MEFAttr<ArrayRef<uint8_t>> aValue,
+                                MEFAttr<uint64_t> bRawAlign) {
   std::optional<size_t> optAlign;
-  if (hasRawSize(*cRawAlign))
-    optAlign = rawSizeToRuntimeSize(*cRawAlign);
+  if (hasRawSize(*bRawAlign))
+    optAlign = rawSizeToRuntimeSize(*bRawAlign);
 
   void *buffer =
-      reinterpret_cast<void *>(const_cast<uint8_t *>(bValue->data()));
+      reinterpret_cast<void *>(const_cast<uint8_t *>(aValue->data()));
   std::move(outBuffer).emplace(TensorBufferRef::createWithNonTrackedMemory(
-      buffer, bValue->size(), optAlign));
+      buffer, aValue->size(), optAlign));
 }
 
 //===----------------------------------------------------------------------===//
@@ -251,7 +247,7 @@ static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
 
 void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.constant.cpu", mgp_buffer_constant_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.constant", mgp_buffer_constant);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
   ADD_PRIMITIVE(registry, "mgp.tensor.create", mgp_tensor_create);

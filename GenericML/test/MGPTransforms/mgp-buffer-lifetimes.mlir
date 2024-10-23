@@ -127,7 +127,7 @@ mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
 
-  %buf1 = mgp.buffer.constant %arg0, %arg1[1], #M.dense_array<1> : !M.array<1xui8>
+  %buf1 = mgp.buffer.constant #M.dense_array<1> : !M.array<1xui8>
   %b1 = mgp.buffer.to_bool %arg0, %arg1[1], %buf1 : !mgp.buffer<1>
 
   %ifchain, %outbuf = grt.if %b1 (%arg0: !mef.chain, %arg1: !mgp.context, %inBuffer: !mgp.buffer<>, %inTensorSpec: !mgp.tensor_spec<?x?xf32>, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<>) {

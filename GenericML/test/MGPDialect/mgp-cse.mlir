@@ -15,10 +15,10 @@ module {
     %1 = mgp.context.create 0
     mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<8xf32>) {
-    %0 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+    %0 = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
     %1 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %2 = mgp.tensor.create %arg0, %0, %1 : !mgp.tensor<8xf32>
-    %3 = mgp.buffer.constant %arg0, %arg1[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+    %3 = mgp.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
     %4 = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
     %5 = mgp.tensor.create %arg0, %3, %4 : !mgp.tensor<8xf32>
     %bufferResult = mgp.tensor.extract.buffer %2 : !mgp.tensor<8xf32>

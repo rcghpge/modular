@@ -37,10 +37,10 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.tensor<8xf32>) {
-  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %0 = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
   %2 = mgp.tensor.create %ch0, %0, %spec : !mgp.tensor<8xf32>
-  %3 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %3 = mgp.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %5 = mgp.tensor.create %ch0, %3, %spec : !mgp.tensor<8xf32>
   %buf0 = mgp.tensor.extract.buffer %2 : <8xf32>
   %buf1 = mgp.tensor.extract.buffer %5 : <8xf32>
@@ -102,10 +102,10 @@ mgp.model @divergent : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mg
   %ch3 = "some.op"() : () -> !mef.chain
   %ch4 = "some.op"() : () -> !mef.chain
   %ch5 = "some.op"() : () -> !mef.chain
-  %0 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
+  %0 = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %spec = mgp.tensor_spec.create  : !mgp.tensor_spec<8xf32>
   %2 = mgp.tensor.create %ch4, %0, %spec : !mgp.tensor<8xf32>
-  %3 = mgp.buffer.constant %ch0, %ctx[1], #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
+  %3 = mgp.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %5 = mgp.tensor.create %ch5, %3, %spec : !mgp.tensor<8xf32>
   %buf0 = mgp.tensor.extract.buffer %2 : <8xf32>
   %buf1 = mgp.tensor.extract.buffer %5 : <8xf32>

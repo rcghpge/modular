@@ -34,6 +34,52 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
     Op<MGPDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
+// BufferConstantOp
+//===----------------------------------------------------------------------===//
+
+def BufferConstantOp : MGP_Op<"buffer.constant", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
+]> {
+  let summary = "Allocates and initializes a buffer from a host attribute.";
+  let description = [{
+    Returns an `!mgp.buffer` initialized with the byte array in the given attribute
+    (which will be loaded from the MEFFile holding the compiled model).
+
+    Example:
+    ```mlir
+      %buf = mgp.buffer.constant
+               dense_resource<label>:!M.aligned_bytes<256, align 16>
+    ```
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ElementsAttr:$aValue,                             // 0
+                       UI64Attr:$bRawAlign                               // 1
+                  );
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+  let assemblyFormat = [{
+    custom<ElementsAttrWithAlign>($aValue, $bRawAlign) attr-dict
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the buffer's alignment.
+    std::optional<uint64_t> getOptAlign();
+  }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::ElementsAttr":$aValue)>
+  ];
+
+  let extraClassDefinition = [{
+    bool BufferConstantOp::isTrivial() { return true; }
+  }];
+
+}
+
+//===----------------------------------------------------------------------===//
 // ContextCreateOp
 //===----------------------------------------------------------------------===//
 

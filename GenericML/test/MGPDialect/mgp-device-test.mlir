@@ -44,10 +44,10 @@ func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weight
 //
 
 // CHECK-LABEL: @buffer_constant
-func.func @buffer_constant(%ch: !mef.chain, %ctx : !mgp.context) {
-  // CHECK: %{{.*}} = mgp.buffer.constant %{{.*}}, %{{.*}}[1], dense_resource<resource> : !M.aligned_bytes<4, align 64> device <"cuda", 3>
-  %buf = mgp.buffer.constant %ch, %ctx[1], dense_resource<resource> : !M.aligned_bytes<4, align 64> device <"cuda", 3>
-  mef.output %buf : !mgp.buffer<4, <"cuda", 3>>
+func.func @buffer_constant() {
+  // CHECK: %{{.*}} = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 64>
+  %buf = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 64>
+  mef.output %buf : !mgp.buffer<4>
 }
 
 //

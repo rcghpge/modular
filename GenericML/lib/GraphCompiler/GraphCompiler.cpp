@@ -422,7 +422,7 @@ static BlobMap getDenseResources(ModuleOp module) {
   for (Operation &op : module.getOps()) {
     if (auto modelOp = dyn_cast<MGP::ModelOp>(op)) {
       modelOp.walk([&](MGP::BufferConstantOp constOp) {
-        auto elementsAttr = constOp.getBValue();
+        auto elementsAttr = constOp.getAValue();
         if (auto resourceAttr =
                 dyn_cast<DenseResourceElementsAttr>(elementsAttr)) {
           // Map the underlying data to the ASM Blob for later memory management
