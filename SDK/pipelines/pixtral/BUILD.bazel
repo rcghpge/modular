@@ -1,0 +1,31 @@
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("//bazel:api.bzl", "modular_py_library", "requirement")
+
+package(default_visibility = ["//visibility:public"])
+
+modular_py_library(
+    name = "pixtral",
+    srcs = glob(["**/*.py"]),
+    imports = [".."],
+    deps = [
+        requirement("numpy"),
+        requirement("torch"),
+        requirement("sentencepiece"),
+        "//SDK/lib/API/python/max/dtype",
+        "//SDK/lib/API/python/max/engine",
+        "//SDK/lib/API/python/max/graph",
+        "//SDK/public/max-repo/pipelines/python/nn",
+        "//SDK/public/max-repo/pipelines/python/utils",
+    ],
+)
+
+pkg_files(
+    name = "python_files",
+    srcs = glob(
+        [
+            "**/*.py",
+        ],
+    ),
+    prefix = "pixtral",
+    strip_prefix = strip_prefix.from_pkg(""),
+)
