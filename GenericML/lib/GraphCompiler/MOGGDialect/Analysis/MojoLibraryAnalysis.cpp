@@ -335,11 +335,27 @@ static bool envVarExistsAndIsTrue(const char *envVar) {
 
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
+  // Enable allows the new API kernels to be used. `onlyUse` implies we only
+  // load the new API kernels and don't use MOGG kernels.
+  //
+  // TODO(GRA-1159): remove the need for this.
+  bool onlyUseNewAPI =
+      envVarExistsAndIsTrue("MODULAR_ONLY_USE_NEW_EXTENSIBILITY_API");
+  bool enableNewAPI =
+      envVarExistsAndIsTrue("MODULAR_ENABLE_NEW_EXTENSIBILITY_API");
+  if (onlyUseNewAPI && enableNewAPI) {
+    auto msg = "Can only set one of MODULAR_ONLY_USE_NEW_EXTENSIBILITY_API or "
+               "MODULAR_ENABLE_NEW_EXTENSIBILITY_API";
+    // Right now, the error doesn't seem to be properly propagated, so do this.
+    llvm::errs() << msg << "\n";
+    return Error(msg);
+  }
   // Load MOGG.mojo
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
-      getEmbeddingsSourceBuffer(withDebuginfo);
+      onlyUseNewAPI ? getEmbeddingsNewAPISourceBuffer(withDebuginfo)
+                    : getEmbeddingsSourceBuffer(withDebuginfo);
   if (failed(bufferOr))
-    return Error(Twine("failed to load compiled MOGG.mojo: ") +
+    return Error(Twine("failed to load compiled main module: ") +
                  bufferOr.getError());
   llvm::MemoryBufferRef bufferRef = internMLIRFile(bufferOr.takeValue());
   ErrorOr<Operation *> moduleOr =
@@ -362,9 +378,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   Operation *primitiveModule = moduleOr.takeValue();
   updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
 
-  // Load new API kernels by default, gated under env flag
-  // TODO(GRA-1159): remove the need for this.
-  if (envVarExistsAndIsTrue("MODULAR_ENABLE_NEW_EXTENSIBILITY_API")) {
+  // Load new API kernels. This path assumes we also load MOGG.mojo
+  if (enableNewAPI) {
     bufferOr = getEmbeddingsNewAPISourceBuffer(withDebuginfo);
     if (failed(bufferOr))
       return Error(Twine("failed to load compiled MOGGKernelAPI.mojo: ") +
