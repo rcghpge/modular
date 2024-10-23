@@ -6,6 +6,7 @@ modular_pybind_extension(
     deps = [
         "//GenericML:modular-framework-common",
         "//SDK:ProfilerPython",
+        "//Support:Base",
     ],
 )
 
