@@ -32,6 +32,8 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       MO::CustomOp,
       // TODO (GRA-723)
       MO::LayerNormOp,
+      // Buffer operations
+      MO::ChainCreateOp,
       // Copied from MOConversionTarget
       ModuleOp, mlir::UnrealizedConversionCastOp>();
 }
