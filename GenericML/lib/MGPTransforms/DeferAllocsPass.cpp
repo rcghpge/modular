@@ -48,30 +48,33 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
     auto defer = [&](Operation *op) {
       if (movedAllocOps.contains(op))
         return;
-      if (auto allocOp = dyn_cast<MGPBufferAllocOpInterface>(op)) {
-        // For the unique mutator of the allocated buffer...
-        if (OpOperand *mutator = getUniqueMutator(allocOp.getOutBuffer())) {
-          // For the input chain(s) to that mutator....
-          for (OpOperand *mutatorChainOpOperand :
-               getInputChainOpOperands(mutator->getOwner())) {
-            // Move the allocation to just before the mutating op.
-            // (Note that this may mean we revisit the same allocation again.)
-            allocOp->moveBefore(mutator->getOwner());
-            movedAllocOps.insert(allocOp);
-            // The allocation must only be triggered once the mutating op's
-            // input chain is ready.
-            Value mutatorInChain = mutatorChainOpOperand->get();
-            LLVM_DEBUG(llvm::dbgs() << "adding chain:\n  " << mutatorInChain
-                                    << "\nto op:\n  " << allocOp << "\n");
-            execState.builder.setInsertionPoint(allocOp);
-            [[maybe_unused]] auto res = alsoWaitForChains(
-                execState.builder, builderContext, allocOp, {mutatorInChain});
-            ASSERT_STREAM(succeeded(res),
-                          << "all allocation ops must accept an input "
-                             "chain to control their timing");
-          }
-        }
+
+      auto allocOp = dyn_cast<MGPBufferAllocOpInterface>(op);
+      if (!allocOp)
+        return;
+
+      OpOperand *mutator = getUniqueMutator(allocOp.getOutBuffer());
+      if (!mutator)
+        return;
+
+      // Move the allocation to just before the mutating op.
+      // (Note that this may mean we revisit the same allocation again.)
+      allocOp->moveBefore(mutator->getOwner());
+      movedAllocOps.insert(allocOp);
+
+      // Make the allocation depend on the same chains as the mutator.
+      SmallVector<Value> additionalChainsToWaitOn;
+      for (OpOperand *mutatorChainOpOperand :
+           getInputChainOpOperands(mutator->getOwner())) {
+        additionalChainsToWaitOn.push_back(mutatorChainOpOperand->get());
       }
+
+      execState.builder.setInsertionPoint(allocOp);
+      [[maybe_unused]] auto res = alsoWaitForChains(
+          execState.builder, builderContext, allocOp, additionalChainsToWaitOn);
+      ASSERT_STREAM(succeeded(res),
+                    << "all allocation ops must accept an input "
+                       "chain to control their timing");
     };
 
     // For each mgp.buffer.alloc.*...

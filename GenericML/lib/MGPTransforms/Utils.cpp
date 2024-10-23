@@ -310,10 +310,10 @@ SmallVector<OpOperand *> M::MGP::allMutatingUsers(Value value) {
   return result;
 }
 
-OpOperand *M::MGP::getUniqueMutator(Value vaule) {
+OpOperand *M::MGP::getUniqueMutator(Value value) {
   OpOperand *candidate = nullptr;
-  for (OpOperand &use : vaule.getUses()) {
-    if (isMutated(use)) {
+  for (OpOperand &use : value.getUses()) {
+    if (isMutated(use) || isa<MGP::BufferSliceOp>(use.getOwner())) {
       if (candidate)
         return nullptr;
       candidate = &use;

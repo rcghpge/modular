@@ -404,7 +404,7 @@ def SplatLargeConstants :
 }
 
 def TopologicalSort :
-    Pass<"mo-topological-sort", "GraphOp"> {
+    Pass<"mo-topological-sort", "ModuleOp"> {
   let summary = "Topologically sort ops in a graph based on SSA and parameter dependencies.";
   let description = [{
     This pass topologically sort ops within a `mo.graph` based on both SSA and

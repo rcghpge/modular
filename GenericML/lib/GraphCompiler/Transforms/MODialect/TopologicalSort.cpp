@@ -20,9 +20,9 @@ struct TopologicalSort : public impl::TopologicalSortBase<TopologicalSort> {
   TopologicalSort() : TopologicalSortBase() {}
 
   void runOnOperation() override {
-    GraphOp graphOp = getOperation();
-    ParametricTopologyAnalysis analysis(graphOp);
-    analysis.topologicallySortAllOpsWithin(&graphOp.getRegion());
+    ModuleOp moduleOp = getOperation();
+    ParametricTopologyAnalysis analysis(moduleOp);
+    analysis.topologicallySortAllOpsWithin(&moduleOp.getRegion());
   }
 };
 
