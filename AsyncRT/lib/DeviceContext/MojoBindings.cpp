@@ -91,7 +91,9 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
     size_t len, size_t elem_size) {
   const char *err_msg = check_ref(
       result, ctx->createBuffer(len, elem_size, DeviceContext::ASYNC));
-  *device_ptr = (*result)->ptr();
+  if (err_msg == nullptr) {
+    *device_ptr = (*result)->ptr();
+  }
   return err_msg;
 }
 
@@ -100,7 +102,9 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
     size_t len, size_t elem_size) {
   const char *err_msg =
       check_ref(result, ctx->createBuffer(len, elem_size, DeviceContext::SYNC));
-  *device_ptr = (*result)->ptr();
+  if (err_msg == nullptr) {
+    *device_ptr = (*result)->ptr();
+  }
   return err_msg;
 }
 
@@ -116,7 +120,9 @@ MODULAR_EXPORT const char *AsyncRT_DeviceBuffer_createSubBuffer(
     size_t offset, size_t len, size_t elem_size) {
   const char *err_msg =
       check_ref(result, buf->createSubBuffer(offset, len, elem_size));
-  *device_ptr = (*result)->ptr();
+  if (err_msg == nullptr) {
+    *device_ptr = (*result)->ptr();
+  }
   return err_msg;
 }
 
