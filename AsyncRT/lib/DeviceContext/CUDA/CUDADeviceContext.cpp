@@ -118,6 +118,7 @@ CUDADeviceBuffer::~CUDADeviceBuffer() {
   }
 
   const auto &cuda_context = CUDADeviceContext::cast(context());
+  CUDA_CHECK(cuda_context.setCurrent());
   CUDA_CHECK(cuda_context.cuda_driver().MemFreeAsync(
       dptr_, cuda_context.cuda_stream()));
 }
@@ -305,6 +306,7 @@ CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
       stream_(stream) {}
 
 CUDADeviceContext::~CUDADeviceContext() {
+  CUDA_CHECK(setCurrent());
   // We do not need to synchronize on possible work queued on this stream.
   // Resources will be released automatically once work has been completed.
   CUDA_CHECK(driver_.StreamDestroy(stream_));
@@ -416,6 +418,8 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
                                             uint32_t val, size_t elem_size,
                                             SyncMode mode) const {
+  CUDA_CHECK_ERR(setCurrent());
+
   void *ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
   size_t len = dst.len();
   if (elem_size == 1) {
@@ -468,6 +472,8 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
   unsigned int num_options = 0;
   CUjit_option option_kind[10];
   uintptr_t option_values[10];
+
+  CUDA_CHECK_ERR(setCurrent());
 
   if (max_registers >= 0) {
     option_kind[num_options] = CUjit_option::JIT_MAX_REGISTERS;
@@ -568,6 +574,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
 
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
+  CUDA_CHECK_ERR(setCurrent());
   return cuda_func.cuda_callKernel(
       gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
       CUDADeviceFunctionArguments::cast(args), stream_);
@@ -579,12 +586,14 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
     void *attrs, uint32_t num_attrs, void **args) const {
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
+  CUDA_CHECK_ERR(setCurrent());
   return cuda_func.cuda_callKernelDirect(
       gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
       reinterpret_cast<CUlaunchAttribute *>(attrs), num_attrs, args, stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
+  CUDA_CHECK_ERR(setCurrent());
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
   return success();
 }
@@ -593,6 +602,7 @@ ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() const {
   CUevent start;
   CUevent stop;
 
+  CUDA_CHECK_ERR(setCurrent());
   CUDA_CHECK_ERR(driver_.EventCreate(&start, 0));
   CUDA_CHECK_ERR(driver_.EventCreate(&stop, 0));
 
@@ -607,6 +617,7 @@ ErrorOr<std::chrono::nanoseconds>
 CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
   const auto &cuda_timer = CUDADeviceTimer::cast(timer);
 
+  CUDA_CHECK_ERR(setCurrent());
   CUDA_CHECK_ERR(driver_.EventRecord(cuda_timer.cuda_stop_event(), stream_));
   CUDA_CHECK_ERR(driver_.EventSynchronize(cuda_timer.cuda_stop_event()));
 
@@ -621,6 +632,7 @@ CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
 
 ErrorOr<DeviceMemInfo> CUDADeviceContext::getMemoryInfo() const {
   DeviceMemInfo mem_info;
+  CUDA_CHECK_ERR(setCurrent());
   CUDA_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
   return mem_info;
 }

@@ -242,14 +242,14 @@ public:
   ErrorOrSuccess isCompatibleWithMAX() const override;
   ErrorOr<int> computeCapability() const override;
 
+  CUDADriver::Result setCurrent() const;
+
   static ErrorOr<CUDADeviceContextRef> create(int id);
 
 private:
   const CUDADriver &driver_;
   CUcontext context_;
   CUstream stream_;
-
-  CUDADriver::Result setCurrent() const;
 
   // The function cache holds the lower-level CUDAModuleFunction references
   // which do not keep contain a device context reference to avoid reference
