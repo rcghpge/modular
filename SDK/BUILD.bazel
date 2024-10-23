@@ -23,6 +23,7 @@ modular_pybind_library(
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
         "//SDK:DLPack",
+        "//Support/python:CPython",
     ],
 )
 
