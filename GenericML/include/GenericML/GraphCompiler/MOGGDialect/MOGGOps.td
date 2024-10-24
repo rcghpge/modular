@@ -955,24 +955,6 @@ def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [Pure]> {
   }];
 }
 
-def MOGG_TensorCopyOp : MOGG_Op<"tensor_copy"> {
-  let summary = "Represents the copy intrinsic whose counterpart is in kgen library";
-  let description = [{
-    Represents the copy intrinsic that will be directly lowered to a call of
-    the copy function in mogg's kgen library. The `src` (a tensor view) is
-    materialized to `dst`.
-
-    Example:
-    ```mlir
-      %3 = "mogg.to_kgen"(%1) : (!mo.tensor<[2], si32>) -> !kgen.pointer<struct<...>>
-      %4 = pop.stack_allocation 1 x struct<(...) memoryOnly>
-      "mogg.tensor_copy"(%3, %4) : (!kgen.pointer<struct<...>>, !kgen.pointer<struct<...>>)
-    ```
-  }];
-
-  let arguments = (ins AnyType:$dst, AnyType:$src);
-}
-
 //===----------------------------------------------------------------------===//
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
