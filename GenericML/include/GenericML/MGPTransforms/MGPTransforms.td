@@ -34,10 +34,10 @@ def LowerAlignmentsPass : Pass<"lower-alignments", "MGP::ModelOp"> {
 }
 
 //===----------------------------------------------------------------------===//
-// RemoveExtendLifetimes
+// SimplifyExtendLifetimesPass
 //===----------------------------------------------------------------------===//
 
-def SimplifyExtendLifetimes : Pass<"simplify-extend-lifetimes", "MGP::ModelOp"> {
+def SimplifyExtendLifetimesPass : Pass<"simplify-extend-lifetimes", "MGP::ModelOp"> {
   let summary = "Simplify extend lifetime ops";
   let description = [{
     Given:

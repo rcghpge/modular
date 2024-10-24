@@ -82,7 +82,6 @@ void M::MO::registerPasses() {
   MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
   MGP::registerRemoveRedundantOperands();
-  MGP::registerSimplifyExtendLifetimes();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
 
@@ -358,7 +357,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createRemoveRedundantOperands());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  pm.addPass(MGP::createSimplifyExtendLifetimes());
+  pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 
   MGP::LowerMOGGABIOptions abiOpts;
   abiOpts.kernelLibraryPaths = kernelLibraryPaths;

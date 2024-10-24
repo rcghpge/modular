@@ -14,7 +14,7 @@ using namespace M;
 
 namespace M::MGP {
 
-#define GEN_PASS_DEF_SIMPLIFYEXTENDLIFETIMES
+#define GEN_PASS_DEF_SIMPLIFYEXTENDLIFETIMESPASS
 #include "GenericML/MGPTransforms/MGPTransforms.h.inc"
 
 } // namespace M::MGP
@@ -23,9 +23,10 @@ namespace M::MGP {
 
 namespace {
 
-struct SimplifyExtendLifetimes
-    : public MGP::impl::SimplifyExtendLifetimesBase<SimplifyExtendLifetimes> {
-  using SimplifyExtendLifetimesBase::SimplifyExtendLifetimesBase;
+struct SimplifyExtendLifetimesPass
+    : public MGP::impl::SimplifyExtendLifetimesPassBase<
+          SimplifyExtendLifetimesPass> {
+  using SimplifyExtendLifetimesPassBase::SimplifyExtendLifetimesPassBase;
 
   void runOnOperation() override {
     getOperation()->walk([&](MGP::ExtendLifetimeOp extend) {
