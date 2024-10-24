@@ -260,7 +260,7 @@ struct MatmulConstBPattern
       return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
 
     if (!input ||
-        !dependsOnConstantsOnly<MO::ConstantOp>(weight.getDefiningOp()))
+        !dependsOnConstantsOnly<MO::ConstantLike>(weight.getDefiningOp()))
       return failure();
 
     if (transpose) {
@@ -579,7 +579,7 @@ struct ConvConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
+    if (!dependsOnConstantsOnly<MO::ConstantLike>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
     auto maybeNumGroups = MO::tryGetConstantInt(op.getNumGroups());
@@ -717,7 +717,7 @@ struct ConvTransposeConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
+    if (!dependsOnConstantsOnly<MO::ConstantLike>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
     if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {

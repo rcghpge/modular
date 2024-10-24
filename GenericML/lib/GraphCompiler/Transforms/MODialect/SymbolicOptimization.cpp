@@ -19,8 +19,6 @@
 #include "Support/ML/Permutation.h"
 #include "llvm/ADT/TypeSwitch.h"
 
-#include "./Utils.h"
-
 #include <numeric>
 
 #define DEBUG_TYPE "symbolic-optimization"
@@ -2214,7 +2212,7 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
     }
 
     if (constantSubtreeSide != Input::UNK &&
-        !dependsOnConstantsOnly<MO::ConstantOp>(maybeConstantSubtreeRootOp)) {
+        !dependsOnConstantsOnly<MO::ConstantLike>(maybeConstantSubtreeRootOp)) {
       return rewriter.notifyMatchFailure(
           op, "Failed to match, the view op input is not a constant subtree");
     }
@@ -2222,8 +2220,10 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
     // Not applying the pattern to constant foldable subgraphs because there is
     // no gain and it can lead to cycles with other patterns that sink reshapes
     // through elementwise operations.
-    bool lhsConstantFoldable = dependsOnConstantsOnly<ConstantOp>(lhsProducer);
-    bool rhsConstantFoldable = dependsOnConstantsOnly<ConstantOp>(rhsProducer);
+    bool lhsConstantFoldable =
+        dependsOnConstantsOnly<MO::ConstantLike>(lhsProducer);
+    bool rhsConstantFoldable =
+        dependsOnConstantsOnly<MO::ConstantLike>(rhsProducer);
     if (lhsConstantFoldable && rhsConstantFoldable) {
       return rewriter.notifyMatchFailure(
           op, "Not applying the pattern to a constant foldable subgraph");
@@ -2790,7 +2790,7 @@ struct MergeParallelMatmulPattern
           if (mlir::ShapedType::isDynamic(resultType.getIntDim(1)))
             return false;
 
-          if (!dependsOnConstantsOnly<ConstantOp>(
+          if (!dependsOnConstantsOnly<MO::ConstantLike>(
                   matmulOp.getInputB().getDefiningOp()))
             return false;
 
@@ -4481,7 +4481,7 @@ struct MathematicalSimplificationDivBySmallTensorToMul
 
     // This is to avoid looping.
     bool xConstantFoldable =
-        dependsOnConstantsOnly<MO::ConstantOp>(x.getDefiningOp());
+        dependsOnConstantsOnly<MO::ConstantLike>(x.getDefiningOp());
     if (xConstantFoldable)
       return failure();
 
@@ -4501,7 +4501,7 @@ struct MathematicalSimplificationDivBySmallTensorToMul
     // This is checking if the broadcasted value is a constant or if it was
     // broadcasted by a factor of at least `kThreshold`.
     bool yConstantFoldable =
-        dependsOnConstantsOnly<MO::ConstantOp>(y.getDefiningOp());
+        dependsOnConstantsOnly<MO::ConstantLike>(y.getDefiningOp());
     // Avoid division by 0.
     if (!yConstantFoldable && (*origYType.getNumElements() == 0 ||
                                (*tensorType.getNumElements() /
@@ -4549,7 +4549,7 @@ struct MathematicalSimplificationMulOfDivToDiv
     }
 
     if (isa_and_nonnull<MO::Static::BroadcastToOp>(y.getDefiningOp()) ||
-        dependsOnConstantsOnly<MO::ConstantOp>(y.getDefiningOp())) {
+        dependsOnConstantsOnly<MO::ConstantLike>(y.getDefiningOp())) {
       return failure();
     }
 
