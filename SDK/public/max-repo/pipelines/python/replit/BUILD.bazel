@@ -27,6 +27,6 @@ pkg_files(
             "**/*.py",
         ],
     ),
-    prefix = "llama3",
+    prefix = "replit",
     strip_prefix = strip_prefix.from_pkg(""),
 )
