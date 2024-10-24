@@ -56,6 +56,36 @@ def SimplifyExtendLifetimesPass : Pass<"simplify-extend-lifetimes", "MGP::ModelO
 }
 
 //===----------------------------------------------------------------------===//
+// SimplifySyncsPass
+//===----------------------------------------------------------------------===//
+
+def SimplifySyncsPass : Pass<"simplify-syncs", "MGP::ModelOp"> {
+  let summary = "Simplify sync ops";
+  let description = [{
+    Collapses all mgp.sync ops to a single one if possible.
+
+    Given
+    ```mlir
+      %ch0 : !mef.chain
+      %ch1 : !mef.chain
+      %sync0 = mgp.sync %ch0, ...
+      %sync1 = mgp.sync %ch1, ...
+      %user0 = some.op %sync0
+      %user1 = some.op %sync1
+    ```
+    this pass will rewrite to
+    ```mlir
+      %ch0 : !mef.chain
+      %ch1 : !mef.chain
+      %merged_in = grt.chain.create (%ch0, %ch1)
+      %sync = mgp.sync %ch0, ...
+      %user0 = some.op %sync
+      %user1 = some.op %sync
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // SimplifyChainsPass
 //===----------------------------------------------------------------------===//
 
