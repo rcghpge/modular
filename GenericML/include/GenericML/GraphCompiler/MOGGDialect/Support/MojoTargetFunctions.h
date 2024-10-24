@@ -14,9 +14,6 @@ namespace M::MOGG::Utils {
 // The KGEN function calls we will match based on its name in various graph MOGG
 // passes (e.g., in/out lambda fusion).
 
-constexpr llvm::StringLiteral MOGGTensorForEach =
-    "MOGGTensor::Tensor::for_each";
-
 constexpr llvm::StringLiteral DPSTensorForEach =
     "tensor_utils_internal::managed_tensor_slice::foreach";
 

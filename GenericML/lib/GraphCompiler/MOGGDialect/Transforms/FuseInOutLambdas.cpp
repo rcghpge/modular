@@ -432,9 +432,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         // After Tensor APIs becomes the de-factor standard APIs (builtin
         // library), we will use MojoLibararyAnalysis to check this. Clone every
         // function call except the one has the `elementwise` decorator.
-        // The MOGGTensor path isn't maintained anymore.
-        if (!funcName.starts_with(Utils::MOGGTensorForEach) &&
-            !funcName.starts_with(Utils::DPSTensorForEach)) {
+        if (!funcName.starts_with(Utils::DPSTensorForEach)) {
           oldToNew.map(op.getResults(),
                        builder.clone(op, oldToNew)->getResults());
         }

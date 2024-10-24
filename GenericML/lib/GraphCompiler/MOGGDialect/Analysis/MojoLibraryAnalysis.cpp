@@ -578,11 +578,6 @@ bool MojoLibraryAnalysis::kernelTakesIndices(KGEN::GeneratorOp kernel) {
   return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::TAKES_INDICES.attr);
 }
 
-bool MojoLibraryAnalysis::kernelUsesOldTensorAPI(KGEN::GeneratorOp kernel) {
-  return kernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR) ||
-         kernel->hasAttr(KGEN::MOGGPreElab::SLICED_ATTR);
-}
-
 bool MojoLibraryAnalysis::kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel) {
   return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel) ||
          kernel->hasAttr(KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);

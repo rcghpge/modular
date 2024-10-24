@@ -365,17 +365,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
       alreadyFused[operand] = stackAlloc;
 
-      Type bindType;
-      for (auto value : kgenOut) {
-        // If we find a mogg.to_kgen that connects to a mogg.tensor_copy,
-        // then it is the one we just cloned into the leaf which requires
-        // rebinding of its output type.
-        if (llvm::all_of(value.getUsers(), [](Operation *user) {
-              return !isa<MOGG::TensorCopyOp>(user);
-            })) {
-          bindType = producerKernelToKGEN.getType();
-        }
-      }
+      Type bindType = producerKernelToKGEN.getType();
 
       KGEN::RebindOp rebind =
           builder.create<KGEN::RebindOp>(leaf->getLoc(), bindType, stackAlloc);
