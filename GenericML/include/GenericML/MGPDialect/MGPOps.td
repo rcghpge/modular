@@ -147,6 +147,7 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
     DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
 ]> {
   let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
                 "`!mgp.buffer`.";

@@ -173,17 +173,6 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.tensor.create.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_tensor_create(Chain inChain,
-                              AsyncValueRef<TensorBufferRef> buffer,
-                              TensorSpec tensorSpec, Result<Tensor> outTensor,
-                              EncodedLocation loc) {
-  std::move(outTensor).emplace(buffer->borrow(), std::move(tensorSpec));
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor.extract.buffer.cpu
 //===----------------------------------------------------------------------===//
 
@@ -250,7 +239,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.constant", mgp_buffer_constant);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
-  ADD_PRIMITIVE(registry, "mgp.tensor.create", mgp_tensor_create);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer",
                 mgp_tensor_extract_buffer);
   ADD_PRIMITIVE(registry, "mgp.tensor.extract.tensor_spec",

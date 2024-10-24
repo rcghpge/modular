@@ -132,6 +132,18 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
     }
   }
 
+  // For anything that produces a tensor output, we need to paramerized the
+  // dtype.
+  for (auto resultType : op->getResultTypes()) {
+    if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(resultType)) {
+      attrs.push_back(builder.getNamedAttr(
+          "type", TypeAttr::get(tensorType.getElementType())));
+      attrs.push_back(builder.getNamedAttr(
+          "tensor_rank", builder.getIndexAttr(tensorType.getRank() == 0
+                                                  ? 1
+                                                  : tensorType.getRank())));
+    }
+  }
   return builder.getDictionaryAttr(attrs);
 }
 

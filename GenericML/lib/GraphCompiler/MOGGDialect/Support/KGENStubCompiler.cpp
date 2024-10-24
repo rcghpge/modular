@@ -86,7 +86,6 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
     if (failed(pm.run(kgenModule)))
       mlir::emitError(kgenModule.getLoc(), "Could not synthesize debuginfo");
   }
-
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableLLVMPerFunctionSplitting = false;
   compilationOptions.optimizationLevel = superOpt ? 4 : 3;

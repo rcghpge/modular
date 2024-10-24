@@ -913,6 +913,14 @@ LogicalResult GuardOp::inferReturnTypes(
 bool GuardOp::mayAlias(size_t operandIndex, size_t resultIndex) { return true; }
 
 //===----------------------------------------------------------------------===//
+// TensorCreateOp
+//===----------------------------------------------------------------------===//
+
+bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getBufferMutable().getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 
