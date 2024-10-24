@@ -26,6 +26,8 @@ public:
 
   std::string defaultDeviceLabel{""};
 
+  size_t defaultDeviceId{0};
+
   bool enableCompiledRegionsFusion{true};
 
   bool genVizSpec{false};
@@ -49,6 +51,7 @@ public:
     moToMgpOptions.cacheDir = cacheDir;
     moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice;
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
+    moToMgpOptions.defaultDeviceId = defaultDeviceId;
     moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
     moToMgpOptions.genVizSpec = genVizSpec;
     moToMgpOptions.vizOutputPath = vizOutputPath;
@@ -88,9 +91,17 @@ private:
 
   M::cl::MOpt<std::string, true> defaultDeviceLabel{
       "default-device-label",
-      cl::desc("If non-empty, assign as many ops as possible to the device "
-               "with the given label (and device id zero)."),
+      cl::desc(
+          "If non-empty, assign as many ops as possible to the device "
+          "with the given label (and device id based off default-device-id)."),
       llvm::cl::location(options.defaultDeviceLabel),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<size_t, true> defaultDeviceId{
+      "default-device-id",
+      cl::desc("If default-device-label is specified, this field specifies the"
+               "default device id to target. Defaults to zero."),
+      llvm::cl::location(options.defaultDeviceId),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> enableCompiledRegionsFusion{

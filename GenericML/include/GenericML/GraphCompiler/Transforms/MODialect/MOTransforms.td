@@ -350,6 +350,8 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
       "Should kernels and stubs be built with debuginfo.">,
     Option<"targetDevice", "target-device",  "std::string", "\"\"",
            "If non-empty, assign devices using this device">,
+    Option<"targetDeviceId", "target-device-id",  "size_t", "0",
+           "If target-device is provided, this is the default-id to target">,
     Option<"copyFromHost", "copy-from-host", "bool", "true",
            "If true make inputs / outputs host tensors with copies inserted.">,
     Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string", "\"\"",

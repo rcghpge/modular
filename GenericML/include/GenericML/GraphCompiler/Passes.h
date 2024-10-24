@@ -116,6 +116,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
           "If non-empty, assign as many ops as possible to the device "
           "with the given label (and device id zero)."),
       llvm::cl::init("")};
+  Option<size_t> defaultDeviceId{
+      *this, "default-device-id",
+      llvm::cl::desc(
+          "If default-device-label is specified, this field specifies the"
+          "default device id to target. Defaults to zero."),
+      llvm::cl::init(0)};
   Option<bool> enableCompiledRegionsFusion{
       *this, "enable-compiled-regions-fusion",
       llvm::cl::desc("If false, will disable compiled region fusion"),

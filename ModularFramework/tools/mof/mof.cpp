@@ -109,8 +109,11 @@ struct MOFConfig {
         CompiledFrameworkLabel::asLabelString(
             CompiledFrameworkLabel::kModularModel);
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
-    if (defaultDeviceLabel)
+    if (defaultDeviceLabel) {
       moToMgpOptions.defaultDeviceLabel = *defaultDeviceLabel;
+      if (deviceID)
+        moToMgpOptions.defaultDeviceId = *deviceID;
+    }
     if (commonCasConfig.getCacheDir())
       moToMgpOptions.cacheDir = commonCasConfig.getCacheDir()->getPath().str();
     moToMgpOptions.inputsAndOutputsOnDevice = inputsAndOutputsOnDevice;

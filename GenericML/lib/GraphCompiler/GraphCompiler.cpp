@@ -203,6 +203,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
         opts.patternFusionMHAAllowInternalReshape;
     patternFusionOpts.enableMHAPattern = opts.patternFusionMHAEnable;
     patternFusionOpts.targetDevice = opts.defaultDeviceLabel;
+    patternFusionOpts.targetDeviceId = opts.defaultDeviceId;
     pm.addPass(MOGG::createPatternFusion(patternFusionOpts));
 
     InvokeShapePackingFunctionsOptions shapeFuncOptions;
@@ -216,6 +217,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MO::AssignDevicesPassOptions assignDevicesPassOpt;
   assignDevicesPassOpt.targetDevice = opts.defaultDeviceLabel;
+  assignDevicesPassOpt.targetDeviceId = opts.defaultDeviceId;
   assignDevicesPassOpt.smallTensorLimit = opts.smallTensorLimit;
   assignDevicesPassOpt.kernelLibraryPaths = kernelLibraryPaths;
   assignDevicesPassOpt.withDebuginfo = opts.withDebuginfo;

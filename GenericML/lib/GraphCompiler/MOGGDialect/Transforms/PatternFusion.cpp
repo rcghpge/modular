@@ -2653,9 +2653,9 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     RewritePatternSet patterns{ctx};
 
     DeviceRefAttr targetDeviceRef =
-        targetDevice == ""
-            ? nullptr
-            : DeviceRefAttr::get(ctx, targetDevice.getValue(), 0);
+        targetDevice == "" ? nullptr
+                           : DeviceRefAttr::get(ctx, targetDevice.getValue(),
+                                                targetDeviceId.getValue());
 
     PackParamCache cache;
     patterns.add<MatmulConstBPattern>(ctx, cache, targetDeviceRef);
