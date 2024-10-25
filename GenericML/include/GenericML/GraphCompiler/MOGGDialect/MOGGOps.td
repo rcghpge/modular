@@ -56,8 +56,7 @@ def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [MO_HasDeviceInterface]> {
     ) -> !mo.tensor<[5, 3], f32>
     ```
 
-    Currently only for the 'host' device.
-    TODO: Generalize to arbitrary devices.
+    Works for CUDA and host devices.
   }];
 
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
