@@ -708,6 +708,21 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     Type resultTy = inPlaceMGPOutputsTypes[idx];
     if (isa<MGP::OpaqueType>(resultTy)) {
+      // TODO(GRA-1183): Stop hack which is needed only in new extensibility
+      // path Essentially kgenVal isn't the kgen val but instead the initial
+      // stack alloc for memory-types.
+      //
+      // But this requires fixing up this 500 line function.
+      if (isa<MO::OpaqueType>(kgenVal.getType())) {
+        auto users = kgenVal.getUsers();
+        for (auto op : users) {
+          if (auto asKGEN = dyn_cast<MOGG::ToKGENOp>(op)) {
+            kgenVal = asKGEN.getResult();
+            break;
+          }
+        }
+      }
+
       outputs[idx + numPrependedOutputs] =
           builder.create<MOGG::ToMGPFromOpaqueOp>(getLoc(), TypeRange{resultTy},
                                                   kgenVal);
