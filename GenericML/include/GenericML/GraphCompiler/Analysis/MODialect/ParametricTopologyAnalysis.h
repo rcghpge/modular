@@ -42,15 +42,21 @@ public:
   llvm::SmallSetVector<mlir::Operation *, 4> users(mlir::Operation *op) const;
 
   template <typename Func>
-  inline void forEachUser(mlir::Operation *op, Func &&func) const {
-    for (auto user : op->getUsers())
-      func(user);
+  inline bool forEachUser(mlir::Operation *op, Func &&func) const {
+    for (auto user : op->getUsers()) {
+      if (!func(user))
+        return false;
+    }
 
     auto it = metadata.find(op);
     if (it != metadata.end()) {
-      for (auto user : it->second.parametricUsers)
-        func(user);
+      for (auto user : it->second.parametricUsers) {
+        if (!func(user))
+          return false;
+      }
     }
+
+    return true;
   }
 
   // Returns {dataflowProviders(op)} U {parametricProviders(op)}.
@@ -62,17 +68,23 @@ public:
   providers(mlir::Operation *op) const;
 
   template <typename Func>
-  void forEachProvider(mlir::Operation *op, Func &&func) const {
+  inline bool forEachProvider(mlir::Operation *op, Func &&func) const {
     auto it = metadata.find(op);
     if (it != metadata.end()) {
-      for (auto provider : it->second.parametricProviders)
-        func(provider);
+      for (auto provider : it->second.parametricProviders) {
+        if (!func(provider))
+          return false;
+      }
     }
 
     for (auto operand : op->getOperands()) {
-      if (auto provider = operand.getDefiningOp())
-        func(provider);
+      if (auto provider = operand.getDefiningOp()) {
+        if (!func(provider))
+          return false;
+      }
     }
+
+    return true;
   }
 
   // Will compute the topological sort of a set of operations but accounting

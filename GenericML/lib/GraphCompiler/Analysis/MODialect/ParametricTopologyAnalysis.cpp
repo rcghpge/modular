@@ -81,7 +81,10 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
 llvm::SmallSetVector<mlir::Operation *, 4>
 ParametricTopologyAnalysis::users(mlir::Operation *op) const {
   llvm::SmallSetVector<mlir::Operation *, 4> ret;
-  forEachUser(op, [&](auto user) { ret.insert(user); });
+  forEachUser(op, [&](mlir::Operation *user) -> bool {
+    ret.insert(user);
+    return true;
+  });
 
   return ret;
 }
@@ -89,7 +92,10 @@ ParametricTopologyAnalysis::users(mlir::Operation *op) const {
 llvm::SmallSetVector<mlir::Operation *, 4>
 ParametricTopologyAnalysis::providers(mlir::Operation *op) const {
   llvm::SmallSetVector<mlir::Operation *, 4> ret;
-  forEachProvider(op, [&](auto provider) { ret.insert(provider); });
+  forEachProvider(op, [&](mlir::Operation *provider) -> bool {
+    ret.insert(provider);
+    return true;
+  });
 
   return ret;
 }
@@ -124,8 +130,9 @@ bool inline ParametricTopologyAnalysis::isOpReady(
     bool allOf = true;
     forEachProvider(nestedOp, [&](auto provider) {
       if (!allOf)
-        return;
+        return false;
       allOf &= isReady(provider);
+      return true;
     });
 
     return allOf ? WalkResult::advance() : WalkResult::interrupt();

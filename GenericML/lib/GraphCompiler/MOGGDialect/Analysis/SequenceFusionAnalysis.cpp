@@ -36,7 +36,11 @@ floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
     workList.push_back({op, nullptr, true});
 
   while (!workList.empty()) {
-    auto [op, from, asEligible] = workList.pop_back_val();
+    auto entry = workList.pop_back_val();
+    Operation *op, *from;
+    bool asEligible;
+    std::tie(op, from, asEligible) = entry;
+
     if (op->getBlock() != block)
       continue;
 
@@ -63,11 +67,15 @@ floodFillFrom(const mlir::SmallVector<mlir::Operation *> &roots,
     }
 
     if constexpr (direction == Direction::Down) {
-      for (auto user : completeDataflowGraph.users(op))
+      completeDataflowGraph.forEachUser(op, [&](auto user) {
         workList.push_back({user, op, asEligible});
+        return true;
+      });
     } else {
-      for (auto provider : completeDataflowGraph.providers(op))
+      completeDataflowGraph.forEachProvider(op, [&](auto provider) {
         workList.push_back({provider, op, asEligible});
+        return true;
+      });
     }
   }
 
@@ -99,9 +107,12 @@ FusionSubGraphs floodFillSequenceFusionAnalysis(
       // Find all the leaves from the subgraph that was found by the previous
       // step.
       const auto isALeaf = [&](mlir::Operation *op) {
-        return llvm::none_of(completeDataflowGraph.users(op), [&](auto user) {
-          return opsToFuseTogetherDownward.contains(user);
+        bool userContained = false;
+        completeDataflowGraph.forEachUser(op, [&](auto user) {
+          userContained |= opsToFuseTogetherDownward.contains(user);
+          return !userContained;
         });
+        return !userContained;
       };
       mlir::SmallVector<mlir::Operation *> leaves;
       for (mlir::Operation *op : opsToFuseTogetherDownward) {
@@ -148,13 +159,13 @@ static void dependencyWalk(
     llvm::MapVector<mlir::Operation *, OperationDependency> &dependencies,
     const mlir::DenseMap<mlir::Operation *, uint64_t> &opToIndexInBitVector,
     MO::ParametricTopologyAnalysis &completeDataflowGraph) {
-  const auto grabDependencies = [&](auto nextOp) {
+  const auto grabDependencies = [&](auto nextOp) -> bool {
     auto &thisOpDependencies = dependencies[op];
     // Lookup the operation. If it is not in the index map, then it does not
     // belong to this block. Ignore it.
     auto operationIndexIt = opToIndexInBitVector.find(nextOp);
     if (operationIndexIt == opToIndexInBitVector.end())
-      return;
+      return true;
     uint64_t operationIndex = operationIndexIt->second;
 
     const auto &dependency = dependencies[nextOp];
@@ -166,6 +177,8 @@ static void dependencyWalk(
       thisOpDependencies.transitiveUsers[operationIndex] = true;
       thisOpDependencies.transitiveUsers |= dependency.transitiveUsers;
     }
+
+    return true;
   };
 
   if constexpr (direction == Direction::Up)
@@ -504,28 +517,34 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
           continue;
         visited.insert(parent);
 
-        auto users = completeDataflowGraph.users(parent);
-        if (child && !llvm::all_of(users, [&](auto user) {
-              return areSameBlockAndCompatible(parent, user);
-            }))
-          continue;
+        if (child) {
+          bool proceed =
+              completeDataflowGraph.forEachUser(parent, [&](Operation *user) {
+                if (!areSameBlockAndCompatible(parent, user))
+                  return false;
 
-        // If duplication is not allowed, then the only user of the current op
-        // must be in the fusion subgraph already. Note that if there are more
-        // than one user, this will fail because one of the users will be in
-        // another subgraph from a past iteration.
-        if (child && !allowDuplication && !llvm::all_of(users, [&](auto user) {
-              return curSubgraph.contains(user);
-            }))
-          continue;
+                // If duplication is not allowed, then the only user of the
+                // current op must be in the fusion subgraph already. Note that
+                // if there are more than one user, this will fail because one
+                // of the users will be in another subgraph from a past
+                // iteration.
+                return allowDuplication || curSubgraph.contains(user);
+              });
+
+          if (!proceed)
+            continue;
+        }
 
         curSubgraph.insert(parent);
         includedInASubgraph.insert(parent);
 
-        for (auto grandParent : completeDataflowGraph.providers(parent))
+        completeDataflowGraph.forEachProvider(parent, [&](auto grandParent) {
           // Don't include ops not in the current block
           if (operationToTopoIndex.contains(grandParent))
             workQueue.emplace(grandParent, parent);
+
+          return true;
+        });
       }
 
       if (curSubgraph.size() > 1)
