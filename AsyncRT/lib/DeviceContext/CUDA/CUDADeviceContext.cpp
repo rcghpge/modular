@@ -32,8 +32,11 @@
   do {                                                                         \
     CUDADriver::Result cuda_result = cuda_call;                                \
     if (cuda_result != CUDADriver::SUCCESS) {                                  \
-      std::cerr << __FILE__ << ":" << __LINE__ << " - CUDA call in "           \
-                << __FUNCTION__ << " failed: " << cuda_result << "\n";         \
+      M::Error err =                                                           \
+          formatError(__FILE__, __LINE__, __FUNCTION__, cuda_result);          \
+      /* We are not in a context where we can return an Error here. So we   */ \
+      /* print the message and abort().                                     */ \
+      std::cerr << err << "\n";                                                \
       abort();                                                                 \
     }                                                                          \
   } while (0)
@@ -55,8 +58,28 @@ static Error formatError(const char *file, int line, const char *func,
 
 static Error formatError(const char *file, int line, const char *func,
                          CUDADriver::Result result) {
-  return formatError(file, line, func,
-                     llvm::Twine("CUDA call failed: ") + llvm::Twine(result));
+  ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
+  const char *err_name = nullptr;
+  const char *err_str = nullptr;
+
+  if (!err_driver) {
+    // Ignore errors and use nullptr of char* instead.
+    err_driver->GetErrorName(result, &err_name);
+    err_driver->GetErrorString(result, &err_str);
+  }
+
+  if ((err_name != nullptr) && (err_str != nullptr)) {
+    return formatError(file, line, func,
+                       llvm::Twine("CUDA call failed: ") + err_name + " (" +
+                           err_str + ")");
+  } else if ((err_name != nullptr) || (err_str != nullptr)) {
+    return formatError(file, line, func,
+                       llvm::Twine("CUDA call failed: ") +
+                           (err_name != nullptr ? err_name : err_str));
+  } else {
+    return formatError(file, line, func,
+                       llvm::Twine("CUDA call failed: ") + llvm::Twine(result));
+  }
 }
 
 // ===== CUDADevice ===== //

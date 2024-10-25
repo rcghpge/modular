@@ -44,6 +44,9 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   CUDADriver *driver = new CUDADriver();
   GET_FUNC(cuInit);
 
+  GET_FUNC(cuGetErrorName);
+  GET_FUNC(cuGetErrorString);
+
   GET_FUNC(cuDriverGetVersion);
 
   GET_FUNC(cuDeviceGetAttribute);
@@ -112,7 +115,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
 }
 
 ErrorOr<const CUDADriver &> CUDADriver::get() {
-  static ErrorOr<const CUDADriver &> err_or_driver = allocAndInitDriver();
+  static const ErrorOr<const CUDADriver &> err_or_driver = allocAndInitDriver();
 
   if (err_or_driver) {
     return Error(err_or_driver.getError());

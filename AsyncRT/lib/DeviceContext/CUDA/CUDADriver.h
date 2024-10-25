@@ -80,6 +80,14 @@ public:
     SUCCESS = 0,
   };
 
+  Result GetErrorName(Result error, const char **pStr) const {
+    return cuGetErrorName_(error, pStr);
+  }
+
+  Result GetErrorString(Result error, const char **pStr) const {
+    return cuGetErrorString_(error, pStr);
+  }
+
   Result DriverGetVersion(int *version) const {
     return cuDriverGetVersion_(version);
   }
@@ -269,6 +277,12 @@ private:
   Result Init(unsigned int flags) const { return cuInit_(flags); }
   using tcuInit = Result(unsigned int);
   tcuInit *cuInit_;
+
+  using tcuGetErrorName = Result(Result, const char **);
+  tcuGetErrorName *cuGetErrorName_;
+
+  using tcuGetErrorString = Result(Result, const char **);
+  tcuGetErrorString *cuGetErrorString_;
 
   using tcuDriverGetVersion = Result(int *);
   tcuDriverGetVersion *cuDriverGetVersion_;
