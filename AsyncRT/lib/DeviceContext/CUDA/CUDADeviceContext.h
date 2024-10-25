@@ -53,7 +53,11 @@ public:
 
   std::string name() const override;
 
+  ErrorOr<bool> canAccess(const CUDADevice &peer) const;
+
   static ErrorOr<int> numberOfDevices();
+
+  static const CUDADevice &cast(const Device &device);
 
 private:
   const CUDADriver &driver_;

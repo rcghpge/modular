@@ -76,6 +76,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemcpyDtoH_v2);
   GET_FUNC(cuMemcpyDtoD_v2);
   GET_FUNC(cuMemcpyPeer);
+  GET_FUNC(cuDeviceCanAccessPeer);
 
   GET_FUNC(cuMemsetD8Async);
   GET_FUNC(cuMemsetD16Async);

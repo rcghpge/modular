@@ -155,6 +155,10 @@ public:
     return cuMemcpyPeerAsync_(dstDevice, dstContext, srcDevice, srcContext,
                               bytesize, hStream);
   }
+  Result DeviceCanAccessPeer(int *canAccessPeer, CUdevice dev,
+                             CUdevice peerDev) const {
+    return cuDeviceCanAccessPeer_(canAccessPeer, dev, peerDev);
+  }
 
   Result MemcpyHtoD(CUdeviceptr dstDevice, const void *srcHost,
                     size_t bytesize) const {
@@ -346,6 +350,9 @@ private:
   using tcuMemcpyPeerAsync = Result(CUdeviceptr, CUcontext, CUdeviceptr,
                                     CUcontext, size_t, CUstream);
   tcuMemcpyPeerAsync *cuMemcpyPeerAsync_;
+
+  using tcuDeviceCanAccessPeer = Result(int *, CUdevice, CUdevice);
+  tcuDeviceCanAccessPeer *cuDeviceCanAccessPeer_;
 
   using tcuMemcpyHtoD_v2 = Result(CUdeviceptr, const void *, size_t);
   tcuMemcpyHtoD_v2 *cuMemcpyHtoD_v2_;
