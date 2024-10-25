@@ -38,14 +38,16 @@ TEST(testRMOOpHelpers, testRefineShape) {
   mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<RMO::RMODialect, MO::MODialect>();
 
+  auto dimType = ShapeAttr::getDimType(&ctx);
+
   // Declare dimensions / shape attr
   auto dynRankShapeAttr = KGEN::ParamDeclRefAttr::get(
       KGEN::ParamDeclAttr::get("Sh", MOSH::ShapeType::get(&ctx)));
-  auto paramDimAttr = KGEN::ParamDeclRefAttr::get(
-      KGEN::ParamDeclAttr::get("D", mlir::IndexType::get(&ctx)));
+  auto paramDimAttr =
+      KGEN::ParamDeclRefAttr::get(KGEN::ParamDeclAttr::get("D", dimType));
   auto paramExprDimAttr = KGEN::ParamOperatorAttr::get(
       KGEN::POC::Mul, SmallVector<TypedAttr>{paramDimAttr, paramDimAttr});
-  auto paramIntegerAttr = mlir::IntegerAttr::get(IndexType::get(&ctx), 42);
+  auto paramIntegerAttr = mlir::IntegerAttr::get(dimType, 42);
 
   // Take the cross product of `dimTypes` and split into two streams of dims
   SmallVector<TypedAttr> dimTypes = {paramDimAttr, paramExprDimAttr,
@@ -115,9 +117,11 @@ TEST(testRMOOpHelpers, testRefineDifferentIntegralDims) {
   mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<RMO::RMODialect, MO::MODialect>();
 
+  auto dimType = ShapeAttr::getDimType(&ctx);
+
   // Declare dimensions / shape attr
-  auto paramInteger1Attr = mlir::IntegerAttr::get(IndexType::get(&ctx), 1);
-  auto paramInteger2Attr = mlir::IntegerAttr::get(IndexType::get(&ctx), 2);
+  auto paramInteger1Attr = mlir::IntegerAttr::get(dimType, 1);
+  auto paramInteger2Attr = mlir::IntegerAttr::get(dimType, 2);
 
   TensorType shape1Ty = TensorType::get(
       &ctx, SmallVector<TypedAttr>{paramInteger1Attr}, DType::f32);

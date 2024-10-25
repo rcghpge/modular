@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/VerifyUtils.h"
@@ -506,8 +507,8 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
   ASSERT_STREAM(operands.size() == 1, << "mismatched operand arity");
   auto specType = dyn_cast<TensorSpecType>(operands[0].getType());
   ASSERT_STREAM(specType, << "mismatched operand type");
-  for (size_t i = 0, e = specType.getNumDynamicDims(); i < e; ++i)
-    inferredReturnTypes.emplace_back(IndexType::get(context));
+  inferredReturnTypes.append(specType.getNumDynamicDims(),
+                             MOSH::ShapeAttr::getDimType(context));
   return success();
 }
 

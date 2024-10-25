@@ -131,7 +131,7 @@ ParseResult M::MOSH::parseShapeValue(AsmParser &p,
 /// print `:<type> ` or elide it entirely if type is an `index` type.
 static void printColonTypeOrDimensionPrefix(AsmPrinter &p, Type type) {
   // Index type is the default so it doesn't print.
-  if (ShapeAttr::isDimensionType(type))
+  if (ShapeAttr::isDimType(type))
     return;
   p << ':';
   KGEN::printKGENType(p, type);

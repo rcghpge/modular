@@ -994,6 +994,7 @@ modular_cc_library(
         ":MGPDialectTensorSpecIncGen",
         ":MGPDialectTypeInterfacesIncGen",
         ":MGPDialectTypesIncGen",
+        ":MOSHDialect",
         ":Support",
         "//GraphRT:GRTDialect",
     ],

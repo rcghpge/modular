@@ -773,7 +773,7 @@ static void printOutputValues(AsmPrinter &p, Operation *op,
     return;
   p << '<';
   llvm::interleaveComma(values, p, [&](TypedAttr value) {
-    if (Type type = value.getType(); !ShapeAttr::isDimensionType(type)) {
+    if (Type type = value.getType(); !ShapeAttr::isDimType(type)) {
       p << ':';
       KGEN::printKGENType(p, type);
       p << ' ';
@@ -2210,7 +2210,7 @@ LogicalResult RangeOp::verify() {
   if (!paramDecls.empty()) {
     if (paramDecls.size() != 1)
       return emitError("cannot declare more than one parameter");
-    if (!ShapeAttr::isDimensionType(paramDecls[0].getType()))
+    if (!ShapeAttr::isDimType(paramDecls[0].getType()))
       return emitError("can only declare dimension parameters");
   }
   return success();
@@ -2250,7 +2250,7 @@ static LogicalResult materializeShapeInference(RebindOp op,
   TypedAttr outputShapeAttr = op.getResult().getType().getShapeAttr();
   auto outputDimAttrs = dyn_cast<ShapeAttr>(outputShapeAttr);
   bool allDeclsAreDimAttrs = llvm::all_of(paramDecls, [](ParamDeclAttr decl) {
-    return ShapeAttr::isDimensionType(decl.getType());
+    return ShapeAttr::isDimType(decl.getType());
   });
   if (allDeclsAreDimAttrs && outputDimAttrs) {
     llvm::SmallDenseMap<StringAttr, KGEN::ParamDeclAttr> nameToParamDecl;

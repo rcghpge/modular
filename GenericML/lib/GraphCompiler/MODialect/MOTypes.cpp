@@ -260,7 +260,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
     }
   }
 
-  if (!llvm::all_of(shape.getValues(), ShapeAttr::isDimensionAttr))
+  if (!llvm::all_of(shape.getValues(), ShapeAttr::isDim))
     return emitError() << "tensor dimensions must be a getDimType()";
 
   // The device specification used to reside in the metadata dictionary,
@@ -524,7 +524,7 @@ bool TensorType::isParameterizedDimParam(TypedAttr attr) {
 }
 
 bool TensorType::isIntegerDimParam(TypedAttr attr) {
-  return llvm::isa<IntegerAttr>(attr) && ShapeAttr::isDimensionAttr(attr);
+  return llvm::isa<IntegerAttr>(attr) && ShapeAttr::isDim(attr);
 }
 
 SmallVector<int64_t> TensorType::getIntDims() const {
@@ -660,13 +660,13 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  TypedAttr shapeAttr, DType dtype,
                                  DeviceRefAttr deviceRef,
                                  DictionaryAttr metadata) {
-  auto attr = llvm::dyn_cast<ShapeAttr>(shapeAttr);
-  if (!attr)
+  auto shape = llvm::dyn_cast<ShapeAttr>(shapeAttr);
+  if (!shape)
     return emitError() << "invalid shape attribute, only MOSH::ShapeAttr is "
                           "allowed for buffer types, got: "
                        << shapeAttr;
 
-  for (TypedAttr dimAttr : attr.getValues()) {
+  for (TypedAttr dimAttr : shape.getValues()) {
     if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
       if (dimIntAttr.getInt() < 0)
         return emitError()
@@ -676,6 +676,9 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
       return emitError() << "mo.buffer is not allowed to have shapes with '?'";
     }
   }
+
+  if (!llvm::all_of(shape.getValues(), ShapeAttr::isDim))
+    return emitError() << "buffer dimensions must be a getDimType()";
 
   // The device specification used to reside in the metadata dictionary,
   // sanity check that the buffer type is not using the old format.

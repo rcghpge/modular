@@ -71,13 +71,13 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     static IntegerAttr getDim(MLIRContext* ctx, int64_t value);
 
     /// Is the given type a legal dimension?
-    static bool isDimensionType(Type type) {
+    static bool isDimType(Type type) {
       return type.isIndex();
     }
 
     /// Is the given attribute able to represent a dimension.
-    static bool isDimensionAttr(TypedAttr attr) {
-      return isDimensionType(attr.getType());
+    static bool isDim(TypedAttr attr) {
+      return isDimType(attr.getType());
     }
 
     /// Returns the rank (i.e. size) of the shape.
