@@ -637,7 +637,8 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$srcBuffer,
                        MGP_DeviceBufferType:$dstBuffer,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_OpaqueType:$srcDeviceContext,
+                       MGP_OpaqueType:$dstDeviceContext,
                        UI64Attr:$aSrcRuntimeSlot,     // 0
                        UI64Attr:$bDstRuntimeSlot,     // 1
                        M_DeviceRefAttr:$cSrcDevice,   // 2
@@ -645,18 +646,26 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain  `,` $theContext `[` $aSrcRuntimeSlot `,` $bDstRuntimeSlot `]` `,`
-    $srcBuffer `,` $dstBuffer `,` $deviceContext attr-dict
+    $srcBuffer `,` $srcDeviceContext`,` $dstBuffer `,` $dstDeviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($srcBuffer), type($dstBuffer),
-          $cSrcDevice, $dDstDevice, type($inChain)) `,` qualified(type($deviceContext))
+          $cSrcDevice, $dDstDevice, type($inChain)) `,` qualified(type($srcDeviceContext))`,` qualified(type($dstDeviceContext))
   }];
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    M::DeviceRefAttr getSrcDevice();
+    M::DeviceRefAttr getDstDevice();
+    }];
 
   let extraClassDefinition = [{
      uint64_t BufferDeviceToDeviceOp::getSlot() { return getASrcRuntimeSlot(); }
 
-    M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getCSrcDevice(); }
-  }];
+    M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getDDstDevice(); }
+    M::DeviceRefAttr BufferDeviceToDeviceOp::getSrcDevice() { return getCSrcDevice(); }
+    M::DeviceRefAttr BufferDeviceToDeviceOp::getDstDevice() { return getDDstDevice(); }
+    }];
+
 }
 
 //===----------------------------------------------------------------------===//

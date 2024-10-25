@@ -262,7 +262,8 @@ public:
                                      TypedValue<ContextType> context,
                                      Value inChain, Value srcBuffer,
                                      BufferBuilder *dstBufferBuilder,
-                                     Value dstBuffer, Value deviceContext) = 0;
+                                     Value dstBuffer, Value srcDeviceContext,
+                                     Value dstDeviceContext) = 0;
 
   /// Returns alias to buffer with the size dropped
   virtual Value bufferUnsize(OpBuilder &builder, Location loc,
@@ -415,7 +416,8 @@ public:
   Value bufferTransferDevice(OpBuilder &builder, Location loc,
                              TypedValue<ContextType> context, Value inChain,
                              Value srcBuffer, BufferBuilder *dstBufferBuilder,
-                             Value dstBuffer, Value deviceContext) override;
+                             Value dstBuffer, Value srcDeviceContext,
+                             Value dstDeviceContext) override;
 
   Value bufferUnsize(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context, Value inBuffer) override;

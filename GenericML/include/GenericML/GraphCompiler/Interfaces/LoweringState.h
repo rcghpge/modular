@@ -723,7 +723,7 @@ struct MOOpLoweringState {
                              ->bufferTransferDevice(
                                  builder, loc, context, preD2DChain, srcBuffer,
                                  getStorageBufferBuilder(dstMoTensorType),
-                                 dstBuffer, dstDeviceContext);
+                                 dstBuffer, srcDeviceContext, dstDeviceContext);
     // if srcDeviceRef == dstDeviceRef, the srcDeviceRef free will be enqueued
     // on the dst deviceContext stream, after the d2d runs, so no lifetime
     // extension is needed.

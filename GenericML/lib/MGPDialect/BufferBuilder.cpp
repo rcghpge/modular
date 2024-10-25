@@ -257,12 +257,10 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
   return syncChain;
 }
 
-Value MGPBufferBuilder::bufferTransferDevice(OpBuilder &builder, Location loc,
-                                             TypedValue<ContextType> context,
-                                             Value inChain, Value srcBuffer,
-                                             BufferBuilder *dstBufferBuilder,
-                                             Value dstBuffer,
-                                             Value deviceContext) {
+Value MGPBufferBuilder::bufferTransferDevice(
+    OpBuilder &builder, Location loc, TypedValue<ContextType> context,
+    Value inChain, Value srcBuffer, BufferBuilder *dstBufferBuilder,
+    Value dstBuffer, Value srcDeviceContext, Value dstDeviceContext) {
   auto dstMGPBufferBuilder = static_cast<MGPBufferBuilder *>(dstBufferBuilder);
   return builder.create<BufferDeviceToDeviceOp>(
       loc,
@@ -270,7 +268,8 @@ Value MGPBufferBuilder::bufferTransferDevice(OpBuilder &builder, Location loc,
       /*theContext=*/context,
       /*srcBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
       /*dstBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-      /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
+      /*deviceContext*/ cast<TypedValue<OpaqueType>>(srcDeviceContext),
+      /*deviceContext*/ cast<TypedValue<OpaqueType>>(dstDeviceContext),
       /*aSrcRuntimeSlot=*/runtimeSlot,
       /*bDstRuntimeSlot=*/dstMGPBufferBuilder->runtimeSlot,
       /*cSrcDevice=*/device,
