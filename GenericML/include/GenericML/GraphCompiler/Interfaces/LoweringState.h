@@ -24,10 +24,8 @@
 #include "Support/AssertStream.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseMap.h"
-#include <unordered_map>
 
 namespace M::MGP {
 

@@ -20,7 +20,6 @@
 #include "Support/ErrorOr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/DialectImplementation.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/TypeSwitch.h"
