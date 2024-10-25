@@ -215,52 +215,91 @@ ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
   }
 }
 
+template <typename Op>
+static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
+                                      ValueRange operands, Type resultType) {
+  assert(operands.size() >= 2 &&
+         "variadic operation requires at least 2 arguments");
+
+  auto start = operands.front();
+  auto rest = operands.drop_front();
+
+  return std::accumulate(rest.begin(), rest.end(), start,
+                         [&](Value lhs, Value rhs) {
+                           return builder.create<Op>(loc, resultType, lhs, rhs);
+                         });
+}
+
+static ErrorOr<Value> pocToMopIndex(KGEN::POC poc, OpBuilder &builder,
+                                    Location loc, ValueRange operands,
+                                    Type resultType) {
+  auto getIdxCmpPredicate = [](KGEN::POC poc) {
+    switch (poc) {
+    case KGEN::POC::EQ:
+      return mlir::index::IndexCmpPredicate::EQ;
+    case KGEN::POC::LT:
+      return mlir::index::IndexCmpPredicate::SLT;
+    case KGEN::POC::LE:
+      return mlir::index::IndexCmpPredicate::SLE;
+    default:
+      llvm_unreachable("unrecognized predicate");
+    }
+  };
+
+  switch (poc) {
+  // All comparisons lower to `index.cmp`
+  case KGEN::POC::EQ:
+  case KGEN::POC::LT:
+  case KGEN::POC::LE:
+    return builder.create<mlir::index::CmpOp>(
+        loc, resultType, getIdxCmpPredicate(poc), operands[0], operands[1]);
+
+  // All potentially variadic ops
+  case KGEN::POC::Add:
+    return buildVariadicOp<mlir::index::AddOp>(builder, loc, operands,
+                                               resultType);
+  case KGEN::POC::Div:
+    return buildVariadicOp<mlir::index::DivSOp>(builder, loc, operands,
+                                                resultType);
+  case KGEN::POC::Max:
+    return buildVariadicOp<mlir::index::MaxSOp>(builder, loc, operands,
+                                                resultType);
+  case KGEN::POC::Min:
+    return buildVariadicOp<mlir::index::MinSOp>(builder, loc, operands,
+                                                resultType);
+  case KGEN::POC::Mul:
+  case KGEN::POC::MulNuw:
+    return buildVariadicOp<mlir::index::MulOp>(builder, loc, operands,
+                                               resultType);
+  case KGEN::POC::And:
+    return buildVariadicOp<KGEN::POP::AndOp>(builder, loc, operands,
+                                             resultType);
+  case KGEN::POC::Or:
+    return buildVariadicOp<KGEN::POP::OrOp>(builder, loc, operands, resultType);
+  case KGEN::POC::Xor:
+    return buildVariadicOp<KGEN::POP::XOrOp>(builder, loc, operands,
+                                             resultType);
+
+  // Remaining ops
+  case KGEN::POC::Shl:
+    return builder.create<mlir::index::ShlOp>(loc, resultType, operands);
+  case KGEN::POC::Shr:
+    return builder.create<mlir::index::ShrSOp>(loc, resultType, operands);
+  case KGEN::POC::Mod:
+    return builder.create<mlir::index::RemSOp>(loc, resultType, operands);
+  case KGEN::POC::Cond:
+    return builder.create<KGEN::POP::SelectOp>(loc, resultType, operands);
+  default:
+    return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
+  }
+}
+
 ErrorOr<Value>
 MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
                                          KGEN::ParamOperatorAttr opAttr,
                                          ValueRange operands) {
-  auto mopNameOr = pocToMopIndexOp(opAttr.getOpcode());
-  if (mopNameOr.isError())
-    return mopNameOr.takeError();
-  auto opNameAttr = builder.getStringAttr(*mopNameOr);
-  Type resTy = opAttr.getType();
-
-  // For non binary op
-  if (opNameAttr == KGEN::POP::SelectOp::getOperationName())
-    return builder.create(loc, opNameAttr, operands, {resTy})->getResult(0);
-
-  if (opNameAttr == mlir::index::CmpOp::getOperationName()) {
-    auto getIdxCmpPredicate = [](KGEN::POC poc) {
-      switch (poc) {
-      case KGEN::POC::EQ:
-        return mlir::index::IndexCmpPredicate::EQ;
-      case KGEN::POC::LT:
-        return mlir::index::IndexCmpPredicate::SLT;
-      case KGEN::POC::LE:
-        return mlir::index::IndexCmpPredicate::SLE;
-      default:
-        llvm_unreachable("unrecognized predicate");
-      }
-    };
-
-    assert(operands.size() == 2 && "Cmp Operation must be a binary operation");
-    return builder.create<mlir::index::CmpOp>(
-        loc, getIdxCmpPredicate(opAttr.getOpcode()),
-        /*lhs=*/operands.front(),
-        /*rhs=*/operands.back());
-  }
-
-  // For potentially variadic binary ops
-  //   add(a, b, c)
-  //   ===>
-  //   index.add(index.add(a, b), c)
-  Value res = operands.front();
-  do {
-    operands = operands.drop_front();
-    res = builder.create(loc, opNameAttr, {res, operands.front()}, {resTy})
-              ->getResult(0);
-  } while (operands.size() > 1);
-  return res;
+  Type resultType = opAttr.getType();
+  return pocToMopIndex(opAttr.getOpcode(), builder, loc, operands, resultType);
 }
 
 Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,

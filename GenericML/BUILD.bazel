@@ -166,7 +166,7 @@ modular_cc_library(
 # mindful.
 modular_cc_library(
     name = "GraphCompilerConversion",
-    srcs = ["lib/GraphCompiler/Conversion/Attributes.cpp"],
+    srcs = glob(["lib/GraphCompiler/Conversion/*.cpp"]),
     hdrs = glob(
         ["include/GenericML/GraphCompiler/Conversion/*.h"],
         # Deal with a circular dependency.
@@ -174,7 +174,9 @@ modular_cc_library(
     ),
     tags = ["no-clang-tidy-headers"],
     deps = [
+        ":MOSHDialect",
         ":MOToPrimitivesIncGen",
+        "//KGEN:KGENDialect",
         "//Support:Base",
         "//Support:Compiler",
         "@llvm-project//llvm:Support",

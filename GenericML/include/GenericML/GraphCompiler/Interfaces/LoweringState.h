@@ -470,11 +470,6 @@ private:
   SmallDenseMap<DeviceRefAttr, TypedValue<OpaqueType>> execDevices;
 };
 
-inline SmallVector<MO::TensorType> castToMoTensorTypes(TypeRange types) {
-  return llvm::map_to_vector(types,
-                             [](Type t) { return cast<MO::TensorType>(t); });
-}
-
 //===----------------------------------------------------------------------===//
 // MOOpLoweringState
 //===----------------------------------------------------------------------===//

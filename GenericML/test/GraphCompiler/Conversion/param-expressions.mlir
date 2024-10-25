@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-primitives | FileCheck %s
 
 // CHECK-LABEL: mgp.model @add_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -203,4 +203,18 @@ mo.graph @param_expr_in_output_shape<D0>(
 ) -> !mo.tensor<[mul_nuw(D0, 2), 2], f32> {
   %res = mo.static.reshape(%arg0) : !mo.tensor<[D0, 4], f32> -> !mo.tensor<[mul_nuw(D0, 2), 2], f32>
   mo.output %res : !mo.tensor<[mul_nuw(D0, 2), 2], f32>
+}
+
+// CHECK-LABEL: mgp.model @shift_expressions : mof
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
+// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
+// CHECK: %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?x?xf32>
+// CHECK: %[[DIMS:[^:]*]]:3 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?x?xf32>
+// CHECK: %{{.*}} = index.shl %[[DIMS]]#0, %[[DIMS]]#1
+// CHECK: %{{.*}} = index.shrs %[[DIMS]]#1, %[[DIMS]]#2
+mo.graph @shift_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
+  kgen.param.declare SHL = <shl(X, Y)>
+  kgen.param.declare SHR = <shr(Y, Z)>
+
+  mo.output
 }
