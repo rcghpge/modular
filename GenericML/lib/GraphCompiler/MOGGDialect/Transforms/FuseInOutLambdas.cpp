@@ -55,10 +55,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
   bool canDoInputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterfaces,
                         uint64_t inputIdx) {
-    // Disable fusion on experimental new KGEN in MOGG for now.
-    if (kernel.getIsKGEN().value_or(false))
-      return false;
-
     // For in-place allocated kernel, we disable for now.
     if (kernel.isInPlaceAlloc())
       return false;
@@ -118,9 +114,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     return true;
   }
 
-  void fuseIntoInputLambda(MOGG::KernelOp dstKernel, ArrayAttr fusionInterfaces,
-                           uint64_t inputIdx,
-                           SmallVectorImpl<KernelOp> &opsToErase) {
+  void fuseIntoInputLambdaMOGG(MOGG::KernelOp dstKernel,
+                               ArrayAttr fusionInterfaces, uint64_t inputIdx,
+                               SmallVectorImpl<KernelOp> &opsToErase) {
     MLIRContext *ctx = dstKernel.getContext();
 
     // We've already guarded that we only have one user. The kernel is cloned in
@@ -240,6 +236,197 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Delete the cloned kernel.
     opsToErase.push_back(srcKernel);
+  }
+
+  void fuseIntoInputLambdaKGEN(MOGG::KernelOp kernelToFuseInto,
+                               ArrayAttr fusionInterfaces, uint64_t inputIdx,
+                               SmallVectorImpl<KernelOp> &opsToErase,
+                               MojoLibraryAnalysis &analysis) {
+    MLIRContext *ctx = kernelToFuseInto.getContext();
+    OpBuilder builder{ctx};
+
+    auto inputKernel = cast<MOGG::KernelOp>(
+        kernelToFuseInto.getOperand(inputIdx).getDefiningOp());
+
+    Block &dstKernelBody = kernelToFuseInto.getBody().front();
+    Block &inputKernelBody = inputKernel.getBody().front();
+
+    auto fusionArgument = dstKernelBody.getArgument(inputIdx);
+
+    // Step 1: Add extra operands to kernelTofuseInto.
+    // All arguments of inputKernel are added.
+    // The original fused argument will be removed at the end.
+
+    IRMapping oldToNew;
+    oldToNew.map(inputKernel.getOutputPlaceholder()->getResult(0),
+                 fusionArgument);
+
+    for (auto [operand, blockArg] :
+         llvm::zip(inputKernel.getOperands(), inputKernelBody.getArguments())) {
+      Value newBlockArg = kernelToFuseInto.addOperand(operand);
+      oldToNew.map(blockArg, newBlockArg);
+    }
+
+    // Step 2: We clone all non-trivial operators in the user kernel into the
+    // src kernel. Here, we ignore all the ParamDeclareRegionOp, which we will
+    // take care of later in a more specific way.
+
+    kernelToFuseInto.setInsertionPointToTop(builder);
+    for (auto &op : inputKernel.getOps()) {
+      if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
+        // We clone ToKGENOp except for the one related to the output.
+        if (toKgen.getInput().getDefiningOp<MOGG::OutputPlaceholdersOp>())
+          continue;
+
+        auto newToKgen = cast<MOGG::ToKGENOp>(builder.clone(op, oldToNew));
+        oldToNew.map(toKgen.getResults(), newToKgen.getResults());
+      } else if (isa<KGEN::ParamDeclareOp>(op)) {
+        builder.clone(op);
+      } else if (isa<MOGG::OutputOp, KGEN::ParamDeclareRegionOp,
+                     MOGG::OutputPlaceholdersOp>(op)) {
+        // ParamDeclareRegionOp will be cloned later.
+        // OutputPlaceholdersOp relates to the temporary fused output that
+        // doesn't need to be cloned.
+      } else if (auto callop = dyn_cast<KGEN::CallOp>(op)) {
+        StringRef funcName =
+            cast<mlir::FlatSymbolRefAttr>(callop.getCalleeSymbol()).getValue();
+        // Clone every function call except the one has the `elementwise`
+        // decorator.
+        if (!funcName.starts_with(Utils::DPSTensorForEach)) {
+          oldToNew.map(op.getResults(),
+                       builder.clone(op, oldToNew)->getResults());
+        }
+      } else {
+        oldToNew.map(op.getResults(),
+                     builder.clone(op, oldToNew)->getResults());
+      }
+    }
+
+    // Step 3) Clone all of the lambda regions of inputKernel. (except the
+    // elementwise / output one).
+    // Insert them right before the destination input
+    // lambda.
+
+    mlir::SymbolTable inputSymTable{inputKernel};
+    mlir::SymbolTable dstSymTable{kernelToFuseInto};
+
+    StringAttr dstInputLambdaName =
+        kernelToFuseInto.getInputFusionInterfaceAt(inputIdx);
+    assert(!dstInputLambdaName.empty());
+    auto dstInputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
+        dstSymTable.lookup(dstInputLambdaName));
+
+    builder.setInsertionPoint(dstInputLambdaOp);
+
+    llvm::DenseSet<StringRef> lambdaSkipSet;
+    // Skip the output fusion interface.
+    lambdaSkipSet.insert(inputKernel.getOutputFusionInterfaceAt(0));
+    // SKip the body interface
+    lambdaSkipSet.insert(inputKernel.getFusionBodyLambdaAttr());
+
+    // Clone all the regions.
+    for (auto declRegion : inputKernel.getOps<KGEN::ParamDeclareRegionOp>()) {
+      if (!lambdaSkipSet.contains(declRegion.getParamDeclAttr().getName())) {
+        builder.clone(*declRegion.getOperation(), oldToNew);
+      }
+    }
+
+    // Step 4. Clone the elementwise kernel call inside fuseIntoKernel call
+
+    // It is guaranteed that the user kernel is an elementwise op.
+    StringAttr elementwiseLambdaName = inputKernel.getFusionBodyLambdaAttr();
+    auto elementwiseOp = inputKernel.findLambda(elementwiseLambdaName);
+    KGEN::CallOp elementwiseCallOp =
+        *elementwiseOp.getOps<KGEN::CallOp>().begin();
+    assert(elementwiseCallOp);
+
+    // Get the original load inside the dst input lambda.
+    // We want to replace it with the elementwise function call.
+    KGEN::CallOp dstInputLoadOp =
+        *dstInputLambdaOp.getOps<KGEN::CallOp>().begin();
+    assert(dstInputLoadOp);
+
+    // Remap arguments for the elementwise call.
+    // Map the old elementwise indices argument to the new input indices
+    // argument.
+    oldToNew.map(elementwiseOp.getFunctionBody().getArgument(0),
+                 dstInputLambdaOp.getFunctionBody().getArgument(0));
+
+    // Clone the elementwise call.
+    builder.setInsertionPoint(dstInputLoadOp);
+    KGEN::CallOp newElementwiseCallOp = cast<KGEN::CallOp>(
+        builder.clone(*elementwiseCallOp.getOperation(), oldToNew));
+
+    // Replace the uses of the load with the call instead.
+    assert(dstInputLoadOp->getNumResults() == 1 &&
+           newElementwiseCallOp->getNumResults() == 1);
+    dstInputLoadOp.getResult(0).replaceAllUsesWith(
+        newElementwiseCallOp.getResult(0));
+    // Get rid of the load.
+    dstInputLoadOp->erase();
+
+    // Step 5. Remap the parameters for the elementwise call.
+    DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> paramRemaps;
+    auto oldElementwiseParams = elementwiseOp.getInputParams();
+    auto newElementwiseParams = dstInputLambdaOp.getInputParams();
+
+    for (auto [oldParam, newParam] :
+         llvm::zip(oldElementwiseParams, newElementwiseParams)) {
+      auto oldDeclRef =
+          KGEN::ParamDeclRefAttr::get(oldParam.getName(), oldParam.getType());
+      auto newDeclRef =
+          KGEN::ParamDeclRefAttr::get(newParam.getName(), newParam.getType());
+      paramRemaps[oldDeclRef] = newDeclRef;
+    }
+
+    mlir::AttrTypeReplacer walker;
+    walker.addReplacement(
+        [&](KGEN::ParamDeclRefAttr attr) -> std::optional<TypedAttr> {
+          auto itr = paramRemaps.find(attr);
+          if (itr != paramRemaps.end())
+            return itr->second;
+          return std::nullopt;
+        });
+
+    walker.recursivelyReplaceElementsIn(newElementwiseCallOp,
+                                        /*replaceAttrs=*/true,
+                                        /*replaceLocs=*/false,
+                                        /*replaceTypes=*/true);
+
+    // Step 6: Get rid of the fused argument (elementwise op output)
+    // It still has some uses, which shouldn't do anything since it should be
+    // read by the lambda. Eg `x._fused_load()` actually call the input_lambda
+    // without ever using `x`.
+    // Let's replace it with the elementwise op input instead.
+    auto fusionArgToKGEN = cast<MOGG::ToKGENOp>(*fusionArgument.user_begin());
+
+    auto elemwInputArg = oldToNew.lookup(inputKernelBody.getArgument(0));
+    auto elemwInputToKGEN = cast<MOGG::ToKGENOp>(*elemwInputArg.user_begin());
+
+    // Replace the intermediate elemw output with the elemw input
+    fusionArgToKGEN->getResult(0).replaceAllUsesWith(elemwInputToKGEN);
+
+    // Delete the unused ToKGEN of the fused argument.
+    fusionArgToKGEN->erase();
+
+    // Remove the fused argument from the final kernel.
+    kernelToFuseInto.removeOperandAtIndex(inputIdx);
+
+    // Step 7: Cleanup the kernel.
+
+    // Disable future input fusion.
+    kernelToFuseInto.removeInputFusionInterfaceAttr();
+
+    // Update the lambdas_have_fusion parameter for the extensibility kernels
+    kernelToFuseInto.setKGENKernelParamValueIfPresent(
+        analysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
+        BoolAttr::get(&getContext(), true));
+
+    kernelToFuseInto.setSummaryAttr(
+        getSummaryString({kernelToFuseInto, inputKernel}));
+
+    // Get rid of the original input kernel.
+    opsToErase.push_back(inputKernel);
   }
 
   /// Returns true if we can fuse into the output lambda. This sanity checks a
@@ -1020,9 +1207,17 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         if (canDoInputFusion(kernelToFuseInto,
                              kernelToFuseInto.getInputFusionInterfaceAttr(),
                              inputIdx)) {
-          fuseIntoInputLambda(kernelToFuseInto,
-                              kernelToFuseInto.getInputFusionInterfaceAttr(),
-                              inputIdx, kernelOpsToErase);
+          if (kernelToFuseInto.getIsKGEN().value_or(false)) {
+            fuseIntoInputLambdaKGEN(
+                kernelToFuseInto,
+                kernelToFuseInto.getInputFusionInterfaceAttr(), inputIdx,
+                kernelOpsToErase, *analysis);
+          } else {
+            fuseIntoInputLambdaMOGG(
+                kernelToFuseInto,
+                kernelToFuseInto.getInputFusionInterfaceAttr(), inputIdx,
+                kernelOpsToErase);
+          }
         }
       }
       ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto),
