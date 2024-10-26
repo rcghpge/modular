@@ -1057,7 +1057,7 @@ DenseSet<int> KernelOp::getInplaceAllocIndicesSet() {
 
 bool KernelOp::isInPlaceAlloc() {
   auto alloc = getAllocIndices();
-  if (alloc.has_value())
+  if (alloc.has_value() && !alloc->getValue().empty())
     return true;
   return false;
 }
