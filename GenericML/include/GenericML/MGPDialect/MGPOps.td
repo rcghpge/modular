@@ -188,6 +188,7 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
 ]> {
   let summary = "Extracts the `!mgp.buffer` from an `!mgp.tensor`.";
   let description = [{

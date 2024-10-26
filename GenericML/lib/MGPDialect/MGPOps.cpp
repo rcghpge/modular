@@ -916,6 +916,15 @@ bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 }
 
 //===----------------------------------------------------------------------===//
+// TensorExtractBufferOp
+//===----------------------------------------------------------------------===//
+
+bool TensorExtractBufferOp::extendsLifetime(size_t operandIndex,
+                                            size_t resultIndex) {
+  return operandIndex == getTensorMutable().getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 
