@@ -128,7 +128,16 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
   for (auto operandType : op->getOperands().getTypes()) {
     if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(operandType)) {
       attrs.push_back(builder.getNamedAttr(
-          "rank", builder.getIndexAttr(tensorSpec.getShape().size())));
+          "spec_rank", builder.getIndexAttr(tensorSpec.getShape().size())));
+    } else if (auto tensor = dyn_cast<MGP::DeviceTensorType>(operandType)) {
+      // A scalar mgp.tensor is promoted to NDBuffer<[1]>
+      size_t rank = tensor.getRank();
+      attrs.push_back(
+          builder.getNamedAttr("tensor_rank", builder.getIndexAttr(rank)));
+      attrs.push_back(builder.getNamedAttr(
+          "buffer_rank", builder.getIndexAttr(rank == 0 ? 1 : rank)));
+      attrs.push_back(
+          builder.getNamedAttr("type", TypeAttr::get(tensor.getElementType())));
     }
   }
 
@@ -139,7 +148,7 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
       attrs.push_back(builder.getNamedAttr(
           "type", TypeAttr::get(tensorType.getElementType())));
       attrs.push_back(builder.getNamedAttr(
-          "tensor_rank", builder.getIndexAttr(tensorType.getRank() == 0
+          "buffer_rank", builder.getIndexAttr(tensorType.getRank() == 0
                                                   ? 1
                                                   : tensorType.getRank())));
     }
