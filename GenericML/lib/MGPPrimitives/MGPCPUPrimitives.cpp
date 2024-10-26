@@ -173,24 +173,6 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.tensor.extract.buffer.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_tensor_extract_buffer(AsyncValueRef<Tensor> tensor,
-                                      Result<TensorBufferRef> outBuffer) {
-  std::move(outBuffer).emplace(tensor.get().getBufferRef().borrow());
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.tensor.extract.tensor_spec.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_tensor_extract_tensor_spec(AsyncValueRef<Tensor> tensor,
-                                           Result<TensorSpec> outSpec) {
-  std::move(outSpec).emplace(tensor->getSpec());
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor.buffer.print.cpu
 //===----------------------------------------------------------------------===//
 
@@ -239,10 +221,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.constant", mgp_buffer_constant);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
-  ADD_PRIMITIVE(registry, "mgp.tensor.extract.buffer",
-                mgp_tensor_extract_buffer);
-  ADD_PRIMITIVE(registry, "mgp.tensor.extract.tensor_spec",
-                mgp_tensor_extract_tensor_spec);
   ADD_PRIMITIVE(registry, "mgp.debug.tensor.print.cpu",
                 mgp_debug_tensor_print_cpu);
 
