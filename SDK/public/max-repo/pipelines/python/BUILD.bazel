@@ -13,6 +13,7 @@ modular_py_binary(
     imports = ["."],
     deps = [
         requirement("click"),
+        requirement("huggingface_hub"),
         "//SDK/lib/API/python/max/serve",
         "//SDK/public/max-repo/pipelines/python/dataprocessing",
         "//SDK/public/max-repo/pipelines/python/llama3",
