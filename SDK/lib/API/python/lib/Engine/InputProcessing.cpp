@@ -9,8 +9,8 @@
 #include "GenericML/API/max/c/value.h"
 #include "GenericML/API/max/cpp/aliases.h"
 #include "SDK/EngineAPI/python/MojoValue.h"
-#include "SDK/EngineAPI/python/PythonObject.h"
 #include "SDK/EngineAPI/python/Types.h"
+#include "Support/CPython/PythonObject.h"
 #include <vector>
 
 using namespace M;
@@ -158,9 +158,9 @@ M_AsyncValue *core::processValueInput(const py::object &pyObj,
     return M_createMojoAsyncValueBorrowingFromExisting(
         pyObj.cast<core::MojoValue *>()->value.get(), context);
 
-  core::PythonObjectWrapper *wrapper =
-      new core::PythonObjectWrapper(pyObj.ptr());
+  using namespace ::M::CPython;
+  PythonObjectWrapper *wrapper = new PythonObjectWrapper(pyObj.ptr());
 
   return M_createMojoAsyncValueFromPythonObjectWrapper(
-      static_cast<void *>(wrapper), &core::freePythonObjectWrapper, context);
+      static_cast<void *>(wrapper), &freePythonObjectWrapper, context);
 }
