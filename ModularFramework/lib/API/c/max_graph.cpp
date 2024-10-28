@@ -236,6 +236,12 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
   return wrap(MOSH::ShapeAttr::get(unwrap(ctx), dim_attrs, shapeType));
 }
 
+MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDeviceRef(MlirContext ctx,
+                                                       StringRef label,
+                                                       int32_t id) {
+  return wrap(M::DeviceRefAttr::get(unwrap(ctx), label, id));
+}
+
 //===----------------------------------------------------------------------===//
 // Type helpers
 //===----------------------------------------------------------------------===//

@@ -86,6 +86,10 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
                                                    MlirAttribute *dims,
                                                    int32_t rank);
 
+/// Creates a M DeviceRefAttr (#M.device_ref).
+MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDeviceRef(MlirContext ctx,
+                                                       llvm::StringRef label,
+                                                       int32_t id);
 //===----------------------------------------------------------------------===//
 // Type helpers
 //===----------------------------------------------------------------------===//
