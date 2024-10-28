@@ -1216,13 +1216,10 @@ mo.graph @reshape_infer_dim_folded<D0, D1 -> D2, D3>(
 // This is created from `replitv15-3B-hf-context-encoding-bf16-onnx`, as a
 // regression test to make sure we can staticize `mo.negative`.
 // CHECK-LABEL: mo.graph @staticize_mo_negative
-//  CHECK-SAME:  <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]] -> {{.*}}>(
+//  CHECK-SAME:  <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(
 //  CHECK-SAME:  %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], bf16>
-// TODO(GRA-449)
-//       CHECK:   kgen.param.declare [[PARAM_EXPR:.*]] = <div(mul_nuw([[D2]], -1), -1)>
-//  CHECK-NEXT:   %[[RES:.*]] = mo.range{{.*}} -> !mo.tensor<[[[PARAM_EXPR]]], si64>
-//  CHECK-NEXT:   %[[RES_REB:.*]] = mo.rebind(%[[RES]])
-//  CHECK-NEXT:   mo.output{{.*}} %[[RES_REB:.*]]
+//       CHECK:  %[[RES:.*]] = mo.range{{.*}} -> !mo.tensor<[[[D2]]], si64>
+//  CHECK-NEXT:  mo.output{{.*}} %[[RES:.*]]
 mo.graph @staticize_mo_negative<D0, D1, D2, D3 -> D4>(
   %input: !mo.tensor<[D0, D1, D2, D3], bf16>
 ) -> !mo.tensor<[D4], si64> {
