@@ -491,4 +491,15 @@ def DynamicMemoryPlanningPass : Pass<"dynamic-memory-planning", "MGP::ModelOp"> 
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// HoistHarness
+//===----------------------------------------------------------------------===//
+
+def HoistHarness: Pass<"hoist-harness", "mlir::ModuleOp"> {
+  let summary = "Hoist kernels into a harness function.";
+  let description = [{
+    Given a MOGG kernel hoist the body into a harness function.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

@@ -353,6 +353,11 @@ void LowerPrimitivesPass::runOnOperation() {
     Location opLoc = op->getLoc();
     OpBuilder builder{op};
 
+    // Skip any operations nested within a region.
+    if (op->getParentOfType<MOGG::GenericCompiledRegionOp>() ||
+        op->getParentOfType<KGEN::GeneratorOp>())
+      return;
+
     // `arith.constant` might be created after constant folding, canonicalize
     // them into `index.constant/index.bool.constant` accordingly.
     if (auto arithConstOp = dyn_cast<mlir::arith::ConstantOp>(op)) {
@@ -377,8 +382,7 @@ void LowerPrimitivesPass::runOnOperation() {
     CompiledRegionBodyBuilder bodyBuilder(nullptr);
     if ((isa_and_nonnull<mlir::index::IndexDialect>(op->getDialect()) ||
          isa_and_nonnull<KGEN::POP::POPDialect>(op->getDialect()) ||
-         isa<KGEN::ParamConstantOp>(op)) &&
-        !op->getParentOfType<MOGG::GenericCompiledRegionOp>()) {
+         isa<KGEN::ParamConstantOp>(op))) {
       // Clone index operations and pop operations when necessary.
       bodyBuilder = cloneOperationBuilder;
     } else if (isLowerableToMOGGCall(ctx, mojoLibraryAnalysis, op)) {

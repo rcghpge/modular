@@ -58,9 +58,6 @@ struct JitCompileKernels
     if (failed(pm.run(m)))
       return signalPassFailure();
 
-    // Check if any ops are graph ops so we know if we are the last compile.
-    bool isGraph = !m.getOps<MO::GraphOp>().empty();
-
     auto func = [&](auto graph) {
       auto errOr = this->runPass(graph, mojoLibraryAnalysis);
       if (errOr.isError())
@@ -74,10 +71,9 @@ struct JitCompileKernels
     mlir::parallelForEach(ctx, modelRange.begin(), modelRange.end(), func);
 
     // Strip all KGEN forward decls. There is now nothing they can be lowered
-    // to. We only do this on the second compile (MGP models). This will be
-    // removed once we only have one compile stage.
-    if (!isGraph)
-      m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
+    // to.
+    m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
+    m.walk([](KGEN::GeneratorOp gen) { gen.erase(); });
   }
 
   template <typename OpContainer>

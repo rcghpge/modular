@@ -350,6 +350,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createAddDeviceContextProfilingPass());
 
+  pm.addPass(MGP::createHoistHarness());
+
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.withDebuginfo = opts.withDebuginfo;
