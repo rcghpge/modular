@@ -37,28 +37,6 @@ func.func @spec_create_dynamic_rank(%dim : index) {
   mef.output %0 : !mgp.tensor_spec<*xf32>
 }
 
-
-// -----
-
-//
-// mgp.tensor_spec.dims.dynamic
-//
-
-func.func @spec_dims_mismatched_dims(%spec : !mgp.tensor_spec<?x64x?xf32>) {
-  // expected-error@+1 {{operation defines 2 results but was provided 1 to bind}}
-  %dim0 = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x64x?xf32>
-  mef.output %dim0 : index
-}
-
-// -----
-
-func.func @spec_dims_dynamic_rank(%spec : !mgp.tensor_spec<*xf32>) {
-  // expected-error@+1 {{custom op 'mgp.tensor_spec.dims.dynamic' expected !mgp.tensor_spec type to have a statically known rank.}}
-  %dim0 = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<*xf32>
-  mef.output %dim0 : index
-}
-
-
 // -----
 
 //

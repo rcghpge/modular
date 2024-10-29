@@ -49,7 +49,8 @@ mgp.model @non_pure_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %const_buf = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
   %const_spec = mgp.tensor_spec.create  : !mgp.tensor_spec<2x2xf32>
   %out_spec = "foo.side_effect_op"(%const_spec) : (!mgp.tensor_spec<2x2xf32>) -> !mgp.tensor_spec<?x?xf32>
-  %out_dim0, %out_dim1 = mgp.tensor_spec.dims.dynamic %out_spec : !mgp.tensor_spec<?x?xf32>
+  %out_dim0 = mgp.tensor_spec.get_dim[0] %out_spec : !mgp.tensor_spec<?x?xf32>
+  %out_dim1 = mgp.tensor_spec.get_dim[1] %out_spec : !mgp.tensor_spec<?x?xf32>
   %c8 = index.constant 8
   %tmp = index.mul %out_dim0, %out_dim1
   %bytes = index.mul %c8, %tmp

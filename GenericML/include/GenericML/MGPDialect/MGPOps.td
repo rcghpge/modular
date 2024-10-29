@@ -330,46 +330,6 @@ def CpuTensorSpecEqualStaticOp : MGP_Op<"tensor_spec.equal.static", [Pure]> {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorSpecDimsDynamicOp
-//===----------------------------------------------------------------------===//
-
-def CpuTensorSpecDimsDynamicOp : MGP_Op<"tensor_spec.dims.dynamic", [
-    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = [{
-    Returns the runtime values of the dimensions of CPU tensor spec
-    which are not statically known.
-  ]};
-  let description = [{
-    Returns the actual runtime value of each dimension in a CPU tensor spec
-    where that dimension is not known statically. It is valid for the tensor
-    spec to be fully static, in which case no results are returned (and the op
-    is a no-op).
-
-    Example:
-    ```mlir
-    %spec : !mgp.tensor_spec<?x?xf32>
-    %dim0, %dim1 = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<?x?xf32>
-    %dim0, %dim1 : index, index
-
-    %spec : !mgp.tensor_spec<32x?xf32>
-    %dim = mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x?xf32>
-    %dim : index
-
-    %spec : !mgp.tensor_spec<32x4xf32>
-    mgp.tensor_spec.dims.dynamic %spec : !mgp.tensor_spec<32x4xf32> // no-op
-    ```
-  }];
-
-  let arguments = (ins MGP_TensorSpecType: $spec,
-                   UI64ArrayElementsAttr:$rawDims);
-  let results = (outs Variadic<Index>:$results);
-  let assemblyFormat = [{
-    $spec attr-dict `:` custom<TensorSpecTypeWithRawDims>(type($spec), $rawDims)
-  }];
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
 // TensorSpecGetDimOp
 //===----------------------------------------------------------------------===//
 
@@ -727,10 +687,10 @@ def GuardOp : MGP_Op<"guard", [
       %X: !mgp.tensor<?x?xf32>
       %Y: !mgp.tensor<?x?xf32>
 
-      %spec1:2 = mgp.tensor_spec.dims.dynamic %0 : !mgp.tensor_spec<?x?xf32>
-      %spec2:2 = mgp.tensor_spec.dims.dynamic %2 : !mgp.tensor_spec<?x?xf32>
+      %spec1_1 = mgp.tensor_spec.get_dim[1] %0 : !mgp.tensor_spec<?x?xf32>
+      %spec2_0 = mgp.tensor_spec.get_dim[0] %2 : !mgp.tensor_spec<?x?xf32>
 
-      %cond = index.cmp.eq %spec1#1, %spec2#0
+      %cond = index.cmp.eq %spec1_1, %spec2_0
 
       %chain = mgp.assert %cond, "D1 != D2"
       %Xp, %Yp = mgp.guard %chain, %X, %Y : !mgp.tensor<?x?xf32>, !mgp.tensor<?x?xf32>

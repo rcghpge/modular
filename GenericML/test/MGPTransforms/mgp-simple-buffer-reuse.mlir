@@ -21,9 +21,10 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
   %inBuffer = mgp.tensor.extract.buffer %inTensor : !mgp.tensor<?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
-  %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims0 = mgp.tensor_spec.get_dim[0] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims1 = mgp.tensor_spec.get_dim[1] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = index.mul %inDims#0, %inDims#1
+  %allocSize = index.mul %inDims0, %inDims1
 
   // We only expect 2 remaining allocs after the pass
 
@@ -62,10 +63,11 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
   %inBuffer = mgp.tensor.extract.buffer %inTensor : !mgp.tensor<?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
-  %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims0 = mgp.tensor_spec.get_dim[0] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims1 = mgp.tensor_spec.get_dim[1] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = index.mul %inDims#0, %inDims#1
-  %allocSizeDifferent = index.add %inDims#0, %inDims#1
+  %allocSize = index.mul %inDims0, %inDims1
+  %allocSizeDifferent = index.add %inDims0, %inDims1
 
 
   // We still expect 3 remaining allocs after the pass

@@ -453,10 +453,6 @@ static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
   p << specType;
 }
 
-//===----------------------------------------------------------------------===//
-// CpuTensorSpecDimsDynamicOp
-//===----------------------------------------------------------------------===//
-
 /// Parses a !mgp.tensor_spec type, however also sets the rawDims to
 /// capture its dimensions in 'raw form'.
 static ParseResult
@@ -472,43 +468,6 @@ parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
     return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
                                "statically known rank.";
   rawDims = tensorSpec.getRawDims();
-  return success();
-}
-
-static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
-                                           const CpuTensorSpecDimsDynamicOp &op,
-                                           Type specType,
-                                           IntArrayElementsAttr rawDims) {
-  p << specType;
-}
-
-LogicalResult CpuTensorSpecDimsDynamicOp::verify() {
-  TensorSpecType actualSpecType = getSpec().getType();
-  TensorSpecType impliedSpecType = TensorSpecType::get(
-      getContext(), getRawDims(), actualSpecType.getRawDType().getUInt());
-  assert(impliedSpecType.hasRank());
-  if (actualSpecType != impliedSpecType)
-    return emitOpError() << "expected tensor spec type is " << actualSpecType
-                         << ", but static dimensions arguments "
-                            "suggest it should be "
-                         << impliedSpecType << ".";
-  if (getResults().size() != actualSpecType.getNumDynamicDims())
-    return emitOpError() << "expected " << actualSpecType.getNumDynamicDims()
-                         << " dimension results to match the tensor spec "
-                         << actualSpecType << ", but given "
-                         << getResults().size();
-  return success();
-}
-
-LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  ASSERT_STREAM(operands.size() == 1, << "mismatched operand arity");
-  auto specType = dyn_cast<TensorSpecType>(operands[0].getType());
-  ASSERT_STREAM(specType, << "mismatched operand type");
-  inferredReturnTypes.append(specType.getNumDynamicDims(),
-                             MOSH::ShapeAttr::getDimType(context));
   return success();
 }
 

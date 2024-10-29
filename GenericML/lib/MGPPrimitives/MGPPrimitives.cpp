@@ -154,26 +154,6 @@ static Chain mgp_state_slot_create(Chain inChain, StateContext &ctx,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.tensor_spec.dims.dynamic
-//===----------------------------------------------------------------------===//
-
-/// Fulfills the result with dimensions of tensor spec which were unknown
-/// at compile time.
-static void mgp_tensor_spec_dims_dynamic(const TensorSpec &tensorSpec,
-                                         RemainingResults results,
-                                         MEFAttr<ArrayRef<uint64_t>> rawDims,
-                                         Runtime &runtime) {
-  // All of the results are created as size_t.
-  for (auto &result : results)
-    result = AsyncValueRef<size_t>::allocate(runtime);
-
-  unsigned next = 0;
-  for (size_t i = 0, e = rawDims->size(); i < e; ++i)
-    if (!hasRawSize((*rawDims)[i]))
-      results[next++].copy().emplace<size_t>(tensorSpec[i]);
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.generic.execute
 //===----------------------------------------------------------------------===//
 
@@ -664,8 +644,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.plan", mgp_buffer_plan);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
-  ADD_PRIMITIVE(registry, "mgp.tensor_spec.dims.dynamic",
-                mgp_tensor_spec_dims_dynamic);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.guard", mgp_guard);

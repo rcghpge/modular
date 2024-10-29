@@ -9,9 +9,10 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
   %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
-  %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims0 = mgp.tensor_spec.get_dim[0] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims1 = mgp.tensor_spec.get_dim[1] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = index.mul %inDims#0, %inDims#1
+  %allocSize = index.mul %inDims0, %inDims1
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
@@ -44,9 +45,10 @@ mgp.model @parallel : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
   %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
-  %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims0 = mgp.tensor_spec.get_dim[0] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims1 = mgp.tensor_spec.get_dim[1] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = index.mul %inDims#0, %inDims#1
+  %allocSize = index.mul %inDims0, %inDims1
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
@@ -82,9 +84,10 @@ mgp.model @tensor_create_aliased : mof devices [#M.device_ref<"cpu", 0>] init (%
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
   %inBuffer = mgp.tensor.extract.buffer %inTensor : <?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
-  %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims0 = mgp.tensor_spec.get_dim[0] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+  %inDims1 = mgp.tensor_spec.get_dim[1] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-  %allocSize = index.mul %inDims#0, %inDims#1
+  %allocSize = index.mul %inDims0, %inDims1
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
@@ -131,9 +134,10 @@ mgp.model @nested_block : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
   %b1 = mgp.buffer.to_bool %arg0, %arg1[1], %buf1 : !mgp.buffer<1>
 
   %ifchain, %outbuf = grt.if %b1 (%arg0: !mef.chain, %arg1: !mgp.context, %inBuffer: !mgp.buffer<>, %inTensorSpec: !mgp.tensor_spec<?x?xf32>, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<>) {
-    %inDims:2 = mgp.tensor_spec.dims.dynamic %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+    %inDims0 = mgp.tensor_spec.get_dim[0] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
+    %inDims1 = mgp.tensor_spec.get_dim[1] %inTensorSpec : !mgp.tensor_spec<?x?xf32>
 
-    %allocSize = index.mul %inDims#0, %inDims#1
+    %allocSize = index.mul %inDims0, %inDims1
 
     // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
     // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
