@@ -9,13 +9,15 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "KGEN/POPDialect/POPDialect.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
+#include "Support/Compiler/MLIRDType.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
+
 #include <numeric>
 
 using namespace M;
@@ -192,68 +194,31 @@ ErrorOr<SmallVector<Value>> MOGraphLoweringState::lowerShapeAttrDynDims(
   return runtimeDims;
 }
 
-int64_t MOGraphLoweringState::extractShapeAttrStaticDimsProduct(
-    MOSH::ShapeAttr shapeAttr, Location loc) {
-  int64_t product = 1;
-  for (TypedAttr dim : shapeAttr.getValues()) {
-    if (auto intDim = dyn_cast<IntegerAttr>(dim)) {
-      product *= intDim.getValue().getSExtValue();
-    }
-  }
-  return product;
-}
-
-ErrorOr<StringRef> MOGraphLoweringState::pocToMopIndexOp(KGEN::POC poc) {
-  // TODO: support more opcodes
-  switch (poc) {
-  case KGEN::POC::Add:
-    return mlir::index::AddOp::getOperationName();
-  case KGEN::POC::Div:
-    return mlir::index::DivSOp::getOperationName();
-  case KGEN::POC::EQ:
-  case KGEN::POC::LT:
-  case KGEN::POC::LE:
-    return mlir::index::CmpOp::getOperationName();
-  case KGEN::POC::Max:
-    return mlir::index::MaxSOp::getOperationName();
-  case KGEN::POC::Min:
-    return mlir::index::MinSOp::getOperationName();
-  case KGEN::POC::Mod:
-    return mlir::index::RemSOp::getOperationName();
-  case KGEN::POC::Mul:
-  case KGEN::POC::MulNuw:
-    return mlir::index::MulOp::getOperationName();
-  case KGEN::POC::And:
-    return KGEN::POP::AndOp::getOperationName();
-  case KGEN::POC::Or:
-    return KGEN::POP::OrOp::getOperationName();
-  case KGEN::POC::Xor:
-    return KGEN::POP::XOrOp::getOperationName();
-  case KGEN::POC::Cond:
-    return KGEN::POP::SelectOp::getOperationName();
-  default:
-    return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
-  }
-}
-
+/// Build a sequence of binary operations reducing the given set of values
+/// to a single value. This is used to convert variadic KGEN::POC ops to
+/// the binary op implementing them.
 template <typename Op>
 static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
                                       ValueRange operands, Type resultType) {
-  assert(operands.size() >= 2 &&
-         "variadic operation requires at least 2 arguments");
+  if (operands.empty())
+    return Error("Variadic op without operands");
 
-  auto start = operands.front();
-  auto rest = operands.drop_front();
+  Value start = operands.front();
+  ValueRange rest = operands.drop_front();
 
-  return std::accumulate(rest.begin(), rest.end(), start,
-                         [&](Value lhs, Value rhs) {
-                           return builder.create<Op>(loc, resultType, lhs, rhs);
-                         });
+  auto createBinop = [&](Value lhs, Value rhs) {
+    return builder.create<Op>(loc, resultType, lhs, rhs);
+  };
+
+  return std::accumulate(rest.begin(), rest.end(), start, createBinop);
 }
 
-static ErrorOr<Value> pocToMopIndex(KGEN::POC poc, OpBuilder &builder,
-                                    Location loc, ValueRange operands,
-                                    Type resultType) {
+/// Convert the given KGEN::POC operation to the equvalent operation in
+/// the `index` dialect, if that operation exists, otherwise use the
+/// POP dialect.
+static ErrorOr<Value>
+lowerParamOperatorToIndex(KGEN::POC poc, OpBuilder &builder, Location loc,
+                          ValueRange operands, Type resultType) {
   auto getIdxCmpPredicate = [](KGEN::POC poc) {
     switch (poc) {
     case KGEN::POC::EQ:
@@ -315,21 +280,199 @@ static ErrorOr<Value> pocToMopIndex(KGEN::POC poc, OpBuilder &builder,
   }
 }
 
+/// Convert the given KGEN::POC operation to the equvalent operation in
+/// in the POP dialect. This function assumes that input/output types
+/// are !pop.scalar values.
+static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
+                                      Location loc, ValueRange operands,
+                                      Type resultType) {
+  auto getPopCmpPredicate = [](KGEN::POC poc) -> KGEN::POP::CmpPredicate {
+    switch (poc) {
+    case KGEN::POC::EQ:
+      return KGEN::POP::CmpPredicate::EQ;
+    case KGEN::POC::LT:
+      return KGEN::POP::CmpPredicate::LT;
+    case KGEN::POC::LE:
+      return KGEN::POP::CmpPredicate::LE;
+    default:
+      llvm_unreachable("unrecognized predicate");
+    }
+  };
+
+  switch (poc) {
+  // All comparisons lower to `index.cmp`
+  case KGEN::POC::EQ:
+  case KGEN::POC::LT:
+  case KGEN::POC::LE:
+    return builder.create<KGEN::POP::CmpOp>(
+        loc, resultType, getPopCmpPredicate(poc), operands[0], operands[1]);
+
+  // All potentially variadic ops
+  case KGEN::POC::Add:
+    return buildVariadicOp<KGEN::POP::AddOp>(builder, loc, operands,
+                                             resultType);
+  case KGEN::POC::Div:
+    return buildVariadicOp<KGEN::POP::DivOp>(builder, loc, operands,
+                                             resultType);
+  case KGEN::POC::Max:
+    return buildVariadicOp<KGEN::POP::MaxOp>(builder, loc, operands,
+                                             resultType);
+  case KGEN::POC::Min:
+    return buildVariadicOp<KGEN::POP::MinOp>(builder, loc, operands,
+                                             resultType);
+  case KGEN::POC::Mul:
+  case KGEN::POC::MulNuw:
+    return buildVariadicOp<KGEN::POP::MulOp>(builder, loc, operands,
+                                             resultType);
+  case KGEN::POC::And:
+    return buildVariadicOp<KGEN::POP::AndOp>(builder, loc, operands,
+                                             resultType);
+  case KGEN::POC::Or:
+    return buildVariadicOp<KGEN::POP::OrOp>(builder, loc, operands, resultType);
+  case KGEN::POC::Xor:
+    return buildVariadicOp<KGEN::POP::XOrOp>(builder, loc, operands,
+                                             resultType);
+
+  // Remaining ops
+  case KGEN::POC::Shl:
+    return builder.create<KGEN::POP::ShlOp>(loc, resultType, operands);
+  case KGEN::POC::Shr:
+    return builder.create<KGEN::POP::ShrOp>(loc, resultType, operands);
+  case KGEN::POC::Mod:
+    return builder.create<KGEN::POP::RemOp>(loc, resultType, operands);
+  case KGEN::POC::Cond:
+    return builder.create<KGEN::POP::SelectOp>(loc, resultType, operands);
+  default:
+    return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
+  }
+}
+
+static FailureOr<KGEN::POP::SIMDType> builtinTypeToDType(mlir::MLIRContext *ctx,
+                                                         Type type) {
+  KGEN::KGENDType dtype;
+
+  if (type.isIndex())
+    dtype = KGEN::KGENDType{KGEN::KGENDType::ExtraCases::index};
+  else if (auto integer = dyn_cast<IntegerType>(type))
+    dtype = KGEN::KGENDType(M::getEquivalentDType(integer));
+  else
+    return failure();
+
+  return KGEN::POP::SIMDType::get(ctx, 1, dtype);
+}
+
+static Value popScalarToBuitltinType(OpBuilder &builder, Location loc,
+                                     Value v) {
+  auto type = cast<KGEN::POP::SIMDType>(v.getType());
+  auto maybeDtype = type.getResolvedDType();
+  assert(maybeDtype && "unable to resolve dtype");
+
+  auto dtype = *maybeDtype;
+
+  MLIRContext *ctx = builder.getContext();
+
+  auto resultType =
+      dtype.isIndex()
+          ? (Type)IndexType::get(ctx)
+          : (Type)M::getEquivalentIntegerType(ctx, DType(dtype.getValue()));
+
+  return builder.create<KGEN::POP::CastToBuiltinOp>(loc, resultType, v);
+}
+
+/// This logic controls when to use the Index dialect and when to lower to
+/// the POP dialect. Currently, the logic tries to use Index when possible
+/// and only lower to POP when not supported by Index.
+static bool useIndexDialect(ValueRange operands, Type resultType) {
+  TypeRange operandTypes{operands};
+
+  if (llvm::any_of(operandTypes, IndexType::classof<Type>) ||
+      isa<IndexType>(resultType))
+    return true;
+
+  auto isI1Type = [](Type type) { return type.isSignlessInteger(1); };
+
+  if (llvm::all_of(operandTypes, isI1Type) && isI1Type(resultType))
+    return true;
+
+  return false;
+}
+
+/// Lower the given parameter operator expression to the equivalent sequence
+/// of POP dialect operations. This lowering does 3 things:
+///
+/// 1. cast all operands from their input types to the equivalent !pop.scalar
+///    type
+/// 2. generate the implementing POP operation on the !pop.scalar values
+/// 3. cast the result back to the builtin MLIR type.
+///
+///     kgen.param.declare ADD: si64 = <add(:si64 X, Y)>
+///
+/// becomes:
+///
+///     %2 = pop.cast_from_builtin %0 : si64 to !pop.scalar<si64>
+///     %3 = pop.cast_from_builtin %1 : si64 to !pop.scalar<si64>
+///     %4 = pop.add %2, %3 : !pop.scalar<si64>
+///     %5 = pop.cast_to_builtin %4 : !pop.scalar<si64> to si64
+///
+static ErrorOr<Value> lowerParamOperatorToPop(OpBuilder &builder, Location loc,
+                                              KGEN::ParamOperatorAttr opAttr,
+                                              ValueRange operands) {
+  auto resultType = opAttr.getType();
+
+  // Get !pop.scalar dtype that corresponds to the expected output type.
+  auto popResultType = builtinTypeToDType(builder.getContext(), resultType);
+  if (failed(popResultType))
+    return Error("unable to convert result type");
+
+  SmallVector<Value> popOperands;
+  popOperands.reserve(operands.size());
+
+  // Convert operands to equivalent !pop.scalar type
+  for (auto operand : operands) {
+    auto scalarType =
+        builtinTypeToDType(builder.getContext(), operand.getType());
+    if (failed(scalarType))
+      return Error("unable to convert operand to !pop.scalar");
+
+    popOperands.push_back(builder.create<KGEN::POP::CastFromBuiltinOp>(
+        loc, *scalarType, operand));
+  }
+
+  // Create the implementing pop dialect operation.
+  auto maybeResult = pocToMopInteger(opAttr.getOpcode(), builder, loc,
+                                     popOperands, *popResultType);
+
+  if (maybeResult.isError())
+    return maybeResult;
+
+  // Convert the !pop.scalar value back to the corresponding builtin type.
+  return popScalarToBuitltinType(builder, loc, maybeResult.takeValue());
+}
+
 ErrorOr<Value>
 MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
                                          KGEN::ParamOperatorAttr opAttr,
                                          ValueRange operands) {
   Type resultType = opAttr.getType();
-  return pocToMopIndex(opAttr.getOpcode(), builder, loc, operands, resultType);
+
+  if (useIndexDialect(operands, resultType))
+    return lowerParamOperatorToIndex(opAttr.getOpcode(), builder, loc, operands,
+                                     resultType);
+
+  // Get !pop.scalar dtype that corresponds to the expected output type.
+  return lowerParamOperatorToPop(builder, loc, opAttr, operands);
 }
 
 Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
                                               IntegerAttr intAttr) {
-  if (auto boolAttr = dyn_cast<BoolAttr>(intAttr)) {
+  if (auto boolAttr = dyn_cast<BoolAttr>(intAttr))
     return builder.create<mlir::index::BoolConstantOp>(loc,
                                                        boolAttr.getValue());
-  }
-  return builder.create<mlir::index::ConstantOp>(loc, intAttr.getInt());
+
+  if (intAttr.getType().isIndex())
+    return builder.create<mlir::index::ConstantOp>(loc, intAttr.getInt());
+
+  return builder.create<KGEN::ParamConstantOp>(loc, intAttr);
 }
 
 /// sequenced assert lowering helper functions

@@ -377,12 +377,6 @@ public:
                                                     MOSH::ShapeAttr shapeAttr,
                                                     Location loc);
 
-  /// Extract the static dimensions from a shape attribute and return their
-  /// product. Returns one if there are no static dimensions.
-  /// For example, a shape of 2x3x?x1 would return 6.
-  int64_t extractShapeAttrStaticDimsProduct(MOSH::ShapeAttr shapeAttr,
-                                            Location loc);
-
   const BufferBuilderContext &getBufferBuilderContext() const {
     return builderContext;
   }
@@ -423,9 +417,6 @@ private:
   //===-----------------------------------------------------------------===//
   // Parameter lowering helpers.
   //===-----------------------------------------------------------------===//
-
-  /// Maps KGEN::POC opcodes to pop/index.* op names.
-  static ErrorOr<StringRef> pocToMopIndexOp(KGEN::POC poc);
 
   /// Lowers an operator attribute to the appropriate mop index op.
   static ErrorOr<Value> lowerParamOperator(OpBuilder &builder, Location loc,

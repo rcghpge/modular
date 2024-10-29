@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-primitives | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mgp.model @add_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -15,6 +15,8 @@ mo.graph @add_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare A2 = <add(A0, 2)>
   mo.output
 }
+
+// -----
 
 // CHECK-LABEL: mgp.model @sub_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -33,6 +35,8 @@ mo.graph @sub_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   mo.output
 }
 
+// -----
+
 // CHECK-LABEL: mgp.model @mul_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
@@ -48,6 +52,8 @@ mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare M2 = <mul_nuw(M0, 2)>
   mo.output
 }
+
+// -----
 
 // CHECK-LABEL: mgp.model @mod_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -65,6 +71,8 @@ mo.graph @mod_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare M2 = <mod(M0, 2)>
   mo.output
 }
+
+// -----
 
 // CHECK-LABEL: mgp.model @eq_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -84,6 +92,8 @@ mo.graph @eq_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   mo.output
 }
 
+// -----
+
 // CHECK-LABEL: mgp.model @lt_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
@@ -100,6 +110,8 @@ mo.graph @lt_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   mo.output
 }
 
+// -----
+
 // CHECK-LABEL: mgp.model @le_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
@@ -115,6 +127,8 @@ mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare LE2: i1 = <le(X, X)>
   mo.output
 }
+
+// -----
 
 // CHECK-LABEL: mgp.model @cond_expression : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -134,6 +148,8 @@ mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare M2 = <cond(B, M0, 2)>
   mo.output
 }
+
+// -----
 
 // CHECK-LABEL: mgp.model @bool_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -161,6 +177,8 @@ mo.graph @bool_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare A1: i1 = <and(E1, E0)>
   mo.output
 }
+
+// -----
 
 // CHECK-LABEL: mgp.model @complex_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -191,6 +209,8 @@ mo.graph @variadic_exprs<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   mo.output
 }
 
+// -----
+
 // CHECK-LABEL: mgp.model @shape_attr : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
@@ -203,6 +223,8 @@ mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   kgen.param.declare Sh: !mosh.ape = <[X, Y, Z]>
   mo.output
 }
+
+// -----
 
 // CHECK-LABEL: mgp.model @param_expr_in_output_shape : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
@@ -222,6 +244,8 @@ mo.graph @param_expr_in_output_shape<D0>(
   mo.output %res : !mo.tensor<[mul_nuw(D0, 2), 2], f32>
 }
 
+// -----
+
 // CHECK-LABEL: mgp.model @shift_expressions : mof
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
 // CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
@@ -237,3 +261,34 @@ mo.graph @shift_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
 
   mo.output
 }
+
+// -----
+
+// CHECK-LABEL: mgp.model @integer_types : mof
+mo.graph @integer_types<X: si64, Y: si64>() {
+  // CHECK: %{{.*}} = pop.add %{{.*}}, %{{.*}} : !pop.scalar<si64>
+  kgen.param.declare ADD: si64 = <add(:si64 X, Y)>
+
+  // CHECK: %{{.*}} = pop.mul %{{.*}}, %{{.*}} : !pop.scalar<si64>
+  kgen.param.declare MUL: si64 = <mul(:si64 Y, X)>
+
+  // CHECK: %{{.*}} = pop.shl %{{.*}}, %{{.*}} : !pop.scalar<si64>
+  kgen.param.declare SHL: si64 = <shl(:si64 X, Y)>
+
+  // CHECK: %{{.*}} = pop.shr %{{.*}}, %{{.*}} : !pop.scalar<si64>
+  kgen.param.declare SHR: si64 = <shr(:si64 X, Y)>
+
+  // CHECK: %{{.*}} = pop.div %{{.*}}, %{{.*}} : !pop.scalar<si64>
+  kgen.param.declare DIV: si64 = <div(:si64 X, Y)>
+
+  // CHECK: %{{.*}} = pop.cmp eq(%{{.*}}, %{{.*}}) : <1, si64>
+  kgen.param.declare EQ: i1 = <eq(:si64 X, Y)>
+
+  // CHECK: %{{.*}} = pop.cmp lt(%{{.*}}, %{{.*}}) : <1, si64>
+  kgen.param.declare LT: i1 = <lt(:si64 X, Y)>
+
+  // CHECK: %{{.*}} = pop.cmp le(%{{.*}}, %{{.*}}) : <1, si64>
+  kgen.param.declare LE: i1 = <le(:si64 X, Y)>
+  mo.output
+}
+
