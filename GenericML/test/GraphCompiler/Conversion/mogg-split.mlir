@@ -10,10 +10,11 @@
 // CHECK-NEXT:   %[[ZERO:.*]] = index.constant 0
 
 // CHECK-NEXT:   %[[DUMMY_SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[DUMMY]]
-// CHECK-NEXT:   %[[DIMS:.*]]:2 = mgp.tensor_spec.dims.dynamic %[[DUMMY_SPEC]]
+// CHECK-NEXT:   %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %[[DUMMY_SPEC]]
+// CHECK-NEXT:   %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %[[DUMMY_SPEC]]
 // CHECK-NEXT:   %[[INPUT_BUF:.*]] = mgp.tensor.extract.buffer %[[INPUT]]
-// CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.tensor_spec.create %[[DIMS]]#0
-// CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.tensor_spec.create %[[DIMS]]#1
+// CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.tensor_spec.create %[[DIM0]]
+// CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.tensor_spec.create %[[DIM1]]
 // CHECK-NEXT:   %[[SPLIT_SIZE1:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC1]]
 
 // CHECK-NEXT:   %[[SLICE:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[ZERO]], %[[SPLIT_SIZE1]]

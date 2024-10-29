@@ -339,10 +339,15 @@ public:
   TypedValue<MGP::TensorSpecType> getShape(Location loc, Value loweredTensor,
                                            DeviceRefAttr device);
 
-  /// Returns the (op which produces the) dynamic dimensions for the given
+  /// Returns the dynamic dimensions for the given
+  /// lowered tensor on the given device. Assumes the rank is known.
+  SmallVector<Value> getDynamicDims(Location loc, Value loweredTensor,
+                                    DeviceRefAttr device);
+
+  /// Returns the (op which produces the) dimension for the given
   /// lowered tensor on the given device.
-  MGP::CpuTensorSpecDimsDynamicOp
-  getDynamicDims(Location loc, Value loweredTensor, DeviceRefAttr device);
+  MGP::TensorSpecGetDimOp getDim(Location loc, Value loweredTensor,
+                                 uint64_t axis, DeviceRefAttr device);
 
   /// The given MO inArg (a !mo.tensor) has been lowered to the given MGP
   /// outArg (an !mgp.tensor). If inArg is subject to any dynamic shapes

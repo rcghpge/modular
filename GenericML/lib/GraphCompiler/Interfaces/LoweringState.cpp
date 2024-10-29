@@ -44,9 +44,10 @@ MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                                            loweredTensor);
 }
 
-MGP::CpuTensorSpecDimsDynamicOp
-MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
-                                     DeviceRefAttr device) {
+MGP::TensorSpecGetDimOp MOGraphLoweringState::getDim(Location loc,
+                                                     Value loweredTensor,
+                                                     uint64_t axis,
+                                                     DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
   // NOTE: We could use getShape here, however usually we'll also require the
   // loweredTensor's buffer in which case we'll be emitting a full
@@ -54,8 +55,29 @@ MOGraphLoweringState::getDynamicDims(Location loc, Value loweredTensor,
   TypedValue<MGP::TensorSpecType> tensorSpec =
       getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
                                                         loweredTensor);
-  return builder.create<MGP::CpuTensorSpecDimsDynamicOp>(
-      loc, /*spec=*/tensorSpec, /*rawDims=*/tensorSpec.getType().getRawDims());
+  return builder.create<MGP::TensorSpecGetDimOp>(loc, /*spec=*/tensorSpec,
+                                                 /*axis=*/axis);
+}
+
+SmallVector<Value> MOGraphLoweringState::getDynamicDims(Location loc,
+                                                        Value loweredTensor,
+                                                        DeviceRefAttr device) {
+  OpBuilder &builder = getExecuteOpBuilder();
+  // NOTE: We could use getShape here, however usually we'll also require the
+  // loweredTensor's buffer in which case we'll be emitting a full
+  // tensor.extract op anyway.
+  TypedValue<MGP::TensorSpecType> tensorSpec =
+      getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
+                                                        loweredTensor);
+  TensorSpecType specType = tensorSpec.getType();
+  SmallVector<Value> dynDims;
+
+  for (size_t i = 0; i < specType.getRank(); ++i)
+    if (specType.isDynamicDim(i))
+      dynDims.push_back(
+          builder.create<MGP::TensorSpecGetDimOp>(loc, tensorSpec, i));
+
+  return dynDims;
 }
 
 ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
@@ -90,9 +112,9 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
       // extract as a group, we always do the extraction, and rely on DCE to
       // cleanup if all the parameters turn out to have already been mapped.
       hasParams = true;
-      MGP::CpuTensorSpecDimsDynamicOp dynDimsOp =
-          getDynamicDims(loc, outArg, argDevice);
-      // CpuTensorSpecDimsDynamicOp returns indexes only for dimensions
+
+      SmallVector<Value> dynDims = getDynamicDims(loc, outArg, argDevice);
+      // getDynamicDims returns indexes only for dimensions
       // which are unknown at compile time. So build the corresponding
       // vector of parameters. Note we do not support arbitrary expressions in
       // the MO shape signature.
@@ -101,12 +123,11 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
         if (auto inDimParam = dyn_cast<KGEN::ParamDeclRefAttr>(inDim))
           inDimParams.emplace_back(inDimParam);
       }
-      if (dynDimsOp->getNumResults() != inDimParams.size()) {
+      if (dynDims.size() != inDimParams.size()) {
         // TODO(#14531) handle param expr
         return Error("Expressions in parameter arguments are not supported");
       }
-      for (auto [inDimParam, outDim] :
-           llvm::zip(inDimParams, dynDimsOp->getResults()))
+      for (auto [inDimParam, outDim] : llvm::zip(inDimParams, dynDims))
         // Only update the parameter mapping for the first parameter
         // occurrence.
         if (!params.lookupLowered(parentRegion, inDimParam))

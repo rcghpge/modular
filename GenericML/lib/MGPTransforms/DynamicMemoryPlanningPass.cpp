@@ -55,7 +55,8 @@ bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
       isa<KGEN::POP::POPDialect>(*producer->getDialect()) ||
       isa<mlir::index::IndexDialect>(*producer->getDialect()) ||
       isa<TensorExtractTensorSpecOp, CpuTensorSpecSizeOp, CpuTensorSpecCreateOp,
-          CpuTensorSpecDimsDynamicOp, BufferAllocOp>(*producer);
+          CpuTensorSpecDimsDynamicOp, BufferAllocOp, TensorSpecGetDimOp>(
+          *producer);
   if (!isTrivialOp)
     return false;
 

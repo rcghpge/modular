@@ -513,6 +513,40 @@ LogicalResult CpuTensorSpecDimsDynamicOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// TensorSpecGetDimOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorSpecGetDimOp::verify() {
+  TensorSpecType specType = getSpec().getType();
+  if (!specType.hasRank())
+    return emitOpError() << "expected tensor spec to have known rank";
+  if (specType.hasRank() && getAxis() >= specType.getRank())
+    return emitOpError() << "expected axis " << getAxis()
+                         << " to be less than the rank of the tensor spec "
+                         << specType.getRank();
+  return success();
+}
+
+OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
+  Operation *specProducer = getSpec().getDefiningOp();
+  TensorSpecType specType = getSpec().getType();
+  if (!specType.hasRank())
+    return {};
+  if (getAxis() >= specType.getRank())
+    return {};
+  if (!specType.isDynamicDim(getAxis())) {
+    auto indexTy = IndexType::get(getContext());
+    uint64_t dim = specType.getDims()[getAxis()].value();
+    return IntegerAttr::get(indexTy, dim);
+  }
+  if (auto specCreate = dyn_cast_or_null<CpuTensorSpecCreateOp>(specProducer)) {
+    return specCreate.getRuntimeDims()[specType.getDynamicDimIndex(getAxis())];
+  }
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecSizeOp
 //===----------------------------------------------------------------------===//
 

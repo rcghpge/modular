@@ -5,7 +5,7 @@
 // CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<42x?xf32>)
 // CHECK:   %[[CDIM:.*]] = index.constant 42
 // CHECK:   %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <42x?xf32>
-// CHECK:   %[[DYNDIM:.*]] = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<42x?xf32>
+// CHECK:   %[[DYNDIM:.*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <42x?xf32>
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]] : <42x?xf32>
 // CHECK:   %[[NEWSPEC:.*]] = mgp.tensor_spec.create %[[CDIM]], %[[DYNDIM]] : !mgp.tensor_spec<?x?xf32>
 // CHECK:   %[[RES:.*]] = mgp.tensor.create %[[CH0]], %[[BUF]], %[[NEWSPEC]] : !mgp.tensor<?x?xf32>
@@ -22,9 +22,9 @@ mo.graph @static_ranks_int_to_unknown<D0, D1>(
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<?x?xf32>)
 // CHECK:   %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:   %[[DYNDIMS:.*]]:2 = mgp.tensor_spec.dims.dynamic %[[SPEC]] : !mgp.tensor_spec<?x?xf32>
+// CHECK:   %[[DYNDIM1:.*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]] : <?x?xf32>
-// CHECK:   %[[NEWSPEC:.*]] = mgp.tensor_spec.create %[[DYNDIMS]]#1 : !mgp.tensor_spec<42x?xf32>
+// CHECK:   %[[NEWSPEC:.*]] = mgp.tensor_spec.create %[[DYNDIM1]] : !mgp.tensor_spec<42x?xf32>
 // CHECK:   %[[RES:.*]] = mgp.tensor.create %[[CH0]], %[[BUF]], %[[NEWSPEC]]  : !mgp.tensor<42x?xf32>
 // CHECK:   mef.output %[[CH0]], %[[RES]] : !mef.chain, !mgp.tensor<42x?xf32>
 // CHECK: }

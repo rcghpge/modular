@@ -370,6 +370,30 @@ def CpuTensorSpecDimsDynamicOp : MGP_Op<"tensor_spec.dims.dynamic", [
 }
 
 //===----------------------------------------------------------------------===//
+// TensorSpecGetDimOp
+//===----------------------------------------------------------------------===//
+
+def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
+    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = [{
+    Return the dimension of the tensor_spec at the specified axis.
+  ]};
+  let description = [{
+    Returns the actual runtime value of each dimension in a CPU tensor spec.
+    If the dimension is known statically, it is returned as a constant index.
+  }];
+
+  let arguments = (ins MGP_TensorSpecType: $spec,
+                   UI64Attr:$axis);
+  let results = (outs Index:$dim);
+  let assemblyFormat = [{
+    `[` $axis `]` $spec attr-dict `:` type($spec)
+  }];
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // CpuTensorSpecSizeOp
 //===----------------------------------------------------------------------===//
 

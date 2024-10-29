@@ -10,6 +10,7 @@
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
@@ -31,6 +32,14 @@ void MGPDialect::initialize() {
   // to register those since it's just for the convenience of the GraphRT
   // primitive dispatch mechanism.
   allowUnknownOperations();
+}
+
+Operation *MGPDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
+  if (auto intAttr = dyn_cast<mlir::IntegerAttr>(value))
+    return builder.create<mlir::index::ConstantOp>(loc, type, intAttr);
+
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

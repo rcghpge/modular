@@ -567,10 +567,11 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   // Note loweredTensorSpec is the encoding for the shape we are trying to
   // reify as a tensor, whereas outputStorage.tensorSpec just describes
   // the statically known shape of our output tensor.
-  auto dynDimsOp = opLoweringState.create<MGP::CpuTensorSpecDimsDynamicOp>(
-      /*spec=*/loweredTensorSpec,
-      /*rawDims=*/loweredTensorSpec.getType().getRawDims());
-  SmallVector<Value> values = dynDimsOp.getResults();
+  SmallVector<Value> values(loweredTensorSpec.getType().getRank());
+  for (size_t i = 0; i < values.size(); ++i)
+    values[i] =
+        opLoweringState.create<MGP::TensorSpecGetDimOp>(loweredTensorSpec, i);
+
   auto outChain = opLoweringState.bufferSetWithIndex(
       outputStorage.buffer, values, toTensorOp.getResult().getType());
 
@@ -598,7 +599,6 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
 
   // We will collect the runtime dimensions for the result spec.
   SmallVector<Value> runtimeDims;
-  MGP::CpuTensorSpecDimsDynamicOp dynDimsOp;
   Location loc = opLoweringState.loc;
   for (auto [idx, inDim, resDim] :
        llvm::enumerate(inputTy.getDims(), resTy.getDims())) {
@@ -618,14 +618,12 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
 
     // At this point we are dealing with dynamic input and result dimensions.
     // We extract the dynamic dimensions only once.
-    if (!dynDimsOp)
-      dynDimsOp = loweringState.getDynamicDims(
-          loc, loweredInput,
-          getDeviceOrDefault(loweringState.getGraph(), inputTy));
+    auto getDimOp = loweringState.getDim(
+        loc, loweredInput, idx,
+        getDeviceOrDefault(loweringState.getGraph(), inputTy));
 
     // Forward the appropriate dynamic dimension from the input.
-    runtimeDims.emplace_back(
-        dynDimsOp->getResult(inSpecTy.getDynamicDimIndex(idx)));
+    runtimeDims.emplace_back(getDimOp);
   }
 
   // Create the output tensor.
@@ -664,10 +662,6 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
   // as operands to a tensor_spec.create op.
   ArrayRef<KGEN::ParamDeclAttr> decls = rebindOp.getOutputParamDecls();
   if (!decls.empty()) {
-    MGP::CpuTensorSpecDimsDynamicOp dynDims = loweringState.getDynamicDims(
-        rebindOp.getLoc(), loweredOutput,
-        getDeviceOrDefault(loweringState.getGraph(), resTy));
-
     MOSH::ShapeAttr resShape = resTy.getTypedShapeAttr();
     for (KGEN::ParamDeclAttr decl : decls) {
       int64_t idx = findDeclIdx(resShape, decl);
@@ -676,10 +670,12 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
             "rebind declares parameter not appearing in its result");
       }
 
-      MGP::TensorSpecType specTy = dynDims.getSpec().getType();
-      Value rtVal = dynDims->getResult(specTy.getDynamicDimIndex(idx));
+      auto getDimOp = loweringState.getDim(
+          rebindOp.getLoc(), loweredOutput, idx,
+          getDeviceOrDefault(loweringState.getGraph(), resTy));
+
       if (auto err = loweringState.lowerParamDecl(rebindOp->getParentRegion(),
-                                                  decl, rtVal))
+                                                  decl, getDimOp))
         return rebindOp->emitOpError(err.getError());
     }
   }
@@ -1097,27 +1093,15 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
       bufferizedInput.tensorSpec);
   Value bufferSizeElems = div(bufferSizeBytes, elemSize);
 
-  // Get size of the outermost dimension either as static constant or from
-  // dims.dynamic op
-  Value outermostDim;
-  Value outerStride;
-  auto outermostDimStatic =
-      bufferizedInput.tensorSpec.getType().getDims().front();
-  if (outermostDimStatic) {
-    outermostDim = constant(outermostDimStatic.value());
-    outerStride = div(bufferSizeElems, outermostDim);
-  } else {
-    auto dynamicDims = opLoweringState.create<MGP::CpuTensorSpecDimsDynamicOp>(
-        /*spec=*/bufferizedInput.tensorSpec,
-        /*rawDims=*/bufferizedInput.tensorSpec.getType().getRawDims());
+  // Get size of the outermost dimension
+  Value outermostDim = opLoweringState.create<MGP::TensorSpecGetDimOp>(
+      bufferizedInput.tensorSpec, 0);
 
-    outermostDim = dynamicDims->getResults().front();
-    // Prevent divide-by-zero
-    Value outermostDimOrOne =
-        opLoweringState.create<mlir::index::MaxSOp>(outermostDim, constant(1));
-    outerStride = div(bufferSizeElems, outermostDimOrOne);
-    outerStride = ifZero(outermostDim, outermostDim, outerStride);
-  }
+  // Prevent divide-by-zero
+  Value outermostDimOrOne =
+      opLoweringState.create<mlir::index::MaxSOp>(outermostDim, constant(1));
+  Value outerStride = div(bufferSizeElems, outermostDimOrOne);
+  outerStride = ifZero(outermostDim, outermostDim, outerStride);
 
   // If start or stop are negative, add outermostDim to make them positive
   // start = start < 0 ? (start + outermostDim) : start
