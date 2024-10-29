@@ -107,6 +107,11 @@ MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
                                                bool ranked, MlirAttribute *dims,
                                                int32_t rank);
 
+/// Creates a new MO::TensorType (!mo.tensor) with specific device.
+MODULAR_API_EXPORT MlirType MAXG_tensorTypeWithDeviceNew(
+    MlirContext ctx, MlirType dtype, bool ranked, MlirAttribute *dims,
+    int32_t rank, MlirAttribute device);
+
 /// Accessors for !mo.tensor.
 /// Gets the DType as a null-terminated string owned by the caller.
 MODULAR_API_EXPORT char *MAXG_tensorTypeGetDTypeAsString(MlirType type);
@@ -114,6 +119,7 @@ MODULAR_API_EXPORT uint8_t MAXG_tensorTypeGetDType(MlirType t);
 MODULAR_API_EXPORT int64_t MAXG_tensorTypeGetRank(MlirType t);
 MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeShapeGetDim(MlirType t,
                                                             int64_t dim);
+MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeGetDevice(MlirType t);
 
 /// Creates a new MO::BufferType (!mo.tensor).
 MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,

@@ -281,13 +281,27 @@ MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
   for (int i = 0; i < rank; ++i)
     dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
 
-  if (ranked) {
+  if (ranked)
     return wrap(MO::TensorType::get(dim_attrs, unwrap(dtype)));
-  } else {
-    return wrap(MO::TensorType::get(
-        KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))),
-        unwrap(dtype)));
-  }
+
+  return wrap(MO::TensorType::get(
+      KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))),
+      unwrap(dtype)));
+}
+
+MODULAR_API_EXPORT MlirType MAXG_tensorTypeWithDeviceNew(
+    MlirContext ctx, MlirType dtype, bool ranked, MlirAttribute *dims,
+    int32_t rank, MlirAttribute device) {
+  SmallVector<TypedAttr> dim_attrs;
+  for (int i = 0; i < rank; ++i)
+    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+  DeviceRefAttr deviceRef = cast<M::DeviceRefAttr>(unwrap(device));
+
+  if (ranked)
+    return wrap(MO::TensorType::get(dim_attrs, unwrap(dtype), deviceRef));
+  return wrap(MO::TensorType::get(
+      KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))), unwrap(dtype),
+      deviceRef));
 }
 
 MODULAR_API_EXPORT char *MAXG_tensorTypeGetDTypeAsString(MlirType type) {
@@ -316,6 +330,10 @@ MODULAR_API_EXPORT int64_t MAXG_tensorTypeGetRank(MlirType t) {
 MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeShapeGetDim(MlirType t,
                                                             int64_t dim) {
   return wrap(cast<MO::TensorType>(unwrap(t)).getDim(dim));
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeGetDevice(MlirType t) {
+  return wrap(cast<MO::TensorType>(unwrap(t)).getDeviceRef());
 }
 
 MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,
