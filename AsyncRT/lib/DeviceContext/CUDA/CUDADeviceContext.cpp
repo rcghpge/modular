@@ -14,9 +14,9 @@
 #include "CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cstdint>
-#include <iostream>
 #include <mutex>
 #include <string>
 
@@ -36,7 +36,7 @@
           formatError(__FILE__, __LINE__, __FUNCTION__, cuda_result);          \
       /* We are not in a context where we can return an Error here. So we   */ \
       /* print the message and abort().                                     */ \
-      std::cerr << err << "\n";                                                \
+      llvm::errs() << err << "\n";                                             \
       abort();                                                                 \
     }                                                                          \
   } while (0)
@@ -534,9 +534,9 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
 
   // TODO(iposva): Remove once not needed for debugging.
   if (false) {
-    std::cerr << "CUDADeviceContext::compileFunction(" << function_name
-              << "):\n"
-              << reinterpret_cast<const char *>(data) << "\n";
+    llvm::errs() << "CUDADeviceContext::compileFunction(" << function_name
+                 << "):\n"
+                 << reinterpret_cast<const char *>(data) << "\n";
   }
   CUmodule module;
   unsigned int num_options = 0;
