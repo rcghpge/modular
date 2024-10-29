@@ -1213,7 +1213,7 @@ TypeEmitter::emitUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type) {
 
 LogicalResult TypeEmitter::emitFunctionType(FunctionType type) {
   emitter->emitByte(MEF::TypeKind::function);
-  emitter->emitByte(type.getNumInputs());
+  emitter->emitVBR(type.getNumInputs());
   emitter->emitByte(type.getNumResults());
   for (auto input : type.getInputs()) {
     if (failed(emitType(input)))

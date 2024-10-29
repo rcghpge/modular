@@ -55,9 +55,17 @@ static size_t decodeFunctionType(const uint8_t *pointer, const uint8_t *attrEnd,
   assert(pointer <= attrEnd &&
          "MEF datum not within bounds of the MEF Attribute Section");
   assert(MEF::TypeKind(dataPtr[0]) == MEF::TypeKind::function);
-  uint8_t numInputs = dataPtr[1];
-  uint8_t numResults = dataPtr[2];
-  dataPtr += 3;
+
+  // Skip past the type kind (which is one byte) to parse the number of inputs.
+  dataPtr += 1;
+  size_t numInputs = MEF::parseVBR(dataPtr);
+
+  // The number of results is stored in a 1-byte value. Since `dataPtr` is
+  // already a pointer to uint8_t values, we can just deference the current
+  // location to get the value for the number of results.
+  uint8_t numResults = *dataPtr;
+  dataPtr += 1;
+
   while (numInputs--) {
     size_t attrSize = MEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
     inputs.push_back(MEFType(dataPtr, dataPtr + attrSize));
