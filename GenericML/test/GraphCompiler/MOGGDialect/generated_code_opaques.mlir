@@ -56,5 +56,5 @@ module {
 // CHECK: [[V8:%.*]] = pop.pointer.bitcast [[V6]] : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.signature<(!kgen.pointer<none>) -> !kgen.none>
 
 // COM: call create_mojo_value_async
-// CHECK: [[V12:%.*]] = kgen.call @create_mojo_value_async({{.*}}, {{.*}}, {{.*}}, [[INDEX]], [[INDEX_0]], [[V8]], [[V7]]) : (!kgen.pointer<none>, !kgen.pointer<none>, !kgen.pointer<none>, index, index, !kgen.signature<(!kgen.pointer<none>) -> !kgen.none>, !kgen.signature<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>) -> !kgen.none
+// CHECK: [[V12:%.*]] = kgen.call @"MOGGPrimitives::create_mojo_value_async({{.*}}, {{.*}}, {{.*}}, [[INDEX]], [[INDEX_0]], [[V8]], [[V7]]) : (!kgen.pointer<none>, !kgen.pointer<none>, !kgen.pointer<none>, index, index, !kgen.signature<(!kgen.pointer<none>) -> !kgen.none>, !kgen.signature<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>) -> !kgen.none
 // CHECK: kgen.return
