@@ -1,18 +1,10 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2024, Modular Inc. All rights reserved.
 #
-# Licensed under the Apache License v2.0 with LLVM Exceptions:
-# https://llvm.org/LICENSE.txt
+# This file is Modular Inc proprietary.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """Naive KV cache for the Transformer."""
 
-from typing import List
 from max.driver import Device, Tensor
 from max.dtype import DType
 from max.graph import TensorType, BufferType
