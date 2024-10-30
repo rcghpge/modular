@@ -58,13 +58,9 @@ static size_t decodeFunctionType(const uint8_t *pointer, const uint8_t *attrEnd,
 
   // Skip past the type kind (which is one byte) to parse the number of inputs.
   dataPtr += 1;
-  size_t numInputs = MEF::parseVBR(dataPtr);
 
-  // The number of results is stored in a 1-byte value. Since `dataPtr` is
-  // already a pointer to uint8_t values, we can just deference the current
-  // location to get the value for the number of results.
-  uint8_t numResults = *dataPtr;
-  dataPtr += 1;
+  size_t numInputs = MEF::parseVBR(dataPtr);
+  size_t numResults = MEF::parseVBR(dataPtr);
 
   while (numInputs--) {
     size_t attrSize = MEFType(dataPtr, attrEnd).getEncodedSizeInBytes();
