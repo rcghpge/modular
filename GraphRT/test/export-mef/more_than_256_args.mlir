@@ -11,8 +11,8 @@
 
 grt.testcase @test_function_type_with_257_args{
   %ch0 = grt.chain.create ()
-  // We need to have one _long_ line here for the CHECK - sorry!
-  // CHECK: Type attribute: (si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32, si32) -> si32
+  // Look for 257 input types listed for this function.
+  // CHECK: Type attribute: ({{(si32, ){256}}}si32) -> si32
   %ch1 = "test.print_type"(%ch0) {t = (
     si32, si32, si32, si32, si32, si32, si32, si32,
     si32, si32, si32, si32, si32, si32, si32, si32,
