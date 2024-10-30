@@ -12,8 +12,8 @@ from typing import Optional, Tuple, Union
 from max.dtype import DType
 from max.graph.quantization import QuantizationEncoding
 from max.graph.weights import GGUFWeights
+from nn.conv import Conv2D
 from nn.norm import RMSNorm
-from pixtral.model.conv2d import Conv2D
 from pixtral.model.rotary_embedding_2d import (
     RotaryEmbedding2D,
     patch_position_ids,
