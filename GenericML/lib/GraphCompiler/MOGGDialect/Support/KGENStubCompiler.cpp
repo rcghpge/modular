@@ -66,11 +66,11 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
       kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
       llvm::sys::getHostCPUName(), getHostCPUFeatures());
   if (targetOr.isError())
-    return mlir::emitError(kgenModule.getLoc(), targetOr.getError());
+    return mlir::emitError(kgenModule->getLoc(), targetOr.getError());
   TargetInfoAttr target = *targetOr;
 
   // Set the environment (defines) for the module.
-  KGEN::extendWithModularEnvAttr(kgenModule);
+  KGEN::extendWithModularEnvAttr(*kgenModule);
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
@@ -83,8 +83,8 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   if (debugKGENStubs) {
     mlir::PassManager pm(ctx);
     pm.addPass(DebugInfo::createDebugInfoSnapshot());
-    if (failed(pm.run(kgenModule)))
-      mlir::emitError(kgenModule.getLoc(), "Could not synthesize debuginfo");
+    if (failed(pm.run(*kgenModule)))
+      mlir::emitError(kgenModule->getLoc(), "Could not synthesize debuginfo");
   }
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.enableLLVMPerFunctionSplitting = false;
@@ -125,9 +125,9 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
 
     auto *runtime = loadContext(ctx)->get<AsyncRT::Runtime>();
 
-    setTargetInfo(kgenModule, *targetInfoOr);
+    setTargetInfo(*kgenModule, *targetInfoOr);
     ErrorOrSuccess result = compiler.runElaborationPipeline(
-        kgenModule, *targetInfoOr, *runtime, runtime->getReadyChain().copy(),
+        *kgenModule, *targetInfoOr, *runtime, runtime->getReadyChain().copy(),
         Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
             "StubCompiler::elaborateKGEN",
             "mogg.elaborate.kgen.cache.miss.time",
@@ -136,7 +136,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
             "StubCompiler::elaborateKGEN"));
 
     if (result.isError()) {
-      mlir::emitError(kgenModule.getLoc(), result.getError());
+      mlir::emitError(kgenModule->getLoc(), result.getError());
       res = failure();
     }
   }
@@ -157,7 +157,7 @@ ErrorOr<MOGG::LoadCompiledKernelOp>
 StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
                             bool enableTiming, bool debugKGENStubs) {
   // Compile to LLVM.
-  TargetInfoAttr target = getTargetInfo(kgenModule);
+  TargetInfoAttr target = getTargetInfo(*kgenModule);
   KGEN::CompilationOptions compilationOptions;
   compilationOptions.targetTriple = target.getTripleStr();
   compilationOptions.targetCpu = target.getArch();
@@ -188,7 +188,7 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  auto standaloneOr = compiler->emitArchiveAttr(kgenModule);
+  auto standaloneOr = compiler->emitArchiveAttr(std::move(kgenModule));
   if (standaloneOr.isError())
     return standaloneOr.takeError();
   ElementsAttr archiveAttr = *standaloneOr;
@@ -215,7 +215,7 @@ StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
   initLLVM();
 
 #ifndef MODULAR_PRODUCTION
-  if (failed(mlir::verify(kgenModule)))
+  if (failed(mlir::verify(*kgenModule)))
     return Error("generated KGEN IR is invalid");
 #endif
 

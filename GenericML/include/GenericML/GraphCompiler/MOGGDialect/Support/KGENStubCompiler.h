@@ -23,10 +23,10 @@ namespace M::MOGG::Stub {
 /// binary stuff from the KGEN stub creation process.
 class StubCompiler {
 public:
-  StubCompiler(mlir::ModuleOp kgenStubs, Operation *graph,
+  StubCompiler(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
                std::string saveTempsPrefix, KernelBuildType kernelBuildType)
-      : ctx(graph->getContext()), kgenModule(kgenStubs), loc(graph->getLoc()),
-        saveTempsPrefix(std::move(saveTempsPrefix)),
+      : ctx(graph->getContext()), kgenModule(std::move(kgenStubs)),
+        loc(graph->getLoc()), saveTempsPrefix(std::move(saveTempsPrefix)),
         kernelBuildType(kernelBuildType) {}
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
@@ -48,7 +48,7 @@ private:
   MLIRContext *ctx;
 
   /// The KGEN module with all the stubs in it.
-  mlir::ModuleOp kgenModule;
+  OwningOpRef<ModuleOp> kgenModule;
 
   /// Location to use.
   mlir::Location loc;
