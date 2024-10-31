@@ -720,7 +720,6 @@ def MOGG_BufferBorrowOp : MOGG_Op<"buffer.borrow", [Pure]> {
   }];
 }
 
-
 def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   let arguments = (ins AnyType:$dataPointer, Variadic<Index>:$dims);
   let results = (outs MO_Tensor:$result);
@@ -734,6 +733,8 @@ def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
     `(` operands `)` attr-dict `:`
         functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def MOGG_ToMGPFromTensorOp : MOGG_Op<"to_mgp_from_tensor", [Pure]> {

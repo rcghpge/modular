@@ -1485,6 +1485,40 @@ LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// ToTensorFromMGPOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ToTensorFromMGPOp::verify() {
+  auto devBuf = dyn_cast<MGP::DeviceBufferType>(getDataPointer().getType());
+  if (!devBuf)
+    return success();
+
+  // If have access to device buffer, do some sanity checks
+  MO::TensorValue result = getResult();
+  DeviceRefAttr tensorDev = result.getType().getDeviceRef();
+
+  // TODO(GRA-1212): Make sure tensor type has device assignment at this stage.
+  if (tensorDev && tensorDev != devBuf.getDevice())
+    return emitError() << "Device ref of buffer and tensor do not match";
+
+  // Check tensor can fit in given memory at all.
+  std::optional<int64_t> numElements = result.getType().getNumElements();
+  if (!numElements.has_value())
+    return success();
+
+  // Size is in bytes;
+  if (devBuf.getOptSize().has_value()) {
+    int64_t bufferSize = *devBuf.getOptSize();
+    int64_t tensorSize =
+        result.getType().getDtype().getSizeInBytes() * numElements.value();
+    if (tensorSize > bufferSize)
+      return emitError() << "Buffer is size in bytes " << bufferSize
+                         << " but requested tensor is " << tensorSize << "\n";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ShapeToTensorOp
 //===----------------------------------------------------------------------===//
 
