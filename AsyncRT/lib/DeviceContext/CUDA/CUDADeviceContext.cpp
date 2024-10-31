@@ -117,8 +117,10 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
 }
 
 ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
-  static DeviceList devices; // Filled in by the initialization lambda below.
-  static ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
+  // Initialization of these two statics only happens once on the first call. We
+  // ensure this by initializing the err using a lambda.
+  static DeviceList devices;
+  static const ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
     ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
     if (err_driver) {
       return Error(llvm::Twine("CUDA Driver initialization failed: ") +
