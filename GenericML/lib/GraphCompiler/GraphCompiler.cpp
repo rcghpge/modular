@@ -137,6 +137,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOQ::createLegalizeMOQOpsToRMO());
 
   // RMO pipeline:
+  // TODO(GRA-1215): Remove further calls to createResolveUnknownParameters.
   ResolveUnknownParametersOptions resolveUnknownParametersOpts;
   resolveUnknownParametersOpts.resolveRMOOnly = true;
   pm.addPass(MO::createResolveUnknownParameters(resolveUnknownParametersOpts));
