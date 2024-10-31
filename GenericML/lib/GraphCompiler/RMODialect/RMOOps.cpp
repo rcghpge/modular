@@ -754,11 +754,12 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
     return mlir::emitOptionalError(
         location, unknownDimError("ShapeToTensor", "shape", shapeAttr));
 
+  auto dimType = ShapeAttr::getDimType(context);
+
   // The output is simply an i64 tensor with rank 1.
   inferredReturnTypes.push_back(TensorType::get(
-      ShapeAttr::get(
-          {IntegerAttr::get(IndexType::get(context), shapeAttr.getRank())},
-          shapeAttr.getType()),
+      ShapeAttr::get({IntegerAttr::get(dimType, shapeAttr.getRank())},
+                     shapeAttr.getType()),
       DType::si64));
 
   return success();

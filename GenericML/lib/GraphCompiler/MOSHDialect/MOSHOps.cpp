@@ -27,16 +27,18 @@ using namespace MOSH;
 
 static ParseResult parseParamToValueOpValue(OpAsmParser &p, TypedAttr &value,
                                             Type &resultType) {
-  if (KGEN::parseColonTypeOrIndex(p, resultType) || p.parseEqual() ||
-      p.parseLess() || KGEN::parseParamValue(p, value, resultType) ||
-      p.parseGreater())
+  auto defaultType = ShapeAttr::getDimType(p.getContext());
+  if (KGEN::parseColonTypeOrDefault(p, resultType, defaultType) ||
+      p.parseEqual() || p.parseLess() ||
+      KGEN::parseParamValue(p, value, resultType) || p.parseGreater())
     return failure();
   return success();
 }
 
 static void printParamToValueOpValue(OpAsmPrinter &p, Operation *,
                                      TypedAttr value, Type resultType) {
-  KGEN::printColonTypeOrIndex(p, value.getType());
+  auto defaultType = ShapeAttr::getDimType(value.getContext());
+  KGEN::printColonTypeOrDefault(p, value.getType(), defaultType);
   p << " = <";
   KGEN::printParamValue(p, value);
   p << ">";
@@ -264,7 +266,7 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
 }
 
 TypedAttr GetDimOp::emitStaticCall(TypedAttr inputShape, int64_t axis) {
-  auto indexTy = IndexType::get(inputShape.getContext());
+  auto indexTy = ShapeAttr::getDimType(inputShape.getContext());
   return KGEN::emitMLIROperationCall(
       GetDimOp::getOperationName(), {},
       {inputShape, IntegerAttr::get(indexTy, axis)}, indexTy);
@@ -291,7 +293,7 @@ OpFoldResult GetDimOp::fold(FoldAdaptor adaptor) {
 
 OpFoldResult GetRankOp::fold(FoldAdaptor adaptor) {
   if (auto input = dyn_cast_or_null<ShapeAttr>(adaptor.getInput())) {
-    auto indexTy = IndexType::get(getContext());
+    auto indexTy = ShapeAttr::getDimType(getContext());
     return IntegerAttr::get(indexTy, input.getRank());
   }
   return {};

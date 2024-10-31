@@ -59,7 +59,7 @@ protected:
   }
 
   TypedAttr getParametricDim(const std::string &name) {
-    auto idxTy = builder.getIndexType();
+    auto idxTy = ShapeAttr::getDimType(builder.getContext());
     TypedAttr typeAttr = KGEN::ParamDeclRefAttr::get(name, idxTy);
     return typeAttr;
   }

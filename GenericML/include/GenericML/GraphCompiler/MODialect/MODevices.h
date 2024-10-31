@@ -185,6 +185,9 @@ struct DeviceAwareRewriter {
   IntegerAttr getIndexAttr(int64_t value) {
     return rewriter.getIndexAttr(value);
   }
+  IntegerAttr getDimAttr(int64_t value) {
+    return MOSH::ShapeAttr::getDim(rewriter.getContext(), value);
+  }
   IntegerType getIntegerType(unsigned width, bool isSigned) {
     return rewriter.getIntegerType(width, isSigned);
   }

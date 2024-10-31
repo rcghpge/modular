@@ -23,6 +23,7 @@
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/Support/Base64.h"
 #include <string>
 
 using namespace M;

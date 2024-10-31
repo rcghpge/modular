@@ -173,15 +173,15 @@ Value MGPBufferBuilder::bufferAlloc(OpBuilder &builder, Location loc,
                                     Value inChain, Value size,
                                     Value deviceContext, uint64_t alignment,
                                     std::optional<uint64_t> optSize) {
-  return builder.create<BufferAllocOp>(
-      loc, DeviceBufferType::get(device, optSize),
-      /*inChain=*/inChain,
-      /*theContext=*/context,
-      /*runtimeSize=*/cast<TypedValue<IndexType>>(size),
-      /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
-      /*aRuntimeSlot=*/runtimeSlot,
-      /*bAlign=*/alignment,
-      /*cDevice=*/device);
+  return builder.create<BufferAllocOp>(loc,
+                                       DeviceBufferType::get(device, optSize),
+                                       /*inChain=*/inChain,
+                                       /*theContext=*/context,
+                                       /*runtimeSize=*/size,
+                                       /*deviceContext=*/deviceContext,
+                                       /*aRuntimeSlot=*/runtimeSlot,
+                                       /*bAlign=*/alignment,
+                                       /*cDevice=*/device);
 }
 
 Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,

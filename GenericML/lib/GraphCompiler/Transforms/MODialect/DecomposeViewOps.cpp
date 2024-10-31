@@ -200,12 +200,13 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
 
     MOSH::ShapeAttr shapeAttr = rollingShape.getTypedShapeAttr();
     SmallVector<TypedAttr> newShape{shapeAttr.getValues()};
-    newShape.insert(newShape.begin() + idx, builder.getIndexAttr(1));
+    newShape.insert(newShape.begin() + idx,
+                    MOSH::ShapeAttr::getDim(builder.getContext(), 1));
     rollingShape = rollingShape.cloneWith(newShape);
 
     auto op = builder.create<AddSingletonDimOp>(
         reshape.getLoc(), rollingShape, output,
-        /*axis*/ builder.getIndexAttr(idx));
+        /*axis=*/builder.getIndexAttr(idx));
 
     output.replaceAllUsesExcept(op.getResult(), op);
     output = op.getResult();

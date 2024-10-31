@@ -162,8 +162,20 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
 static ParseResult parseParamDecls(OpAsmParser &p,
                                    KGEN::ParamDeclArrayAttr &paramDecls) {
+  auto defaultType = MOSH::ShapeAttr::getDimType(p.getContext());
+
+  auto declParser = [&](SmallVectorImpl<ParamDeclAttr> &decls) -> ParseResult {
+    StringAttr name;
+    Type type;
+    if (KGEN::parseParamName(p, name) ||
+        KGEN::parseColonTypeOrDefault(p, type, defaultType))
+      return failure();
+    decls.push_back(ParamDeclAttr::get(name, type));
+    return success();
+  };
+
   if (succeeded(p.parseOptionalLess()) && failed(p.parseOptionalGreater())) {
-    if (KGEN::parseParamDecls(p, paramDecls) || p.parseGreater())
+    if (KGEN::parseParamDecls(p, paramDecls, declParser) || p.parseGreater())
       return failure();
   } else {
     paramDecls = KGEN::ParamDeclArrayAttr::get(p.getContext(), {});
@@ -173,9 +185,16 @@ static ParseResult parseParamDecls(OpAsmParser &p,
 
 static void printParamDecls(OpAsmPrinter &p, Operation *,
                             KGEN::ParamDeclArrayAttr paramDecls) {
+  auto defaultType = MOSH::ShapeAttr::getDimType(paramDecls.getContext());
+
+  auto printElt = [&](ParamDeclAttr decl) {
+    KGEN::printParamName(p, decl.getName());
+    KGEN::printColonTypeOrDefault(p, decl.getType(), defaultType);
+  };
+
   if (!paramDecls.empty()) {
     p << "<";
-    printParamDecls(p, paramDecls);
+    printParamDecls(p, paramDecls, printElt);
     p << '>';
   }
 }
@@ -397,7 +416,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                            inPlaceMGPOutputsTypes.begin(),
                            inPlaceMGPOutputsTypes.end());
   for (size_t i = 0; i < outParamNum; i++) {
-    newKernelResTypes.push_back(idxType);
+    newKernelResTypes.push_back(getOutputParamDecls()[i].getType());
     StringRef name = getOutputParamDecls()[i].getName();
     outParamNameToIdx[name] = i;
   }
@@ -454,21 +473,19 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     else
       return success();
 
-    for (auto ty : dims) {
-      if (loweredParams.contains(ty))
+    for (auto dim : dims) {
+      if (loweredParams.contains(dim))
         continue;
 
-      if (auto cst = dyn_cast<IntegerAttr>(ty)) {
-        int64_t asInt = cst.getInt();
-        KGEN::ParamConstantOp op = builder.create<KGEN::ParamConstantOp>(
-            loc, builder.getIndexType(), builder.getIndexAttr(asInt));
-
-        loweredParams[ty] = op.getResult();
-      } else if (auto cst = dyn_cast<KGEN::ParamDeclRefAttr>(ty)) {
-        loweredParams[ty] =
-            kernelBody.getArgument(paramDimToIdx[cst.getName()]);
+      if (auto cst = dyn_cast<IntegerAttr>(dim)) {
+        KGEN::ParamConstantOp op =
+            builder.create<KGEN::ParamConstantOp>(loc, cst);
+        loweredParams[dim] = op.getResult();
+      } else if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
+        loweredParams[dim] =
+            kernelBody.getArgument(paramDimToIdx[ref.getName()]);
       } else {
-        return mlir::emitError(loc, "Unsupported dim attribute type: ") << ty;
+        return mlir::emitError(loc, "Unsupported dim attribute type: ") << dim;
       }
     }
     return success();

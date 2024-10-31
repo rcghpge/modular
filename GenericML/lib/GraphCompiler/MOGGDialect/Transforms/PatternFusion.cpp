@@ -424,8 +424,7 @@ struct ForceMatmulTransposeBForGPU
             asMatmul, "Matmul is explicitly not run on cuda");
     }
 
-    LayoutAttr matmulWeightsLayout =
-        LayoutAttr::get(rewriter.getIndexType().getContext(), "NK");
+    LayoutAttr matmulWeightsLayout = LayoutAttr::get(getContext(), "NK");
 
     // Transpose weights (assume to be folded by constant-folding)
     auto oldShape = weights.getType().getTypedShapeAttr().getValues();
@@ -2249,7 +2248,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       SmallVector<TypedAttr> answer;
       auto curDims = value.getType().getTypedShapeAttr().getValues();
       if (curDims.size() == 3)
-        answer.push_back(mlir::IntegerAttr::get(rewriter.getIndexType(), 1));
+        answer.push_back(ShapeAttr::getDim(rewriter.getContext(), 1));
 
       answer.append(curDims.begin(), curDims.end());
       return answer;
@@ -2424,9 +2423,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         rootOp.getType().getTypedShapeAttr().getValues().end()};
     if (initialOutputShape.size() == 3) {
       // add elided batch dimension if needed
-      initialOutputShape.insert(
-          initialOutputShape.begin(),
-          mlir::IntegerAttr::get(rewriter.getIndexType(), 1));
+      initialOutputShape.insert(initialOutputShape.begin(),
+                                ShapeAttr::getDim(rewriter.getContext(), 1));
     }
 
     // Because output shape is rank4, to fit kernel spec, QKV must be rank 4
@@ -2438,7 +2436,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       ArrayRef<TypedAttr> dims = val.getType().getTypedShapeAttr().getValues();
       ASSERT_STREAM(dims.size() == 3, << "Only expect rank 3!");
       SmallVector<TypedAttr> valShape{
-          mlir::IntegerAttr::get(rewriter.getIndexType(), 1), dims[0], dims[1],
+          ShapeAttr::getDim(rewriter.getContext(), 1), dims[0], dims[1],
           dims[2]};
       TensorType newTy = val.getType().cloneWith(valShape);
       return rewriter.create<Static::ReshapeOp>(rootOp.getLoc(), newTy, val)
