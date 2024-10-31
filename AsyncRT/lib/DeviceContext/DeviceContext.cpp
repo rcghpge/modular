@@ -12,6 +12,7 @@
 
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
+#include "HIP/HIPDeviceContext.h"
 #include "llvm/ADT/Twine.h"
 
 #include <string.h>
@@ -178,6 +179,8 @@ ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind, int id) {
     return CUDADeviceContext::create(id);
   } else if (strcmp(kind, "cpu") == 0) {
     return CpuDeviceContext::create(id);
+  } else if (strcmp(kind, "hip") == 0) {
+    return HIPDeviceContext::create(id);
   }
 
   return Error(llvm::Twine("Unsupported device kind: ") + kind);
