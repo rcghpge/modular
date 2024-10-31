@@ -180,9 +180,11 @@ CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
 void *CUDADeviceBuffer::ptr() const { return cuda_ptr(); }
 
 // TODO: Remove the V1 compatibility.
-void CUDADeviceBuffer::releasePtr() const {
+void *CUDADeviceBuffer::releasePtr() const {
+  auto tmp = dptr_;
   dptr_ = nullptr;
   owning_ = false;
+  return tmp;
 }
 
 ErrorOr<DeviceBufferRef>

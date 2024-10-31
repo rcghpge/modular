@@ -83,7 +83,7 @@ public:
   CUdeviceptr cuda_ptr() const;
   void *ptr() const override;
   // TODO: Remove the V1 compatibility.
-  void releasePtr() const override;
+  void *releasePtr() const override;
 
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
                                            size_t elem_size) const override;

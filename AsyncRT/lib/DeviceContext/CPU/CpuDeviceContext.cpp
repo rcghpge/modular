@@ -88,9 +88,11 @@ void *CpuDeviceBuffer::cpu_ptr() const { return ptr_; }
 void *CpuDeviceBuffer::ptr() const { return cpu_ptr(); }
 
 // TODO: Remove the V1 compatibility.
-void CpuDeviceBuffer::releasePtr() const {
+void *CpuDeviceBuffer::releasePtr() const {
+  auto tmp = ptr_;
   ptr_ = nullptr;
   owning_ = false;
+  return tmp;
 }
 
 ErrorOr<DeviceBufferRef>

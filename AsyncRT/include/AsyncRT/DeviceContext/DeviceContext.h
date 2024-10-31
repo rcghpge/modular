@@ -78,7 +78,7 @@ public:
   // Returns the raw device pointer, which is not safe to deref on the host
   virtual void *ptr() const = 0;
   // TODO: Remove the V1 compatibility.
-  virtual void releasePtr() const = 0;
+  virtual void *releasePtr() const = 0;
 
   virtual ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
                                                    size_t elem_size) const = 0;
