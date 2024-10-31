@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/DeviceDriver/Driver.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/DeviceDriver/Utils.h"
 #include "Kernels/DeviceContext.h"
 #include "Runtime/MojoValue.h"
@@ -129,7 +129,7 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
                       "Only cuda device context supported");
         // In this case we use the device ref id as the device id. THIS IS NOT
         // THE CASE WHEN THE DEVICE IS PASSED IN TO THE GRAPH.
-        auto numPhysicalDevicesOr = AsyncRT::CUDADevice::numberOfDevices();
+        auto numPhysicalDevicesOr = AsyncRT::Device::numberOfDevices("cuda");
         if (numPhysicalDevicesOr.isError())
           return numPhysicalDevicesOr.takeError();
         size_t numPhysicalDevices = *numPhysicalDevicesOr;
