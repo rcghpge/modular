@@ -683,7 +683,7 @@ LogicalResult SelectOp::inferReturnTypes(
   // Retrieve input shape
   SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
   ASSERT_STREAM(inputShapes.size() == 3,
-                << "rmo.select must have exactly two inputs");
+                << "rmo.select must have exactly 3 inputs");
 
   auto condShape = mlir::cast<ShapeAttr>(inputShapes[0]);
   auto xShape = mlir::cast<ShapeAttr>(inputShapes[1]);
@@ -736,13 +736,6 @@ LogicalResult SelectOp::inferReturnTypes(
   return success();
 }
 
-void RMODialect::registerOperations() {
-  addOperations<
-#define GET_OP_LIST
-#include "GenericML/GraphCompiler/RMODialect/RMO.cpp.inc"
-      >();
-}
-
 //===----------------------------------------------------------------------===//
 // ShapeToTensor
 //===----------------------------------------------------------------------===//
@@ -769,6 +762,17 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
       DType::si64));
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Op registration
+//===----------------------------------------------------------------------===//
+
+void RMODialect::registerOperations() {
+  addOperations<
+#define GET_OP_LIST
+#include "GenericML/GraphCompiler/RMODialect/RMO.cpp.inc"
+      >();
 }
 
 //===----------------------------------------------------------------------===//
