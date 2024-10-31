@@ -54,12 +54,15 @@ public:
 
   virtual int id() const = 0;
 
-  virtual std::string name() const = 0;
+  const std::string &name() const;
 
   static ErrorOr<int> numberOfDevices(const char *kind);
 
 protected:
-  Device() = default;
+  Device(std::string name);
+
+private:
+  std::string name_;
 };
 
 class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {

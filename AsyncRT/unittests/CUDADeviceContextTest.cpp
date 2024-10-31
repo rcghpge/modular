@@ -27,6 +27,7 @@ TEST(CUDADeviceContextTest, Smoke) {
 
   std::string device_name = ctx->device().name();
   EXPECT_NE(device_name.find("NVIDIA"), std::string::npos) << device_name;
+  std::cerr << "Name of default CUDA device: " << device_name << "\n";
 }
 
 TEST(CUDADeviceContextTest, NumDevices) {

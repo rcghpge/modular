@@ -20,6 +20,13 @@ namespace M::AsyncRT {
 //
 // ===== DeviceBuffer ===== //
 //
+Device::Device(std::string name) : name_(std::move(name)) {}
+
+const std::string &Device::name() const { return name_; }
+
+//
+// ===== DeviceBuffer ===== //
+//
 DeviceBuffer::DeviceBuffer(const DeviceContext &context, size_t len,
                            size_t elem_size)
     : context_(DeviceContextRef::copy(&context)), len_(len),

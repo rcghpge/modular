@@ -34,12 +34,10 @@ using CpuDeviceTimerRef = RCRef<const CpuDeviceTimer>;
 
 class CpuDevice : public Device {
 public:
-  CpuDevice() = default;
+  CpuDevice();
   ~CpuDevice() override = default;
 
   int id() const override;
-
-  std::string name() const override;
 
   static ErrorOr<int> numberOfDevices();
 };

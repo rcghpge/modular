@@ -45,12 +45,10 @@ namespace M::AsyncRT {
 //
 // ===== CpuDevice ===== //
 //
-int CpuDevice::id() const { return 0; }
+// TODO(iposva): Consider using the actual device name.
+CpuDevice::CpuDevice() : Device("cpu") {}
 
-std::string CpuDevice::name() const {
-  // TODO(iposva): Return the actual device name.
-  return "cpu";
-}
+int CpuDevice::id() const { return 0; }
 
 ErrorOr<int> CpuDevice::numberOfDevices() {
   // Only a single CpuDevice is supported.

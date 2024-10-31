@@ -83,35 +83,19 @@ static Error formatError(const char *file, int line, const char *func,
 }
 
 // ===== CUDADevice ===== //
-CUDADevice::CUDADevice(const CUDADriver &driver, CUdevice id)
-    : Device(), driver_(driver), id_(id) {}
+CUDADevice::CUDADevice(const CUDADriver &driver, CUdevice id, std::string name)
+    : Device(std::move(name)), driver_(driver), id_(id) {}
 
 const CUDADriver &CUDADevice::driver() const { return driver_; }
 
 int CUDADevice::id() const { return static_cast<int>(id_); }
 
-std::string CUDADevice::name() const {
-  char char_data[256];
-
-  CUDADriver::Result cuda_result =
-      driver_.DeviceGetName(char_data, sizeof(char_data), id_);
-  if (cuda_result == CUDADriver::SUCCESS) {
-    // TODO(iposva): Possibly add the device id here.
-    return std::string(char_data);
-  }
-  return "cuda";
-}
-
 ErrorOr<int> CUDADevice::numberOfDevices() {
-  ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
-  if (err_driver) {
-    return Error(llvm::Twine("CUDA Driver initialization failed: ") +
-                 err_driver.getError());
+  ErrorOr<const DeviceList &> err_or_devices = deviceList();
+  if (err_or_devices) {
+    return err_or_devices.takeError();
   }
-
-  int count = 0;
-  CUDA_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
-  return count;
+  return err_or_devices.get().size();
 }
 
 ErrorOr<bool> CUDADevice::canAccess(const CUDADevice &peer) const {
@@ -123,6 +107,42 @@ ErrorOr<bool> CUDADevice::canAccess(const CUDADevice &peer) const {
 const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 };
+
+ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
+  ErrorOr<const DeviceList &> err_or_devices = deviceList();
+  if (err_or_devices) {
+    return err_or_devices.takeError();
+  }
+  return *err_or_devices.get()[id];
+}
+
+ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
+  static DeviceList devices; // Filled in by the initialization lambda below.
+  static ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
+    ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
+    if (err_driver) {
+      return Error(llvm::Twine("CUDA Driver initialization failed: ") +
+                   err_driver.getError());
+    }
+    int count = 0;
+    CUDA_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
+
+    char tmp_name[256];
+
+    for (int i = 0; i < count; i++) {
+      CUDA_CHECK_ERR(
+          err_driver.get().DeviceGetName(tmp_name, sizeof(tmp_name), i));
+      devices.emplace_back(
+          CUDADeviceRef::create(err_driver.get(), i, tmp_name));
+    }
+    return success();
+  }();
+
+  if (err) {
+    return Error(err.getError());
+  }
+  return devices;
+}
 
 // ===== CUDADeviceBuffer ===== //
 CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
@@ -752,12 +772,12 @@ ErrorOr<int> CUDADeviceContext::computeCapability() const {
 }
 
 ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
-  ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
-  if (err_driver) {
-    return Error(llvm::Twine("CUDA Driver initialization failed: ") +
-                 err_driver.getError());
+  ErrorOr<const CUDADevice &> err_or_device = CUDADevice::get(id);
+  if (err_or_device) {
+    return err_or_device.takeError();
   }
-  const CUDADriver &driver = err_driver.get();
+  const CUDADevice &device = *err_or_device;
+  const CUDADriver &driver = device.driver();
 
   CUcontext context;
   CUDA_CHECK_ERR(driver.CtxCreate(&context, 0, id));
@@ -765,8 +785,7 @@ ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
   CUstream stream;
   CUDA_CHECK_ERR(driver.StreamCreate(&stream, 0));
 
-  return CUDADeviceContextRef::create(*CUDADeviceRef::create(driver, id),
-                                      context, stream);
+  return CUDADeviceContextRef::create(device, context, stream);
 }
 
 } // namespace M::AsyncRT

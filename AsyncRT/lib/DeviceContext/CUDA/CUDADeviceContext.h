@@ -44,14 +44,14 @@ using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
 class CUDADevice : public Device {
 public:
-  CUDADevice(const CUDADriver &driver, CUdevice id);
+  using DeviceList = std::vector<CUDADeviceRef>;
+
+  CUDADevice(const CUDADriver &driver, CUdevice id, std::string name);
   ~CUDADevice() override = default;
 
   const CUDADriver &driver() const;
 
   int id() const override;
-
-  std::string name() const override;
 
   ErrorOr<bool> canAccess(const CUDADevice &peer) const;
 
@@ -59,7 +59,11 @@ public:
 
   static const CUDADevice &cast(const Device &device);
 
+  static ErrorOr<const CUDADevice &> get(int id);
+
 private:
+  static ErrorOr<const DeviceList &> deviceList();
+
   const CUDADriver &driver_;
   CUdevice id_;
 };
