@@ -346,6 +346,27 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
 
     void setKGENKernelParamValueIfPresent(MojoLibraryAnalysis& analysis, StringRef paramLabel, TypedAttr value);
   }];
+
+  // This should set all attribuets including MO_HasDeviceInterface
+  let builders = [
+    OpBuilder<(ins
+      "TypeRange":$results,
+      "ValueRange":$operands,
+      "ArrayRef<ParamDeclAttr>":$outputParamDecls,
+      "ArrayAttr":$inputFusionInterface,
+      "ArrayAttr":$outputFusionInterface,
+      "StringAttr":$fusionBodyLambda,
+      "BoolAttr":$isViewOp,
+      "BoolAttr":$isKGEN,
+      "StringAttr":$summary,
+      "BoolAttr":$isAsync,
+      "ArrayAttr":$allocIndices,
+      "bool":$hasReadEffect,
+      "bool":$hasWriteEffect,
+      "DeviceRefAttr":$device
+    )>,
+  ];
+  let skipDefaultBuilders=1;
 }
 
 def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [

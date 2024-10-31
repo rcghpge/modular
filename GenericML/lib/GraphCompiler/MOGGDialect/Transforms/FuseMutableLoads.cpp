@@ -116,7 +116,9 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
       /*summary=*/kernelOp.getSummaryAttr(),
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
       /*allocIndices=*/kernelOp.getAllocIndicesAttr(),
-      /*hasReadEffect*/ builder.getBoolAttr(true));
+      /*hasReadEffect*/ true, // from load
+      /*hasWriteEffects*/ kernelOp.getHasWriteEffect(),
+      /*device*/ kernelOp.getDeviceRef());
 
   // respect the old deviceRef if it was present
   if (auto deviceRef = kernelOp.getDeviceRef())

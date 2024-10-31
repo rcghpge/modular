@@ -280,6 +280,59 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
 // MOGG KernelOp
 //===----------------------------------------------------------------------===//
 
+void KernelOp::build(OpBuilder &builder, OperationState &state,
+                     TypeRange results, ValueRange operands,
+                     ArrayRef<ParamDeclAttr> outputParamDecls,
+                     ArrayAttr inputFusionInterface,
+                     ArrayAttr outputFusionInterface,
+                     StringAttr fusionBodyLambda, BoolAttr isViewOp,
+                     BoolAttr isKGEN, StringAttr summary, BoolAttr isAsync,
+                     ArrayAttr allocIndices, bool hasReadEffect,
+                     bool hasWriteEffect, DeviceRefAttr device) {
+  state.addOperands(operands);
+
+  if (!outputParamDecls.empty())
+    state.addAttribute(getOutputParamDeclsAttrName(state.name),
+                       builder.getAttr<ParamDeclArrayAttr>(outputParamDecls));
+
+  if (inputFusionInterface)
+    state.addAttribute(getInputFusionInterfaceAttrName(state.name),
+                       inputFusionInterface);
+
+  if (outputFusionInterface)
+    state.addAttribute(getOutputFusionInterfaceAttrName(state.name),
+                       outputFusionInterface);
+
+  if (fusionBodyLambda)
+    state.addAttribute(getFusionBodyLambdaAttrName(state.name),
+                       fusionBodyLambda);
+
+  if (isViewOp)
+    state.addAttribute(getIsViewOpAttrName(state.name), isViewOp);
+
+  if (isKGEN)
+    state.addAttribute(getIsKGENAttrName(state.name), isKGEN);
+
+  if (summary)
+    state.addAttribute(getSummaryAttrName(state.name), summary);
+
+  if (isAsync)
+    state.addAttribute(getIsAsyncAttrName(state.name), isAsync);
+
+  if (allocIndices)
+    state.addAttribute(getAllocIndicesAttrName(state.name), allocIndices);
+
+  state.addAttribute(getHasReadEffectAttrName(state.name),
+                     builder.getBoolAttr(hasReadEffect));
+  state.addAttribute(getHasWriteEffectAttrName(state.name),
+                     builder.getBoolAttr(hasWriteEffect));
+  (void)state.addRegion();
+  state.addTypes(results);
+
+  if (device)
+    state.addAttribute(MO::kOperationDeviceRefAttrName, device);
+}
+
 // This function lowers the `mogg.kernel` to `mogg.generic.compiled.region`,
 // adding the ability to consider the in-place allocated dynamic tensors from
 // the user kernels. We do the storage allocation of mgp buffers only for

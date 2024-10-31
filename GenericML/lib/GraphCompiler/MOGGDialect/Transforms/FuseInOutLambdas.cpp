@@ -846,11 +846,12 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
           /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
           /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
-          /*allocIndices=*/ArrayAttr{});
-
-      if (kernelToFuseInto.getDeviceRef())
-        newDstKernel.setDeviceRef(kernelToFuseInto.getDeviceRef());
-
+          /*allocIndices=*/ArrayAttr{},
+          /*hasReadEffects*/ kernelToFuseInto.getHasReadEffect() ||
+              userToFuseIn.getHasReadEffect(),
+          /*hasWriteEffects*/ kernelToFuseInto.getHasWriteEffect() ||
+              userToFuseIn.getHasWriteEffect(),
+          /*device*/ kernelToFuseInto.getDeviceRef());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
 
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
@@ -1135,9 +1136,12 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
           /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
           /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
-          /*allocIndices=*/ArrayAttr{});
-      if (kernelToFuseInto.getDeviceRef())
-        newDstKernel.setDeviceRef(kernelToFuseInto.getDeviceRef());
+          /*allocIndices=*/ArrayAttr{},
+          /*hasReadEffects*/ kernelToFuseInto.getHasReadEffect() ||
+              userToFuseIn.getHasReadEffect(),
+          /*hasWriteEffects*/ kernelToFuseInto.getHasWriteEffect() ||
+              userToFuseIn.getHasWriteEffect(),
+          /*device*/ kernelToFuseInto.getDeviceRef());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
 
