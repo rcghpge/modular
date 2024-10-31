@@ -9,6 +9,8 @@ modular_py_test(
         "MAX_SERVE_DISABLE_TELEMETRY": "-1",
     },
     deps = [
+        "//SDK/lib/API/python/max/driver",
+        "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/serve",
         requirement("async-asgi-testclient"),
         requirement("hypothesis"),
