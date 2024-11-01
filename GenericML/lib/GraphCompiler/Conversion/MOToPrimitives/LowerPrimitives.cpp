@@ -261,7 +261,7 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
       loc, op->getResultTypes(), op->getOperands(),
       KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
       InOutSignatureAttr::get(builder.getContext(), operandSemantics),
-      BoolAttr{},                                          // isKGEN
+      builder.getBoolAttr(true),                           // isKGEN
       builder.getStringAttr(op->getName().getStringRef()), // summary
       builder.getBoolAttr(isAsync(op)),                    // isAsync
       builder.getBoolAttr(canFuseOp(op)),                  // canFuseIntoOther

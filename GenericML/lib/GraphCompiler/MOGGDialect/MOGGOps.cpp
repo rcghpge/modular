@@ -493,7 +493,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
       getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
-      getIsKGENAttr(),                                  // isKGEN
+      BoolAttr::get(ctx, true),                         // isKGEN
       getSummaryAttr(),                                 // summary
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
       BoolAttr::get(ctx, canFuseIntoOther),             // canFuseIntoOther

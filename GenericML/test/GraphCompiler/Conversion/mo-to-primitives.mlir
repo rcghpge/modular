@@ -56,7 +56,7 @@ mo.graph @scalar_arg(%arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
 // See `isAsync` is properly forwarded from mogg kernel to
 // CHECK-LABEL: mgp.model @test_lowered_async
 // CHECK-COUNT-1: mogg.generic.compiled.region
-// CHECK-COUNT-1: {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"ioii">, isAsync = true, summary = "mo.add_test"}
+// CHECK-COUNT-1: {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"ioii">, isAsync = true, isKGEN = true, summary = "mo.add_test"}
 kgen.extern.generator export @"stub"<type: dtype, rank>(!kgen.pointer<struct<(pointer<none>, array<rank, index>, array<rank, index>) memoryOnly>> borrow_in_mem) -> !kgen.struct<(pointer<none>, array<rank, index>, array<rank, index>, i1)>
 mo.graph @test_lowered_async(%arg0: !mo.tensor<[], si64>, %arg1: !mo.tensor<[], si64>) -> !mo.tensor<[], si64> attributes {device_specs = #M.device_spec_collection<host = <"cpu", 0>, devices = [<ref = <"cpu", 0>, target = <triple = "x86_64-unknown-linux-gnu", arch = "icelake-server", features = "+adx,+aes,+avx,+avx2,+avx512bitalg,+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512ifma,+avx512vbmi,+avx512vbmi2,+avx512vl,+avx512vnni,+avx512vpopcntdq,+bmi,+bmi2,+clflushopt,+clwb,+cmov,+crc32,+cx16,+cx8,+evex512,+f16c,+fma,+fsgsbase,+fxsr,+gfni,+invpcid,+lzcnt,+mmx,+movbe,+pclmul,+pconfig,+pku,+popcnt,+prfchw,+rdpid,+rdrnd,+rdseed,+sahf,+sgx,+sha,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+vaes,+vpclmulqdq,+wbnoinvd,+x87,+xsave,+xsavec,+xsaveopt,+xsaves">>]>} {
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[], si64>, %arg3: !mo.tensor<[], si64>)  -> !mo.tensor<[], si64>{

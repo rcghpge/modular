@@ -29,7 +29,6 @@ module {
 
 // CHECK-LABEL: kgen.generator export @"__stub_
 //  CHECK-SAME: ([[ARG0:%.*]]: !kgen.pointer<pointer<none>>, [[ARG1:%.*]]: !kgen.pointer<none>, [[ARG2:%.*]]: !kgen.pointer<none>) {
-//  CHECK-NEXT: kgen.param.declare simd_width = <1>
 
 // COM: Load the async value pointer.
 // CHECK-NEXT: [[INDEX1:%.*]] = kgen.param.constant = <1>
