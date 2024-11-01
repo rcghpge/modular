@@ -608,9 +608,32 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   int outputOffset = 1; // 1 for the input chain
   for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
     Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
-    Value oldOut = oldOutputs.getResult(preAllocIdx);
+
+    // Order of pre-allocated result memory matches that of original outputs.
+    Value oldOut = getOutputOp()->getOperand(preAllocIdx);
+
+    // TODO(GRA-1183): Another hack from inconsistency in opaque lowering.
+    // Sometimes we return the KGEN type directly, sometimes not depending
+    // on whether we are in the old and new pipelines.
+    if (isa<KGEN::StructType>(oldOut.getType())) {
+      while (!isa<OutputPlaceholdersOp>(oldOut.getDefiningOp())) {
+        Operation *definingOp = oldOut.getDefiningOp();
+
+        // Only expect ops like "convert_to_ndbuffer" or "mogg.to_kgen"
+        // which all have a single operand and just transform types.
+        ASSERT_STREAM(definingOp->getNumOperands() == 1,
+                      << "Expect one operand.");
+        oldOut = definingOp->getOperand(0);
+      }
+    }
+
+    ASSERT_STREAM(
+        isa<OutputPlaceholdersOp>(oldOut.getDefiningOp()),
+        << "Expect all pre-allocated outputs to be in `OutputPlaceholdersOp`.");
+
     Value loweredValue =
         convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
+
     mapper.map(oldOut, loweredValue);
   }
 
