@@ -22,7 +22,7 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
     int64_t total = 1;
     for (auto dimAttr : dims) {
       if (auto dimInt = llvm::dyn_cast<mlir::IntegerAttr>(dimAttr)) {
-        total *= dimInt.getInt();
+        total *= dimInt.getSInt();
       }
     }
 
@@ -73,8 +73,8 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
     }
 
     if (beforeIntegerAttr) {
-      int64_t beforeDim = beforeIntegerAttr.getInt();
-      int64_t afterDim = afterIntegerAttr.getInt();
+      int64_t beforeDim = beforeIntegerAttr.getSInt();
+      int64_t afterDim = afterIntegerAttr.getSInt();
 
       // 0 dims allow ambiguous mappings so it doesn't make sense to continue
       // E.g. consider [0, 1, 2] --> [5000, 0, 500, 42, 0]

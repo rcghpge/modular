@@ -14,9 +14,14 @@
 // CHECK:   %[[RESIZED_DIM0:.:*]] = mgp.tensor_spec.get_dim[0] %[[SPEC1]]
 // CHECK:   %[[RESIZED_DIM1:.:*]] = mgp.tensor_spec.get_dim[1] %[[SPEC1]]
 
+// CHECK:   %[[CASTED0:.*]] = index.casts %[[RESIZED_DIM0]] : index to si64
+// CHECK:   %[[CASTED1:.*]] = index.casts %[[RESIZED_DIM1]] : index to si64
 
 // CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]]
-// CHECK:   %[[NEW_SPEC:.*]] = mgp.tensor_spec.create %[[RESIZED_DIM0]], %[[RESIZED_DIM1]] : !mgp.tensor_spec<?x?xf32>
+// CHECK:   %[[CASTED_BACK0:.*]] = index.casts %[[CASTED0]] : si64 to index
+// CHECK:   %[[CASTED_BACK1:.*]] = index.casts %[[CASTED1]] : si64 to index
+
+// CHECK:   %[[NEW_SPEC:.*]] = mgp.tensor_spec.create %[[CASTED_BACK0]], %[[CASTED_BACK1]] : !mgp.tensor_spec<?x?xf32>
 
 // CHECK:   %[[OUT:.*]] = mgp.tensor.create %[[CH0]], %[[BUF]], %[[NEW_SPEC]] : !mgp.tensor<?x?xf32>
 // CHECK:   mef.output %[[CH0]], %[[OUT]]
@@ -60,8 +65,8 @@ mo.graph @multi_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1:
 // CHECK: mgp.tensor.create %[[CH]], %[[BUF_RESHAPED]], %[[SPEC2]] : !mgp.tensor<1x1xsi32>
 
 mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 1], si32>) {
-  %1 = mo.add_singleton_dim[0 : index] (%in1) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
-  %2 = mo.add_singleton_dim[1 : index] (%1) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1, 1], si32>
+  %1 = mo.add_singleton_dim[0 : si64] (%in1) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
+  %2 = mo.add_singleton_dim[1 : si64] (%1) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1, 1], si32>
   mo.output %2 : !mo.tensor<[1, 1], si32>
 }
 
@@ -74,6 +79,6 @@ mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 
 // CHECK: mgp.tensor.create %[[CH0]], %[[RESIZE]], %[[SPEC]] : !mgp.tensor<10x5xsi32>
 
 mo.graph @split_dim_mgp<N>(%arg0: !mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32> {
-  %0 = mo.split_dim[0 : index] (%arg0) : (!mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32>
+  %0 = mo.split_dim[0 : si64] (%arg0) : (!mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32>
   mo.output %0 : !mo.tensor<[10, 5], si32>
 }

@@ -22,8 +22,8 @@ mo.graph @rebind_param_materialization<A, B, Sh0: !mosh.ape -> N, M, Sh1: !mosh.
   %arg0 : !mo.tensor<[A, B], f32>, %arg1 : !mo.tensor<Sh0, f32>
 // CHECK-SAME: ) -> (!mo.tensor<[[[N]], [[M]]], f32>, !mo.tensor<[[SH1]], f32>) {
 ) -> (!mo.tensor<[N, M], f32>,!mo.tensor<Sh1, f32>) {
-  // CHECK-DAG: kgen.param.declare [[K:.*]] = <[[A]]>
-  // CHECK-DAG: kgen.param.declare [[L:.*]] = <[[B]]>
+  // CHECK-DAG: kgen.param.declare [[K:.*]]: si64 = <[[A]]>
+  // CHECK-DAG: kgen.param.declare [[L:.*]]: si64 = <[[B]]>
   // CHECK-DAG: %[[VAL0:.*]] = mo.rebind(%arg0) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[[[K]], [[L]]], f32>
   %0 = mo.rebind<() -> K, L>(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[K, L], f32>
   // CHECK-DAG: kgen.param.declare [[SH2:.*]]: !mosh.ape = <[[SH0]]>
@@ -49,7 +49,7 @@ mo.graph @rebind_no_fold<N, M, Sh: !mosh.ape>(
 
 // Key is only one definition of param C
 // CHECK: mo.graph @rebind_reuse_declared_param<A, B -> O>
-// CHECK-NEXT: kgen.param.declare C = <A>
+// CHECK-NEXT: kgen.param.declare C: si64 = <A>
 // CHECK-NOT: kgen.param.declare
 // CHECK-NEXT: mo.rebind({{.*}}) : !mo.tensor<[A, B], f32> -> !mo.tensor<[C, C], f32>
 mo.graph @rebind_reuse_declared_param<A, B -> O>(

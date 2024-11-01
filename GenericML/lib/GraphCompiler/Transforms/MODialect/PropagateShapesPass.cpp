@@ -10,19 +10,17 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
-#include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
-#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
-#include <optional>
+
+#include <deque>
 #include <sstream>
-#include <type_traits>
 
 using namespace M;
 using namespace MO;
@@ -38,9 +36,7 @@ namespace M::MO {
 namespace {
 
 bool isParamOperatorPure(KGEN::ParamOperatorAttr paramOperator) {
-  if (paramOperator.getOpcode() == KGEN::POC::Apply)
-    return false;
-  return true;
+  return paramOperator.getOpcode() != KGEN::POC::Apply;
 }
 
 bool isParamDeclOpPure(KGEN::ParamDeclareOp paramDeclOp) {
@@ -528,7 +524,7 @@ struct PropagateShapes {
     if (llvm::is_contained({KGEN::POC::Mul, KGEN::POC::MulNuw},
                            exprAttr.getOpcode())) {
       auto intAttr = dyn_cast<IntegerAttr>(rhs);
-      if (intAttr && intAttr.getInt() == -1 && isDefinitelyNonNegative(lhs))
+      if (intAttr && intAttr.getSInt() == -1 && isDefinitelyNonNegative(lhs))
         return true;
     }
 
@@ -589,7 +585,7 @@ struct PropagateShapes {
     // A helper to check whether `attr` is an IntegerAttr of value `val`.
     auto isIntAttrOfVal = [](TypedAttr attr, int val) {
       auto intAttr = dyn_cast<IntegerAttr>(attr);
-      return intAttr && intAttr.getInt() == val;
+      return intAttr && intAttr.getSInt() == val;
     };
 
     // Look for patterns that arise from abs(X), which could materialize into
@@ -982,10 +978,12 @@ struct PropagateShapes {
               shapeOfOp.getOutputParamDecls();
           if (!outParamDecls.empty()) {
             KGEN::ParamDeclAttr decl = outParamDecls.front();
-            ASSERT_STREAM(outParamDecls.size() == 1 && decl.getType().isIndex(),
+            ASSERT_STREAM(outParamDecls.size() == 1 &&
+                              ShapeAttr::isDimType(decl.getType()),
                           << "expect only 1 output dimension parameter");
             ImplicitLocOpBuilder builder(op->getLoc(), op);
-            auto rankAttr = builder.getIndexAttr(inputShape.getRank());
+            auto rankAttr =
+                ShapeAttr::getDim(builder.getContext(), inputShape.getRank());
             auto declOp = builder.create<KGEN::ParamDeclareOp>(decl, rankAttr);
             shapeOfOp.setOutputParamDecls({});
             worklist.push_back(op);

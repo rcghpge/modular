@@ -349,6 +349,12 @@ public:
   MGP::TensorSpecGetDimOp getDim(Location loc, Value loweredTensor,
                                  uint64_t axis, DeviceRefAttr device);
 
+  /// During lowering, si64 is used at the attribute level, while MGP uses
+  /// index values to represent dimensions and sizes. These functions provide
+  /// easy conversions between the two types.
+  static Value indexToDimension(OpBuilder &builder, Location loc, Value index);
+  static Value dimensionToIndex(OpBuilder &builder, Location loc, Value dim);
+
   /// The given MO inArg (a !mo.tensor) has been lowered to the given MGP
   /// outArg (an !mgp.tensor). If inArg is subject to any dynamic shapes
   /// (rank or dimensions), update the parameter map to capture the MGP values
@@ -432,6 +438,12 @@ private:
                                      OpBuilder &builder, Location loc,
                                      Region *parentRegion, TypedAttr attr,
                                      ValueRange operands);
+
+  /// Lower a parameter expression explicitly used as a dimension in the
+  /// graph compiler.
+  ErrorOr<Value> lowerDimensionExpression(ParameterLoweringState &state,
+                                          OpBuilder &builder, Location loc,
+                                          Region *parentRegion, TypedAttr dim);
 
   //===-----------------------------------------------------------------===//
   // Lowering state

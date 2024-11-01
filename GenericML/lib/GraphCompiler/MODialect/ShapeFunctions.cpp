@@ -95,7 +95,8 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
 /// Try converting `attr` to a constant integer.
 std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
   if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-    return intAttr.getInt();
+    return intAttr.getType().isSignedInteger() ? intAttr.getSInt()
+                                               : intAttr.getInt();
   return std::nullopt;
 }
 
@@ -1227,7 +1228,7 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   std::optional<size_t> maybeTargetNegOneDimIdx = std::nullopt;
   for (auto [idx, targetDim] : llvm::enumerate(targetShape.getValues())) {
     auto intDim = dyn_cast<IntegerAttr>(targetDim);
-    if (intDim && intDim.getInt() == -1) {
+    if (intDim && intDim.getSInt() == -1) {
       // Detected multiple negative one, gives up and let runtime handle the
       // error via a shape function call.
       if (maybeTargetNegOneDimIdx.has_value()) {
@@ -1260,7 +1261,7 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     if (allowParametricDenominator) {
       for (auto dim : mulDims) {
         auto intDim = dyn_cast<IntegerAttr>(dim);
-        if (intDim && intDim.getInt() == 0) {
+        if (intDim && intDim.getSInt() == 0) {
           // Guaranteed failure either way.
           return ShapeMaterializeResult::error(
               "[reshape] cannot infer dimension when a specified output "

@@ -156,13 +156,13 @@ def MOShape_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
 
     ```mlir
     %sh : !mosh.ape
-    %dim : index
+    %dim : si64
     %firstDim = mosh.get_dim(%sh)[%dim]
     ```
   }];
 
-  let arguments = (ins MOSH_ShapeType:$input, Index:$dim);
-  let results = (outs Index:$result);
+  let arguments = (ins MOSH_ShapeType:$input, SI64:$dim);
+  let results = (outs SI64:$result);
 
   let assemblyFormat = "`(` $input `)` `` `[` $dim `]` attr-dict";
   let hasFolder = 1;
@@ -188,7 +188,7 @@ def MOSH_GetRankOp : MOSH_Op<"get_rank", [Pure]> {
   }];
 
   let arguments = (ins MOSH_ShapeType:$input);
-  let results = (outs Index:$result);
+  let results = (outs SI64:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict";
   let hasFolder = 1;
@@ -203,16 +203,16 @@ def MOSH_NewOp : MOSH_Op<"new", [Pure]> {
     Example:
 
     ```mlir
-    %d0 : index
-    %d1 : index
+    %d0 : si64
+    %d1 : si64
     %sh0 = mosh.new(%d0, %d1)
 
-    %d2 : index
+    %d2 : si64
     %sh1 = mosh.new(%d0, %d1, %d2)
     ```
   }];
 
-  let arguments = (ins Variadic<Index>:$dims);
+  let arguments = (ins Variadic<SI64>:$dims);
   let results = (outs MOSH_ShapeType:$result);
 
   let assemblyFormat = "`(` $dims `)` attr-dict";
@@ -234,14 +234,14 @@ def MOSH_NumElementsOp : MOSH_Op<"num_elements", [Pure]> {
   }];
 
   let arguments = (ins MOSH_ShapeType:$input);
-  let results = (outs Index:$result);
+  let results = (outs SI64:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict";
   let hasFolder = 1;
   let hasCanonicalizeMethod = 1;
 }
 
-def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
+def MOSH_SliceOp : MOSH_Op<"slice", [Pure]> {
   let summary = "Slice out a new shape from an existing shape.";
   let description = [{
     The slice supports start and end indices, and they must obey relationships
@@ -266,8 +266,8 @@ def MOShape_SliceOp : MOSH_Op<"slice", [Pure]> {
 
   let arguments = (ins
     MOSH_ShapeType:$input,
-    Index:$start,
-    Index:$end
+    SI64:$start,
+    SI64:$end
   );
   let results = (outs MOSH_ShapeType:$result);
 

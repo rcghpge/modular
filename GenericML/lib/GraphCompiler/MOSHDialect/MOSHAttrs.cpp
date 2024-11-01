@@ -158,10 +158,8 @@ void M::MOSH::printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
   printShapeValue(p, values);
 }
 
-IndexType ShapeAttr::getDimType(MLIRContext *ctx) {
-  // return IntegerType::get(ctx, 64,
-  // IntegerType::SignednessSemantics::Signless);
-  return IndexType::get(ctx);
+IntegerType ShapeAttr::getDimType(MLIRContext *ctx) {
+  return IntegerType::get(ctx, 64, IntegerType::SignednessSemantics::Signed);
 }
 
 IntegerAttr ShapeAttr::getDim(MLIRContext *ctx, int64_t value) {
@@ -224,7 +222,7 @@ LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 /// Convert a symbolic dimension attribute to an integer value.
 static int64_t symbolicDimToInt(TypedAttr dim) {
   if (auto intAttr = llvm::dyn_cast<IntegerAttr>(dim))
-    return intAttr.getInt();
+    return intAttr.getSInt();
   return mlir::ShapedType::kDynamic;
 }
 
@@ -388,8 +386,8 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
     // dimensions are integral dimensions going from 1 --> not 1.
     const auto &beforeDimInt = llvm::dyn_cast<IntegerAttr>(beforeDim);
     const auto &bcastedDimInt = llvm::dyn_cast<IntegerAttr>(bcastedDim);
-    if (beforeDimInt && bcastedDimInt && beforeDimInt.getInt() == 1 &&
-        bcastedDimInt.getInt() != 1) {
+    if (beforeDimInt && bcastedDimInt && beforeDimInt.getSInt() == 1 &&
+        bcastedDimInt.getSInt() != 1) {
       answer.push_back(bcasted_i);
     } else if (beforeDim != bcastedDim) {
       return Error("Cannot statically prove which dimension broadcast.");

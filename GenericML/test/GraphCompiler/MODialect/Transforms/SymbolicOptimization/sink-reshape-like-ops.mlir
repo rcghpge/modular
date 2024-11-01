@@ -134,9 +134,9 @@ mo.graph @sink_consecutive_elemwise_with_parameters<D8431, P49533, P49878>(
     %elemwise3: !mo.tensor<[], f32>,
     %elemwise4: !mo.tensor<[], f32>
 ) -> !mo.tensor<[P49878, P49533, 3072], f32>{
-    kgen.param.declare D8421 = <D8431>
-    kgen.param.declare P39675 = <mul_nuw(D8431, 3072)>
-    kgen.param.declare P39676 = <mul_nuw(P49533, P49878, 3072)>
+    kgen.param.declare D8421: si64 = <D8431>
+    kgen.param.declare P39675: si64 = <mul_nuw(D8431, 3072)>
+    kgen.param.declare P39676: si64 = <mul_nuw(P49533, P49878, 3072)>
     %280 = mo.static.reshape(%input) : !mo.tensor<[D8431, 3072], f32> -> !mo.tensor<[P49878, P49533, 3072], f32>
     %281 = mo.static.broadcast_to(%elemwise1) : !mo.tensor<[3072], f32> -> !mo.tensor<[P49878, P49533, 3072], f32>
     %282 = mo.add(%280, %281) : !mo.tensor<[P49878, P49533, 3072], f32>
@@ -147,11 +147,11 @@ mo.graph @sink_consecutive_elemwise_with_parameters<D8431, P49533, P49878>(
     %287 = mo.erf(%286) : !mo.tensor<[P49878, P49533, 3072], f32>
     %288 = mo.static.broadcast_to(%elemwise4) : !mo.tensor<[], f32> -> !mo.tensor<[P49878, P49533, 3072], f32>
     %289 = mo.add(%287, %288) : !mo.tensor<[P49878, P49533, 3072], f32>
-    kgen.param.declare P49316: i1 = <eq(P49878, 1)>
-    kgen.param.declare P49317: i1 = <eq(P49878, 1)>
+    kgen.param.declare P49316: i1 = <eq(:si64 P49878, 1)>
+    kgen.param.declare P49317: i1 = <eq(:si64 P49878, 1)>
     kgen.param.declare P49318: i1 = <or(P49316, P49317)>
-    kgen.param.declare P49325: i1 = <eq(P49533, 1)>
-    kgen.param.declare P49326: i1 = <eq(P49533, 1)>
+    kgen.param.declare P49325: i1 = <eq(:si64 P49533, 1)>
+    kgen.param.declare P49326: i1 = <eq(:si64 P49533, 1)>
     kgen.param.declare P49327: i1 = <or(P49325, P49326)>
     %290 = mo.mul(%284, %289) : !mo.tensor<[P49878, P49533, 3072], f32>
     mo.output %290 : !mo.tensor<[P49878, P49533, 3072], f32>

@@ -942,7 +942,7 @@ void MOGatherNdOp::inferMOTypesImpl(
   } else {
     // output rank = batch_dims + (indices.rank - batch_dims - 1)
     //                          + (input.rank - batch_dims - K).
-    size_t k = kAttr.getInt();
+    size_t k = kAttr.getSInt();
     size_t batchDims = operands.getBatchDims().getInt();
     size_t outputRank =
         (indicesTy.getRank() - 1) + (inputTy.getRank() - batchDims - k);

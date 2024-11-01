@@ -644,13 +644,13 @@ struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
     ArrayRef<TypedAttr> dims = op.getNewShape().getValues();
     bool containsNegOne = llvm::any_of(dims, [](auto dim) {
       auto intDim = dyn_cast<IntegerAttr>(dim);
-      return intDim && intDim.getInt() == -1;
+      return intDim && intDim.getSInt() == -1;
     });
     if (containsNegOne) {
       SmallVector<TypedAttr> nonNegOneDims;
       for (auto dim : dims) {
         auto intDim = dyn_cast<IntegerAttr>(dim);
-        if (intDim && intDim.getInt() == -1)
+        if (intDim && intDim.getSInt() == -1)
           continue;
 
         nonNegOneDims.push_back(dim);

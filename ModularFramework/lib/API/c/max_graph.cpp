@@ -214,7 +214,8 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
 
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDimParamDecl(MlirContext ctx,
                                                           StringRef name) {
-  return wrap(KGEN::ParamDeclAttr::get(name, IndexType::get(unwrap(ctx))));
+  return wrap(
+      KGEN::ParamDeclAttr::get(name, MOSH::ShapeAttr::getDimType(unwrap(ctx))));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewParamDeclArray(
@@ -379,18 +380,19 @@ MODULAR_API_EXPORT MlirAttribute MAXG_bufferTypeShapeGetDim(MlirType t,
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewDynamic(MlirContext context) {
-  return wrap(KGEN::UnknownAttr::get(IndexType::get(unwrap(context))));
+  return wrap(
+      KGEN::UnknownAttr::get(MOSH::ShapeAttr::getDimType(unwrap(context))));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewStatic(MlirContext context,
                                                    int64_t dim) {
-  return wrap(IntegerAttr::get(IndexType::get(unwrap(context)), dim));
+  return wrap(MOSH::ShapeAttr::getDim(unwrap(context), dim));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewSymbolic(MlirContext context,
                                                      StringRef name) {
-  return wrap(
-      KGEN::ParamDeclRefAttr::get(name, IndexType::get(unwrap(context))));
+  return wrap(KGEN::ParamDeclRefAttr::get(
+      name, MOSH::ShapeAttr::getDimType(unwrap(context))));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_dimNewAlgebraic(MlirContext context,
@@ -401,8 +403,9 @@ MODULAR_API_EXPORT MlirAttribute MAXG_dimNewAlgebraic(MlirContext context,
   auto rhs_attr = cast<TypedAttr>(unwrap(rhs));
   SmallVector<TypedAttr, 2> args = {lhs_attr, rhs_attr};
 
-  return wrap(KGEN::ParamOperatorAttr::get(static_cast<KGEN::POC>(opcode), args,
-                                           IndexType::get(unwrap(context))));
+  return wrap(KGEN::ParamOperatorAttr::get(
+      static_cast<KGEN::POC>(opcode), args,
+      MOSH::ShapeAttr::getDimType(unwrap(context))));
 }
 
 MODULAR_API_EXPORT bool MAXG_dimIsDynamic(MlirAttribute a) {
@@ -430,7 +433,7 @@ MODULAR_API_EXPORT int64_t MAXG_dimStaticValue(MlirAttribute a) {
   if (!isa<IntegerAttr>(attr)) {
     return ShapedType::kDynamic;
   }
-  return cast<IntegerAttr>(attr).getInt();
+  return cast<IntegerAttr>(attr).getSInt();
 }
 
 MODULAR_API_EXPORT MlirIdentifier MAXG_dimSymbolicName(MlirAttribute a) {

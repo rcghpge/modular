@@ -82,6 +82,24 @@ SmallVector<Value> MOGraphLoweringState::getDynamicDims(Location loc,
   return dynDims;
 }
 
+Value MOGraphLoweringState::indexToDimension(OpBuilder &builder, Location loc,
+                                             Value index) {
+  if (MOSH::ShapeAttr::isDimType(index.getType()))
+    return index;
+
+  return builder.createOrFold<mlir::index::CastSOp>(
+      loc, MOSH::ShapeAttr::getDimType(builder.getContext()), index);
+}
+
+Value MOGraphLoweringState::dimensionToIndex(OpBuilder &builder, Location loc,
+                                             Value dim) {
+  if (dim.getType().isIndex())
+    return dim;
+
+  return builder.createOrFold<mlir::index::CastSOp>(loc, builder.getIndexType(),
+                                                    dim);
+}
+
 ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
                                              BlockArgument &inArg,
                                              BlockArgument &outArg) {
@@ -129,11 +147,14 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
         // TODO(#14531) handle param expr
         return Error("Expressions in parameter arguments are not supported");
       }
-      for (auto [inDimParam, outDim] : llvm::zip(inDimParams, dynDims))
+      for (auto [inDimParam, outDim] : llvm::zip(inDimParams, dynDims)) {
         // Only update the parameter mapping for the first parameter
         // occurrence.
-        if (!params.lookupLowered(parentRegion, inDimParam))
-          params.emplaceLowered(parentRegion, inDimParam, outDim);
+        if (!params.lookupLowered(parentRegion, inDimParam)) {
+          auto retyped = indexToDimension(getExecuteOpBuilder(), loc, outDim);
+          params.emplaceLowered(parentRegion, inDimParam, retyped);
+        }
+      }
     }
   }
   return hasParams;
@@ -185,10 +206,11 @@ ErrorOr<SmallVector<Value>> MOGraphLoweringState::lowerShapeAttrDynDims(
   SmallVector<Value> runtimeDims;
   for (TypedAttr dim : shapeAttr.getValues()) {
     if (!isa<IntegerAttr>(dim)) {
-      auto vOr = lowerExpression(parentRegion, loc, dim);
+      auto vOr = lowerDimensionExpression(params, getExecuteOpBuilder(), loc,
+                                          parentRegion, dim);
       if (vOr.isError())
         return vOr.takeError();
-      runtimeDims.emplace_back(std::move(*vOr));
+      runtimeDims.emplace_back(vOr.takeValue());
     }
   }
   return runtimeDims;
@@ -300,7 +322,7 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
   };
 
   switch (poc) {
-  // All comparisons lower to `index.cmp`
+  // All comparisons lower to `pop.cmp`
   case KGEN::POC::EQ:
   case KGEN::POC::LT:
   case KGEN::POC::LE:
@@ -325,13 +347,14 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
     return buildVariadicOp<KGEN::POP::MulOp>(builder, loc, operands,
                                              resultType);
   case KGEN::POC::And:
-    return buildVariadicOp<KGEN::POP::AndOp>(builder, loc, operands,
-                                             resultType);
+    return buildVariadicOp<KGEN::POP::SIMDAndOp>(builder, loc, operands,
+                                                 resultType);
   case KGEN::POC::Or:
-    return buildVariadicOp<KGEN::POP::OrOp>(builder, loc, operands, resultType);
+    return buildVariadicOp<KGEN::POP::SIMDOrOp>(builder, loc, operands,
+                                                resultType);
   case KGEN::POC::Xor:
-    return buildVariadicOp<KGEN::POP::XOrOp>(builder, loc, operands,
-                                             resultType);
+    return buildVariadicOp<KGEN::POP::SIMDXOrOp>(builder, loc, operands,
+                                                 resultType);
 
   // Remaining ops
   case KGEN::POC::Shl:
@@ -340,15 +363,21 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
     return builder.create<KGEN::POP::ShrOp>(loc, resultType, operands);
   case KGEN::POC::Mod:
     return builder.create<KGEN::POP::RemOp>(loc, resultType, operands);
-  case KGEN::POC::Cond:
-    return builder.create<KGEN::POP::SelectOp>(loc, resultType, operands);
+  case KGEN::POC::Cond: {
+    auto condition = operands[0];
+    auto trueValue = operands[1];
+    auto falseValue = operands[2];
+    condition = builder.createOrFold<KGEN::POP::CastToBuiltinOp>(
+        loc, builder.getI1Type(), condition);
+    return builder.create<KGEN::POP::SelectOp>(loc, resultType, condition,
+                                               trueValue, falseValue);
+  }
   default:
     return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
   }
 }
 
-static FailureOr<KGEN::POP::SIMDType> builtinTypeToDType(mlir::MLIRContext *ctx,
-                                                         Type type) {
+static FailureOr<Type> builtinTypeToDType(mlir::MLIRContext *ctx, Type type) {
   KGEN::KGENDType dtype;
 
   if (type.isIndex())
@@ -376,7 +405,7 @@ static Value popScalarToBuitltinType(OpBuilder &builder, Location loc,
           ? (Type)IndexType::get(ctx)
           : (Type)M::getEquivalentIntegerType(ctx, DType(dtype.getValue()));
 
-  return builder.create<KGEN::POP::CastToBuiltinOp>(loc, resultType, v);
+  return builder.createOrFold<KGEN::POP::CastToBuiltinOp>(loc, resultType, v);
 }
 
 /// This logic controls when to use the Index dialect and when to lower to
@@ -431,10 +460,16 @@ static ErrorOr<Value> lowerParamOperatorToPop(OpBuilder &builder, Location loc,
   for (auto operand : operands) {
     auto scalarType =
         builtinTypeToDType(builder.getContext(), operand.getType());
+
     if (failed(scalarType))
       return Error("unable to convert operand to !pop.scalar");
 
-    popOperands.push_back(builder.create<KGEN::POP::CastFromBuiltinOp>(
+    if (scalarType == operand.getType()) {
+      popOperands.push_back(operand);
+      continue;
+    }
+
+    popOperands.push_back(builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(
         loc, *scalarType, operand));
   }
 
@@ -470,7 +505,7 @@ Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
                                                        boolAttr.getValue());
 
   if (intAttr.getType().isIndex())
-    return builder.create<mlir::index::ConstantOp>(loc, intAttr.getInt());
+    return builder.create<mlir::index::ConstantOp>(loc, intAttr.getValue());
 
   return builder.create<KGEN::ParamConstantOp>(loc, intAttr);
 }
@@ -483,7 +518,9 @@ bool isIndexOp(Operation *op) {
   // handle more than IndexType.
   return isa<mlir::index::IndexDialect>(op->getDialect()) ||
          isa<KGEN::POP::SelectOp, KGEN::POP::AndOp, KGEN::POP::OrOp,
-             KGEN::POP::XOrOp>(op);
+             KGEN::POP::XOrOp, KGEN::POP::CastToBuiltinOp,
+             KGEN::POP::CastFromBuiltinOp, KGEN::POP::AddOp, KGEN::POP::MulOp,
+             KGEN::POP::DivOp, KGEN::POP::CmpOp>(op);
 }
 
 DenseSet<Operation *> getAncestors(Operation *root) {
@@ -528,11 +565,15 @@ getBoundaryOpOperands(Operation *root,
     if (!op || !isIndexOp(op) || prevAncestors.contains(op))
       continue;
 
-    for (auto &&opOperand : op->getOpOperands()) {
+    for (OpOperand &opOperand : op->getOpOperands()) {
       auto defOp = opOperand.get().getDefiningOp();
-      const bool isConstant = defOp->hasTrait<OpTrait::ConstantLike>();
+      if (!defOp)
+        continue;
 
-      if (prevAncestors.contains(defOp) && !isConstant)
+      const bool isTrivial = defOp->hasTrait<OpTrait::ConstantLike>() ||
+                             isa<mlir::CastOpInterface>(defOp);
+
+      if (prevAncestors.contains(defOp) && !isTrivial)
         boundaryOpOperands.insert(&opOperand);
       else
         worklist.push_back(defOp);
@@ -553,7 +594,7 @@ SmallVector<OpOperand *> getSequencedAssertBoundaryOperands(
 
   for (auto parentAssert : parentAsserts) {
     auto prevAssertCondRoot =
-        dyn_cast<MGP::AssertOp>(parentAssert).getCond().getDefiningOp();
+        cast<MGP::AssertOp>(parentAssert).getCond().getDefiningOp();
 
     auto prevAncestors = getAncestors(prevAssertCondRoot);
 
@@ -582,6 +623,19 @@ getParentAsserts(Operation *currentAssert,
 }
 
 } // namespace
+
+ErrorOr<Value> MOGraphLoweringState::lowerDimensionExpression(
+    ParameterLoweringState &state, OpBuilder &builder, Location loc,
+    Region *parentRegion, TypedAttr dim) {
+  auto dimValOr = state.lowerExpression(
+      builder, loc, parentRegion, dim,
+      [this](auto &&...args) { return this->lowerExpressionImpl(args...); });
+
+  if (failed(dimValOr))
+    return dimValOr;
+
+  return dimensionToIndex(builder, loc, dimValOr.takeValue());
+}
 
 ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     ParameterLoweringState &state, OpBuilder &builder, Location loc,
@@ -660,10 +714,9 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     // Lower dimensions recursively.
     SmallVector<Value> dimVals;
     for (TypedAttr dim : shapeAttr.getValues()) {
-      auto dimValOr = state.lowerExpression(
-          builder, loc, parentRegion, dim, [this](auto &&...args) {
-            return this->lowerExpressionImpl(args...);
-          });
+      auto dimValOr =
+          lowerDimensionExpression(state, builder, loc, parentRegion, dim);
+
       if (dimValOr.isError())
         return dimValOr.takeError();
       dimVals.emplace_back(std::move(*dimValOr));

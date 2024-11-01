@@ -12,9 +12,13 @@
 // CHECK-NEXT:   %[[DUMMY_SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[DUMMY]]
 // CHECK-NEXT:   %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %[[DUMMY_SPEC]]
 // CHECK-NEXT:   %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %[[DUMMY_SPEC]]
+// CHECK-NEXT:   %[[CASTED0:.*]] = index.casts %[[DIM0]] : index to si64
+// CHECK-NEXT:   %[[CASTED1:.*]] = index.casts %[[DIM1]] : index to si64
 // CHECK-NEXT:   %[[INPUT_BUF:.*]] = mgp.tensor.extract.buffer %[[INPUT]]
-// CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.tensor_spec.create %[[DIM0]]
-// CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.tensor_spec.create %[[DIM1]]
+// CHECK-NEXT:   %[[INDEX0:.*]] = index.casts %[[CASTED0]] : si64 to index
+// CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.tensor_spec.create %[[INDEX0]]
+// CHECK-NEXT:   %[[INDEX1:.*]] = index.casts %[[CASTED1]] : si64 to index
+// CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.tensor_spec.create %[[INDEX1]]
 // CHECK-NEXT:   %[[SPLIT_SIZE1:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC1]]
 
 // CHECK-NEXT:   %[[SLICE:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[ZERO]], %[[SPLIT_SIZE1]]

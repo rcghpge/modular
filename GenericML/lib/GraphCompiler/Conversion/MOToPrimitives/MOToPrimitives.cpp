@@ -24,7 +24,6 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
-#include <cassert>
 
 using namespace M;
 
@@ -40,6 +39,44 @@ namespace M::MGP {
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+struct IndexLowering {
+  MGP::MOOpLoweringState &opLoweringState;
+
+  // Arithmetic helpers
+  auto constant(int64_t val) -> Value {
+    return opLoweringState.create<mlir::index::ConstantOp>(val);
+  }
+
+  auto mul(Value a, Value b) -> Value {
+    auto indexTy = opLoweringState.builder.getIndexType();
+    return opLoweringState.create<mlir::index::MulOp>(indexTy, a, b);
+  }
+
+  auto add(Value a, Value b) -> Value {
+    auto indexTy = opLoweringState.builder.getIndexType();
+    return opLoweringState.create<mlir::index::AddOp>(indexTy, a, b);
+  }
+
+  auto div(Value a, Value b) -> Value {
+    auto indexTy = opLoweringState.builder.getIndexType();
+    return opLoweringState.create<mlir::index::DivSOp>(indexTy, a, b);
+  }
+
+  auto ifPositive(Value check, Value yes, Value no) -> Value {
+    auto indexTy = opLoweringState.builder.getIndexType();
+    auto cond = opLoweringState.create<mlir::index::CmpOp>(
+        mlir::index::IndexCmpPredicate::SLT, check, constant(0));
+    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, no, yes);
+  }
+
+  auto ifZero(Value check, Value yes, Value no) -> Value {
+    auto indexTy = opLoweringState.builder.getIndexType();
+    auto cond = opLoweringState.create<mlir::index::CmpOp>(
+        mlir::index::IndexCmpPredicate::EQ, check, constant(0));
+    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, yes, no);
+  }
+};
 
 /// This class orchestrates lowering of one mo.graph operation to a mgp.model,
 /// consisting of nad 'init' phase, and 'execute' phase, and a model descriptor.
@@ -537,10 +574,16 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   // Fill the buffer with the index value.
   Value loweredIndexVal =
       loweringState.lookupExecuteLoweredValue(toTensorOp.getInput());
-  SmallVector<Value> values;
-  values.emplace_back(loweredIndexVal);
+
+  // The input to mo.index.to_tensor is now an si64.
+  // Cast to index to match the expectation of mgp.set_with_index.
+  auto &builder = loweringState.getExecuteOpBuilder();
+  loweredIndexVal = builder.create<mlir::index::CastSOp>(
+      toTensorOp.getLoc(), builder.getIndexType(), loweredIndexVal);
+
   auto outChain = opLoweringState.bufferSetWithIndex(
-      outputStorage.buffer, values, toTensorOp.getResult().getType());
+      outputStorage.buffer, {loweredIndexVal},
+      toTensorOp.getResult().getType());
 
   // Set up output tensor.
   opLoweringState.createOutputs(outChain, *loweredOutputStorageOr);
@@ -611,7 +654,7 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
     // a constant runtime dimension.
     if (auto intAttr = dyn_cast<IntegerAttr>(inDim)) {
       auto constOp =
-          opLoweringState.create<mlir::index::ConstantOp>(intAttr.getInt());
+          opLoweringState.create<mlir::index::ConstantOp>(intAttr.getSInt());
       runtimeDims.emplace_back(constOp.getResult());
       continue;
     }
@@ -674,8 +717,11 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
           rebindOp.getLoc(), loweredOutput, idx,
           getDeviceOrDefault(loweringState.getGraph(), resTy));
 
+      auto asDimension = loweringState.indexToDimension(
+          loweringState.getExecuteOpBuilder(), rebindOp.getLoc(), getDimOp);
+
       if (auto err = loweringState.lowerParamDecl(rebindOp->getParentRegion(),
-                                                  decl, getDimOp))
+                                                  decl, asDimension))
         return rebindOp->emitOpError(err.getError());
     }
   }
@@ -805,7 +851,7 @@ LogicalResult
 MOGraphLowering::lowerConstantScalar(MO::ConstantScalarOp constOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, constOp);
 
-  // currently only si32 and i1 constants are supported
+  // currently only si32, si64, and i1 constants are supported
   if (auto boolAttr = dyn_cast<mlir::BoolAttr>(constOp.getValue())) {
     IntegerAttr intAttr = boolAttr;
     auto grtConstOp =
@@ -819,7 +865,7 @@ MOGraphLowering::lowerConstantScalar(MO::ConstantScalarOp constOp) {
       loweringState.emplaceExecuteLoweredValue(constOp, grtConstOp);
     } else if (intAttr.getType().isSignedInteger(64)) {
       auto mipConstOp =
-          opLoweringState.create<mlir::index::ConstantOp>(intAttr.getInt());
+          opLoweringState.create<mlir::index::ConstantOp>(intAttr.getSInt());
       loweringState.emplaceExecuteLoweredValue(constOp, mipConstOp);
     }
   } else {
@@ -1033,36 +1079,7 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   if (failed(tensorSpecOr))
     return failure();
 
-  auto indexTy = opLoweringState.builder.getIndexType();
-
-  // Arithmetic helpers
-  auto constant = [&](int64_t val) -> Value {
-    return opLoweringState.create<mlir::index::ConstantOp>(val);
-  };
-
-  auto mul = [&](Value a, Value b) -> Value {
-    return opLoweringState.create<mlir::index::MulOp>(indexTy, a, b);
-  };
-
-  auto add = [&](Value a, Value b) -> Value {
-    return opLoweringState.create<mlir::index::AddOp>(indexTy, a, b);
-  };
-
-  auto div = [&](Value a, Value b) -> Value {
-    return opLoweringState.create<mlir::index::DivSOp>(indexTy, a, b);
-  };
-
-  auto ifPositive = [&](Value check, Value yes, Value no) -> Value {
-    auto cond = opLoweringState.create<mlir::index::CmpOp>(
-        mlir::index::IndexCmpPredicate::SLT, check, constant(0));
-    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, no, yes);
-  };
-
-  auto ifZero = [&](Value check, Value yes, Value no) -> Value {
-    auto cond = opLoweringState.create<mlir::index::CmpOp>(
-        mlir::index::IndexCmpPredicate::EQ, check, constant(0));
-    return opLoweringState.create<KGEN::POP::SelectOp>(indexTy, cond, yes, no);
-  };
+  IndexLowering indexLowering{opLoweringState};
 
   Value inChain =
       opLoweringState.getGuardChain(loweringState.getExecuteChain());
@@ -1087,29 +1104,29 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
 
   auto tensorType = sliceOp.getInput().getType();
   auto dataType = tensorType.getDtype();
-  Value elemSize = constant(dataType.getSizeInBytes());
+  Value elemSize = indexLowering.constant(dataType.getSizeInBytes());
 
   Value bufferSizeBytes = opLoweringState.create<MGP::CpuTensorSpecSizeOp>(
       bufferizedInput.tensorSpec);
-  Value bufferSizeElems = div(bufferSizeBytes, elemSize);
+  Value bufferSizeElems = indexLowering.div(bufferSizeBytes, elemSize);
 
   // Get size of the outermost dimension
   Value outermostDim = opLoweringState.create<MGP::TensorSpecGetDimOp>(
       bufferizedInput.tensorSpec, 0);
 
   // Prevent divide-by-zero
-  Value outermostDimOrOne =
-      opLoweringState.create<mlir::index::MaxSOp>(outermostDim, constant(1));
-  Value outerStride = div(bufferSizeElems, outermostDimOrOne);
-  outerStride = ifZero(outermostDim, outermostDim, outerStride);
+  Value outermostDimOrOne = opLoweringState.create<mlir::index::MaxSOp>(
+      outermostDim, indexLowering.constant(1));
+  Value outerStride = indexLowering.div(bufferSizeElems, outermostDimOrOne);
+  outerStride = indexLowering.ifZero(outermostDim, outermostDim, outerStride);
 
   // If start or stop are negative, add outermostDim to make them positive
   // start = start < 0 ? (start + outermostDim) : start
   // stop = stop < 0 ? (stop + outermostDim) : stop
-  auto startAdded = add(start, outermostDim);
-  auto stopAdded = add(stop, outermostDim);
-  start = ifPositive(start, start, startAdded);
-  stop = ifPositive(stop, stop, stopAdded);
+  auto startAdded = indexLowering.add(start, outermostDim);
+  auto stopAdded = indexLowering.add(stop, outermostDim);
+  start = indexLowering.ifPositive(start, start, startAdded);
+  stop = indexLowering.ifPositive(stop, stop, stopAdded);
 
   // Clamp start/stop indices to dimension size
   // start = min(start, outermostDim)
@@ -1120,17 +1137,17 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   // Multiply start/stop by stride
   // start *= outerStride
   // stop *= outerStride
-  start = mul(start, outerStride);
-  stop = mul(stop, outerStride);
+  start = indexLowering.mul(start, outerStride);
+  stop = indexLowering.mul(stop, outerStride);
 
   // MGP buffer slice takes in a size, not a stop, so calculate the size
   // size = stop - start = stop + (-1 * start)
-  Value negStart = mul(start, constant(-1));
-  Value size = add(stop, negStart);
+  Value negStart = indexLowering.mul(start, indexLowering.constant(-1));
+  Value size = indexLowering.add(stop, negStart);
 
   // Multiply to get offset and size in bytes
-  Value offsetBytes = mul(start, elemSize);
-  Value sizeBytes = mul(size, elemSize);
+  Value offsetBytes = indexLowering.mul(start, elemSize);
+  Value sizeBytes = indexLowering.mul(size, elemSize);
 
   // Create MGP buffer slice
   auto sliced = opLoweringState.bufferSlice(bufferizedInput.buffer, offsetBytes,

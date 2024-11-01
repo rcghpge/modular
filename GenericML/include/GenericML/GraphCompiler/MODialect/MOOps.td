@@ -63,7 +63,7 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
     ```
   }];
 
-  let arguments = (ins Index:$input);
+  let arguments = (ins SI64:$input);
   let results = (outs MO_RankedScalarIndexTensor:$result);
 
   let assemblyFormat = "`(` $input `)` attr-dict `->` qualified(type($result))";

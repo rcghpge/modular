@@ -23,9 +23,11 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
       /*default=*/"kPreferredMemoryAlignment",
      "Minimum alignment for all CPU buffers (both constants and allocated)">
   ];
-  let dependentDialects = ["MEF::MEFDialect",
+  let dependentDialects = ["GRT::GRTDialect",
+                           "KGEN::POP::POPDialect",
+                           "MEF::MEFDialect",
                            "MGP::MGPDialect",
-                           "GRT::GRTDialect"];
+                           "mlir::index::IndexDialect"];
 }
 
 

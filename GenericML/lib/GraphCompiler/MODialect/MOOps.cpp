@@ -1034,8 +1034,8 @@ static ErrorOrSuccess verifyBroadcastStaticRanks(TensorType inputTy,
       auto toIntDim = dyn_cast<IntegerAttr>(toDim);
       if (fromIntDim && toIntDim) {
         // We can only assert anything if both dimensions are known constants.
-        int64_t inDim = fromIntDim.getInt();
-        if (inDim > 1 && (inDim != toIntDim.getInt()))
+        int64_t inDim = fromIntDim.getSInt();
+        if (inDim > 1 && (inDim != toIntDim.getSInt()))
           return Error("input shape not broadcastable to result shape");
       }
     }
@@ -1132,8 +1132,8 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
   // If a broadcast has an empty input, it is not equivalent to a reshape.
   auto resTyAttr = dyn_cast<IntegerAttr>(resTy.getSymbolicNumElements());
   auto inputTyAttr = dyn_cast<IntegerAttr>(inputTy.getSymbolicNumElements());
-  if ((resTyAttr && resTyAttr.getInt() == 0) ||
-      (inputTyAttr && inputTyAttr.getInt() == 0))
+  if ((resTyAttr && resTyAttr.getSInt() == 0) ||
+      (inputTyAttr && inputTyAttr.getSInt() == 0))
     return failure();
 
   // If a broadcast does not change the number of elements, it is equivalent to
@@ -3020,7 +3020,7 @@ LogicalResult Static::ReshapeOp::verify() {
   if (resultTy.hasRank()) {
     for (auto curResDim : resultTy.getTypedShapeAttr().getValues()) {
       auto intCurResDim = dyn_cast<IntegerAttr>(curResDim);
-      if (intCurResDim && intCurResDim.getInt() == -1)
+      if (intCurResDim && intCurResDim.getSInt() == -1)
         return emitOpError("static reshape can not have inferred dimensions");
     }
   }

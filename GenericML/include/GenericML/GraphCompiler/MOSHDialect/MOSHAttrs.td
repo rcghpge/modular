@@ -64,7 +64,7 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   let extraClassDeclaration = [{
     /// Get the integer type representing the preferred type for dimensions
     /// of a shape.
-    static IndexType getDimType(MLIRContext* ctx);
+    static IntegerType getDimType(MLIRContext* ctx);
 
     /// Create an attribute to represent the given values as a dimension in
     /// shaped type.
@@ -72,7 +72,7 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
 
     /// Is the given type a legal dimension?
     static bool isDimType(Type type) {
-      return type.isIndex();
+      return type.isSignedInteger(64);
     }
 
     /// Is the given attribute able to represent a dimension.

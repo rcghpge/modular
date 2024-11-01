@@ -563,8 +563,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     }
   }
 
-  IRMapping mapper;
-
   // Convert MGP block input to tensor object (!mo.tensor) or opaque.
   auto convertMGPInputToTensorOrOpaque = [&](Value input, Type oldTy) -> Value {
     // Opaque types are already pointer to objects, they don't need any
@@ -577,8 +575,14 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
       SmallVector<Value> operands;
       operands.push_back(input);
-      for (auto ty : asTensor.getDims())
-        operands.push_back(loweredParams.at(ty));
+      for (auto dim : asTensor.getDims()) {
+        auto loweredParam = loweredParams.at(dim);
+        if (!loweredParam.getType().isIndex())
+          loweredParam = builder.create<mlir::index::CastSOp>(
+              input.getLoc(), builder.getIndexType(), loweredParam);
+
+        operands.push_back(loweredParam);
+      }
 
       return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), asTensor,
                                                      operands);
@@ -598,12 +602,20 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     SmallVector<Value> operands;
     operands.push_back(input);
-    for (auto ty : asTensor.getDims())
-      operands.push_back(loweredParams.at(ty));
+    for (auto dim : asTensor.getDims()) {
+      auto loweredParam = loweredParams.at(dim);
+      if (!loweredParam.getType().isIndex())
+        loweredParam = builder.create<mlir::index::CastSOp>(
+            input.getLoc(), builder.getIndexType(), loweredParam);
+
+      operands.push_back(loweredParam);
+    }
 
     return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), asTensor,
                                                    operands);
   };
+
+  IRMapping mapper;
 
   int outputOffset = 1; // 1 for the input chain
   for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
@@ -701,7 +713,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<MOGG::ParamShapeToValueOp> shapes(
       kernelBody.getOps<MOGG::ParamShapeToValueOp>());
   auto si64ScalarTy = KGEN::POP::SIMDType::get(ctx, 1, DType::si64);
-  auto indexScalarTy = KGEN::POP::SIMDType::get(ctx, 1, KGEN::KGENDType::index);
+  auto si64Ty = builder.getIntegerType(64, /*isSigned=*/true);
   for (auto getShape : shapes) {
     builder.setInsertionPointAfter(getShape);
     SmallVector<Value> dimensions;
@@ -712,11 +724,15 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       if (param == loweredParams.end())
         return getShape->emitError("Parameter has not been lowered: ") << dim;
 
-      auto asIndexScalar = builder.create<KGEN::POP::CastFromBuiltinOp>(
-          getShape->getLoc(), indexScalarTy, param->second);
-      auto asI64Scalar = builder.create<KGEN::POP::CastOp>(
-          getShape.getLoc(), si64ScalarTy, asIndexScalar);
-      dimensions.push_back(asI64Scalar);
+      auto loc = getShape->getLoc();
+
+      auto value = param->getSecond();
+      if (value.getType().isIndex())
+        value = builder.create<mlir::index::CastSOp>(loc, si64Ty, value);
+
+      value = builder.create<KGEN::POP::CastFromBuiltinOp>(loc, si64ScalarTy,
+                                                           value);
+      dimensions.push_back(value);
     }
 
     // NOTE(GRA-531): Right now we assume a rank0 tensor maps to a shape of [1].

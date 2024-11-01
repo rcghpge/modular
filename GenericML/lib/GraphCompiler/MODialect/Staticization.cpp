@@ -23,7 +23,7 @@ namespace {
 /// Return whether the given attribute is a constant integer 1.
 bool isConstantOne(TypedAttr attr) {
   if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-    return intAttr.getInt() == 1;
+    return intAttr.getValue().isOne();
   return false;
 };
 
@@ -77,7 +77,7 @@ TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
       dyn_cast<IntegerAttr>(resultTy.getTypedShapeAttr().getValues().front());
   if (!resultDimIntAttr)
     return TypedAttr{};
-  int64_t resultDimInt = resultDimIntAttr.getInt();
+  int64_t resultDimInt = resultDimIntAttr.getSInt();
 
   // Input must be ranked
   if (!inputTy.hasRank())

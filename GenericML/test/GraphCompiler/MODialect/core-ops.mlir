@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @index_to_tensor(
-// CHECK-SAME: %[[ARG0:.*]]: index) -> !mo.tensor<[], si64> {
-mo.graph @index_to_tensor(%arg0: index) -> !mo.tensor<[], si64> {
+// CHECK-SAME: %[[ARG0:.*]]: si64) -> !mo.tensor<[], si64> {
+mo.graph @index_to_tensor(%arg0: si64) -> !mo.tensor<[], si64> {
   // CHECK: %[[RES:.*]] = mo.index.to_tensor(%[[ARG0]]) -> !mo.tensor<[], si64>
   %0 = mo.index.to_tensor(%arg0) -> !mo.tensor<[], si64>
   // CHECK: mo.output %[[RES]] : !mo.tensor<[], si64>
@@ -42,14 +42,14 @@ mo.graph @nullary_parametric_graph<() -> R1>(%arg: !mo.tensor<?, f32>) -> (!mo.t
 
 // CHECK-LABEL: mo.graph @unary_void_parametric_graph<
 // CHECK-SAME: [[N:.*]]>(%[[ARG:.*]]: !mo.tensor<[[[N]]], f32>) -> !mo.tensor<[[[N]]], f32> {
-mo.graph @unary_void_parametric_graph<N: index>(%arg: !mo.tensor<[N], f32>) -> (!mo.tensor<[N], f32>) {
+mo.graph @unary_void_parametric_graph<N>(%arg: !mo.tensor<[N], f32>) -> (!mo.tensor<[N], f32>) {
   // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<[[[N]]], f32>
   mo.output %arg : !mo.tensor<[N], f32>
 }
 
 // CHECK-LABEL: mo.graph @binary_parametric_graph<
 // CHECK-SAME: [[A:.*]], [[B:.*]] -> [[R1:.*]]>(%[[ARG:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[[[A]], [[B]]], f32> {
-mo.graph @binary_parametric_graph<A: index, B: index -> R1>(%arg: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[A, B], f32>) {
+mo.graph @binary_parametric_graph<A, B-> R1>(%arg: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[A, B], f32>) {
   // CHECK-NEXT: mo.output<42> %[[ARG]] : !mo.tensor<[[[A]], [[B]]], f32>
   mo.output<42> %arg : !mo.tensor<[A, B], f32>
 }
@@ -57,8 +57,8 @@ mo.graph @binary_parametric_graph<A: index, B: index -> R1>(%arg: !mo.tensor<[A,
 // CHECK-LABEL: mo.graph @parametric_result<
 // CHECK-SAME: () -> [[D2:.*]]>() {
 mo.graph @parametric_result<() -> D2>() {
-  // CHECK-NEXT: kgen.param.declare [[D1:.*]] = <42>
-  kgen.param.declare D1 = <42>
+  // CHECK-NEXT: kgen.param.declare [[D1:.*]]: si64 = <42>
+  kgen.param.declare D1: si64 = <42>
   // CHECK-NEXT: mo.output<[[D1]]>
   mo.output<D1>
 }

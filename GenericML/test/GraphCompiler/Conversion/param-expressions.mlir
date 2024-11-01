@@ -1,245 +1,312 @@
-// RUN: mo-opt %s --mo-to-primitives | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --mo-to-primitives --cse | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mgp.model @add_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.add %[[DIM0]], %[[DIM1]]
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL3:[^:]*]] = index.add %[[VAL1]], %[[VAL2]]
+// CHECK: } execute
+
 mo.graph @add_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare A0 = <add(X, Y)>
-  kgen.param.declare A1 = <add(Y, X)>
-  kgen.param.declare A2 = <add(A0, 2)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[D0]], %[[D1]] : !pop.scalar<si64>
+  kgen.param.declare A0: si64 = <add(X, Y)>
+  kgen.param.declare A1: si64 = <add(Y, X)>
+
+  // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
+  // CHECK-DAG: %[[ADD2:.*]] = pop.add %[[ADD1]], %[[C2]] : !pop.scalar<si64>
+  // CHECK: mef.output
+  kgen.param.declare A2: si64 = <add(A0, 2)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @sub_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.constant -1
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.mul %[[DIM1]], %[[VAL1]]
-// CHECK-DAG: %[[VAL3:[^:]*]] = index.add %[[VAL2]], %[[DIM0]]
-// CHECK-DAG: %[[VAL4:[^:]*]] = index.constant -3
-// CHECK-DAG: %[[VAL5:[^:]*]] = index.add %[[DIM0]], %[[VAL4]]
+// CHECK: } execute
 mo.graph @sub_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare S0 = <sub(X, Y)>
-  kgen.param.declare S1 = <sub(X, 3)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[NEG1:.*]] = kgen.param.constant: scalar<si64> = <-1>
+  // CHECK-DAG: %[[MUL:.*]] = pop.mul %[[D1]], %[[NEG1]]
+  // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[MUL]], %[[D0]]
+  kgen.param.declare S0: si64 = <sub(X, Y)>
+
+  // CHECK-DAG: %[[NEG3:.*]] = kgen.param.constant: scalar<si64> = <-3>
+  // CHECK-DAG: %[[ADD2:.*]] = pop.add %[[D0]], %[[NEG3]]
+  //     CHECK: mef.output
+  kgen.param.declare S1: si64 = <sub(X, 3)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @mul_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.mul %[[DIM0]], %[[DIM1]]
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL3:[^:]*]] = index.mul %[[VAL1]], %[[VAL2]]
+// CHECK: } execute
 mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare M0 = <mul_nuw(X, Y)>
-  kgen.param.declare M1 = <mul_nuw(Y, X)>
-  kgen.param.declare M2 = <mul_nuw(M0, 2)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[MUL0:.*]] = pop.mul %[[D0]], %[[D1]]
+  kgen.param.declare M0: si64 = <mul_nuw(X, Y)>
+  kgen.param.declare M1: si64 = <mul_nuw(Y, X)>
+
+  // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
+  // CHECK-DAG: %[[MUL1:.*]] = pop.mul %[[MUL0]], %[[C2]]
+  //     CHECK: mef.output
+  kgen.param.declare M2: si64 = <mul_nuw(M0, 2)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @mod_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.rems %[[DIM0]], %[[DIM1]]
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.rems %[[DIM1]], %[[DIM0]]
-// CHECK-DAG: %[[VAL3:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL4:[^:]*]] = index.rems %[[VAL1]], %[[VAL3]]
+// CHECK: } execute
 mo.graph @mod_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare M0 = <mod(X, Y)>
-  kgen.param.declare M1 = <mod(Y, X)>
-  kgen.param.declare M2 = <mod(M0, 2)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[REM0:.*]] = pop.rem %[[D0]], %[[D1]]
+  kgen.param.declare M0: si64 = <mod(X, Y)>
+
+  // CHECK-DAG: %[[REM1:.*]] = pop.rem %[[D1]], %[[D0]]
+  kgen.param.declare M1: si64 = <mod(Y, X)>
+
+  // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
+  // CHECK-DAG: %[[REM3:.*]] = pop.rem %[[REM0]], %[[C2]] : !pop.scalar<si64>
+  //     CHECK: mef.output
+  kgen.param.declare M2: si64 = <mod(M0, 2)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @eq_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?x?xf32>
-// CHECK:     %[[DIM2:[^:]*]] = mgp.tensor_spec.get_dim[2] %[[SPEC]] : <?x?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.cmp eq(%[[DIM0]], %[[DIM1]])
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.cmp eq(%[[DIM1]], %[[DIM2]])
-// CHECK-DAG: %[[VAL3:[^:]*]] = index.bool.constant true
-mo.graph @eq_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare E0: i1 = <eq(X, Y)>
-  kgen.param.declare E1: i1 = <eq(Y, X)>
-  kgen.param.declare E2: i1 = <eq(Y, Z)>
-  kgen.param.declare E3: i1 = <eq(X, X)>
+// CHECK: } execute
+mo.graph @eq_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  //     CHECK: %[[CMP:.*]] = pop.cmp eq(%[[D0]], %[[D1]])
+
+  // There should be only one pop.cmp as all comparisons are the same
+  // CHECK-NOT: pop.cmp
+  //     CHECK: mef.output
+  kgen.param.declare E0: i1 = <eq(:si64 X, Y)>
+  kgen.param.declare E1: i1 = <eq(:si64 Y, X)>
+  kgen.param.declare E2: i1 = <eq(:si64 X, X)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @lt_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.cmp slt(%[[DIM0]], %[[DIM1]])
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.cmp slt(%[[DIM1]], %[[DIM0]])
-// CHECK-DAG: %[[VAL3:[^:]*]] = index.cmp slt(%[[DIM0]], %[[DIM0]])
+// CHECK: } execute
 mo.graph @lt_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare LT0: i1 = <lt(X, Y)>
-  kgen.param.declare LT1: i1 = <lt(Y, X)>
-  kgen.param.declare LT2: i1 = <lt(X, X)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[CMP0:.*]] = pop.cmp lt(%[[D0]], %[[D1]])
+  kgen.param.declare LT0: i1 = <lt(:si64 X, Y)>
+
+  // CHECK-DAG: %[[CMP1:.*]] = pop.cmp lt(%[[D1]], %[[D0]])
+  kgen.param.declare LT1: i1 = <lt(:si64 Y, X)>
+
+  // CHECK-DAG: %[[CMP2:.*]] = pop.cmp lt(%[[D0]], %[[D0]])
+  //     CHECK: mef.output
+  kgen.param.declare LT2: i1 = <lt(:si64 X, X)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @le_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.cmp sle(%[[DIM0]], %[[DIM1]])
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.cmp sle(%[[DIM1]], %[[DIM0]])
-// CHECK-DAG: %[[VAL3:[^:]*]] = index.cmp sle(%[[DIM0]], %[[DIM0]])
+// CHECK: } execute
 mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare LE0: i1 = <le(X, Y)>
-  kgen.param.declare LE1: i1 = <le(Y, X)>
-  kgen.param.declare LE2: i1 = <le(X, X)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+
+  // CHECK-DAG: %[[CMP0:.*]] = pop.cmp le(%[[D0]], %[[D1]])
+  kgen.param.declare LE0: i1 = <le(:si64 X, Y)>
+
+  // CHECK-DAG: %[[CMP1:.*]] = pop.cmp le(%[[D1]], %[[D0]])
+  kgen.param.declare LE1: i1 = <le(:si64 Y, X)>
+
+  // CHECK-DAG: %[[CMP2:.*]] = pop.cmp le(%[[D0]], %[[D0]])
+  //     CHECK: mef.output
+  kgen.param.declare LE2: i1 = <le(:si64 X, X)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @cond_expression : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?xf32>
-// CHECK-DAG: %[[BOOL:[^:]*]] = index.cmp sle(%[[DIM0]], %[[DIM1]])
-// CHECK-DAG: %[[VAL1:[^:]*]] = pop.select %[[BOOL]], %[[DIM0]], %[[DIM1]]
-// CHECK-DAG: %[[VAL2:[^:]*]] = pop.select %[[BOOL]], %[[DIM1]], %[[DIM0]]
-// CHECK-DAG: %[[VAL3:[^:]*]] = index.constant 2
-// CHECK:     %[[VAL4:[^:]*]] = pop.select %[[BOOL]], %[[VAL1]], %[[VAL3]]
+// CHECK: } execute
 mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
-  kgen.param.declare B: i1 = <le(X, Y)>
-  kgen.param.declare M0 = <cond(B, X, Y)>
-  kgen.param.declare M1 = <cond(B, Y, X)>
-  kgen.param.declare M2 = <cond(B, M0, 2)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[CMP:.*]] = pop.cmp le(%[[D0]], %[[D1]])
+  // CHECK-DAG: %[[BOOL:.*]] = pop.cast_to_builtin %[[CMP]] : !pop.scalar<bool> to i1
+  kgen.param.declare B: i1 = <le(:si64 X, Y)>
+
+  // CHECK-DAG: %[[COND0:.*]] = pop.select %[[BOOL]], %[[D0]], %[[D1]] : !pop.scalar<si64>
+  kgen.param.declare M0: si64 = <cond(B, X, Y)>
+
+  // CHECK-DAG: %[[COND1:.*]] = pop.select %[[BOOL]], %[[D1]], %[[D0]] : !pop.scalar<si64>
+  kgen.param.declare M1: si64 = <cond(B, Y, X)>
+
+  // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
+  // CHECK-DAG: %[[COND2:.*]] = pop.select %[[BOOL]], %[[COND0]], %[[C2]] : !pop.scalar<si64>
+  //     CHECK: mef.output
+  kgen.param.declare M2: si64 = <cond(B, M0, 2)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @bool_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?x?xf32>
-// CHECK:     %[[DIM2:[^:]*]] = mgp.tensor_spec.get_dim[2] %[[SPEC]] : <?x?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.cmp eq(%[[DIM0]], %[[DIM1]])
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.cmp eq(%[[DIM1]], %[[DIM2]])
-// CHECK-DAG: %[[VAL3:[^:]*]] = pop.or
-// CHECK-DAG: %[[VAL4:[^:]*]] = pop.xor
-// CHECK-DAG: %[[VAL5:[^:]*]] = pop.and
-mo.graph @bool_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare E0: i1 = <eq(X, Y)>
-  kgen.param.declare E1: i1 = <eq(Y, Z)>
+// CHECK: } execute
+mo.graph @bool_expressions<E0, E1>(%arg0: !mo.tensor<[E0, E1], f32>) -> !mo.tensor<[], si64> {
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
 
-  kgen.param.declare O0: i1 = <or(E0, E1)>
-  kgen.param.declare O1: i1 = <or(E1, E0)>
+  // CHECK-DAG: %[[OR:.*]] = pop.simd.or %[[D0]], %[[D1]] : <1, si64>
+  kgen.param.declare O0: si64 = <or(E0, E1)>
+  kgen.param.declare O1: si64 = <or(E1, E0)>
 
-  kgen.param.declare X0: i1 = <xor(E0, E1)>
-  kgen.param.declare X1: i1 = <xor(E1, E0)>
+  // CHECK-DAG: %[[XOR:.*]] = pop.simd.xor %[[D0]], %[[D1]] : <1, si64>
+  kgen.param.declare X0: si64 = <xor(E0, E1)>
+  kgen.param.declare X1: si64 = <xor(E1, E0)>
 
-  kgen.param.declare A0: i1 = <and(E0, E1)>
-  kgen.param.declare A1: i1 = <and(E1, E0)>
-  mo.output
+  // CHECK-DAG: %[[AND:.*]] = pop.simd.and %[[D0]], %[[D1]] : <1, si64>
+  kgen.param.declare A0: si64 = <and(E0, E1)>
+  kgen.param.declare A1: si64 = <and(E1, E0)>
+
+  // Here to ensure the values are not eliminated by CSE
+  %reduced = mosh.param.to_value : si64 = <and(O0, O1, X0, X1, A0, A1)>
+  %out = mo.index.to_tensor(%reduced) -> !mo.tensor<[], si64>
+
+  //     CHECK: mef.output
+  mo.output %out : !mo.tensor<[], si64>
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @complex_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
-// CHECK:     %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?x?xf32>
-// CHECK:     %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?x?xf32>
-// CHECK:     %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?x?xf32>
-// CHECK:     %[[DIM2:[^:]*]] = mgp.tensor_spec.get_dim[2] %[[SPEC]] : <?x?x?xf32>
-// CHECK-DAG: %[[VAL1:[^:]*]] = index.mul %[[DIM0]], %[[DIM1]]
-// CHECK-DAG: %[[VAL2:[^:]*]] = index.mul %[[DIM1]], %[[DIM2]]
-// CHECK-DAG: %[[VAL3:[^:]*]] = index.add %[[VAL1]], %[[VAL2]]
+// CHECK: } execute
 mo.graph @complex_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare C0 = <add(mul_nuw(X, Y), mul_nuw(Y, Z))>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  //     CHECK: %[[DIM2:.*]] = mgp.tensor_spec.get_dim[2] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[I2:.*]] = index.casts %[[DIM2]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !pop.scalar<si64>
+
+  // CHECK-DAG: %[[MUL0:.*]] = pop.mul %[[D0]], %[[D1]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[MUL1:.*]] = pop.mul %[[D1]], %[[D2]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[ADD:.*]] = pop.add %[[MUL0]], %[[MUL1]] : !pop.scalar<si64>
+  //     CHECK: mef.output
+  kgen.param.declare C0: si64 = <add(mul_nuw(X, Y), mul_nuw(Y, Z))>
   mo.output
 }
 
 // CHECK-LABEL: mgp.model @variadic_exprs : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
-// CHECK: %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?x?xf32>
-// CHECK: %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[DIM2:[^:]*]] = mgp.tensor_spec.get_dim[2] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[VAL1:[^:]*]] = index.add %[[DIM0]], %[[DIM1]]
-// CHECK: %[[VAL2:[^:]*]] = index.add %[[VAL1]], %[[DIM2]]
+// CHECK: } execute
 mo.graph @variadic_exprs<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare C0 = <add(X, Y, Z)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  //     CHECK: %[[DIM2:.*]] = mgp.tensor_spec.get_dim[2] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[I2:.*]] = index.casts %[[DIM2]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !pop.scalar<si64>
+
+  // CHECK-DAG: %[[ADD0:.*]] = pop.add %[[D0]], %[[D1]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[ADD0]], %[[D2]] : !pop.scalar<si64>
+  //     CHECK: mef.output
+  kgen.param.declare C0: si64 = <add(X, Y, Z)>
   mo.output
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @shape_attr : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
-// CHECK: %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?x?xf32>
-// CHECK: %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[DIM2:[^:]*]] = mgp.tensor_spec.get_dim[2] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[VAL1:[^:]*]] = mgp.tensor_spec.create %[[DIM0]], %[[DIM1]], %[[DIM2]] : !mgp.tensor_spec<?x?x?xsi64>
-mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare Sh: !mosh.ape = <[X, Y, Z]>
-  mo.output
+// CHECK: } execute
+mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) -> !mo.tensor<[3], si64> {
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  //     CHECK: %[[DIM2:.*]] = mgp.tensor_spec.get_dim[2] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[I2:.*]] = index.casts %[[DIM2]]
+  // CHECK-DAG: %[[D0:.*]] = index.casts %[[I0]] : si64 to index
+  // CHECK-DAG: %[[D1:.*]] = index.casts %[[I1]] : si64 to index
+  // CHECK-DAG: %[[D2:.*]] = index.casts %[[I2]] : si64 to index
+  // CHECK-DAG: %[[SH:.*]] = mgp.tensor_spec.create %[[D0]], %[[D1]], %[[D2]]
+
+  kgen.param.declare SH : !mosh.ape = <[X, Y, Z]>
+
+  //     CHECK: mgp.tensor_spec.get_dim[0] %[[SH]]
+  //     CHECK: mgp.tensor_spec.get_dim[1] %[[SH]]
+  //     CHECK: mgp.tensor_spec.get_dim[2] %[[SH]]
+  //     CHECK: mef.output
+  %Sh = mosh.param.to_value : !mosh.ape = <SH>
+  %res = mo.shape.to_tensor(%Sh) -> !mo.tensor<[3], si64>
+  mo.output %res : !mo.tensor<[3], si64>
 }
 
 // -----
 
 // CHECK-LABEL: mgp.model @param_expr_in_output_shape : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[INPUT:[^:]*]]: !mgp.tensor<?x4xf32>) -> (!mef.chain, !mgp.tensor<?x2xf32>) {
-// CHECK: %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[INPUT]] : <?x4xf32>
-// CHECK: %[[D0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x4xf32>
-// CHECK: %[[BUF:[^:]*]] = mgp.tensor.extract.buffer %[[INPUT]] : <?x4xf32>
-// CHECK: %[[TWO:[^:]*]] = index.constant 2
-// CHECK: %[[TWOd0:[^:]*]] = index.mul %[[D0]], %[[TWO]]
-// CHECK: %[[OUT_SPEC:[^:]*]] = mgp.tensor_spec.create %[[TWOd0]] : !mgp.tensor_spec<?x2xf32>
-// CHECK: %[[OUT_TENSOR:[^:]*]] = mgp.tensor.create %{{.*}}, %[[BUF]], %[[OUT_SPEC]]  : !mgp.tensor<?x2xf32>
-// CHECK: mef.output %[[CHAIN]], %[[OUT_TENSOR]] : !mef.chain, !mgp.tensor<?x2xf32>
+// CHECK: } execute
 mo.graph @param_expr_in_output_shape<D0>(
   %arg0: !mo.tensor<[D0, 4], f32>
 ) -> !mo.tensor<[mul_nuw(D0, 2), 2], f32> {
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]] : index to si64
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+
+  // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
+  // CHECK-DAG: %[[MUL:.*]] = pop.mul %[[D0]], %[[C2]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[MULSI:.*]] = pop.cast_to_builtin %[[MUL]] : !pop.scalar<si64> to si64
+  // CHECK-DAG: %[[INDEX:.*]] = index.casts %[[MULSI]] : si64 to index
+  // CHECK-DAG: %[[SPEC:.*]] = mgp.tensor_spec.create %[[INDEX]] : !mgp.tensor_spec<?x2xf32>
+  // CHECK-DAG: %[[TENSOR:.*]] = mgp.tensor.create %{{.*}}, %{{.*}}, %[[SPEC]] : !mgp.tensor<?x2xf32>
+  //     CHECK: mef.output {{.*}}%[[TENSOR]]
   %res = mo.static.reshape(%arg0) : !mo.tensor<[D0, 4], f32> -> !mo.tensor<[mul_nuw(D0, 2), 2], f32>
   mo.output %res : !mo.tensor<[mul_nuw(D0, 2), 2], f32>
 }
@@ -247,48 +314,25 @@ mo.graph @param_expr_in_output_shape<D0>(
 // -----
 
 // CHECK-LABEL: mgp.model @shift_expressions : mof
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:[^:]*]]: !mgp.context,
-// CHECK: %[[ARG2:[^:]*]]: !mgp.tensor<?x?x?xf32>)
-// CHECK: %[[SPEC:[^:]*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <?x?x?xf32>
-// CHECK: %[[DIM0:[^:]*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[DIM1:[^:]*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %[[DIM2:[^:]*]] = mgp.tensor_spec.get_dim[2] %[[SPEC]] : <?x?x?xf32>
-// CHECK: %{{.*}} = index.shl %[[DIM0]], %[[DIM1]]
-// CHECK: %{{.*}} = index.shrs %[[DIM1]], %[[DIM2]]
+// CHECK: } execute
 mo.graph @shift_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
-  kgen.param.declare SHL = <shl(X, Y)>
-  kgen.param.declare SHR = <shr(Y, Z)>
+  //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
+  //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
+  //     CHECK: %[[DIM2:.*]] = mgp.tensor_spec.get_dim[2] %{{.*}}
+  // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
+  // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
+  // CHECK-DAG: %[[I2:.*]] = index.casts %[[DIM2]]
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !pop.scalar<si64>
 
-  mo.output
-}
+  // CHECK-DAG: %[[SLH:.*]] = pop.shl %[[D0]], %[[D1]]
+  kgen.param.declare SHL: si64 = <shl(X, Y)>
 
-// -----
+  // CHECK-DAG: %[[SHR:.*]] = pop.shr %[[D1]], %[[D2]]
+  kgen.param.declare SHR: si64 = <shr(Y, Z)>
 
-// CHECK-LABEL: mgp.model @integer_types : mof
-mo.graph @integer_types<X: si64, Y: si64>() {
-  // CHECK: %{{.*}} = pop.add %{{.*}}, %{{.*}} : !pop.scalar<si64>
-  kgen.param.declare ADD: si64 = <add(:si64 X, Y)>
-
-  // CHECK: %{{.*}} = pop.mul %{{.*}}, %{{.*}} : !pop.scalar<si64>
-  kgen.param.declare MUL: si64 = <mul(:si64 Y, X)>
-
-  // CHECK: %{{.*}} = pop.shl %{{.*}}, %{{.*}} : !pop.scalar<si64>
-  kgen.param.declare SHL: si64 = <shl(:si64 X, Y)>
-
-  // CHECK: %{{.*}} = pop.shr %{{.*}}, %{{.*}} : !pop.scalar<si64>
-  kgen.param.declare SHR: si64 = <shr(:si64 X, Y)>
-
-  // CHECK: %{{.*}} = pop.div %{{.*}}, %{{.*}} : !pop.scalar<si64>
-  kgen.param.declare DIV: si64 = <div(:si64 X, Y)>
-
-  // CHECK: %{{.*}} = pop.cmp eq(%{{.*}}, %{{.*}}) : <1, si64>
-  kgen.param.declare EQ: i1 = <eq(:si64 X, Y)>
-
-  // CHECK: %{{.*}} = pop.cmp lt(%{{.*}}, %{{.*}}) : <1, si64>
-  kgen.param.declare LT: i1 = <lt(:si64 X, Y)>
-
-  // CHECK: %{{.*}} = pop.cmp le(%{{.*}}, %{{.*}}) : <1, si64>
-  kgen.param.declare LE: i1 = <le(:si64 X, Y)>
+  //     CHECK: mef.output
   mo.output
 }
 

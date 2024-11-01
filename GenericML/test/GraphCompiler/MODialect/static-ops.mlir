@@ -147,7 +147,7 @@ mo.graph @static_reshape_not_fold_to_rebind<A, B>(%arg0: !mo.tensor<[A, B], f32>
 mo.graph @static_reshape_index_const<A>() -> !mo.tensor<[1], si32> {
   // CHECK-NEXT: %[[C:.*]] = mosh.param.to_value: !mosh.ape = <[[[A]]]>
   // CHECK-NEXT: %[[RES:.*]] = mo.shape.to_tensor(%[[C]]) -> !mo.tensor<[1], si32>
-  %0 = mosh.param.to_value: index = <A>
+  %0 = mosh.param.to_value = <A>
   %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si32>
   %2 = mo.static.reshape(%1) : !mo.tensor<[], si32> -> !mo.tensor<[1], si32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[1], si32>

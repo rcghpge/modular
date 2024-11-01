@@ -251,17 +251,17 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (!shape)
     return emitError() << "invalid shape attribute " << shapeAttr;
 
-  for (TypedAttr dimAttr : shape.getValues()) {
-    if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
-      if (dimIntAttr.getInt() < 0)
-        return emitError()
-               << "invalid dimension, expect all dimensions >= 0 got: "
-               << dimIntAttr.getInt();
-    }
-  }
-
   if (!llvm::all_of(shape.getValues(), ShapeAttr::isDim))
     return emitError() << "tensor dimensions must be a getDimType()";
+
+  for (TypedAttr dimAttr : shape.getValues()) {
+    if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
+      if (dimIntAttr.getSInt() < 0)
+        return emitError()
+               << "invalid dimension, expect all dimensions >= 0 got: "
+               << dimIntAttr.getSInt();
+    }
+  }
 
   // The device specification used to reside in the metadata dictionary,
   // sanity check that the tensor type is not using the old format.
@@ -376,7 +376,7 @@ TensorType TensorType::getVectorSI64Type(MLIRContext *ctx, int64_t size,
                                          DeviceRefAttr deviceRef,
                                          DictionaryAttr metadata) {
   auto si64Ty = IntegerType::get(ctx, 64, IntegerType::Signed);
-  auto idxTy = IndexType::get(ctx);
+  auto idxTy = ShapeAttr::getDimType(ctx);
   return get(ArrayRef<TypedAttr>{IntegerAttr::get(idxTy, size)}, si64Ty,
              deviceRef, metadata);
 }
@@ -514,13 +514,13 @@ bool TensorType::isIntegerDim(size_t n) const {
 }
 
 bool TensorType::isUnknownDimParam(TypedAttr attr) {
-  return llvm::isa<KGEN::UnknownAttr>(attr) && attr.getType().isIndex();
+  return llvm::isa<KGEN::UnknownAttr>(attr) && ShapeAttr::isDim(attr);
 }
 
 bool TensorType::isParameterizedDimParam(TypedAttr attr) {
   bool isParamOrParamExpr = llvm::isa<KGEN::ParamDeclRefAttr>(attr) ||
                             llvm::isa<KGEN::ParamOperatorAttr>(attr);
-  return isParamOrParamExpr && attr.getType().isIndex();
+  return isParamOrParamExpr && ShapeAttr::isDim(attr);
 }
 
 bool TensorType::isIntegerDimParam(TypedAttr attr) {
@@ -565,10 +565,10 @@ std::optional<int64_t> TensorType::getNumElements() const {
 
   // We allow one -1 dimension for now, which is a fancy parameter.
   // TODO(15523): maybe remove once -1 is handled more gracefully.
-  if (resultElements.getInt() < 0)
+  if (resultElements.getSInt() < 0)
     return {};
 
-  return resultElements.getInt();
+  return resultElements.getSInt();
 }
 
 TensorType TensorType::cloneWithNewDim(uint64_t dim, uint64_t size) {
@@ -668,10 +668,10 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
 
   for (TypedAttr dimAttr : shape.getValues()) {
     if (auto dimIntAttr = llvm::dyn_cast<IntegerAttr>(dimAttr)) {
-      if (dimIntAttr.getInt() < 0)
+      if (dimIntAttr.getSInt() < 0)
         return emitError()
                << "invalid dimension, expect all dimensions >= 0 got: "
-               << dimIntAttr.getInt();
+               << dimIntAttr.getSInt();
     } else if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(dimAttr)) {
       return emitError() << "mo.buffer is not allowed to have shapes with '?'";
     }

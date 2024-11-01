@@ -129,7 +129,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     KGEN::ParamDeclAttr wDecl = graphOp.getNewDimParam("W");
     auto wRef = KGEN::ParamDeclRefAttr::get(wDecl);
     IntegerType si64Ty = rewriter.getIntegerType(64, /*isSigned=*/true);
-    SmallVector<TypedAttr> argNonzeroDims{wRef, rewriter.getIndexAttr(1)};
+    SmallVector<TypedAttr> argNonzeroDims{wRef, rewriter.getDimAttr(1)};
     auto argNonzeroTy = TensorType::get(argNonzeroDims, si64Ty);
     auto newArgNonzeroOp = rewriter.create<ArgNonzeroOp>(
         loc, argNonzeroTy, flattened, ParamDeclArrayAttr::get(wDecl));
@@ -163,7 +163,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     // We add a trailing 1-dimension to the range, roughly:
     // rangeExpanded = np.expand_dims(range, axis=1)
     auto expandedTy = TensorType::get(
-        SmallVector<TypedAttr>{bsRef, rewriter.getIndexAttr(1)}, si64Ty);
+        SmallVector<TypedAttr>{bsRef, rewriter.getDimAttr(1)}, si64Ty);
     auto rangeExpanded =
         rewriter.create<Static::ReshapeOp>(loc, expandedTy, range);
 
@@ -479,7 +479,7 @@ struct ConvToMatmulPattern
     // Check filter size
     ArrayRef<TypedAttr> inputDims = inputTy.getTypedShapeAttr().getValues();
     ArrayRef<TypedAttr> filterDims = filterTy.getTypedShapeAttr().getValues();
-    IntegerAttr intOneAttr = rewriter.getIndexAttr(1);
+    IntegerAttr intOneAttr = rewriter.getDimAttr(1);
     if (filterDims[0] != intOneAttr || filterDims[1] != intOneAttr)
       return rewriter.notifyMatchFailure(op, "filter size must be 1x1");
 
@@ -1229,7 +1229,7 @@ static std::optional<int64_t> findSqueezeAxis(MO::TensorType inputType,
   if (!inputDimInt)
     return std::nullopt;
 
-  if (inputDimInt.getInt() != 1)
+  if (inputDimInt.getSInt() != 1)
     return std::nullopt;
 
   auto offset = std::distance(zipIter.begin(), it);
@@ -1376,8 +1376,8 @@ struct SwimConcatThroughReshapeLikeOpsPattern
     rewriter.setInsertionPoint(concatOp);
 
     SmallVector<TypedAttr> newConcatOutputShape(firstBeforeType.getDims());
-    newConcatOutputShape[newConcatAxis] = rewriter.getIndexAttr(
-        cast<IntegerAttr>(newConcatOutputShape[newConcatAxis]).getInt() *
+    newConcatOutputShape[newConcatAxis] = rewriter.getDimAttr(
+        cast<IntegerAttr>(newConcatOutputShape[newConcatAxis]).getSInt() *
         reshapeOps.size());
     auto newConcatOutputType =
         TensorType::get(ShapeAttr::get(newConcatOutputShape,
@@ -1843,8 +1843,7 @@ struct SplitAndSqueezesPattern
     if (inRank != outTy.getRank() + 1 || inRank <= squeezeAxis)
       return false;
 
-    auto indexType = IndexType::get(op->getContext());
-    auto intOneAttr = IntegerAttr::get(indexType, 1);
+    auto intOneAttr = rewriter.getDimAttr(1);
     SmallVector<TypedAttr> expectedInDims(
         outTy.getTypedShapeAttr().getValues());
     expectedInDims.insert(expectedInDims.begin() + squeezeAxis, intOneAttr);
@@ -1902,8 +1901,7 @@ struct SplitAndSqueezesPattern
     // have parameterization and shape function for `mo.split`.
     ArrayRef<TypedAttr> inputDims = inputTy.getTypedShapeAttr().getValues();
     SmallVector<TypedAttr> inferredResDims(inputDims);
-    auto indexType = rewriter.getType<IndexType>();
-    inferredResDims[splitAxis] = IntegerAttr::get(indexType, 1);
+    inferredResDims[splitAxis] = rewriter.getDimAttr(1);
 
     // Each result must be consumed by a single reshape that squeezes
     for (Value res : op.getResults()) {
@@ -3020,7 +3018,7 @@ struct SinkSplitThroughElementwisePattern
     rewriter.setInsertionPoint(op);
     auto inputType = llvm::cast<TensorType>(op.getInput().getType());
     uint64_t lastDimSize =
-        llvm::cast<IntegerAttr>(inputType.getDims().back()).getInt();
+        llvm::cast<IntegerAttr>(inputType.getDims().back()).getSInt();
 
     SmallVector<Value, 2> elementwiseOperands;
     if (!constantsToConcatenate.empty()) {
@@ -3212,8 +3210,8 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
 
     auto firstReshapeType = cast<ReshapeOpType>(*users.begin()).getType();
     SmallVector<TypedAttr> newReshapeShape(firstReshapeType.getDims());
-    newReshapeShape[newSplitAxis] = rewriter.getIndexAttr(
-        llvm::cast<IntegerAttr>(newReshapeShape[newSplitAxis]).getInt() *
+    newReshapeShape[newSplitAxis] = rewriter.getDimAttr(
+        llvm::cast<IntegerAttr>(newReshapeShape[newSplitAxis]).getSInt() *
         op->getNumResults());
     auto newReshapeType = TensorType::get(
         ShapeAttr::get(newReshapeShape, rewriter.getType<MOSH::ShapeType>()),
