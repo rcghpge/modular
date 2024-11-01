@@ -10,10 +10,10 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/MLIRDType.h"
-#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
@@ -236,73 +236,6 @@ static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
 }
 
 /// Convert the given KGEN::POC operation to the equvalent operation in
-/// the `index` dialect, if that operation exists, otherwise use the
-/// POP dialect.
-static ErrorOr<Value>
-lowerParamOperatorToIndex(KGEN::POC poc, OpBuilder &builder, Location loc,
-                          ValueRange operands, Type resultType) {
-  auto getIdxCmpPredicate = [](KGEN::POC poc) {
-    switch (poc) {
-    case KGEN::POC::EQ:
-      return mlir::index::IndexCmpPredicate::EQ;
-    case KGEN::POC::LT:
-      return mlir::index::IndexCmpPredicate::SLT;
-    case KGEN::POC::LE:
-      return mlir::index::IndexCmpPredicate::SLE;
-    default:
-      llvm_unreachable("unrecognized predicate");
-    }
-  };
-
-  switch (poc) {
-  // All comparisons lower to `index.cmp`
-  case KGEN::POC::EQ:
-  case KGEN::POC::LT:
-  case KGEN::POC::LE:
-    return builder.create<mlir::index::CmpOp>(
-        loc, resultType, getIdxCmpPredicate(poc), operands[0], operands[1]);
-
-  // All potentially variadic ops
-  case KGEN::POC::Add:
-    return buildVariadicOp<mlir::index::AddOp>(builder, loc, operands,
-                                               resultType);
-  case KGEN::POC::Div:
-    return buildVariadicOp<mlir::index::DivSOp>(builder, loc, operands,
-                                                resultType);
-  case KGEN::POC::Max:
-    return buildVariadicOp<mlir::index::MaxSOp>(builder, loc, operands,
-                                                resultType);
-  case KGEN::POC::Min:
-    return buildVariadicOp<mlir::index::MinSOp>(builder, loc, operands,
-                                                resultType);
-  case KGEN::POC::Mul:
-  case KGEN::POC::MulNuw:
-    return buildVariadicOp<mlir::index::MulOp>(builder, loc, operands,
-                                               resultType);
-  case KGEN::POC::And:
-    return buildVariadicOp<KGEN::POP::AndOp>(builder, loc, operands,
-                                             resultType);
-  case KGEN::POC::Or:
-    return buildVariadicOp<KGEN::POP::OrOp>(builder, loc, operands, resultType);
-  case KGEN::POC::Xor:
-    return buildVariadicOp<KGEN::POP::XOrOp>(builder, loc, operands,
-                                             resultType);
-
-  // Remaining ops
-  case KGEN::POC::Shl:
-    return builder.create<mlir::index::ShlOp>(loc, resultType, operands);
-  case KGEN::POC::Shr:
-    return builder.create<mlir::index::ShrSOp>(loc, resultType, operands);
-  case KGEN::POC::Mod:
-    return builder.create<mlir::index::RemSOp>(loc, resultType, operands);
-  case KGEN::POC::Cond:
-    return builder.create<KGEN::POP::SelectOp>(loc, resultType, operands);
-  default:
-    return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
-  }
-}
-
-/// Convert the given KGEN::POC operation to the equvalent operation in
 /// in the POP dialect. This function assumes that input/output types
 /// are !pop.scalar values.
 static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
@@ -408,44 +341,10 @@ static Value popScalarToBuitltinType(OpBuilder &builder, Location loc,
   return builder.createOrFold<KGEN::POP::CastToBuiltinOp>(loc, resultType, v);
 }
 
-/// This logic controls when to use the Index dialect and when to lower to
-/// the POP dialect. Currently, the logic tries to use Index when possible
-/// and only lower to POP when not supported by Index.
-static bool useIndexDialect(ValueRange operands, Type resultType) {
-  TypeRange operandTypes{operands};
-
-  if (llvm::any_of(operandTypes, IndexType::classof<Type>) ||
-      isa<IndexType>(resultType))
-    return true;
-
-  auto isI1Type = [](Type type) { return type.isSignlessInteger(1); };
-
-  if (llvm::all_of(operandTypes, isI1Type) && isI1Type(resultType))
-    return true;
-
-  return false;
-}
-
-/// Lower the given parameter operator expression to the equivalent sequence
-/// of POP dialect operations. This lowering does 3 things:
-///
-/// 1. cast all operands from their input types to the equivalent !pop.scalar
-///    type
-/// 2. generate the implementing POP operation on the !pop.scalar values
-/// 3. cast the result back to the builtin MLIR type.
-///
-///     kgen.param.declare ADD: si64 = <add(:si64 X, Y)>
-///
-/// becomes:
-///
-///     %2 = pop.cast_from_builtin %0 : si64 to !pop.scalar<si64>
-///     %3 = pop.cast_from_builtin %1 : si64 to !pop.scalar<si64>
-///     %4 = pop.add %2, %3 : !pop.scalar<si64>
-///     %5 = pop.cast_to_builtin %4 : !pop.scalar<si64> to si64
-///
-static ErrorOr<Value> lowerParamOperatorToPop(OpBuilder &builder, Location loc,
-                                              KGEN::ParamOperatorAttr opAttr,
-                                              ValueRange operands) {
+ErrorOr<Value>
+MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
+                                         KGEN::ParamOperatorAttr opAttr,
+                                         ValueRange operands) {
   auto resultType = opAttr.getType();
 
   // Get !pop.scalar dtype that corresponds to the expected output type.
@@ -484,43 +383,18 @@ static ErrorOr<Value> lowerParamOperatorToPop(OpBuilder &builder, Location loc,
   return popScalarToBuitltinType(builder, loc, maybeResult.takeValue());
 }
 
-ErrorOr<Value>
-MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
-                                         KGEN::ParamOperatorAttr opAttr,
-                                         ValueRange operands) {
-  Type resultType = opAttr.getType();
-
-  if (useIndexDialect(operands, resultType))
-    return lowerParamOperatorToIndex(opAttr.getOpcode(), builder, loc, operands,
-                                     resultType);
-
-  // Get !pop.scalar dtype that corresponds to the expected output type.
-  return lowerParamOperatorToPop(builder, loc, opAttr, operands);
-}
-
 Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
                                               IntegerAttr intAttr) {
-  if (auto boolAttr = dyn_cast<BoolAttr>(intAttr))
-    return builder.create<mlir::index::BoolConstantOp>(loc,
-                                                       boolAttr.getValue());
-
-  if (intAttr.getType().isIndex())
-    return builder.create<mlir::index::ConstantOp>(loc, intAttr.getValue());
-
   return builder.create<KGEN::ParamConstantOp>(loc, intAttr);
 }
 
 /// sequenced assert lowering helper functions
 namespace {
 
-bool isIndexOp(Operation *op) {
+bool followOperands(Operation *op) {
   // We uses POP::And/Or/XOrOp instead of index::And/Or/XOr so that we can
   // handle more than IndexType.
-  return isa<mlir::index::IndexDialect>(op->getDialect()) ||
-         isa<KGEN::POP::SelectOp, KGEN::POP::AndOp, KGEN::POP::OrOp,
-             KGEN::POP::XOrOp, KGEN::POP::CastToBuiltinOp,
-             KGEN::POP::CastFromBuiltinOp, KGEN::POP::AddOp, KGEN::POP::MulOp,
-             KGEN::POP::DivOp, KGEN::POP::CmpOp>(op);
+  return isa<KGEN::POP::POPDialect>(op->getDialect());
 }
 
 DenseSet<Operation *> getAncestors(Operation *root) {
@@ -533,7 +407,7 @@ DenseSet<Operation *> getAncestors(Operation *root) {
   while (!worklist.empty()) {
     Operation *op = worklist.pop_back_val();
 
-    if (!op || !isIndexOp(op))
+    if (!op || !followOperands(op))
       continue;
 
     ancestors.insert(op);
@@ -562,7 +436,7 @@ getBoundaryOpOperands(Operation *root,
 
     Operation *op = worklist.pop_back_val();
 
-    if (!op || !isIndexOp(op) || prevAncestors.contains(op))
+    if (!op || !followOperands(op) || prevAncestors.contains(op))
       continue;
 
     for (OpOperand &opOperand : op->getOpOperands()) {
