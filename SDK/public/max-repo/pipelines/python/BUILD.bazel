@@ -17,6 +17,7 @@ modular_py_binary(
         "//SDK/lib/API/python/max/serve",
         "//SDK/public/max-repo/pipelines/python/dataprocessing",
         "//SDK/public/max-repo/pipelines/python/llama3",
+        "//SDK/public/max-repo/pipelines/python/mistral",
         "//SDK/public/max-repo/pipelines/python/nn",
         "//SDK/public/max-repo/pipelines/python/replit",
         "//SDK/public/max-repo/pipelines/python/text_streaming",
@@ -26,9 +27,11 @@ modular_py_binary(
 
 pkg_files(
     name = "python_files",
-    srcs = glob([
-        "*.py",
-    ]) + [
+    srcs = glob(
+        [
+            "*.py",
+        ],
+    ) + [
         ":requirements.txt",
     ],
 )
@@ -39,6 +42,7 @@ pkg_filegroup(
         ":python_files",
         "//SDK/public/max-repo/pipelines/python/dataprocessing:python_files",
         "//SDK/public/max-repo/pipelines/python/llama3:python_files",
+        "//SDK/public/max-repo/pipelines/python/mistral:python_files",
         "//SDK/public/max-repo/pipelines/python/nn:python_files",
         "//SDK/public/max-repo/pipelines/python/replit:python_files",
         "//SDK/public/max-repo/pipelines/python/text_streaming:python_files",
