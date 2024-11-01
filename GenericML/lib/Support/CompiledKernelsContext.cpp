@@ -153,36 +153,32 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
     if (!dylibOr)
       return Error("Could not create JIT dylib");
     llvm::orc::JITDylib &dylib = *dylibOr;
-    auto archiveBinary =
-        toModularErrorOr(llvm::object::Archive::create(buf->getMemBufferRef()));
-    if (archiveBinary.isError())
-      return archiveBinary.takeError();
+
+    auto objectBinaryOr =
+        toModularErrorOr(llvm::object::createBinary(buf->getMemBufferRef()));
+    if (objectBinaryOr.isError())
+      return objectBinaryOr.takeError();
     llvm::Error err = llvm::Error::success();
-    llvm::SmallVector<std::string> objectFiles;
-    for (auto &child : (*archiveBinary)->children(err)) {
-      if (err)
-        return toModularError(std::move(err));
-      auto libNameOr = child.getName();
-      if (!libNameOr)
-        return M::Error(toString(libNameOr.takeError()));
-      std::string libName =
-          std::filesystem::path(dylibName).filename().string() + "_" +
-          std::filesystem::path(libNameOr.get().str()).stem().string();
-      auto childBufferOr = child.getMemoryBufferRef();
-      if (!childBufferOr)
-        return M::Error(toString(childBufferOr.takeError()));
-      auto tmpFile =
-          writeTempFile(libName + "-%%%%.o", childBufferOr.get().getBuffer());
-      if (tmpFile.isError())
-        return M::Error(std::string(tmpFile.takeError().get()) + ": " +
-                        libName);
-      // On MacOS debuginfo is stored in object files and referenced by shared
-      // libraries. Keep the object files around so the debuginfo can be found.
-      tmpFile->keep();
-      std::string path = tmpFile->getPath();
-      tmpFile->close();
-      objectFiles.push_back(path);
-    }
+    std::unique_ptr<llvm::object::Binary> objectBinary =
+        objectBinaryOr.takeValue();
+
+    std::string libName =
+        std::filesystem::path(dylibName).filename().string() + "_" +
+        std::filesystem::path(objectBinary->getFileName().str())
+            .stem()
+            .string();
+
+    auto objectBuffer = objectBinary->getMemoryBufferRef();
+    auto tmpFile = writeTempFile(libName + "-%%%%.o", objectBuffer.getBuffer());
+
+    if (tmpFile.isError())
+      return M::Error(std::string(tmpFile.takeError().get()) + ": " + libName);
+    // On MacOS debuginfo is stored in object files and referenced by shared
+    // libraries. Keep the object files around so the debuginfo can be found.
+    tmpFile->keep();
+    std::string objectFile = tmpFile->getPath();
+    tmpFile->close();
+
     if (err)
       return toModularError(std::move(err));
 
@@ -200,7 +196,7 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
     std::string cmd;
     llvm::raw_string_ostream cmd_s(cmd);
     cmd_s << std::string(GENERICML_LINKER_CMD) << " -shared ";
-    llvm::interleave(objectFiles, cmd_s, " ");
+    cmd_s << objectFile;
     cmd_s << " -o " << outPath;
     LLVM_DEBUG(llvm::dbgs() << "Linked shared library: " << cmd << "\n");
     int r = system(cmd.c_str());
