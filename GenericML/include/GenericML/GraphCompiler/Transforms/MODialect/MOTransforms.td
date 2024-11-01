@@ -119,14 +119,6 @@ def ResolveUnknownParameters : Pass<"resolve-unknown-parameters", "ModuleOp"> {
     2. letting newly parameterized ops declare their new parameters that appear
     in their results.
   }];
-
-  // NOTE: this is only needed as we transition `?` to live in RMO.
-  // Once all frontends only use RMO, this is superfluous as this will only
-  // affect RMO operations.
-  let options = [
-    Option<"resolveRMOOnly", "resolveRMOOnly", "bool", "false",
-           "Whether to only resolve unknown parameters for RMO operations.">,
-  ];
 }
 
 def StaticizeShapes : Pass<"staticize-shapes", "ModuleOp"> {

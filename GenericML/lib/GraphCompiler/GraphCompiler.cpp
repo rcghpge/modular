@@ -137,10 +137,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOQ::createLegalizeMOQOpsToRMO());
 
   // RMO pipeline:
-  // TODO(GRA-1215): Remove further calls to createResolveUnknownParameters.
-  ResolveUnknownParametersOptions resolveUnknownParametersOpts;
-  resolveUnknownParametersOpts.resolveRMOOnly = true;
-  pm.addPass(MO::createResolveUnknownParameters(resolveUnknownParametersOpts));
+  pm.addPass(MO::createResolveUnknownParameters());
   pm.addPass(RMO::createLegalizeRMOOps());
 
   // MO pipeline:
@@ -402,8 +399,6 @@ void M::MO::buildShapeInferencePipelineDefaultOpts(
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
                                         const ShapeInferenceOptions &opts,
                                         const MoToMgpOptions &moToMgpOptions) {
-  pm.addPass(MO::createResolveUnknownParameters());
-
   // This canonicalizer pass serves the following purposes:
   // 1. Convert static reshapes like `[D0] -> [1]` into rebind, otherwise
   //    staticization must alsp look through those reshapes for shape inputs.
