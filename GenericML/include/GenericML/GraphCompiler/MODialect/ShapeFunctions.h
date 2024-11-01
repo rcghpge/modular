@@ -12,7 +12,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "Support/AssertStream.h"
 
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_SHAPE_FUNCTIONS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_SHAPE_FUNCTIONS_H
@@ -130,29 +130,69 @@ private:
 
   // Tightly control how one can construct a `Var`.
   Var(TypedAttr attr, ParamExprBuilder *builder)
-      : attr(attr), builder(builder) {}
+      : attr(attr), builder(builder) {
+    ASSERT_STREAM(
+        builder, << "Var should be constructed with non-null builder");
+  }
 
   // Allow access to the controlled constructor of Var.
   friend class ParamExprBuilder;
 
 public:
-  Var(const Var &other) {
-    this->attr = other.attr;
-    this->builder = other.builder;
-  }
+  // Disallow default construction since this always needs a builder.
+  Var() = delete;
+  Var(const Var &other) = default;
   Var &operator=(const Var &other) = default;
+  Var(Var &&other) = default;
   Var &operator=(Var &&other) = default;
 
-  // Allows one to write `v1 + v2`.
-  Var operator+(const Var &other) const {
+  //===--------------------------------------------------------------------===//
+  // Arithmetic
+  //===--------------------------------------------------------------------===//
+
+  // Allows one to write `v1 + v2` where v2 is a TypedAtr.
+  Var operator+(TypedAttr otherAttr) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
-        KGEN::ParamOperatorAttr::get(KGEN::POC::Add, attr, other.attr),
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Add, attr, otherAttr),
         "var_add");
     return Var(resDeclRef, builder);
   }
 
+  // Allows one to write `v1 + v2`.
+  Var operator+(const Var &other) const { return *this + other.attr; }
+
+  // v1 += v2 with TypedAttr.
+  Var &operator+=(TypedAttr otherAttr) {
+    *this = *this + otherAttr;
+    return *this;
+  }
+
+  // v1 += v2
+  Var &operator+=(const Var &other) { return *this += other.attr; }
+
+  // Allows one to write `v1 + 42`.
+  Var operator+(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this + otherVar;
+  }
+
   // Allows one to write `v1 - v2`.
   Var operator-(const Var &other) const { return *this + (other * -1); }
+
+  // v1 -= v2
+  Var operator-=(const Var &other) {
+    *this = *this - other;
+    return *this;
+  }
+
+  // Allows one to write `v1 - 42`.
+  Var operator-(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this - otherVar;
+  }
+
+  // Unary minus: `-v`.
+  Var operator-() const { return *this * -1; }
 
   // Allows one to write `v1 * v2`.
   Var operator*(const Var &other) const {
@@ -162,6 +202,12 @@ public:
     return Var(resDeclRef, builder);
   }
 
+  // Allows one to write `v1 * 42`.
+  Var operator*(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this * otherVar;
+  }
+
   // Allows one to write `v1 / v2`.
   Var operator/(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
@@ -169,6 +215,30 @@ public:
         "var_div");
     return Var(resDeclRef, builder);
   }
+
+  // Allows one to write `v1 / 42`.
+  Var operator/(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this / otherVar;
+  }
+
+  // Allows one to write `v1 % v2`.
+  Var operator%(const Var &other) const {
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Mod, attr, other.attr),
+        "var_mod");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 % 42`.
+  Var operator%(int64_t other) const {
+    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
+    return *this % otherVar;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Comparison
+  //===--------------------------------------------------------------------===//
 
   // Allows one to write `v1 != v2`.
   Var operator!=(const Var &other) const {
@@ -201,59 +271,11 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 % v2`.
-  Var operator%(const Var &other) const {
-    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
-        KGEN::ParamOperatorAttr::get(KGEN::POC::Mod, attr, other.attr),
-        "var_mod");
-    return Var(resDeclRef, builder);
-  }
-
   // Allows one to write `v1 > v2`.
   Var operator>(const Var &other) const { return other < *this; }
 
   // Allows one to write `v1 >= v2`.
   Var operator>=(const Var &other) const { return other <= *this; }
-
-  // Allows one to write `v1 || v2`.
-  Var operator||(const Var &other) const {
-    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
-        KGEN::ParamOperatorAttr::get(KGEN::POC::Or, attr, other.attr),
-        "var_or");
-    return Var(resDeclRef, builder);
-  }
-
-  // Allows one to write `v1 && v2`.
-  Var operator&&(const Var &other) const {
-    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
-        KGEN::ParamOperatorAttr::get(KGEN::POC::And, attr, other.attr),
-        "var_and");
-    return Var(resDeclRef, builder);
-  }
-
-  // Allows one to write `v1 + 42`.
-  Var operator+(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this + otherVar;
-  }
-
-  // Allows one to write `v1 - 42`.
-  Var operator-(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this - otherVar;
-  }
-
-  // Allows one to write `v1 * 42`.
-  Var operator*(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this * otherVar;
-  }
-
-  // Allows one to write `v1 / 42`.
-  Var operator/(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this / otherVar;
-  }
 
   // Allows one to write `v1 != 42`.
   Var operator!=(int64_t other) const {
@@ -290,10 +312,24 @@ public:
     return *this >= otherVar;
   }
 
-  // Allows one to write `v1 % 42`.
-  Var operator%(int64_t other) const {
-    Var otherVar(IntegerAttr::get(attr.getType(), other), builder);
-    return *this % otherVar;
+  //===--------------------------------------------------------------------===//
+  // Logical
+  //===--------------------------------------------------------------------===//
+
+  // Allows one to write `v1 && v2`.
+  Var operator&&(const Var &other) const {
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::And, attr, other.attr),
+        "var_and");
+    return Var(resDeclRef, builder);
+  }
+
+  // Allows one to write `v1 || v2`.
+  Var operator||(const Var &other) const {
+    TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::Or, attr, other.attr),
+        "var_or");
+    return Var(resDeclRef, builder);
   }
 
   TypedAttr getAttr() const { return attr; }
