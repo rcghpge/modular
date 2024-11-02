@@ -739,7 +739,7 @@ mo.graph @squeeze_shape_fallback_shape_func<D0, D1 -> D2>(
 // CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[[[D1]]], si64>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]]], si64> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["squeeze_shape_shape"]<() -> [[D3:.*]]>(%[[INPUT]], %[[INDICES]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.squeeze_shape"]<() -> [[D3:.*]]>(%[[INPUT]], %[[INDICES]])
 // CHECK-SAME:   {dataDeptTensors = []} : (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.squeeze_shape(%[[INPUT]], %[[INDICES]]) :
@@ -891,7 +891,7 @@ mo.graph @unsqueeze_shape_fallback_shape_func<D0, D1 -> D2>(
 // CHECK-SAME:   %[[INDICES:.*]]: !mo.tensor<[[[D1]]], si64>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]]], si64> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["unsqueeze_shape_shape"]<() -> [[D3:.*]]>(%[[INPUT]], %[[INDICES]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.unsqueeze_shape"]<() -> [[D3:.*]]>(%[[INPUT]], %[[INDICES]])
 // CHECK-SAME:   {dataDeptTensors = []} : (!mo.tensor<[[[D0]]], si64>, !mo.tensor<[[[D1]]], si64>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.unsqueeze_shape(%[[INPUT]], %[[INDICES]]) :

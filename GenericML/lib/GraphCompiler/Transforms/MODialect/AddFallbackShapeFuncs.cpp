@@ -742,6 +742,7 @@ ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SplitOp op) {
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
+    // TODO(GRA-1127): Migrate over to the new api
     buildForOpResult(graph, builder, cast<TensorValue>(res),
                      "split_ith_output_shape", op.getOperands(),
                      op.getOutputParamDecls(),
@@ -754,8 +755,8 @@ ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::SqueezeShapeOp>::build(GraphOp &graph,
                                                    OpBuilder &builder,
                                                    MO::SqueezeShapeOp op) {
-  buildForOpResult(graph, builder, op, "squeeze_shape_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::SqueezeShapeOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
@@ -784,7 +785,7 @@ ErrorOrSuccess Fallback<MO::TransposeOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::UnsqueezeShapeOp>::build(GraphOp &graph,
                                                      OpBuilder &builder,
                                                      MO::UnsqueezeShapeOp op) {
-  buildForOpResult(graph, builder, op, "unsqueeze_shape_shape",
+  buildForOpResult(graph, builder, op, MO::UnsqueezeShapeOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
