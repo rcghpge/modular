@@ -533,8 +533,8 @@ ErrorOrSuccess Fallback<MO::GatherOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::GatherNdOp>::build(GraphOp &graph,
                                                OpBuilder &builder,
                                                MO::GatherNdOp op) {
-  buildForOpResult(graph, builder, op, "gather_nd_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::GatherNdOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/
                    {
                        {"batch_dims", op.getBatchDims()},

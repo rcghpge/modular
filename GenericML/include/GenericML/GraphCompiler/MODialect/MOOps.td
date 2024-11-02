@@ -3476,7 +3476,7 @@ def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
 //===----------------------------------------------------------------------===//
 
 // Base class for ArgMin and ArgMax.
-class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []> 
+class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []>
     : MO_ReductionOp<mnemonic, traits> {
   let arguments = (ins
     MO_Tensor:$input,
@@ -4830,8 +4830,8 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
 }
 
 def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
-  Pure, 
-  MO_HasDeviceInterface, 
+  Pure,
+  MO_HasDeviceInterface,
   MO_SameOperandsAndResultShape,
   MO_StaticTupleInputs,
   MO_StaticTupleOutputs,
@@ -4841,7 +4841,7 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   let description = [{
       Allreduce takes in inputs each coming from a different device with the same shape as the final output
       and performs a reduction operation across the devices.  The output is the replicated across the same
-      devices. 
+      devices.
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
