@@ -348,7 +348,8 @@ static ErrorOrSuccess buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
 
   // Create the shape function.
   builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op->getOperands(), "scatter_shape", shapeParams,
+      op.getLoc(), op->getOperands(),
+      op.getOperation()->getName().getStringRef(), shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({3}));
 
@@ -389,8 +390,8 @@ static ErrorOrSuccess buildForScatterNdLikeOp(GraphOp &graph,
 
   KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
       graph, op.getResult().getType(), op.getOutputParamDecls());
-  buildForOpResult(graph, builder, op, "scatter_nd_shape", op.getOperands(),
-                   shapeParams,
+  buildForOpResult(graph, builder, op, OpT::getOperationName(),
+                   op.getOperands(), shapeParams,
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
 
