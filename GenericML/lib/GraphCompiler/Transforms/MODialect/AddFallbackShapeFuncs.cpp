@@ -7,7 +7,6 @@
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -485,8 +484,8 @@ ErrorOrSuccess Fallback<MO::ConcatFromListOp>::build(GraphOp &graph,
 
 ErrorOrSuccess Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
                                            MO::ConvOp op) {
-  buildForOpResult(graph, builder, op, "mo.conv", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::ConvOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -494,8 +493,8 @@ ErrorOrSuccess Fallback<MO::ConvOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::ConvTransposeOp op) {
-  buildForOpResult(graph, builder, op, "conv_transpose_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::ConvTransposeOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/op.getDataDependentInputIndices());
   return success();
@@ -546,8 +545,8 @@ ErrorOrSuccess Fallback<MO::GatherNdOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::LayerNormOp>::build(GraphOp &graph,
                                                 OpBuilder &builder,
                                                 MO::LayerNormOp op) {
-  buildForOpResult(graph, builder, op, "mo.layer_norm", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::LayerNormOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
   return success();
