@@ -743,7 +743,7 @@ ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SplitOp op) {
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
-    // TODO(GRA-1127): Migrate over to the new api
+    // This uses some special handling
     buildForOpResult(graph, builder, cast<TensorValue>(res),
                      "split_ith_output_shape", op.getOperands(),
                      op.getOutputParamDecls(),
