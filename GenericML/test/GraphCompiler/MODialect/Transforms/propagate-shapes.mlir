@@ -353,23 +353,23 @@ mo.graph @out_of_order_ops<() -> D0, D1, D2, D3>(
   // transitive dependencies across SSA/Param boundaries.
   %b2 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D6, D7], f32>
 
-  mo.invoke_shape_func["broadcast_to_shape"]<() -> D4, D5>(%input, %shape1)
+  mo.invoke_shape_func["mo.broadcast_to"]<() -> D4, D5>(%input, %shape1)
     {dataDeptTensors = [1]} :
     (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
   %b1 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D4, D5], f32>
 
-  mo.invoke_shape_func["broadcast_to_shape"]<() -> D6, D7>(%b1, %shape2)
+  mo.invoke_shape_func["mo.broadcast_to"]<() -> D6, D7>(%b1, %shape2)
     {dataDeptTensors = [1]} :
     (!mo.tensor<[D4, D5], f32>, !mo.tensor<[2], si32>)
 
   // NOTE that these got sorted based on SSA _and_ parameter dependencies.
-  // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[SHAPE1]])
+  // CHECK-NEXT: mo.invoke_shape_func["mo.broadcast_to"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[SHAPE1]])
   // CHECK-SAME:   {dataDeptTensors = [1]} :
   // CHECK-SAME:   (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
   //
   // CHECK-NEXT: %[[B1:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D4]], [[D5]]], f32>
 
-  // CHECK-NEXT: mo.invoke_shape_func["broadcast_to_shape"]<() -> [[D6:.*]], [[D7:.*]]>(%[[B1]], %[[SHAPE2]])
+  // CHECK-NEXT: mo.invoke_shape_func["mo.broadcast_to"]<() -> [[D6:.*]], [[D7:.*]]>(%[[B1]], %[[SHAPE2]])
   // CHECK-SAME:   {dataDeptTensors = [1]} :
   // CHECK-SAME:   (!mo.tensor<[[[D4]], [[D5]]], f32>, !mo.tensor<[2], si32>)
   //
@@ -418,7 +418,7 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
-  // CHECK-SAME:  {message = "[reshape] input and output number of elements must match: 
+  // CHECK-SAME:  {message = "[reshape] input and output number of elements must match:
   // CHECK-SAME: #mosh<ape[D0, D1]> : !mosh.ape != #mosh<ape[D0, 4, 5]> : !mosh.ape" : !kgen.string},
   // CHECK-SAME: eq(:si64 mul_nuw(D0, D1), mul_nuw(D0, 20)))>
   //

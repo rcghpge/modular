@@ -441,8 +441,8 @@ ErrorOrSuccess Fallback<MO::BottomKOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::BroadcastToOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::BroadcastToOp op) {
-  buildForOpResult(graph, builder, op, "broadcast_to_shape", op.getOperands(),
-                   op.getOutputParamDecls(),
+  buildForOpResult(graph, builder, op, MO::BroadcastToOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{1});
   return success();
@@ -451,7 +451,7 @@ ErrorOrSuccess Fallback<MO::BroadcastToOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::BroadcastShapeOp>::build(GraphOp &graph,
                                                      OpBuilder &builder,
                                                      MO::BroadcastShapeOp op) {
-  buildForOpResult(graph, builder, op, "broadcast_shape_shape",
+  buildForOpResult(graph, builder, op, MO::BroadcastShapeOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, /*dataDepInputIdxs=*/{});
   return success();
