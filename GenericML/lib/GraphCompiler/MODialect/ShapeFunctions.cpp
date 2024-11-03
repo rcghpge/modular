@@ -453,8 +453,72 @@ ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
     }
   }
 
-  auto outputShape =
-      ShapeAttr::get(outputDims, ShapeType::get(graphOp.getContext()));
+  ShapeAttr outputShape = b.getShapeAttr(outputDims);
+  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
+}
+
+ShapeMaterializeResult
+materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
+                         ShapeAttr starts, ShapeAttr stops,
+                         const SmallVector<int64_t> &steps) {
+  // Create builder and track generated parameter bindings.
+  SmallVector<MO::ParamBinding> paramBindings;
+  MO::ParamExprBuilder b(graphOp, loc, &paramBindings);
+
+  // NOTE: The following defers constraints not verifiable at op staging time
+  // to the op lowering.
+
+  // Compute and collect output spatial dimensions.
+  SmallVector<TypedAttr> outDims;
+  for (size_t axis = 0; axis < inputShape.getRank(); axis++) {
+    // Get start/stop/step for this axis.
+    Var inputDim = b.createVar(inputShape[axis]);
+    int64_t step = steps[axis];
+    Var start = b.createVar(starts[axis]);
+    Var stop = b.createVar(stops[axis]);
+
+    // Normalize to [0, inputDim).
+    start = b.createCond(start < 0, start + inputDim, start);
+    stop = b.createCond(stop < 0, stop + inputDim, stop);
+
+    // Check statically verifiable preconditions using asserts here because the
+    // caller should verify inputs.
+    ASSERT_STREAM(step != 0,
+                  << llvm::formatv("rmo.slice step should be != 0 but got {0}",
+                                   step));
+
+    // Make sure start and stop don't cross each other.
+    // This ensures normalized (stop - start) has the same sign as step if both
+    // are statically known.
+    // Otherwise we'll compute the wrong outDim and fail elsewhere.
+    auto maybeStartConst = tryGetConstantInt(start.getAttr());
+    auto maybeStopConst = tryGetConstantInt(stop.getAttr());
+    if (maybeStartConst && maybeStopConst) {
+      int64_t startConst = *maybeStartConst;
+      int64_t stopConst = *maybeStopConst;
+      ASSERT_STREAM((step > 0 && (startConst <= stopConst)) ||
+                        (step < 0 && (startConst >= stopConst)),
+                    << llvm::formatv("rmo.slice step should be != 0 but got "
+                                     "start {0}, stop {1} for step {2}",
+                                     step));
+    }
+
+    // Invariants that should hold at this point:
+    // - step != 0
+    // - step > 0 => start < stop
+    // - step < 0 => stop < start
+    // - start, stop both in [0, inputDim)
+    // NOTE: since start and stop may be symbolic, their invariants may be
+    // checked at runtime in the worst case.
+
+    // Compute the out dim as the size of the range:
+    // ceil((stop - start) / step).
+    int64_t offset = step > 0 ? step - 1 : step + 1;
+    Var outDim = ((stop - start) + offset) / step;
+    outDims.push_back(outDim.getAttr());
+  }
+
+  ShapeAttr outputShape = b.getShapeAttr(outDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 

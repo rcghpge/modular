@@ -16,9 +16,9 @@
 #include "GenericML/GraphCompiler/RMODialect/RMOInterfaces.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
-#include "Support/ML/RangeUtils.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/include/llvm/Support/FormatVariadic.h"
 #include <optional>
@@ -28,6 +28,7 @@ using namespace RMO;
 
 using MO::TensorType;
 using MO::TensorValue;
+using MO::Var;
 
 using M::MO::parseParamDecls;
 using M::MO::printParamDecls;
@@ -737,6 +738,68 @@ LogicalResult SelectOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SliceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Retrieve input and start, stop, step shapes.
+  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
+  ASSERT_STREAM(inputShapes.size() == 1,
+                << "rmo.slice must have exactly 1 input");
+
+  auto inputShape = cast<ShapeAttr>(inputShapes[0]);
+  auto starts = attributes.getAs<ShapeAttr>("starts");
+  auto stops = attributes.getAs<ShapeAttr>("stops");
+
+  auto stepsAttr = attributes.getAs<ShapeAttr>("steps");
+  auto maybeSteps = MO::tryGetConstantIntVector(stepsAttr);
+  if (!maybeSteps ||
+      llvm::any_of(*maybeSteps, [](int64_t step) { return step == 0; }))
+    return mlir::emitOptionalError(
+        location,
+        llvm::formatv("rmo.slice expects static steps != 0 but got {0}",
+                      stepsAttr));
+  const SmallVector<int64_t> &steps = *maybeSteps;
+
+  // Check that the input rank matches the provided starts/stop/steps sizes.
+  if (starts.getSize() != inputShape.getRank() ||
+      !llvm::all_equal({starts.getSize(), stops.getSize(), steps.size()})) {
+    return mlir::emitOptionalError(
+        location,
+        "Input rank must match the number of elements in starts/stops/steps "
+        "bounds");
+  }
+
+  // Materialize shape function.
+  auto input = cast<MO::TensorValue>(operands.front());
+  auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
+  Location loc = location.value_or(graphOp.getLoc());
+  MO::ShapeMaterializeResult result = MO::materializeRmoSliceShape(
+      graphOp, loc, inputShape, starts, stops, steps);
+
+  // Preliminary error checks.
+  if (result.isError())
+    return mlir::emitOptionalError(location, result.getError().msg);
+
+  // This depends on GraphAPI having static rank.
+  ASSERT_STREAM(!result.isNonMaterializable(),
+                << "matmul shape logic must be materializable");
+
+  auto &successRes = result.getSuccess();
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr = MO::propagateShape(
+      successRes.bindings, /*targetShapes=*/successRes.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShapesOr->front(), input.getType().getDtype()));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ShapeToTensor
 //===----------------------------------------------------------------------===//
 
@@ -744,7 +807,6 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-
   auto shapeAttr = attributes.getAs<ShapeAttr>("shape");
   ASSERT_STREAM(
       shapeAttr, << "rmo.shape_to_tensor must have a ShapeAttr `shape`");

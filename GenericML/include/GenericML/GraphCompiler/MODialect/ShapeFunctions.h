@@ -390,6 +390,16 @@ ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
                                                  ShapeAttr xShape,
                                                  ShapeAttr yShape);
 
+/// Materialize the shape logic for RMO slice ops.
+/// NOTE: the following preconditions should be checked by the caller:
+/// - step != 0
+/// - step > 0 => start < stop
+/// - step < 0 => stop < start
+ShapeMaterializeResult
+materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
+                         ShapeAttr starts, ShapeAttr stops,
+                         const SmallVector<int64_t> &steps);
+
 /// Materialize the shape logic for `MO::BroadcastShapeOp`.
 ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
                                                       Location loc,

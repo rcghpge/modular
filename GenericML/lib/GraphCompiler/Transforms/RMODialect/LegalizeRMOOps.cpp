@@ -894,6 +894,70 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
   }
 };
 
+struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
+  LowerSlice(MLIRContext *ctx) : OpRewritePattern<RMO::SliceOp>(ctx, 1) {}
+  LogicalResult matchAndRewrite(RMO::SliceOp op,
+                                PatternRewriter &rewriter) const override {
+    // Note that rmo.slice has special restrictions compared to mo.slice:
+    // - Requires start, stop to be in [-dim, dim) so that there is no clamping.
+    // - Requires steps to be a statically known positive integer.
+    // These are to simplify rmo.slice's shape function, reducing bloat in
+    // algebraic dims computed in the rmo.slice type.
+    Location loc = op.getLoc();
+    MLIRContext *ctx = getContext();
+    TensorValue input = op.getInput();
+    auto inputShape = cast<MOSH::ShapeAttr>(input.getType().getShapeAttr());
+    ShapeAttr startsAttr = op.getStarts();
+    ShapeAttr stopsAttr = op.getStops();
+    ShapeAttr stepsAttr = op.getSteps();
+    auto maybeSteps = MO::tryGetConstantIntVector(stepsAttr);
+    if (!maybeSteps ||
+        llvm::any_of(*maybeSteps, [](int64_t step) { return step == 0; }))
+      return rewriter.notifyMatchFailure(
+          loc, llvm::formatv("rmo.slice expects static steps != 0 but got {0}",
+                             stepsAttr));
+
+    // Convert start/stop/step to tensors expected by mo.slice.
+    auto indicesType = TensorType::getVectorSI64Type(
+        ctx, startsAttr.getRank(), input.getType().getDeviceRef());
+    auto toTensorOp = [loc = loc, indicesType = indicesType,
+                       &rewriter](ShapeAttr attr) -> Value {
+      auto constOp = rewriter.create<MOSH::ParamToValueOp>(loc, attr);
+      return rewriter.create<Shape::ToTensorOp>(loc, indicesType, constOp);
+    };
+
+    auto starts = toTensorOp(startsAttr);
+    auto stops = toTensorOp(stopsAttr);
+    auto steps = toTensorOp(stepsAttr);
+
+    MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
+    SmallVector<ParamBinding> paramBindings;
+    ParamExprBuilder b(graphOp, loc, &paramBindings);
+    for (size_t axis = 0; axis < input.getType().getRank(); axis++) {
+      // NOTE: checking for:
+      // - step != 0
+      // - step > 0 => start <= stop
+      // - step < 0 => start >= stop
+      // is handled in the mo.slice shape function.
+
+      // Restrict start/stop to within [-dim, dim).
+      Var start = b.createVar(startsAttr[axis]);
+      Var stop = b.createVar(stopsAttr[axis]);
+      Var dim = b.createVar(inputShape[axis]);
+      b.createAssert(start >= -dim && start < dim,
+                     "[rmo.slice] requires start in [-dim, dim)");
+      b.createAssert(stop >= -dim && stop < dim,
+                     "[rmo.slice] requires stop in [-dim, dim)");
+    }
+
+    // Create the mo.slice op.
+    rewriter.replaceOpWithNewOp<MO::SliceOp>(op, op.getType(), input, starts,
+                                             stops, steps);
+
+    return success();
+  }
+};
+
 struct LowerShapeToTensor : public OpRewritePattern<RMO::ShapeToTensorOp> {
   LowerShapeToTensor(MLIRContext *ctx)
       : OpRewritePattern<RMO::ShapeToTensorOp>(ctx, 1) {}
@@ -1048,8 +1112,8 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::OrOp, RMO::MOOrOp>,
         LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
         LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
-        LowerMatmul, LowerBroadcastTo, LowerSelect, LowerShapeToTensor>(
-        context);
+        LowerMatmul, LowerBroadcastTo, LowerSelect, LowerSlice,
+        LowerShapeToTensor>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo

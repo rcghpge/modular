@@ -567,4 +567,44 @@ def RMO_SelectOp : RMO_Op<"select", [
   }];
 }
 
+def RMO_SliceOp : RMO_Op<"slice", [
+  Pure,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Slice operation with type inference.""";
+  let description = [{
+    Returns a new tensor with a subset of the elements from an N-dimensional
+    `input` tensor. The subset is chosen using the `starts`, `stops`, and
+    `steps` shape attributes.
+    Each shape attributes has N elements, one for each dimension of the `input`
+    tensor.
+
+    The semantics follows the numpy index semantics, such that
+    1. For each dimension `i`, `starts[i]:stops[i]:steps[i]` represents the
+       "indexing" along that dimension.
+    2. Negative indices are supported for `starts` and `stops`, e.g., -1
+       represents the largest axis.
+    3. Unlike `mo.slice`, Out of bound indices in `starts` and `stops` are not
+       allowed and each must be in [-dim, dim], where `dim` is the dimension in
+       the corresponding axis.
+    4. `steps` must contain nonzero elements.
+
+    Example:
+    ```mlir
+      %input: !mo.tensor<[10, 10], f32>
+
+      // equivalent to this in numpy: `input[1:-3:5, -6:6:1]`
+      %res = rmo.slice(%input) {starts = #mosh<ape[1, -6]> : !mosh.ape, steps = #mosh<ape[5, 1]> : !mosh.ape, stops = #mosh<ape[-3, 6]> : !mosh.ape} : (
+        !mo.tensor<[10, 10], f32>,
+      ) -> !mo.tensor<[2, 2], f32>
+    ```
+  }];
+  let arguments = (ins MO_Tensor:$input,
+                       MOSH_ShapeAttr:$starts,
+                       MOSH_ShapeAttr:$stops,
+                       MOSH_ShapeAttr:$steps,
+                       MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+}
+
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD
