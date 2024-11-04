@@ -308,6 +308,8 @@ def MO_Buffer : MO_Type<"Buffer", "buffer"> {
       "Type" : $elementType,
       CArg<"DeviceRefAttr", "{}"> : $deviceRef,
       CArg<"DictionaryAttr", "{}"> : $metadata)>,
+    TypeBuilderWithInferredContext<(ins
+      "TensorType" : $tensorType)>,
   ];
 
   let extraClassDeclaration = [{

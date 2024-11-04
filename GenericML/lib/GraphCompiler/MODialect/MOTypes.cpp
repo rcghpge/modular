@@ -672,8 +672,6 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
         return emitError()
                << "invalid dimension, expect all dimensions >= 0 got: "
                << dimIntAttr.getSInt();
-    } else if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(dimAttr)) {
-      return emitError() << "mo.buffer is not allowed to have shapes with '?'";
     }
   }
 
@@ -711,6 +709,11 @@ BufferType BufferType::get(ArrayRef<TypedAttr> shape, Type elementType,
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
   return get(newShape, elementType, deviceRef, metadata);
+}
+
+BufferType BufferType::get(TensorType tensorType) {
+  return get(tensorType.getShapeAttr(), tensorType.getElementType(),
+             tensorType.getDeviceRef(), tensorType.getMetadata());
 }
 
 TensorType BufferType::toTensorType(BufferType ty) {

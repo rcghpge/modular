@@ -1,11 +1,15 @@
 // RUN: mo-opt --canonicalize %s | mo-opt | FileCheck --enable-var-scope %s
 
 // CHECK-LABEL: mo.graph @buffer_type
-// CHECK-SAME:   {{.*}}: !mo.buffer<[10, 20], f32>,
-// CHECK-SAME:   {{.*}}: !mo.buffer<[D0, D1], f32>
+// CHECK-SAME: {{.*}}: !mo.buffer<[10, 20], f32>,
+// CHECK-SAME: {{.*}}: !mo.buffer<[?, ?], f32>,
+// CHECK-SAME: {{.*}}: !mo.buffer<[D0, D1], f32>,
+// CHECK-SAME: {{.*}}: !mo.buffer<[D0, ?, 10], f32>
 mo.graph @buffer_type<D0, D1>(
   %b0: !mo.buffer<[10, 20], f32>,
-  %b3: !mo.buffer<[D0, D1], f32>
+  %b1: !mo.buffer<[?, ?], f32>,
+  %b2: !mo.buffer<[D0, D1], f32>,
+  %b3: !mo.buffer<[D0, ?, 10], f32>
 ) {
   mo.output
 }
