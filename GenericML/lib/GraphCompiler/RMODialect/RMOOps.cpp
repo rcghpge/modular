@@ -35,12 +35,20 @@ using M::MO::printParamDecls;
 
 ErrorOr<M::DeviceRefAttr> RMO::inferDevice(ValueRange values) {
   llvm::SmallDenseSet<M::DeviceRefAttr> valueDevices;
-  for (const auto &value : values)
-    if (auto tensorType = cast<TensorType>(value.getType()))
-      if (auto deviceRef = tensorType.getDeviceRef())
+  for (const auto &value : values) {
+    // Right now only tensors/buffers have devices.
+    auto asTensorType = dyn_cast<M::MO::TensorType>(value.getType());
+    if (asTensorType)
+      if (M::DeviceRefAttr deviceRef = asTensorType.getDeviceRef())
         valueDevices.insert(deviceRef);
+    auto asBufferType = dyn_cast<M::MO::BufferType>(value.getType());
+    if (asBufferType)
+      if (M::DeviceRefAttr deviceRef = asBufferType.getDeviceRef())
+        valueDevices.insert(deviceRef);
+  }
 
   if (valueDevices.size() > 1) {
+    // In the case where we have different explicit devices, error.
     std::string devicesString = "";
     for (const auto &device : valueDevices) {
       devicesString.append(device.toString());
@@ -50,6 +58,7 @@ ErrorOr<M::DeviceRefAttr> RMO::inferDevice(ValueRange values) {
                      .concat(devicesString)
                      .concat("} is not supported."));
   } else if (valueDevices.size() == 1) {
+    // There is only 1 explicit device. Use that as the sole device.
     return *valueDevices.begin();
   } else {
     return M::DeviceRefAttr();

@@ -32,17 +32,9 @@ using MO::TensorValue;
 /// device.
 template <typename AdaptorTy>
 DeviceRefAttr getDeviceFromOperands(AdaptorTy &operands) {
-  for (Value val : operands.getOperands()) {
-    // Right now only tensors/buffers have devices.
-    auto asTensorType = dyn_cast<M::MO::TensorType>(val.getType());
-    if (asTensorType)
-      return asTensorType.getDeviceRef();
-    auto asBufferType = dyn_cast<M::MO::BufferType>(val.getType());
-    if (asBufferType)
-      return asBufferType.getDeviceRef();
-  }
-
-  return {};
+  ErrorOr<M::DeviceRefAttr> deviceOr = inferDevice(operands.getOperands());
+  ASSERT_STREAM(!deviceOr.isError(), << deviceOr.getError());
+  return *deviceOr;
 }
 
 /// Create a new attribute representing a static integer dimension.
