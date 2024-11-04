@@ -414,9 +414,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Step 7: Cleanup the kernel.
 
-    // Disable future input fusion.
-    kernelToFuseInto.removeInputFusionInterfaceAttr();
-
     // Update the lambdas_have_fusion parameter for the extensibility kernels
     kernelToFuseInto.setKGENKernelParamValueIfPresent(
         analysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
