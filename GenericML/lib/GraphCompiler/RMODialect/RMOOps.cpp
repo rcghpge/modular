@@ -33,6 +33,29 @@ using MO::Var;
 using M::MO::parseParamDecls;
 using M::MO::printParamDecls;
 
+ErrorOr<M::DeviceRefAttr> RMO::inferDevice(ValueRange values) {
+  llvm::SmallDenseSet<M::DeviceRefAttr> valueDevices;
+  for (const auto &value : values)
+    if (auto tensorType = cast<TensorType>(value.getType()))
+      if (auto deviceRef = tensorType.getDeviceRef())
+        valueDevices.insert(deviceRef);
+
+  if (valueDevices.size() > 1) {
+    std::string devicesString = "";
+    for (const auto &device : valueDevices) {
+      devicesString.append(device.toString());
+      devicesString.append(",");
+    }
+    return Error(Twine("Differing input devices={")
+                     .concat(devicesString)
+                     .concat("} is not supported."));
+  } else if (valueDevices.size() == 1) {
+    return *valueDevices.begin();
+  } else {
+    return M::DeviceRefAttr();
+  }
+}
+
 OpFoldResult RebindTensorShapeOp::fold(FoldAdaptor adaptor) {
   // Note `?` != `?` in terms of shapes
   if (getInput().getType().hasUnknownShape())
@@ -325,8 +348,13 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
-  inferredReturnTypes.push_back(
-      TensorType::get(resultShapesOr->front(), *promotedDtype));
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
+  inferredReturnTypes.push_back(TensorType::get(
+      resultShapesOr->front(), *promotedDtype, *outputDeviceOr));
   return success();
 }
 
@@ -381,8 +409,13 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   inferredReturnTypes.push_back(
-      TensorType::get(resultShapesOr->front(), DType::kBool));
+      TensorType::get(resultShapesOr->front(), DType::kBool, *outputDeviceOr));
   return success();
 }
 
@@ -485,7 +518,13 @@ LogicalResult ConcatOp::inferReturnTypes(
       return mlir::emitOptionalError(location, errorMsg);
     }
   }
-  inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, inputDtype, *outputDeviceOr));
 
   return success();
 }
@@ -542,10 +581,16 @@ LogicalResult ReshapeOp::inferReturnTypes(
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   // Create output type.
   ShapeAttr resultShape = resultShapesOr.get().front();
   DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
-  inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, inputDtype, *outputDeviceOr));
 
   return success();
 }
@@ -601,10 +646,16 @@ LogicalResult BroadcastToOp::inferReturnTypes(
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   // Create output type.
   ShapeAttr resultShape = resultShapesOr->front();
   DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
-  inferredReturnTypes.push_back(TensorType::get(resultShape, inputDtype));
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, inputDtype, *outputDeviceOr));
 
   return success();
 }
@@ -665,9 +716,15 @@ LogicalResult MatmulOp::inferReturnTypes(
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   // Create output type.
   ShapeAttr resultShape = resultShapesOr.get().front();
-  inferredReturnTypes.push_back(TensorType::get(resultShape, *promotedDtype));
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, *promotedDtype, *outputDeviceOr));
 
   return success();
 }
@@ -730,9 +787,15 @@ LogicalResult SelectOp::inferReturnTypes(
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   // Create output type.
   ShapeAttr resultShape = resultShapesOr.get().front();
-  inferredReturnTypes.push_back(TensorType::get(resultShape, *promotedDtype));
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, *promotedDtype, *outputDeviceOr));
 
   return success();
 }
@@ -818,11 +881,16 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
 
   auto dimType = ShapeAttr::getDimType(context);
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   // The output is simply an i64 tensor with rank 1.
   inferredReturnTypes.push_back(TensorType::get(
       ShapeAttr::get({IntegerAttr::get(dimType, shapeAttr.getRank())},
                      shapeAttr.getType()),
-      DType::si64));
+      DType::si64, *outputDeviceOr));
 
   return success();
 }

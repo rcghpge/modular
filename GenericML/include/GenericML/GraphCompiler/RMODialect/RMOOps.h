@@ -81,6 +81,14 @@ void inferMOTypesScatterNdImpl(
 ///    but different representations.
 ErrorOr<DType> promoteDtype(DType x, DType y);
 
+/// Given a ValueRange, returns an optional `DeviceRefAttr` if the
+/// following conditions are met:
+/// 1. Any value explicitly define a device.
+/// 2. All explicitly defined devices are the exact same.
+/// Will error if encountering conflicting value devices.
+/// Will return a nullopt otherwise
+ErrorOr<M::DeviceRefAttr> inferDevice(ValueRange values);
+
 } // namespace M::RMO
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
