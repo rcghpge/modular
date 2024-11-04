@@ -214,9 +214,8 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
         ++nextScheduledOp;
 
       // NOTE these ops are _required_ to be at the end of their parent block,
-      // so we must not reorder them. We can afford to be a little MO specific
-      // here since the analysis is under MODialect.
-      if (isa<MO::OutputOp, MO::YieldOp>(op))
+      // so we must not reorder them.
+      if (op.hasTrait<OpTrait::IsTerminator>())
         continue;
 
       // Schedule the operation by moving it to the start.
