@@ -90,6 +90,12 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDeviceRef(MlirContext ctx,
                                                        llvm::StringRef label,
                                                        int32_t id);
+
+/// Gets the Device Label as a null-terminated string owned by the caller.
+MODULAR_API_EXPORT char *MAXG_deviceAttrGetLabel(MlirAttribute dev);
+
+/// Gets the Device ID.
+MODULAR_API_EXPORT int64_t MAXG_deviceAttrGetId(MlirAttribute dev);
 //===----------------------------------------------------------------------===//
 // Type helpers
 //===----------------------------------------------------------------------===//

@@ -243,6 +243,23 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDeviceRef(MlirContext ctx,
   return wrap(M::DeviceRefAttr::get(unwrap(ctx), label, id));
 }
 
+/// Gets the Device Label as a null-terminated string owned by the caller.
+MODULAR_API_EXPORT char *MAXG_deviceAttrGetLabel(MlirAttribute dev) {
+  auto deviceAttr = cast<M::DeviceRefAttr>(unwrap(dev));
+  std::string labelStr = deviceAttr.getLabel().str();
+  // Initialize to zeros so that result is null terminated.
+  char *result = new char[labelStr.size() + 1]{};
+  // Copy to a string owned by the caller.
+  labelStr.copy(result, labelStr.size());
+  return result;
+}
+
+/// Gets the Device ID.
+MODULAR_API_EXPORT int64_t MAXG_deviceAttrGetId(MlirAttribute dev) {
+  auto deviceAttr = cast<M::DeviceRefAttr>(unwrap(dev));
+  return deviceAttr.getId();
+}
+
 //===----------------------------------------------------------------------===//
 // Type helpers
 //===----------------------------------------------------------------------===//
