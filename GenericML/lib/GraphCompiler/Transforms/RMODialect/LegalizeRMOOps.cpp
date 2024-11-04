@@ -940,9 +940,18 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
       // - step < 0 => start >= stop
       // is handled in the mo.slice shape function.
 
-      // Restrict start/stop to within [-dim, dim).
       Var start = b.createVar(startsAttr[axis]);
       Var stop = b.createVar(stopsAttr[axis]);
+      auto maybeStartConst = tryGetConstantInt(startsAttr[axis]);
+      if (!maybeStartConst)
+        b.createAssert(start >= 0,
+                       "[rmo.slice] requires positive start when symbolic");
+      auto maybeStopConst = tryGetConstantInt(stopsAttr[axis]);
+      if (!maybeStopConst)
+        b.createAssert(stop >= 0,
+                       "[rmo.slice] requires positive stop when symbolic");
+
+      // Restrict start/stop to within [-dim, dim).
       Var dim = b.createVar(inputShape[axis]);
       b.createAssert(start >= -dim && start < dim,
                      "[rmo.slice] requires start in [-dim, dim)");

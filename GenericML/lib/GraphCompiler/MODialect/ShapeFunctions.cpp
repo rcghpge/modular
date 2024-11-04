@@ -477,22 +477,33 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     Var start = b.createVar(starts[axis]);
     Var stop = b.createVar(stops[axis]);
 
-    // Normalize to [0, inputDim).
-    start = b.createCond(start < 0, start + inputDim, start);
-    stop = b.createCond(stop < 0, stop + inputDim, stop);
-
     // Check statically verifiable preconditions using asserts here because the
     // caller should verify inputs.
     ASSERT_STREAM(step != 0,
                   << llvm::formatv("rmo.slice step should be != 0 but got {0}",
                                    step));
 
+    // Normalize to [0, inputDim).
+    auto maybeStartConst = tryGetConstantInt(start.getAttr());
+    auto maybeStopConst = tryGetConstantInt(stop.getAttr());
+    start = maybeStartConst && *maybeStartConst < 0
+                ? b.createVar(*maybeStartConst) + inputDim
+                : start;
+    stop = maybeStopConst && *maybeStopConst < 0
+               ? b.createVar(*maybeStopConst) + inputDim
+               : stop;
+    // NOTE: if start/stop aren't statically known to be < 0 they are assumed to
+    // be greater than 0.
+    // This is checked with an assert staged in the RMO to MO lowering.
+    // Doing so avoids conds in the result shapes here, while still handling the
+    // common case of slicing by a dim (guaranteed to be positive).
+
     // Make sure start and stop don't cross each other.
     // This ensures normalized (stop - start) has the same sign as step if both
     // are statically known.
     // Otherwise we'll compute the wrong outDim and fail elsewhere.
-    auto maybeStartConst = tryGetConstantInt(start.getAttr());
-    auto maybeStopConst = tryGetConstantInt(stop.getAttr());
+    maybeStartConst = tryGetConstantInt(start.getAttr());
+    maybeStopConst = tryGetConstantInt(stop.getAttr());
     if (maybeStartConst && maybeStopConst) {
       int64_t startConst = *maybeStartConst;
       int64_t stopConst = *maybeStopConst;
@@ -500,12 +511,13 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
                         (step < 0 && (startConst >= stopConst)),
                     << llvm::formatv("rmo.slice step should be != 0 but got "
                                      "start {0}, stop {1} for step {2}",
-                                     step));
+                                     startConst, stopConst, step));
     }
 
     // Invariants that should hold at this point:
     // - step != 0
     // - step > 0 => start < stop
+    // TODO(AIPIPE-109): step < 0 is disallowed currently, but almost works.
     // - step < 0 => stop < start
     // - start, stop both in [0, inputDim)
     // NOTE: since start and stop may be symbolic, their invariants may be
