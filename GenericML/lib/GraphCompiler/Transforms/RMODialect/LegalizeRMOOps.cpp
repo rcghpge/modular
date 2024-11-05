@@ -268,32 +268,7 @@ struct LegalizeMutableStoreSliceOp
     moOperands.push_back(op.getInChain());
     moOperands.push_back(op.getInBuffer());
 
-    {
-      // build the call to the slice shape func
-      auto sliceInputDecls = moInputParamDecls[2];
-      SmallVector<Value> operands = {op.getInBuffer(), op.getStart(),
-                                     op.getStop(), op.getStep()};
-
-      rewriter.create<MO::InvokeShapeFuncOp>(
-          op.getLoc(), operands,
-          rewriter.getStringAttr(MO::SliceOp::getOperationName()),
-          KGEN::ParamDeclArrayAttr::get(op->getContext(), sliceInputDecls),
-          nullptr, rewriter.getI32ArrayAttr({1, 2, 3}));
-
-      SmallVector<TypedAttr> newDims;
-
-      for (auto &attr : sliceInputDecls)
-        newDims.push_back(KGEN::ParamDeclRefAttr::get(attr));
-
-      auto newTy = op.getSlice().getType().cloneWith(newDims);
-
-      auto rebound = rebindToShape(
-          graphOp, cast<TensorValue>(op->getOperand(2)), newTy, rewriter);
-
-      moOperands.push_back(rebound);
-    }
-
-    for (size_t i = 3; i < moOperandTypes.size(); i++) {
+    for (size_t i = moOperands.size(); i < moOperandTypes.size(); i++) {
       SmallVector<KGEN::ParamDeclAttr> &curInputDecls = moInputParamDecls[i];
 
       auto rebound = rebindToShape(
