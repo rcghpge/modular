@@ -82,22 +82,22 @@ class NaiveKVCacheManager(KVCacheManager):
             BufferType(
                 self.params.dtype,
                 shape=[
-                    "max_seq_len",
-                    "num_layers",
-                    "batch_size",
-                    "num_kv_heads",
-                    "head_dim",
+                    self.max_seq_len,
+                    self.num_layers,
+                    "max_batch_size",
+                    self.params.n_kv_heads,
+                    self.params.head_dim,
                 ],
             ),
             # v_cache
             BufferType(
                 self.params.dtype,
                 shape=[
-                    "max_seq_len",
-                    "num_layers",
-                    "batch_size",
-                    "num_kv_heads",
-                    "head_dim",
+                    self.max_seq_len,
+                    self.num_layers,
+                    "max_batch_size",
+                    self.params.n_kv_heads,
+                    self.params.head_dim,
                 ],
             ),
             # start_pos
