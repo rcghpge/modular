@@ -219,7 +219,7 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOr<DeviceFunctionRef> CpuDeviceContext::compileFunction(
+ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
     int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,

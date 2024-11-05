@@ -540,7 +540,7 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
+ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
     int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
@@ -558,7 +558,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::compileFunction(
 
   // TODO(iposva): Remove once not needed for debugging.
   if (false) {
-    llvm::errs() << "CUDADeviceContext::compileFunction(" << function_name
+    llvm::errs() << "CUDADeviceContext::loadFunction(" << function_name
                  << "):\n"
                  << reinterpret_cast<const char *>(data) << "\n";
   }

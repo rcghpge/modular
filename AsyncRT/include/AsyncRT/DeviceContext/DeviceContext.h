@@ -254,14 +254,15 @@ public:
   virtual ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
                                    size_t elem_size, SyncMode mode) const = 0;
 
-  // DeviceFunction compilation and execution.
-  virtual ErrorOr<DeviceFunctionRef> compileFunction(
-      const char *function_name,
-      const DeviceFunction::SignatureBuilder &signature, const void *data,
-      int32_t max_registers = -1, int32_t threads_per_block = -1,
-      int32_t cache_mode = -1, int32_t cache_config = -1,
-      int32_t max_dynamic_shared_bytes = -1, const char *debug_level = "",
-      int32_t optimization_level = -1) const = 0;
+  // DeviceFunction loading and execution.
+  virtual ErrorOr<DeviceFunctionRef>
+  loadFunction(const char *function_name,
+               const DeviceFunction::SignatureBuilder &signature,
+               const void *data, int32_t max_registers = -1,
+               int32_t threads_per_block = -1, int32_t cache_mode = -1,
+               int32_t cache_config = -1, int32_t max_dynamic_shared_bytes = -1,
+               const char *debug_level = "",
+               int32_t optimization_level = -1) const = 0;
   virtual ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,

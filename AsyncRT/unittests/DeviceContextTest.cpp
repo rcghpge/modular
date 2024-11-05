@@ -374,7 +374,7 @@ $L__BB0_2:
                                              .addBuffer()
                                              .addUInt64();
   ErrorOr<DeviceFunctionRef> err_fun =
-      ctx->compileFunction("vec_add", sig, vec_add_ptx);
+      ctx->loadFunction("vec_add", sig, vec_add_ptx);
   // Expecting for an error to be set in the case of CPU device context.
   ASSERT_TRUE(err_fun) << err_fun.getError() << "\n";
 }

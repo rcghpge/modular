@@ -211,7 +211,7 @@ AsyncRT_DeviceContext_setMemory_sync(const DeviceContext *ctx,
       ctx->setMemory(*dst, val, elem_size, DeviceContext::SYNC));
 }
 
-MODULAR_EXPORT const char *AsyncRT_DeviceContext_compileFunction(
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunction(
     const DeviceFunction **result, const DeviceContext *ctx,
     const char *function_name, const void *data, int32_t max_registers,
     int32_t threads_per_block, int32_t cache_mode, int32_t cache_config,
@@ -219,10 +219,10 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_compileFunction(
     int32_t optimization_level) {
   DeviceFunction::SignatureBuilder sig;
   return check_ref(result,
-                   ctx->compileFunction(function_name, sig, data, max_registers,
-                                        threads_per_block, cache_mode,
-                                        cache_config, max_dynamic_shared_bytes,
-                                        debug_level, optimization_level));
+                   ctx->loadFunction(function_name, sig, data, max_registers,
+                                     threads_per_block, cache_mode,
+                                     cache_config, max_dynamic_shared_bytes,
+                                     debug_level, optimization_level));
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceFunction_retain(const DeviceFunction *func) {

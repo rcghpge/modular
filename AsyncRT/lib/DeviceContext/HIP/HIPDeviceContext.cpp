@@ -449,7 +449,7 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOr<DeviceFunctionRef> HIPDeviceContext::compileFunction(
+ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
     int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
@@ -466,7 +466,7 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::compileFunction(
 
   // TODO(iposva): Remove once not needed for debugging.
   if (false) {
-    std::cerr << "HIPDeviceContext::compileFunction(" << function_name << "):\n"
+    std::cerr << "HIPDeviceContext::loadFunction(" << function_name << "):\n"
               << reinterpret_cast<const char *>(data) << "\n";
   }
   hipModule_t module;

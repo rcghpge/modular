@@ -112,8 +112,8 @@ public:
   ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
                            size_t elem_size, SyncMode mode) const override;
 
-  // DeviceFunction compilation and execution.
-  ErrorOr<DeviceFunctionRef> compileFunction(
+  // DeviceFunction loading and execution.
+  ErrorOr<DeviceFunctionRef> loadFunction(
       const char *function_name,
       const DeviceFunction::SignatureBuilder &signature, const void *data,
       int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
