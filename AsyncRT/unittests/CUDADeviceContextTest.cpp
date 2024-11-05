@@ -571,29 +571,12 @@ TEST(CUDADeviceContextTest, MultiContextCopies) {
     }
     ASSERT_TRUE(dst_ctx);
 
-    char check_data[] = {
-        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D',
-        'E', 'F', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C',
-        'D', 'E', 'F', '0', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B',
-        'C', 'D', 'E', 'F', '0', '1', '3', '4', '5', '6', '7', '8', '9', 'A',
-        'B', 'C', 'D', 'E', 'F', '0', '1', '2', '4', '5', '6', '7', '8', '9',
-        'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '5', '6', '7', '8',
-        '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '4', '6', '7',
-        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '4', '5',
-        '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3', '4',
-        '5', '6', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2', '3',
-        '4', '5', '6', '7', '9', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1', '2',
-        '3', '4', '5', '6', '7', '8', 'A', 'B', 'C', 'D', 'E', 'F', '0', '1',
-        '2', '3', '4', '5', '6', '7', '8', '9', 'B', 'C', 'D', 'E', 'F', '0',
-        '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'C', 'D', 'E', 'F',
-        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'D', 'E',
-        'F', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C',
-        'E', 'F', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B',
-        'C', 'D', 'F', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A',
-        'B', 'C', 'D', 'E',
-    };
-
     const int alloc_len = 256;
+    char *check_data = new char[alloc_len];
+    // Initialize check_data with a pattern specific for this run.
+    for (int i = 0; i < alloc_len; i++) {
+      check_data[i] = cur_device_id + i;
+    }
 
     ErrorOr<void *> err_ptr = src_ctx->malloc_host(alloc_len);
     EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
@@ -615,7 +598,9 @@ TEST(CUDADeviceContextTest, MultiContextCopies) {
     EXPECT_NE(dst_ptr, nullptr);
     // Initialize with known bad values.
     for (int i = 0; i < alloc_len; i++) {
-      dst_ptr[i] = -static_cast<char>((7 + i) & 127);
+      // Use a different factor for i than the check_data, so that we can't ever
+      // overlap.
+      dst_ptr[i] = -static_cast<char>((7 + 2 * i) & 127);
     }
 
     // Copy between different buffers.

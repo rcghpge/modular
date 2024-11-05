@@ -455,6 +455,10 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
   const auto &src_ctx = CUDADeviceContext::cast(src_buffer.context());
   const auto &dst_ctx = CUDADeviceContext::cast(dst_buffer.context());
 
+  if (this->context_ != dst_ctx.context_) {
+    RAISE_ERROR("device context does not match context of dst");
+  }
+
   CUdeviceptr src_ptr = src_buffer.cuda_ptr();
   CUdeviceptr dst_ptr = dst_buffer.cuda_ptr();
   size_t dst_byte_size = dst.len() * dst.elem_size();
@@ -483,17 +487,20 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
         return tmpHostBufOr.takeError();
 
       if (mode == ASYNC) {
-        CUDA_CHECK_ERR(driver_.CtxSetCurrent(src_ctx.context_));
+        CUDA_CHECK_ERR(src_ctx.setCurrent());
         CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(tmpHostBufOr->get(), src_ptr,
-                                               dst_byte_size, stream_));
-        CUDA_CHECK_ERR(setCurrent());
+                                               dst_byte_size,
+                                               src_ctx.cuda_stream()));
+        ErrorOrSuccess err = src_ctx.synchronize();
+        if (err.isError()) {
+          return err.takeError();
+        }
         CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, tmpHostBufOr->get(),
                                                dst_byte_size, stream_));
       } else {
-        CUDA_CHECK_ERR(driver_.CtxSetCurrent(src_ctx.context_));
+        CUDA_CHECK_ERR(src_ctx.setCurrent());
         CUDA_CHECK_ERR(
             driver_.MemcpyDtoH(tmpHostBufOr->get(), src_ptr, dst_byte_size));
-        CUDA_CHECK_ERR(setCurrent());
         CUDA_CHECK_ERR(
             driver_.MemcpyHtoD(dst_ptr, tmpHostBufOr->get(), dst_byte_size));
       }
