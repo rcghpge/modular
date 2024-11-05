@@ -603,20 +603,60 @@ ErrorOrSuccess HIPDeviceContext::isCompatibleWithMAX() const {
   return success();
 }
 
+static ErrorOr<hipDeviceAttribute_t>
+gethipDeviceAttribute(DeviceContext::Attribute attr) {
+#define ENTRY(X, Y)                                                            \
+  case DeviceContext::Attribute::X:                                            \
+    return hipDeviceAttribute_t::hipDeviceAttribute##Y
+
+  switch (attr) {
+    ENTRY(COMPUTE_CAPABILITY_MAJOR, ComputeCapabilityMajor);
+    ENTRY(COMPUTE_CAPABILITY_MINOR, ComputeCapabilityMinor);
+    ENTRY(CLOCK_RATE, ClockRate);
+    ENTRY(WARP_SIZE, WarpSize);
+    ENTRY(MAX_THREADS_PER_BLOCK, MaxThreadsPerBlock);
+    ENTRY(MAX_SHARED_MEMORY_PER_BLOCK, MaxSharedMemoryPerBlock);
+    ENTRY(MAX_BLOCK_DIM_X, MaxBlockDimX);
+    ENTRY(MAX_BLOCK_DIM_Y, MaxBlockDimY);
+    ENTRY(MAX_BLOCK_DIM_Z, MaxBlockDimZ);
+    ENTRY(MAX_GRID_DIM_X, MaxGridDimX);
+    ENTRY(MAX_GRID_DIM_Y, MaxGridDimY);
+    ENTRY(MAX_GRID_DIM_Z, MaxGridDimZ);
+    ENTRY(MULTIPROCESSOR_COUNT, MultiprocessorCount);
+    ENTRY(MAX_REGISTERS_PER_BLOCK, MaxRegistersPerBlock);
+    ENTRY(MAX_THREADS_PER_MULTIPROCESSOR, MaxThreadsPerMultiProcessor);
+  default:
+    return Error("Attribute not defined for AMD GPU");
+  }
+#undef ENTRY
+}
+
+// Plan:
+// DeviceContext::Attribute will reuse the CUDA enum mapping
+// CUDADeviceContext::getAttribute can thus use the enum values directly
+// HIPDeviceContext will map the DeviceContext attributes to their HIP
+// equivalents
+
 ErrorOr<int> HIPDeviceContext::getAttribute(Attribute attr) const {
+
+  auto errorOrAttr = gethipDeviceAttribute(attr);
+  if (errorOrAttr.isError())
+    return errorOrAttr.takeError();
   int value = 0;
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &value, static_cast<hipDeviceAttribute_t>(attr), device().id()));
+  HIP_CHECK_ERR(
+      driver_.DeviceGetAttribute(&value, *errorOrAttr, device().id()));
   return value;
 }
 
 ErrorOr<int> HIPDeviceContext::computeCapability() const {
   int compute_major = 0, compute_minor = 0;
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_major, hipDeviceAttribute_t::COMPUTE_CAPABILITY_MAJOR,
+      &compute_major,
+      hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMajor,
       device().id()));
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_minor, hipDeviceAttribute_t::COMPUTE_CAPABILITY_MINOR,
+      &compute_minor,
+      hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMinor,
       device().id()));
   return 10 * compute_major + compute_minor;
 }
