@@ -124,7 +124,24 @@ class InferenceConfig:
 
     save_to_serialized_model_path: str = None  # type:ignore
 
-    # Pixtral Vision Encoder Configs
+
+@dataclass
+class LlavaConfig:
+    vision_feature_layer: int = -1
+    """The index of the layer to select the vision feature."""
+
+    image_token_index: int = 10
+    """The image token index to encode the image prompt."""
+
+    vision_feature_select_strategy: str = "full"
+    """The feature selection strategy used to select the vision feature from the vision model."""
+
+    image_seq_length: int = 1
+    """Sequence length of one image embedding."""
+
+
+@dataclass
+class PixtralVisionConfig:
     hidden_size: int = 1024
     """Dimension of the hidden representations."""
 
