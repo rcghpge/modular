@@ -19,6 +19,8 @@
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/PatternMatch.h"
 
 using namespace M;
 
@@ -29,27 +31,16 @@ namespace M::MOGG {
 
 namespace {
 
+// TODO: Better to rename the pass, by no means a gather operation (which is
+// handled in the pass) is "affine".
 struct FuseAffineViewsPass
     : public impl::FuseAffineViewsBase<FuseAffineViewsPass> {
   using FuseAffineViewsBase::FuseAffineViewsBase;
 
-  static inline bool isFusibleNonElementwise(Operation *op) {
-    auto kernel = dyn_cast<KernelOp>(op);
-    if (!kernel)
-      return false;
-
+  static inline bool isFusibleNonElementwise(KernelOp kernel) {
     // Cannot be elementwise kernel, that is fused differently.
     auto isElemwise = kernel.getFusionBodyLambda();
     if (isElemwise)
-      return false;
-
-    std::optional<ArrayAttr> outputLambdas = kernel.getOutputFusionInterface();
-    if (!outputLambdas.has_value())
-      return false;
-
-    // Output can only have one user.
-    Value result = kernel.getResult(0);
-    if (!result.hasOneUse())
       return false;
 
     // Avoid KGEN kernels for now.
@@ -57,6 +48,29 @@ struct FuseAffineViewsPass
       return false;
 
     return true;
+  }
+
+  static inline bool isOutputFusibleNonElementwise(KernelOp kernel) {
+    if (!isFusibleNonElementwise(kernel))
+      return false;
+
+    if (!kernel.getOutputFusionInterface().has_value())
+      return false;
+
+    // Output can only have one user.
+    Value result = kernel.getResult(0);
+    if (!result.hasOneUse())
+      return false;
+
+    return true;
+  }
+
+  static inline bool isInputFusibleNonElementwise(KernelOp kernel,
+                                                  size_t inputNum) {
+    if (!isFusibleNonElementwise(kernel))
+      return false;
+
+    return !kernel.getInputFusionInterfaceAt(inputNum).strref().empty();
   }
 
   void addSingletonDimTransform(Value indices, MO::TensorType outputTensorType,
@@ -119,6 +133,24 @@ struct FuseAffineViewsPass
         return false;
       return true;
     });
+  }
+
+  Value addGatherIndicesTranslation(Location loc, OpBuilder &builder,
+                                    Value indicesAfterGather,
+                                    Value indicesBuffer, Value gatherAxis,
+                                    Value inputShape) {
+    // The parameters to the call are bound with NDBuffer and shape, which graph
+    // compiler knows how to deduce from.
+
+    // Translate gathered indices back to the original indices.
+    auto call = builder.create<MOGG::CallOp>(
+        loc, TypeRange{indicesAfterGather.getType()},
+        "translate_gather_indices",
+        ValueRange{indicesBuffer, gatherAxis, indicesAfterGather, inputShape},
+        mlir::ArrayAttr{},
+        /*kgenAttrs=*/builder.getDictionaryAttr({}));
+
+    return call.getResult(0);
   }
 
   template <typename ViewOp>
@@ -196,12 +228,101 @@ struct FuseAffineViewsPass
     viewOp.getResult().replaceAllUsesWith(result);
   }
 
+  void fuseGatherInputKernel(KernelOp kernel, KernelOp gatherOp,
+                             unsigned toFuseIdx) {
+    OpBuilder builder(kernel->getContext());
+
+    SmallVector<Value> gatherOperands = gatherOp.getOperands();
+    MO::GatherOpAdaptor adaptor(gatherOperands);
+
+    if (auto inputTp = cast<MO::TensorType>(adaptor.getInput().getType());
+        inputTp.getDeviceRef() &&
+        inputTp.getDeviceRef().getLabel() != kCPULabel) {
+      builder.setInsertionPoint(kernel);
+      Value deviceAxis = builder.create<MO::TransferOp>(
+          gatherOp->getLoc(),
+          cast<MO::TensorType>(adaptor.getAxis().getType())
+              .cloneWith(inputTp.getDeviceRef()),
+          adaptor.getAxis());
+      gatherOperands[/*AxisOpNum=*/2] = deviceAxis;
+    }
+
+    // Update the input.
+    kernel->eraseOperand(toFuseIdx);
+    kernel->insertOperands(toFuseIdx, gatherOperands);
+
+    StringAttr lambdaName = kernel.getInputFusionInterfaceAt(toFuseIdx);
+    ArrayRef interfaces = kernel.getInputFusionInterface()->getValue();
+    ArrayRef unfusedHead = interfaces.take_front(toFuseIdx);
+    SmallVector<Attribute> fusedInterfaces(unfusedHead.begin(),
+                                           unfusedHead.end());
+
+    // Update the block argument.
+    Value unFusedInput = kernel.getBody().getArgument(toFuseIdx);
+    for (auto [opNum, val] : llvm::enumerate(gatherOperands)) {
+      // Insert right after the current value being fused to avoid messing up
+      // the loop iteration, in which the function is called.
+      unsigned idx = toFuseIdx + 1 + opNum;
+      Value fusedVal =
+          kernel.getBody().insertArgument(idx, val.getType(), val.getLoc());
+      // If this is the input, replace the use to the fused input.
+      if (val == adaptor.getInput()) {
+        unFusedInput.replaceAllUsesWith(fusedVal);
+        fusedInterfaces.emplace_back(lambdaName);
+      } else {
+        fusedInterfaces.emplace_back(builder.getStringAttr(""));
+      }
+    }
+    kernel.getBody().eraseArgument(toFuseIdx);
+    ArrayRef unfusedTail = interfaces.drop_front(toFuseIdx + 1);
+    fusedInterfaces.append(unfusedTail.begin(), unfusedTail.end());
+
+    // Generate fused body.
+    builder.setInsertionPointToStart(&kernel.getBody().front());
+    MO::GatherOpAdaptor bodyAdaptor(kernel.getBody().getArguments().slice(
+        toFuseIdx, gatherOp->getNumOperands()));
+
+    // 1st, Extract the shape from the fused input.
+    Value fusedInput = bodyAdaptor.getInput();
+    auto resultTy = cast<MO::TensorType>(fusedInput.getType());
+    auto shape = MOGG::ShapeType::get(builder.getContext(),
+                                      resultTy.getTypedShapeAttr());
+    Value fusedInputShape =
+        builder.create<MOGG::ParamShapeToValueOp>(fusedInput.getLoc(), shape);
+
+    // 2st, Transform the input lambda body.
+    kernel.walk([&](MOGG::LambdaOp lambda) {
+      // Insert call to inverse of the view op to invert the indices.
+      if (lambda.getSymName() == lambdaName) {
+        mlir::Block &block = lambda.getBodyRegion().front();
+        Value indicesAfterGather = block.getArgument(0);
+        builder.setInsertionPoint(&block, block.begin());
+
+        auto indicesBeforeGather = addGatherIndicesTranslation(
+            gatherOp->getLoc(), builder, indicesAfterGather,
+            bodyAdaptor.getIndices(), bodyAdaptor.getAxis(), fusedInputShape);
+
+        indicesAfterGather.replaceAllUsesExcept(
+            indicesBeforeGather, indicesBeforeGather.getDefiningOp());
+        return WalkResult::interrupt();
+      }
+
+      return WalkResult::advance();
+    });
+
+    kernel.setInputFusionInterfaceAttr(builder.getArrayAttr(fusedInterfaces));
+    kernel.setSummaryAttr(getSummaryString({gatherOp, kernel}));
+    // Trivially dead.
+    if (gatherOp->getUsers().empty())
+      gatherOp->erase();
+  }
+
   void runOnOperation() override {
     auto graph = getOperation();
 
     for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
 
-      if (isFusibleNonElementwise(kernel)) {
+      if (isOutputFusibleNonElementwise(kernel)) {
         Value result = kernel.getResult(0);
         Operation *user = *result.getUsers().begin();
 
@@ -212,10 +333,40 @@ struct FuseAffineViewsPass
         else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user))
           fuseViewOpDim(kernel, split, result, user);
       }
+
+      for (int idx = kernel.getNumOperands() - 1; idx >= 0; idx--) {
+        OpOperand &operand = kernel->getOpOperand(idx);
+        if (auto gatherKernel = operand.get().getDefiningOp<MOGG::KernelOp>()) {
+          // Pattern match based on summary.
+          //
+          // TODO: This is not ideal, it would be much better if mo.gather can
+          // be directly lowered to a elementwise-like kernel at the first
+          // place. But that would require some extension on elementwise kernel
+          // to support indices transformation.
+          if (!gatherKernel.getSummary().has_value() ||
+              gatherKernel.getSummary()->rsplit(':').first != "mo.gather" ||
+              !isInputFusibleNonElementwise(kernel, operand.getOperandNumber()))
+            continue;
+
+          M::IntArrayElementsAttr attr;
+
+          MO::GatherOpAdaptor adaptor(gatherKernel.getOperands());
+          if (mlir::matchPattern(adaptor.getAxis(), mlir::m_Constant(&attr))) {
+            int64_t axis = (*attr.begin()).getSExtValue();
+            unsigned inputRank =
+                cast<MO::TensorType>(adaptor.getInput().getType()).getRank();
+            // Try doing input fusion on gather only when we can statically
+            // verify that the gather axis is not the last dim, otherwise, it
+            // might break the `simd_load`.
+            if (axis != -1 && axis != inputRank - 1)
+              fuseGatherInputKernel(kernel, gatherKernel,
+                                    operand.getOperandNumber());
+          }
+        }
+      }
     }
   }
 };
 
 } // namespace
-
 } // namespace M::MOGG

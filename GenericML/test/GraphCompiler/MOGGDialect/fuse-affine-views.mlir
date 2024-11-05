@@ -45,3 +45,17 @@ mo.graph @split_dim<seq_len, N, K>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg
   %1 = mo.split_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[N, K, 4096], f32>
   mo.output %1 : !mo.tensor<[N, K, 4096], f32>
 }
+
+
+// CHECK-LABEL: mo.graph @gather_custom
+// CHECK:       mogg.lambda @input_0_fn_counter_{{.*}}
+// CHECK-NEXT:    mogg.call "translate_gather_indices"
+// CHECK-NEXT:    mogg.call "simd_load"
+// CHECK:       summary = "mo.gather:{{.*}}+custom__rms_norm:{{.*}}"
+
+mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>, %arg2: !mo.tensor<[4, 4], f32>, %arg3: !mo.tensor<[4, 4], si32>, %arg4: !mo.tensor<[4, 4, 4], f32>) -> !mo.tensor<[4, 4, 4], f32> {
+  %0 = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %1 = mo.gather(%arg2, %arg3, %0) : (!mo.tensor<[4, 4], f32>, !mo.tensor<[4, 4], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[4, 4, 4], f32>
+  %2 = mo.custom {symbol = "rms_norm"}(%1, %arg1, %arg0) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[4], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[4, 4, 4], f32>
+  mo.output %2 : !mo.tensor<[4, 4, 4], f32>
+}
