@@ -167,7 +167,8 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
                     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
                     MEFAttr<uint64_t> cFunctionIndex,
                     MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
-                    Runtime &runtime, EncodedLocation loc) {
+                    MEFListAttr fConstantResources, Runtime &runtime,
+                    EncodedLocation loc) {
   auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
@@ -189,7 +190,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
        takenOperands = operands.takeAsVector(), summary = dSummary->str(),
        profilerEntry = std::move(profilerEntry), runtimePtr = runtimePtr,
        deviceContext = std::move(deviceContext),
-       loc = std::move(loc)]() mutable {
+       ConstantResources = fConstantResources, loc = std::move(loc)]() mutable {
         void *deviceContextPtr = deviceContext.getPointerToData();
         std::vector<void *> kernelInputs;
         kernelInputs.reserve(outResults.size() + takenOperands.size());
@@ -230,6 +231,12 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
           }
 
           kernelInputs.push_back(ptrToMarshalledValue.takeValue());
+        }
+
+        for (MEFDynamicAttr attr : ConstantResources) {
+          // Append read-only pointer to attributes.
+          kernelInputs.push_back(
+              const_cast<void *>(reinterpret_cast<const void *>(attr.get())));
         }
 
         MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);

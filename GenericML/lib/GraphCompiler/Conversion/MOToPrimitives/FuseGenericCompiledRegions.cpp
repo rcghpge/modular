@@ -99,6 +99,13 @@ static void fuseCompiledRegionsAndReplaceUses(
             .getIsAsync()
             .value_or(false);
       });
+  llvm::SmallSetVector<Attribute, 4> resources;
+  for (Operation *regionOp : compiledRegionOpsToFuseTogether) {
+    auto res = cast<MOGG::GenericCompiledRegionOp>(regionOp)
+                   .getConstantResourcesAttr()
+                   .getAsRange<ElementsAttr>();
+    resources.insert(res.begin(), res.end());
+  }
   const bool canFuseIntoOther =
       llvm::all_of(compiledRegionOpsToFuseTogether, [&](auto region) {
         return cast<MOGG::GenericCompiledRegionOp>(region)
@@ -140,9 +147,10 @@ static void fuseCompiledRegionsAndReplaceUses(
       KGEN::ParamDeclArrayAttr::get(ctx, {}),
       InOutSignatureAttr::get(ctx, operandSemantics),
       firstRegionOp.getIsKGENAttr(),
-      MOGG::getSummaryString(compiledRegionOpsToFuseTogether),
-      BoolAttr::get(ctx, isAsync), canFuseIntoOther, canBeFusedInto,
-      canDuplicate);
+      /*summary=*/MOGG::getSummaryString(compiledRegionOpsToFuseTogether),
+      /*isAsync=*/BoolAttr::get(ctx, isAsync),
+      /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
+      canFuseIntoOther, canBeFusedInto, canDuplicate);
   fusedCompiledRegionOp.setDeviceRef(device);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());

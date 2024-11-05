@@ -98,7 +98,11 @@ isLowerableToMOGGCall(MLIRContext *ctx,
 static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
   SmallVector<NamedAttribute> attrs;
   for (auto &attr : op->getAttrs()) {
-    if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
+    // encoding mgp.buffer.constant op
+    if (auto constBufOp = dyn_cast<MGP::BufferConstantOp>(op);
+        constBufOp && constBufOp.getAValue() == attr.getValue()) {
+      attrs.push_back(builder.getNamedAttr("resource", constBufOp.getAValue()));
+    } else if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
       // Prune device attributes to string ref of label
       attrs.push_back(builder.getNamedAttr(
           attr.getName(), builder.getStringAttr(devRefAttr.getLabel())));
@@ -153,6 +157,7 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
                                                   : tensorType.getRank())));
     }
   }
+
   return builder.getDictionaryAttr(attrs);
 }
 
@@ -254,6 +259,10 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
 static ErrorOr<MOGG::GenericCompiledRegionOp>
 wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
                         CompiledRegionBodyBuilder bodyBuilder) {
+  auto constResources = builder.getArrayAttr({});
+  if (auto constOp = dyn_cast<MGP::BufferConstantOp>(op))
+    constResources = builder.getArrayAttr(constOp.getAValue());
+
   // Build compile region operation.
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
       op->getNumOperands(), InOutSignatureAttr::InOutSemantics::kNone);
@@ -264,6 +273,7 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
       builder.getBoolAttr(true),                           // isKGEN
       builder.getStringAttr(op->getName().getStringRef()), // summary
       builder.getBoolAttr(isAsync(op)),                    // isAsync
+      constResources,                                      // constantResources
       builder.getBoolAttr(canFuseOp(op)),                  // canFuseIntoOther
       builder.getBoolAttr(canFuseOp(op)),                  // canBeFusedInto
       builder.getBoolAttr(canDuplicate(op))                // canDuplicate
@@ -313,10 +323,15 @@ void LowerPrimitivesPass::runOnOperation() {
 
       inputVec.pop_back_n(inBuffers.size());
       inputVec.push_back(tuple);
-    } else if (auto getCachedBuf = dyn_cast<MGP::BufferGetCachedOp>(op)) {
+    } else if (isa<MGP::BufferGetCachedOp, MGP::BufferConstantOp>(op)) {
       // This is the storage_ref handle to the buffer.
       Value asyncRef = builder.create<MOGG::AnyAsyncRefPlaceholderOp>(loc);
-      inputVec.push_back(asyncRef);
+      // Both buffer get cache/constant create a new storage_ref handle.
+      // Differently only buffer.get_cache inherit the lifetime, and constant
+      // buffer only require a nullptr handle (to mark that this is a
+      // non-tracking memory).
+      if (isa<MGP::BufferGetCachedOp>(op))
+        inputVec.push_back(asyncRef);
       ErrorOr<SmallVector<Value>> errOr =
           buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
       if (errOr)
@@ -327,7 +342,7 @@ void LowerPrimitivesPass::runOnOperation() {
       SmallVector<Value> outputs = errOr.takeValue();
       ValueRange ret =
           builder
-              .create<MOGG::BufferBorrowOp>(loc, getCachedBuf.getType(),
+              .create<MOGG::BufferBorrowOp>(loc, op->getResultTypes()[0],
                                             outputs.front(), asyncRef)
               ->getResults();
 

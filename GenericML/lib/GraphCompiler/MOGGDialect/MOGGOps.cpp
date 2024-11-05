@@ -496,9 +496,10 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       BoolAttr::get(ctx, true),                         // isKGEN
       getSummaryAttr(),                                 // summary
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
-      BoolAttr::get(ctx, canFuseIntoOther),             // canFuseIntoOther
-      BoolAttr::get(ctx, canBeFusedInto),               // canBeFusedInto
-      BoolAttr::get(ctx, false)                         // canDuplicate
+      ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
+      BoolAttr::get(ctx, canFuseIntoOther), // canFuseIntoOther
+      BoolAttr::get(ctx, canBeFusedInto),   // canBeFusedInto
+      BoolAttr::get(ctx, false)             // canDuplicate
   );
   newKernel.setDeviceRef(device);
 

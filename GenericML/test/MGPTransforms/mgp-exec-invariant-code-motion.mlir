@@ -123,8 +123,7 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
     cFunctionIndex = 0 : ui64,
     dSummary = "mogg.generic.compiled.region:14",
     eIsAsync = false,
-    fHasCuda = false,
-    gCudaSlot = 0 : ui64
+    fConstantResource =[]
   } : (!mgp.context, !mgp.opaque<"cpu0_context">, !mgp.buffer<37632>, !mgp.buffer<37632>) -> (!mef.chain)
 
   mef.output %ch2, %out_buf : !mef.chain, !mgp.buffer<37632>

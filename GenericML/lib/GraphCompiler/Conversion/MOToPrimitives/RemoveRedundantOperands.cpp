@@ -32,11 +32,12 @@ buildRegionOpWithResultType(OpBuilder &builder,
       regionOp->getLoc(), resultTypes, regionOp.getOperands(),
       regionOp.getOutputParamDeclsAttr(), regionOp.getInOutSignatureAttr(),
       regionOp.getIsKGENAttr(),
-      regionOp.getSummaryAttr(),          // summary
-      regionOp.getIsAsyncAttr(),          // isAsync
-      regionOp.getCanFuseIntoOtherAttr(), // canFuseIntoOther
-      regionOp.getCanBeFusedIntoAttr(),   // canBeFusedInto
-      regionOp.getCanDuplicateAttr()      // canDuplicate
+      regionOp.getSummaryAttr(),           // summary
+      regionOp.getIsAsyncAttr(),           // isAsync
+      regionOp.getConstantResourcesAttr(), // constantResources
+      regionOp.getCanFuseIntoOtherAttr(),  // canFuseIntoOther
+      regionOp.getCanBeFusedIntoAttr(),    // canBeFusedInto
+      regionOp.getCanDuplicateAttr()       // canDuplicate
   );
   newKernel.setDeviceRef(regionOp.getDeviceRef());
   return newKernel;

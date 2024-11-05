@@ -413,6 +413,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
+    DefaultValuedAttr<TypedArrayAttrBase<ElementsAttr, "ElementsAttr array">, "{}">:$constantResources,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canFuseIntoOther,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canBeFusedInto,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canDuplicate
@@ -831,10 +832,17 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [Pure]> {
 def MOGG_GetAsyncValuesOp : MOGG_Op<"get_async_vals", [Pure]> {
   let results = (outs Variadic<AnyType>:$result);
   let summary = "Returns pointers for each of the async value inputs ";
+  // In the future, we might want to use a separate operation to retrieve
+  // resources. But that would require us the update the kernel ABI accordingly.
+  // I.e., KernelPtr(inputPtr, **resourcePtr**, runtimePtr, contextPtr).
   let description = [{
     Each input and output are represented by an async value. This returns a
     pointer to each of the inputs and outputs. Inputs appear first followed
     by the outputs.
+
+    When there are constant resources attribute attached to the kernel, the
+    data pointers pointed to resources (a read-only segment in the
+    attribute section in the MEF file) are appended at the end.
   }];
 
   let assemblyFormat = [{
@@ -914,7 +922,8 @@ def MOGG_AnyAsyncRefPlaceholderOp : MOGG_Op<"any_async_ref_placeholder", [Pure]>
   let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
   let summary = "Returns a placeholder for holding a AsyncRT::AnyAsyncValueRef";
   let description = [{
-    This is resolved to an pop.stack_allocation during lowering.
+    This is resolved to an pop.stack_allocation during lowering. The content of
+    the placeholder is initialized to be nullptr.
   }];
 
   let assemblyFormat = [{attr-dict}];
@@ -1095,7 +1104,8 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls,
                        StrAttr:$summary,
-                       BoolAttr:$isAsync
+                       BoolAttr:$isAsync,
+                       ArrayAttr:$constantResources
                        );
   let results = (outs Variadic<AnyType>:$results);
 }

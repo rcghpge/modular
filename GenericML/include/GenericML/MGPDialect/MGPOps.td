@@ -427,11 +427,12 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
   let arguments = (ins MGP_ContextType:$theContext,
                        MGP_OpaqueType:$deviceContext,
                        Variadic<AnyType>:$args,
-                       UI64Attr:$aRuntimeSlot,                        // 0
-                       UI64Attr:$bModuleIndex,                        // 1
-                       UI64Attr:$cFunctionIndex,                      // 2
-                       StrAttr:$dSummary,                             // 3
-                       DefaultValuedAttr<BoolAttr, "false">:$eIsAsync // 4
+                       UI64Attr:$aRuntimeSlot,                         // 0
+                       UI64Attr:$bModuleIndex,                         // 1
+                       UI64Attr:$cFunctionIndex,                       // 2
+                       StrAttr:$dSummary,                              // 3
+                       DefaultValuedAttr<BoolAttr, "false">:$eIsAsync, // 4
+                       TypedArrayAttrBase<ElementsAttr, "ElementsAttr array">:$fConstantResource // 5
                        );
   let results = (outs Variadic<AnyType>:$outResults);
 }

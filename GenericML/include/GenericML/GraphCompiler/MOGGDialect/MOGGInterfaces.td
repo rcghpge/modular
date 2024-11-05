@@ -46,6 +46,10 @@ def MOGG_CompilableKernel : OpInterface<"CompilableKernel"> {
       "bool", "getIsAsync", (ins),
       "return $_op.getIsAsync().value_or(false);"
     >,
+    InterfaceMethod<
+      "Returns the attached constant resources to the kernel",
+      "mlir::ArrayAttr", "getConstantResources", (ins), "return $_op.getConstantResourcesAttr();"
+    >,
   ];
 }
 

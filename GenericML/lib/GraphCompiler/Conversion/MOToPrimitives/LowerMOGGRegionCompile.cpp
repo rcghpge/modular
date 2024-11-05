@@ -123,7 +123,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
       oldKernel.getLoc(), resultTypes, context, deviceContext,
       oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
-      oldKernel.getSummary(), oldKernel.getIsAsync());
+      oldKernel.getSummary(), oldKernel.getIsAsync(),
+      oldKernel.getConstantResources());
 
   for (auto [idx, result] : llvm::enumerate(outputs))
     result.replaceAllUsesWith(newExecuteOp.getResult(idx));
