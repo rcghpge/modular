@@ -35,7 +35,7 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%wei
 } execute (%ch0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer<1>) -> !mef.chain {
   %lhs = index.constant 42
   %rhs = index.constant -20
-  %1 = mgp.buffer.to_bool %ch0, %arg1[1], %arg2 : !mgp.buffer<1>
+  %1 = mgp.buffer.to_bool %ch0, %arg2 : !mgp.buffer<1>
   %2 = grt.if %1 (%ch0: !mef.chain, %lhs: index, %rhs: index, %arg1 as %new: !mgp.context) -> !mef.chain {
     %3 = "mogg.execute_kernel"(%lhs, %rhs) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
     mef.output %ch0 : !mef.chain

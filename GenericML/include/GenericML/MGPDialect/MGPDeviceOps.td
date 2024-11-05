@@ -130,7 +130,6 @@ class MGP_DeviceOp<string mnemonic, list<Trait> traits = []> :
     MGP_Op<
       mnemonic,
       [
-        DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
         DeclareOpInterfaceMethods<MGP_HasDeviceOpInterface>,
       ] # traits
     >;
@@ -149,19 +148,16 @@ def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_OpaqueType:$deviceContext,
-                       UI64Attr:$aDeviceRuntimeSlot,   // 0
                        MGP_OptDeviceRefAttr:$bDevice,  // 1
                        StrAttr:$cTag,
                        StrAttr:$dFilePath); // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $deviceContext `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
+    $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
   let extraClassDefinition = [{
-    uint64_t DeviceContextProfileStartOp::getSlot() { return getADeviceRuntimeSlot(); }
 
     M::DeviceRefAttr DeviceContextProfileStartOp::getDevice() { return getBDevice(); }
   }];
@@ -174,19 +170,16 @@ def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_OpaqueType:$deviceContext,
-                       UI64Attr:$aDeviceRuntimeSlot,   // 0
                        MGP_OptDeviceRefAttr:$bDevice,  // 1
                        StrAttr:$cTag,
                        StrAttr:$dFilePath); // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $deviceContext `,` $theContext `[` $aDeviceRuntimeSlot `]` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
+    $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
   let extraClassDefinition = [{
-    uint64_t DeviceContextProfileEndOp::getSlot() { return getADeviceRuntimeSlot(); }
 
     M::DeviceRefAttr DeviceContextProfileEndOp::getDevice() { return getBDevice(); }
   }];
@@ -197,7 +190,9 @@ def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
 // ModuleLoadOp
 //===----------------------------------------------------------------------===//
 
-def ModuleLoadOp : MGP_DeviceOp<"module.load"> {
+def ModuleLoadOp : MGP_DeviceOp<"module.load",
+    [DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,]
+> {
   let summary = "Loads functions and constants for device from compiled module.";
   let description = [{
     Loads functions and constants from a compiled module encoded into a byte
@@ -308,16 +303,14 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,                      // 0
                        MGP_OpaqueType:$weightsRegistry,                  // 1
-                       UI64Attr:$aRuntimeSlot,                           // 2
                        StrAttr:$bName,                                   // 3
                        UI64Attr:$cSize,                                  // 4
                        UI64Attr:$dAlign,                                 // 5
                        MGP_OptDeviceRefAttr:$eDevice);                   // 6
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot  `]` `,` $weightsRegistry
+    $inChain `,` $weightsRegistry
     `[` $bName `,`$cSize `,` `align` $dAlign `]`
     ( `device` $eDevice^ )? attr-dict `:` qualified(type($weightsRegistry))
     `->` qualified(type($outBuffer))
@@ -330,7 +323,6 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
   }];
 
   let extraClassDefinition = [{
-    uint64_t BufferConstantExternalOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferConstantExternalOp::getDevice() { return getEDevice(); }
 
@@ -344,7 +336,6 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 
 def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
-    DeclareOpInterfaceMethods<MGP_HasRuntimeSlotOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
@@ -367,7 +358,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
       %size : index
       // Allocates %size bytes using the CUDA runtime from slot 5, which
       // should correspond to the CUDA GPU with virtual device id 3.
-      %buf = mgp.buffer.alloc %ch, %ctx[5], %size : !mgp.buffer<, <"cuda", 3>>
+      %buf = mgp.buffer.alloc %ch, %size : !mgp.buffer<, <"cuda", 3>>
       %buf : !mgp.buffer<, <"cuda", 3>>
     ```
   }];
@@ -375,15 +366,13 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        Index:$runtimeSize,
                        MGP_OpaqueType:$deviceContext,
-                       UI64Attr:$aRuntimeSlot,                                 // 0
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign, // 1
                        MGP_OptDeviceRefAttr:$cDevice);                         // 2
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aRuntimeSlot `]` `,` $runtimeSize `,` $deviceContext
+    $inChain  `,` $runtimeSize `,` $deviceContext
     ( `,` `align` $bRawAlign^ )? attr-dict
     `:` custom<BufferTypeToDevice>(
           type($outBuffer), $cDevice, type($inChain)) `,` qualified(type($deviceContext))
@@ -391,8 +380,6 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t BufferAllocOp::getSlot() { return getARuntimeSlot(); }
-
     uint64_t BufferAllocOp::getRawAlign() { return getBRawAlign(); }
 
     M::DeviceRefAttr BufferAllocOp::getDevice() { return getCDevice(); }
@@ -423,9 +410,7 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
     %ctx : !mgp.context
     %buf : !mgp.buffer<, <"cuda", 3>>
     %ch0 : !mef.chain
-    // Cache the given buffer in slot index 42, using the CUDA runtime
-    // established in slot 5, which should correspond to the CUDA GPU with
-    // virtual id 3.
+    // Cache the given buffer in slot index 42.
     %ch1 = mgp.buffer.cache %ch0, %ctx[5, 42], %buf
              : !mgp.buffer<256, <"cuda", 3>>
     %ch1 : !mef.chain
@@ -437,20 +422,17 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
-                       UI64Attr:$aRuntimeSlot,         // 0
                        UI64Attr:$bBufferSlot,          // 1
                        MGP_OptDeviceRefAttr:$cDevice); // 2
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `,` $bBufferSlot `]` `,`
+    $inChain `,` $theContext `[` $bBufferSlot `]` `,`
     $buffer attr-dict
     `:` custom<BufferTypeToDevice>(type($buffer), $cDevice)
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-     uint64_t BufferCacheOp::getSlot() { return getARuntimeSlot(); }
-
     M::DeviceRefAttr BufferCacheOp::getDevice() { return getCDevice(); }
 }];
 }
@@ -510,7 +492,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
       %ctx : !mgp.context
       %host_buf : !mgp.buffer<>
       %other_buf : !mgp.buffer<, <"cuda", 3>>
-      %ch1 = mgp.buffer.host_to_device %ch0, %ctx[4, 5], %host_buf, %other_buf
+      %ch1 = mgp.buffer.host_to_device %ch0, %host_buf, %other_buf
                : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>
       %ch1 : !mef.chain
     ```
@@ -519,18 +501,14 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$hostBuffer,
                        MGP_DeviceBufferType:$otherBuffer,
                        MGP_OpaqueType:$deviceContext,
-                       UI64Attr:$aHostRuntimeSlot,          // 0
-                       UI64Attr:$bOtherRuntimeSlot,         // 1
                        MGP_OptDeviceRefAttr:$cHostDevice,   // 2
                        MGP_OptDeviceRefAttr:$dOtherDevice); // 3
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aHostRuntimeSlot `,` $bOtherRuntimeSlot `]`
-    `,` $hostBuffer `,` $otherBuffer `,` $deviceContext attr-dict
+    $inChain `,` $hostBuffer `,` $otherBuffer `,` $deviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($hostBuffer), type($otherBuffer),
           $cHostDevice, $dOtherDevice, type($inChain)) `,` qualified(type($deviceContext))
@@ -538,7 +516,6 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-     uint64_t BufferHostToDeviceOp::getSlot() { return getBOtherRuntimeSlot(); }
 
     M::DeviceRefAttr BufferHostToDeviceOp::getDevice() { return getDOtherDevice(); }
 }];
@@ -568,7 +545,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
       %ctx : !mgp.context
       %other_buf : !mgp.buffer<, <"cuda", 3>>
       %host_buf : !mgp.buffer<>
-      %ch1 = mgp.buffer.device_to_host %ch0, %ctx[5, 4], %other_buf, %host_buf
+      %ch1 = mgp.buffer.device_to_host %ch0, %other_buf, %host_buf
                : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>
       %ch1 : !mef.chain
     ```
@@ -577,18 +554,14 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$otherBuffer,
                        MGP_DeviceBufferType:$hostBuffer,
                        MGP_OpaqueType:$deviceContext,
-                       UI64Attr:$aOtherRuntimeSlot,        // 0
-                       UI64Attr:$bHostRuntimeSlot,         // 1
                        MGP_OptDeviceRefAttr:$cOtherDevice, // 2
                        MGP_OptDeviceRefAttr:$dHostDevice); // 3
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aOtherRuntimeSlot `,` $bHostRuntimeSlot `]`
-    `,` $otherBuffer `,` $hostBuffer `,` $deviceContext attr-dict
+    $inChain  `,` $otherBuffer `,` $hostBuffer `,` $deviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($otherBuffer), type($hostBuffer),
           $cOtherDevice, $dHostDevice, type($inChain)) `,` qualified(type($deviceContext))
@@ -596,7 +569,6 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-     uint64_t BufferDeviceToHostOp::getSlot() { return getBHostRuntimeSlot(); }
 
     M::DeviceRefAttr BufferDeviceToHostOp::getDevice() { return getCOtherDevice(); }
   }];
@@ -634,19 +606,15 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$srcBuffer,
                        MGP_DeviceBufferType:$dstBuffer,
                        MGP_OpaqueType:$srcDeviceContext,
                        MGP_OpaqueType:$dstDeviceContext,
-                       UI64Attr:$aSrcRuntimeSlot,     // 0
-                       UI64Attr:$bDstRuntimeSlot,     // 1
-                       M_DeviceRefAttr:$cSrcDevice,   // 2
-                       M_DeviceRefAttr:$dDstDevice);  // 3
+                       M_DeviceRefAttr:$cSrcDevice,   // 0
+                       M_DeviceRefAttr:$dDstDevice);  // 1
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain  `,` $theContext `[` $aSrcRuntimeSlot `,` $bDstRuntimeSlot `]` `,`
-    $srcBuffer `,` $srcDeviceContext`,` $dstBuffer `,` $dstDeviceContext attr-dict
+    $inChain  `,` $srcBuffer `,` $srcDeviceContext`,` $dstBuffer `,` $dstDeviceContext attr-dict
     `:` custom<SrcDstBufferTypesToDevices>(
           type($srcBuffer), type($dstBuffer),
           $cSrcDevice, $dDstDevice, type($inChain)) `,` qualified(type($srcDeviceContext))`,` qualified(type($dstDeviceContext))
@@ -659,7 +627,6 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     }];
 
   let extraClassDefinition = [{
-     uint64_t BufferDeviceToDeviceOp::getSlot() { return getASrcRuntimeSlot(); }
 
     M::DeviceRefAttr BufferDeviceToDeviceOp::getDevice() { return getDDstDevice(); }
     M::DeviceRefAttr BufferDeviceToDeviceOp::getSrcDevice() { return getCSrcDevice(); }
@@ -769,13 +736,12 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 
     Example:
     ```mlir
-    %ctx : !mgp.context
     %in_ch : !mgp.chain<<"cuda", 3>>
     %out_buf : !mgp.buffer<256, <"cuda", 3>>
     %in0_buf : !mgp.buffer<128, <"cuda", 3>>
     %in1_buf : !mgp.buffer<, <"cuda", 3>>
     %in2_buf : !mgp.buffer<, <"cuda", 3>>
-    %out_ch = mgp.buffer.concat %in_ch, %ctx[5], %out_buf, %in0_buf, %in1_buf, %in2_buf
+    %out_ch = mgp.buffer.concat %in_ch, %out_buf, %in0_buf, %in1_buf, %in2_buf
               : (!mgp.buffer<128, <"cuda", 3>>,
                  !mgp.buffer<, <"cuda", 3>>,
                  !mgp.buffer<, <"cuda", 3>>) -> !mgp.buffer<256, <"cuda", 3>>
@@ -786,14 +752,12 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$outBuffer,
                        Variadic<MGP_DeviceBufferType>:$inBuffers,
-                       UI64Attr:$aRuntimeSlot,         // 0
                        MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,`  $theContext `[` $aRuntimeSlot `]` `,` $outBuffer `,`
+    $inChain `,` $outBuffer `,`
     $inBuffers attr-dict
     `:` custom<BufferTypesToDevice>(type($inBuffers), type($outBuffer),
                                     $bDevice, type($inChain))
@@ -801,7 +765,6 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t BufferConcatOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferConcatOp::getDevice() { return getBDevice(); }
   }];
@@ -940,20 +903,17 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
-                       UI64Attr:$aRuntimeSlot,          // 0
                        MGP_OptDeviceRefAttr:$bDevice);  // 1
   let results = (outs I1:$result);
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer attr-dict
+    $inChain `,` $buffer attr-dict
       `:` custom<BufferTypeToDevice>(type($buffer), $bDevice, type($inChain))
   }];
 
   let extraClassDefinition = [{
-    uint64_t BufferToBoolOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr BufferToBoolOp::getDevice() { return getBDevice(); }
   }];
@@ -979,34 +939,29 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     %ctx : !mgp.context
     %buf0 : !mgp.buffer<4, <"cuda", 3>>
     %idx0 : index
-    %ch0 = mgp.buffer.set_with_index %ctx[5], %buf0, %idx0 : !mgp.buffer<4, <"cuda", 3>>
+    %ch0 = mgp.buffer.set_with_index %buf0, %idx0 : !mgp.buffer<4, <"cuda", 3>>
     %ch0 : !mgp.chain<<"cuda", 3>>
 
     %idx1 : index
     %idx2 : index
     %buf1 : !mgp.buffer<24, <"cuda", 3>>
-    %ch1 = mgp.buffer.set_with_index %ctx[5], %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"cuda", 3>>
+    %ch1 = mgp.buffer.set_with_index %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"cuda", 3>>
     %ch1 : !mgp.chain<<"cuda", 3>>
     ```
   }];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_ContextType:$theContext,
-                       MGP_DeviceBufferType:$buffer,
+  let arguments = (ins MGP_DeviceBufferType:$buffer,
                        Variadic<Index>:$values,
-                       UI64Attr:$aRuntimeSlot,         // 0
                        MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs ChainType:$outChain);
-  let assemblyFormat = [{
-    $theContext `[` $aRuntimeSlot `]` `,`  $buffer ( `,` $values^ )? attr-dict
+  let assemblyFormat = [{$buffer ( `,` $values^ )? attr-dict
     `:` custom<BufferTypeToDevice>(type($buffer), $bDevice)
   }];
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-     uint64_t BufferSetWithIndexOp::getSlot() { return getARuntimeSlot(); }
-
     M::DeviceRefAttr BufferSetWithIndexOp::getDevice() { return getBDevice(); }
   }];
 }
@@ -1045,15 +1000,13 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
                        MGP_TensorSpecType:$spec,
-                       UI64Attr:$aRuntimeSlot,                       // 0
                        DefaultValuedAttr<StrAttr, "\"\"">: $bLabel,  // 1
                        MGP_OptDeviceRefAttr:$cDevice);               // 2
   let results = (outs ChainType: $outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $aRuntimeSlot `]` `,` $buffer `,` $spec
+    $inChain `,` $buffer `,` $spec
     ( `,` $bLabel^ )? attr-dict
     `:` custom<TensorTypeToDeviceBufferSpec>(
           $cDevice, type($buffer), type($spec))
@@ -1061,8 +1014,6 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    uint64_t DebugTensorPrintOp::getSlot() { return getARuntimeSlot(); }
-
     M::DeviceRefAttr DebugTensorPrintOp::getDevice() { return getCDevice(); }
   }];
 }
@@ -1093,7 +1044,6 @@ def MGP_SyncOp : MGP_DeviceOp<"sync",
   }];
 
   let extraClassDefinition = [{
-    uint64_t SyncOp::getSlot() { return getARuntimeSlot(); }
 
     M::DeviceRefAttr SyncOp::getDevice() { return getBDevice(); }
   }];

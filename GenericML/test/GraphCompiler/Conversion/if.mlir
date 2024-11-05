@@ -7,7 +7,7 @@
 // CHECK: %[[VAL2:.*]] = mgp.tensor.create %[[CHAIN]], %[[BUF3:.*]], %[[SPEC4:.*]] : !mgp.tensor<2xf32>
 // CHECK: %[[CHAIN_MERGE:.*]] = grt.chain.create (%[[CHAIN]], %[[CHAIN]])
 // CHECK: %[[BOOL_BUF:.*]] = mgp.tensor.extract.buffer %[[COND]] : <bool>
-// CHECK: %[[BOOL:.*]] = mgp.buffer.to_bool %[[CHAIN_MERGE]], %[[CTX]][0], %[[BOOL_BUF]] : !mgp.buffer<1>
+// CHECK: %[[BOOL:.*]] = mgp.buffer.to_bool %[[CHAIN_MERGE]], %[[BOOL_BUF]] : !mgp.buffer<1>
 // CHECK: %[[OUT:.*]]:2 = grt.if %[[BOOL]] (%[[CHAIN]]: !mef.chain, %[[VAL1]]: !mgp.tensor<2xf32>, %[[CHAIN_MERGE]]: !mef.chain, %[[VAL2]]: !mgp.tensor<2xf32>)
 // CHECK: mef.output %[[CHAIN]], %[[VAL1]]
 // CHECK: } else {

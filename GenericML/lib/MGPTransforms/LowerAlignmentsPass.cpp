@@ -153,11 +153,10 @@ class LowerAlignmentsPass
 
   // Try to lower block in dataflow order and populate the alignments with
   // additional information
-  void inferAndPopulateAlignments(Block *block,
-                                  llvm::DenseMap<Value, int64_t> alignmentMap,
-                                  llvm::DenseMap<std::tuple<uint64_t, uint64_t>,
-                                                 int64_t> &cacheAlignmentMap,
-                                  OpBuilder &builder) {
+  void inferAndPopulateAlignments(
+      Block *block, llvm::DenseMap<Value, int64_t> alignmentMap,
+      llvm::DenseMap<uint64_t, int64_t> &cacheAlignmentMap,
+      OpBuilder &builder) {
     // lambda to set alignmentMap from raw alignment
     auto setAlignmentFromRawAlignment = [&](uint64_t rawAlignment, Value value,
                                             DeviceRefAttr deviceRef) {
@@ -190,12 +189,12 @@ class LowerAlignmentsPass
             alignmentMap.at(bufferOp.getInBuffer());
       } else if (auto bufferOp = dyn_cast<MGP::BufferCacheOp>(op)) {
         // Pass-through to caching system
-        cacheAlignmentMap[{bufferOp.getSlot(), bufferOp.getBBufferSlot()}] =
+        cacheAlignmentMap[bufferOp.getBBufferSlot()] =
             alignmentMap.at(bufferOp.getBuffer());
       } else if (auto bufferOp = dyn_cast<MGP::BufferGetCachedOp>(op)) {
         // Pass-through from caching system
-        alignmentMap[bufferOp.getOutBuffer()] = cacheAlignmentMap.at(
-            {bufferOp.getSlot(), bufferOp.getBBufferSlot()});
+        alignmentMap[bufferOp.getOutBuffer()] =
+            cacheAlignmentMap.at(bufferOp.getBBufferSlot());
       } else if (auto extractBufferOp =
                      dyn_cast<MGP::TensorExtractBufferOp>(op)) {
         // Pass-through from Tensor Value if it is something we created.
@@ -260,7 +259,7 @@ class LowerAlignmentsPass
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
     llvm::DenseMap<Value, int64_t> alignmentMap;
-    llvm::DenseMap<std::tuple<uint64_t, uint64_t>, int64_t> cacheAlignmentMap;
+    llvm::DenseMap<uint64_t, int64_t> cacheAlignmentMap;
     auto ctx = modelOp->getContext();
     OpBuilder builder(ctx);
     for (auto innerRegion : modelOp.getRegions()) {

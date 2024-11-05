@@ -9,7 +9,7 @@
 // CHECK: %[[IDX_0:.*]] = index.constant 0
 // CHECK: %[[TOTAL_SIZE:.*]] = index.constant 64
 // CHECK: %[[SPLIT_SIZE:.*]] = index.constant 32
-// CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[CTX]][1], %[[TOTAL_SIZE]]
+// CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc %[[CH0]], %[[TOTAL_SIZE]]
 
 // CHECK: %[[SLICE0:.*]] = mgp.buffer.slice %[[OUT_BUF]], %[[IDX_0]], %[[SPLIT_SIZE]]
 
@@ -31,17 +31,17 @@ mgp.model @dynamic_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights
   %0 = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %const_32 = index.constant 32
-  %4 = mgp.buffer.alloc %ch0, %ctx[1], %const_32, %cpu : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %4 = mgp.buffer.alloc %ch0, %const_32, %cpu : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %const_8 = index.constant 8
   %5 = mgp.tensor_spec.create %const_8 : !mgp.tensor_spec<?xf32>
   %6 = "add"(%ch0, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<>) -> !mef.chain
-  %10 = mgp.buffer.alloc %ch0, %ctx[1], %const_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
+  %10 = mgp.buffer.alloc %ch0, %const_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
   %12 = "sub"(%ch0, %0, %2, %10) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %14 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %const_64 = index.constant 64
-  %15 = mgp.buffer.alloc %ch0, %ctx[1], %const_64, %cpu : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %15 = mgp.buffer.alloc %ch0, %const_64, %cpu : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %16 = grt.chain.create(%6: !mef.chain, %12: !mef.chain)
-  %17 = mgp.buffer.concat %16, %ctx[1], %15, %4, %10 : (!mgp.buffer<>, !mgp.buffer<32>) -> !mgp.buffer<>
+  %17 = mgp.buffer.concat %16, %15, %4, %10 : (!mgp.buffer<>, !mgp.buffer<32>) -> !mgp.buffer<>
   %resized_buf = mgp.buffer.resize %15 : !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %resized_buf, %14 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
@@ -64,15 +64,15 @@ mgp.model @concat_with_shared_input_buffer : mof devices [#M.device_ref<"cpu", 0
   %0 = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %size_32 = index.constant 32
-  %4 = mgp.buffer.alloc %ch0, %ctx[1], %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
+  %4 = mgp.buffer.alloc %ch0, %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
   %6 = "add"(%ch0, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %10 = mgp.buffer.alloc %ch0, %ctx[1], %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
+  %10 = mgp.buffer.alloc %ch0, %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
   %12 = "sub"(%6, %4, %2, %10) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %size_64  = index.constant 64
-  %14 = mgp.buffer.alloc %ch0, %ctx[1], %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
+  %14 = mgp.buffer.alloc %ch0, %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %16 = grt.chain.create(%6: !mef.chain, %12: !mef.chain)
-  %17 = mgp.buffer.concat %16, %ctx[1], %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
+  %17 = mgp.buffer.concat %16, %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }
@@ -94,14 +94,14 @@ mgp.model @non_trivial_chains : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %0 = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %size_32 = index.constant 32
-  %4 = mgp.buffer.alloc %ch0, %ctx[1], %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
+  %4 = mgp.buffer.alloc %ch0, %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
   %6 = "add"(%ch0, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
-  %10 = mgp.buffer.alloc %6, %ctx[1], %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
+  %10 = mgp.buffer.alloc %6, %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
   %12 = "sub"(%6, %0, %2, %10) {numBacOutputBuffers = 1 : ui32} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %size_64 = index.constant 64
-  %14 = mgp.buffer.alloc %12, %ctx[1], %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
+  %14 = mgp.buffer.alloc %12, %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
-  %17 = mgp.buffer.concat %12, %ctx[1], %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
+  %17 = mgp.buffer.concat %12, %14, %4, %10 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }
@@ -122,12 +122,12 @@ mgp.model @dont_trigger_since_duplicate_buffers : mof devices [#M.device_ref<"cp
   %0 = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040000080400000A0400000C0400000E04000000041", align 32>
   %2 = mgp.buffer.constant #M.aligned_bytes<"0x0000204100002041000020410000204100002041000020410000204100002041", align 32>
   %size_32 = index.constant 32
-  %4 = mgp.buffer.alloc %ch0, %ctx[1], %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
+  %4 = mgp.buffer.alloc %ch0, %size_32, %cpu : !mgp.buffer<32>, !mgp.opaque<"cpu0_context">
   %6 = "add"(%ch0, %0, %2, %4) {tempInOutSig = #M.inout_sig<"iiio">} : (!mef.chain, !mgp.buffer<32>, !mgp.buffer<32>, !mgp.buffer<32>) -> !mef.chain
   %size_64 = index.constant 64
-  %14 = mgp.buffer.alloc %ch0, %ctx[1], %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
+  %14 = mgp.buffer.alloc %ch0, %size_64, %cpu : !mgp.buffer<64>, !mgp.opaque<"cpu0_context">
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
-  %17 = mgp.buffer.concat %6, %ctx[1], %14, %4, %4 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
+  %17 = mgp.buffer.concat %6, %14, %4, %4 : (!mgp.buffer<32>, !mgp.buffer<32>) -> !mgp.buffer<64>
   %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }

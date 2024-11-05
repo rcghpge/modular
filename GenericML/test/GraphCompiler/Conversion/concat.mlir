@@ -5,7 +5,7 @@
 // CHECK: %[[OUT_CHAIN0:.*]] = mogg.generic.compiled.region
 // CHECK: %[[OUT_CHAIN1:.*]] = mogg.generic.compiled.region
 // CHECK: %[[OUT_CHAIN3:.*]] = grt.chain.create (%[[OUT_CHAIN0]], %[[OUT_CHAIN1]], %[[CH0]]
-// CHECK: %[[CH2:.*]] = mgp.buffer.concat %[[OUT_CHAIN3]], %[[CTX]][0], %[[BUF:.*]], %{{.*}}, %{{.*}}
+// CHECK: %[[CH2:.*]] = mgp.buffer.concat %[[OUT_CHAIN3]], %[[BUF:.*]], %{{.*}}, %{{.*}}
 
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH2]], %[[CH0]])
 

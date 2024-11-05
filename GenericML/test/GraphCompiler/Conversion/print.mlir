@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: mgp.model @print_string
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
-// CHECK:  = mgp.debug.print %{{.*}}, %[[CTX]], "debug string", "label"
+// CHECK:  = mgp.debug.print %{{.*}}, "debug string", "label"
 
 mo.graph @print_string() {
   %ch0 = mo.chain.create()
@@ -16,7 +16,7 @@ mo.graph @print_string() {
 // CHECK: %[[ARG:[^:]*]]: !mgp.tensor<4x5xf32>)
 // CHECK: %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG]]
 // CHECK: %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[ARG]]
-// CHECK: %[[CH1:.*]] = mgp.debug.tensor.print %{{.*}}, %[[CTX]][0], %[[BUF]], %[[SPEC]], "label"
+// CHECK: %[[CH1:.*]] = mgp.debug.tensor.print %{{.*}}, %[[BUF]], %[[SPEC]], "label"
 
 mo.graph @print(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch0 = mo.chain.create()
@@ -66,7 +66,7 @@ mo.graph @sequenced_print(%arg0: !mo.tensor<[4, 5], f32>) {
 // CHECK: %[[ARG:[^:]*]]: !mgp.tensor<4x5xf32>)
 // CHECK: %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG]]
 // CHECK: %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[ARG]]
-// CHECK: %[[CH1:.*]] = mgp.debug.tensor.print %{{.*}}, %[[CTX]][0], %[[BUF]], %[[SPEC]], "label"
+// CHECK: %[[CH1:.*]] = mgp.debug.tensor.print %{{.*}}, %[[BUF]], %[[SPEC]], "label"
 
 mo.graph @unsafe_print(%arg0: !mo.tensor<[4, 5], f32>) {
   mo.debug.tensor.unsafe.print(%arg0) {label = "label"} : !mo.tensor<[4, 5], f32>

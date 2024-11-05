@@ -20,7 +20,7 @@ mo.graph @while_op(%x: !mo.tensor<[], f32>, %arg0: !mo.tensor<[], f32>) -> (!mo.
 
 // CHECK-LABEL: @multi_while_op
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain,
-// CHECK: %[[WHILE:.*]]:6 = grt.while (%[[CH0]] as %[[CH0_IN:.*]]: !mef.chain,
+// CHECK: %[[WHILE:.*]]:5 = grt.while (%[[CH0]] as %[[CH0_IN:.*]]: !mef.chain,
 // CHECK: } do {
 // CHECK: %[[CH:.*]] = grt.chain.create (%[[CH0_IN]]
 // CHECK: mogg.generic.compiled.region (%[[CH]]{{.*}} -> !mef.chain{

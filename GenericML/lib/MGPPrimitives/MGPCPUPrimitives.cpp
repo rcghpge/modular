@@ -120,7 +120,6 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 static void mgp_buffer_cache_cpu(Chain inChain, StateContext &theContext,
                                  AsyncValueRef<TensorBufferRef> buffer,
                                  Result<Chain> outChain,
-                                 MEFAttr<uint64_t> aRuntimeSlot,
                                  MEFAttr<uint64_t> bBufferSlot,
                                  MEFAttr<uint64_t> cDeviceId,
                                  Runtime &runtime) {
@@ -159,11 +158,11 @@ static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
 // mgp.tensor.buffer.print.cpu
 //===----------------------------------------------------------------------===//
 
-static void mgp_debug_tensor_print_cpu(
-    Chain inChain, StateContext &theContext, const TensorBufferRef &buffer,
-    const TensorSpec &spec, Result<Chain> outChain,
-    MEFAttr<uint64_t> aRuntimeSlot, MEFAttr<StringRef> bLabel,
-    MEFAttr<uint64_t> cDeviceId, Runtime &runtime) {
+static void
+mgp_debug_tensor_print_cpu(Chain inChain, const TensorBufferRef &buffer,
+                           const TensorSpec &spec, Result<Chain> outChain,
+                           MEFAttr<StringRef> bLabel,
+                           MEFAttr<uint64_t> cDeviceId, Runtime &runtime) {
   if (bLabel->empty()) {
     // Metadata only.
     llvm::outs() << "Tensor(" << spec << ", " << buffer << ")\n";

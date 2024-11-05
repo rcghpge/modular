@@ -8,13 +8,13 @@
 // CHECK-DAG:   %[[CH0:.*]] = grt.chain.create ()
 // CHECK-DAG:   %[[CTX:.*]] = mgp.context.create 3
 // CHECK-DAG:   %[[CH1:.*]] = mgp.runtime.create %[[CH0]], %1[1]
-// CHECK-DAG:   %[[BUF:.*]] = mgp.buffer.constant.external %[[CH1]], %[[CTX]][0]
-// CHECK-DAG:   %[[CACHE_CH:.*]] = mgp.buffer.cache %[[CH0]], %[[CTX]][1, 2], %[[BUF]]
+// CHECK-DAG:   %[[BUF:.*]] = mgp.buffer.constant.external %[[CH1]]
+// CHECK-DAG:   %[[CACHE_CH:.*]] = mgp.buffer.cache %[[CH0]], %[[CTX]][2], %[[BUF]]
 // CHECK-DAG:   %[[CH_OUT:.*]] = grt.chain.create (%[[CH1]], %[[CACHE_CH]])
 // CHECK:       mef.output %[[CH_OUT]], %[[CTX]]
 // CHECK-NEXT:  } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 
-// CHECK:   %[[BUF:.*]] = mgp.buffer.get_cached %[[CH0]], %[[CTX]][1, 2] : !mgp.buffer<37632>
+// CHECK:   %[[BUF:.*]] = mgp.buffer.get_cached %[[CH0]], %[[CTX]][2] : !mgp.buffer<37632>
 // CHECK:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.buffer<37632>
 // CHECK: }
 
@@ -24,7 +24,7 @@ mgp.model @liftable_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<37632>) {
-  %out_buf = mgp.buffer.constant.external %ch0, %ctx[0], %weights["foo", 37632, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer<37632>
+  %out_buf = mgp.buffer.constant.external %ch0, %weights["foo", 37632, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer<37632>
   mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer<37632>
 }
 
@@ -54,7 +54,7 @@ mgp.model @non_pure_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %c8 = index.constant 8
   %tmp = index.mul %out_dim0, %out_dim1
   %bytes = index.mul %c8, %tmp
-  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %bytes, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %out_buf = mgp.buffer.alloc %ch0, %bytes, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
   %ch2 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.buffer<16>, !mgp.tensor_spec<2x2xf32>, !mgp.buffer<>, !mgp.tensor_spec<?x?xf32>) -> !mef.chain
   %out_tensor = mgp.tensor.create %ch2, %out_buf, %out_spec  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %out_tensor : !mef.chain, !mgp.tensor<?x?xf32>
@@ -84,7 +84,7 @@ mgp.model @dont_lift_if_no_computation_saved : mof devices [#M.device_ref<"cpu",
 
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<0>) {
   %size = index.constant 0
-  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu, align 16 : !mgp.buffer<0>, !mgp.opaque<"cpu0_context">
+  %out_buf = mgp.buffer.alloc %ch0, %size, %cpu, align 16 : !mgp.buffer<0>, !mgp.opaque<"cpu0_context">
   mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer<0>
 }
 
@@ -95,7 +95,7 @@ mgp.model @dont_lift_if_no_computation_saved : mof devices [#M.device_ref<"cpu",
 // CHECK-DAG:     %[[CTX:.*]] = mgp.context.create 3
 // CHECK-DAG:     %[[CH1:.*]] = mgp.runtime.create %[[CH0]], %1[1]
 // CHECK-DAG:     %[[BUF:.*]] = mgp.buffer.alloc %[[CH1]]
-// CHECK-DAG:     %[[CH3:.*]] = mgp.buffer.cache %[[CH0]], %[[CTX]][1, 2], %[[BUF]]
+// CHECK-DAG:     %[[CH3:.*]] = mgp.buffer.cache %[[CH0]], %[[CTX]][2], %[[BUF]]
 // CHECK-DAG:     %[[MERGE:.*]] = grt.chain.create (%[[CH1]], %[[CH3]])
 // CHECK:         mef.output %[[MERGE]], %[[CTX]]
 // CHECK-NEXT:  } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
@@ -112,7 +112,7 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   %weight_buf = mgp.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
 
   %size = index.constant 37632
-  %out_buf = mgp.buffer.alloc %ch0, %ctx[1], %size, %cpu, align 16 : !mgp.buffer<37632>, !mgp.opaque<"cpu0_context">
+  %out_buf = mgp.buffer.alloc %ch0, %size, %cpu, align 16 : !mgp.buffer<37632>, !mgp.opaque<"cpu0_context">
   %out_spec = mgp.tensor_spec.create  : !mgp.tensor_spec<7x7x3x64xf32>
 
   %i42 = index.constant 42
@@ -173,8 +173,8 @@ mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref
   %idx16 = index.constant 16
   %0 = mgp.tensor_spec.create  : !mgp.tensor_spec<4xf32>
   %1 = mgp.buffer.constant #M.aligned_bytes<"0x000000000000803F0000004000004040", align 64> : !M.array<16xui8>
-  %2 = mgp.buffer.alloc %arg0, %arg1[1], %idx16, %arg4, align 256 : !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
-  %3 = mgp.buffer.host_to_device %arg0, %arg1[0, 1], %1, %2, %arg4 : !mgp.buffer<16> -> !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
+  %2 = mgp.buffer.alloc %arg0, %idx16, %arg4, align 256 : !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
+  %3 = mgp.buffer.host_to_device %arg0, %1, %2, %arg4 : !mgp.buffer<16> -> !mgp.buffer<16, <"cuda", 0>>, !mgp.opaque<"cuda0_context">
   %4 = mgp.sync(%3, %arg1, %arg4) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"cuda", 0>} : (!mef.chain, !mgp.context, !mgp.opaque<"cuda0_context">) -> !mef.chain
   %5 = mgp.extend.lifetime  %4, %1 : (!mef.chain, !mgp.buffer<16>) -> !mef.chain
   %6 = mgp.tensor.create %4, %2, %0 : !mgp.tensor<4xf32,<"cuda", 0>>

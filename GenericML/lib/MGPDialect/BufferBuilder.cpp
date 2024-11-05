@@ -113,9 +113,7 @@ Value MGPBufferBuilder::bufferConstantExternal(
   return builder.create<BufferConstantExternalOp>(
       loc,
       /*inChain=*/inChain,
-      /*theContext=*/context,
       /*weightsRegistry=*/weightsRegistry,
-      /*aRuntimeSlot=*/runtimeSlot,
       /*bName=*/name,
       /*cSize=*/size,
       /*dAlign=*/align,
@@ -176,10 +174,8 @@ Value MGPBufferBuilder::bufferAlloc(OpBuilder &builder, Location loc,
   return builder.create<BufferAllocOp>(loc,
                                        DeviceBufferType::get(device, optSize),
                                        /*inChain=*/inChain,
-                                       /*theContext=*/context,
                                        /*runtimeSize=*/size,
                                        /*deviceContext=*/deviceContext,
-                                       /*aRuntimeSlot=*/runtimeSlot,
                                        /*bAlign=*/alignment,
                                        /*cDevice=*/device);
 }
@@ -195,12 +191,9 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
           .create<BufferHostToDeviceOp>(
               loc,
               /*inChain=*/inChain,
-              /*theContext=*/context,
               /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
               /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
               /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
-              /*aHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
-              /*bOtherRuntimeSlot=*/runtimeSlot,
               /*cHostDevice=*/hostBufferBuilder->device,
               /*dOtherDevice=*/device)
           .getResult();
@@ -235,12 +228,9 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
           .create<BufferDeviceToHostOp>(
               loc,
               /*inChain=*/inChain,
-              /*theContext=*/context,
               /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
               /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
               /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
-              /*aOtherRuntimeSlot=*/runtimeSlot,
-              /*bHostRuntimeSlot=*/hostBufferBuilder->runtimeSlot,
               /*cOtherDevice=*/device,
               /*dHostDevice=*/hostBufferBuilder->device)
           .getResult();
@@ -265,13 +255,10 @@ Value MGPBufferBuilder::bufferTransferDevice(
   return builder.create<BufferDeviceToDeviceOp>(
       loc,
       /*inChain=*/inChain,
-      /*theContext=*/context,
       /*srcBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
       /*dstBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
       /*deviceContext*/ cast<TypedValue<OpaqueType>>(srcDeviceContext),
       /*deviceContext*/ cast<TypedValue<OpaqueType>>(dstDeviceContext),
-      /*aSrcRuntimeSlot=*/runtimeSlot,
-      /*bDstRuntimeSlot=*/dstMGPBufferBuilder->runtimeSlot,
       /*cSrcDevice=*/device,
       /*dDstDevice=*/dstMGPBufferBuilder->device);
 }
@@ -312,10 +299,8 @@ Value MGPBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
   return builder.create<DebugTensorPrintOp>(
       loc,
       /*inChain=*/inChain,
-      /*theContext=*/context,
       /*buffer=*/cast<TypedValue<DeviceBufferType>>(buffer),
       /*spec=*/spec,
-      /*aRuntimeSlot=*/runtimeSlot,
       /*bLabel=*/label,
       /*cDevice=*/device);
 }
@@ -375,7 +360,6 @@ MGPBufferBuilder::cache(OpBuilder &initBuilder, Location loc,
   auto cacheOp = initBuilder.create<BufferCacheOp>(
       loc, /*inChain=*/inChain, /*theContext=*/contextCreateOp,
       /*buffer=*/cast<TypedValue<DeviceBufferType>>(buffer),
-      /*aRuntimeSlot=*/runtimeSlot,
       /*bBufferSlot=*/bufferSlot, /*cDevice=*/device);
   return {cacheOp.getOutChain(), bufferSlot};
 }
@@ -387,7 +371,6 @@ Value MGPBufferBuilder::getCached(OpBuilder &builder, Location loc,
                                   Type expectedBufferType) {
   return builder.create<BufferGetCachedOp>(
       loc, expectedBufferType, /*inChain=*/inChain, /*theContext=*/context,
-      /*aRuntimeSlot=*/runtimeSlot,
       /*bBufferSlot=*/bufferSlot);
 }
 
@@ -397,10 +380,8 @@ Value MGPBufferBuilder::bufferConcat(OpBuilder &builder, Location loc,
                                      ArrayRef<Value> inBuffers) {
   return builder.create<BufferConcatOp>(
       loc, /*inChain=*/inChain,
-      /*theContext=*/context,
       /*outBuffer=*/cast<TypedValue<DeviceBufferType>>(outBuffer),
       /*inBuffers=*/inBuffers,
-      /*aRuntimeSlot=*/runtimeSlot,
       /*bDevice=*/device);
 }
 
@@ -418,9 +399,7 @@ Value MGPBufferBuilder::bufferToBool(OpBuilder &builder, Location loc,
                                      Value inChain, Value inBuffer) {
   return builder.create<BufferToBoolOp>(
       loc, /*inChain=*/inChain,
-      /*theContext=*/context,
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
-      /*aRuntimeSlot=*/runtimeSlot,
       /*bDevice=*/device);
 }
 
@@ -429,10 +408,9 @@ Value MGPBufferBuilder::bufferSetWithIndex(OpBuilder &builder, Location loc,
                                            Value buffer,
                                            ArrayRef<Value> values) {
   return builder.create<BufferSetWithIndexOp>(
-      loc, /*theContext=*/context,
+      loc,
       /*buffer=*/cast<TypedValue<DeviceBufferType>>(buffer),
       /*values=*/values,
-      /*aRuntimeSlot=*/runtimeSlot,
       /*bDevice=*/device);
 }
 
