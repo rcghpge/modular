@@ -564,6 +564,12 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
+ErrorOr<int> HIPDeviceContext::getDriverVersion() const {
+  int driver_version = 0;
+  HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
+  return driver_version;
+}
+
 ErrorOr<DeviceMemInfo> HIPDeviceContext::getMemoryInfo() const {
   DeviceMemInfo mem_info;
   HIP_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));

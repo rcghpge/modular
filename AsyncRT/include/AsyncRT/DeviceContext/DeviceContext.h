@@ -585,6 +585,7 @@ public:
   };
 
   // Queries
+  virtual ErrorOr<int> getDriverVersion() const;
   virtual ErrorOr<int> getAttribute(Attribute attr) const;
   virtual ErrorOr<DeviceMemInfo> getMemoryInfo() const = 0;
   virtual ErrorOrSuccess isCompatibleWithMAX() const;

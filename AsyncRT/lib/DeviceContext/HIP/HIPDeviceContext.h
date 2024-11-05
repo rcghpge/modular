@@ -209,6 +209,7 @@ public:
   ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const override;
 
+  ErrorOr<int> getDriverVersion() const override;
   ErrorOr<DeviceMemInfo> getMemoryInfo() const override;
 
   const HIPDriver &hip_driver() const;
