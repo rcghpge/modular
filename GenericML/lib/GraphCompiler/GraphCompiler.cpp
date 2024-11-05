@@ -229,6 +229,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   assignDevicesPassOpt.copyFromHost = !opts.inputsAndOutputsOnDevice;
   pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
 
+  pm.addPass(MO::createValidateDevicesPass());
+
   pm.addPass(MO::createDecomposeViewOps());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());

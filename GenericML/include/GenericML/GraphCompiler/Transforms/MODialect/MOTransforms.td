@@ -370,6 +370,15 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
   ];
 }
 
+def ValidateDevicesPass : Pass<"validate-devices", "GraphOp"> {
+  let summary = "Validates that each data type used in tensors in the graph "
+                "can be implemented on the target device.";
+  let description = [{
+    This pass checks the inputs and outputs of the graph, verifying that the
+    data type for each tensor can be implemented on the target device.
+  }];
+}
+
 def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
   let summary = "Print all intermediate tensors as they are produced.";
   let description = [{
