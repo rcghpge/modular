@@ -247,6 +247,7 @@ public:
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
 
+  ErrorOr<int> getAttribute(Attribute attr) const override;
   ErrorOrSuccess isCompatibleWithMAX() const override;
   ErrorOr<int> computeCapability() const override;
 

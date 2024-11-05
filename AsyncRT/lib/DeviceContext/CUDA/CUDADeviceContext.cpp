@@ -764,6 +764,13 @@ ErrorOrSuccess CUDADeviceContext::isCompatibleWithMAX() const {
   return success();
 }
 
+ErrorOr<int> CUDADeviceContext::getAttribute(Attribute attr) const {
+  int value = 0;
+  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
+      &value, static_cast<CUdevice_attribute>(attr), device().id()));
+  return value;
+}
+
 ErrorOr<int> CUDADeviceContext::computeCapability() const {
   int compute_major = 0, compute_minor = 0;
   CUDA_CHECK_ERR(driver_.DeviceGetAttribute(

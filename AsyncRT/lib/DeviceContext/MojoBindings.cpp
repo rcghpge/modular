@@ -285,6 +285,14 @@ MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
 }
 
 MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_getAttribute(int *result, const DeviceContext *ctx,
+                                   int attr) {
+  return check_val(
+      result, 0,
+      ctx->getAttribute(static_cast<DeviceContext::Attribute>(attr)));
+}
+
+MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_isCompatibleWithMAX(const DeviceContext *ctx) {
   return check_success(ctx->isCompatibleWithMAX());
 }

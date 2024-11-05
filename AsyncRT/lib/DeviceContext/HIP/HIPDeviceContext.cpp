@@ -603,6 +603,13 @@ ErrorOrSuccess HIPDeviceContext::isCompatibleWithMAX() const {
   return success();
 }
 
+ErrorOr<int> HIPDeviceContext::getAttribute(Attribute attr) const {
+  int value = 0;
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      &value, static_cast<hipDeviceAttribute_t>(attr), device().id()));
+  return value;
+}
+
 ErrorOr<int> HIPDeviceContext::computeCapability() const {
   int compute_major = 0, compute_minor = 0;
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(

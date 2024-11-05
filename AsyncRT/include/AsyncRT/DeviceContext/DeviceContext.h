@@ -282,6 +282,11 @@ public:
   stopTimer(const DeviceTimer &timer) const = 0;
 
   // Queries
+  enum class Attribute : int {
+    // TODO redefine CUDA device attributes here
+  };
+
+  virtual ErrorOr<int> getAttribute(Attribute attr) const;
   virtual ErrorOr<DeviceMemInfo> getMemoryInfo() const = 0;
   virtual ErrorOrSuccess isCompatibleWithMAX() const;
   virtual ErrorOr<int> computeCapability() const;

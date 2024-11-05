@@ -166,6 +166,8 @@ DeviceContext::DeviceContext(const Device &device)
 
 const Device &DeviceContext::device() const { return *device_; }
 
+ErrorOr<int> DeviceContext::getAttribute(Attribute attr) const { return 0; }
+
 ErrorOrSuccess DeviceContext::isCompatibleWithMAX() const { return success(); }
 
 ErrorOr<int> DeviceContext::computeCapability() const {
