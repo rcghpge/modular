@@ -16,6 +16,13 @@ namespace M::MO {
 #define GEN_PASS_DEF_VALIDATEDEVICESPASS
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
 
+}; // namespace M::MO
+
+using namespace M;
+using namespace MO;
+
+namespace {
+
 //===----------------------------------------------------------------------===//
 // ValidateDevicesPass
 //===----------------------------------------------------------------------===//
@@ -151,4 +158,4 @@ struct ValidateDevicesPass
   GraphOp graphOp;
 };
 
-} // namespace M::MO
+} // namespace
