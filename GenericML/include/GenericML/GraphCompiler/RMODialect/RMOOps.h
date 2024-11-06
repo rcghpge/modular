@@ -19,6 +19,8 @@
 #include "mlir/IR/OpImplementation.h"
 
 using M::KGEN::ParamDeclAttr;
+using M::MO::parseTransferResult;
+using M::MO::printTransferResult;
 using M::MOSH::ShapeAttr;
 
 namespace M::RMO {
@@ -45,6 +47,14 @@ void inferMOTypesScatterImpl(
 
 /// inferMoTypesImpl for all elementwise-unary-like ops
 void inferMOTypesElemwiseUnaryImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
+
+/// inferMoTypesImpl for all unary-like ops where output has an explicit type.
+void inferMOTypesUnaryExplicitOutputTypeImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
     SmallVectorImpl<Type> &moResultTypes,

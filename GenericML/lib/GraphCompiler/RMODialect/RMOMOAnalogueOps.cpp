@@ -520,6 +520,28 @@ void RMO::inferMOTypesElemwiseUnaryImpl(
   moOutputParamDecls.push_back({});
 }
 
+void RMO::inferMOTypesUnaryExplicitOutputTypeImpl(
+    MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  auto inputTy = cast<MO::TensorType>(input.getType());
+  ASSERT_STREAM(rmoResults.has_value(),
+                << "inferMOTypesUnaryExplicitOutputTypeImpl must have explicit "
+                   "output type");
+  auto outputTy = cast<TensorType>((*rmoResults)[0].getType());
+
+  // Expected input type
+  moOperandTypes.push_back(inputTy);
+  moInputParamDecls.push_back({});
+
+  // Expected output type
+  moResultTypes.push_back(outputTy);
+  moOutputParamDecls.push_back({});
+}
+
 static void inferConvMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue filter, TensorValue strides, TensorValue dilations,

@@ -162,7 +162,7 @@ mo.graph @transfer_dtype_mismatch(%arg0 : !mo.tensor<[3, 2], f32>) -> !mo.tensor
 // -----
 
 mo.graph @transfer_shape_mismatch(%arg0 : !mo.tensor<[3, 2], f32, cpu:0>) -> !mo.tensor<[5], f32, cpu:0> {
-  // expected-error @below {{expected result type to only differ from input type in device}}
+  // expected-error @below {{op requires the same shape for all operands and results}}
   %0 = "mo.transfer"(%arg0) : (!mo.tensor<[3, 2], f32, cpu:0>) -> !mo.tensor<[5], f32, cpu:0>
   mo.output %0 : !mo.tensor<[5], f32, cpu:0>
 }

@@ -93,6 +93,30 @@ void printParamDecls(OpAsmPrinter &p, Operation *,
     p << '>';
   }
 }
+
+/// Print the result tensor device in MO::TransferOp.
+ParseResult parseTransferResult(AsmParser &p, Type inputType,
+                                Type &resultType) {
+  DeviceRefAttr deviceRef;
+  if (failed(p.parseOptionalKeyword("unspecified"))) {
+    if (Attribute parsedDevice = DeviceRefAttr::parse(p, /*odsType=*/{}))
+      deviceRef = cast<DeviceRefAttr>(parsedDevice);
+    else
+      return failure();
+  }
+  resultType = cast<TensorType>(inputType).cloneWith(deviceRef);
+  return success();
+}
+
+/// Print the result tensor device in MO::TransferOp.
+void printTransferResult(AsmPrinter &p, Operation *op, TensorType inputType,
+                         TensorType resultType) {
+  if (DeviceRefAttr deviceRef = resultType.getDeviceRef())
+    deviceRef.print(p);
+  else
+    p << "unspecified";
+}
+
 } // namespace M::MO
 
 SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
@@ -496,29 +520,6 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
   }
 
   return failure();
-}
-
-/// Print the result tensor device in MO::TransferOp.
-static ParseResult parseTransferResult(AsmParser &p, Type inputType,
-                                       Type &resultType) {
-  DeviceRefAttr deviceRef;
-  if (failed(p.parseOptionalKeyword("unspecified"))) {
-    if (Attribute parsedDevice = DeviceRefAttr::parse(p, /*odsType=*/{}))
-      deviceRef = cast<DeviceRefAttr>(parsedDevice);
-    else
-      return failure();
-  }
-  resultType = cast<TensorType>(inputType).cloneWith(deviceRef);
-  return success();
-}
-
-/// Print the result tensor device in MO::TransferOp.
-static void printTransferResult(AsmPrinter &p, Operation *op,
-                                TensorType inputType, TensorType resultType) {
-  if (DeviceRefAttr deviceRef = resultType.getDeviceRef())
-    deviceRef.print(p);
-  else
-    p << "unspecified";
 }
 
 //===----------------------------------------------------------------------===//

@@ -66,6 +66,13 @@ ParseResult parseParamDecls(OpAsmParser &p,
 void printParamDecls(OpAsmPrinter &p, Operation *,
                      KGEN::ParamDeclArrayAttr paramDecls);
 
+/// Parse transfer result in MO dialect.
+ParseResult parseTransferResult(AsmParser &p, Type inputType, Type &resultType);
+
+/// Print transfer result in MO dialect.
+void printTransferResult(AsmPrinter &p, Operation *, TensorType inputType,
+                         TensorType resultType);
+
 /// If `val` comes from constant tensors (defined by a ConstantOp or
 /// concatenation or identity chain of ConstantOps), return the defining ops.
 SmallVector<MO::ConstantOp> tryGetConstantOpsOfRank(TensorValue val,

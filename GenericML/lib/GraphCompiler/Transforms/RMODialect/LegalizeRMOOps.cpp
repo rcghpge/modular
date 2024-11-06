@@ -1067,7 +1067,8 @@ struct LegalizeRMOOps
         LegalizeRMOMOAnalogue<RMO::MONonMaximumSuppressionOp,
                               MO::NonMaximumSuppressionOp>,
         LegalizeRMOMOAnalogue<RMO::MOArgNonzeroOp, MO::ArgNonzeroOp>,
-        LegalizeRMOMOAnalogue<RMO::MOCumSumOp, MO::CumSumOp>>(context);
+        LegalizeRMOMOAnalogue<RMO::MOCumSumOp, MO::CumSumOp>,
+        LegalizeRMOMOAnalogue<RMO::MOTransferOp, MO::TransferOp>>(context);
 
     blockPatterns.add<LegalizeMutableLoadOp, LegalizeMutableStoreOp,
                       LegalizeMutableStoreSliceOp>(context);

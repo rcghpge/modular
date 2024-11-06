@@ -74,8 +74,7 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
 //===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
-
-def MO_TransferOp : MO_Op<"transfer", [Pure]> {
+def MO_TransferOp : MO_TensorOp<"transfer", [Pure, MO_SameOperandsAndResultShape]> {
   let summary = "Device transfer operation";
   let description = [{
     This op represents a possible copy or aliasing operation to make the

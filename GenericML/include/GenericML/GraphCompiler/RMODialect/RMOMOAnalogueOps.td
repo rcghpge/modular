@@ -103,9 +103,29 @@ class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []>
     }
   }];
 }
-
 class RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureUnaryElementWiseOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
+
+class RMO_MOAnaloguePureUnaryExplicitOutputOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureElementWiseOp<name, traits> {
+  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
+
+  let extraClassDeclaration = [{
+    static void inferMOTypesImpl(
+        MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+        std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+        SmallVectorImpl<Type> &moResultTypes,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+        inferMOTypesUnaryExplicitOutputTypeImpl(
+          context, graphOp, cast<TensorValue>(operands.getInput()),
+          rmoResults, moOperandTypes, moResultTypes, moInputParamDecls,
+          moOutputParamDecls);
+    }
+  }];
+}
+class RMO_MOAnaloguePureUnaryExplicitOutputMonoTypeOp<string name, list<Trait> traits = []>
+    : RMO_MOAnaloguePureUnaryExplicitOutputOp<name, [RMO_TensorSameDTypeOperandsAndResults] # traits>;
 
 class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureElementWiseOp<name, traits> {
@@ -2701,6 +2721,19 @@ def RMO_MOMutableStoreSliceOp : RMO_MOAnalogueOp<"mutable.store.slice", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+}
+
+def RMO_MOTransferOp : RMO_MOAnaloguePureUnaryExplicitOutputOp<"transfer"> {
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    $input `:` qualified(type($input)) `to` 
+    custom<TransferResult>(ref(type($input)), type($result)) attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice)>,
+  ];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOMOANALOGUEOPS_TD
