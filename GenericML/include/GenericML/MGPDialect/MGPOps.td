@@ -39,6 +39,7 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 
 def BufferConstantOp : MGP_Op<"buffer.constant", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
   let summary = "Allocates and initializes a buffer from a host attribute.";

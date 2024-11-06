@@ -97,12 +97,20 @@ isLowerableToMOGGCall(MLIRContext *ctx,
 // Get a dictionary of the attributes for the lowered mogg call
 static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
   SmallVector<NamedAttribute> attrs;
+
+  SmallVector<Attribute> liftAttrs{};
+  if (auto attrToValOp = dyn_cast<MGP::MGPLiftAttrToRTValuesOpInterface>(op)) {
+    liftAttrs = attrToValOp.getLiftAttributes();
+    attrs.push_back(
+        builder.getNamedAttr("resources", builder.getArrayAttr(liftAttrs)));
+  }
+
   for (auto &attr : op->getAttrs()) {
-    // encoding mgp.buffer.constant op
-    if (auto constBufOp = dyn_cast<MGP::BufferConstantOp>(op);
-        constBufOp && constBufOp.getAValue() == attr.getValue()) {
-      attrs.push_back(builder.getNamedAttr("resource", constBufOp.getAValue()));
-    } else if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
+    // Attrs that need to be lifted are handled above
+    if (llvm::find(liftAttrs, attr.getValue()) != liftAttrs.end())
+      continue;
+
+    if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
       // Prune device attributes to string ref of label
       attrs.push_back(builder.getNamedAttr(
           attr.getName(), builder.getStringAttr(devRefAttr.getLabel())));
@@ -260,8 +268,8 @@ static ErrorOr<MOGG::GenericCompiledRegionOp>
 wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
                         CompiledRegionBodyBuilder bodyBuilder) {
   auto constResources = builder.getArrayAttr({});
-  if (auto constOp = dyn_cast<MGP::BufferConstantOp>(op))
-    constResources = builder.getArrayAttr(constOp.getAValue());
+  if (auto attrToValOp = dyn_cast<MGP::MGPLiftAttrToRTValuesOpInterface>(op))
+    constResources = builder.getArrayAttr(attrToValOp.getLiftAttributes());
 
   // Build compile region operation.
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(

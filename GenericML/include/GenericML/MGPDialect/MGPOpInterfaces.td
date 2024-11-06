@@ -100,6 +100,24 @@ def MGP_LiftableChainCreateOpInterface : OpInterface<"MGPLiftableChainCreateOpIn
   ];
 }
 
+def MGP_LiftAttrToRTValuesOpInterface : OpInterface<"MGPLiftAttrToRTValuesOpInterface"> {
+  let description = [{
+    Interface for ops that require converting a static attribute into runtime
+    values during lowering. This is useful as the use of different static
+    attributes could cause cache missing when checking operation equivalence,
+    leading to more kernel to be compiled. Or it can simply due to that the
+    attribute is too expensive to be used for paramterization
+    (e.g., a `M.array<[...]> : tensor<1000x1000xf32>`).
+  }];
+  let cppNamespace = "::M::MGP";
+  let methods = [
+    InterfaceMethod<
+      "Returns the vector of attributes that need to be lifted.",
+      "mlir::SmallVector<mlir::Attribute>", "getLiftAttributes", (ins)
+    >
+  ];
+}
+
 
 def MGP_InOutSemanticsOpInterface : OpInterface<"MGPInOutSemanticsOpInterface"> {
   let description = [{

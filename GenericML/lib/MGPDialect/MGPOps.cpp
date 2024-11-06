@@ -359,6 +359,13 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
   p << value;
 }
 
+SmallVector<Attribute> BufferConstantOp::getLiftAttributes() {
+  // TODO: maybe alignment too, it would be overkill to recompile a generic
+  // region due to different alignment. Besides, alignment is not currently used
+  // in the mojo implementation.
+  return {getAValueAttr()};
+}
+
 //===----------------------------------------------------------------------===//
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
