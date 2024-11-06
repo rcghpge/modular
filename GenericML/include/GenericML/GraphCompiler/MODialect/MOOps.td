@@ -282,7 +282,7 @@ def MO_OutputOp : MO_ControlOp<"output", [
 //===----------------------------------------------------------------------===//
 
 def IfOp : MO_ControlOp<"if",
-          [SingleBlockImplicitTerminator<"MO::YieldOp">, HasOnlyGraphRegion]> {
+          [SingleBlockImplicitTerminator<"MO::YieldOp">, HasOnlyGraphRegion, RegionKindInterface]> {
   let summary = "`if` control flow operation";
   let description = [{
     The `mo.if` op takes an `i1` condition, a 'then' block and an 'else'
@@ -328,7 +328,7 @@ def IfOp : MO_ControlOp<"if",
 
 def WhileOp : MO_ControlOp<"while",
           [SingleBlockImplicitTerminator<"MO::YieldOp">,
-          HasOnlyGraphRegion]> {
+          HasOnlyGraphRegion, RegionKindInterface]> {
   let summary = "`while` control flow operation";
   let description = [{
     The `mo.while` operation takes "cond" and "body" blocks. While the "cond"

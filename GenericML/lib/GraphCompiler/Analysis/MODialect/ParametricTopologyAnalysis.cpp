@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "Support/AssertStream.h"
@@ -228,12 +229,23 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
 }
 
 void ParametricTopologyAnalysis::topologicallySortAllOpsWithin(Region *region) {
+  auto regionKindInterface =
+      dyn_cast<mlir::RegionKindInterface>(region->getParentOp());
+
+  // If we are unable to prove the region is graph region, don't sort since
+  // original ordering may matter.
+  if (!regionKindInterface)
+    return;
+
+  if (regionKindInterface.getRegionKind(region->getRegionNumber()) !=
+      RegionKind::Graph)
+    return;
+
   for (Block &block : *region) {
     topologicallySortFirstLevelOpsWithin(&block);
-    for (Operation &op : block) {
+    for (Operation &op : block)
       for (Region &nestedRegion : op.getRegions())
         topologicallySortAllOpsWithin(&nestedRegion);
-    }
   }
 }
 
