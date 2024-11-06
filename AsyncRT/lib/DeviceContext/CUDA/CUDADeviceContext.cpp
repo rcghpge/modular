@@ -467,43 +467,13 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
     RAISE_ERROR("not enough data in src");
   }
   if (src_ctx.context_ != dst_ctx.context_) {
-    auto &src_device = CUDADevice::cast(src_ctx.device());
-    auto &dst_device = CUDADevice::cast(device());
-    auto canAccessPeerOr = dst_device.canAccess(src_device);
-    if (canAccessPeerOr.isError())
-      return canAccessPeerOr.takeError();
-    if (*canAccessPeerOr) {
-      if (mode == ASYNC) {
-        CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dst_ptr, dst_ctx.context_,
-                                               src_ptr, src_ctx.context_,
-                                               dst_byte_size, stream_));
-      } else {
-        CUDA_CHECK_ERR(driver_.MemcpyPeer(dst_ptr, dst_ctx.context_, src_ptr,
-                                          src_ctx.context_, dst_byte_size));
-      }
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dst_ptr, dst_ctx.context_, src_ptr,
+                                             src_ctx.context_, dst_byte_size,
+                                             stream_));
     } else {
-      auto tmpHostBufOr = allocHostPtr(dst_byte_size, driver_);
-      if (tmpHostBufOr.isError())
-        return tmpHostBufOr.takeError();
-
-      if (mode == ASYNC) {
-        CUDA_CHECK_ERR(src_ctx.setCurrent());
-        CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(tmpHostBufOr->get(), src_ptr,
-                                               dst_byte_size,
-                                               src_ctx.cuda_stream()));
-        ErrorOrSuccess err = src_ctx.synchronize();
-        if (err.isError()) {
-          return err.takeError();
-        }
-        CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, tmpHostBufOr->get(),
-                                               dst_byte_size, stream_));
-      } else {
-        CUDA_CHECK_ERR(src_ctx.setCurrent());
-        CUDA_CHECK_ERR(
-            driver_.MemcpyDtoH(tmpHostBufOr->get(), src_ptr, dst_byte_size));
-        CUDA_CHECK_ERR(
-            driver_.MemcpyHtoD(dst_ptr, tmpHostBufOr->get(), dst_byte_size));
-      }
+      CUDA_CHECK_ERR(driver_.MemcpyPeer(dst_ptr, dst_ctx.context_, src_ptr,
+                                        src_ctx.context_, dst_byte_size));
     }
   } else {
     if (mode == ASYNC) {
