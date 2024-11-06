@@ -429,9 +429,27 @@ struct FuseElementwisePass
     assert(renamedSrcElementwiseLambda);
 
     auto &dstKernelBody = dstKernel.getBody().front();
-    for (int fusionIndex : llvm::reverse(fusionIndices)) {
-      auto dstKernelArgument = dstKernelBody.getArgument(fusionIndex);
+    builder.setInsertionPointAfter(dstOutput);
 
+    // Creating at most one empty tensors op. This will be used as a replacement
+    // for the old argument from the src op.
+    auto fakeTensors = dstKernel.getCreateEmptyTensor();
+    if (!fakeTensors) {
+      fakeTensors = builder.create<MOGG::CreateEmptyTensorsOp>(
+          dstKernel.getLoc(),
+          dstKernelBody.getArgument(fusionIndices.front()).getType());
+    } else {
+      auto fakeTensorTypes = SmallVector<Type>(fakeTensors->getResultTypes());
+      fakeTensorTypes.push_back(
+          dstKernelBody.getArgument(fusionIndices.front()).getType());
+      auto newFakeTensors = builder.create<MOGG::CreateEmptyTensorsOp>(
+          dstKernel.getLoc(), fakeTensorTypes);
+      fakeTensors->replaceAllUsesWith(newFakeTensors.getResults().drop_back());
+      fakeTensors.erase();
+      fakeTensors = newFakeTensors;
+    }
+
+    for (int fusionIndex : llvm::reverse(fusionIndices)) {
       StringAttr dstKernelInputLambdaName =
           dstKernel.getInputFusionInterfaceAt(fusionIndex);
       KGEN::ParamDeclareRegionOp dstInputLambda =
@@ -460,9 +478,13 @@ struct FuseElementwisePass
       // operands. They can capture values outside of their scope and that's how
       // lambdas actually access the right tensor. This one will never be
       // accessed but it is necessary to not have to temper with the KGEN code
-      // (changing the signature of whatever was taking in that argument).
-      dstKernelArgument.replaceAllUsesWith(
-          dstKernelBody.getArgument(dstKernelBody.getNumArguments() - 1));
+      // (changing the signature of whatever was taking in that argument). In
+      // other words, we create an empty tensors op and feed it to the code that
+      // still requires a tensor although it does not write to the underlying
+      // data.
+      dstKernelBody.getArgument(fusionIndex)
+          .replaceAllUsesWith(
+              fakeTensors.getResult(fakeTensors->getNumResults() - 1));
       dstKernel.removeOperandAtIndex(fusionIndex);
     }
   }

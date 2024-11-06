@@ -201,8 +201,8 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
     val = builder.create<MOGG::ToOpaqueFromMGPOp>(loc, moOpaqueTy, val);
     inputs[idx] = builder.create<MOGG::ToKGENOp>(
         loc, kernel.getFunctionType().getInput(idx), val,
-        /*shape=*/nullptr,
-        /*strides=*/nullptr, /*typeMethodDict=*/nullptr, isRegisterType);
+        /*static_tensor_spec=*/nullptr, /*typeMethodDict=*/nullptr,
+        isRegisterType);
   }
 
   // Add the call to the actual implementing function in mojo.
@@ -255,7 +255,6 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
         kernel->getContext(),
         StringAttr::get(kernel->getContext(), "OpaquePrimitive"), std::nullopt);
     val = builder.create<MOGG::ToMOGGOp>(loc, moOpaqueTy, val,
-                                         /*shape=*/nullptr, /*strides=*/nullptr,
                                          *methodsDictAttrOr, isRegister);
     outputs[idx] = builder.create<MOGG::ToMGPFromOpaqueOp>(
         loc, outputs[idx].getType(), val);

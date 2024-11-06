@@ -22,6 +22,7 @@ include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
 include "GenericML/MGPDialect/MGPOpInterfaces.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "KGEN/KGENDialect/KGENTypes.td"
+include "KGEN/KGENDialect/KGENAttrs.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
@@ -1006,8 +1007,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
   }];
 
   let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_Buffer, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MGP_List, MO_List, MO_Opaque]>:$input,
-    OptionalAttr<TypedAttrInterface>:$shape,
-    OptionalAttr<TypedAttrInterface>:$strides,
+    OptionalAttr<KGEN_ParamDeclRefAttr>:$staticTensorSpec,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict,
     UnitAttr:$isRegisterType
   );
@@ -1028,8 +1028,6 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
   }];
 
   let arguments = (ins AnyType:$input,
-    OptionalAttr<TypedAttrInterface>:$shape,
-    OptionalAttr<TypedAttrInterface>:$strides,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict,
     UnitAttr:$isRegisterType
   );

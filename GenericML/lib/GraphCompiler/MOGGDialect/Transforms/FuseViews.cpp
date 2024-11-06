@@ -365,37 +365,28 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
       alreadyFused[operand] = stackAlloc;
 
-      Type bindType = producerKernelToKGEN.getType();
-
-      KGEN::RebindOp rebind =
-          builder.create<KGEN::RebindOp>(leaf->getLoc(), bindType, stackAlloc);
-
-      // When fusing views, we want to ensure the consumer operation is not
-      // assuming contiguous memory layout. To do so, we change the stride
-      // information to be statically unknown. It is achieved by replacing old
-      // static strides which can be known to the new, unknown own. This assumes
-      // LoweringHelper.cpp lowered unknown strides for view op outputs.
-      // TODO: We only need to reparameterize the strides for MOGGTensor.
-      // Get rid of this logic once it's removed.
-      auto newStrides = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
-          producerKernelToKGEN.getStridesAttr());
+      auto newStaticTensorSpec = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
+          producerKernelToKGEN.getStaticTensorSpecAttr());
       DenseSet<KGEN::ParamDeclRefAttr> oldStrideParams;
+      // Iterating through all the mogg.to_kgen that relate to the output of the
+      // view we are fusing in.
       for (auto value : kgenOut) {
-        auto oldStrides = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
-            value.getDefiningOp<ToKGENOp>().getStridesAttr());
-        if (oldStrides)
-          oldStrideParams.insert(oldStrides);
+        auto oldStaticTensorSpec = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
+            value.getDefiningOp<ToKGENOp>().getStaticTensorSpecAttr());
+        if (oldStaticTensorSpec)
+          oldStrideParams.insert(oldStaticTensorSpec);
       }
+
       mlir::AttrTypeReplacer walker;
       walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
                                 -> std::optional<KGEN::ParamDeclRefAttr> {
         if (oldStrideParams.contains(attr)) {
           ASSERT_STREAM(
-              newStrides,
+              newStaticTensorSpec,
               << "Expected strides to be a parameter declaration reference. "
                  "Maybe "
                  "the view kernel was not explicitly parametrized on strides?");
-          return newStrides;
+          return newStaticTensorSpec;
         }
         return std::nullopt;
       });
@@ -403,6 +394,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                                           /*replaceLocs=*/false,
                                           /*replaceTypes=*/true);
 
+      Type bindType = producerKernelToKGEN.getType();
+      KGEN::RebindOp rebind =
+          builder.create<KGEN::RebindOp>(leaf->getLoc(), bindType, stackAlloc);
       for (auto value : kgenOut)
         value.replaceAllUsesWith(rebind);
 
