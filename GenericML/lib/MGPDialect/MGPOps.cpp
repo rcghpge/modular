@@ -480,6 +480,14 @@ parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
 }
 
 //===----------------------------------------------------------------------===//
+// BufferGetCachedOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<Attribute> BufferGetCachedOp::getLiftAttributes() {
+  return {getBBufferSlotAttr()};
+}
+
+//===----------------------------------------------------------------------===//
 // TensorSpecGetDimOp
 //===----------------------------------------------------------------------===//
 

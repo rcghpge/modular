@@ -414,7 +414,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
-    DefaultValuedAttr<TypedArrayAttrBase<ElementsAttr, "ElementsAttr array">, "{}">:$constantResources,
+    DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canFuseIntoOther,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canBeFusedInto,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canDuplicate

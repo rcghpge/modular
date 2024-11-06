@@ -433,7 +433,7 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
                        UI64Attr:$cFunctionIndex,                       // 2
                        StrAttr:$dSummary,                              // 3
                        DefaultValuedAttr<BoolAttr, "false">:$eIsAsync, // 4
-                       TypedArrayAttrBase<ElementsAttr, "ElementsAttr array">:$fConstantResource // 5
+                       ArrayAttr:$fConstantResource                    // 5
                        );
   let results = (outs Variadic<AnyType>:$outResults);
 }
@@ -916,7 +916,7 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 //===----------------------------------------------------------------------===//
 
 def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
-    Pure,]> {
+    Pure, DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
   let description = [{
     Returns (a borrow of) the `!mgp.buffer` in the state slot with the given

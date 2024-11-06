@@ -103,7 +103,7 @@ static void fuseCompiledRegionsAndReplaceUses(
   for (Operation *regionOp : compiledRegionOpsToFuseTogether) {
     auto res = cast<MOGG::GenericCompiledRegionOp>(regionOp)
                    .getConstantResourcesAttr()
-                   .getAsRange<ElementsAttr>();
+                   .getValue();
     resources.insert(res.begin(), res.end());
   }
   const bool canFuseIntoOther =

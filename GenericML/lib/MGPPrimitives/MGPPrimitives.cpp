@@ -190,7 +190,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
        takenOperands = operands.takeAsVector(), summary = dSummary->str(),
        profilerEntry = std::move(profilerEntry), runtimePtr = runtimePtr,
        deviceContext = std::move(deviceContext),
-       ConstantResources = fConstantResources, loc = std::move(loc)]() mutable {
+       constantResources = fConstantResources, loc = std::move(loc)]() mutable {
         void *deviceContextPtr = deviceContext.getPointerToData();
         std::vector<void *> kernelInputs;
         kernelInputs.reserve(outResults.size() + takenOperands.size());
@@ -233,7 +233,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
           kernelInputs.push_back(ptrToMarshalledValue.takeValue());
         }
 
-        for (MEFDynamicAttr attr : ConstantResources) {
+        for (MEFDynamicAttr attr : constantResources) {
           // Append read-only pointer to attributes.
           kernelInputs.push_back(
               const_cast<void *>(reinterpret_cast<const void *>(attr.get())));
