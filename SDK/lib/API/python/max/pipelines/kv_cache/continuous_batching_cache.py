@@ -10,11 +10,10 @@ from __future__ import annotations
 from typing import List, NewType, Union
 
 import numpy as np
-
 from max.driver import Device, Tensor
 from max.dtype import DType
-from max.engine import MojoValue
-from max.graph import TensorType, TensorValue, _OpaqueType, ops
+from max.engine import InferenceSession, MojoValue
+from max.graph import Graph, TensorType, TensorValue, _OpaqueType, ops
 
 from .cache_params import KVCacheParams
 from .manager import KVCacheManager
@@ -115,6 +114,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
         max_seq_len: int,
         num_layers: int,
         device: Device,
+        session: InferenceSession,
     ) -> None:
         super().__init__(
             params=params,
@@ -122,6 +122,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             max_seq_len=max_seq_len,
             num_layers=num_layers,
             device=device,
+            session=session,
         )
 
         # Allocate memory for the KV cache blocks.
@@ -130,6 +131,31 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             self.params.dtype,
             device=self.device,
         )
+
+        self._increment_cache_lengths_graph = (
+            self._create_increment_cache_lengths_graph(self.session)
+        )
+
+    def _create_increment_cache_lengths_graph(self, session: InferenceSession):
+        _, cache_lengths_type, _, _ = self.input_symbols()
+
+        input_row_offset_type = TensorType(
+            DType.uint32, shape=["input_row_offset_len"]
+        )
+
+        with Graph(
+            "update_cache_lengths",
+            input_types=[cache_lengths_type, input_row_offset_type],
+        ) as graph:
+            cache_lengths, input_row_offset = graph.inputs
+            right_slice = input_row_offset[1:].rebind(cache_lengths.shape)
+            left_slice = input_row_offset[
+                : input_row_offset.shape[0] - 1
+            ].rebind(cache_lengths.shape)
+            increment_amount = right_slice - left_slice
+            graph.output(cache_lengths + increment_amount)
+
+        return session.load(graph)
 
     def fetch(
         self, seq_ids: List[int]
@@ -171,6 +197,28 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             self.params.n_kv_heads,
             self.params.head_dim,
         ]
+
+    def increment_cache_lengths(
+        self,
+        kv_cache_inputs: tuple[TensorType, TensorType, TensorType, TensorType],
+        prev_model_inputs: tuple[Tensor, ...],
+    ) -> tuple[TensorType, TensorType, TensorType, TensorType]:
+        """
+        Prepare the inputs for a multistep execution, generally by incrementing
+        the cache lengths. This should not require a device synchronization or
+        copy values between devices, as this would remove the benefit of multistep execution.
+        """
+        _, input_row_offset = prev_model_inputs
+        blocks, cache_lengths, lookup_table, _ = kv_cache_inputs
+
+        # Update the cache_lengths of our batch by the previous sequence length
+        updated_cache_lengths = self._increment_cache_lengths_graph.execute(
+            cache_lengths, input_row_offset
+        )[0]
+
+        # Return our updated batch. We hard-code the is_cache_empty flag to
+        # False because only the first step could be context encoding.
+        return (blocks, updated_cache_lengths, lookup_table, self.false_tensor)
 
     def input_symbols(
         self,
