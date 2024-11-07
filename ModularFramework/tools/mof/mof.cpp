@@ -37,6 +37,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Process.h"
@@ -358,7 +359,20 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   moToMgpOptions.print(*keyBuf);
   moToMgpPasses.printAsTextualPipeline(*keyBuf);
 
-  if (failed(Cache::writeOperationToCacheKey(*moduleOp, keyBuf)))
+  // We specifically use a version of the module without location information
+  // for caching. Otherwise, python refactors that don't change the module would
+  // invalidate the cache.
+  // This means that runtime errors may print an old location.
+  // This is prefered to constantly having cache misses.
+  auto stripDebugInfo = mlir::PassManager::on<ModuleOp>(
+      mlirCtx, mlir::OpPassManager::Nesting::Implicit);
+  stripDebugInfo.addPass(mlir::createStripDebugInfoPass());
+  OwningOpRef<ModuleOp> moduleOpNoDebug = moduleOp->clone();
+  if (failed(stripDebugInfo.run(*moduleOpNoDebug)))
+    return Error::getStaticString(
+        "failed to strip location information from the module op");
+
+  if (failed(Cache::writeOperationToCacheKey(*moduleOpNoDebug, keyBuf)))
     return Error::getStaticString("failed to write module op to cache key");
 
   // Look up the model in the MEF cache.

@@ -30,12 +30,9 @@ namespace {
 TensorValue rebindToShape(MO::GraphOp graphOp, TensorValue input,
                           TensorType newTy, mlir::RewriterBase &rewriter,
                           ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
-  std::string message = "RMO rebind shape check failed at: ";
-  llvm::raw_string_ostream ss(message);
-  ss << input.getLoc();
-  return rewriter.create<RMO::RebindTensorShapeOp>(
-      input.getLoc(), newTy, input, newOutputParamDecl,
-      rewriter.getStringAttr(message));
+  return rewriter.create<RMO::RebindTensorShapeOp>(input.getLoc(), newTy, input,
+                                                   newOutputParamDecl,
+                                                   rewriter.getStringAttr(""));
 }
 
 /// `outputParamDecls` contains the param declarations for all outputs.
@@ -312,10 +309,32 @@ struct LowerRebindTensorShapeOp
         graphOp.getNewParamOfType("RMO_SH_EQ", boolTy);
     rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
 
-    // Add assertion, then return a rebind
+    // Add assertion with location based stack trace, then return a rebind
+    std::string full_msg = "RMO rebind shape check failed at:\n";
+    llvm::raw_string_ostream ss(full_msg);
+    mlir::AttrTypeWalker walker;
+    walker.addWalk([&](FileLineColLoc attr) {
+      std::string module_file = attr.getFilename().str();
+      size_t i = module_file.find(":");
+
+      if (i != std::string::npos) {
+        std::string module = module_file.substr(0, i);
+        std::string file = module_file.substr(i + 1, std::string::npos);
+        ss << '\t' << module << ':' << attr.getLine() << " in " << file << '\n';
+      } else {
+        ss << '\t' << module_file << ':' << attr.getLine() << '\n';
+      }
+    });
+    walker.walk(loc);
+
     StringAttr msg = mlir::cast<StringAttr>(op.getMessageAttr());
+    if (!msg.empty()) {
+      ss << "with error:\n\t";
+      ss << msg;
+    }
+
     TypedAttr assertAttr = MO::AssertOp::emitStaticCall(
-        KGEN::ParamDeclRefAttr::get(condAttr), msg.str());
+        KGEN::ParamDeclRefAttr::get(condAttr), full_msg);
 
     auto chainTy = rewriter.getType<ChainType>();
     KGEN::ParamDeclAttr chainAttr =
