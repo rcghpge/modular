@@ -309,28 +309,51 @@ struct LowerRebindTensorShapeOp
         graphOp.getNewParamOfType("RMO_SH_EQ", boolTy);
     rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
 
-    // Add assertion with location based stack trace, then return a rebind
-    std::string full_msg = "RMO rebind shape check failed at:\n";
-    llvm::raw_string_ostream ss(full_msg);
+    // Add assertion with location based stack trace, then return a rebind.
+    // We are printing the location in a python style.
+    // Python prints the stack in reverse order (most recent call last).
+    llvm::SmallVector<mlir::NameLoc> locs;
     mlir::AttrTypeWalker walker;
-    walker.addWalk([&](FileLineColLoc attr) {
-      std::string module_file = attr.getFilename().str();
+    walker.addWalk([&](mlir::NameLoc name_loc) { locs.push_back(name_loc); });
+    walker.walk(loc);
+
+    std::string full_msg = "\nTraceback (most recent call last):";
+    llvm::raw_string_ostream ss(full_msg);
+    for (auto &name_loc : llvm::reverse(locs)) {
+      std::string context = name_loc.getName().str();
+
+      auto file_loc =
+          mlir::dyn_cast<mlir::FileLineColLoc>(name_loc.getChildLoc());
+      if (!file_loc)
+        continue;
+
+      std::string module_file = file_loc.getFilename().str();
       size_t i = module_file.find(":");
 
       if (i != std::string::npos) {
         std::string module = module_file.substr(0, i);
         std::string file = module_file.substr(i + 1, std::string::npos);
-        ss << '\t' << module << ':' << attr.getLine() << " in " << file << '\n';
+        ss << "\n  File " << file << ", line " << file_loc.getLine() << ", in "
+           << module;
       } else {
-        ss << '\t' << module_file << ':' << attr.getLine() << '\n';
+        ss << "\n  File " << module_file << ", line " << file_loc.getLine();
       }
-    });
-    walker.walk(loc);
+
+      ss << '\n';
+      if (!context.empty()) {
+        ss << context;
+
+        for (size_t i = 0; i < file_loc.getColumn(); ++i)
+          ss << ' ';
+        ss << '^';
+      }
+    }
 
     StringAttr msg = mlir::cast<StringAttr>(op.getMessageAttr());
     if (!msg.empty()) {
-      ss << "with error:\n\t";
-      ss << msg;
+      ss << "\nMAX Runtime Error:" << msg << '\n';
+    } else {
+      ss << "\nMAX Runtime Error: RMO rebind shape check failed\n";
     }
 
     TypedAttr assertAttr = MO::AssertOp::emitStaticCall(
