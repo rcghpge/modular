@@ -115,6 +115,12 @@ const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CpuDeviceBuffer &>(buf);
 }
 
+// ===== CpuDeviceStream ===== //
+CpuDeviceStream::CpuDeviceStream(const CpuDeviceContext &context)
+    : DeviceStream(context) {}
+
+ErrorOrSuccess CpuDeviceStream::synchronize() const { return success(); }
+
 // ===== CpuDeviceTimer ===== //
 CpuDeviceTimer::CpuDeviceTimer(
     const CpuDeviceContext &context,
@@ -243,6 +249,10 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
     void *attrs, uint32_t num_attrs, void **args) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
+  return CpuDeviceStreamRef::create(*this);
 }
 
 ErrorOrSuccess CpuDeviceContext::synchronize() const {

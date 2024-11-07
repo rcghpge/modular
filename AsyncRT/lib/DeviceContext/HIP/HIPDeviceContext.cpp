@@ -529,6 +529,10 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
   return Error("not implemented yet: enqueueFunctionExecDirect");
 }
 
+ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
+  RAISE_ERROR("Unimplemented");
+}
+
 ErrorOrSuccess HIPDeviceContext::synchronize() const {
   HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
   return success();

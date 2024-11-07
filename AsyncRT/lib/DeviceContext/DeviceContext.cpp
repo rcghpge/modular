@@ -53,6 +53,14 @@ size_t DeviceBuffer::len() const { return len_; }
 size_t DeviceBuffer::elem_size() const { return elem_size_; }
 
 //
+// ===== DeviceStream ===== //
+//
+DeviceStream::DeviceStream(const DeviceContext &context)
+    : context_(DeviceContextRef::copy(&context)) {}
+
+const DeviceContext &DeviceStream::context() const { return *context_; }
+
+//
 // ===== DeviceFunction ===== //
 //
 enum DeviceFunction::ArgumentType : uint8_t {

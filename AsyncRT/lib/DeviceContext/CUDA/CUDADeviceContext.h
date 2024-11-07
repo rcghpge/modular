@@ -32,6 +32,7 @@ class CUDADeviceContext;
 class CUDAModuleFunction;
 class CUDADeviceFunction;
 class CUDADeviceFunctionArguments;
+class CUDADeviceStream;
 class CUDADeviceTimer;
 
 using CUDADeviceRef = RCRef<const CUDADevice>;
@@ -40,6 +41,7 @@ using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
 using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
+using CUDADeviceStreamRef = RCRef<const CUDADeviceStream>;
 using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
 class CUDADevice : public Device {
@@ -94,6 +96,17 @@ private:
   // TODO: Remove the V1 compatibility.
   mutable CUdeviceptr dptr_;
   mutable bool owning_ = true;
+};
+
+class CUDADeviceStream : public DeviceStream {
+public:
+  CUDADeviceStream(const CUDADeviceContext &context, CUstream stream);
+  ~CUDADeviceStream() override = default;
+
+  virtual ErrorOrSuccess synchronize() const override;
+
+private:
+  CUstream stream_;
 };
 
 class CUDADeviceFunctionArguments : public DeviceFunction::Arguments {
@@ -232,6 +245,8 @@ public:
                                            uint32_t sharedMemBytes, void *attrs,
                                            uint32_t num_attrs,
                                            void **args) const override;
+
+  ErrorOr<DeviceStreamRef> stream() const override;
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;

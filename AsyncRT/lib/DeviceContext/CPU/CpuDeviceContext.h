@@ -25,11 +25,13 @@ namespace M::AsyncRT {
 class CpuDevice;
 class CpuDeviceBuffer;
 class CpuDeviceContext;
+class CpuDeviceStream;
 class CpuDeviceTimer;
 
 using CpuDeviceRef = RCRef<const CpuDevice>;
 using CpuDeviceBufferRef = RCRef<const CpuDeviceBuffer>;
 using CpuDeviceContextRef = RCRef<const CpuDeviceContext>;
+using CpuDeviceStreamRef = RCRef<const CpuDeviceStream>;
 using CpuDeviceTimerRef = RCRef<const CpuDeviceTimer>;
 
 class CpuDevice : public Device {
@@ -68,6 +70,14 @@ private:
   // TODO: Remove the V1 compatibility.
   mutable void *ptr_;
   mutable bool owning_ = true;
+};
+
+class CpuDeviceStream : public DeviceStream {
+public:
+  CpuDeviceStream(const CpuDeviceContext &context);
+  ~CpuDeviceStream() override = default;
+
+  virtual ErrorOrSuccess synchronize() const override;
 };
 
 class CpuDeviceTimer : public DeviceTimer {
@@ -131,6 +141,8 @@ public:
                                            uint32_t sharedMemBytes, void *attrs,
                                            uint32_t num_attrs,
                                            void **args) const override;
+
+  ErrorOr<DeviceStreamRef> stream() const override;
 
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;

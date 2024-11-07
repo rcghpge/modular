@@ -202,6 +202,8 @@ public:
                                            uint32_t num_attrs,
                                            void **args) const override;
 
+  ErrorOr<DeviceStreamRef> stream() const override;
+
   // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;
 

@@ -147,6 +147,27 @@ MODULAR_EXPORT int64_t AsyncRT_DeviceBuffer_len(const DeviceBuffer *buffer) {
 }
 
 MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_stream(const DeviceStream **result,
+                             const DeviceContext *ctx) {
+  return check_ref(result, ctx->stream());
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceStream_synchronize(const DeviceStream *stream) {
+  return check_success(stream->synchronize());
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceStream_retain(const DeviceStream *stream) {
+  // Increment the low-level reference count.
+  DeviceStreamRef::lowLevelAddRef(stream);
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceStream_release(const DeviceStream *stream) {
+  // Decrement the low-level reference count.
+  DeviceStreamRef::lowLevelDropRef(stream);
+}
+
+MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_synchronize(const DeviceContext *ctx) {
   return check_success(ctx->synchronize());
 }

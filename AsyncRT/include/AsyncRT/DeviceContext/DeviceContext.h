@@ -28,12 +28,14 @@ class Device;
 class DeviceBuffer;
 class DeviceContext;
 class DeviceFunction;
+class DeviceStream;
 class DeviceTimer;
 
 using DeviceRef = RCRef<const Device>;
 using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
+using DeviceStreamRef = RCRef<const DeviceStream>;
 using DeviceTimerRef = RCRef<const DeviceTimer>;
 
 // RUNP-397: This should come as a form of a function dependent on the device
@@ -95,6 +97,20 @@ private:
   DeviceBufferRef parent_;
   size_t len_;
   size_t elem_size_;
+};
+
+class DeviceStream : public ReferenceCounted<DeviceStream> {
+public:
+  virtual ~DeviceStream() = default;
+  const DeviceContext &context() const;
+
+  virtual ErrorOrSuccess synchronize() const = 0;
+
+protected:
+  DeviceStream(const DeviceContext &context);
+
+private:
+  DeviceContextRef context_;
 };
 
 class DeviceFunction : public ReferenceCounted<DeviceFunction> {
@@ -276,6 +292,8 @@ public:
                             uint32_t blockY, uint32_t blockZ,
                             uint32_t sharedMemBytes, void *attrs,
                             uint32_t num_attrs, void **args) const = 0;
+
+  virtual ErrorOr<DeviceStreamRef> stream() const = 0;
 
   // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;

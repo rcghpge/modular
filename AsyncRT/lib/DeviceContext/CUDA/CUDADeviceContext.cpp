@@ -210,6 +210,19 @@ const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CUDADeviceBuffer &>(buf);
 }
 
+// ===== CUDADeviceStream ===== //
+CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &context,
+                                   CUstream stream)
+    : DeviceStream(context), stream_(stream) {}
+
+ErrorOrSuccess CUDADeviceStream::synchronize() const {
+  const auto &cuda_context = CUDADeviceContext::cast(context());
+
+  CUDA_CHECK_ERR(cuda_context.setCurrent());
+  CUDA_CHECK_ERR(cuda_context.cuda_driver().StreamSynchronize(stream_));
+  return success();
+}
+
 // ===== CUDADeviceFunctionArguments ===== //
 CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
     const CUDADeviceFunction &fn)
@@ -661,6 +674,10 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
   return cuda_func.cuda_callKernelDirect(
       gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
       reinterpret_cast<CUlaunchAttribute *>(attrs), num_attrs, args, stream_);
+}
+
+ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
+  return CUDADeviceStreamRef::create(*this, stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
