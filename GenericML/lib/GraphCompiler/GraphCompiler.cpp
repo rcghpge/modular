@@ -160,8 +160,15 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
   // Run shape inference and constant fold.
+  ShapeInferenceOptions shapeInferenceOpts;
+  shapeInferenceOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  shapeInferenceOpts.constantFold = opts.constantFold;
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+  shapeInferenceOpts.kernelLibraryPaths = kernelLibraryPaths;
+  shapeInferenceOpts.withDebuginfo = opts.withDebuginfo;
   if (opts.useShapeInference)
-    buildShapeInferencePipeline(pm);
+    buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
 
   // TODO(GRA-886): Remove dependency of constant folding for symbolic
   // optimization
@@ -178,9 +185,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-
-  auto kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
   pm.addPass(MO::createMergeDuplicateShapeMaterializations());
   pm.addPass(MO::createAddFallbackShapeFunctions({kernelLibraryPaths}));
@@ -385,10 +389,17 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
 void M::MO::buildShapeInferencePipelineDefaultOpts(
     mlir::OpPassManager &pm, const ShapeInferenceOptions &opts) {
-  buildShapeInferencePipeline(pm);
+  MoToMgpOptions moToMgpOptions;
+  moToMgpOptions.kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+  moToMgpOptions.withDebuginfo = opts.withDebuginfo;
+  moToMgpOptions.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  buildShapeInferencePipeline(pm, opts, moToMgpOptions);
 }
 
-void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
+void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm,
+                                        const ShapeInferenceOptions &opts,
+                                        const MoToMgpOptions &moToMgpOptions) {
   // This canonicalizer pass serves the following purposes:
   // 1. Convert static reshapes like `[D0] -> [1]` into rebind, otherwise
   //    staticization must alsp look through those reshapes for shape inputs.
