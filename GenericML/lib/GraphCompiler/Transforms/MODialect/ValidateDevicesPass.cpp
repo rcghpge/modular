@@ -41,9 +41,10 @@ struct ValidateDevicesPass
   const llvm::DenseMap<llvm::Triple::ArchType, llvm::SmallVector<DType>>
       unsupportedArchDTypeCombinations{
           {llvm::Triple::ArchType::aarch64,
-           {DType::bf16, DType::f8e5m2, DType::f8e4m3, DType::f8e3m4}},
+           {DType::f8e5m2, DType::f8e4m3, DType::f8e3m4, DType::f16,
+            DType::bf16}},
           {llvm::Triple::ArchType::x86_64,
-           {DType::f8e5m2, DType::f8e4m3, DType::f8e3m4}},
+           {DType::f8e5m2, DType::f8e4m3, DType::f8e3m4, DType::f16}},
       };
 
   bool isUnsupportedArchDTypeCombination(llvm::Triple::ArchType arch,
