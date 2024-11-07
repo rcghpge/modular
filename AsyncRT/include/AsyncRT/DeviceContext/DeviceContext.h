@@ -56,6 +56,8 @@ public:
 
   const std::string &name() const;
 
+  virtual ErrorOr<bool> canAccess(const Device &peer) const;
+
   static ErrorOr<int> numberOfDevices(const char *kind);
 
 protected:

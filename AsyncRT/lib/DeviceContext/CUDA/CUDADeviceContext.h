@@ -53,7 +53,7 @@ public:
 
   int id() const override;
 
-  ErrorOr<bool> canAccess(const CUDADevice &peer) const;
+  ErrorOr<bool> canAccess(const Device &peer) const override;
 
   static ErrorOr<int> numberOfDevices();
 

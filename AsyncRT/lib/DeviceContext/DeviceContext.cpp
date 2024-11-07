@@ -25,6 +25,8 @@ Device::Device(std::string name) : name_(std::move(name)) {}
 
 const std::string &Device::name() const { return name_; }
 
+ErrorOr<bool> Device::canAccess(const Device &peer) const { return false; }
+
 //
 // ===== DeviceBuffer ===== //
 //

@@ -321,3 +321,9 @@ AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
   *total = mem_info.total;
   return err_msg;
 }
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_canAccess(bool *result, const DeviceContext *ctx,
+                                const DeviceContext *peer) {
+  return check_val(result, false, ctx->device().canAccess(peer->device()));
+}

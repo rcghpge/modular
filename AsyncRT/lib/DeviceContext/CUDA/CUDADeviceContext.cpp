@@ -98,7 +98,7 @@ ErrorOr<int> CUDADevice::numberOfDevices() {
   return err_or_devices.get().size();
 }
 
-ErrorOr<bool> CUDADevice::canAccess(const CUDADevice &peer) const {
+ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
   int canAccessPeer = 0;
   CUDA_CHECK_ERR(driver_.DeviceCanAccessPeer(&canAccessPeer, id(), peer.id()));
   return canAccessPeer;
