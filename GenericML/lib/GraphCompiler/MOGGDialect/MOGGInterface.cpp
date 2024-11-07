@@ -26,7 +26,7 @@ buildMojoObjectInfosOutputMethodsDict(Operation *mojoKernelOp,
   if (!conformancesAttr) {
     return mojoKernel.emitError()
            << "no MOGG type conformance informations found (maybe kernel is "
-              "missing a register decorator like `@mogg_register`)";
+              "missing a register decorator like `@register_internal`)";
   }
 
   auto findMethod =

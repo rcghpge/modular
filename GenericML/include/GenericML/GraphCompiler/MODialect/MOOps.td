@@ -4471,7 +4471,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     Corresponding kernel definition:
 
     ```mojo
-      @mogg_register("test_custom_op")
+      @register_internal("test_custom_op")
       fn foo(...):
         pass
     ```
@@ -4492,7 +4492,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
       (!mo.buffer<[D1, D2], f32>, !mo.chain) -> !mo.chain
     ```
     ```mojo
-      @mogg_register("test_custom_op")
+      @register_internal("test_custom_op")
       fn foo(...):
         pass
     ```

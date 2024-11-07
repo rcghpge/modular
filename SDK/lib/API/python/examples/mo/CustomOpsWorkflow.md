@@ -78,7 +78,7 @@ from register import *
 Next step is mark the existing mojo function. That is given as follows
 
 ```mojo
-@mogg_register_override("mo.sqrt", 1)
+@register_internal_override("mo.sqrt", 1)
 @mogg_elementwise
 fn my_sqrt[
     type: DType, simd_width: Int
@@ -86,7 +86,7 @@ fn my_sqrt[
     ...
 ```
 
-`@mogg_register_override` decorator tells which `mo` operation to override
+`@register_internal_override` decorator tells which `mo` operation to override
 and what’s the priority of this implementation in the event there are
 multiple. `@mogg_elementwise` marks the kernel as an elementwise kernel, i.e
 a kernel which is implemented in terms of simd and is passed as a lambda to
