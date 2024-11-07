@@ -147,7 +147,9 @@ static void fuseCompiledRegionsAndReplaceUses(
       KGEN::ParamDeclArrayAttr::get(ctx, {}),
       InOutSignatureAttr::get(ctx, operandSemantics),
       firstRegionOp.getIsKGENAttr(),
-      /*summary=*/MOGG::getSummaryString(compiledRegionOpsToFuseTogether),
+      /*summary=*/
+      MOGG::getSummaryString(compiledRegionOpsToFuseTogether,
+                             MOGG::FusionType::SOFT),
       /*isAsync=*/BoolAttr::get(ctx, isAsync),
       /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
       canFuseIntoOther, canBeFusedInto, canDuplicate);

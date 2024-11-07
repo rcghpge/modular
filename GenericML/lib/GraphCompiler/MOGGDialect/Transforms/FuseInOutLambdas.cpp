@@ -232,7 +232,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Delete the <operand, argument> pair from which we fused.
     dstKernel.removeOperandAtIndex(inputIdx);
-    dstKernel.setSummaryAttr(getSummaryString({srcKernel, dstKernel}));
+    dstKernel.setSummaryAttr(
+        getSummaryString({srcKernel, dstKernel}, FusionType::HARD));
 
     // Delete the cloned kernel.
     opsToErase.push_back(srcKernel);
@@ -420,7 +421,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         BoolAttr::get(&getContext(), true));
 
     kernelToFuseInto.setSummaryAttr(
-        getSummaryString({kernelToFuseInto, inputKernel}));
+        getSummaryString({kernelToFuseInto, inputKernel}, FusionType::HARD));
 
     // Get rid of the original input kernel.
     opsToErase.push_back(inputKernel);
@@ -841,7 +842,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*fusionBodyLambda=*/kernelToFuseInto.getFusionBodyLambdaAttr(),
           /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
-          /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
+          /*summary=*/
+          getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD),
           /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
           /*allocIndices=*/ArrayAttr{},
           /*hasReadEffects*/ kernelToFuseInto.getHasReadEffect() ||
@@ -859,7 +861,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     }
 
     kernelToFuseInto.setSummaryAttr(
-        getSummaryString({kernelToFuseInto, userToFuseIn}));
+        getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD));
 
     originalOuts->replaceAllUsesWith(newOuts);
     srcSimdStoreOp.erase();
@@ -1093,7 +1095,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
       // Capture the fusion within the summary.
       kernelToFuseInto.setSummaryAttr(
-          getSummaryString({kernelToFuseInto, userToFuseIn}));
+          getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD));
 
       return kernelToFuseInto;
     }
@@ -1131,7 +1133,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*fusionBodyLambda=*/kernelToFuseInto.getFusionBodyLambdaAttr(),
           /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
           /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
-          /*summary=*/getSummaryString({kernelToFuseInto, userToFuseIn}),
+          /*summary=*/
+          getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD),
           /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
           /*allocIndices=*/ArrayAttr{},
           /*hasReadEffects*/ kernelToFuseInto.getHasReadEffect() ||
@@ -1153,7 +1156,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // than having two outputs.
     userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
     kernelToFuseInto.setSummaryAttr(
-        getSummaryString({kernelToFuseInto, userToFuseIn}));
+        getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD));
 
     return kernelToFuseInto;
   }

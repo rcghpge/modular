@@ -464,7 +464,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     mlir::sortTopologically(&leafBlock);
 
     // Update the leaf's summary to capture the producer's summary.
-    leaf.setSummaryAttr(getSummaryString({producerKernel, leaf}));
+    leaf.setSummaryAttr(
+        getSummaryString({producerKernel, leaf}, FusionType::SOFT));
   }
 
   DenseMap<KernelOp, MO::Static::ReshapeOp> lowerReshapeOps(MO::GraphOp graph) {

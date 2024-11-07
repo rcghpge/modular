@@ -12,12 +12,19 @@ using namespace M;
 
 namespace M::MOGG {
 
+enum class FusionType {
+  SOFT, // e.g. simply combine invocations into a single execution unit
+  HARD  // e.g. use lambda fusion interface
+};
+
 /// Returns a compact, human readable 'summary' of op, which can be used
 /// at runtime for debugging and profiling.
 StringAttr getSummaryString(Operation *op);
 
 /// Returns a compact, human readable 'summary' of the combination of ops.
-StringAttr getSummaryString(ArrayRef<Operation *> ops);
+// `fusionType` is used to help formatting to differentiate between soft and
+// hard fusion.
+StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType);
 
 /// Inline the given lambda into the call site of the invoke and return the new
 /// results which have replaced the old operation.

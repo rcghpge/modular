@@ -66,7 +66,7 @@ StringAttr getSummaryString(Operation *op) {
   return StringAttr::get(op->getContext(), name);
 }
 
-StringAttr getSummaryString(ArrayRef<Operation *> ops) {
+StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType) {
   assert(!ops.empty());
 
   if (ops.size() == 1)
@@ -74,9 +74,20 @@ StringAttr getSummaryString(ArrayRef<Operation *> ops) {
 
   std::string str;
   llvm::raw_string_ostream os(str);
-  llvm::interleave(
-      ops, os, [&os](Operation *op) { os << getSummaryString(op).getValue(); },
-      "+");
+  if (fusionType == FusionType::HARD) {
+    llvm::interleave(
+        ops, os,
+        [&os](Operation *op) { os << getSummaryString(op).getValue(); }, "+");
+  } else {
+    ASSERT_STREAM(fusionType == FusionType::SOFT,
+                  << "Expected soft fusion by default");
+    for (auto [i, op] : llvm::enumerate(ops)) {
+      os << "(" << getSummaryString(op).getValue() << ")";
+
+      if (i != ops.size() - 1)
+        os << "_";
+    }
+  }
   return StringAttr::get(ops.front()->getContext(), str);
 }
 

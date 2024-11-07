@@ -9,4 +9,4 @@ mo.graph @back2backBroadcastReshape<N, M, K, J>(%arg0: !mo.tensor<[K, M], f32>, 
 
 // CHECK-LABEL:   mo.graph @back2backBroadcastReshape
 // CHECK: summary = "mo.static.broadcast_to
-// CHECK: summary = "mo.static.reshape{{.*}}mo.add
+// CHECK: summary = "(mo.static.reshape:{{[0-9]+}})_(mo.add:{{[0-9]+}})

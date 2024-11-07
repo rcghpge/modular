@@ -311,7 +311,8 @@ struct FuseAffineViewsPass
     });
 
     kernel.setInputFusionInterfaceAttr(builder.getArrayAttr(fusedInterfaces));
-    kernel.setSummaryAttr(getSummaryString({gatherOp, kernel}));
+    kernel.setSummaryAttr(
+        getSummaryString({gatherOp, kernel}, FusionType::HARD));
     // Trivially dead.
     if (gatherOp->getUsers().empty())
       gatherOp->erase();

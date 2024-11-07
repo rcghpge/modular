@@ -111,7 +111,7 @@ struct FuseElementwisePass
           fuseSrcKernelIntoDstKernelMOGG(srcKernelOp, dstKernelOp);
 
         dstKernelOp.setSummaryAttr(
-            getSummaryString({srcKernelOp, dstKernelOp}));
+            getSummaryString({srcKernelOp, dstKernelOp}, FusionType::HARD));
         srcKernelOp.erase();
       }
 
