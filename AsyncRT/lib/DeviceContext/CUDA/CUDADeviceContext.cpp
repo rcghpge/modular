@@ -223,6 +223,8 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
   return success();
 }
 
+CUstream CUDADeviceStream::cuda_stream() const { return stream_; }
+
 // ===== CUDADeviceFunctionArguments ===== //
 CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
     const CUDADeviceFunction &fn)
@@ -735,12 +737,20 @@ const CUDADriver &CUDADeviceContext::cuda_driver() const { return driver_; }
 
 CUstream CUDADeviceContext::cuda_stream() const { return stream_; }
 
+CUcontext CUDADeviceContext::cuda_context() const { return context_; }
+
 CUDADriver::Result CUDADeviceContext::setCurrent() const {
   return driver_.CtxSetCurrent(context_);
 }
 
 const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CUDADeviceContext &>(ctx);
+}
+
+const CUDADeviceContext *
+CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
+  // TODO(iposva): Implement verification of the underlying device type.
+  return static_cast<const CUDADeviceContext *>(ctx);
 }
 
 ErrorOrSuccess CUDADeviceContext::isCompatibleWithMAX() const {

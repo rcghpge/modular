@@ -105,6 +105,8 @@ public:
 
   virtual ErrorOrSuccess synchronize() const override;
 
+  CUstream cuda_stream() const;
+
 private:
   CUstream stream_;
 };
@@ -259,15 +261,17 @@ public:
   ErrorOr<DeviceMemInfo> getMemoryInfo() const override;
 
   const CUDADriver &cuda_driver() const;
+  CUcontext cuda_context() const;
   CUstream cuda_stream() const;
-
-  static const CUDADeviceContext &cast(const DeviceContext &ctx);
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
   ErrorOrSuccess isCompatibleWithMAX() const override;
   ErrorOr<int> computeCapability() const override;
 
   CUDADriver::Result setCurrent() const;
+
+  static const CUDADeviceContext &cast(const DeviceContext &ctx);
+  static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
 
   static ErrorOr<CUDADeviceContextRef> create(int id);
 

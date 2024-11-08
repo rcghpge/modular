@@ -9,6 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "Support/SymbolExport.h"
 
 #include <chrono>
@@ -347,4 +349,29 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_canAccess(bool *result, const DeviceContext *ctx,
                                 const DeviceContext *peer) {
   return check_val(result, false, ctx->device().canAccess(peer->device()));
+}
+
+//
+// Raw CUDA accessors
+//
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_cuda_context(CUcontext *result,
+                                   const DeviceContext *ctx) {
+  const CUDADeviceContext *verified_ctx = CUDADeviceContext::verified_cast(ctx);
+  if (verified_ctx == nullptr) {
+    return strdup("Not a CUDAContext");
+  }
+  *result = verified_ctx->cuda_context();
+  return nullptr;
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceStream_cuda_stream(CUstream *result, const DeviceStream *stream) {
+  const CUDADeviceStream *verified_stream =
+      static_cast<const CUDADeviceStream *>(stream);
+  if (verified_stream == nullptr) {
+    return strdup("Not a CUDAStream");
+  }
+  *result = verified_stream->cuda_stream();
+  return nullptr;
 }
