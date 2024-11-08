@@ -1646,6 +1646,28 @@ void AlignmentPlaceholderOp::walkDefinitions(
 }
 
 //===----------------------------------------------------------------------===//
+// ToKGENOp
+//===----------------------------------------------------------------------===//
+
+KGEN::ParamDeclRefAttr ToKGENOp::getStaticTensorRefAttr() {
+  StringAttr name = getStaticTensorSpecNameAttr();
+  ASSERT_STREAM(name != nullptr, << "staticTensorSpecName attr is null");
+
+  // ToKGEN should always be in the outermost block of the kernel
+  // And same for the ParamDeclareOp.
+  for (auto declareOp :
+       getOperation()->getBlock()->getOps<KGEN::ParamDeclareOp>()) {
+    if (declareOp.getParamDecl().getName() == name)
+      return KGEN::ParamDeclRefAttr::get(declareOp.getParamDecl());
+  }
+
+  ASSERT_STREAM(false, << "KGEN::ParamDeclareOp not found in kernel body for "
+                          "staticTensorSpec named "
+                       << name);
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

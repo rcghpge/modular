@@ -365,27 +365,28 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
       alreadyFused[operand] = stackAlloc;
 
-      auto newStaticTensorSpec = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
-          producerKernelToKGEN.getStaticTensorSpecAttr());
-      DenseSet<KGEN::ParamDeclRefAttr> oldStrideParams;
+      KGEN::ParamDeclRefAttr newStaticTensorSpec = nullptr;
+      DenseSet<StringAttr> oldStrideParams;
       // Iterating through all the mogg.to_kgen that relate to the output of the
       // view we are fusing in.
       for (auto value : kgenOut) {
-        auto oldStaticTensorSpec = dyn_cast_or_null<KGEN::ParamDeclRefAttr>(
-            value.getDefiningOp<ToKGENOp>().getStaticTensorSpecAttr());
-        if (oldStaticTensorSpec)
-          oldStrideParams.insert(oldStaticTensorSpec);
+        StringAttr oldStaticTensorSpecName =
+            value.getDefiningOp<ToKGENOp>().getStaticTensorSpecNameAttr();
+        if (oldStaticTensorSpecName)
+          oldStrideParams.insert(oldStaticTensorSpecName);
       }
 
       mlir::AttrTypeReplacer walker;
       walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
                                 -> std::optional<KGEN::ParamDeclRefAttr> {
-        if (oldStrideParams.contains(attr)) {
+        if (oldStrideParams.contains(attr.getName())) {
           ASSERT_STREAM(
-              newStaticTensorSpec,
+              producerKernelToKGEN.getStaticTensorSpecNameAttr() != nullptr,
               << "Expected strides to be a parameter declaration reference. "
                  "Maybe "
                  "the view kernel was not explicitly parametrized on strides?");
+          if (newStaticTensorSpec == nullptr)
+            newStaticTensorSpec = producerKernelToKGEN.getStaticTensorRefAttr();
           return newStaticTensorSpec;
         }
         return std::nullopt;

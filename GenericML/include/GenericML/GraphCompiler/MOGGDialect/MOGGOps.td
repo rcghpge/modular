@@ -1007,7 +1007,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
   }];
 
   let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_Buffer, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MGP_List, MO_List, MO_Opaque]>:$input,
-    OptionalAttr<KGEN_ParamDeclRefAttr>:$staticTensorSpec,
+    OptionalAttr<Builtin_StringAttr>:$staticTensorSpecName,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict,
     UnitAttr:$isRegisterType
   );
@@ -1016,6 +1016,10 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
   let extraClassDeclaration = [{
     /// Necessary to implement MojoObjectInfosInterface.
     Value getKGENMojoValueImpl() { return getResults(); }
+
+    /// Returns the ParamParamDeclRefAttr associated to the staticTensorSpec.
+    /// Or asserts if staticTensorSpecName is null or the definition is not found
+    KGEN::ParamDeclRefAttr getStaticTensorRefAttr();
   }];
 }
 
