@@ -300,10 +300,8 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
     auto condition = operands[0];
     auto trueValue = operands[1];
     auto falseValue = operands[2];
-    condition = builder.createOrFold<KGEN::POP::CastToBuiltinOp>(
-        loc, builder.getI1Type(), condition);
-    return builder.create<KGEN::POP::SelectOp>(loc, resultType, condition,
-                                               trueValue, falseValue);
+    return builder.create<KGEN::POP::SIMDSelectOp>(loc, resultType, condition,
+                                                   trueValue, falseValue);
   }
   default:
     return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");

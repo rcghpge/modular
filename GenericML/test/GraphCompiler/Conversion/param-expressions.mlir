@@ -171,17 +171,16 @@ mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
   // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
   // CHECK-DAG: %[[CMP:.*]] = pop.cmp le(%[[D0]], %[[D1]])
-  // CHECK-DAG: %[[BOOL:.*]] = pop.cast_to_builtin %[[CMP]] : !pop.scalar<bool> to i1
   kgen.param.declare B: i1 = <le(:si64 X, Y)>
 
-  // CHECK-DAG: %[[COND0:.*]] = pop.select %[[BOOL]], %[[D0]], %[[D1]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[COND0:.*]] = pop.simd.select %[[CMP]], %[[D0]], %[[D1]] : <1, si64>
   kgen.param.declare M0: si64 = <cond(B, X, Y)>
 
-  // CHECK-DAG: %[[COND1:.*]] = pop.select %[[BOOL]], %[[D1]], %[[D0]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[COND1:.*]] = pop.simd.select %[[CMP]], %[[D1]], %[[D0]] : <1, si64>
   kgen.param.declare M1: si64 = <cond(B, Y, X)>
 
   // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
-  // CHECK-DAG: %[[COND2:.*]] = pop.select %[[BOOL]], %[[COND0]], %[[C2]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[COND2:.*]] = pop.simd.select %[[CMP]], %[[COND0]], %[[C2]] : <1, si64>
   //     CHECK: mef.output
   kgen.param.declare M2: si64 = <cond(B, M0, 2)>
   mo.output
