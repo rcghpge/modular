@@ -15,6 +15,7 @@ modular_py_binary(
         requirement("click"),
         requirement("huggingface_hub"),
         "//SDK/lib/API/python/max/serve",
+        "//SDK/pipelines/pixtral",
         "//SDK/public/max-repo/pipelines/python/dataprocessing",
         "//SDK/public/max-repo/pipelines/python/llama3",
         "//SDK/public/max-repo/pipelines/python/mistral",
