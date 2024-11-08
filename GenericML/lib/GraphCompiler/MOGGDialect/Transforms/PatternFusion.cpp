@@ -2020,56 +2020,6 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
   // For CPU annotated operations do this rewrite
   void rewriteCPU(BatchMatmulOp rootOp, PatternRewriter &rewriter,
                   MultiHeadAttentionPatternHelper &matcher) const {
-    // We have a flash attention and fused attention kernel.
-    //
-    // The fused attention kernel mainly combines some kernel launches and does
-    // an in-place softmax which leads to some minor gains.
-    //
-    // Flash attention follows the ideas of the original paper by Tri Dao et al.
-    // and uses a rematerialization optimization to avoid putting the attention
-    // matrix in memory, instead always accumulating to the output tensor.
-    //
-    // - QKV are `N x D` where `N` is `seq_len` and `D` is the embedding dim.
-    // - attentionMatrix = Q @ K_T is `N x N`
-    // - answer = softmax(attentionMatrix) @ V is `N x D`
-    //
-    // N >> D in most contexts (e.g. N = 1024, D = 64 or 128). So avoiding
-    // the `N x N` matrix in memory has gains if `N / D` is large. However
-    // if `N / D` is small (e.g. N ~= D) then there is no real gain and we
-    // pay more compute for rematerializing chunks of the attention matrix.
-    // In these scenarios we want to use the fused kernel instead.
-    //
-    // N is of course variable for LLMs, so heuristically we have determined if
-    // D >= 256 we want to use flash attention.
-    //
-    // NOTE: This heuristic was tuned for (intel) CPUs! GPUs may differ
-    //
-    // A heuristic tuned on `N / D` may be marginally better in some scenarios
-    // (i.e. for some vision models) if it is a static quantity.
-
-    // Use flash attention kernel if embedding dimension is smaller than this
-    static const int64_t FLASH_ATTENTION_EMBEDDING_DIM_MAX_SIZE = 256;
-    auto getEmbeddingDimension = [&]() -> std::optional<int64_t> {
-      // At this point, QKV are guaranteed to be ranked and have same rank.
-      int64_t qkvRank = matcher.getQuery().getType().getRank();
-
-      // QV are layout BHSD, KT is BHDS
-      int64_t queryD = matcher.getQuery().getType().getIntDim(qkvRank - 1);
-      if (queryD != mlir::ShapedType::kDynamic)
-        return queryD;
-      int64_t keyTD = matcher.getKeyT().getType().getIntDim(qkvRank - 2);
-      if (keyTD != mlir::ShapedType::kDynamic)
-        return keyTD;
-      int64_t valueD = matcher.getValue().getType().getIntDim(qkvRank - 1);
-      if (valueD != mlir::ShapedType::kDynamic)
-        return valueD;
-      return std::nullopt;
-    };
-    std::optional<int64_t> embeddingDim = getEmbeddingDimension();
-    bool useFlashAttention =
-        embeddingDim.has_value() &&
-        embeddingDim <= FLASH_ATTENTION_EMBEDDING_DIM_MAX_SIZE;
-
     // NOTE: the creation of `matcher` must imply future success()
     // as it has a handle to the rewriter which can be used to create new ops.
     // Creating new ops and then returning failure may result in the pass
@@ -2128,9 +2078,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       TypeRange outputTy(outputTypes);
       rewriter.setInsertionPointAfterValue(rootOp);
       auto result = rewriter.create<CustomOp>(
-          rootOp->getLoc(), outputTy, inputs,
-          useFlashAttention ? "with_mask_flash_attention_cpu"
-                            : "with_mask_fused_attention_cpu");
+          rootOp->getLoc(), outputTy, inputs, "with_mask_flash_attention_cpu");
       auto fusedKernelResult = cast<TensorValue>(result->getResult(0));
       fusedKernelResult.setType(fusedKernelOutType);
 
@@ -2145,9 +2093,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       TypeRange outputTy(outputTypes);
       rewriter.setInsertionPointAfterValue(rootOp);
       auto result = rewriter.create<CustomOp>(
-          rootOp->getLoc(), outputTy, inputs,
-          useFlashAttention ? "no_mask_flash_attention_cpu"
-                            : "no_mask_fused_attention_cpu");
+          rootOp->getLoc(), outputTy, inputs, "no_mask_flash_attention_cpu");
 
       auto fused_kernel_result = cast<TensorValue>(result->getResult(0));
       fused_kernel_result.setType(rootOp.getType());
