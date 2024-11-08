@@ -108,3 +108,41 @@ mo.graph @fusion_with_slice(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.tensor<[3, 
   %5 = mo.negative(%4) : !mo.tensor<[3, 3], f32>
   mo.output %5 : !mo.tensor<[3, 3], f32>
 }
+
+// CHECK-LABEL: dont_merge_loads_across_blocks
+// CHECK: mo.mutable.load
+// CHECK: mo.if
+mo.graph @dont_merge_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %arg1: !mo.tensor<[], bool>) -> !mo.buffer<[2, 2], f32> {
+  %0 = mo.chain.create()
+  // COM: we expect the load below to be preserved as we don't merge descendants from another block.
+  %outChain, %outTensor = mo.mutable.load(%0, %arg0) : (!mo.chain, !mo.buffer<[2, 2], f32>) -> (!mo.chain, !mo.tensor<[2, 2], f32>)
+  mo.if(%arg1 : !mo.tensor<[], bool>) {
+    %outChain_0, %outTensor_1 = mo.mutable.load(%outChain, %arg0) : (!mo.chain, !mo.buffer<[2, 2], f32>) -> (!mo.chain, !mo.tensor<[2, 2], f32>)
+    %1 = mo.negative(%outTensor_1) : !mo.tensor<[2, 2], f32>
+    %2 = mo.mutable.store(%outChain_0, %arg0, %1) : (!mo.chain, !mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.chain
+  } else {
+  }
+  mo.output %arg0 : !mo.buffer<[2, 2], f32>
+}
+
+
+// CHECK-LABEL: dont_parallelize_loads_across_blocks
+// CHECK: {{.*}}, [[tensor:%.*]] = mo.mutable.load
+// CHECK: mo.if
+// CHECK: mogg.kernel ([[tensor]], [[tensor]])
+// CHECK: else
+// CHECK: mogg.kernel ([[tensor]])
+mo.graph @dont_parallelize_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %arg1: !mo.tensor<[], bool>) -> !mo.buffer<[2, 2], f32> {
+  %1 = mo.chain.create()
+  %outChain, %outTensor = mo.mutable.load(%1, %arg0) : (!mo.chain, !mo.buffer<[2, 2], f32>) -> (!mo.chain, !mo.tensor<[2, 2], f32>)
+  %2 = mo.if(%arg1 : !mo.tensor<[], bool>) -> !mo.chain {
+    %3 = mo.add(%outTensor, %outTensor) : !mo.tensor<[2, 2], f32>
+    %4 = mo.mutable.store(%outChain, %arg0, %3) : (!mo.chain, !mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.chain
+    mo.yield %4 : !mo.chain
+  } else {
+    %3 = mo.negative(%outTensor) : !mo.tensor<[2, 2], f32>
+    %4 = mo.mutable.store(%outChain, %arg0, %3) : (!mo.chain, !mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.chain
+    mo.yield %4 : !mo.chain
+  }
+  mo.output %arg0 : !mo.buffer<[2, 2], f32>
+}

@@ -88,6 +88,10 @@ public:
       return OpaqueType::get(type.getContext(), type.getSymbol(), std::nullopt);
     });
 
+    typeConverter.addConversion([](MO::ChainType type) -> std::optional<Type> {
+      return MEF::ChainType::get(type.getContext());
+    });
+
     // Add converters for foreign types via the ConvertibleToMGPTypeInterface.
     typeConverter.addConversion([](Type type) -> std::optional<Type> {
       if (auto interface = dyn_cast<ConvertibleToMGPTypeInterface>(type))

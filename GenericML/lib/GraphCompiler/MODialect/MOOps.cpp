@@ -4131,13 +4131,19 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
         "Upstream mo.mutable.load op does not operate on same buffer.");
   }
 
+  // Only collapse loads if they're in the same block
+  if (upstreamLoadOp->getBlock() != loadOp->getBlock()) {
+    return rewriter.notifyMatchFailure(
+        loadOp.getLoc(),
+        "Upstream mo.mutable.load op is in a different block.");
+  }
+
   rewriter.replaceAllUsesWith(loadOp.getOutChain(),
                               upstreamLoadOp.getOutChain());
   rewriter.replaceAllUsesWith(loadOp.getOutTensor(),
                               upstreamLoadOp.getOutTensor());
 
   // DCE in the canonicalization pass will take care of deleting loadOp
-
   return success();
 }
 

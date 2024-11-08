@@ -44,6 +44,14 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
     return std::nullopt;
   }
 
+  if (loadOp->getBlock() != (*tensor.getUsers().begin())->getBlock()) {
+    LLVM_DEBUG(
+        loadOp.emitRemark()
+        << "Mutable load fusion is disabled for this load op as its "
+           "output tensor is produced in a different block than its user.");
+    return std::nullopt;
+  }
+
   MOGG::KernelOp kernelOp = dyn_cast<KernelOp>(*tensor.getUsers().begin());
 
   if (!kernelOp)
@@ -239,6 +247,19 @@ struct ParallelizeLoadsWithMultipleUsers
           "parallelization pattern.");
     }
 
+    auto *loadBlock = loadOp->getBlock();
+
+    // Check if any uses are in a different block - if so, early exit
+    for (OpOperand &use : tensor.getUses()) {
+      if (use.getOwner()->getBlock() != loadBlock) {
+        // TODO(GRA-1203): Add support for cross-block load parallelization
+        return rewriter.notifyMatchFailure(
+            loadOp.getLoc(),
+            "Found use of output tensor in different block than load op, "
+            "skipping parallelization to maintain cross-block semantics");
+      }
+    }
+
     auto chainType = MO::ChainType::get(loadOp.getContext());
     auto outTensor = loadOp.getOutTensor();
 
@@ -300,7 +321,7 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
       return signalPassFailure();
 
     LLVM_DEBUG(llvm::dbgs() << "Graph after load parallelization:\n";
-               moGraph.print(llvm::dbgs()););
+               moGraph.print(llvm::dbgs()); llvm::dbgs() << '\n');
 
     SmallVector<MO::MutableLoadOp> loadOps;
     moGraph.walk([&](MO::MutableLoadOp loadOp) { loadOps.push_back(loadOp); });
