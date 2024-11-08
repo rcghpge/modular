@@ -129,6 +129,12 @@ public:
                                 const HIPDeviceFunctionArguments &args,
                                 hipStream_t stream) const;
 
+  ErrorOrSuccess hip_callKernelDirect(uint32_t gridX, uint32_t gridY,
+                                      uint32_t gridZ, uint32_t blockX,
+                                      uint32_t blockY, uint32_t blockZ,
+                                      uint32_t sharedMemBytes, void **args,
+                                      hipStream_t stream) const;
+
   static const HIPDeviceFunction &cast(const DeviceFunction &func);
 
 private:

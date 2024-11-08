@@ -261,6 +261,18 @@ ErrorOrSuccess HIPDeviceFunction::hip_callKernel(
   return success();
 }
 
+ErrorOrSuccess HIPDeviceFunction::hip_callKernelDirect(
+    uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
+    uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes, void **args,
+    hipStream_t stream) const {
+  const auto &hip_context = HIPDeviceContext::cast(context());
+
+  HIP_CHECK_ERR(hip_context.hip_driver().ModuleLaunchKernel(
+      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
+      stream, args, nullptr));
+  return success();
+}
+
 const std::string &HIPDeviceFunction::name() const { return name_; }
 
 ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
@@ -526,7 +538,12 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t num_attrs, void **args) const {
-  return Error("not implemented yet: enqueueFunctionExecDirect");
+
+  const auto &hipFunc = HIPDeviceFunction::cast(func);
+  if (num_attrs > 0)
+    RAISE_ERROR("Function launch attributes not supported;");
+  return hipFunc.hip_callKernelDirect(gridX, gridY, gridZ, blockX, blockY,
+                                      blockZ, sharedMemBytes, args, stream_);
 }
 
 ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
