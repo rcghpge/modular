@@ -472,4 +472,16 @@ def HoistHarness: Pass<"hoist-harness", "mlir::ModuleOp"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// AddStackTracesToAssertsPass
+//===----------------------------------------------------------------------===//
+
+def AddStackTracesToAssertsPass : Pass<"add-stack-traces-to-asserts", "MGP::ModelOp"> {
+  let summary = "Adds stack traces to all asserts";
+  let description = [{
+    Adds a stack trace to all assert messages in the ir. The stack traces
+    are based off of the locations of the asserts.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD

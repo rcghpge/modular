@@ -351,6 +351,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MGP::createHoistHarness());
 
+  // Before any sort of fusion, use location information to create better
+  // runtime assert messages.
+  pm.addPass(MGP::createAddStackTracesToAssertsPass());
+
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.withDebuginfo = opts.withDebuginfo;
