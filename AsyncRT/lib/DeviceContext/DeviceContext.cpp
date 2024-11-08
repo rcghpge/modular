@@ -176,6 +176,16 @@ DeviceContext::DeviceContext(const Device &device)
 
 const Device &DeviceContext::device() const { return *device_; }
 
+ErrorOrSuccess
+DeviceContext::enablePeerAccess(const DeviceContext &peerContext) const {
+  return success();
+}
+
+ErrorOrSuccess
+DeviceContext::disablePeerAccess(const DeviceContext &peerContext) const {
+  return success();
+}
+
 ErrorOr<int> DeviceContext::getDriverVersion() const { return 0; };
 
 ErrorOr<int> DeviceContext::getAttribute(Attribute attr) const { return 0; }

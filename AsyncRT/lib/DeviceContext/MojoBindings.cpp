@@ -351,6 +351,18 @@ AsyncRT_DeviceContext_canAccess(bool *result, const DeviceContext *ctx,
   return check_val(result, false, ctx->device().canAccess(peer->device()));
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_enablePeerAccess(const DeviceContext *ctx,
+                                       const DeviceContext *peer) {
+  return check_success(ctx->enablePeerAccess(*peer));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_disablePeerAccess(const DeviceContext *ctx,
+                                        const DeviceContext *peer) {
+  return check_success(ctx->disablePeerAccess(*peer));
+}
+
 //
 // Raw CUDA accessors
 //

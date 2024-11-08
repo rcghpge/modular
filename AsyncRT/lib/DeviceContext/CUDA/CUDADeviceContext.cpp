@@ -532,6 +532,27 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
   return success();
 }
 
+ErrorOrSuccess
+CUDADeviceContext::enablePeerAccess(const DeviceContext &peerContext) const {
+  // Ensure that the peer context is also a CUDADeviceContext
+  CUDA_CHECK(setCurrent());
+  const CUDADeviceContext &cudaPeerContext =
+      static_cast<const CUDADeviceContext &>(peerContext);
+  CUDA_CHECK_ERR(driver_.CtxEnablePeerAccess(cudaPeerContext.context_, 0));
+  return success();
+}
+
+ErrorOrSuccess
+CUDADeviceContext::disablePeerAccess(const DeviceContext &peerContext) const {
+  // Ensure that the peer context is also a CUDADeviceContext
+  CUDA_CHECK(setCurrent());
+  const CUDADeviceContext &cudaPeerContext =
+      static_cast<const CUDADeviceContext &>(peerContext);
+
+  CUDA_CHECK_ERR(driver_.CtxDisablePeerAccess(cudaPeerContext.context_));
+  return success();
+}
+
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,

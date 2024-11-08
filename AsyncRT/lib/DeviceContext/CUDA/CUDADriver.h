@@ -160,6 +160,13 @@ public:
     return cuDeviceCanAccessPeer_(canAccessPeer, dev, peerDev);
   }
 
+  Result CtxEnablePeerAccess(CUcontext ctx, unsigned int flags) const {
+    return cuCtxEnablePeerAccess_(ctx, flags);
+  }
+  Result CtxDisablePeerAccess(CUcontext ctx) const {
+    return cuCtxDisablePeerAccess_(ctx);
+  }
+
   Result MemcpyHtoD(CUdeviceptr dstDevice, const void *srcHost,
                     size_t bytesize) const {
     return cuMemcpyHtoD_v2_(dstDevice, srcHost, bytesize);
@@ -353,6 +360,12 @@ private:
 
   using tcuDeviceCanAccessPeer = Result(int *, CUdevice, CUdevice);
   tcuDeviceCanAccessPeer *cuDeviceCanAccessPeer_;
+
+  using tcuCtxEnablePeerAccess = Result(CUcontext, unsigned int);
+  tcuCtxEnablePeerAccess *cuCtxEnablePeerAccess_;
+
+  using tcuCtxDisablePeerAccess = Result(CUcontext);
+  tcuCtxDisablePeerAccess *cuCtxDisablePeerAccess_;
 
   using tcuMemcpyHtoD_v2 = Result(CUdeviceptr, const void *, size_t);
   tcuMemcpyHtoD_v2 *cuMemcpyHtoD_v2_;

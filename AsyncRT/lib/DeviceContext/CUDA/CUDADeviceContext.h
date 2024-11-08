@@ -227,6 +227,12 @@ public:
   ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
                            size_t elem_size, SyncMode mode) const override;
 
+  // Peer-to-peer memory access.
+  ErrorOrSuccess
+  enablePeerAccess(const DeviceContext &peerContext) const override;
+  ErrorOrSuccess
+  disablePeerAccess(const DeviceContext &peerContext) const override;
+
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef> loadFunction(
       const char *function_name,
