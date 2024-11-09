@@ -73,6 +73,19 @@ void fuseConstant(MOGG::KernelOp kernel);
 /// kernels should be prefaced with a call to this function.
 void stageKernelsForFusion(ArrayRef<Operation *> kernelOps);
 
+/// Helper function for "soft" fusing kernels.
+/// - It is expected that all kernels in `kernelOpsToFuseTogether` are sorted
+/// topologically.
+/// - The end result is a single kernel where results are guaranteed to be used
+/// from the outside.
+/// - Operands can be duplicated.
+/// - There is no attempt at maintaining optional attributes which means some
+/// optional attributes are set to their reasonable default (isAsync = false,
+/// isViewOp = false).
+/// - There is no attempt at checking if the fusion would create a cycle.
+Operation *sequenceFuseKernelsAndReplaceUses(
+    ArrayRef<Operation *> kernelOpsToFuseTogether);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H

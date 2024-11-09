@@ -337,4 +337,253 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
   }
 }
 
+/// Helper function for "soft" fusing kernels.
+/// - It is expected that all kernels in `kernelOpsToFuseTogether` are sorted
+/// topologically.
+/// - The end result is a single kernel where results are guaranteed to be used
+/// from the outside.
+/// - Operands can be duplicated.
+/// - There is no attempt at maintaining optional attributes which means some
+/// optional attributes are set to their reasonable default (isAsync = false,
+/// isViewOp = false).
+/// - There is no attempt at checking if the fusion would create a cycle.
+Operation *sequenceFuseKernelsAndReplaceUses(
+    ArrayRef<Operation *> kernelOpsToFuseTogether) {
+  if (kernelOpsToFuseTogether.size() < 2)
+    return nullptr;
+
+  // Gather all outside results and operands of all kernels to be fused.
+  llvm::SetVector<Value> allResults;
+  llvm::SetVector<Value> allOperands;
+  for (Operation *op : kernelOpsToFuseTogether) {
+    auto results = op->getResults();
+    auto operands = op->getOperands();
+    allResults.insert(results.begin(), results.end());
+    allOperands.insert(operands.begin(), operands.end());
+  }
+
+  // FusedOperations = AllOperands - AllResults
+  // This is because operands that belong to AllResults will be accessible from
+  // within the kernel. Otherwise, a cycle would be created.
+  llvm::SetVector<Value> fusedKernelOperands = allOperands;
+  fusedKernelOperands.set_subtract(allResults);
+
+  // Determine the outputs of the fused kernel by checking if all users are
+  // inside the kernels to be fused. Otherwise, there is no point in returning
+  // them.
+  mlir::DenseSet<Operation *> kernelOpsToFuseTogetherAsSet(
+      kernelOpsToFuseTogether.begin(), kernelOpsToFuseTogether.end());
+  SmallVector<Value> valuesThatShouldBeReplaced;
+  for (Value result : allResults) {
+    if (!llvm::all_of(result.getUsers(), [&](auto user) {
+          return kernelOpsToFuseTogetherAsSet.contains(user);
+        })) {
+      valuesThatShouldBeReplaced.push_back(result);
+    }
+  }
+
+  // Create the output types which is just a 1:1 translation from Value -> Type.
+  SmallVector<Type> fusedKernelResultTypes;
+  for (Value result : valuesThatShouldBeReplaced)
+    fusedKernelResultTypes.push_back(result.getType());
+
+  // Create the kernel skeleton which is possible now that we have input
+  // operands and output types.
+  auto ctx = kernelOpsToFuseTogether.front()->getContext();
+  OpBuilder builder(ctx);
+  Location loc = kernelOpsToFuseTogether.back()->getLoc();
+  builder.setInsertionPointAfter(kernelOpsToFuseTogether.back());
+
+  bool hasReadEffect =
+      llvm::any_of(kernelOpsToFuseTogether, [&](auto kernelOp) {
+        return cast<KernelOp>(kernelOp).getHasReadEffect();
+      });
+  bool hasWriteEffect =
+      llvm::any_of(kernelOpsToFuseTogether, [&](auto kernelOp) {
+        return cast<KernelOp>(kernelOp).getHasWriteEffect();
+      });
+  // All kernels should have the same device.
+  auto deviceRef =
+      cast<KernelOp>(kernelOpsToFuseTogether.front()).getDeviceRef();
+  ASSERT_STREAM(llvm::all_of(kernelOpsToFuseTogether,
+                             [&](auto kernelOp) {
+                               return cast<KernelOp>(kernelOp).getDeviceRef() ==
+                                      deviceRef;
+                             }),
+                << "Not all kernels to fuse have the same device!");
+
+  auto fusedKernelOp = builder.create<KernelOp>(
+      loc,
+      /*results=*/fusedKernelResultTypes,
+      /*operands=*/fusedKernelOperands.getArrayRef(),
+      /*outputParamDecls=*/
+      builder.getAttr<KGEN::ParamDeclArrayAttr>(
+          ArrayRef<KGEN::ParamDeclAttr>()),
+      /*inputFusionInterface=*/ArrayAttr{},
+      /*outputFusionInterface=*/ArrayAttr{},
+      /*fusionBodyLambda=*/StringAttr{},
+      /*isViewOp=*/BoolAttr{},
+      /*isKGEN=*/BoolAttr::get(ctx, true),
+      /*summary=*/getSummaryString(kernelOpsToFuseTogether, FusionType::SOFT),
+      /*isAsync=*/BoolAttr{},
+      /*allocIndices=*/ArrayAttr{},
+      /*hasReadEffect*/ hasReadEffect,
+      /*hasWriteEffect*/ hasWriteEffect,
+      /*device*/ deviceRef);
+
+  mlir::Block &newBody = fusedKernelOp.getBody().emplaceBlock();
+
+  // Create the kernel arguments and map outside values to inside arguments.
+  mlir::DenseMap<Value, Value> outsideOperandToNewArgument;
+  for (Value operand : fusedKernelOperands) {
+    auto newArg = newBody.addArgument(operand.getType(), loc);
+    outsideOperandToNewArgument[operand] = newArg;
+  }
+
+  // Iterate through all memory allocations of all kernels to fuse and create
+  // vectors of Type/Value which we will use to replicate them in the fused
+  // kernel. Note that there is no guarantee that there will be any allocation
+  // or any return value which is why everything is guarded by if-statements.
+  SmallVector<Type> outputPlaceholderTypes;
+  SmallVector<Type> stackAllocationTypes;
+  SmallVector<Type> emptyAllocationTypes;
+  SmallVector<Value> oldOutputPlaceholderValues;
+  SmallVector<Value> oldStackAllocationTypes;
+  SmallVector<Value> oldEmptyAllocationValuesForBothKernels;
+  SmallVector<Value> oldReturnValues;
+  for (Operation *op : kernelOpsToFuseTogether) {
+    auto asKernelOp = cast<KernelOp>(op);
+    auto placeholdersOp = asKernelOp.getOutputPlaceholder();
+    auto stackAllocationOp = asKernelOp.getStackAllocateTensor();
+    auto emptyAllocationOp = asKernelOp.getCreateEmptyTensor();
+    auto outputOp = asKernelOp.getOutputOp();
+
+    if (placeholdersOp) {
+      auto resultTypes = placeholdersOp->getResultTypes();
+      auto results = placeholdersOp->getResults();
+      outputPlaceholderTypes.append(resultTypes.begin(), resultTypes.end());
+      oldOutputPlaceholderValues.append(results.begin(), results.end());
+    }
+    if (stackAllocationOp) {
+      auto resultTypes = stackAllocationOp->getResultTypes();
+      auto results = stackAllocationOp->getResults();
+      stackAllocationTypes.append(resultTypes.begin(), resultTypes.end());
+      oldStackAllocationTypes.append(results.begin(), results.end());
+    }
+    if (emptyAllocationOp) {
+      auto resultTypes = emptyAllocationOp->getResultTypes();
+      auto results = emptyAllocationOp->getResults();
+      emptyAllocationTypes.append(resultTypes.begin(), resultTypes.end());
+      oldEmptyAllocationValuesForBothKernels.append(results.begin(),
+                                                    results.end());
+    }
+    if (outputOp) {
+      auto operands = outputOp.getOperands();
+      auto outsideValues = op->getResults();
+      // For all <output operands, kernel results>, if the result is used at
+      // least once outside of the set of kernels to fuse, then it will be part
+      // of the new return op.
+      for (auto [insideValue, outsideValue] :
+           llvm::zip(operands, outsideValues)) {
+        if (!llvm::all_of(outsideValue.getUsers(), [&](auto user) {
+              return kernelOpsToFuseTogetherAsSet.contains(user);
+            })) {
+          oldReturnValues.push_back(insideValue);
+        }
+      }
+    }
+  }
+
+  // Use the previously created vectors of Value to create new allocations in
+  // the fused kernel and remap them.
+  IRMapping remapper;
+  builder.setInsertionPoint(&newBody, newBody.begin());
+  if (!outputPlaceholderTypes.empty()) {
+    auto newPlaceholdersOp =
+        builder.create<MOGG::OutputPlaceholdersOp>(loc, outputPlaceholderTypes);
+    auto results = newPlaceholdersOp->getResults();
+    for (auto [oldValue, newValue] :
+         llvm::zip(oldOutputPlaceholderValues, results)) {
+      remapper.map(oldValue, newValue);
+    }
+  }
+  if (!stackAllocationTypes.empty()) {
+    auto newStackAllocateOp =
+        builder.create<MOGG::StackAllocateTensorsOp>(loc, stackAllocationTypes);
+    auto results = newStackAllocateOp->getResults();
+    for (auto [oldValue, newValue] :
+         llvm::zip(oldStackAllocationTypes, results)) {
+      remapper.map(oldValue, newValue);
+    }
+  }
+  if (!emptyAllocationTypes.empty()) {
+    auto newEmptyTensorsOp =
+        builder.create<MOGG::CreateEmptyTensorsOp>(loc, emptyAllocationTypes);
+    auto results = newEmptyTensorsOp->getResults();
+    for (auto [oldValue, newValue] :
+         llvm::zip(oldEmptyAllocationValuesForBothKernels, results)) {
+      remapper.map(oldValue, newValue);
+    }
+  }
+
+  // For each kernel to fuse, create a mapping of old outside results to new
+  // inside value (one of the allocations we created). This is used to map old
+  // kernel body arguments to new allocations. Without this, we can't know if we
+  // should map to a new body argument or an internal allocation.
+  mlir::DenseMap<Value, Value> outsideResultToNewInsideValue;
+  for (Operation *op : kernelOpsToFuseTogether) {
+    auto asKernelOp = cast<KernelOp>(op);
+    for (auto [outputOperand, kernelResult] :
+         llvm::zip(asKernelOp.getOutputOp()->getOperands(),
+                   asKernelOp->getResults())) {
+      auto newInternalValue = remapper.lookup(outputOperand);
+      outsideResultToNewInsideValue[kernelResult] = newInternalValue;
+    }
+  }
+
+  // Remap old kernel body arguments to either new kernel body arguments or new
+  // allocations.
+  for (Operation *op : kernelOpsToFuseTogether) {
+    auto asKernelOp = cast<KernelOp>(op);
+    for (auto [kernelOperand, oldKernelArgument] :
+         llvm::zip(asKernelOp.getOperands(),
+                   asKernelOp.getBody().front().getArguments())) {
+      auto it = outsideResultToNewInsideValue.find(kernelOperand);
+      if (it == outsideResultToNewInsideValue.end()) {
+        remapper.map(oldKernelArgument,
+                     outsideOperandToNewArgument[kernelOperand]);
+      } else {
+        remapper.map(oldKernelArgument, it->second);
+      }
+    }
+  }
+
+  // Actual fusion.
+  mlir::SymbolTable symTable(fusedKernelOp);
+  stageKernelsForFusion(kernelOpsToFuseTogether);
+  for (Operation *op : kernelOpsToFuseTogether) {
+    llvm::StringMap<StringRef> oldNameToNew;
+    const auto skipAllocations = [](Operation *op) {
+      return isa<OutputPlaceholdersOp, CreateEmptyTensorsOp,
+                 StackAllocateTensorsOp>(op);
+    };
+    cast<KernelOp>(op).fuseBodyIntoNewWithSkip(builder, symTable, remapper,
+                                               oldNameToNew, skipAllocations);
+  }
+
+  // Finally, create the return op.
+  SmallVector<Value> newOutputOpOperands;
+  for (Value oldValue : oldReturnValues)
+    newOutputOpOperands.push_back(remapper.lookup(oldValue));
+  builder.create<MOGG::OutputOp>(loc, newOutputOpOperands);
+
+  // Use-def replacement.
+  for (auto [oldValue, newValue] :
+       llvm::zip(valuesThatShouldBeReplaced, fusedKernelOp.getResults())) {
+    oldValue.replaceAllUsesWith(newValue);
+  }
+
+  return fusedKernelOp;
+}
+
 } // namespace M::MOGG

@@ -341,7 +341,7 @@ def StackAllocateTemporaries: Pass<"stack-allocate-temporaries", "MO::GraphOp"> 
 
 // This pass has to match a ModuleOp because it lowers operations which is not
 // thread safe.
-def KernelSequenceFuse: Pass<"sequence-fuse-kernels", "ModuleOp"> {
+def FuseKernelSequences: Pass<"fuse-kernel-sequences", "ModuleOp"> {
   let summary = "Fuse a sequence of kernels into a single kernel.";
   let description = [{
     This pass will combine a sequence of MOGG::KernelOp invocations into a
@@ -360,8 +360,6 @@ def KernelSequenceFuse: Pass<"sequence-fuse-kernels", "ModuleOp"> {
     Option<"heuristic", "heuristic", "std::string", "\"conservative\"",
            "Which of the heuristics to use for evaluating which kernels to"
            "fuse. Choices are (greedy|conservative|floodfill).">,
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
     Option<"withDebuginfo", "with-debuginfo", "bool",
       /*default=*/"false",
       "Should kernels and stubs be built with debuginfo.">,
@@ -379,6 +377,31 @@ def KernelSequenceFuse: Pass<"sequence-fuse-kernels", "ModuleOp"> {
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
     "mlir::index::IndexDialect",
+  ];
+}
+
+def FuseConcatAsSlice: Pass<"fuse-concat-as-slice", "ModuleOp"> {
+  let summary = "Turn a concat into a slice and sequence fuse it.";
+  let description = [{
+    This pass will transform mogg.concat ops into slices and sequence fuse the
+    resulting kernel with it's original producer.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">,
+  ];
+
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
   ];
 }
 

@@ -387,7 +387,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   DenseSet<int> returnAllocIndicesSet;
 
   for (unsigned int i = 0; i < getNumResults(); i++) {
-    if (i >= oldOutputs->getNumResults())
+    if (!oldOutputs || i >= oldOutputs->getNumResults())
       returnAllocIndicesSet.insert(i);
     if (!inplaceAllocIndicesSet.contains(i)) {
       if (!isa<MO::ChainType>(getResult(i).getType()))

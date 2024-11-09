@@ -42,7 +42,7 @@ class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
 // Internal helper ops
 //===----------------------------------------------------------------------===//
 
-def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [MO_HasDeviceInterface]> {
+def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [Pure, MO_HasDeviceInterface]> {
   let summary = "Concat Operation along axis zero";
   let description = [{
     Concat input tensors along axis zero.
@@ -68,7 +68,7 @@ def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [MO_HasDeviceInterface]> {
   }];
 }
 
-def MOGG_SplitOp : MOGG_LowerableOp<"split", []> {
+def MOGG_SplitOp : MOGG_LowerableOp<"split", [Pure]> {
   let summary = "Split Operation along axis zero";
   let description = [{
     Split input tensors into multiple tensors along axis zero.
@@ -491,7 +491,7 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
    }];
 }
 
-def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor"> {
+def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor", [Pure]> {
   let summary = "Convert a MOGG shape value to a tensor value";
   let description = [{
     Convert the input `!mogg.shape` value to a `!mo.tensor`, where elements of
@@ -514,7 +514,7 @@ def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor"> {
   let hasVerifier = 1;
 }
 
-def MOGG_GetShapeOfOp : MOGG_Op<"get_shape_of"> {
+def MOGG_GetShapeOfOp : MOGG_Op<"get_shape_of", [Pure]> {
   let summary = "Get the MOGG shape value from a KGEN tensor value";
   let description = [{
     Get the `!mogg.shape` value from the output of a mogg.to_kgen(`!mo.tensor`).
@@ -647,7 +647,7 @@ def MOGG_LambdaOp : MOGG_Op<"lambda",
   }];
 }
 
-def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors"> {
+def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors", [Pure]> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
   let summary = "Allocates statically sized NDBuffers/Tensor on the host's stack.";
@@ -671,7 +671,7 @@ def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors"> {
   }];
 }
 
-def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
+def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques", [Pure]> {
   let results = (outs Variadic<AnyTypeOf<[MO_Opaque, MGP_OpaqueType]>>:$results);
 
   let summary = "Allocates opaque types on the host's stack.";
@@ -692,7 +692,7 @@ def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
   }];
 }
 
-def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors"> {
+def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors", [Pure]> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
   let summary = "This creates some tensors which have only shape information but no value";
@@ -943,7 +943,7 @@ def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
   }];
 }
 
-def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders"> {
+def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders", [Pure]> {
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Buffer, MO_Chain]>>:$results);
 
   let summary = "Represents buffer semantic SSA values for the outputs";
