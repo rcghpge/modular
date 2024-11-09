@@ -26,6 +26,7 @@ using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
 
 enum class CUdevice_attribute {
+  UNIFIED_ADDRESSING = 41,
   COMPUTE_CAPABILITY_MAJOR = 75,
   COMPUTE_CAPABILITY_MINOR = 76,
 };
@@ -92,6 +93,10 @@ public:
     return cuDriverGetVersion_(version);
   }
 
+  Result DeviceGet(CUdevice *device, int ordinal) const {
+    return cuDeviceGet_(device, ordinal);
+  }
+
   Result DeviceGetAttribute(int *pi, CUdevice_attribute attrib,
                             CUdevice dev) const {
     return cuDeviceGetAttribute_(pi, attrib, dev);
@@ -102,12 +107,19 @@ public:
   Result DeviceGetName(char *name, int len, CUdevice dev) const {
     return cuDeviceGetName_(name, len, dev);
   }
+  Result DeviceCanAccessPeer(int *canAccessPeer, CUdevice dev,
+                             CUdevice peerDev) const {
+    return cuDeviceCanAccessPeer_(canAccessPeer, dev, peerDev);
+  }
 
   Result CtxCreate(CUcontext *pctx, unsigned int flags, CUdevice dev) const {
     return cuCtxCreate_v2_(pctx, flags, dev);
   }
   Result CtxDestroy(CUcontext ctx) const { return cuCtxDestroy_(ctx); }
   Result CtxSetCurrent(CUcontext ctx) const { return cuCtxSetCurrent_(ctx); }
+  Result CtxEnablePeerAccess(CUcontext peerContext, unsigned int flags) const {
+    return cuCtxEnablePeerAccess_(peerContext, flags);
+  }
 
   Result StreamCreate(CUstream *phStream, unsigned int flags) const {
     return cuStreamCreate_(phStream, flags);
@@ -154,17 +166,6 @@ public:
                          size_t bytesize, CUstream hStream) const {
     return cuMemcpyPeerAsync_(dstDevice, dstContext, srcDevice, srcContext,
                               bytesize, hStream);
-  }
-  Result DeviceCanAccessPeer(int *canAccessPeer, CUdevice dev,
-                             CUdevice peerDev) const {
-    return cuDeviceCanAccessPeer_(canAccessPeer, dev, peerDev);
-  }
-
-  Result CtxEnablePeerAccess(CUcontext ctx, unsigned int flags) const {
-    return cuCtxEnablePeerAccess_(ctx, flags);
-  }
-  Result CtxDisablePeerAccess(CUcontext ctx) const {
-    return cuCtxDisablePeerAccess_(ctx);
   }
 
   Result MemcpyHtoD(CUdeviceptr dstDevice, const void *srcHost,
@@ -298,6 +299,9 @@ private:
   using tcuDriverGetVersion = Result(int *);
   tcuDriverGetVersion *cuDriverGetVersion_;
 
+  using tcuDeviceGet = Result(CUdevice *, int);
+  tcuDeviceGet *cuDeviceGet_;
+
   using tcuDeviceGetAttribute = Result(int *, CUdevice_attribute, CUdevice);
   tcuDeviceGetAttribute *cuDeviceGetAttribute_;
 
@@ -307,6 +311,9 @@ private:
   using tcuDeviceGetName = Result(char *, int, CUdevice);
   tcuDeviceGetName *cuDeviceGetName_;
 
+  using tcuDeviceCanAccessPeer = Result(int *, CUdevice, CUdevice);
+  tcuDeviceCanAccessPeer *cuDeviceCanAccessPeer_;
+
   using tcuCtxCreate_v2 = Result(CUcontext *, unsigned int, CUdevice);
   tcuCtxCreate_v2 *cuCtxCreate_v2_;
 
@@ -315,6 +322,9 @@ private:
 
   using tcuCtxSetCurrent = Result(CUcontext);
   tcuCtxSetCurrent *cuCtxSetCurrent_;
+
+  using tcuCtxEnablePeerAccess = Result(CUcontext, unsigned int);
+  tcuCtxEnablePeerAccess *cuCtxEnablePeerAccess_;
 
   using tcuStreamCreate = Result(CUstream *, unsigned int);
   tcuStreamCreate *cuStreamCreate_;
@@ -357,15 +367,6 @@ private:
   using tcuMemcpyPeerAsync = Result(CUdeviceptr, CUcontext, CUdeviceptr,
                                     CUcontext, size_t, CUstream);
   tcuMemcpyPeerAsync *cuMemcpyPeerAsync_;
-
-  using tcuDeviceCanAccessPeer = Result(int *, CUdevice, CUdevice);
-  tcuDeviceCanAccessPeer *cuDeviceCanAccessPeer_;
-
-  using tcuCtxEnablePeerAccess = Result(CUcontext, unsigned int);
-  tcuCtxEnablePeerAccess *cuCtxEnablePeerAccess_;
-
-  using tcuCtxDisablePeerAccess = Result(CUcontext);
-  tcuCtxDisablePeerAccess *cuCtxDisablePeerAccess_;
 
   using tcuMemcpyHtoD_v2 = Result(CUdeviceptr, const void *, size_t);
   tcuMemcpyHtoD_v2 *cuMemcpyHtoD_v2_;

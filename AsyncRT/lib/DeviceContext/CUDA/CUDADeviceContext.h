@@ -48,12 +48,15 @@ class CUDADevice : public Device {
 public:
   using DeviceList = std::vector<CUDADeviceRef>;
 
-  CUDADevice(const CUDADriver &driver, CUdevice id, std::string name);
+  CUDADevice(const CUDADriver &driver, int id, CUdevice device,
+             std::string name);
   ~CUDADevice() override = default;
 
   const CUDADriver &driver() const;
 
   int id() const override;
+
+  CUdevice cuda_device() const;
 
   ErrorOr<bool> canAccess(const Device &peer) const override;
 
@@ -67,7 +70,8 @@ private:
   static ErrorOr<const DeviceList &> deviceList();
 
   const CUDADriver &driver_;
-  CUdevice id_;
+  int id_;
+  CUdevice device_;
 };
 
 class CUDADeviceBuffer : public DeviceBuffer {
@@ -227,12 +231,6 @@ public:
   ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
                            size_t elem_size, SyncMode mode) const override;
 
-  // Peer-to-peer memory access.
-  ErrorOrSuccess
-  enablePeerAccess(const DeviceContext &peerContext) const override;
-  ErrorOrSuccess
-  disablePeerAccess(const DeviceContext &peerContext) const override;
-
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef> loadFunction(
       const char *function_name,
@@ -262,6 +260,8 @@ public:
   ErrorOr<DeviceTimerRef> startTimer() const override;
   ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const override;
+
+  ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
   ErrorOr<int> getDriverVersion() const override;
   ErrorOr<DeviceMemInfo> getMemoryInfo() const override;

@@ -585,6 +585,11 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
+ErrorOrSuccess
+HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
+  RAISE_ERROR("Unimplemented - HIPDeviceContext::enablePeerAccess");
+}
+
 ErrorOr<int> HIPDeviceContext::getDriverVersion() const {
   int driver_version = 0;
   HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));

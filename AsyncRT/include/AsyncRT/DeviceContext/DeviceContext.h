@@ -272,12 +272,6 @@ public:
   virtual ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
                                    size_t elem_size, SyncMode mode) const = 0;
 
-  // Peer-to-peer memory access.
-  virtual ErrorOrSuccess
-  enablePeerAccess(const DeviceContext &peerContext) const;
-  virtual ErrorOrSuccess
-  disablePeerAccess(const DeviceContext &peerContext) const;
-
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>
   loadFunction(const char *function_name,
@@ -307,6 +301,8 @@ public:
   virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
+
+  virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
 
   // TODO: Delete any that seem too CUDA-specific
   enum class Attribute : int {

@@ -83,12 +83,15 @@ static Error formatError(const char *file, int line, const char *func,
 }
 
 // ===== CUDADevice ===== //
-CUDADevice::CUDADevice(const CUDADriver &driver, CUdevice id, std::string name)
-    : Device(std::move(name)), driver_(driver), id_(id) {}
+CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
+                       std::string name)
+    : Device(std::move(name)), driver_(driver), id_(id), device_(device) {}
 
 const CUDADriver &CUDADevice::driver() const { return driver_; }
 
 int CUDADevice::id() const { return static_cast<int>(id_); }
+
+CUdevice CUDADevice::cuda_device() const { return device_; }
 
 ErrorOr<int> CUDADevice::numberOfDevices() {
   ErrorOr<const DeviceList &> err_or_devices = deviceList();
@@ -100,7 +103,8 @@ ErrorOr<int> CUDADevice::numberOfDevices() {
 
 ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
   int canAccessPeer = 0;
-  CUDA_CHECK_ERR(driver_.DeviceCanAccessPeer(&canAccessPeer, id(), peer.id()));
+  CUDA_CHECK_ERR(driver_.DeviceCanAccessPeer(
+      &canAccessPeer, cuda_device(), CUDADevice::cast(peer).cuda_device()));
   return canAccessPeer;
 }
 
@@ -130,12 +134,14 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
     CUDA_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
 
     char tmp_name[256];
+    CUdevice tmp_device;
 
     for (int i = 0; i < count; i++) {
-      CUDA_CHECK_ERR(
-          err_driver.get().DeviceGetName(tmp_name, sizeof(tmp_name), i));
+      CUDA_CHECK_ERR(err_driver.get().DeviceGet(&tmp_device, i));
+      CUDA_CHECK_ERR(err_driver.get().DeviceGetName(tmp_name, sizeof(tmp_name),
+                                                    tmp_device));
       devices.emplace_back(
-          CUDADeviceRef::create(err_driver.get(), i, tmp_name));
+          CUDADeviceRef::create(err_driver.get(), i, tmp_device, tmp_name));
     }
     return success();
   }();
@@ -532,27 +538,6 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOrSuccess
-CUDADeviceContext::enablePeerAccess(const DeviceContext &peerContext) const {
-  // Ensure that the peer context is also a CUDADeviceContext
-  CUDA_CHECK(setCurrent());
-  const CUDADeviceContext &cudaPeerContext =
-      static_cast<const CUDADeviceContext &>(peerContext);
-  CUDA_CHECK_ERR(driver_.CtxEnablePeerAccess(cudaPeerContext.context_, 0));
-  return success();
-}
-
-ErrorOrSuccess
-CUDADeviceContext::disablePeerAccess(const DeviceContext &peerContext) const {
-  // Ensure that the peer context is also a CUDADeviceContext
-  CUDA_CHECK(setCurrent());
-  const CUDADeviceContext &cudaPeerContext =
-      static_cast<const CUDADeviceContext &>(peerContext);
-
-  CUDA_CHECK_ERR(driver_.CtxDisablePeerAccess(cudaPeerContext.context_));
-  return success();
-}
-
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
@@ -741,6 +726,14 @@ CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
+ErrorOrSuccess
+CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
+  CUDA_CHECK_ERR(setCurrent());
+  CUDA_CHECK_ERR(driver_.CtxEnablePeerAccess(
+      CUDADeviceContext::cast(peer).cuda_context(), 0));
+  return success();
+}
+
 ErrorOr<int> CUDADeviceContext::getDriverVersion() const {
   int driver_version = 0;
   CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
@@ -797,8 +790,9 @@ ErrorOrSuccess CUDADeviceContext::isCompatibleWithMAX() const {
 
 ErrorOr<int> CUDADeviceContext::getAttribute(Attribute attr) const {
   int value = 0;
-  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
-      &value, static_cast<CUdevice_attribute>(attr), device().id()));
+  CUDA_CHECK_ERR(
+      driver_.DeviceGetAttribute(&value, static_cast<CUdevice_attribute>(attr),
+                                 CUDADevice::cast(device()).cuda_device()));
   return value;
 }
 
@@ -806,10 +800,10 @@ ErrorOr<int> CUDADeviceContext::computeCapability() const {
   int compute_major = 0, compute_minor = 0;
   CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
       &compute_major, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
-      device().id()));
+      CUDADevice::cast(device()).cuda_device()));
   CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
       &compute_minor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
-      device().id()));
+      CUDADevice::cast(device()).id()));
   return 10 * compute_major + compute_minor;
 }
 
@@ -822,7 +816,7 @@ ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
   const CUDADriver &driver = device.driver();
 
   CUcontext context;
-  CUDA_CHECK_ERR(driver.CtxCreate(&context, 0, id));
+  CUDA_CHECK_ERR(driver.CtxCreate(&context, 0, device.cuda_device()));
 
   CUstream stream;
   CUDA_CHECK_ERR(driver.StreamCreate(&stream, 0));

@@ -358,9 +358,8 @@ AsyncRT_DeviceContext_enablePeerAccess(const DeviceContext *ctx,
 }
 
 MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_disablePeerAccess(const DeviceContext *ctx,
-                                        const DeviceContext *peer) {
-  return check_success(ctx->disablePeerAccess(*peer));
+AsyncRT_DeviceContext_numberOfDevices(int32_t *result, const char *kind) {
+  return check_val(result, 0, Device::numberOfDevices(kind));
 }
 
 //
