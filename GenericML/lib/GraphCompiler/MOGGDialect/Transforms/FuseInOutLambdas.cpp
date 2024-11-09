@@ -272,6 +272,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // src kernel. Here, we ignore all the ParamDeclareRegionOp, which we will
     // take care of later in a more specific way.
 
+    SmallVector<KGEN::ParamDeclareOp> newParamDeclOps;
+
     kernelToFuseInto.setInsertionPointToTop(builder);
     for (auto &op : inputKernel.getOps()) {
       if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
@@ -282,7 +284,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         auto newToKgen = cast<MOGG::ToKGENOp>(builder.clone(op, oldToNew));
         oldToNew.map(toKgen.getResults(), newToKgen.getResults());
       } else if (isa<KGEN::ParamDeclareOp>(op)) {
-        builder.clone(op);
+        auto newOp = cast<KGEN::ParamDeclareOp>(builder.clone(op));
+        newParamDeclOps.push_back(newOp);
       } else if (isa<MOGG::OutputOp, KGEN::ParamDeclareRegionOp,
                      MOGG::OutputPlaceholdersOp>(op)) {
         // ParamDeclareRegionOp will be cloned later.
@@ -425,6 +428,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Get rid of the original input kernel.
     opsToErase.push_back(inputKernel);
+
+    // Get rid of the unused declarations for some of the removed lambdas.
+    clearUnusedParamDecls(kernelToFuseInto, newParamDeclOps);
   }
 
   /// Returns true if we can fuse into the output lambda. This sanity checks a
@@ -581,6 +587,30 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     MOGG::ToKGENOp newOutsToKgenOp;
     OutputPlaceholdersOp newOuts;
 
+    SmallVector<KGEN::ParamDeclareOp> newParamDeclOps;
+
+    // Find all the ParamDeclRef that corresponds to staticTensorSpec attrs.
+    DenseSet<StringAttr> tensorSpecAttrNames;
+    for (auto toKgenOp : userToFuseIn.getOps<MOGG::ToKGENOp>()) {
+      StringAttr tensorSpecName = toKgenOp.getStaticTensorSpecNameAttr();
+      if (tensorSpecName)
+        tensorSpecAttrNames.insert(tensorSpecName);
+    }
+
+    // Build the mapping from the lambda to tensor spec param decl that refers
+    // to it. When we move a lambda inside another lambda, we also need to move
+    // the corresponding tensor spec param decl. Otherwise, it will complain
+    // that the lambda isn't defined (different scope).
+    DenseMap<StringAttr, KGEN::ParamDeclareOp> lambdaToParamDeclareOpMapping;
+    auto findParamDeclMapping = [&](KGEN::ParamDeclareOp paramDeclOp) {
+      mlir::AttrTypeWalker walker;
+      walker.addWalk([&](KGEN::ParamDeclRefAttr refAttr) {
+        if (isa<KGEN::SignatureType>(refAttr.getType()))
+          lambdaToParamDeclareOpMapping[refAttr.getName()] = paramDeclOp;
+      });
+      walker.walk(paramDeclOp.getValue());
+    };
+
     kernelToFuseInto.setInsertionPointToTop(builder);
     for (auto &op : userToFuseIn.getOps()) {
       if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
@@ -607,7 +637,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         newOuts = cast<OutputPlaceholdersOp>(builder.clone(op));
         oldToNew.map(op.getResult(0), newOuts.getResult(0));
       } else if (isa<KGEN::ParamDeclareOp>(op)) {
-        builder.clone(op);
+        auto newOp = cast<KGEN::ParamDeclareOp>(builder.clone(op));
+        if (tensorSpecAttrNames.contains(newOp.getParamDecl().getName()))
+          findParamDeclMapping(newOp);
+        newParamDeclOps.push_back(newOp);
       } else if (isa<MOGG::OutputOp>(op) ||
                  isa<KGEN::ParamDeclareRegionOp>(op)) {
         // Do nothing.
@@ -673,6 +706,12 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     auto newInputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
         builder.clone(*userInputLambdaOp.getOperation()));
     newInputLambdaOp->removeAttr(mlir::SymbolTable::getSymbolAttrName());
+    // Move the related declare spec op if needed.
+    if (auto paramDeclIt = lambdaToParamDeclareOpMapping.find(
+            newInputLambdaOp.getParamDeclAttr().getName());
+        paramDeclIt != lambdaToParamDeclareOpMapping.end()) {
+      paramDeclIt->second->moveAfter(newInputLambdaOp);
+    }
 
     Value originOutValue = srcOutputLambdaOp.getBodyRegion().getArgument(1);
     Type bindType = newInputLambdaOp.getFunctionType().getResult(0);
@@ -740,6 +779,13 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         auto newRegion = cast<KGEN::ParamDeclareRegionOp>(
             builder.clone(*declRegion.getOperation(), oldToNew));
         newRegion->removeAttr(mlir::SymbolTable::getSymbolAttrName());
+
+        // Move the related declare spec op if needed.
+        if (auto paramDeclIt = lambdaToParamDeclareOpMapping.find(
+                newRegion.getParamDeclAttr().getName());
+            paramDeclIt != lambdaToParamDeclareOpMapping.end()) {
+          paramDeclIt->second->moveAfter(newRegion);
+        }
       }
     }
 
@@ -802,6 +848,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     kernelToFuseInto.setKGENKernelParamValueIfPresent(
         analysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
         BoolAttr::get(&getContext(), true));
+
+    // Get rid of the unused declarations for some of the removed lambdas.
+    clearUnusedParamDecls(kernelToFuseInto, newParamDeclOps);
 
     // Matmul with mixed precision (bad case): Matmul kernels actually take in
     // an output buffer despite having a lambda. Therefore, in mixed

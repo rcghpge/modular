@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
@@ -584,6 +585,40 @@ Operation *sequenceFuseKernelsAndReplaceUses(
   }
 
   return fusedKernelOp;
+}
+
+void clearUnusedParamDecls(Operation *fusedKernel,
+                           ArrayRef<KGEN::ParamDeclareOp> newParamDeclsOps) {
+  SmallVector<KGEN::ParamDeclareOp> toDeleteDecls(newParamDeclsOps);
+
+  mlir::AttrTypeWalker walker;
+  walker.addWalk([&](KGEN::ParamDeclRefAttr refAttr) {
+    auto it = std::find_if(toDeleteDecls.begin(), toDeleteDecls.end(),
+                           [&](KGEN::ParamDeclareOp declOp) {
+                             return declOp.getParamDeclAttr().getName() ==
+                                    refAttr.getName();
+                           });
+
+    // Attr is used, don't remove the declaration
+    if (it != toDeleteDecls.end())
+      toDeleteDecls.erase(it);
+  });
+
+  // Walk the whole kernel
+  fusedKernel->walk([&](Operation *op) {
+    for (const NamedAttribute &attr : op->getAttrs())
+      walker.walk(attr.getValue());
+    for (Type type : op->getOperandTypes())
+      walker.walk(type);
+    for (Region &region : op->getRegions()) {
+      for (Type type : region.getArgumentTypes())
+        walker.walk(type);
+    }
+  });
+
+  // Remove the unused ops.
+  for (auto op : toDeleteDecls)
+    op->erase();
 }
 
 } // namespace M::MOGG

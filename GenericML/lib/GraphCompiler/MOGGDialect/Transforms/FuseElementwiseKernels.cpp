@@ -394,6 +394,8 @@ struct FuseElementwisePass
           srcOperandIndex++)] = dstKernel.getNumOperands() - 1;
     }
 
+    llvm::SmallVector<KGEN::ParamDeclareOp> newParamDeclOps;
+
     StringAttr renamedSrcElementwiseLambda;
     mlir::SymbolTable dstSymTable{dstKernel};
     for (Operation &srcOp : srcKernel.getBody().getOps()) {
@@ -423,6 +425,10 @@ struct FuseElementwisePass
 
         if (lambda == srcElementwiseLambda)
           renamedSrcElementwiseLambda = newName;
+      }
+
+      if (auto newDeclOp = dyn_cast<KGEN::ParamDeclareOp>(newOp)) {
+        newParamDeclOps.push_back(newDeclOp);
       }
     }
 
@@ -487,6 +493,9 @@ struct FuseElementwisePass
               fakeTensors.getResult(fakeTensors->getNumResults() - 1));
       dstKernel.removeOperandAtIndex(fusionIndex);
     }
+
+    // Get rid of the unused declarations for some of the removed lambdas.
+    clearUnusedParamDecls(dstKernel, newParamDeclOps);
   }
 };
 

@@ -86,6 +86,15 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps);
 Operation *sequenceFuseKernelsAndReplaceUses(
     ArrayRef<Operation *> kernelOpsToFuseTogether);
 
+/// Remove all ParamDeclareOp in newParamDeclsOps that are unused in
+/// fusedKernel. We need this because MoToMOGG define some staticTensorSpec attr
+/// that references a lambda. But during fusion that lambda might be removed
+/// (and the spec left unused) Eg: `kgen.param.declare spec0 =
+/// build_static_tensor_spec(..., in_lambda, ...)`
+/// But `in_lambda` was removed by the fusion pass.
+void clearUnusedParamDecls(Operation *fusedKernel,
+                           ArrayRef<KGEN::ParamDeclareOp> newParamDeclsOps);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
