@@ -27,7 +27,7 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       MO::IfOp, MO::YieldOp, MO::WhileOp,
       // List operations
       MO::ListAppendOp, MO::ListCreateOp, MO::ListInsertOp, MO::ListGetOp,
-      MO::ConcatFromListOp, MO::ListConcatOp,
+      MO::ConcatFromListOp, MO::ListConcatOp, MO::ListSliceOp,
       // Custom ops allowed for now
       MO::CustomOp,
       // TODO (GRA-723)
