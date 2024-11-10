@@ -46,9 +46,7 @@ namespace M::AsyncRT {
 // ===== CpuDevice ===== //
 //
 // TODO(iposva): Consider using the actual device name.
-CpuDevice::CpuDevice() : Device("cpu") {}
-
-int CpuDevice::id() const { return 0; }
+CpuDevice::CpuDevice() : Device(kind, "cpu", 0) {}
 
 ErrorOr<int> CpuDevice::numberOfDevices() {
   // Only a single CpuDevice is supported.

@@ -36,10 +36,10 @@ using CpuDeviceTimerRef = RCRef<const CpuDeviceTimer>;
 
 class CpuDevice : public Device {
 public:
+  static constexpr Kind kind = "cpu";
+
   CpuDevice();
   ~CpuDevice() override = default;
-
-  int id() const override;
 
   static ErrorOr<int> numberOfDevices();
 };

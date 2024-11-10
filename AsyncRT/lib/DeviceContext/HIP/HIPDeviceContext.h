@@ -41,15 +41,20 @@ using HIPDeviceTimerRef = RCRef<const HIPDeviceTimer>;
 
 class HIPDevice : public Device {
 public:
+  static constexpr Kind kind = "hip";
+
   using DeviceList = std::vector<HIPDeviceRef>;
-  HIPDevice(const HIPDriver &driver, hipDevice_t id, std::string name);
+  HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
+            std::string name);
   ~HIPDevice() override = default;
 
   const HIPDriver &driver() const;
 
-  int id() const override;
+  hipDevice_t hip_device() const;
 
   static ErrorOr<int> numberOfDevices();
+
+  static const HIPDevice &cast(const Device &device);
 
   static ErrorOr<const HIPDevice &> get(int id);
 
@@ -57,7 +62,7 @@ private:
   static ErrorOr<const DeviceList &> deviceList();
 
   const HIPDriver &driver_;
-  hipDevice_t id_;
+  hipDevice_t device_;
 };
 
 class HIPDeviceBuffer : public DeviceBuffer {

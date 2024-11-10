@@ -52,21 +52,27 @@ static constexpr size_t kPreferredCPUMemoryAlignment =
 
 class Device : public ReferenceCounted<Device> {
 public:
+  // Kind is a constexpr null-terminated char string defined in each subclass
+  // for fast pointer comparison, and human-readable at the same time.
+  using Kind = const char *;
+
   virtual ~Device() = default;
 
-  virtual int id() const = 0;
-
   const std::string &name() const;
+  int id() const;
+  Kind kind() const;
 
   virtual ErrorOr<bool> canAccess(const Device &peer) const;
 
   static ErrorOr<int> numberOfDevices(const char *kind);
 
 protected:
-  Device(std::string name);
+  Device(Kind kind, std::string name, int id);
 
 private:
   std::string name_;
+  int id_;
+  Kind kind_;
 };
 
 class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {

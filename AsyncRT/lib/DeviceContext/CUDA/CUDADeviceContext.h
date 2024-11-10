@@ -46,6 +46,8 @@ using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
 class CUDADevice : public Device {
 public:
+  static constexpr Kind kind = "cuda";
+
   using DeviceList = std::vector<CUDADeviceRef>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
@@ -53,8 +55,6 @@ public:
   ~CUDADevice() override = default;
 
   const CUDADriver &driver() const;
-
-  int id() const override;
 
   CUdevice cuda_device() const;
 
@@ -70,7 +70,6 @@ private:
   static ErrorOr<const DeviceList &> deviceList();
 
   const CUDADriver &driver_;
-  int id_;
   CUdevice device_;
 };
 

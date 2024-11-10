@@ -21,9 +21,14 @@ namespace M::AsyncRT {
 //
 // ===== DeviceBuffer ===== //
 //
-Device::Device(std::string name) : name_(std::move(name)) {}
+Device::Device(Kind kind, std::string name, int id)
+    : name_(std::move(name)), id_(id), kind_(kind) {}
 
 const std::string &Device::name() const { return name_; }
+
+int Device::id() const { return id_; }
+
+Device::Kind Device::kind() const { return kind_; }
 
 ErrorOr<bool> Device::canAccess(const Device &peer) const { return false; }
 

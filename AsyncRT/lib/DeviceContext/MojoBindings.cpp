@@ -78,6 +78,11 @@ AsyncRT_DeviceContext_deviceName(const DeviceContext *ctx) {
 }
 
 MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_deviceKind(const DeviceContext *ctx) {
+  return ctx->device().kind();
+}
+
+MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_mallocHost(void **result, const DeviceContext *ctx,
                                  size_t size) {
   return check_val(result, nullptr, ctx->malloc_host(size));

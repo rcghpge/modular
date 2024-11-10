@@ -83,12 +83,13 @@ static Error formatError(const char *file, int line, const char *func,
 }
 
 // ===== HIPDevice ===== //
-HIPDevice::HIPDevice(const HIPDriver &driver, hipDevice_t id, std::string name)
-    : Device(name), driver_(driver), id_(id) {}
+HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
+                     std::string name)
+    : Device(kind, name, id), driver_(driver), device_(device) {}
 
 const HIPDriver &HIPDevice::driver() const { return driver_; }
 
-int HIPDevice::id() const { return static_cast<int>(id_); }
+hipDevice_t HIPDevice::hip_device() const { return device_; }
 
 ErrorOr<int> HIPDevice::numberOfDevices() {
   ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
@@ -101,6 +102,10 @@ ErrorOr<int> HIPDevice::numberOfDevices() {
   HIP_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
   return count;
 }
+
+const HIPDevice &HIPDevice::cast(const Device &device) {
+  return static_cast<const HIPDevice &>(device);
+};
 
 ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
   ErrorOr<const DeviceList &> err_or_devices = deviceList();
@@ -124,9 +129,11 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
     char tmp_name[256];
 
     for (int i = 0; i < count; i++) {
+      // TODO(iposva): Create correct hipDevice_t from ordinal.
       HIP_CHECK_ERR(
           err_driver.get().DeviceGetName(tmp_name, sizeof(tmp_name), i));
-      devices.emplace_back(HIPDeviceRef::create(err_driver.get(), i, tmp_name));
+      devices.emplace_back(
+          HIPDeviceRef::create(err_driver.get(), i, i, tmp_name));
     }
     return success();
   }();
@@ -675,8 +682,8 @@ ErrorOr<int> HIPDeviceContext::getAttribute(Attribute attr) const {
   if (errorOrAttr.isError())
     return errorOrAttr.takeError();
   int value = 0;
-  HIP_CHECK_ERR(
-      driver_.DeviceGetAttribute(&value, *errorOrAttr, device().id()));
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      &value, *errorOrAttr, HIPDevice::cast(device()).hip_device()));
   return value;
 }
 
@@ -685,11 +692,11 @@ ErrorOr<int> HIPDeviceContext::computeCapability() const {
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(
       &compute_major,
       hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMajor,
-      device().id()));
+      HIPDevice::cast(device()).hip_device()));
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(
       &compute_minor,
       hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMinor,
-      device().id()));
+      HIPDevice::cast(device()).hip_device()));
   return 10 * compute_major + compute_minor;
 }
 

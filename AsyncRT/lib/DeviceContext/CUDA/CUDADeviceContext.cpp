@@ -85,11 +85,9 @@ static Error formatError(const char *file, int line, const char *func,
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        std::string name)
-    : Device(std::move(name)), driver_(driver), id_(id), device_(device) {}
+    : Device(kind, std::move(name), id), driver_(driver), device_(device) {}
 
 const CUDADriver &CUDADevice::driver() const { return driver_; }
-
-int CUDADevice::id() const { return static_cast<int>(id_); }
 
 CUdevice CUDADevice::cuda_device() const { return device_; }
 
@@ -763,7 +761,9 @@ const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
 
 const CUDADeviceContext *
 CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
-  // TODO(iposva): Implement verification of the underlying device type.
+  if (ctx->device().kind() != CUDADevice::kind) {
+    return nullptr;
+  }
   return static_cast<const CUDADeviceContext *>(ctx);
 }
 
