@@ -13,7 +13,13 @@ import numpy as np
 from max.driver import Device, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession, MojoValue
-from max.graph import Graph, TensorType, TensorValue, _OpaqueType, ops
+from max.graph import (
+    Graph,
+    TensorType,
+    TensorValue,
+    _OpaqueType,
+    ops,
+)
 
 from .cache_params import KVCacheParams
 from .manager import KVCacheManager

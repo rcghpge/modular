@@ -3,9 +3,11 @@ load("//bazel:api.bzl", "modular_pybind_extension", "modular_pybind_py_library")
 modular_pybind_extension(
     name = "core",
     srcs = ["core.cpp"],
+    pybind_deps = [
+        "//SDK:ProfilerPython",
+    ],
     deps = [
         "//GenericML:modular-framework-common",
-        "//SDK:ProfilerPython",
         "//Support:Base",
     ],
 )
