@@ -958,12 +958,17 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
   // explicit DtoH + sync for the buffer before printing using the host.
   // This is a safe assumption since the is what happens in the device
   // version of the primitive already
-  uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
-  Value bufferSize =
-      opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
+  auto maybeTensorSizeInBytes = tensorSpec.getType().getSizeInBytes();
+  Value bufferSize;
+  if (maybeTensorSizeInBytes.has_value())
+    bufferSize = opLoweringState.create<mlir::index::ConstantOp>(
+        *maybeTensorSizeInBytes);
+  else
+    bufferSize = opLoweringState.create<MGP::CpuTensorSpecSizeOp>(tensorSpec);
   Value hostBuffer = opLoweringState.hostBufferAlloc(
       cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
-      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()), sizeInBytes);
+      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()),
+      maybeTensorSizeInBytes);
   auto transferChain = opLoweringState.bufferTransferToHost(
       chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
       moTensorType);
