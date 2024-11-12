@@ -10,7 +10,6 @@
 #include "Cache/CachedTransform.h"
 #include "Cache/Support/Keys.h"
 #include "Config/Version.h"
-#include "GenericML/CUDARegistration/CUDARegistration.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/CompileToBinary.h"
 #include "GenericML/Driver/DriverAPI.h"
@@ -131,12 +130,10 @@ public:
   MOFContext(int &argc, char **argv)
       : clOptions(std::make_unique<MOFDriverOptions>()),
         parser(std::make_unique<MOFDriverCLOptions>(argc, argv, *clOptions,
-                                                    /*skipInitLLVM=*/true)) {
-    setup();
-  }
+                                                    /*skipInitLLVM=*/true)) {}
 
   /// Constructor when invoking via API.
-  MOFContext() { setup(); }
+  MOFContext() {}
 
   ~MOFContext() {
     if (clOptions)
@@ -166,8 +163,6 @@ public:
       if (!llvm::cl::ParseCommandLineOptions(std::size(optChars), optChars))
         return Error("unable to parse argument: " + opt);
     }
-
-    setup();
 
     return success();
   }
@@ -204,12 +199,6 @@ public:
   }
 
 private:
-  void setup() {
-    // Register the extra compile-time and runtime support.
-    static llvm::once_flag onceFlag;
-    llvm::call_once(onceFlag, []() { M::CUDA::registerCUDA(); });
-  }
-
   std::unique_ptr<MOFDriverOptions> clOptions;
   std::unique_ptr<MOFDriverCLOptions> parser;
   std::unique_ptr<MOFConfig> mofConfig;

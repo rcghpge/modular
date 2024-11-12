@@ -1203,16 +1203,6 @@ modular_cc_library(
 )
 
 modular_cc_library(
-    name = "CUDARegistration",
-    srcs = glob(["lib/CUDARegistration/*.cpp"]),
-    hdrs = glob(["include/GenericML/CUDARegistration/*.h"]),
-    deps = [
-        ":GraphCompilerDeviceBuggerizationRegistry",
-        "//Runtime:CUDA",
-    ],
-)
-
-modular_cc_library(
     name = "CUDAPrimitives",
     srcs = glob(["lib/CUDAPrimitives/*.cpp"]),
     hdrs = glob(["include/GenericML/CUDAPrimitives/*.h"]),
