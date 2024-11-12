@@ -1384,7 +1384,17 @@ def MO_SliceOp : MO_TensorOp<"slice", [
        represents the largest axis.
     3. Out of bound indices in `start` and `stop` will be clamped to
        [-dim, dim], where `dim` is the dimension in the corresponding axis.
-    4. `step` must contain nonzero elements.
+    4. `step` must contain nonzero elements. Negative steps are supported.
+
+    Note: the order in which negative indices are resolved matches that of
+    python for `start:
+
+    1. Normalize negative indices by adding the dimension size.
+    2. Apply clipping logic.
+
+    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
+    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
+    N is the dimension size. Numbers smaller than -N-1 should also work.
 
     Example:
     ```mlir
@@ -1432,7 +1442,17 @@ def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
        represents the largest axis.
     3. Out of bound indices in `start` and `stop` will be clamped to
        [-dim, dim], where `dim` is the dimension in the corresponding axis.
-    4. `step` must be non-zero.
+    4. `step` must contain nonzero elements. Negative steps are supported.
+
+    Note: the order in which negative indices are resolved matches that of
+    python for `start:
+
+    1. Normalize negative indices by adding the dimension size.
+    2. Apply clipping logic.
+
+    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
+    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
+    N is the dimension size. Numbers smaller than -N-1 should also work.
 
     Example:
     ```mlir
@@ -4780,7 +4800,17 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [DeclareOpInter
        represents the largest axis.
     3. Out of bound indices in `start` and `stop` will be clamped to
        [-dim, dim], where `dim` is the dimension in the corresponding axis.
-    4. `step` must contain nonzero elements.
+    4. `step` must contain nonzero elements. Negative steps are supported.
+
+    Note: the order in which negative indices are resolved matches that of
+    python for `start:
+
+    1. Normalize negative indices by adding the dimension size.
+    2. Apply clipping logic.
+
+    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
+    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
+    N is the dimension size. Numbers smaller than -N-1 should also work.
 
     Example:
     ```mlir
