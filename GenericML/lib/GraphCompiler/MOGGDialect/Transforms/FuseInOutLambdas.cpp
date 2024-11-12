@@ -601,12 +601,14 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // to it. When we move a lambda inside another lambda, we also need to move
     // the corresponding tensor spec param decl. Otherwise, it will complain
     // that the lambda isn't defined (different scope).
-    DenseMap<StringAttr, KGEN::ParamDeclareOp> lambdaToParamDeclareOpMapping;
+    DenseMap<StringAttr, SmallVector<KGEN::ParamDeclareOp>>
+        lambdaToParamDeclareOpMapping;
     auto findParamDeclMapping = [&](KGEN::ParamDeclareOp paramDeclOp) {
       mlir::AttrTypeWalker walker;
       walker.addWalk([&](KGEN::ParamDeclRefAttr refAttr) {
         if (isa<KGEN::SignatureType>(refAttr.getType()))
-          lambdaToParamDeclareOpMapping[refAttr.getName()] = paramDeclOp;
+          lambdaToParamDeclareOpMapping[refAttr.getName()].push_back(
+              paramDeclOp);
       });
       walker.walk(paramDeclOp.getValue());
     };
@@ -710,7 +712,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (auto paramDeclIt = lambdaToParamDeclareOpMapping.find(
             newInputLambdaOp.getParamDeclAttr().getName());
         paramDeclIt != lambdaToParamDeclareOpMapping.end()) {
-      paramDeclIt->second->moveAfter(newInputLambdaOp);
+      for (auto declOp : paramDeclIt->second) {
+        declOp->moveAfter(newInputLambdaOp);
+      }
     }
 
     Value originOutValue = srcOutputLambdaOp.getBodyRegion().getArgument(1);
@@ -784,7 +788,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         if (auto paramDeclIt = lambdaToParamDeclareOpMapping.find(
                 newRegion.getParamDeclAttr().getName());
             paramDeclIt != lambdaToParamDeclareOpMapping.end()) {
-          paramDeclIt->second->moveAfter(newRegion);
+          for (auto declOp : paramDeclIt->second) {
+            declOp->moveAfter(newInputLambdaOp);
+          }
         }
       }
     }
