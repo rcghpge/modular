@@ -8,6 +8,9 @@
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GenericML/MGPTransforms/Utils.h"
+#include "KGEN/POPDialect/POPDialect.h"
+#include "KGEN/POPDialect/POPOps.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 
@@ -70,14 +73,29 @@ class VerifyModelArgumentsPass
 
       BufferBuilder *bufferBuilder =
           builderContext.getBufferBuilder(tensorArg.getDevice());
-      auto expectedTensorSpec = tensorArg.getTensorSpec();
+      TensorSpecType expectedTensorSpec = tensorArg.getTensorSpec();
       auto runtimeTensorSpec =
           bufferBuilder->tensorExtractTensorSpec(builder, loc, arg);
-      auto areEqual =
-          builder
-              .create<CpuTensorSpecEqualStaticOp>(
-                  loc, runtimeTensorSpec, expectedTensorSpec.getRawDims())
-              .getResult();
+
+      Value areEqual;
+      for (size_t i = 0; i < expectedTensorSpec.getRank(); ++i) {
+        if (expectedTensorSpec.isDynamicDim(i))
+          continue;
+        auto expectedDim = builder.create<mlir::index::ConstantOp>(
+            loc, expectedTensorSpec.getDims()[i].value());
+        auto runtimeDim =
+            builder.create<TensorSpecGetDimOp>(loc, runtimeTensorSpec, i);
+        auto dimEqual = builder.create<mlir::index::CmpOp>(
+            loc, mlir::index::IndexCmpPredicate::EQ, runtimeDim, expectedDim);
+        if (!areEqual)
+          areEqual = dimEqual;
+        else
+          areEqual = builder.create<KGEN::POP::AndOp>(loc, builder.getI1Type(),
+                                                      areEqual, dimEqual);
+      }
+      if (!areEqual)
+        // All dimensions are dynamic, so nothing to check
+        continue;
 
       std::string message;
       llvm::raw_string_ostream stream(message);

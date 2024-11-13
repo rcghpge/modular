@@ -211,10 +211,20 @@ mgp.model @on_output_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: 
 
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.tensor<2x4xf32>, %arg3: !mgp.tensor<2x4xf32>) -> (!mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>) {
   %0 = mgp.tensor.extract.tensor_spec %arg2 : <2x4xf32>
-  %1 = mgp.tensor_spec.equal.static %0 : !mgp.tensor_spec<2x4xf32>
-  %2 = mgp.assert %1, "Tensor type mismatch for argument 0"
+  %idx2 = index.constant 2
+  %idx4 = index.constant 4
+  %arg0dim0 = mgp.tensor_spec.get_dim[0] %0 : <2x4xf32>
+  %arg0dim1 = mgp.tensor_spec.get_dim[1] %0 : <2x4xf32>
+  %arg0dim0eq = index.cmp eq(%arg0dim0, %idx2)
+  %arg0dim1eq = index.cmp eq(%arg0dim1, %idx4)
+  %arg0eq = pop.and %arg0dim0eq, %arg0dim1eq
+  %2 = mgp.assert %arg0eq, "Tensor type mismatch for argument 0"
   %3 = mgp.tensor.extract.tensor_spec %arg3 : <2x4xf32>
-  %4 = mgp.tensor_spec.equal.static %3 : !mgp.tensor_spec<2x4xf32>
-  %5 = mgp.assert %4, "Tensor type mismatch for argument 1"
+  %arg1dim0 = mgp.tensor_spec.get_dim[0] %3 : <2x4xf32>
+  %arg1dim1 = mgp.tensor_spec.get_dim[1] %3 : <2x4xf32>
+  %arg1dim0eq = index.cmp eq(%arg1dim0, %idx2)
+  %arg1dim1eq = index.cmp eq(%arg1dim1, %idx4)
+  %arg1eq = pop.and %arg1dim0eq, %arg1dim1eq
+  %5 = mgp.assert %arg1eq, "Tensor type mismatch for argument 1"
   mef.output %ch0, %arg2, %arg3 : !mef.chain, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>
 }

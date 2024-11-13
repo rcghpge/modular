@@ -346,10 +346,13 @@ def VerifyModelArgumentsPass : Pass<"verify-model-arguments", "MGP::ModelOp"> {
 
     Example:
     ```mlir
-    %valid = mgp.tensor_spec.equal.static %arg2 : !mgp.tensor<2x4xf32>
+    %known = index.constant 4
+    %dim = mgp.tensor_spec.get_dim[0] %arg2 : !mgp.tensor_spec<4xf32>
+    %valid = index.cmp eq(%dim, %known)
     %ch = mgp.assert %valid, "Tensor type mismatch for argument 0"
     ```
   }];
+  let dependentDialects = ["KGEN::POP::POPDialect"];
 }
 
 //===----------------------------------------------------------------------===//

@@ -451,35 +451,6 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorSpecEqualStaticOp
-//===----------------------------------------------------------------------===//
-
-static void printTensorSpecTypeWithRawDims(AsmPrinter &p,
-                                           const CpuTensorSpecEqualStaticOp &op,
-                                           Type specType,
-                                           IntArrayElementsAttr rawDims) {
-  p << specType;
-}
-
-/// Parses a !mgp.tensor_spec type, however also sets the rawDims to
-/// capture its dimensions in 'raw form'.
-static ParseResult
-parseTensorSpecTypeWithRawDims(AsmParser &p, Type &specType,
-                               IntArrayElementsAttr &rawDims) {
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) || p.parseType(specType))
-    return failure();
-  auto tensorSpec = dyn_cast<TensorSpecType>(specType);
-  if (tensorSpec == nullptr)
-    return p.emitError(loc) << "expected !mgp.tensor_spec type.";
-  if (!tensorSpec.hasRank())
-    return p.emitError(loc) << "expected !mgp.tensor_spec type to have a "
-                               "statically known rank.";
-  rawDims = tensorSpec.getRawDims();
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
