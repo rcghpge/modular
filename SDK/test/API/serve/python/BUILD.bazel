@@ -17,8 +17,10 @@ modular_py_test(
     deps = [
         "//SDK/lib/API/python/max/serve",
         requirement("async-asgi-testclient"),
+        requirement("gguf"),
         requirement("hypothesis"),
         requirement("pytest-asyncio"),
+        requirement("sentencepiece"),
         requirement("sseclient-py"),
         requirement("transformers"),
     ],
