@@ -1668,6 +1668,22 @@ KGEN::ParamDeclRefAttr ToKGENOp::getStaticTensorRefAttr() {
 }
 
 //===----------------------------------------------------------------------===//
+// StackAllocateTensorsOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult StackAllocateTensorsOp::verify() {
+  auto isCpuTensor = [](Type t) {
+    auto tensor = cast<MO::TensorType>(t);
+    return !tensor.getDeviceRef() || tensor.getDeviceRef().getLabel() == "cpu";
+  };
+
+  if (!llvm::all_of(getResultTypes(), isCpuTensor))
+    return emitError() << "stack allocated tensors must be on the CPU";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

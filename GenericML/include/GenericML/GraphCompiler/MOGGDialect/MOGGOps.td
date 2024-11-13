@@ -666,6 +666,8 @@ def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors", [Pure]> {
     ```
   }];
 
+  let hasVerifier = 1;
+
   let assemblyFormat = [{
    attr-dict `:` type($results)
   }];
