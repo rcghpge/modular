@@ -424,7 +424,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         BoolAttr::get(&getContext(), true));
 
     kernelToFuseInto.setSummaryAttr(
-        getSummaryString({kernelToFuseInto, inputKernel}, FusionType::HARD));
+        getSummaryString({inputKernel, kernelToFuseInto}, FusionType::HARD));
 
     // Get rid of the original input kernel.
     opsToErase.push_back(inputKernel);
