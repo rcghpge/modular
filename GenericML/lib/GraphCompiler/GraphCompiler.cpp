@@ -121,6 +121,10 @@ LogicalResult MO::lowerMOToMGP(ModuleOp module,
 
 void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
                                  const MoToMgpOptions &opts) {
+  pm.addPass(MO::createVerifyCustomOps(
+      {llvm::to_vector_of<std::string>(opts.kernelLibraryPaths),
+       opts.withDebuginfo}));
+
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 

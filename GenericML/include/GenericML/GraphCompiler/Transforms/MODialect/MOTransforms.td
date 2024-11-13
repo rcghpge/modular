@@ -514,4 +514,33 @@ def CanonicalizeChainSequences : Pass<"canonicalize-chain-sequences", "GraphOp">
   }];
 }
 
+def VerifyCustomOps : Pass<"verify-custom-ops", "GraphOp"> {
+  let summary = "Type checks custom ops against their Mojo kernel signatures";
+  let description = [{
+    This pass performs type checking on custom operations by querying the signature
+    of their backing Mojo kernel implementations. It verifies that the operand and
+    result types of each custom operation match the parameter and return types
+    declared in the corresponding Mojo kernel function.
+  }];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions used "
+      "to replace MO ops.">,
+    Option<"withDebuginfo", "with-debuginfo", "bool",
+      /*default=*/"false",
+      "Should kernels and stubs be built with debuginfo.">
+  ];
+  let dependentDialects = [
+      "M::KGEN::KGENDialect",
+      "M::KGEN::Custom::CustomDialect",
+      "M::KGEN::LIT::LITDialect",
+      "M::KGEN::POP::POPDialect",
+      "M::HLCF::HLCFDialect",
+      "M::DebugInfo::DebugInfoDialect",
+      "mlir::NVVM::NVVMDialect",
+      "mlir::index::IndexDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
