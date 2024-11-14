@@ -220,7 +220,7 @@ mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], 
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check permutation is in kernel and used in transpose.
-// CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0>
+// CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> 
 // CHECK-NEXT: mogg.call "mo.transpose"(%[[NULL:.*]], %[[PERM]]
 
 mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[12, 64], f32> {
@@ -249,83 +249,6 @@ mo.graph @fuse_rebind(%input: !mo.tensor<[2, 2], si32>) -> (!mo.tensor<[2, 2], s
 // CHECK: mogg.kernel
 // CHECK: mo.constant
 // CHECK: mogg.output
-
-mo.graph @recursive_constant_fuse(%buf: !mo.tensor<[1, 2, 3], f32>, %cond: !mo.scalar<bool>) -> (!mo.tensor<[1, 2, 3], f32>) {
-  %cst1 = mo.constant {value = #M.dense_array<1.000000e-01, 2.000000e-01, 3.000000e-01, 4.000000e-01, 5.000000e-01, 6.000000e-01> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
-  %cst2 = mo.constant {value = #M.dense_array<6.000000e-01, 5.000000e-01, 4.000000e-01, 3.000000e-01, 2.000000e-01, 1.000000e-01> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
-
-  %res = mo.if (%cond : !mo.scalar<bool>) -> !mo.tensor<[1, 2, 3], f32> {
-    %1 = mo.add(%buf, %cst1) : !mo.tensor<[1, 2, 3], f32>
-    mo.yield %1 : !mo.tensor<[1, 2, 3], f32>
-  } else {
-    %2 = mo.add(%buf, %cst2) : !mo.tensor<[1, 2, 3], f32>
-    mo.yield %2 : !mo.tensor<[1, 2, 3], f32>
-  }
-
-  mo.output %res : !mo.tensor<[1, 2, 3], f32>
-}
-
-// CHECK-LABEL: mo.graph @recursive_constant_fuse
-
-// Check that constants are moved into the kernels in each conditional branch
-// CHECK-NEXT: mo.if
-// CHECK-NEXT:   mogg.kernel
-// CHECK-NEXT:     mogg.output_placeholders
-// CHECK-NEXT:     mo.constant {value = #M.dense_array<1.000000e-01,
-// CHECK:      } else {
-// CHECK-NEXT:   mogg.kernel
-// CHECK-NEXT:     mogg.output_placeholders
-// CHECK-NEXT:     mo.constant {value = #M.dense_array<6.000000e-01,
-
-mo.graph @deeply_recursive_constant_fuse(%buf: !mo.tensor<[1, 2, 3], f32>, %cond1: !mo.scalar<bool>, %cond2: !mo.scalar<bool>, %cond3: !mo.scalar<bool>) -> (!mo.tensor<[1, 2, 3], f32>) {
-  %cst1 = mo.constant {value = #M.dense_array<1.000000e-01, 1.000000e-01, 1.000000e-01, 1.000000e-01, 1.000000e-01, 1.000000e-01> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
-  %cst2 = mo.constant {value = #M.dense_array<2.000000e-01, 2.000000e-01, 2.000000e-01, 2.000000e-01, 2.000000e-01, 2.000000e-01> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
-  %cst3 = mo.constant {value = #M.dense_array<3.000000e-01, 3.000000e-01, 3.000000e-01, 3.000000e-01, 3.000000e-01, 3.000000e-01> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
-
-  // match (cond1, cond2, cond3) {
-  //       (true , _    , _    ) => buf + cst1
-  //       (_    , true , _    ) => buf + cst2
-  //       (_    , _    , true ) => buf + cst3
-  //        _                    => buf
-  // }
-  %res1 = mo.if (%cond1 : !mo.scalar<bool>) -> !mo.tensor<[1, 2, 3], f32> {
-    %tmp1 = mo.add(%buf, %cst1) : !mo.tensor<[1, 2, 3], f32>
-    mo.yield %tmp1 : !mo.tensor<[1, 2, 3], f32>
-  } else {
-    %res2 = mo.if (%cond2 : !mo.scalar<bool>) -> !mo.tensor<[1, 2, 3], f32> {
-      %tmp2 = mo.add(%buf, %cst2) : !mo.tensor<[1, 2, 3], f32>
-      mo.yield %tmp2 : !mo.tensor<[1, 2, 3], f32>
-    } else {
-      %res3 = mo.if (%cond3 : !mo.scalar<bool>) -> !mo.tensor<[1, 2, 3], f32> {
-        %tmp3 = mo.add(%buf, %cst3) : !mo.tensor<[1, 2, 3], f32>
-        mo.yield %tmp3 : !mo.tensor<[1, 2, 3], f32>
-      } else {
-        mo.yield %buf : !mo.tensor<[1, 2, 3], f32>
-      }
-      mo.yield %res3 : !mo.tensor<[1, 2, 3], f32>
-    }
-    mo.yield %res2 : !mo.tensor<[1, 2, 3], f32>
-  }
-  mo.output %res1 : !mo.tensor<[1, 2, 3], f32>
-}
-
-// CHECK-LABEL: mo.graph @deeply_recursive_constant_fuse
-
-// Check that constants are moved into the kernels when conditional branches are deeply nested
-// CHECK-NEXT: mo.if
-// CHECK-NEXT:   mogg.kernel
-// CHECK-NEXT:     mogg.output_placeholders
-// CHECK-NEXT:     mo.constant {value = #M.dense_array<1.000000e-01,
-// CHECK:      } else {
-// CHECK-NEXT:   mo.if
-// CHECK-NEXT:     mogg.kernel
-// CHECK-NEXT:       mogg.output_placeholders
-// CHECK-NEXT:       mo.constant {value = #M.dense_array<2.000000e-01,
-// CHECK:        } else {
-// CHECK-NEXT:     mo.if
-// CHECK-NEXT:       mogg.kernel
-// CHECK-NEXT:         mogg.output_placeholders
-// CHECK-NEXT:         mo.constant {value = #M.dense_array<3.000000e-01,
 
 {-#
   dialect_resources: {
