@@ -13,6 +13,7 @@
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Twine.h"
 
 #include <string.h>
@@ -214,6 +215,57 @@ ErrorOr<int> Device::numberOfDevices(const char *kind) {
   }
 
   return Error(llvm::Twine("Unsupported device kind: ") + kind);
+}
+
+ErrorOr<std::string> Device::getVendor() {
+  static llvm::SmallDenseMap<StringRef, StringRef> apiVendorMap{
+      {"cuda", "nvidia"}, {"hip", "amdgpu"}};
+  for (auto [api, vendor] : apiVendorMap) {
+    ErrorOr<DeviceContextRef> dev = DeviceContext::create(api.data(), 0);
+    if (dev.isError())
+      continue;
+    return vendor.str();
+  }
+  return Error("unable to determine the vendor of the device");
+}
+
+ErrorOr<std::string> Device::getSubArch(StringRef kind) {
+  auto dev = DeviceContext::create(kind.data(), 0);
+  if (dev.isError())
+    return dev.takeError();
+
+  ErrorOr<int> major =
+      (*dev)->getAttribute(DeviceContext::Attribute::COMPUTE_CAPABILITY_MAJOR);
+  if (major.isError())
+    return major.takeError();
+
+  ErrorOr<int> minor =
+      (*dev)->getAttribute(DeviceContext::Attribute::COMPUTE_CAPABILITY_MINOR);
+  if (minor.isError())
+    return minor.takeError();
+
+  return (kind == "cuda" ? "sm" : "gfx") + std::to_string(*major) +
+         std::to_string(*minor);
+}
+
+ErrorOr<std::string> Device::getTargetAttrAcceleratorArch() {
+  ErrorOr<std::string> vendor = Device::getVendor();
+  if (vendor.isError())
+    return vendor.takeError();
+
+  ErrorOr<std::string> subArch =
+      Device::getSubArch(*vendor == "nvidia" ? "cuda" : "hip");
+  if (subArch.isError())
+    return subArch.takeError();
+
+  return vendor.get() + ":" + subArch.get();
+}
+
+std::string Device::getAcceleratorArchOrEmpty() {
+  ErrorOr<std::string> arch = Device::getTargetAttrAcceleratorArch();
+  if (arch.isError())
+    return "";
+  return *arch;
 }
 
 } // namespace M::AsyncRT

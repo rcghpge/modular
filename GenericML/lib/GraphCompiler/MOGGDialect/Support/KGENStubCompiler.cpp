@@ -162,6 +162,8 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
   compilationOptions.targetTriple = target.getTripleStr();
   compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
+  compilationOptions.targetAccelerator =
+      AsyncRT::Device::getAcceleratorArchOrEmpty();
   compilationOptions.enableLLVMPerFunctionSplitting = false;
 
   if (kernelBuildType == KernelBuildType::kDebug)

@@ -66,6 +66,10 @@ public:
 
   static ErrorOr<int> numberOfDevices(const char *kind);
 
+  /// Returns the vendor and subarchitecture of the accelerator in the form of
+  /// `vendor:subarch`. For example, an A100 GPU would return `nvidia:sm80`.
+  static std::string getAcceleratorArchOrEmpty();
+
 protected:
   Device(Kind kind, std::string name, int id);
 
@@ -73,6 +77,12 @@ private:
   std::string name_;
   int id_;
   Kind kind_;
+
+  static ErrorOr<std::string> getVendor();
+
+  static ErrorOr<std::string> getSubArch(StringRef kind);
+
+  static ErrorOr<std::string> getTargetAttrAcceleratorArch();
 };
 
 class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {
