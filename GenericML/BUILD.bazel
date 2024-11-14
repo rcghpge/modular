@@ -1059,7 +1059,6 @@ modular_cc_library(
     deps = [
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
-        "//Runtime:CUDA",
     ],
 )
 
@@ -1404,7 +1403,6 @@ modular_shared_library(
         ":rpaths",
         "//Init",
         "//Kernels:WeightsRegistry",
-        "//Runtime:CUDA",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",

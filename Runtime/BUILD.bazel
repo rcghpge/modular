@@ -11,21 +11,6 @@ modular_cc_library(
 )
 
 modular_cc_library(
-    name = "CUDA",
-    srcs = glob(["lib/CUDA/*.cpp"]),
-    hdrs = glob(["include/Runtime/CUDA/*.h"]),
-    deps = [
-        "//AsyncRT:Runtime",
-        "//AsyncRT:Support",
-        "//Runtime",
-        "//Support:CommonCLOptions",
-        "//Support:Profiling",
-        "//third-party/nvidia-headers-cudart",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_library(
     name = "Tensor",
     srcs = glob(["lib/Tensor/*.cpp"]),
     hdrs = glob(["include/Runtime/Tensor/*.h"]),

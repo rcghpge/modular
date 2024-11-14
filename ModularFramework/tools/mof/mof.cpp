@@ -24,7 +24,6 @@
 #include "GenericML/Support/ModelCollection.h"
 #include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
-#include "Runtime/CUDA/CUDARuntimeOptions.h"
 
 #include "MOF/Driver/DriverConfig.h"
 #include "MOF/Driver/DriverImpl.h"
@@ -53,15 +52,10 @@ using llvm::MemoryBuffer;
 
 namespace {
 
-class MOFDriverOptions : public DriverOptions,
-                         public MO::GraphCompilerOptions,
-                         public CUDA::CUDARuntimeOptions {
+class MOFDriverOptions : public DriverOptions, public MO::GraphCompilerOptions {
 public:
   void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
                                MO::MoToMgpOptions &moToMgpOptions) const {
-    overrideCUDARuntimeOptions(mofLoweringOptions.cudaRuntimeOptions);
-    mofLoweringOptions.cudaRuntimeOptions.cudaDriverPath = cudaDriverPath;
-    mofLoweringOptions.cudaRuntimeOptions.deviceOptions = deviceOptions;
     mofLoweringOptions.debugTensorPrintOptions.style = resultOutputStyle;
     mofLoweringOptions.debugTensorPrintOptions.precision = printPrecision;
     mofLoweringOptions.debugTensorPrintOptions.binaryDir = binaryOutputDir;
@@ -76,8 +70,7 @@ public:
 };
 
 class MOFDriverCLOptions : public DriverCLOptions,
-                           public MO::GraphCompilerCLOptions,
-                           public CUDA::CUDARuntimeCLOptions {
+                           public MO::GraphCompilerCLOptions {
 private:
   llvm::cl::OptionCategory MOFDriverCLOptionsCategory{"MOF driver options"};
 
@@ -86,7 +79,7 @@ public:
   MOFDriverCLOptions(int argc, char **argv, MOFDriverOptions &o,
                      bool skipInitLLVM = false)
       : DriverCLOptions(argc, argv, o, skipInitLLVM),
-        MO::GraphCompilerCLOptions(o), CUDA::CUDARuntimeCLOptions(o) {}
+        MO::GraphCompilerCLOptions(o) {}
 };
 
 /// Union of configuration gathered from MOFContext::setConfigs().
@@ -100,11 +93,6 @@ struct MOFConfig {
 
   void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
                                MO::MoToMgpOptions &moToMgpOptions) const {
-    if (deviceID && defaultDeviceLabel && *defaultDeviceLabel == "cuda") {
-      mofLoweringOptions.cudaRuntimeOptions.deviceOptions.emplace_back()
-          .deviceId = *deviceID;
-    }
-
     moToMgpOptions.compiledFrameworkLabel =
         CompiledFrameworkLabel::asLabelString(
             CompiledFrameworkLabel::kModularModel);
