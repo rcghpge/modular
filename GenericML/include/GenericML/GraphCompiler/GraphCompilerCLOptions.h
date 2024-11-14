@@ -22,8 +22,6 @@ class GraphCompilerOptions {
 public:
   std::string cacheDir{""};
 
-  bool enableFakeCudaDevice{false};
-
   std::string defaultDeviceLabel{""};
 
   size_t defaultDeviceId{0};
@@ -49,7 +47,6 @@ public:
   void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
 
     moToMgpOptions.cacheDir = cacheDir;
-    moToMgpOptions.enableFakeCudaDevice = enableFakeCudaDevice;
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
     moToMgpOptions.defaultDeviceId = defaultDeviceId;
     moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
@@ -80,13 +77,6 @@ private:
                "constants from the same instance at model 'init' time. "
                "Default empty (ie disabled)."),
       llvm::cl::location(options.cacheDir),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> enableFakeCudaDevice{
-      "enable-fake-cuda-device",
-      cl::desc("If true, compile assuming a single CUDA GPU is available. "
-               "For testing only."),
-      llvm::cl::location(options.enableFakeCudaDevice),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<std::string, true> defaultDeviceLabel{

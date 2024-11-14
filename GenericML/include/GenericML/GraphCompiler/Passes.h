@@ -104,12 +104,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "lower-quantized-operators",
       llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
       llvm::cl::init(true)};
-  Option<bool> enableFakeCudaDevice{
-      *this, "enable-fake-cuda-device",
-      llvm::cl::desc(
-          "If true, compile assuming a single CUDA GPU is available. "
-          "For testing only."),
-      llvm::cl::init(false)};
   Option<std::string> defaultDeviceLabel{
       *this, "default-device-label",
       llvm::cl::desc(
