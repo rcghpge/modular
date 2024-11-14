@@ -1674,7 +1674,8 @@ KGEN::ParamDeclRefAttr ToKGENOp::getStaticTensorRefAttr() {
 LogicalResult StackAllocateTensorsOp::verify() {
   auto isCpuTensor = [](Type t) {
     auto tensor = cast<MO::TensorType>(t);
-    return !tensor.getDeviceRef() || tensor.getDeviceRef().getLabel() == "cpu";
+    return !tensor.getDeviceRef() ||
+           tensor.getDeviceRef().getLabel() == kCPULabel;
   };
 
   if (!llvm::all_of(getResultTypes(), isCpuTensor))

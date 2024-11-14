@@ -728,7 +728,7 @@ LogicalResult ListGetOp::verify() {
   // Check index tensor type.
   // TODO: Should be IndexType.
   DeviceTensorType indexTensorTy = getIndex().getType();
-  if (indexTensorTy.getDevice().getLabel() != "cpu") {
+  if (indexTensorTy.getDevice().getLabel() != kCPULabel) {
     return emitOpError()
            << "list index to insert must be a cpu tensor but it is "
            << indexTensorTy.getDevice();
@@ -778,7 +778,7 @@ LogicalResult ListInsertOp::verify() {
   // Check index tensor type.
   // TODO: Should be IndexType.
   DeviceTensorType indexTensorTy = getIndex().getType();
-  if (indexTensorTy.getDevice().getLabel() != "cpu") {
+  if (indexTensorTy.getDevice().getLabel() != kCPULabel) {
     return emitOpError()
            << "list index to insert must be a cpu tensor but it is "
            << indexTensorTy.getDevice();

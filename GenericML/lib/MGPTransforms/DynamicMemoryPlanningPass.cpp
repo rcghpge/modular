@@ -103,7 +103,7 @@ class DynamicMemoryPlanningPass
 
     for (auto allocOp : execState.execute->getOps<MGP::BufferAllocOp>()) {
       // Ignore CPU allocations for now. Will be addressed by GRA-557
-      if (allocOp.getDevice().getLabel() == "cpu")
+      if (allocOp.getDevice().getLabel() == kCPULabel)
         continue;
 
       auto allocUses = getAllocUses(allocOp);
