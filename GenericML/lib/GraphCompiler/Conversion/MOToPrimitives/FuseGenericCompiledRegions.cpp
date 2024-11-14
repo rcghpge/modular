@@ -130,7 +130,7 @@ static void fuseCompiledRegionsAndReplaceUses(
   for (auto region : compiledRegionOpsToFuseTogether) {
     auto regionDevice =
         cast<MOGG::GenericCompiledRegionOp>(region).getDeviceRef();
-    if (regionDevice.getLabel() == kCUDALabel)
+    if (regionDevice.getLabel() == kGPULabel)
       device = regionDevice;
   }
 

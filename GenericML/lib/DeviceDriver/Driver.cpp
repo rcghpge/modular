@@ -125,12 +125,11 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
         deviceContexts.push_back(AnyAsyncValueRef::createReady<MojoValue>(
             runtime, MojoValue::createRef(dev->tmpGetDeviceContext())));
       } else {
-        ASSERT_STREAM(devRef.label == kCUDALabel,
+        ASSERT_STREAM(devRef.label == kGPULabel,
                       "Only cuda device context supported");
         // In this case we use the device ref id as the device id. THIS IS NOT
         // THE CASE WHEN THE DEVICE IS PASSED IN TO THE GRAPH.
-        auto numPhysicalDevicesOr =
-            AsyncRT::Device::numberOfDevices(kCUDALabel);
+        auto numPhysicalDevicesOr = AsyncRT::Device::numberOfDevices(kGPULabel);
         if (numPhysicalDevicesOr.isError())
           return numPhysicalDevicesOr.takeError();
         size_t numPhysicalDevices = *numPhysicalDevicesOr;

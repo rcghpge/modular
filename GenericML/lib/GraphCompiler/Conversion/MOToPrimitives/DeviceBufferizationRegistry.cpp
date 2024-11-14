@@ -59,7 +59,7 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
 
 DeviceBufferizationRegistry::DeviceBufferizationRegistry() {
   add(kCPULabel, std::make_unique<MGPDeviceSpecificDialect>());
-  add(kCUDALabel, std::make_unique<MGPDeviceSpecificDialect>());
+  add(kGPULabel, std::make_unique<MGPDeviceSpecificDialect>());
 }
 
 void DeviceBufferizationRegistry::add(

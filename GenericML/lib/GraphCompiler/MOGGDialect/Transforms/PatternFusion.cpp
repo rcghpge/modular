@@ -230,7 +230,7 @@ struct MatmulConstBPattern
     DeviceRefAttr device =
         getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
     // TODO: CUDA does not support pre-packing yet
-    if (device && device.getLabel() == M::kCUDALabel)
+    if (device && device.getLabel() == M::kGPULabel)
       return failure();
 
     Value input = op.getInputA();
@@ -394,7 +394,7 @@ struct ForceMatmulTransposeBForGPU
     DeviceRefAttr defaultDevice =
         getGraphDevice(weights->getParentOfType<MO::GraphOp>(), targetDevice);
     bool defaultDeviceIsCuda =
-        defaultDevice && defaultDevice.getLabel() == M::kCUDALabel;
+        defaultDevice && defaultDevice.getLabel() == M::kGPULabel;
 
     // Ensure all usages of constant hit a matmul (allow chains of rebinds to
     // the matmul) which is meant to run on cuda.
@@ -419,7 +419,7 @@ struct ForceMatmulTransposeBForGPU
             "Matmul use does not have device and default device is not cuda.");
 
       if (asMatmul.getDeviceRef() &&
-          asMatmul.getDeviceRef().getLabel() != M::kCUDALabel)
+          asMatmul.getDeviceRef().getLabel() != M::kGPULabel)
         return rewriter.notifyMatchFailure(
             asMatmul, "Matmul is explicitly not run on cuda");
     }
@@ -454,7 +454,7 @@ struct BatchMatmulAdjBPattern
     Value input, weight, perm;
 
     DeviceRefAttr device = op.getInputA().getType().getDeviceRef();
-    bool runsOnGPU = device && device.getLabel() == M::kCUDALabel;
+    bool runsOnGPU = device && device.getLabel() == M::kGPULabel;
     if (runsOnGPU)
       return rewriter.notifyMatchFailure(
           op,
@@ -2547,7 +2547,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     //
     // That way avoid device logic for now.
     if (device && device.getLabel() != M::kCPULabel &&
-        device.getLabel() != M::kCUDALabel)
+        device.getLabel() != M::kGPULabel)
       return rewriter.notifyMatchFailure(
           op->getLoc(), "Only support CPU and CUDA for this pattern.");
 
