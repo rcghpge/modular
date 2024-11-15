@@ -1035,7 +1035,6 @@ def MGP_SyncOp : MGP_DeviceOp<"sync",
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_OpaqueType:$deviceContext,
-                       UI64Attr:$aRuntimeSlot,                       // 0
                        MGP_OptDeviceRefAttr:$bDevice);               // 1
   let results = (outs ChainType: $outChain);
   let assemblyFormat = [{

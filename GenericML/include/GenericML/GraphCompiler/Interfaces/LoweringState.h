@@ -720,7 +720,6 @@ struct MOOpLoweringState {
       Value srcMutChain = loweringState.getChainGuardingValueOrNull(srcBuffer);
       Value syncChain = builder.create<MGP::SyncOp>(loc, srcMutChain, context,
                                                     srcDeviceContext,
-                                                    /*aRuntimeSlot=*/0,
                                                     /*bDevice=*/srcDeviceRef);
       preD2DChain =
           create<M::GRT::ChainCreateOp>(ValueRange{inChain, syncChain})
@@ -737,7 +736,6 @@ struct MOOpLoweringState {
     if (srcDeviceRef != dstDeviceRef) {
       Value syncChain = builder.create<MGP::SyncOp>(loc, postD2DChain, context,
                                                     srcDeviceContext,
-                                                    /*aRuntimeSlot=*/0,
                                                     /*bDevice=*/srcDeviceRef);
       // d2d runs on dst device so dstBuffer's lifetime doesn't need to be
       // manually extended because the free is enqueued on the same stream as
