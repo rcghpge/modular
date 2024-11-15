@@ -375,7 +375,7 @@ $L__BB0_2:
                                                .addBuffer()
                                                .addUInt64();
     ErrorOr<DeviceFunctionRef> err_fun =
-        ctx->loadFunction("vec_add", sig, vec_add_ptx);
+        ctx->loadFunction("vec_add_module", "vec_add", sig, vec_add_ptx);
     EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
     DeviceFunctionRef device_function = std::move(err_fun.get());
     EXPECT_TRUE(device_function);
@@ -444,7 +444,7 @@ $L__BB0_2:
     // Check cache hit.
     {
       ErrorOr<DeviceFunctionRef> err_fun =
-          ctx->loadFunction("vec_add", sig, vec_add_ptx);
+          ctx->loadFunction("vec_add_module", "vec_add", sig, vec_add_ptx);
       EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
       DeviceFunctionRef device_function2 = std::move(err_fun.get());
       EXPECT_TRUE(device_function2);

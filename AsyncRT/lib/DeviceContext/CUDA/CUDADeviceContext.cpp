@@ -552,14 +552,14 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
-    const char *function_name,
+    const char *module_name, const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
     int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
     int32_t cache_config, int32_t max_dynamic_shared_bytes,
     const char *debug_level, int32_t optimization_level) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(function_name);
+    auto iter = func_map_.find(module_name);
     if (iter != func_map_.end()) {
       CUDAModuleFunctionRef module_func = iter->second;
       return CUDADeviceFunctionRef::create(*this, signature,
@@ -657,13 +657,13 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   CUDADeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(function_name);
+    auto iter = func_map_.find(module_name);
     if (iter != func_map_.end()) {
       result = CUDADeviceFunctionRef::create(
           *this, signature,
           CUDAModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      func_map_.insert({module_func->name(), module_func});
+      func_map_.insert({module_name, module_func});
       result = CUDADeviceFunctionRef::create(*this, signature,
                                              std::move(module_func));
     }

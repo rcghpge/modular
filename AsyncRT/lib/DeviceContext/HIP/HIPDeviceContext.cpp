@@ -469,14 +469,14 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
 }
 
 ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
-    const char *function_name,
+    const char *module_name, const char *function_name,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
     int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
     int32_t cache_config, int32_t max_dynamic_shared_bytes,
     const char *debug_level, int32_t optimization_level) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(function_name);
+    auto iter = func_map_.find(module_name);
     if (iter != func_map_.end()) {
       HIPDeviceFunctionRef result = iter->second;
       return result;
@@ -515,11 +515,11 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   HIPDeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(function_name);
+    auto iter = func_map_.find(module_name);
     if (iter != func_map_.end()) {
       result = HIPDeviceFunctionRef::copy(iter->second.getPointer());
     } else {
-      func_map_.insert({func->name(), func});
+      func_map_.insert({module_name, func});
       result = std::move(func);
     }
   }

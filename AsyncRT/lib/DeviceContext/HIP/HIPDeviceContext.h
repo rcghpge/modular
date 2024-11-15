@@ -194,7 +194,7 @@ public:
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef> loadFunction(
-      const char *function_name,
+      const char *module_name, const char *function_name,
       const DeviceFunction::SignatureBuilder &signature, const void *data,
       int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
       int32_t cache_config, int32_t max_dynamic_shared_bytes,

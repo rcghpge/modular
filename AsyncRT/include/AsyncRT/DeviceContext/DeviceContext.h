@@ -290,7 +290,7 @@ public:
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>
-  loadFunction(const char *function_name,
+  loadFunction(const char *module_name, const char *function_name,
                const DeviceFunction::SignatureBuilder &signature,
                const void *data, int32_t max_registers = -1,
                int32_t threads_per_block = -1, int32_t cache_mode = -1,
