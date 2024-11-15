@@ -62,9 +62,10 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   MLIRContext *ctx = kgenModule->getContext();
   initLLVM();
 
-  ErrorOr<TargetInfoAttr> targetOr = M::getTargetInfoFor(
+  ErrorOr<TargetInfoAttr> targetOr = getTargetInfoFor(
       kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
-      llvm::sys::getHostCPUName(), getHostCPUFeatures());
+      llvm::sys::getHostCPUName(), getHostCPUFeatures(), /*tuneCpu=*/"",
+      /*acceleratorArch=*/AsyncRT::Device::getAcceleratorArchOrEmpty());
   if (targetOr.isError())
     return mlir::emitError(kgenModule->getLoc(), targetOr.getError());
   TargetInfoAttr target = *targetOr;
@@ -74,9 +75,9 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
-  ErrorOr<TargetInfoAttr> targetInfoOr =
-      getTargetInfoFor(ctx, target.getTripleStr(), target.getArch(),
-                       target.getFeatures(), target.getTuneCpu());
+  ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
+      ctx, target.getTripleStr(), target.getArch(), target.getFeatures(),
+      target.getTuneCpu(), AsyncRT::Device::getAcceleratorArchOrEmpty());
   if (targetInfoOr)
     return kgenModule->emitError(targetInfoOr.getError());
 
@@ -90,6 +91,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   compilationOptions.enableLLVMPerFunctionSplitting = false;
   compilationOptions.optimizationLevel = superOpt ? 4 : 3;
   compilationOptions.saveTempsPrefix = saveTempsPrefix;
+  compilationOptions.targetAccelerator = targetInfoOr->getAcceleratorArch();
 
   if (debugKGENStubs || hasDebuginfo(kernelBuildType))
     compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
