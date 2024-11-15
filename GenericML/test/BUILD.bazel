@@ -36,6 +36,5 @@ lit_tests(
     tools = [
         "//GenericML/tools/mo-opt",
         "//GenericML/tools/model-specification-validator",
-        "//GenericML/tools/mt",
     ],
 )
