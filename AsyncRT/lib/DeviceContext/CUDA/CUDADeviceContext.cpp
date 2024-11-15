@@ -28,6 +28,14 @@
     }                                                                          \
   } while (0)
 
+#define CUDA_CHECK_ERR_MSG(cuda_call, msg)                                     \
+  do {                                                                         \
+    CUDADriver::Result cuda_result = cuda_call;                                \
+    if (cuda_result != CUDADriver::SUCCESS) {                                  \
+      return formatError(__FILE__, __LINE__, __FUNCTION__, cuda_result, msg);  \
+    }                                                                          \
+  } while (0)
+
 #define CUDA_CHECK(cuda_call)                                                  \
   do {                                                                         \
     CUDADriver::Result cuda_result = cuda_call;                                \
@@ -57,7 +65,8 @@ static Error formatError(const char *file, int line, const char *func,
 }
 
 static Error formatError(const char *file, int line, const char *func,
-                         CUDADriver::Result result) {
+                         CUDADriver::Result result,
+                         std::string extra_msg = "") {
   ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
   const char *err_name = nullptr;
   const char *err_str = nullptr;
@@ -68,17 +77,23 @@ static Error formatError(const char *file, int line, const char *func,
     err_driver->GetErrorString(result, &err_str);
   }
 
+  if (!extra_msg.empty()) {
+    extra_msg = std::string(" - ") + extra_msg;
+  }
+
   if ((err_name != nullptr) && (err_str != nullptr)) {
     return formatError(file, line, func,
                        llvm::Twine("CUDA call failed: ") + err_name + " (" +
-                           err_str + ")");
+                           err_str + ")" + extra_msg);
   } else if ((err_name != nullptr) || (err_str != nullptr)) {
     return formatError(file, line, func,
                        llvm::Twine("CUDA call failed: ") +
-                           (err_name != nullptr ? err_name : err_str));
+                           (err_name != nullptr ? err_name : err_str) +
+                           extra_msg);
   } else {
     return formatError(file, line, func,
-                       llvm::Twine("CUDA call failed: ") + llvm::Twine(result));
+                       llvm::Twine("CUDA call failed: ") + llvm::Twine(result) +
+                           extra_msg);
   }
 }
 
@@ -618,7 +633,9 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   }
 
   CUfunction function;
-  CUDA_CHECK_ERR(driver_.ModuleGetFunction(&function, module, function_name));
+  CUDA_CHECK_ERR_MSG(
+      driver_.ModuleGetFunction(&function, module, function_name),
+      std::string("function name: ") + function_name);
 
   if (cache_config >= 0) {
     CUDA_CHECK_ERR(driver_.FuncSetCacheConfig(
