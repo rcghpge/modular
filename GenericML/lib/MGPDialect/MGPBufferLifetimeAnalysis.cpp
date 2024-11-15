@@ -6,8 +6,9 @@
 
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
+
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SetVector.h"
-#include <llvm/ADT/SetOperations.h>
 
 using namespace M;
 using namespace MGP;
@@ -95,9 +96,8 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
   llvm::BitVector newRunsAfter(numOperations);
   SmallVector<Operation *, 4> users;
 
-  for (Operation &op : block->getOperations()) {
+  for (Operation &op : block->getOperations())
     worklist.insert(&op);
-  }
 
   while (!worklist.empty()) {
     Operation *op = worklist.pop_back_val();
@@ -146,6 +146,13 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
   DenseMap<Operation *, Operation *> immediateRunsAfters;
   immediateRunsAfters.reserve(block->getOperations().size() - 1);
 
+  // Pre-compute the counts for all bitsets as the count operation is
+  // O(n) and the consumer is an O(n^2) loop nest.
+  SmallVector<uint32_t> runsAfterCounts =
+      llvm::map_to_vector(runsAfter, [](const llvm::BitVector &set) {
+        return static_cast<uint32_t>(set.count());
+      });
+
   for (Operation &n : block->getOperations()) {
     if (&n == terminator)
       continue;
@@ -163,7 +170,7 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
 
       // The immediate runsAfter is the one with the largest runsAfter set
       if (immediateRunsAfter == nullptr ||
-          runsAfter[i].count() > runsAfter[ipdomIndex].count()) {
+          runsAfterCounts[i] > runsAfterCounts[ipdomIndex]) {
         immediateRunsAfter = op;
         ipdomIndex = i;
       }
@@ -294,14 +301,10 @@ Block *DependencyTree::getBlock() const {
 }
 
 DependencyTreeNode *DependencyTree::getOrCreate(Operation *op) {
-  auto it = nodes.find(op);
-  if (it != nodes.end()) {
-    return it->second.get();
-  } else {
-    auto newNode = std::make_unique<DependencyTreeNode>(op);
-    nodes[op] = std::move(newNode);
-    return nodes[op].get();
-  }
+  std::unique_ptr<DependencyTreeNode> &node = nodes[op];
+  if (node == nullptr)
+    node = std::make_unique<DependencyTreeNode>(op);
+  return node.get();
 }
 
 bool DependencyTree::contains(Operation *op) const {
@@ -342,7 +345,7 @@ DependencyTreeNode *DependencyTree::findLCA(DependencyTreeNode *a,
 }
 
 DependencyTreeNode *
-DependencyTree::findLCA(const SmallVector<DependencyTreeNode *> &nodes) const {
+DependencyTree::findLCA(ArrayRef<DependencyTreeNode *> nodes) const {
   assert(!nodes.empty());
 
   DependencyTreeNode *lca = nodes[0];
@@ -354,8 +357,7 @@ DependencyTree::findLCA(const SmallVector<DependencyTreeNode *> &nodes) const {
   return lca;
 }
 
-DependencyTreeNode *
-DependencyTree::findLCA(const SmallVector<Operation *> &nodes) const {
+DependencyTreeNode *DependencyTree::findLCA(ArrayRef<Operation *> nodes) const {
   assert(!nodes.empty());
 
   DependencyTreeNode *lca = get(nodes[0]);

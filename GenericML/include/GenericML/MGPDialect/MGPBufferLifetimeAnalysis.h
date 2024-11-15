@@ -83,9 +83,8 @@ public:
                               DependencyTreeNode *b) const;
 
   // Find the LCA of a list of nodes by repeatedly applying the above function
-  DependencyTreeNode *
-  findLCA(const SmallVector<DependencyTreeNode *> &nodes) const;
-  DependencyTreeNode *findLCA(const SmallVector<Operation *> &nodes) const;
+  DependencyTreeNode *findLCA(ArrayRef<DependencyTreeNode *> nodes) const;
+  DependencyTreeNode *findLCA(ArrayRef<Operation *> nodes) const;
 
 private:
   DependencyTreeNode *root{nullptr};
