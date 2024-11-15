@@ -97,10 +97,11 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
     std::optional<uint64_t> bufferSize = outSpecTy.getSizeInBytes();
 
     if (!bufferSize.has_value()) {
-      sliceSize = opLoweringState
-                      .create<MGP::CpuTensorSpecSizeOp>(
-                          /*spec=*/outSpec)
-                      .getResult();
+      ASSERT_STREAM(outSpecTy.getOptDType().has_value(),
+                    << "SplitOp output spec cannot have unknown dtype.");
+      sliceSize =
+          opLoweringState.bufferSizeBytes(outSpec, getInput().getType());
+
     } else {
       sliceSize = opLoweringState.create<mlir::index::ConstantOp>(*bufferSize)
                       .getResult();

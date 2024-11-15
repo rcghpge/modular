@@ -990,7 +990,7 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
     bufferSize = opLoweringState.create<mlir::index::ConstantOp>(
         *maybeTensorSizeInBytes);
   else
-    bufferSize = opLoweringState.create<MGP::CpuTensorSpecSizeOp>(tensorSpec);
+    bufferSize = opLoweringState.bufferSizeBytes(tensorSpec, moTensorType);
   Value hostBuffer = opLoweringState.hostBufferAlloc(
       cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
       AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()),
@@ -1137,19 +1137,17 @@ LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
   auto dataType = tensorType.getDtype();
   Value elemSize = indexLowering.constant(dataType.getSizeInBytes());
 
-  Value bufferSizeBytes = opLoweringState.create<MGP::CpuTensorSpecSizeOp>(
-      bufferizedInput.tensorSpec);
-  Value bufferSizeElems = indexLowering.div(bufferSizeBytes, elemSize);
-
   // Get size of the outermost dimension
   Value outermostDim = opLoweringState.create<MGP::TensorSpecGetDimOp>(
       bufferizedInput.tensorSpec, 0);
 
-  // Prevent divide-by-zero
-  Value outermostDimOrOne = opLoweringState.create<mlir::index::MaxSOp>(
-      outermostDim, indexLowering.constant(1));
-  Value outerStride = indexLowering.div(bufferSizeElems, outermostDimOrOne);
-  outerStride = indexLowering.ifZero(outermostDim, outermostDim, outerStride);
+  // Calculate outerStride by multiplying inner dimensions
+  Value outerStride = indexLowering.constant(1);
+  for (size_t i = 1; i < tensorType.getRank(); ++i) {
+    Value dimVal = opLoweringState.create<MGP::TensorSpecGetDimOp>(
+        bufferizedInput.tensorSpec, i);
+    outerStride = indexLowering.mul(outerStride, dimVal);
+  }
 
   // If start or stop are negative, add outermostDim to make them positive
   // start = start < 0 ? (start + outermostDim) : start

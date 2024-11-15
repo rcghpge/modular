@@ -492,23 +492,6 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-//===----------------------------------------------------------------------===//
-// CpuTensorSpecSizeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CpuTensorSpecSizeOp::canonicalize(CpuTensorSpecSizeOp op,
-                                                PatternRewriter &rewriter) {
-
-  TensorSpecType specType = op.getSpec().getType();
-  std::optional<uint64_t> constSize = specType.getSizeInBytes();
-  if (constSize) {
-    rewriter.replaceOpWithNewOp<mlir::index::ConstantOp>(op, constSize.value());
-    return success();
-  }
-
-  return failure();
-}
-
 /// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
 /// tensors represented by `ty1` is a subset for that of `ty2`.
 static bool isSubtype(TensorSpecType ty1, TensorSpecType ty2) {

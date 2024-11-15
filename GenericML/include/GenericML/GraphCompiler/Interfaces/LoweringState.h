@@ -23,6 +23,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/DenseMap.h"
@@ -788,6 +789,22 @@ struct MOOpLoweringState {
     return getStorageBufferBuilder(moTensorType)
         ->bufferAlloc(builder, loc, context, inChain, size, deviceContext,
                       align, staticSize);
+  }
+
+  Value bufferSizeBytes(TypedValue<TensorSpecType> tensorSpec,
+                        Type moTensorType) {
+    // Calculate size of buffer by computing volume of tensor dimensions and
+    // multiplying by dtype size
+    int64_t dtypeSize =
+        dyn_cast<MO::TensorType>(moTensorType).getDtype().getSizeInBytes();
+    Value numBytes = builder.create<mlir::index::ConstantOp>(loc, dtypeSize);
+    for (size_t i = 0; i < tensorSpec.getType().getRank(); ++i) {
+      Value dimVal =
+          builder.create<MGP::TensorSpecGetDimOp>(loc, tensorSpec, i);
+      numBytes = builder.create<mlir::index::MulOp>(loc, builder.getIndexType(),
+                                                    numBytes, dimVal);
+    }
+    return numBytes;
   }
 
   Value sync(Value chain) {

@@ -58,25 +58,6 @@ module {
 
 // -----
 
-mgp.model @tensor_spec_size : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
-  %0 = grt.chain.create ()
-  %1 = mgp.context.create 2
-  mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<1234x5678xf32>) -> (!mef.chain, !mgp.tensor<1234x5678xf32>) {
-  %spec = mgp.tensor.extract.tensor_spec %inTensor: <1234x5678xf32>
-  %size0 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
-  %size1 = mgp.tensor_spec.size %spec : !mgp.tensor_spec<1234x5678xf32>
-  %ch0 = "test.sink"(%size0, %arg0) : (index, !mef.chain) -> !mef.chain
-  %ch1 = "test.sink"(%size1, %ch0) : (index, !mef.chain) -> !mef.chain
-  mef.output %ch1, %inTensor : !mef.chain, !mgp.tensor<1234x5678xf32>
-}
-
-// CHECK-LABEL: mgp.model @tensor_spec_size
-// CHECK: index.constant 28026608
-// CHECK-NOT: index.constant 28026608
-
-// -----
-
 mgp.model @tensor_extract_fold : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0

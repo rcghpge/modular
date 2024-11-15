@@ -325,37 +325,6 @@ def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorSpecSizeOp
-//===----------------------------------------------------------------------===//
-
-def CpuTensorSpecSizeOp : MGP_Op<"tensor_spec.size", [Pure]> {
-  let summary = [{
-    Returns the byte size needed for a CPU buffer for a tensor with
-    the given tensor spec.
-  }];
-  let description = [{
-    Returns the number of bytes needed to represent the CPU buffer backing a
-    tensor of the given tensor spec. Generally the tensor spec's type will
-    contain at least one unknown dimension and/or an unknown element type
-    (otherwise the size is already known).
-
-    Example:
-    ```mlir
-    %spec : !mgp.tensor_spec<32x?xf32>
-    %size = mgp.tensor_spec.size %spec : !mgp.tensor_spec<32x?xf32>
-    %size : index
-    ```
-  }];
-
-  let hasCanonicalizeMethod = 1;
-
-  let arguments = (ins MGP_TensorSpecType: $spec);
-  let results = (outs Index:$result);
-  let assemblyFormat = "$spec attr-dict `:` qualified(type($spec))";
-}
-
-
-//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 

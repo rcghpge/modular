@@ -7,6 +7,7 @@
 // CHECK-SAME:   %[[INPUT:[a-z0-9]*]]: !mgp.tensor<?x8xf32>,
 // CHECK-SAME:   %[[DUMMY:[a-z0-9]*]]: !mgp.tensor<?x?xsi64>
 // CHECK-SAME: ) -> (!mef.chain, !mgp.tensor<?x8xf32>, !mgp.tensor<?x8xf32>) {
+// CHECK-NEXT:   %[[THIRTYTWO:.*]] = index.constant 32
 // CHECK-NEXT:   %[[ZERO:.*]] = index.constant 0
 
 // CHECK-NEXT:   %[[DUMMY_SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[DUMMY]]
@@ -19,11 +20,11 @@
 // CHECK-NEXT:   %[[SPLIT_SPEC1:.*]] = mgp.tensor_spec.create %[[INDEX0]]
 // CHECK-NEXT:   %[[INDEX1:.*]] = index.casts %[[CASTED1]] : si64 to index
 // CHECK-NEXT:   %[[SPLIT_SPEC2:.*]] = mgp.tensor_spec.create %[[INDEX1]]
-// CHECK-NEXT:   %[[SPLIT_SIZE1:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC1]]
+// CHECK-NEXT:   %[[SPLIT_SIZE1:.*]] = index.mul %[[INDEX0]], %[[THIRTYTWO]]
 
 // CHECK-NEXT:   %[[SLICE:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[ZERO]], %[[SPLIT_SIZE1]]
 
-// CHECK-NEXT:   %[[SPLIT_SIZE2:.*]] = mgp.tensor_spec.size %[[SPLIT_SPEC2]]
+// CHECK-NEXT:   %[[SPLIT_SIZE2:.*]] = index.mul %[[INDEX1]], %[[THIRTYTWO]]
 // CHECK-NEXT:   %[[SLICE2:.*]] = mgp.buffer.slice %[[INPUT_BUF]], %[[SPLIT_SIZE1]], %[[SPLIT_SIZE2]]
 
 // CHECK-NEXT:   %[[SPLIT_TENSOR1:.*]] = mgp.tensor.create %[[CH]], %[[SLICE]], %[[SPLIT_SPEC1]]
