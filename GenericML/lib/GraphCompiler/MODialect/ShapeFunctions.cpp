@@ -505,8 +505,8 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     maybeStartConst = tryGetConstantInt(start.getAttr());
     maybeStopConst = tryGetConstantInt(stop.getAttr());
     if (maybeStartConst && maybeStopConst) {
-      int64_t startConst = *maybeStartConst;
-      int64_t stopConst = *maybeStopConst;
+      [[maybe_unused]] int64_t startConst = *maybeStartConst;
+      [[maybe_unused]] int64_t stopConst = *maybeStopConst;
       ASSERT_STREAM((step > 0 && (startConst <= stopConst)) ||
                         (step < 0 && (startConst >= stopConst)),
                     << llvm::formatv("rmo.slice step should be != 0 but got "
