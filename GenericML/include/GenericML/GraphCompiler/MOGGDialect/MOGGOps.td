@@ -762,6 +762,20 @@ def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   let hasVerifier = 1;
 }
 
+def MOGG_DataPointerFromBufferOp : MOGG_Op<"get_buffer_data_ptr", [Pure]> {
+  let arguments = (ins AnyType:$buffer);
+  let results = (outs AnyType:$result);
+  let summary = "Returns the data pointer of a given tensor or buffer.";
+  let description = [{
+    Get the data pointer of the given MGP buffer.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
+  }];
+}
+
 def MOGG_ToMGPFromTensorOp : MOGG_Op<"to_mgp_from_tensor", [Pure]> {
   let arguments = (ins AnyType:$tensor);
   let results = (outs AnyType:$dataPointer);

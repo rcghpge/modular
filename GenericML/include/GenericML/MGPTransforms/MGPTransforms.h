@@ -7,6 +7,7 @@
 #ifndef GENERICML_MGPDIALECT_MGPTRANSFORMS_H
 #define GENERICML_MGPDIALECT_MGPTRANSFORMS_H
 
+#include "Support/AlignedAlloc.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/Pass.h"
 

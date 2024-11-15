@@ -345,6 +345,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   mlir::MLIRContext *ctx = getContext();
   auto &builder = opLoweringState.builder;
 
+  auto voidStar = KGEN::PointerType::get(KGEN::NoneType::get(ctx));
+
   auto maybeInChain = getInChain();
   auto maybeOutChain = getOutChain();
 
@@ -574,8 +576,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     } else if (isa<MO::TensorType, MO::BufferType>(oldTy)) {
       MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
 
+      Value dataPtr = builder.create<MOGG::DataPointerFromBufferOp>(
+          input.getLoc(), voidStar, input);
+
       SmallVector<Value> operands;
-      operands.push_back(input);
+      operands.push_back(dataPtr);
       for (auto dim : asTensor.getDims()) {
         auto loweredParam = loweredParams.at(dim);
         if (!loweredParam.getType().isIndex())
@@ -599,10 +604,13 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       return {};
     }
 
+    Value dataPtr = builder.create<MOGG::DataPointerFromBufferOp>(
+        input.getLoc(), voidStar, input);
+
     MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
 
     SmallVector<Value> operands;
-    operands.push_back(input);
+    operands.push_back(dataPtr);
     for (auto dim : asTensor.getDims()) {
       auto loweredParam = loweredParams.at(dim);
       if (!loweredParam.getType().isIndex())

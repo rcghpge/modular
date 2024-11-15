@@ -351,7 +351,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createAddDeviceContextProfilingPass());
 
-  pm.addPass(MGP::createHoistHarness());
+  MGP::HoistHarnessOptions harnessOpts;
+  harnessOpts.kernelLibraryPaths = kernelLibraryPaths;
+  harnessOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  pm.addPass(MGP::createHoistHarness(harnessOpts));
 
   // Before any sort of fusion, use location information to create better
   // runtime assert messages.
