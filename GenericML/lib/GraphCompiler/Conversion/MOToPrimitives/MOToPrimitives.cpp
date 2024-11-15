@@ -336,8 +336,6 @@ LogicalResult MOGraphLowering::createModelOp() {
                             resultNamesAttr);
   }
 
-  // Create the mgp.model and the regions for the init/execute phases.
-  b.setInsertionPoint(graph);
   // Get all the devices
   ErrorOrSuccess err(success());
   auto devices = llvm::map_to_vector(getAllDevicesUsedInGraph(graph),
@@ -352,6 +350,34 @@ LogicalResult MOGraphLowering::createModelOp() {
                                      });
   if (err.isError())
     return err;
+
+  // Go through Input Output types and their device and add to extraAttrs.
+  auto ctx = graph->getContext();
+  SmallDenseMap<DeviceRefAttr, IntegerAttr> deviceIndexMap;
+  auto idxType = IntegerType::get(ctx, 32, IntegerType::Unsigned);
+  for (const auto &[idx, deviceRef] :
+       llvm::enumerate(getAllDevicesUsedInGraph(graph)))
+    deviceIndexMap[deviceRef] = IntegerAttr::get(idxType, idx);
+  auto populateDeviceIndicesExtraAttr = [&](const char *label,
+                                            SmallVector<Type> types) {
+    llvm::SmallVector<Attribute> deviceIndices;
+    for (const auto &type : types) {
+      if (auto hasDeviceType = dyn_cast<MGP::MGPHasDeviceTypeInterface>(type))
+        deviceIndices.push_back(deviceIndexMap[hasDeviceType.getDevice()]);
+    }
+    // Set the attribute.
+    if (!deviceIndices.empty()) {
+      ArrayAttr deviceIndicesAttr = ArrayAttr::get(ctx, deviceIndices);
+      extraAttrs.emplace_back(b.getStringAttr(label), deviceIndicesAttr);
+    }
+  };
+  // Set the `argument_device_indices` attribute.
+  populateDeviceIndicesExtraAttr(kMgpModelArgumentDeviceIndices, inputTypes);
+  // Set the `result_device_indices` attribute.
+  populateDeviceIndicesExtraAttr(kMgpModelResultDeviceIndices, outputTypes);
+
+  // Create the mgp.model and the regions for the init/execute phases.
+  b.setInsertionPoint(graph);
   auto modelOp = b.create<MGP::ModelOp>(
       graph.getLoc(),
       /*name=*/graph.getNameAttr(),
