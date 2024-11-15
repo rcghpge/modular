@@ -362,13 +362,32 @@ public:
 
   /// Returns inverse of relation.
   [[nodiscard]] Relation inverse(const Relation &relation) const {
-    Relation result = emptyRelation();
-    for (const auto &[lhs, set] : relation) {
-      size_t lhsIndex = index->getIndex(lhs);
-      for (auto rhsItr = set.set_bits_begin(), e = set.set_bits_end();
-           rhsItr != e; ++rhsItr)
-        result[index->getV(*rhsItr)].set(lhsIndex);
+    // Convert the input to a flat table for processing. This improves
+    // locality enough that it is worth the extra processing.
+    SmallVector<const Set *> inputTable(index->size(), nullptr);
+    for (const auto &[lhs, set] : relation)
+      inputTable[index->getIndex(lhs)] = &set;
+
+    auto N = index->size();
+
+    // Similar to the input, the result is accumulated into a flat table for
+    // processing and then is converted back to the hash-table based
+    // representation at the end.
+    SmallVector<Set> resultTable(index->size(), index->emptySet());
+    for (const auto &[lhsIndex, set] : llvm::enumerate(inputTable)) {
+      if (set == nullptr)
+        continue;
+
+      for (auto i : llvm::seq(N))
+        if (set->test(i))
+          resultTable[i].set(lhsIndex);
     }
+
+    // Convert the result table back to the hash-table representation
+    Relation result;
+    for (auto &[lhs, _] : relation)
+      result[lhs] = std::move(resultTable[index->getIndex(lhs)]);
+
     return result;
   }
 

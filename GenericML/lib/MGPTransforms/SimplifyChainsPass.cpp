@@ -83,9 +83,9 @@ class SimplifyChainsPass
     // input and output chains have the same type.
     if (auto chainCreateOp =
             chain.getDefiningOp<GRT::GRTGatedOnChainOpInterface>()) {
-      for (auto operand : dyn_cast<GRT::GRTChainCreateOpInterface>(
-                              chainCreateOp.getOperation())
-                              .getInputChains())
+      for (auto operand :
+           cast<GRT::GRTChainCreateOpInterface>(chainCreateOp.getOperation())
+               .getInputChains())
         accumulatePrimitiveChains(valueIndex, primitiveChains, operand);
     } else {
       valueIndex.addToSet(primitiveChains, chain);
