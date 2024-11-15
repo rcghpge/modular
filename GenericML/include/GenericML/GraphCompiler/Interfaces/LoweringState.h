@@ -718,12 +718,14 @@ struct MOOpLoweringState {
     Value preD2DChain = inChain;
     if (srcDeviceRef != dstDeviceRef) {
       Value srcMutChain = loweringState.getChainGuardingValueOrNull(srcBuffer);
-      Value syncChain = builder.create<MGP::SyncOp>(loc, srcMutChain, context,
-                                                    srcDeviceContext,
-                                                    /*bDevice=*/srcDeviceRef);
-      preD2DChain =
-          create<M::GRT::ChainCreateOp>(ValueRange{inChain, syncChain})
-              .getResult();
+      if (srcMutChain) {
+        Value syncChain = builder.create<MGP::SyncOp>(loc, srcMutChain, context,
+                                                      srcDeviceContext,
+                                                      /*bDevice=*/srcDeviceRef);
+        preD2DChain =
+            create<M::GRT::ChainCreateOp>(ValueRange{inChain, syncChain})
+                .getResult();
+      }
     }
     Value postD2DChain = getStorageBufferBuilder(srcMoTensorType)
                              ->bufferTransferDevice(
