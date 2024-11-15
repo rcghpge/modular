@@ -37,7 +37,7 @@ class PixtralVisionEncoder(TokenGenerator):
 
         # Load Device.
         self._device = self._config.device
-        session = InferenceSession(device=self._device)
+        session = InferenceSession(devices=[self._device])
 
         # Load Weights from SafeTensors.
         if self._config.weight_path is None:
