@@ -8,16 +8,8 @@ import numpy as np
 import math
 
 
-try:
-    import tensorflow as tf
-except:
-    # TF is only needed for generating examples not for testing.
-    pass
-
 """
-This file contains the op implementations, one for tensorflow and one
-for numpy. We compose tests using the generic interface then use TF to
-export and numpy to test.
+This file contains the op implementations for numpy.
 """
 
 
@@ -161,92 +153,3 @@ class NumpyImpl(CommonImpls):
 
     def isqrt(self, x):
         return 1.0 / np.sqrt(x)
-
-
-# The keras implementation of each primitive.
-class TFImpl(CommonImpls):
-    def constant(self, values, dtype=None):
-        if dtype:
-            return tf.constant(np.array(values, dtype=dtype))
-        return tf.constant(np.array(values))
-
-    def ceil(self, x):
-        return tf.math.ceil(x)
-
-    def floor(self, x):
-        return tf.math.floor(x)
-
-    def transpose(self, input, permute):
-        return tf.transpose(input, permute)
-
-    def bmm(self, x, y):
-        return tf.linalg.matmul(x, y)
-
-    def range(self, start, stop, step):
-        return tf.range(start, stop, step)
-
-    def reshape(self, x, shape):
-        return tf.reshape(x, shape)
-
-    def split(self, x, split_sizes, axis):
-        return tf.split(x, split_sizes, axis)
-
-    def sum(self, x, axis):
-        return tf.reduce_sum(x, axis=axis, keepdims=True)
-
-    def max(self, x, y):
-        return tf.math.maximum(x, y)
-
-    def gather(self, x, indices, axis):
-        return tf.gather(x, indices, axis=axis)
-
-    def strided_slice(self, x, start, stop, step):
-        return tf.strided_slice(x, start, stop, step)
-
-    def abs(self, x):
-        return tf.abs(x)
-
-    def erf(self, x):
-        return tf.math.erf(x)
-
-    def exp(self, x):
-        return tf.exp(x)
-
-    def log(self, x):
-        return tf.math.log(x)
-
-    def log1p(self, x):
-        return tf.math.log1p(x)
-
-    def min(self, x, limit):
-        return tf.math.minimum(x, limit)
-
-    def select(self, cond, x, y):
-        return tf.raw_ops.Select(condition=cond, x=x, y=y)
-
-    def sin(self, x):
-        return tf.sin(x)
-
-    def cos(self, x):
-        return tf.cos(x)
-
-    def tanh(self, x):
-        return tf.tanh(x)
-
-    def is_nan(self, x):
-        return tf.math.is_nan(x)
-
-    def is_inf(self, x):
-        return tf.math.is_inf(x)
-
-    def logical_and(self, x, y):
-        return tf.math.logical_and(x, y)
-
-    def logical_or(self, x, y):
-        return tf.math.logical_or(x, y)
-
-    def logical_xor(self, x, y):
-        return tf.math.logical_xor(x, y)
-
-    def isqrt(self, x):
-        return tf.math.rsqrt(x)
