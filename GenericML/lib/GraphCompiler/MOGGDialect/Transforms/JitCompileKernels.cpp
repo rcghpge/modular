@@ -52,20 +52,11 @@ struct JitCompileKernels
       return signalPassFailure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
-    // Run the jit required passes.
-    mlir::PassManager pm(ctx);
-    pm.addNestedPass<MO::GraphOp>(createInlineLambdas());
-    if (failed(pm.run(m)))
-      return signalPassFailure();
-
     auto func = [&](auto graph) {
       auto errOr = this->runPass(graph, mojoLibraryAnalysis);
       if (errOr.isError())
         return this->signalPassFailure();
     };
-
-    auto range = m.getOps<MO::GraphOp>();
-    mlir::parallelForEach(ctx, range.begin(), range.end(), func);
 
     auto modelRange = m.getOps<MGP::ModelOp>();
     mlir::parallelForEach(ctx, modelRange.begin(), modelRange.end(), func);
@@ -76,9 +67,8 @@ struct JitCompileKernels
     m.walk([](KGEN::GeneratorOp gen) { gen.erase(); });
   }
 
-  template <typename OpContainer>
   CompileDiagnosticOrSuccess
-  runPass(OpContainer graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+  runPass(MGP::ModelOp graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
     // We can optionally override
     DenseMap<Operation *, std::string> unusedOverrideMap;
 
