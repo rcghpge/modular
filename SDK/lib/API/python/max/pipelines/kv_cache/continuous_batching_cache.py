@@ -173,7 +173,14 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
         cache_lengths_np = np.zeros(active_batch_size, np.uint32)
         is_cache_empty = True
         for i, seq_id in enumerate(seq_ids):
-            if seq_id not in self.cache_lengths:
+            if seq_id > self.max_cache_batch_size:
+                msg = (
+                    f"seq_id: {seq_id}, beyond max_cache_batch_size, you may"
+                    " want to increase `max_cache_batch_size` in the pipeline"
+                    " config."
+                )
+                raise ValueError(msg)
+            elif seq_id not in self.cache_lengths:
                 raise ValueError(f"seq_id: {seq_id} not currently in cache.")
 
             cache_len = self.cache_lengths[seq_id]
