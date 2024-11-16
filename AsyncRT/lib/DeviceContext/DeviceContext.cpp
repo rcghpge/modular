@@ -262,7 +262,7 @@ ErrorOr<std::string> Device::getTargetAttrAcceleratorArch() {
 }
 
 std::string Device::getAcceleratorArchOrEmpty() {
-  ErrorOr<std::string> arch = Device::getTargetAttrAcceleratorArch();
+  static ErrorOr<std::string> arch = Device::getTargetAttrAcceleratorArch();
   if (arch.isError())
     return "";
   return *arch;
