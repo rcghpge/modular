@@ -155,9 +155,13 @@ ErrorOrSuccess M::Driver::passResultsToMojo(
         results,
     decltype(addTensorToOutputList) addTensorToOutputListFn,
     decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
-    void *outputList, ContextRef maxContext, Driver::Device *device) {
+    void *outputList, ContextRef maxContext,
+    ArrayRef<Driver::Device *> resultDevices) {
+  // We only count non-opaque or Tensor values as a result.
+  size_t resultDeviceIndex = 0;
   for (auto &output : results) {
     if (std::holds_alternative<Tensor>(output)) {
+      auto device = resultDevices[resultDeviceIndex];
       // Convert tensor back to device memory and call the callback we got from
       // mojo. Here we take ownership of output.
       ErrorOr<Driver::DeviceMemory *> outputMemoryOr =
@@ -171,6 +175,7 @@ ErrorOrSuccess M::Driver::passResultsToMojo(
       Driver::DeviceMemory *outputMemory = outputMemoryOr.get();
       auto spec = outputMemory->getSpec();
       addTensorToOutputListFn(mojoContext, outputList, outputMemory, &spec);
+      resultDeviceIndex++;
     } else {
       // Pass through opaque mojo types. We don't have much info here and
       // rely on caller to do the right thing.

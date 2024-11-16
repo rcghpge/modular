@@ -69,7 +69,8 @@ ErrorOrSuccess passResultsToMojo(
     MutableArrayRef<std::variant<M::Tensor, DriverMojoValue>> results,
     decltype(addTensorToOutputList) addTensorToOutputListFn,
     decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
-    void *outputList, ContextRef maxContext, Driver::Device *device);
+    void *outputList, ContextRef maxContext,
+    ArrayRef<Driver::Device *> resultDevices);
 
 } // namespace M::Driver
 

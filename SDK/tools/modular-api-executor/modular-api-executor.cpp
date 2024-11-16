@@ -299,6 +299,20 @@ public:
 
   ~ModularModel() override = default;
 
+  /// Return the devices used by the model.
+  ArrayRef<DeviceRef> getDevices() const override {
+    llvm_unreachable("unimplemented");
+  }
+  /// Return an array of devices that map 1:1 to the devices used by each input.
+  ArrayRef<DeviceRef> getInputDevices() const override {
+    llvm_unreachable("unimplemented");
+  }
+  /// Return an array of devices that map 1:1 to the devices used by each
+  /// output.
+  ArrayRef<DeviceRef> getOutputDevices() const override {
+    llvm_unreachable("unimplemented");
+  }
+
 private:
   ModularAPIInterface &api;
   ModelSpec spec;
