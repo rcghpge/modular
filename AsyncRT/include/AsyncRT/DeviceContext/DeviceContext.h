@@ -66,8 +66,9 @@ public:
 
   static ErrorOr<int> numberOfDevices(const char *kind);
 
-  /// Returns the vendor and subarchitecture of the accelerator in the form of
-  /// `vendor:subarch`. For example, an A100 GPU would return `nvidia:sm80`.
+  /// Returns the vendor and compute_capability of the accelerator in the form
+  /// of `vendor:compute_capability`. For example, an A100 GPU would return
+  /// `nvidia:80`.
   static std::string getAcceleratorArchOrEmpty();
 
 protected:

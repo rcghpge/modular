@@ -244,8 +244,7 @@ ErrorOr<std::string> Device::getSubArch(StringRef kind) {
   if (minor.isError())
     return minor.takeError();
 
-  return (kind == "cuda" ? "sm" : "gfx") + std::to_string(*major) +
-         std::to_string(*minor);
+  return (llvm::Twine(*major) + llvm::Twine(*minor)).str();
 }
 
 ErrorOr<std::string> Device::getTargetAttrAcceleratorArch() {
