@@ -6,6 +6,8 @@ modular_py_library(
     name = "scheduler",
     srcs = glob(["*.py"]),
     deps = [
+        "//SDK/lib/API/python/max/serve/multiprocessing",
+        "//SDK/lib/API/python/max/serve/telemetry",
         requirement("faster-fifo"),
     ],
 )

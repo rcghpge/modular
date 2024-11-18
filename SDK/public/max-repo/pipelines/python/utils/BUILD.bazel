@@ -11,11 +11,12 @@ modular_py_library(
     deps = [
         requirement("click"),
         requirement("gguf"),
-        requirement("sentencepiece"),
         requirement("numpy"),
-        requirement("transformers"),
-        requirement("tqdm"),
         requirement("psutil"),
+        requirement("sentencepiece"),
+        requirement("tokenizers"),
+        requirement("tqdm"),
+        requirement("transformers"),
     ],
 )
 

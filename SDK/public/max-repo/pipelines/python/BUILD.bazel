@@ -12,12 +12,6 @@ modular_py_binary(
     ],
     imports = ["."],
     deps = [
-        requirement("click"),
-        requirement("huggingface_hub"),
-        requirement("ddtrace"),
-        requirement("opentelemetry-api"),
-        requirement("opentelemetry-sdk"),
-        requirement("torch"),
         "//SDK/lib/API/python/max/serve",
         "//SDK/pipelines/pixtral",
         "//SDK/public/max-repo/pipelines/python/dataprocessing",
@@ -27,6 +21,15 @@ modular_py_binary(
         "//SDK/public/max-repo/pipelines/python/replit",
         "//SDK/public/max-repo/pipelines/python/text_streaming",
         "//SDK/public/max-repo/pipelines/python/utils",
+        requirement("click"),
+        requirement("ddtrace"),
+        requirement("huggingface_hub"),
+        requirement("opentelemetry-api"),
+        requirement("opentelemetry-sdk"),
+        requirement("rich"),
+        requirement("torch"),
+        requirement("transformers"),
+        requirement("uvicorn"),
     ],
 )
 

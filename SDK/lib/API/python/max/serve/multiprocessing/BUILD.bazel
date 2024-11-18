@@ -6,6 +6,7 @@ modular_py_library(
     name = "multiprocessing",
     srcs = glob(["*.py"]),
     deps = [
+        "//SDK/lib/API/python/max/serve/telemetry",
         requirement("faster-fifo"),
     ],
 )
