@@ -507,11 +507,13 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     if (maybeStartConst && maybeStopConst) {
       [[maybe_unused]] int64_t startConst = *maybeStartConst;
       [[maybe_unused]] int64_t stopConst = *maybeStopConst;
-      ASSERT_STREAM((step > 0 && (startConst <= stopConst)) ||
-                        (step < 0 && (startConst >= stopConst)),
-                    << llvm::formatv("rmo.slice step should be != 0 but got "
-                                     "start {0}, stop {1} for step {2}",
-                                     startConst, stopConst, step));
+      if (!((step > 0 && (startConst <= stopConst)) ||
+            (step < 0 && (startConst >= stopConst))))
+        return ShapeMaterializeResult::error(llvm::formatv(
+            "rmo.slice start and stop should be increasing for positive step "
+            "and decreasing for negative step, but got "
+            "start {0}, stop {1} for step {2}",
+            startConst, stopConst, step));
     }
 
     // Invariants that should hold at this point:
