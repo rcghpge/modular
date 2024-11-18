@@ -2425,6 +2425,7 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
   ];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [

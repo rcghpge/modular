@@ -3,10 +3,54 @@
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
 //===----------------------------------------------------------------------===//
+// ShapeOfOp
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: mo.graph @shape_of_fold_static
+mo.graph @shape_of_fold_static(%arg0: !mo.tensor<[1, 1, 4, 14], bf16>) -> !mo.tensor<[4], si64> {
+  // CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<1, 1, 4, 14> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %0 = mo.shape_of(%arg0) : (!mo.tensor<[1, 1, 4, 14], bf16>) -> !mo.tensor<[4], si64>
+  // CHECK-NEXT: mo.output [[V0]]
+  mo.output %0 : !mo.tensor<[4], si64>
+}
+
+// CHECK-LABEL: mo.graph @shape_of_fold_dim_parameter<D0>
+mo.graph @shape_of_fold_dim_parameter<D0>(%arg0: !mo.tensor<[D0, 1], f32>) -> !mo.tensor<[2], si64> {
+  // CHECK-NEXT: [[V0:%.*]] = mosh.param.to_value: !mosh.ape = <[D0, 1]>
+  // CHECK-NEXT: [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[2], si64>
+  %0 = mo.shape_of(%arg0) : (!mo.tensor<[D0, 1], f32>) -> !mo.tensor<[2], si64>
+  // CHECK-NEXT: mo.output [[V1]]
+  mo.output %0 : !mo.tensor<[2], si64>
+}
+
+// CHECK-LABEL: mo.graph @shape_of_no_fold_1
+mo.graph @shape_of_no_fold_1(%arg0: !mo.tensor<[?, 1], si32>) -> !mo.tensor<[2], si64> {
+  // CHECK-NEXT: mo.shape_of
+  %0 = mo.shape_of(%arg0) : (!mo.tensor<[?, 1], si32>) -> !mo.tensor<[2], si64>
+  mo.output %0 : !mo.tensor<[2], si64>
+}
+
+// CHECK-LABEL: mo.graph @shape_of_no_fold_2
+mo.graph @shape_of_no_fold_2(%arg0: !mo.tensor<?, si32>) -> !mo.tensor<[?], si64> {
+  // CHECK-NEXT: mo.shape_of
+  %0 = mo.shape_of(%arg0) : (!mo.tensor<?, si32>) -> !mo.tensor<[?], si64>
+  mo.output %0 : !mo.tensor<[?], si64>
+}
+
+// CHECK-LABEL: mo.graph @shape_of_no_fold_3
+mo.graph @shape_of_no_fold_3<Sh0: !mosh.ape -> D0>(%arg0: !mo.tensor<Sh0, si32>) -> !mo.tensor<[D0], si64> {
+  // CHECK-NEXT: mo.shape_of
+  %0 = mo.shape_of<() -> D1>(%arg0) : (!mo.tensor<Sh0, si32>) -> !mo.tensor<[D1], si64>
+  mo.output<D1> %0 : !mo.tensor<[D1], si64>
+}
+
+
+//===----------------------------------------------------------------------===//
 // ToTensorOp
 //===----------------------------------------------------------------------===//
 
-// CHECK: mo.graph @to_tensor_fold<[[D0:.*]], [[SH0:.*]]: !mosh.ape -> [[D1:.*]]>() -> (
+// CHECK-LABEL: mo.graph @to_tensor_fold
+// CHECK-SAME: <[[D0:.*]], [[SH0:.*]]: !mosh.ape -> [[D1:.*]]>() -> (
 mo.graph @to_tensor_fold<D0, Sh0: !mosh.ape -> D1>() -> (
   // CHECK-SAME: !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[[[D1]]], si32>
   !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D1], si32>

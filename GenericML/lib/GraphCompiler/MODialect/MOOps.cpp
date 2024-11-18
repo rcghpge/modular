@@ -3070,6 +3070,19 @@ void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   build(odsBuilder, odsState, input, /*width=*/32);
 }
 
+LogicalResult ShapeOfOp::canonicalize(ShapeOfOp op, PatternRewriter &rewriter) {
+  TensorType inputTy = op.getInput().getType();
+  TensorType resTy = op.getResult().getType();
+  if (inputTy.hasUnknownShape() || !inputTy.hasRank() ||
+      resTy.hasUnknownShape())
+    return failure();
+
+  auto moshVal = rewriter.create<MOSH::ParamToValueOp>(op.getLoc(),
+                                                       inputTy.getShapeAttr());
+  rewriter.replaceOpWithNewOp<MO::Shape::ToTensorOp>(op, resTy, moshVal);
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//

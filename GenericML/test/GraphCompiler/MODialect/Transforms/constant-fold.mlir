@@ -233,8 +233,9 @@ mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
 // -----
 
 // CHECK-LABEL: mo.graph @large_op
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<2, 3> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<3, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
 // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
