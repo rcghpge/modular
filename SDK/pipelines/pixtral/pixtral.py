@@ -45,7 +45,7 @@ class PixtralVisionEncoder(TokenGenerator):
                 "no weight path provided for Pixtral based safetensors weights."
             )
 
-        self._weights = SafetensorWeights([self._config.weight_path])
+        self._weights = SafetensorWeights([self._config.weight_path])  # type: ignore
 
         # Load Model.
         self._model = self._load_model(session)
@@ -57,7 +57,7 @@ class PixtralVisionEncoder(TokenGenerator):
         if serialized_path := self._config.serialized_model_path:
             # Hydrate all weights to be referenced by the serialized graph.
             weights_registry = {}
-            for name, tensor in self._weights._tensors.items():
+            for name, tensor in self._weights._tensors.items():  # type: ignore
                 weights_registry[name] = tensor.data
             print("Loading serialized model from", serialized_path, "...")
             return session.load(
@@ -69,5 +69,5 @@ class PixtralVisionEncoder(TokenGenerator):
             graph = _build_graph(self._config, self._hf_config, self._weights)
             print("Compiling...")
             return session.load(
-                graph, weights_registry=self._weights.allocated_weights
+                graph, weights_registry=self._weights.allocated_weights  # type: ignore
             )

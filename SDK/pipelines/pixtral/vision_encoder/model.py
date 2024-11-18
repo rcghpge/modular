@@ -36,14 +36,14 @@ def _patch_conv2d(
     """
     # Loaded torch weights shape = torch.Size([1024, 3, 16, 16]).
     # Conv2D expects (height, width, in_channels, out_channels) = [16, 16, 3, 1024].
-    weights = ops.permute(
+    weights = ops.permute(  # type: ignore
         weights.weight.allocate(
             dtype, [out_channels, in_channels, patch_size, patch_size], None
         ),
         [2, 3, 1, 0],
     )
     return Conv2D(
-        weights,
+        weights,  # type: ignore
         stride=(patch_size, patch_size),
     )
 
@@ -230,6 +230,6 @@ def _build_graph(
     ) as graph:
         model = _vision_encoder(graph, pipeline_config, model_config, weights)
         imgs = graph.inputs
-        logits = model(imgs)
+        logits = model(imgs)  # type: ignore
         graph.output(logits)
         return graph

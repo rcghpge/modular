@@ -63,7 +63,7 @@ class NaiveKVCacheManager(KVCacheManager):
             "update_start_pos", input_types=[start_pos_type, tokens_type]
         ) as graph:
             start_pos, tokens = graph.inputs
-            graph.output(start_pos + tokens.shape[1])
+            graph.output(start_pos + tokens.shape[1])  # type: ignore
 
         return session.load(graph)
 
@@ -93,7 +93,7 @@ class NaiveKVCacheManager(KVCacheManager):
     def input_symbols(
         self,
     ) -> tuple[TensorType, TensorType, TensorType, TensorType]:
-        return (
+        return (  # type: ignore
             # k_cache
             BufferType(
                 self.params.dtype,

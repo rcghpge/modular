@@ -100,7 +100,7 @@ class FetchContinuousBatchingKVCacheCollection:
             raise ValueError(msg)
 
         op_name = f"continuous_batching_kv_cache_collection_h{self.kv_params.n_kv_heads}_d{self.kv_params.head_dim}_bshd"
-        return ops.custom(
+        return ops.custom(  # type: ignore
             op_name,
             values=[
                 blocks,
@@ -133,7 +133,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
 
         # Allocate memory for the KV cache blocks.
         self.blocks = Tensor.zeros(
-            self.block_shape(self.max_cache_batch_size),
+            self.block_shape(self.max_cache_batch_size),  # type: ignore
             self.params.dtype,
             device=self.device,
         )
@@ -154,10 +154,12 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             input_types=[cache_lengths_type, input_row_offset_type],
         ) as graph:
             cache_lengths, input_row_offset = graph.inputs
-            right_slice = input_row_offset[1:].rebind(cache_lengths.shape)
-            left_slice = input_row_offset[
-                : input_row_offset.shape[0] - 1
-            ].rebind(cache_lengths.shape)
+            right_slice = input_row_offset[1:].rebind(cache_lengths.shape)  # type: ignore
+            left_slice = input_row_offset[  # type: ignore
+                : input_row_offset.shape[0] - 1  # type: ignore
+            ].rebind(
+                cache_lengths.shape
+            )  # type: ignore
             increment_amount = right_slice - left_slice
             graph.output(cache_lengths + increment_amount)
 
@@ -231,7 +233,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
 
         # Return our updated batch. We hard-code the is_cache_empty flag to
         # False because only the first step could be context encoding.
-        return (blocks, updated_cache_lengths, lookup_table, self.false_tensor)
+        return (blocks, updated_cache_lengths, lookup_table, self.false_tensor)  # type: ignore
 
     def input_symbols(
         self,
