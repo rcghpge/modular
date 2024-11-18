@@ -151,4 +151,3 @@ mgp.model @chain_singletons : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
   // CHECK-NEXT: mef.output %[[CH2]] : !mef.chain
   mef.output %ch3 : !mef.chain
 }
-

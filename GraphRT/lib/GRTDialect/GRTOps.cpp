@@ -52,8 +52,14 @@ void ChainCreateOp::print(OpAsmPrinter &p) {
 LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
                                           PatternRewriter &rewriter) {
   llvm::SetVector<Value> operands;
-  for (auto operand : createOp.getOperands())
+  for (auto operand : createOp.getOperands()) {
+    // Ignore empty chain.create operands
+    if (auto innerChainCreate = operand.getDefiningOp<ChainCreateOp>()) {
+      if (innerChainCreate.getNumOperands() == 0)
+        continue;
+    }
     operands.insert(operand);
+  }
   // Replace chain.create(x) with x provided the types agree.
   if (operands.size() == 1 &&
       operands.front().getType() == createOp.getResult().getType()) {
@@ -66,6 +72,7 @@ LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
     createOp.getOperandsMutable().append(operands.takeVector());
     return success();
   }
+
   return failure();
 }
 
