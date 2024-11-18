@@ -336,11 +336,15 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(MGP::createConcatInPlacePass());
-  pm.addPass(MGP::createSimpleBufferReusePass());
   // Note: LowerAlignmentsPass must be before Dynamic MemoryPlanning or it can
   // erroneously pick up slices introduced by memory planning
   pm.addPass(MGP::createLowerAlignmentsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
+
+  // Run simple buffer reuse pass after moving code to `init()`
+  // As buffer reuse can prevent hoisting of some code up.
+  pm.addPass(MGP::createSimpleBufferReusePass());
+
   pm.addPass(MGP::createDynamicMemoryPlanningPass());
   pm.addPass(MGP::createDeferAllocsPass());
   pm.addPass(MGP::createVerifyModelArgumentsPass());
