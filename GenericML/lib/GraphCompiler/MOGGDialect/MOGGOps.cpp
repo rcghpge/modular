@@ -1189,7 +1189,7 @@ MO::ChainValue KernelOp::getInChain() {
   auto inChain = maybeGetInChain();
   ASSERT_STREAM(inChain.has_value(), "Expected to find an input chain.");
 
-  return maybeGetInChain().value();
+  return inChain.value();
 }
 
 MO::ChainValue KernelOp::getOutChain() {
@@ -1200,10 +1200,12 @@ MO::ChainValue KernelOp::getOutChain() {
 }
 
 OpOperand &KernelOp::getInChainMutable() {
-  ASSERT_STREAM(maybeGetInChain().has_value(),
-                "Expected to find an input chain.");
+  OpOperand &finalOpOperand = getOperation()->getOpOperands().back();
 
-  return getOperation()->getOpOperands().back();
+  ASSERT_STREAM(isa<MO::ChainValue>(finalOpOperand.get()),
+                "Expected to find an input chain as the final operand.");
+
+  return finalOpOperand;
 }
 
 std::optional<MO::ChainValue> KernelOp::maybeGetInChain() {
