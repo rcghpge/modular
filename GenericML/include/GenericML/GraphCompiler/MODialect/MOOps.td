@@ -41,7 +41,7 @@ class MO_ControlOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic, [MO_ControlOpInterface] # traits>;
 
 class MO_MutableOp<string mnemonic, list<Trait> traits = []>
-  : MO_Op<mnemonic, [MO_MutableOpInterface,
+  : MO_Op<mnemonic, [DeclareOpInterfaceMethods<MO_MutableOpInterface>,
                      DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
                      MO_HasDeviceInterface] # traits>;
 
@@ -4471,6 +4471,8 @@ def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure]> {
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
 ]> {
   let summary = "User-defined operation";

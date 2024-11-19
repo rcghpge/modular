@@ -36,29 +36,50 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
   ];
 }
 
+def MO_ConditionallyInPlaceInterface : OpInterface<"MOConditionallyInPlaceInterface"> {
+  let description = [{
+    Interface that ops that can conditionally represent an in-place computation
+    (e.g. a custom op that directly operates on a mo.buffer value or a
+     mogg.kernel after it has been load and store fused).
+
+    Should be used in conjunction with MOMutableOpInterface.
+  }];
+
+  let methods = [
+    InterfaceMethod<"Query if this op currently represents an in-place computation.",
+                    "bool", "isInPlace", (ins)>,
+  ];
+
+  let cppNamespace = "::M::MO";
+}
+
 def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", [MemoryEffectsOpInterface]> {
   let description = [{
-    Interface that all mo.mutable ops should implement, mainly providing typed
-    accessors to the input buffer and input/output chains.
+    Interface that all mutable ops under rmo/mo implement and any ops that
+    could represent in-place compute should implement as well.
+
+    In the case where an op can be conditionally in-place (e.g. mo.custom) it
+    should also implement the MOConditionallyInPlaceInterface as well.
   }];
   let cppNamespace = "::M::MO";
 
   let methods = [
     InterfaceMethod<"Get the input chain as a ChainValue",
-      "ChainValue", "getInChain",
-      (ins), [{}],
-      [{ return ::llvm::cast<ChainValue>($_op->getInChain()); }]>,
+      "::M::MO::ChainValue", "getInChain", (ins)>,
 
     InterfaceMethod<"Get the output chain as a ChainValue",
-      "ChainValue", "getOutChain",
-      (ins), [{}],
-      [{ return ::llvm::cast<ChainValue>($_op->getOutChain()); }]>,
+      "::M::MO::ChainValue", "getOutChain", (ins)>,
 
     InterfaceMethod<"Get the input chain as a OpOperand ref",
-      "::mlir::OpOperand &", "getInChainMutable",
-      (ins), [{}],
-      [{ return $_op.getInChainMutable(); }]>
+      "::mlir::OpOperand &", "getInChainMutable", (ins)>
   ];
+
+  let extraClassOf = [{
+    if (auto iop = ::llvm::dyn_cast<MOConditionallyInPlaceInterface>($_op.getOperation()))
+      return iop.isInPlace();
+    else
+      return true;
+  }];
 }
 
 def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
@@ -398,14 +419,14 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
 
 def MO_StaticTupleInputs : MO_TensorOpInterfaceBase<"StaticTupleInputs"> {
   let description = [{
-    Trait to indicate the inputs would be lowered to a `mogg.tuple` at the 
+    Trait to indicate the inputs would be lowered to a `mogg.tuple` at the
     call site from `mogg.call`
   }];
 }
 
 def MO_StaticTupleOutputs : MO_TensorOpInterfaceBase<"StaticTupleOutputs"> {
   let description = [{
-    Trait to indicate the outputs would be lowered to a `mogg.tuple` at the 
+    Trait to indicate the outputs would be lowered to a `mogg.tuple` at the
     call site from `mogg.call`
   }];
 }

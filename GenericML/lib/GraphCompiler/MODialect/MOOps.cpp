@@ -4008,6 +4008,35 @@ void AssertOp::materializeAllAssertLogic(
 //===----------------------------------------------------------------------===//
 // MO_CustomOp
 //===----------------------------------------------------------------------===//
+//
+
+bool CustomOp::isInPlace() {
+  return !getBufferOperands().empty() && maybeGetInChain().has_value() &&
+         maybeGetOutChain().has_value();
+}
+
+ChainValue CustomOp::getInChain() {
+  auto inChain = maybeGetInChain();
+  ASSERT_STREAM(inChain.has_value(), "Expected to find an input chain.");
+
+  return inChain.value();
+}
+
+ChainValue CustomOp::getOutChain() {
+  auto outChain = maybeGetOutChain();
+  ASSERT_STREAM(outChain.has_value(), "Expected to find an output chain.");
+
+  return outChain.value();
+}
+
+OpOperand &CustomOp::getInChainMutable() {
+  OpOperand &finalOpOperand = getOperation()->getOpOperands().back();
+
+  ASSERT_STREAM(isa<ChainValue>(finalOpOperand.get()),
+                "Expected to find an input chain as the final operand.");
+
+  return finalOpOperand;
+}
 
 DeviceRefAttr CustomOp::getOperandDevice(size_t index) {
   for (auto deviceIndex : getOperandDevices())
