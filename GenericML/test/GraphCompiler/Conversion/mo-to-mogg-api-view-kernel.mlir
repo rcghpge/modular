@@ -6,8 +6,8 @@
 // CHECK: %[[OUT:.*]] = mogg.output_placeholders
 // CHECK: %[[KOUT:.*]] = "mogg.to_kgen"(%[[OUT]])
 // COM: Build shape
-// CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[6, 3, 8]>
-// CHECK: %[[KSHAPE:.*]] = "mogg.to_kgen"(%[[SHAPE]]) : (!mogg.shape<[6, 3, 8]>) -> !pop.array<3,
+// CHECK: %[[SHAPE:.*]] = pop.array.create
+// CHECK: %[[KSHAPE:.*]] = kgen.rebind %[[SHAPE]]
 // COM: Call to the mojo copy implementation
 // CHECK: kgen.call @"MOGGKernelAPI::view_copy_impl{{.+}}"<{{.+}}>(%[[KOUT]], %{{.+}})
 // CHECK-NEXT: mogg.output %[[OUT]]

@@ -10,7 +10,7 @@ mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor
 // CHECK-LABEL: mo.graph @basicMatmul
 // CHECK: %[[OUT:.*]] = mogg.kernel
 // CHECK: mogg.output_placeholders
-// CHECK-NEXT: mogg.param_shape_to_value
+// CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"
 // CHECK-NEXT: mogg.lambda @normal_op_output_0_fn
 // CHECK-NEXT: mogg.call "simd_load"

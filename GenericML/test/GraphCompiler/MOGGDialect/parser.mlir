@@ -77,3 +77,17 @@ mo.graph @lambdaCallTest(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3
   } { shapeFunc = "test"}
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
+
+mo.graph @getDim<N, K, L>(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
+  %0 = mogg.kernel (%arg0) : (%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>{
+    %output = mogg.output_placeholders : !mo.tensor<[2, 3], f32>
+
+    %0 = mogg.get_dim <N> -> !pop.scalar<si64>
+    %1 = mogg.get_dim <K> -> !pop.scalar<si64>
+    %2 = mogg.get_dim <L> -> !pop.scalar<si64>
+
+    mogg.output %output : !mo.tensor<[2, 3], f32>
+  } { shapeFunc = "test"}
+  mo.output %0 : !mo.tensor<[2, 3], f32>
+}
+

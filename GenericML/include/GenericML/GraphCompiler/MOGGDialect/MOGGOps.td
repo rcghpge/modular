@@ -23,6 +23,7 @@ include "GenericML/MGPDialect/MGPOpInterfaces.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "KGEN/KGENDialect/KGENTypes.td"
 include "KGEN/KGENDialect/KGENAttrs.td"
+include "KGEN/POPDialect/POPTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/BuiltinTypes.td"
@@ -37,6 +38,10 @@ class MOGG_Op<string mnemonic, list<Trait> traits = []>
 
 class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
     : MOGG_Op<mnemonic, traits # [DeclareOpInterfaceMethods<LowerableToMGPInterface, ["lower"]>]>;
+
+def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!pop.simd<1, si64>">,
+    BuildableType<"KGEN::POP::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
+                                   "$_builder.getContext(), KGEN::KGENDType::si64))">;
 
 //===----------------------------------------------------------------------===//
 // Internal helper ops
@@ -435,16 +440,17 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
   }];
 }
 
-def MOGG_ParamShapeToValueOp : MOGG_Op<"param_shape_to_value", [Pure]> {
-  let summary = "Returns a runtime representation of a given shape";
+def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
+  let summary = "Returns the runtime representation of a dimension";
   let description = [{
-    Returns a runtime representation for a shape.
+    Returns the runtime representation for a single dimension
   }];
 
-  let results = (outs MOGG_Shape:$result);
+  let arguments = (ins Builtin_StringAttr:$dimension);
+  let results = (outs DimensionType:$result);
 
   let assemblyFormat = [{
-    attr-dict `->` type(results)
+    custom<Dim>($dimension, type($result)) attr-dict
   }];
 }
 
@@ -471,7 +477,7 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
     `$param = $shape[$index]`
 
     ```
-    %shape = mogg.param_shape_to_value -> !mogg.shape<[50, 150]>
+    %shape -> !mogg.shape<[50, 150]>
     mogg.set_param(%shape : <[50, 150]>) {index = 0 : i64, paramName = "M"}
     mogg.set_param(%shape : <[50, 150]>) {index = 1 : i64, paramName = "N"}
     ```
@@ -499,7 +505,7 @@ def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor", [Pure]> {
 
     Example:
     ```
-    %shape  = mogg.param_shape_to_value -> !mogg.shape<[50, D1, 150]>
+    %shape  -> !mogg.shape<[50, D1, 150]>
     %tensor = mogg.shape_to_tensor(%shape) : !mogg.shape<[50, D1, 150]> -> !mo.tensor<[3], si64>
     ```
   }];
@@ -512,24 +518,6 @@ def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor", [Pure]> {
   }];
   let hasVerifier = 1;
 }
-
-def MOGG_GetShapeOfOp : MOGG_Op<"get_shape_of", [Pure]> {
-  let summary = "Get the MOGG shape value from a KGEN tensor value";
-  let description = [{
-    Get the `!mogg.shape` value from the output of a mogg.to_kgen(`!mo.tensor`).
-    This intrinsic has direct support from mojo that helps us handling in-place
-    allocated value semantic dynamic tensors.
-
-    Example:
-    ```
-    %shape = mogg.get_shape_of(%tensor) : !kgen.pointer<...> -> !mogg.shape<[D1, D2]>
-    ```
-  }];
-
-  let arguments = (ins AnyType:$tensor);
-  let results = (outs MOGG_Shape:$shape);
-}
-
 
 def MOGG_CallOp : MOGG_Op<"call"> {
   let summary = "Represents a KGEN function to call";

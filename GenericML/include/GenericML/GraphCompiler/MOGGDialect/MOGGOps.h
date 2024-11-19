@@ -16,6 +16,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
+#include "KGEN/POPDialect/POPTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
@@ -27,6 +28,16 @@ class ParamDeclareRegionOp;
 
 namespace M::MOGG {
 class MojoLibraryAnalysis;
+}
+
+//===----------------------------------------------------------------------===//
+// ODS-Generated Declarations
+//===----------------------------------------------------------------------===//
+
+#define GET_OP_CLASSES
+#include "GenericML/GraphCompiler/MOGGDialect/MOGG.h.inc"
+
+namespace M::MOGG {
 
 template <typename Kernel>
 SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
@@ -82,6 +93,19 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
 
     for (Type t : op->getResultTypes())
       addParamsFromTensor(t);
+
+    if (auto getDim = dyn_cast<MOGG::GetDimOp>(op)) {
+      auto ref = KGEN::ParamDeclRefAttr::get(
+          getDim.getDimension(),
+          IntegerType::get(kernel.getContext(), 64,
+                           IntegerType::SignednessSemantics::Signed));
+      auto itr = seenParams.find(ref);
+
+      if (itr == seenParams.end()) {
+        usedParameters.push_back(ref);
+        seenParams.insert(ref);
+      }
+    }
   };
 
   // Start with the inputs / outputs on the kernel. Generally this would be all
@@ -106,12 +130,5 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
   return usedParameters;
 }
 } // namespace M::MOGG
-
-//===----------------------------------------------------------------------===//
-// ODS-Generated Declarations
-//===----------------------------------------------------------------------===//
-
-#define GET_OP_CLASSES
-#include "GenericML/GraphCompiler/MOGGDialect/MOGG.h.inc"
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_H

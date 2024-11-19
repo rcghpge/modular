@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilderHelpers.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -109,23 +110,15 @@ struct FuseAffineViewsPass
     OpBuilder shapeCalcBuilder{ctx};
     shapeCalcBuilder.setInsertionPointAfter(insertPt);
 
-    // Create the shape, this is just the dimension we are splitting by. For
-    // insance for [N] -> [n1, n2], this value refers to `n2`.
-    SmallVector<TypedAttr> dims;
-    dims.push_back(splitDim.getType().getDims()[i + 1]);
-    auto shapeTy = MOGG::ShapeType::get(
-        ctx, MOSH::ShapeAttr::get(dims, MOSH::ShapeType::get(ctx)));
-    Value shape = shapeCalcBuilder.create<MOGG::ParamShapeToValueOp>(
-        splitDim.getLoc(), shapeTy);
-
-    // Convert into individual index operations.
-    auto getDim = shapeCalcBuilder.create<MOGG::DimFromShapeOp>(
-        splitDim.getLoc(), TypeRange{builder.getIndexType()}, shape);
+    // Get the the dimension we are splitting by. For insance for [N] -> [n1,
+    // n2], this value refers to `n2`.
+    Value getDim = MOGG::lowerDimToKGEN(splitDim.getLoc(), shapeCalcBuilder,
+                                        splitDim.getType().getDims()[i + 1]);
 
     // Add the actual indices transfrom into the lambda expression.
     auto call = builder.create<MOGG::CallOp>(
         splitDim.getLoc(), TypeRange{indices.getType()}, "split_dim_indices",
-        ValueRange{indices, getDim.getResult(0)}, mlir::ArrayAttr{},
+        ValueRange{indices, getDim}, mlir::ArrayAttr{},
         /*kgenAttrs=*/builder.getDictionaryAttr(attrs));
 
     indices.replaceUsesWithIf(call->getResult(0), [&](OpOperand &operand) {
@@ -172,8 +165,10 @@ struct FuseAffineViewsPass
 
     auto shapeTy =
         MOGG::ShapeType::get(kernel.getContext(), oldType.getTypedShapeAttr());
-    Value shape =
-        builder.create<MOGG::ParamShapeToValueOp>(outPh.getLoc(), shapeTy);
+    Value shapeInKGEN =
+        MOGG::lowerShapeToKGEN(outPh->getLoc(), builder, oldType.getDims());
+    Value shape = builder.create<MOGG::ToMOGGOp>(
+        outPh->getLoc(), TypeRange{shapeTy}, ValueRange{shapeInKGEN});
 
     auto reshape = builder.create<MOGG::CallOp>(
         outPh.getLoc(), TypeRange{oldType}, "reshape_contiguous_buffer",
@@ -287,8 +282,11 @@ struct FuseAffineViewsPass
     auto resultTy = cast<MO::TensorType>(fusedInput.getType());
     auto shape = MOGG::ShapeType::get(builder.getContext(),
                                       resultTy.getTypedShapeAttr());
-    Value fusedInputShape =
-        builder.create<MOGG::ParamShapeToValueOp>(fusedInput.getLoc(), shape);
+
+    Value shapeInKGEN =
+        MOGG::lowerShapeToKGEN(gatherOp->getLoc(), builder, resultTy.getDims());
+    Value fusedInputShape = builder.create<MOGG::ToMOGGOp>(
+        gatherOp->getLoc(), TypeRange{shape}, ValueRange{shapeInKGEN});
 
     // 2st, Transform the input lambda body.
     kernel.walk([&](MOGG::LambdaOp lambda) {

@@ -4,7 +4,7 @@
 // CHECK-NEXT: mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
-// CHECK-NEXT: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[seq_len, 4096]>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg
 // CHECK-NEXT: %[[ORIG_TENSOR:.*]] = mogg.call "reshape_contiguous_buffer"(%[[OUT_PH]], %[[SHAPE]])
 
 // CHECK: mogg.lambda @{{.*}} = (%[[INDICES:.*]]: !mogg.indices
@@ -25,15 +25,12 @@ mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 409
 // CHECK-NEXT: mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[N, K, 4096], f32>
-// CHECK-NEXT: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[seq_len, 4096]>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg
 // CHECK-NEXT: %[[ORIG_TENSOR:.*]] = mogg.call "reshape_contiguous_buffer"(%[[OUT_PH]], %[[SHAPE]])
-
-// CHECK-NEXT: %[[NEW_DIM_TMP:.*]] = mogg.param_shape_to_value -> !mogg.shape<[K]>
-// CHECK-NEXT: %[[NEW_DIM:.*]] = mogg.dim_from_shape(%[[NEW_DIM_TMP]] : <[K]>) -> index
-
+// CHECK-NEXT: %[[NEW_DIM:.*]] = mogg.get_dim <K> -> !pop.scalar<si64>
 
 // CHECK: mogg.lambda @{{.*}} = (%[[INDICES:.*]]: !mogg.indices
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "split_dim_indices"(%[[INDICES]], %[[NEW_DIM]]) {axis = 0 : index, rank = 2 : index} : !mogg.indices, index -> !mogg.indices
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "split_dim_indices"(%[[INDICES]], %[[NEW_DIM]]) {axis = 0 : index, rank = 2 : index} : !mogg.indices, !pop.scalar<si64> -> !mogg.indices
 // CHECK-NEXT: mogg.call "simd_store"(%[[OUT_PH]], %[[NEW_IND]]
 
 // CHECK: mogg.call "mo.matmul" [@{{.*}}](%{{.*}}, %[[ORIG_TENSOR]])

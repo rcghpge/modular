@@ -10,7 +10,11 @@ mo.graph @basicReshapeFuse(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5
 // CHECK: (%[[ARG0:.*]]: !mo.tensor<[50], ui32>, %[[ARG1:.*]]: !mo.tensor<[5, 10], ui32>)
 // CHECK: mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN0:.*]]: !mo.tensor<[5, 10], ui32>, %[[IN1:.*]]: !mo.tensor<[50], ui32>)
 
-// CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[5, 5, 2]>
+// CHECK: %[[D0:.*]] = kgen.param.constant: scalar<si64> = <5>
+// CHECK: %[[D1:.*]] = kgen.param.constant: scalar<si64> = <2>
+// CHECK: %[[ARR:.*]] = pop.array.create [%[[D0]], %[[D0]], %[[D1]]] : !pop.array<3, scalar<si64>>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]])
+
 // CHECK-NEXT: %[[NEW_0:.*]] = mogg.call "ndbuffer_reshape"(%[[IN1]], %[[SHAPE]])
 
 // CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "ndbuffer_reshape"(%[[IN0]], %[[SHAPE]])
@@ -30,7 +34,13 @@ mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tens
 // CHECK: (%[[ARG0:.*]]: !mo.tensor<[50], ui32>, %[[ARG1:.*]]: !mo.tensor<[5, 10], ui32>)
 // CHECK: mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN0:.*]]: !mo.tensor<[5, 10], ui32>, %[[IN1:.*]]: !mo.tensor<[50], ui32>)
 
-// CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[N, 5, L]>
+// CHECK: %[[D0:.*]] = mogg.get_dim <N> -> !pop.scalar<si64>
+// CHECK: %[[D1:.*]] = kgen.param.constant: scalar<si64> = <5>
+// CHECK: %[[D2:.*]] = mogg.get_dim <L> -> !pop.scalar<si64>
+
+// CHECK: %[[ARR:.*]] = pop.array.create [%[[D0]], %[[D1]], %[[D2]]] : !pop.array<3, scalar<si64>>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]])
+
 // CHECK-NEXT: %[[NEW_0:.*]] = mogg.call "ndbuffer_reshape"(%[[IN1]], %[[SHAPE]])
 
 // CHECK-NEXT: %[[NEW_1:.*]] = mogg.call "ndbuffer_reshape"(%[[IN0]], %[[SHAPE]])
@@ -61,7 +71,13 @@ mo.graph @multiReshape<N, L>(%arg0: !mo.tensor<[50], ui32>, %arg1: !mo.tensor<[5
 // CHECK: (%[[ARG0:.*]]: !mo.tensor<[50], ui32>, %[[ARG1:.*]]: !mo.tensor<[5, 10], ui32>)
 // CHECK: mogg.kernel (%[[ARG0]]) : (%[[IN0:.*]]: !mo.tensor<[50], ui32>)
 
-// CHECK: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[N, 5, L]>
+// CHECK: %[[D0:.*]] = mogg.get_dim <N> -> !pop.scalar<si64>
+// CHECK: %[[D1:.*]] = kgen.param.constant: scalar<si64> = <5>
+// CHECK: %[[D2:.*]] = mogg.get_dim <L> -> !pop.scalar<si64>
+
+// CHECK: %[[ARR:.*]] = pop.array.create [%[[D0]], %[[D1]], %[[D2]]] : !pop.array<3, scalar<si64>>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]])
+
 // CHECK: %[[RESHAPED:.*]] = mogg.call "ndbuffer_reshape"(%[[IN0]], %[[SHAPE]])
 
 // CHECK: mogg.call "simd_load"(%[[RESHAPED]]

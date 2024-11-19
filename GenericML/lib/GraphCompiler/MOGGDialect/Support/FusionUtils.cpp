@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilderHelpers.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -170,8 +171,9 @@ MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
   auto shape = MOGG::ShapeType::get(ctx, newShape.getTypedShapeAttr());
 
   // Materialize the runtime value of the shape in the MOGG kernel.
-  auto getShape = builder.create<MOGG::ParamShapeToValueOp>(loc, shape);
-  Value runtimeShape = getShape.getResult();
+  Value shapeInKGEN = MOGG::lowerShapeToKGEN(loc, builder, newShape.getDims());
+  Value runtimeShape = builder.create<MOGG::ToMOGGOp>(loc, TypeRange{shape},
+                                                      ValueRange{shapeInKGEN});
 
   // Add the non-blocking flag.
   SmallVector<NamedAttribute> attrs;

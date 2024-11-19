@@ -10,7 +10,12 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-NEXT: %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[N, M, K], f32>
 
 // We broadcast the tensor.
-// CHECK-NEXT: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[N, M, K]>
+// CHECK-NEXT: %[[N:.*]] = mogg.get_dim <N> -> !pop.scalar<si64>
+// CHECK-NEXT: %[[M:.*]] = mogg.get_dim <M> -> !pop.scalar<si64>
+// CHECK-NEXT: %[[K:.*]] = mogg.get_dim <K> -> !pop.scalar<si64>
+// CHECK-NEXT: %[[ARR:.*]] = pop.array.create [%[[N]], %[[M]], %[[K]]]
+// CHECK-NEXT: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]]) : (!pop.array<3, scalar<si64>>) -> !mogg.shape<[N, M, K]>
+
 // CHECK-NEXT: %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, L], f32>, !mogg.shape<[N, M, K]> -> !mo.tensor<[N, M, K], f32>
 
 // The copy is implemented with the elementwise kernel as before.

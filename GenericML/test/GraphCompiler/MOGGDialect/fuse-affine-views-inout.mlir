@@ -3,8 +3,12 @@
 // CHECK-LABEL: mo.graph @inout_fusion<seq_len>
 // CHECK-NEXT: mogg.kernel
 
+// CHECK: %[[D1:.*]] = kgen.param.constant: scalar<si64> = <4096>
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
-// CHECK-NEXT: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[seq_len, 4096]>
+// CHECK: %[[DIM:.*]] = mogg.get_dim <seq_len> -> !pop.scalar<si64>
+// CHECK: %[[ARR:.*]] = pop.array.create [%[[DIM]], %[[D1]]] : !pop.array<2, scalar<si64>>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]]) : (!pop.array<2, scalar<si64>>) -> !mogg.shape<[seq_len, 4096]>
+
 // CHECK-NEXT: %[[ORIG_TENSOR:.*]] = mogg.call "reshape_contiguous_buffer"(%[[OUT_PH]], %[[SHAPE]])
 
 // CHECK: mogg.lambda @{{.*}} = (%[[INDICES:.*]]: !mogg.indices
@@ -26,9 +30,13 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 
 // CHECK-LABEL: mo.graph @mixed_precision<seq_len>
 // CHECK-NEXT: mogg.kernel
-
+// CHECK: %[[D1:.*]] = kgen.param.constant: scalar<si64> = <4096>
 // CHECK: %[[OUT_PH:.*]]:2 = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], si32>, !mo.tensor<[1, seq_len, 4096], f32>
-// CHECK-NEXT: %[[SHAPE:.*]] = mogg.param_shape_to_value -> !mogg.shape<[seq_len, 4096]>
+
+// CHECK: %[[DIM:.*]] = mogg.get_dim <seq_len> -> !pop.scalar<si64>
+// CHECK: %[[ARR:.*]] = pop.array.create [%[[DIM]], %[[D1]]] : !pop.array<2, scalar<si64>>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]]) : (!pop.array<2, scalar<si64>>) -> !mogg.shape<[seq_len, 4096]>
+
 // CHECK-NEXT: %[[ORIG_TENSOR:.*]] = mogg.call "reshape_contiguous_buffer"(%[[OUT_PH]]#1, %[[SHAPE]])
 
 // CHECK: mogg.lambda @{{.*}} = (%[[INDICES:.*]]: !mogg.indices

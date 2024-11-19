@@ -652,6 +652,8 @@ td_library(
     srcs = glob(["include/GenericML/GraphCompiler/MOGGDialect/*.td"]),
     includes = ["include"],
     deps = [
+        "//KGEN:KGENDialectTdFiles",
+        "//KGEN:POPDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
 )
@@ -720,6 +722,7 @@ modular_cc_library(
         ":MOGGDialectPassesIncGen",
         "//KGEN:CustomDialect",
         "//KGEN:KGENDialect",
+        "//KGEN:POPDialect",
         "@llvm-project//mlir:IR",
     ],
 )

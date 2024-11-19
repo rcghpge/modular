@@ -12,6 +12,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
@@ -30,6 +31,24 @@
 
 using namespace M;
 using namespace MOGG;
+
+static ParseResult parseDim(OpAsmParser &p, StringAttr &name,
+                            Type &resultType) {
+  SmallVector<Type> tmpTypes;
+  if (p.parseLess() || KGEN::parseParamName(p, name) || p.parseGreater() ||
+      p.parseArrowTypeList(tmpTypes))
+    return failure();
+  resultType = tmpTypes[0];
+  return success();
+}
+
+static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
+                     Type resultTy) {
+  p << '<';
+  KGEN::printParamName(p, dim);
+  p << '>';
+  p.printArrowTypeList(TypeRange{resultTy});
+}
 
 //===----------------------------------------------------------------------===//
 // MOGG ConcatOp
@@ -541,12 +560,24 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       } else if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
         loweredParams[dim] =
             kernelBody.getArgument(paramDimToIdx[ref.getName()]);
+        loweredParams[ref.getName()] =
+            kernelBody.getArgument(paramDimToIdx[ref.getName()]);
       } else {
         return mlir::emitError(loc, "Unsupported dim attribute type: ") << dim;
       }
     }
     return success();
   };
+
+  // Look at all the GetDims to pick up any parameters which are only referenced
+  // by get dim.
+  this->walk([&](MOGG::GetDimOp getDim) {
+    StringAttr name = getDim.getDimension();
+    auto itr = loweredParams.find(name);
+    if (itr == loweredParams.end()) {
+      loweredParams[name] = kernelBody.getArgument(paramDimToIdx[name]);
+    }
+  });
 
   // Add all the seen shape parameters values as concrete KGEN param values.
   for (auto arg : this->getBodyRegion().getArguments()) {
@@ -584,9 +615,10 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       operands.push_back(dataPtr);
       for (auto dim : asTensor.getDims()) {
         auto loweredParam = loweredParams.at(dim);
-        if (!loweredParam.getType().isIndex())
+        if (!loweredParam.getType().isIndex()) {
           loweredParam = builder.create<mlir::index::CastSOp>(
               input.getLoc(), builder.getIndexType(), loweredParam);
+        }
 
         operands.push_back(loweredParam);
       }
@@ -614,9 +646,10 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     operands.push_back(dataPtr);
     for (auto dim : asTensor.getDims()) {
       auto loweredParam = loweredParams.at(dim);
-      if (!loweredParam.getType().isIndex())
+      if (!loweredParam.getType().isIndex()) {
         loweredParam = builder.create<mlir::index::CastSOp>(
             input.getLoc(), builder.getIndexType(), loweredParam);
+      }
 
       operands.push_back(loweredParam);
     }
@@ -705,60 +738,27 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       mapper.map(oldOut, newAlloc);
   }
 
+  auto si64ScalarTy = KGEN::POP::SIMDType::get(ctx, 1, DType::si64);
+
   // Clone the graph
   SmallPtrSet<Operation *, 4> setShapeParamOpSet;
   for (Operation &op : getBody().front()) {
     if (isa<MOGG::OutputPlaceholdersOp, MOGG::OutputOp>(op))
       continue;
 
+    if (auto getDim = dyn_cast<MOGG::GetDimOp>(op)) {
+      auto dim = loweredParams.lookup(getDim.getDimension());
+      Value v = builder.create<KGEN::POP::CastFromBuiltinOp>(op.getLoc(),
+                                                             si64ScalarTy, dim);
+      mapper.map(getDim.getResult(), v);
+      continue;
+    }
+
     if (isa<MOGG::SetParameterOp>(op)) {
       setShapeParamOpSet.insert(builder.clone(op, mapper));
       continue;
     }
     builder.clone(op, mapper);
-  }
-
-  // We must remove all param_shape_to_value ops because parameters don't exist
-  // in MGP.
-  SmallVector<MOGG::ParamShapeToValueOp> shapes(
-      kernelBody.getOps<MOGG::ParamShapeToValueOp>());
-  auto si64ScalarTy = KGEN::POP::SIMDType::get(ctx, 1, DType::si64);
-  auto si64Ty = builder.getIntegerType(64, /*isSigned=*/true);
-  for (auto getShape : shapes) {
-    builder.setInsertionPointAfter(getShape);
-    SmallVector<Value> dimensions;
-    for (auto dim : dyn_cast<MOSH::ShapeAttr>(
-                        getShape.getResult().getType().getShapeAttr())
-                        .getValues()) {
-      auto param = loweredParams.find(dim);
-      if (param == loweredParams.end())
-        return getShape->emitError("Parameter has not been lowered: ") << dim;
-
-      auto loc = getShape->getLoc();
-
-      auto value = param->getSecond();
-      if (value.getType().isIndex())
-        value = builder.create<mlir::index::CastSOp>(loc, si64Ty, value);
-
-      value = builder.create<KGEN::POP::CastFromBuiltinOp>(loc, si64ScalarTy,
-                                                           value);
-      dimensions.push_back(value);
-    }
-
-    // NOTE(GRA-531): Right now we assume a rank0 tensor maps to a shape of [1].
-    if (dimensions.empty()) {
-      auto kgenOne = builder.create<KGEN::ParamConstantOp>(
-          getShape->getLoc(), KGEN::POP::SIMDAttr::get(1, si64ScalarTy));
-      dimensions.push_back(kgenOne);
-    }
-
-    auto arrayCreate =
-        builder.create<KGEN::POP::ArrayCreateOp>(getShape.getLoc(), dimensions);
-    SmallVector<Value> values = {arrayCreate};
-    auto toMOGG = builder.create<MOGG::ToMOGGOp>(
-        getShape.getLoc(), TypeRange(getShape.getResult().getType()), values);
-    getShape.replaceAllUsesWith(toMOGG.getResult());
-    getShape->erase();
   }
 
   DenseMap<int, MOGG::ToKGENOp> outIdxToKgenTensorOp;
