@@ -158,8 +158,8 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             left_slice = input_row_offset[  # type: ignore
                 : input_row_offset.shape[0] - 1  # type: ignore
             ].rebind(
-                cache_lengths.shape
-            )  # type: ignore
+                cache_lengths.shape  # type: ignore
+            )
             increment_amount = right_slice - left_slice
             graph.output(cache_lengths + increment_amount)
 

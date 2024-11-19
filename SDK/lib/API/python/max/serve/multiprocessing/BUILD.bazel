@@ -5,6 +5,7 @@ package(default_visibility = ["//visibility:public"])
 modular_py_library(
     name = "multiprocessing",
     srcs = glob(["*.py"]),
+    imports = ["../../.."],
     deps = [
         "//SDK/lib/API/python/max/serve/telemetry",
         requirement("faster-fifo"),

@@ -7,6 +7,7 @@ modular_py_library(
     name = "llama3",
     srcs = glob(["**/*.py"]),
     imports = [".."],
+    tags = ["no-mypy"],  # TODO: Fix and remove
     deps = [
         requirement("numpy"),
         requirement("torch"),

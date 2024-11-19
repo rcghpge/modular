@@ -9,6 +9,8 @@ modular_py_library(
     imports = [".."],
     visibility = ["//visibility:public"],
     deps = [
+        "//SDK/lib/API/python/max/serve",
+        "//SDK/lib/API/python/max/serve/pipelines",
         requirement("click"),
         requirement("gguf"),
         requirement("numpy"),
@@ -17,6 +19,7 @@ modular_py_library(
         requirement("tokenizers"),
         requirement("tqdm"),
         requirement("transformers"),
+        requirement("uvicorn"),
     ],
 )
 

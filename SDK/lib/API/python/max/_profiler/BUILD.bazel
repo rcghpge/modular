@@ -16,6 +16,7 @@ modular_pybind_py_library(
     name = "_profiler",
     srcs = glob(["*.py"]),
     data = glob(["*.pyi"]),
+    imports = ["../.."],
     pybind_data = [":core"],
     visibility = ["//visibility:public"],
 )
