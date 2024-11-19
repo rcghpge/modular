@@ -19,7 +19,6 @@ modular_py_binary(
         "//SDK/public/max-repo/pipelines/python/mistral",
         "//SDK/public/max-repo/pipelines/python/nn",
         "//SDK/public/max-repo/pipelines/python/replit",
-        "//SDK/public/max-repo/pipelines/python/text_streaming",
         "//SDK/public/max-repo/pipelines/python/utils",
         requirement("click"),
         requirement("ddtrace"),
@@ -53,7 +52,6 @@ pkg_filegroup(
         "//SDK/public/max-repo/pipelines/python/mistral:python_files",
         "//SDK/public/max-repo/pipelines/python/nn:python_files",
         "//SDK/public/max-repo/pipelines/python/replit:python_files",
-        "//SDK/public/max-repo/pipelines/python/text_streaming:python_files",
         "//SDK/public/max-repo/pipelines/python/utils:python_files",
     ],
 )
