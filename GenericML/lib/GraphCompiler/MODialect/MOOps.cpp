@@ -1247,9 +1247,10 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       int64_t value) {
+                       int64_t value, DeviceRefAttr deviceRef) {
   auto type = MO::TensorType::get(
-      SmallVector<int64_t>{}, odsBuilder.getIntegerType(64, /*isSigned=*/true));
+      SmallVector<int64_t>{}, odsBuilder.getIntegerType(64, /*isSigned=*/true),
+      deviceRef);
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(SmallVector<int64_t>{value}),
       mlir::IntegerType::Signed);
@@ -1257,9 +1258,10 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       int32_t value) {
+                       int32_t value, DeviceRefAttr deviceRef) {
   auto type = MO::TensorType::get(
-      SmallVector<int64_t>{}, odsBuilder.getIntegerType(32, /*isSigned=*/true));
+      SmallVector<int64_t>{}, odsBuilder.getIntegerType(32, /*isSigned=*/true),
+      deviceRef);
   auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int32_t>(SmallVector<int32_t>{value}),
       mlir::IntegerType::Signed);

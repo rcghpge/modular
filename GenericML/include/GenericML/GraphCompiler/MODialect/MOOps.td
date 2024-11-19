@@ -553,12 +553,12 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
     /// Create a new rank-1 tensor mo.constant of int32 value.
     OpBuilder<(ins "ArrayRef<int32_t>":$values)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of int32 value.
-    OpBuilder<(ins "int32_t":$value)>,
+    OpBuilder<(ins "int32_t":$value, CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-1 tensor mo.constant of int64 value.
     OpBuilder<(ins "ArrayRef<int64_t>":$values,
       CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of int64 value.
-    OpBuilder<(ins "int64_t":$value)>,
+    OpBuilder<(ins "int64_t":$value, CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-1 tensor mo.constant of any float type.
     OpBuilder<(ins "ArrayRef<APFloat>":$values, "Type":$elementType)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of given float type.
