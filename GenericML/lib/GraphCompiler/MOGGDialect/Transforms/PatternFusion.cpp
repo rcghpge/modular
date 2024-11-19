@@ -562,12 +562,19 @@ struct ConcatZeroAxisPattern
 
 struct ConvConstFilterPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ConvOp> {
-  ConvConstFilterPattern(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 3) {}
+  DeviceRefAttr targetDevice;
+  ConvConstFilterPattern(MLIRContext *ctx, DeviceRefAttr targetDevice)
+      : DeviceAwareRewritePattern(ctx, 3), targetDevice(targetDevice) {}
 
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ConvOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
+    DeviceRefAttr device =
+        getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
+    // TODO: CUDA does not support pre-packing yet
+    if (device && device.getLabel() == M::kGPULabel)
+      return failure();
+
     // Define some meta variables.
     MLIRContext *ctx = op.getContext();
     Location loc = op.getLoc();
@@ -2604,10 +2611,11 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     PackParamCache cache;
     patterns.add<MatmulConstBPattern>(ctx, cache, targetDeviceRef);
 
+    patterns.add<ConvConstFilterPattern>(ctx, targetDeviceRef);
+
     patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-                 ConcatZeroAxisPattern, ConvConstFilterPattern,
-                 ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
-                 LayerNormPattern>(ctx);
+                 ConcatZeroAxisPattern, ConvTransposeConstFilterPattern,
+                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
 
     patterns.add<ForceMatmulTransposeBForGPU>(ctx, targetDeviceRef);
 

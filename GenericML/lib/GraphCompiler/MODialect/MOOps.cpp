@@ -2060,6 +2060,10 @@ LogicalResult MaxPoolCeilOp::verify() {
       {getFilterShape(), getDilations(), getStrides()});
 }
 
+//===----------------------------------------------------------------------===//
+// MO_ConvOp support
+//===----------------------------------------------------------------------===//
+
 LogicalResult ConvOp::verify() {
   // The sliding window interface already checks that the input and result
   // have matching ranks, so we can be more specific with the error message
@@ -2072,6 +2076,20 @@ LogicalResult ConvOp::verify() {
   auto op = cast<SlidingWindow>(this->getOperation());
   return op.verifyWindowParamSizes({getDilations(), getStrides()});
 }
+
+DeviceRefAttr ConvOp::getOperandDevice(size_t index) {
+  return (index == getStridesMutable().getOperandNumber() ||
+          index == getDilationsMutable().getOperandNumber() ||
+          index == getPaddingsMutable().getOperandNumber() ||
+          index == getDilationsMutable().getOperandNumber() ||
+          index == getNumGroupsMutable().getOperandNumber())
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// MO_ConvTransposeOp support
+//===----------------------------------------------------------------------===//
 
 LogicalResult ConvTransposeOp::verify() {
   // The sliding window interface already checks that the input and result

@@ -2001,6 +2001,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]>{
   let summary = "Convolution operation";
   let description = [{
