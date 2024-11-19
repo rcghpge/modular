@@ -197,10 +197,10 @@ ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (strcmp(kind, "cuda") == 0) {
     return CUDADeviceContext::create(id);
-  } else if (strcmp(kind, "cpu") == 0) {
-    return CpuDeviceContext::create(id);
   } else if (strcmp(kind, "hip") == 0) {
     return HIPDeviceContext::create(id);
+  } else if ((strcmp(kind, "cpu") == 0) || (strcmp(kind, "none") == 0)) {
+    return CpuDeviceContext::create(id);
   }
 
   return Error(llvm::Twine("Unsupported device kind: ") + kind);
