@@ -1181,6 +1181,31 @@ bool KernelOp::isInPlaceAlloc() {
   return false;
 }
 
+bool KernelOp::isInPlace() {
+  return maybeGetInChain().has_value() && maybeGetOutChain().has_value();
+}
+
+MO::ChainValue KernelOp::getInChain() {
+  auto inChain = maybeGetInChain();
+  ASSERT_STREAM(inChain.has_value(), "Expected to find an input chain.");
+
+  return maybeGetInChain().value();
+}
+
+MO::ChainValue KernelOp::getOutChain() {
+  auto outChain = maybeGetOutChain();
+  ASSERT_STREAM(outChain.has_value(), "Expected to find an output chain.");
+
+  return outChain.value();
+}
+
+OpOperand &KernelOp::getInChainMutable() {
+  ASSERT_STREAM(maybeGetInChain().has_value(),
+                "Expected to find an input chain.");
+
+  return getOperation()->getOpOperands().back();
+}
+
 std::optional<MO::ChainValue> KernelOp::maybeGetInChain() {
   if (getNumOperands() == 0)
     return std::nullopt;

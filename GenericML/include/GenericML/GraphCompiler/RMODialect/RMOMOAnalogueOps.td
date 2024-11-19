@@ -2684,6 +2684,7 @@ def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
   MemoryEffects<[MemRead]>,
   AllDTypesMatch<["inBuffer", "outTensor"]>,
   DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]>
 {
   let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_ParamDecls:$outputParamDecls);
@@ -2698,7 +2699,8 @@ def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
 def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
   MemoryEffects<[MemWrite]>,
   AllDTypesMatch<["inBuffer", "inTensor"]>,
-  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>
+  DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]>
 {
   let arguments = (ins MO_Chain:$inChain,
@@ -2717,6 +2719,7 @@ def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
 def RMO_MOMutableStoreSliceOp : RMO_MOAnalogueOp<"mutable.store.slice", [
   MemoryEffects<[MemWrite]>,
   AllDTypesMatch<["inBuffer", "slice"]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]> {
   let arguments = (ins MO_Chain:$inChain,
                        MO_Buffer:$inBuffer,
