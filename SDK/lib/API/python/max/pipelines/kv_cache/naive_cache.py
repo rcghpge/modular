@@ -5,6 +5,9 @@
 # ===----------------------------------------------------------------------=== #
 """Naive KV cache for the Transformer."""
 
+
+from typing import List
+
 from max.driver import Device, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession
@@ -20,7 +23,7 @@ class NaiveKVCacheManager(KVCacheManager):
         max_cache_batch_size: int,
         max_seq_len: int,
         num_layers: int,
-        device: Device,
+        devices: List[Device],
         session: InferenceSession,
     ) -> None:
         super().__init__(
@@ -28,18 +31,18 @@ class NaiveKVCacheManager(KVCacheManager):
             max_cache_batch_size=max_cache_batch_size,
             max_seq_len=max_seq_len,
             num_layers=num_layers,
-            device=device,
+            devices=devices,
             session=session,
         )
 
         self.keys = Tensor.zeros(
             shape=self.cache_shape,
             dtype=self.params.dtype,
-            device=device,
+            device=devices[0],
         )
 
         self.values = Tensor.zeros(
-            shape=self.cache_shape, dtype=self.params.dtype, device=device
+            shape=self.cache_shape, dtype=self.params.dtype, device=devices[0]
         )
 
         self._increment_cache_length_graph = (
@@ -83,11 +86,15 @@ class NaiveKVCacheManager(KVCacheManager):
         return (
             self.keys,
             self.values,
-            Tensor.scalar(self.max_sequence_length, DType.int64, self.device),
+            Tensor.scalar(
+                self.max_sequence_length, DType.int64, self.devices[0]
+            ),
             # TODO: MSDK-1201 - This next variable is not used upstream.
             # It is included here, as a placeholder, until we can dynamically
             # return a number of tensors from both `fetch` and `input_symbols`.
-            Tensor.scalar(self.max_sequence_length, DType.int64, self.device),
+            Tensor.scalar(
+                self.max_sequence_length, DType.int64, self.devices[0]
+            ),
         )
 
     def input_symbols(

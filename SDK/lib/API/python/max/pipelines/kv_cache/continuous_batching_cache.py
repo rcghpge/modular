@@ -119,7 +119,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
         max_cache_batch_size: int,
         max_seq_len: int,
         num_layers: int,
-        device: Device,
+        devices: List[Device],
         session: InferenceSession,
     ) -> None:
         super().__init__(
@@ -127,7 +127,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             max_cache_batch_size=max_cache_batch_size,
             max_seq_len=max_seq_len,
             num_layers=num_layers,
-            device=device,
+            devices=devices,
             session=session,
         )
 
@@ -135,7 +135,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
         self.blocks = Tensor.zeros(
             self.block_shape(self.max_cache_batch_size),  # type: ignore
             self.params.dtype,
-            device=self.device,
+            device=self.devices[0],
         )
 
         self._increment_cache_lengths_graph = (
@@ -190,8 +190,8 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             if cache_len != 0:
                 is_cache_empty = False
 
-        cache_lengths = Tensor.from_numpy(cache_lengths_np).to(self.device)
-        lookup_table_tensor = lookup_table_tensor.to(self.device)
+        cache_lengths = Tensor.from_numpy(cache_lengths_np).to(self.devices[0])
+        lookup_table_tensor = lookup_table_tensor.to(self.devices[0])
         is_cache_empty_buf = (
             self.true_tensor if is_cache_empty else self.false_tensor
         )
