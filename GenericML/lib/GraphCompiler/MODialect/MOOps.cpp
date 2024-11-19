@@ -4057,8 +4057,8 @@ LogicalResult CustomOp::verify() {
   // Could also be addressed by allow mo.rebind to take mo.buffer
   // values as input (GRA-1065).
   if (getBufferOperands().size() >= 1) {
-    auto inChain = getInChain();
-    auto outChain = getOutChain();
+    auto inChain = maybeGetInChain();
+    auto outChain = maybeGetOutChain();
 
     if (!inChain) {
       return emitError(
@@ -4074,7 +4074,7 @@ LogicalResult CustomOp::verify() {
   return success();
 }
 
-std::optional<ChainValue> CustomOp::getInChain() {
+std::optional<ChainValue> CustomOp::maybeGetInChain() {
   if (getNumOperands() == 0)
     return std::nullopt;
 
@@ -4087,7 +4087,7 @@ std::optional<ChainValue> CustomOp::getInChain() {
   return std::nullopt;
 }
 
-std::optional<ChainValue> CustomOp::getOutChain() {
+std::optional<ChainValue> CustomOp::maybeGetOutChain() {
   if (getNumResults() == 0)
     return std::nullopt;
 
@@ -4114,7 +4114,7 @@ mlir::SmallVector<Value> CustomOp::getBufferOperands() {
 void CustomOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
 
-  if (!getBufferOperands().empty() && getInChain() && getOutChain()) {
+  if (!getBufferOperands().empty() && maybeGetInChain() && maybeGetOutChain()) {
     effects.emplace_back(mlir::MemoryEffects::Write::get());
     effects.emplace_back(mlir::MemoryEffects::Read::get());
   }

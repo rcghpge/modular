@@ -40,8 +40,8 @@ static bool opsHaveAliasedBuffers(Operation *op1, Operation *op2) {
 }
 
 static bool isInPlaceCustomOp(CustomOp customOp) {
-  return customOp.getBufferOperands().size() >= 1 && customOp.getInChain() &&
-         customOp.getOutChain();
+  return customOp.getBufferOperands().size() >= 1 &&
+         customOp.maybeGetInChain() && customOp.maybeGetOutChain();
 }
 
 // TODO(GRA-1078): Ultimately what we probably really want is an interface for
@@ -59,7 +59,7 @@ static ChainValue getInChain(Operation *op) {
   if (auto mutOp = dyn_cast<MOMutableOpInterface>(op)) {
     return mutOp.getInChain();
   } else if (auto customOp = dyn_cast<CustomOp>(op)) {
-    return customOp.getInChain().value_or(ChainValue{});
+    return customOp.maybeGetInChain().value_or(ChainValue{});
   }
   llvm_unreachable("getInChain is only valid on side-effecting buffer ops");
 }
@@ -68,7 +68,7 @@ static ChainValue getOutChain(Operation *op) {
   if (auto mutOp = dyn_cast<MOMutableOpInterface>(op)) {
     return mutOp.getOutChain();
   } else if (auto customOp = dyn_cast<CustomOp>(op)) {
-    return customOp.getOutChain().value_or(ChainValue{});
+    return customOp.maybeGetOutChain().value_or(ChainValue{});
   }
   llvm_unreachable("getOutChain is only valid on side-effecting buffer ops");
 }

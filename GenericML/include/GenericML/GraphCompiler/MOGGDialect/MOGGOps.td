@@ -224,9 +224,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     that have in-place allocation. For example, allocIndices = [0] means the first
     output tensor has been allocated in the kernel.
 
-    `isInPlace` Is a bool attribute marking whether the kernel has a `mo.buffer` input
-    it operates on in-place.
-
     Kernels preserve the device of their original MO op.
   }];
 
@@ -340,10 +337,10 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     bool isInPlaceAlloc();
 
     /// Returns the sole input chain (if present) and std::nullopt otherwise.
-    std::optional<Value> getInChain();
+    std::optional<MO::ChainValue> maybeGetInChain();
 
     /// Returns the sole output chain (if present) and std::nullopt otherwise.
-    std::optional<Value> getOutChain();
+    std::optional<MO::ChainValue> maybeGetOutChain();
 
     void setKGENKernelParamValueIfPresent(MojoLibraryAnalysis& analysis, StringRef paramLabel, TypedAttr value);
   }];

@@ -4537,10 +4537,10 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 
   let extraClassDeclaration = [{
     /// Returns the sole input chain (if present) and std::nullopt otherwise.
-    std::optional<ChainValue> getInChain();
+    std::optional<ChainValue> maybeGetInChain();
 
     /// Returns the sole output chain (if present) and std::nullopt otherwise.
-    std::optional<ChainValue> getOutChain();
+    std::optional<ChainValue> maybeGetOutChain();
 
     /// Collects all operands of type !mo.buffer.
     mlir::SmallVector<Value> getBufferOperands();

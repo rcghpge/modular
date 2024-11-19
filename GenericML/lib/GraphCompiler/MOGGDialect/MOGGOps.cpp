@@ -348,8 +348,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   auto voidStar = KGEN::PointerType::get(KGEN::NoneType::get(ctx));
 
-  auto maybeInChain = getInChain();
-  auto maybeOutChain = getOutChain();
+  auto maybeInChain = maybeGetInChain();
+  auto maybeOutChain = maybeGetOutChain();
 
   Value chain = loweringState.getCurrentExecuteChain();
   if (maybeInChain)
@@ -1049,7 +1049,7 @@ Value KernelOp::addOperand(Value operand) {
   // aren't the final operand.
   //
   // For now, keep the chain as last if it exists.
-  if (getInChain().has_value())
+  if (maybeGetInChain().has_value())
     return addOperandAtIndex(operand, getNumOperands() - 1);
 
   return addOperandAtIndex(operand, getNumOperands());
@@ -1181,26 +1181,26 @@ bool KernelOp::isInPlaceAlloc() {
   return false;
 }
 
-std::optional<Value> KernelOp::getInChain() {
+std::optional<MO::ChainValue> KernelOp::maybeGetInChain() {
   if (getNumOperands() == 0)
     return std::nullopt;
 
   auto finalVal = getOperands().back();
 
-  if (isa<MO::ChainType>(finalVal.getType()))
-    return finalVal;
+  if (auto chain = dyn_cast<MO::ChainValue>(finalVal))
+    return chain;
   else
     return std::nullopt;
 }
 
-std::optional<Value> KernelOp::getOutChain() {
+std::optional<MO::ChainValue> KernelOp::maybeGetOutChain() {
   if (getNumResults() == 0)
     return std::nullopt;
 
   auto finalVal = getResults().back();
 
-  if (isa<MO::ChainType>(finalVal.getType()))
-    return finalVal;
+  if (auto chain = dyn_cast<MO::ChainValue>(finalVal))
+    return chain;
   else
     return std::nullopt;
 }

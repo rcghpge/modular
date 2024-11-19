@@ -215,13 +215,13 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   oldBlockArg.replaceAllUsesWith(newBufferArg);
   kernelOp.removeOperandAtIndex(argIdx + 1);
 
-  loadOp.getOutChain().replaceAllUsesWith(kernelOp.getOutChain().value());
+  loadOp.getOutChain().replaceAllUsesWith(kernelOp.maybeGetOutChain().value());
 
   builder.setInsertionPoint(kernelOp);
 
   auto newChain = builder.createOrFold<MO::ChainCreateOp>(
       loadOp.getLoc(),
-      ValueRange{kernelOp.getInChain().value(), loadOp.getInChain()});
+      ValueRange{kernelOp.maybeGetInChain().value(), loadOp.getInChain()});
 
   kernelOp.setOperand(kernelOp.getNumOperands() - 1, newChain);
 

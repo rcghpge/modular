@@ -44,11 +44,6 @@ def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", [MemoryEffectsOp
   let cppNamespace = "::M::MO";
 
   let methods = [
-    InterfaceMethod<"Get the input buffer as a BufferValue",
-      "BufferValue", "getInBuffer",
-      (ins), [{}],
-      [{ return ::llvm::cast<BufferValue>($_op->getInBuffer()); }]>,
-
     InterfaceMethod<"Get the input chain as a ChainValue",
       "ChainValue", "getInChain",
       (ins), [{}],
