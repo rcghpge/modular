@@ -143,6 +143,7 @@ modular_pybind_library(
     srcs = glob(["lib/API/python/lib/Driver/*.cpp"]),
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
     deps = [
+        "//AsyncRT:DeviceContext",
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//SDK:DLPack",
