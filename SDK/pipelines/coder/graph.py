@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Build a Llama3 model via Graph API from GGUF weights."""
+"""Build a Llama3 model via Graph API from Safetensor weights."""
 
 from typing import Optional, Union
 
@@ -60,21 +60,21 @@ def feed_forward(
             quantization_encoding,
             feed_forward_length,
             hidden_dim,
-            weights.ffn_gate,
+            weights.mlp.gate_proj,
         ),
         linear(
             dtype,
             quantization_encoding,
             hidden_dim,
             feed_forward_length,
-            weights.ffn_down,
+            weights.mlp.down_proj,
         ),
         linear(
             dtype,
             quantization_encoding,
             feed_forward_length,
             hidden_dim,
-            weights.ffn_up,
+            weights.mlp.up_proj,
         ),
     )
 
@@ -94,7 +94,7 @@ def linear(
 
 
 def rms_norm(dims: int, eps: float, weights: Weights) -> RMSNorm:
-    return RMSNorm(weights.weight.allocate(DType.float32, [dims]), eps)
+    return RMSNorm(weights.weight.allocate(DType.bfloat16, [dims]), eps)
 
 
 def embedding(
@@ -120,7 +120,7 @@ def _attention_opaque(
     layer_idx,
 ):
     wq = ops.transpose(
-        weights.attn_q.weight.allocate(
+        weights.self_attn.q_proj.weight.allocate(
             pipeline_config.dtype,
             [
                 pipeline_config.huggingface_config.hidden_size,
@@ -136,7 +136,7 @@ def _attention_opaque(
         // pipeline_config.huggingface_config.num_attention_heads
     ) * pipeline_config.huggingface_config.num_key_value_heads
     wk = ops.transpose(
-        weights.attn_k.weight.allocate(
+        weights.self_attn.k_proj.weight.allocate(
             pipeline_config.dtype,
             [kv_weight_dim, pipeline_config.huggingface_config.hidden_size],
             pipeline_config.quantization_encoding.quantization_encoding,
@@ -145,7 +145,7 @@ def _attention_opaque(
         1,
     )
     wv = ops.transpose(
-        weights.attn_v.weight.allocate(
+        weights.self_attn.v_proj.weight.allocate(
             pipeline_config.dtype,
             [kv_weight_dim, pipeline_config.huggingface_config.hidden_size],
             pipeline_config.quantization_encoding.quantization_encoding,
@@ -165,7 +165,7 @@ def _attention_opaque(
             pipeline_config.quantization_encoding.quantization_encoding,
             pipeline_config.huggingface_config.hidden_size,
             pipeline_config.huggingface_config.hidden_size,
-            weights.attn_output,
+            weights.self_attn.o_proj,
         ),
         rope=rope,
         layer_idx=layer_idx,
@@ -179,12 +179,7 @@ def _transformer_opaque(
     kv_params: KVCacheParams,
 ):
     with graph:
-        try:
-            rope_scaling = weights.rope_freqs.weight.raw_tensor().data
-        except KeyError:
-            # Set default RoPE scaling if the tensor isn't present in the GGUF
-            # file.
-            rope_scaling = None
+        rope_scaling = None
 
         rope = OptimizedRotaryEmbedding(
             dim=pipeline_config.huggingface_config.hidden_size,
@@ -200,7 +195,7 @@ def _transformer_opaque(
                     kv_params,
                     pipeline_config,
                     rope,
-                    weights.blk[i],
+                    weights.model.layers[i],
                     layer_idx=ops.constant(i, DType.uint32),
                 ),
                 mlp=feed_forward(
@@ -208,17 +203,17 @@ def _transformer_opaque(
                     pipeline_config.quantization_encoding.quantization_encoding,
                     pipeline_config.huggingface_config.hidden_size,
                     pipeline_config.huggingface_config.intermediate_size,
-                    weights.blk[i],
+                    weights.model.layers[i],
                 ),
                 attention_norm=rms_norm(
                     pipeline_config.huggingface_config.hidden_size,
                     pipeline_config.huggingface_config.rms_norm_eps,
-                    weights.blk[i].attn_norm,
+                    weights.model.layers[i].input_layernorm,
                 ),
                 mlp_norm=rms_norm(
                     pipeline_config.huggingface_config.hidden_size,
                     pipeline_config.huggingface_config.rms_norm_eps,
-                    weights.blk[i].ffn_norm,
+                    weights.model.layers[i].post_attention_layernorm,
                 ),
             )
             for i in range(pipeline_config.huggingface_config.num_hidden_layers)
@@ -228,21 +223,10 @@ def _transformer_opaque(
             pipeline_config,
             pipeline_config.huggingface_config.vocab_size,
             pipeline_config.huggingface_config.hidden_size,
-            weights.token_embd,
+            weights.model.embed_tokens,
         )
 
-        # Smaller model variants lack dedicated weights for a final linear
-        # layer, and share the embedding layer.
-        if hasattr(weights, "output"):
-            output = linear(
-                pipeline_config.dtype,
-                pipeline_config.quantization_encoding.quantization_encoding,
-                pipeline_config.huggingface_config.vocab_size,
-                pipeline_config.huggingface_config.hidden_size,
-                weights.output,
-            )
-        else:
-            output = Linear(embedding_layer.weights)
+        output = Linear(embedding_layer.weights)
 
         if kv_params.cache_strategy == KVCacheStrategy.CONTINUOUS:
             kv_collection_cls = FetchContinuousBatchingKVCacheCollection
@@ -258,7 +242,7 @@ def _transformer_opaque(
             norm=rms_norm(
                 pipeline_config.huggingface_config.hidden_size,
                 pipeline_config.huggingface_config.rms_norm_eps,
-                weights.output_norm,
+                weights.model.norm,
             ),
             output=output,
             embedding=embedding_layer,
@@ -286,28 +270,28 @@ def attention(
             pipeline_config.quantization_encoding.quantization_encoding,
             kv_weight_dim,
             pipeline_config.huggingface_config.hidden_size,
-            weights.attn_k,
+            weights.self_attn.k_proj,
         ),
         wv=linear(
             pipeline_config.dtype,
             pipeline_config.quantization_encoding.quantization_encoding,
             kv_weight_dim,
             pipeline_config.huggingface_config.hidden_size,
-            weights.attn_v,
+            weights.self_attn.v_proj,
         ),
         wq=linear(
             pipeline_config.dtype,
             pipeline_config.quantization_encoding.quantization_encoding,
             pipeline_config.huggingface_config.hidden_size,
             pipeline_config.huggingface_config.hidden_size,
-            weights.attn_q,
+            weights.self_attn.q_proj,
         ),
         wo=linear(
             pipeline_config.dtype,
             pipeline_config.quantization_encoding.quantization_encoding,
             pipeline_config.huggingface_config.hidden_size,
             pipeline_config.huggingface_config.hidden_size,
-            weights.attn_output,
+            weights.self_attn.o_proj,
         ),
         rope=rope,
     )
@@ -323,12 +307,7 @@ def transformer(
         return _transformer_opaque(graph, pipeline_config, weights, kv_params)
 
     with graph:
-        try:
-            rope_scaling = weights.rope_freqs.weight.raw_tensor().data
-        except AttributeError:
-            # Set default RoPE scaling if the tensor isn't present in the GGUF
-            # file.
-            rope_scaling = None
+        rope_scaling = None
 
         rope = RotaryEmbedding(
             dim=pipeline_config.huggingface_config.hidden_size,
@@ -341,24 +320,24 @@ def transformer(
         layers = [
             NaiveTransformerBlock(
                 attention=attention(
-                    kv_params, pipeline_config, rope, weights.blk[i]
+                    kv_params, params, rope, weights.model.layers[i]
                 ),
                 mlp=feed_forward(
                     pipeline_config.dtype,
                     pipeline_config.quantization_encoding.quantization_encoding,
                     pipeline_config.huggingface_config.hidden_size,
                     pipeline_config.huggingface_config.intermediate_size,
-                    weights.blk[i],
+                    weights.model.layers[i],
                 ),
                 attention_norm=rms_norm(
                     pipeline_config.huggingface_config.hidden_size,
                     pipeline_config.huggingface_config.rms_norm_eps,
-                    weights.blk[i].attn_norm,
+                    weights.model.layers[i].post_attention_layernorm,
                 ),
                 mlp_norm=rms_norm(
                     pipeline_config.huggingface_config.hidden_size,
                     pipeline_config.huggingface_config.rms_norm_eps,
-                    weights.blk[i].ffn_norm,
+                    weights.model.layers[i].input_layernorm,
                 ),
             )
             for i in range(pipeline_config.huggingface_config.num_hidden_layers)
@@ -368,21 +347,10 @@ def transformer(
             pipeline_config,
             pipeline_config.huggingface_config.vocab_size,
             pipeline_config.huggingface_config.hidden_size,
-            weights.token_embd,
+            weights.model.embed_tokens,
         )
 
-        # Smaller model variants lack dedicated weights for a final linear
-        # layer, and share the embedding layer.
-        if hasattr(weights, "output"):
-            output = linear(
-                pipeline_config.dtype,
-                pipeline_config.quantization_encoding.quantization_encoding,
-                pipeline_config.huggingface_config.vocab_size,
-                pipeline_config.huggingface_config.hidden_size,
-                weights.output,
-            )
-        else:
-            output = Linear(embedding_layer.weights)
+        output = Linear(embedding_layer.weights)
 
         return NaiveTransformer(
             dim=pipeline_config.huggingface_config.hidden_size,
@@ -391,7 +359,7 @@ def transformer(
             norm=rms_norm(
                 pipeline_config.huggingface_config.hidden_size,
                 pipeline_config.huggingface_config.rms_norm_eps,
-                weights.output_norm,
+                weights.model.norm,
             ),
             output=output,
             theta=pipeline_config.huggingface_config.rope_theta,

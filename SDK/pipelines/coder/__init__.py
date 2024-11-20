@@ -20,15 +20,15 @@
 
 from max.pipelines import PIPELINE_REGISTRY
 
-from .arch import llama_arch
-from .config import get_llama_huggingface_file
-from .llama3 import Llama3
-from .llama3_token_gen import Llama3TokenGenerator
+from .arch import coder_arch
+from .coder import Coder
+from .coder_token_gen import CoderTokenGenerator
+from .config import get_coder_huggingface_files
 
 __all__ = [
-    "Llama3",
-    "Llama3TokenGenerator",
-    "get_llama_huggingface_file",
+    "Coder",
+    "CoderTokenGenerator",
+    "get_coder_huggingface_files",
 ]
 
-PIPELINE_REGISTRY.register(llama_arch)
+PIPELINE_REGISTRY.register(coder_arch)

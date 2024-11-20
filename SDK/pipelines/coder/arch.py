@@ -24,94 +24,30 @@ from max.pipelines import (
     SupportedVersion,
     TextTokenizer,
 )
-from max.pipelines.kv_cache import KVCacheStrategy
 
-from .model import Llama3Model
+from .model import CoderModel
 
-llama_arch = SupportedArchitecture(
-    name="LlamaForCausalLM",
+coder_arch = SupportedArchitecture(
+    name="DeepseekCoder",
     versions=[
         SupportedVersion(
-            name="3",
+            name="1.5",
             encodings={
-                SupportedEncoding.float32: (
-                    HuggingFaceFile("modularai/llama-3", "llama-3-8b-f32.gguf"),
-                    [KVCacheStrategy.CONTINUOUS, KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.bfloat16: (
+                SupportedEncoding.bfloat16: [
                     HuggingFaceFile(
-                        "modularai/llama-3",
-                        "llama-3-8b-instruct-bf16.gguf",
-                    ),
-                    [KVCacheStrategy.CONTINUOUS, KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.q4_0: (
-                    HuggingFaceFile(
-                        "modularai/llama-3",
-                        "llama-3-8b-instruct-q4_0.gguf",
-                    ),
-                    [KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.q4_k: (
-                    HuggingFaceFile(
-                        "modularai/llama-3",
-                        "llama-3-8b-instruct-q4_k_m.gguf",
-                    ),
-                    [KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.q6_k: (
-                    HuggingFaceFile(
-                        "modularai/llama-3",
-                        "llama-3-8b-instruct-q6_k.gguf",
-                    ),
-                    [KVCacheStrategy.NAIVE],
-                ),
+                        "deepseek-ai/deepseek-coder-7b-instruct-v1.5", f
+                    )
+                    for f in [
+                        "model-00001-of-00003.safetensors",
+                        "model-00002-of-00003.safetensors",
+                        "model-00003-of-00003.safetensors",
+                    ]
+                ],
             },
-            default_encoding=SupportedEncoding.float32,
-        ),
-        SupportedVersion(
-            name="3.1",
-            encodings={
-                SupportedEncoding.float32: (
-                    HuggingFaceFile(
-                        "modularai/llama-3.1",
-                        "llama-3.1-8b-instruct-f32.gguf",
-                    ),
-                    [KVCacheStrategy.CONTINUOUS, KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.bfloat16: (
-                    HuggingFaceFile(
-                        "modularai/llama-3.1",
-                        "llama-3.1-8b-instruct-bf16.gguf",
-                    ),
-                    [KVCacheStrategy.CONTINUOUS, KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.q4_0: (
-                    HuggingFaceFile(
-                        "modularai/llama-3.1",
-                        "llama-3.1-8b-instruct-q4_0.gguf",
-                    ),
-                    [KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.q4_k: (
-                    HuggingFaceFile(
-                        "modularai/llama-3.1",
-                        "llama-3.1-8b-instruct-q4_k_m.gguf",
-                    ),
-                    [KVCacheStrategy.NAIVE],
-                ),
-                SupportedEncoding.q6_k: (
-                    HuggingFaceFile(
-                        "modularai/llama-3.1",
-                        "llama-3.1-8b-instruct-q6_k.gguf",
-                    ),
-                    [KVCacheStrategy.NAIVE],
-                ),
-            },
-            default_encoding=SupportedEncoding.float32,
+            default_encoding=SupportedEncoding.bfloat16,
         ),
     ],
-    default_version="3.1",
-    pipeline_model=Llama3Model,
+    default_version="1.5",
+    pipeline_model=CoderModel,
     tokenizer=TextTokenizer,
 )

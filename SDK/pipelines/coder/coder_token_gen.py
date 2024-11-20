@@ -30,10 +30,10 @@ from max.pipelines.interfaces import TokenGenerator
 from max.pipelines.sampling import token_sampler
 from max.profiler import traced
 
-from .llama3 import load_llama3_and_kv_manager
+from .coder import load_coder_and_kv_manager
 
 
-class Llama3TokenGenerator(TokenGenerator[TextContext]):
+class CoderTokenGenerator(TokenGenerator[TextContext]):
     """Token Generator for the Llama 3 model."""
 
     def __init__(self, config: PipelineConfig, eos: int):
@@ -43,7 +43,7 @@ class Llama3TokenGenerator(TokenGenerator[TextContext]):
         self._device = config.device
         session = InferenceSession(devices=[self._device])
 
-        self.model, self._kv_manager = load_llama3_and_kv_manager(
+        self.model, self._kv_manager = load_coder_and_kv_manager(
             config,
             session,
         )
