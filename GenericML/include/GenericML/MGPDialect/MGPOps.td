@@ -346,6 +346,7 @@ def AssertOp : MGP_Op<"assert", [
   let arguments = (ins I1:$cond, StrAttr:$message);
   let results = (outs ChainType:$outChain);
   let assemblyFormat = "$cond `,` $message attr-dict";
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

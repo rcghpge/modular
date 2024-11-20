@@ -11,6 +11,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
+#include "GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
@@ -21,6 +22,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "llvm/Support/Base64.h"
@@ -490,6 +492,22 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
   }
 
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// AssertOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AssertOp::canonicalize(AssertOp op, PatternRewriter &rewriter) {
+  // remove assert(true)
+  BoolAttr condAttr;
+  if (mlir::matchPattern(op.getCond(), mlir::m_Constant(&condAttr))) {
+    if (condAttr.getValue()) {
+      rewriter.replaceOpWithNewOp<GRT::ChainCreateOp>(op);
+      return success();
+    }
+  }
+  return failure();
 }
 
 /// Return whether `ty1` is a subtype of `ty2`, i.e., the set of possible
