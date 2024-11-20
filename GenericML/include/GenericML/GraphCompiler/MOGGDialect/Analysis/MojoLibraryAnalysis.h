@@ -221,6 +221,10 @@ struct LoadMojoAnalysisPass {
   ErrorOr<MojoLibraryAnalysis *>
   initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths,
                bool withDebuginfo) {
+    // TODO(GEX-1421): Consider replacing mutex with singleton pattern
+    static std::mutex analysisLock;
+    std::scoped_lock<std::mutex> lock(analysisLock);
+
     // Reuse the library if it exists.
     if (analysis)
       return analysis.get();

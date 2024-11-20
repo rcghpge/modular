@@ -28,7 +28,8 @@ using namespace MOGG;
 
 static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
                                 KGEN::GeneratorOp gen2) {
-  if (gen1.getSignature() != gen2.getSignature())
+  // TODO (GEX-1421): fix up after done
+  if (gen1.getSignature() == gen2.getSignature())
     return false;
   return areBlocksSame(*gen1.getBody(), *gen2.getBody());
 }
