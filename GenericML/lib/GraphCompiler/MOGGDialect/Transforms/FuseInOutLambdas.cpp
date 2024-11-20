@@ -545,6 +545,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     MOGG::KernelOp userToFuseIn =
         cast<MOGG::KernelOp>(*originalResult.user_begin());
 
+    Value newExpectedResult = userToFuseIn->getResult(0);
+
     OutputPlaceholdersOp originalOuts = kernelToFuseInto.getOutputPlaceholder();
     OutputPlaceholdersOp userOuts = userToFuseIn.getOutputPlaceholder();
 
@@ -577,6 +579,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         oldToNew.map(blockArg, newBlockArg);
       }
     }
+
+    // update output type if needed
+    originalResult.setType(newExpectedResult.getType());
 
     // Step 2: We clone all non-trivial operators in the user kernel into the
     // src kernel. Here, we ignore all the ParamDeclareRegionOp, which we will
