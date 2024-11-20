@@ -961,6 +961,111 @@ struct LowerShapeToTensor : public OpRewritePattern<RMO::ShapeToTensorOp> {
   }
 };
 
+struct LowerThirdPartyPadConstantOp
+    : public OpRewritePattern<RMO::ThirdPartyPadConstantOp> {
+  LowerThirdPartyPadConstantOp(MLIRContext *ctx)
+      : OpRewritePattern<RMO::ThirdPartyPadConstantOp>(ctx, 1) {}
+
+  LogicalResult matchAndRewrite(RMO::ThirdPartyPadConstantOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    TensorValue inputTensor = op.getInput();
+    TensorType inputType = inputTensor.getType();
+    TensorType resultType = op.getType();
+
+    // We enforce some invariants. We could also allow si32 pad sizes, but onnx
+    // and torch use si64. So we keep things simple now.
+    if (!inputType.hasRank() || !resultType.hasRank()) {
+      return rewriter.notifyMatchFailure(
+          loc, "rmo.3p.pad.constant expects ranked input and result");
+    }
+    TensorValue signedPadTensor = op.getPaddings();
+    TensorType padType = signedPadTensor.getType();
+    if (!padType.hasRank() || padType.getRank() != 1) {
+      return rewriter.notifyMatchFailure(
+          loc, "rmo.3p.pad.constant padding must be a vector of static shape");
+    }
+    int64_t numDims = inputType.getRank();
+    if (padType.getDtype() != DType::si64) {
+      return rewriter.notifyMatchFailure(
+          loc, "rmo.3p.pad.constant paddings must be si64");
+    }
+    DeviceRefAttr deviceRef = inputType.getDeviceRef();
+    assert(deviceRef == padType.getDeviceRef() && "devices don't match");
+
+    // We will split the paddings into negative (pure slice) and positive (pure
+    // pad) components.
+    auto zeros = rewriter.create<MO::ConstantOp>(
+        loc, SmallVector<int64_t>(numDims * 2, 0), deviceRef);
+    auto negPadTensor = rewriter.create<RMO::MOMinOp>(loc, zeros.getType(),
+                                                      signedPadTensor, zeros);
+
+    // The negative pads need to be split into begin (even indices) and end (odd
+    // indices) pad sizes. We will do this with two gathers.
+    SmallVector<int64_t> oddIndices;
+    SmallVector<int64_t> evenIndices;
+    oddIndices.reserve(numDims);
+    evenIndices.reserve(numDims);
+    for (int64_t r = 0; r < numDims; ++r) {
+      evenIndices.push_back(2 * r);
+      oddIndices.push_back(2 * r + 1);
+    }
+    auto oddConst = rewriter.create<MO::ConstantOp>(loc, oddIndices, deviceRef);
+    auto evenConst =
+        rewriter.create<MO::ConstantOp>(loc, evenIndices, deviceRef);
+
+    // To get the end indices, we need to take the negative indices and
+    // increment them by the sizes of the dimensions, i.e. add the shape to it.
+    // This is important because a zero padding size would not be the correct
+    // end index.
+    MO::TensorType oldPadType = signedPadTensor.getType();
+    MO::TensorType sliceIdxType =
+        oldPadType.cloneWith({numDims}, oldPadType.getElementType());
+    auto shapeOf =
+        rewriter.create<RMO::MOShapeOfOp>(loc, sliceIdxType, inputTensor);
+    auto zero = rewriter.create<MO::ConstantOp>(loc, (int64_t)0, deviceRef);
+    MO::TensorValue end = rewriter.create<RMO::MOGatherOp>(
+        loc, sliceIdxType, negPadTensor, oddConst, zero);
+    end = rewriter.create<RMO::MOAddOp>(loc, sliceIdxType, end, shapeOf);
+
+    // A negative padding in the beginning is always equivalent to skipping
+    // elements, so we multiply by -1 to get the slice start indices.
+    auto negOnes = rewriter.create<MO::ConstantOp>(
+        loc, SmallVector<int64_t>(numDims, -1), deviceRef);
+    MO::TensorValue start = rewriter.create<RMO::MOGatherOp>(
+        loc, sliceIdxType, negPadTensor, evenConst, zero);
+    start = rewriter.create<RMO::MOMulOp>(loc, sliceIdxType, start, negOnes);
+
+    // We can now create a slice which will apply the negative pad sizes. This
+    // slice uses the trivial step, but its shape must be dynamic.
+    MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
+    SmallVector<KGEN::ParamDeclAttr> newDimDecls;
+    SmallVector<TypedAttr> newShapeDims;
+    for (int64_t r = 0; r < numDims; ++r) {
+      KGEN::ParamDeclAttr newDecl = graphOp.getNewDimParam("RMO_NEG_PAD");
+      newDimDecls.push_back(newDecl);
+      newShapeDims.emplace_back(KGEN::ParamDeclRefAttr::get(newDecl));
+    }
+    auto step = rewriter.create<MO::ConstantOp>(
+        loc, SmallVector<int64_t>(numDims, 1), deviceRef);
+    auto slicedInput = rewriter.create<RMO::MOSliceOp>(
+        loc, inputType.cloneWith(newShapeDims), inputTensor, start, end, step,
+        newDimDecls);
+
+    // Hurray, we have applied the negative pads. Extracting the positive pad
+    // sizes is straightforward. Note that because we separate negative and
+    // positive pad sizes, they never overlap.
+    auto posPadTensor = rewriter.create<RMO::MOMaxOp>(loc, zeros.getType(),
+                                                      signedPadTensor, zeros);
+
+    // We can now apply the positive pad sizes to the sliced input.
+    rewriter.replaceOpWithNewOp<RMO::MOPadConstantOp>(
+        op, resultType, slicedInput, posPadTensor, op.getValue(),
+        op.getOutputParamDeclsAttr());
+    return success();
+  }
+};
+
 struct LegalizeRMOOps
     : public M::RMO::impl::LegalizeRMOOpsBase<LegalizeRMOOps> {
   using LegalizeRMOOpsBase::LegalizeRMOOpsBase;
@@ -1123,7 +1228,8 @@ struct LegalizeRMOOps
         LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyGreaterOp,
                                           RMO::MOGreaterOp>,
         LowerThirdPartyBinaryComparisonOp<RMO::ThirdPartyGreaterEqualOp,
-                                          RMO::MOGreaterEqualOp>>(context);
+                                          RMO::MOGreaterEqualOp>,
+        LowerThirdPartyPadConstantOp>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(blockPatterns))))
