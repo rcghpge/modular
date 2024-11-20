@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/CustomDialect/CustomDialect.h"
@@ -277,13 +278,13 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
       loc, op->getResultTypes(), op->getOperands(),
       KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
       InOutSignatureAttr::get(builder.getContext(), operandSemantics),
-      builder.getBoolAttr(true),                           // isKGEN
-      builder.getStringAttr(op->getName().getStringRef()), // summary
-      builder.getBoolAttr(isAsync(op)),                    // isAsync
-      constResources,                                      // constantResources
-      builder.getBoolAttr(canFuseOp(op)),                  // canFuseIntoOther
-      builder.getBoolAttr(canFuseOp(op)),                  // canBeFusedInto
-      builder.getBoolAttr(canDuplicate(op))                // canDuplicate
+      builder.getBoolAttr(true),            // isKGEN
+      MOGG::getSummaryString(op),           // summary
+      builder.getBoolAttr(isAsync(op)),     // isAsync
+      constResources,                       // constantResources
+      builder.getBoolAttr(canFuseOp(op)),   // canFuseIntoOther
+      builder.getBoolAttr(canFuseOp(op)),   // canBeFusedInto
+      builder.getBoolAttr(canDuplicate(op)) // canDuplicate
   );
 
   if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
