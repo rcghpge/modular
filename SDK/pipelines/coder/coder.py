@@ -21,14 +21,13 @@ from __future__ import annotations
 
 import logging
 
-import gguf
 import numpy as np
 from dataprocessing import batch_padded_tokens_and_mask
 from max.driver import CPU, CUDA, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import Graph, TensorType
-from max.graph.weights import GGUFWeights
+from max.graph.weights import SafetensorWeights
 from max.pipelines import PipelineConfig, SupportedEncoding, TextContext
 from max.pipelines.kv_cache import (
     KVCacheManager,
@@ -37,16 +36,15 @@ from max.pipelines.kv_cache import (
     load_kv_manager,
 )
 
-from .gguf import transformer
+from .graph import transformer
 
 logger = logging.getLogger(__name__)
 
 
-def load_llama3_and_kv_manager(
+def load_coder_and_kv_manager(
     config: PipelineConfig,
     session: InferenceSession,
 ) -> tuple[Llama3, KVCacheManager]:
-    reader = gguf.GGUFReader(config.weight_path)
     cache_dtype = (
         DType.float32 if config.quantization_encoding.quantization_encoding
         is not None else config.dtype
@@ -67,9 +65,8 @@ def load_llama3_and_kv_manager(
         device=config.device,
         session=session,
     )
-    model = Llama3(
+    model = Coder(
         config,
-        reader,
         kv_manager,
         session=session,
     )
@@ -77,18 +74,17 @@ def load_llama3_and_kv_manager(
     return model, kv_manager
 
 
-class Llama3:
-    """The Llama 3 model."""
+class Coder:
+    """The Coder model."""
 
     def __init__(
         self,
         config: PipelineConfig,
-        reader: gguf.GGUFReader,
         kv_manager: KVCacheManager,
         *,
         session: InferenceSession | None = None,
-    ) -> None:
-        """Initializes the Llama3 model.
+    ):
+        """Initializes the Coder model.
 
         Args:
             config: Model parameters.
@@ -98,7 +94,6 @@ class Llama3:
         """
         self.config = config
         assert config.weight_path is not None
-        self.reader = reader
         device_spec = self.config.device_spec
         self._device = CPU(
             device_spec.id
@@ -116,12 +111,12 @@ class Llama3:
             np.arange(config.max_cache_batch_size + 1, dtype=np.uint32)
         ).to(self._device)
 
-        self._model = self._load_model(session, config, self.reader)
+        self._model = self._load_model(session, config)
 
     def export_mef(self, export_path):
         self._model._export_mef(export_path)
 
-    def _llama_graph_opaque(self, weights: GGUFWeights) -> Graph:
+    def _coder_graph_opaque(self, weights: SafetensorWeights) -> Graph:
         tokens_type = TensorType(DType.int64, shape=["total_seq_len"])
         # NOTE: input_row_offset_len should be batch_size + 1.
         input_row_offset_type = TensorType(
@@ -131,7 +126,7 @@ class Llama3:
         kv_cache_args = self._kv_manager.input_symbols()
 
         with Graph(
-            "llama3",
+            "coder",
             input_types=[tokens_type, input_row_offset_type, *kv_cache_args],
         ) as graph:
             model = transformer(
@@ -145,9 +140,9 @@ class Llama3:
             graph.output(logits)
             return graph
 
-    def _llama_graph(self, weights: GGUFWeights) -> Graph:
+    def _coder_graph(self, weights: SafetensorWeights) -> Graph:
         if self.config.cache_strategy == KVCacheStrategy.CONTINUOUS:
-            return self._llama_graph_opaque(weights)
+            return self._coder_graph_opaque(weights)
 
         tokens_type = TensorType(DType.int64, shape=["batch_size", "seq_len"])
         attn_mask_type = TensorType(
@@ -157,7 +152,7 @@ class Llama3:
         kv_inputs = self._kv_manager.input_symbols()
 
         with Graph(
-            "llama3",
+            "coder",
             input_types=[
                 tokens_type,
                 attn_mask_type,
@@ -194,9 +189,8 @@ class Llama3:
         self,
         session: InferenceSession,
         config: PipelineConfig,
-        reader: gguf.GGUFReader,
     ) -> Model:
-        self._weights = GGUFWeights(reader)
+        self._weights = SafetensorWeights(config.weight_path)
         if serialized_path := config.serialized_model_path:
             # Hydrate all weights to be referenced by the serialized graph.
             weights_registry = {}
@@ -211,7 +205,7 @@ class Llama3:
             )
         else:
             logging.info("Building model...")
-            graph = self._llama_graph(self._weights)
+            graph = self._coder_graph(self._weights)
             logging.info("Compiling...")
             return session.load(
                 graph, weights_registry=self._weights.allocated_weights

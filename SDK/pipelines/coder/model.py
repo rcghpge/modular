@@ -27,7 +27,7 @@ from max.driver import CPU, CUDA, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import Graph, TensorType
-from max.graph.weights import GGUFWeights
+from max.graph.weights import SafetensorWeights
 from max.pipelines import PipelineModel, SupportedEncoding, TextContext
 from max.pipelines.kv_cache import (
     KVCacheManager,
@@ -36,7 +36,7 @@ from max.pipelines.kv_cache import (
     load_kv_manager,
 )
 
-from .gguf import transformer
+from .graph import transformer
 
 
 class Llama3Model(PipelineModel):
@@ -196,7 +196,7 @@ class Llama3Model(PipelineModel):
                 graph, weights_registry=self._weights.allocated_weights
             )
 
-    def _build_opaque_graph(self, weights: GGUFWeights) -> Graph:
+    def _build_opaque_graph(self, weights: SafetensorWeights) -> Graph:
         tokens_type = TensorType(DType.int64, shape=["total_seq_len"])
         # NOTE: input_row_offset_len should be batch_size + 1.
         input_row_offset_type = TensorType(
@@ -220,7 +220,7 @@ class Llama3Model(PipelineModel):
             graph.output(logits)
             return graph
 
-    def _build_graph(self, weights: GGUFWeights) -> Graph:
+    def _build_graph(self, weights: SafetensorWeights) -> Graph:
         if self.pipeline_config.cache_strategy == KVCacheStrategy.CONTINUOUS:
             return self._build_opaque_graph(weights)
 
