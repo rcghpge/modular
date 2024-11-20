@@ -68,9 +68,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       MO::GraphOp graph, MLIRContext *ctx,
       const DenseMap<KernelOp, MO::Static::ReshapeOp> &reshapeKernels) {
 
-    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
+    graph.walk([&](MOGG::KernelOp kernel) {
       if (reshapeKernels.contains(kernel))
-        continue;
+        return;
 
       bool isView = kernel.getIsViewOp().value_or(false);
 
@@ -80,7 +80,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       // disallow fusion on those inputs. We might want to make this more fine
       // grained in the future.
       if (!kernel.getInputFusionInterfaceAttr() && !isView)
-        continue;
+        return;
 
       // For catching the rare case of a broadcast taking a broadcast as arg AND
       // this kernel taking both as arg.
@@ -119,7 +119,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       // Strip all temporarily added fusion hooks.
       if (fusionOccurred && !isView)
         kernel.removeTemporaryFusionMarks();
-    }
+    });
 
     auto replaceArg = [](KernelOp kernel, size_t index, Value newVal) {
       Block &thisBlock = kernel.getBody().front();
@@ -228,8 +228,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         return false;
     }
 
-    // Only fuse within the same region and not across, i.e, control flow.
-    if (edge->getParentRegion() != kernel->getParentRegion())
+    // Only fuse within the same block and not across, i.e, control flow.
+    if (edge->getBlock() != kernel->getBlock())
       return false;
 
     auto otherKernel = dyn_cast<KernelOp>(edge);

@@ -20,6 +20,82 @@ mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 409
   mo.output %1 : !mo.tensor<[1, seq_len, 4096], f32>
 }
 
+// CHECK-LABEL: mo.graph @fuse_kernel_in_true_block_of_if_statement<seq_len>
+// CHECK-NEXT: [[RES:.*]] = mo.if
+// CHECK-NEXT: [[KER_RES:.*]] = mogg.kernel
+
+// CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg
+// CHECK-NEXT: %[[ORIG_TENSOR:.*]] = mogg.call "reshape_contiguous_buffer"(%[[OUT_PH]], %[[SHAPE]])
+
+// CHECK: mogg.lambda @{{.*}} = (%[[INDICES:.*]]: !mogg.indices
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, rank = 2 : index, value = 0 : index} : !mogg.indices -> !mogg.indices
+// CHECK-NEXT: mogg.call "simd_store"(%[[OUT_PH]], %[[NEW_IND]]
+
+// CHECK: mogg.call "mo.matmul" [@{{.*}}](%{{.*}}, %[[ORIG_TENSOR]])
+// CHECK-NEXT: mogg.output %[[OUT_PH]] : !mo.tensor<[1, seq_len, 4096], f32>
+
+// CHECK: mo.yield [[KER_RES:.*]]
+// CHECK-NEXT: } else {
+// CHECK: mo.output [[RES:.*]]
+
+mo.graph @fuse_kernel_in_true_block_of_if_statement<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %arg2 : !mo.tensor<[1, seq_len, 4096], f32>, %cond: !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
+  %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
+    %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
+    %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+    mo.yield %1 : !mo.tensor<[1, seq_len, 4096], f32>
+  } else {
+    mo.yield %arg2 : !mo.tensor<[1, seq_len, 4096], f32>
+  }
+  mo.output %res : !mo.tensor<[1, seq_len, 4096], f32>
+}
+
+// CHECK-LABEL: mo.graph @fuse_kernel_in_false_block_of_if_statement<seq_len>
+// CHECK-NEXT: [[RES:.*]] = mo.if
+// CHECK: } else {
+// CHECK-NEXT: [[KER_RES:.*]] = mogg.kernel
+
+// CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg
+// CHECK-NEXT: %[[ORIG_TENSOR:.*]] = mogg.call "reshape_contiguous_buffer"(%[[OUT_PH]], %[[SHAPE]])
+
+// CHECK: mogg.lambda @{{.*}} = (%[[INDICES:.*]]: !mogg.indices
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, rank = 2 : index, value = 0 : index} : !mogg.indices -> !mogg.indices
+// CHECK-NEXT: mogg.call "simd_store"(%[[OUT_PH]], %[[NEW_IND]]
+
+// CHECK: mogg.call "mo.matmul" [@{{.*}}](%{{.*}}, %[[ORIG_TENSOR]])
+// CHECK-NEXT: mogg.output %[[OUT_PH]] : !mo.tensor<[1, seq_len, 4096], f32>
+
+// CHECK: mo.yield [[KER_RES:.*]]
+// CHECK: mo.output [[RES:.*]]
+
+mo.graph @fuse_kernel_in_false_block_of_if_statement<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %arg2 : !mo.tensor<[1, seq_len, 4096], f32>, %cond: !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
+  %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
+    mo.yield %arg2 : !mo.tensor<[1, seq_len, 4096], f32>
+  } else {
+    %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
+    %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+    mo.yield %1 : !mo.tensor<[1, seq_len, 4096], f32>
+  }
+  mo.output %res : !mo.tensor<[1, seq_len, 4096], f32>
+}
+
+// CHECK-LABEL: mo.graph @dont_fuse_kernel_across_blocks<seq_len>
+// CHECK-NEXT: mogg.kernel
+// CHECK: mo.if
+// CHECK-NEXT: mo.add_singleton_dim
+// CHECK: } else {
+
+mo.graph @dont_fuse_kernel_across_blocks<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %arg2 : !mo.tensor<[1, seq_len, 4096], f32>, %cond: !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
+  %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
+  %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
+    %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+    mo.yield %1 : !mo.tensor<[1, seq_len, 4096], f32>
+  } else {
+    mo.yield %arg2 : !mo.tensor<[1, seq_len, 4096], f32>
+  }
+  mo.output %res : !mo.tensor<[1, seq_len, 4096], f32>
+}
 
 // CHECK-LABEL: mo.graph @split_dim<seq_len, N, K>
 // CHECK-NEXT: mogg.kernel

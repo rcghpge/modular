@@ -62,13 +62,24 @@ struct FuseAffineViewsPass
     Value result = kernel.getResult(0);
     if (!result.hasOneUse())
       return false;
+    Operation *user = *result.getUsers().begin();
+
+    // Only fuse within the same block and not across, i.e, control flow.
+    if (kernel->getBlock() != user->getBlock()) {
+      return false;
+    }
 
     return true;
   }
 
   static inline bool isInputFusibleNonElementwise(KernelOp kernel,
-                                                  size_t inputNum) {
+                                                  size_t inputNum,
+                                                  KernelOp inputKernel) {
     if (!isFusibleNonElementwise(kernel))
+      return false;
+
+    // Only fuse within the same block and not across, i.e, control flow.
+    if (kernel->getBlock() != inputKernel->getBlock())
       return false;
 
     return !kernel.getInputFusionInterfaceAt(inputNum).strref().empty();
@@ -319,8 +330,7 @@ struct FuseAffineViewsPass
   void runOnOperation() override {
     auto graph = getOperation();
 
-    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
-
+    graph.walk([&](MOGG::KernelOp kernel) {
       if (isOutputFusibleNonElementwise(kernel)) {
         Value result = kernel.getResult(0);
         Operation *user = *result.getUsers().begin();
@@ -344,8 +354,9 @@ struct FuseAffineViewsPass
           // to support indices transformation.
           if (!gatherKernel.getSummary().has_value() ||
               gatherKernel.getSummary()->rsplit(':').first != "mo.gather" ||
-              !isInputFusibleNonElementwise(kernel, operand.getOperandNumber()))
-            continue;
+              !isInputFusibleNonElementwise(kernel, operand.getOperandNumber(),
+                                            gatherKernel))
+            return;
 
           M::IntArrayElementsAttr attr;
 
@@ -363,7 +374,7 @@ struct FuseAffineViewsPass
           }
         }
       }
-    }
+    });
   }
 };
 

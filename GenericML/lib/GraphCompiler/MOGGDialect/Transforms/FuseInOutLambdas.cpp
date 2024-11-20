@@ -85,6 +85,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (!parentKernel)
       return false;
 
+    // Only fuse within the same block and not across, i.e, control flow.
+    if (kernel->getBlock() != parentKernel->getBlock())
+      return false;
+
     if (parentKernel.getIsKGEN() != kernel.getIsKGEN())
       return false;
 
@@ -470,6 +474,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Check it's a kernel.
     MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
     if (!user)
+      return false;
+
+    // Only fuse within the same block and not across, i.e, control flow.
+    if (kernel->getBlock() != user->getBlock())
       return false;
 
     // Disable fusion on experimental new KGEN in MOGG for now.
@@ -1235,7 +1243,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     MojoLibraryAnalysis *analysis = res.get();
 
     SmallVector<MOGG::KernelOp> kernelOpsToErase;
-    for (MOGG::KernelOp kernelToFuseInto : moGraph.getOps<MOGG::KernelOp>()) {
+
+    moGraph.walk([&](MOGG::KernelOp kernelToFuseInto) {
       [[maybe_unused]] DeviceRefAttr beforeDevice =
           MO::getDeviceOrDefault(kernelToFuseInto);
       std::optional<ArrayAttr> outputLambdas =
@@ -1263,7 +1272,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
       auto inputLambdas = kernelToFuseInto.getInputFusionInterface();
       if (!inputLambdas) {
-        continue;
+        return;
       }
 
       uint64_t numOperands = kernelToFuseInto.getNumOperands();
@@ -1286,7 +1295,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       }
       ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto),
                     << "Must be same device after input lambda fusion");
-    }
+    });
 
     for (KernelOp kernelOp : kernelOpsToErase)
       kernelOp.erase();
