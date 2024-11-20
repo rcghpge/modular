@@ -1,0 +1,37 @@
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("//bazel:api.bzl", "modular_py_library", "requirement")
+
+package(default_visibility = ["//visibility:public"])
+
+modular_py_library(
+    name = "llama3",
+    srcs = glob(["**/*.py"]),
+    imports = [".."],
+    tags = ["no-mypy"],  # TODO: Fix and remove
+    deps = [
+        requirement("numpy"),
+        requirement("torch"),
+        requirement("gguf"),
+        requirement("sentencepiece"),
+        "//SDK/lib/API/python/max/dtype",
+        "//SDK/lib/API/python/max/engine",
+        "//SDK/lib/API/python/max/graph",
+        "//SDK/lib/API/python/max/pipelines",
+        "//SDK/lib/API/python/max/profiler",
+        "//SDK/lib/API/python/max/serve",
+        "//SDK/public/max-repo/pipelines/python/dataprocessing",
+        "//SDK/public/max-repo/pipelines/python/nn",
+        "//SDK/public/max-repo/pipelines/python/utils",
+    ],
+)
+
+pkg_files(
+    name = "python_files",
+    srcs = glob(
+        [
+            "**/*.py",
+        ],
+    ),
+    prefix = "llama3",
+    strip_prefix = strip_prefix.from_pkg(""),
+)
