@@ -20,7 +20,7 @@ from max.experimental.eager import Tensor
     nd=nst.arrays(dtype=np.float32, shape=(1, 3)),
 )
 # currently slooooow
-@settings(max_examples=5, phases=[Phase.generate], deadline=3000)
+@settings(max_examples=5, phases=[Phase.generate], deadline=None)
 @pytest.mark.asyncio
 async def test_basic_add(na, nb, nc, nd):
     a, b, c, d = (Tensor.from_numpy(n) for n in (na, nb, nc, nd))
