@@ -10,6 +10,7 @@ import pytest
 from hypothesis import given, settings, Phase
 from hypothesis.extra import numpy as nst
 
+from max.dtype import DType
 from max.experimental.eager import Tensor
 
 
@@ -25,7 +26,10 @@ from max.experimental.eager import Tensor
 async def test_basic_add(na, nb, nc, nd):
     a, b, c, d = (Tensor.from_numpy(n) for n in (na, nb, nc, nd))
     expected = (na + nb) + (nc + nd)
-    value = await ((a + b) + (c + d))
+    value = (a + b) + (c + d)
+    assert value.shape == [3, 3]
+    assert value.dtype == DType.float32
+    await value
     result = value.to_numpy()
     np.testing.assert_allclose(result, expected)
 
