@@ -4735,6 +4735,28 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [Pure, MO_HasDeviceInterface]>
 // Buffer ops
 //===----------------------------------------------------------------------===//
 
+// TODO(GEX-1292): Support paramterization interfaces for this op
+// Not currently an issue since paramterization for mo.buffer operands that are
+// graph inputs works and this op will only be used in a pass where the shape
+// attr of the results of this op are derived from an existing mo.buffer value.
+def MO_BufferCreateOp : MO_Op<"buffer.create", [Pure]> {
+  let summary = "Creates an uninitialized buffer on a specific device.";
+  let description = [{
+    This operation creates an uninitialized buffer with the specified shape and data type on a given device.
+    The buffer is not initialized with any values, and the operation is intended for use cases where the buffer
+    will be filled with data later in the computation.
+
+    Example:
+    ```mlir
+    %buf = mo.buffer.create : !mo.buffer<[20, 20], f32, cuda:0>
+    ```
+  }];
+
+  let results = (outs MO_Buffer:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+}
+
 def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   AllDTypesMatch<["inBuffer", "outTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "outTensor"]>

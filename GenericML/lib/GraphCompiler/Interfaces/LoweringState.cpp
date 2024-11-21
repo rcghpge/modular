@@ -780,8 +780,8 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
     Value inChain, TypedValue<TensorSpecType> tensorSpec, Type tensorType) {
   BufferBuilder *bufferBuilder = getStorageBufferBuilder(tensorType);
   TensorSpecType specType = tensorSpec.getType();
-  MO::TensorType moTensorType = dyn_cast<MO::TensorType>(tensorType);
-  ASSERT_STREAM(moTensorType, << "input is not a !mo.tensor");
+  MO::TensorType moTensorType = MO::dynCastFromTensorLike(tensorType);
+  ASSERT_STREAM(moTensorType, << "input is not a !mo.tensor or !mo.buffer");
 
   Value numBytes = bufferSizeBytes(tensorSpec, moTensorType);
 
@@ -820,8 +820,8 @@ void MOOpLoweringState::createOutputTensors(
 }
 
 BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
-  auto type = dyn_cast<MO::TensorType>(moTensorType);
-  ASSERT_STREAM(type, << "expecting !mo.tensor type");
+  auto type = MO::dynCastFromTensorLike(moTensorType);
+  ASSERT_STREAM(type, << "expecting a !mo.tensor or !mo.buffer type");
   return loweringState.getBufferBuilder(
       MO::getDeviceOrDefault(loweringState.getGraph(), type));
 }

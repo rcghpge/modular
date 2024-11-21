@@ -208,6 +208,9 @@ public:
   /// Lowers mo.mutable.load op
   LogicalResult lowerMutableLoad(MO::MutableLoadOp);
 
+  /// Lowers mo.buffer.create op
+  LogicalResult lowerBufferCreate(MO::BufferCreateOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -1388,6 +1391,31 @@ MOGraphLowering::lowerMutableStore(MO::MutableStoreOp mutableStoreOp) {
 }
 
 LogicalResult
+MOGraphLowering::lowerBufferCreate(MO::BufferCreateOp bufferCreateOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, bufferCreateOp);
+
+  Type resultType = bufferCreateOp.getResult().getType();
+  auto resTensorType = MO::castFromTensorLike(resultType);
+
+  Value inChain = loweringState.getCurrentExecuteChain();
+  inChain = opLoweringState.getGuardChain(inChain);
+
+  auto tensorSpecOr = opLoweringState.createTensorSpec(resTensorType);
+  if (failed(tensorSpecOr))
+    return failure();
+
+  auto bufferOr =
+      opLoweringState.createBuffer(inChain, *tensorSpecOr, resultType);
+  if (failed(bufferOr))
+    return failure();
+
+  opLoweringState.createOutputTensor(bufferCreateOp.getResult(), inChain,
+                                     bufferOr->buffer, bufferOr->tensorSpec);
+
+  return success();
+}
+
+LogicalResult
 MOGraphLowering::lowerMutableLoad(MO::MutableLoadOp mutableLoadOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, mutableLoadOp);
 
@@ -1873,6 +1901,13 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     // Lowers mo.mutable.load to a mgp.buffer.device_to_device
     if (auto mop = dyn_cast<MO::MutableLoadOp>(op)) {
       if (failed(lowerMutableLoad(mop)))
+        return failure();
+      continue;
+    }
+
+    // Lowers mo.buffer.create
+    if (auto bufferCreateOp = dyn_cast<MO::BufferCreateOp>(op)) {
+      if (failed(lowerBufferCreate(bufferCreateOp)))
         return failure();
       continue;
     }
