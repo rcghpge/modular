@@ -165,7 +165,7 @@ def MO_GraphOp : MO_TensorOp<"graph", [
 
   let assemblyFormat = [{
     custom<GraphOp>($name, $signature, $functionType, $inputParams,
-                    $resultParams, attr-dict, $body)
+                    $resultParams, attr-dict, $body, $counter)
   }];
 
   let extraClassDeclaration = [{

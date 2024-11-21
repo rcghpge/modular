@@ -624,12 +624,15 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
     body.addArgument(input, state.location);
 }
 
-static ParseResult parseGraphOp(OpAsmParser &p, StringAttr &name,
-                                TypeAttr &signatureAttr,
-                                TypeAttr &functionTypeAttr,
-                                KGEN::ParamDeclArrayAttr &inputParams,
-                                KGEN::ParamDeclArrayAttr &resultParams,
-                                NamedAttrList &attrs, Region &body) {
+// GraphOp contains a property called `counter` that is used to generate
+// unique parameter names. For printing/parsing, we simply place it in the list
+// of misc. attributes attached to the graph and extract/insert it as needed.
+static constexpr StringLiteral GRAPH_OP_COUNTER_NAME = "counter";
+static ParseResult
+parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
+             TypeAttr &functionTypeAttr, KGEN::ParamDeclArrayAttr &inputParams,
+             KGEN::ParamDeclArrayAttr &resultParams, NamedAttrList &attrs,
+             Region &body, int64_t &counter) {
   if (p.parseSymbolName(name))
     return failure();
 
@@ -650,6 +653,22 @@ static ParseResult parseGraphOp(OpAsmParser &p, StringAttr &name,
   if (p.parseOptionalAttrDictWithKeyword(attrs) ||
       p.parseRegion(body, args, /*enableNameShadowing=*/true))
     return failure();
+
+  // Extract counter
+  NamedAttrList extraAttrs;
+  if (p.parseOptionalAttrDict(extraAttrs))
+    return failure();
+
+  counter = 0;
+  if (!extraAttrs.empty()) {
+    ASSERT_STREAM(extraAttrs.getAttrs().size() == 1,
+                  << "Expect 'counter' to be only extra attribute.");
+    NamedAttribute attr = *extraAttrs.begin();
+    ASSERT_STREAM(attr.getName() == GRAPH_OP_COUNTER_NAME,
+                  "Expect 'counter' to be only extra attribute.");
+    counter = cast<IntegerAttr>(attr.getValue()).getInt();
+  }
+
   return success();
 }
 
@@ -657,7 +676,7 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
                          TypeAttr signature, TypeAttr functionType,
                          KGEN::ParamDeclArrayAttr inputParams,
                          KGEN::ParamDeclArrayAttr resultParams,
-                         DictionaryAttr attrs, Region &body) {
+                         DictionaryAttr attrs, Region &body, int64_t counter) {
   auto printerHook = [&](KGEN::ParamDeclAttr decl) {
     printParamDeclElement(p, decl);
   };
@@ -677,6 +696,17 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
   p.printOptionalAttrDictWithKeyword(attrs.getValue(), elidedAttrs);
   p << ' ';
   p.printRegion(body, /*printEntryBlockArgs=*/false);
+
+  // Extra metadata at end for use internally in compiler
+  SmallVector<NamedAttribute> extraAttrs;
+  if (counter != 0) {
+    auto counterAttr =
+        IntegerAttr::get(IntegerType::get(op->getContext(), 64), counter);
+    auto counterAttrName =
+        StringAttr::get(op->getContext(), GRAPH_OP_COUNTER_NAME);
+    extraAttrs.push_back(NamedAttribute(counterAttrName, counterAttr));
+  }
+  p.printOptionalAttrDict(extraAttrs);
 }
 
 OutputOp GraphOp::getOutputOp() {
