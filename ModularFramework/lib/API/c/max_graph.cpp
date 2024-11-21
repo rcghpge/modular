@@ -368,6 +368,21 @@ MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,
       unwrap(dtype)));
 }
 
+MODULAR_API_EXPORT MlirType MAXG_bufferTypeWithDeviceNew(
+    MlirContext ctx, MlirType dtype, bool ranked, MlirAttribute *dims,
+    int32_t rank, MlirAttribute device) {
+  SmallVector<TypedAttr> dim_attrs;
+  for (int i = 0; i < rank; ++i)
+    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+  DeviceRefAttr deviceRef = cast<M::DeviceRefAttr>(unwrap(device));
+
+  if (ranked)
+    return wrap(MO::BufferType::get(dim_attrs, unwrap(dtype), deviceRef));
+  return wrap(MO::BufferType::get(
+      KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))), unwrap(dtype),
+      deviceRef));
+}
+
 MODULAR_API_EXPORT char *MAXG_bufferTypeGetDTypeAsString(MlirType type) {
   auto bufferType = cast<MO::BufferType>(unwrap(type));
   std::string dtypeStr = bufferType.getDtype().getAsString();
@@ -389,6 +404,10 @@ MODULAR_API_EXPORT bool MAXG_bufferTypeIsRanked(MlirType t) {
 
 MODULAR_API_EXPORT int64_t MAXG_bufferTypeGetRank(MlirType t) {
   return cast<MO::BufferType>(unwrap(t)).toTensorType().getRank();
+}
+
+MODULAR_API_EXPORT MlirAttribute MAXG_bufferTypeGetDevice(MlirType t) {
+  return wrap(cast<MO::BufferType>(unwrap(t)).getDeviceRef());
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_bufferTypeShapeGetDim(MlirType t,
