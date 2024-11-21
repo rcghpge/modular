@@ -207,6 +207,21 @@ const HIPDeviceBuffer &HIPDeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const HIPDeviceBuffer &>(buf);
 }
 
+// ===== HIPDeviceStream ===== //
+HIPDeviceStream::HIPDeviceStream(const HIPDeviceContext &context,
+                                 hipStream_t stream)
+    : DeviceStream(context), stream_(stream) {}
+
+ErrorOrSuccess HIPDeviceStream::synchronize() const {
+  const auto &hip_context = HIPDeviceContext::cast(context());
+
+  HIP_CHECK_ERR(hip_context.setCurrent());
+  HIP_CHECK_ERR(hip_context.hip_driver().StreamSynchronize(stream_));
+  return success();
+}
+
+hipStream_t HIPDeviceStream::hip_stream() const { return stream_; }
+
 // ===== HIPDeviceFunctionArguments ===== //
 HIPDeviceFunctionArguments::HIPDeviceFunctionArguments(
     const HIPDeviceFunction &fn)
@@ -554,7 +569,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
-  RAISE_ERROR("Unimplemented");
+  return HIPDeviceStreamRef::create(*this, stream_);
 }
 
 ErrorOrSuccess HIPDeviceContext::synchronize() const {

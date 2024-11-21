@@ -212,6 +212,8 @@ ErrorOr<int> Device::numberOfDevices(const char *kind) {
     return CUDADevice::numberOfDevices();
   } else if (strcmp(kind, "cpu") == 0) {
     return CpuDevice::numberOfDevices();
+  } else if (strcmp(kind, "hip") == 0) {
+    return HIPDevice::numberOfDevices();
   }
 
   return Error(llvm::Twine("Unsupported device kind: ") + kind);

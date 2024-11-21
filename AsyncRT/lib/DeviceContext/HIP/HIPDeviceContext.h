@@ -30,6 +30,7 @@ class HIPDeviceBuffer;
 class HIPDeviceContext;
 class HIPDeviceFunction;
 class HIPDeviceFunctionArguments;
+class HIPDeviceStream;
 class HIPDeviceTimer;
 
 using HIPDeviceRef = RCRef<const HIPDevice>;
@@ -37,6 +38,7 @@ using HIPDeviceBufferRef = RCRef<const HIPDeviceBuffer>;
 using HIPDeviceContextRef = RCRef<const HIPDeviceContext>;
 using HIPDeviceFunctionRef = RCRef<const HIPDeviceFunction>;
 using HIPDeviceFunctionArgumentsRef = RCRef<const HIPDeviceFunctionArguments>;
+using HIPDeviceStreamRef = RCRef<const HIPDeviceStream>;
 using HIPDeviceTimerRef = RCRef<const HIPDeviceTimer>;
 
 class HIPDevice : public Device {
@@ -91,6 +93,19 @@ private:
   // TODO: Remove the V1 compatibility.
   mutable hipDeviceptr_t dptr_;
   mutable bool owning_ = true;
+};
+
+class HIPDeviceStream : public DeviceStream {
+public:
+  HIPDeviceStream(const HIPDeviceContext &context, hipStream_t stream);
+  ~HIPDeviceStream() override = default;
+
+  virtual ErrorOrSuccess synchronize() const override;
+
+  hipStream_t hip_stream() const;
+
+private:
+  hipStream_t stream_;
 };
 
 class HIPDeviceFunctionArguments : public DeviceFunction::Arguments {
@@ -230,20 +245,19 @@ public:
   const HIPDriver &hip_driver() const;
   hipStream_t hip_stream() const;
 
-  static const HIPDeviceContext &cast(const DeviceContext &ctx);
-
   ErrorOr<int> getAttribute(Attribute attr) const override;
   ErrorOrSuccess isCompatibleWithMAX() const override;
   ErrorOr<int> computeCapability() const override;
 
+  HIPDriver::Result setCurrent() const;
+
+  static const HIPDeviceContext &cast(const DeviceContext &ctx);
   static ErrorOr<HIPDeviceContextRef> create(int id);
 
 private:
   const HIPDriver &driver_;
   hipCtx_t context_;
   hipStream_t stream_;
-
-  HIPDriver::Result setCurrent() const;
 
   mutable std::mutex mu_;
   mutable llvm::StringMap<HIPDeviceFunctionRef> func_map_;
