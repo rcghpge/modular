@@ -8,9 +8,11 @@
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GraphRT/MEFDialect/MEFDialect.h"
 #include "Init/Init.h"
+#include "KGEN/Support/CompilerProfiling.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/PrettyStackTrace.h"
 
 using namespace M;
@@ -38,6 +40,22 @@ int main(int argc, char **argv) {
   }
   registerContext(registry, *ctxOr);
 
+  static llvm::cl::opt<bool> timeTrace{
+      "time-trace",
+      llvm::cl::desc("Turn on time profiler. Generates JSON file "
+                     "called kgen.trace.json in the derived directory. "
+                     "Currently integrated mainly for KGEN compilation.")};
+
+  static llvm::cl::opt<int> timeTraceGranularity{
+      "time-trace-granularity",
+      llvm::cl::desc("Minimum time granularity (in microseconds) "
+                     "traced by time profiler."),
+      llvm::cl::init(0)};
+
+  std::string inputFilename, outputFilename;
+  std::tie(inputFilename, outputFilename) =
+      registerAndParseCLIOptions(argc, argv, "mo optimizer driver", registry);
+  KGEN::TraceProfiler tracer(timeTrace, timeTraceGranularity);
   return failed(
-      mlir::MlirOptMain(argc, argv, "MO dialect test driver", registry));
+      MlirOptMain(argc, argv, inputFilename, outputFilename, registry));
 }

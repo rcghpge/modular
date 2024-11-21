@@ -22,8 +22,8 @@
 
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/Support/CompilerProfiling.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
-
 #include "mlir/IR/IRMapping.h"
 
 #include <GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h>
@@ -44,6 +44,9 @@ struct JitCompileKernels
   void runOnOperation() override {
     mlir::ModuleOp m = getOperation();
     MLIRContext *ctx = m.getContext();
+
+    KGEN::CompilerTimeTraceScope traceScope("jit-compile-kernels",
+                                            m->getName().getStringRef());
 
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
@@ -69,6 +72,9 @@ struct JitCompileKernels
 
   CompileDiagnosticOrSuccess
   runPass(MGP::ModelOp graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+    KGEN::CompilerTimeTraceScope traceScope("jit-compile-kernels-run-on-pass",
+                                            graph->getName().getStringRef());
+
     // We can optionally override
     DenseMap<Operation *, std::string> unusedOverrideMap;
 
