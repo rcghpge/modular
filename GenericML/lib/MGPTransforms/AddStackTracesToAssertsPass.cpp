@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "mlir/IR/Visitors.h"
@@ -38,55 +39,23 @@ struct AddStackTracesToAssertsPass
 
     WalkResult result = getOperation()->walk([&ctx](AssertOp op) {
       Location loc = op.getLoc();
-
-      // Note: This is currently tuned for how the python graph api generates
-      // location information. It will likely need to be customized for use with
-      // other frontends. If other frontends do not organize location info in
-      // the same way, the traceback will end up being empty.
-
-      // We are printing the location in a python style.
-      // Python prints the stack in reverse order (most recent call last).
-      llvm::SmallVector<mlir::NameLoc> locs;
-      mlir::AttrTypeWalker walker;
-      walker.addWalk([&](mlir::NameLoc name_loc) { locs.push_back(name_loc); });
-      walker.walk(loc);
-      if (locs.empty()) {
-        // No location information or unexpected format.
-        // Skip updating this assert op.
+      auto opaque_loc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
+      if (!opaque_loc)
         return WalkResult::advance();
-      }
 
-      std::string full_msg = "\nBuild Time Traceback (most recent call last):";
+      // Grab the python frame from location.
+      void *attr_ptr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
+          RMO::PythonFrameAttr::ImplType *>(opaque_loc);
+      if (!attr_ptr)
+        return WalkResult::advance();
+
+      auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attr_ptr);
+
+      std::string full_msg =
+          "\nBuild Time Traceback (most recent call last):\n";
       llvm::raw_string_ostream ss(full_msg);
-      for (auto &name_loc : llvm::reverse(locs)) {
-        std::string context = name_loc.getName().str();
 
-        auto file_loc =
-            mlir::dyn_cast<mlir::FileLineColLoc>(name_loc.getChildLoc());
-        if (!file_loc)
-          continue;
-
-        std::string module_file = file_loc.getFilename().str();
-        size_t i = module_file.find(":");
-
-        if (i != std::string::npos) {
-          std::string module = module_file.substr(0, i);
-          std::string file = module_file.substr(i + 1, std::string::npos);
-          ss << "\n  File " << file << ", line " << file_loc.getLine()
-             << ", in " << module;
-        } else {
-          ss << "\n  File " << module_file << ", line " << file_loc.getLine();
-        }
-
-        ss << '\n';
-        if (!context.empty()) {
-          ss << context;
-
-          for (size_t i = 0; i < file_loc.getColumn(); ++i)
-            ss << ' ';
-          ss << '^';
-        }
-      }
+      ss << attr.stack_trace();
 
       StringAttr msg = mlir::cast<StringAttr>(op.getMessageAttr());
       ss << "\nMAX Runtime Error: " << msg.str() << '\n';
@@ -95,7 +64,22 @@ struct AddStackTracesToAssertsPass
 
       return WalkResult::advance();
     });
+    if (result.wasInterrupted())
+      return signalPassFailure();
 
+    // TODO(GEX-1435): Something farther down the stack occasionally crashes if
+    // passed an OpaqueLoc. For now, remove all OpaqueLoc from the graph during
+    // this pass. All the code below this should be removed when that is fixed.
+    auto unknown = mlir::UnknownLoc::get(ctx);
+    result = getOperation()->walk([&unknown](Operation *op) {
+      Location loc = op->getLoc();
+      auto opaque_loc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
+      if (!opaque_loc)
+        return WalkResult::advance();
+
+      op->setLoc(unknown);
+      return WalkResult::advance();
+    });
     if (result.wasInterrupted())
       return signalPassFailure();
   }

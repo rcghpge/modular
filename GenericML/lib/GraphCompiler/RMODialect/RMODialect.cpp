@@ -15,7 +15,10 @@ using namespace RMO;
 // RMODialect
 //===----------------------------------------------------------------------===//
 
-void RMODialect::initialize() { registerOperations(); }
+void RMODialect::initialize() {
+  registerAttributes();
+  registerOperations();
+}
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions

@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_RMODIALECT_RMO_TD
 
 include "GenericML/GraphCompiler/RMODialect/RMODialect.td"
+include "GenericML/GraphCompiler/RMODialect/RMOAttrs.td"
 include "GenericML/GraphCompiler/RMODialect/RMOOps.td"
 include "GenericML/GraphCompiler/RMODialect/RMOMOAnalogueOps.td"
 include "GenericML/GraphCompiler/RMODialect/RMOThirdPartyOps.td"
