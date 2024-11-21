@@ -29,6 +29,7 @@ modular_py_binary(
         requirement("opentelemetry-sdk"),
         requirement("rich"),
         requirement("torch"),
+        requirement("pillow"),
         requirement("transformers"),
         requirement("uvicorn"),
     ],
