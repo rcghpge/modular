@@ -1,0 +1,28 @@
+load("//bazel:api.bzl", "modular_py_library", "requirement")
+
+package(default_visibility = ["//visibility:public"])
+
+modular_py_library(
+    name = "grpc_serve",
+    srcs = [
+        "__init__.py",
+        "grpc_serve.py",
+    ],
+    imports = ["."],
+    tags = ["no-mypy"],  # grpc doesn't get along with my-py
+    deps = [
+        "//ModelServing/proto:grpc_predict_v2_grpc_py",
+        "//ModelServing/proto:grpc_predict_v2_py",
+        "//ModelServing/proto:grpc_proto",
+        "//SDK/lib/API/python/max/engine",
+        "//SDK/lib/API/python/max/serve/pipelines",
+        "//SDK/lib/API/python/max/serve/router",
+        "//SDK/lib/API/python/max/serve/scheduler",
+        "//SDK/lib/API/python/max/serve/schemas",
+        "//SDK/lib/API/python/max/serve/telemetry",
+        "//SDK/public/max-repo/pipelines/python/utils",
+        requirement("grpcio"),
+        requirement("grpcio-tools"),
+        requirement("grpcio-reflection"),
+    ],
+)

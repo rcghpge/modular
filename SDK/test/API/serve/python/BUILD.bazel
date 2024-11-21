@@ -10,12 +10,14 @@ modular_py_test(
     ],
     env = {
         "MAX_SERVE_DISABLE_TELEMETRY": "-1",
-        "MAX_SERVE_TESTDATA": (
-            "SDK/test/API/serve/python/testdata"
-        ),
+        "MAX_SERVE_TESTDATA": "SDK/test/API/serve/python/testdata",
     },
     deps = [
+        "//ModelServing/proto:grpc_predict_v2_grpc_py",
+        "//ModelServing/proto:grpc_predict_v2_py",
+        "//ModelServing/proto:grpc_proto",
         "//SDK/lib/API/python/max/serve",
+        "//SDK/lib/API/python/max/serve/grpc_serve",
         requirement("async-asgi-testclient"),
         requirement("fastapi"),
         requirement("gguf"),
@@ -25,5 +27,6 @@ modular_py_test(
         requirement("sse-starlette"),
         requirement("sseclient-py"),
         requirement("transformers"),
+        requirement("pytest-grpc"),
     ],
 )
