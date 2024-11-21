@@ -1,10 +1,4 @@
 # ===----------------------------------------------------------------------=== #
-#
-# This file is Modular Inc proprietary.
-#
-# ===----------------------------------------------------------------------=== #
-
-# ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
@@ -39,7 +33,7 @@ from max.pipelines.kv_cache import (
 from .graph import transformer
 
 
-class Llama3Model(PipelineModel):
+class CoderModel(PipelineModel):
     def execute(self, *model_inputs: Tensor) -> Tensor:
         return self.model.execute(*model_inputs, copy_inputs_to_device=False)[0]
 
@@ -206,7 +200,7 @@ class Llama3Model(PipelineModel):
         kv_cache_args = self.kv_manager.input_symbols()
 
         with Graph(
-            "llama3",
+            "coder",
             input_types=[tokens_type, input_row_offset_type, *kv_cache_args],
         ) as graph:
             model = transformer(
@@ -232,7 +226,7 @@ class Llama3Model(PipelineModel):
         kv_inputs = self.kv_manager.input_symbols()
 
         with Graph(
-            "llama3",
+            "coder",
             input_types=[
                 tokens_type,
                 attn_mask_type,

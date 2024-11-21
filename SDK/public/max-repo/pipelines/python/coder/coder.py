@@ -1,10 +1,4 @@
 # ===----------------------------------------------------------------------=== #
-#
-# This file is Modular Inc proprietary.
-#
-# ===----------------------------------------------------------------------=== #
-
-# ===----------------------------------------------------------------------=== #
 # Copyright (c) 2024, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
@@ -62,7 +56,7 @@ def load_coder_and_kv_manager(
         max_cache_batch_size=config.max_cache_batch_size,
         max_seq_len=config.huggingface_config.max_seq_len,
         num_layers=config.huggingface_config.num_hidden_layers,
-        device=config.device,
+        devices=[config.device],
         session=session,
     )
     model = Coder(

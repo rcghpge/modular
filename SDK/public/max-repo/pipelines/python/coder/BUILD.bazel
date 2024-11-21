@@ -4,14 +4,14 @@ load("//bazel:api.bzl", "modular_py_library", "requirement")
 package(default_visibility = ["//visibility:public"])
 
 modular_py_library(
-    name = "llama3",
+    name = "coder",
     srcs = glob(["**/*.py"]),
     imports = [".."],
     tags = ["no-mypy"],  # TODO: Fix and remove
     deps = [
         requirement("numpy"),
         requirement("torch"),
-        requirement("gguf"),
+        requirement("safetensors"),
         requirement("sentencepiece"),
         "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/engine",
@@ -32,6 +32,6 @@ pkg_files(
             "**/*.py",
         ],
     ),
-    prefix = "llama3",
+    prefix = "coder",
     strip_prefix = strip_prefix.from_pkg(""),
 )
