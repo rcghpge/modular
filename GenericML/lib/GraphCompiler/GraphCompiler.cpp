@@ -353,7 +353,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createStripBufferAttributesPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(MGP::createAddDeviceContextProfilingPass());
 
   MGP::HoistHarnessOptions harnessOpts;
   harnessOpts.kernelLibraryPaths = kernelLibraryPaths;
