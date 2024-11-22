@@ -539,6 +539,22 @@ td_library(
 gentbl_mlir_dialect(
     name = "RMODialectIncGen",
     dialect = "rmo",
+    extra_tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=rmo",
+            ],
+            "include/GenericML/GraphCompiler/RMODialect/RMOAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=rmo",
+            ],
+            "include/GenericML/GraphCompiler/RMODialect/RMOAttrs.cpp.inc",
+        ),
+    ],
     td_file = "include/GenericML/GraphCompiler/RMODialect/RMO.td",
     deps = [
         ":GraphCompilerInterfacesTdFiles",
@@ -1048,6 +1064,7 @@ modular_cc_library(
         ":MGPDialect",
         ":MGPTransformsIncGen",
         ":MOGGDialect",
+        ":RMODialect",
         ":Support",
         "//AsyncRT:DeviceContext",
         "//GraphRT:MEFDialect",

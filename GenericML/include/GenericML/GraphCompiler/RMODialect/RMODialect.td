@@ -72,6 +72,8 @@ def RMODialect : Dialect {
 
   let extraClassDeclaration = [{
   private:
+    /// Register all dialect attributes.
+    void registerAttributes();
     /// Register all dialect ops.
     void registerOperations();
   }];

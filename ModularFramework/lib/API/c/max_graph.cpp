@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
+#include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "KGEN/KGENDialect/KGENDType.h"
 #include "MOF/API/c/symbol_export.h"
 #include "MOF/GraphBuilder/Module.h"
@@ -541,4 +542,28 @@ MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t) {
 
 MODULAR_API_EXPORT MlirType MAXG_chainTypeNew(MlirContext context) {
   return wrap(MO::ChainType::get(unwrap(context)));
+}
+
+MODULAR_API_EXPORT MlirLocation
+MAXG_opaqueFrameLocNew(MlirContext context, void *frame_ptr,
+                       char *(*to_str_fn)(void *), void (*decref_fn)(void *)) {
+  auto frame_attr = RMO::PythonFrameAttr::get(
+      unwrap(context),
+      {.ptr = frame_ptr, .to_str = to_str_fn, .decref = decref_fn});
+  mlir::Location loc =
+      mlir::OpaqueLoc::get(frame_attr.getImpl(), unwrap(context));
+  return wrap(loc);
+}
+
+MODULAR_API_EXPORT void *MAXG_opaqueFrameLocGetFrame(MlirLocation loc) {
+  if (!mlir::isa<OpaqueLoc>(unwrap(loc)))
+    return nullptr;
+
+  void *attr_ptr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
+      RMO::PythonFrameAttr::ImplType *>(unwrap(loc));
+  if (!attr_ptr)
+    return nullptr;
+
+  auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attr_ptr);
+  return attr.frame();
 }
