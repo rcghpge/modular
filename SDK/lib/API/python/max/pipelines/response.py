@@ -14,17 +14,11 @@ import numpy as np
 
 @dataclass
 class LogProbabilities:
-    text_offset: list[int]
-    """String offset of each decoded token."""
-
-    token_log_probabilities: list[np.float32]
+    token_log_probabilities: list[float]
     """Probabilities of each token."""
 
-    top_log_probabilities: list[dict[str, np.float32]]
+    top_log_probabilities: list[dict[int, float]]
     """Top tokens and their corresponding probabilities."""
-
-    tokens: list[str]
-    """Decoded tokens."""
 
 
 @dataclass(frozen=True)

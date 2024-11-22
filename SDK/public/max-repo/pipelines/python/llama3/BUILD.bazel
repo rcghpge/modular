@@ -13,6 +13,7 @@ modular_py_library(
         requirement("torch"),
         requirement("gguf"),
         requirement("sentencepiece"),
+        requirement("scipy"),
         "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/engine",
         "//SDK/lib/API/python/max/graph",
