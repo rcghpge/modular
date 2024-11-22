@@ -1600,14 +1600,17 @@ LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
     entryBlock.eraseArguments(blockArgsToRemove);
     entryBlock.addArguments(newTypes, newLocs);
 
-    // Update the InOutSignatureAttr by removing the entries corresponding
-    // to removed arguments and appending a `kNone` for each new argument.
-    SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
-        newOperands.size(), InOutSignatureAttr::InOutSemantics::kNone);
+    // Only update the inout signature if we actually have an InOutSignature.
+    if (op.getInOutSignature().size() != 0) {
+      // Update the InOutSignatureAttr by removing the entries corresponding
+      // to removed arguments and appending a `kNone` for each new argument.
+      SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
+          newOperands.size(), InOutSignatureAttr::InOutSemantics::kNone);
 
-    InOutSignatureAttr oldSemantics = op.getInOutSignature();
-    op.setInOutSignatureAttr(
-        oldSemantics.remove(blockArgsToRemove).append(newSemantics));
+      InOutSignatureAttr oldSemantics = op.getInOutSignature();
+      op.setInOutSignatureAttr(
+          oldSemantics.remove(blockArgsToRemove).append(newSemantics));
+    }
   });
 
   return success();

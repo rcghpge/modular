@@ -176,17 +176,24 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
               MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
 
   KGEN::GeneratorOp kernel = nullptr;
+
   // Convert opaque inputs.
-  SmallVector<Value> inputs(args);
-  for (auto [idx, ty] : llvm::enumerate(args.getTypes())) {
-    if (!isa<MGP::OpaqueType>(ty))
+  SmallVector<Value> inputs;
+  for (auto [idx, val] : llvm::enumerate(args)) {
+    Type ty = val.getType();
+    if (!isa<MGP::OpaqueType>(ty)) {
+      // Skip chains, they lower to NOPs.
+      if (!isa<MEF::ChainType>(ty))
+        inputs.push_back(val);
       continue;
+    }
 
     // Need to add extra ops for opaque outputs.
     // Load the type infos from the kernel.
-    if (!kernel)
+    if (!kernel) {
       kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
           op->getName().getStringRef());
+    }
     ASSERT_STREAM(kernel != nullptr, << "kernel `"
                                      << op->getName().getStringRef()
                                      << "` not found");
@@ -195,15 +202,15 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
 
     // Convert MGP value to opaque.
     // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
-    Value val = inputs[idx];
     auto moOpaqueTy = MO::OpaqueType::get(
         kernel->getContext(),
         StringAttr::get(kernel->getContext(), "OpaquePrimitive"), std::nullopt);
-    val = builder.create<MOGG::ToOpaqueFromMGPOp>(loc, moOpaqueTy, val);
-    inputs[idx] = builder.create<MOGG::ToKGENOp>(
-        loc, kernel.getFunctionType().getInput(idx), val,
+    Value convert =
+        builder.create<MOGG::ToOpaqueFromMGPOp>(loc, moOpaqueTy, val);
+    inputs.push_back(builder.create<MOGG::ToKGENOp>(
+        loc, kernel.getFunctionType().getInput(idx), convert,
         /*static_tensor_spec=*/nullptr, /*typeMethodDict=*/nullptr,
-        isRegisterType);
+        isRegisterType));
   }
 
   // Add the call to the actual implementing function in mojo.
@@ -215,15 +222,28 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
 
   // Handle ops that may extend buffer lifetimes
   if (auto extendsLifetime = dyn_cast<GRT::GRTExtendsLifetimeInterface>(*op)) {
-    for (size_t resultIdx = 0; resultIdx < op->getNumResults(); ++resultIdx)
+    for (size_t resultIdx = 0; resultIdx < op->getNumResults(); ++resultIdx) {
+
+      size_t numChains = 0;
       for (size_t operandIdx = 0; operandIdx < op->getNumOperands();
-           ++operandIdx)
-        if (extendsLifetime.extendsLifetime(operandIdx, resultIdx))
-          outputs[resultIdx] = builder
-                                   .create<MOGG::BufferBorrowOp>(
-                                       loc, op->getResultTypes(),
-                                       outputs[resultIdx], inputs[operandIdx])
-                                   ->getResult(0);
+           ++operandIdx) {
+
+        // Skip chains.
+        if (isa<MEF::ChainType>(op->getOperandTypes()[operandIdx])) {
+          numChains++;
+          continue;
+        }
+
+        if (extendsLifetime.extendsLifetime(operandIdx, resultIdx)) {
+          outputs[resultIdx] =
+              builder
+                  .create<MOGG::BufferBorrowOp>(loc, op->getResultTypes(),
+                                                outputs[resultIdx],
+                                                inputs[operandIdx - numChains])
+                  ->getResult(0);
+        }
+      }
+    }
   }
 
   // Convert opaque outputs
@@ -233,9 +253,10 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
 
     // Need to add extra ops for opaque outputs.
     // Load the type infos from the kernel.
-    if (!kernel)
+    if (!kernel) {
       kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
           op->getName().getStringRef());
+    }
     ASSERT_STREAM(kernel != nullptr, << "kernel `"
                                      << op->getName().getStringRef()
                                      << "` not found");
