@@ -4197,6 +4197,10 @@ void CustomOp::getEffects(
     effects.emplace_back(mlir::MemoryEffects::Write::get());
     effects.emplace_back(mlir::MemoryEffects::Read::get());
   }
+
+  // Handle generic parameterization logic
+  if (!getOutputParamDecls().empty())
+    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
 }
 
 //===----------------------------------------------------------------------===//

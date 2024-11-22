@@ -31,3 +31,14 @@ mo.graph @inplace_custom_op(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.chain {
 
   mo.output %ch1 : !mo.chain
 }
+
+// CHECK-LABEL: mo.graph @custom_models_memory_effects
+// Custom should not be deleted since it has memory effects
+// CHECK: mo.custom
+mo.graph @custom_models_memory_effects<()->D>(%arg0: !mo.tensor<[10, 10], f32>, %data: !mo.tensor<[], f32>) -> !mo.tensor<[D], f32> {
+  // This result is not used, but op declares parameter so should not be deleted
+  %t = mo.custom <() -> A>{symbol = "example_op"} (%arg0) : (!mo.tensor<[10, 10], f32>) -> !mo.tensor<[10, 10], f32>
+
+  %res = mo.static.broadcast_to(%data): !mo.tensor<[], f32> -> !mo.tensor<[A], f32>
+  mo.output<A> %res : !mo.tensor<[A], f32>
+}
