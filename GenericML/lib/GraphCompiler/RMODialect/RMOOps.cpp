@@ -860,13 +860,18 @@ LogicalResult SliceOp::inferReturnTypes(
   ASSERT_STREAM(!result.isNonMaterializable(),
                 << "matmul shape logic must be materializable");
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(input);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   auto &successRes = result.getSuccess();
   ErrorOr<SmallVector<ShapeAttr>> resultShapesOr = MO::propagateShape(
       successRes.bindings, /*targetShapes=*/successRes.resultShapes);
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
-  inferredReturnTypes.push_back(
-      TensorType::get(resultShapesOr->front(), input.getType().getDtype()));
+  inferredReturnTypes.push_back(TensorType::get(
+      resultShapesOr->front(), input.getType().getDtype(), *outputDeviceOr));
 
   return success();
 }
