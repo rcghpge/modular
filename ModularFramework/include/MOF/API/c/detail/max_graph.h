@@ -183,12 +183,4 @@ MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t);
 /// Creates a new MO::Chain type (!mo.chain)
 MODULAR_API_EXPORT MlirType MAXG_chainTypeNew(MlirContext context);
 
-/// Creates an opaque location for a python frame.
-MODULAR_API_EXPORT MlirLocation
-MAXG_opaqueFrameLocNew(MlirContext context, void *frame_ptr,
-                       char *(*to_str_fn)(void *), void (*decref_fn)(void *));
-
-/// Returns the frame pointer from an opaque location or null.
-MODULAR_API_EXPORT void *MAXG_opaqueFrameLocGetFrame(MlirLocation loc);
-
 #endif // MOF_API_C_DETAIL_MAX_GRAPH_H
