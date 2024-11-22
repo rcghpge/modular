@@ -203,7 +203,7 @@ class Split(TestBase):
         # a bit so it's not always the first one.
         np.random.shuffle(split_sizes)
 
-        split_sizes = np.array(split_sizes).astype(np.int32)
+        split_sizes = np.array(split_sizes).astype(np.int32)  # type: ignore
 
         return [start, split_sizes, axis]
 

@@ -52,7 +52,7 @@ def test_vs_numpy(testCase, file_to_run):
             inputs = [[] for _ in range(num_inputs)]
 
         for i in range(num_inputs):
-            inputs[i].append(ins[i])
+            inputs[i].append(ins[i])  # type: ignore
         golden_value.append(testCase.run(ins, NumpyImpl()))
 
     if not num_inputs or not inputs:
