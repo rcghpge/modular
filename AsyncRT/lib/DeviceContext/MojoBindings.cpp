@@ -56,6 +56,10 @@ const char *check_val(T *result, V err_val, ErrorOr<T> err_or) {
   return nullptr;
 }
 
+MODULAR_EXPORT void AsyncRT_DeviceContext_strfree(const char *ptr) {
+  free(const_cast<char *>(ptr));
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_create(const DeviceContext **result, const char *kind,
                              int id) {
