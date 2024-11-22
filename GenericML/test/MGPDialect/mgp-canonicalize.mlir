@@ -31,3 +31,20 @@ mgp.model @fold_true_assert : mof devices [#M.device_ref<"cpu", 0>] init (%arg0:
   // CHECK-NEXT: mef.output %[[ARG0]] : !mef.chain
   mef.output %chain : !mef.chain
 }
+
+// -----
+
+// CHECK-LABEL: mgp.model @fold_buffer_get_size
+mgp.model @fold_buffer_get_size : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.opaque<"cpu0_context">) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  %2 = mgp.runtime.create %0, %1[1]
+  mef.output %2, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+// CHECK: execute (%[[ARG0:.*]]: !mef.chain,
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.opaque<"cpu0_context">) -> (!mef.chain, index) {
+  %buf0 = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 128>
+  // CHECK: %[[SIZE:.*]] = index.constant 4
+  %size = mgp.buffer.get_size %arg0, %buf0 : !mgp.buffer<4>
+  // CHECK: mef.output %[[ARG0]], %[[SIZE]] : !mef.chain, index
+  mef.output %arg0, %size : !mef.chain, index
+}

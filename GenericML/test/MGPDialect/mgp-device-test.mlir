@@ -161,6 +161,17 @@ func.func @buffer_resize(%in_buf : !mgp.buffer<, <"cuda", 3>>) {
 }
 
 //
+// mgp.buffer.get_size
+//
+
+// CHECK-LABEL: @buffer_get_size
+func.func @buffer_get_size(%ch : !mef.chain, %in_buf : !mgp.buffer<, <"cuda", 3>>) {
+  // CHECK:  %{{.*}} = mgp.buffer.get_size %{{.*}}, %{{.*}} : !mgp.buffer<, <"cuda", 3>>
+  %size = mgp.buffer.get_size %ch, %in_buf : !mgp.buffer<, <"cuda", 3>>
+  mef.output %size : index
+}
+
+//
 // mgp.buffer.concat
 //
 

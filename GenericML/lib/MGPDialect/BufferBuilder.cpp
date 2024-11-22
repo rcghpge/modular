@@ -278,6 +278,14 @@ Value MGPBufferBuilder::bufferResize(OpBuilder &builder, Location loc,
       /*bDevice=*/device);
 }
 
+Value MGPBufferBuilder::bufferGetSize(OpBuilder &builder, Location loc,
+                                      Value inChain, Value inBuffer) {
+  return builder.create<BufferGetSizeOp>(
+      loc,
+      /*inChain=*/cast<TypedValue<MEF::ChainType>>(inChain),
+      /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer));
+}
+
 Value MGPBufferBuilder::debugPrint(OpBuilder &builder, Location loc,
                                    TypedValue<ContextType> context,
                                    Value inChain, StringAttr debugString,

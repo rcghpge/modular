@@ -891,6 +891,34 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
 }
 
 //===----------------------------------------------------------------------===//
+// BufferGetSizeOp
+//===----------------------------------------------------------------------===//
+
+def BufferGetSizeOp : MGP_Op<"buffer.get_size", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Get the runtime size of a buffer in bytes.";
+  let description = [{
+    Returns the size of the input buffer in bytes.
+
+    Example:
+    ```mlir
+    %in_buf : !mgp.buffer<>
+    %buf_size = mgp.buffer.get_size %in_buf
+    %buf_size : index
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain, MGP_DeviceBufferType:$buffer);
+  let results = (outs  Index:$size);
+  let assemblyFormat = [{
+    $inChain `,` $buffer attr-dict
+    `:` qualified(type($buffer))
+  }];
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // DebugPrintOp
 //===----------------------------------------------------------------------===//
 

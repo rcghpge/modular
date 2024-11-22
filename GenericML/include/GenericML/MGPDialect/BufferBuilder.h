@@ -274,6 +274,10 @@ public:
   virtual Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
                              uint64_t size) = 0;
 
+  /// Get the runtime size of the buffer
+  virtual Value bufferGetSize(OpBuilder &builder, Location loc, Value inChain,
+                              Value inBuffer) = 0;
+
   /// Return the chain indicating the debug string has been printed.
   virtual Value debugPrint(OpBuilder &builder, Location loc,
                            TypedValue<ContextType> context, Value inChain,
@@ -424,6 +428,9 @@ public:
 
   Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
                      uint64_t size) override;
+
+  Value bufferGetSize(OpBuilder &builder, Location loc, Value inChain,
+                      Value inBuffer) override;
 
   Value debugPrint(OpBuilder &builder, Location loc,
                    TypedValue<ContextType> context, Value inChain,

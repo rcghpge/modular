@@ -461,6 +461,20 @@ SmallVector<Attribute> BufferGetCachedOp::getLiftAttributes() {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferGetSizeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult BufferGetSizeOp::fold(FoldAdaptor adaptor) {
+  auto optSize = getBuffer().getType().getOptSize();
+  auto indexTy = IndexType::get(getContext());
+
+  if (optSize.has_value())
+    return IntegerAttr::get(indexTy, optSize.value());
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // TensorSpecGetDimOp
 //===----------------------------------------------------------------------===//
 
