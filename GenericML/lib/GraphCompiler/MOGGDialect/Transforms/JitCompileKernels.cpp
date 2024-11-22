@@ -42,11 +42,11 @@ struct JitCompileKernels
   using JitCompileKernelsBase::JitCompileKernelsBase;
 
   void runOnOperation() override {
-    mlir::ModuleOp m = getOperation();
-    MLIRContext *ctx = m.getContext();
+    ModuleOp module = getOperation();
+    MLIRContext *ctx = &getContext();
 
     KGEN::CompilerTimeTraceScope traceScope("jit-compile-kernels",
-                                            m->getName().getStringRef());
+                                            module->getName().getStringRef());
 
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
@@ -55,19 +55,18 @@ struct JitCompileKernels
       return signalPassFailure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
-    auto func = [&](auto graph) {
-      auto errOr = this->runPass(graph, mojoLibraryAnalysis);
-      if (errOr.isError())
-        return this->signalPassFailure();
-    };
-
-    auto modelRange = m.getOps<MGP::ModelOp>();
-    mlir::parallelForEach(ctx, modelRange.begin(), modelRange.end(), func);
+    for (auto model : module.getOps<MGP::ModelOp>()) {
+      auto errOr = runPass(model, mojoLibraryAnalysis);
+      if (errOr.isError()) {
+        signalPassFailure();
+        return;
+      }
+    }
 
     // Strip all KGEN forward decls. There is now nothing they can be lowered
     // to.
-    m.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
-    m.walk([](KGEN::GeneratorOp gen) { gen.erase(); });
+    module.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
+    module.walk([](KGEN::GeneratorOp gen) { gen.erase(); });
   }
 
   CompileDiagnosticOrSuccess
