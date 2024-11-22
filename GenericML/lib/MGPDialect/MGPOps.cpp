@@ -461,6 +461,14 @@ SmallVector<Attribute> BufferGetCachedOp::getLiftAttributes() {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferRemoveCachedOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<Attribute> BufferRemoveCachedOp::getLiftAttributes() {
+  return {getBufferSlotAttr()};
+}
+
+//===----------------------------------------------------------------------===//
 // BufferGetSizeOp
 //===----------------------------------------------------------------------===//
 

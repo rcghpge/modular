@@ -891,6 +891,37 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
 }
 
 //===----------------------------------------------------------------------===//
+// BufferRemoveCachedOp
+//===----------------------------------------------------------------------===//
+
+def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
+  DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>]> {
+  let summary = "Removes the buffer stored at the specified state slot.";
+  let description = [{
+    Removes the buffer stored at the specified state slot.
+    The buffer is freed if there are no more uses.
+
+    WARNING: LowerAlignmentsPass cannot track buffer alignments through the
+    cache, so do not replace a buffer in a cache with a new buffer that has
+    different alignment.
+    This op is currently only inserted by DynamicMemoryPlanningPass which runs
+    after LowerAlignmentsPass, which is OK.
+  }];
+
+  // CAUTION: The attribute arguments must be in alphabetical order by their
+  // names.
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       UI64Attr:$bufferSlot          // 1
+                       );
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $bufferSlot `]`
+    attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // BufferGetSizeOp
 //===----------------------------------------------------------------------===//
 

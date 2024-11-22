@@ -380,6 +380,15 @@ Value MGPBufferBuilder::getCached(OpBuilder &builder, Location loc,
       /*bBufferSlot=*/bufferSlot);
 }
 
+Value MGPBufferBuilder::removeCached(OpBuilder &builder, Location loc,
+                                     TypedValue<ContextType> context,
+                                     TypedValue<MEF::ChainType> inChain,
+                                     uint64_t bufferSlot) {
+  return builder.create<BufferRemoveCachedOp>(loc, /*inChain=*/inChain,
+                                              /*theContext=*/context,
+                                              /*bBufferSlot=*/bufferSlot);
+}
+
 Value MGPBufferBuilder::bufferConcat(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
                                      Value inChain, Value outBuffer,

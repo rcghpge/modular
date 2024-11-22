@@ -36,6 +36,13 @@ public:
     bufferCache.resize(numBuffers);
   }
 
+  /// Clears the state slot and returns it to its original empty state
+  void clear() {
+    // Copy-and-swap idiom to replace with an empty GenericRCRef
+    GenericRCRef empty;
+    std::swap(payload, empty);
+  }
+
   /// Destroy this state slot, dropping the reference to its payload.
   ~StateSlot() = default;
 

@@ -85,6 +85,17 @@ func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mef.chain) {
 }
 
 //
+// mgp.buffer.remove_cached
+//
+
+// CHECK-LABEL: @buffer_remove_cached
+func.func @buffer_remove_cached(%ctx : !mgp.context, %ch0 : !mef.chain) {
+  // CHECK: %{{.*}} = mgp.buffer.remove_cached %{{.*}}, %{{.*}}[5]
+  %ch1 = mgp.buffer.remove_cached %ch0, %ctx[5]
+  mef.output %ch1 : !mef.chain
+}
+
+//
 // mgp.buffer.host_to_device
 //
 
