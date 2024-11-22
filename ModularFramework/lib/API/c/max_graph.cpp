@@ -548,8 +548,7 @@ MODULAR_API_EXPORT MlirLocation
 MAXG_opaqueFrameLocNew(MlirContext context, void *frame_ptr,
                        char *(*to_str_fn)(void *), void (*decref_fn)(void *)) {
   auto frame_attr = RMO::PythonFrameAttr::get(
-      unwrap(context),
-      {.ptr = frame_ptr, .to_str = to_str_fn, .decref = decref_fn});
+      unwrap(context), {frame_ptr, to_str_fn, decref_fn});
   mlir::Location loc =
       mlir::OpaqueLoc::get(frame_attr.getImpl(), unwrap(context));
   return wrap(loc);
