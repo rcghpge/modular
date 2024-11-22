@@ -8,15 +8,16 @@ modular_py_library(
     srcs = glob(["**/*.py"]),
     imports = [".."],
     deps = [
+        requirement("numpy"),
+        requirement("torch"),
+        requirement("sentencepiece"),
+        requirement("transformers"),
+        requirement("pillow"),
         "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/engine",
         "//SDK/lib/API/python/max/graph",
         "//SDK/public/max-repo/pipelines/python/nn",
         "//SDK/public/max-repo/pipelines/python/utils",
-        requirement("numpy"),
-        requirement("sentencepiece"),
-        requirement("torch"),
-        requirement("transformers"),
     ],
 )
 

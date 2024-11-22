@@ -13,7 +13,6 @@ modular_py_binary(
     imports = ["."],
     deps = [
         "//SDK/lib/API/python/max/serve",
-        "//SDK/pipelines/pixtral",
         "//SDK/public/max-repo/pipelines/python/architectures",
         "//SDK/public/max-repo/pipelines/python/coder",
         "//SDK/public/max-repo/pipelines/python/dataprocessing",
@@ -21,6 +20,7 @@ modular_py_binary(
         "//SDK/public/max-repo/pipelines/python/llama_vision",
         "//SDK/public/max-repo/pipelines/python/mistral",
         "//SDK/public/max-repo/pipelines/python/nn",
+        "//SDK/public/max-repo/pipelines/python/pixtral",
         "//SDK/public/max-repo/pipelines/python/replit",
         "//SDK/public/max-repo/pipelines/python/utils",
         requirement("click"),

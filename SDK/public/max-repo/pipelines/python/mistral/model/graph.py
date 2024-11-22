@@ -13,28 +13,23 @@
 """Build a Mistral model via Graph API from Safetensor weights."""
 
 from max.dtype import DType
-from max.graph import ops, Graph, TensorType, TensorValue
+from max.graph import Graph, TensorType, TensorValue, ops
 from max.graph.weights import SafetensorWeights
+from max.pipelines import PipelineConfig
+from max.pipelines.kv_cache import (
+    FetchContinuousBatchingKVCacheCollection,
+    KVCacheManager,
+    KVCacheParams,
+)
 from nn import (
     MLP,
+    AttentionWithRope,
     Embedding,
     Linear,
-    RMSNorm,
     OptimizedRotaryEmbedding,
-    AttentionWithRope,
-    TransformerBlock,
+    RMSNorm,
     Transformer,
-)
-from max.pipelines.kv_cache import (
-    FetchContinuousBatchingKVCacheCollection,
-    KVCacheParams,
-)
-from max.pipelines import PipelineConfig
-
-from max.pipelines.kv_cache import (
-    KVCacheParams,
-    KVCacheManager,
-    FetchContinuousBatchingKVCacheCollection,
+    TransformerBlock,
 )
 
 
