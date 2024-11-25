@@ -61,10 +61,6 @@ setup(
     package_data={
         "max.engine": EXECUTABLES + SHARED_LIBS + MOJO_CACHE + MODULAR_CFG,
         "max.driver": EXECUTABLES
-        + DRIVER_SHARED_LIBS
-        + MOJO_CACHE
-        + MODULAR_CFG,
-        "max.driver": EXECUTABLES
         + DTYPE_SHARED_LIBS
         + MOJO_CACHE
         + MODULAR_CFG,
