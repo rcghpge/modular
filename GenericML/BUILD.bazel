@@ -25,6 +25,7 @@ pkg_files(
         ":TransformsIncGen.doc",
     ],
     prefix = "GenericML/docs",
+    visibility = ["//visibility:public"],
 )
 
 td_library(
@@ -1402,6 +1403,7 @@ pkg_files(
     name = "API.c.headers",
     srcs = glob(["include/GenericML/API/max/c/*.h"]),
     tags = ["no-clang-tidy-headers"],
+    visibility = ["//visibility:public"],
 )
 
 filegroup(

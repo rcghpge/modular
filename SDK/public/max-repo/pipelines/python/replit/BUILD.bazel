@@ -1,8 +1,6 @@
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 load("//bazel:api.bzl", "modular_py_library", "requirement")
 
-package(default_visibility = ["//visibility:public"])
-
 modular_py_library(
     name = "replit",
     srcs = glob(["**/*.py"]),
@@ -28,4 +26,5 @@ pkg_files(
     ),
     prefix = "replit",
     strip_prefix = strip_prefix.from_pkg(""),
+    visibility = ["//visibility:public"],
 )

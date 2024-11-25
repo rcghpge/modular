@@ -1,8 +1,6 @@
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 load("//bazel:api.bzl", "modular_py_library", "requirement")
 
-package(default_visibility = ["//visibility:public"])
-
 modular_py_library(
     name = "llama3",
     srcs = glob(["**/*.py"]),
@@ -34,4 +32,5 @@ pkg_files(
     ),
     prefix = "llama3",
     strip_prefix = strip_prefix.from_pkg(""),
+    visibility = ["//visibility:public"],
 )
