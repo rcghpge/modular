@@ -27,6 +27,10 @@ constexpr llvm::StringLiteral LambdasHaveFusion = "lambdas_have_fusion";
 
 constexpr llvm::StringLiteral DPSTensorCopy = "MOGGKernelAPI::view_copy_impl";
 
+constexpr llvm::StringLiteral DPSTensorGetTensorSpecWithoutLambdas =
+    "tensor_utils_internal::managed_tensor_slice::_get_tensor_specs_without_"
+    "lambdas";
+
 } // namespace M::MOGG::Utils
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_MOJOTARGETFUNCTIONS_H
