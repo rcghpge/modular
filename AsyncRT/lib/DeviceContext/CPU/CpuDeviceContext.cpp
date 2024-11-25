@@ -11,6 +11,7 @@
 #include "CpuDeviceContext.h"
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/Runtime/Globals/Globals.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
 
@@ -79,7 +80,7 @@ CpuDeviceBuffer::~CpuDeviceBuffer() {
     // Parent owns the memory.
     return;
   }
-  free(ptr_);
+  TCMallocGlobals::tc_delete(ptr_);
 }
 
 void *CpuDeviceBuffer::cpu_ptr() const { return ptr_; }
@@ -141,7 +142,7 @@ CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
     : DeviceContext(device) {}
 
 ErrorOr<void *> CpuDeviceContext::malloc_host(size_t size) const {
-  void *ptr = malloc(size);
+  void *ptr = TCMallocGlobals::tc_new(size, 1);
   if (ptr == nullptr) {
     RAISE_ERROR();
   }
@@ -149,7 +150,7 @@ ErrorOr<void *> CpuDeviceContext::malloc_host(size_t size) const {
 }
 
 ErrorOrSuccess CpuDeviceContext::free_host(void *ptr) const {
-  free(ptr);
+  TCMallocGlobals::tc_delete(ptr);
   return success();
 }
 
@@ -157,7 +158,7 @@ ErrorOr<DeviceBufferRef> CpuDeviceContext::createBuffer(size_t len,
                                                         size_t elem_size,
                                                         SyncMode mode) const {
   size_t bytesize = len * elem_size;
-  void *ptr = malloc(bytesize);
+  void *ptr = TCMallocGlobals::tc_new(bytesize, 1);
   if (ptr == nullptr) {
     RAISE_ERROR();
   }
