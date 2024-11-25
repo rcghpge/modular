@@ -217,25 +217,25 @@ mo.graph @constant_unknown_shape_fold() -> !mo.tensor<[2, ?], si32> {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @transfer_to_explicit
-mo.graph @transfer_to_explicit(%arg0 : !mo.tensor<[3, 2], f32, cuda:3>) -> !mo.tensor<[3, 2], f32, cpu:0> {
-  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, cuda:3> to <"cpu", 0>
-  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, cuda:3> to <"cpu", 0>
+mo.graph @transfer_to_explicit(%arg0 : !mo.tensor<[3, 2], f32, gpu:3>) -> !mo.tensor<[3, 2], f32, cpu:0> {
+  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, gpu:3> to <"cpu", 0>
+  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, gpu:3> to <"cpu", 0>
   mo.output %0 : !mo.tensor<[3, 2], f32, cpu:0>
 }
 
 // CHECK-LABEL: mo.graph @transfer_to_unspecified
-mo.graph @transfer_to_unspecified(%arg0 : !mo.tensor<[3, 2], f32, cuda:3>) -> !mo.tensor<[3, 2], f32> {
-  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, cuda:3> to unspecified
-  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, cuda:3> to unspecified
+mo.graph @transfer_to_unspecified(%arg0 : !mo.tensor<[3, 2], f32, gpu:3>) -> !mo.tensor<[3, 2], f32> {
+  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, gpu:3> to unspecified
+  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, gpu:3> to unspecified
   mo.output %0 : !mo.tensor<[3, 2], f32>
 }
 
 // CHECK-LABEL: mo.graph @transfer_fold_explicit
-mo.graph @transfer_fold_explicit(%arg0 : !mo.tensor<[7], f32, cuda:3>) -> !mo.tensor<[7], f32, cuda:3> {
+mo.graph @transfer_fold_explicit(%arg0 : !mo.tensor<[7], f32, gpu:3>) -> !mo.tensor<[7], f32, gpu:3> {
   // CHECK-NEXT: mo.output
-  %0 = mo.transfer %arg0 : !mo.tensor<[7], f32, cuda:3> to <"cpu", 0>
-  %1 = mo.transfer %0 : !mo.tensor<[7], f32, cpu:0> to <"cuda", 3>
-  mo.output %1 : !mo.tensor<[7], f32, cuda:3>
+  %0 = mo.transfer %arg0 : !mo.tensor<[7], f32, gpu:3> to <"cpu", 0>
+  %1 = mo.transfer %0 : !mo.tensor<[7], f32, cpu:0> to <"gpu", 3>
+  mo.output %1 : !mo.tensor<[7], f32, gpu:3>
 }
 
 // CHECK-LABEL: mo.graph @transfer_fold_implicit
@@ -247,37 +247,37 @@ mo.graph @transfer_fold_implicit(%arg0 : !mo.tensor<[7], f32>) -> !mo.tensor<[7]
 }
 
 // CHECK-LABEL: mo.graph @transfer_elide_copy
-mo.graph @transfer_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.tensor<[4, 5], f32, cuda:3> {
+mo.graph @transfer_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, gpu:3> {
   // CHECK-NEXT: mo.output
-  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cuda", 3> {alwaysElideSameDeviceCopy = true}
-  mo.output %0 : !mo.tensor<[4, 5], f32, cuda:3>
+  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = true}
+  mo.output %0 : !mo.tensor<[4, 5], f32, gpu:3>
 }
 
 // CHECK-LABEL: mo.graph @transfer_no_elide_with_flag
-mo.graph @transfer_no_elide_with_flag(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.tensor<[4, 5], f32, cpu:0> {
+mo.graph @transfer_no_elide_with_flag(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, cpu:0> {
   // CHECK-NEXT: mo.transfer
-  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cpu", 0> {alwaysElideSameDeviceCopy = true}
+  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"cpu", 0> {alwaysElideSameDeviceCopy = true}
   // CHECK-NEXT: mo.output
   mo.output %0 : !mo.tensor<[4, 5], f32, cpu:0>
 }
 
 // CHECK-LABEL: mo.graph @transfer_no_elide_copy
-mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, cuda:3>) -> !mo.tensor<[4, 5], f32, cuda:3> {
-  // CHECK-NEXT: mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cuda", 3>
-  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, cuda:3> to <"cuda", 3>
-  mo.output %0 : !mo.tensor<[4, 5], f32, cuda:3>
+mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, gpu:3> {
+  // CHECK-NEXT: mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3>
+  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3>
+  mo.output %0 : !mo.tensor<[4, 5], f32, gpu:3>
 }
 
 // CHECK-LABEL: mo.graph @transfer_cast_rotate
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], f32, cpu:0>) ->
 // CHECK-NEXT: %[[CAST:.*]] = mo.cast(%[[ARG0]]) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[4096], f32, cpu:0>) -> !mo.tensor<[4096], bf16, cpu:0>
-// CHECK-NEXT: %[[GPU:.*]] = mo.transfer %[[CAST]] : !mo.tensor<[4096], bf16, cpu:0> to <"cuda", 0>
+// CHECK-NEXT: %[[GPU:.*]] = mo.transfer %[[CAST]] : !mo.tensor<[4096], bf16, cpu:0> to <"gpu", 0>
 // CHECK-NEXT: mo.output %[[GPU]]
   
-mo.graph @transfer_cast_rotate(%arg0 : !mo.tensor<[4096], f32, cpu:0>) -> !mo.tensor<[4096], bf16, cuda:0> {
-  %0 = mo.transfer %arg0 : !mo.tensor<[4096], f32, cpu:0> to <"cuda", 0>
-  %1 = mo.cast(%0) {device = #M.device_ref<"cuda", 0>} : (!mo.tensor<[4096], f32, cuda:0>) -> !mo.tensor<[4096], bf16, cuda:0>
-  mo.output %1 : !mo.tensor<[4096], bf16, cuda:0>
+mo.graph @transfer_cast_rotate(%arg0 : !mo.tensor<[4096], f32, cpu:0>) -> !mo.tensor<[4096], bf16, gpu:0> {
+  %0 = mo.transfer %arg0 : !mo.tensor<[4096], f32, cpu:0> to <"gpu", 0>
+  %1 = mo.cast(%0) {device = #M.device_ref<"gpu", 0>} : (!mo.tensor<[4096], f32, gpu:0>) -> !mo.tensor<[4096], bf16, gpu:0>
+  mo.output %1 : !mo.tensor<[4096], bf16, gpu:0>
 }
 
 
@@ -286,20 +286,20 @@ mo.graph @transfer_cast_rotate(%arg0 : !mo.tensor<[4096], f32, cpu:0>) -> !mo.te
 // CHECK-NEXT: %[[CPU:.*]] = mo.transfer %[[ARG0]]
 // CHECK-NEXT: %[[OUT:.*]] = mo.cast(%[[CPU]])
 // CHECK-NEXT: mo.output %[[OUT]]
-mo.graph @transfer_cast_no_rotate1(%arg0 : !mo.tensor<[4096], bf16, cpu:0>) -> !mo.tensor<[4096], f32, cuda:0> {
-  %0 = mo.transfer %arg0 : !mo.tensor<[4096], bf16, cpu:0> to <"cuda", 0>
-  %1 = mo.cast(%0) {device = #M.device_ref<"cuda", 0>} : (!mo.tensor<[4096], bf16, cuda:0>) -> !mo.tensor<[4096], f32, cuda:0>
-  mo.output %1 : !mo.tensor<[4096], f32, cuda:0>
+mo.graph @transfer_cast_no_rotate1(%arg0 : !mo.tensor<[4096], bf16, cpu:0>) -> !mo.tensor<[4096], f32, gpu:0> {
+  %0 = mo.transfer %arg0 : !mo.tensor<[4096], bf16, cpu:0> to <"gpu", 0>
+  %1 = mo.cast(%0) {device = #M.device_ref<"gpu", 0>} : (!mo.tensor<[4096], bf16, gpu:0>) -> !mo.tensor<[4096], f32, gpu:0>
+  mo.output %1 : !mo.tensor<[4096], f32, gpu:0>
 }
 
 
 // CHECK-LABEL: mo.graph @transfer_cast_no_rotate_2
-// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], f32, cuda:0>) ->
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], f32, gpu:0>) ->
 // CHECK-NEXT: %[[CPU:.*]] = mo.transfer %[[ARG0]]
 // CHECK-NEXT: %[[OUT:.*]] = mo.cast(%[[CPU]])
 // CHECK-NEXT: mo.output %[[OUT]]
-mo.graph @transfer_cast_no_rotate_2(%arg0 : !mo.tensor<[4096], f32, cuda:0>) -> !mo.tensor<[4096], bf16, cpu:0> {
-  %0 = mo.transfer %arg0 : !mo.tensor<[4096], f32, cuda:0> to <"cpu", 0>
+mo.graph @transfer_cast_no_rotate_2(%arg0 : !mo.tensor<[4096], f32, gpu:0>) -> !mo.tensor<[4096], bf16, cpu:0> {
+  %0 = mo.transfer %arg0 : !mo.tensor<[4096], f32, gpu:0> to <"cpu", 0>
   %1 = mo.cast(%0) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[4096], f32, cpu:0>) -> !mo.tensor<[4096], bf16, cpu:0>
   mo.output %1 : !mo.tensor<[4096], bf16, cpu:0>
 }

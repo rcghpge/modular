@@ -43,12 +43,12 @@ mo.graph @transfer_with_unknown_dims(
 // CHECK: mef.output [[CH]], [[OUT_TENSOR]]
 
 mo.graph @transfer_d2h(
-  %input: !mo.tensor<[5], si64, cuda:0>
+  %input: !mo.tensor<[5], si64, gpu:0>
 ) -> !mo.tensor<[5], si64, cpu:0> attributes {
   device_specs = #M.device_spec_collection<host = <"cpu", 0>, devices = [
     <ref = <"cpu", 0>, target = <triple = "", arch = "", features = "">>,
-    <ref = <"cuda", 0>, target = <triple = "", arch = "", features = "">>
+    <ref = <"gpu", 0>, target = <triple = "", arch = "", features = "">>
   ]>} {
-  %output = mo.transfer %input : !mo.tensor<[5], si64, cuda:0> to <"cpu", 0>
+  %output = mo.transfer %input : !mo.tensor<[5], si64, gpu:0> to <"cpu", 0>
   mo.output %output : !mo.tensor<[5], si64, cpu:0>
 }

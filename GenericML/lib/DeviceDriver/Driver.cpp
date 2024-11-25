@@ -129,9 +129,15 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
                       "Only cuda device context supported");
         // In this case we use the device ref id as the device id. THIS IS NOT
         // THE CASE WHEN THE DEVICE IS PASSED IN TO THE GRAPH.
-        auto numPhysicalDevicesOr = AsyncRT::Device::numberOfDevices(kGPULabel);
-        if (numPhysicalDevicesOr.isError())
-          return numPhysicalDevicesOr.takeError();
+        // Manually put in checks for cuda (Nvidia) and hip (AMD) here for now.
+        // We should eventually push the device selection up the stack into the
+        // mt command and remove all of the code in this else branch.
+        auto numPhysicalDevicesOr = AsyncRT::Device::numberOfDevices("cuda");
+        if (numPhysicalDevicesOr.isError()) {
+          numPhysicalDevicesOr = AsyncRT::Device::numberOfDevices("hip");
+          if (numPhysicalDevicesOr.isError())
+            return numPhysicalDevicesOr.takeError();
+        }
         size_t numPhysicalDevices = *numPhysicalDevicesOr;
 
         auto envPtr = std::getenv("MODULAR_NUM_VIRTUAL_CUDA_DEVICES");

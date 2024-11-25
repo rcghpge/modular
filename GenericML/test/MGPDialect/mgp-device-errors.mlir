@@ -26,10 +26,10 @@ func.func @buffer_constant_invalid_elem_type(%ch: !mef.chain, %ctx : !mgp.contex
 // mgp.buffer.host_to_device
 //
 
-func.func @buffer_host_to_device_mismatched_size(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<48>, %cuda_buf : !mgp.buffer<64, <"cuda", 3>>, %gpu : !mgp.opaque<"cuda0_context">) {
+func.func @buffer_host_to_device_mismatched_size(%ctx : !mgp.context, %ch0 : !mef.chain, %cpu_buf : !mgp.buffer<48>, %gpu_buf : !mgp.buffer<64, <"gpu", 3>>, %gpu : !mgp.opaque<"gpu0_context">) {
   // expected-error@+1 {{'mgp.buffer.host_to_device' op host and other buffer sizes do not match (48 vs 64).}}
-  %ch1 = "mgp.buffer.host_to_device" (%ch0, %cpu_buf, %cuda_buf, %gpu) { cHostDevice = #M.device_ref<"cpu", 0>, dOtherDevice = #M.device_ref<"cuda", 3> }
-           : (!mef.chain, !mgp.buffer<48>, !mgp.buffer<64, <"cuda", 3>>, !mgp.opaque<"cuda0_context">) -> !mef.chain
+  %ch1 = "mgp.buffer.host_to_device" (%ch0, %cpu_buf, %gpu_buf, %gpu) { cHostDevice = #M.device_ref<"cpu", 0>, dOtherDevice = #M.device_ref<"gpu", 3> }
+           : (!mef.chain, !mgp.buffer<48>, !mgp.buffer<64, <"gpu", 3>>, !mgp.opaque<"gpu0_context">) -> !mef.chain
   mef.output
 }
 
@@ -39,8 +39,8 @@ func.func @buffer_host_to_device_mismatched_size(%ctx : !mgp.context, %ch0 : !me
 // mgp.buffer.unsize
 //
 
-func.func @buffer_unsize(%in_buf : !mgp.buffer<64, <"cuda", 3>>) {
+func.func @buffer_unsize(%in_buf : !mgp.buffer<64, <"gpu", 3>>) {
   // expected-error@+1 {{'mgp.buffer.unsize' op expected output buffer to be dynamically sized.}}
-  %out_buf = "mgp.buffer.unsize" (%in_buf) : (!mgp.buffer<64, <"cuda", 3>>) -> !mgp.buffer<32, <"cuda", 3>>
-  mef.output %out_buf : !mgp.buffer<32, <"cuda", 3>>
+  %out_buf = "mgp.buffer.unsize" (%in_buf) : (!mgp.buffer<64, <"gpu", 3>>) -> !mgp.buffer<32, <"gpu", 3>>
+  mef.output %out_buf : !mgp.buffer<32, <"gpu", 3>>
 }

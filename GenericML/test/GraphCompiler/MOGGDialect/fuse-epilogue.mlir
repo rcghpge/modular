@@ -228,7 +228,7 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
 // CHECK-NEXT: %[[OUT:.*]] = mogg.kernel
 // CHECK-NEXT: %[[PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], ui32>
 
-mo.graph @fused_mixed_precision_cuda_device(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], f32> {
+mo.graph @fused_mixed_precision_gpu_device(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], f32> {
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[2, 2], ui32>, %arg3: !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], ui32>{
     %2 = mogg.output_placeholders : !mo.tensor<[2, 2], ui32>
     mogg.lambda @output_0_fn = (%arg4: !mogg.indices, %arg5: !mogg.simd<ui32>){
@@ -237,7 +237,7 @@ mo.graph @fused_mixed_precision_cuda_device(%arg0: !mo.tensor<[2, 2], ui32>, %ar
     }
     mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
     mogg.output %2 : !mo.tensor<[2, 2], ui32>
-  } {device = #M.device_ref<"cuda", 0>, outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"gpu", 0>, outputFusionInterface = ["output_0_fn"]}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[2, 2], ui32>) -> !mo.tensor<[2, 2], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[2, 2], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
@@ -256,14 +256,14 @@ mo.graph @fused_mixed_precision_cuda_device(%arg0: !mo.tensor<[2, 2], ui32>, %ar
     }
     mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[2, 2], f32>
     mogg.output %2 : !mo.tensor<[2, 2], f32>
-  } {device = #M.device_ref<"cuda", 0>, fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"gpu", 0>, fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[2, 2], f32>
 }
 
-// CHECK-LABEL: @fused_mixed_precision_cuda_device
+// CHECK-LABEL: @fused_mixed_precision_gpu_device
 // CHECK-NEXT: %[[OUT:.*]] = mogg.kernel
 // CHECK-NEXT: %[[PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], ui32>
-// CHECK: device = #M.device_ref<"cuda", 0>
+// CHECK: device = #M.device_ref<"gpu", 0>
 
 mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], f32> {
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[2, 2], ui32>, %arg3: !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], ui32>{
@@ -293,11 +293,11 @@ mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], ui32>, %
     }
     mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[2, 2], f32>
     mogg.output %2 : !mo.tensor<[2, 2], f32>
-  } {device = #M.device_ref<"cuda", 0>, fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"gpu", 0>, fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[2, 2], f32>
 }
 
 // CHECK-LABEL: @nofuse_mixed_precision_mixed_device
 // CHECK: %[[OUT:.*]] = mogg.kernel
 // CHECK: %[[OUT2:.*]] = mogg.kernel (%[[OUT]])
-// CHECK: device = #M.device_ref<"cuda", 0>
+// CHECK: device = #M.device_ref<"gpu", 0>
