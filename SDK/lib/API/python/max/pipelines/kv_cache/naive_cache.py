@@ -26,6 +26,10 @@ class NaiveKVCacheManager(KVCacheManager):
         devices: List[Device],
         session: InferenceSession,
     ) -> None:
+        assert len(devices) == 1, "Naive caching only supports a single device."
+        assert (
+            params.n_devices == 1
+        ), "Naive caching only supports a single device."
         super().__init__(
             params=params,
             max_cache_batch_size=max_cache_batch_size,
@@ -72,7 +76,7 @@ class NaiveKVCacheManager(KVCacheManager):
 
     def fetch(
         self, seq_ids: list[int]
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> List[tuple[Tensor, Tensor, Tensor, Tensor]]:
         existing_keys = list(self.cache_lengths.keys())
         for i, seq_id in enumerate(seq_ids):
             if existing_keys[i] != seq_id:
@@ -83,57 +87,61 @@ class NaiveKVCacheManager(KVCacheManager):
                 )
                 raise ValueError(msg)
 
-        return (
-            self.keys,
-            self.values,
-            Tensor.scalar(
-                self.max_sequence_length, DType.int64, self.devices[0]
-            ),
-            # TODO: MSDK-1201 - This next variable is not used upstream.
-            # It is included here, as a placeholder, until we can dynamically
-            # return a number of tensors from both `fetch` and `input_symbols`.
-            Tensor.scalar(
-                self.max_sequence_length, DType.int64, self.devices[0]
-            ),
-        )
+        return [
+            (
+                self.keys,
+                self.values,
+                Tensor.scalar(
+                    self.max_sequence_length, DType.int64, self.devices[0]
+                ),
+                # TODO: MSDK-1201 - This next variable is not used upstream.
+                # It is included here, as a placeholder, until we can dynamically
+                # return a number of tensors from both `fetch` and `input_symbols`.
+                Tensor.scalar(
+                    self.max_sequence_length, DType.int64, self.devices[0]
+                ),
+            )
+        ]
 
     def input_symbols(
         self,
-    ) -> tuple[TensorType, TensorType, TensorType, TensorType]:
-        return (  # type: ignore
-            # k_cache
-            BufferType(
-                self.params.dtype,
-                shape=[
-                    self.max_seq_len,
-                    self.num_layers,
-                    "max_batch_size",
-                    self.params.n_kv_heads,
-                    self.params.head_dim,
-                ],
-            ),
-            # v_cache
-            BufferType(
-                self.params.dtype,
-                shape=[
-                    self.max_seq_len,
-                    self.num_layers,
-                    "max_batch_size",
-                    self.params.n_kv_heads,
-                    self.params.head_dim,
-                ],
-            ),
-            # start_pos
-            TensorType(DType.int64, shape=[]),
-            # null_op - this isnt used for the naive cache
-            TensorType(DType.int64, shape=[]),
-        )
+    ) -> List[tuple[TensorType, TensorType, TensorType, TensorType]]:
+        return [
+            (  # type: ignore
+                # k_cache
+                BufferType(
+                    self.params.dtype,
+                    shape=[
+                        self.max_seq_len,
+                        self.num_layers,
+                        "max_batch_size",
+                        self.params.n_kv_heads,
+                        self.params.head_dim,
+                    ],
+                ),
+                # v_cache
+                BufferType(
+                    self.params.dtype,
+                    shape=[
+                        self.max_seq_len,
+                        self.num_layers,
+                        "max_batch_size",
+                        self.params.n_kv_heads,
+                        self.params.head_dim,
+                    ],
+                ),
+                # start_pos
+                TensorType(DType.int64, shape=[]),
+                # null_op - this isnt used for the naive cache
+                TensorType(DType.int64, shape=[]),
+            )
+        ]
 
     def increment_cache_lengths(
         self,
-        kv_cache_inputs: tuple[TensorType, TensorType, TensorType, TensorType],
+        kv_cache_inputs: List[tuple[Tensor, Tensor, Tensor, Tensor]],
         prev_model_inputs: tuple[Tensor, ...],
-    ) -> tuple[TensorType, TensorType, TensorType, TensorType]:
+    ) -> List[tuple[Tensor, Tensor, Tensor, Tensor]]:
         """
         Prepare the inputs for a multistep execution, generally by incrementing
         the cache lengths. This should not require a device synchronization,
@@ -146,4 +154,4 @@ class NaiveKVCacheManager(KVCacheManager):
         tokens, _ = prev_model_inputs
 
         new_start_pos = self._increment_cache_length_graph(start_pos, tokens)
-        return (k_cache, v_cache, new_start_pos, new_start_pos)
+        return [(k_cache, v_cache, new_start_pos, new_start_pos)]  # type: ignore
