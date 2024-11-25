@@ -92,13 +92,13 @@ def MO_TransferOp : MO_TensorOp<"transfer", [Pure, MO_SameOperandsAndResultShape
     Example:
 
     ```mlir
-      %arg : !mo.tensor<[N, 8], f32, cuda:3>
-      %onOtherDevice = mo.transfer %arg : !mo.tensor<[N, 8], f32, cuda:3> to <"cuda", 1>
-      %onHost = mo.transfer %arg : !mo.tensor<[N, 8], f32, cuda:0> to <"cpu", 1>
-      %onUnspecified = mo.transfer %arg : !mo.tensor<[N, 8], f32, cuda:0> to unspecified
+      %arg : !mo.tensor<[N, 8], f32, gpu:3>
+      %onOtherDevice = mo.transfer %arg : !mo.tensor<[N, 8], f32, gpu:3> to <"gpu", 1>
+      %onHost = mo.transfer %arg : !mo.tensor<[N, 8], f32, gpu:0> to <"cpu", 1>
+      %onUnspecified = mo.transfer %arg : !mo.tensor<[N, 8], f32, gpu:0> to unspecified
 
       %arg2 : !mo.tensor<[N, 8], f32>
-      %fromUnspecified = mo.transfer %arg2 : !mo.tensor<[N, 8], f32> to <"cuda", 0>
+      %fromUnspecified = mo.transfer %arg2 : !mo.tensor<[N, 8], f32> to <"gpu", 0>
     ```
   }];
 
@@ -498,7 +498,7 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
 
     ```mlir
     %weight = mo.constant.external {
-      align = 16 : ui64, device = #M.device_ref<"cuda", 0>, name = "foo"
+      align = 16 : ui64, device = #M.device_ref<"gpu", 0>, name = "foo"
     } : !mo.tensor<[4096, 4096], bf16>
   }];
 
@@ -4748,7 +4748,7 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [Pure]> {
 
     Example:
     ```mlir
-    %buf = mo.buffer.create : !mo.buffer<[20, 20], f32, cuda:0>
+    %buf = mo.buffer.create : !mo.buffer<[20, 20], f32, gpu:0>
     ```
   }];
 

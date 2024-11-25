@@ -222,7 +222,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load",
       %ch1 = mgp.module.load %ch0, %ctx[5][1],
                dense_resource<label> : !M.aligned_bytes<1000, align 16>,
                ["kernel1", "kernel2"], ["const1", "const2"]
-               device <"cuda", 3>
+               device <"gpu", 3>
       %ch1 : !mef.chain
     ```
   }];
@@ -353,13 +353,13 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
 
     Example:
     ```mlir
-      %ch : !mgp.chain<<"cuda", 3>>
+      %ch : !mgp.chain<<"gpu", 3>>
       %ctx : !mgp.context
       %size : index
       // Allocates %size bytes using the CUDA runtime from slot 5, which
       // should correspond to the CUDA GPU with virtual device id 3.
-      %buf = mgp.buffer.alloc %ch, %size : !mgp.buffer<, <"cuda", 3>>
-      %buf : !mgp.buffer<, <"cuda", 3>>
+      %buf = mgp.buffer.alloc %ch, %size : !mgp.buffer<, <"gpu", 3>>
+      %buf : !mgp.buffer<, <"gpu", 3>>
     ```
   }];
 
@@ -408,11 +408,11 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
     Example:
     ```mlir
     %ctx : !mgp.context
-    %buf : !mgp.buffer<, <"cuda", 3>>
+    %buf : !mgp.buffer<, <"gpu", 3>>
     %ch0 : !mef.chain
     // Cache the given buffer in slot index 42.
     %ch1 = mgp.buffer.cache %ch0, %ctx[5, 42], %buf
-             : !mgp.buffer<256, <"cuda", 3>>
+             : !mgp.buffer<256, <"gpu", 3>>
     %ch1 : !mef.chain
     ```
   }];
@@ -491,9 +491,9 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
       %ch0 : !mef.chain
       %ctx : !mgp.context
       %host_buf : !mgp.buffer<>
-      %other_buf : !mgp.buffer<, <"cuda", 3>>
+      %other_buf : !mgp.buffer<, <"gpu", 3>>
       %ch1 = mgp.buffer.host_to_device %ch0, %host_buf, %other_buf
-               : !mgp.buffer<> -> !mgp.buffer<, <"cuda", 3>>
+               : !mgp.buffer<> -> !mgp.buffer<, <"gpu", 3>>
       %ch1 : !mef.chain
     ```
   }];
@@ -543,10 +543,10 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
     ```mlir
       %ch0 : !mef.chain
       %ctx : !mgp.context
-      %other_buf : !mgp.buffer<, <"cuda", 3>>
+      %other_buf : !mgp.buffer<, <"gpu", 3>>
       %host_buf : !mgp.buffer<>
       %ch1 = mgp.buffer.device_to_host %ch0, %other_buf, %host_buf
-               : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<>
+               : !mgp.buffer<, <"gpu", 3>> -> !mgp.buffer<>
       %ch1 : !mef.chain
     ```
   }];
@@ -595,10 +595,10 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     ```mlir
       %ch0 : !mef.chain
       %ctx : !mgp.context
-      %src_buf : !mgp.buffer<, <"cuda", 3>>
-      %dst_buf : !mgp.buffer<, <"cuda", 1>>
+      %src_buf : !mgp.buffer<, <"gpu", 3>>
+      %dst_buf : !mgp.buffer<, <"gpu", 1>>
       %ch1 = mgp.buffer.device_to_device %ch0, %ctx[5, 3], %src_buf, %dst_buf
-               : !mgp.buffer<, <"cuda", 3>> -> !mgp.buffer<, <"cuda", 1>>
+               : !mgp.buffer<, <"gpu", 3>> -> !mgp.buffer<, <"gpu", 1>>
       %ch1 : !mef.chain
     ```
   }];
@@ -657,9 +657,9 @@ def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
 
     Example:
     ```mlir
-    %in_buf : !mgp.buffer<256, <"cuda", 3>>
-    %out_buf = mgp.buffer.unsize %in_buf : !mgp.buffer<256, <"cuda", 3>>
-    %out_buf : !mgp.buffer<, <"cuda", 3>>
+    %in_buf : !mgp.buffer<256, <"gpu", 3>>
+    %out_buf = mgp.buffer.unsize %in_buf : !mgp.buffer<256, <"gpu", 3>>
+    %out_buf : !mgp.buffer<, <"gpu", 3>>
     ```
   }];
 
@@ -693,9 +693,9 @@ def BufferResizeOp : MGP_Op<"buffer.resize", [
 
     Example:
     ```mlir
-    %in_buf : !mgp.buffer<, <"cuda", 3>>
-    %out_buf = mgp.buffer.resize %in_buf : !mgp.buffer<256, <"cuda", 3>>
-    %out_buf : !mgp.buffer<256, <"cuda", 3>>
+    %in_buf : !mgp.buffer<, <"gpu", 3>>
+    %out_buf = mgp.buffer.resize %in_buf : !mgp.buffer<256, <"gpu", 3>>
+    %out_buf : !mgp.buffer<256, <"gpu", 3>>
     ```
   }];
 
@@ -737,16 +737,16 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 
     Example:
     ```mlir
-    %in_ch : !mgp.chain<<"cuda", 3>>
-    %out_buf : !mgp.buffer<256, <"cuda", 3>>
-    %in0_buf : !mgp.buffer<128, <"cuda", 3>>
-    %in1_buf : !mgp.buffer<, <"cuda", 3>>
-    %in2_buf : !mgp.buffer<, <"cuda", 3>>
+    %in_ch : !mgp.chain<<"gpu", 3>>
+    %out_buf : !mgp.buffer<256, <"gpu", 3>>
+    %in0_buf : !mgp.buffer<128, <"gpu", 3>>
+    %in1_buf : !mgp.buffer<, <"gpu", 3>>
+    %in2_buf : !mgp.buffer<, <"gpu", 3>>
     %out_ch = mgp.buffer.concat %in_ch, %out_buf, %in0_buf, %in1_buf, %in2_buf
-              : (!mgp.buffer<128, <"cuda", 3>>,
-                 !mgp.buffer<, <"cuda", 3>>,
-                 !mgp.buffer<, <"cuda", 3>>) -> !mgp.buffer<256, <"cuda", 3>>
-    %out_ch : !mgp.chain<<"cuda", 3>>
+              : (!mgp.buffer<128, <"gpu", 3>>,
+                 !mgp.buffer<, <"gpu", 3>>,
+                 !mgp.buffer<, <"gpu", 3>>) -> !mgp.buffer<256, <"gpu", 3>>
+    %out_ch : !mgp.chain<<"gpu", 3>>
     ```
   }];
 
@@ -897,7 +897,7 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
 
     Example:
     ```mlir
-    %0 = mgp.to_bool %ch0, %ctx[5], %buf : !mgp.buffer<1, <"cuda", 3>>
+    %0 = mgp.to_bool %ch0, %ctx[5], %buf : !mgp.buffer<1, <"gpu", 3>>
     ```
   }];
 
@@ -938,16 +938,16 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     Example:
     ```mlir
     %ctx : !mgp.context
-    %buf0 : !mgp.buffer<4, <"cuda", 3>>
+    %buf0 : !mgp.buffer<4, <"gpu", 3>>
     %idx0 : index
-    %ch0 = mgp.buffer.set_with_index %buf0, %idx0 : !mgp.buffer<4, <"cuda", 3>>
-    %ch0 : !mgp.chain<<"cuda", 3>>
+    %ch0 = mgp.buffer.set_with_index %buf0, %idx0 : !mgp.buffer<4, <"gpu", 3>>
+    %ch0 : !mgp.chain<<"gpu", 3>>
 
     %idx1 : index
     %idx2 : index
-    %buf1 : !mgp.buffer<24, <"cuda", 3>>
-    %ch1 = mgp.buffer.set_with_index %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"cuda", 3>>
-    %ch1 : !mgp.chain<<"cuda", 3>>
+    %buf1 : !mgp.buffer<24, <"gpu", 3>>
+    %ch1 = mgp.buffer.set_with_index %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"gpu", 3>>
+    %ch1 : !mgp.chain<<"gpu", 3>>
     ```
   }];
 
@@ -990,10 +990,10 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
     ```mlir
     %ch0: !mef.chain
     %ctx: !mgp.context
-    %buf: !mgp.buffer<2048, <"cuda", 3>>
+    %buf: !mgp.buffer<2048, <"gpu", 3>>
     %spec: !mgp.tensor_spec<8x64xf32>
     %ch1 = mgp.debug.tensor.print %ch0, %ctx[5], %buf, %spec, "label"
-           : !mgp.tensor<8x64xf32, <"cuda", 3>>
+           : !mgp.tensor<8x64xf32, <"gpu", 3>>
     %ch1: !mef.chain
     ```
   }];
@@ -1030,7 +1030,7 @@ def MGP_SyncOp : MGP_DeviceOp<"sync",
   let description = [{
     Returns a ready chain once the device has synchronized. In
     cpu this is a nop as the sync happens with the chain, on
-    gpu this records a cuda event.
+    gpu this records a gpu event.
   }];
 
   let arguments = (ins ChainType:$inChain,

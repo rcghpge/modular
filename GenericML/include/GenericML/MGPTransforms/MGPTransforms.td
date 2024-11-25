@@ -356,16 +356,16 @@ def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelO
 
     For example:
     ```mlir
-      %buf = mgp.buffer.alloc %ch, %size: !mgp.buffer<<"cuda", 3>>
+      %buf = mgp.buffer.alloc %ch, %size: !mgp.buffer<<"gpu", 3>>
     ```
     becomes:
     ```mlir
-      %buf = "mgp.buffer.alloc.cuda" (%ch, %ctx)
+      %buf = "mgp.buffer.alloc.gpu" (%ch, %ctx)
                { aRuntimeSlot = 1 : ui64,
                  bRawAlign = kUnknownSize,
                  cDevice = 3 : ui64 }
-               : (!mgp.chain<<"cuda", 3>>, !mgp.context) ->
-                 !mgp.buffer<<"cuda", 3>>
+               : (!mgp.chain<<"gpu", 3>>, !mgp.context) ->
+                 !mgp.buffer<<"gpu", 3>>
     ```
   }];
 }

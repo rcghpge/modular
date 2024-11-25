@@ -161,11 +161,11 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
     Example:
     ```mlir
     %ctx : !mef.context
-    %ch : !mgp.chain<<"cuda", 3>>
-    %buf : !mgp.buffer<256, <"cuda", 3>>
+    %ch : !mgp.chain<<"gpu", 3>>
+    %buf : !mgp.buffer<256, <"gpu", 3>>
     %spec : !mgp.tensor_spec<4x16xf32>
-    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"cuda", 3>>
-    %tensor : !mgp.tensor<4x16xf32, <"cuda", 3>>
+    %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"gpu", 3>>
+    %tensor : !mgp.tensor<4x16xf32, <"gpu", 3>>
     ```
   }];
 
@@ -200,9 +200,9 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
 
     Example:
     ```mlir
-    %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
-    %buf = mgp.tensor.extract.buffer %tensor : <8x64xf32, <"cuda", 3>>
-    %buf : !mgp.buffer<2048, <"cuda", 3>>
+    %tensor : !mgp.tensor<8x64xf32, <"gpu", 3>>
+    %buf = mgp.tensor.extract.buffer %tensor : <8x64xf32, <"gpu", 3>>
+    %buf : !mgp.buffer<2048, <"gpu", 3>>
     ```
   }];
 
@@ -231,10 +231,10 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 
     Example:
     ```mlir
-    %tensor : !mgp.tensor<8x64xf32, <"cuda", 3>>
-    %shape0 = mgp.tensor.extract.tensor_spec %tensor : <8x64xf32, <"cuda", 3>>
+    %tensor : !mgp.tensor<8x64xf32, <"gpu", 3>>
+    %shape0 = mgp.tensor.extract.tensor_spec %tensor : <8x64xf32, <"gpu", 3>>
     %shape0 : !mgp.tensor_spec<8x64xk32>
-    %shape1 = mgp.tensor.extract.tensor_spec %tensor : <8x64xf32, <"cuda", 3>>
+    %shape1 = mgp.tensor.extract.tensor_spec %tensor : <8x64xf32, <"gpu", 3>>
     %shape1 : !mgp.tensor_spec<8x64xunk>
     ```
   }];
@@ -872,8 +872,8 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
     %ctx : !mgp.context
     %ch0 : !mef.chain
     // Returns the buffer cached in slot index 42.
-    %buf = mgp.buffer.get_cached %ch0, %ctx[42] : !mgp.buffer<256, <"cuda", 3>>
-    %buf : !mgp.buffer<256, <"cuda", 3>>
+    %buf = mgp.buffer.get_cached %ch0, %ctx[42] : !mgp.buffer<256, <"gpu", 3>>
+    %buf : !mgp.buffer<256, <"gpu", 3>>
     ```
   }];
 

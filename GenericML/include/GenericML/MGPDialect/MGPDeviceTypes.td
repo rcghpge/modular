@@ -81,13 +81,13 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     Examples:
     ```mlir
     // A 16-byte buffer on the CUDA GPU with virtual device id 3.
-    !mgp.buffer<16, <"cuda", 3>>
+    !mgp.buffer<16, <"gpu", 3>>
     // A 16-byte buffer on the CPU with virtual device id 0.
     !mgp.buffer<16, <"cpu", 0>>
     // Abbreviation for the above.
     !mgp.buffer<16>
     // A dynamically-sized buffer on the CUDA GPU with virtual device id 3.
-    !mgp.buffer<, <"cuda", 3>>
+    !mgp.buffer<, <"gpu", 3>>
     // A dynamically-sized buffer on the CPU with virtual device id 0.
     !mgp.buffer<, <"cpu", 0>>
     // Abbreviation for the above.
@@ -172,7 +172,7 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     Examples:
     ```mlir
     // Statically-shaped tensor on the CUDA GPU with virtual device id 3.
-    !mgp.tensor<4x16xf32, <"cuda", 3>>
+    !mgp.tensor<4x16xf32, <"gpu", 3>>
     // Dynamically-shaped tensor on the CPU with virtual device id 0.
     !mgp.tensor<?x?xf32, <"cpu", 0>>
     // Abbreviation for the above.
