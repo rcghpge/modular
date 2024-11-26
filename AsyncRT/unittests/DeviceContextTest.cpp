@@ -35,7 +35,7 @@ TEST(DeviceContextTest, CreationFailure) {
 
   err_ctx = DeviceContext::create("pcu");
   ASSERT_TRUE(err_ctx);
-  EXPECT_EQ(strcmp(err_ctx.getError(), "Unsupported device kind: pcu"), 0)
+  EXPECT_EQ(strcmp(err_ctx.getError(), "Unsupported device api: \"pcu\""), 0)
       << err_ctx.getError();
 }
 

@@ -85,7 +85,7 @@ public:
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
-  static ErrorOr<int> numberOfDevices(const char *kind);
+  static ErrorOr<int> numberOfDevices(StringRef api);
 
   /// Returns the vendor and compute_capability of the accelerator in the form
   /// of `vendor:compute_capability`. For example, an A100 GPU would return
@@ -330,7 +330,7 @@ public:
 
   virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
 
-  static ErrorOr<DeviceContextRef> create(const char *kind, int id = 0);
+  static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
 
 protected:
   DeviceContext(const Device &device);

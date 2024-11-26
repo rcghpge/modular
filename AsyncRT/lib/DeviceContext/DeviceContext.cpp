@@ -189,30 +189,30 @@ DeviceContext::DeviceContext(const Device &device)
 
 const Device &DeviceContext::device() const { return *device_; }
 
-ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind, int id) {
+ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
-  if (strcmp(kind, "cuda") == 0) {
+  if (api == "cuda") {
     return CUDADeviceContext::create(id);
-  } else if (strcmp(kind, "hip") == 0) {
+  } else if (api == "hip") {
     return HIPDeviceContext::create(id);
-  } else if ((strcmp(kind, "cpu") == 0) || (strcmp(kind, "none") == 0)) {
+  } else if ((api == "cpu") || (api == "none")) {
     return CpuDeviceContext::create(id);
   }
 
-  return Error(llvm::Twine("Unsupported device kind: ") + kind);
+  return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
 }
 
-ErrorOr<int> Device::numberOfDevices(const char *kind) {
+ErrorOr<int> Device::numberOfDevices(StringRef api) {
   // TODO(iposva): Implement dynamic registration mechanism.
-  if (strcmp(kind, "cuda") == 0) {
+  if (api == "cuda") {
     return CUDADevice::numberOfDevices();
-  } else if (strcmp(kind, "cpu") == 0) {
+  } else if (api == "cpu") {
     return CpuDevice::numberOfDevices();
-  } else if (strcmp(kind, "hip") == 0) {
+  } else if (api == "hip") {
     return HIPDevice::numberOfDevices();
   }
 
-  return Error(llvm::Twine("Unsupported device kind: ") + kind);
+  return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
 }
 
 const std::string &Device::getAcceleratorArchOrEmpty() {
