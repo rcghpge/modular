@@ -104,7 +104,7 @@ def MO_TransferOp : MO_TensorOp<"transfer", [Pure, MO_SameOperandsAndResultShape
 
   let arguments = (ins
     MO_Tensor:$input,
-    DefaultValuedAttr<BoolAttr, "false">:$alwaysElideSameDeviceCopy
+    DefaultValuedAttr<BoolAttr, "true">:$alwaysElideSameDeviceCopy
   );
   let results = (outs MO_Tensor:$result);
 

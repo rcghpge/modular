@@ -264,7 +264,7 @@ mo.graph @transfer_no_elide_with_flag(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) ->
 // CHECK-LABEL: mo.graph @transfer_no_elide_copy
 mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, gpu:3> {
   // CHECK-NEXT: mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3>
-  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3>
+  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = false}
   mo.output %0 : !mo.tensor<[4, 5], f32, gpu:3>
 }
 
