@@ -26,8 +26,6 @@ modular_py_binary(
         requirement("click"),
         requirement("ddtrace"),
         requirement("huggingface_hub"),
-        requirement("opentelemetry-api"),
-        requirement("opentelemetry-sdk"),
         requirement("rich"),
         requirement("torch"),
         requirement("pillow"),
