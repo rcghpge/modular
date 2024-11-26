@@ -30,7 +30,7 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       MO::ConcatFromListOp, MO::ListConcatOp, MO::ListSliceOp,
       // Custom ops allowed for now
       MO::CustomOp,
-      // TODO (GRA-723)
+      // TODO (GEX-723)
       MO::LayerNormOp,
       // Buffer operations
       MO::ChainCreateOp,

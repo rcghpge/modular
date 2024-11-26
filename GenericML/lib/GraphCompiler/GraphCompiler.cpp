@@ -174,7 +174,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.useShapeInference)
     buildShapeInferencePipeline(pm, shapeInferenceOpts, opts);
 
-  // TODO(GRA-886): Remove dependency of constant folding for symbolic
+  // TODO(GEX-886): Remove dependency of constant folding for symbolic
   // optimization
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));

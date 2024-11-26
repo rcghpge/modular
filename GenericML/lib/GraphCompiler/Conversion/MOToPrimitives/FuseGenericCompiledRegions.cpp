@@ -238,14 +238,14 @@ static void fuseCompiledRegionsAndReplaceUses(
   }
 }
 
-// FIXME(GRA-462) remove stop-gap once MOCO-6 is done.
+// FIXME(GEX-462) remove stop-gap once MOCO-6 is done.
 // Heuristic from empirical observations. Empirically saw a stack overflow at
 // around 200 outputs with nested if-else, set the heuristic to 100 for
 // buffering room since this heuristic may not translate directly to the levels
 // of nesting in kgen.
 constexpr size_t kMaxAssertOpsFused = 100;
 
-// FIXME(GRA-462) remove stop-gap once MOCO-6 is done.
+// FIXME(GEX-462) remove stop-gap once MOCO-6 is done.
 // splitSubGraphFusionByNumOps allows us to limit the maximum number of
 // operations in a CompiledRegion.  We opted for two simple counting heuristics
 // instead of mapping to kgen since this is meant to be a temporary measure.
@@ -393,7 +393,7 @@ struct FuseGenericCompiledRegions
   void runOnOperation() override {
     if (enableFusion) {
       ModuleOp module = getOperation();
-      // TODO(GRA-784): NOTE: all generic regions should not allow duplication.
+      // TODO(GEX-784): NOTE: all generic regions should not allow duplication.
       // Fuse in any op that can be duplicated.
       doSourceDestinationSequenceFusion<true>(module);
       // Fuse in any op that can't be duplicated (must have one user).

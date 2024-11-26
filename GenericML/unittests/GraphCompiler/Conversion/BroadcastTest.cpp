@@ -81,7 +81,7 @@ protected:
 };
 
 TEST_F(BroadcastTest, Failure) {
-  // TODO(GRA-715): Audit asserts on production builds.
+  // TODO(GEX-715): Audit asserts on production builds.
 #ifndef NDEBUG
   MO::TensorValue x = getTestValue({1, 3});
   MO::TensorValue y = getTestValue({1, 1});

@@ -112,7 +112,7 @@ TEST(testRMOOpHelpers, testRefineShape) {
 }
 
 TEST(testRMOOpHelpers, testRefineDifferentIntegralDims) {
-  // TODO(GRA-715): Audit asserts on production builds.
+  // TODO(GEX-715): Audit asserts on production builds.
 #ifndef NDEBUG
   mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<RMO::RMODialect, MO::MODialect>();

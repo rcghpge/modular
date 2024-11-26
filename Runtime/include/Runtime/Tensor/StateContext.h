@@ -32,7 +32,7 @@ namespace M {
 ///
 /// Note that the same ExecutableModel can only safely support concurrent
 /// calls to the 'execute' block if all state slots are read only.
-/// TODO: GRA-549
+/// TODO: GEX-549
 class StateContext {
 public:
   /// Constructs a new state context with numSlots uninitialized state slots.

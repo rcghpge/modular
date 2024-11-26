@@ -4720,7 +4720,7 @@ struct SymbolicOptimizationPass
           context);
     }
 
-    // TODO(GRA-540): This is done to avoid potential subtle high-iteration
+    // TODO(GEX-540): This is done to avoid potential subtle high-iteration
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;
@@ -4740,7 +4740,7 @@ struct SymbolicOptimizationPass
         ForwardMathematicalCanonicalizationPowByNegativeOneOrTwoToDivAndPow>(
         context);
 
-    // TODO(GRA-540): This is done to avoid potential subtle high-iteration
+    // TODO(GEX-540): This is done to avoid potential subtle high-iteration
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;
@@ -4759,7 +4759,7 @@ struct SymbolicOptimizationPass
         BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo>(
         context);
 
-    // TODO(GRA-540): This is done to avoid potential subtle high-iteration
+    // TODO(GEX-540): This is done to avoid potential subtle high-iteration
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;

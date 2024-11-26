@@ -4134,7 +4134,7 @@ LogicalResult CustomOp::verify() {
   // operating directly on mo.buffer values.
   //
   // Could also be addressed by allow mo.rebind to take mo.buffer
-  // values as input (GRA-1065).
+  // values as input (GEX-1065).
   if (getBufferOperands().size() >= 1) {
     auto inChain = maybeGetInChain();
     auto outChain = maybeGetOutChain();
@@ -4158,7 +4158,7 @@ std::optional<ChainValue> CustomOp::maybeGetInChain() {
     return std::nullopt;
 
   // Any chain operand must be last in the verifier due to a limitation in the
-  // current kernel lowering (GRA-868).
+  // current kernel lowering (GEX-868).
   auto finalOperand = getOperand(getNumOperands() - 1);
   if (auto chain = dyn_cast<ChainValue>(finalOperand))
     return chain;
@@ -4171,7 +4171,7 @@ std::optional<ChainValue> CustomOp::maybeGetOutChain() {
     return std::nullopt;
 
   // Any chain result must be last in the verifier due to a limitation in the
-  // current kernel lowering (GRA-868).
+  // current kernel lowering (GEX-868).
   auto finalResult = getResult(getNumResults() - 1);
   if (auto chain = dyn_cast<ChainValue>(finalResult))
     return chain;

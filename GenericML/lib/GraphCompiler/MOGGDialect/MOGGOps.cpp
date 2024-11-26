@@ -501,14 +501,14 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   bool hasInternalAllocs =
       !(getAllocIndices().has_value() && !getAllocIndices()->empty());
 
-  // TODO(GRA-780): Right now prevent MOGG Kernels fusing into children
+  // TODO(GEX-780): Right now prevent MOGG Kernels fusing into children
   // (but allowing other kernels to fuse into the MOGG kernel) since
   // we do not have good heuristics for determining when it's appropriate.
   //
   // We can also look into allowing duplication for some select forms of ops.
   bool canFuseIntoOther = !hasInternalAllocs && false;
 
-  // To match behavior before removing middle-jit (GRA-425)
+  // To match behavior before removing middle-jit (GEX-425)
   bool canBeFusedInto = false;
 
   // Later update the isAsync instead of hard-coding
@@ -667,7 +667,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     // Order of pre-allocated result memory matches that of original outputs.
     Value oldOut = getOutputOp()->getOperand(preAllocIdx);
 
-    // TODO(GRA-1183): Another hack from inconsistency in opaque lowering.
+    // TODO(GEX-1183): Another hack from inconsistency in opaque lowering.
     // Sometimes we return the KGEN type directly, sometimes not depending
     // on whether we are in the old and new pipelines.
     if (isa<KGEN::StructType>(oldOut.getType())) {
@@ -827,7 +827,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     Type resultTy = inPlaceMGPOutputsTypes[idx];
     if (isa<MGP::OpaqueType>(resultTy)) {
-      // TODO(GRA-1183): Stop hack which is needed only in new extensibility
+      // TODO(GEX-1183): Stop hack which is needed only in new extensibility
       // path Essentially kgenVal isn't the kgen val but instead the initial
       // stack alloc for memory-types.
       //
@@ -1045,7 +1045,7 @@ Value KernelOp::addOperandAtIndex(Value operand, size_t insertIdx) {
 /// Fixes up the input fusion interfaces to disallow input fusion on this
 /// position. Returns the added kernel argument.
 Value KernelOp::addOperand(Value operand) {
-  // TODO(GRA-868): Make mogg.kernel lowering work with an input chains that
+  // TODO(GEX-868): Make mogg.kernel lowering work with an input chains that
   // aren't the final operand.
   //
   // For now, keep the chain as last if it exists.
@@ -1629,7 +1629,7 @@ LogicalResult ToTensorFromMGPOp::verify() {
   MO::TensorValue result = getResult();
   DeviceRefAttr tensorDev = result.getType().getDeviceRef();
 
-  // TODO(GRA-1212): Make sure tensor type has device assignment at this stage.
+  // TODO(GEX-1212): Make sure tensor type has device assignment at this stage.
   if (tensorDev && tensorDev != devBuf.getDevice())
     return emitError() << "Device ref of buffer and tensor do not match";
 

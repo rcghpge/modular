@@ -780,7 +780,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (Value operand : outlinedCallOp->getOperands()) {
       if (isa<mlir::BlockArgument>(operand)) {
         oldToNew.map(operand, srcSimdStoreOp.getOperand(1));
-        // FIXME(GRA-865): FuseViews might have inserted a rebind.
+        // FIXME(GEX-865): FuseViews might have inserted a rebind.
       } else if (auto rebind = operand.getDefiningOp<KGEN::RebindOp>();
                  rebind && elementwiseOp.getBodyRegion().isAncestor(
                                rebind->getParentRegion())) {
@@ -1300,7 +1300,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (KernelOp kernelOp : kernelOpsToErase)
       kernelOp.erase();
 
-    // FIXME(GRA-865): This pass is generating invalid IR. Fix it up here.
+    // FIXME(GEX-865): This pass is generating invalid IR. Fix it up here.
     getOperation().walk([](KGEN::CallOp call) {
       OpBuilder b(call);
       for (auto [arg, opOperand, type] :

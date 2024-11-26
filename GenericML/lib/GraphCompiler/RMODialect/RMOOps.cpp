@@ -316,7 +316,7 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
     RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
   auto xType = cast<TensorType>(operands[0].getType());
   auto yType = cast<TensorType>(operands[1].getType());
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   auto xShape = xType.getTypedShapeAttr();
   if (xShape.hasUnknownDims())
@@ -375,7 +375,7 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
   auto xType = cast<TensorType>(operands[0].getType());
   auto yType = cast<TensorType>(operands[1].getType());
 
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   auto xShape = xType.getTypedShapeAttr();
   if (xShape.hasUnknownDims())
@@ -461,7 +461,7 @@ LogicalResult ConcatOp::inferReturnTypes(
 
   // Retrieve input shapes
   SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
-  // TODO(GRA-551) remove once we eliminate `?` in Graph API.
+  // TODO(GEX-551) remove once we eliminate `?` in Graph API.
   for (auto [i, inputShapeAttr] : llvm::enumerate(inputShapes)) {
     auto inputShape = mlir::cast<ShapeAttr>(inputShapeAttr);
     if (inputShape.hasUnknownDims())
@@ -550,7 +550,7 @@ LogicalResult ReshapeOp::inferReturnTypes(
   auto newShapeAttr = attributes.getAs<ShapeAttr>("newShape");
   ASSERT_STREAM(newShapeAttr,
                 << "rmo.reshape must have a ShapeAttr `newShape`");
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (newShapeAttr.hasUnknownDims())
     return mlir::emitOptionalError(
@@ -561,7 +561,7 @@ LogicalResult ReshapeOp::inferReturnTypes(
   ASSERT_STREAM(inputShapes.size() == 1,
                 << "rmo.reshape must have exactly one input");
   auto inputShape = mlir::cast<ShapeAttr>(inputShapes[0]);
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (inputShape.hasUnknownDims())
     return mlir::emitOptionalError(
@@ -616,7 +616,7 @@ LogicalResult BroadcastToOp::inferReturnTypes(
   auto newShapeAttr = attributes.getAs<ShapeAttr>("newShape");
   ASSERT_STREAM(newShapeAttr,
                 << "rmo.broadcast_to must have a ShapeAttr `newShape`");
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (newShapeAttr.hasUnknownDims())
     return mlir::emitOptionalError(
@@ -627,7 +627,7 @@ LogicalResult BroadcastToOp::inferReturnTypes(
   ASSERT_STREAM(inputShapes.size() == 1,
                 << "rmo.broadcast_to must have exactly one input");
   auto inputShape = mlir::cast<ShapeAttr>(inputShapes[0]);
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (inputShape.hasUnknownDims())
     return mlir::emitOptionalError(
@@ -685,7 +685,7 @@ LogicalResult MatmulOp::inferReturnTypes(
 
   auto lhsShape = mlir::cast<ShapeAttr>(inputShapes[0]);
   auto rhsShape = mlir::cast<ShapeAttr>(inputShapes[1]);
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (lhsShape.hasUnknownDims())
     return mlir::emitOptionalError(
@@ -755,7 +755,7 @@ LogicalResult SelectOp::inferReturnTypes(
   auto condShape = mlir::cast<ShapeAttr>(inputShapes[0]);
   auto xShape = mlir::cast<ShapeAttr>(inputShapes[1]);
   auto yShape = mlir::cast<ShapeAttr>(inputShapes[2]);
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (condShape.hasUnknownDims())
     return mlir::emitOptionalError(
@@ -887,7 +887,7 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
   auto shapeAttr = attributes.getAs<ShapeAttr>("shape");
   ASSERT_STREAM(
       shapeAttr, << "rmo.shape_to_tensor must have a ShapeAttr `shape`");
-  // TODO(GRA-578): Once the graph api has banned dynamic dims, remove this
+  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (shapeAttr.hasUnknownDims())
     return mlir::emitOptionalError(

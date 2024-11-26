@@ -192,7 +192,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       }
     }
 
-    // FIXME(GRA-865): This pass is generating invalid IR. Fix it up here.
+    // FIXME(GEX-865): This pass is generating invalid IR. Fix it up here.
     getOperation().walk([](KGEN::CallOp call) {
       OpBuilder b(call);
       for (auto [arg, opOperand, type] :

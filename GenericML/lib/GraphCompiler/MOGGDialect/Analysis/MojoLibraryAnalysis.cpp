@@ -338,7 +338,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   // Enable allows the new API kernels to be used. `onlyUse` implies we only
   // load the new API kernels and don't use MOGG kernels.
   //
-  // TODO(GRA-1159): remove the need for this.
+  // TODO(GEX-1159): remove the need for this.
   bool onlyUseNewAPI =
       envVarExistsAndIsTrue("MODULAR_ONLY_USE_NEW_EXTENSIBILITY_API");
   bool enableNewAPI =
@@ -582,7 +582,7 @@ bool MojoLibraryAnalysis::kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel) {
   return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel) ||
          kernel->hasAttr(KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
 
-  // TODO(GRA-1057): support once opaque type support is landed.
+  // TODO(GEX-1057): support once opaque type support is landed.
   // PT functions depend on opaque `PythonObjects`
   // || kernel->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
 }

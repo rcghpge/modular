@@ -79,7 +79,7 @@ static inline bool canDuplicate(Operation *op) {
   if (op->getName().getIdentifier().strref().starts_with("testfuse."))
     return true;
 
-  // TODO(GRA-784): This is disabled since certain subgraphs can bloat
+  // TODO(GEX-784): This is disabled since certain subgraphs can bloat
   // compile times.
   // return isa<::M::MIP::MIPDialect>(op->getDialect());
   return false;
@@ -201,7 +201,7 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
                           KGEN::ArgConvention::BorrowedInReg;
 
     // Convert MGP value to opaque.
-    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
+    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
     auto moOpaqueTy = MO::OpaqueType::get(
         kernel->getContext(),
         StringAttr::get(kernel->getContext(), "OpaquePrimitive"), std::nullopt);
@@ -271,7 +271,7 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
     bool isRegister = !kernel.getSignature().hasMemoryOnlyResult();
 
     // Convert opaque to MGP value.
-    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GRA-812).
+    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
     Value val = outputs[idx];
     auto moOpaqueTy = MO::OpaqueType::get(
         kernel->getContext(),

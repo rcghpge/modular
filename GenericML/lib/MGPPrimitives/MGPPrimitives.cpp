@@ -46,7 +46,7 @@ using MGPProfilerEntry =
 // List Helpers
 //===----------------------------------------------------------------------===//
 
-// TODO(GRA-801): Replace mo.list with opaque type implementation
+// TODO(GEX-801): Replace mo.list with opaque type implementation
 namespace {
 // ABI version of GML::List.
 // NOTE the layout must match the mojo `ABI_List`

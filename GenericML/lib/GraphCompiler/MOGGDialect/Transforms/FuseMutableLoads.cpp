@@ -252,7 +252,7 @@ struct ParallelizeLoadsWithMultipleUsers
     // Check if any uses are in a different block - if so, early exit
     for (OpOperand &use : tensor.getUses()) {
       if (use.getOwner()->getBlock() != loadBlock) {
-        // TODO(GRA-1203): Add support for cross-block load parallelization
+        // TODO(GEX-1203): Add support for cross-block load parallelization
         return rewriter.notifyMatchFailure(
             loadOp.getLoc(),
             "Found use of output tensor in different block than load op, "
@@ -336,7 +336,7 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
       // happened as we need to have the kernel both produce and consume a chain
       // now.
       //
-      // TODO(GRA-1031): Break the transforms this operation does into two steps
+      // TODO(GEX-1031): Break the transforms this operation does into two steps
       // -- rewriting the kernel body to accept and produce a chain and then
       // performing the re-write from mo.tensor -> mo.buffer for the appropriate
       // opereand index.
