@@ -43,7 +43,7 @@ using HIPDeviceTimerRef = RCRef<const HIPDeviceTimer>;
 
 class HIPDevice : public Device {
 public:
-  static constexpr Kind kind = "hip";
+  static constexpr API api = "hip";
 
   using DeviceList = std::vector<HIPDeviceRef>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
@@ -54,6 +54,15 @@ public:
 
   hipDevice_t hip_device() const;
 
+  ErrorOr<int> getDriverVersion() const override;
+  ErrorOrSuccess isCompatibleWithMAX() const override;
+  ErrorOr<int> computeCapability() const override;
+
+  ErrorOr<MemInfo> getMemoryInfo() const override;
+
+  ErrorOr<bool> canAccess(const Device &peer) const override;
+  ErrorOr<int> getAttribute(Attribute attr) const override;
+
   static ErrorOr<int> numberOfDevices();
 
   static const HIPDevice &cast(const Device &device);
@@ -61,6 +70,11 @@ public:
   static ErrorOr<const HIPDevice &> get(int id);
 
 private:
+  // We only support HIP architectures sm_80 and above.
+  static constexpr int MIN_COMPUTE_CAPABILITY = 80;
+  // We only support HIP versions 12.0 and above.
+  static constexpr int MIN_DRIVER_VERSION = 12.0;
+
   static ErrorOr<const DeviceList &> deviceList();
 
   const HIPDriver &driver_;
@@ -239,15 +253,8 @@ public:
 
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
-  ErrorOr<int> getDriverVersion() const override;
-  ErrorOr<DeviceMemInfo> getMemoryInfo() const override;
-
   const HIPDriver &hip_driver() const;
   hipStream_t hip_stream() const;
-
-  ErrorOr<int> getAttribute(Attribute attr) const override;
-  ErrorOrSuccess isCompatibleWithMAX() const override;
-  ErrorOr<int> computeCapability() const override;
 
   HIPDriver::Result setCurrent() const;
 

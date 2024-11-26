@@ -83,13 +83,99 @@ static Error formatError(const char *file, int line, const char *func,
 }
 
 // ===== HIPDevice ===== //
+// Plan:
+// DeviceContext::Attribute will reuse the CUDA enum mapping
+// CUDADeviceContext::getAttribute can thus use the enum values directly
+// HIPDeviceContext will map the DeviceContext attributes to their HIP
+// equivalents
+static ErrorOr<hipDeviceAttribute_t>
+gethipDeviceAttribute(Device::Attribute attr) {
+#define ENTRY(X, Y)                                                            \
+  case Device::Attribute::X:                                                   \
+    return hipDeviceAttribute_t::hipDeviceAttribute##Y
+
+  switch (attr) {
+    ENTRY(COMPUTE_CAPABILITY_MAJOR, ComputeCapabilityMajor);
+    ENTRY(COMPUTE_CAPABILITY_MINOR, ComputeCapabilityMinor);
+    ENTRY(CLOCK_RATE, ClockRate);
+    ENTRY(WARP_SIZE, WarpSize);
+    ENTRY(MAX_THREADS_PER_BLOCK, MaxThreadsPerBlock);
+    ENTRY(MAX_SHARED_MEMORY_PER_BLOCK, MaxSharedMemoryPerBlock);
+    ENTRY(MAX_BLOCK_DIM_X, MaxBlockDimX);
+    ENTRY(MAX_BLOCK_DIM_Y, MaxBlockDimY);
+    ENTRY(MAX_BLOCK_DIM_Z, MaxBlockDimZ);
+    ENTRY(MAX_GRID_DIM_X, MaxGridDimX);
+    ENTRY(MAX_GRID_DIM_Y, MaxGridDimY);
+    ENTRY(MAX_GRID_DIM_Z, MaxGridDimZ);
+    ENTRY(MULTIPROCESSOR_COUNT, MultiprocessorCount);
+    ENTRY(MAX_REGISTERS_PER_BLOCK, MaxRegistersPerBlock);
+    ENTRY(MAX_THREADS_PER_MULTIPROCESSOR, MaxThreadsPerMultiProcessor);
+  default:
+    return Error("Attribute not defined for AMD GPU");
+  }
+#undef ENTRY
+}
+
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
                      std::string name)
-    : Device(kind, name, id), driver_(driver), device_(device) {}
+    : Device(api, name, id), driver_(driver), device_(device) {}
 
 const HIPDriver &HIPDevice::driver() const { return driver_; }
 
 hipDevice_t HIPDevice::hip_device() const { return device_; }
+
+ErrorOr<int> HIPDevice::getDriverVersion() const {
+  int driver_version = 0;
+  HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
+  return driver_version;
+}
+
+ErrorOrSuccess HIPDevice::isCompatibleWithMAX() const {
+  ErrorOr<int> compute = computeCapability();
+  if (compute.isError())
+    return compute.takeError();
+  if (*compute < MIN_COMPUTE_CAPABILITY) {
+    return Error("MAX only supports HIP Ampere architectures or higher");
+  }
+
+  int driver_version = 0;
+  HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
+  if (driver_version < MIN_DRIVER_VERSION) {
+    return Error("MAX not supported using current GPU driver");
+  }
+
+  return success();
+}
+
+ErrorOr<int> HIPDevice::computeCapability() const {
+  int compute_major = 0, compute_minor = 0;
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      &compute_major,
+      hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMajor,
+      hip_device()));
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      &compute_minor,
+      hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMinor,
+      hip_device()));
+  return 10 * compute_major + compute_minor;
+}
+
+ErrorOr<Device::MemInfo> HIPDevice::getMemoryInfo() const {
+  MemInfo mem_info;
+  HIP_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
+  return mem_info;
+}
+
+ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const { return false; }
+
+ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
+  ErrorOr<hipDeviceAttribute_t> errorOrAttr = gethipDeviceAttribute(attr);
+  if (errorOrAttr.isError())
+    return errorOrAttr.takeError();
+  int value = 0;
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(&value, *errorOrAttr, hip_device()));
+  return value;
+}
 
 ErrorOr<int> HIPDevice::numberOfDevices() {
   ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
@@ -612,18 +698,6 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   RAISE_ERROR("Unimplemented - HIPDeviceContext::enablePeerAccess");
 }
 
-ErrorOr<int> HIPDeviceContext::getDriverVersion() const {
-  int driver_version = 0;
-  HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
-  return driver_version;
-}
-
-ErrorOr<DeviceMemInfo> HIPDeviceContext::getMemoryInfo() const {
-  DeviceMemInfo mem_info;
-  HIP_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
-  return mem_info;
-}
-
 const HIPDriver &HIPDeviceContext::hip_driver() const { return driver_; }
 
 hipStream_t HIPDeviceContext::hip_stream() const { return stream_; }
@@ -634,85 +708,6 @@ HIPDriver::Result HIPDeviceContext::setCurrent() const {
 
 const HIPDeviceContext &HIPDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const HIPDeviceContext &>(ctx);
-}
-
-ErrorOrSuccess HIPDeviceContext::isCompatibleWithMAX() const {
-  // We only support HIP architectures sm_80 and above.
-  auto compute = computeCapability();
-  if (compute.isError())
-    return compute.takeError();
-  constexpr int MIN_COMPUTE_CAPABILITY = 80;
-  if (*compute < MIN_COMPUTE_CAPABILITY) {
-    return Error("MAX only supports HIP Ampere architectures or higher");
-  }
-
-  // We only support HIP versions 12.0 and above.
-  int driver_version = 0;
-  constexpr int MIN_DRIVER_VERSION = 12.0;
-  HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
-  if (driver_version < MIN_DRIVER_VERSION) {
-    return Error("MAX not supported using current GPU driver");
-  }
-
-  return success();
-}
-
-static ErrorOr<hipDeviceAttribute_t>
-gethipDeviceAttribute(DeviceContext::Attribute attr) {
-#define ENTRY(X, Y)                                                            \
-  case DeviceContext::Attribute::X:                                            \
-    return hipDeviceAttribute_t::hipDeviceAttribute##Y
-
-  switch (attr) {
-    ENTRY(COMPUTE_CAPABILITY_MAJOR, ComputeCapabilityMajor);
-    ENTRY(COMPUTE_CAPABILITY_MINOR, ComputeCapabilityMinor);
-    ENTRY(CLOCK_RATE, ClockRate);
-    ENTRY(WARP_SIZE, WarpSize);
-    ENTRY(MAX_THREADS_PER_BLOCK, MaxThreadsPerBlock);
-    ENTRY(MAX_SHARED_MEMORY_PER_BLOCK, MaxSharedMemoryPerBlock);
-    ENTRY(MAX_BLOCK_DIM_X, MaxBlockDimX);
-    ENTRY(MAX_BLOCK_DIM_Y, MaxBlockDimY);
-    ENTRY(MAX_BLOCK_DIM_Z, MaxBlockDimZ);
-    ENTRY(MAX_GRID_DIM_X, MaxGridDimX);
-    ENTRY(MAX_GRID_DIM_Y, MaxGridDimY);
-    ENTRY(MAX_GRID_DIM_Z, MaxGridDimZ);
-    ENTRY(MULTIPROCESSOR_COUNT, MultiprocessorCount);
-    ENTRY(MAX_REGISTERS_PER_BLOCK, MaxRegistersPerBlock);
-    ENTRY(MAX_THREADS_PER_MULTIPROCESSOR, MaxThreadsPerMultiProcessor);
-  default:
-    return Error("Attribute not defined for AMD GPU");
-  }
-#undef ENTRY
-}
-
-// Plan:
-// DeviceContext::Attribute will reuse the CUDA enum mapping
-// CUDADeviceContext::getAttribute can thus use the enum values directly
-// HIPDeviceContext will map the DeviceContext attributes to their HIP
-// equivalents
-
-ErrorOr<int> HIPDeviceContext::getAttribute(Attribute attr) const {
-
-  auto errorOrAttr = gethipDeviceAttribute(attr);
-  if (errorOrAttr.isError())
-    return errorOrAttr.takeError();
-  int value = 0;
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &value, *errorOrAttr, HIPDevice::cast(device()).hip_device()));
-  return value;
-}
-
-ErrorOr<int> HIPDeviceContext::computeCapability() const {
-  int compute_major = 0, compute_minor = 0;
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_major,
-      hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMajor,
-      HIPDevice::cast(device()).hip_device()));
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_minor,
-      hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMinor,
-      HIPDevice::cast(device()).hip_device()));
-  return 10 * compute_major + compute_minor;
 }
 
 ErrorOr<HIPDeviceContextRef> HIPDeviceContext::create(int id) {

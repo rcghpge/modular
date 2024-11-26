@@ -47,7 +47,25 @@ namespace M::AsyncRT {
 // ===== CpuDevice ===== //
 //
 // TODO(iposva): Consider using the actual device name.
-CpuDevice::CpuDevice() : Device(kind, "cpu", 0) {}
+CpuDevice::CpuDevice() : Device(api, "cpu", 0) {}
+
+ErrorOr<int> CpuDevice::getDriverVersion() const { return 0; };
+
+ErrorOrSuccess CpuDevice::isCompatibleWithMAX() const { return success(); }
+
+ErrorOr<int> CpuDevice::computeCapability() const {
+  // RUNP-494 Remove this, compute capability is a CUDA-specific concept.
+  return 0;
+}
+
+ErrorOr<Device::MemInfo> CpuDevice::getMemoryInfo() const {
+  // TODO: Implement get memory info for CPU device context.
+  return MemInfo();
+}
+
+ErrorOr<bool> CpuDevice::canAccess(const Device &peer) const { return false; }
+
+ErrorOr<int> CpuDevice::getAttribute(Attribute attr) const { return 0; }
 
 ErrorOr<int> CpuDevice::numberOfDevices() {
   // Only a single CpuDevice is supported.
@@ -273,11 +291,6 @@ ErrorOrSuccess
 CpuDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   // TODO(iposva): Verify that peer is a CpuDeviceContext.
   return success();
-}
-
-ErrorOr<DeviceMemInfo> CpuDeviceContext::getMemoryInfo() const {
-  // TODO: Implement get memory info for CPU device context.
-  return DeviceMemInfo();
 }
 
 const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {

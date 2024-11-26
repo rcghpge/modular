@@ -100,18 +100,50 @@ static Error formatError(const char *file, int line, const char *func,
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        std::string name)
-    : Device(kind, std::move(name), id), driver_(driver), device_(device) {}
+    : Device(api, std::move(name), id), driver_(driver), device_(device) {}
 
 const CUDADriver &CUDADevice::driver() const { return driver_; }
 
 CUdevice CUDADevice::cuda_device() const { return device_; }
 
-ErrorOr<int> CUDADevice::numberOfDevices() {
-  ErrorOr<const DeviceList &> err_or_devices = deviceList();
-  if (err_or_devices) {
-    return err_or_devices.takeError();
+ErrorOr<int> CUDADevice::getDriverVersion() const {
+  int driver_version = 0;
+  CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
+  return driver_version;
+}
+
+ErrorOrSuccess CUDADevice::isCompatibleWithMAX() const {
+  ErrorOr<int> compute = computeCapability();
+  if (compute.isError())
+    return compute.takeError();
+  if (*compute < MIN_COMPUTE_CAPABILITY) {
+    return Error("MAX only supports CUDA Ampere architectures or higher");
   }
-  return err_or_devices.get().size();
+
+  int driver_version = 0;
+  CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
+  if (driver_version < MIN_DRIVER_VERSION) {
+    return Error("MAX not supported using current GPU driver");
+  }
+
+  return success();
+}
+
+ErrorOr<int> CUDADevice::computeCapability() const {
+  int compute_major = 0, compute_minor = 0;
+  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
+      &compute_major, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
+      cuda_device()));
+  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
+      &compute_minor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
+      cuda_device()));
+  return 10 * compute_major + compute_minor;
+}
+
+ErrorOr<Device::MemInfo> CUDADevice::getMemoryInfo() const {
+  MemInfo mem_info;
+  CUDA_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
+  return mem_info;
 }
 
 ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
@@ -119,6 +151,21 @@ ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
   CUDA_CHECK_ERR(driver_.DeviceCanAccessPeer(
       &canAccessPeer, cuda_device(), CUDADevice::cast(peer).cuda_device()));
   return canAccessPeer;
+}
+
+ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
+  int value = 0;
+  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
+      &value, static_cast<CUdevice_attribute>(attr), cuda_device()));
+  return value;
+}
+
+ErrorOr<int> CUDADevice::numberOfDevices() {
+  ErrorOr<const DeviceList &> err_or_devices = deviceList();
+  if (err_or_devices) {
+    return err_or_devices.takeError();
+  }
+  return err_or_devices.get().size();
 }
 
 const CUDADevice &CUDADevice::cast(const Device &device) {
@@ -469,16 +516,6 @@ ErrorOrSuccess CUDADeviceContext::copyFromDevice(void *dst,
   return success();
 }
 
-ErrorOr<std::unique_ptr<void, std::function<void(void *)>>>
-allocHostPtr(size_t byteSize, const CUDADriver &driver) {
-  auto mallocHostDtor = [&](void *ptr) -> void {
-    CUDA_CHECK(driver.MemFreeHost(ptr));
-  };
-  void *tmp;
-  CUDA_CHECK_ERR(driver.MemAllocHost(&tmp, byteSize));
-  return std::unique_ptr<void, decltype(mallocHostDtor)>(tmp, mallocHostDtor);
-}
-
 ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                      const DeviceBuffer &src,
                                                      SyncMode mode) const {
@@ -749,19 +786,6 @@ CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   return success();
 }
 
-ErrorOr<int> CUDADeviceContext::getDriverVersion() const {
-  int driver_version = 0;
-  CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
-  return driver_version;
-}
-
-ErrorOr<DeviceMemInfo> CUDADeviceContext::getMemoryInfo() const {
-  DeviceMemInfo mem_info;
-  CUDA_CHECK_ERR(setCurrent());
-  CUDA_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
-  return mem_info;
-}
-
 const CUDADriver &CUDADeviceContext::cuda_driver() const { return driver_; }
 
 CUstream CUDADeviceContext::cuda_stream() const { return stream_; }
@@ -778,50 +802,10 @@ const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
 
 const CUDADeviceContext *
 CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
-  if (ctx->device().kind() != CUDADevice::kind) {
+  if (ctx->device().api() != CUDADevice::api) {
     return nullptr;
   }
   return static_cast<const CUDADeviceContext *>(ctx);
-}
-
-ErrorOrSuccess CUDADeviceContext::isCompatibleWithMAX() const {
-  // We only support CUDA architectures sm_80 and above.
-  auto compute = computeCapability();
-  if (compute.isError())
-    return compute.takeError();
-  constexpr int MIN_COMPUTE_CAPABILITY = 80;
-  if (*compute < MIN_COMPUTE_CAPABILITY) {
-    return Error("MAX only supports CUDA Ampere architectures or higher");
-  }
-
-  // We only support CUDA versions 12.0 and above.
-  int driver_version = 0;
-  constexpr int MIN_DRIVER_VERSION = 12.0;
-  CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
-  if (driver_version < MIN_DRIVER_VERSION) {
-    return Error("MAX not supported using current GPU driver");
-  }
-
-  return success();
-}
-
-ErrorOr<int> CUDADeviceContext::getAttribute(Attribute attr) const {
-  int value = 0;
-  CUDA_CHECK_ERR(
-      driver_.DeviceGetAttribute(&value, static_cast<CUdevice_attribute>(attr),
-                                 CUDADevice::cast(device()).cuda_device()));
-  return value;
-}
-
-ErrorOr<int> CUDADeviceContext::computeCapability() const {
-  int compute_major = 0, compute_minor = 0;
-  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_major, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
-      CUDADevice::cast(device()).cuda_device()));
-  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_minor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
-      CUDADevice::cast(device()).id()));
-  return 10 * compute_major + compute_minor;
 }
 
 ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {

@@ -12,6 +12,7 @@
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "Support/SymbolExport.h"
+#include "llvm/ADT/StringRef.h"
 
 #include <chrono>
 
@@ -81,9 +82,9 @@ AsyncRT_DeviceContext_deviceName(const DeviceContext *ctx) {
   return strdup(ctx->device().name().c_str());
 }
 
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_deviceKind(const DeviceContext *ctx) {
-  return ctx->device().kind();
+MODULAR_EXPORT void AsyncRT_DeviceContext_deviceApi(llvm::StringRef *result,
+                                                    const DeviceContext *ctx) {
+  *result = ctx->device().api();
 }
 
 MODULAR_EXPORT const char *
@@ -318,7 +319,7 @@ MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getDriverVersion(int *result, const DeviceContext *ctx) {
-  return check_val(result, 0, ctx->getDriverVersion());
+  return check_val(result, 0, ctx->device().getDriverVersion());
 }
 
 MODULAR_EXPORT const char *
@@ -326,19 +327,20 @@ AsyncRT_DeviceContext_getAttribute(int *result, const DeviceContext *ctx,
                                    int attr) {
   return check_val(
       result, 0,
-      ctx->getAttribute(static_cast<DeviceContext::Attribute>(attr)));
+      ctx->device().getAttribute(static_cast<Device::Attribute>(attr)));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_isCompatibleWithMAX(const DeviceContext *ctx) {
-  return check_success(ctx->isCompatibleWithMAX());
+  return check_success(ctx->device().isCompatibleWithMAX());
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_computeCapability(int32_t *result,
                                         const DeviceContext *ctx) {
   int compute;
-  const char *err_msg = check_val(&compute, 0, ctx->computeCapability());
+  const char *err_msg =
+      check_val(&compute, 0, ctx->device().computeCapability());
   *result = compute;
   return err_msg;
 }
@@ -346,9 +348,9 @@ AsyncRT_DeviceContext_computeCapability(int32_t *result,
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
                                     size_t *total) {
-  DeviceMemInfo mem_info;
+  Device::MemInfo mem_info;
   const char *err_msg =
-      check_val(&mem_info, DeviceMemInfo(), ctx->getMemoryInfo());
+      check_val(&mem_info, Device::MemInfo(), ctx->device().getMemoryInfo());
   *free = mem_info.free;
   *total = mem_info.total;
   return err_msg;

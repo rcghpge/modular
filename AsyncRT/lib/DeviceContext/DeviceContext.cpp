@@ -13,7 +13,6 @@
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Twine.h"
 
 #include <string.h>
@@ -22,16 +21,24 @@ namespace M::AsyncRT {
 //
 // ===== DeviceBuffer ===== //
 //
-Device::Device(Kind kind, std::string name, int id)
-    : name_(std::move(name)), id_(id), kind_(kind) {}
+Device::Device(API api, std::string name, int id)
+    : name_(std::move(name)), id_(id), api_(api) {}
 
 const std::string &Device::name() const { return name_; }
 
 int Device::id() const { return id_; }
 
-Device::Kind Device::kind() const { return kind_; }
+Device::API Device::api() const { return api_; }
 
-ErrorOr<bool> Device::canAccess(const Device &peer) const { return false; }
+StringRef Device::vendor() const {
+  if (api() == CUDADevice::api)
+    return "nvidia";
+  if (api() == HIPDevice::api)
+    return "amdgpu";
+  if (api() == CpuDevice::api)
+    return "cpu";
+  return "";
+}
 
 //
 // ===== DeviceBuffer ===== //
@@ -182,17 +189,6 @@ DeviceContext::DeviceContext(const Device &device)
 
 const Device &DeviceContext::device() const { return *device_; }
 
-ErrorOr<int> DeviceContext::getDriverVersion() const { return 0; };
-
-ErrorOr<int> DeviceContext::getAttribute(Attribute attr) const { return 0; }
-
-ErrorOrSuccess DeviceContext::isCompatibleWithMAX() const { return success(); }
-
-ErrorOr<int> DeviceContext::computeCapability() const {
-  // RUNP-494 Remove this, compute capability is a CUDA-specific concept.
-  return 0;
-}
-
 ErrorOr<DeviceContextRef> DeviceContext::create(const char *kind, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (strcmp(kind, "cuda") == 0) {
@@ -219,54 +215,30 @@ ErrorOr<int> Device::numberOfDevices(const char *kind) {
   return Error(llvm::Twine("Unsupported device kind: ") + kind);
 }
 
-ErrorOr<std::string> Device::getVendor() {
-  static llvm::SmallDenseMap<StringRef, StringRef> apiVendorMap{
-      {"cuda", "nvidia"}, {"hip", "amdgpu"}};
-  for (auto [api, vendor] : apiVendorMap) {
-    ErrorOr<DeviceContextRef> dev = DeviceContext::create(api.data(), 0);
-    if (dev.isError())
-      continue;
-    return vendor.str();
-  }
-  return Error("unable to determine the vendor of the device");
-}
+const std::string &Device::getAcceleratorArchOrEmpty() {
+  static std::string arch = [] {
+    ErrorOr<const Device &> device = CUDADevice::get(0);
+    if (device.isError()) {
+      device = HIPDevice::get(0);
+      if (device.isError()) {
+        // CPU is not an accelerator device.
+        return std::string();
+      }
+    }
 
-ErrorOr<std::string> Device::getSubArch(StringRef kind) {
-  auto dev = DeviceContext::create(kind.data(), 0);
-  if (dev.isError())
-    return dev.takeError();
+    ErrorOr<int> major =
+        device->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MAJOR);
+    ErrorOr<int> minor =
+        device->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MINOR);
+    if (major.isError() || minor.isError()) {
+      return std::string();
+    }
 
-  ErrorOr<int> major =
-      (*dev)->getAttribute(DeviceContext::Attribute::COMPUTE_CAPABILITY_MAJOR);
-  if (major.isError())
-    return major.takeError();
-
-  ErrorOr<int> minor =
-      (*dev)->getAttribute(DeviceContext::Attribute::COMPUTE_CAPABILITY_MINOR);
-  if (minor.isError())
-    return minor.takeError();
-
-  return (llvm::Twine(*major) + llvm::Twine(*minor)).str();
-}
-
-ErrorOr<std::string> Device::getTargetAttrAcceleratorArch() {
-  ErrorOr<std::string> vendor = Device::getVendor();
-  if (vendor.isError())
-    return vendor.takeError();
-
-  ErrorOr<std::string> subArch =
-      Device::getSubArch(*vendor == "nvidia" ? "cuda" : "hip");
-  if (subArch.isError())
-    return subArch.takeError();
-
-  return vendor.get() + ":" + subArch.get();
-}
-
-std::string Device::getAcceleratorArchOrEmpty() {
-  static ErrorOr<std::string> arch = Device::getTargetAttrAcceleratorArch();
-  if (arch.isError())
-    return "";
-  return *arch;
+    return (llvm::Twine(device->vendor()) + ":" + llvm::Twine(*major) +
+            llvm::Twine(*minor))
+        .str();
+  }();
+  return arch;
 }
 
 } // namespace M::AsyncRT

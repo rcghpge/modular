@@ -46,7 +46,7 @@ using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
 class CUDADevice : public Device {
 public:
-  static constexpr Kind kind = "cuda";
+  static constexpr API api = "cuda";
 
   using DeviceList = std::vector<CUDADeviceRef>;
 
@@ -58,7 +58,14 @@ public:
 
   CUdevice cuda_device() const;
 
+  ErrorOr<int> getDriverVersion() const override;
+  ErrorOrSuccess isCompatibleWithMAX() const override;
+  ErrorOr<int> computeCapability() const override;
+
+  ErrorOr<MemInfo> getMemoryInfo() const override;
+
   ErrorOr<bool> canAccess(const Device &peer) const override;
+  ErrorOr<int> getAttribute(Attribute attr) const override;
 
   static ErrorOr<int> numberOfDevices();
 
@@ -67,6 +74,11 @@ public:
   static ErrorOr<const CUDADevice &> get(int id);
 
 private:
+  // We only support CUDA architectures sm_80 and above.
+  static constexpr int MIN_COMPUTE_CAPABILITY = 80;
+  // We only support CUDA versions 12.0 and above.
+  static constexpr int MIN_DRIVER_VERSION = 12.0;
+
   static ErrorOr<const DeviceList &> deviceList();
 
   const CUDADriver &driver_;
@@ -262,16 +274,9 @@ public:
 
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
-  ErrorOr<int> getDriverVersion() const override;
-  ErrorOr<DeviceMemInfo> getMemoryInfo() const override;
-
   const CUDADriver &cuda_driver() const;
   CUcontext cuda_context() const;
   CUstream cuda_stream() const;
-
-  ErrorOr<int> getAttribute(Attribute attr) const override;
-  ErrorOrSuccess isCompatibleWithMAX() const override;
-  ErrorOr<int> computeCapability() const override;
 
   CUDADriver::Result setCurrent() const;
 

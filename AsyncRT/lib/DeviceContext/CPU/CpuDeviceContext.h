@@ -36,10 +36,19 @@ using CpuDeviceTimerRef = RCRef<const CpuDeviceTimer>;
 
 class CpuDevice : public Device {
 public:
-  static constexpr Kind kind = "cpu";
+  static constexpr API api = "cpu";
 
   CpuDevice();
   ~CpuDevice() override = default;
+
+  ErrorOr<int> getDriverVersion() const override;
+  ErrorOrSuccess isCompatibleWithMAX() const override;
+  ErrorOr<int> computeCapability() const override;
+
+  ErrorOr<MemInfo> getMemoryInfo() const override;
+
+  ErrorOr<bool> canAccess(const Device &peer) const override;
+  ErrorOr<int> getAttribute(Attribute attr) const override;
 
   static ErrorOr<int> numberOfDevices();
 };
@@ -152,8 +161,6 @@ public:
   stopTimer(const DeviceTimer &timer) const override;
 
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
-
-  ErrorOr<DeviceMemInfo> getMemoryInfo() const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
