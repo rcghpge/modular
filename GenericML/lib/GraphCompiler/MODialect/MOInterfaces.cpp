@@ -214,8 +214,30 @@ Impl::materializeScatterLikeShapeDefs(ScatterLike op,
 //===----------------------------------------------------------------------===//
 
 LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
-  return verifyGenericScatterInputOutputShapes(op, op.getInput().getType(),
-                                               op.getResult().getType());
+  LogicalResult res = verifyGenericScatterInputOutputShapes(
+      op, op.getInput().getType(), op.getResult().getType());
+  if (res.failed())
+    return res;
+
+  // Do non-obvious verification of ranks:
+  if (op.getInput().getType().hasRank() &&
+      op.getIndices().getType().hasRank() &&
+      op.getUpdates().getType().hasRank()) {
+    int64_t dataRank = op.getInput().getType().getRank();
+    int64_t indicesRank = op.getIndices().getType().getRank();
+    int64_t indicesLastDim =
+        op.getIndices().getType().getIntDim(indicesRank - 1);
+
+    int64_t updatesRank = op.getUpdates().getType().getRank();
+    int64_t expectedUpdatesRank = dataRank + indicesRank - indicesLastDim - 1;
+    if (indicesLastDim != mlir::ShapedType::kDynamic &&
+        updatesRank != expectedUpdatesRank) {
+      return op->emitError("updates rank must be: data_rank + indices_rank - "
+                           "indices_shape[-1] - 1");
+    }
+  }
+
+  return success();
 }
 
 ShapeMaterializeResult
