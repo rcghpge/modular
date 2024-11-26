@@ -90,7 +90,7 @@ def execute_copy(src, dest):
 def sanity_check_src_path(src):
     _invalid_src_msg_prefix = f"Invalid max repo source path: '{src}'"
 
-    cmd = f"ls -l"
+    cmd = "ls -l"
     result = subprocess.run(cmd.split(), cwd=src, stdout=subprocess.PIPE)
 
     if "examples" not in result.stdout.decode("utf-8"):
