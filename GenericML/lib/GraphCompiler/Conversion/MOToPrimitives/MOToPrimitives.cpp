@@ -211,6 +211,9 @@ public:
   /// Lowers mo.buffer.create op
   LogicalResult lowerBufferCreate(MO::BufferCreateOp);
 
+  /// Lowers mo.buffer.transfer op
+  LogicalResult lowerBufferTransfer(MO::BufferTransferOp bufferTransferOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -1057,16 +1060,43 @@ LogicalResult MOGraphLowering::lowerDebugTensorUnsafePrint(
   return success();
 }
 
+// Common implementation for buffer transfers between devices
+static Value lowerTransferImpl(MGP::MOOpLoweringState &opLoweringState,
+                               DeviceRefAttr hostDevice,
+                               MGP::BufferizedTensor &srcBuffer,
+                               Value dstBuffer, MO::TensorType srcType,
+                               MO::TensorType dstType, Value inChain) {
+  DeviceRefAttr srcDevice = srcType.getDeviceRef();
+  DeviceRefAttr dstDevice = dstType.getDeviceRef();
+
+  if (srcDevice == hostDevice) {
+    return opLoweringState.bufferTransferFromHost(
+        inChain, cast<TypedValue<MGP::DeviceBufferType>>(srcBuffer.buffer),
+        dstBuffer, dstType);
+  }
+
+  if (dstDevice == hostDevice) {
+    return opLoweringState.bufferTransferToHost(
+        inChain, srcBuffer.buffer,
+        cast<TypedValue<MGP::DeviceBufferType>>(dstBuffer), srcType);
+  }
+
+  if (srcDevice.getLabel() == dstDevice.getLabel()) {
+    return opLoweringState.bufferTransferDevice(inChain, srcBuffer.buffer,
+                                                dstBuffer, srcType, dstType);
+  }
+
+  return nullptr; // Indicates unsupported device transfer
+}
+
 LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, transferOp);
 
-  DeviceRefAttr srcDevice = transferOp.getInput().getType().getDeviceRef();
-  DeviceRefAttr dstDevice = transferOp.getResult().getType().getDeviceRef();
-  if (!srcDevice || !dstDevice)
+  auto srcType = transferOp.getInput().getType();
+  auto dstType = transferOp.getResult().getType();
+  if (!srcType.getDeviceRef() || !dstType.getDeviceRef())
     return transferOp->emitOpError(
         "should have explicit devices before lowering");
-
-  DeviceRefAttr hostDevice = loweringState.getHostDevice();
 
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(transferOp.getInput());
@@ -1079,29 +1109,49 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
 
   Value inChain =
       opLoweringState.getGuardChain(loweringState.getExecuteChain());
-  Value outChain;
-  if (srcDevice == hostDevice) {
-    outChain = opLoweringState.bufferTransferFromHost(
-        inChain,
-        cast<TypedValue<MGP::DeviceBufferType>>(bufferizedInput.buffer),
-        loweredOutputsStorage[0].buffer, transferOp.getResult().getType());
-  } else if (dstDevice == hostDevice) {
-    outChain = opLoweringState.bufferTransferToHost(
-        inChain, bufferizedInput.buffer,
-        cast<TypedValue<MGP::DeviceBufferType>>(
-            loweredOutputsStorage[0].buffer),
-        transferOp.getInput().getType());
-  } else if (srcDevice.getLabel() == dstDevice.getLabel()) {
-    outChain = opLoweringState.bufferTransferDevice(
-        inChain, bufferizedInput.buffer, loweredOutputsStorage[0].buffer,
-        transferOp.getInput().getType(), transferOp.getResult().getType());
-  } else {
+
+  Value outChain = lowerTransferImpl(
+      opLoweringState, loweringState.getHostDevice(), bufferizedInput,
+      loweredOutputsStorage[0].buffer, srcType, dstType, inChain);
+
+  if (!outChain)
     return transferOp->emitOpError("mo.transfer from device '")
-           << srcDevice << "' to device '" << dstDevice
-           << "' is not supported.";
-  }
+           << srcType.getDeviceRef() << "' to device '"
+           << dstType.getDeviceRef() << "' is not supported.";
 
   opLoweringState.createOutputs(outChain, loweredOutputsStorage);
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerBufferTransfer(MO::BufferTransferOp transferOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, transferOp);
+
+  auto srcType = MO::castFromTensorLike(transferOp.getSrc().getType());
+  auto dstType = MO::castFromTensorLike(transferOp.getDst().getType());
+  if (!srcType.getDeviceRef() || !dstType.getDeviceRef())
+    return transferOp->emitOpError(
+        "should have explicit devices before lowering");
+
+  MGP::BufferizedTensor bufferizedInput =
+      opLoweringState.getBufferizedInput(transferOp.getSrc());
+  MGP::BufferizedTensor bufferizedOutput =
+      opLoweringState.getBufferizedInput(transferOp.getDst());
+
+  auto inChain =
+      loweringState.lookupExecuteLoweredValue(transferOp.getInChain());
+  inChain = opLoweringState.getGuardChain(inChain);
+
+  Value outChain = lowerTransferImpl(
+      opLoweringState, loweringState.getHostDevice(), bufferizedInput,
+      bufferizedOutput.buffer, srcType, dstType, inChain);
+
+  if (!outChain)
+    return transferOp->emitOpError("mo.buffer.transfer from device '")
+           << srcType.getDeviceRef() << "' to device '"
+           << dstType.getDeviceRef() << "' is not supported.";
+
+  loweringState.emplaceExecuteLoweredValue(transferOp.getOutChain(), outChain);
   return success();
 }
 
@@ -1908,6 +1958,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     // Lowers mo.buffer.create
     if (auto bufferCreateOp = dyn_cast<MO::BufferCreateOp>(op)) {
       if (failed(lowerBufferCreate(bufferCreateOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto bufferTransferOp = dyn_cast<MO::BufferTransferOp>(op)) {
+      if (failed(lowerBufferTransfer(bufferTransferOp)))
         return failure();
       continue;
     }

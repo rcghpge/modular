@@ -4735,6 +4735,35 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [Pure, MO_HasDeviceInterface]>
 // Buffer ops
 //===----------------------------------------------------------------------===//
 
+def MO_BufferTransferOp : MO_MutableOp<"buffer.transfer", [
+  AllDTypesMatch<["src", "dst"]>,
+  AllShapeAttrsMatch<["src", "dst"]>
+]> {
+  let summary = "Transfer data between two buffers";
+  let description = [{
+    This operation transfers data from a source buffer to a destination buffer.
+    Both buffers must have the same shape and data type. The operation takes an input
+    chain and produces an output chain to sequence the transfer with other operations.
+
+    Example:
+    ```mlir
+    %outChain = mo.buffer.transfer[%inChain](%src, %dst) : !mo.buffer<[2,3], f32, gpu:0>, !mo.buffer<[2, 3], f32, cpu:0>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Chain:$inChain,
+    MO_Buffer:$src,
+    MO_Buffer:$dst
+  );
+  let results = (outs MO_Chain:$outChain);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` qualified(type($src)) `,` qualified(type($dst)) 
+  }];
+}
+
+
 // TODO(GEX-1292): Support paramterization interfaces for this op
 // Not currently an issue since paramterization for mo.buffer operands that are
 // graph inputs works and this op will only be used in a pass where the shape

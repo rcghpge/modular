@@ -4243,6 +4243,12 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
   return success();
 }
 
+void BufferTransferOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Read::get());
+  effects.emplace_back(mlir::MemoryEffects::Write::get());
+}
+
 void MutableLoadOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   effects.emplace_back(mlir::MemoryEffects::Read::get());
