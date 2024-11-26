@@ -72,12 +72,12 @@ def execute_copy(src, dest):
         if f != str(dest) + "/.git":
             try:
                 shutil.rmtree(f)
-            except Exception as e:
+            except Exception:
                 pass
 
             try:
                 pathlib.Path.unlink(f)
-            except Exception as e:
+            except Exception:
                 pass
 
     result = subprocess.run("ls -la".split(), cwd=dest, stdout=subprocess.PIPE)
