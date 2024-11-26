@@ -62,7 +62,8 @@ FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
 FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
     EligibilityFunction isEligible, CompatibilityFunction areCompatible,
-    bool allowDuplication);
+    bool allowDuplication,
+    uint64_t maximumFusionSetSize = std::numeric_limits<uint64_t>::max());
 
 } // namespace M::MOGG
 

@@ -90,9 +90,11 @@ struct FuseElementwisePass
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
     MO::ParametricTopologyAnalysis topologyAnalysis(graphOp);
+    /// TODO: MOCO-1469 Remove this limit.
+    static constexpr uint64_t kMaximumFusionSetSize = 64;
     auto subgraphs = sourceDestinationSequenceFusionAnalysis(
         graphOp.getBody(), topologyAnalysis, isAnElementwiseKernel,
-        kernelsAreCompatible, false);
+        kernelsAreCompatible, false, kMaximumFusionSetSize);
 
     for (auto &subgraph : subgraphs)
       topologyAnalysis.computeTopologicalSorting(subgraph);

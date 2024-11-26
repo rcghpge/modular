@@ -446,7 +446,7 @@ FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
 FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
     EligibilityFunction isEligible, CompatibilityFunction areCompatible,
-    bool allowDuplication) {
+    bool allowDuplication, uint64_t maximumFusionSetSize) {
   FusionSubGraphs subgraphs;
   region.walk([&](Block *block) {
     int64_t numOps = block->getOperations().size();
@@ -504,7 +504,7 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
       // Parents we've visited already. Once we've visited we know whether they
       // are part of the subgraph or not already.
       DenseSet<Operation *> visited;
-      while (!workQueue.empty()) {
+      while (!workQueue.empty() && curSubgraph.size() < maximumFusionSetSize) {
         auto parent_child = workQueue.top();
         workQueue.pop();
 
