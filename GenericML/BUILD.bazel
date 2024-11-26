@@ -1223,9 +1223,9 @@ modular_cc_library(
 )
 
 modular_cc_library(
-    name = "CUDAPrimitives",
-    srcs = glob(["lib/CUDAPrimitives/*.cpp"]),
-    hdrs = glob(["include/GenericML/CUDAPrimitives/*.h"]),
+    name = "GPUPrimitives",
+    srcs = glob(["lib/GPUPrimitives/*.cpp"]),
+    hdrs = glob(["include/GenericML/GPUPrimitives/*.h"]),
     deps = [
         ":MGPPrimitives",
     ],
