@@ -32,6 +32,20 @@
 using namespace M;
 using namespace MOGG;
 
+static void printSetDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
+                        Value val) {
+  KGEN::printParamName(p, dim);
+  p << " = ";
+  p << val;
+}
+
+static ParseResult parseSetDim(OpAsmParser &p, StringAttr &name,
+                               mlir::OpAsmParser::UnresolvedOperand &value) {
+  if (KGEN::parseParamName(p, name) || p.parseEqual() || p.parseOperand(value))
+    return failure();
+  return success();
+}
+
 static ParseResult parseDim(OpAsmParser &p, StringAttr &name,
                             Type &resultType) {
   SmallVector<Type> tmpTypes;
@@ -465,7 +479,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     operandSemantics.emplace_back(InOutSignatureAttr::kIn);
   }
 
-  auto idxType = mlir::IndexType::get(ctx);
   DeviceRefAttr device = MO::getDeviceOrDefaultAny(*this);
   auto mgpBufferType =
       MGP::DeviceBufferType::get(device, std::optional<uint64_t>());
@@ -741,7 +754,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto si64ScalarTy = KGEN::POP::SIMDType::get(ctx, 1, DType::si64);
 
   // Clone the graph
-  SmallPtrSet<Operation *, 4> setShapeParamOpSet;
   for (Operation &op : getBody().front()) {
     if (isa<MOGG::OutputPlaceholdersOp, MOGG::OutputOp>(op))
       continue;
@@ -754,10 +766,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       continue;
     }
 
-    if (isa<MOGG::SetParameterOp>(op)) {
-      setShapeParamOpSet.insert(builder.clone(op, mapper));
-      continue;
-    }
     builder.clone(op, mapper);
   }
 
@@ -778,32 +786,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   builder.setInsertionPointToEnd(&kernelBody);
-  DenseMap<TypedValue<MOGG::ShapeType>, Operation *> shapeToDimFromShape;
-  llvm::StringMap<Value> paramToDim;
-  for (Operation *newOp : setShapeParamOpSet) {
-    if (auto setParam = dyn_cast<SetParameterOp>(newOp)) {
-      auto inputShape = setParam.getShape();
-      if (!shapeToDimFromShape.contains(inputShape)) {
-        auto shapeAttr =
-            cast<MOGG::ShapeType>(inputShape.getType()).getShapeAttr();
-        auto shapeMosh = cast<MOSH::ShapeAttr>(shapeAttr);
-        size_t rank = shapeMosh.getRank();
-        if (rank == 0)
-          rank = 1;
 
-        SmallVector<Type> resT;
-        for (size_t i = 0; i < rank; i++)
-          resT.push_back(idxType);
-
-        Operation *dsh = builder.create<DimFromShapeOp>(
-            getLoc(), mlir::TypeRange{resT}, inputShape);
-        shapeToDimFromShape[inputShape] = dsh;
-      }
-      int index = setParam.getIndex().getInt();
-      StringRef name = setParam.getParamName().strref();
-      paramToDim[name] = shapeToDimFromShape[inputShape]->getResult(index);
-    }
-  }
   // newKernel generates outputs as follows:
   //   mogg.output %other:numPrependedOutputs %inPlaceOutputs:numInplaceOutputs,
   //   %OutputShapeParams:outParamNum
@@ -851,9 +834,22 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                                   kgenVal);
     }
   }
+
+  // Elide all set dims so they simply return the value.
+  llvm::StringMap<Value> paramToDim;
+  SmallVector<MOGG::SetParameterOp> toRemove;
+  for (auto setParam : newKernel.getOps<MOGG::SetParameterOp>()) {
+    paramToDim[setParam.getParamName()] = setParam.getDim();
+    toRemove.push_back(setParam);
+  }
+
   // outParamNum: Add all the params from stringMap paramToDim so do lookup
   for (const auto &[name, idx] : outParamNameToIdx)
     outputs[idx + numPrependedOutputs + numInplaceOutputs] = paramToDim[name];
+
+  for (MOGG::SetParameterOp p : toRemove)
+    p.erase();
+
   // Construct a mogg.output that newKernel spec
   builder.create<MOGG::OutputOp>(getLoc(), outputs);
 
@@ -894,10 +890,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     loweringState.emplaceExecuteLoweredValue(*maybeOutChain,
                                              newKernel.getResult(0));
   }
-
-  // Clean up useless ops.
-  for (Operation *op : setShapeParamOpSet)
-    op->erase();
 
   return success();
 }
@@ -1647,31 +1639,6 @@ LogicalResult ToTensorFromMGPOp::verify() {
       return emitError() << "Buffer is size in bytes " << bufferSize
                          << " but requested tensor is " << tensorSize << "\n";
   }
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ShapeToTensorOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ShapeToTensorOp::verify() {
-  MO::TensorType resTy = getType();
-  if (!resTy.hasRank() || resTy.getRank() != 1)
-    return emitError() << "result type must have rank 1";
-
-  // NOTE this implies we don't support dynamically ranked shape at runtime,
-  // since this op converts a shape to a tensor.
-  if (!resTy.hasStaticShape())
-    return emitError() << "result type must have static shape";
-
-  TypedAttr inputShapeAttr = getShape().getType().getShapeAttr();
-  if (auto rankedShapeAttr = dyn_cast<MOSH::ShapeAttr>(inputShapeAttr)) {
-    if (rankedShapeAttr.getRank() != resTy.getNumElements()) {
-      return emitError() << "rank of input shape must match number of elements "
-                            "in result tensor";
-    }
-  }
-
   return success();
 }
 

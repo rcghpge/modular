@@ -454,69 +454,25 @@ def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
   }];
 }
 
-def MOGG_ShapeFromKGENOp : MOGG_Op<"shape_from_kgen", [Pure]> {
-  let summary = "Gets a MOGG shape construct from KGEN";
-  let description = [{
-    Given a KGEN value which represents a shape launders that into MOGG
-    representation.
-  }];
-
-
-  let arguments = (ins AnyType:$shape);
-  let results = (outs MOGG_Shape:$result);
-
-  let assemblyFormat = [{
-    attr-dict `(` $shape `:` type($shape) `)` `->` type(results)
-  }];
-}
-
 def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
-  let summary = "Assign a param a value from the shape at index";
+  let summary = "Assign a param a value";
   let description = [{
-    Gives the param the value from the shape at the constant index.
-    `$param = $shape[$index]`
+    Sets the parameter to the given dimension.
 
     ```
-    %shape -> !mogg.shape<[50, 150]>
-    mogg.set_param(%shape : <[50, 150]>) {index = 0 : i64, paramName = "M"}
-    mogg.set_param(%shape : <[50, 150]>) {index = 1 : i64, paramName = "N"}
+    %d0 = kgen.param.constant: scalar<si64> = <4>
+    mogg.set_param N = %d0
     ```
-    This sets `M` to the value from `%shape` at the index `0` which is `50`
-    and set `N` to the value at index `1` which is `150`.
   }];
 
   let arguments = (ins
-     MOGG_Shape:$shape,
-     Builtin_StringAttr:$paramName,
-     Builtin_IntegerAttr:$index
+     DimensionType:$dim,
+     Builtin_StringAttr:$paramName
   );
 
-   let assemblyFormat = [{
-      `(` $shape `:` type($shape) `)` attr-dict
-   }];
-}
-
-def MOGG_ShapeToTensorOp : MOGG_Op<"shape_to_tensor", [Pure]> {
-  let summary = "Convert a MOGG shape value to a tensor value";
-  let description = [{
-    Convert the input `!mogg.shape` value to a `!mo.tensor`, where elements of
-    the output tensor will have the same value as individual dimensions in the
-    input shape.
-
-    Example:
-    ```
-    %shape  -> !mogg.shape<[50, D1, 150]>
-    %tensor = mogg.shape_to_tensor(%shape) : !mogg.shape<[50, D1, 150]> -> !mo.tensor<[3], si64>
-    ```
-  }];
-
-  let arguments = (ins MOGG_Shape:$shape);
-  let results = (outs MO_Tensor:$result);
-
   let assemblyFormat = [{
-     `(` $shape`)` attr-dict `:` type($shape) `->` type($result)
+    custom<SetDim>($paramName, $dim) attr-dict
   }];
-  let hasVerifier = 1;
 }
 
 def MOGG_CallOp : MOGG_Op<"call"> {
@@ -699,21 +655,6 @@ def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors", [Pure]> {
 
   let assemblyFormat = [{
    attr-dict `:` type($results)
-  }];
-}
-
-def MOGG_DimFromShapeOp : MOGG_Op<"dim_from_shape", [Pure]> {
-  let summary = "Gets dims from a MOGG shape";
-  let description = [{
-    Given a MOGG shape value which represents a shape and we get the dimensions
-    of it as multiple `index`.
-  }];
-
-  let arguments = (ins MOGG_Shape:$shape);
-  let results = (outs Variadic<Index>:$dims);
-
-  let assemblyFormat = [{
-    attr-dict `(` $shape `:` type($shape) `)` `->` type(results)
   }];
 }
 
