@@ -26,13 +26,78 @@ namespace M::RMO {
 
 namespace {
 
+// Return whether the shapes in `a` and `b` can be rebound to each other.
+bool isCompatibleShape(TensorType a, TensorType b) {
+  if (a.hasRank() && b.hasRank()) {
+    if (a.getRank() != b.getRank())
+      return false;
+
+    // Cannot rebind two different integer dims
+    for (size_t i = 0; i < a.getRank(); i++) {
+      if (a.isIntegerDim(i) && b.isIntegerDim(i) &&
+          a.getIntDim(i) != b.getIntDim(i))
+        return false;
+    }
+  }
+
+  return true;
+}
+
 /// NOTE: RMO's rebinds are asserting in nature!
-TensorValue rebindToShape(MO::GraphOp graphOp, TensorValue input,
+std::pair<TensorValue, bool>
+_rebindToShape(MO::GraphOp graphOp, TensorValue input, TensorType newTy,
+               mlir::RewriterBase &rewriter,
+               ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
+  auto res = rewriter.create<RMO::RebindTensorShapeOp>(
+      input.getLoc(), newTy, input, newOutputParamDecl,
+      rewriter.getStringAttr(""));
+
+  return {res.getResult(), isCompatibleShape(input.getType(), newTy)};
+}
+
+TensorValue rebindToShape(MO::GraphOp graphOp, OpOperand &input,
                           TensorType newTy, mlir::RewriterBase &rewriter,
                           ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
-  return rewriter.create<RMO::RebindTensorShapeOp>(input.getLoc(), newTy, input,
-                                                   newOutputParamDecl,
-                                                   rewriter.getStringAttr(""));
+
+  TensorValue val;
+  bool verifierSuccess;
+  std::tie(val, verifierSuccess) =
+      _rebindToShape(graphOp, cast<TensorValue>(input.get()), newTy, rewriter,
+                     newOutputParamDecl);
+
+  if (!verifierSuccess) {
+    Operation *parent = input.getOwner();
+    parent->emitError() << "[LegalizeRMOOps] RMO rebinding failed for op "
+                           "in operand index #"
+                        << input.getOperandNumber()
+                        << " original and expected types are not compatible. "
+                           "\n\toriginal type is     : "
+                        << input.get().getType()
+                        << "\n\tRMO expected type is : " << newTy;
+  }
+
+  return val;
+}
+
+TensorValue rebindToShape(MO::GraphOp graphOp, OpResult input, TensorType newTy,
+                          mlir::RewriterBase &rewriter,
+                          ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
+  TensorValue val;
+  bool verifierSuccess;
+  std::tie(val, verifierSuccess) = _rebindToShape(
+      graphOp, cast<TensorValue>(input), newTy, rewriter, newOutputParamDecl);
+
+  if (!verifierSuccess) {
+    Operation *parent = input.getOwner();
+    parent->emitError()
+        << "[LegalizeRMOOps] RMO rebinding failed for op in result index #"
+        << input.getResultNumber()
+        << " original and expected types are not compatible. \n\toriginal type "
+           "is     : "
+        << input.getType() << "\n\tRMO expected type is : " << newTy;
+  }
+
+  return val;
 }
 
 /// `outputParamDecls` contains the param declarations for all outputs.
@@ -92,8 +157,9 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
     SmallVector<KGEN::ParamDeclAttr> &curInputDecls = moInputParamDecls[i];
 
     TensorValue reboundValue =
-        rebindToShape(graphOp, tensorVal, cast<TensorType>(targetType),
-                      rewriter, curInputDecls);
+        rebindToShape(graphOp, op->getOpOperand(i),
+                      cast<TensorType>(targetType), rewriter, curInputDecls);
+
     newOperands.push_back(reboundValue);
   }
 
@@ -128,7 +194,7 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
     TensorValue reboundValue;
     if (numResults == 1) {
       reboundValue =
-          rebindToShape(graphOp, newTensorValue, targetType, rewriter,
+          rebindToShape(graphOp, newOp->getOpResult(i), targetType, rewriter,
                         op.getMOAnalogueOutputParamDecls());
     } else {
       // For multiple-output ops, op.getMOAnalogueOutputParamDecls() returns all
@@ -138,7 +204,7 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
       llvm::SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
       getParamDeclsFor(targetType, op.getMOAnalogueOutputParamDecls(),
                        outputParamDecls);
-      reboundValue = rebindToShape(graphOp, newTensorValue, targetType,
+      reboundValue = rebindToShape(graphOp, newOp->getOpResult(i), targetType,
                                    rewriter, outputParamDecls);
     }
     rewriter.replaceAllUsesWith(oldValue, reboundValue);
@@ -192,7 +258,8 @@ struct LegalizeMutableLoadOp : public OpRewritePattern<RMO::MOMutableLoadOp> {
     auto moOp = rewriter.create<MO::MutableLoadOp>(op->getLoc(), moResultTypes,
                                                    moOperands);
 
-    auto reboundOutput = rebindToShape(graphOp, moOp.getOutTensor(),
+    OpResult outTensorRes = moOp->getOpResult(1);
+    auto reboundOutput = rebindToShape(graphOp, outTensorRes,
                                        op.getOutTensor().getType(), rewriter);
     rewriter.replaceAllUsesWith(op.getOutTensor(), reboundOutput);
     rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
@@ -224,7 +291,7 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
     SmallVector<Value> moOperands;
 
     auto reboundInTensor =
-        rebindToShape(graphOp, op.getInTensor(),
+        rebindToShape(graphOp, op.getInTensorMutable(),
                       cast<TensorType>(moOperandTypes[2]), rewriter);
 
     moOperands.push_back(op.getInChain());
@@ -268,9 +335,9 @@ struct LegalizeMutableStoreSliceOp
     for (size_t i = moOperands.size(); i < moOperandTypes.size(); i++) {
       SmallVector<KGEN::ParamDeclAttr> &curInputDecls = moInputParamDecls[i];
 
-      auto rebound = rebindToShape(
-          graphOp, cast<TensorValue>(op->getOperand(i)),
-          cast<TensorType>(moOperandTypes[i]), rewriter, curInputDecls);
+      auto rebound = rebindToShape(graphOp, op->getOpOperand(i),
+                                   cast<TensorType>(moOperandTypes[i]),
+                                   rewriter, curInputDecls);
 
       moOperands.push_back(rebound);
     }
@@ -378,10 +445,11 @@ struct LowerThirdPartyBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
       yFinal = yBcast;
     }
 
-    TensorValue answer = rewriter.create<MOAnalogueOpT>(
+    auto answer = rewriter.create<MOAnalogueOpT>(
         loc, ValueRange{xFinal, yFinal}, graphOp);
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+    TensorValue reboundAnswer =
+        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+                      op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
     return success();
@@ -419,10 +487,11 @@ struct LowerThirdPartyBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
       yFinal = yBcast;
     }
 
-    TensorValue answer = rewriter.create<MOAnalogueOpT>(
+    auto answer = rewriter.create<MOAnalogueOpT>(
         loc, ValueRange{xFinal, yFinal}, graphOp);
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+    TensorValue reboundAnswer =
+        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+                      op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
     return success();
@@ -473,10 +542,11 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
       yFinal = yBcast;
     }
 
-    TensorValue answer = rewriter.create<MOAnalogueOpT>(
+    auto answer = rewriter.create<MOAnalogueOpT>(
         loc, ValueRange{xFinal, yFinal}, graphOp);
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+    TensorValue reboundAnswer =
+        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+                      op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
     return success();
@@ -534,10 +604,11 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
       yFinal = yBcast;
     }
 
-    TensorValue answer = rewriter.create<MOAnalogueOpT>(
+    auto answer = rewriter.create<MOAnalogueOpT>(
         loc, ValueRange{xFinal, yFinal}, graphOp);
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+    TensorValue reboundAnswer =
+        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+                      op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
     return success();
@@ -553,10 +624,11 @@ struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
 
     TensorValue shapeLike = rewriter.create<RMO::MOShapeOfOp>(
         loc, ValueRange{op.getShapeLike()}, graphOp);
-    TensorValue answer = rewriter.create<RMO::MOBroadcastToOp>(
+    auto answer = rewriter.create<RMO::MOBroadcastToOp>(
         loc, ValueRange{op.getInput(), shapeLike}, graphOp);
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+    TensorValue reboundAnswer =
+        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+                      op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
     return success();
@@ -706,11 +778,12 @@ struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
 
     TensorValue denominator = rewriter.create<RMO::MOAddOp>(
         loc, ValueRange{tensorOne, eToTheNegatedX}, graphOp);
-    TensorValue answer = rewriter.create<RMO::MODivOp>(
+    auto answer = rewriter.create<RMO::MODivOp>(
         loc, ValueRange{tensorOne, denominator}, graphOp);
 
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+    TensorValue reboundAnswer =
+        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+                      op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
     return success();
@@ -862,10 +935,11 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
       yFinal = yBcast;
     }
 
-    TensorValue answer = rewriter.create<RMO::MOSelectOp>(
+    auto answer = rewriter.create<RMO::MOSelectOp>(
         loc, ValueRange{condFinal, xFinal, yFinal}, graphOp);
-    TensorValue reboundAnswer = rebindToShape(
-        graphOp, answer, op.getType(), rewriter, op.getOutputParamDecls());
+    TensorValue reboundAnswer =
+        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
+                      op.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(op, reboundAnswer);
     return success();
