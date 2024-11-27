@@ -7,21 +7,30 @@
 
 from __future__ import annotations
 
-from typing import List, NewType, Union
+from typing import List, Union
 
 import numpy as np
 from max.driver import Device, Tensor
 from max.dtype import DType
-from max.engine import InferenceSession, MojoValue
-from max.graph import Device as GraphDevice
-from max.graph import Graph, TensorType, TensorValue, _OpaqueType, ops
+from max.engine import InferenceSession
+from max.graph import (
+    Device as GraphDevice,
+)
+from max.graph import (
+    Graph,
+    TensorType,
+    TensorValue,
+    _OpaqueType,
+    _OpaqueValue,
+    ops,
+)
 
 from .cache_params import KVCacheParams
 from .manager import KVCacheManager
 
 
 class ContinuousBatchingKVCacheType(_OpaqueType):
-    """Continuous Mojo KV Cache type."""
+    """Continuous Mojo KV Cache graph type."""
 
     def __init__(self) -> None:
         """Creates an opaque type containing a continuous batching KV Cache."""
@@ -29,8 +38,8 @@ class ContinuousBatchingKVCacheType(_OpaqueType):
 
 
 class ContinuousBatchingKVCacheCollectionType(_OpaqueType):
-    """This is a "view" of the cache for the given sequences
-    in the batch.
+    """The graph type for a "view" of the cache for the given sequences in the
+    batch.
 
     This object does not own the underlying buffers in k_cache and v_cache,
     it's borrowing them from the BlockWrappers in our ContinuousKVCacheManager.
@@ -43,13 +52,12 @@ class ContinuousBatchingKVCacheCollectionType(_OpaqueType):
         super().__init__("ContinuousBatchingKVCacheCollection")
 
 
-ContinuousBatchingKVCache = NewType(
-    "ContinuousBatchingKVCache", ContinuousBatchingKVCacheType
-)
-ContinuousBatchingKVCacheCollection = NewType(
-    "ContinuousBatchingKVCacheCollection",
-    ContinuousBatchingKVCacheCollectionType,
-)
+class ContinuousBatchingKVCache(_OpaqueValue):
+    """Continuous Mojo KV cache graph value."""
+
+
+class ContinuousBatchingKVCacheCollection(_OpaqueValue):
+    """The graph value for a view of the KV cache."""
 
 
 class FetchContinuousBatchingKVCacheCollection:
@@ -62,7 +70,7 @@ class FetchContinuousBatchingKVCacheCollection:
         cache_lengths: TensorValue,  # NDBuffer[DType.uint32, 1],
         lookup_table: TensorValue,  # NDBuffer[DType.uint32, 1],
         is_cache_empty: TensorValue,
-    ) -> MojoValue:
+    ) -> ContinuousBatchingKVCacheCollection:
         """Constructs a ContinuousBatchingKVCacheCollection for use downstream.
         """
 
