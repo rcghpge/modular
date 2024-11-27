@@ -4,6 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 """Project configuration in addition to pyproject.toml"""
+
 import os
 import sys
 from glob import glob

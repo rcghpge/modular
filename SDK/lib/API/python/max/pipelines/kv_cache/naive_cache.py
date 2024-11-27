@@ -5,7 +5,6 @@
 # ===----------------------------------------------------------------------=== #
 """Naive KV cache for the Transformer."""
 
-
 from typing import List
 
 from max.driver import Device, Tensor

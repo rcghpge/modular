@@ -47,8 +47,7 @@ class ContinuousBatchingKVCacheCollectionType(_OpaqueType):
     """
 
     def __init__(self) -> None:
-        """Creates an opaque type containing a continuous batching KV cache collection.
-        """
+        """Creates an opaque type containing a continuous batching KV cache collection."""
         super().__init__("ContinuousBatchingKVCacheCollection")
 
 
@@ -71,8 +70,7 @@ class FetchContinuousBatchingKVCacheCollection:
         lookup_table: TensorValue,  # NDBuffer[DType.uint32, 1],
         is_cache_empty: TensorValue,
     ) -> ContinuousBatchingKVCacheCollection:
-        """Constructs a ContinuousBatchingKVCacheCollection for use downstream.
-        """
+        """Constructs a ContinuousBatchingKVCacheCollection for use downstream."""
 
         # Explicit validation.
         if blocks.dtype != self.kv_params.dtype:
@@ -168,12 +166,17 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             # broadcast the input_row_offset to all devices (naive)
             # get rid of this if statement after #51465 merges
             if len(self.devices) > 1:
-                input_row_offsets = [input_row_offset.to(GraphDevice(d.label, d.id)) for d in self.devices]  # type: ignore
+                input_row_offsets = [
+                    input_row_offset.to(GraphDevice(d.label, d.id))  # type: ignore
+                    for d in self.devices
+                ]
             else:
                 input_row_offsets = [input_row_offset]
             outputs = []
             for i in range(len(self.devices)):
-                right_slice = input_row_offsets[i][1:].rebind(cache_lengths[i].shape)  # type: ignore
+                right_slice = input_row_offsets[i][1:].rebind(
+                    cache_lengths[i].shape  # type: ignore
+                )
                 left_slice = input_row_offsets[i][
                     : input_row_offsets[i].shape[0] - 1
                 ].rebind(
