@@ -26,6 +26,7 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
+#include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -462,13 +463,16 @@ ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module->getContext(), mlir::OpPassManager::Nesting::Implicit);
   pm.addPass(MGP::createPrepareDevicePrimitivesPass());
+  FormatScopedDiagnosticHandler diagnostics(moduleToRewrite->getContext());
   if (failed(pm.run(*moduleToRewrite)))
-    return Error("failed to prepare MGP model for conversion to MEF.");
+    return Error(Twine("Failed to prepare MGP model for conversion to MEF. ") +
+                 diagnostics.formatMessage());
   // Translate to MEF.
   ConcatenationTree result =
       translateMLIRToMEF(*moduleToRewrite, enableMEFMetadata);
   if (result.getSize() == 0)
-    return Error("failed to convert model to MEF.");
+    return Error(Twine("Failed to convert model to MEF. ") +
+                 diagnostics.formatMessage());
   // Serialize the ConcatenationTree to the result buffer.
   M::WriteableBufferRef outputBuffer = WriteableBuffer::get(
       0, maxAttributeAlignment().value(), result.getSize());
