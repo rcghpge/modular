@@ -293,6 +293,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       pm.addPass(MOGG::createFuseKernelSequences(sequenceFusionOpts));
       pm.addPass(MOGG::createSimplifyKernelOperands());
       pm.addPass(MOGG::createFuseConcatAsSlice({kernelLibraryPaths}));
+      pm.addPass(MOGG::createFuseKernelSequences(sequenceFusionOpts));
 
       pm.addPass(mlir::createCanonicalizerPass());
       pm.addPass(mlir::createCSEPass());
