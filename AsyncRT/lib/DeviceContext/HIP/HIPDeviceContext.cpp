@@ -117,8 +117,9 @@ gethipDeviceAttribute(Device::Attribute attr) {
 }
 
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-                     std::string name)
-    : Device(api, name, id), driver_(driver), device_(device) {}
+                     std::string name, size_t alloc_alignment)
+    : Device(api, name, id, alloc_alignment), driver_(driver), device_(device) {
+}
 
 const HIPDriver &HIPDevice::driver() const { return driver_; }
 
@@ -213,13 +214,17 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
     HIP_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
 
     char tmp_name[256];
+    int tmp_alignment;
 
     for (int i = 0; i < count; i++) {
       // TODO(iposva): Create correct hipDevice_t from ordinal.
       HIP_CHECK_ERR(
           err_driver.get().DeviceGetName(tmp_name, sizeof(tmp_name), i));
-      devices.emplace_back(
-          HIPDeviceRef::create(err_driver.get(), i, i, tmp_name));
+      HIP_CHECK_ERR(err_driver.get().DeviceGetAttribute(
+          &tmp_alignment,
+          hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment, i));
+      devices.emplace_back(HIPDeviceRef::create(err_driver.get(), i, i,
+                                                tmp_name, tmp_alignment));
     }
     return success();
   }();

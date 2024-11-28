@@ -51,6 +51,8 @@ public:
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
   static ErrorOr<int> numberOfDevices();
+
+  static ErrorOr<const CpuDevice &> get(int id);
 };
 
 class CpuDeviceBuffer : public DeviceBuffer {

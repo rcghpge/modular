@@ -26,6 +26,7 @@ using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
 
 enum class CUdevice_attribute {
+  TEXTURE_ALIGNMENT = 14,
   UNIFIED_ADDRESSING = 41,
   COMPUTE_CAPABILITY_MAJOR = 75,
   COMPUTE_CAPABILITY_MINOR = 76,

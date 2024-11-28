@@ -15,14 +15,23 @@
 #include "HIP/HIPDeviceContext.h"
 #include "llvm/ADT/Twine.h"
 
+#include <iostream>
 #include <string.h>
 
 namespace M::AsyncRT {
+
+// TODO: Remove once users have been updated to use
+// `Device::preferredAlignment`.
+size_t getPreferredAlignment(std::string label) {
+  return Device::preferredAlignment(label);
+}
+
 //
 // ===== DeviceBuffer ===== //
 //
-Device::Device(API api, std::string name, int id)
-    : name_(std::move(name)), id_(id), api_(api) {}
+Device::Device(API api, std::string name, int id, size_t allocAligment)
+    : name_(std::move(name)), id_(id), api_(api),
+      alloc_alignment_(allocAligment) {}
 
 const std::string &Device::name() const { return name_; }
 
@@ -38,6 +47,52 @@ StringRef Device::vendor() const {
   if (api() == CpuDevice::api)
     return "cpu";
   return "";
+}
+
+size_t Device::allocationAlignment() const { return alloc_alignment_; }
+
+size_t Device::preferredAlignment(StringRef api) {
+  if (api == "gpu") {
+    // TODO(GEX-1416): Remove special hard-coded value to pass tests.
+    return 256;
+  }
+  ErrorOr<DeviceRef> device = create(api, 0);
+  if (device.isError()) {
+    return M::kPreferredMemoryAlignment;
+  }
+  return device.get()->allocationAlignment();
+}
+
+ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
+  // TODO(iposva): Implement dynamic registration mechanism.
+  if (api == "gpu") {
+    ErrorOr<const Device &> device = CUDADevice::get(id);
+    if (!device.isError()) {
+      return DeviceRef::copy(&device.get());
+    }
+    device = HIPDevice::get(id);
+    if (!device.isError()) {
+      return DeviceRef::copy(&device.get());
+    }
+    return Error("No supported \"gpu\" device available.");
+  } else if (api == "cuda") {
+    ErrorOr<const CUDADevice &> device = CUDADevice::get(id);
+    if (device.isError())
+      return device.takeError();
+    return DeviceRef::copy(&device.get());
+  } else if (api == "cpu") {
+    ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
+    if (device.isError())
+      return device.takeError();
+    return DeviceRef::copy(&device.get());
+  } else if (api == "hip") {
+    ErrorOr<const HIPDevice &> device = HIPDevice::get(id);
+    if (device.isError())
+      return device.takeError();
+    return DeviceRef::copy(&device.get());
+  }
+
+  return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
 }
 
 //

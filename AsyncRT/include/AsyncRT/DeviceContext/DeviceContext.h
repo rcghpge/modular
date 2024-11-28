@@ -42,17 +42,7 @@ using DeviceTimerRef = RCRef<const DeviceTimer>;
 
 using llvm::StringRef;
 
-// RUNP-397: This should come as a form of a function dependent on the device
-static constexpr size_t kPreferredCUDAMemoryAlignment = 256;
-static constexpr size_t kPreferredCPUMemoryAlignment =
-    M::kPreferredMemoryAlignment;
-
-[[maybe_unused]] static size_t getPreferredAlignment(std::string label) {
-  if (label == "cpu")
-    return kPreferredCPUMemoryAlignment;
-  else
-    return kPreferredCUDAMemoryAlignment;
-}
+size_t getPreferredAlignment(std::string label);
 
 class Device : public ReferenceCounted<Device> {
 public:
@@ -81,11 +71,15 @@ public:
   virtual ErrorOr<int> computeCapability() const = 0;
 
   virtual ErrorOr<MemInfo> getMemoryInfo() const = 0;
+  size_t allocationAlignment() const;
 
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
   static ErrorOr<int> numberOfDevices(StringRef api);
+  static size_t preferredAlignment(StringRef api);
+
+  static ErrorOr<DeviceRef> create(StringRef api, int id = 0);
 
   /// Returns the vendor and compute_capability of the accelerator in the form
   /// of `vendor:compute_capability`. For example, an A100 GPU would return
@@ -93,12 +87,13 @@ public:
   static const std::string &getAcceleratorArchOrEmpty();
 
 protected:
-  Device(API api, std::string name, int id);
+  Device(API api, std::string name, int id, size_t allocAligment);
 
 private:
   std::string name_;
   int id_;
   API api_;
+  size_t alloc_alignment_;
 };
 
 class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {

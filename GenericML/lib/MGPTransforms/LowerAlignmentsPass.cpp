@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/include/AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
 #include "./AsyncDataflowDependencies.h"
@@ -66,7 +67,7 @@ class LowerAlignmentsPass
       if (auto deviceType = dyn_cast<MGPHasDeviceTypeInterface>(arg.getType()))
         innerAlignments[arg] = getDefaultAlignment(deviceType.getDevice());
       else
-        innerAlignments[arg] = AsyncRT::kPreferredCPUMemoryAlignment;
+        innerAlignments[arg] = AsyncRT::Device::preferredAlignment("cpu");
       // If an outside operand exists and has scopedAlignments in the parent
       // scope we copy that for internal args
       if (block->getParentOp()->getNumOperands() > arg.getArgNumber()) {
@@ -135,7 +136,7 @@ class LowerAlignmentsPass
             // If there are no argument it depends on, assume it is cpu (comes
             // from kgen input placeholder)
             replacePlaceholder(placeholderOp,
-                               AsyncRT::kPreferredCPUMemoryAlignment);
+                               AsyncRT::Device::preferredAlignment("cpu"));
           } else {
             // Placeholder operand depend on arguments - infer from args. Always
             // try to get GCD of alignment from inputs (2, 16, 8 will have GCD
@@ -204,7 +205,7 @@ class LowerAlignmentsPass
               alignmentMap.at(extractBufferOp.getTensor());
         else
           alignmentMap[extractBufferOp.getOutBuffer()] =
-              AsyncRT::kPreferredCPUMemoryAlignment;
+              AsyncRT::Device::preferredAlignment("cpu");
       } else if (auto createTensorOp = dyn_cast<MGP::TensorCreateOp>(op)) {
         // Pass-through to Tensor Value
         alignmentMap[createTensorOp.getOutTensor()] =

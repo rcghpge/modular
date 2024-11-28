@@ -51,7 +51,7 @@ public:
   using DeviceList = std::vector<CUDADeviceRef>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-             std::string name);
+             std::string name, size_t alloc_alignment);
   ~CUDADevice() override = default;
 
   const CUDADriver &driver() const;

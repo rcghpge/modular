@@ -47,7 +47,7 @@ namespace M::AsyncRT {
 // ===== CpuDevice ===== //
 //
 // TODO(iposva): Consider using the actual device name.
-CpuDevice::CpuDevice() : Device(api, "cpu", 0) {}
+CpuDevice::CpuDevice() : Device(api, "cpu", 0, M::kPreferredMemoryAlignment) {}
 
 ErrorOr<int> CpuDevice::getDriverVersion() const { return 0; };
 
@@ -70,6 +70,15 @@ ErrorOr<int> CpuDevice::getAttribute(Attribute attr) const { return 0; }
 ErrorOr<int> CpuDevice::numberOfDevices() {
   // Only a single CpuDevice is supported.
   return 1;
+}
+
+ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
+  if (id != 0) {
+    return Error("CPU device only supports id == 0.");
+  }
+
+  static CpuDevice *device = new CpuDevice();
+  return *device;
 }
 
 //
@@ -298,8 +307,9 @@ const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {
 }
 
 ErrorOr<CpuDeviceContextRef> CpuDeviceContext::create(int id) {
-  if (id != 0) {
-    return Error("CPU device only supports id == 0.");
+  ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
+  if (device.isError()) {
+    return device.takeError();
   }
   return CpuDeviceContextRef::create(*CpuDeviceRef::create());
 }

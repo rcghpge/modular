@@ -47,7 +47,7 @@ public:
 
   using DeviceList = std::vector<HIPDeviceRef>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-            std::string name);
+            std::string name, size_t alloc_alignment);
   ~HIPDevice() override = default;
 
   const HIPDriver &driver() const;

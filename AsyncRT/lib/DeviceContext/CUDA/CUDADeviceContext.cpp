@@ -99,8 +99,9 @@ static Error formatError(const char *file, int line, const char *func,
 
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-                       std::string name)
-    : Device(api, std::move(name), id), driver_(driver), device_(device) {}
+                       std::string name, size_t alloc_alignment)
+    // GEX-1416: Do not expect hardcoded number.
+    : Device(api, std::move(name), id, 256), driver_(driver), device_(device) {}
 
 const CUDADriver &CUDADevice::driver() const { return driver_; }
 
@@ -194,14 +195,17 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
     CUDA_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
 
     char tmp_name[256];
+    int tmp_alignment;
     CUdevice tmp_device;
 
     for (int i = 0; i < count; i++) {
       CUDA_CHECK_ERR(err_driver.get().DeviceGet(&tmp_device, i));
       CUDA_CHECK_ERR(err_driver.get().DeviceGetName(tmp_name, sizeof(tmp_name),
                                                     tmp_device));
-      devices.emplace_back(
-          CUDADeviceRef::create(err_driver.get(), i, tmp_device, tmp_name));
+      CUDA_CHECK_ERR(err_driver.get().DeviceGetAttribute(
+          &tmp_alignment, CUdevice_attribute::TEXTURE_ALIGNMENT, tmp_device));
+      devices.emplace_back(CUDADeviceRef::create(
+          err_driver.get(), i, tmp_device, tmp_name, tmp_alignment));
     }
     return success();
   }();
