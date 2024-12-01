@@ -14,9 +14,7 @@ from max.engine.tensor import EngineNumpyView
 from max.graph import _testing
 
 
-fn to_tensor[
-    dtype: DType
-](inout np_array: PythonObject) raises -> Tensor[dtype]:
+fn to_tensor[dtype: DType](mut np_array: PythonObject) raises -> Tensor[dtype]:
     var view = EngineNumpyView(np_array)
     var size = view.spec().num_elements()
     var ptr = UnsafePointer[Scalar[dtype]].alloc(size)

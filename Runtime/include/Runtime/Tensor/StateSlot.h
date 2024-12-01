@@ -108,7 +108,7 @@ private:
   /// A place to hold pre-allocated or cached buffers. Tensors and other
   /// more refined types can be constructed from these buffers. Though these
   /// references will be 'uninitialized' or 'owning', all access to them
-  /// will be via 'borrowed' references. Any 'owning' buffers will be
+  /// will be via 'read' references. Any 'owning' buffers will be
   /// destroyed when the context holding this state slot is destroyed.
   SmallVector<TensorBufferRef, 1> bufferCache;
 };
