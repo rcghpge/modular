@@ -198,7 +198,7 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
                                      << op->getName().getStringRef()
                                      << "` not found");
     bool isRegisterType = kernel.getSignature().getArgConvention(idx) ==
-                          KGEN::ArgConvention::BorrowedInReg;
+                          KGEN::ArgConvention::ReadReg;
 
     // Convert MGP value to opaque.
     // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
