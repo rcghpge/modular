@@ -25,7 +25,8 @@ constexpr llvm::StringLiteral MOGGSimdStoreTarget = "simd_store";
 
 constexpr llvm::StringLiteral LambdasHaveFusion = "lambdas_have_fusion";
 
-constexpr llvm::StringLiteral DPSTensorCopy = "MOGGKernelAPI::view_copy_impl";
+constexpr llvm::StringLiteral DPSTensorCopy =
+    "tensor_utils_internal::managed_tensor_slice::view_copy_impl";
 
 constexpr llvm::StringLiteral DPSTensorGetTensorSpecWithoutLambdas =
     "tensor_utils_internal::managed_tensor_slice::_get_tensor_specs_without_"
