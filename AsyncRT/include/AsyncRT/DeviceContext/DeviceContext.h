@@ -646,14 +646,6 @@ enum class Device::Attribute : int {
 // Internal implementation details follow.
 //
 // Inline helpers.
-inline ErrorOr<DeviceBufferRef>
-DeviceContext::enqueueCreateBuffer(size_t len, size_t elem_size) const {
-  return createBuffer(len, elem_size, ASYNC);
-}
-inline ErrorOr<DeviceBufferRef>
-DeviceContext::createBuffer(size_t len, size_t elem_size) const {
-  return createBuffer(len, elem_size, SYNC);
-}
 inline ErrorOrSuccess
 DeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                    const void *src) const {

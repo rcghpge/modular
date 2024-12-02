@@ -15,7 +15,6 @@
 #include "HIP/HIPDeviceContext.h"
 #include "llvm/ADT/Twine.h"
 
-#include <iostream>
 #include <string.h>
 
 namespace M::AsyncRT {
@@ -243,6 +242,22 @@ DeviceContext::DeviceContext(const Device &device)
     : device_(DeviceRef::copy(&device)) {}
 
 const Device &DeviceContext::device() const { return *device_; }
+
+ErrorOr<DeviceBufferRef>
+DeviceContext::enqueueCreateBuffer(size_t len, size_t elem_size) const {
+  if (len == 0)
+    return Error("cannot allocate zero length buffers");
+
+  return createBuffer(len, elem_size, ASYNC);
+}
+
+ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t len,
+                                                     size_t elem_size) const {
+  if (len == 0)
+    return Error("cannot allocate zero length buffers");
+
+  return createBuffer(len, elem_size, SYNC);
+}
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.

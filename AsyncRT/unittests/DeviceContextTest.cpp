@@ -162,6 +162,11 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
+  ErrorOr<DeviceBufferRef> empty_buf_err = ctx->enqueueCreateBuffer(0, 1);
+  EXPECT_TRUE(empty_buf_err);
+  EXPECT_THAT(empty_buf_err.getError(),
+              testing::HasSubstr("cannot allocate zero length buffers"));
+
   const int copy_lengths[] = {256};
 
   for (int i = 0; i < 2; i++) {
