@@ -32,6 +32,14 @@ constexpr llvm::StringLiteral DPSTensorGetTensorSpecWithoutLambdas =
     "tensor_utils_internal::managed_tensor_slice::_get_tensor_specs_without_"
     "lambdas";
 
+constexpr llvm::StringLiteral DPSBuildTensorSpecs = "build_static_tensor_specs";
+
+constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithLambdas =
+    "rebuild_static_tensor_specs_with_lambdas";
+
+constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithStrides =
+    "rebuild_static_tensor_specs_with_strides";
+
 } // namespace M::MOGG::Utils
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_MOJOTARGETFUNCTIONS_H

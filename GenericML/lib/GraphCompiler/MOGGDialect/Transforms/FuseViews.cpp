@@ -66,7 +66,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
   void runOnOperationImpl(
       MO::GraphOp graph, MLIRContext *ctx,
-      const DenseMap<KernelOp, MO::Static::ReshapeOp> &reshapeKernels) {
+      const DenseMap<KernelOp, MO::Static::ReshapeOp> &reshapeKernels,
+      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+      TypeManager &typeManager) {
 
     graph.walk([&](MOGG::KernelOp kernel) {
       if (reshapeKernels.contains(kernel))
@@ -111,7 +113,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
-        fuseInputAtIndex(kernel, index, alreadyFused);
+        fuseInputAtIndex(kernel, index, alreadyFused, mojoLibraryAnalysis,
+                         typeManager);
         index = kernel.getNumOperands() - 1;
         fusionOccurred = true;
       }
@@ -119,6 +122,10 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       // Strip all temporarily added fusion hooks.
       if (fusionOccurred && !isView)
         kernel.removeTemporaryFusionMarks();
+
+      ModuleOp topLevelModule = kernel->getParentOfType<ModuleOp>();
+      MOGG::addForwardDeclsOfReferencedFuncs(kernel, topLevelModule,
+                                             mojoLibraryAnalysis);
     });
 
     auto replaceArg = [](KernelOp kernel, size_t index, Value newVal) {
@@ -257,7 +264,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
   // Fuse at the given index.
   void fuseInputAtIndex(MOGG::KernelOp leaf, int32_t idx,
-                        DenseMap<Value, Value> &alreadyFused) {
+                        DenseMap<Value, Value> &alreadyFused,
+                        MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                        TypeManager &typeManager) {
     IRMapping remapper;
     Value operandBeingReplaced = leaf.getOperand(idx);
     KernelOp producerKernel =
@@ -348,11 +357,14 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         }
       });
 
+      KGEN::CallOp viewCopyCallOp;
+
       Value stackAlloc;
       leaf.walk([&](KGEN::CallOp callOp) {
         StringRef funcName =
             cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
         if (funcName.starts_with(Utils::DPSTensorCopy)) {
+          viewCopyCallOp = callOp;
           stackAlloc = callOp->getOperand(1);
           toDelete.insert(callOp);
           // Always remove the first one because in case we fuse a view into a
@@ -365,7 +377,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
       alreadyFused[operand] = stackAlloc;
 
-      KGEN::ParamDeclRefAttr newStaticTensorSpec = nullptr;
+      TypedAttr newStaticTensorSpec = nullptr;
       DenseSet<StringAttr> oldStrideParams;
       // Iterating through all the mogg.to_kgen that relate to the output of the
       // view we are fusing in.
@@ -376,17 +388,65 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
           oldStrideParams.insert(oldStaticTensorSpecName);
       }
 
+      // Build a new StaticTensorSpec parameter, changing only the strides.
+      auto buildTensorSpecWithViewStrides =
+          [&](TypedAttr oldTensorSpecttr) -> ErrorOr<TypedAttr> {
+        auto tensorType = cast<MO::TensorType>(target.getType());
+
+        // Get The view strides from the viewcopy call.
+        const unsigned viewStridesParameterIdx = 4;
+        TypedAttr viewStridesAttr =
+            viewCopyCallOp.getParamValues()[viewStridesParameterIdx];
+
+        // Load the function to build StaticTensorSpec parameter.
+        auto buildSpecFn = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
+            Utils::DPSRebuildTensorSpecsWithStrides);
+        if (!buildSpecFn)
+          return Error(llvm::Twine("Cannot find mojo kernel for ") +
+                       Utils::DPSRebuildTensorSpecsWithStrides);
+
+        // Build the function params
+        TypedAttr dtypeParam =
+            typeManager.typeMap.at(tensorType.getDtype()).dtype;
+        TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
+        SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
+
+        auto buildSpecSig = buildSpecFn.getSignature().getSpecializedSignature(
+            buildSpecParams, [&]() -> mlir::InFlightDiagnostic {
+              return viewCopyCallOp->emitError(
+                  "couldn't not retrieve specialized signature");
+            });
+
+        if (!buildSpecSig)
+          return Error("Cannot get specialized signature for "
+                       "rebuild_static_tensor_specs_with_strides");
+
+        // Create parametric call which produces the static spec
+        SmallVector<mlir::TypedAttr> lambdaArgs{
+            KGEN::SymbolConstantAttr::get(buildSpecFn, buildSpecSig,
+                                          buildSpecParams),
+            oldTensorSpecttr, viewStridesAttr};
+        auto resulTy = buildSpecSig.getResults()[0];
+
+        return KGEN::ParamOperatorAttr::get(KGEN::POC::Apply, lambdaArgs,
+                                            resulTy);
+      };
+
       mlir::AttrTypeReplacer walker;
       walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
-                                -> std::optional<KGEN::ParamDeclRefAttr> {
+                                -> std::optional<TypedAttr> {
         if (oldStrideParams.contains(attr.getName())) {
           ASSERT_STREAM(
               producerKernelToKGEN.getStaticTensorSpecNameAttr() != nullptr,
               << "Expected strides to be a parameter declaration reference. "
                  "Maybe "
                  "the view kernel was not explicitly parametrized on strides?");
-          if (newStaticTensorSpec == nullptr)
-            newStaticTensorSpec = producerKernelToKGEN.getStaticTensorRefAttr();
+          if (newStaticTensorSpec == nullptr) {
+            auto specOrErr = buildTensorSpecWithViewStrides(
+                producerKernelToKGEN.getStaticTensorRefAttr());
+            ASSERT_STREAM(!specOrErr.isError(), "failed to build the new spec");
+            newStaticTensorSpec = specOrErr.takeValue();
+          }
           return newStaticTensorSpec;
         }
         return std::nullopt;
@@ -469,18 +529,13 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         getSummaryString({producerKernel, leaf}, FusionType::SOFT));
   }
 
-  DenseMap<KernelOp, MO::Static::ReshapeOp> lowerReshapeOps(MO::GraphOp graph) {
+  DenseMap<KernelOp, MO::Static::ReshapeOp>
+  lowerReshapeOps(MO::GraphOp graph,
+                  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
     auto ctx = graph.getContext();
-    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(ctx, kernelLibraryPaths, withDebuginfo);
     DenseMap<KernelOp, MO::Static::ReshapeOp> reshapeKernels;
-    if (errOr.isError())
-      return reshapeKernels;
-
     // If the lowering for the reshape op is not the extensibility API, do not
     // lower it.
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
     if (!mojoLibraryAnalysis.kernelUsesExtensibilityAPI(
             mojoLibraryAnalysis.getRegisteredMojoKernelFor(
                 MO::Static::ReshapeOp::getOperationName()))) {
@@ -514,16 +569,32 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     auto graph = getOperation();
     auto ctx = graph.getContext();
 
+    // Get the LibraryAnalysis
+    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
+        analysis.initIfNeeded(ctx, kernelLibraryPaths, withDebuginfo);
+    if (errOr.isError()) {
+      signalPassFailure();
+      return;
+    }
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+
+    // Get the type manager
+    auto typeManager = MOGG::TypeManager::get(ctx, mojoLibraryAnalysis);
+    ASSERT_STREAM(!typeManager.isError(), << typeManager.takeError());
+
     // First fuse all kernels that are view ops.
     DenseMap<KernelOp, MO::Static::ReshapeOp> reshapeKernels;
-    runOnOperationImpl(graph, ctx, reshapeKernels);
+    runOnOperationImpl(graph, ctx, reshapeKernels, mojoLibraryAnalysis,
+                       *typeManager);
 
-    reshapeKernels = lowerReshapeOps(graph);
+    reshapeKernels = lowerReshapeOps(graph, mojoLibraryAnalysis);
     // Do not attempt the next step if there are no reshape kernels (probably
     // because they would not be lowered to the extensibility/kernel API).
     if (!reshapeKernels.empty()) {
       // Then, lower mo.static.reshape to mogg.kernel and fuse things into them.
-      runOnOperationImpl(graph, ctx, reshapeKernels);
+      runOnOperationImpl(graph, ctx, reshapeKernels, mojoLibraryAnalysis,
+                         *typeManager);
       // Then, bring back the mo.static.reshape.
       raiseBackReshapeKernels(reshapeKernels);
     }
