@@ -141,19 +141,6 @@ static void mgp_context_create(Result<StateContext> result,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.state_slot.create
-//===----------------------------------------------------------------------===//
-
-/// Constructs the default state slot with the given number of cached buffers
-/// under the given slot in the mgp context.
-static Chain mgp_state_slot_create(Chain inChain, StateContext &ctx,
-                                   MEFAttr<uint64_t> numBuffers,
-                                   MEFAttr<uint64_t> slot) {
-  ctx.emplaceStateSlot<DefaultStateSlot>(*slot, *numBuffers);
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.generic.execute
 //===----------------------------------------------------------------------===//
 
@@ -650,7 +637,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.runtime.create", mgp_runtime_create);
   ADD_PRIMITIVE(registry, "mgp.buffer.plan", mgp_buffer_plan);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
-  ADD_PRIMITIVE(registry, "mgp.state_slot.create", mgp_state_slot_create);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.guard", mgp_guard);

@@ -101,43 +101,6 @@ def ContextCreateOp : MGP_Op<"context.create"> {
   let assemblyFormat = "$numSlots attr-dict";
 }
 
-//===----------------------------------------------------------------------===//
-// StateSlotCreateOp
-//===----------------------------------------------------------------------===//
-
-def StateSlotCreateOp : MGP_Op<"state_slot.create"> {
-  let summary = [{
-    Creates a default state slot within the context at the given slot index.
-  }];
-  let description = [{
-    Creates a default state slot at the given slot index with room for the
-    given number of cached buffers (which generally represent operator
-    outputs). The op returns a chain indicating when it has completed execution.
-
-    Example:
-    ```mlir
-    %ctx : !mgp.context
-    %ch0 : !mef.chain
-
-    // Creates a default state slot at index 42 with room for
-    // two buffers.
-    %ch1 = mgp.state_slot.create %ch0, %ctx[42], 2
-    %ch1 : !mef.chain
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names. Thankfully this matches our desired argument order.
-  let arguments = (ins ChainType:$inChain,
-                   MGP_ContextType:$theContext,
-                   UI64Attr:$numBuffers,  // 0
-                   UI64Attr: $slot);      // 1
-  let results = (outs ChainType:$outChain);
-  let assemblyFormat = [{
-    $inChain `,` $theContext `[` $slot `]` `,` $numBuffers attr-dict
-  }];
-}
-
 
 //===----------------------------------------------------------------------===//
 // TensorCreateOp
