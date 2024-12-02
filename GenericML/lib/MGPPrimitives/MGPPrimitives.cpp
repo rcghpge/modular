@@ -561,10 +561,10 @@ static void mgp_guard(Chain inChain, RemainingArguments inputs,
   assert(inputs.size() == results.size());
 
   auto inputAsyncVals = inputs.get();
-  auto resultAsnycVals = results.get();
+  auto resultAsyncVals = results.get();
 
   for (const auto &[input, result] :
-       llvm::zip(inputAsyncVals, resultAsnycVals)) {
+       llvm::zip(inputAsyncVals, resultAsyncVals)) {
     result = std::move(input);
   }
 }
