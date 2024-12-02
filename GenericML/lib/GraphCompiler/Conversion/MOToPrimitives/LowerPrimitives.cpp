@@ -79,10 +79,12 @@ static inline bool canDuplicate(Operation *op) {
   if (op->getName().getIdentifier().strref().starts_with("testfuse."))
     return true;
 
-  // TODO(GEX-784): This is disabled since certain subgraphs can bloat
-  // compile times.
-  // return isa<::M::MIP::MIPDialect>(op->getDialect());
-  return false;
+  if (isa<MGP::BufferSliceOp, MGP::BufferConstantOp, MGP::TensorSpecGetDimOp,
+          MGP::BufferConstantExternalOp, MGP::BufferGetCachedOp,
+          MGP::CpuTensorSpecCreateOp, MGP::TensorExtractBufferOp>(op))
+    return true;
+  return isa<KGEN::KGENDialect, KGEN::POP::POPDialect,
+             mlir::index::IndexDialect>(op->getDialect());
 }
 
 // Anything we find a registry for, lower to generic regions
@@ -323,8 +325,20 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
       bodyBuilder(builder, loc, op, kernelBody.getArguments());
   if (outputs.isError())
     return outputs.takeError();
+  SmallVector<Value> outs = outputs.takeValue();
 
-  builder.create<MOGG::OutputOp>(loc, outputs.takeValue());
+  SmallVector<Value> returns;
+  for (auto [returnVal, returnType] :
+       llvm::zip(outs, newKernel.getResultTypes())) {
+    if (returnVal.getType() != returnType &&
+        isa<IndexType>(returnVal.getType())) {
+      returnVal = builder.create<mlir::index::CastSOp>(returnVal.getLoc(),
+                                                       returnType, returnVal);
+    }
+    returns.push_back(returnVal);
+  }
+
+  builder.create<MOGG::OutputOp>(loc, returns);
   return newKernel;
 };
 

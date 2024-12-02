@@ -490,14 +490,27 @@ void EntityTable::addPrimitiveOpcode(StringAttr opcode) {
 }
 
 auto EntityTable::decomposeLocation(Location loc) -> LocationTuple {
-  StringAttr filename;
+  StringAttr filename = nullptr;
   unsigned line = 0, col = 0;
   // TODO: could support more powerful location approach.
   if (auto fileLineCol = dyn_cast<FileLineColLoc>(loc)) {
     filename = fileLineCol.getFilename();
     line = fileLineCol.getLine();
     col = fileLineCol.getColumn();
-  } else {
+  } else if (auto fusedLoc = dyn_cast<FusedLoc>(loc)) {
+    // If we are dealing with a fused location just pick one, we can't pass both
+    // to the MEF and we can't disambiguate further.
+    for (Location loc : fusedLoc.getLocations()) {
+      if (auto fileLineCol = dyn_cast<FileLineColLoc>(loc)) {
+        filename = fileLineCol.getFilename();
+        line = fileLineCol.getLine();
+        col = fileLineCol.getColumn();
+        break;
+      }
+    }
+  }
+
+  if (!filename) {
     // TODO Could look through fancy locations to get a FileLineCol in most
     // cases.
     filename = StringAttr::get(loc.getContext());

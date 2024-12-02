@@ -514,15 +514,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   bool hasInternalAllocs =
       !(getAllocIndices().has_value() && !getAllocIndices()->empty());
 
-  // TODO(GEX-780): Right now prevent MOGG Kernels fusing into children
-  // (but allowing other kernels to fuse into the MOGG kernel) since
-  // we do not have good heuristics for determining when it's appropriate.
-  //
-  // We can also look into allowing duplication for some select forms of ops.
-  bool canFuseIntoOther = !hasInternalAllocs && false;
-
-  // To match behavior before removing middle-jit (GEX-425)
-  bool canBeFusedInto = false;
+  // Allow all kernels to be fused into other kernels.
+  bool canFuseIntoOther = !hasInternalAllocs;
 
   // Later update the isAsync instead of hard-coding
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
@@ -533,7 +526,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
       ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
       BoolAttr::get(ctx, canFuseIntoOther), // canFuseIntoOther
-      BoolAttr::get(ctx, canBeFusedInto),   // canBeFusedInto
+      BoolAttr::get(ctx, true),             // canBeFusedInto
       BoolAttr::get(ctx, false)             // canDuplicate
   );
   newKernel.setDeviceRef(device);
