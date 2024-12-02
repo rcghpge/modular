@@ -60,6 +60,18 @@ static constexpr llvm::StringLiteral PARAMETER_AVG_POOL_COUNT_BOUNDARY =
 static constexpr llvm::StringLiteral PARAMETER_ROI_ALIGNMENT = "aligned";
 static constexpr llvm::StringLiteral PARAMETER_ROI_ALIGNMENT_MODE = "mode";
 
+// TransposeOp
+static constexpr llvm::StringLiteral PARAMETER_TRANSPOSE_STATIC_PERM =
+    "static_permutations";
+
+// SliceOp
+static constexpr llvm::StringLiteral PARAMETER_SLICE_STATIC_STEPS =
+    "static_steps";
+
+// SliceDimOp
+static constexpr llvm::StringLiteral PARAMETER_SLICE_DIM_STATIC_STEP =
+    "static_step";
+
 } // namespace M::MOGG
 
 #endif
