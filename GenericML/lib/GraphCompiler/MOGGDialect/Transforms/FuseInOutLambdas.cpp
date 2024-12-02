@@ -279,6 +279,25 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     SmallVector<KGEN::ParamDeclareOp> newParamDeclOps;
 
     kernelToFuseInto.setInsertionPointToTop(builder);
+
+    // Creating at most one empty tensors op. This will be used as replacement
+    // for the fused argument which has some uses doing nothing.
+    auto fakeTensors = kernelToFuseInto.getCreateEmptyTensor();
+    if (!fakeTensors) {
+      fakeTensors = builder.create<MOGG::CreateEmptyTensorsOp>(
+          kernelToFuseInto.getLoc(), fusionArgument.getType());
+    } else {
+      auto fakeTensorTypes = SmallVector<Type>(fakeTensors->getResultTypes());
+      fakeTensorTypes.push_back(fusionArgument.getType());
+      auto newFakeTensors = builder.create<MOGG::CreateEmptyTensorsOp>(
+          kernelToFuseInto.getLoc(), fakeTensorTypes);
+      fakeTensors->replaceAllUsesWith(newFakeTensors.getResults().drop_back());
+      fakeTensors.erase();
+      fakeTensors = newFakeTensors;
+      kernelToFuseInto.setInsertionPointToTop(builder);
+    }
+    Value newFakeFusedArgument = fakeTensors->getResults().back();
+
     for (auto &op : inputKernel.getOps()) {
       if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
         // We clone ToKGENOp except for the one related to the output.
@@ -405,17 +424,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // It still has some uses, which shouldn't do anything since it should be
     // read by the lambda. Eg `x._fused_load()` actually call the input_lambda
     // without ever using `x`.
-    // Let's replace it with the elementwise op input instead.
-    auto fusionArgToKGEN = cast<MOGG::ToKGENOp>(*fusionArgument.user_begin());
-
-    auto elemwInputArg = oldToNew.lookup(inputKernelBody.getArgument(0));
-    auto elemwInputToKGEN = cast<MOGG::ToKGENOp>(*elemwInputArg.user_begin());
-
-    // Replace the intermediate elemw output with the elemw input
-    fusionArgToKGEN->getResult(0).replaceAllUsesWith(elemwInputToKGEN);
-
-    // Delete the unused ToKGEN of the fused argument.
-    fusionArgToKGEN->erase();
+    // Let's replace it with an empty tensor instead.
+    fusionArgument.replaceAllUsesWith(newFakeFusedArgument);
 
     // Remove the fused argument from the final kernel.
     kernelToFuseInto.removeOperandAtIndex(inputIdx);

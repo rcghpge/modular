@@ -759,6 +759,35 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       continue;
     }
 
+    if (auto createEmptyOp = dyn_cast<MOGG::CreateEmptyTensorsOp>(op)) {
+      for (Value val : createEmptyOp->getResults()) {
+        auto tensorTy = cast<MO::TensorType>(val.getType());
+
+        SmallVector<Value> operands;
+        // We will allocate a stack of 1 element in place of a nullptr. This
+        // should never be read and the tensor considered 'empty'. I.E just a
+        // stride, type and size with a nullptr attached.
+        auto voidStar =
+            KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext()));
+        Value dataPtr =
+            builder.create<KGEN::POP::StackAllocationOp>(op.getLoc(), voidStar);
+        operands.push_back(dataPtr);
+        for (auto dim : tensorTy.getDims()) {
+          auto loweredParam = loweredParams.at(dim);
+          if (!loweredParam.getType().isIndex()) {
+            loweredParam = builder.create<mlir::index::CastSOp>(
+                op.getLoc(), builder.getIndexType(), loweredParam);
+          }
+          operands.push_back(loweredParam);
+        }
+
+        Value newTensor = builder.create<MOGG::ToTensorFromMGPOp>(
+            op.getLoc(), tensorTy, operands);
+        mapper.map(val, newTensor);
+      }
+      continue;
+    }
+
     builder.clone(op, mapper);
   }
 
