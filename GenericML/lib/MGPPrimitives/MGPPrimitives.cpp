@@ -156,7 +156,6 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
                     MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
                     MEFListAttr fConstantResources, Runtime &runtime,
                     EncodedLocation loc) {
-  auto profilerEntry = MGPProfilerEntry::create(*dSummary);
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
           static_cast<size_t>(*aSlot));
@@ -174,8 +173,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
        // outResults _must_ be copied
        outResults = outResults.copyAsVector(),
        // std::move(operands) does not work, must use takeAsVector
-       takenOperands = operands.takeAsVector(), summary = dSummary->str(),
-       profilerEntry = std::move(profilerEntry), runtimePtr = runtimePtr,
+       takenOperands = operands.takeAsVector(), runtimePtr = runtimePtr,
        deviceContext = std::move(deviceContext),
        constantResources = fConstantResources, loc = std::move(loc)]() mutable {
         void *deviceContextPtr = deviceContext.getPointerToData();
@@ -230,16 +228,6 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
         kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
                   reinterpret_cast<void *>(runtimePtr.get()),
                   reinterpret_cast<void *>(&callContext));
-
-        for ([[maybe_unused]] auto &result : outResults)
-          assert(result.isReady() || result.isError());
-
-        std::move(profilerEntry).record();
-
-        // Make sure our profiling entry (or any which the Mojo kernel may have
-        // designated as 'current') does not escape the scope of the Mojo kernel
-        // call, either synchronous or up to first await point for asynchronous.
-        MGPProfilerEntry::clearCurrentId();
       };
 
   if (eIsAsync.get())
