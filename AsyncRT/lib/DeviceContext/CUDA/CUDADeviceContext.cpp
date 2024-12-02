@@ -56,12 +56,19 @@
 
 namespace M::AsyncRT {
 
+// Allow printing of detailed error messages with C++ source information when
+// debugging low-level implementation.
+static constexpr bool detailed_err_msg = false;
+
 // TODO(iposva) : Switch error handling to using `std::source_location` once we
 // are using C++ 20.
 static Error formatError(const char *file, int line, const char *func,
                          const llvm::Twine &msg) {
-  return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-               " - " + msg);
+  if (detailed_err_msg) {
+    return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
+                 " - " + msg);
+  }
+  return Error(msg);
 }
 
 static Error formatError(const char *file, int line, const char *func,
@@ -118,13 +125,13 @@ ErrorOrSuccess CUDADevice::isCompatibleWithMAX() const {
   if (compute.isError())
     return compute.takeError();
   if (*compute < MIN_COMPUTE_CAPABILITY) {
-    return Error("MAX only supports CUDA Ampere architectures or higher");
+    RAISE_ERROR("MAX only supports CUDA Ampere architectures or higher");
   }
 
   int driver_version = 0;
   CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
   if (driver_version < MIN_DRIVER_VERSION) {
-    return Error("MAX not supported using current GPU driver");
+    RAISE_ERROR("MAX not supported using current GPU driver");
   }
 
   return success();
@@ -188,8 +195,8 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
   static const ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
     ErrorOr<const CUDADriver &> err_driver = CUDADriver::get();
     if (err_driver) {
-      return Error(llvm::Twine("CUDA Driver initialization failed: ") +
-                   err_driver.getError());
+      RAISE_ERROR(llvm::Twine("CUDA Driver initialization failed: ") +
+                  err_driver.getError());
     }
     int count = 0;
     CUDA_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
@@ -211,7 +218,7 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
   }();
 
   if (err) {
-    return Error(err.getError());
+    RAISE_ERROR(err.getError());
   }
   return devices;
 }
@@ -717,7 +724,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const DeviceFunction::Arguments &args) const {
   if (args.hasError()) {
-    return Error(args.getError().getError());
+    RAISE_ERROR(args.getError().getError());
   }
 
   const auto &cuda_func = CUDADeviceFunction::cast(func);

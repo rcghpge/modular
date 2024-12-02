@@ -48,12 +48,19 @@
 
 namespace M::AsyncRT {
 
+// Allow printing of detailed error messages with C++ source information when
+// debugging low-level implementation.
+static constexpr bool detailed_err_msg = false;
+
 // TODO(iposva) : Switch error handling to using `std::source_location` once we
 // are using C++ 20.
 static Error formatError(const char *file, int line, const char *func,
                          const llvm::Twine &msg) {
-  return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-               " - " + msg);
+  if (detailed_err_msg) {
+    return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
+                 " - " + msg);
+  }
+  return Error(msg);
 }
 
 static Error formatError(const char *file, int line, const char *func,
@@ -111,7 +118,7 @@ gethipDeviceAttribute(Device::Attribute attr) {
     ENTRY(MAX_REGISTERS_PER_BLOCK, MaxRegistersPerBlock);
     ENTRY(MAX_THREADS_PER_MULTIPROCESSOR, MaxThreadsPerMultiProcessor);
   default:
-    return Error("Attribute not defined for AMD GPU");
+    RAISE_ERROR("Attribute not defined for AMD GPU");
   }
 #undef ENTRY
 }
@@ -136,13 +143,13 @@ ErrorOrSuccess HIPDevice::isCompatibleWithMAX() const {
   if (compute.isError())
     return compute.takeError();
   if (*compute < MIN_COMPUTE_CAPABILITY) {
-    return Error("MAX only supports HIP Ampere architectures or higher");
+    RAISE_ERROR("MAX only supports HIP Ampere architectures or higher");
   }
 
   int driver_version = 0;
   HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
   if (driver_version < MIN_DRIVER_VERSION) {
-    return Error("MAX not supported using current GPU driver");
+    RAISE_ERROR("MAX not supported using current GPU driver");
   }
 
   return success();
@@ -181,8 +188,8 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
 ErrorOr<int> HIPDevice::numberOfDevices() {
   ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
   if (err_driver) {
-    return Error(llvm::Twine("HIP Driver initialization failed: ") +
-                 err_driver.getError());
+    RAISE_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
+                err_driver.getError());
   }
 
   int count = 0;
@@ -207,8 +214,8 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
   static ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
     ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
     if (err_driver) {
-      return Error(llvm::Twine("HIP Driver initialization failed: ") +
-                   err_driver.getError());
+      RAISE_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
+                  err_driver.getError());
     }
     int count = 0;
     HIP_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
@@ -230,7 +237,7 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
   }();
 
   if (err) {
-    return Error(err.getError());
+    RAISE_ERROR(err.getError());
   }
   return devices;
 }
@@ -597,15 +604,15 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   hipModule_t module;
 
   if (max_registers >= 0) {
-    return Error("not implemented yet: max_registers");
+    RAISE_ERROR("not implemented yet: max_registers");
   }
 
   if (threads_per_block >= 0) {
-    return Error("not implemented yet: threads_per_block");
+    RAISE_ERROR("not implemented yet: threads_per_block");
   }
 
   if (cache_mode >= 0) {
-    return Error("not implemented yet: cache_mode");
+    RAISE_ERROR("not implemented yet: cache_mode");
   }
 
   HIP_CHECK_ERR(driver_.ModuleLoadData(&module, data));
@@ -637,7 +644,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExec(
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const DeviceFunction::Arguments &args) const {
   if (args.hasError()) {
-    return Error(args.getError().getError());
+    RAISE_ERROR(args.getError().getError());
   }
 
   const auto &hip_func = HIPDeviceFunction::cast(func);

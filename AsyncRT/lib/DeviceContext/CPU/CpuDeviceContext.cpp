@@ -22,11 +22,19 @@
 
 namespace M::AsyncRT {
 namespace {
+
+// Allow printing of detailed error messages with C++ source information when
+// debugging low-level implementation.
+static constexpr bool detailed_err_msg = false;
+
 Error formatError(const char *file, int line, const char *func,
                   const char *msg = nullptr) {
-  return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-               " failed" + ((msg == nullptr) ? "." : ": ") +
-               ((msg == nullptr) ? "" : msg));
+  if (detailed_err_msg || (msg == nullptr)) {
+    return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
+                 " failed" + ((msg == nullptr) ? "." : ": ") +
+                 ((msg == nullptr) ? "" : msg));
+  }
+  return Error(msg);
 }
 } // namespace
 } // namespace M::AsyncRT
@@ -74,7 +82,7 @@ ErrorOr<int> CpuDevice::numberOfDevices() {
 
 ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
   if (id != 0) {
-    return Error("CPU device only supports id == 0.");
+    RAISE_ERROR_MESSAGE("CPU device only supports id == 0.");
   }
 
   static CpuDevice *device = new CpuDevice();
