@@ -244,15 +244,17 @@ CUDADeviceBuffer::~CUDADeviceBuffer() {
     // maintained elsewhere.
     return;
   }
-  if (parent() != nullptr) {
-    // Parent owns the device memory.
+  if ((parent() != nullptr) || (dptr_ == nullptr)) {
+    // Parent owns the device memory or detached buffer.
     return;
   }
 
   const auto &cuda_context = CUDADeviceContext::cast(context());
-  CUDA_CHECK(cuda_context.setCurrent());
-  CUDA_CHECK(cuda_context.cuda_driver().MemFreeAsync(
-      dptr_, cuda_context.cuda_stream()));
+  if (!cuda_context.buffer_cache().free(dptr_)) {
+    CUDA_CHECK(cuda_context.setCurrent());
+    CUDA_CHECK(cuda_context.cuda_driver().MemFreeAsync(
+        dptr_, cuda_context.cuda_stream()));
+  }
 }
 
 CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
@@ -450,17 +452,22 @@ const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
 
 // ===== CUDADeviceContext ===== //
 CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
-                                     CUcontext context, CUstream stream)
+                                     CUcontext context, CUstream stream,
+                                     void *buffer_cache_base,
+                                     size_t buffer_cache_size)
     : DeviceContext(device), driver_(device.driver()), context_(context),
-      stream_(stream) {}
+      stream_(stream), buf_cache_(buffer_cache_base, buffer_cache_size,
+                                  device.allocationAlignment()) {}
 
 CUDADeviceContext::~CUDADeviceContext() {
   CUDA_CHECK(setCurrent());
+  // Destroy the function map before destroying the context.
+  func_map_.clear();
+  driver_.StreamSynchronize(stream_);
+  buffer_cache().clear();
   // We do not need to synchronize on possible work queued on this stream.
   // Resources will be released automatically once work has been completed.
   CUDA_CHECK(driver_.StreamDestroy(stream_));
-  // Destroy the function map before destroying the context.
-  func_map_.clear();
   CUDA_CHECK(driver_.CtxDestroy(context_));
 }
 
@@ -481,11 +488,18 @@ ErrorOr<DeviceBufferRef> CUDADeviceContext::createBuffer(size_t len,
   CUDA_CHECK_ERR(setCurrent());
 
   size_t bytesize = len * elem_size;
-  CUdeviceptr dptr;
-  if (mode == ASYNC) {
-    CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
-  } else {
-    CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
+  CUdeviceptr dptr = nullptr;
+  // A zero size buffer is associated with a nullptr pointer. Skip allocating in
+  // that case.
+  if (bytesize != 0) {
+    dptr = buffer_cache().allocate(bytesize);
+    if (dptr == nullptr) {
+      if (mode == ASYNC) {
+        CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
+      } else {
+        CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
+      }
+    }
   }
   return CUDADeviceBufferRef::create(*this, len, elem_size, dptr);
 }
@@ -803,6 +817,8 @@ CUstream CUDADeviceContext::cuda_stream() const { return stream_; }
 
 CUcontext CUDADeviceContext::cuda_context() const { return context_; }
 
+BufferCache &CUDADeviceContext::buffer_cache() const { return buf_cache_; }
+
 CUDADriver::Result CUDADeviceContext::setCurrent() const {
   return driver_.CtxSetCurrent(context_);
 }
@@ -819,7 +835,8 @@ CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
   return static_cast<const CUDADeviceContext *>(ctx);
 }
 
-ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
+ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id,
+                                                        size_t cache_size) {
   ErrorOr<const CUDADevice &> err_or_device = CUDADevice::get(id);
   if (err_or_device) {
     return err_or_device.takeError();
@@ -833,7 +850,13 @@ ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id) {
   CUstream stream;
   CUDA_CHECK_ERR(driver.StreamCreate(&stream, 0));
 
-  return CUDADeviceContextRef::create(device, context, stream);
+  CUdeviceptr cache_base = nullptr;
+  if (cache_size != 0) {
+    CUDA_CHECK_ERR(driver.MemAlloc(&cache_base, cache_size));
+  }
+
+  return CUDADeviceContextRef::create(device, context, stream, cache_base,
+                                      cache_size);
 }
 
 } // namespace M::AsyncRT

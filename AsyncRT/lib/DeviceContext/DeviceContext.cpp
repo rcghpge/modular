@@ -259,12 +259,13 @@ ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t len,
   return createBuffer(len, elem_size, SYNC);
 }
 
-ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id) {
+ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
+                                                size_t buffer_cache_size) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (api == "cuda") {
-    return CUDADeviceContext::create(id);
+    return CUDADeviceContext::create(id, buffer_cache_size);
   } else if (api == "hip") {
-    return HIPDeviceContext::create(id);
+    return HIPDeviceContext::create(id, buffer_cache_size);
   } else if ((api == "cpu") || (api == "none")) {
     return CpuDeviceContext::create(id);
   }

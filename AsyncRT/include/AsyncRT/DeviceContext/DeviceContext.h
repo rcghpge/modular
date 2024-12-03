@@ -325,7 +325,8 @@ public:
 
   virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
 
-  static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
+  static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0,
+                                          size_t buffer_cache_size = 0);
 
 protected:
   DeviceContext(const Device &device);

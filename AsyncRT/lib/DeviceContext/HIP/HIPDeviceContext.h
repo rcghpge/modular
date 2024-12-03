@@ -12,6 +12,7 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPDEVICECONTEXT_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "HIPDriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
@@ -196,7 +197,8 @@ private:
 class HIPDeviceContext : public DeviceContext {
 public:
   HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                   hipStream_t stream);
+                   hipStream_t stream, void *buffer_cache_base,
+                   size_t buffer_cache_size);
   ~HIPDeviceContext() override;
 
   // Host memory allocation.
@@ -256,10 +258,12 @@ public:
   const HIPDriver &hip_driver() const;
   hipStream_t hip_stream() const;
 
+  BufferCache &buffer_cache() const;
+
   HIPDriver::Result setCurrent() const;
 
   static const HIPDeviceContext &cast(const DeviceContext &ctx);
-  static ErrorOr<HIPDeviceContextRef> create(int id);
+  static ErrorOr<HIPDeviceContextRef> create(int id, size_t cache_size);
 
 private:
   const HIPDriver &driver_;
@@ -268,6 +272,8 @@ private:
 
   mutable std::mutex mu_;
   mutable llvm::StringMap<HIPDeviceFunctionRef> func_map_;
+
+  mutable BufferCache buf_cache_;
 };
 
 } // namespace M::AsyncRT

@@ -263,14 +263,16 @@ HIPDeviceBuffer::~HIPDeviceBuffer() {
     // maintained elsewhere.
     return;
   }
-  if (parent() != nullptr) {
-    // Parent owns the device memory.
+  if ((parent() != nullptr) || (dptr_ == nullptr)) {
+    // Parent owns the device memory or detached buffer.
     return;
   }
 
   const auto &hip_context = HIPDeviceContext::cast(context());
-  HIP_CHECK(
-      hip_context.hip_driver().MemFreeAsync(dptr_, hip_context.hip_stream()));
+  if (!hip_context.buffer_cache().free(dptr_)) {
+    HIP_CHECK(
+        hip_context.hip_driver().MemFreeAsync(dptr_, hip_context.hip_stream()));
+  }
 }
 
 hipDeviceptr_t HIPDeviceBuffer::hip_ptr() const { return dptr_; }
@@ -447,13 +449,16 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 
 // ===== HIPDeviceContext ===== //
 HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                                   hipStream_t stream)
+                                   hipStream_t stream, void *buffer_cache_base,
+                                   size_t buffer_cache_size)
     : DeviceContext(device), driver_(device.driver()), context_(context),
-      stream_(stream) {}
+      stream_(stream), buf_cache_(buffer_cache_base, buffer_cache_size,
+                                  device.allocationAlignment()) {}
 
 HIPDeviceContext::~HIPDeviceContext() {
   // We do not need to synchronize on possible work queued on this stream.
   // Resources will be released automatically once work has been completed.
+  buffer_cache().clear();
   HIP_CHECK(driver_.StreamDestroy(stream_));
   HIP_CHECK(driver_.CtxDestroy(context_));
 }
@@ -475,11 +480,13 @@ ErrorOr<DeviceBufferRef> HIPDeviceContext::createBuffer(size_t len,
   HIP_CHECK_ERR(setCurrent());
 
   size_t bytesize = len * elem_size;
-  hipDeviceptr_t dptr;
-  if (mode == ASYNC) {
-    HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
-  } else {
-    HIP_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
+  hipDeviceptr_t dptr = buffer_cache().allocate(bytesize);
+  if (dptr == nullptr) {
+    if (mode == ASYNC) {
+      HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
+    } else {
+      HIP_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
+    }
   }
   return HIPDeviceBufferRef::create(*this, len, elem_size, dptr);
 }
@@ -714,6 +721,8 @@ const HIPDriver &HIPDeviceContext::hip_driver() const { return driver_; }
 
 hipStream_t HIPDeviceContext::hip_stream() const { return stream_; }
 
+BufferCache &HIPDeviceContext::buffer_cache() const { return buf_cache_; }
+
 HIPDriver::Result HIPDeviceContext::setCurrent() const {
   return driver_.CtxSetCurrent(context_);
 }
@@ -722,7 +731,8 @@ const HIPDeviceContext &HIPDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const HIPDeviceContext &>(ctx);
 }
 
-ErrorOr<HIPDeviceContextRef> HIPDeviceContext::create(int id) {
+ErrorOr<HIPDeviceContextRef> HIPDeviceContext::create(int id,
+                                                      size_t cache_size) {
   ErrorOr<const HIPDevice &> err_or_device = HIPDevice::get(id);
   if (err_or_device) {
     return err_or_device.takeError();
@@ -736,7 +746,13 @@ ErrorOr<HIPDeviceContextRef> HIPDeviceContext::create(int id) {
   hipStream_t stream;
   HIP_CHECK_ERR(driver.StreamCreate(&stream, 0));
 
-  return HIPDeviceContextRef::create(device, context, stream);
+  hipDeviceptr_t cache_base = nullptr;
+  if (cache_size != 0) {
+    HIP_CHECK_ERR(driver.MemAlloc(&cache_base, cache_size));
+  }
+
+  return HIPDeviceContextRef::create(device, context, stream, cache_base,
+                                     cache_size);
 }
 
 } // namespace M::AsyncRT

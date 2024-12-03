@@ -24,6 +24,7 @@ using CUfunction = struct CUfunc_st *;
 using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
+using CUhostFn = void(void *);
 
 enum class CUdevice_attribute {
   TEXTURE_ALIGNMENT = 14,
@@ -241,6 +242,9 @@ public:
     return cuFuncSetCacheConfig_(hfunc, config);
   }
 
+  Result LaunchHostFunc(CUstream hStream, CUhostFn fn, void *userData) const {
+    return cuLaunchHostFunc_(hStream, fn, userData);
+  }
   Result LaunchKernel(CUfunction f, unsigned int gridDimX,
                       unsigned int gridDimY, unsigned int gridDimZ,
                       unsigned int blockDimX, unsigned int blockDimY,
@@ -425,8 +429,11 @@ private:
   using tcuFuncSetAttribute = Result(CUfunction, CUfunction_attribute, int);
   tcuFuncSetAttribute *cuFuncSetAttribute_;
 
-  using tcuFuncSetCacheConfig = Result(CUfunction hfunc, CUfunc_cache config);
+  using tcuFuncSetCacheConfig = Result(CUfunction, CUfunc_cache);
   tcuFuncSetCacheConfig *cuFuncSetCacheConfig_;
+
+  using tcuLaunchHostFunc = Result(CUstream, CUhostFn fn, void *);
+  tcuLaunchHostFunc *cuLaunchHostFunc_;
 
   using tcuLaunchKernel = Result(CUfunction, unsigned int, unsigned int,
                                  unsigned int, unsigned int, unsigned int,

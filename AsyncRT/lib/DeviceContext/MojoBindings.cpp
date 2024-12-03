@@ -63,8 +63,8 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_strfree(const char *ptr) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_create(const DeviceContext **result, const char *kind,
-                             int id) {
-  return check_ref(result, DeviceContext::create(kind, id));
+                             int id, size_t buffer_cache_size) {
+  return check_ref(result, DeviceContext::create(kind, id, buffer_cache_size));
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceContext_retain(const DeviceContext *ctx) {

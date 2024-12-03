@@ -63,7 +63,8 @@ static void compare_with_data(const void *dst, size_t dst_len,
 }
 
 TEST(CUDADeviceContextTest, DeviceBuffers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda");
+  ErrorOr<DeviceContextRef> err_ctx =
+      DeviceContext::create("cuda", 0, 100ull * 1024 * 1024);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);

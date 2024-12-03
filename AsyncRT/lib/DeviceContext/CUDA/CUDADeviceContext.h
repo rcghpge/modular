@@ -12,6 +12,7 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADEVICECONTEXT_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
@@ -217,7 +218,8 @@ private:
 class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(const CUDADevice &device, CUcontext context,
-                    CUstream stream);
+                    CUstream stream, void *buffer_cache_base,
+                    size_t buffer_cache_size);
   ~CUDADeviceContext() override;
 
   // Host memory allocation.
@@ -278,12 +280,14 @@ public:
   CUcontext cuda_context() const;
   CUstream cuda_stream() const;
 
+  BufferCache &buffer_cache() const;
+
   CUDADriver::Result setCurrent() const;
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
 
-  static ErrorOr<CUDADeviceContextRef> create(int id);
+  static ErrorOr<CUDADeviceContextRef> create(int id, size_t cache_size);
 
 private:
   const CUDADriver &driver_;
@@ -295,6 +299,8 @@ private:
   // counting cycles.
   mutable std::mutex mu_;
   mutable llvm::StringMap<CUDAModuleFunctionRef> func_map_;
+
+  mutable BufferCache buf_cache_;
 };
 
 } // namespace M::AsyncRT

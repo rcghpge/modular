@@ -95,6 +95,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuFuncGetAttribute);
   GET_FUNC(cuFuncSetAttribute);
   GET_FUNC(cuFuncSetCacheConfig);
+  GET_FUNC(cuLaunchHostFunc);
   GET_FUNC(cuLaunchKernel);
   GET_FUNC(cuLaunchKernelEx);
 
