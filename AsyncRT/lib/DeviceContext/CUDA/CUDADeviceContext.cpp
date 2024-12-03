@@ -817,6 +817,22 @@ CUstream CUDADeviceContext::cuda_stream() const { return stream_; }
 
 CUcontext CUDADeviceContext::cuda_context() const { return context_; }
 
+ErrorOrSuccess CUDADeviceContext::cuda_TensorMapEncodeTiled(
+    void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
+    const DeviceBuffer &globalAddress, const uint64_t *globalDim,
+    const uint64_t *globalStrides, const uint32_t *boxDim,
+    const uint32_t *elementStrides, CUtensorMapInterleave interleave,
+    CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
+    CUtensorMapFloatOOBfill oobFill) const {
+  CUDA_CHECK_ERR(setCurrent());
+  CUDA_CHECK_ERR(driver_.TensorMapEncodeTiled(
+      tensorMap, tensorDataType, tensorRank,
+      CUDADeviceBuffer::cast(globalAddress).cuda_ptr(), globalDim,
+      globalStrides, boxDim, elementStrides, interleave, swizzle, l2Promotion,
+      oobFill));
+  return success();
+}
+
 BufferCache &CUDADeviceContext::buffer_cache() const { return buf_cache_; }
 
 CUDADriver::Result CUDADeviceContext::setCurrent() const {

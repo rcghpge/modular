@@ -280,6 +280,14 @@ public:
   CUcontext cuda_context() const;
   CUstream cuda_stream() const;
 
+  ErrorOrSuccess cuda_TensorMapEncodeTiled(
+      void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
+      const DeviceBuffer &globalAddress, const uint64_t *globalDim,
+      const uint64_t *globalStrides, const uint32_t *boxDim,
+      const uint32_t *elementStrides, CUtensorMapInterleave interleave,
+      CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
+      CUtensorMapFloatOOBfill oobFill) const;
+
   BufferCache &buffer_cache() const;
 
   CUDADriver::Result setCurrent() const;

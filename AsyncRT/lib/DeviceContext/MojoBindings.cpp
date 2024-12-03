@@ -397,3 +397,24 @@ AsyncRT_DeviceStream_cuda_stream(CUstream *result, const DeviceStream *stream) {
   *result = verified_stream->cuda_stream();
   return nullptr;
 }
+
+MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
+    void *tensorMap, int32_t tensorDataType, uint32_t tensorRank,
+    const DeviceBuffer *globalAddress, const uint64_t *globalDim,
+    const uint64_t *globalStrides, const uint32_t *boxDim,
+    const uint32_t *elementStrides, int32_t interleave, int32_t swizzle,
+    int32_t l2Promotion, int32_t oobFill) {
+  // Extract the device context from the device buffer.
+  const CUDADeviceContext *verified_ctx =
+      CUDADeviceContext::verified_cast(&globalAddress->context());
+  if (verified_ctx == nullptr) {
+    return strdup("Not a CUDADeviceBuffer");
+  }
+  return check_success(verified_ctx->cuda_TensorMapEncodeTiled(
+      tensorMap, static_cast<CUtensorMapDataType>(tensorDataType), tensorRank,
+      *globalAddress, globalDim, globalStrides, boxDim, elementStrides,
+      static_cast<CUtensorMapInterleave>(interleave),
+      static_cast<CUtensorMapSwizzle>(swizzle),
+      static_cast<CUtensorMapL2promotion>(l2Promotion),
+      static_cast<CUtensorMapFloatOOBfill>(oobFill)));
+}

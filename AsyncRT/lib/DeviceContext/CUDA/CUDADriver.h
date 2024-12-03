@@ -58,6 +58,47 @@ enum class CUlaunchAttributeID {
   CU_LAUNCH_ATTRIBUTE_ACCESS_POLICY_WINDOW = 1,
 };
 
+enum class CUtensorMapDataType {
+  CU_TENSOR_MAP_DATA_TYPE_UINT8 = 0,
+  CU_TENSOR_MAP_DATA_TYPE_UINT16,
+  CU_TENSOR_MAP_DATA_TYPE_UINT32,
+  CU_TENSOR_MAP_DATA_TYPE_INT32,
+  CU_TENSOR_MAP_DATA_TYPE_UINT64,
+  CU_TENSOR_MAP_DATA_TYPE_INT64,
+  CU_TENSOR_MAP_DATA_TYPE_FLOAT16,
+  CU_TENSOR_MAP_DATA_TYPE_FLOAT32,
+  CU_TENSOR_MAP_DATA_TYPE_FLOAT64,
+  CU_TENSOR_MAP_DATA_TYPE_BFLOAT16,
+  CU_TENSOR_MAP_DATA_TYPE_FLOAT32_FTZ,
+  CU_TENSOR_MAP_DATA_TYPE_TFLOAT32,
+  CU_TENSOR_MAP_DATA_TYPE_TFLOAT32_FTZ,
+};
+
+enum class CUtensorMapFloatOOBfill {
+  CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE = 0,
+  CU_TENSOR_MAP_FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA,
+};
+
+enum class CUtensorMapInterleave {
+  CU_TENSOR_MAP_INTERLEAVE_NONE = 0,
+  CU_TENSOR_MAP_INTERLEAVE_16B,
+  CU_TENSOR_MAP_INTERLEAVE_32B,
+};
+
+enum class CUtensorMapL2promotion {
+  CU_TENSOR_MAP_L2_PROMOTION_NONE = 0,
+  CU_TENSOR_MAP_L2_PROMOTION_L2_64B,
+  CU_TENSOR_MAP_L2_PROMOTION_L2_128B,
+  CU_TENSOR_MAP_L2_PROMOTION_L2_256B,
+};
+
+enum class CUtensorMapSwizzle {
+  CU_TENSOR_MAP_SWIZZLE_NONE = 0,
+  CU_TENSOR_MAP_SWIZZLE_32B,
+  CU_TENSOR_MAP_SWIZZLE_64B,
+  CU_TENSOR_MAP_SWIZZLE_128B,
+};
+
 using CUlaunchAttribute = struct CUlaunchAttribute_st {
   CUlaunchAttributeID id;
   char pad[8 - sizeof(CUlaunchAttributeID)];
@@ -280,6 +321,19 @@ public:
     return cuMemGetInfo_v2_(free, total);
   }
 
+  Result TensorMapEncodeTiled(
+      void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
+      void *globalAddress, const uint64_t *globalDim,
+      const uint64_t *globalStrides, const uint32_t *boxDim,
+      const uint32_t *elementStrides, CUtensorMapInterleave interleave,
+      CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
+      CUtensorMapFloatOOBfill oobFill) const {
+    return cuTensorMapEncodeTiled_(tensorMap, tensorDataType, tensorRank,
+                                   globalAddress, globalDim, globalStrides,
+                                   boxDim, elementStrides, interleave, swizzle,
+                                   l2Promotion, oobFill);
+  }
+
   static ErrorOr<const CUDADriver &> get();
 
 private:
@@ -466,6 +520,15 @@ private:
 
   using tcuMemGetInfo_v2 = Result(size_t *, size_t *);
   tcuMemGetInfo_v2 *cuMemGetInfo_v2_;
+
+  using tcuTensorMapEncodeTiled = Result(
+      void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
+      void *globalAddress, const uint64_t *globalDim,
+      const uint64_t *globalStrides, const uint32_t *boxDim,
+      const uint32_t *elementStrides, CUtensorMapInterleave interleave,
+      CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
+      CUtensorMapFloatOOBfill oobFill);
+  tcuTensorMapEncodeTiled *cuTensorMapEncodeTiled_;
 
   static ErrorOr<const CUDADriver &> allocAndInitDriver();
 };
