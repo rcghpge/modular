@@ -101,16 +101,18 @@ class FetchContinuousBatchingKVCacheCollection:
             raise ValueError(msg)
 
         op_name = f"continuous_batching_kv_cache_collection_h{self.kv_params.n_kv_heads}_d{self.kv_params.head_dim}_bshd"
-        return ops.custom(  # type: ignore
-            op_name,
-            values=[
-                blocks,
-                cache_lengths,
-                lookup_table,
-                is_cache_empty,
-            ],
-            out_types=[ContinuousBatchingKVCacheCollectionType()],
-        )[0]
+        return ContinuousBatchingKVCacheCollection(
+            ops.custom(
+                op_name,
+                values=[
+                    blocks,
+                    cache_lengths,
+                    lookup_table,
+                    is_cache_empty,
+                ],
+                out_types=[ContinuousBatchingKVCacheCollectionType()],
+            )[0].opaque
+        )
 
 
 class ContinuousBatchingKVCacheManager(KVCacheManager):
