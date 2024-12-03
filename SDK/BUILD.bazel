@@ -191,6 +191,7 @@ py_repl(
         "//SDK/public/max-repo/pipelines/python:pipelines",
         requirement("hypothesis"),
         requirement("notebook"),
+        requirement("nvitop"),
         requirement("pytest"),
     ],
 )
