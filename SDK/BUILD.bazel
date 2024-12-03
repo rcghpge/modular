@@ -1,4 +1,3 @@
-load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "modular_pybind_library", "py_repl", "requirement", "td_library")
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_pybind")
@@ -126,16 +125,6 @@ driver_option_tablegen(
         ":VisualizeTdFiles",
         "//Support:DriverCommandTdFiles",
     ],
-)
-
-pkg_files(
-    name = "man-pages",
-    srcs = [
-        ":BenchmarkOptions.man_files",
-        ":VisualizeOptions.man_files",
-        "//SDK/tools/max:DriverOptions.man_files",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 modular_pybind_library(
