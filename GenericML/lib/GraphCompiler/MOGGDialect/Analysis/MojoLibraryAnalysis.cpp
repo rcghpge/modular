@@ -45,21 +45,15 @@ getFile(llvm::StringRef filepath) {
 }
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsSourceBuffer(bool withDebuginfo) {
+getEmbeddingsSourceBuffer() {
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
-      llvm::MemoryBuffer::getMemBuffer(withDebuginfo
-                                           ? Embeddings::sourceWithDebugInfo()
-                                           : Embeddings::source(),
+      llvm::MemoryBuffer::getMemBuffer(Embeddings::source(),
                                        "embedded MOGG bindings",
                                        /*RequiresNullTerminator=*/false));
 }
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsNewAPISourceBuffer(bool withDebuginfo) {
-  if (withDebuginfo)
-    return Error(
-        "New Extensibility API does not build with debug at this time.");
-
+getEmbeddingsNewAPISourceBuffer() {
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
       llvm::MemoryBuffer::getMemBuffer(Embeddings::newAPISource(),
                                        "embedded MOGG bindings",
@@ -67,13 +61,11 @@ getEmbeddingsNewAPISourceBuffer(bool withDebuginfo) {
 }
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsPrimitiveSourceBuffer(bool withDebuginfo) {
+getEmbeddingsPrimitiveSourceBuffer() {
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
-      llvm::MemoryBuffer::getMemBuffer(
-          withDebuginfo ? Embeddings::primitiveSourceWithDebugInfo()
-                        : Embeddings::primitiveSource(),
-          "embedded MOGG Primitives bindings",
-          /*RequiresNullTerminator=*/false));
+      llvm::MemoryBuffer::getMemBuffer(Embeddings::primitiveSource(),
+                                       "embedded MOGG Primitives bindings",
+                                       /*RequiresNullTerminator=*/false));
 }
 
 static std::string
@@ -190,17 +182,6 @@ ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
     std::string path = pathRef.str();
     llvm::StringMap<KGEN::GeneratorOp> userRawMojoKernel;
     Operation *userModule;
-
-    // Look to see if a debuginfo version of the library was built. It will have
-    // the _debuginfo suffix.
-    if (withDebuginfo) {
-      std::filesystem::path p(path);
-      auto debuginfoPath =
-          (p.parent_path() /
-           (p.stem().string() + "_debuginfo" + p.extension().string()));
-      if (std::filesystem::exists(debuginfoPath))
-        path = debuginfoPath.string();
-    }
 
     if (Filesystem::isMojoBinaryPackagePath(path)) {
       // Load user library that is a mojo package file.
@@ -352,8 +333,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   }
   // Load MOGG.mojo
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
-      onlyUseNewAPI ? getEmbeddingsNewAPISourceBuffer(withDebuginfo)
-                    : getEmbeddingsSourceBuffer(withDebuginfo);
+      onlyUseNewAPI ? getEmbeddingsNewAPISourceBuffer()
+                    : getEmbeddingsSourceBuffer();
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled main module: ") +
                  bufferOr.getError());
@@ -365,7 +346,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   module = cast<ModuleOp>(moduleOr.takeValue());
 
   // Load MOGGPrimitives.mojo
-  bufferOr = getEmbeddingsPrimitiveSourceBuffer(withDebuginfo);
+  bufferOr = getEmbeddingsPrimitiveSourceBuffer();
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled MOGGPrimitives.mojo: ") +
                  bufferOr.getError());
@@ -380,7 +361,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 
   // Load new API kernels. This path assumes we also load MOGG.mojo
   if (enableNewAPI) {
-    bufferOr = getEmbeddingsNewAPISourceBuffer(withDebuginfo);
+    bufferOr = getEmbeddingsNewAPISourceBuffer();
     if (failed(bufferOr))
       return Error(Twine("failed to load compiled MOGGKernelAPI.mojo: ") +
                    bufferOr.getError());
@@ -502,9 +483,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   return success();
 }
 
-MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx, bool withDebuginfo)
-    : context(ctx), withDebuginfo(withDebuginfo), config(ctx, false),
-      sourceMgr(new llvm::SourceMgr()) {}
+MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
+    : context(ctx), config(ctx, false), sourceMgr(new llvm::SourceMgr()) {}
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() {
   for (auto &rd : readers) {

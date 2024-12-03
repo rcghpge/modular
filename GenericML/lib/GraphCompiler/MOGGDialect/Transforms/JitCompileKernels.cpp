@@ -50,7 +50,7 @@ struct JitCompileKernels
 
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(ctx, kernelLibraryPaths, withDebuginfo);
+        analysis.initIfNeeded(ctx, kernelLibraryPaths);
     if (errOr.isError())
       return signalPassFailure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
@@ -77,11 +77,7 @@ struct JitCompileKernels
     // We can optionally override
     DenseMap<Operation *, std::string> unusedOverrideMap;
 
-    KernelBuildType bt;
-    if (withDebuginfo)
-      bt = KernelBuildType::kRelWithDebInfo;
-    else
-      bt = KernelBuildType::kRelease;
+    KernelBuildType bt = KernelBuildType::kRelease;
 
     // For each (virtual) device used by the graph...
     auto err = compileToBinary(

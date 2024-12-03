@@ -1243,8 +1243,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     MO::GraphOp moGraph = getOperation();
 
     auto &loadAnalysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-    auto res =
-        loadAnalysis.initIfNeeded(&getContext(), kernelLibraryPaths, false);
+    auto res = loadAnalysis.initIfNeeded(&getContext(), kernelLibraryPaths);
     if (res.isError()) {
       mlir::emitError(moGraph->getLoc(),
                       "Unable to initialize MojoLibraryAnalysis");

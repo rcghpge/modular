@@ -42,8 +42,6 @@ public:
 
   bool debugKGENStubs{false};
 
-  bool withDebuginfo{false};
-
   void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
 
     moToMgpOptions.cacheDir = cacheDir;
@@ -56,7 +54,6 @@ public:
     moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
     moToMgpOptions.debugKGENStubs = debugKGENStubs;
-    moToMgpOptions.withDebuginfo = withDebuginfo;
   }
 };
 
@@ -146,11 +143,6 @@ private:
           "Build stubs with debuginfo so that they show up in the debugger."),
       llvm::cl::location(options.debugKGENStubs),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> withDebuginfo{
-      "with-debuginfo",
-      llvm::cl::desc("Should kernels be built with debuginfo."),
-      llvm::cl::location(options.withDebuginfo), llvm::cl::init(false)};
 };
 
 } // namespace M::MO

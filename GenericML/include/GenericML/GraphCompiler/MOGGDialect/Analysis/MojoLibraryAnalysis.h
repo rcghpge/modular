@@ -35,7 +35,7 @@ namespace M::MOGG {
 /// an interface to inquire about their content.
 class MojoLibraryAnalysis {
 public:
-  MojoLibraryAnalysis(MLIRContext *ctx, bool withDebuginfo);
+  MojoLibraryAnalysis(MLIRContext *ctx);
 
   MojoLibraryAnalysis(const MojoLibraryAnalysis &other) = delete;
 
@@ -189,9 +189,6 @@ private:
 
   MLIRContext *context;
 
-  /// Should libraries with debuginfo be loaded if they exist?
-  bool withDebuginfo;
-
   mlir::ParserConfig config;
 
   /// This map captures all the mojo kernels (main and user-provided), which
@@ -219,12 +216,11 @@ struct LoadMojoAnalysisPass {
   }
 
   ErrorOr<MojoLibraryAnalysis *>
-  initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths,
-               bool withDebuginfo) {
+  initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths) {
     // Reuse the library if it exists.
     if (analysis)
       return analysis.get();
-    analysis = std::make_unique<MojoLibraryAnalysis>(ctx, withDebuginfo);
+    analysis = std::make_unique<MojoLibraryAnalysis>(ctx);
     auto loadError = analysis->init(kernelLibraryPaths);
     if (loadError.isError()) {
       analysis = nullptr;

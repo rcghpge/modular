@@ -20,10 +20,7 @@ def AddFallbackShapeFunctions :
 
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo shape functions to be loaded. ">,
-    Option<"withDebuginfo", "with-debuginfo", "bool",
-      /*default=*/"false",
-      "Should kernels and stubs be built with debuginfo.">,
+      "Paths to mojo packages containing mojo shape functions to be loaded. ">
   ];
 
   let dependentDialects = [
@@ -337,9 +334,6 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
            "overall graph's default device.">,
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
           "Paths to mojo packages containing mojo shape functions to be loaded. ">,
-    Option<"withDebuginfo", "with-debuginfo", "bool",
-      /*default=*/"false",
-      "Should kernels and stubs be built with debuginfo.">,
     Option<"targetDevice", "target-device",  "std::string", "\"\"",
            "If non-empty, assign devices using this device">,
     Option<"targetDeviceId", "target-device-id",  "size_t", "0",
@@ -526,10 +520,7 @@ def VerifyCustomOps : Pass<"verify-custom-ops", "GraphOp"> {
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions used "
-      "to replace MO ops.">,
-    Option<"withDebuginfo", "with-debuginfo", "bool",
-      /*default=*/"false",
-      "Should kernels and stubs be built with debuginfo.">
+      "to replace MO ops.">
   ];
   let dependentDialects = [
       "M::KGEN::KGENDialect",

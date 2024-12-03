@@ -58,9 +58,6 @@ def LowerPrimitives: Pass<"lower-primitives", "ModuleOp"> {
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-    Option<"withDebuginfo", "with-debuginfo", "bool",
-      /*default=*/"false",
-      "Should kernels and stubs be built with debuginfo.">,
   ];
 
   let dependentDialects = ["MEF::MEFDialect",
@@ -89,9 +86,6 @@ def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-    Option<"withDebuginfo", "with-debuginfo", "bool",
-      /*default=*/"false",
-      "Should kernels and stubs be built with debuginfo.">,
   ];
 
   let dependentDialects = ["MEF::MEFDialect",

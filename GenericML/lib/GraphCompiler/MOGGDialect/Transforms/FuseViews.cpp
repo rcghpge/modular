@@ -572,7 +572,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     // Get the LibraryAnalysis
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(ctx, kernelLibraryPaths, withDebuginfo);
+        analysis.initIfNeeded(ctx, kernelLibraryPaths);
     if (errOr.isError()) {
       signalPassFailure();
       return;
