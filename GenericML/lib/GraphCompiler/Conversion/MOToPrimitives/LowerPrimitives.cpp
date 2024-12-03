@@ -81,7 +81,8 @@ static inline bool canDuplicate(Operation *op) {
 
   if (isa<MGP::BufferSliceOp, MGP::BufferConstantOp, MGP::TensorSpecGetDimOp,
           MGP::BufferConstantExternalOp, MGP::BufferGetCachedOp,
-          MGP::CpuTensorSpecCreateOp, MGP::TensorExtractBufferOp>(op))
+          MGP::CpuTensorSpecCreateOp, MGP::TensorExtractBufferOp,
+          MGP::TensorExtractTensorSpecOp>(op))
     return true;
   return isa<KGEN::KGENDialect, KGEN::POP::POPDialect,
              mlir::index::IndexDialect>(op->getDialect());
