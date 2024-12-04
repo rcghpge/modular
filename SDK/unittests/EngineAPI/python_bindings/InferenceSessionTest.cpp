@@ -64,13 +64,8 @@ ScopedInterpreter::getInterpreter(bool initSignalHandlers, int argc,
   PyConfig_InitIsolatedConfig(&config);
   // Specify isolated Python from the system, since we are embedding Python.
   config.isolated = 0;
-#ifdef __BAZEL__
+  // Trust that bazel's environment variables are hermetic
   config.use_environment = 1;
-#else
-  // Ignore environment variables that influence Python's behaviour, such as
-  // PYTHONHOME and PYTHONPATH.
-  config.use_environment = 0;
-#endif
   // Initialize signal handlers such as SIGINT for keyboard interrupt?
   config.install_signal_handlers = initSignalHandlers ? 1 : 0;
 
