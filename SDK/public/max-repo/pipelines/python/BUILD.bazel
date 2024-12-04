@@ -10,6 +10,9 @@ modular_py_binary(
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
     ],
+    env = {
+        "OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION": "base2_exponential_bucket_histogram",
+    },
     imports = ["."],
     deps = [
         "//SDK/lib/API/python/max/serve",
