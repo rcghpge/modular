@@ -51,8 +51,7 @@ public:
             std::string name, size_t alloc_alignment);
   ~HIPDevice() override = default;
 
-  const HIPDriver &driver() const;
-
+  const HIPDriver &hip_driver() const;
   hipDevice_t hip_device() const;
 
   ErrorOr<int> getDriverVersion() const override;
@@ -64,7 +63,10 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
-  static int numberOfDevices();
+  int deviceCount() const override;
+
+  ErrorOr<DeviceContextRef>
+  createContext(size_t buffer_cache_size = 0) const override;
 
   static const HIPDevice &cast(const Device &device);
 
@@ -263,7 +265,6 @@ public:
   HIPDriver::Result setCurrent() const;
 
   static const HIPDeviceContext &cast(const DeviceContext &ctx);
-  static ErrorOr<HIPDeviceContextRef> create(int id, size_t cache_size);
 
 private:
   const HIPDriver &driver_;

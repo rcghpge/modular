@@ -76,6 +76,11 @@ public:
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
+  virtual int deviceCount() const = 0;
+
+  virtual ErrorOr<DeviceContextRef>
+  createContext(size_t buffer_cache_size = 0) const = 0;
+
   static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);
 

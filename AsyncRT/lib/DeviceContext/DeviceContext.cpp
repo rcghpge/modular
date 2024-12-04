@@ -261,29 +261,19 @@ ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t len,
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
                                                 size_t buffer_cache_size) {
-  // TODO(iposva): Implement dynamic registration mechanism.
-  if (api == "cuda") {
-    return CUDADeviceContext::create(id, buffer_cache_size);
-  } else if (api == "hip") {
-    return HIPDeviceContext::create(id, buffer_cache_size);
-  } else if ((api == "cpu") || (api == "none")) {
-    return CpuDeviceContext::create(id);
+  ErrorOr<DeviceRef> device = Device::create(api, id);
+  if (device.isError()) {
+    return device.takeError();
   }
-
-  return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
+  return (*device)->createContext(buffer_cache_size);
 }
 
 int Device::numberOfDevices(StringRef api) {
-  // TODO(iposva): Implement dynamic registration mechanism.
-  if (api == "cuda") {
-    return CUDADevice::numberOfDevices();
-  } else if (api == "cpu") {
-    return CpuDevice::numberOfDevices();
-  } else if (api == "hip") {
-    return HIPDevice::numberOfDevices();
+  ErrorOr<DeviceRef> device = Device::create(api);
+  if (device.isError()) {
+    return 0;
   }
-
-  return 0;
+  return (*device)->deviceCount();
 }
 
 const std::string &Device::getAcceleratorArchOrEmpty() {

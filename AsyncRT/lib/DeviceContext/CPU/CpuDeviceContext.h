@@ -50,7 +50,10 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
-  static int numberOfDevices();
+  int deviceCount() const override;
+
+  ErrorOr<DeviceContextRef>
+  createContext(size_t buffer_cache_size = 0) const override;
 
   static ErrorOr<const CpuDevice &> get(int id);
 };
@@ -165,8 +168,6 @@ public:
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
-
-  static ErrorOr<CpuDeviceContextRef> create(int id);
 };
 
 } // namespace M::AsyncRT

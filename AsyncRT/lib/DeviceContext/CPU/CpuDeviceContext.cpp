@@ -75,7 +75,12 @@ ErrorOr<bool> CpuDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> CpuDevice::getAttribute(Attribute attr) const { return 0; }
 
-int CpuDevice::numberOfDevices() {
+ErrorOr<DeviceContextRef>
+CpuDevice::createContext(size_t buffer_cache_size) const {
+  return CpuDeviceContextRef::create(*this);
+}
+
+int CpuDevice::deviceCount() const {
   // Only a single CpuDevice is supported.
   return 1;
 }
@@ -312,14 +317,6 @@ CpuDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
 
 const CpuDeviceContext &CpuDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CpuDeviceContext &>(ctx);
-}
-
-ErrorOr<CpuDeviceContextRef> CpuDeviceContext::create(int id) {
-  ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
-  if (device.isError()) {
-    return device.takeError();
-  }
-  return CpuDeviceContextRef::create(*CpuDeviceRef::create());
 }
 
 } // namespace M::AsyncRT

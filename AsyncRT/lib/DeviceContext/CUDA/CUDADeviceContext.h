@@ -55,8 +55,7 @@ public:
              std::string name, size_t alloc_alignment);
   ~CUDADevice() override = default;
 
-  const CUDADriver &driver() const;
-
+  const CUDADriver &cuda_driver() const;
   CUdevice cuda_device() const;
 
   ErrorOr<int> getDriverVersion() const override;
@@ -68,7 +67,10 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
-  static int numberOfDevices();
+  int deviceCount() const override;
+
+  ErrorOr<DeviceContextRef>
+  createContext(size_t buffer_cache_size = 0) const override;
 
   static const CUDADevice &cast(const Device &device);
 
@@ -294,8 +296,6 @@ public:
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
-
-  static ErrorOr<CUDADeviceContextRef> create(int id, size_t cache_size);
 
 private:
   const CUDADriver &driver_;

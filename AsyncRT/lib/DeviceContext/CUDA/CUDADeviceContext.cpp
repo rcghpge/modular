@@ -110,7 +110,7 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
     // GEX-1416: Do not expect hardcoded number.
     : Device(api, std::move(name), id, 256), driver_(driver), device_(device) {}
 
-const CUDADriver &CUDADevice::driver() const { return driver_; }
+const CUDADriver &CUDADevice::cuda_driver() const { return driver_; }
 
 CUdevice CUDADevice::cuda_device() const { return device_; }
 
@@ -168,7 +168,26 @@ ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
   return value;
 }
 
-int CUDADevice::numberOfDevices() {
+ErrorOr<DeviceContextRef>
+CUDADevice::createContext(size_t buffer_cache_size) const {
+  CUcontext context;
+  CUDA_CHECK_ERR(
+      this->cuda_driver().CtxCreate(&context, 0, this->cuda_device()));
+
+  CUstream stream;
+  CUDA_CHECK_ERR(this->cuda_driver().StreamCreate(&stream, 0));
+
+  CUdeviceptr cache_base = nullptr;
+  if (buffer_cache_size != 0) {
+    CUDA_CHECK_ERR(
+        this->cuda_driver().MemAlloc(&cache_base, buffer_cache_size));
+  }
+
+  return CUDADeviceContextRef::create(*this, context, stream, cache_base,
+                                      buffer_cache_size);
+}
+
+int CUDADevice::deviceCount() const {
   ErrorOr<const DeviceList &> err_or_devices = deviceList();
   if (err_or_devices.isError()) {
     return 0;
@@ -455,7 +474,7 @@ CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                      CUcontext context, CUstream stream,
                                      void *buffer_cache_base,
                                      size_t buffer_cache_size)
-    : DeviceContext(device), driver_(device.driver()), context_(context),
+    : DeviceContext(device), driver_(device.cuda_driver()), context_(context),
       stream_(stream), buf_cache_(buffer_cache_base, buffer_cache_size,
                                   device.allocationAlignment()) {}
 
@@ -849,30 +868,6 @@ CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
     return nullptr;
   }
   return static_cast<const CUDADeviceContext *>(ctx);
-}
-
-ErrorOr<CUDADeviceContextRef> CUDADeviceContext::create(int id,
-                                                        size_t cache_size) {
-  ErrorOr<const CUDADevice &> err_or_device = CUDADevice::get(id);
-  if (err_or_device) {
-    return err_or_device.takeError();
-  }
-  const CUDADevice &device = *err_or_device;
-  const CUDADriver &driver = device.driver();
-
-  CUcontext context;
-  CUDA_CHECK_ERR(driver.CtxCreate(&context, 0, device.cuda_device()));
-
-  CUstream stream;
-  CUDA_CHECK_ERR(driver.StreamCreate(&stream, 0));
-
-  CUdeviceptr cache_base = nullptr;
-  if (cache_size != 0) {
-    CUDA_CHECK_ERR(driver.MemAlloc(&cache_base, cache_size));
-  }
-
-  return CUDADeviceContextRef::create(device, context, stream, cache_base,
-                                      cache_size);
 }
 
 } // namespace M::AsyncRT

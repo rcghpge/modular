@@ -128,7 +128,7 @@ HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
     : Device(api, name, id, alloc_alignment), driver_(driver), device_(device) {
 }
 
-const HIPDriver &HIPDevice::driver() const { return driver_; }
+const HIPDriver &HIPDevice::hip_driver() const { return driver_; }
 
 hipDevice_t HIPDevice::hip_device() const { return device_; }
 
@@ -185,7 +185,24 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   return value;
 }
 
-int HIPDevice::numberOfDevices() {
+ErrorOr<DeviceContextRef>
+HIPDevice::createContext(size_t buffer_cache_size) const {
+  hipCtx_t context;
+  HIP_CHECK_ERR(this->hip_driver().CtxCreate(&context, 0, this->id()));
+
+  hipStream_t stream;
+  HIP_CHECK_ERR(this->hip_driver().StreamCreate(&stream, 0));
+
+  hipDeviceptr_t cache_base = nullptr;
+  if (buffer_cache_size != 0) {
+    HIP_CHECK_ERR(this->hip_driver().MemAlloc(&cache_base, buffer_cache_size));
+  }
+
+  return HIPDeviceContextRef::create(*this, context, stream, cache_base,
+                                     buffer_cache_size);
+}
+
+int HIPDevice::deviceCount() const {
   ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
   if (err_driver) {
     return 0;
@@ -453,7 +470,7 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
                                    hipStream_t stream, void *buffer_cache_base,
                                    size_t buffer_cache_size)
-    : DeviceContext(device), driver_(device.driver()), context_(context),
+    : DeviceContext(device), driver_(device.hip_driver()), context_(context),
       stream_(stream), buf_cache_(buffer_cache_base, buffer_cache_size,
                                   device.allocationAlignment()) {}
 
@@ -731,30 +748,6 @@ HIPDriver::Result HIPDeviceContext::setCurrent() const {
 
 const HIPDeviceContext &HIPDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const HIPDeviceContext &>(ctx);
-}
-
-ErrorOr<HIPDeviceContextRef> HIPDeviceContext::create(int id,
-                                                      size_t cache_size) {
-  ErrorOr<const HIPDevice &> err_or_device = HIPDevice::get(id);
-  if (err_or_device) {
-    return err_or_device.takeError();
-  }
-  const HIPDevice &device = *err_or_device;
-  const HIPDriver &driver = device.driver();
-
-  hipCtx_t context;
-  HIP_CHECK_ERR(driver.CtxCreate(&context, 0, id));
-
-  hipStream_t stream;
-  HIP_CHECK_ERR(driver.StreamCreate(&stream, 0));
-
-  hipDeviceptr_t cache_base = nullptr;
-  if (cache_size != 0) {
-    HIP_CHECK_ERR(driver.MemAlloc(&cache_base, cache_size));
-  }
-
-  return HIPDeviceContextRef::create(device, context, stream, cache_base,
-                                     cache_size);
 }
 
 } // namespace M::AsyncRT
