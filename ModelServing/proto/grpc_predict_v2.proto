@@ -45,6 +45,8 @@ service GRPCInferenceService
   // indicated by the google.rpc.Status returned for the request. The OK code
   // indicates success and other codes indicate failure.
   rpc ModelInfer(ModelInferRequest) returns (ModelInferResponse) {}
+
+  rpc ModelInferStream(ModelInferRequest) returns (stream ModelInferResponse) {}
 }
 
 message ServerLiveRequest {}
