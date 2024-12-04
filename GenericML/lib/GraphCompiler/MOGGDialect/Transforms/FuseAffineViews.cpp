@@ -158,9 +158,8 @@ struct FuseAffineViewsPass
   }
 
   template <typename ViewOp>
-  void fuseViewOpDim(MOGG::KernelOp kernel, ViewOp viewOp, Value result,
-                     Operation *user) {
-    MO::TensorType newType = viewOp.getResult().getType();
+  void fuseViewOpDim(MOGG::KernelOp kernel, ViewOp viewOpUser, Value result) {
+    MO::TensorType newType = viewOpUser.getResult().getType();
 
     OutputPlaceholdersOp outPh = kernel.getOutputPlaceholder();
     Value outTensor = outPh.getResults()[0];
@@ -222,16 +221,16 @@ struct FuseAffineViewsPass
         builder.setInsertionPoint(&block, block.begin());
 
         if constexpr (std::is_same_v<ViewOp, MO::AddSingletonDimOp>)
-          addSingletonDimTransform(indices, oldType, viewOp, builder);
+          addSingletonDimTransform(indices, oldType, viewOpUser, builder);
         else if (std::is_same_v<ViewOp, MO::SplitDimOp>)
-          addSplitDim(indices, oldType, viewOp, reshape, builder);
+          addSplitDim(indices, oldType, viewOpUser, reshape, builder);
       }
     });
 
     // Change the graph level type of the mogg kernel op and replace the
     // old view.
     result.setType(newType);
-    viewOp.getResult().replaceAllUsesWith(result);
+    viewOpUser.getResult().replaceAllUsesWith(result);
   }
 
   void fuseGatherInputKernel(KernelOp kernel, KernelOp gatherOp,
@@ -379,9 +378,9 @@ struct FuseAffineViewsPass
         // 1. Fuse the view operation as a view on the output buffer. Clone the
         // kernel to operate on the new shape.
         if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user))
-          fuseViewOpDim(kernel, addDim, result, user);
+          fuseViewOpDim(kernel, addDim, result);
         else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user))
-          fuseViewOpDim(kernel, split, result, user);
+          fuseViewOpDim(kernel, split, result);
       }
 
       // These fusions fuse operands into the kernel
