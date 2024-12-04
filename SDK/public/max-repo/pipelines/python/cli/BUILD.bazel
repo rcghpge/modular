@@ -18,6 +18,7 @@ modular_py_library(
         requirement("tqdm"),
         requirement("transformers"),
         requirement("uvicorn"),
+        requirement("uvloop"),
         requirement("opentelemetry-api"),
         requirement("opentelemetry-sdk"),
     ],
