@@ -32,6 +32,7 @@ modular_pybind_extension(
         "//GenericML:GraphCompiler",
         "//GenericML:modular-framework-common",
         "//ModularFramework/tools/mof",
+        "//SDK:ProfilerPython",
     ],
 )
 

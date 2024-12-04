@@ -8,6 +8,7 @@ modular_pybind_extension(
     ],
     deps = [
         "//AsyncRT:Runtime",
+        "//SDK:ProfilerPython",
         "//Support:Base",
     ],
 )

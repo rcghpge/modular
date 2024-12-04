@@ -154,6 +154,7 @@ modular_pybind_library(
 
 modular_pybind_library(
     name = "ProfilerPython",
+    srcs = glob(["lib/Profiler/python/*.cpp"]),
     hdrs = glob(["include/SDK/Profiler/python/*.h"]),
     deps = [
         "//Kernels:Tracing",
