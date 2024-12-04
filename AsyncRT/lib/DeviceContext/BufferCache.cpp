@@ -16,7 +16,7 @@
 namespace M::AsyncRT {
 
 static constexpr bool do_log = false;
-static constexpr bool do_self_check = true;
+static constexpr bool do_self_check = false;
 
 struct BufferCache::Desc {
   Desc() { reset(); }

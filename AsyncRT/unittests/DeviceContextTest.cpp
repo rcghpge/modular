@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -428,6 +429,134 @@ TEST(DeviceContextTest, Timers) {
 
   EXPECT_GT(elapsed_nanos, 0);
   EXPECT_LT(elapsed_nanos, 60 * 1000ll * 1000ll * 1000ll); // less than a minute
+}
+
+TEST(DeviceContextTest, BufferCache) {
+  char *cache_base = reinterpret_cast<char *>(1024);
+  size_t cache_size = 4096;
+  size_t alloc_alignment = 32;
+
+  BufferCache buf_cache(cache_base, cache_size, alloc_alignment);
+
+  // Allocation patterns to hit different kinds of allocation blocks and merges.
+  // These have been verified to have full coverage by instrumenting various
+  // branches.
+  EXPECT_EQ(nullptr, buf_cache.allocate(cache_size + 1));
+  EXPECT_FALSE(buf_cache.free(nullptr));
+  EXPECT_FALSE(buf_cache.free(cache_base + 1));
+  void *a = buf_cache.allocate(15);
+  EXPECT_EQ(a, cache_base);
+  void *b = buf_cache.allocate(15);
+  EXPECT_EQ(b, cache_base + alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(a));
+  void *c = buf_cache.allocate(32);
+  EXPECT_EQ(c, cache_base);
+  EXPECT_TRUE(buf_cache.free(c));
+  void *d = buf_cache.allocate(33);
+  EXPECT_EQ(d, cache_base + 2 * alloc_alignment);
+  void *e = buf_cache.allocate(1);
+  EXPECT_EQ(e, cache_base);
+  EXPECT_TRUE(buf_cache.free(b));
+  void *f = buf_cache.allocate(32);
+  EXPECT_EQ(f, cache_base + alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(f));
+  EXPECT_TRUE(buf_cache.free(e));
+  void *g = buf_cache.allocate(64);
+  EXPECT_EQ(g, cache_base);
+  void *h = buf_cache.allocate(1);
+  EXPECT_EQ(h, cache_base + 4 * alloc_alignment);
+  void *i = buf_cache.allocate(150);
+  EXPECT_EQ(i, cache_base + 5 * alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(g));
+  EXPECT_TRUE(buf_cache.free(h));
+  void *j = buf_cache.allocate(2);
+  EXPECT_EQ(j, cache_base + 4 * alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(j));
+  EXPECT_TRUE(buf_cache.free(d));
+  void *k = buf_cache.allocate(150);
+  EXPECT_EQ(k, cache_base);
+  EXPECT_TRUE(buf_cache.free(i));
+  EXPECT_TRUE(buf_cache.free(k));
+  /* ----- */
+  void *l = buf_cache.allocate(cache_size);
+  EXPECT_EQ(l, cache_base);
+  EXPECT_TRUE(buf_cache.free(l));
+  void *m = buf_cache.allocate(1);
+  EXPECT_EQ(m, cache_base);
+  void *n = buf_cache.allocate(1);
+  EXPECT_EQ(n, cache_base + alloc_alignment);
+  void *o = buf_cache.allocate(1);
+  EXPECT_EQ(o, cache_base + 2 * alloc_alignment);
+  void *p = buf_cache.allocate(1);
+  EXPECT_EQ(p, cache_base + 3 * alloc_alignment);
+  void *q = buf_cache.allocate(1);
+  EXPECT_EQ(q, cache_base + 4 * alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(o));
+  EXPECT_TRUE(buf_cache.free(p));
+  EXPECT_TRUE(buf_cache.free(n));
+  EXPECT_TRUE(buf_cache.free(m));
+  EXPECT_TRUE(buf_cache.free(q));
+  /* ----- */
+  void *r = buf_cache.allocate(alloc_alignment);
+  EXPECT_EQ(r, cache_base);
+  void *s = buf_cache.allocate(alloc_alignment);
+  EXPECT_EQ(s, cache_base + alloc_alignment);
+  void *t = buf_cache.allocate(2 * alloc_alignment);
+  EXPECT_EQ(t, cache_base + 2 * alloc_alignment);
+  void *u = buf_cache.allocate(alloc_alignment);
+  EXPECT_EQ(u, cache_base + 4 * alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(r));
+  EXPECT_TRUE(buf_cache.free(t));
+  void *v = buf_cache.allocate(2 * alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(v));
+  EXPECT_TRUE(buf_cache.free(u));
+  EXPECT_TRUE(buf_cache.free(s));
+  /* ----- */
+  void *x = buf_cache.allocate(1);
+  EXPECT_EQ(x, cache_base);
+  void *y = buf_cache.allocate(1);
+  EXPECT_EQ(y, cache_base + alloc_alignment);
+  void *z = buf_cache.allocate(1);
+  EXPECT_EQ(z, cache_base + 2 * alloc_alignment);
+  void *aa = buf_cache.allocate(1);
+  EXPECT_EQ(aa, cache_base + 3 * alloc_alignment);
+  void *ab = buf_cache.allocate(1);
+  EXPECT_EQ(ab, cache_base + 4 * alloc_alignment);
+  void *ac = buf_cache.allocate(1);
+  EXPECT_EQ(ac, cache_base + 5 * alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(ac));
+  EXPECT_TRUE(buf_cache.free(aa));
+  EXPECT_TRUE(buf_cache.free(y));
+  EXPECT_TRUE(buf_cache.free(z));
+  EXPECT_TRUE(buf_cache.free(x));
+  EXPECT_TRUE(buf_cache.free(ab));
+  /* ----- */
+  void *ad = buf_cache.allocate(1);
+  EXPECT_EQ(ad, cache_base);
+  void *ae = buf_cache.allocate(1);
+  EXPECT_EQ(ae, cache_base + alloc_alignment);
+  void *af = buf_cache.allocate(1);
+  EXPECT_EQ(af, cache_base + 2 * alloc_alignment);
+  void *ag = buf_cache.allocate(1);
+  EXPECT_EQ(ag, cache_base + 3 * alloc_alignment);
+  void *ah = buf_cache.allocate(1);
+  EXPECT_EQ(ah, cache_base + 4 * alloc_alignment);
+  void *ai = buf_cache.allocate(1);
+  EXPECT_EQ(ai, cache_base + 5 * alloc_alignment);
+  void *aj = buf_cache.allocate(1);
+  EXPECT_EQ(aj, cache_base + 6 * alloc_alignment);
+  void *ak = buf_cache.allocate(1);
+  EXPECT_EQ(ak, cache_base + 7 * alloc_alignment);
+  EXPECT_TRUE(buf_cache.free(ak));
+  EXPECT_TRUE(buf_cache.free(ag));
+  EXPECT_TRUE(buf_cache.free(ai));
+  EXPECT_TRUE(buf_cache.free(ae));
+  EXPECT_TRUE(buf_cache.free(af));
+  EXPECT_TRUE(buf_cache.free(aj));
+  EXPECT_TRUE(buf_cache.free(ah));
+  EXPECT_TRUE(buf_cache.free(ad));
+
+  buf_cache.clear();
 }
 
 } // namespace
