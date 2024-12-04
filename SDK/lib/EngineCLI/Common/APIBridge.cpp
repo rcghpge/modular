@@ -38,6 +38,10 @@ M_Dtype M::EngineCLI::dtypeToCAPI(DType dty) {
     return M_FLOAT64;
   case DType::bf16:
     return M_BFLOAT16;
+  case DType::f8e4m3:
+    return M_FLOAT8_E4M3;
+  case DType::f8e5m2:
+    return M_FLOAT8_E5M2;
   case DType::kBool:
     return M_BOOL;
   default:
@@ -71,6 +75,10 @@ DType M::EngineCLI::capiToDType(M_Dtype dty) {
     return DType::f64;
   case M_BFLOAT16:
     return DType::bf16;
+  case M_FLOAT8_E4M3:
+    return DType::f8e4m3;
+  case M_FLOAT8_E5M2:
+    return DType::f8e5m2;
   case M_BOOL:
     return DType::kBool;
   default:

@@ -1053,6 +1053,12 @@ private:
 ErrorOr<MEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
   unsigned bitWidth = type.getWidth();
   switch (bitWidth) {
+  case 8:
+    if (auto float8Type = dyn_cast<Float8E4M3Type>(type))
+      return MEF::TypeKind::f8e4m3;
+    if (auto float8Type = dyn_cast<Float8E5M2Type>(type))
+      return MEF::TypeKind::f8e5m2;
+    return Error("unknown float8 type");
   case 16:
     if (auto bFloatType = dyn_cast<BFloat16Type>(type))
       return MEF::TypeKind::bf16; // TODO: test when we have cpp type
