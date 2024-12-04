@@ -327,10 +327,51 @@ struct FuseAffineViewsPass
       gatherOp->erase();
   }
 
+  void handleGatherFusion(MOGG::KernelOp kernel) {
+    // Handles fusing *operands* into the given `kernel` if they arise from
+    // a gather op.
+    for (int idx = kernel.getNumOperands() - 1; idx >= 0; idx--) {
+      OpOperand &operand = kernel->getOpOperand(idx);
+      if (auto gatherKernel = operand.get().getDefiningOp<MOGG::KernelOp>()) {
+        // Pattern match based on summary.
+        //
+        // TODO: This is not ideal, it would be much better if mo.gather can
+        // be directly lowered to a elementwise-like kernel at the first
+        // place. But that would require some extension on elementwise kernel
+        // to support indices transformation.
+        if (!gatherKernel.getSummary().has_value())
+          continue;
+
+        StringRef baseKernelName = gatherKernel.getSummary()->rsplit(':').first;
+        if (!gatherKernel.getSummary().has_value() ||
+            baseKernelName != MO::GatherOp::getOperationName() ||
+            !isInputFusibleNonElementwise(kernel, operand.getOperandNumber(),
+                                          gatherKernel))
+          return;
+
+        M::IntArrayElementsAttr attr;
+
+        MO::GatherOpAdaptor adaptor(gatherKernel.getOperands());
+        if (mlir::matchPattern(adaptor.getAxis(), mlir::m_Constant(&attr))) {
+          int64_t axis = (*attr.begin()).getSExtValue();
+          unsigned inputRank =
+              cast<MO::TensorType>(adaptor.getInput().getType()).getRank();
+          // Try doing input fusion on gather only when we can statically
+          // verify that the gather axis is not the last dim, otherwise, it
+          // might break the `simd_load`.
+          if (axis != -1 && axis != inputRank - 1)
+            fuseGatherInputKernel(kernel, gatherKernel,
+                                  operand.getOperandNumber());
+        }
+      }
+    }
+  }
+
   void runOnOperation() override {
     auto graph = getOperation();
 
     graph.walk([&](MOGG::KernelOp kernel) {
+      // These fusions fuse `kernel` into users of the kernel for certain ops.
       if (isOutputFusibleNonElementwise(kernel)) {
         Value result = kernel.getResult(0);
         Operation *user = *result.getUsers().begin();
@@ -343,37 +384,8 @@ struct FuseAffineViewsPass
           fuseViewOpDim(kernel, split, result, user);
       }
 
-      for (int idx = kernel.getNumOperands() - 1; idx >= 0; idx--) {
-        OpOperand &operand = kernel->getOpOperand(idx);
-        if (auto gatherKernel = operand.get().getDefiningOp<MOGG::KernelOp>()) {
-          // Pattern match based on summary.
-          //
-          // TODO: This is not ideal, it would be much better if mo.gather can
-          // be directly lowered to a elementwise-like kernel at the first
-          // place. But that would require some extension on elementwise kernel
-          // to support indices transformation.
-          if (!gatherKernel.getSummary().has_value() ||
-              gatherKernel.getSummary()->rsplit(':').first != "mo.gather" ||
-              !isInputFusibleNonElementwise(kernel, operand.getOperandNumber(),
-                                            gatherKernel))
-            return;
-
-          M::IntArrayElementsAttr attr;
-
-          MO::GatherOpAdaptor adaptor(gatherKernel.getOperands());
-          if (mlir::matchPattern(adaptor.getAxis(), mlir::m_Constant(&attr))) {
-            int64_t axis = (*attr.begin()).getSExtValue();
-            unsigned inputRank =
-                cast<MO::TensorType>(adaptor.getInput().getType()).getRank();
-            // Try doing input fusion on gather only when we can statically
-            // verify that the gather axis is not the last dim, otherwise, it
-            // might break the `simd_load`.
-            if (axis != -1 && axis != inputRank - 1)
-              fuseGatherInputKernel(kernel, gatherKernel,
-                                    operand.getOperandNumber());
-          }
-        }
-      }
+      // These fusions fuse operands into the kernel
+      handleGatherFusion(kernel);
     });
   }
 };
