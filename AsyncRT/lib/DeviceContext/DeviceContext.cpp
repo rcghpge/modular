@@ -273,7 +273,7 @@ ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
   return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
 }
 
-ErrorOr<int> Device::numberOfDevices(StringRef api) {
+int Device::numberOfDevices(StringRef api) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (api == "cuda") {
     return CUDADevice::numberOfDevices();
@@ -283,7 +283,7 @@ ErrorOr<int> Device::numberOfDevices(StringRef api) {
     return HIPDevice::numberOfDevices();
   }
 
-  return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
+  return 0;
 }
 
 const std::string &Device::getAcceleratorArchOrEmpty() {

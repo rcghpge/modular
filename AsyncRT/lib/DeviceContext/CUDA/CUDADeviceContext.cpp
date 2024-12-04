@@ -168,10 +168,10 @@ ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
   return value;
 }
 
-ErrorOr<int> CUDADevice::numberOfDevices() {
+int CUDADevice::numberOfDevices() {
   ErrorOr<const DeviceList &> err_or_devices = deviceList();
-  if (err_or_devices) {
-    return err_or_devices.takeError();
+  if (err_or_devices.isError()) {
+    return 0;
   }
   return err_or_devices.get().size();
 }

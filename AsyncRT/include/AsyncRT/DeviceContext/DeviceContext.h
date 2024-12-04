@@ -76,7 +76,7 @@ public:
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
-  static ErrorOr<int> numberOfDevices(StringRef api);
+  static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);
 
   static ErrorOr<DeviceRef> create(StringRef api, int id = 0);

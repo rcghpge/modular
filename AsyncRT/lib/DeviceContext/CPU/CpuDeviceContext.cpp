@@ -75,7 +75,7 @@ ErrorOr<bool> CpuDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> CpuDevice::getAttribute(Attribute attr) const { return 0; }
 
-ErrorOr<int> CpuDevice::numberOfDevices() {
+int CpuDevice::numberOfDevices() {
   // Only a single CpuDevice is supported.
   return 1;
 }

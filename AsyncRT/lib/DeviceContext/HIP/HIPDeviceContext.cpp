@@ -185,15 +185,17 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   return value;
 }
 
-ErrorOr<int> HIPDevice::numberOfDevices() {
+int HIPDevice::numberOfDevices() {
   ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
   if (err_driver) {
-    RAISE_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
-                err_driver.getError());
+    return 0;
   }
 
   int count = 0;
-  HIP_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
+  HIPDriver::Result hip_result = err_driver.get().DeviceGetCount(&count);
+  if (hip_result != HIPDriver::SUCCESS) {
+    return 0;
+  }
   return count;
 }
 

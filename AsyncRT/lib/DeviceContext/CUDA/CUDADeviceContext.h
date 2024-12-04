@@ -68,7 +68,7 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
-  static ErrorOr<int> numberOfDevices();
+  static int numberOfDevices();
 
   static const CUDADevice &cast(const Device &device);
 
