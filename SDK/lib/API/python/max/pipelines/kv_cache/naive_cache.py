@@ -5,6 +5,8 @@
 # ===----------------------------------------------------------------------=== #
 """Naive KV cache for the Transformer."""
 
+from functools import reduce
+from operator import mul
 from typing import List
 
 from max.driver import Device, Tensor
@@ -41,25 +43,61 @@ class NaiveKVCacheManager(KVCacheManager):
         self.keys = Tensor.zeros(
             shape=self.cache_shape,
             dtype=self.params.dtype,
-            device=devices[0],
+            device=self.devices[0],
         )
 
         self.values = Tensor.zeros(
-            shape=self.cache_shape, dtype=self.params.dtype, device=devices[0]
+            shape=self.cache_shape,
+            dtype=self.params.dtype,
+            device=self.devices[0],
         )
 
         self._increment_cache_length_graph = (
             self._create_increment_cache_lengths_graph(self.session)
         )
 
+    @classmethod
+    def estimated_memory_size(
+        cls,
+        params: KVCacheParams,
+        max_cache_batch_size: int,
+        max_seq_len: int,
+        num_layers: int,
+        devices: List[Device],
+    ) -> int:
+        return (
+            reduce(
+                mul,
+                cls._cache_shape(
+                    params, max_cache_batch_size, max_seq_len, num_layers
+                ),
+            )
+            * params.dtype.size_in_bytes
+            * 2
+        )
+
     @property
     def cache_shape(self) -> list[int]:
-        return [
+        return self._cache_shape(
+            self.params,
+            self.max_cache_batch_size,
             self.max_seq_len,
             self.num_layers,
-            self.max_cache_batch_size,
-            self.params.n_kv_heads,
-            self.params.head_dim,
+        )
+
+    @staticmethod
+    def _cache_shape(
+        params: KVCacheParams,
+        max_cache_batch_size: int,
+        max_seq_len: int,
+        num_layers: int,
+    ):
+        return [
+            max_seq_len,
+            num_layers,
+            max_cache_batch_size,
+            params.n_kv_heads,
+            params.head_dim,
         ]
 
     def _create_increment_cache_lengths_graph(self, session: InferenceSession):

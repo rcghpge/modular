@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
-from typing import List, Union
+from functools import reduce
+from operator import mul
+from typing import List
 
 import numpy as np
 from max.driver import Device, Tensor
@@ -136,10 +138,10 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
 
         # Allocate memory for the KV cache blocks.
         self.blocks: List[Tensor] = []
-        for i in range(len(devices)):
+        for i in range(len(self.devices)):
             self.blocks.append(
                 Tensor.zeros(
-                    self.block_shape(self.max_cache_batch_size),  # type: ignore
+                    self.block_shape(self.max_cache_batch_size),
                     self.params.dtype,
                     device=self.devices[i],
                 )
@@ -148,6 +150,29 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
         self._increment_cache_lengths_graph = (
             self._create_increment_cache_lengths_graph(self.session)
         )
+
+    @classmethod
+    def estimated_memory_size(
+        cls,
+        params: KVCacheParams,
+        max_cache_batch_size: int,
+        max_seq_len: int,
+        num_layers: int,
+        devices: List[Device],
+    ) -> int:
+        cache_size = (
+            reduce(
+                mul,
+                cls._block_shape(
+                    params, max_cache_batch_size, max_seq_len, num_layers
+                ),
+            )
+            * params.dtype.size_in_bytes
+        )
+        lengths_size = max_cache_batch_size * DType.uint32.size_in_bytes
+        lookup_table_size = max_cache_batch_size * DType.uint32.size_in_bytes
+        size = cache_size + lengths_size + lookup_table_size
+        return size * len(devices)
 
     def _create_increment_cache_lengths_graph(self, session: InferenceSession):
         cache_lengths_types = [
@@ -256,7 +281,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             for i in range(len(self.devices))
         ]
 
-    def block_shape(self, n_sequences: int) -> list[Union[str, int]]:
+    def block_shape(self, n_sequences: int) -> list[int]:
         """Returns the shape of the KV cache blocks for the given number of sequences.
 
         Defines the 6-dimensional shape of the cache blocks used to store key and value
@@ -271,13 +296,27 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             List describing the shape of the cache blocks with dimensions for:
             sequences, key/value split, layers, sequence length, attention heads, and head dimension
         """
+        return self._block_shape(
+            self.params,
+            n_sequences,
+            self.max_seq_len,
+            self.num_layers,
+        )
+
+    @staticmethod
+    def _block_shape(
+        params: KVCacheParams,
+        n_sequences: int,
+        max_seq_len: int,
+        num_layers: int,
+    ) -> list[int]:
         return [
             n_sequences,
             2,
-            self.num_layers,
-            self.max_seq_len,
-            self.params.n_kv_heads_per_device,
-            self.params.head_dim,
+            num_layers,
+            max_seq_len,
+            params.n_kv_heads_per_device,
+            params.head_dim,
         ]
 
     def increment_cache_lengths(
