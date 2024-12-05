@@ -1056,6 +1056,10 @@ ErrorOr<MEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
   case 8:
     if (auto float8Type = dyn_cast<Float8E4M3Type>(type))
       return MEF::TypeKind::f8e4m3;
+    if (auto float8Type = dyn_cast<Float8E4M3FNUZType>(type))
+      return MEF::TypeKind::f8e4m3fnuz;
+    if (auto float8Type = dyn_cast<Float8E5M2FNUZType>(type))
+      return MEF::TypeKind::f8e5m2fnuz;
     if (auto float8Type = dyn_cast<Float8E5M2Type>(type))
       return MEF::TypeKind::f8e5m2;
     return Error("unknown float8 type");

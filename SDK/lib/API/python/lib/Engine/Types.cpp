@@ -102,8 +102,12 @@ std::string M::core::printDType(M_Dtype dtype) {
     return "DType.bfloat16";
   case M_FLOAT8_E4M3:
     return "DType.f8e4m3";
+  case M_FLOAT8_E4M3FNUZ:
+    return "DType.f8e4m3fnuz";
   case M_FLOAT8_E5M2:
     return "DType.f8e5m2";
+  case M_FLOAT8_E5M2FNUZ:
+    return "DType.f8e5m2fnuz";
   case M_BOOL:
     return "DType.bool";
   default:

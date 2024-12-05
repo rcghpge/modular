@@ -344,8 +344,14 @@ bool MEFToMLIRConverter::parseAttribute(size_t offset,
     case MEF::TypeKind::f8e4m3:
       resultType = FloatType::getFloat8E4M3(getContext());
       break;
+    case MEF::TypeKind::f8e4m3fnuz:
+      resultType = FloatType::getFloat8E4M3FNUZ(getContext());
+      break;
     case MEF::TypeKind::f8e5m2:
       resultType = FloatType::getFloat8E5M2(getContext());
+      break;
+    case MEF::TypeKind::f8e5m2fnuz:
+      resultType = FloatType::getFloat8E5M2FNUZ(getContext());
       break;
     case MEF::TypeKind::f32:
       resultType = FloatType::getF32(getContext());
