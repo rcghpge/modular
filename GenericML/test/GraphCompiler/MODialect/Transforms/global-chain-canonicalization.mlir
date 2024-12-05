@@ -3,9 +3,10 @@
 !tt = !mo.tensor<[3, 3], f32>
 !bt = !mo.buffer<[3, 3], f32>
 !ct = !mo.chain
+!ot = !mo.opaque<"T">
 
 // CHECK-LABEL: mo.graph @one_long_sequence
-// CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]: 
+// CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]:
 // CHECK: [[ch0:%.*]] = mo.chain.create
 // CHECK: [[ch1:%.*]], {{%.*}} = mo.mutable.load([[ch0]],
 // CHECK: mo.mutable.store([[ch1]],
@@ -27,7 +28,7 @@ mo.graph @one_long_sequence(%buf0: !bt, %buf1: !bt, %rhs: !tt) -> (!bt, !bt)
 }
 
 // CHECK-LABEL: mo.graph @interleaved_sequence
-// CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]: 
+// CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]:
 // CHECK-DAG: [[ch0:%.*]] = mo.chain.create
 // CHECK-DAG: [[ch1:%.*]], {{%.*}} = mo.mutable.load([[ch0]],
 // CHECK-DAG: mo.mutable.store([[ch1]],
@@ -50,7 +51,7 @@ mo.graph @interleaved_sequence(%buf0: !bt, %buf1: !bt, %lhs: !tt) -> (!bt, !bt)
 }
 
 // CHECK-LABEL: mo.graph @custom_ops
-// CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]: 
+// CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]:
 // CHECK-DAG: [[ch0:%.*]] = mo.chain.create
 // CHECK-DAG: [[ch1:%.*]] = mo.custom {symbol = "foo"}([[buf0]], [[ch0]])
 // CHECK-DAG: [[ch2:%.*]] = mo.custom {symbol = "foo"}([[buf1]], [[ch0]])
@@ -60,6 +61,26 @@ mo.graph @custom_ops(%buf0: !bt, %buf1: !bt)
 
   %ch1 = mo.custom {symbol = "foo"}(%buf0, %ch0) : (!bt, !ct) -> (!ct)
   %ch2 = mo.custom {symbol = "foo"}(%buf1, %ch1) : (!bt, !ct) -> (!ct)
+
+  mo.output
+}
+
+// CHECK-LABEL: mo.graph @custom_ops_opaque
+// CHECK-SAME: [[BUF:%.*]]:{{.*}}[[OPAQUE:%.*]]:
+mo.graph @custom_ops_opaque(%buf: !bt, %opaque: !ot)
+{
+  // CHECK: [[CH0:%.*]] = mo.chain.create()
+  %ch0 = mo.chain.create()
+
+  // Pair of custom ops whose linear chains should get decomposed.
+  // CHECK-DAG: [[CH1:%.*]] = mo.custom{{.*}}foo{{.*}}([[BUF]], [[CH0]])
+  // CHECK-DAG: [[CH2:%.*]] = mo.custom{{.*}}bar{{.*}}([[OPAQUE]], [[CH0]])
+  %ch1 = mo.custom {symbol = "foo"} (%buf, %ch0) : (!bt, !ct) -> (!ct)
+  %ch2 = mo.custom {symbol = "bar"} (%opaque, %ch1) : (!ot, !ct) -> (!ct)
+
+  // Check that this true linear dependency on %opaque remains.
+  // CHECK-DAG: [[CH3:%.*]] = mo.custom{{.*}}baz{{.*}}([[OPAQUE]], [[CH2]])
+  %ch3 = mo.custom {symbol = "baz"} (%opaque, %ch2) : (!ot, !ct) -> (!ct)
 
   mo.output
 }

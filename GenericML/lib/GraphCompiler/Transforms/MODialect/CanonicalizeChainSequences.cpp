@@ -27,11 +27,13 @@ using namespace M::MO;
 
 namespace {
 
-static bool opsHaveAliasedBuffers(Operation *op1, Operation *op2) {
-  auto isBuffer = [](Value val) { return isa<MO::BufferType>(val.getType()); };
+static bool opsHaveAliasedMutableOperands(Operation *op1, Operation *op2) {
+  auto isMutableOperand = [](Value val) {
+    return isa<MO::BufferType, MO::OpaqueType>(val.getType());
+  };
 
-  auto r1 = llvm::make_filter_range(op1->getOperands(), isBuffer);
-  auto r2 = llvm::make_filter_range(op2->getOperands(), isBuffer);
+  auto r1 = llvm::make_filter_range(op1->getOperands(), isMutableOperand);
+  auto r2 = llvm::make_filter_range(op2->getOperands(), isMutableOperand);
 
   auto s1 = mlir::DenseSet<Value>{r1.begin(), r1.end()};
   auto s2 = mlir::DenseSet<Value>{r2.begin(), r2.end()};
@@ -64,7 +66,7 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
 
     auto parent = llvm::dyn_cast_or_null<MOMutableOpInterface>(rawParent);
 
-    if (parent && !opsHaveAliasedBuffers(mutOp, parent)) {
+    if (parent && !opsHaveAliasedMutableOperands(mutOp, parent)) {
       mutOp.getInChainMutable().set(parent.getInChain());
 
       Value parentOutChain = parent.getOutChain();
@@ -88,7 +90,7 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
 
         auto upstreamOp = operand.getDefiningOp();
         if (isa<MOMutableOpInterface>(upstreamOp) &&
-            !opsHaveAliasedBuffers(mutOp, upstreamOp)) {
+            !opsHaveAliasedMutableOperands(mutOp, upstreamOp)) {
           eraseIdxs[idx] = true;
           newCreateOperands.push_back(operand);
         }
