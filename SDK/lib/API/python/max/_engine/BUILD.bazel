@@ -5,10 +5,10 @@ modular_pybind_extension(
     srcs = glob(["*.cpp"]),
     pybind_deps = [
         "//SDK:ModularFrameworkPython",
+        "//SDK:ProfilerPython",
     ],
     deps = [
         "//AsyncRT:Runtime",
-        "//SDK:ProfilerPython",
         "//Support:Base",
     ],
 )

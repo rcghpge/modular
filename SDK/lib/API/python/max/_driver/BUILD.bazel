@@ -5,10 +5,10 @@ modular_pybind_extension(
     srcs = glob(["*.cpp"]),
     pybind_deps = [
         "//SDK:DriverPython",
+        "//SDK:ProfilerPython",
     ],
     deps = [
         "//GenericML:modular-framework-common",
-        "//SDK:ProfilerPython",
         "@llvm-project//llvm:Support",
     ],
 )
