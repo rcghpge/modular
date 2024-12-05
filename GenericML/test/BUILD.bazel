@@ -20,6 +20,7 @@ lit_tests(
         "%kernel_api_test_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGKernelAPITestLib)",
     },
     data = [
+        "//GenericML:MGPRT",
         "//KGEN:CompilerRT",
         "//Kernels/mojo/Mogg:MOGGKernelAPILib",
         "//Kernels/mojo/Mogg:MOGGKernelAPITestLib",

@@ -178,6 +178,7 @@ tblgen_pybind(
 py_repl(
     name = "python",
     data = [
+        "//GenericML:MGPRT",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
         "@llvm-project//compiler-rt:orc_rt",

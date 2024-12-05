@@ -7,6 +7,7 @@ lit_tests(
     data = [
         "//GenericML:DeviceDriver",
         "//GenericML:GraphCompiler",
+        "//GenericML:MGPRT",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",

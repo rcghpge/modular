@@ -11,6 +11,7 @@ mojo_test(
     srcs = ["test_logits.mojo"],
     data = [
         "//GenericML:DeviceDriver",
+        "//GenericML:MGPRT",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",

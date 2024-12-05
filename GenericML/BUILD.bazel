@@ -83,6 +83,7 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
     deps = [
+        ":MGPRT",
         ":MODialect",
         ":MOGGDialect",
         ":MOGGSupport",
@@ -1078,6 +1079,7 @@ modular_cc_library(
     name = "MGPPrimitives",
     srcs = glob(["lib/MGPPrimitives/*.cpp"]),
     hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
+    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     deps = [
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
@@ -1444,5 +1446,30 @@ modular_shared_library(
         "//AsyncRT:DeviceContext",
         "//Init",
         "//Kernels:DeviceContext",
+    ],
+)
+
+modular_shared_library(
+    name = "MGPRT",
+    srcs = glob([
+        "lib/MGPRT/*.cpp",
+    ]),
+    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
+    output_name = "MGPRT",
+    deps = [
+        "//AsyncRT:MojoBindings",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:RuntimeGlobals",
+        "//AsyncRT:Support",
+        "//Runtime",
+        "//Runtime:Tensor",
+        "//Support:Base",
+        "//Support:Configuration",
+        "//Support:Filesystem",
+        "//Support:Globals",
+        "//Support:ML",
+        "//Support:Profiling",
+        "//Support:Threading",
+        "@llvm-project//llvm:Support",
     ],
 )

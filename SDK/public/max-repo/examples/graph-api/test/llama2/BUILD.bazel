@@ -11,6 +11,7 @@ mojo_test(
     srcs = ["test_bpe_tokenizer.mojo"],
     data = [
         "//GenericML:DeviceDriver",
+        "//GenericML:MGPRT",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
@@ -34,6 +35,7 @@ mojo_test(
     srcs = ["test_layers.mojo"],
     data = [
         "//GenericML:DeviceDriver",
+        "//GenericML:MGPRT",
         "//GenericML:modular-framework-common",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",

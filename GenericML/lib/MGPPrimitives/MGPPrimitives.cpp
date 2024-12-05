@@ -14,6 +14,7 @@
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/List.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "KGEN/Support/Configuration.h"
 #include "Runtime/Tensor/StateContext.h"
 #include "Runtime/Tensor/StateSlot.h"
 #include "Runtime/Tensor/Tensor.h"
@@ -22,6 +23,7 @@
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
+#include "Support/Settings/Settings.h"
 #include "Support/Threading/SpinWaiter.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetSelect.h"
@@ -598,11 +600,17 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
             if (targetMachineOr.isError())
               return targetMachineOr.takeError();
 
+            auto cfgOr = KGEN::MojoConfig::open();
+            if (cfgOr.isError())
+              return cfgOr.takeError();
+            KGEN::MojoConfig cfg = std::move(*cfgOr);
+
             // Create the execution engine.
             KGEN::ExecutionEngineOptions options;
             options.registerPerfPlugins =
                 runtime.getProfilerDebuginfo() ==
                 M::AsyncRT::RuntimeOptions::ProfilerDebuginfo::kPerfProfiler;
+            options.libraryPaths.push_back(cfg.getMGPRTPath());
             return KGEN::ExecutionEngine::createWithStandardLayers(
                 std::move(options), **targetMachineOr);
           });
