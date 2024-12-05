@@ -4193,12 +4193,19 @@ mlir::SmallVector<Value> CustomOp::getBufferOperands() {
 void CustomOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
 
-  if (!getBufferOperands().empty() && maybeGetInChain() && maybeGetOutChain()) {
+  bool hasMutableOperand = llvm::any_of(getOperands(), [](Value val) {
+    return isa<MO::BufferType, MO::OpaqueType>(val.getType());
+  });
+
+  // Pessimistically define side effecting as ops that have at least one mutable
+  // operand type and take and return a chain.
+  // TODO(GEX-1181): refine this through a kernel API/registration mechanism.
+  if (hasMutableOperand && maybeGetInChain() && maybeGetOutChain()) {
     effects.emplace_back(mlir::MemoryEffects::Write::get());
     effects.emplace_back(mlir::MemoryEffects::Read::get());
   }
 
-  // Handle generic parameterization logic
+  // Handle generic parameterization logic.
   if (!getOutputParamDecls().empty())
     effects.emplace_back(mlir::MemoryEffects::Allocate::get());
 }
