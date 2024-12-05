@@ -60,6 +60,7 @@ pkg_filegroup(
         "//SDK/public/max-repo/pipelines/python/llama_vision:python_files",
         "//SDK/public/max-repo/pipelines/python/mistral:python_files",
         "//SDK/public/max-repo/pipelines/python/nn:python_files",
+        "//SDK/public/max-repo/pipelines/python/pixtral:python_files",
         "//SDK/public/max-repo/pipelines/python/replit:python_files",
     ],
 )
