@@ -6,7 +6,6 @@
 
 #include "GenericML/DeviceDriver/DeviceExecution.h"
 #include "AsyncRT/Runtime/Algorithms.h"
-#include "GenericML/DeviceDriver/CPUDriver.h"
 #include "Runtime/MojoValue.h"
 #include "Support/AssertStream.h"
 
@@ -51,7 +50,7 @@ ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
   if (!storageRef) {
     // If we hit a situation where we're returning a null storage ref on a GPU,
     // we should just error out, since this situation should be impossible.
-    if (!llvm::isa<Driver::CPUDevice>(device))
+    if (device->getKind() != Driver::DeviceKind::kCPU)
       return Error("Execution returned a null result on a GPU.");
 
     ErrorOr<Driver::DeviceMemory *> memoryOr =

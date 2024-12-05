@@ -30,9 +30,9 @@ struct CPUDeviceMemory;
 using DeviceMap = llvm::DenseMap<DeviceRef, RCRef<M::Driver::Device>>;
 
 /// Kinds of devices that are supported.
-enum DeviceKind {
-  K_CPU,
-  K_CUDA,
+enum class DeviceKind {
+  kCPU,
+  kACCELERATOR,
 };
 
 struct DeviceMemory {
