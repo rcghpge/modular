@@ -351,9 +351,9 @@ def FuseKernelSequences: Pass<"fuse-kernel-sequences", "ModuleOp"> {
     Option<"nonHostKernelLimit", "non-host-kernel-limit", "size_t", "3",
            "Maximum number of non-host kernels to place in a single fused "
            "kernel.">,
-    Option<"heuristic", "heuristic", "std::string", "\"conservative\"",
-           "Which of the heuristics to use for evaluating which kernels to"
-           "fuse. Choices are (greedy|conservative|floodfill).">,
+    ListOption<"heuristics", "heuristics", "std::string",
+      "List of heuristics to use for evaluating which kernels to fuse. Choices"
+      "are greedy, conservative, floodfill and inout.">,
   ];
 
   let dependentDialects = [

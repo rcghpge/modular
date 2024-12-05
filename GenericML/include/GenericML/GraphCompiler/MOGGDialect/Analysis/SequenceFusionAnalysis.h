@@ -27,7 +27,8 @@ using CompatibilityFunction =
     const std::function<bool(mlir::Operation *, mlir::Operation *)> &;
 
 // If an operation matters when preserving parallelism (computationally
-// significant).
+// significant) aka is this operation computationally heavy so we should care
+// about how it ends up being scheduled.
 using ComputationallySignificantFunction =
     const std::function<bool(mlir::Operation *)> &;
 

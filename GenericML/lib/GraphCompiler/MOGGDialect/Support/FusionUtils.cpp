@@ -345,6 +345,32 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
   }
 }
 
+template <typename OpTy>
+static void mergeAllocationOfType(MOGG::KernelOp kernelOp) {
+  SmallVector<OpTy> allocs;
+  SmallVector<Type> resultTypes;
+  for (auto alloc : kernelOp.getOps<OpTy>()) {
+    allocs.push_back(alloc);
+    for (auto type : alloc.getResultTypes())
+      resultTypes.push_back(type);
+  }
+
+  if (allocs.size() < 2)
+    return;
+
+  OpBuilder builder(kernelOp.getContext());
+  builder.setInsertionPoint(allocs.front());
+  auto mergedAlloc = builder.create<OpTy>(kernelOp->getLoc(), resultTypes);
+
+  int idx = 0;
+  for (auto alloc : allocs) {
+    for (auto result : alloc.getResults())
+      result.replaceAllUsesWith(mergedAlloc.getResult(idx++));
+
+    alloc.erase();
+  }
+}
+
 /// Helper function for "soft" fusing kernels.
 /// - It is expected that all kernels in `kernelOpsToFuseTogether` are sorted
 /// topologically.
@@ -352,8 +378,8 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
 /// from the outside.
 /// - Operands can be duplicated.
 /// - There is no attempt at maintaining optional attributes which means some
-/// optional attributes are set to their reasonable default (isAsync = false,
-/// isViewOp = false).
+/// optional attributes are set to their reasonable default (isViewOp = false).
+/// - isAsync is true if any of the kernels are asynchronous.
 /// - There is no attempt at checking if the fusion would create a cycle.
 Operation *sequenceFuseKernelsAndReplaceUses(
     ArrayRef<Operation *> kernelOpsToFuseTogether) {
@@ -410,6 +436,9 @@ Operation *sequenceFuseKernelsAndReplaceUses(
       llvm::any_of(kernelOpsToFuseTogether, [&](auto kernelOp) {
         return cast<KernelOp>(kernelOp).getHasWriteEffect();
       });
+  bool isAsync = llvm::any_of(kernelOpsToFuseTogether, [&](auto kernelOp) {
+    return cast<KernelOp>(kernelOp).getIsAsync().value_or(false);
+  });
   // All kernels should have the same device.
   auto deviceRef =
       cast<KernelOp>(kernelOpsToFuseTogether.front()).getDeviceRef();
@@ -433,7 +462,7 @@ Operation *sequenceFuseKernelsAndReplaceUses(
       /*isViewOp=*/BoolAttr{},
       /*isKGEN=*/BoolAttr::get(ctx, true),
       /*summary=*/getSummaryString(kernelOpsToFuseTogether, FusionType::SOFT),
-      /*isAsync=*/BoolAttr{},
+      /*isAsync=*/BoolAttr::get(ctx, isAsync),
       /*allocIndices=*/ArrayAttr{},
       /*hasReadEffect*/ hasReadEffect,
       /*hasWriteEffect*/ hasWriteEffect,
@@ -459,8 +488,12 @@ Operation *sequenceFuseKernelsAndReplaceUses(
   SmallVector<Value> oldStackAllocationTypes;
   SmallVector<Value> oldEmptyAllocationValuesForBothKernels;
   SmallVector<Value> oldReturnValues;
+
   for (Operation *op : kernelOpsToFuseTogether) {
     auto asKernelOp = cast<KernelOp>(op);
+    mergeAllocationOfType<MOGG::StackAllocateTensorsOp>(asKernelOp);
+    mergeAllocationOfType<MOGG::CreateEmptyTensorsOp>(asKernelOp);
+
     auto placeholdersOp = asKernelOp.getOutputPlaceholder();
     auto stackAllocationOp = asKernelOp.getStackAllocateTensor();
     auto emptyAllocationOp = asKernelOp.getCreateEmptyTensor();

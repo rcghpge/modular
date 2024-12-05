@@ -1479,7 +1479,7 @@ void KernelOp::setKGENKernelParamValueIfPresent(MojoLibraryAnalysis &analysis,
                                                 TypedAttr value) {
   // Collect name of parameter declarations we need to reset.
   llvm::StringSet<> paramsToReset;
-  for (KGEN::CallOp call : this->getOps<KGEN::CallOp>()) {
+  this->walk([&](KGEN::CallOp call) {
     auto callee = call.getCallee();
     auto callName = callee.getSymbol().getLeafReference();
 
@@ -1509,15 +1509,16 @@ void KernelOp::setKGENKernelParamValueIfPresent(MojoLibraryAnalysis &analysis,
         paramsToReset.insert(paramAsRef.getName());
       }
     }
-  }
+  });
 
   if (paramsToReset.empty())
     return;
 
   // Update the parameter declarations.
-  for (KGEN::ParamDeclareOp decl : this->getOps<KGEN::ParamDeclareOp>())
+  this->walk([&](KGEN::ParamDeclareOp decl) {
     if (paramsToReset.contains(decl.getName()))
       decl.setValueAttr(value);
+  });
 }
 
 //===----------------------------------------------------------------------===//
