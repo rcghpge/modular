@@ -1675,6 +1675,17 @@ void AlignmentPlaceholderOp::walkDefinitions(
 }
 
 //===----------------------------------------------------------------------===//
+// GetResourcePtrOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult GetResourcePtrOp::verify() {
+  auto parent = cast<GenericCompiledRegionOp>(getParentOp());
+  if (getResourceSlot().getZExtValue() >= parent.getConstantResources().size())
+    return emitError("Request resources slot out of bound.");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ToKGENOp
 //===----------------------------------------------------------------------===//
 

@@ -796,6 +796,21 @@ def MOGG_GetAsyncValuesOp : MOGG_Op<"get_async_vals", [Pure]> {
   }];
 }
 
+def MOGG_GetResourcePtrOp : MOGG_Op<"get_resource_ptr", [Pure,
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
+  let arguments = (ins IndexAttr:$resourceSlot);
+  let results = (outs PointerOf<KGEN_NoneType>:$result);
+
+  let summary = "Retrieves a pointer to the corresponding constant resources";
+  let description = [{
+    Retrieves a pointer to the corresponding constant resources attached to the
+    parent `mgp.generic.execute` operation.
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
   let arguments = (ins
       AnyType:$mojoPointer,
