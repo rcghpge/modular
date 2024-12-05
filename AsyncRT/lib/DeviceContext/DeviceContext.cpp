@@ -278,24 +278,20 @@ int Device::numberOfDevices(StringRef api) {
 
 const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
-    ErrorOr<const Device &> device = CUDADevice::get(0);
+    ErrorOr<DeviceRef> device = Device::create("gpu");
     if (device.isError()) {
-      device = HIPDevice::get(0);
-      if (device.isError()) {
-        // CPU is not an accelerator device.
-        return std::string();
-      }
+      return std::string();
     }
 
     ErrorOr<int> major =
-        device->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MAJOR);
+        (*device)->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MAJOR);
     ErrorOr<int> minor =
-        device->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MINOR);
+        (*device)->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MINOR);
     if (major.isError() || minor.isError()) {
       return std::string();
     }
 
-    return (llvm::Twine(device->vendor()) + ":" + llvm::Twine(*major) +
+    return (llvm::Twine((*device)->vendor()) + ":" + llvm::Twine(*major) +
             llvm::Twine(*minor))
         .str();
   }();
