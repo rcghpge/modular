@@ -286,9 +286,10 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
       num_attrs, args));
 }
 
-MODULAR_EXPORT const char *AsyncRT_DeviceFunction_TEST_ONLY_getAttribute(
-    int32_t *result, const DeviceFunction *func, int32_t attr_code) {
-  return check_val(result, 0, func->TEST_ONLY_getAttribute(attr_code));
+MODULAR_EXPORT const char *
+AsyncRT_DeviceFunction_getAttribute(int32_t *result, const DeviceFunction *func,
+                                    int32_t attr_code) {
+  return check_val(result, 0, func->getAttribute(attr_code));
 }
 
 MODULAR_EXPORT const char *

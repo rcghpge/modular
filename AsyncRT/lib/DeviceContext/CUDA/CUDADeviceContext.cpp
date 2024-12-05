@@ -437,8 +437,7 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
   return success();
 }
 
-ErrorOr<int32_t>
-CUDADeviceFunction::TEST_ONLY_getAttribute(int32_t code) const {
+ErrorOr<int32_t> CUDADeviceFunction::getAttribute(int32_t code) const {
   int32_t result;
   CUDA_CHECK_ERR(module_function_->cuda_driver().FuncGetAttribute(
       &result, static_cast<CUfunction_attribute>(code),

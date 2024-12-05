@@ -155,7 +155,7 @@ public:
   ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
                                      size_t byte_size) const override;
 
-  ErrorOr<int32_t> TEST_ONLY_getAttribute(int32_t code) const override;
+  ErrorOr<int32_t> getAttribute(int32_t code) const override;
 
   DeviceFunction::Arguments *
   allocateArguments(const DeviceFunction &fn) const override;

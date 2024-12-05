@@ -162,7 +162,7 @@ public:
   virtual ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
                                              size_t byte_size) const = 0;
 
-  virtual ErrorOr<int32_t> TEST_ONLY_getAttribute(int32_t code) const = 0;
+  virtual ErrorOr<int32_t> getAttribute(int32_t code) const = 0;
 
   template <typename... Ts>
   ArgumentsRef buildArguments(const Ts &...ts) const;

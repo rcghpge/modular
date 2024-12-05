@@ -434,7 +434,7 @@ ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
   return success();
 }
 
-ErrorOr<int32_t> HIPDeviceFunction::TEST_ONLY_getAttribute(int32_t code) const {
+ErrorOr<int32_t> HIPDeviceFunction::getAttribute(int32_t code) const {
   int32_t result;
   const auto &hip_context = HIPDeviceContext::cast(context());
 
