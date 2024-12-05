@@ -4060,8 +4060,16 @@ void AssertOp::materializeAllAssertLogic(
 //===----------------------------------------------------------------------===//
 //
 
+/// Checks if an op's operands contains any mutable types: opaque or buffer.
+static bool hasMutableOperand(OperandRange operands) {
+  return llvm::any_of(operands, [](Value val) {
+    return isa<MO::BufferType, MO::OpaqueType>(val.getType());
+  });
+}
+
 bool CustomOp::isInPlace() {
-  return !getBufferOperands().empty() && maybeGetInChain().has_value() &&
+  // TODO(GEX-1181): design kernel API/registration mechanism to refine this.
+  return hasMutableOperand(getOperands()) && maybeGetInChain().has_value() &&
          maybeGetOutChain().has_value();
 }
 
@@ -4192,15 +4200,11 @@ mlir::SmallVector<Value> CustomOp::getBufferOperands() {
 
 void CustomOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-
-  bool hasMutableOperand = llvm::any_of(getOperands(), [](Value val) {
-    return isa<MO::BufferType, MO::OpaqueType>(val.getType());
-  });
-
   // Pessimistically define side effecting as ops that have at least one mutable
   // operand type and take and return a chain.
   // TODO(GEX-1181): refine this through a kernel API/registration mechanism.
-  if (hasMutableOperand && maybeGetInChain() && maybeGetOutChain()) {
+  if (hasMutableOperand(getOperands()) && maybeGetInChain() &&
+      maybeGetOutChain()) {
     effects.emplace_back(mlir::MemoryEffects::Write::get());
     effects.emplace_back(mlir::MemoryEffects::Read::get());
   }
