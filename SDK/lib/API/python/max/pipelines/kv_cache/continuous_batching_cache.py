@@ -179,26 +179,26 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             self.input_symbols()[i][1] for i in range(len(self.devices))
         ]
 
-        input_row_offset_type = TensorType(
+        input_row_offsets_type = TensorType(
             DType.uint32,
-            shape=["input_row_offset_len"],
+            shape=["input_row_offsets_len"],
             device=GraphDevice(self.devices[0].label, self.devices[0].id),
         )
 
         with Graph(
             "update_cache_lengths",
-            input_types=[input_row_offset_type, *cache_lengths_types],
+            input_types=[input_row_offsets_type, *cache_lengths_types],
         ) as graph:
-            input_row_offset, *cache_lengths = graph.inputs
-            # broadcast the input_row_offset to all devices (naive)
+            inp_row_offset, *cache_lengths = graph.inputs
+            # broadcast the inp_row_offset to all devices (naive)
             # get rid of this if statement after #51465 merges
             if len(self.devices) > 1:
                 input_row_offsets = [
-                    input_row_offset.to(GraphDevice(d.label, d.id))  # type: ignore
+                    inp_row_offset.to(GraphDevice(d.label, d.id))  # type: ignore
                     for d in self.devices
                 ]
             else:
-                input_row_offsets = [input_row_offset]
+                input_row_offsets = [inp_row_offset]
             outputs = []
             for i in range(len(self.devices)):
                 right_slice = input_row_offsets[i][1:].rebind(
@@ -338,7 +338,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
             Updated cache input tuples with incremented lengths and is_cache_empty=False
             since only the first step can be context encoding
         """
-        _, input_row_offset = prev_model_inputs
+        _, input_row_offsets = prev_model_inputs
         blocks = [kv_cache_inputs[i][0] for i in range(len(self.devices))]
         cache_lengths = [
             kv_cache_inputs[i][1] for i in range(len(self.devices))
@@ -347,7 +347,7 @@ class ContinuousBatchingKVCacheManager(KVCacheManager):
 
         # Update the cache_lengths of our batch by the previous sequence length
         updated_cache_lengths = self._increment_cache_lengths_graph.execute(
-            input_row_offset, *cache_lengths
+            input_row_offsets, *cache_lengths
         )
 
         # Return our updated batch. We hard-code the is_cache_empty flag to
