@@ -41,9 +41,7 @@ TEST(DeviceContextTest, CreationFailure) {
 }
 
 TEST(DeviceContextTest, NumDevices) {
-  ErrorOr<int> err_num = Device::numberOfDevices(Device::cpuAPI);
-  ASSERT_FALSE(err_num) << err_num.getError() << "\n";
-  EXPECT_EQ(err_num.get(), 1);
+  EXPECT_EQ(Device::numberOfDevices(Device::cpuAPI), 1);
 }
 
 static void init_with_data(void *dst, size_t dst_len, const void *check_data,

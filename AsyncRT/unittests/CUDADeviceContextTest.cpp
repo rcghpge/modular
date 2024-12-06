@@ -312,9 +312,7 @@ $L__BB0_2:
 }
 )PTX";
 
-  ErrorOr<int> err_num = Device::numberOfDevices(Device::cudaAPI);
-  ASSERT_FALSE(err_num) << err_num.getError() << "\n";
-  int num_devices = err_num.get();
+  int num_devices = Device::numberOfDevices(Device::cudaAPI);
   std::cerr << "Number of CUDA devices: " << num_devices << "\n";
 
   ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cudaAPI, 0);
