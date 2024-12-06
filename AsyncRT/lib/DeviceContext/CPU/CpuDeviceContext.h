@@ -60,14 +60,12 @@ public:
 
 class CpuDeviceBuffer : public DeviceBuffer {
 public:
-  CpuDeviceBuffer(const CpuDeviceContext &context, size_t len, size_t elem_size,
-                  void *ptr);
+  CpuDeviceBuffer(const CpuDeviceContext &context, size_t byteSize, void *ptr);
   CpuDeviceBuffer(const CpuDeviceContext &context,
-                  const CpuDeviceBuffer &parent, size_t len, size_t elem_size,
-                  void *ptr);
+                  const CpuDeviceBuffer &parent, size_t byteSize, void *ptr);
   // TODO: Remove the V1 compatibility.
-  CpuDeviceBuffer(const CpuDeviceContext &context, size_t len, size_t elem_size,
-                  void *ptr, bool owning);
+  CpuDeviceBuffer(const CpuDeviceContext &context, size_t byteSize, void *ptr,
+                  bool owning);
   ~CpuDeviceBuffer() override;
 
   void *cpu_ptr() const;
@@ -75,8 +73,8 @@ public:
   // TODO: Remove the V1 compatibility.
   void *releasePtr() const override;
 
-  ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
-                                           size_t elem_size) const override;
+  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
+                                           size_t byteSize) const override;
 
   static const CpuDeviceBuffer &cast(const DeviceBuffer &buf);
 
@@ -118,10 +116,10 @@ public:
   ErrorOrSuccess free_host(void *ptr) const override;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size,
+  ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize,
                                         SyncMode mode) const override;
   // TODO: Remove the V1 compatibility.
-  DeviceBufferRef createBufferOwning(void *ptr, size_t len, size_t elem_size,
+  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
                                      bool owning) const override;
 
   // DeviceBuffer copies.
@@ -134,7 +132,7 @@ public:
                                     SyncMode mode) const override;
 
   ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
-                           size_t elem_size, SyncMode mode) const override;
+                           size_t val_size, SyncMode mode) const override;
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef> loadFunction(

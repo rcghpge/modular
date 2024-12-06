@@ -243,18 +243,18 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
 }
 
 // ===== CUDADeviceBuffer ===== //
-CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
-                                   size_t elem_size, CUdeviceptr dptr)
-    : DeviceBuffer(context, len, elem_size), dptr_(dptr) {}
+CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
+                                   size_t byteSize, CUdeviceptr dptr)
+    : DeviceBuffer(context, byteSize), dptr_(dptr) {}
 
 CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
-                                   const CUDADeviceBuffer &parent, size_t len,
-                                   size_t elem_size, CUdeviceptr dptr)
-    : DeviceBuffer(context, parent, len, elem_size), dptr_(dptr) {}
-CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context, size_t len,
-                                   size_t elem_size, CUdeviceptr dptr,
+                                   const CUDADeviceBuffer &parent,
+                                   size_t byteSize, CUdeviceptr dptr)
+    : DeviceBuffer(context, parent, byteSize), dptr_(dptr) {}
+CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
+                                   size_t byteSize, CUdeviceptr dptr,
                                    bool owning)
-    : DeviceBuffer(context, len, elem_size), dptr_(dptr), owning_(owning) {}
+    : DeviceBuffer(context, byteSize), dptr_(dptr), owning_(owning) {}
 
 CUDADeviceBuffer::~CUDADeviceBuffer() {
   if (!owning_) {
@@ -288,20 +288,16 @@ void *CUDADeviceBuffer::releasePtr() const {
 }
 
 ErrorOr<DeviceBufferRef>
-CUDADeviceBuffer::createSubBuffer(size_t offset, size_t len,
-                                  size_t elem_size) const {
+CUDADeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   char *orig_ptr = static_cast<char *>(this->cuda_ptr());
-  size_t orig_byte_size = this->len() * this->elem_size();
+  size_t origByteSize = this->byteSize();
 
-  size_t byte_offset = offset * elem_size;
-  size_t byte_size = len * elem_size;
-  if ((byte_size > orig_byte_size) ||
-      (orig_byte_size - byte_size < byte_offset)) {
-    RAISE_ERROR("offset, len and elem_size are out of range");
+  if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
+    RAISE_ERROR("byteOffset, byteSize are out of range");
   }
   return CUDADeviceBufferRef::create(
-      CUDADeviceContext::cast(context()), *this, len, elem_size,
-      static_cast<CUdeviceptr>(orig_ptr + byte_offset));
+      CUDADeviceContext::cast(context()), *this, byteSize,
+      static_cast<CUdeviceptr>(orig_ptr + byteOffset));
 }
 
 const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
@@ -421,19 +417,19 @@ const std::string &CUDADeviceFunction::name() const {
 
 ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
                                                        const void *data,
-                                                       size_t byte_size) const {
+                                                       size_t byteSize) const {
   CUdeviceptr device_ptr;
   size_t device_size;
   const auto &cuda_context = CUDADeviceContext::cast(context());
   CUDA_CHECK_ERR(cuda_context.cuda_driver().ModuleGetGlobal(
       &device_ptr, &device_size, module_function_->cuda_module(), name));
 
-  if (device_size < byte_size) {
-    RAISE_ERROR("byte_size too big");
+  if (device_size < byteSize) {
+    RAISE_ERROR("byteSize too big");
   }
 
   CUDA_CHECK_ERR(cuda_context.cuda_driver().MemcpyHtoDAsync(
-      device_ptr, data, byte_size, cuda_context.cuda_stream()));
+      device_ptr, data, byteSize, cuda_context.cuda_stream()));
   return success();
 }
 
@@ -500,33 +496,31 @@ ErrorOrSuccess CUDADeviceContext::free_host(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> CUDADeviceContext::createBuffer(size_t len,
-                                                         size_t elem_size,
+ErrorOr<DeviceBufferRef> CUDADeviceContext::createBuffer(size_t byteSize,
                                                          SyncMode mode) const {
   CUDA_CHECK_ERR(setCurrent());
 
-  size_t bytesize = len * elem_size;
   CUdeviceptr dptr = nullptr;
   // A zero size buffer is associated with a nullptr pointer. Skip allocating in
   // that case.
-  if (bytesize != 0) {
-    dptr = buffer_cache().allocate(bytesize);
+  if (byteSize != 0) {
+    dptr = buffer_cache().allocate(byteSize);
     if (dptr == nullptr) {
       if (mode == ASYNC) {
-        CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
+        CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
       } else {
-        CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
+        CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
       }
     }
   }
-  return CUDADeviceBufferRef::create(*this, len, elem_size, dptr);
+  return CUDADeviceBufferRef::create(*this, byteSize, dptr);
 }
 
-DeviceBufferRef CUDADeviceContext::createBufferOwning(void *ptr, size_t len,
-                                                      size_t elem_size,
+DeviceBufferRef CUDADeviceContext::createBufferOwning(void *ptr,
+                                                      size_t byteSize,
                                                       bool owning) const {
   CUdeviceptr dptr = static_cast<CUdeviceptr>(ptr);
-  return CUDADeviceBufferRef::create(*this, len, elem_size, dptr, owning);
+  return CUDADeviceBufferRef::create(*this, byteSize, dptr, owning);
 }
 
 ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,
@@ -535,11 +529,11 @@ ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,
   CUDA_CHECK_ERR(setCurrent());
 
   CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
-  size_t byte_size = dst.len() * dst.elem_size();
+  size_t byteSize = dst.byteSize();
   if (mode == ASYNC) {
-    CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byte_size, stream_));
+    CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byteSize, stream_));
   } else {
-    CUDA_CHECK_ERR(driver_.MemcpyHtoD(dst_ptr, src, byte_size));
+    CUDA_CHECK_ERR(driver_.MemcpyHtoD(dst_ptr, src, byteSize));
   }
   return success();
 }
@@ -550,11 +544,11 @@ ErrorOrSuccess CUDADeviceContext::copyFromDevice(void *dst,
   CUDA_CHECK_ERR(setCurrent());
 
   CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cuda_ptr();
-  size_t byte_size = src.len() * src.elem_size();
+  size_t byteSize = src.byteSize();
   if (mode == ASYNC) {
-    CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byte_size, stream_));
+    CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byteSize, stream_));
   } else {
-    CUDA_CHECK_ERR(driver_.MemcpyDtoH(dst, src_ptr, byte_size));
+    CUDA_CHECK_ERR(driver_.MemcpyDtoH(dst, src_ptr, byteSize));
   }
   return success();
 }
@@ -575,46 +569,51 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 
   CUdeviceptr src_ptr = src_buffer.cuda_ptr();
   CUdeviceptr dst_ptr = dst_buffer.cuda_ptr();
-  size_t dst_byte_size = dst.len() * dst.elem_size();
-  size_t src_byte_size = src.len() * src.elem_size();
-  if (src_byte_size < dst_byte_size) {
+  size_t dstByteSize = dst.byteSize();
+  size_t srcByteSize = src.byteSize();
+  if (srcByteSize < dstByteSize) {
     RAISE_ERROR("not enough data in src");
   }
   if (src_ctx.context_ != dst_ctx.context_) {
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dst_ptr, dst_ctx.context_, src_ptr,
-                                             src_ctx.context_, dst_byte_size,
+                                             src_ctx.context_, dstByteSize,
                                              stream_));
     } else {
       CUDA_CHECK_ERR(driver_.MemcpyPeer(dst_ptr, dst_ctx.context_, src_ptr,
-                                        src_ctx.context_, dst_byte_size));
+                                        src_ctx.context_, dstByteSize));
     }
   } else {
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(
-          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, dst_byte_size, stream_));
+          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, dstByteSize, stream_));
     } else {
-      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, dst_byte_size));
+      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, dstByteSize));
     }
   }
   return success();
 }
 
 ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
-                                            uint32_t val, size_t elem_size,
+                                            uint32_t val, size_t val_size,
                                             SyncMode mode) const {
   CUDA_CHECK_ERR(setCurrent());
 
   void *ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
-  size_t len = dst.len();
-  if (elem_size == 1) {
+  size_t byteSize = dst.byteSize();
+  if (val_size == 1) {
     if (mode == ASYNC) {
-      CUDA_CHECK_ERR(
-          driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val), len, stream_));
+      CUDA_CHECK_ERR(driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val),
+                                           byteSize, stream_));
     } else {
-      CUDA_CHECK_ERR(driver_.MemsetD8(ptr, static_cast<uint8_t>(val), len));
+      CUDA_CHECK_ERR(
+          driver_.MemsetD8(ptr, static_cast<uint8_t>(val), byteSize));
     }
-  } else if (elem_size == 2) {
+  } else if (val_size == 2) {
+    if ((byteSize & 1) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    size_t len = byteSize >> 1;
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(driver_.MemsetD16Async(ptr, static_cast<uint16_t>(val),
                                             len, stream_));
@@ -622,6 +621,13 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
       CUDA_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
     }
   } else {
+    if (val_size != 4) {
+      return Error("unsupported val_size");
+    }
+    if ((byteSize & 3) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    size_t len = byteSize >> 2;
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, val, len, stream_));
     } else {

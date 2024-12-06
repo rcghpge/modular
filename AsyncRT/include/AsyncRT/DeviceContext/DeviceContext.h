@@ -108,27 +108,25 @@ public:
   const DeviceContext &context() const;
   const DeviceBuffer *parent() const;
 
-  size_t len() const;
-  size_t elem_size() const;
+  size_t byteSize() const;
 
   // Returns the raw device pointer, which is not safe to deref on the host
   virtual void *ptr() const = 0;
   // TODO: Remove the V1 compatibility.
   virtual void *releasePtr() const = 0;
 
-  virtual ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
-                                                   size_t elem_size) const = 0;
+  virtual ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
+                                                   size_t byteSize) const = 0;
 
 protected:
-  DeviceBuffer(const DeviceContext &context, size_t len, size_t elem_size);
+  DeviceBuffer(const DeviceContext &context, size_t byteSize);
   DeviceBuffer(const DeviceContext &context, const DeviceBuffer &parent,
-               size_t len, size_t elem_size);
+               size_t byteSize);
 
 private:
   DeviceContextRef context_;
   DeviceBufferRef parent_;
-  size_t len_;
-  size_t elem_size_;
+  size_t byteSize_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
@@ -160,7 +158,7 @@ public:
   virtual const std::string &name() const = 0;
 
   virtual ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
-                                             size_t byte_size) const = 0;
+                                             size_t byteSize) const = 0;
 
   virtual ErrorOr<int32_t> getAttribute(int32_t code) const = 0;
 
@@ -264,14 +262,12 @@ public:
   virtual ErrorOrSuccess free_host(void *ptr) const = 0;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t len,
-                                               size_t elem_size) const;
-  ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size) const;
-  virtual ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size,
+  ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
+  ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize) const;
+  virtual ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize,
                                                 SyncMode mode) const = 0;
   // TODO: Remove the V1 compatibility.
-  virtual DeviceBufferRef createBufferOwning(void *ptr, size_t len,
-                                             size_t elem_size,
+  virtual DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
                                              bool owning) const = 0;
 
   // DeviceBuffer copies.
@@ -296,7 +292,7 @@ public:
                                             SyncMode mode) const = 0;
 
   virtual ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
-                                   size_t elem_size, SyncMode mode) const = 0;
+                                   size_t val_size, SyncMode mode) const = 0;
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>

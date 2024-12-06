@@ -86,13 +86,13 @@ private:
 
 class HIPDeviceBuffer : public DeviceBuffer {
 public:
-  HIPDeviceBuffer(const HIPDeviceContext &context, size_t len, size_t elem_size,
+  HIPDeviceBuffer(const HIPDeviceContext &context, size_t byteSize,
                   hipDeviceptr_t ptr);
   HIPDeviceBuffer(const HIPDeviceContext &context,
-                  const HIPDeviceBuffer &parent, size_t len, size_t elem_size,
+                  const HIPDeviceBuffer &parent, size_t byteSize,
                   hipDeviceptr_t ptr);
   // TODO: Remove the V1 compatibility.
-  HIPDeviceBuffer(const HIPDeviceContext &context, size_t len, size_t elem_size,
+  HIPDeviceBuffer(const HIPDeviceContext &context, size_t byteSize,
                   hipDeviceptr_t ptr, bool owning);
   ~HIPDeviceBuffer() override;
 
@@ -101,8 +101,8 @@ public:
   // TODO: Remove the V1 compatibility.
   void *releasePtr() const override;
 
-  ErrorOr<DeviceBufferRef> createSubBuffer(size_t offset, size_t len,
-                                           size_t elem_size) const override;
+  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
+                                           size_t byteSize) const override;
 
   static const HIPDeviceBuffer &cast(const DeviceBuffer &buf);
 
@@ -153,7 +153,7 @@ public:
   const std::string &name() const override;
 
   ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
-                                     size_t byte_size) const override;
+                                     size_t byteSize) const override;
 
   ErrorOr<int32_t> getAttribute(int32_t code) const override;
 
@@ -208,9 +208,9 @@ public:
   ErrorOrSuccess free_host(void *ptr) const override;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> createBuffer(size_t len, size_t elem_size,
+  ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize,
                                         SyncMode mode) const override;
-  DeviceBufferRef createBufferOwning(void *ptr, size_t len, size_t elem_size,
+  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
                                      bool owning) const override;
 
   // DeviceBuffer copies.
@@ -223,7 +223,7 @@ public:
                                     SyncMode mode) const override;
 
   ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
-                           size_t elem_size, SyncMode mode) const override;
+                           size_t val_size, SyncMode mode) const override;
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef> loadFunction(

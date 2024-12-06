@@ -97,17 +97,13 @@ ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
 //
 // ===== DeviceBuffer ===== //
 //
-DeviceBuffer::DeviceBuffer(const DeviceContext &context, size_t len,
-                           size_t elem_size)
-    : context_(DeviceContextRef::copy(&context)), len_(len),
-      elem_size_(elem_size) {}
+DeviceBuffer::DeviceBuffer(const DeviceContext &context, size_t byteSize)
+    : context_(DeviceContextRef::copy(&context)), byteSize_(byteSize) {}
 
 DeviceBuffer::DeviceBuffer(const DeviceContext &context,
-                           const DeviceBuffer &parent, size_t len,
-                           size_t elem_size)
+                           const DeviceBuffer &parent, size_t byteSize)
     : context_(DeviceContextRef::copy(&context)),
-      parent_(DeviceBufferRef::copy(&parent)), len_(len),
-      elem_size_(elem_size) {}
+      parent_(DeviceBufferRef::copy(&parent)), byteSize_(byteSize) {}
 
 const DeviceContext &DeviceBuffer::context() const { return *context_; }
 
@@ -115,9 +111,7 @@ const DeviceBuffer *DeviceBuffer::parent() const {
   return parent_.getPointer();
 }
 
-size_t DeviceBuffer::len() const { return len_; }
-
-size_t DeviceBuffer::elem_size() const { return elem_size_; }
+size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
 //
 // ===== DeviceStream ===== //
@@ -244,19 +238,18 @@ DeviceContext::DeviceContext(const Device &device)
 const Device &DeviceContext::device() const { return *device_; }
 
 ErrorOr<DeviceBufferRef>
-DeviceContext::enqueueCreateBuffer(size_t len, size_t elem_size) const {
-  if (len == 0)
+DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
+  if (byteSize == 0)
     return Error("cannot allocate zero length buffers");
 
-  return createBuffer(len, elem_size, ASYNC);
+  return createBuffer(byteSize, ASYNC);
 }
 
-ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t len,
-                                                     size_t elem_size) const {
-  if (len == 0)
+ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t byteSize) const {
+  if (byteSize == 0)
     return Error("cannot allocate zero length buffers");
 
-  return createBuffer(len, elem_size, SYNC);
+  return createBuffer(byteSize, SYNC);
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,

@@ -102,7 +102,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
     const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx,
     size_t len, size_t elem_size) {
   const char *err_msg = check_ref(
-      result, ctx->createBuffer(len, elem_size, DeviceContext::ASYNC));
+      result, ctx->createBuffer(len * elem_size, DeviceContext::ASYNC));
   if (err_msg == nullptr) {
     *device_ptr = (*result)->ptr();
   }
@@ -112,8 +112,8 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
     const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx,
     size_t len, size_t elem_size) {
-  const char *err_msg =
-      check_ref(result, ctx->createBuffer(len, elem_size, DeviceContext::SYNC));
+  const char *err_msg = check_ref(
+      result, ctx->createBuffer(len * elem_size, DeviceContext::SYNC));
   if (err_msg == nullptr) {
     *device_ptr = (*result)->ptr();
   }
@@ -125,13 +125,13 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_createBuffer_owning(
     const DeviceBuffer **result, const DeviceContext *ctx, void *device_ptr,
     size_t len, size_t elem_size, bool owning) {
   *result =
-      ctx->createBufferOwning(device_ptr, len, elem_size, owning).release();
+      ctx->createBufferOwning(device_ptr, len * elem_size, owning).release();
 }
 MODULAR_EXPORT const char *AsyncRT_DeviceBuffer_createSubBuffer(
     const DeviceBuffer **result, void **device_ptr, const DeviceBuffer *buf,
     size_t offset, size_t len, size_t elem_size) {
-  const char *err_msg =
-      check_ref(result, buf->createSubBuffer(offset, len, elem_size));
+  const char *err_msg = check_ref(
+      result, buf->createSubBuffer(offset * elem_size, len * elem_size));
   if (err_msg == nullptr) {
     *device_ptr = (*result)->ptr();
   }
@@ -154,8 +154,9 @@ AsyncRT_DeviceBuffer_release_ptr(const DeviceBuffer *buffer) {
   buffer->releasePtr();
 }
 
-MODULAR_EXPORT int64_t AsyncRT_DeviceBuffer_len(const DeviceBuffer *buffer) {
-  return buffer->len();
+MODULAR_EXPORT int64_t
+AsyncRT_DeviceBuffer_bytesize(const DeviceBuffer *buffer) {
+  return buffer->byteSize();
 }
 
 MODULAR_EXPORT const char *
@@ -231,17 +232,17 @@ AsyncRT_DeviceContext_DtoD_sync(const DeviceContext *ctx,
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_async(const DeviceContext *ctx,
                                       const DeviceBuffer *dst, uint32_t val,
-                                      size_t elem_size) {
+                                      size_t val_size) {
   return check_success(
-      ctx->setMemory(*dst, val, elem_size, DeviceContext::ASYNC));
+      ctx->setMemory(*dst, val, val_size, DeviceContext::ASYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_sync(const DeviceContext *ctx,
                                      const DeviceBuffer *dst, uint32_t val,
-                                     size_t elem_size) {
+                                     size_t val_size) {
   return check_success(
-      ctx->setMemory(*dst, val, elem_size, DeviceContext::SYNC));
+      ctx->setMemory(*dst, val, val_size, DeviceContext::SYNC));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunction(
@@ -271,8 +272,8 @@ MODULAR_EXPORT void AsyncRT_DeviceFunction_release(const DeviceFunction *func) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceFunction_copyToConstantMemory(const DeviceFunction *func,
                                             const char *name, const void *data,
-                                            size_t byte_size) {
-  return check_success(func->copyToNamedConstant(name, data, byte_size));
+                                            size_t byteSize) {
+  return check_success(func->copyToNamedConstant(name, data, byteSize));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(

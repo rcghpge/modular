@@ -113,13 +113,12 @@ TEST(DeviceContextTest, DeviceBuffers) {
     void *a_ptr = err_ptr.get();
     EXPECT_NE(a_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref =
-        ctx->createBuffer(alloc_len, 1, sync_mode);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(alloc_len, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
 
-    err_ref = ctx->createBuffer(alloc_len / 16, 16, sync_mode);
+    err_ref = ctx->createBuffer(alloc_len, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef c_buf = std::move(err_ref.get());
     EXPECT_TRUE(c_buf);
@@ -163,7 +162,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
-  ErrorOr<DeviceBufferRef> empty_buf_err = ctx->enqueueCreateBuffer(0, 1);
+  ErrorOr<DeviceBufferRef> empty_buf_err = ctx->enqueueCreateBuffer(0);
   EXPECT_TRUE(empty_buf_err);
   EXPECT_THAT(empty_buf_err.getError(),
               testing::HasSubstr("cannot allocate zero length buffers"));
@@ -185,12 +184,12 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 
     // Create a source buffer that is too small.
     ErrorOr<DeviceBufferRef> err_ref =
-        ctx->createBuffer(alloc_len - 32, 1, sync_mode);
+        ctx->createBuffer(alloc_len - 32, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
 
-    err_ref = ctx->createBuffer(alloc_len / 16, 16, sync_mode);
+    err_ref = ctx->createBuffer(alloc_len, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef c_buf = std::move(err_ref.get());
     EXPECT_TRUE(c_buf);
@@ -234,12 +233,12 @@ TEST(CUDADeviceContextTest, SubBuffer) {
   char *a_ptr = static_cast<char *>(malloc(alloc_len));
   EXPECT_NE(a_ptr, nullptr);
 
-  ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(alloc_len, 1);
+  ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(alloc_len);
   EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
   DeviceBufferRef b_buf = std::move(err_ref.get());
   EXPECT_TRUE(b_buf);
 
-  err_ref = b_buf->createSubBuffer(sub_offset, sub_alloc_len, 4);
+  err_ref = b_buf->createSubBuffer(sub_offset, sub_alloc_len * 4);
   EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
   DeviceBufferRef c_buf = std::move(err_ref.get());
   EXPECT_TRUE(c_buf);
@@ -404,7 +403,7 @@ TEST(DeviceContextTest, Timers) {
     void *a_ptr = err_ptr.get();
     EXPECT_NE(a_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(256, 1);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(256);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);

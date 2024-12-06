@@ -109,12 +109,12 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     void *a_ptr = err_ptr.get();
     EXPECT_NE(a_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(alloc_len, 1);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(alloc_len);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
 
-    err_ref = ctx->enqueueCreateBuffer(alloc_len / 16, 16);
+    err_ref = ctx->enqueueCreateBuffer(alloc_len);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef c_buf = std::move(err_ref.get());
     EXPECT_TRUE(c_buf);
@@ -186,12 +186,12 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 
     // Create a source buffer that is too small.
     ErrorOr<DeviceBufferRef> err_ref =
-        ctx->createBuffer(alloc_len - 32, 1, sync_mode);
+        ctx->createBuffer(alloc_len - 32, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
 
-    err_ref = ctx->createBuffer(alloc_len / 16, 16, sync_mode);
+    err_ref = ctx->createBuffer(alloc_len, sync_mode);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef c_buf = std::move(err_ref.get());
     EXPECT_TRUE(c_buf);
@@ -235,12 +235,12 @@ TEST(GPUDeviceContextTest, SubBuffer) {
   char *a_ptr = static_cast<char *>(malloc(alloc_len));
   EXPECT_NE(a_ptr, nullptr);
 
-  ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(alloc_len, 1);
+  ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(alloc_len);
   EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
   DeviceBufferRef b_buf = std::move(err_ref.get());
   EXPECT_TRUE(b_buf);
 
-  err_ref = b_buf->createSubBuffer(sub_offset, sub_alloc_len, 4);
+  err_ref = b_buf->createSubBuffer(sub_offset, sub_alloc_len * 4);
   EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
   DeviceBufferRef c_buf = std::move(err_ref.get());
   EXPECT_TRUE(c_buf);
@@ -310,7 +310,7 @@ TEST(GPUDeviceContextTest, Timers) {
     void *a_ptr = err_ptr.get();
     EXPECT_NE(a_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(256, 1);
+    ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(256);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef b_buf = std::move(err_ref.get());
     EXPECT_TRUE(b_buf);
@@ -376,13 +376,12 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
     void *src_ptr = err_ptr.get();
     EXPECT_NE(src_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref =
-        src_ctx->enqueueCreateBuffer(alloc_len, 1);
+    ErrorOr<DeviceBufferRef> err_ref = src_ctx->enqueueCreateBuffer(alloc_len);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef src_buf = std::move(err_ref.get());
     EXPECT_TRUE(src_buf);
 
-    err_ref = dst_ctx->enqueueCreateBuffer(alloc_len, 1);
+    err_ref = dst_ctx->enqueueCreateBuffer(alloc_len);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef dst_buf = std::move(err_ref.get());
     EXPECT_TRUE(dst_buf);

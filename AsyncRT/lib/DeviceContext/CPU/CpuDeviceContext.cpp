@@ -16,6 +16,7 @@
 #include "llvm/ADT/Twine.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -97,17 +98,17 @@ ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
 //
 // ===== CpuDeviceBuffer === //
 //
-CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context, size_t len,
-                                 size_t elem_size, void *ptr)
-    : DeviceBuffer(context, len, elem_size), ptr_(ptr) {}
 CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
-                                 const CpuDeviceBuffer &parent, size_t len,
-                                 size_t elem_size, void *ptr)
-    : DeviceBuffer(context, parent, len, elem_size), ptr_(ptr) {}
+                                 size_t byteSize, void *ptr)
+    : DeviceBuffer(context, byteSize), ptr_(ptr) {}
+CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
+                                 const CpuDeviceBuffer &parent, size_t byteSize,
+                                 void *ptr)
+    : DeviceBuffer(context, parent, byteSize), ptr_(ptr) {}
 // TODO: Remove the V1 compatibility.
-CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context, size_t len,
-                                 size_t elem_size, void *ptr, bool owning)
-    : DeviceBuffer(context, len, elem_size), ptr_(ptr), owning_(owning) {}
+CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
+                                 size_t byteSize, void *ptr, bool owning)
+    : DeviceBuffer(context, byteSize), ptr_(ptr), owning_(owning) {}
 
 CpuDeviceBuffer::~CpuDeviceBuffer() {
   if (!owning_) {
@@ -135,19 +136,15 @@ void *CpuDeviceBuffer::releasePtr() const {
 }
 
 ErrorOr<DeviceBufferRef>
-CpuDeviceBuffer::createSubBuffer(size_t offset, size_t len,
-                                 size_t elem_size) const {
+CpuDeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   char *orig_ptr = static_cast<char *>(this->cpu_ptr());
-  size_t orig_byte_size = this->len() * this->elem_size();
+  size_t origByteSize = this->byteSize();
 
-  size_t byte_offset = offset * elem_size;
-  size_t byte_size = len * elem_size;
-  if ((byte_size > orig_byte_size) ||
-      (orig_byte_size - byte_size < byte_offset)) {
+  if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
     RAISE_ERROR_MESSAGE("offset, len and elem_size are out of range");
   }
   return CpuDeviceBufferRef::create(CpuDeviceContext::cast(context()), *this,
-                                    len, elem_size, orig_ptr + byte_offset);
+                                    byteSize, orig_ptr + byteOffset);
 }
 
 const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
@@ -194,29 +191,25 @@ ErrorOrSuccess CpuDeviceContext::free_host(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> CpuDeviceContext::createBuffer(size_t len,
-                                                        size_t elem_size,
+ErrorOr<DeviceBufferRef> CpuDeviceContext::createBuffer(size_t byteSize,
                                                         SyncMode mode) const {
-  size_t bytesize = len * elem_size;
-  void *ptr = TCMallocGlobals::tc_new(bytesize, 1);
+  void *ptr = TCMallocGlobals::tc_new(byteSize, 1);
   if (ptr == nullptr) {
     RAISE_ERROR();
   }
-  return CpuDeviceBufferRef::create(*this, len, elem_size, ptr);
+  return CpuDeviceBufferRef::create(*this, byteSize, ptr);
 }
 
-DeviceBufferRef CpuDeviceContext::createBufferOwning(void *ptr, size_t len,
-                                                     size_t elem_size,
+DeviceBufferRef CpuDeviceContext::createBufferOwning(void *ptr, size_t byteSize,
                                                      bool owning) const {
-  return CpuDeviceBufferRef::create(*this, len, elem_size, ptr, owning);
+  return CpuDeviceBufferRef::create(*this, byteSize, ptr, owning);
 }
 
 ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
                                               const void *src,
                                               SyncMode mode) const {
   void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
-  size_t byte_size = dst.len() * dst.elem_size();
-  memcpy(dst_ptr, src, byte_size);
+  memcpy(dst_ptr, src, dst.byteSize());
   return success();
 }
 
@@ -224,8 +217,7 @@ ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
                                                 const DeviceBuffer &src,
                                                 SyncMode mode) const {
   void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
-  size_t byte_size = src.len() * src.elem_size();
-  memcpy(dst, src_ptr, byte_size);
+  memcpy(dst, src_ptr, src.byteSize());
   return success();
 }
 
@@ -234,28 +226,37 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                     SyncMode mode) const {
   void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
   void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
-  size_t dst_byte_size = dst.len() * dst.elem_size();
-  size_t src_byte_size = src.len() * src.elem_size();
-  if (src_byte_size < dst_byte_size) {
+  if (src.byteSize() < dst.byteSize()) {
     RAISE_ERROR_MESSAGE("not enough data in src");
   }
-  memcpy(dst_ptr, src_ptr, dst_byte_size);
+  memcpy(dst_ptr, src_ptr, dst.byteSize());
   return success();
 }
 
 ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
-                                           uint32_t val, size_t elem_size,
+                                           uint32_t val, size_t val_size,
                                            SyncMode mode) const {
   void *ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
-  size_t len = dst.len();
-  if (elem_size == 1) {
-    memset(ptr, static_cast<uint8_t>(val), len);
-  } else if (elem_size == 2) {
+  size_t byteSize = dst.byteSize();
+  if (val_size == 1) {
+    memset(ptr, static_cast<uint8_t>(val), byteSize);
+  } else if (val_size == 2) {
+    if ((byteSize & 1) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    size_t len = byteSize >> 1;
     uint16_t *cur_ptr = static_cast<uint16_t *>(ptr);
     for (size_t i = 0; i < len; i++) {
       *cur_ptr++ = static_cast<uint16_t>(val);
     }
   } else {
+    if (val_size != 4) {
+      return Error("unsupported val_size");
+    }
+    if ((byteSize & 3) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    size_t len = byteSize >> 2;
     uint32_t *cur_ptr = static_cast<uint32_t *>(ptr);
     for (size_t i = 0; i < len; i++) {
       *cur_ptr++ = val;

@@ -262,18 +262,18 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
 }
 
 // ===== HIPDeviceBuffer ===== //
-HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context, size_t len,
-                                 size_t elem_size, hipDeviceptr_t dptr)
-    : DeviceBuffer(context, len, elem_size), dptr_(dptr) {}
+HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context,
+                                 size_t byteSize, hipDeviceptr_t dptr)
+    : DeviceBuffer(context, byteSize), dptr_(dptr) {}
 
 HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context,
-                                 const HIPDeviceBuffer &parent, size_t len,
-                                 size_t elem_size, hipDeviceptr_t dptr)
-    : DeviceBuffer(context, parent, len, elem_size), dptr_(dptr) {}
-HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context, size_t len,
-                                 size_t elem_size, hipDeviceptr_t dptr,
+                                 const HIPDeviceBuffer &parent, size_t byteSize,
+                                 hipDeviceptr_t dptr)
+    : DeviceBuffer(context, parent, byteSize), dptr_(dptr) {}
+HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context,
+                                 size_t byteSize, hipDeviceptr_t dptr,
                                  bool owning)
-    : DeviceBuffer(context, len, elem_size), dptr_(dptr), owning_(owning) {}
+    : DeviceBuffer(context, byteSize), dptr_(dptr), owning_(owning) {}
 
 HIPDeviceBuffer::~HIPDeviceBuffer() {
   if (!owning_) {
@@ -306,20 +306,16 @@ void *HIPDeviceBuffer::releasePtr() const {
 }
 
 ErrorOr<DeviceBufferRef>
-HIPDeviceBuffer::createSubBuffer(size_t offset, size_t len,
-                                 size_t elem_size) const {
+HIPDeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   char *orig_ptr = static_cast<char *>(this->hip_ptr());
-  size_t orig_byte_size = this->len() * this->elem_size();
+  size_t origByteSize = this->byteSize();
 
-  size_t byte_offset = offset * elem_size;
-  size_t byte_size = len * elem_size;
-  if ((byte_size > orig_byte_size) ||
-      (orig_byte_size - byte_size < byte_offset)) {
+  if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
     RAISE_ERROR("offset, len and elem_size are out of range");
   }
   return HIPDeviceBufferRef::create(
-      HIPDeviceContext::cast(context()), *this, len, elem_size,
-      static_cast<hipDeviceptr_t>(orig_ptr + byte_offset));
+      HIPDeviceContext::cast(context()), *this, byteSize,
+      static_cast<hipDeviceptr_t>(orig_ptr + byteOffset));
 }
 
 const HIPDeviceBuffer &HIPDeviceBuffer::cast(const DeviceBuffer &buf) {
@@ -418,19 +414,19 @@ const std::string &HIPDeviceFunction::name() const { return name_; }
 
 ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
                                                       const void *data,
-                                                      size_t byte_size) const {
+                                                      size_t byteSize) const {
   hipDeviceptr_t device_ptr;
   size_t device_size;
   const auto &hip_context = HIPDeviceContext::cast(context());
   HIP_CHECK_ERR(hip_context.hip_driver().ModuleGetGlobal(
       &device_ptr, &device_size, module_, name));
 
-  if (device_size < byte_size) {
-    RAISE_ERROR("byte_size too big");
+  if (device_size < byteSize) {
+    RAISE_ERROR("byteSize too big");
   }
 
   HIP_CHECK_ERR(hip_context.hip_driver().MemcpyHtoDAsync(
-      device_ptr, data, byte_size, hip_context.hip_stream()));
+      device_ptr, data, byteSize, hip_context.hip_stream()));
   return success();
 }
 
@@ -493,28 +489,25 @@ ErrorOrSuccess HIPDeviceContext::free_host(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> HIPDeviceContext::createBuffer(size_t len,
-                                                        size_t elem_size,
+ErrorOr<DeviceBufferRef> HIPDeviceContext::createBuffer(size_t byteSize,
                                                         SyncMode mode) const {
   HIP_CHECK_ERR(setCurrent());
 
-  size_t bytesize = len * elem_size;
-  hipDeviceptr_t dptr = buffer_cache().allocate(bytesize);
+  hipDeviceptr_t dptr = buffer_cache().allocate(byteSize);
   if (dptr == nullptr) {
     if (mode == ASYNC) {
-      HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, bytesize, stream_));
+      HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
     } else {
-      HIP_CHECK_ERR(driver_.MemAlloc(&dptr, bytesize));
+      HIP_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
     }
   }
-  return HIPDeviceBufferRef::create(*this, len, elem_size, dptr);
+  return HIPDeviceBufferRef::create(*this, byteSize, dptr);
 }
 
-DeviceBufferRef HIPDeviceContext::createBufferOwning(void *ptr, size_t len,
-                                                     size_t elem_size,
+DeviceBufferRef HIPDeviceContext::createBufferOwning(void *ptr, size_t byteSize,
                                                      bool owning) const {
   hipDeviceptr_t dptr = static_cast<hipDeviceptr_t>(ptr);
-  return HIPDeviceBufferRef::create(*this, len, elem_size, dptr, owning);
+  return HIPDeviceBufferRef::create(*this, byteSize, dptr, owning);
 }
 
 ErrorOrSuccess HIPDeviceContext::copyToDevice(const DeviceBuffer &dst,
@@ -523,11 +516,11 @@ ErrorOrSuccess HIPDeviceContext::copyToDevice(const DeviceBuffer &dst,
   HIP_CHECK_ERR(setCurrent());
 
   hipDeviceptr_t dst_ptr = HIPDeviceBuffer::cast(dst).hip_ptr();
-  size_t byte_size = dst.len() * dst.elem_size();
+  size_t byteSize = dst.byteSize();
   if (mode == ASYNC) {
-    HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byte_size, stream_));
+    HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byteSize, stream_));
   } else {
-    HIP_CHECK_ERR(driver_.MemcpyHtoD(dst_ptr, src, byte_size));
+    HIP_CHECK_ERR(driver_.MemcpyHtoD(dst_ptr, src, byteSize));
   }
   return success();
 }
@@ -538,11 +531,11 @@ ErrorOrSuccess HIPDeviceContext::copyFromDevice(void *dst,
   HIP_CHECK_ERR(setCurrent());
 
   hipDeviceptr_t src_ptr = HIPDeviceBuffer::cast(src).hip_ptr();
-  size_t byte_size = src.len() * src.elem_size();
+  size_t byteSize = src.byteSize();
   if (mode == ASYNC) {
-    HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byte_size, stream_));
+    HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byteSize, stream_));
   } else {
-    HIP_CHECK_ERR(driver_.MemcpyDtoH(dst, src_ptr, byte_size));
+    HIP_CHECK_ERR(driver_.MemcpyDtoH(dst, src_ptr, byteSize));
   }
   return success();
 }
@@ -557,9 +550,9 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 
   auto src_ptr = src_buffer.hip_ptr();
   auto dst_ptr = dst_buffer.hip_ptr();
-  size_t dst_byte_size = dst.len() * dst.elem_size();
-  size_t src_byte_size = src.len() * src.elem_size();
-  if (src_byte_size < dst_byte_size) {
+  size_t dstByteSize = dst.byteSize();
+  size_t srcByteSize = src.byteSize();
+  if (srcByteSize < dstByteSize) {
     RAISE_ERROR("not enough data in src");
   }
   if (src_ctx.context_ != dst_ctx.context_) {
@@ -570,27 +563,31 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
   } else {
     if (mode == ASYNC) {
       HIP_CHECK_ERR(
-          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, dst_byte_size, stream_));
+          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, dstByteSize, stream_));
     } else {
-      HIP_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, dst_byte_size));
+      HIP_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, dstByteSize));
     }
   }
   return success();
 }
 
 ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
-                                           uint32_t val, size_t elem_size,
+                                           uint32_t val, size_t val_size,
                                            SyncMode mode) const {
   void *ptr = HIPDeviceBuffer::cast(dst).hip_ptr();
-  size_t len = dst.len();
-  if (elem_size == 1) {
+  size_t byteSize = dst.byteSize();
+  if (val_size == 1) {
     if (mode == ASYNC) {
-      HIP_CHECK_ERR(
-          driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val), len, stream_));
+      HIP_CHECK_ERR(driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val),
+                                          byteSize, stream_));
     } else {
-      HIP_CHECK_ERR(driver_.MemsetD8(ptr, static_cast<uint8_t>(val), len));
+      HIP_CHECK_ERR(driver_.MemsetD8(ptr, static_cast<uint8_t>(val), byteSize));
     }
-  } else if (elem_size == 2) {
+  } else if (val_size == 2) {
+    if ((byteSize & 1) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    size_t len = byteSize >> 1;
     if (mode == ASYNC) {
       HIP_CHECK_ERR(driver_.MemsetD16Async(ptr, static_cast<uint16_t>(val), len,
                                            stream_));
@@ -598,6 +595,13 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
       HIP_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
     }
   } else {
+    if (val_size != 4) {
+      return Error("unsupported val_size");
+    }
+    if ((byteSize & 3) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    size_t len = byteSize >> 2;
     if (mode == ASYNC) {
       HIP_CHECK_ERR(driver_.MemsetD32Async(ptr, val, len, stream_));
     } else {

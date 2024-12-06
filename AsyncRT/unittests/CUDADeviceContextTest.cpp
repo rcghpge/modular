@@ -148,17 +148,17 @@ $L__BB0_2:
     }
 
     ErrorOr<DeviceBufferRef> err_buf =
-        ctx->enqueueCreateBuffer(length, elem_size);
+        ctx->enqueueCreateBuffer(length * elem_size);
     EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
     DeviceBufferRef in0_device = std::move(err_buf.get());
     EXPECT_TRUE(in0_device);
 
-    err_buf = ctx->enqueueCreateBuffer(length, elem_size);
+    err_buf = ctx->enqueueCreateBuffer(length * elem_size);
     EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
     DeviceBufferRef in1_device = std::move(err_buf.get());
     EXPECT_TRUE(in1_device);
 
-    err_buf = ctx->enqueueCreateBuffer(length, elem_size);
+    err_buf = ctx->enqueueCreateBuffer(length * elem_size);
     EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
     DeviceBufferRef out_device = std::move(err_buf.get());
     EXPECT_TRUE(out_device);
@@ -360,12 +360,12 @@ $L__BB0_2:
     void *src_ptr = err_ptr.get();
     EXPECT_NE(src_ptr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = src_ctx->createBuffer(alloc_len, 1);
+    ErrorOr<DeviceBufferRef> err_ref = src_ctx->createBuffer(alloc_len);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef src_buf = std::move(err_ref.get());
     EXPECT_TRUE(src_buf);
 
-    err_ref = dst_ctx->createBuffer(alloc_len, 1);
+    err_ref = dst_ctx->createBuffer(alloc_len);
     EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
     DeviceBufferRef dst_buf = std::move(err_ref.get());
     EXPECT_TRUE(dst_buf);
