@@ -20,61 +20,61 @@ using M::ErrorOrSuccess;
 namespace {
 
 TEST(DeviceContextTest, Smoke) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef ctx = std::move(err_ctx.get());
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);
 
   EXPECT_EQ(ctx->device().name(), Device::cpuAPI);
 }
 
 TEST(DeviceContextTest, CreationFailure) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI, 1);
-  ASSERT_TRUE(err_ctx);
-  EXPECT_EQ(strcmp(err_ctx.getError(), "CPU device only supports id == 0."), 0)
-      << err_ctx.getError();
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI, 1);
+  ASSERT_TRUE(errCtx);
+  EXPECT_EQ(strcmp(errCtx.getError(), "CPU device only supports id == 0."), 0)
+      << errCtx.getError();
 
-  err_ctx = DeviceContext::create("pcu");
-  ASSERT_TRUE(err_ctx);
-  EXPECT_EQ(strcmp(err_ctx.getError(), "Unsupported device api: \"pcu\""), 0)
-      << err_ctx.getError();
+  errCtx = DeviceContext::create("pcu");
+  ASSERT_TRUE(errCtx);
+  EXPECT_EQ(strcmp(errCtx.getError(), "Unsupported device api: \"pcu\""), 0)
+      << errCtx.getError();
 }
 
 TEST(DeviceContextTest, NumDevices) {
   EXPECT_EQ(Device::numberOfDevices(Device::cpuAPI), 1);
 }
 
-static void init_with_data(void *dst, size_t dst_len, const void *check_data,
-                           size_t check_data_len) {
+static void initWithData(void *dst, size_t dstLen, const void *checkData,
+                         size_t checkDataLen) {
   char *cur = static_cast<char *>(dst);
-  size_t remaining = dst_len;
+  size_t remaining = dstLen;
   while (remaining > 0) {
-    size_t to_copy = std::min(remaining, check_data_len);
-    memcpy(cur, check_data, to_copy);
-    remaining -= to_copy;
-    cur += to_copy;
+    size_t toCopy = std::min(remaining, checkDataLen);
+    memcpy(cur, checkData, toCopy);
+    remaining -= toCopy;
+    cur += toCopy;
   }
 }
 
-static void compare_with_data(const void *dst, size_t dst_len,
-                              const void *check_data, size_t check_data_len) {
+static void compareWithData(const void *dst, size_t dstLen,
+                            const void *checkData, size_t checkDataLen) {
   const char *cur = static_cast<const char *>(dst);
-  size_t remaining = dst_len;
+  size_t remaining = dstLen;
   while (remaining > 0) {
-    size_t to_check = std::min(remaining, check_data_len);
-    EXPECT_EQ(memcmp(cur, check_data, to_check), 0);
-    remaining -= to_check;
-    cur += to_check;
+    size_t toCheck = std::min(remaining, checkDataLen);
+    EXPECT_EQ(memcmp(cur, checkData, toCheck), 0);
+    remaining -= toCheck;
+    cur += toCheck;
   }
 }
 
 TEST(DeviceContextTest, DeviceBuffers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef ctx = std::move(err_ctx.get());
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);
 
-  char check_data[] = {
+  char checkData[] = {
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
       'F', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
       'F', '0', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
@@ -95,190 +95,190 @@ TEST(DeviceContextTest, DeviceBuffers) {
       'E',
   };
 
-  const int copy_lengths[] = {256, 1024 * 1024};
+  const int copyLengths[] = {256, 1024 * 1024};
 
   for (int i = 0; i < 4; i++) {
-    DeviceContext::SyncMode sync_mode =
+    DeviceContext::SyncMode syncMode =
         ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
-    int alloc_len = copy_lengths[(i >> 1) & 1];
+    int allocLen = copyLengths[(i >> 1) & 1];
 
-    ErrorOr<DeviceBufferRef> empty_buf_err = ctx->createBuffer(0, sync_mode);
-    EXPECT_FALSE(empty_buf_err);
-    EXPECT_EQ((*empty_buf_err)->ptr(), nullptr);
-    EXPECT_EQ((*empty_buf_err)->byteSize(), 0);
+    ErrorOr<DeviceBufferRef> emptyBufErr = ctx->createBuffer(0, syncMode);
+    EXPECT_FALSE(emptyBufErr);
+    EXPECT_EQ((*emptyBufErr)->ptr(), nullptr);
+    EXPECT_EQ((*emptyBufErr)->byteSize(), 0);
 
-    std::cerr << "DeviceContext copies(len: " << alloc_len << ", sync_mode: "
-              << ((sync_mode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
+    std::cerr << "DeviceContext copies(len: " << allocLen << ", syncMode: "
+              << ((syncMode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
               << ")\n";
 
-    ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
-    EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
-    void *a_ptr = err_ptr.get();
-    EXPECT_NE(a_ptr, nullptr);
+    ErrorOr<void *> errPtr = ctx->malloc_host(allocLen);
+    EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
+    void *aPtr = errPtr.get();
+    EXPECT_NE(aPtr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->createBuffer(alloc_len, sync_mode);
-    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-    DeviceBufferRef b_buf = std::move(err_ref.get());
-    EXPECT_TRUE(b_buf);
+    ErrorOr<DeviceBufferRef> errRef = ctx->createBuffer(allocLen, syncMode);
+    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+    DeviceBufferRef bBuf = std::move(errRef.get());
+    EXPECT_TRUE(bBuf);
 
-    err_ref = ctx->createBuffer(alloc_len, sync_mode);
-    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-    DeviceBufferRef c_buf = std::move(err_ref.get());
-    EXPECT_TRUE(c_buf);
+    errRef = ctx->createBuffer(allocLen, syncMode);
+    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+    DeviceBufferRef cBuf = std::move(errRef.get());
+    EXPECT_TRUE(cBuf);
 
-    char *d_ptr = static_cast<char *>(malloc(alloc_len));
-    EXPECT_NE(d_ptr, nullptr);
+    char *dPtr = static_cast<char *>(malloc(allocLen));
+    EXPECT_NE(dPtr, nullptr);
 
     // Initialize with known good and bad values.
-    init_with_data(a_ptr, alloc_len, check_data, sizeof(check_data));
+    initWithData(aPtr, allocLen, checkData, sizeof(checkData));
 
-    for (int i = 0; i < alloc_len; i++) {
-      d_ptr[i] = -static_cast<char>((7 + i) & 127);
+    for (int i = 0; i < allocLen; i++) {
+      dPtr[i] = -static_cast<char>((7 + i) & 127);
     }
 
     ErrorOrSuccess err;
     // Copy between different buffers.
-    err = ctx->copyToDevice(*b_buf, a_ptr, sync_mode);
+    err = ctx->copyToDevice(*bBuf, aPtr, syncMode);
     EXPECT_FALSE(err) << err.getError() << "\n";
-    err = ctx->copyDeviceToDevice(*c_buf, *b_buf, sync_mode);
+    err = ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode);
     EXPECT_FALSE(err) << err.getError() << "\n";
-    err = ctx->copyFromDevice(d_ptr, *c_buf, sync_mode);
+    err = ctx->copyFromDevice(dPtr, *cBuf, syncMode);
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    if (sync_mode == DeviceContext::ASYNC) {
+    if (syncMode == DeviceContext::ASYNC) {
       // Ensure that all copy operations have finished.
       err = ctx->synchronize();
       EXPECT_FALSE(err) << err.getError() << "\n";
     }
 
-    compare_with_data(d_ptr, alloc_len, check_data, sizeof(check_data));
+    compareWithData(dPtr, allocLen, checkData, sizeof(checkData));
 
-    free(d_ptr);
-    err = ctx->free_host(a_ptr);
+    free(dPtr);
+    err = ctx->free_host(aPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 }
 
 TEST(DeviceContextTest, FailDeviceBuffers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef ctx = std::move(err_ctx.get());
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);
 
-  const int copy_lengths[] = {256};
+  const int copyLengths[] = {256};
 
   for (int i = 0; i < 2; i++) {
-    DeviceContext::SyncMode sync_mode =
+    DeviceContext::SyncMode syncMode =
         ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
-    int alloc_len = copy_lengths[(i >> 1) & 1];
+    int allocLen = copyLengths[(i >> 1) & 1];
 
-    std::cerr << "DeviceContext failing copies(len: " << alloc_len
-              << ", sync_mode: "
-              << ((sync_mode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
+    std::cerr << "DeviceContext failing copies(len: " << allocLen
+              << ", syncMode: "
+              << ((syncMode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
               << ")\n";
 
-    char *a_ptr = static_cast<char *>(malloc(alloc_len));
-    EXPECT_NE(a_ptr, nullptr);
+    char *aPtr = static_cast<char *>(malloc(allocLen));
+    EXPECT_NE(aPtr, nullptr);
 
     // Create a source buffer that is too small.
-    ErrorOr<DeviceBufferRef> err_ref =
-        ctx->createBuffer(alloc_len - 32, sync_mode);
-    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-    DeviceBufferRef b_buf = std::move(err_ref.get());
-    EXPECT_TRUE(b_buf);
+    ErrorOr<DeviceBufferRef> errRef =
+        ctx->createBuffer(allocLen - 32, syncMode);
+    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+    DeviceBufferRef bBuf = std::move(errRef.get());
+    EXPECT_TRUE(bBuf);
 
-    err_ref = ctx->createBuffer(alloc_len, sync_mode);
-    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-    DeviceBufferRef c_buf = std::move(err_ref.get());
-    EXPECT_TRUE(c_buf);
+    errRef = ctx->createBuffer(allocLen, syncMode);
+    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+    DeviceBufferRef cBuf = std::move(errRef.get());
+    EXPECT_TRUE(cBuf);
 
     // Initialize with known good and bad values.
-    for (int i = 0; i < alloc_len; i++) {
-      a_ptr[i] = static_cast<char>(i & 127);
+    for (int i = 0; i < allocLen; i++) {
+      aPtr[i] = static_cast<char>(i & 127);
     }
 
     ErrorOrSuccess err;
     // Copy between different buffers.
-    err = ctx->copyToDevice(*b_buf, a_ptr, sync_mode);
+    err = ctx->copyToDevice(*bBuf, aPtr, syncMode);
     EXPECT_FALSE(err) << err.getError() << "\n";
-    err = ctx->copyDeviceToDevice(*c_buf, *b_buf, sync_mode);
+    err = ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode);
     EXPECT_TRUE(err);
     EXPECT_THAT(err.getError(), testing::HasSubstr("not enough data in src"));
 
-    if (sync_mode == DeviceContext::ASYNC) {
+    if (syncMode == DeviceContext::ASYNC) {
       // Ensure that all copy operations have finished.
       err = ctx->synchronize();
       EXPECT_FALSE(err) << err.getError() << "\n";
     }
 
-    free(a_ptr);
+    free(aPtr);
   }
 }
 
 TEST(CUDADeviceContextTest, SubBuffer) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef ctx = std::move(err_ctx.get());
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);
 
-  int alloc_len = 256;
+  int allocLen = 256;
 
-  int sub_offset = 0;
-  int sub_alloc_len = 3;
+  int subOffset = 0;
+  int subAllocLen = 3;
 
-  std::cerr << "DeviceContext sub buffer copies(len: " << alloc_len << ")\n";
+  std::cerr << "DeviceContext sub buffer copies(len: " << allocLen << ")\n";
 
-  char *a_ptr = static_cast<char *>(malloc(alloc_len));
-  EXPECT_NE(a_ptr, nullptr);
+  char *aPtr = static_cast<char *>(malloc(allocLen));
+  EXPECT_NE(aPtr, nullptr);
 
-  ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(alloc_len);
-  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-  DeviceBufferRef b_buf = std::move(err_ref.get());
-  EXPECT_TRUE(b_buf);
+  ErrorOr<DeviceBufferRef> errRef = ctx->enqueueCreateBuffer(allocLen);
+  EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+  DeviceBufferRef bBuf = std::move(errRef.get());
+  EXPECT_TRUE(bBuf);
 
-  err_ref = b_buf->createSubBuffer(sub_offset, sub_alloc_len * 4);
-  EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-  DeviceBufferRef c_buf = std::move(err_ref.get());
-  EXPECT_TRUE(c_buf);
+  errRef = bBuf->createSubBuffer(subOffset, subAllocLen * 4);
+  EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+  DeviceBufferRef cBuf = std::move(errRef.get());
+  EXPECT_TRUE(cBuf);
 
-  char *d_ptr = static_cast<char *>(malloc(alloc_len));
-  EXPECT_NE(d_ptr, nullptr);
+  char *dPtr = static_cast<char *>(malloc(allocLen));
+  EXPECT_NE(dPtr, nullptr);
 
-  float *e_ptr = static_cast<float *>(malloc(sub_alloc_len * sizeof(float)));
-  EXPECT_NE(e_ptr, nullptr);
+  float *ePtr = static_cast<float *>(malloc(subAllocLen * sizeof(float)));
+  EXPECT_NE(ePtr, nullptr);
 
   // Initialize with known good and bad values.
-  for (int i = 0; i < alloc_len; i++) {
-    a_ptr[i] = static_cast<char>(i & 127);
-    d_ptr[i] = -static_cast<char>((7 + i) & 127);
+  for (int i = 0; i < allocLen; i++) {
+    aPtr[i] = static_cast<char>(i & 127);
+    dPtr[i] = -static_cast<char>((7 + i) & 127);
   }
 
-  for (int i = 0; i < sub_alloc_len; i++) {
-    e_ptr[i] = static_cast<float>(i) * (((i & 1) == 0) ? -1.0 : 1.0);
+  for (int i = 0; i < subAllocLen; i++) {
+    ePtr[i] = static_cast<float>(i) * (((i & 1) == 0) ? -1.0 : 1.0);
   }
 
   // Copy base pattern into base buffer.
-  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
+  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*bBuf, aPtr);
   EXPECT_FALSE(err) << err.getError() << "\n";
 
   // Copy overlay pattern into sub buffer.
-  err = ctx->enqueueCopyToDevice(*c_buf, e_ptr);
+  err = ctx->enqueueCopyToDevice(*cBuf, ePtr);
   EXPECT_FALSE(err) << err.getError() << "\n";
 
   // Copy base buffer back to host memory.
-  err = ctx->enqueueCopyFromDevice(d_ptr, *b_buf);
+  err = ctx->enqueueCopyFromDevice(dPtr, *bBuf);
   EXPECT_FALSE(err) << err.getError() << "\n";
 
-  uint32_t *d_int_ptr = reinterpret_cast<uint32_t *>(d_ptr);
-  uint32_t expected_vals[] = {0x80000000, 0x3f800000, 0xc0000000};
-  for (int i = 0; i < (sub_alloc_len); i++) {
-    uint32_t val = d_int_ptr[i];
+  uint32_t *dIntPtr = reinterpret_cast<uint32_t *>(dPtr);
+  uint32_t expectedVals[] = {0x80000000, 0x3f800000, 0xc0000000};
+  for (int i = 0; i < (subAllocLen); i++) {
+    uint32_t val = dIntPtr[i];
     std::cerr << "SubBuffer: d[" << std::dec << i << "] = 0x" << std::hex << val
               << "\n";
-    EXPECT_EQ(val, expected_vals[i]);
+    EXPECT_EQ(val, expectedVals[i]);
   }
-  for (int i = sub_alloc_len * 4; i < alloc_len; i++) {
-    int val = d_ptr[i];
+  for (int i = subAllocLen * 4; i < allocLen; i++) {
+    int val = dPtr[i];
     if (i < 20) {
       std::cerr << "Original: d[" << std::dec << i << "] = 0x" << std::hex
                 << val << "\n";
@@ -286,13 +286,13 @@ TEST(CUDADeviceContextTest, SubBuffer) {
     EXPECT_EQ(val, i & 127);
   }
 
-  free(e_ptr);
-  free(d_ptr);
-  free(a_ptr);
+  free(ePtr);
+  free(dPtr);
+  free(aPtr);
 }
 
 TEST(DeviceContextTest, DeviceExec) {
-  const char *vec_add_ptx = R"PTX(
+  const char *vecAddPtx = R"PTX(
 // From Kernels/test/gpu/vec_add.ptx
 
 .version 6.3
@@ -365,195 +365,195 @@ $L__BB0_2:
 }
 )PTX";
 
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef ctx = std::move(err_ctx.get());
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);
 
-  std::cerr << "Compiling vec_add_ptx...\n";
+  std::cerr << "Compiling vecAddPtx...\n";
   DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
                                              .addBuffer()
                                              .addBuffer()
                                              .addBuffer()
                                              .addUInt64();
-  ErrorOr<DeviceFunctionRef> err_fun =
-      ctx->loadFunction("vec_add_module", "vec_add", sig, vec_add_ptx);
+  ErrorOr<DeviceFunctionRef> errFun =
+      ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx);
   // Expecting for an error to be set in the case of CPU device context.
-  ASSERT_TRUE(err_fun) << err_fun.getError() << "\n";
+  ASSERT_TRUE(errFun) << errFun.getError() << "\n";
 }
 
 TEST(DeviceContextTest, Timers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef ctx = std::move(err_ctx.get());
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);
 
-  ErrorOr<DeviceTimerRef> err_timer = ctx->startTimer();
-  EXPECT_FALSE(err_timer) << err_timer.getError() << "\n";
-  DeviceTimerRef timer = std::move(err_timer.get());
+  ErrorOr<DeviceTimerRef> errTimer = ctx->startTimer();
+  EXPECT_FALSE(errTimer) << errTimer.getError() << "\n";
+  DeviceTimerRef timer = std::move(errTimer.get());
   ASSERT_TRUE(timer);
 
   { // Run some memory copies within the timer.
-    const size_t alloc_len = 1024 * 1024;
+    const size_t allocLen = 1024 * 1024;
 
-    ErrorOr<void *> err_ptr = ctx->malloc_host(alloc_len);
-    EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
-    void *a_ptr = err_ptr.get();
-    EXPECT_NE(a_ptr, nullptr);
+    ErrorOr<void *> errPtr = ctx->malloc_host(allocLen);
+    EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
+    void *aPtr = errPtr.get();
+    EXPECT_NE(aPtr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = ctx->enqueueCreateBuffer(256);
-    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-    DeviceBufferRef b_buf = std::move(err_ref.get());
-    EXPECT_TRUE(b_buf);
+    ErrorOr<DeviceBufferRef> errRef = ctx->enqueueCreateBuffer(256);
+    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+    DeviceBufferRef bBuf = std::move(errRef.get());
+    EXPECT_TRUE(bBuf);
 
     ErrorOrSuccess err;
     for (int i = 0; i < 20; i++) {
-      err = ctx->enqueueCopyToDevice(*b_buf, a_ptr);
+      err = ctx->enqueueCopyToDevice(*bBuf, aPtr);
       EXPECT_FALSE(err) << err.getError() << "\n";
     }
     err = ctx->synchronize();
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    err = ctx->free_host(a_ptr);
+    err = ctx->free_host(aPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 
-  ErrorOr<std::chrono::nanoseconds> err_nanos = ctx->stopTimer(*timer);
-  EXPECT_FALSE(err_nanos) << err_nanos.getError() << "\n";
-  int64_t elapsed_nanos = err_nanos.get().count();
+  ErrorOr<std::chrono::nanoseconds> errNanos = ctx->stopTimer(*timer);
+  EXPECT_FALSE(errNanos) << errNanos.getError() << "\n";
+  int64_t elapsedNanos = errNanos.get().count();
 
-  std::cerr << "Timer measured: " << elapsed_nanos << "ns\n";
+  std::cerr << "Timer measured: " << elapsedNanos << "ns\n";
 
-  EXPECT_GT(elapsed_nanos, 0);
-  EXPECT_LT(elapsed_nanos, 60 * 1000ll * 1000ll * 1000ll); // less than a minute
+  EXPECT_GT(elapsedNanos, 0);
+  EXPECT_LT(elapsedNanos, 60 * 1000ll * 1000ll * 1000ll); // less than a minute
 }
 
 TEST(DeviceContextTest, BufferCache) {
-  char *cache_base = reinterpret_cast<char *>(1024);
-  size_t cache_size = 4096;
-  size_t alloc_alignment = 32;
+  char *cacheBase = reinterpret_cast<char *>(1024);
+  size_t cacheSize = 4096;
+  size_t allocAlignment = 32;
 
-  BufferCache buf_cache(cache_base, cache_size, alloc_alignment);
+  BufferCache bufCache(cacheBase, cacheSize, allocAlignment);
 
   // Allocation patterns to hit different kinds of allocation blocks and merges.
   // These have been verified to have full coverage by instrumenting various
   // branches.
-  EXPECT_EQ(nullptr, buf_cache.allocate(cache_size + 1));
-  EXPECT_FALSE(buf_cache.free(nullptr));
-  EXPECT_FALSE(buf_cache.free(cache_base + 1));
-  void *a = buf_cache.allocate(15);
-  EXPECT_EQ(a, cache_base);
-  void *b = buf_cache.allocate(15);
-  EXPECT_EQ(b, cache_base + alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(a));
-  void *c = buf_cache.allocate(32);
-  EXPECT_EQ(c, cache_base);
-  EXPECT_TRUE(buf_cache.free(c));
-  void *d = buf_cache.allocate(33);
-  EXPECT_EQ(d, cache_base + 2 * alloc_alignment);
-  void *e = buf_cache.allocate(1);
-  EXPECT_EQ(e, cache_base);
-  EXPECT_TRUE(buf_cache.free(b));
-  void *f = buf_cache.allocate(32);
-  EXPECT_EQ(f, cache_base + alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(f));
-  EXPECT_TRUE(buf_cache.free(e));
-  void *g = buf_cache.allocate(64);
-  EXPECT_EQ(g, cache_base);
-  void *h = buf_cache.allocate(1);
-  EXPECT_EQ(h, cache_base + 4 * alloc_alignment);
-  void *i = buf_cache.allocate(150);
-  EXPECT_EQ(i, cache_base + 5 * alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(g));
-  EXPECT_TRUE(buf_cache.free(h));
-  void *j = buf_cache.allocate(2);
-  EXPECT_EQ(j, cache_base + 4 * alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(j));
-  EXPECT_TRUE(buf_cache.free(d));
-  void *k = buf_cache.allocate(150);
-  EXPECT_EQ(k, cache_base);
-  EXPECT_TRUE(buf_cache.free(i));
-  EXPECT_TRUE(buf_cache.free(k));
+  EXPECT_EQ(nullptr, bufCache.allocate(cacheSize + 1));
+  EXPECT_FALSE(bufCache.free(nullptr));
+  EXPECT_FALSE(bufCache.free(cacheBase + 1));
+  void *a = bufCache.allocate(15);
+  EXPECT_EQ(a, cacheBase);
+  void *b = bufCache.allocate(15);
+  EXPECT_EQ(b, cacheBase + allocAlignment);
+  EXPECT_TRUE(bufCache.free(a));
+  void *c = bufCache.allocate(32);
+  EXPECT_EQ(c, cacheBase);
+  EXPECT_TRUE(bufCache.free(c));
+  void *d = bufCache.allocate(33);
+  EXPECT_EQ(d, cacheBase + 2 * allocAlignment);
+  void *e = bufCache.allocate(1);
+  EXPECT_EQ(e, cacheBase);
+  EXPECT_TRUE(bufCache.free(b));
+  void *f = bufCache.allocate(32);
+  EXPECT_EQ(f, cacheBase + allocAlignment);
+  EXPECT_TRUE(bufCache.free(f));
+  EXPECT_TRUE(bufCache.free(e));
+  void *g = bufCache.allocate(64);
+  EXPECT_EQ(g, cacheBase);
+  void *h = bufCache.allocate(1);
+  EXPECT_EQ(h, cacheBase + 4 * allocAlignment);
+  void *i = bufCache.allocate(150);
+  EXPECT_EQ(i, cacheBase + 5 * allocAlignment);
+  EXPECT_TRUE(bufCache.free(g));
+  EXPECT_TRUE(bufCache.free(h));
+  void *j = bufCache.allocate(2);
+  EXPECT_EQ(j, cacheBase + 4 * allocAlignment);
+  EXPECT_TRUE(bufCache.free(j));
+  EXPECT_TRUE(bufCache.free(d));
+  void *k = bufCache.allocate(150);
+  EXPECT_EQ(k, cacheBase);
+  EXPECT_TRUE(bufCache.free(i));
+  EXPECT_TRUE(bufCache.free(k));
   /* ----- */
-  void *l = buf_cache.allocate(cache_size);
-  EXPECT_EQ(l, cache_base);
-  EXPECT_TRUE(buf_cache.free(l));
-  void *m = buf_cache.allocate(1);
-  EXPECT_EQ(m, cache_base);
-  void *n = buf_cache.allocate(1);
-  EXPECT_EQ(n, cache_base + alloc_alignment);
-  void *o = buf_cache.allocate(1);
-  EXPECT_EQ(o, cache_base + 2 * alloc_alignment);
-  void *p = buf_cache.allocate(1);
-  EXPECT_EQ(p, cache_base + 3 * alloc_alignment);
-  void *q = buf_cache.allocate(1);
-  EXPECT_EQ(q, cache_base + 4 * alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(o));
-  EXPECT_TRUE(buf_cache.free(p));
-  EXPECT_TRUE(buf_cache.free(n));
-  EXPECT_TRUE(buf_cache.free(m));
-  EXPECT_TRUE(buf_cache.free(q));
+  void *l = bufCache.allocate(cacheSize);
+  EXPECT_EQ(l, cacheBase);
+  EXPECT_TRUE(bufCache.free(l));
+  void *m = bufCache.allocate(1);
+  EXPECT_EQ(m, cacheBase);
+  void *n = bufCache.allocate(1);
+  EXPECT_EQ(n, cacheBase + allocAlignment);
+  void *o = bufCache.allocate(1);
+  EXPECT_EQ(o, cacheBase + 2 * allocAlignment);
+  void *p = bufCache.allocate(1);
+  EXPECT_EQ(p, cacheBase + 3 * allocAlignment);
+  void *q = bufCache.allocate(1);
+  EXPECT_EQ(q, cacheBase + 4 * allocAlignment);
+  EXPECT_TRUE(bufCache.free(o));
+  EXPECT_TRUE(bufCache.free(p));
+  EXPECT_TRUE(bufCache.free(n));
+  EXPECT_TRUE(bufCache.free(m));
+  EXPECT_TRUE(bufCache.free(q));
   /* ----- */
-  void *r = buf_cache.allocate(alloc_alignment);
-  EXPECT_EQ(r, cache_base);
-  void *s = buf_cache.allocate(alloc_alignment);
-  EXPECT_EQ(s, cache_base + alloc_alignment);
-  void *t = buf_cache.allocate(2 * alloc_alignment);
-  EXPECT_EQ(t, cache_base + 2 * alloc_alignment);
-  void *u = buf_cache.allocate(alloc_alignment);
-  EXPECT_EQ(u, cache_base + 4 * alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(r));
-  EXPECT_TRUE(buf_cache.free(t));
-  void *v = buf_cache.allocate(2 * alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(v));
-  EXPECT_TRUE(buf_cache.free(u));
-  EXPECT_TRUE(buf_cache.free(s));
+  void *r = bufCache.allocate(allocAlignment);
+  EXPECT_EQ(r, cacheBase);
+  void *s = bufCache.allocate(allocAlignment);
+  EXPECT_EQ(s, cacheBase + allocAlignment);
+  void *t = bufCache.allocate(2 * allocAlignment);
+  EXPECT_EQ(t, cacheBase + 2 * allocAlignment);
+  void *u = bufCache.allocate(allocAlignment);
+  EXPECT_EQ(u, cacheBase + 4 * allocAlignment);
+  EXPECT_TRUE(bufCache.free(r));
+  EXPECT_TRUE(bufCache.free(t));
+  void *v = bufCache.allocate(2 * allocAlignment);
+  EXPECT_TRUE(bufCache.free(v));
+  EXPECT_TRUE(bufCache.free(u));
+  EXPECT_TRUE(bufCache.free(s));
   /* ----- */
-  void *x = buf_cache.allocate(1);
-  EXPECT_EQ(x, cache_base);
-  void *y = buf_cache.allocate(1);
-  EXPECT_EQ(y, cache_base + alloc_alignment);
-  void *z = buf_cache.allocate(1);
-  EXPECT_EQ(z, cache_base + 2 * alloc_alignment);
-  void *aa = buf_cache.allocate(1);
-  EXPECT_EQ(aa, cache_base + 3 * alloc_alignment);
-  void *ab = buf_cache.allocate(1);
-  EXPECT_EQ(ab, cache_base + 4 * alloc_alignment);
-  void *ac = buf_cache.allocate(1);
-  EXPECT_EQ(ac, cache_base + 5 * alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(ac));
-  EXPECT_TRUE(buf_cache.free(aa));
-  EXPECT_TRUE(buf_cache.free(y));
-  EXPECT_TRUE(buf_cache.free(z));
-  EXPECT_TRUE(buf_cache.free(x));
-  EXPECT_TRUE(buf_cache.free(ab));
+  void *x = bufCache.allocate(1);
+  EXPECT_EQ(x, cacheBase);
+  void *y = bufCache.allocate(1);
+  EXPECT_EQ(y, cacheBase + allocAlignment);
+  void *z = bufCache.allocate(1);
+  EXPECT_EQ(z, cacheBase + 2 * allocAlignment);
+  void *aa = bufCache.allocate(1);
+  EXPECT_EQ(aa, cacheBase + 3 * allocAlignment);
+  void *ab = bufCache.allocate(1);
+  EXPECT_EQ(ab, cacheBase + 4 * allocAlignment);
+  void *ac = bufCache.allocate(1);
+  EXPECT_EQ(ac, cacheBase + 5 * allocAlignment);
+  EXPECT_TRUE(bufCache.free(ac));
+  EXPECT_TRUE(bufCache.free(aa));
+  EXPECT_TRUE(bufCache.free(y));
+  EXPECT_TRUE(bufCache.free(z));
+  EXPECT_TRUE(bufCache.free(x));
+  EXPECT_TRUE(bufCache.free(ab));
   /* ----- */
-  void *ad = buf_cache.allocate(1);
-  EXPECT_EQ(ad, cache_base);
-  void *ae = buf_cache.allocate(1);
-  EXPECT_EQ(ae, cache_base + alloc_alignment);
-  void *af = buf_cache.allocate(1);
-  EXPECT_EQ(af, cache_base + 2 * alloc_alignment);
-  void *ag = buf_cache.allocate(1);
-  EXPECT_EQ(ag, cache_base + 3 * alloc_alignment);
-  void *ah = buf_cache.allocate(1);
-  EXPECT_EQ(ah, cache_base + 4 * alloc_alignment);
-  void *ai = buf_cache.allocate(1);
-  EXPECT_EQ(ai, cache_base + 5 * alloc_alignment);
-  void *aj = buf_cache.allocate(1);
-  EXPECT_EQ(aj, cache_base + 6 * alloc_alignment);
-  void *ak = buf_cache.allocate(1);
-  EXPECT_EQ(ak, cache_base + 7 * alloc_alignment);
-  EXPECT_TRUE(buf_cache.free(ak));
-  EXPECT_TRUE(buf_cache.free(ag));
-  EXPECT_TRUE(buf_cache.free(ai));
-  EXPECT_TRUE(buf_cache.free(ae));
-  EXPECT_TRUE(buf_cache.free(af));
-  EXPECT_TRUE(buf_cache.free(aj));
-  EXPECT_TRUE(buf_cache.free(ah));
-  EXPECT_TRUE(buf_cache.free(ad));
+  void *ad = bufCache.allocate(1);
+  EXPECT_EQ(ad, cacheBase);
+  void *ae = bufCache.allocate(1);
+  EXPECT_EQ(ae, cacheBase + allocAlignment);
+  void *af = bufCache.allocate(1);
+  EXPECT_EQ(af, cacheBase + 2 * allocAlignment);
+  void *ag = bufCache.allocate(1);
+  EXPECT_EQ(ag, cacheBase + 3 * allocAlignment);
+  void *ah = bufCache.allocate(1);
+  EXPECT_EQ(ah, cacheBase + 4 * allocAlignment);
+  void *ai = bufCache.allocate(1);
+  EXPECT_EQ(ai, cacheBase + 5 * allocAlignment);
+  void *aj = bufCache.allocate(1);
+  EXPECT_EQ(aj, cacheBase + 6 * allocAlignment);
+  void *ak = bufCache.allocate(1);
+  EXPECT_EQ(ak, cacheBase + 7 * allocAlignment);
+  EXPECT_TRUE(bufCache.free(ak));
+  EXPECT_TRUE(bufCache.free(ag));
+  EXPECT_TRUE(bufCache.free(ai));
+  EXPECT_TRUE(bufCache.free(ae));
+  EXPECT_TRUE(bufCache.free(af));
+  EXPECT_TRUE(bufCache.free(aj));
+  EXPECT_TRUE(bufCache.free(ah));
+  EXPECT_TRUE(bufCache.free(ad));
 
-  buf_cache.clear();
+  bufCache.clear();
 }
 
 } // namespace
