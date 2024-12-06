@@ -38,7 +38,8 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
         self._torch_device = torch.device(torch_device_type)
 
         self._model = AutoModelForCausalLM.from_pretrained(
-            pipeline_config.huggingface_repo_id
+            pipeline_config.huggingface_repo_id,
+            trust_remote_code=pipeline_config.trust_remote_code,
         ).to(self._torch_device)
         self._dtype = self._model.dtype
 
