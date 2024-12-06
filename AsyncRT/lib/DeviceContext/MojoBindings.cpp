@@ -101,8 +101,8 @@ AsyncRT_DeviceContext_freeHost(const DeviceContext *ctx, void *ptr) {
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
     const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx,
     size_t len, size_t elem_size) {
-  const char *err_msg = check_ref(
-      result, ctx->createBuffer(len * elem_size, DeviceContext::ASYNC));
+  const char *err_msg =
+      check_ref(result, ctx->enqueueCreateBuffer(len * elem_size));
   if (err_msg == nullptr) {
     *device_ptr = (*result)->ptr();
   }
@@ -112,8 +112,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
     const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx,
     size_t len, size_t elem_size) {
-  const char *err_msg = check_ref(
-      result, ctx->createBuffer(len * elem_size, DeviceContext::SYNC));
+  const char *err_msg = check_ref(result, ctx->createBuffer(len * elem_size));
   if (err_msg == nullptr) {
     *device_ptr = (*result)->ptr();
   }

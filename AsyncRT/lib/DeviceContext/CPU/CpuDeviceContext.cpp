@@ -194,9 +194,12 @@ ErrorOrSuccess CpuDeviceContext::free_host(void *ptr) const {
 
 ErrorOr<DeviceBufferRef> CpuDeviceContext::createBuffer(size_t byteSize,
                                                         SyncMode mode) const {
-  void *ptr = TCMallocGlobals::tc_new(byteSize, 1);
-  if (ptr == nullptr) {
-    RAISE_ERROR();
+  void *ptr = nullptr;
+  if (byteSize != 0) {
+    ptr = TCMallocGlobals::tc_new(byteSize, 1);
+    if (ptr == nullptr) {
+      RAISE_ERROR();
+    }
   }
   return CpuDeviceBufferRef::create(*this, byteSize, ptr);
 }

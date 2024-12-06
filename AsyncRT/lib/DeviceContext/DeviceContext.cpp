@@ -240,16 +240,10 @@ const Device &DeviceContext::device() const { return *device_; }
 
 ErrorOr<DeviceBufferRef>
 DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
-  if (byteSize == 0)
-    return Error("cannot allocate zero length buffers");
-
   return createBuffer(byteSize, ASYNC);
 }
 
 ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t byteSize) const {
-  if (byteSize == 0)
-    return Error("cannot allocate zero length buffers");
-
   return createBuffer(byteSize, SYNC);
 }
 

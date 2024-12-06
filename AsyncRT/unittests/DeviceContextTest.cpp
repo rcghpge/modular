@@ -104,6 +104,11 @@ TEST(DeviceContextTest, DeviceBuffers) {
         ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
     int alloc_len = copy_lengths[(i >> 1) & 1];
 
+    ErrorOr<DeviceBufferRef> empty_buf_err = ctx->createBuffer(0, sync_mode);
+    EXPECT_FALSE(empty_buf_err);
+    EXPECT_EQ((*empty_buf_err)->ptr(), nullptr);
+    EXPECT_EQ((*empty_buf_err)->byteSize(), 0);
+
     std::cerr << "DeviceContext copies(len: " << alloc_len << ", sync_mode: "
               << ((sync_mode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
               << ")\n";
@@ -161,11 +166,6 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
-
-  ErrorOr<DeviceBufferRef> empty_buf_err = ctx->enqueueCreateBuffer(0);
-  EXPECT_TRUE(empty_buf_err);
-  EXPECT_THAT(empty_buf_err.getError(),
-              testing::HasSubstr("cannot allocate zero length buffers"));
 
   const int copy_lengths[] = {256};
 

@@ -101,6 +101,12 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     bool sync_copies = i & 1;
     int alloc_len = copy_lengths[(i >> 1) & 1];
 
+    ErrorOr<DeviceBufferRef> empty_buf_err = ctx->createBuffer(
+        0, sync_copies ? DeviceContext::SYNC : DeviceContext::ASYNC);
+    EXPECT_FALSE(empty_buf_err);
+    EXPECT_EQ((*empty_buf_err)->ptr(), nullptr);
+    EXPECT_EQ((*empty_buf_err)->byteSize(), 0);
+
     std::cerr << "DeviceContext copies(len: " << alloc_len
               << ", sync: " << sync_copies << ")\n";
 
