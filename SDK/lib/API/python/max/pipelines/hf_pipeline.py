@@ -168,7 +168,7 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if new_sequences:
             # Process all tokens for new sequences
-            tokens = [torch.tensor(ctx.tokens) for ctx in context_batch]
+            tokens = [torch.tensor(ctx.next_tokens) for ctx in context_batch]
             padded = self._tokenizer.pad(
                 BatchEncoding({"input_ids": tokens}),
                 padding=True,
