@@ -5,7 +5,7 @@
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK: [[ch2:%.*]] = mogg.kernel ([[buffer]], [[rhs]], [[ch0]])
 // CHECK-SAME: ([[kbuffer:%.*]]: !mo.buffer<[10, 10], f32>, [[krhs:%.*]]: !mo.tensor<[10, 10], f32>{{.*}}!mo.chain) -> !mo.chain
-// CHECK: [[kChain:%.*]] = mogg.output_placeholders : !mo.chain
+// CHECK: [[kChain:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: mogg.call "simd_load"([[kbuffer]]
 // CHECK: mogg.call "simd_load"([[krhs]]
 // CHECK: mogg.call "simd_store"([[kbuffer]]
@@ -53,7 +53,7 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK: [[ch2:%.*]] = mogg.kernel ([[lhs]], [[buffer]], [[ch0]])
 // CHECK-SAME: ([[klhs:%.*]]: !mo.tensor<[10, 10], f32>, [[kbuffer:%.*]]: !mo.buffer<[10, 10], f32>{{.*}}!mo.chain) -> !mo.chain
-// CHECK: [[kChain:%.*]] = mogg.output_placeholders : !mo.chain
+// CHECK: [[kChain:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: mogg.call "simd_load"([[klhs]]
 // CHECK: mogg.call "simd_load"([[kbuffer]]
 // CHECK: mogg.call "simd_store"([[kbuffer]]
@@ -80,7 +80,7 @@ mo.graph @single_add_buffer_rhs(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo.ten
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK: [[ch2:%.*]] = mogg.kernel ([[buffer]], [[rhs]], [[ch0]])
 // CHECK-SAME: ([[kbuffer:%.*]]: !mo.buffer<[10, 10], f32>, [[krhs:%.*]]: !mo.tensor<[10, 10], f32>{{.*}}!mo.chain) -> !mo.chain
-// CHECK: [[kChain:%.*]] = mogg.output_placeholders : !mo.chain
+// CHECK: [[kChain:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: mogg.call "simd_load"([[kbuffer]]
 // CHECK: mogg.call "simd_load"([[krhs]]
 // CHECK: mogg.call "simd_store"([[kbuffer]]
@@ -92,7 +92,7 @@ mo.graph @single_add_buffer_rhs(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo.ten
 // CHECK-SAME: summary = "inplace_mo.add
 // CHECK: [[ch3:%.*]] = mogg.kernel ([[buffer]], [[rhs]], [[ch2]])
 // CHECK-SAME: ([[kbuffer:%.*]]: !mo.buffer<[10, 10], f32>, [[krhs:%.*]]: !mo.tensor<[10, 10], f32>{{.*}}!mo.chain) -> !mo.chain
-// CHECK: [[kChain:%.*]] = mogg.output_placeholders : !mo.chain
+// CHECK: [[kChain:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: mogg.call "simd_load"([[kbuffer]]
 // CHECK: mogg.call "simd_load"([[krhs]]
 // CHECK: mogg.call "simd_store"([[kbuffer]]

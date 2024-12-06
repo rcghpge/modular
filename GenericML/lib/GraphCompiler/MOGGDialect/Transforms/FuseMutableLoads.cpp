@@ -146,11 +146,12 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
   for (Value val : outputPlaceholder.getResults()) {
     newPlaceholderTypes.push_back(val.getType());
   }
-  newPlaceholderTypes.push_back(chainType);
+  // Create ready chain at top of kernel body
+  auto chainPlaceholder =
+      builder.create<MOGG::CreateReadyChainOp>(loc, chainType);
+
   auto newOutputPlaceHolderOp =
       builder.create<OutputPlaceholdersOp>(loc, newPlaceholderTypes);
-  auto pchain = newOutputPlaceHolderOp.getResult(
-      newOutputPlaceHolderOp.getNumResults() - 1);
 
   for (auto &&[oldRes, newres] : llvm::zip(outputPlaceholder.getResults(),
                                            newOutputPlaceHolderOp.getResults()))
@@ -165,7 +166,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
 
   newKernelOp.setInsertionPointToTop(builder);
   for (Operation &op : kernelOp.getOps()) {
-    if (!isa<OutputPlaceholdersOp>(op))
+    if (!isa<MOGG::CreateReadyChainOp, OutputPlaceholdersOp>(op))
       builder.insert(op.clone(remapper));
   }
 
@@ -173,7 +174,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
   builder.setInsertionPointAfter(oldOut);
 
   SmallVector<Value> newOutputs = oldOut.getOperands();
-  newOutputs.push_back(pchain);
+  newOutputs.push_back(chainPlaceholder);
 
   builder.create<MOGG::OutputOp>(loc, newOutputs);
 
