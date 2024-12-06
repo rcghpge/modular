@@ -36,7 +36,7 @@ using CpuDeviceTimerRef = RCRef<const CpuDeviceTimer>;
 
 class CpuDevice : public Device {
 public:
-  static constexpr API api = "cpu";
+  static constexpr API api = Device::cpuAPI;
 
   CpuDevice();
   ~CpuDevice() override = default;

@@ -20,16 +20,16 @@ using M::ErrorOrSuccess;
 namespace {
 
 TEST(DeviceContextTest, Smoke) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
-  EXPECT_EQ(ctx->device().name(), "cpu");
+  EXPECT_EQ(ctx->device().name(), Device::cpuAPI);
 }
 
 TEST(DeviceContextTest, CreationFailure) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu", 1);
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI, 1);
   ASSERT_TRUE(err_ctx);
   EXPECT_EQ(strcmp(err_ctx.getError(), "CPU device only supports id == 0."), 0)
       << err_ctx.getError();
@@ -41,7 +41,7 @@ TEST(DeviceContextTest, CreationFailure) {
 }
 
 TEST(DeviceContextTest, NumDevices) {
-  ErrorOr<int> err_num = Device::numberOfDevices("cpu");
+  ErrorOr<int> err_num = Device::numberOfDevices(Device::cpuAPI);
   ASSERT_FALSE(err_num) << err_num.getError() << "\n";
   EXPECT_EQ(err_num.get(), 1);
 }
@@ -71,7 +71,7 @@ static void compare_with_data(const void *dst, size_t dst_len,
 }
 
 TEST(DeviceContextTest, DeviceBuffers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -157,7 +157,7 @@ TEST(DeviceContextTest, DeviceBuffers) {
 }
 
 TEST(DeviceContextTest, FailDeviceBuffers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -218,7 +218,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 }
 
 TEST(CUDADeviceContextTest, SubBuffer) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -367,7 +367,7 @@ $L__BB0_2:
 }
 )PTX";
 
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -385,7 +385,7 @@ $L__BB0_2:
 }
 
 TEST(DeviceContextTest, Timers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);

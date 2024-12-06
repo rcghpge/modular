@@ -12,6 +12,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/Runtime/Globals/Globals.h"
+#include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
 

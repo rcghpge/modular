@@ -22,12 +22,16 @@ namespace {
 class CUDADeviceContextTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    ErrorOr<DeviceRef> device = Device::create("gpu");
+    // Allocate the GPU device for this platform. Then check that we are running
+    // on a CUDA enabled platform, if not skip the CUDA specific tests in this
+    // fixture.
+
+    ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
     if (device.isError())
       // Have the tests deal with device errors.
       return;
 
-    if ((*device)->api() != "cuda") {
+    if ((*device)->api() != Device::cudaAPI) {
       GTEST_SKIP() << "Skipping CUDA tests for GPU \"" << (*device)->vendor()
                    << ":" << (*device)->api() << "\"";
     }
@@ -108,7 +112,7 @@ $L__BB0_2:
 }
 )PTX";
 
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cudaAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -308,12 +312,12 @@ $L__BB0_2:
 }
 )PTX";
 
-  ErrorOr<int> err_num = Device::numberOfDevices("cuda");
+  ErrorOr<int> err_num = Device::numberOfDevices(Device::cudaAPI);
   ASSERT_FALSE(err_num) << err_num.getError() << "\n";
   int num_devices = err_num.get();
   std::cerr << "Number of CUDA devices: " << num_devices << "\n";
 
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cuda", 0);
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cudaAPI, 0);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef src_ctx = std::move(err_ctx.get());
   ASSERT_TRUE(src_ctx);
@@ -328,7 +332,7 @@ $L__BB0_2:
                 << cur_device_id << "].\n";
 
       ErrorOr<DeviceContextRef> err_ctx =
-          DeviceContext::create("cuda", cur_device_id);
+          DeviceContext::create(Device::cudaAPI, cur_device_id);
       ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
       dst_ctx = std::move(err_ctx.get());
     }

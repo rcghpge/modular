@@ -132,14 +132,11 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
         // Manually put in checks for cuda (Nvidia) and hip (AMD) here for now.
         // We should eventually push the device selection up the stack into the
         // mt command and remove all of the code in this else branch.
-        size_t numPhysicalDevices = AsyncRT::Device::numberOfDevices("cuda");
-        if (numPhysicalDevices == 0) {
-          // No CUDA device found: Try AMDGPU HIP.
-          numPhysicalDevices = AsyncRT::Device::numberOfDevices("hip");
-          if (numPhysicalDevices == 0)
-            // No HIP device found: Return an error.
-            return Error("No GPU device available.");
-        }
+        size_t numPhysicalDevices =
+            AsyncRT::Device::numberOfDevices(AsyncRT::Device::gpuAPI);
+        if (numPhysicalDevices == 0)
+          // No GPU device found: Return an error.
+          return Error("No GPU device available.");
 
         auto envPtr = std::getenv("MODULAR_NUM_VIRTUAL_CUDA_DEVICES");
         size_t numVirtualDevices =

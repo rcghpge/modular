@@ -13,6 +13,7 @@
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
+#include "Support/AlignedAlloc.h"
 #include "llvm/ADT/Twine.h"
 
 #include <string.h>
@@ -39,11 +40,11 @@ int Device::id() const { return id_; }
 Device::API Device::api() const { return api_; }
 
 StringRef Device::vendor() const {
-  if (api() == CUDADevice::api)
+  if (api() == cudaAPI)
     return "nvidia";
-  if (api() == HIPDevice::api)
+  if (api() == hipAPI)
     return "amdgpu";
-  if (api() == CpuDevice::api)
+  if (api() == cpuAPI)
     return "cpu";
   return "";
 }
@@ -51,7 +52,7 @@ StringRef Device::vendor() const {
 size_t Device::allocationAlignment() const { return alloc_alignment_; }
 
 size_t Device::preferredAlignment(StringRef api) {
-  if (api == "gpu") {
+  if (api == gpuAPI) {
     // TODO(GEX-1416): Remove special hard-coded value to pass tests.
     return 256;
   }
@@ -64,7 +65,7 @@ size_t Device::preferredAlignment(StringRef api) {
 
 ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
-  if (api == "gpu") {
+  if (api == gpuAPI) {
     ErrorOr<const Device &> device = CUDADevice::get(id);
     if (!device.isError()) {
       return DeviceRef::copy(&device.get());
@@ -74,17 +75,17 @@ ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
       return DeviceRef::copy(&device.get());
     }
     return Error("No supported \"gpu\" device available.");
-  } else if (api == "cuda") {
+  } else if (api == cudaAPI) {
     ErrorOr<const CUDADevice &> device = CUDADevice::get(id);
     if (device.isError())
       return device.takeError();
     return DeviceRef::copy(&device.get());
-  } else if (api == "cpu") {
+  } else if (api == cpuAPI) {
     ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
     if (device.isError())
       return device.takeError();
     return DeviceRef::copy(&device.get());
-  } else if (api == "hip") {
+  } else if (api == hipAPI) {
     ErrorOr<const HIPDevice &> device = HIPDevice::get(id);
     if (device.isError())
       return device.takeError();
@@ -271,7 +272,7 @@ int Device::numberOfDevices(StringRef api) {
 
 const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
-    ErrorOr<DeviceRef> device = Device::create("gpu");
+    ErrorOr<DeviceRef> device = Device::create(gpuAPI);
     if (device.isError()) {
       return std::string();
     }

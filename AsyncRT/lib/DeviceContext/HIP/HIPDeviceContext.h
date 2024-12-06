@@ -44,7 +44,7 @@ using HIPDeviceTimerRef = RCRef<const HIPDeviceTimer>;
 
 class HIPDevice : public Device {
 public:
-  static constexpr API api = "hip";
+  static constexpr API api = Device::hipAPI;
 
   using DeviceList = std::vector<HIPDeviceRef>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,

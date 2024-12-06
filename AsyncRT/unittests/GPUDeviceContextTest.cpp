@@ -20,13 +20,13 @@ using M::ErrorOrSuccess;
 namespace {
 
 TEST(GPUDeviceContextTest, Smoke) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("gpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::gpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
 
   std::string device_name = ctx->device().name();
-  if (ctx->device().api() == "cuda") {
+  if (ctx->device().api() == Device::cudaAPI) {
     EXPECT_NE(device_name.find("NVIDIA"), std::string::npos) << device_name;
     std::cerr << "Name of default CUDA device: " << device_name << "\n";
   } else {
@@ -36,7 +36,7 @@ TEST(GPUDeviceContextTest, Smoke) {
 }
 
 TEST(GPUDeviceContextTest, NumDevices) {
-  ErrorOr<int> err_num = Device::numberOfDevices("gpu");
+  ErrorOr<int> err_num = Device::numberOfDevices(Device::gpuAPI);
   ASSERT_FALSE(err_num) << err_num.getError() << "\n";
   EXPECT_GT(err_num.get(), 0);
   EXPECT_LT(err_num.get(), 16);
@@ -69,7 +69,7 @@ static void compare_with_data(const void *dst, size_t dst_len,
 
 TEST(GPUDeviceContextTest, DeviceBuffers) {
   ErrorOr<DeviceContextRef> err_ctx =
-      DeviceContext::create("gpu", 0, 100ull * 1024 * 1024);
+      DeviceContext::create(Device::gpuAPI, 0, 100ull * 1024 * 1024);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -164,7 +164,7 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
 }
 
 TEST(DeviceContextTest, FailDeviceBuffers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("cpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -220,7 +220,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 }
 
 TEST(GPUDeviceContextTest, SubBuffer) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("gpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::gpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -292,7 +292,7 @@ TEST(GPUDeviceContextTest, SubBuffer) {
 }
 
 TEST(GPUDeviceContextTest, Timers) {
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("gpu");
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::gpuAPI);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef ctx = std::move(err_ctx.get());
   ASSERT_TRUE(ctx);
@@ -338,12 +338,12 @@ TEST(GPUDeviceContextTest, Timers) {
 }
 
 TEST(GPUDeviceContextTest, MultiContextCopies) {
-  ErrorOr<int> err_num = Device::numberOfDevices("gpu");
+  ErrorOr<int> err_num = Device::numberOfDevices(Device::gpuAPI);
   ASSERT_FALSE(err_num) << err_num.getError() << "\n";
   int num_devices = err_num.get();
   std::cerr << "Number of CUDA devices: " << num_devices << "\n";
 
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create("gpu", 0);
+  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::gpuAPI, 0);
   ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
   DeviceContextRef src_ctx = std::move(err_ctx.get());
   ASSERT_TRUE(src_ctx);
@@ -358,7 +358,7 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
                 << cur_device_id << "].\n";
 
       ErrorOr<DeviceContextRef> err_ctx =
-          DeviceContext::create("gpu", cur_device_id);
+          DeviceContext::create(Device::gpuAPI, cur_device_id);
       ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
       dst_ctx = std::move(err_ctx.get());
     }

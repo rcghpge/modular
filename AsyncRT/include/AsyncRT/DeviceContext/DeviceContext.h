@@ -11,7 +11,6 @@
 #ifndef ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 #define ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 
-#include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
@@ -54,9 +53,13 @@ public:
     size_t free;
   };
 
-  // API is a constexpr null-terminated char string defined in each subclass
-  // for fast pointer comparison, and human-readable at the same time.
+  // API is a constexpr StringRef for fast comparison, while being
+  // human-readable at the same time.
   using API = StringRef;
+  static constexpr API cpuAPI = "cpu";   // Generic CPU device
+  static constexpr API gpuAPI = "gpu";   // Generic GPU device
+  static constexpr API cudaAPI = "cuda"; // NVIDIA CUDA device
+  static constexpr API hipAPI = "hip";   // AMDGPU HIP device
 
   virtual ~Device() = default;
 

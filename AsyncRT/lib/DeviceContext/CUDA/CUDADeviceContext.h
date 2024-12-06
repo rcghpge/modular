@@ -47,7 +47,7 @@ using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
 class CUDADevice : public Device {
 public:
-  static constexpr API api = "cuda";
+  static constexpr API api = Device::cudaAPI;
 
   using DeviceList = std::vector<CUDADeviceRef>;
 
