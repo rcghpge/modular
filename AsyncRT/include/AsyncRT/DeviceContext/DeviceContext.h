@@ -82,7 +82,7 @@ public:
   virtual int deviceCount() const = 0;
 
   virtual ErrorOr<DeviceContextRef>
-  createContext(size_t buffer_cache_size = 0) const = 0;
+  createContext(size_t bufferCacheSize) const = 0;
 
   static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);
@@ -101,7 +101,7 @@ private:
   std::string name_;
   int id_;
   API api_;
-  size_t alloc_alignment_;
+  size_t allocAlignment_;
 };
 
 class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {
@@ -178,8 +178,8 @@ private:
   DeviceContextRef context_;
   std::vector<ArgumentType> signature_;
 
-  ErrorOrSuccess checkSignatureAt(int index, ArgumentType arg_type) const;
-  static const char *typeName(ArgumentType arg_type);
+  ErrorOrSuccess checkSignatureAt(int index, ArgumentType argType) const;
+  static const char *typeName(ArgumentType argType);
 };
 
 class DeviceFunction::SignatureBuilder {
@@ -330,7 +330,7 @@ public:
   virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
 
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0,
-                                          size_t buffer_cache_size = 0);
+                                          size_t bufferCacheSize = 0);
 
 protected:
   DeviceContext(const Device &device);

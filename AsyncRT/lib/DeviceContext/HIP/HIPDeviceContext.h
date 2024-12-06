@@ -66,7 +66,7 @@ public:
   int deviceCount() const override;
 
   ErrorOr<DeviceContextRef>
-  createContext(size_t buffer_cache_size = 0) const override;
+  createContext(size_t bufferCacheSize) const override;
 
   static const HIPDevice &cast(const Device &device);
 
@@ -200,7 +200,7 @@ class HIPDeviceContext : public DeviceContext {
 public:
   HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
                    hipStream_t stream, void *buffer_cache_base,
-                   size_t buffer_cache_size);
+                   size_t bufferCacheSize);
   ~HIPDeviceContext() override;
 
   // Host memory allocation.

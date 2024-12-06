@@ -23,37 +23,37 @@ using namespace M::AsyncRT;
 // DeviceContext
 //===----------------------------------------------------------------------===//
 
-const char *check_success(ErrorOrSuccess err_or) {
-  if (err_or) {
+const char *checkSuccess(ErrorOrSuccess errOr) {
+  if (errOr) {
     // Make a malloc'd copy of the string, so that we can safely free the
     // pointer from Mojo.
-    return strdup(err_or.getError());
+    return strdup(errOr.getError());
   }
   return nullptr;
 }
 
 template <typename T, typename R>
-const char *check_ref(const T **result, ErrorOr<R> err_or) {
-  if (err_or) {
+const char *checkRef(const T **result, ErrorOr<R> errOr) {
+  if (errOr) {
     *result = nullptr;
     // Make a malloc'd copy of the string, so that we can safely free the
     // pointer from Mojo.
-    return strdup(err_or.getError());
+    return strdup(errOr.getError());
   }
   // Return the pointer, transfering the ownership to Mojo.
-  *result = err_or.get().release();
+  *result = errOr.get().release();
   return nullptr;
 }
 
 template <typename T, typename V>
-const char *check_val(T *result, V err_val, ErrorOr<T> err_or) {
-  if (err_or) {
-    *result = err_val;
+const char *checkVal(T *result, V errVal, ErrorOr<T> errOr) {
+  if (errOr) {
+    *result = errVal;
     // Make a malloc'd copy of the string, so that we can safely free the
     // pointer from Mojo.
-    return strdup(err_or.getError());
+    return strdup(errOr.getError());
   }
-  *result = err_or.get();
+  *result = errOr.get();
   return nullptr;
 }
 
@@ -63,8 +63,8 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_strfree(const char *ptr) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_create(const DeviceContext **result, const char *kind,
-                             int id, size_t buffer_cache_size) {
-  return check_ref(result, DeviceContext::create(kind, id, buffer_cache_size));
+                             int id, size_t bufferCacheSize) {
+  return checkRef(result, DeviceContext::create(kind, id, bufferCacheSize));
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceContext_retain(const DeviceContext *ctx) {
@@ -90,51 +90,51 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_deviceApi(llvm::StringRef *result,
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_mallocHost(void **result, const DeviceContext *ctx,
                                  size_t size) {
-  return check_val(result, nullptr, ctx->malloc_host(size));
+  return checkVal(result, nullptr, ctx->malloc_host(size));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_freeHost(const DeviceContext *ctx, void *ptr) {
-  return check_success(ctx->free_host(ptr));
+  return checkSuccess(ctx->free_host(ptr));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
-    const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx,
-    size_t len, size_t elem_size) {
-  const char *err_msg =
-      check_ref(result, ctx->enqueueCreateBuffer(len * elem_size));
-  if (err_msg == nullptr) {
-    *device_ptr = (*result)->ptr();
+    const DeviceBuffer **result, void **devicePtr, const DeviceContext *ctx,
+    size_t len, size_t elemSize) {
+  const char *errMsg =
+      checkRef(result, ctx->enqueueCreateBuffer(len * elemSize));
+  if (errMsg == nullptr) {
+    *devicePtr = (*result)->ptr();
   }
-  return err_msg;
+  return errMsg;
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
-    const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx,
-    size_t len, size_t elem_size) {
-  const char *err_msg = check_ref(result, ctx->createBuffer(len * elem_size));
-  if (err_msg == nullptr) {
-    *device_ptr = (*result)->ptr();
+    const DeviceBuffer **result, void **devicePtr, const DeviceContext *ctx,
+    size_t len, size_t elemSize) {
+  const char *errMsg = checkRef(result, ctx->createBuffer(len * elemSize));
+  if (errMsg == nullptr) {
+    *devicePtr = (*result)->ptr();
   }
-  return err_msg;
+  return errMsg;
 }
 
 // TODO: Remove the V1 compatibility.
 MODULAR_EXPORT void AsyncRT_DeviceContext_createBuffer_owning(
-    const DeviceBuffer **result, const DeviceContext *ctx, void *device_ptr,
-    size_t len, size_t elem_size, bool owning) {
+    const DeviceBuffer **result, const DeviceContext *ctx, void *devicePtr,
+    size_t len, size_t elemSize, bool owning) {
   *result =
-      ctx->createBufferOwning(device_ptr, len * elem_size, owning).release();
+      ctx->createBufferOwning(devicePtr, len * elemSize, owning).release();
 }
 MODULAR_EXPORT const char *AsyncRT_DeviceBuffer_createSubBuffer(
-    const DeviceBuffer **result, void **device_ptr, const DeviceBuffer *buf,
-    size_t offset, size_t len, size_t elem_size) {
-  const char *err_msg = check_ref(
-      result, buf->createSubBuffer(offset * elem_size, len * elem_size));
-  if (err_msg == nullptr) {
-    *device_ptr = (*result)->ptr();
+    const DeviceBuffer **result, void **devicePtr, const DeviceBuffer *buf,
+    size_t offset, size_t len, size_t elemSize) {
+  const char *errMsg =
+      checkRef(result, buf->createSubBuffer(offset * elemSize, len * elemSize));
+  if (errMsg == nullptr) {
+    *devicePtr = (*result)->ptr();
   }
-  return err_msg;
+  return errMsg;
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceBuffer_retain(const DeviceBuffer *buffer) {
@@ -161,12 +161,12 @@ AsyncRT_DeviceBuffer_bytesize(const DeviceBuffer *buffer) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_stream(const DeviceStream **result,
                              const DeviceContext *ctx) {
-  return check_ref(result, ctx->stream());
+  return checkRef(result, ctx->stream());
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceStream_synchronize(const DeviceStream *stream) {
-  return check_success(stream->synchronize());
+  return checkSuccess(stream->synchronize());
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceStream_retain(const DeviceStream *stream) {
@@ -181,28 +181,28 @@ MODULAR_EXPORT void AsyncRT_DeviceStream_release(const DeviceStream *stream) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_synchronize(const DeviceContext *ctx) {
-  return check_success(ctx->synchronize());
+  return checkSuccess(ctx->synchronize());
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_HtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *dst, const void *src) {
   assert((ctx == &dst->context()) && "ctx not matching dst");
-  return check_success(ctx->copyToDevice(*dst, src, DeviceContext::ASYNC));
+  return checkSuccess(ctx->copyToDevice(*dst, src, DeviceContext::ASYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoH_async(const DeviceContext *ctx, void *dst,
                                  const DeviceBuffer *src) {
   assert((ctx == &src->context()) && "ctx not matching src");
-  return check_success(ctx->copyFromDevice(dst, *src, DeviceContext::ASYNC));
+  return checkSuccess(ctx->copyFromDevice(dst, *src, DeviceContext::ASYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *dst,
                                  const DeviceBuffer *src) {
-  return check_success(
+  return checkSuccess(
       ctx->copyDeviceToDevice(*dst, *src, DeviceContext::ASYNC));
 }
 
@@ -210,52 +210,49 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_HtoD_sync(const DeviceContext *ctx,
                                 const DeviceBuffer *dst, const void *src) {
   assert((ctx == &dst->context()) && "ctx not matching dst");
-  return check_success(ctx->copyToDevice(*dst, src, DeviceContext::SYNC));
+  return checkSuccess(ctx->copyToDevice(*dst, src, DeviceContext::SYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoH_sync(const DeviceContext *ctx, void *dst,
                                 const DeviceBuffer *src) {
   assert((ctx == &src->context()) && "ctx not matching src");
-  return check_success(ctx->copyFromDevice(dst, *src, DeviceContext::SYNC));
+  return checkSuccess(ctx->copyFromDevice(dst, *src, DeviceContext::SYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoD_sync(const DeviceContext *ctx,
                                 const DeviceBuffer *dst,
                                 const DeviceBuffer *src) {
-  return check_success(
-      ctx->copyDeviceToDevice(*dst, *src, DeviceContext::SYNC));
+  return checkSuccess(ctx->copyDeviceToDevice(*dst, *src, DeviceContext::SYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_async(const DeviceContext *ctx,
                                       const DeviceBuffer *dst, uint32_t val,
-                                      size_t val_size) {
-  return check_success(
-      ctx->setMemory(*dst, val, val_size, DeviceContext::ASYNC));
+                                      size_t valSize) {
+  return checkSuccess(ctx->setMemory(*dst, val, valSize, DeviceContext::ASYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_sync(const DeviceContext *ctx,
                                      const DeviceBuffer *dst, uint32_t val,
-                                     size_t val_size) {
-  return check_success(
-      ctx->setMemory(*dst, val, val_size, DeviceContext::SYNC));
+                                     size_t valSize) {
+  return checkSuccess(ctx->setMemory(*dst, val, valSize, DeviceContext::SYNC));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunction(
     const DeviceFunction **result, const DeviceContext *ctx,
-    const char *module_name, const char *function_name, const void *data,
-    int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-    int32_t cache_config, int32_t max_dynamic_shared_bytes,
-    const char *debug_level, int32_t optimization_level) {
+    const char *moduleName, const char *functionName, const void *data,
+    int32_t maxRegisters, int32_t threadsPerBlock, int32_t cacheMode,
+    int32_t cacheConfig, int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t optimizationLevel) {
   DeviceFunction::SignatureBuilder sig;
-  return check_ref(
-      result, ctx->loadFunction(module_name, function_name, sig, data,
-                                max_registers, threads_per_block, cache_mode,
-                                cache_config, max_dynamic_shared_bytes,
-                                debug_level, optimization_level));
+  return checkRef(result,
+                  ctx->loadFunction(moduleName, functionName, sig, data,
+                                    maxRegisters, threadsPerBlock, cacheMode,
+                                    cacheConfig, maxDynamicSharedBytes,
+                                    debugLevel, optimizationLevel));
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceFunction_retain(const DeviceFunction *func) {
@@ -272,40 +269,40 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceFunction_copyToConstantMemory(const DeviceFunction *func,
                                             const char *name, const void *data,
                                             size_t byteSize) {
-  return check_success(func->copyToNamedConstant(name, data, byteSize));
+  return checkSuccess(func->copyToNamedConstant(name, data, byteSize));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
     const DeviceContext *ctx, const DeviceFunction *func, uint32_t gridX,
     uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,
-    uint32_t blockZ, uint32_t sharedMemBytes, void *attrs, uint32_t num_attrs,
+    uint32_t blockZ, uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs,
     void **args) {
   assert((ctx == &func->context()) && "ctx not matching func");
-  return check_success(ctx->enqueueFunctionExecDirect(
+  return checkSuccess(ctx->enqueueFunctionExecDirect(
       *func, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes, attrs,
-      num_attrs, args));
+      numAttrs, args));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceFunction_getAttribute(int32_t *result, const DeviceFunction *func,
-                                    int32_t attr_code) {
-  return check_val(result, 0, func->getAttribute(attr_code));
+                                    int32_t attrCode) {
+  return checkVal(result, 0, func->getAttribute(attrCode));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_startTimer(const DeviceTimer **result,
                                  const DeviceContext *ctx) {
-  return check_ref(result, ctx->startTimer());
+  return checkRef(result, ctx->startTimer());
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_stopTimer(int64_t *result, const DeviceContext *ctx,
                                 const DeviceTimer *timer) {
   std::chrono::nanoseconds elapsed_nanos;
-  const char *err_msg = check_val(&elapsed_nanos, std::chrono::nanoseconds{0},
-                                  ctx->stopTimer(*timer));
+  const char *errMsg = checkVal(&elapsed_nanos, std::chrono::nanoseconds{0},
+                                ctx->stopTimer(*timer));
   *result = elapsed_nanos.count();
-  return err_msg;
+  return errMsg;
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceTimer_retain(const DeviceTimer *timer) {
@@ -320,53 +317,52 @@ MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getDriverVersion(int *result, const DeviceContext *ctx) {
-  return check_val(result, 0, ctx->device().getDriverVersion());
+  return checkVal(result, 0, ctx->device().getDriverVersion());
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getAttribute(int *result, const DeviceContext *ctx,
                                    int attr) {
-  return check_val(
+  return checkVal(
       result, 0,
       ctx->device().getAttribute(static_cast<Device::Attribute>(attr)));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_isCompatibleWithMAX(const DeviceContext *ctx) {
-  return check_success(ctx->device().isCompatibleWithMAX());
+  return checkSuccess(ctx->device().isCompatibleWithMAX());
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_computeCapability(int32_t *result,
                                         const DeviceContext *ctx) {
   int compute;
-  const char *err_msg =
-      check_val(&compute, 0, ctx->device().computeCapability());
+  const char *errMsg = checkVal(&compute, 0, ctx->device().computeCapability());
   *result = compute;
-  return err_msg;
+  return errMsg;
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
                                     size_t *total) {
-  Device::MemInfo mem_info;
-  const char *err_msg =
-      check_val(&mem_info, Device::MemInfo(), ctx->device().getMemoryInfo());
-  *free = mem_info.free;
-  *total = mem_info.total;
-  return err_msg;
+  Device::MemInfo memInfo;
+  const char *errMsg =
+      checkVal(&memInfo, Device::MemInfo(), ctx->device().getMemoryInfo());
+  *free = memInfo.free;
+  *total = memInfo.total;
+  return errMsg;
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_canAccess(bool *result, const DeviceContext *ctx,
                                 const DeviceContext *peer) {
-  return check_val(result, false, ctx->device().canAccess(peer->device()));
+  return checkVal(result, false, ctx->device().canAccess(peer->device()));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_enablePeerAccess(const DeviceContext *ctx,
                                        const DeviceContext *peer) {
-  return check_success(ctx->enablePeerAccess(*peer));
+  return checkSuccess(ctx->enablePeerAccess(*peer));
 }
 
 MODULAR_EXPORT int32_t AsyncRT_DeviceContext_numberOfDevices(const char *kind) {
@@ -379,22 +375,22 @@ MODULAR_EXPORT int32_t AsyncRT_DeviceContext_numberOfDevices(const char *kind) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_cuda_context(CUcontext *result,
                                    const DeviceContext *ctx) {
-  const CUDADeviceContext *verified_ctx = CUDADeviceContext::verified_cast(ctx);
-  if (verified_ctx == nullptr) {
+  const CUDADeviceContext *verifiedCtx = CUDADeviceContext::verified_cast(ctx);
+  if (verifiedCtx == nullptr) {
     return strdup("Not a CUDAContext");
   }
-  *result = verified_ctx->cuda_context();
+  *result = verifiedCtx->cuda_context();
   return nullptr;
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceStream_cuda_stream(CUstream *result, const DeviceStream *stream) {
-  const CUDADeviceStream *verified_stream =
+  const CUDADeviceStream *verifiedStream =
       static_cast<const CUDADeviceStream *>(stream);
-  if (verified_stream == nullptr) {
+  if (verifiedStream == nullptr) {
     return strdup("Not a CUDAStream");
   }
-  *result = verified_stream->cuda_stream();
+  *result = verifiedStream->cuda_stream();
   return nullptr;
 }
 
@@ -405,12 +401,12 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
     const uint32_t *elementStrides, int32_t interleave, int32_t swizzle,
     int32_t l2Promotion, int32_t oobFill) {
   // Extract the device context from the device buffer.
-  const CUDADeviceContext *verified_ctx =
+  const CUDADeviceContext *verifiedCtx =
       CUDADeviceContext::verified_cast(&globalAddress->context());
-  if (verified_ctx == nullptr) {
+  if (verifiedCtx == nullptr) {
     return strdup("Not a CUDADeviceBuffer");
   }
-  return check_success(verified_ctx->cuda_TensorMapEncodeTiled(
+  return checkSuccess(verifiedCtx->cuda_TensorMapEncodeTiled(
       tensorMap, static_cast<CUtensorMapDataType>(tensorDataType), tensorRank,
       *globalAddress, globalDim, globalStrides, boxDim, elementStrides,
       static_cast<CUtensorMapInterleave>(interleave),

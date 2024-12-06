@@ -31,7 +31,7 @@ size_t getPreferredAlignment(std::string label) {
 //
 Device::Device(API api, std::string name, int id, size_t allocAligment)
     : name_(std::move(name)), id_(id), api_(api),
-      alloc_alignment_(allocAligment) {}
+      allocAlignment_(allocAligment) {}
 
 const std::string &Device::name() const { return name_; }
 
@@ -49,7 +49,7 @@ StringRef Device::vendor() const {
   return "";
 }
 
-size_t Device::allocationAlignment() const { return alloc_alignment_; }
+size_t Device::allocationAlignment() const { return allocAlignment_; }
 
 size_t Device::preferredAlignment(StringRef api) {
   if (api == gpuAPI) {
@@ -144,15 +144,15 @@ enum DeviceFunction::ArgumentType : uint8_t {
   _NUM_ENTRIES_ // This entry must be last.
 };
 
-const char *DeviceFunction::typeName(ArgumentType arg_type) {
-  const char *type_names[] = {"unset",   "uint8",   "uint16",      "uint32",
-                              "uint64",  "int8",    "int16",       "int32",
-                              "int64",   "float4",  "float8",      "float16",
-                              "float32", "float64", "DeviceBuffer"};
-  static_assert(sizeof(type_names) ==
-                (static_cast<int>(_NUM_ENTRIES_) * sizeof(*type_names)));
-  int index = static_cast<int>(arg_type);
-  return ((index >= 0) && (index < _NUM_ENTRIES_)) ? type_names[index]
+const char *DeviceFunction::typeName(ArgumentType argType) {
+  const char *typeNames[] = {"unset",   "uint8",   "uint16",      "uint32",
+                             "uint64",  "int8",    "int16",       "int32",
+                             "int64",   "float4",  "float8",      "float16",
+                             "float32", "float64", "DeviceBuffer"};
+  static_assert(sizeof(typeNames) ==
+                (static_cast<int>(_NUM_ENTRIES_) * sizeof(*typeNames)));
+  int index = static_cast<int>(argType);
+  return ((index >= 0) && (index < _NUM_ENTRIES_)) ? typeNames[index]
                                                    : "unknown";
 }
 
@@ -165,18 +165,18 @@ DeviceFunction::DeviceFunction(
 const DeviceContext &DeviceFunction::context() const { return *context_; }
 
 ErrorOrSuccess DeviceFunction::checkSignatureAt(int index,
-                                                ArgumentType arg_type) const {
-  int expected_size = signature_.size();
-  if ((index < 0) || index >= expected_size) {
+                                                ArgumentType argType) const {
+  int expectedSize = signature_.size();
+  if ((index < 0) || index >= expectedSize) {
     return Error("Argument count mismatch at " + Twine(index + 1) +
-                 "th position: Expected " + Twine(expected_size) +
+                 "th position: Expected " + Twine(expectedSize) +
                  " arguments.");
   }
-  ArgumentType expected_type = signature_.at(index);
-  if (expected_type != arg_type) {
+  ArgumentType expectedType = signature_.at(index);
+  if (expectedType != argType) {
     return Error(llvm::Twine("Argument mismatch at ") + Twine(index + 1) +
-                 "th position: Expected " + typeName(expected_type) + ", got " +
-                 typeName(arg_type) + ".");
+                 "th position: Expected " + typeName(expectedType) + ", got " +
+                 typeName(argType) + ".");
   }
   return success();
 }
@@ -248,12 +248,12 @@ ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t byteSize) const {
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
-                                                size_t buffer_cache_size) {
+                                                size_t bufferCacheSize) {
   ErrorOr<DeviceRef> device = Device::create(api, id);
   if (device.isError()) {
     return device.takeError();
   }
-  return (*device)->createContext(buffer_cache_size);
+  return (*device)->createContext(bufferCacheSize);
 }
 
 int Device::numberOfDevices(StringRef api) {

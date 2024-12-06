@@ -169,7 +169,7 @@ ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
 }
 
 ErrorOr<DeviceContextRef>
-CUDADevice::createContext(size_t buffer_cache_size) const {
+CUDADevice::createContext(size_t bufferCacheSize) const {
   CUcontext context;
   CUDA_CHECK_ERR(
       this->cuda_driver().CtxCreate(&context, 0, this->cuda_device()));
@@ -178,13 +178,12 @@ CUDADevice::createContext(size_t buffer_cache_size) const {
   CUDA_CHECK_ERR(this->cuda_driver().StreamCreate(&stream, 0));
 
   CUdeviceptr cache_base = nullptr;
-  if (buffer_cache_size != 0) {
-    CUDA_CHECK_ERR(
-        this->cuda_driver().MemAlloc(&cache_base, buffer_cache_size));
+  if (bufferCacheSize != 0) {
+    CUDA_CHECK_ERR(this->cuda_driver().MemAlloc(&cache_base, bufferCacheSize));
   }
 
   return CUDADeviceContextRef::create(*this, context, stream, cache_base,
-                                      buffer_cache_size);
+                                      bufferCacheSize);
 }
 
 int CUDADevice::deviceCount() const {
@@ -468,9 +467,9 @@ const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
 CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                      CUcontext context, CUstream stream,
                                      void *buffer_cache_base,
-                                     size_t buffer_cache_size)
+                                     size_t bufferCacheSize)
     : DeviceContext(device), driver_(device.cuda_driver()), context_(context),
-      stream_(stream), buf_cache_(buffer_cache_base, buffer_cache_size,
+      stream_(stream), buf_cache_(buffer_cache_base, bufferCacheSize,
                                   device.allocationAlignment()) {}
 
 CUDADeviceContext::~CUDADeviceContext() {

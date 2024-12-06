@@ -70,7 +70,7 @@ public:
   int deviceCount() const override;
 
   ErrorOr<DeviceContextRef>
-  createContext(size_t buffer_cache_size = 0) const override;
+  createContext(size_t bufferCacheSize) const override;
 
   static const CUDADevice &cast(const Device &device);
 
@@ -221,7 +221,7 @@ class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(const CUDADevice &device, CUcontext context,
                     CUstream stream, void *buffer_cache_base,
-                    size_t buffer_cache_size);
+                    size_t bufferCacheSize);
   ~CUDADeviceContext() override;
 
   // Host memory allocation.
