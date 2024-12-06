@@ -4506,7 +4506,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 
     Nothing needs to change about the kernel definition, but now the custom op
     must take a `mo.buffer` operand for the value it wants to mutate and
-    produce an output chain as it's final result and take an input chain as its
+    produce an output chain as its final result and take an input chain as its
     final operand.
 
     Example:
@@ -4759,7 +4759,7 @@ def MO_BufferTransferOp : MO_MutableOp<"buffer.transfer", [
   let results = (outs MO_Chain:$outChain);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` qualified(type($src)) `,` qualified(type($dst)) 
+    `(` operands `)` attr-dict `:` qualified(type($src)) `,` qualified(type($dst))
   }];
 }
 
