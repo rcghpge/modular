@@ -1457,6 +1457,7 @@ modular_shared_library(
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     output_name = "MGPRT",
     deps = [
+        ":Support",
         "//AsyncRT:MojoBindings",
         "//AsyncRT:Runtime",
         "//AsyncRT:RuntimeGlobals",
