@@ -8,6 +8,7 @@ modular_py_test(
         "text_to_image.py",
     ],
     data = [
+        "//GenericML:MGPRT",
         "//KGEN:CompilerRT",
         "//ONNX/tools/onnx:monnx",
         "@llvm-project//compiler-rt:orc_rt",
