@@ -372,22 +372,6 @@ static ErrorOr<SmallVector<AnyAsyncValueRef>>
 executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
                           MutableArrayRef<AnyAsyncValueRef> args,
                           bool checkResults) {
-#if MODULAR_PARANOID
-  // Create an abstract 'resource' to represent this execution.
-  auto resource = AsyncRT::Resource::allocate(
-      Twine("execute(")
-          .concat(executableModel.getModel()->getName())
-          .concat(")")
-          .str());
-  // Create a default 'use' of this 'resource', which will be propogated
-  // to all work items the call to execute launches.
-  runtime.getWorkQueue()->pushDefaultUse(
-      resource->beginUse(Twine("task(")
-                             .concat(executableModel.getModel()->getName())
-                             .concat(")")
-                             .str()));
-#endif
-
   auto results = executableModel.execute(args);
 
 #if MODULAR_PARANOID
@@ -407,24 +391,6 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
   } else {
     await(results);
   }
-#if MODULAR_PARANOID
-  runtime.getWorkQueue()->popDefaultUse();
-  // Indicate that the call to execute has completed, and that no tasks launched
-  // by it should still be in-flight.
-  resource->markFreed();
-  // Simulate the caller concurrently accessing all the results. This will
-  // assert fail if any of them overlap, which could happen if there's a
-  // compiler bug in memory planning or concat-in-place.
-  SmallVector<AsyncRT::ResourceUse> uses;
-  for (size_t i = 1, n = results.size(); i < n; ++i) {
-    const AnyAsyncValueRef &result = results[i];
-    if (auto *tensor = dyn_cast<Tensor>(result)) {
-      tensor->getBufferRef().collectAccessUses(
-          uses, (Twine("output(") + Twine(i - 1) + ")").str(),
-          AsyncRT::kReadingResourceUse);
-    }
-  }
-#endif
   return results;
 }
 

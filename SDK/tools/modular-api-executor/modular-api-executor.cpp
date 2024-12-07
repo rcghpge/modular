@@ -494,7 +494,6 @@ public:
     Runtime &runtime = getRuntime();
 
     checkUniqueRuntime(runtime);
-    checkKnownCallingThread(runtime);
 
     auto model = getModel();
     const auto &modelSpec = model->getModelSpec();
@@ -618,7 +617,6 @@ AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
 ModularModel::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
                     const Driver::DeviceMap &deviceMap) const {
   checkUniqueRuntime(runtime);
-  checkKnownCallingThread(runtime);
   // Create the executable model.
   StatusPtr status = {api.newStatus(), api.freeStatus};
   ModelPtr initializedModel = {
