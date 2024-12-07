@@ -5,7 +5,6 @@ modular_py_library(
     name = "llama_vision",
     srcs = glob(["**/*.py"]),
     imports = [".."],
-    tags = ["no-mypy"],  # TODO: Re-enable once issues are cleaned up.
     deps = [
         requirement("numpy"),
         requirement("torch"),
