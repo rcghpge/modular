@@ -35,10 +35,29 @@ static bool opsHaveAliasedMutableOperands(Operation *op1, Operation *op2) {
   auto r1 = llvm::make_filter_range(op1->getOperands(), isMutableOperand);
   auto r2 = llvm::make_filter_range(op2->getOperands(), isMutableOperand);
 
+  // Simple check for equality of any of the mutable operands.
   auto s1 = mlir::DenseSet<Value>{r1.begin(), r1.end()};
   auto s2 = mlir::DenseSet<Value>{r2.begin(), r2.end()};
+  if (llvm::any_of(s1, [&s2](Value val) { return s2.contains(val); }))
+    return true;
 
-  return llvm::any_of(s1, [&s2](Value val) { return s2.contains(val); });
+  // It's my understanding that a kernel could potentially return a ref to an
+  // input opaque type back out. In lieu of a more sophisticated alias analysis
+  // (which will eventually be necessary) we simply check that there are no
+  // opaque values that name the same type.
+  llvm::DenseSet<StringAttr> symbolSet;
+  for (Value v : r1) {
+    if (auto opaqueType = dyn_cast<MO::OpaqueType>(v.getType()))
+      symbolSet.insert(opaqueType.getSymbol());
+  }
+
+  bool hasSameOpaqueType = llvm::any_of(r2, [&](Value v) {
+    if (auto opaqueType = dyn_cast<MO::OpaqueType>(v.getType()))
+      return symbolSet.count(opaqueType.getSymbol()) > 0;
+    return false;
+  });
+
+  return hasSameOpaqueType;
 }
 
 struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {

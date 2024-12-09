@@ -85,6 +85,24 @@ mo.graph @custom_ops_opaque(%buf: !bt, %opaque: !ot)
   mo.output
 }
 
+// CHECK-LABEL: mo.graph @different_opaque_vals_same_type
+// CHECK-SAME: [[OPAQUE1:%.*]]: !mo.opaque<"T">, [[OPAQUE2:%.*]]: !mo.opaque<"T">
+mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)
+{
+  // CHECK: [[CH0:%.*]] = mo.chain.create()
+  %ch0 = mo.chain.create()
+
+  // Check that we don't move baz past bar even though since they operate on an
+  // opaque value of the same type (and we do have the potential of aliasing).
+
+  // CHECK-DAG: [[CH1:%.*]] = mo.custom{{.*}}bar{{.*}}([[OPAQUE1]], [[CH0]])
+  // CHECK-DAG: [[CH2:%.*]] = mo.custom{{.*}}baz{{.*}}([[OPAQUE2]], [[CH1]])
+  %ch1 = mo.custom {symbol = "bar"} (%opaque1, %ch0) : (!ot, !ct) -> (!ct)
+  %ch2 = mo.custom {symbol = "baz"} (%opaque2, %ch1) : (!ot, !ct) -> (!ct)
+
+  mo.output
+}
+
 // CHECK-LABEL: @everything
 // CHECK-SAME: ([[arg0:%.*]]: !mo.buffer<[3, 3], f32>, [[arg1:%.*]]: !mo.buffer<[3, 3], f32>, [[arg2:%.*]]: !mo.tensor<[3, 3], f32>) {
 // CHECK-DAG:  [[a0:%.*]] = mo.chain.create()
