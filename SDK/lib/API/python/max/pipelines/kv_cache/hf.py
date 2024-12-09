@@ -6,6 +6,7 @@
 
 from typing import Any, Optional, Union
 
+import numpy as np
 import torch
 from torch import device as torch_device
 from transformers import PretrainedConfig, StaticCache
@@ -40,6 +41,7 @@ class ContinuousHFStaticCache(StaticCache):
         self.available_slots: set[int] = set(range(self.max_batch_size))
         self.active_slots: list[int] = []
         self.attention_patterns: dict[int, torch.Tensor] = {}
+        self.tokens: dict[int, np.ndarray] = {}
 
     def external_claim(self, seq_ids: list[int]) -> None:
         if not self.available_slots:
@@ -56,6 +58,7 @@ class ContinuousHFStaticCache(StaticCache):
             self.attention_patterns[seq_id] = torch.tensor(
                 [], dtype=torch.long, device=self.device
             )
+            self.tokens[seq_id] = np.array([])
 
     def set_active_slots(self, seq_ids: list[int]) -> None:
         self.active_slots = seq_ids
@@ -126,6 +129,7 @@ class ContinuousHFStaticCache(StaticCache):
 
         self.available_slots.add(seq_id)
         del self.attention_patterns[seq_id]
+        del self.tokens[seq_id]
 
     def reset(self) -> None:
         super().reset()

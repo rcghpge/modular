@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Tuple
 import warnings
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -76,14 +76,12 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
         new_sequences = False
 
         # Claim cache slots for new sequences
-        new_seq_ids = [
-            ctx.cache_seq_id
-            for ctx in context_batch
-            if ctx.cache_seq_id in self._cache.available_slots
-        ]
-        if new_seq_ids:
-            self._cache.external_claim(new_seq_ids)
-            new_sequences = True
+        for ctx in context_batch:
+            seq_id = ctx.cache_seq_id
+            if seq_id in self._cache.available_slots:
+                self._cache.external_claim([seq_id])
+                self._cache.tokens[seq_id] = ctx.next_tokens
+                new_sequences = True
 
         cache_seq_ids = [ctx.cache_seq_id for ctx in context_batch]
         self._cache.set_active_slots(cache_seq_ids)
@@ -143,7 +141,11 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
                 next_token_id = generated_tokens[batch_idx, step].item()
 
                 # Update context
-                context.update(np.array([next_token_id]))
+                next_tokens = np.array([next_token_id])
+                context.update(next_tokens)
+                self._cache.tokens[context.cache_seq_id] = np.append(
+                    self._cache.tokens[context.cache_seq_id], next_tokens
+                )
 
                 if not context.is_done(self._eos_token_id):
                     step_res[request_id] = TextResponse(
@@ -165,10 +167,13 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
         cache_seq_ids: list[int],
         context_batch: list[TextContext],
         new_sequences: bool,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if new_sequences:
             # Process all tokens for new sequences
-            tokens = [torch.tensor(ctx.next_tokens) for ctx in context_batch]
+            tokens = [
+                torch.tensor(self._cache.tokens[ctx.cache_seq_id])
+                for ctx in context_batch
+            ]
             padded = self._tokenizer.pad(
                 BatchEncoding({"input_ids": tokens}),
                 padding=True,
@@ -218,7 +223,7 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
         self,
         cache_seq_ids: list[int],
         next_tokens: Optional[Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Process only next tokens for the iterative steps
         encoded_input = BatchEncoding({"input_ids": next_tokens})
         padded = self._tokenizer.pad(
