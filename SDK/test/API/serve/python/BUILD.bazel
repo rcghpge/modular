@@ -18,6 +18,7 @@ modular_py_test(
         "//ModelServing/proto:grpc_proto",
         "//SDK/lib/API/python/max/serve",
         "//SDK/lib/API/python/max/serve/grpc_serve",
+        "//SDK/lib/API/python/max/serve/router",
         requirement("async-asgi-testclient"),
         requirement("fastapi"),
         requirement("gguf"),
