@@ -142,7 +142,7 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
 
                 # Update context
                 next_tokens = np.array([next_token_id])
-                context.update(next_tokens)
+                context.update(next_token_id)
                 self._cache.tokens[context.cache_seq_id] = np.append(
                     self._cache.tokens[context.cache_seq_id], next_tokens
                 )
