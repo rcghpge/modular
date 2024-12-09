@@ -66,9 +66,10 @@ using MGPProfilerEntry =
 /// The kernel expects the inputs to be a list of pointers to async values. This
 /// function just packs the input / output asyncs into one array.
 template <typename OperandTy, typename ResultTy>
-std::vector<void *> getKernelInputs(OperandTy &operands, ResultTy &results,
-                                    MEFListAttr constantResources) {
-  std::vector<void *> kernelInputs;
+llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
+                                          ResultTy &results,
+                                          MEFListAttr constantResources) {
+  llvm::SmallVector<void *> kernelInputs;
   kernelInputs.reserve(results.size() + operands.size() +
                        constantResources.size());
 
@@ -109,8 +110,8 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
 
   // Wrapper to run a kernel without extending any lifetimes.
   auto runKernel = [kernelPtr, deviceContext = std::move(deviceContext),
-                    runtimePtr = runtimePtr,
-                    loc = std::move(loc)](std::vector<void *> &kernelInputs) {
+                    runtimePtr = runtimePtr, loc = std::move(loc)](
+                       llvm::SmallVector<void *> &kernelInputs) {
     void *deviceContextPtr = deviceContext.getPointerToData();
     MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
@@ -131,7 +132,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
                                         constantResources =
                                             std::move(fConstantResources),
                                         runKernel = std::move(runKernel)]() {
-      std::vector<void *> kernelInputs =
+      llvm::SmallVector<void *> kernelInputs =
           getKernelInputs(takenOperands, outResults, constantResources);
       runKernel(kernelInputs);
     };
@@ -140,7 +141,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
     runtime.getWorkQueue()->addTask(std::move(runKernelAndExtendLifetimes));
   } else {
     // Run the kernel on this thread.
-    std::vector<void *> kernelInputs =
+    llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
     runKernel(kernelInputs);
   }
