@@ -15,14 +15,14 @@ modular_pybind_library(
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     pybind_deps = [
         "//:MLIRBindingsPythonHeaders",
+        "//Support:CPythonPybind",
         "//SDK:DriverPython",
+        "//SDK:DLPack",
     ],
     tags = ["no-clang-tidy-headers"],
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
-        "//SDK:DLPack",
-        "//Support:CPython",
     ],
 )
 
@@ -131,11 +131,13 @@ modular_pybind_library(
     name = "DriverPython",
     srcs = glob(["lib/API/python/lib/Driver/*.cpp"]),
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
+    pybind_deps = [
+        "//SDK:DLPack",
+    ],
     deps = [
         "//AsyncRT:DeviceContext",
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
-        "//SDK:DLPack",
         "//Support:ML",
     ],
 )
