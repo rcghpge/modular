@@ -63,6 +63,34 @@ static void mgp_context_create(Result<StateContext> result,
 using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
+/// The kernel expects the inputs to be a list of pointers to async values. This
+/// function just packs the input / output asyncs into one array.
+template <typename OperandTy, typename ResultTy>
+std::vector<void *> getKernelInputs(OperandTy &operands, ResultTy &results,
+                                    MEFListAttr constantResources) {
+  std::vector<void *> kernelInputs;
+  kernelInputs.reserve(results.size() + operands.size() +
+                       constantResources.size());
+
+  auto appendInput = [&kernelInputs](const AnyAsyncValueRef &ref) {
+    kernelInputs.push_back(
+        const_cast<void *>(reinterpret_cast<const void *>(&ref)));
+  };
+
+  for (const AnyAsyncValueRef &res : operands)
+    appendInput(res);
+  for (const AnyAsyncValueRef &res : results)
+    appendInput(res);
+
+  for (MEFDynamicAttr attr : constantResources) {
+    // Append read-only pointer to attributes.
+    kernelInputs.push_back(
+        const_cast<void *>(reinterpret_cast<const void *>(attr.get())));
+  }
+
+  return kernelInputs;
+}
+
 static void
 mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
                     RemainingArguments operands, RemainingResults outResults,
@@ -78,44 +106,44 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
   AsyncRT::CompactRuntimePtr runtimePtr(runtime);
-  // Allocate indirect results so that the primitive scheduler has something
-  // to use. We always have to allocate indirects even if the kernel is not
-  // async because we pass a copy of the results.
-  outResults.allocateIndirectResults();
 
-  auto runKernel =
-      [kernelPtr,
-       // outResults _must_ be copied
-       outResults = outResults.copyAsVector(),
-       // std::move(operands) does not work, must use takeAsVector
-       takenOperands = operands.takeAsVector(), runtimePtr = runtimePtr,
-       deviceContext = std::move(deviceContext),
-       constantResources = fConstantResources, loc = std::move(loc)]() mutable {
-        void *deviceContextPtr = deviceContext.getPointerToData();
-        std::vector<void *> kernelInputs;
-        kernelInputs.reserve(outResults.size() + takenOperands.size());
+  // Wrapper to run a kernel without extending any lifetimes.
+  auto runKernel = [kernelPtr, deviceContext = std::move(deviceContext),
+                    runtimePtr = runtimePtr,
+                    loc = std::move(loc)](std::vector<void *> &kernelInputs) {
+    void *deviceContextPtr = deviceContext.getPointerToData();
+    MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);
+    kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
+              reinterpret_cast<void *>(runtimePtr.get()),
+              reinterpret_cast<void *>(&callContext));
+  };
 
-        for (AnyAsyncValueRef &res : takenOperands)
-          kernelInputs.push_back(&res);
-        for (AnyAsyncValueRef &res : outResults)
-          kernelInputs.push_back(&res);
+  if (eIsAsync.get()) {
+    // Allocate indirect results as GraphRT is expecting result async values to
+    // be allocated. The kernel will set them to ready when it is finished. We
+    // only need to do this for async primitives as they outlive this function.
+    outResults.allocateIndirectResults();
 
-        for (MEFDynamicAttr attr : constantResources) {
-          // Append read-only pointer to attributes.
-          kernelInputs.push_back(
-              const_cast<void *>(reinterpret_cast<const void *>(attr.get())));
-        }
+    // Run the kernel and extend the lifetime of the input and output async
+    // values until it completes by capturing them.
+    auto runKernelAndExtendLifetimes = [outResults = outResults.copyAsVector(),
+                                        takenOperands = operands.takeAsVector(),
+                                        constantResources =
+                                            std::move(fConstantResources),
+                                        runKernel = std::move(runKernel)]() {
+      std::vector<void *> kernelInputs =
+          getKernelInputs(takenOperands, outResults, constantResources);
+      runKernel(kernelInputs);
+    };
 
-        MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);
-        kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
-                  reinterpret_cast<void *>(runtimePtr.get()),
-                  reinterpret_cast<void *>(&callContext));
-      };
-
-  if (eIsAsync.get())
-    runtime.getWorkQueue()->addTask(std::move(runKernel));
-  else
-    runKernel();
+    // Launch the kernel on a new thread.
+    runtime.getWorkQueue()->addTask(std::move(runKernelAndExtendLifetimes));
+  } else {
+    // Run the kernel on this thread.
+    std::vector<void *> kernelInputs =
+        getKernelInputs(operands, outResults, fConstantResources);
+    runKernel(kernelInputs);
+  }
 }
 
 //===----------------------------------------------------------------------===//
