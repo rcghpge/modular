@@ -39,7 +39,7 @@ protected:
 };
 
 TEST_F(CUDADeviceContextTest, DeviceExec) {
-  const char *vec_add_ptx = R"PTX(
+  const char *vecAddPtx = R"PTX(
 // From Kernels/test/gpu/vec_add.ptx
 
 .version 6.3
@@ -112,108 +112,108 @@ $L__BB0_2:
 }
 )PTX";
 
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cudaAPI);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef ctx = std::move(err_ctx.get());
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cudaAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);
 
   // Check reference count.
   EXPECT_EQ(ctx->getNumReferences(), 1);
 
   {
-    std::cerr << "Compiling vec_add_ptx...\n";
+    std::cerr << "Compiling vecAddPtx...\n";
     DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
                                                .addBuffer()
                                                .addBuffer()
                                                .addBuffer()
                                                .addUInt64();
-    ErrorOr<DeviceFunctionRef> err_fun =
-        ctx->loadFunction("vec_add_module", "vec_add", sig, vec_add_ptx);
-    EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
-    DeviceFunctionRef device_function = std::move(err_fun.get());
-    EXPECT_TRUE(device_function);
+    ErrorOr<DeviceFunctionRef> errFun =
+        ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx);
+    EXPECT_FALSE(errFun) << errFun.getError() << "\n";
+    DeviceFunctionRef deviceFunction = std::move(errFun.get());
+    EXPECT_TRUE(deviceFunction);
 
-    // One reference count from ctx and one from device_function.
+    // One reference count from ctx and one from deviceFunction.
     EXPECT_EQ(ctx->getNumReferences(), 2);
-    EXPECT_EQ(device_function->getNumReferences(), 1);
+    EXPECT_EQ(deviceFunction->getNumReferences(), 1);
 
     constexpr size_t length = 1024;
-    constexpr size_t elem_size = sizeof(float);
+    constexpr size_t elemSize = sizeof(float);
 
-    float *in0_host = reinterpret_cast<float *>(malloc(length * elem_size));
-    float *in1_host = reinterpret_cast<float *>(malloc(length * elem_size));
-    float *out_host = reinterpret_cast<float *>(malloc(length * elem_size));
+    float *in0Host = reinterpret_cast<float *>(malloc(length * elemSize));
+    float *in1Host = reinterpret_cast<float *>(malloc(length * elemSize));
+    float *outHost = reinterpret_cast<float *>(malloc(length * elemSize));
 
     for (size_t i = 0; i < length; i++) {
-      in0_host[i] = static_cast<float>(i);
-      in1_host[i] = 2.0;
-      out_host[i] =
+      in0Host[i] = static_cast<float>(i);
+      in1Host[i] = 2.0;
+      outHost[i] =
           static_cast<float>(i) * 2.0; // Write a value that is not expected.
     }
 
-    ErrorOr<DeviceBufferRef> err_buf =
-        ctx->enqueueCreateBuffer(length * elem_size);
-    EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
-    DeviceBufferRef in0_device = std::move(err_buf.get());
-    EXPECT_TRUE(in0_device);
+    ErrorOr<DeviceBufferRef> errBuf =
+        ctx->enqueueCreateBuffer(length * elemSize);
+    EXPECT_FALSE(errBuf) << errBuf.getError() << "\n";
+    DeviceBufferRef in0Device = std::move(errBuf.get());
+    EXPECT_TRUE(in0Device);
 
-    err_buf = ctx->enqueueCreateBuffer(length * elem_size);
-    EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
-    DeviceBufferRef in1_device = std::move(err_buf.get());
-    EXPECT_TRUE(in1_device);
+    errBuf = ctx->enqueueCreateBuffer(length * elemSize);
+    EXPECT_FALSE(errBuf) << errBuf.getError() << "\n";
+    DeviceBufferRef in1Device = std::move(errBuf.get());
+    EXPECT_TRUE(in1Device);
 
-    err_buf = ctx->enqueueCreateBuffer(length * elem_size);
-    EXPECT_FALSE(err_buf) << err_buf.getError() << "\n";
-    DeviceBufferRef out_device = std::move(err_buf.get());
-    EXPECT_TRUE(out_device);
+    errBuf = ctx->enqueueCreateBuffer(length * elemSize);
+    EXPECT_FALSE(errBuf) << errBuf.getError() << "\n";
+    DeviceBufferRef outDevice = std::move(errBuf.get());
+    EXPECT_TRUE(outDevice);
 
-    ErrorOrSuccess err = ctx->enqueueCopyToDevice(*in0_device, in0_host);
+    ErrorOrSuccess err = ctx->enqueueCopyToDevice(*in0Device, in0Host);
     EXPECT_FALSE(err) << err.getError() << "\n";
-    err = ctx->enqueueCopyToDevice(*in1_device, in1_host);
+    err = ctx->enqueueCopyToDevice(*in1Device, in1Host);
     EXPECT_FALSE(err) << err.getError() << "\n";
-    // This copy is not strictly necessary, but fill out_device with known bad
+    // This copy is not strictly necessary, but fill outDevice with known bad
     // values.
-    err = ctx->enqueueCopyToDevice(*out_device, out_host);
+    err = ctx->enqueueCopyToDevice(*outDevice, outHost);
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    constexpr uint32_t block_dim = 32;
+    constexpr uint32_t blockDim = 32;
 
     err = ctx->enqueueFunctionExec(
-        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-        *device_function->buildArguments(*out_device, *in0_device, *in1_device,
-                                         length));
+        *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
+        *deviceFunction->buildArguments(*outDevice, *in0Device, *in1Device,
+                                        length));
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    err = ctx->enqueueCopyFromDevice(out_host, *out_device);
+    err = ctx->enqueueCopyFromDevice(outHost, *outDevice);
     EXPECT_FALSE(err) << err.getError() << "\n";
 
     err = ctx->synchronize();
     EXPECT_FALSE(err) << err.getError() << "\n";
 
     for (size_t i = 0; i < length; i++) {
-      EXPECT_EQ(out_host[i], static_cast<float>(i) + 2.0);
+      EXPECT_EQ(outHost[i], static_cast<float>(i) + 2.0);
     }
 
     // Check cache hit.
     {
-      ErrorOr<DeviceFunctionRef> err_fun =
-          ctx->loadFunction("vec_add_module", "vec_add", sig, vec_add_ptx);
-      EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
-      DeviceFunctionRef device_function2 = std::move(err_fun.get());
-      EXPECT_TRUE(device_function2);
+      ErrorOr<DeviceFunctionRef> errFun =
+          ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx);
+      EXPECT_FALSE(errFun) << errFun.getError() << "\n";
+      DeviceFunctionRef deviceFunction2 = std::move(errFun.get());
+      EXPECT_TRUE(deviceFunction2);
 
       // A cache hit will point to the same backing store for the function (e.g.
       // name).
-      EXPECT_EQ(&device_function->name(), &device_function2->name());
+      EXPECT_EQ(&deviceFunction->name(), &deviceFunction2->name());
       // Even with a cache hit, we do get different DeviceFunction objects.
-      EXPECT_EQ(device_function->getNumReferences(), 1);
-      EXPECT_EQ(device_function2->getNumReferences(), 1);
+      EXPECT_EQ(deviceFunction->getNumReferences(), 1);
+      EXPECT_EQ(deviceFunction2->getNumReferences(), 1);
     }
 
     // Check error cases of mismatched arguments being passed.
     err = ctx->enqueueFunctionExec(
-        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-        *device_function->buildArguments(*out_device, *in0_device, 12, length));
+        *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
+        *deviceFunction->buildArguments(*outDevice, *in0Device, 12, length));
     EXPECT_TRUE(err);
     EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 3th position: "
                                      "Expected DeviceBuffer, got uint64."),
@@ -221,9 +221,9 @@ $L__BB0_2:
         << err.getError();
 
     err = ctx->enqueueFunctionExec(
-        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-        *device_function->buildArguments(*out_device, *in0_device, *in1_device,
-                                         *in1_device));
+        *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
+        *deviceFunction->buildArguments(*outDevice, *in0Device, *in1Device,
+                                        *in1Device));
     EXPECT_TRUE(err);
     EXPECT_EQ(strcmp(err.getError(), "Argument mismatch at 4th position: "
                                      "Expected uint64, got DeviceBuffer."),
@@ -231,9 +231,9 @@ $L__BB0_2:
         << err.getError();
 
     err = ctx->enqueueFunctionExec(
-        *device_function, length / block_dim, 1, 1, block_dim, 1, 1, 0,
-        *device_function->buildArguments(*out_device, *in0_device, *in1_device,
-                                         length, length));
+        *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
+        *deviceFunction->buildArguments(*outDevice, *in0Device, *in1Device,
+                                        length, length));
     EXPECT_TRUE(err);
     EXPECT_EQ(
         strcmp(
@@ -242,9 +242,9 @@ $L__BB0_2:
         0)
         << err.getError();
 
-    free(out_host);
-    free(in1_host);
-    free(in0_host);
+    free(outHost);
+    free(in1Host);
+    free(in0Host);
   }
 
   // Check cached functions do not keep reference count on context.
@@ -252,7 +252,7 @@ $L__BB0_2:
 }
 
 TEST_F(CUDADeviceContextTest, MultiGPUKernels) {
-  const char *p2p_copy_ptx = R"PTX(
+  const char *p2pCopyPtx = R"PTX(
 //
 // Generated by NVIDIA NVVM Compiler
 //
@@ -312,110 +312,110 @@ $L__BB0_2:
 }
 )PTX";
 
-  int num_devices = Device::numberOfDevices(Device::cudaAPI);
-  std::cerr << "Number of CUDA devices: " << num_devices << "\n";
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  std::cerr << "Number of CUDA devices: " << numDevices << "\n";
 
-  ErrorOr<DeviceContextRef> err_ctx = DeviceContext::create(Device::cudaAPI, 0);
-  ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-  DeviceContextRef src_ctx = std::move(err_ctx.get());
-  ASSERT_TRUE(src_ctx);
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cudaAPI, 0);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef srcCtx = std::move(errCtx.get());
+  ASSERT_TRUE(srcCtx);
 
-  for (int cur_device_id = -1; cur_device_id < num_devices; cur_device_id++) {
-    DeviceContextRef dst_ctx;
-    if (cur_device_id < 0) {
+  for (int curDeviceId = -1; curDeviceId < numDevices; curDeviceId++) {
+    DeviceContextRef dstCtx;
+    if (curDeviceId < 0) {
       std::cerr << "Copying within the same device context.\n";
-      dst_ctx = DeviceContextRef::copy(src_ctx.getPointer());
+      dstCtx = DeviceContextRef::copy(srcCtx.getPointer());
     } else {
       std::cerr << "Copying from context on GPU[0] to context on GPU["
-                << cur_device_id << "].\n";
+                << curDeviceId << "].\n";
 
-      ErrorOr<DeviceContextRef> err_ctx =
-          DeviceContext::create(Device::cudaAPI, cur_device_id);
-      ASSERT_FALSE(err_ctx) << err_ctx.getError() << "\n";
-      dst_ctx = std::move(err_ctx.get());
+      ErrorOr<DeviceContextRef> errCtx =
+          DeviceContext::create(Device::cudaAPI, curDeviceId);
+      ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+      dstCtx = std::move(errCtx.get());
     }
-    ASSERT_TRUE(dst_ctx);
+    ASSERT_TRUE(dstCtx);
 
-    if (src_ctx->device().id() != dst_ctx->device().id()) {
-      ErrorOr<bool> err_bool = src_ctx->device().canAccess(dst_ctx->device());
-      ASSERT_FALSE(err_bool) << err_bool.getError() << "\n";
-      ASSERT_TRUE(err_bool.get());
+    if (srcCtx->device().id() != dstCtx->device().id()) {
+      ErrorOr<bool> errBool = srcCtx->device().canAccess(dstCtx->device());
+      ASSERT_FALSE(errBool) << errBool.getError() << "\n";
+      ASSERT_TRUE(errBool.get());
 
-      ErrorOrSuccess err = src_ctx->enablePeerAccess(*dst_ctx);
+      ErrorOrSuccess err = srcCtx->enablePeerAccess(*dstCtx);
       ASSERT_FALSE(err) << err.getError() << "\n";
 
-      err = dst_ctx->enablePeerAccess(*src_ctx);
+      err = dstCtx->enablePeerAccess(*srcCtx);
       ASSERT_FALSE(err) << err.getError() << "\n";
     }
 
-    const size_t num_elems = 256;
-    const size_t alloc_len = 4 * num_elems;
+    const size_t numElems = 256;
+    const size_t allocLen = 4 * numElems;
 
-    char *check_data = new char[alloc_len];
-    // Initialize check_data with a pattern specific for this run.
-    for (size_t i = 0; i < alloc_len; i++) {
-      check_data[i] = cur_device_id + i;
+    char *checkData = new char[allocLen];
+    // Initialize checkData with a pattern specific for this run.
+    for (size_t i = 0; i < allocLen; i++) {
+      checkData[i] = curDeviceId + i;
     }
 
-    ErrorOr<void *> err_ptr = src_ctx->malloc_host(alloc_len);
-    EXPECT_FALSE(err_ptr) << err_ptr.getError() << "\n";
-    void *src_ptr = err_ptr.get();
-    EXPECT_NE(src_ptr, nullptr);
+    ErrorOr<void *> errPtr = srcCtx->malloc_host(allocLen);
+    EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
+    void *srcPtr = errPtr.get();
+    EXPECT_NE(srcPtr, nullptr);
 
-    ErrorOr<DeviceBufferRef> err_ref = src_ctx->createBuffer(alloc_len);
-    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-    DeviceBufferRef src_buf = std::move(err_ref.get());
-    EXPECT_TRUE(src_buf);
+    ErrorOr<DeviceBufferRef> errRef = srcCtx->createBuffer(allocLen);
+    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+    DeviceBufferRef srcBuf = std::move(errRef.get());
+    EXPECT_TRUE(srcBuf);
 
-    err_ref = dst_ctx->createBuffer(alloc_len);
-    EXPECT_FALSE(err_ref) << err_ref.getError() << "\n";
-    DeviceBufferRef dst_buf = std::move(err_ref.get());
-    EXPECT_TRUE(dst_buf);
+    errRef = dstCtx->createBuffer(allocLen);
+    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+    DeviceBufferRef dstBuf = std::move(errRef.get());
+    EXPECT_TRUE(dstBuf);
 
-    char *dst_ptr = static_cast<char *>(malloc(alloc_len));
-    EXPECT_NE(dst_ptr, nullptr);
+    char *dstPtr = static_cast<char *>(malloc(allocLen));
+    EXPECT_NE(dstPtr, nullptr);
     // Initialize with known bad values.
-    for (size_t i = 0; i < alloc_len; i++) {
-      // Use a different factor for i than the check_data, so that we can't ever
+    for (size_t i = 0; i < allocLen; i++) {
+      // Use a different factor for i than the checkData, so that we can't ever
       // overlap.
-      dst_ptr[i] = -static_cast<char>((7 + 2 * i) & 127);
+      dstPtr[i] = -static_cast<char>((7 + 2 * i) & 127);
     }
 
     // Copy between different buffers.
-    memcpy(src_ptr, check_data, alloc_len);
-    ErrorOrSuccess err = src_ctx->copyToDevice(*src_buf, src_ptr);
+    memcpy(srcPtr, checkData, allocLen);
+    ErrorOrSuccess err = srcCtx->copyToDevice(*srcBuf, srcPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
 
     DeviceFunction::SignatureBuilder sig =
         DeviceFunction::SignatureBuilder().addBuffer().addBuffer().addUInt64();
-    ErrorOr<DeviceFunctionRef> err_fun = src_ctx->loadFunction(
-        "my_module", "_Z15p2pMemcpyKernelPfS_m", sig, p2p_copy_ptx);
-    EXPECT_FALSE(err_fun) << err_fun.getError() << "\n";
-    DeviceFunctionRef device_function = std::move(err_fun.get());
-    EXPECT_TRUE(device_function);
+    ErrorOr<DeviceFunctionRef> errFun = srcCtx->loadFunction(
+        "my_module", "_Z15p2pMemcpyKernelPfS_m", sig, p2pCopyPtx);
+    EXPECT_FALSE(errFun) << errFun.getError() << "\n";
+    DeviceFunctionRef deviceFunction = std::move(errFun.get());
+    EXPECT_TRUE(deviceFunction);
 
-    constexpr uint32_t block_dim = 256;
+    constexpr uint32_t blockDim = 256;
 
-    err = src_ctx->enqueueFunctionExec(
-        *device_function, num_elems / block_dim, 1, 1, block_dim, 1, 1, 0,
-        *device_function->buildArguments(*dst_buf, *src_buf, num_elems));
+    err = srcCtx->enqueueFunctionExec(
+        *deviceFunction, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
+        *deviceFunction->buildArguments(*dstBuf, *srcBuf, numElems));
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    err = src_ctx->synchronize();
+    err = srcCtx->synchronize();
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    err = dst_ctx->enqueueCopyFromDevice(dst_ptr, *dst_buf);
+    err = dstCtx->enqueueCopyFromDevice(dstPtr, *dstBuf);
     EXPECT_FALSE(err) << err.getError() << "\n";
 
     // Ensure that all copy operations have finished.
-    err = dst_ctx->synchronize();
-    err = src_ctx->synchronize();
+    err = dstCtx->synchronize();
+    err = srcCtx->synchronize();
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    EXPECT_EQ(memcmp(dst_ptr, check_data, alloc_len), 0);
+    EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
 
-    free(dst_ptr);
-    err = src_ctx->free_host(src_ptr);
+    free(dstPtr);
+    err = srcCtx->free_host(srcPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 }
