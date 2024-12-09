@@ -219,17 +219,23 @@ static bool isMaybeConstantFoldable(Operation *op) {
       return false;
   }
 
-  return ((op->getDialect() &&
-           isa<MO::MODialect, MOGG::MOGGDialect>(op->getDialect()) &&
-           // TODO (#29484): Graphs with mo.list outputs can't be lowered to
-           // MGP.
-           llvm::all_of(
-               op->getResultTypes(),
-               [](Type ty) {
-                 return isa<MO::TensorType, MOSH::ShapeType, MO::ListType>(ty);
-               })) ||
-          isa<KGEN::ParamOpInterface, MOSH::ParamToValueOp,
-              KGEN::ParamDeclareOp>(op)) &&
+  bool isMOOrMOGG =
+      isa_and_nonnull<MO::MODialect, MOGG::MOGGDialect>(op->getDialect());
+
+  bool isSupportedMOOrMOGG =
+      isMOOrMOGG &&
+      // TODO (#29484): Graphs with mo.list outputs can't be lowered to
+      // MGP.
+      llvm::all_of(op->getResultTypes(), [](Type ty) {
+        return isa<MO::TensorType, MOSH::ShapeType, MO::ListType>(ty);
+      });
+
+  bool isNonMOOrMOGGParamOp =
+      isa<KGEN::ParamOpInterface, MOSH::ParamToValueOp, KGEN::ParamDeclareOp>(
+          op) &&
+      !isMOOrMOGG;
+
+  return (isSupportedMOOrMOGG || isNonMOOrMOGGParamOp) &&
          !isa<MOControlOpInterface>(op);
 }
 
