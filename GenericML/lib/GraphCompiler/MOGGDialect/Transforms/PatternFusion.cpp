@@ -445,8 +445,9 @@ struct ForceMatmulTransposeBForGPU
 struct BatchMatmulAdjBPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern,
                                            MO::BatchMatmulOp> {
-  BatchMatmulAdjBPattern(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
+  DeviceRefAttr targetDevice;
+  BatchMatmulAdjBPattern(MLIRContext *ctx, DeviceRefAttr targetDevice)
+      : DeviceAwareRewritePattern(ctx, 2), targetDevice(targetDevice) {}
 
   LogicalResult
   deviceAwareMatchAndRewrite(MO::BatchMatmulOp op,
@@ -454,6 +455,8 @@ struct BatchMatmulAdjBPattern
     Value input, weight, perm;
 
     DeviceRefAttr device = op.getInputA().getType().getDeviceRef();
+    if (!device)
+      device = targetDevice;
     bool runsOnGPU = device && device.getLabel() == M::kGPULabel;
     if (runsOnGPU)
       return rewriter.notifyMatchFailure(
@@ -2613,11 +2616,12 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     patterns.add<ConvConstFilterPattern>(ctx, targetDeviceRef);
 
-    patterns.add<GatherSumPattern, BatchMatmulAdjBPattern, MatmulTranspBPattern,
-                 ConcatZeroAxisPattern, ConvTransposeConstFilterPattern,
-                 SplitZeroAxisPattern, LayerNormPattern>(ctx);
+    patterns.add<GatherSumPattern, MatmulTranspBPattern, ConcatZeroAxisPattern,
+                 ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
+                 LayerNormPattern>(ctx);
 
-    patterns.add<ForceMatmulTransposeBForGPU>(ctx, targetDeviceRef);
+    patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern>(
+        ctx, targetDeviceRef);
 
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPattern>(

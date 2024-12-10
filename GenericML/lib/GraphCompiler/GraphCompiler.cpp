@@ -199,7 +199,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
   pm.addPass(MO::createInferLayouts());
-
   if (opts.usePatterns) {
     MOGG::PatternFusionOptions patternFusionOpts;
     patternFusionOpts.mhaAllowUnsafeBCast =
@@ -230,7 +229,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   assignDevicesPassOpt.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
   assignDevicesPassOpt.copyFromHost = !opts.inputsAndOutputsOnDevice;
   pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
-
   pm.addPass(MO::createValidateDevicesPass());
 
   pm.addPass(MO::createDecomposeViewOps());
