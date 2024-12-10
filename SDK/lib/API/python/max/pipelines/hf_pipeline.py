@@ -43,6 +43,11 @@ class HFTextGenerationPipeline(TokenGenerator[TextContext]):
         ).to(self._torch_device)
         self._dtype = self._model.dtype
 
+        if self._model.config.model_type == "gemma2":
+            raise RuntimeError(
+                "Gemma2 architecture is currently not supported."
+            )
+
         self._tokenizer = AutoTokenizer.from_pretrained(
             pipeline_config.huggingface_repo_id
         )
