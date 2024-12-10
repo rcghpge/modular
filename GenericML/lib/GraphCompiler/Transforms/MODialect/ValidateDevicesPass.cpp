@@ -84,8 +84,7 @@ struct ValidateDevicesPass
                     << formatDeviceForUser(device) << "'.";
   }
 
-  LogicalResult process(DeviceRefAttr device, llvm::Triple::ArchType targetArch,
-                        Block *block) {
+  LogicalResult process(llvm::Triple::ArchType targetArch, Block *block) {
     // Check the inputs first
     for (Value arg : block->getArguments()) {
       if (isa<MO::TensorType>(arg.getType())) {
@@ -93,7 +92,7 @@ struct ValidateDevicesPass
         LLVM_DEBUG(llvm::dbgs() << "Checking input '" << arg << "'\n");
         if (isUnsupportedArchDTypeCombination(targetArch,
                                               tensorType.getDtype())) {
-          emitErrorOnOp(block->getParentOp(), device,
+          emitErrorOnOp(block->getParentOp(), tensorType.getDeviceRef(),
                         tensorType.getDtype().getAsString());
           return failure();
         }
@@ -108,7 +107,8 @@ struct ValidateDevicesPass
           LLVM_DEBUG(llvm::dbgs() << "Checking result '" << res << "'\n");
           if (isUnsupportedArchDTypeCombination(targetArch,
                                                 tensorType.getDtype())) {
-            emitErrorOnOp(op, device, tensorType.getDtype().getAsString());
+            emitErrorOnOp(op, tensorType.getDeviceRef(),
+                          tensorType.getDtype().getAsString());
             return WalkResult::interrupt();
           }
         }
@@ -153,8 +153,7 @@ struct ValidateDevicesPass
                    << targetInfo.getTriple().getTriple() << "'\n";
     });
 
-    if (failed(process(graphOp.getDeviceRef(), targetArch,
-                       graphOp.getBodyBlock()))) {
+    if (failed(process(targetArch, graphOp.getBodyBlock()))) {
       return signalPassFailure();
     }
   }
