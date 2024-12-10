@@ -774,28 +774,6 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [Pure]> {
   }];
 }
 
-def MOGG_GetAsyncValuesOp : MOGG_Op<"get_async_vals", [Pure]> {
-  let results = (outs Variadic<AnyType>:$result);
-  let summary = "Returns pointers for each of the async value inputs ";
-  // In the future, we might want to use a separate operation to retrieve
-  // resources. But that would require us the update the kernel ABI accordingly.
-  // I.e., KernelPtr(inputPtr, **resourcePtr**, runtimePtr, contextPtr).
-  let description = [{
-    Each input and output are represented by an async value. This returns a
-    pointer to each of the inputs and outputs. Inputs appear first followed
-    by the outputs.
-
-    When there are constant resources attribute attached to the kernel, the
-    data pointers pointed to resources (a read-only segment in the
-    attribute section in the MEF file) are appended at the end.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-      functional-type(operands, results)
-  }];
-}
-
 def MOGG_GetResourcePtrOp : MOGG_Op<"get_resource_ptr", [Pure,
   HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
@@ -809,6 +787,82 @@ def MOGG_GetResourcePtrOp : MOGG_Op<"get_resource_ptr", [Pure,
   }];
 
   let hasVerifier = 1;
+}
+
+def MOGG_GetInputAsyncPtrOp : MOGG_Op<"get_input_async_ref_ptr", [Pure,
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs PointerOf<KGEN_NoneType>:$result);
+  let summary = "Returns pointer to the async value of the corresponding input";
+
+  let description = [{
+    Each input and output are represented by an async value. This returns a
+    pointer to async value of the input.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+      functional-type(operands, results)
+  }];
+}
+
+def MOGG_AllocateAsyncRefOp : MOGG_Op<"allocate_async_ref_for", [Pure,
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs PointerOf<KGEN_NoneType>:$result);
+  let summary = "Returns pointer to the async value of the corresponding output";
+
+  let description = [{
+    Each input and output are represented by an async value. This operation
+    allocate an async value explicitly (for output).
+
+    Example:
+
+    ```mlir
+    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
+    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
+    ```
+
+    When the async value is returned, the allocation is folded into a
+    pre-allocated async values from runtime. E.g.,
+
+    ```mlir
+    # Before
+    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
+    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
+    mogg.output %tensor
+
+    # After
+    %async_storage = rt.get_output_async_value_for %tensor: () -> !kgen.pointer<NoneType>
+    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
+    mogg.output %tensor
+    ```
+
+    When the async value is not returned (due to post-abi fusion), a destructor
+    will have to be inserted.
+
+    ```mlir
+    # Before
+    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
+    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
+    %borrowed = mgp.borrows(async_val)
+    mogg.output %borrowed
+
+    # After
+    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
+    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
+    %borrowed = mgp.borrows(%tensor)
+    call "builtin.destruct_async_val" (%async_val)
+    mogg.output %borrowed
+    ```
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:`
+      functional-type(operands, results)
+  }];
 }
 
 def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {

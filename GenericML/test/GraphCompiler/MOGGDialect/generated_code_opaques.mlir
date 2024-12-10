@@ -12,14 +12,15 @@ module {
     mef.output %3, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.opaque<"">) {
     %0:2 = mogg.generic.compiled.region (%arg0) : (%arg2: !mef.chain) -> (!mef.chain, !mgp.opaque<"">){
-      %1:2 = mogg.get_async_vals() : () -> (!kgen.pointer<none>, !kgen.pointer<none>)
+      // %1 = mogg.get_input_async_ref_ptr(%arg2) : (!mef.chain) -> !kgen.pointer<none>
       %2 = mogg.rt_placeholder : !kgen.pointer<none>
       %3 = mogg.stack_allocate_opaques : !mgp.opaque<"">
       %4 = "mogg.to_kgen"(%3) {typeMethodsDict = {__del__ = #kgen.symbol.constant<@"MOGGTests::MyCustomInt::__del__(MOGGTests::MyCustomInt)"> : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>, __moveinit__ = #kgen.symbol.constant<@"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"> : !kgen.signature<(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>}} : (!mgp.opaque<"">) -> !kgen.pointer<struct<(index) memoryOnly>>
       %index42 = kgen.param.constant = <42>
       %5 = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,::Int)"(%4, %index42) : (!kgen.pointer<struct<(index) memoryOnly>> init_self, index) -> !kgen.none
       %6 = mogg.to_mgp_from_opaque(%4) : (!kgen.pointer<struct<(index) memoryOnly>>) -> !mgp.opaque<"">
-      mogg.create_async_mojo_value(%6, %1#1, %2) : (!mgp.opaque<"">, !kgen.pointer<none>, !kgen.pointer<none>) -> ()
+      %7 = mogg.allocate_async_ref_for(%6) : (!mgp.opaque<"">) -> !kgen.pointer<none>
+      mogg.create_async_mojo_value(%6, %7, %2) : (!mgp.opaque<"">, !kgen.pointer<none>, !kgen.pointer<none>) -> ()
       mogg.output %6 : !mgp.opaque<"">
     } {device = #M.device_ref<"cpu", 0>, canFuseIntoOther = false, inOutSignature = #M.inout_sig<"i">, isAsync = false, isKGEN = true, summary = "custom__test_make_custom_int:5"}
     mef.output %arg0, %0#1 : !mef.chain, !mgp.opaque<"">
@@ -33,7 +34,6 @@ module {
 // COM: Load the async value pointer.
 // CHECK-NEXT: [[INDEX1:%.*]] = kgen.param.constant = <1>
 // CHECK-NEXT: [[V0:%.*]] = pop.offset [[ARG0]][[[INDEX1]]] : !kgen.pointer<pointer<none>>
-// CHECK-NEXT: [[V1:%.*]] = pop.load [[V0]] align<8> : !kgen.pointer<pointer<none>>
 
 // COM: Do the stack allocation for the custom kernel output.
 // CHECK: [[V2:%.*]] = pop.stack_allocation 1 x struct<(index) memoryOnly>
@@ -41,6 +41,10 @@ module {
 // COM: Call the custom kernel that creates the custom mojo value.
 // CHECK-NEXT: [[INDEX42:%.*]] = kgen.param.constant = <42>
 // CHECK: [[V4:%.*]] = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,::[[INT:[A-Za-z0-9_]*]])"({{.*}}, [[INDEX42]])
+
+// COM: Load the async value pointer.
+// CHECK-NEXT: [[TMP:%.*]] = pop.offset [[ARG0]][[[INDEX1]]] : !kgen.pointer<pointer<none>>
+// CHECK-NEXT: [[V1:%.*]] = pop.load [[TMP]] align<8> : !kgen.pointer<pointer<none>>
 
 // COM: Get the move / del function pointers
 // CHECK-NEXT: [[V5:%.*]] = kgen.create_reg_stub [(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none: @"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"] : <(!kgen.pointer<struct<(index) memoryOnly>> init_self, !kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>
