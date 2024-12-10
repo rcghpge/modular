@@ -3761,19 +3761,36 @@ LogicalResult ConcatFromListOp::verify() {
 LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
                                              PatternRewriter &rewriter) {
   auto resultType = cast<TensorType>(op->getResultTypes()[0]);
+  MO::ListValue inputList = op.getInput();
   if (resultType.getElementType().isInteger()) {
-    if (auto constData = tryGetConstantAPIntVector(op.getInput())) {
+    if (auto constData = tryGetConstantAPIntVector(inputList)) {
       rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
                                               resultType.getElementType());
       return success();
     }
   } else if (resultType.getElementType().isIntOrFloat()) {
-    if (auto constData = tryGetConstantAPFloatVector(op.getInput())) {
+    if (auto constData = tryGetConstantAPFloatVector(inputList)) {
       rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
                                               resultType.getElementType());
       return success();
     }
   }
+
+  // If the input is a mo.list.create, we can simplify to a mo.concat.
+  if (auto listCreateOp = inputList.getDefiningOp<MO::ListCreateOp>()) {
+    // Simplify by not dealing with dynamic shapes or rank-0 scalars.
+    for (Value input : listCreateOp.getInputs()) {
+      auto inputTy = cast<MO::TensorType>(input.getType());
+      if (!inputTy.hasStaticShape() || inputTy.getRank() == 0)
+        return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<MO::ConcatOp>(op, resultType, op.getAxis(),
+                                              listCreateOp.getInputs(),
+                                              op.getOutputParamDeclsAttr());
+    return success();
+  }
+
   return failure();
 }
 
