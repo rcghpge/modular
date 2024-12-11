@@ -6,5 +6,6 @@ modular_py_library(
     deps = [
         "//SDK/lib/API/python/max/serve/telemetry",
         requirement("faster-fifo"),
+        requirement("psutil"),
     ],
 )
