@@ -112,8 +112,8 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
   auto runKernel = [kernelPtr, deviceContext = std::move(deviceContext),
                     runtimePtr = runtimePtr, loc = std::move(loc)](
                        llvm::SmallVector<void *> &kernelInputs) {
-    void *deviceContextPtr = deviceContext.getPointerToData();
-    MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextPtr);
+    auto deviceContextRef = deviceContext.get<AsyncRT::DeviceContextRef>();
+    MojoCallContext callContext(loc.copy(), runtimePtr, deviceContextRef);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));

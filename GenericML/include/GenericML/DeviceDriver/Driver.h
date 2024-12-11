@@ -7,6 +7,7 @@
 #ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER
 #define GENERICML_LIB_DEVICEDRIVER_DRIVER
 
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "GenericML/API/max/c/symbol_export.h"
@@ -16,6 +17,7 @@
 #include "Support/ML/TensorSpec.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
+#include "Support/SymbolExport.h"
 #include "llvm/ADT/FunctionExtras.h"
 #include <string>
 #include <utility>
@@ -36,15 +38,12 @@ enum class DeviceKind {
 };
 
 struct DeviceMemory {
-  /// Constructs and allocates DeviceMemory on `dev`, bumping the refcount
-  /// of `dev`.
-  DeviceMemory(DeviceKind kind, void *allocatedPtr, const TensorSpec &spec,
-               Device *dev)
-      : devicePtr(M::copyRCRef(dev)), ptr(allocatedPtr), spec(spec),
-        kind(kind) {}
+  DeviceMemory(RCRef<Device> device, AsyncRT::DeviceBufferRef buf,
+               const TensorSpec &spec, DeviceKind kind)
+      : device(device), buf(buf), spec(spec), kind(kind) {}
 
   /// Relinquishes ownership of the underlying data, and returns the pointer.
-  void *release() { return std::exchange(ptr, nullptr); }
+  void *release() { return buf->releasePtr(); }
 
   void setDestructorFn(
       llvm::unique_function<void(void *, const TensorSpec &spec)> destructor) {
@@ -53,11 +52,11 @@ struct DeviceMemory {
 
   /// Returns the ptr backing the DeviceMemory object. Does not release
   /// ownership.
-  void *data() const { return ptr; }
+  void *data() const { return buf->ptr(); }
 
-  size_t bytecount() const { return spec.getSizeInBytes(); }
+  size_t bytecount() const { return buf->byteSize(); }
 
-  virtual ~DeviceMemory();
+  ~DeviceMemory();
 
   DeviceKind getKind() const { return kind; }
 
@@ -65,17 +64,18 @@ struct DeviceMemory {
 
   TensorSpec getSpec() { return spec; }
 
-  M::RCRef<Device> devicePtr;
+  RCRef<Device> getDevice() const { return device; }
 
   /// Copies the contents of DeviceMemory to another chunk of DeviceMemory,
   /// which may reside on a different device.
-  virtual ErrorOrSuccess copyTo(DeviceMemory &dst) const = 0;
+  ErrorOrSuccess copyTo(DeviceMemory &dst) const;
 
   /// Sets the contents of the device memory to the provided value.
-  virtual ErrorOrSuccess memset(int value) = 0;
+  ErrorOrSuccess memset(int value);
 
 protected:
-  void *ptr;
+  RCRef<Device> device;
+  AsyncRT::DeviceBufferRef buf;
   M::TensorSpec spec;
   const DeviceKind kind;
   std::optional<llvm::unique_function<void(void *, const TensorSpec &spec)>>
@@ -84,39 +84,35 @@ protected:
 
 struct Device : M::ReferenceCounted<Device> {
 
-  Device(DeviceSpec spec) : deviceSpecification(std::move(spec)) {}
+  Device(DeviceSpec spec, DeviceKind kind, AsyncRT::DeviceContextRef ctx)
+      : kind(kind), ctx(ctx), deviceSpecification(std::move(spec)),
+        deviceDescription(toString()) {}
 
-  virtual const std::string &getString() const { return deviceDescription; };
+  llvm::StringRef getString() const { return deviceDescription; };
 
   /// Allocates `bytes` bytes on the device.
-  virtual ErrorOr<void *> allocateData(size_t bytes) = 0;
+  ErrorOr<void *> allocateData(size_t bytes);
 
   /// Frees ptr created with `allocateData`.
-  virtual ErrorOrSuccess freeData(void *ptr) = 0;
+  ErrorOrSuccess freeData(void *ptr);
 
   DeviceSpec getDeviceSpec() const { return deviceSpecification; };
 
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
-  virtual ErrorOr<DeviceMemory *>
-  createDeviceMemory(const TensorSpec &spec) = 0;
+  ErrorOr<DeviceMemory *> createDeviceMemory(const TensorSpec &spec);
 
   /// Takes ownership of `data` in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
-  virtual DeviceMemory *createDeviceMemory(void *data,
-                                           const TensorSpec &spec) = 0;
+  DeviceMemory *createDeviceMemory(void *data, const TensorSpec &spec);
 
   /// Takes ownership of `data` in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device. The data
   /// will be destroyed by the given destructor
-  virtual DeviceMemory *createDeviceMemory(
+  DeviceMemory *createDeviceMemory(
       void *data, const TensorSpec &spec,
-      llvm::unique_function<void(void *, const TensorSpec &)> destructor) {
-    auto deviceMemory = createDeviceMemory(data, spec);
-    deviceMemory->setDestructorFn(std::move(destructor));
-    return deviceMemory;
-  }
+      llvm::unique_function<void(void *, const TensorSpec &)> destructor);
 
   virtual ~Device() = default;
 
@@ -125,17 +121,23 @@ struct Device : M::ReferenceCounted<Device> {
   /// because the graph compiler expects it. In the future,
   /// the graph compiler should expect a Device* and this
   /// should be removed.
-  virtual void *tmpGetDeviceContext() = 0;
+  AsyncRT::DeviceContextRef tmpGetDeviceContext() { return ctx; }
 
   /// Blocks until any pending async work on the device completes.
-  virtual ErrorOrSuccess synchronize() = 0;
+  ErrorOrSuccess synchronize() { return ctx->synchronize(); };
 
-  virtual DeviceKind getKind() const = 0;
+  DeviceKind getKind() const { return kind; }
+
+  DeviceId getId() const { return deviceSpecification.ref.id; }
 
   /// Gets utilization stats for the device.
-  virtual ErrorOr<std::string> getStats() = 0;
+  ErrorOr<std::string> getStats();
 
+protected:
+  const DeviceKind kind;
+  AsyncRT::DeviceContextRef ctx;
   DeviceSpec deviceSpecification;
+  std::string toString() const;
   std::string deviceDescription;
 };
 
@@ -165,6 +167,12 @@ mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 } // namespace Driver
 } // namespace M
 
+MODULAR_API_EXPORT M::Driver::Device *
+M_createCUDADevice(ssize_t gpuID, M::Driver::Status *status);
+
+MODULAR_API_EXPORT M::Driver::Device *
+M_createCPUDevice(ssize_t numaId, M::Driver::Status *status);
+
 MODULAR_API_EXPORT M::Driver::Device *M_copyDevice(M::Driver::Device *devPtr);
 
 MODULAR_API_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data,
@@ -173,5 +181,13 @@ MODULAR_API_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data,
 MODULAR_API_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
 
 MODULAR_API_EXPORT const char *M_getDeviceDesc(const M::Driver::Device *devPtr);
+
+namespace M::Driver {
+
+/// Creates a RAII wrapped Device object.
+MODULAR_VISIBILITY_EXPORT
+ErrorOr<std::unique_ptr<Device, decltype(&M_destroyDevice)>> makeCPUDevice();
+
+}; // namespace M::Driver
 
 #endif
