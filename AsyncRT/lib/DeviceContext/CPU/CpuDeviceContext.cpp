@@ -21,6 +21,8 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <sys/resource.h>
+#include <unistd.h>
 
 namespace M::AsyncRT {
 namespace {
@@ -68,9 +70,36 @@ ErrorOr<int> CpuDevice::computeCapability() const {
   return 0;
 }
 
+// Call sysconf() and check for errors.
+static ErrorOr<size_t> getSystemValue(int name) {
+  errno = 0;
+  auto value = sysconf(name);
+  if (errno != 0)
+    RAISE_ERROR_MESSAGE(strerror(errno));
+  return static_cast<size_t>(value);
+}
+
 ErrorOr<Device::MemInfo> CpuDevice::getMemoryInfo() const {
-  // TODO: Implement get memory info for CPU device context.
-  return MemInfo();
+  // TODO support platforms besides UNIX.
+  MemInfo info;
+  auto numPages = getSystemValue(_SC_PHYS_PAGES);
+  if (numPages.isError())
+    return numPages.takeError();
+  auto pageSize = getSystemValue(_SC_PAGE_SIZE);
+  if (pageSize.isError())
+    return pageSize.takeError();
+
+  rusage usage;
+  if (-1 == getrusage(RUSAGE_SELF, &usage))
+    RAISE_ERROR_MESSAGE("Failed to get current memory usage via rusage");
+  // This is the maximum resident set size used (in kilobytes).
+  // Current memory use may be lower, this is the "high water mark".
+  size_t used = usage.ru_maxrss * 1024;
+  // Total memory = number of pages times the page size.
+  info.total = numPages.takeValue() * pageSize.takeValue();
+  // Free memory = total memory minus memory in use.
+  info.free = info.total - used;
+  return info;
 }
 
 ErrorOr<bool> CpuDevice::canAccess(const Device &peer) const { return false; }
