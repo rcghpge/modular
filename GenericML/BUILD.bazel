@@ -1445,7 +1445,6 @@ modular_shared_library(
         ":rpaths",
         "//AsyncRT:DeviceContext",
         "//Init",
-        "//Kernels:DeviceContext",
     ],
 )
 
