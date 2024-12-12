@@ -12,6 +12,7 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADRIVER_H
 
 #include "Support/ErrorOr.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <stddef.h>
 
@@ -118,6 +119,11 @@ using CUlaunchConfig = struct CUlaunchConfig_st {
   unsigned int numAttrs;
 };
 
+#define CUDA_DRIVER_CALL_LOG()                                                 \
+  if (do_call_log) {                                                           \
+    llvm::errs() << "CUDADriver: " << __FUNCTION__ << "\n";                    \
+  }
+
 class CUDADriver {
 public:
   enum Result {
@@ -125,165 +131,221 @@ public:
   };
 
   Result GetErrorName(Result error, const char **pStr) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuGetErrorName_(error, pStr);
   }
 
   Result GetErrorString(Result error, const char **pStr) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuGetErrorString_(error, pStr);
   }
 
   Result DriverGetVersion(int *version) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuDriverGetVersion_(version);
   }
 
   Result DeviceGet(CUdevice *device, int ordinal) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuDeviceGet_(device, ordinal);
   }
 
   Result DeviceGetAttribute(int *pi, CUdevice_attribute attrib,
                             CUdevice dev) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuDeviceGetAttribute_(pi, attrib, dev);
   }
 
-  Result DeviceGetCount(int *count) const { return cuDeviceGetCount_(count); }
+  Result DeviceGetCount(int *count) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuDeviceGetCount_(count);
+  }
 
   Result DeviceGetName(char *name, int len, CUdevice dev) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuDeviceGetName_(name, len, dev);
   }
   Result DeviceCanAccessPeer(int *canAccessPeer, CUdevice dev,
                              CUdevice peerDev) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuDeviceCanAccessPeer_(canAccessPeer, dev, peerDev);
   }
 
   Result CtxCreate(CUcontext *pctx, unsigned int flags, CUdevice dev) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuCtxCreate_v2_(pctx, flags, dev);
   }
-  Result CtxDestroy(CUcontext ctx) const { return cuCtxDestroy_(ctx); }
-  Result CtxSetCurrent(CUcontext ctx) const { return cuCtxSetCurrent_(ctx); }
+  Result CtxDestroy(CUcontext ctx) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuCtxDestroy_(ctx);
+  }
+  Result CtxSetCurrent(CUcontext ctx) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuCtxSetCurrent_(ctx);
+  }
   Result CtxEnablePeerAccess(CUcontext peerContext, unsigned int flags) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuCtxEnablePeerAccess_(peerContext, flags);
   }
 
   Result StreamCreate(CUstream *phStream, unsigned int flags) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuStreamCreate_(phStream, flags);
   }
   Result StreamDestroy(CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuStreamDestroy_(hStream);
   }
   Result StreamSynchronize(CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuStreamSynchronize_(hStream);
   }
 
   Result MemAllocHost(void **pp, size_t bytesize) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemAllocHost_v2_(pp, bytesize);
   }
-  Result MemFreeHost(void *p) const { return cuMemFreeHost_(p); }
+  Result MemFreeHost(void *p) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuMemFreeHost_(p);
+  }
 
   Result MemAllocAsync(CUdeviceptr *pdptr, size_t bytesize,
                        CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemAllocAsync_(pdptr, bytesize, hStream);
   }
   Result MemFreeAsync(CUdeviceptr dptr, CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemFreeAsync_(dptr, hStream);
   }
 
   Result MemAlloc(CUdeviceptr *pdptr, size_t bytesize) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemAlloc_v2_(pdptr, bytesize);
   }
-  Result MemFree(CUdeviceptr dptr) const { return cuMemFree_(dptr); }
+  Result MemFree(CUdeviceptr dptr) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuMemFree_(dptr);
+  }
 
   Result MemcpyHtoDAsync(CUdeviceptr dstDevice, const void *srcHost,
                          size_t bytesize, CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyHtoDAsync_v2_(dstDevice, srcHost, bytesize, hStream);
   }
   Result MemcpyDtoHAsync(void *dstHost, CUdeviceptr srcDevice, size_t bytesize,
                          CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyDtoHAsync_v2_(dstHost, srcDevice, bytesize, hStream);
   }
   Result MemcpyDtoDAsync(CUdeviceptr dstDevice, CUdeviceptr srcDevice,
                          size_t bytesize, CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyDtoDAsync_v2_(dstDevice, srcDevice, bytesize, hStream);
   }
   Result MemcpyPeerAsync(CUdeviceptr dstDevice, CUcontext dstContext,
                          CUdeviceptr srcDevice, CUcontext srcContext,
                          size_t bytesize, CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyPeerAsync_(dstDevice, dstContext, srcDevice, srcContext,
                               bytesize, hStream);
   }
 
   Result MemcpyHtoD(CUdeviceptr dstDevice, const void *srcHost,
                     size_t bytesize) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyHtoD_v2_(dstDevice, srcHost, bytesize);
   }
   Result MemcpyDtoH(void *dstHost, CUdeviceptr srcDevice,
                     size_t bytesize) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyDtoH_v2_(dstHost, srcDevice, bytesize);
   }
   Result MemcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice,
                     size_t bytesize) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyDtoD_v2_(dstDevice, srcDevice, bytesize);
   }
   Result MemcpyPeer(CUdeviceptr dstDevice, CUcontext dstContext,
                     CUdeviceptr srcDevice, CUcontext srcContext,
                     size_t bytesize) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemcpyPeer_(dstDevice, dstContext, srcDevice, srcContext,
                          bytesize);
   }
 
   Result MemsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N,
                        CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemsetD8Async_(dstDevice, uc, N, hStream);
   }
   Result MemsetD16Async(CUdeviceptr dstDevice, unsigned short us, size_t N,
                         CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemsetD16Async_(dstDevice, us, N, hStream);
   }
   Result MemsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N,
                         CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemsetD32Async_(dstDevice, ui, N, hStream);
   }
 
   Result MemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemsetD8_v2_(dstDevice, uc, N);
   }
   Result MemsetD16(CUdeviceptr dstDevice, unsigned short us, size_t N) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemsetD16_v2_(dstDevice, us, N);
   }
   Result MemsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemsetD32_v2_(dstDevice, ui, N);
   }
 
   Result ModuleLoadData(CUmodule *module, const void *image) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuModuleLoadData_(module, image);
   }
   Result ModuleLoadDataEx(CUmodule *module, const void *image,
                           unsigned int numOptions, CUjit_option *options,
                           void **optionValues) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuModuleLoadDataEx_(module, image, numOptions, options,
                                optionValues);
   }
   Result ModuleGetGlobal(CUdeviceptr *dptr, size_t *sizeptr, CUmodule hmod,
                          const char *name) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuModuleGetGlobal_v2_(dptr, sizeptr, hmod, name);
   }
-  Result ModuleUnload(CUmodule hmod) const { return cuModuleUnload_(hmod); }
+  Result ModuleUnload(CUmodule hmod) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuModuleUnload_(hmod);
+  }
   Result ModuleGetFunction(CUfunction *hfunc, CUmodule hmod,
                            const char *name) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuModuleGetFunction_(hfunc, hmod, name);
   }
   Result FuncGetAttribute(int *pi, CUfunction_attribute attrib,
                           CUfunction hfunc) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuFuncGetAttribute_(pi, attrib, hfunc);
   }
   Result FuncSetAttribute(CUfunction hfunc, CUfunction_attribute attrib,
                           int value) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuFuncSetAttribute_(hfunc, attrib, value);
   }
   Result FuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuFuncSetCacheConfig_(hfunc, config);
   }
 
   Result LaunchHostFunc(CUstream hStream, CUhostFn fn, void *userData) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuLaunchHostFunc_(hStream, fn, userData);
   }
   Result LaunchKernel(CUfunction f, unsigned int gridDimX,
@@ -292,32 +354,45 @@ public:
                       unsigned int blockDimZ, unsigned int sharedMemBytes,
                       CUstream hStream, void **kernelParams,
                       void **extra) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuLaunchKernel_(f, gridDimX, gridDimY, gridDimZ, blockDimX,
                            blockDimY, blockDimZ, sharedMemBytes, hStream,
                            kernelParams, extra);
   }
   Result LaunchKernelEx(const CUlaunchConfig *config, CUfunction hfunc,
                         void **kernelParams, void **extra) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuLaunchKernelEx_(config, hfunc, kernelParams, extra);
   }
 
   Result EventCreate(CUevent *phEvent, unsigned int flags) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuEventCreate_(phEvent, flags);
   }
-  Result EventDestroy(CUevent hEvent) const { return cuEventDestroy_(hEvent); }
+  Result EventDestroy(CUevent hEvent) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuEventDestroy_(hEvent);
+  }
   Result EventRecord(CUevent hEvent, CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuEventRecord_(hEvent, hStream);
   }
-  Result EventQuery(CUevent hEvent) const { return cuEventQuery_(hEvent); }
+  Result EventQuery(CUevent hEvent) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuEventQuery_(hEvent);
+  }
   Result EventSynchronize(CUevent hEvent) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuEventSynchronize_(hEvent);
   }
   Result EventElapsedTime(float *pMilliseconds, CUevent hStart,
                           CUevent hEnd) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuEventElapsedTime_(pMilliseconds, hStart, hEnd);
   }
 
   Result GetMemInfo(size_t *free, size_t *total) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuMemGetInfo_v2_(free, total);
   }
 
@@ -328,6 +403,7 @@ public:
       const uint32_t *elementStrides, CUtensorMapInterleave interleave,
       CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
       CUtensorMapFloatOOBfill oobFill) const {
+    CUDA_DRIVER_CALL_LOG();
     return cuTensorMapEncodeTiled_(tensorMap, tensorDataType, tensorRank,
                                    globalAddress, globalDim, globalStrides,
                                    boxDim, elementStrides, interleave, swizzle,
@@ -337,6 +413,9 @@ public:
   static ErrorOr<const CUDADriver &> get();
 
 private:
+  // Enable in-depth logging at build time.
+  static constexpr bool do_call_log = false;
+
   // Shared library name for the CUDA driver.
   static const char lib_name[];
 
@@ -532,6 +611,8 @@ private:
 
   static ErrorOr<const CUDADriver &> allocAndInitDriver();
 };
+
+#undef CUDA_DRIVER_CALL_LOG
 
 } // namespace M::AsyncRT
 
