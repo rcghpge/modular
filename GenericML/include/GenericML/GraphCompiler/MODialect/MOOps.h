@@ -28,6 +28,7 @@ class ModuleOp;
 } // namespace mlir
 
 // Needed because the ODS definition of some KGEN ops don't have the namespace.
+using M::KGEN::NewSignatureType;
 using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParameterExprArrayAttr;

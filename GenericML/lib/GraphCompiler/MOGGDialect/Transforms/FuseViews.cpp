@@ -411,22 +411,23 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
         SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
 
-        auto buildSpecSig = buildSpecFn.getSignature().getSpecializedSignature(
-            buildSpecParams, [&]() -> mlir::InFlightDiagnostic {
-              return viewCopyCallOp->emitError(
-                  "couldn't not retrieve specialized signature");
-            });
+        auto buildSpecSigGen =
+            buildSpecFn.getSignatureGenerator().getSpecializedGenerator(
+                buildSpecParams, [&]() -> mlir::InFlightDiagnostic {
+                  return viewCopyCallOp->emitError(
+                      "couldn't not retrieve specialized signature");
+                });
 
-        if (!buildSpecSig)
+        if (!buildSpecSigGen)
           return Error("Cannot get specialized signature for "
                        "rebuild_static_tensor_specs_with_strides");
 
         // Create parametric call which produces the static spec
         SmallVector<mlir::TypedAttr> lambdaArgs{
-            KGEN::SymbolConstantAttr::get(buildSpecFn, buildSpecSig,
-                                          buildSpecParams),
+            KGEN::SymbolConstantAttr::get(
+                buildSpecFn, buildSpecSigGen.asOldSignature(), buildSpecParams),
             oldTensorSpecttr, viewStridesAttr};
-        auto resulTy = buildSpecSig.getResults()[0];
+        auto resulTy = buildSpecSigGen.getBody().getResults()[0];
 
         return KGEN::ParamOperatorAttr::get(KGEN::POC::Apply, lambdaArgs,
                                             resulTy);

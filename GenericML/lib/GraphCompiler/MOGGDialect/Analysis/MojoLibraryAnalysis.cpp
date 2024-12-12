@@ -28,7 +28,7 @@ using namespace MOGG;
 
 static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
                                 KGEN::GeneratorOp gen2) {
-  if (gen1.getSignature() != gen2.getSignature())
+  if (gen1.getSignatureGenerator() != gen2.getSignatureGenerator())
     return false;
   return areBlocksSame(*gen1.getBody(), *gen2.getBody());
 }
@@ -246,7 +246,8 @@ void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
         areFunctionsTheSame(op, itr->second))
       continue;
 
-    bool hasSameSig = op.getSignature() == itr->second.getSignature();
+    bool hasSameSig =
+        op.getSignatureGenerator() == itr->second.getSignatureGenerator();
     // Prevent the same kernel from colliding with itself.
     if (hasSameSig && op.getLoc() == rawMojoKernel[newSymName].getLoc() &&
         !isa<mlir::UnknownLoc>(op.getLoc()))

@@ -200,8 +200,9 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
     ASSERT_STREAM(kernel != nullptr, << "kernel `"
                                      << op->getName().getStringRef()
                                      << "` not found");
-    bool isRegisterType = kernel.getSignature().getArgConvention(idx) ==
-                          KGEN::ArgConvention::ReadReg;
+    bool isRegisterType =
+        kernel.getSignatureGenerator().getBody().getArgConvention(idx) ==
+        KGEN::ArgConvention::ReadReg;
 
     // Convert MGP value to opaque.
     // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
@@ -271,7 +272,8 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
       return Error("missing methods for the primitive output opaque type: "
                    "__moveinit__ / __del__ not found");
     }
-    bool isRegister = !kernel.getSignature().hasMemoryOnlyResult();
+    bool isRegister =
+        !kernel.getSignatureGenerator().getBody().hasMemoryOnlyResult();
 
     // Convert opaque to MGP value.
     // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
