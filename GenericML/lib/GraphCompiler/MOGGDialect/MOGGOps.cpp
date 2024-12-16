@@ -866,8 +866,33 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   // outParamNum: Add all the params from stringMap paramToDim so do lookup
-  for (const auto &[name, idx] : outParamNameToIdx)
-    outputs[idx + numPrependedOutputs + numInplaceOutputs] = paramToDim[name];
+  llvm::BitVector needCast(outputs.size());
+  for (const auto &[name, idx] : outParamNameToIdx) {
+    size_t outIdx = idx + numPrependedOutputs + numInplaceOutputs;
+    Type retTp = newKernel->getResultTypes()[outIdx];
+    Value outVal = paramToDim[name];
+    // Output for parameters might have been inferred to a different types when
+    // creating the new kernel. Here, we try to fix the type mismatch between
+    // scalar<builtin> to builtin.
+    //
+    // NOTE: we only record the indices of the value that needs to be casted
+    // here and insert the cast operation later to make sure that the inserted
+    // pop.cast_to_builtin appears in a deterministic order (i.e., in a index
+    // increasing order). The current loop order depends on the the storage
+    // order of the hashmap and an inconsistent order might result in caches
+    // missing during JitCompilerKernel pass, leading to worse compilation time.
+    if (auto scalarOut = dyn_cast<KGEN::POP::SIMDType>(outVal.getType());
+        scalarOut && retTp != scalarOut)
+      needCast.set(outIdx);
+
+    outputs[outIdx] = outVal;
+  }
+
+  for (auto idx : needCast.set_bits()) {
+    Value &toCast = outputs[idx];
+    toCast = builder.create<KGEN::POP::CastToBuiltinOp>(
+        toCast.getLoc(), newKernel->getResultTypes()[idx], toCast);
+  }
 
   for (MOGG::SetParameterOp p : toRemove)
     p.erase();
@@ -1644,7 +1669,8 @@ LogicalResult ToTensorFromMGPOp::verify() {
   MO::TensorValue result = getResult();
   DeviceRefAttr tensorDev = result.getType().getDeviceRef();
 
-  // TODO(GEX-1212): Make sure tensor type has device assignment at this stage.
+  // TODO(GEX-1212): Make sure tensor type has device assignment at this
+  // stage.
   if (tensorDev && tensorDev != devBuf.getDevice())
     return emitError() << "Device ref of buffer and tensor do not match";
 
