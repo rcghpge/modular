@@ -27,7 +27,6 @@ modular_py_binary(
         "//SDK/public/max-repo/pipelines/python/pixtral",
         "//SDK/public/max-repo/pipelines/python/replit",
         requirement("click"),
-        requirement("ddtrace"),
         requirement("huggingface_hub"),
         requirement("rich"),
         requirement("torch"),
