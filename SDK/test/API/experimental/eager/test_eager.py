@@ -7,9 +7,8 @@
 
 import numpy as np
 import pytest
-from hypothesis import given, settings, Phase
+from hypothesis import Phase, given, settings
 from hypothesis.extra import numpy as nst
-
 from max.dtype import DType
 from max.experimental.eager import Tensor
 

@@ -8,8 +8,9 @@
 # TensorFlow SavedModel format suitable for Modular AI Engine.
 
 import os
-from transformers import TFAutoModel
 from pathlib import Path
+
+from transformers import TFAutoModel
 
 HF_MODEL_NAME = "bert-base-uncased"
 

@@ -4,9 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-import numpy as np
 import math
 
+import numpy as np
 
 """
 This file contains the op implementations for numpy.

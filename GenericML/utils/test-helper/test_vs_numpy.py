@@ -3,15 +3,15 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-import os
 import argparse
-import numpy as np
-from test_cases import get_test_case
-from ops import NumpyImpl
-from tempfile import NamedTemporaryFile
-import subprocess
+import os
 import re
+import subprocess
+from tempfile import NamedTemporaryFile
 
+import numpy as np
+from ops import NumpyImpl
+from test_cases import get_test_case
 
 """
 This tool executes a MO graph using `mt` and compares it to the numpy
