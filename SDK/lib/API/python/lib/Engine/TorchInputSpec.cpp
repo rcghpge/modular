@@ -18,8 +18,13 @@ using namespace core;
 
 core::TorchInputSpec::TorchInputSpec(
     const core::TorchInputSpec::InputShapeTy &shapeOr, M_Dtype dtype)
+    : core::TorchInputSpec(shapeOr, dtype, "") {}
+
+core::TorchInputSpec::TorchInputSpec(
+    const core::TorchInputSpec::InputShapeTy &shapeOr, M_Dtype dtype,
+    std::string device)
     : specPtr({nullptr, &M_freeTorchInputSpec}), specShape(shapeOr),
-      specDtype(dtype) {
+      specDtype(dtype), specDevice(device) {
   StatusPtr status{M_newStatus(), M_freeStatus};
   if (!status)
     throw std::invalid_argument("Unable to create status");
@@ -35,11 +40,11 @@ core::TorchInputSpec::TorchInputSpec(
                                 : nullptr);
     specPtr.reset(M_newTorchInputSpec(convertedShape.data(), dimNamePtrs.data(),
                                       convertedShape.size(), dtype,
-                                      status.get()));
+                                      device.c_str(), status.get()));
   } else {
     specPtr.reset(M_newTorchInputSpec(/*shape=*/nullptr, /*dimNames=*/nullptr,
                                       M_getDynamicRankValue(), dtype,
-                                      status.get()));
+                                      device.c_str(), status.get()));
   }
   if (M_isError(status.get()))
     throw std::invalid_argument(M_getError(status.get()));

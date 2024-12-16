@@ -820,11 +820,11 @@ int main(int argc, char **argv) {
         }
         spec.reset(api.newTorchInputSpec(
             inputShape.data(), dimNames, inputShape.size(),
-            convertToCDataType(inputSpec.getEltType()), status.get()));
+            convertToCDataType(inputSpec.getEltType()), nullptr, status.get()));
       } else {
         spec.reset(api.newTorchInputSpec(
             nullptr, nullptr, api.getDynamicRankValue(),
-            convertToCDataType(inputSpec.getEltType()), status.get()));
+            convertToCDataType(inputSpec.getEltType()), nullptr, status.get()));
       }
       if (api.isError(status.get())) {
         llvm::errs() << "Error: " << api.getError(status.get()) << "\n";

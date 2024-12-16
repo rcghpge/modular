@@ -135,7 +135,7 @@ M::EngineCLI::tensorSpecToCAPITorchSpec(const TensorSpec &spec) {
   TorchInputSpecPtr cSpec{
       M_newTorchInputSpec(translatedShape.data(), /*dimNames=*/nullptr,
                           translatedRank, dtypeToCAPI(spec.getEltType()),
-                          status.get()),
+                          /*device=*/nullptr, status.get()),
       M_freeTorchInputSpec};
   if (M_isError(status.get()))
     return Error(M_getError(status.get()));

@@ -20,18 +20,22 @@ public:
   using InputShapeTy = std::optional<
       std::vector<std::optional<std::variant<int64_t, std::string>>>>;
   TorchInputSpec(const InputShapeTy &shape, M_Dtype dtype);
+  TorchInputSpec(const InputShapeTy &shape, M_Dtype dtype, std::string device);
   TorchInputSpec(TorchInputSpec &&other) noexcept = default;
 
   TorchInputSpec(const TorchInputSpec &other)
-      : TorchInputSpec(other.specShape, other.specDtype) {}
+      : TorchInputSpec(other.specShape, other.specDtype, other.specDevice) {}
 
   InputShapeTy getShape() const { return specShape; }
 
   M_Dtype getDtype() const { return specDtype; }
 
+  std::string getDevice() const { return specDevice; }
+
   TorchInputSpecPtr specPtr;
   InputShapeTy specShape;
   M_Dtype specDtype;
+  std::string specDevice;
 };
 
 } // namespace M::core
