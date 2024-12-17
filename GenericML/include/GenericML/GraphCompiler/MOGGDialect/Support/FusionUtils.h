@@ -95,6 +95,14 @@ Operation *sequenceFuseKernelsAndReplaceUses(
 void clearUnusedParamDecls(Operation *fusedKernel,
                            ArrayRef<KGEN::ParamDeclareOp> newParamDeclsOps);
 
+/// This function will sequence fuse a set of MOGG::GenericCompiledRegionOp. It
+/// expects the input vector of MOGG::GenericCompiledRegionOp to be
+/// topologically sorted.
+/// `allowDuplication` indicates whether the operation can be duplicated in
+/// order to fuse.
+Operation *fuseAndReplaceCompiledRegions(bool allowDuplication,
+                                         ArrayRef<Operation *> toFuse);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
