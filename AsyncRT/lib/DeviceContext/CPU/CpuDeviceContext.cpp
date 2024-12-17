@@ -122,8 +122,8 @@ CpuDeviceBuffer::~CpuDeviceBuffer() {
   TCMallocGlobals::tc_delete(ptr_);
 }
 
-void *CpuDeviceBuffer::cpu_ptr() const { return ptr_; }
-void *CpuDeviceBuffer::ptr() const { return cpu_ptr(); }
+void *CpuDeviceBuffer::cpuPtr() const { return ptr_; }
+void *CpuDeviceBuffer::ptr() const { return cpuPtr(); }
 
 // TODO: Remove the V1 compatibility.
 void *CpuDeviceBuffer::releasePtr() const {
@@ -135,7 +135,7 @@ void *CpuDeviceBuffer::releasePtr() const {
 
 ErrorOr<DeviceBufferRef>
 CpuDeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
-  char *orig_ptr = static_cast<char *>(this->cpu_ptr());
+  char *orig_ptr = static_cast<char *>(this->cpuPtr());
   size_t origByteSize = this->byteSize();
 
   if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
@@ -209,7 +209,7 @@ DeviceBufferRef CpuDeviceContext::createBufferOwning(void *ptr, size_t byteSize,
 ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
                                               const void *src,
                                               SyncMode mode) const {
-  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
+  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpuPtr();
   memcpy(dst_ptr, src, dst.byteSize());
   return success();
 }
@@ -217,7 +217,7 @@ ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
                                                 const DeviceBuffer &src,
                                                 SyncMode mode) const {
-  void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
+  void *src_ptr = CpuDeviceBuffer::cast(src).cpuPtr();
   memcpy(dst, src_ptr, src.byteSize());
   return success();
 }
@@ -225,8 +225,8 @@ ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
 ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                     const DeviceBuffer &src,
                                                     SyncMode mode) const {
-  void *src_ptr = CpuDeviceBuffer::cast(src).cpu_ptr();
-  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
+  void *src_ptr = CpuDeviceBuffer::cast(src).cpuPtr();
+  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpuPtr();
   if (src.byteSize() < dst.byteSize()) {
     RAISE_ERROR_MESSAGE("not enough data in src");
   }
@@ -237,7 +237,7 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
                                            uint32_t val, size_t valSize,
                                            SyncMode mode) const {
-  void *ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
+  void *ptr = CpuDeviceBuffer::cast(dst).cpuPtr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
     memset(ptr, static_cast<uint8_t>(val), byteSize);

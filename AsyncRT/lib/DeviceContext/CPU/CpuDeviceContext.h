@@ -18,7 +18,6 @@
 #include <chrono>
 #include <cstdint>
 #include <stddef.h>
-#include <string>
 
 namespace M::AsyncRT {
 
@@ -66,7 +65,7 @@ public:
                   bool owning);
   ~CpuDeviceBuffer() override;
 
-  void *cpu_ptr() const;
+  void *cpuPtr() const;
   void *ptr() const override;
   // TODO: Remove the V1 compatibility.
   void *releasePtr() const override;
