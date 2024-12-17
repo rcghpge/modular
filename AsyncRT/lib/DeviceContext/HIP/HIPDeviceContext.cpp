@@ -472,13 +472,13 @@ HIPDeviceContext::~HIPDeviceContext() {
   HIP_CHECK(driver_.CtxDestroy(context_));
 }
 
-ErrorOr<void *> HIPDeviceContext::malloc_host(size_t size) const {
+ErrorOr<void *> HIPDeviceContext::mallocHost(size_t size) const {
   void *ptr;
   HIP_CHECK_ERR(driver_.MemAllocHost(&ptr, size));
   return ptr;
 }
 
-ErrorOrSuccess HIPDeviceContext::free_host(void *ptr) const {
+ErrorOrSuccess HIPDeviceContext::freeHost(void *ptr) const {
   HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
   return success();
 }
@@ -571,18 +571,18 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
-                                           uint32_t val, size_t val_size,
+                                           uint32_t val, size_t valSize,
                                            SyncMode mode) const {
   void *ptr = HIPDeviceBuffer::cast(dst).hip_ptr();
   size_t byteSize = dst.byteSize();
-  if (val_size == 1) {
+  if (valSize == 1) {
     if (mode == ASYNC) {
       HIP_CHECK_ERR(driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val),
                                           byteSize, stream_));
     } else {
       HIP_CHECK_ERR(driver_.MemsetD8(ptr, static_cast<uint8_t>(val), byteSize));
     }
-  } else if (val_size == 2) {
+  } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
@@ -594,8 +594,8 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
       HIP_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
     }
   } else {
-    if (val_size != 4) {
-      return Error("unsupported val_size");
+    if (valSize != 4) {
+      return Error("unsupported valSize");
     }
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
@@ -611,14 +611,14 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
 }
 
 ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
-    const char *module_name, const char *function_name,
+    const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-    int32_t cache_config, int32_t max_dynamic_shared_bytes,
-    const char *debug_level, int32_t optimization_level) const {
+    int32_t maxRegisters, int32_t threadsPerBlock, int32_t cacheMode,
+    int32_t cacheConfig, int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(module_name);
+    auto iter = func_map_.find(moduleName);
     if (iter != func_map_.end()) {
       HIPDeviceFunctionRef result = iter->second;
       return result;
@@ -627,41 +627,41 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
 
   // TODO(iposva): Remove once not needed for debugging.
   if (false) {
-    std::cerr << "HIPDeviceContext::loadFunction(" << function_name << "):\n"
+    std::cerr << "HIPDeviceContext::loadFunction(" << functionName << "):\n"
               << reinterpret_cast<const char *>(data) << "\n";
   }
   hipModule_t module;
 
-  if (max_registers >= 0) {
-    RAISE_ERROR("not implemented yet: max_registers");
+  if (maxRegisters >= 0) {
+    RAISE_ERROR("not implemented yet: maxRegisters");
   }
 
-  if (threads_per_block >= 0) {
-    RAISE_ERROR("not implemented yet: threads_per_block");
+  if (threadsPerBlock >= 0) {
+    RAISE_ERROR("not implemented yet: threadsPerBlock");
   }
 
-  if (cache_mode >= 0) {
-    RAISE_ERROR("not implemented yet: cache_mode");
+  if (cacheMode >= 0) {
+    RAISE_ERROR("not implemented yet: cacheMode");
   }
 
   HIP_CHECK_ERR(driver_.ModuleLoadData(&module, data));
 
   hipFunction_t function;
-  HIP_CHECK_ERR(driver_.ModuleGetFunction(&function, module, function_name));
+  HIP_CHECK_ERR(driver_.ModuleGetFunction(&function, module, functionName));
 
   // Allocate func outside of the lock region to reduce the time spent under
-  // lock. If this function_name has been registered concurrently, then we will
+  // lock. If this functionName has been registered concurrently, then we will
   // release this ref outside of the lock region before returning.
-  auto func = HIPDeviceFunctionRef::create(*this, std::string(function_name),
+  auto func = HIPDeviceFunctionRef::create(*this, std::string(functionName),
                                            signature, module, function);
   HIPDeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(module_name);
+    auto iter = func_map_.find(moduleName);
     if (iter != func_map_.end()) {
       result = HIPDeviceFunctionRef::copy(iter->second.getPointer());
     } else {
-      func_map_.insert({module_name, func});
+      func_map_.insert({moduleName, func});
       result = std::move(func);
     }
   }
@@ -686,10 +686,10 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExec(
 ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t num_attrs, void **args) const {
+    void *attrs, uint32_t numAttrs, void **args) const {
 
   const auto &hipFunc = HIPDeviceFunction::cast(func);
-  if (num_attrs > 0)
+  if (numAttrs > 0)
     RAISE_ERROR("Function launch attributes not supported;");
   return hipFunc.hip_callKernelDirect(gridX, gridY, gridZ, blockX, blockY,
                                       blockZ, sharedMemBytes, args, stream_);

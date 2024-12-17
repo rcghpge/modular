@@ -260,8 +260,8 @@ public:
   const Device &device() const;
 
   // Host memory allocation.
-  virtual ErrorOr<void *> malloc_host(size_t size) const = 0;
-  virtual ErrorOrSuccess free_host(void *ptr) const = 0;
+  virtual ErrorOr<void *> mallocHost(size_t size) const = 0;
+  virtual ErrorOrSuccess freeHost(void *ptr) const = 0;
 
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
@@ -294,17 +294,17 @@ public:
                                             SyncMode mode) const = 0;
 
   virtual ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
-                                   size_t val_size, SyncMode mode) const = 0;
+                                   size_t valSize, SyncMode mode) const = 0;
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>
-  loadFunction(const char *module_name, const char *function_name,
+  loadFunction(const char *moduleName, const char *functionName,
                const DeviceFunction::SignatureBuilder &signature,
-               const void *data, int32_t max_registers = -1,
-               int32_t threads_per_block = -1, int32_t cache_mode = -1,
-               int32_t cache_config = -1, int32_t max_dynamic_shared_bytes = -1,
-               const char *debug_level = "",
-               int32_t optimization_level = -1) const = 0;
+               const void *data, int32_t maxRegisters = -1,
+               int32_t threadsPerBlock = -1, int32_t cacheMode = -1,
+               int32_t cacheConfig = -1, int32_t maxDynamicSharedBytes = -1,
+               const char *debugLevel = "",
+               int32_t optimizationLevel = -1) const = 0;
   virtual ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
@@ -315,7 +315,7 @@ public:
                             uint32_t gridY, uint32_t gridZ, uint32_t blockX,
                             uint32_t blockY, uint32_t blockZ,
                             uint32_t sharedMemBytes, void *attrs,
-                            uint32_t num_attrs, void **args) const = 0;
+                            uint32_t numAttrs, void **args) const = 0;
 
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
 

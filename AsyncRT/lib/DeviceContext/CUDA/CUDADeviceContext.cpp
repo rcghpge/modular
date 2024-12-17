@@ -442,7 +442,7 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
 ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    CUlaunchAttribute *attrs, uint32_t num_attrs, void **args,
+    CUlaunchAttribute *attrs, uint32_t numAttrs, void **args,
     CUstream stream) const {
   CUlaunchConfig config;
   config.gridDimX = gridX;
@@ -454,7 +454,7 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
   config.sharedMemBytes = sharedMemBytes;
   config.hStream = stream;
   config.attrs = attrs;
-  config.numAttrs = num_attrs;
+  config.numAttrs = numAttrs;
 
   CUDA_CHECK_ERR(module_function_->cuda_driver().LaunchKernelEx(
       &config, module_function_->cuda_function(), args, nullptr));
@@ -544,14 +544,14 @@ CUDADeviceContext::~CUDADeviceContext() {
   CUDA_CHECK(driver_.CtxDestroy(context_));
 }
 
-ErrorOr<void *> CUDADeviceContext::malloc_host(size_t size) const {
+ErrorOr<void *> CUDADeviceContext::mallocHost(size_t size) const {
   void *ptr;
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.MemAllocHost(&ptr, size));
   return ptr;
 }
 
-ErrorOrSuccess CUDADeviceContext::free_host(void *ptr) const {
+ErrorOrSuccess CUDADeviceContext::freeHost(void *ptr) const {
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.MemFreeHost(ptr));
   return success();
@@ -656,13 +656,13 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
-                                            uint32_t val, size_t val_size,
+                                            uint32_t val, size_t valSize,
                                             SyncMode mode) const {
   CUDA_WITH_CTX_ERR(*this);
 
   void *ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
   size_t byteSize = dst.byteSize();
-  if (val_size == 1) {
+  if (valSize == 1) {
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val),
                                            byteSize, stream_));
@@ -670,7 +670,7 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
       CUDA_CHECK_ERR(
           driver_.MemsetD8(ptr, static_cast<uint8_t>(val), byteSize));
     }
-  } else if (val_size == 2) {
+  } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
@@ -682,8 +682,8 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
       CUDA_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
     }
   } else {
-    if (val_size != 4) {
-      return Error("unsupported val_size");
+    if (valSize != 4) {
+      return Error("unsupported valSize");
     }
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
@@ -699,14 +699,14 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
-    const char *module_name, const char *function_name,
+    const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-    int32_t cache_config, int32_t max_dynamic_shared_bytes,
-    const char *debug_level, int32_t optimization_level) const {
+    int32_t maxRegisters, int32_t threadsPerBlock, int32_t cacheMode,
+    int32_t cacheConfig, int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(module_name);
+    auto iter = func_map_.find(moduleName);
     if (iter != func_map_.end()) {
       CUDAModuleFunctionRef module_func = iter->second;
       return CUDADeviceFunctionRef::create(*this, signature,
@@ -716,8 +716,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
 
   // TODO(iposva): Remove once not needed for debugging.
   if (false) {
-    llvm::errs() << "CUDADeviceContext::loadFunction(" << function_name
-                 << "):\n"
+    llvm::errs() << "CUDADeviceContext::loadFunction(" << functionName << "):\n"
                  << reinterpret_cast<const char *>(data) << "\n";
   }
   CUmodule module;
@@ -727,46 +726,46 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
 
   CUDA_WITH_CTX_ERR(*this);
 
-  if (max_registers >= 0) {
+  if (maxRegisters >= 0) {
     option_kind[num_options] = CUjit_option::JIT_MAX_REGISTERS;
-    option_values[num_options] = max_registers;
+    option_values[num_options] = maxRegisters;
     num_options++;
   }
 
-  if (threads_per_block >= 0) {
+  if (threadsPerBlock >= 0) {
     option_kind[num_options] = CUjit_option::JIT_THREADS_PER_BLOCK;
-    option_values[num_options] = threads_per_block;
+    option_values[num_options] = threadsPerBlock;
     num_options++;
   }
 
-  if (cache_mode >= 0) {
+  if (cacheMode >= 0) {
     option_kind[num_options] = CUjit_option::JIT_CACHE_MODE;
-    option_values[num_options] = cache_mode;
+    option_values[num_options] = cacheMode;
     num_options++;
   }
 
-  if (strcmp(debug_level, "full") == 0) {
+  if (strcmp(debugLevel, "full") == 0) {
     option_kind[num_options] = CUjit_option::JIT_GENERATE_DEBUG_INFO;
     option_values[num_options] = 1;
     num_options++;
-  } else if (strcmp(debug_level, "line-tables") == 0) {
+  } else if (strcmp(debugLevel, "line-tables") == 0) {
     option_kind[num_options] = CUjit_option::JIT_GENERATE_LINE_INFO;
     option_values[num_options] = 1;
     num_options++;
   }
 
-  if (optimization_level >= 0) {
-    if (optimization_level < 3) {
+  if (optimizationLevel >= 0) {
+    if (optimizationLevel < 3) {
       // Note that NVidia's optimization level goes up to (and defaults to)
       // 4, while ours only goes up to (and defaults to) 3.
-      if ((strcmp(debug_level, "full") == 0) && (optimization_level > 0)) {
-        // Note that the PTX compiler complains if debug_level=full and
+      if ((strcmp(debugLevel, "full") == 0) && (optimizationLevel > 0)) {
+        // Note that the PTX compiler complains if debugLevel=full and
         // optimization level is something other than 0 or default.
-        RAISE_ERROR("debug_level of \"full\" requires optimization_level of "
+        RAISE_ERROR("debugLevel of \"full\" requires optimizationLevel of "
                     "zero (or default)");
       }
       option_kind[num_options] = CUjit_option::JIT_OPTIMIZATION_LEVEL;
-      option_values[num_options] = optimization_level;
+      option_values[num_options] = optimizationLevel;
       num_options++;
     }
   }
@@ -780,37 +779,36 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   }
 
   CUfunction function;
-  CUDA_CHECK_ERR_MSG(
-      driver_.ModuleGetFunction(&function, module, function_name),
-      std::string("function name: ") + function_name);
+  CUDA_CHECK_ERR_MSG(driver_.ModuleGetFunction(&function, module, functionName),
+                     std::string("function name: ") + functionName);
 
-  if (cache_config >= 0) {
+  if (cacheConfig >= 0) {
     CUDA_CHECK_ERR(driver_.FuncSetCacheConfig(
-        function, static_cast<CUfunc_cache>(cache_config)));
+        function, static_cast<CUfunc_cache>(cacheConfig)));
   }
 
-  if (max_dynamic_shared_bytes >= 0) {
+  if (maxDynamicSharedBytes >= 0) {
     CUDA_CHECK_ERR(driver_.FuncSetAttribute(
         function,
         CUfunction_attribute::FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-        max_dynamic_shared_bytes));
+        maxDynamicSharedBytes));
   }
 
   // Allocate func outside of the lock region to reduce the time spent under
-  // lock. If this function_name has been registered concurrently, then we will
+  // lock. If this functionName has been registered concurrently, then we will
   // release this ref outside of the lock region before returning.
   auto module_func = CUDAModuleFunctionRef::create(
-      std::string(function_name), this->cuda_driver(), module, function);
+      std::string(functionName), this->cuda_driver(), module, function);
   CUDADeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(module_name);
+    auto iter = func_map_.find(moduleName);
     if (iter != func_map_.end()) {
       result = CUDADeviceFunctionRef::create(
           *this, signature,
           CUDAModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      func_map_.insert({module_name, module_func});
+      func_map_.insert({moduleName, module_func});
       result = CUDADeviceFunctionRef::create(*this, signature,
                                              std::move(module_func));
     }
@@ -837,13 +835,13 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t num_attrs, void **args) const {
+    void *attrs, uint32_t numAttrs, void **args) const {
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
   CUDA_WITH_CTX_ERR(*this);
   return cuda_func.cuda_callKernelDirect(
       gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      reinterpret_cast<CUlaunchAttribute *>(attrs), num_attrs, args, stream_);
+      reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args, stream_);
 }
 
 ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {

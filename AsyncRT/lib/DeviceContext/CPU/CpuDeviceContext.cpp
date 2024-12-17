@@ -176,7 +176,7 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
     : DeviceContext(device) {}
 
-ErrorOr<void *> CpuDeviceContext::malloc_host(size_t size) const {
+ErrorOr<void *> CpuDeviceContext::mallocHost(size_t size) const {
   void *ptr = TCMallocGlobals::tc_new(size, 1);
   if (ptr == nullptr) {
     RAISE_ERROR();
@@ -184,7 +184,7 @@ ErrorOr<void *> CpuDeviceContext::malloc_host(size_t size) const {
   return ptr;
 }
 
-ErrorOrSuccess CpuDeviceContext::free_host(void *ptr) const {
+ErrorOrSuccess CpuDeviceContext::freeHost(void *ptr) const {
   TCMallocGlobals::tc_delete(ptr);
   return success();
 }
@@ -235,13 +235,13 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
-                                           uint32_t val, size_t val_size,
+                                           uint32_t val, size_t valSize,
                                            SyncMode mode) const {
   void *ptr = CpuDeviceBuffer::cast(dst).cpu_ptr();
   size_t byteSize = dst.byteSize();
-  if (val_size == 1) {
+  if (valSize == 1) {
     memset(ptr, static_cast<uint8_t>(val), byteSize);
-  } else if (val_size == 2) {
+  } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
@@ -251,8 +251,8 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
       *cur_ptr++ = static_cast<uint16_t>(val);
     }
   } else {
-    if (val_size != 4) {
-      return Error("unsupported val_size");
+    if (valSize != 4) {
+      return Error("unsupported valSize");
     }
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
@@ -267,11 +267,11 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
 }
 
 ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
-    const char *module_name, const char *function_name,
+    const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-    int32_t cache_config, int32_t max_dynamic_shared_bytes,
-    const char *debug_level, int32_t optimization_level) const {
+    int32_t maxRegisters, int32_t threadsPerBlock, int32_t cacheMode,
+    int32_t cacheConfig, int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t optimizationLevel) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
@@ -287,7 +287,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExec(
 ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t num_attrs, void **args) const {
+    void *attrs, uint32_t numAttrs, void **args) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }

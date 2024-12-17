@@ -109,7 +109,7 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     std::cerr << "DeviceContext copies(len: " << allocLen
               << ", sync: " << doSyncCopies << ")\n";
 
-    ErrorOr<void *> errPtr = ctx->malloc_host(allocLen);
+    ErrorOr<void *> errPtr = ctx->mallocHost(allocLen);
     EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
     void *aPtr = errPtr.get();
     EXPECT_NE(aPtr, nullptr);
@@ -163,7 +163,7 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     compareWithData(dPtr, allocLen, checkData, sizeof(checkData));
 
     free(dPtr);
-    err = ctx->free_host(aPtr);
+    err = ctx->freeHost(aPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 }
@@ -310,7 +310,7 @@ TEST(GPUDeviceContextTest, Timers) {
   { // Run some memory copies within the timer.
     const size_t allocLen = 1024 * 1024;
 
-    ErrorOr<void *> errPtr = ctx->malloc_host(allocLen);
+    ErrorOr<void *> errPtr = ctx->mallocHost(allocLen);
     EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
     void *aPtr = errPtr.get();
     EXPECT_NE(aPtr, nullptr);
@@ -328,7 +328,7 @@ TEST(GPUDeviceContextTest, Timers) {
     err = ctx->synchronize();
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    err = ctx->free_host(aPtr);
+    err = ctx->freeHost(aPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 
@@ -374,7 +374,7 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
       checkData[i] = curDeviceId + i;
     }
 
-    ErrorOr<void *> errPtr = srcCtx->malloc_host(allocLen);
+    ErrorOr<void *> errPtr = srcCtx->mallocHost(allocLen);
     EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
     void *srcPtr = errPtr.get();
     EXPECT_NE(srcPtr, nullptr);
@@ -417,7 +417,7 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
     EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
 
     free(dstPtr);
-    err = srcCtx->free_host(srcPtr);
+    err = srcCtx->freeHost(srcPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 }

@@ -357,7 +357,7 @@ $L__BB0_2:
       checkData[i] = curDeviceId + i;
     }
 
-    ErrorOr<void *> errPtr = srcCtx->malloc_host(allocLen);
+    ErrorOr<void *> errPtr = srcCtx->mallocHost(allocLen);
     EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
     void *srcPtr = errPtr.get();
     EXPECT_NE(srcPtr, nullptr);
@@ -415,7 +415,7 @@ $L__BB0_2:
     EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
 
     free(dstPtr);
-    err = srcCtx->free_host(srcPtr);
+    err = srcCtx->freeHost(srcPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 }

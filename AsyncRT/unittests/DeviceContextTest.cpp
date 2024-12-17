@@ -111,7 +111,7 @@ TEST(DeviceContextTest, DeviceBuffers) {
               << ((syncMode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
               << ")\n";
 
-    ErrorOr<void *> errPtr = ctx->malloc_host(allocLen);
+    ErrorOr<void *> errPtr = ctx->mallocHost(allocLen);
     EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
     void *aPtr = errPtr.get();
     EXPECT_NE(aPtr, nullptr);
@@ -154,7 +154,7 @@ TEST(DeviceContextTest, DeviceBuffers) {
     compareWithData(dPtr, allocLen, checkData, sizeof(checkData));
 
     free(dPtr);
-    err = ctx->free_host(aPtr);
+    err = ctx->freeHost(aPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 }
@@ -396,7 +396,7 @@ TEST(DeviceContextTest, Timers) {
   { // Run some memory copies within the timer.
     const size_t allocLen = 1024 * 1024;
 
-    ErrorOr<void *> errPtr = ctx->malloc_host(allocLen);
+    ErrorOr<void *> errPtr = ctx->mallocHost(allocLen);
     EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
     void *aPtr = errPtr.get();
     EXPECT_NE(aPtr, nullptr);
@@ -414,7 +414,7 @@ TEST(DeviceContextTest, Timers) {
     err = ctx->synchronize();
     EXPECT_FALSE(err) << err.getError() << "\n";
 
-    err = ctx->free_host(aPtr);
+    err = ctx->freeHost(aPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
   }
 

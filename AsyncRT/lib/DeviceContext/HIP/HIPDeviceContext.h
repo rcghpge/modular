@@ -202,8 +202,8 @@ public:
   ~HIPDeviceContext() override;
 
   // Host memory allocation.
-  ErrorOr<void *> malloc_host(size_t size) const override;
-  ErrorOrSuccess free_host(void *ptr) const override;
+  ErrorOr<void *> mallocHost(size_t size) const override;
+  ErrorOrSuccess freeHost(void *ptr) const override;
 
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize,
@@ -221,15 +221,16 @@ public:
                                     SyncMode mode) const override;
 
   ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
-                           size_t val_size, SyncMode mode) const override;
+                           size_t valSize, SyncMode mode) const override;
 
   // DeviceFunction loading and execution.
-  ErrorOr<DeviceFunctionRef> loadFunction(
-      const char *module_name, const char *function_name,
-      const DeviceFunction::SignatureBuilder &signature, const void *data,
-      int32_t max_registers, int32_t threads_per_block, int32_t cache_mode,
-      int32_t cache_config, int32_t max_dynamic_shared_bytes,
-      const char *debug_level, int32_t optimization_level) const override;
+  ErrorOr<DeviceFunctionRef>
+  loadFunction(const char *moduleName, const char *functionName,
+               const DeviceFunction::SignatureBuilder &signature,
+               const void *data, int32_t maxRegisters, int32_t threadsPerBlock,
+               int32_t cacheMode, int32_t cacheConfig,
+               int32_t maxDynamicSharedBytes, const char *debugLevel,
+               int32_t optimizationLevel) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
@@ -241,7 +242,7 @@ public:
                                            uint32_t gridZ, uint32_t blockX,
                                            uint32_t blockY, uint32_t blockZ,
                                            uint32_t sharedMemBytes, void *attrs,
-                                           uint32_t num_attrs,
+                                           uint32_t numAttrs,
                                            void **args) const override;
 
   ErrorOr<DeviceStreamRef> stream() const override;
