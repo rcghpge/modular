@@ -40,6 +40,11 @@ constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithLambdas =
 constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithStrides =
     "rebuild_static_tensor_specs_with_strides";
 
+constexpr llvm::StringLiteral DPSManagedTensorSliceStoreSIMD =
+    "simd_store_into_managed_tensor_slice";
+constexpr llvm::StringLiteral DPSManagedTensorSliceLoadSIMD =
+    "simd_load_from_managed_tensor_slice";
+
 } // namespace M::MOGG::Utils
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_MOJOTARGETFUNCTIONS_H

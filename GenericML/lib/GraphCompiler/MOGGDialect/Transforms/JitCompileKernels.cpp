@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
