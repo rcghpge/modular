@@ -11,6 +11,7 @@
 #include "KGEN/Support/CompilerProfiling.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Support/Timing.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -29,6 +30,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::func::FuncDialect, MEF::MEFDialect>();
 
   MO::registerPasses();
+  mlir::registerDefaultTimingManagerCLOptions();
 
   // Create our context.
   ErrorOr<ContextRef> ctxOr = Init::createContext(
