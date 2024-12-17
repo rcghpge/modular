@@ -40,46 +40,6 @@ static void fuseCompiledRegionsAndReplaceUses(
                                       compiledRegionOpsToFuseTogether);
 }
 
-// FIXME(GEX-462) remove stop-gap once MOCO-6 is done.
-// Heuristic from empirical observations. Empirically saw a stack overflow at
-// around 200 outputs with nested if-else, set the heuristic to 100 for
-// buffering room since this heuristic may not translate directly to the levels
-// of nesting in kgen.
-constexpr size_t kMaxAssertOpsFused = 100;
-
-// FIXME(GEX-462) remove stop-gap once MOCO-6 is done.
-// splitSubGraphFusionByNumOps allows us to limit the maximum number of
-// operations in a CompiledRegion.  We opted for two simple counting heuristics
-// instead of mapping to kgen since this is meant to be a temporary measure.
-// Stop fusing of regions rules:
-//   1. mgp.assertions (which cause nesting) exceeds 150
-static SmallVector<SmallVector<Operation *>> splitSubGraphFusionByNumOps(
-    const SmallVector<Operation *> &compiledRegionOpsToFuseTogether) {
-  assert(llvm::all_of(compiledRegionOpsToFuseTogether, [](auto op) {
-    return isa<MOGG::GenericCompiledRegionOp>(op);
-  }));
-  unsigned int numAssertOpsFused = 0;
-  SmallVector<SmallVector<Operation *>> splitSubgraphs = {{}};
-  for (auto op : compiledRegionOpsToFuseTogether) {
-    unsigned int numAssertOpsInCompiledRegion = 0;
-    // Count all assertion ops
-    for (auto &region : op->getRegions())
-      for (auto op : region.getOps<MOGG::CallOp>())
-        if (op.getMojoKernelTarget() == "mgp.assert")
-          numAssertOpsFused++;
-    // Break or allow fusion
-    if ((numAssertOpsFused + numAssertOpsInCompiledRegion) >
-        kMaxAssertOpsFused) {
-      splitSubgraphs.push_back({op});
-      numAssertOpsFused = numAssertOpsInCompiledRegion;
-    } else {
-      splitSubgraphs.back().push_back(op);
-      numAssertOpsFused += numAssertOpsInCompiledRegion;
-    }
-  }
-  return splitSubgraphs;
-}
-
 static inline bool isaGenericCompiledRegionOp(Operation *op) {
   return isa<MOGG::GenericCompiledRegionOp>(op);
 }
@@ -147,8 +107,7 @@ static void doSourceDestinationSequenceFusion(ModuleOp module) {
       parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
 
       for (auto &subgraph : subgraphs)
-        for (auto &splitSubGraph : splitSubGraphFusionByNumOps(subgraph))
-          fuseCompiledRegionsAndReplaceUses<allowDuplication>(splitSubGraph);
+        fuseCompiledRegionsAndReplaceUses<allowDuplication>(subgraph);
 
       for (auto op : llvm::reverse(opsToEraseOrdered))
         op->erase();
@@ -178,8 +137,7 @@ doTransitiveDependencySequenceFusion(ModuleOp module) {
                                                  opsToErase.end());
       parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
       for (auto &subgraph : subgraphs)
-        for (auto &splitSubGraph : splitSubGraphFusionByNumOps(subgraph))
-          fuseCompiledRegionsAndReplaceUses<false>(splitSubGraph);
+        fuseCompiledRegionsAndReplaceUses<false>(subgraph);
 
       for (auto op : llvm::reverse(opsToEraseOrdered))
         op->erase();

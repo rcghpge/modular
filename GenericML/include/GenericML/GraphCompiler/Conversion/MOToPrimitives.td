@@ -117,6 +117,21 @@ def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "ModuleOp"
                           "MOGG::MOGGDialect"];
 }
 
+def PostABIFuseGenericRegions: Pass<"post-abi-fuse-generic-regions", "ModuleOp"> {
+  let summary = "Fuse sequences of GenericCompiledRegionOp (after lowering abi)";
+  let description = [{
+    Fuses all (currently only non-async) kernels into one. This helps reduce
+    overhead in the MEF interpreter by minimizing the number of mpg primitives.
+    The fusion need to be done after lowering abi to be able to analyze and
+    optimize the lifetime of async values (e.g., due to mgp.buffer.borrow).
+  }];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect"];
+}
+
 def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
   let summary = "Removes all redundant operands as a result of seq fusion";
   let description = [{}];

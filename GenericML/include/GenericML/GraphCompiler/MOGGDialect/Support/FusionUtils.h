@@ -95,13 +95,29 @@ Operation *sequenceFuseKernelsAndReplaceUses(
 void clearUnusedParamDecls(Operation *fusedKernel,
                            ArrayRef<KGEN::ParamDeclareOp> newParamDeclsOps);
 
-/// This function will sequence fuse a set of MOGG::GenericCompiledRegionOp. It
-/// expects the input vector of MOGG::GenericCompiledRegionOp to be
+/// Callback type to intercept inlining on a specific operation.
+/// Return true if the operation is handled by the callback, false otherwise.
+///
+/// Parameters:
+///   OpBuilder &: the builder being used
+///   IRMapping &: the current IRMapping for the callback to lookup/update
+///   Operation *: the operation being inlined
+///   GenericCompiledRegionOp src: parent of the operation being inlined
+///   GenericCompiledRegionOp dst: region that the operation is inlining into
+using fuseRegionInlineCallBackT = llvm::function_ref<bool(
+    OpBuilder &, mlir::IRMapping &, Operation *, MOGG::GenericCompiledRegionOp,
+    MOGG::GenericCompiledRegionOp)>;
+
+/// This function will sequence fuse a set of MOGG::GenericCompiledRegionOp.
+/// It expects the input vector of MOGG::GenericCompiledRegionOp to be
 /// topologically sorted.
 /// `allowDuplication` indicates whether the operation can be duplicated in
 /// order to fuse.
-Operation *fuseAndReplaceCompiledRegions(bool allowDuplication,
-                                         ArrayRef<Operation *> toFuse);
+/// An optional inlineOpCallBack can be provided to handle special
+/// operations that need to be inlined differently.
+void fuseAndReplaceCompiledRegions(
+    bool allowDuplication, ArrayRef<Operation *> toFuse,
+    fuseRegionInlineCallBackT inlineOpCallBack = nullptr);
 
 } // namespace M::MOGG
 

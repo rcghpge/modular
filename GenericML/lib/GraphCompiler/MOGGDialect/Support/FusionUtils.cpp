@@ -661,8 +661,9 @@ void clearUnusedParamDecls(Operation *fusedKernel,
     op->erase();
 }
 
-Operation *fuseAndReplaceCompiledRegions(bool allowDuplication,
-                                         ArrayRef<Operation *> toFuse) {
+void fuseAndReplaceCompiledRegions(bool allowDuplication,
+                                   ArrayRef<Operation *> toFuse,
+                                   fuseRegionInlineCallBackT inlineOpCallBack) {
   assert(llvm::all_of(
       toFuse, [](auto op) { return isa<MOGG::GenericCompiledRegionOp>(op); }));
 
@@ -692,7 +693,8 @@ Operation *fuseAndReplaceCompiledRegions(bool allowDuplication,
   bool isFirstChain = false;
   for (auto result : allResults) {
     // We keep at least one chain output such that error could be  propagated
-    // properly. The duplicated chain will be removed later in the pipeline.
+    // properly. The duplicated chain will be removed later in the pipeline
+    // (namely, remove-redundant-operands pass).
     isFirstChain = isa<MEF::ChainType>(result.getType()) && !isFirstChain;
     if (allowDuplication) {
       // If none of the users of this result are in the fusion set, then it is
@@ -795,6 +797,13 @@ Operation *fuseAndReplaceCompiledRegions(bool allowDuplication,
 
     for (auto &internalOp : asRegionOp.getBody().front()) {
       // Actual fusion.
+
+      // When handled specially by user-provided callback
+      if (inlineOpCallBack &&
+          inlineOpCallBack(builder, mapper, &internalOp, asRegionOp,
+                           fusedCompiledRegionOp))
+        continue;
+
       auto newOp = builder.clone(internalOp, mapper);
       if (auto newOutputOp = dyn_cast<MOGG::OutputOp>(newOp)) {
         auto resultRange =
@@ -854,8 +863,6 @@ Operation *fuseAndReplaceCompiledRegions(bool allowDuplication,
                  fusedCompiledRegionOp.getResults())) {
     oldValue.replaceAllUsesWith(newValue);
   }
-
-  return fusedCompiledRegionOp;
 }
 
 } // namespace M::MOGG

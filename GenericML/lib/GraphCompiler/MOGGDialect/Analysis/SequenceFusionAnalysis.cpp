@@ -260,17 +260,19 @@ gatherDependencies(
 /// providers(S) := The set of all operations that transitively feed into an
 /// eligible subgraph.
 /// users(S) := The set of all operations that use an eligible subgraph.
-// A ubgraph of eligible and compatible operations O cannot be added to another
+/// A subgraph of eligible and compatible operations O can be added to another
 /// subgraph of eligible and compatible operations S iff no cycle is created, no
 /// dependency between non eligible ops is created and all operations in both
 /// sets are compatible.
 /// A cycle is created iff:
 ///   (providers(S) U providers(O)) intersects (users(S) U users(O))
 /// A dependency between non eligible ops is created iff:
-///   let S' = S intersection M
-///   let O' = O intersection M
-///   |providers(S') - providers(O')| != 0 && |users(O') - users(S')| != 0 &&
-///   |providers(O') - providers(S')| != 0 && |users(S') - users(O')| != 0 ||
+///   let P_S' = providers(S) intersection M
+///   let P_O' = providers(O) intersection M
+///   let U_S' = users(S) intersection M
+///   let U_O' = users(O) intersection M
+///   |P_S' - P_O'| != 0 && |U_O' - U_S'| != 0 &&
+///   |P_O' - P_S'| != 0 && |U_S' - U_O'| != 0 ||
 /// The implementation computes the transitive dependencies of all eligible ops.
 /// Then, for each op, it checks if there is a set it can fuse with. If it
 /// can't, it extends the sets by the current op. O(N**3) but with favorable
