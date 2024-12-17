@@ -98,7 +98,7 @@ public:
 private:
   /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
-  static void updateCacheIfNeeded(TensorBufferRef &entry,
+  static void updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
                                   AsyncRT::CompactRuntimePtr runtime,
                                   size_t size, std::optional<size_t> alignment);
 
@@ -110,7 +110,7 @@ private:
   /// references will be 'uninitialized' or 'owning', all access to them
   /// will be via 'read' references. Any 'owning' buffers will be
   /// destroyed when the context holding this state slot is destroyed.
-  SmallVector<TensorBufferRef, 1> bufferCache;
+  SmallVector<std::optional<TensorBufferRef>, 1> bufferCache;
 };
 
 /// A state slot with no extra payload state. Useful for testing and for
