@@ -7,5 +7,6 @@ modular_py_library(
         "//SDK/lib/API/python/max/serve/telemetry",
         requirement("faster-fifo"),
         requirement("psutil"),
+        requirement("sentinel"),
     ],
 )
