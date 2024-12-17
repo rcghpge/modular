@@ -58,8 +58,6 @@ public:
   ErrorOrSuccess isCompatibleWithMAX() const override;
   ErrorOr<int> computeCapability() const override;
 
-  ErrorOr<MemInfo> getMemoryInfo() const override;
-
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
@@ -256,6 +254,8 @@ public:
   stopTimer(const DeviceTimer &timer) const override;
 
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
+
+  ErrorOr<MemInfo> getMemoryInfo() const override;
 
   const HIPDriver &hip_driver() const;
   hipStream_t hip_stream() const;

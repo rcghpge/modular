@@ -14,7 +14,9 @@
 #include "Support/ErrorOr.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <sstream>
 #include <stddef.h>
+#include <thread>
 
 namespace M::AsyncRT {
 
@@ -121,7 +123,11 @@ using CUlaunchConfig = struct CUlaunchConfig_st {
 
 #define CUDA_DRIVER_CALL_LOG()                                                 \
   if (do_call_log) {                                                           \
-    llvm::errs() << "CUDADriver: " << __FUNCTION__ << "\n";                    \
+    /* Make sure we emit a single entry per log call. */                       \
+    std::ostringstream buffer;                                                 \
+    buffer << "THR-" << std::this_thread::get_id()                             \
+           << ": CUDADriver::" << __FUNCTION__ << "\n";                        \
+    llvm::errs() << buffer.str();                                              \
   }
 
 class CUDADriver {
@@ -182,6 +188,18 @@ public:
   Result CtxSetCurrent(CUcontext ctx) const {
     CUDA_DRIVER_CALL_LOG();
     return cuCtxSetCurrent_(ctx);
+  }
+  Result CtxGetCurrent(CUcontext *pctx) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuCtxGetCurrent_(pctx);
+  }
+  Result CtxPushCurrent(CUcontext ctx) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuCtxPushCurrent_(ctx);
+  }
+  Result CtxPopCurrent(CUcontext *ctx) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuCtxPopCurrent_(ctx);
   }
   Result CtxEnablePeerAccess(CUcontext peerContext, unsigned int flags) const {
     CUDA_DRIVER_CALL_LOG();
@@ -460,6 +478,15 @@ private:
 
   using tcuCtxSetCurrent = Result(CUcontext);
   tcuCtxSetCurrent *cuCtxSetCurrent_;
+
+  using tcuCtxGetCurrent = Result(CUcontext *);
+  tcuCtxGetCurrent *cuCtxGetCurrent_;
+
+  using tcuCtxPushCurrent = Result(CUcontext);
+  tcuCtxPushCurrent *cuCtxPushCurrent_;
+
+  using tcuCtxPopCurrent = Result(CUcontext *);
+  tcuCtxPopCurrent *cuCtxPopCurrent_;
 
   using tcuCtxEnablePeerAccess = Result(CUcontext, unsigned int);
   tcuCtxEnablePeerAccess *cuCtxEnablePeerAccess_;

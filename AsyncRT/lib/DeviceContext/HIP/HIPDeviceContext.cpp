@@ -168,12 +168,6 @@ ErrorOr<int> HIPDevice::computeCapability() const {
   return 10 * compute_major + compute_minor;
 }
 
-ErrorOr<Device::MemInfo> HIPDevice::getMemoryInfo() const {
-  MemInfo mem_info;
-  HIP_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
-  return mem_info;
-}
-
 ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
@@ -743,6 +737,12 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
 ErrorOrSuccess
 HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   RAISE_ERROR("Unimplemented - HIPDeviceContext::enablePeerAccess");
+}
+
+ErrorOr<DeviceContext::MemInfo> HIPDeviceContext::getMemoryInfo() const {
+  MemInfo mem_info;
+  HIP_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
+  return mem_info;
 }
 
 const HIPDriver &HIPDeviceContext::hip_driver() const { return driver_; }

@@ -62,8 +62,6 @@ public:
   ErrorOrSuccess isCompatibleWithMAX() const override;
   ErrorOr<int> computeCapability() const override;
 
-  ErrorOr<MemInfo> getMemoryInfo() const override;
-
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
@@ -278,6 +276,8 @@ public:
 
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
+  ErrorOr<MemInfo> getMemoryInfo() const override;
+
   const CUDADriver &cuda_driver() const;
   CUcontext cuda_context() const;
   CUstream cuda_stream() const;
@@ -291,8 +291,6 @@ public:
       CUtensorMapFloatOOBfill oobFill) const;
 
   BufferCache &buffer_cache() const;
-
-  CUDADriver::Result setCurrent() const;
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);

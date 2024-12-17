@@ -345,9 +345,9 @@ AsyncRT_DeviceContext_computeCapability(int32_t *result,
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
                                     size_t *total) {
-  Device::MemInfo memInfo;
+  DeviceContext::MemInfo memInfo;
   const char *errMsg =
-      checkVal(&memInfo, Device::MemInfo(), ctx->device().getMemoryInfo());
+      checkVal(&memInfo, DeviceContext::MemInfo(), ctx->getMemoryInfo());
   *free = memInfo.free;
   *total = memInfo.total;
   return errMsg;

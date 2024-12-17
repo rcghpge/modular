@@ -123,7 +123,7 @@ MODULAR_API_EXPORT std::string Device::toString() const {
 }
 
 MODULAR_API_EXPORT ErrorOr<std::string> Device::getStats() {
-  ASSIGN_OR_RETURN(info, ctx->device().getMemoryInfo());
+  ASSIGN_OR_RETURN(info, ctx->getMemoryInfo());
 
   // Crafting JSON string
   std::string s;

@@ -47,12 +47,6 @@ class Device : public ReferenceCounted<Device> {
 public:
   enum class Attribute;
 
-  struct MemInfo {
-    MemInfo() : total(0), free(0) {}
-    size_t total;
-    size_t free;
-  };
-
   // API is a constexpr StringRef for fast comparison, while being
   // human-readable at the same time.
   using API = StringRef;
@@ -73,7 +67,6 @@ public:
   virtual ErrorOrSuccess isCompatibleWithMAX() const = 0;
   virtual ErrorOr<int> computeCapability() const = 0;
 
-  virtual ErrorOr<MemInfo> getMemoryInfo() const = 0;
   size_t allocationAlignment() const;
 
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
@@ -248,6 +241,12 @@ private:
 
 class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
+  struct MemInfo {
+    MemInfo() : total(0), free(0) {}
+    size_t total;
+    size_t free;
+  };
+
   enum class SyncMode {
     SYNC = 1,
     ASYNC = 2,
@@ -328,6 +327,8 @@ public:
   stopTimer(const DeviceTimer &timer) const = 0;
 
   virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
+
+  virtual ErrorOr<MemInfo> getMemoryInfo() const = 0;
 
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0,
                                           size_t bufferCacheSize = 0);
