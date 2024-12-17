@@ -731,6 +731,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     auto newInputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
         builder.clone(*userInputLambdaOp.getOperation()));
     newInputLambdaOp->removeAttr(mlir::SymbolTable::getSymbolAttrName());
+
     // Move the related declare spec op if needed.
     if (auto paramDeclIt = lambdaToParamDeclareOpMapping.find(
             newInputLambdaOp.getParamDeclAttr().getName());
@@ -770,10 +771,31 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     auto userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
         userSymTable.lookup(userOutputLambdaName));
-    KGEN::CallOp userSimdStoreOp =
-        *userOutputLambdaOp.getOps<KGEN::CallOp>().begin();
-    KGEN::CallOp srcSimdStoreOp =
-        *srcOutputLambdaOp.getOps<KGEN::CallOp>().begin();
+
+    // Assume the last call in each lambda is the store op
+
+    KGEN::CallOp userSimdStoreOp;
+    for (auto callOp : userOutputLambdaOp.getOps<KGEN::CallOp>())
+      userSimdStoreOp = callOp;
+
+    KGEN::CallOp srcSimdStoreOp;
+    for (auto callOp : srcOutputLambdaOp.getOps<KGEN::CallOp>())
+      srcSimdStoreOp = callOp;
+
+    // Assert that the last operator are the store function we expect.
+    auto simdStoreFunc = analysis.getRegisteredMojoKernelFor(
+        Utils::DPSManagedTensorSliceStoreSIMD);
+    ASSERT_STREAM(srcSimdStoreOp.getCallee().getSymbol().getLeafReference() ==
+                      simdStoreFunc.getSymNameAttr(),
+                  << "Expected last call of output lambda of src to be "
+                  << simdStoreFunc.getSymNameAttr() << " but got "
+                  << srcSimdStoreOp.getCallee().getSymbol().getLeafReference());
+    ASSERT_STREAM(
+        userSimdStoreOp.getCallee().getSymbol().getLeafReference() ==
+            simdStoreFunc.getSymNameAttr(),
+        << "Expected last call of output lambda of user to be "
+        << simdStoreFunc.getSymNameAttr() << " but got "
+        << userSimdStoreOp.getCallee().getSymbol().getLeafReference());
 
     // Remap to_kgen to the new one, which is corresponding to the output
     // placeholder in the src kernel.
@@ -817,6 +839,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         }
       }
     }
+
+    builder.setInsertionPoint(
+        builder.getInsertionPoint()->getBlock()->getTerminator());
 
     // Insert the COMPUTE_OUTLINED call for the final elementwise lambda. We
     // clone the user kernel's SIMD store into the src kernel to account for the

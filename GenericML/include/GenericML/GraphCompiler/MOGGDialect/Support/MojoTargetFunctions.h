@@ -45,6 +45,15 @@ constexpr llvm::StringLiteral DPSManagedTensorSliceStoreSIMD =
 constexpr llvm::StringLiteral DPSManagedTensorSliceLoadSIMD =
     "simd_load_from_managed_tensor_slice";
 
+// Returns a tensor pointing to the same data but with a new shape.
+constexpr llvm::StringLiteral DPSManagedTensorSliceReshape =
+    "reshape_contiguous_managed_tensor_slice";
+
+// Given input indices to a `mo.split_dim` op, returns the associated
+// output indices.
+constexpr llvm::StringLiteral SplitDimIndices = "split_dim_indices";
+constexpr llvm::StringLiteral InsertIndex = "insert_index";
+
 } // namespace M::MOGG::Utils
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_MOJOTARGETFUNCTIONS_H

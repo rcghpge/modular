@@ -788,7 +788,29 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       continue;
     }
 
-    builder.clone(op, mapper);
+    // Make sure to replace get dim ops in regions / lambdas.
+    // Create an association between GetDim ops in the old kernelOp and their
+    // lowered form in the output kernelOp.
+    SmallVector<Value> loweredGetDimsNewOp;
+    if (auto regionDeclarationOldOp =
+            dyn_cast<KGEN::ParamDeclareRegionOp>(op)) {
+      for (auto op : regionDeclarationOldOp.getOps<MOGG::GetDimOp>()) {
+        auto loweredParam = loweredParams.lookup(op.getDimension());
+        Value v = builder.create<KGEN::POP::CastFromBuiltinOp>(
+            op.getLoc(), si64ScalarTy, loweredParam);
+        loweredGetDimsNewOp.push_back(v);
+      }
+    }
+
+    // Replace all usages of GetDim ops in the new kernelOp using our map.
+    auto newOp = builder.clone(op, mapper);
+    if (auto regionDeclarationNewOp =
+            dyn_cast<KGEN::ParamDeclareRegionOp>(newOp)) {
+      for (auto [i, op] :
+           llvm::enumerate(regionDeclarationNewOp.getOps<MOGG::GetDimOp>())) {
+        op.replaceAllUsesWith(loweredGetDimsNewOp[i]);
+      }
+    }
   }
 
   DenseMap<int, MOGG::ToKGENOp> outIdxToKgenTensorOp;
