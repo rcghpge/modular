@@ -526,9 +526,8 @@ struct FuseAffineViewsPass
     // index list length does not match rank).
     ErrorOr<KGEN::ParamDeclAttr> maybeNewOutputTensorSpec =
         M::MO::bindStaticTensorSpecAttrWithoutLambdas(
-            kernel, cast<MO::TensorValue>(newOutputPlaceholder->getResult(0)),
-            mojoLibraryAnalysis, typeManager, builder,
-            "affine_view_fusion_tensor_spec");
+            kernel, newOutputPlaceholder->getResult(0), mojoLibraryAnalysis,
+            typeManager, builder, "affine_view_fusion_tensor_spec");
     ASSERT_STREAM(!maybeNewOutputTensorSpec.isError(),
                   << "Could not make spec "
                   << maybeNewOutputTensorSpec.takeError());
