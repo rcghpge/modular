@@ -118,7 +118,7 @@ def MO_TransferOp : MO_TensorOp<"transfer", [Pure, MO_SameOperandsAndResultShape
 
   let builders = [
     OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice,
-      CArg<"bool", "false">:$alwaysElideSameDeviceCopy)>,
+      CArg<"bool", "true">:$alwaysElideSameDeviceCopy)>,
   ];
 }
 
@@ -2686,6 +2686,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceInput>,
 ]> {
   let summary = "Splitting operation";
   let description = [{
@@ -2739,6 +2740,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceInput>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Transposition operation";

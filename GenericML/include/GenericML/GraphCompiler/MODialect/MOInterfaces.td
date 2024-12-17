@@ -417,7 +417,29 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return Impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
-def MO_StaticTupleInputs : MO_TensorOpInterfaceBase<"StaticTupleInputs"> {
+def MO_DeviceInput : MO_TensorOpInterfaceBase<"DeviceInput"> {
+  let description = [{
+    Trait to indicate the only input to consider for device assignment
+  }];
+  let methods = [
+    InterfaceMethod<"Get the left input tensor as a TypedValue",
+      "TensorValue", "getInput", (ins), [{}],
+      [{ return $_op.getInput(); }]>,
+  ];
+}
+
+def MO_DeviceInputs : MO_TensorOpInterfaceBase<"DeviceInputs"> {
+  let description = [{
+    Trait to indicate the inputs to consider for device assignment
+  }];
+  let methods = [
+    InterfaceMethod<"Get the left input tensor as a TypedValue",
+      "OperandRange", "getInputs", (ins), [{}],
+      [{ return $_op.getInputs(); }]>,
+  ];
+}
+
+def MO_StaticTupleInputs : MO_TensorOpInterfaceBase<"StaticTupleInputs", [MO_DeviceInputs]> {
   let description = [{
     Trait to indicate the inputs would be lowered to a `mogg.tuple` at the
     call site from `mogg.call`
@@ -646,6 +668,7 @@ def MO_PadLikeTraits: TraitList<[
   MO_PadLike,
   MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceInput>,
 ]>;
 
 def MO_ConstantLike : MO_TensorOpInterfaceBase<"ConstantLike"> {

@@ -9,6 +9,8 @@
 #include "mlir/IR/Visitors.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include "Utils.h"
+
 #define DEBUG_TYPE "validate-devices"
 
 namespace M::MO {
