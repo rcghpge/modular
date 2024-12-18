@@ -77,14 +77,36 @@ struct RemoveRedundantOperands
       if (chainOutVec.size() <= 1)
         return;
 
-      // It does not really matter which chain to keep. We keep the last one.
+      // We should keep the last chain, which is also the chain that is created
+      // closet to the exit point of the region.
       OpOperand *toKeep = chainOutVec.back();
-      ArrayRef<OpOperand *> chainsToRemove = ArrayRef(chainOutVec).drop_back();
+      SmallVector<Value> chainsToRemove;
       llvm::BitVector toRemoveBits(outputOp->getNumOperands());
-      for (OpOperand *toRemove : chainsToRemove)
+      for (OpOperand *toRemove : ArrayRef(chainOutVec).drop_back()) {
         toRemoveBits.set(toRemove->getOperandNumber());
+        chainsToRemove.push_back(toRemove->get());
+      }
       // remove operands from mogg.output.
       outputOp->eraseOperands(toRemoveBits);
+
+      for (Value toRemove : chainsToRemove) {
+        // Also erase creation of the chain too (they have already been inserted
+        // when the pass runs after post-abi fusion).
+        for (Operation *user :
+             llvm::make_early_inc_range(toRemove.getUsers())) {
+          if (auto asyncAlloc = dyn_cast<MOGG::AllocateAsyncRefOp>(user)) {
+            // Now that the chain is not going to escape, we no longer need to
+            // create an async value for it.
+            assert(asyncAlloc->hasOneUse() &&
+                   isa<MOGG::CallOp>(*asyncAlloc->getUsers().begin()) &&
+                   cast<MOGG::CallOp>(*asyncAlloc->getUsers().begin())
+                           .getMojoKernelTargetAttr()
+                           .str() == "builtin.create_chain_async");
+            asyncAlloc->getUsers().begin()->erase();
+            asyncAlloc.erase();
+          }
+        }
+      }
 
       // Create a new region op but with collapsed result type.
       MOGG::GenericCompiledRegionOp newKernel = buildRegionOpWithResultType(

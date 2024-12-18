@@ -379,6 +379,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   abiOpts.kernelLibraryPaths = kernelLibraryPaths;
   pm.addPass(MGP::createLowerMOGGABI(abiOpts));
   // pm.addPass(MGP::createPostABIFuseGenericRegions());
+  // pm.addPass(MGP::createRemoveRedundantOperands());
 
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;
