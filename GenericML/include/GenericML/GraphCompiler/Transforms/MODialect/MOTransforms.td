@@ -470,6 +470,14 @@ def DecomposeViewOps : Pass<"decompose-views", "ModuleOp"> {
   }];
 }
 
+def FlattenElementwise : Pass<"flatten-elementwise", "ModuleOp"> {
+  let summary = "Flattens elementwise ops";
+  let description = [{
+    This pass will flatten the tensor shapes for all elementwise ops. This will
+    unblock elementwise fusion opportunities.
+  }];
+}
+
 def CanonicalizeChainSequences : Pass<"canonicalize-chain-sequences", "GraphOp"> {
   let summary = "Optimize linear chains of side-effecting operations.";
   let description = [{
