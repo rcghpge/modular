@@ -37,6 +37,7 @@ template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
     ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {
   MOGG::fuseAndReplaceCompiledRegions(allowDuplication,
+                                      /*genReleaseOpaque=*/true,
                                       compiledRegionOpsToFuseTogether);
 }
 

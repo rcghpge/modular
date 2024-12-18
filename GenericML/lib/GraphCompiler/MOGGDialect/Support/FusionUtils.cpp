@@ -661,7 +661,7 @@ void clearUnusedParamDecls(Operation *fusedKernel,
     op->erase();
 }
 
-void fuseAndReplaceCompiledRegions(bool allowDuplication,
+void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
                                    ArrayRef<Operation *> toFuse,
                                    fuseRegionInlineCallBackT inlineOpCallBack) {
   assert(llvm::all_of(
@@ -844,15 +844,18 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication,
   // Inserting them at the end of the block is conservative.
   // Insert after last use isn't trivial, another pass will take care of moving
   // up the destructor call.
-  for (Operation *op : toFuse) {
-    for (auto [idx, resultVal] : llvm::enumerate(op->getResults())) {
-      if (!isa<MGP::OpaqueType>(resultVal.getType()) ||
-          resultsThatShouldBeReplaced.contains(resultVal))
-        continue;
+  if (genReleaseOpaque) {
+    for (Operation *op : toFuse) {
+      for (auto [idx, resultVal] : llvm::enumerate(op->getResults())) {
+        if (!isa<MGP::OpaqueType>(resultVal.getType()) ||
+            resultsThatShouldBeReplaced.contains(resultVal))
+          continue;
 
-      Value oldVal = op->getRegion(0).front().getTerminator()->getOperand(idx);
-      Value newVal = mapper.lookup(oldVal);
-      builder.create<MOGG::ReleaseMojoValueOp>(oldVal.getLoc(), newVal);
+        Value oldVal =
+            op->getRegion(0).front().getTerminator()->getOperand(idx);
+        Value newVal = mapper.lookup(oldVal);
+        builder.create<MOGG::ReleaseMojoValueOp>(oldVal.getLoc(), newVal);
+      }
     }
   }
 

@@ -116,7 +116,7 @@ using fuseRegionInlineCallBackT = llvm::function_ref<bool(
 /// An optional inlineOpCallBack can be provided to handle special
 /// operations that need to be inlined differently.
 void fuseAndReplaceCompiledRegions(
-    bool allowDuplication, ArrayRef<Operation *> toFuse,
+    bool allowDuplication, bool genReleaseOpaque, ArrayRef<Operation *> toFuse,
     fuseRegionInlineCallBackT inlineOpCallBack = nullptr);
 
 } // namespace M::MOGG
