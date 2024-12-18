@@ -764,23 +764,17 @@ struct FuseAffineViewsPass
     }
     TypeManager typeManager = maybeTypeManager.get();
 
-    // Delete now-unused view ops later, as we cannot erase ops which are no
-    // part of the callback in a walk.
-    SmallVector<Operation *> opsToErase;
     graph.walk([&](MOGG::KernelOp kernel) {
       // These fusions fuse `kernel` into users of the kernel for certain ops.
       if (isOutputFusibleNonElementwise(kernel)) {
         Value result = kernel.getResult(0);
         Operation *user = *result.getUsers().begin();
-        if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user)) {
+        if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user))
           fuseViewOpDim(kernel, addDim, result, mojoLibraryAnalysis,
                         typeManager);
-          opsToErase.push_back(user);
-        } else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user)) {
+        else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user))
           fuseViewOpDim(kernel, split, result, mojoLibraryAnalysis,
                         typeManager);
-          opsToErase.push_back(user);
-        }
       }
 
       // These fusions fuse operands into the kernel.
@@ -791,9 +785,6 @@ struct FuseAffineViewsPass
       MOGG::addForwardDeclsOfReferencedFuncs(
           kernel, kernel->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
     });
-
-    for (Operation *oldViewOp : opsToErase)
-      oldViewOp->erase();
   }
 };
 
