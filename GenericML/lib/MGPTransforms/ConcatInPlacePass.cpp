@@ -92,8 +92,6 @@ class ConcatInPlacePass
 
       // For each concat input buffer...
       for (Value inBuffer : concatOp.getInBuffers()) {
-        auto bufferType = cast<DeviceBufferType>(inBuffer.getType());
-
         // Insert the slices just after the producing op for readability
         if (auto op = inBuffer.getDefiningOp())
           execState.builder.setInsertionPoint(op);
@@ -112,12 +110,6 @@ class ConcatInPlacePass
 
         Value outSlice = bufferBuilder->bufferSlice(builder, loc, concatBuffer,
                                                     offset, sliceSize);
-
-        // BufferResizeOp
-        if (outSlice.getType() != inBuffer.getType()) {
-          outSlice = bufferBuilder->bufferResize(builder, loc, outSlice,
-                                                 *bufferType.getOptSize());
-        }
 
         outBuffers.push_back(outSlice);
       }

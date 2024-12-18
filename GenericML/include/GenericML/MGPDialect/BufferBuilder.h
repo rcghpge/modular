@@ -89,9 +89,9 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
                                         TensorSpecType tensorSpecType,
                                         TensorType tensorType) {
   if (tensorSpecType != tensorType.getTensorSpec())
-    return op->emitOpError() << "expected spec to match result tensor spec"
-                             << " (" << tensorSpecType << " vs "
-                             << tensorType.getTensorSpec() << ")";
+    return op->emitOpError()
+           << "expected spec to match result tensor spec" << " ("
+           << tensorSpecType << " vs " << tensorType.getTensorSpec() << ")";
 
   BufferType expectedBufferType = BufferType::get(tensorType);
   bool bufferIsStatic = bufferType.getOptSize().has_value();
@@ -122,9 +122,9 @@ LogicalResult genericTensorExtractVerify(Operation *op, TensorType tensorType,
                                          TensorSpecType resultTensorSpecType) {
   if (tensorType.getTensorSpec() != resultTensorSpecType)
     return op->emitOpError()
-           << "expected the result spec to match tensor's spec"
-           << " (" << resultTensorSpecType << " vs "
-           << tensorType.getTensorSpec() << ")";
+           << "expected the result spec to match tensor's spec" << " ("
+           << resultTensorSpecType << " vs " << tensorType.getTensorSpec()
+           << ")";
   BufferType expectedBufferType = BufferType::get(tensorType);
   if (expectedBufferType != resultBufferType)
     return op->emitOpError()
@@ -150,9 +150,8 @@ public:
   /// type.
   virtual Type tensorType(MLIRContext *ctx, TensorSpecType tensorSpecType) = 0;
 
-  /// Returns Type representing device-specific buffer with optional size.
-  virtual Type bufferType(MLIRContext *ctx,
-                          std::optional<uint64_t> optSize) = 0;
+  /// Returns Type representing device-specific buffer.
+  virtual Type bufferType(MLIRContext *ctx) = 0;
 
   /// Returns Type representing device-specific chain.
   virtual Type chainType(MLIRContext *ctx) = 0;
@@ -175,8 +174,8 @@ public:
     return DeviceTensorType::get(device, tensorSpecType);
   }
 
-  Type bufferType(MLIRContext *ctx, std::optional<uint64_t> optSize) override {
-    return DeviceBufferType::get(device, optSize);
+  Type bufferType(MLIRContext *ctx) override {
+    return DeviceBufferType::get(device);
   }
 
   Type chainType(MLIRContext *ctx) override { return MEF::ChainType::get(ctx); }
@@ -236,8 +235,8 @@ public:
   /// Returns the buffer of size. The alignment may be ignored for some devices.
   virtual Value bufferAlloc(OpBuilder &builder, Location loc,
                             TypedValue<ContextType> context, Value inChain,
-                            Value size, Value deviceContext, uint64_t alignment,
-                            std::optional<uint64_t> optSize = std::nullopt) = 0;
+                            Value size, Value deviceContext,
+                            uint64_t alignment) = 0;
 
   /// Returns the chain indicating when srcBuffer on the host device has been
   /// transferred to dstBuffer on this builder's device.
@@ -264,15 +263,6 @@ public:
                                      BufferBuilder *dstBufferBuilder,
                                      Value dstBuffer, Value srcDeviceContext,
                                      Value dstDeviceContext) = 0;
-
-  /// Returns alias to buffer with the size dropped
-  virtual Value bufferUnsize(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context,
-                             Value inBuffer) = 0;
-
-  /// Returns alias to buffer with the size asserted
-  virtual Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
-                             uint64_t size) = 0;
 
   /// Get the runtime size of the buffer
   virtual Value bufferGetSize(OpBuilder &builder, Location loc, Value inChain,
@@ -409,8 +399,7 @@ public:
 
   Value bufferAlloc(OpBuilder &builder, Location loc,
                     TypedValue<ContextType> context, Value inChain, Value size,
-                    Value deviceContext, uint64_t alignment,
-                    std::optional<uint64_t> optSize = std::nullopt) override;
+                    Value deviceContext, uint64_t alignment) override;
 
   Value bufferTransferFromHost(OpBuilder &builder, Location loc,
                                TypedValue<ContextType> context, Value inChain,
@@ -427,12 +416,6 @@ public:
                              Value srcBuffer, BufferBuilder *dstBufferBuilder,
                              Value dstBuffer, Value srcDeviceContext,
                              Value dstDeviceContext) override;
-
-  Value bufferUnsize(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context, Value inBuffer) override;
-
-  Value bufferResize(OpBuilder &builder, Location loc, Value inBuffer,
-                     uint64_t size) override;
 
   Value bufferGetSize(OpBuilder &builder, Location loc, Value inChain,
                       Value inBuffer) override;

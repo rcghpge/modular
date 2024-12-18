@@ -115,49 +115,26 @@ LogicalResult M::MGP::verifyConsistentDevices(
 // Custom parsers
 //===----------------------------------------------------------------------===//
 
-/// Parses a !mgp.buffer type, extracts its raw size and device attributes,
+/// Parses a !mgp.buffer type, extracts its device attribute,
 /// assigns chains the type !mgp.chain<device>.
-static ParseResult parseBufferTypeToRawSizeDeviceImpl(OpAsmParser &p,
-                                                      Type &buffer,
-                                                      IntegerAttr &rawSize,
-                                                      DeviceRefAttr &device,
-                                                      ArrayRef<Type *> chains) {
+static ParseResult parseBufferTypeToDeviceImpl(OpAsmParser &p, Type &buffer,
+                                               DeviceRefAttr &device,
+                                               ArrayRef<Type *> chains) {
   llvm::SMLoc loc;
   if (p.getCurrentLocation(&loc) || p.parseType(buffer))
     return failure();
   auto bufferType = dyn_cast<DeviceBufferType>(buffer);
   if (bufferType == nullptr)
     return p.emitError(loc) << "expected an !mgp.buffer type.";
-  rawSize = bufferType.getRawSize();
   device = bufferType.getDevice();
   for (Type *chain : chains)
     *chain = MEF::ChainType::get(p.getContext());
   return success();
 }
 
-static ParseResult parseStaticBufferTypeToSizeDeviceBuffer(
-    OpAsmParser &p, Type &staticBuffer, IntegerAttr &size,
-    DeviceRefAttr &device, Type &dynamicBuffer) {
-  mlir::SMLoc loc;
-  if (p.getCurrentLocation(&loc) ||
-      parseBufferTypeToRawSizeDeviceImpl(p, staticBuffer, size, device, {}))
-    return failure();
-  if (!rawSizeToOptSize(size.getUInt()))
-    return p.emitError(loc, "expecting statically sized !mgp.buffer type");
-  dynamicBuffer = DeviceBufferType::get(device, std::optional<uint64_t>());
-  return success();
-}
-
-static void printStaticBufferTypeToSizeDeviceBuffer(
-    OpAsmPrinter &p, Operation *op, DeviceBufferType staticBuffer,
-    IntegerAttr rawSize, DeviceRefAttr device, DeviceBufferType dynamicBuffer) {
-  p << staticBuffer;
-}
-
 static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
                                            DeviceRefAttr &device) {
-  IntegerAttr rawSize;
-  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device, {});
+  return parseBufferTypeToDeviceImpl(p, buffer, device, {});
 }
 
 static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
@@ -168,9 +145,7 @@ static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
 
 static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
                                            DeviceRefAttr &device, Type &chain) {
-  IntegerAttr rawSize;
-  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
-                                            {&chain});
+  return parseBufferTypeToDeviceImpl(p, buffer, device, {&chain});
 }
 
 static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
@@ -182,10 +157,8 @@ static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
 
 static ParseResult parseBufferTypeToChain(OpAsmParser &p, Type &buffer,
                                           Type &chain) {
-  IntegerAttr rawSize;
   DeviceRefAttr device;
-  return parseBufferTypeToRawSizeDeviceImpl(p, buffer, rawSize, device,
-                                            {&chain});
+  return parseBufferTypeToDeviceImpl(p, buffer, device, {&chain});
 }
 
 static void printBufferTypeToChain(OpAsmPrinter &p, Operation *op,
@@ -473,11 +446,14 @@ SmallVector<Attribute> BufferRemoveCachedOp::getLiftAttributes() {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult BufferGetSizeOp::fold(FoldAdaptor adaptor) {
-  auto optSize = getBuffer().getType().getOptSize();
-  auto indexTy = IndexType::get(getContext());
+  auto bufferAlloc = getBuffer().getDefiningOp<BufferAllocOp>();
+  if (bufferAlloc)
+    return bufferAlloc.getRuntimeSize();
 
-  if (optSize.has_value())
-    return IntegerAttr::get(indexTy, optSize.value());
+  auto bufferConstant = getBuffer().getDefiningOp<BufferConstantOp>();
+  if (bufferConstant)
+    return IntegerAttr::get(IndexType::get(getContext()),
+                            bufferConstant.getAValue().size());
 
   return {};
 }

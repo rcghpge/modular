@@ -323,13 +323,6 @@ class DynamicMemoryPlanningPass
             loc, memPoolBuffer, bufferPlanOp.getOffsets()[i],
             allocs[i].runtimeSize);
 
-        // Resolve potential type mismatch.
-        DeviceBufferType originalTp = allocs[i].alloc.getOutBuffer().getType();
-        std::optional<uint64_t> staticSz = originalTp.getOptSize();
-        if (staticSz)
-          slice = execBuilder.create<BufferResizeOp>(
-              loc, originalTp, slice, *staticSz, originalTp.getDevice());
-
         allocs[i].alloc.getOutBuffer().replaceAllUsesWith(slice);
       }
 

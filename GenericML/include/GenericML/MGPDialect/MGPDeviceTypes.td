@@ -42,9 +42,8 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
 ]> {
   let summary = "Byte array buffers.";
   let description = [{
-    `!mgp.buffer`s are possibly-mutable byte arrays which may have a statically
-    known size, and which reside on the device given by the `#M.device_ref`
-    attribute.
+    `!mgp.buffer`s are mutable byte arrays which reside on the device given by
+    the `#M.device_ref` attribute.
 
     Nothing is implied about the internal structure of the bytes, such as rank,
     dimensions, underlying element type, padding, or element endianness. The
@@ -56,8 +55,8 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     various tensor types, including `!mgp.tensor`, or used directly.
 
     This type implements `ShapedTypeInterface` as a rank-1 tensor over
-    `uint8_t` with optimally known first dimension. This in turn supports the
-    `ElementsAttrInterface` on buffer attributes.
+    `uint8_t`. This in turn supports the `ElementsAttrInterface` on buffer
+    attributes.
 
     Note that buffers may respect alignment constraints. However those are
     specified either when the buffer is created, or are encoded in the
@@ -69,10 +68,6 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     must also return an `!mgp.chain`. In this way the compiler can correctly
     sequence writes and reads.
 
-    The size of a buffer type has two representations:
-     - 'std::optional form': a `std::optional<uint64_t>`, with none denoting unknown.
-     - 'Raw form': an `mlir::IntegerAttr` or `uint64_t`, with ~0 denoting unknown.
-
     `!mgp.buffer`s are represented by (subclasses of)
     `AsyncRT::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
@@ -80,60 +75,25 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
 
     Examples:
     ```mlir
-    // A 16-byte buffer on the CUDA GPU with virtual device id 3.
-    !mgp.buffer<16, <"gpu", 3>>
-    // A 16-byte buffer on the CPU with virtual device id 0.
-    !mgp.buffer<16, <"cpu", 0>>
+    // A buffer on the CUDA GPU with virtual device id 3.
+    !mgp.buffer<<"gpu", 3>>
+    // A buffer on the CPU with virtual device id 0.
+    !mgp.buffer<<"cpu", 0>>
     // Abbreviation for the above.
-    !mgp.buffer<16>
-    // A dynamically-sized buffer on the CUDA GPU with virtual device id 3.
-    !mgp.buffer<, <"gpu", 3>>
-    // A dynamically-sized buffer on the CPU with virtual device id 0.
-    !mgp.buffer<, <"cpu", 0>>
-    // Abbreviation for the above.
-    !mgp.buffer<>
+    !mgp.buffer
     ```
   }];
 
-  let parameters = (ins MGP_OptDeviceRefParam:$device,
-                        OptionalParameter<"std::optional<uint64_t>">:$optSize);
-  let assemblyFormat = "`<` ( $optSize^ )? ( `,` $device^ )? `>`";
+  let parameters = (ins MGP_OptDeviceRefParam:$device);
+  let assemblyFormat = "(`<` $device^ `>`)?";
   let genVerifyDecl = 1;
 
-  let extraClassDeclaration = [{
-     /// getShape may need to return an ArrayRef representing a
-     /// dynamic rank-1 shape if the size is unknown.
-     /// That ref will point to this static.
-     static const int64_t unknownSize;
-
-     /// Returns the buffer's size in 'raw form', which is a UI64Attr with
-     /// value ~0 if the size is unknown.
-     mlir::IntegerAttr getRawSize() const;
-  }];
-
   let builders = [
-    /// Constructs a buffer type from its size in 'optional' form.
-    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
-                                        "std::optional<uint64_t>":$optSize)>,
+    /// Constructs a buffer type from the given device.
+    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device)>,
 
-    /// Constructs a buffer type from its size in 'raw form'.
-    /// As a convenience we allow the null attribute to denote unknown size.
-    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
-                                        "mlir::IntegerAttr":$rawSizeOrNull)>,
-
-    /// Constructs a buffer type from its size in 'raw form'.
-    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
-                                        "uint64_t":$rawSize)>,
-
-    /// Constructs a buffer type which matches the require size of the given
-    /// tensor spec type. The buffer will have unknown size if the tensor spec
-    /// has dynamic rank, dimensions or dtype.
-    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
-                                        "M::MGP::TensorSpecType":$tensorSpecType)>,
-
-    /// Constructs a buffer type which matches the required size, device, and
-    /// any other properties of the given tensor type. The buffer will have
-    /// unknown size if the tensor has dynamic rank, dimensions or dtype.
+    /// Constructs a buffer type which matches the device and any other properties
+    /// of the given tensor type.
     TypeBuilderWithInferredContext<(ins "M::MGP::DeviceTensorType":$tensorType)>,
   ];
 }

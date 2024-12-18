@@ -125,7 +125,7 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
     ```mlir
     %ctx : !mef.context
     %ch : !mgp.chain<<"gpu", 3>>
-    %buf : !mgp.buffer<256, <"gpu", 3>>
+    %buf : !mgp.buffer<<"gpu", 3>>
     %spec : !mgp.tensor_spec<4x16xf32>
     %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"gpu", 3>>
     %tensor : !mgp.tensor<4x16xf32, <"gpu", 3>>
@@ -165,7 +165,7 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
     ```mlir
     %tensor : !mgp.tensor<8x64xf32, <"gpu", 3>>
     %buf = mgp.tensor.extract.buffer %tensor : <8x64xf32, <"gpu", 3>>
-    %buf : !mgp.buffer<2048, <"gpu", 3>>
+    %buf : !mgp.buffer<<"gpu", 3>>
     ```
   }];
 
@@ -835,8 +835,8 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
     %ctx : !mgp.context
     %ch0 : !mef.chain
     // Returns the buffer cached in slot index 42.
-    %buf = mgp.buffer.get_cached %ch0, %ctx[42] : !mgp.buffer<256, <"gpu", 3>>
-    %buf : !mgp.buffer<256, <"gpu", 3>>
+    %buf = mgp.buffer.get_cached %ch0, %ctx[42] : !mgp.buffer<<"gpu", 3>>
+    %buf : !mgp.buffer<<"gpu", 3>>
     ```
   }];
 
@@ -897,7 +897,7 @@ def BufferGetSizeOp : MGP_Op<"buffer.get_size", [
 
     Example:
     ```mlir
-    %in_buf : !mgp.buffer<>
+    %in_buf : !mgp.buffer
     %buf_size = mgp.buffer.get_size %in_buf
     %buf_size : index
     ```

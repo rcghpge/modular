@@ -32,10 +32,10 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %1 = mgp.context.create 2
   %2 = mgp.runtime.create %0, %1[0]
   mef.output %2, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
-} execute (%ch0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer<1>) -> !mef.chain {
+} execute (%ch0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %arg2: !mgp.buffer) -> !mef.chain {
   %lhs = index.constant 42
   %rhs = index.constant -20
-  %1 = mgp.buffer.to_bool %ch0, %arg2 : !mgp.buffer<1>
+  %1 = mgp.buffer.to_bool %ch0, %arg2 : !mgp.buffer
   %2 = grt.if %1 (%ch0: !mef.chain, %lhs: index, %rhs: index, %arg1 as %new: !mgp.context) -> !mef.chain {
     %3 = "mogg.execute_kernel"(%lhs, %rhs) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
     mef.output %ch0 : !mef.chain

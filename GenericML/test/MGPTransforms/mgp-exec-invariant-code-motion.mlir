@@ -14,8 +14,8 @@
 // CHECK:       mef.output %[[CH_OUT]], %[[CTX]]
 // CHECK-NEXT:  } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 
-// CHECK:   %[[BUF:.*]] = mgp.buffer.get_cached %[[CH0]], %[[CTX]][2] : !mgp.buffer<37632>
-// CHECK:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.buffer<37632>
+// CHECK:   %[[BUF:.*]] = mgp.buffer.get_cached %[[CH0]], %[[CTX]][2] : !mgp.buffer
+// CHECK:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.buffer
 // CHECK: }
 
 mgp.model @liftable_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
@@ -23,9 +23,9 @@ mgp.model @liftable_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %ctx = mgp.context.create 2
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<37632>) {
-  %out_buf = mgp.buffer.constant.external %ch0, %weights["foo", 37632, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer<37632>
-  mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer<37632>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer) {
+  %out_buf = mgp.buffer.constant.external %ch0, %weights["foo", 37632, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer
 }
 
 // -----
@@ -54,8 +54,8 @@ mgp.model @non_pure_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %c8 = index.constant 8
   %tmp = index.mul %out_dim0, %out_dim1
   %bytes = index.mul %c8, %tmp
-  %out_buf = mgp.buffer.alloc %ch0, %bytes, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %ch2 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.buffer<16>, !mgp.tensor_spec<2x2xf32>, !mgp.buffer<>, !mgp.tensor_spec<?x?xf32>) -> !mef.chain
+  %out_buf = mgp.buffer.alloc %ch0, %bytes, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %ch2 = "bar.side_effect_op"(%ch0, %const_buf, %const_spec, %out_buf, %out_spec) : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<2x2xf32>, !mgp.buffer, !mgp.tensor_spec<?x?xf32>) -> !mef.chain
   %out_tensor = mgp.tensor.create %ch2, %out_buf, %out_spec  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %out_tensor : !mef.chain, !mgp.tensor<?x?xf32>
 }
@@ -82,10 +82,10 @@ mgp.model @dont_lift_if_no_computation_saved : mof devices [#M.device_ref<"cpu",
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<0>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer) {
   %size = index.constant 0
-  %out_buf = mgp.buffer.alloc %ch0, %size, %cpu, align 16 : !mgp.buffer<0>, !mgp.opaque<"cpu0_context">
-  mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer<0>
+  %out_buf = mgp.buffer.alloc %ch0, %size, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer
 }
 
 // -----
@@ -108,11 +108,11 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
 
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer<37632>) {
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) -> (!mef.chain, !mgp.buffer) {
   %weight_buf = mgp.buffer.constant dense_resource<onnx__Conv_497> : !M.aligned_bytes<37632, align 16>
 
   %size = index.constant 37632
-  %out_buf = mgp.buffer.alloc %ch0, %size, %cpu, align 16 : !mgp.buffer<37632>, !mgp.opaque<"cpu0_context">
+  %out_buf = mgp.buffer.alloc %ch0, %size, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
   %out_spec = mgp.tensor_spec.create  : !mgp.tensor_spec<7x7x3x64xf32>
 
   %i42 = index.constant 42
@@ -124,9 +124,9 @@ mgp.model @generic_execute : mof devices [#M.device_ref<"cpu", 0>] init (%weight
     dSummary = "mogg.generic.compiled.region:14",
     eIsAsync = false,
     fConstantResource =[]
-  } : (!mgp.context, !mgp.opaque<"cpu0_context">, !mgp.buffer<37632>, !mgp.buffer<37632>) -> (!mef.chain)
+  } : (!mgp.context, !mgp.opaque<"cpu0_context">, !mgp.buffer, !mgp.buffer) -> (!mef.chain)
 
-  mef.output %ch2, %out_buf : !mef.chain, !mgp.buffer<37632>
+  mef.output %ch2, %out_buf : !mef.chain, !mgp.buffer
 }
 
 // -----
@@ -173,10 +173,10 @@ mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref
   %idx16 = index.constant 16
   %0 = mgp.tensor_spec.create  : !mgp.tensor_spec<4xf32>
   %1 = mgp.buffer.constant #M.aligned_bytes<"0x000000000000803F0000004000004040", align 64> : !M.array<16xui8>
-  %2 = mgp.buffer.alloc %arg0, %idx16, %arg4, align 256 : !mgp.buffer<16, <"gpu", 0>>, !mgp.opaque<"gpu0_context">
-  %3 = mgp.buffer.host_to_device %arg0, %1, %2, %arg4 : !mgp.buffer<16> -> !mgp.buffer<16, <"gpu", 0>>, !mgp.opaque<"gpu0_context">
+  %2 = mgp.buffer.alloc %arg0, %idx16, %arg4, align 256 : !mgp.buffer<<"gpu", 0>>, !mgp.opaque<"gpu0_context">
+  %3 = mgp.buffer.host_to_device %arg0, %1, %2, %arg4 : !mgp.buffer -> !mgp.buffer<<"gpu", 0>>, !mgp.opaque<"gpu0_context">
   %4 = mgp.sync(%3, %arg1, %arg4) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.opaque<"gpu0_context">) -> !mef.chain
-  %5 = mgp.extend.lifetime  %4, %1 : (!mef.chain, !mgp.buffer<16>) -> !mef.chain
+  %5 = mgp.extend.lifetime  %4, %1 : (!mef.chain, !mgp.buffer) -> !mef.chain
   %6 = mgp.tensor.create %4, %2, %0 : !mgp.tensor<4xf32,<"gpu", 0>>
   %7 = grt.chain.create(%5, %6: !mgp.tensor<4xf32, <"gpu", 0>>)
   mef.output %7 : !mef.chain

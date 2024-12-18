@@ -5,7 +5,7 @@
 // CHECK: execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[CH2:.*]] = mgp.assert %{{.*}}, "input shapes must match"
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH0]], %[[CH2]])
-// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH3]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer<>
+// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH3]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer
 // CHECK: %{{.*}} = "kernel_execute"(%[[CH3]], %{{.*}}, %{{.*}}, %[[BUF]])
 
 mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
@@ -33,8 +33,8 @@ mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %c8 = index.constant 8
   %tmp = index.mul %dim0, %dim1
   %7 = index.mul %c8, %tmp
-  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer) -> !mef.chain
   %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }
@@ -44,7 +44,7 @@ mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
 // CHECK: %[[CH2:.*]] = mgp.assert %{{.*}}, "input shapes must match"
 // CHECK: %[[CH3:.*]] = mgp.assert %{{.*}}, "input dimension 0 must match"
 // CHECK: %[[CH4:.*]] = grt.chain.create (%[[CH0]], %[[CH2]], %[[CH3]])
-// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH4]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer<>
+// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH4]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer
 // CHECK: %{{.*}} = "kernel_execute"(%[[CH4]], %{{.*}}, %{{.*}}, %[[BUF]])
 
 mgp.model @two_asserts : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
@@ -73,8 +73,8 @@ mgp.model @two_asserts : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %c8 = index.constant 8
   %tmp = index.mul %dim0, %dim1
   %7 = index.mul %tmp, %c8
-  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer) -> !mef.chain
   %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }
@@ -83,7 +83,7 @@ mgp.model @two_asserts : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
 // CHECK: execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[CH2:.*]] = mgp.assert %{{.*}}, "input shapes must match"
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH0]], %[[CH2]]
-// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH3]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer<>
+// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH3]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer
 // CHECK: %{{.*}} = "kernel_execute"(%[[CH3]], %{{.*}}, %{{.*}}, %[[BUF]])
 
 mgp.model @assert_depends_on_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
@@ -114,8 +114,8 @@ mgp.model @assert_depends_on_control_flow : mof devices [#M.device_ref<"cpu", 0>
   %bufferResult_4 = mgp.tensor.extract.buffer %arg3 : !mgp.tensor<?x?xf32>
   %6 = mgp.tensor_spec.create %dim0, %dim1 : !mgp.tensor_spec<?x?xf32>
   %7 = index.mul %dim0, %dim1 {constInt = 8 : si64}
-  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer) -> !mef.chain
   %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }
@@ -130,7 +130,7 @@ mgp.model @assert_depends_on_control_flow : mof devices [#M.device_ref<"cpu", 0>
 // CHECK: } else {
 // CHECK:   mef.output %{{.*}} : !mef.chain
 // CHECK: }
-// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH0]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer<>
+// CHECK: %[[BUF:.*]] = mgp.buffer.alloc %[[CH0]], %{{.*}}, %{{.*}}, align 16 : !mgp.buffer
 // CHECK: %{{.*}} = "kernel_execute"(%[[CH0]], %{{.*}}, %{{.*}}, %[[BUF]])
 
 mgp.model @assert_in_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
@@ -163,8 +163,8 @@ mgp.model @assert_in_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (
   %c8 = index.constant 8
   %tmp = index.mul %dim0, %dim1
   %7 = index.mul %tmp, %c8
-  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %8 = mgp.buffer.alloc %ch0, %7, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %9 = "kernel_execute"(%ch0, %bufferResult_2, %bufferResult_4, %8) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer) -> !mef.chain
   %10 = mgp.tensor.create %9, %8, %6  : !mgp.tensor<?x?xf32>
   mef.output %ch0, %10 : !mef.chain, !mgp.tensor<?x?xf32>
 }

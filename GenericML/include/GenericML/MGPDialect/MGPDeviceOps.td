@@ -58,26 +58,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //     ref($device), $gatingOperands, type($gatingOperands)
 //   )
 //
-//   // Parses an !mgp.buffer type and extracts its raw size and device
-//   // attributes, and assigns $chain... the type !mgp.chain<$device>.
-//   custom<BufferTypeToRawSizeDevice>(type($buffer)?, $rawSize,
-//                                     $device, type($chain)...)
-//
-//   // Parses a statically sized !mgp.buffer type and extracts its size and
-//   // device attributes, and assigns $chain... the type !mgp.chain<$device>.
-//   custom<StaticBufferTypeToSizeDevice>(type($buffer), $size,
-//                                        $device, type($chain)...)
-//
-//   // Parses a statically sized !mgp.buffer type and extracts its size
-//   // and device attributes, and assigns $inBuffer the type
-//   // !mgp.buffer<, $device>
-//   custom<StaticBufferTypeToSizeDeviceBuffer>(type($outBuffer), $aSize,
-//                                              $bDevice, type($inBuffer))
-//
-//   // Parses a dynamically sized !mgp.buffer type, extracts its device
-//   // attribute, and assigns $chain... the type !mgp.chain<$device>.
-//   custom<DynamicBufferTypeToDevice>(type($buffer), $device, type($chain)...)
-//
 //   // Parses an !mgp.buffer type, extracts its device, and assigns $chain...
 //   // the type !mgp.chain<$device>.
 //   custom<BufferTypeToDevice>($buffer, $device, type($chain)...)
@@ -95,15 +75,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 //   custom<TensorTypeToDeviceBufferSpec>(
 //     type($tensor)?, $device, type($buffer), type($tensorSpec),
 //     type($chain)...
-//   )
-//
-//   // Parses a function type consisting of one input buffer and N output
-//   // buffer types, all sharing the same device assigned to $device, assigns
-//   // $outBufferRawSizes the raw sizes from the $outBuffer types, and assigns
-//   // $chain the type !mgp.chain<$device>.
-//   custom<BufferTypesToBufferRawSizesDeviceOutBuffers>(
-//     type($inBuffer), $outBufferRawSizes,
-//     $device, type($outBuffers), type($chain)...
 //   )
 //
 //   // Parses a function type consisting of one input buffer and one output
@@ -296,7 +267,7 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
     // weights registry.
     %buf = mgp.buffer.constant.external
       %ch, %ctx[0], %weights["foo", 16384, align 16] :
-      !mgp.opaque<"weights_registry"> -> !mgp.buffer<16384>
+      !mgp.opaque<"weights_registry"> -> !mgp.buffer
     ```
   }];
 
@@ -337,6 +308,7 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
                 "given device.";
@@ -358,8 +330,8 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
       %size : index
       // Allocates %size bytes using the CUDA runtime from slot 5, which
       // should correspond to the CUDA GPU with virtual device id 3.
-      %buf = mgp.buffer.alloc %ch, %size : !mgp.buffer<, <"gpu", 3>>
-      %buf : !mgp.buffer<, <"gpu", 3>>
+      %buf = mgp.buffer.alloc %ch, %size : !mgp.buffer<<"gpu", 3>>
+      %buf : !mgp.buffer<<"gpu", 3>>
     ```
   }];
 
@@ -408,11 +380,11 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
     Example:
     ```mlir
     %ctx : !mgp.context
-    %buf : !mgp.buffer<, <"gpu", 3>>
+    %buf : !mgp.buffer<<"gpu", 3>>
     %ch0 : !mef.chain
     // Cache the given buffer in slot index 42.
     %ch1 = mgp.buffer.cache %ch0, %ctx[5, 42], %buf
-             : !mgp.buffer<256, <"gpu", 3>>
+             : !mgp.buffer<<"gpu", 3>>
     %ch1 : !mef.chain
     ```
   }];
@@ -454,8 +426,8 @@ def BufferFreeOp : MGP_Op<"buffer.free"> {
     ```mlir
       %ctx : !mgp.context
       %ch1 : !mgp.chain
-      %buf0 : !mgp.buffer<4>
-      %ch2 = mgp.buffer.free %ch1, %buf0 : !mgp.buffer<4>
+      %buf0 : !mgp.buffer
+      %ch2 = mgp.buffer.free %ch1, %buf0 : !mgp.buffer
     ```
   }];
 
@@ -490,10 +462,10 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
     ```mlir
       %ch0 : !mef.chain
       %ctx : !mgp.context
-      %host_buf : !mgp.buffer<>
-      %other_buf : !mgp.buffer<, <"gpu", 3>>
+      %host_buf : !mgp.buffer
+      %other_buf : !mgp.buffer<<"gpu", 3>>
       %ch1 = mgp.buffer.host_to_device %ch0, %host_buf, %other_buf
-               : !mgp.buffer<> -> !mgp.buffer<, <"gpu", 3>>
+               : !mgp.buffer -> !mgp.buffer<<"gpu", 3>>
       %ch1 : !mef.chain
     ```
   }];
@@ -543,10 +515,10 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
     ```mlir
       %ch0 : !mef.chain
       %ctx : !mgp.context
-      %other_buf : !mgp.buffer<, <"gpu", 3>>
-      %host_buf : !mgp.buffer<>
+      %other_buf : !mgp.buffer<<"gpu", 3>>
+      %host_buf : !mgp.buffer
       %ch1 = mgp.buffer.device_to_host %ch0, %other_buf, %host_buf
-               : !mgp.buffer<, <"gpu", 3>> -> !mgp.buffer<>
+               : !mgp.buffer<<"gpu", 3>> -> !mgp.buffer
       %ch1 : !mef.chain
     ```
   }];
@@ -595,10 +567,10 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     ```mlir
       %ch0 : !mef.chain
       %ctx : !mgp.context
-      %src_buf : !mgp.buffer<, <"gpu", 3>>
-      %dst_buf : !mgp.buffer<, <"gpu", 1>>
+      %src_buf : !mgp.buffer<<"gpu", 3>>
+      %dst_buf : !mgp.buffer<<"gpu", 1>>
       %ch1 = mgp.buffer.device_to_device %ch0, %ctx[5, 3], %src_buf, %dst_buf
-               : !mgp.buffer<, <"gpu", 3>> -> !mgp.buffer<, <"gpu", 1>>
+               : !mgp.buffer<<"gpu", 3>> -> !mgp.buffer<<"gpu", 1>>
       %ch1 : !mef.chain
     ```
   }];
@@ -635,88 +607,6 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 
 }
 
-//===----------------------------------------------------------------------===//
-// BufferUnsizeOp
-//===----------------------------------------------------------------------===//
-
-// NOTE: This op does not need a device attribute or runtime slot, and is a
-//       no-op at runtime.
-def BufferUnsizeOp : MGP_Op<"buffer.unsize", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    // The result is a shallow copy of the input.
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-    DeclareOpInterfaceMethods<MGP_BufferAliasOpInterface>,
-]> {
-  let summary = "Forget the size of a statically sized buffer.";
-  let description = [{
-    Returns a dynamically sized shallow copy of the statically-sized input
-    buffer.
-
-    Note that no copying is done, and the result `AsyncValueRef<GML::DeviceRef>`
-    is simply a move of the input.
-
-    Example:
-    ```mlir
-    %in_buf : !mgp.buffer<256, <"gpu", 3>>
-    %out_buf = mgp.buffer.unsize %in_buf : !mgp.buffer<256, <"gpu", 3>>
-    %out_buf : !mgp.buffer<, <"gpu", 3>>
-    ```
-  }];
-
-  let arguments = (ins MGP_DeviceBufferType:$inBuffer);
-  let results = (outs  MGP_DeviceBufferType:$outBuffer);
-  let assemblyFormat = [{ $inBuffer attr-dict `:` qualified(type($inBuffer)) }];
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
-// BufferResizeOp
-//===----------------------------------------------------------------------===//
-
-// NOTE: This op does not need a runtime slot. However it does need a device
-//       attribute so as to dispatch to the device-appropriate assertion op.
-def BufferResizeOp : MGP_Op<"buffer.resize", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    // The result is a shallow copy of the input.
-    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-    DeclareOpInterfaceMethods<MGP_HasDeviceOpInterface>,
-    DeclareOpInterfaceMethods<MGP_BufferAliasOpInterface>,
-]> {
-  let summary = "Assert the size of a dynamically sized buffer.";
-  let description = [{
-    Returns a statically sized shallow copy of the dynamically-sized input
-    buffer. An error will be returned if the input buffer is not of the
-    expected size at runtime.
-
-    Note that no copying is done, and the result `AsyncValueRef<GML::DeviceRef>`
-    is simply a move of the input.
-
-    Example:
-    ```mlir
-    %in_buf : !mgp.buffer<, <"gpu", 3>>
-    %out_buf = mgp.buffer.resize %in_buf : !mgp.buffer<256, <"gpu", 3>>
-    %out_buf : !mgp.buffer<256, <"gpu", 3>>
-    ```
-  }];
-
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
-  let arguments = (ins MGP_DeviceBufferType:$inBuffer,
-                       UI64Attr:$aSize,                // 0
-                       MGP_OptDeviceRefAttr:$bDevice); // 1
-  let results = (outs  MGP_DeviceBufferType:$outBuffer);
-  let assemblyFormat = [{
-    $inBuffer attr-dict
-    `:` custom<StaticBufferTypeToSizeDeviceBuffer>(
-          type($outBuffer), $aSize, $bDevice, type($inBuffer))
-   }];
-  let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    M::DeviceRefAttr BufferResizeOp::getDevice() { return getBDevice(); }
-  }];
-}
-
 
 //===----------------------------------------------------------------------===//
 // BufferConcatOp
@@ -738,14 +628,14 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
     Example:
     ```mlir
     %in_ch : !mgp.chain<<"gpu", 3>>
-    %out_buf : !mgp.buffer<256, <"gpu", 3>>
-    %in0_buf : !mgp.buffer<128, <"gpu", 3>>
-    %in1_buf : !mgp.buffer<, <"gpu", 3>>
-    %in2_buf : !mgp.buffer<, <"gpu", 3>>
+    %out_buf : !mgp.buffer<<"gpu", 3>>
+    %in0_buf : !mgp.buffer<<"gpu", 3>>
+    %in1_buf : !mgp.buffer<<"gpu", 3>>
+    %in2_buf : !mgp.buffer<<"gpu", 3>>
     %out_ch = mgp.buffer.concat %in_ch, %out_buf, %in0_buf, %in1_buf, %in2_buf
-              : (!mgp.buffer<128, <"gpu", 3>>,
-                 !mgp.buffer<, <"gpu", 3>>,
-                 !mgp.buffer<, <"gpu", 3>>) -> !mgp.buffer<256, <"gpu", 3>>
+              : (!mgp.buffer<<"gpu", 3>>,
+                 !mgp.buffer<<"gpu", 3>>,
+                 !mgp.buffer<<"gpu", 3>>) -> !mgp.buffer<<"gpu", 3>>
     %out_ch : !mgp.chain<<"gpu", 3>>
     ```
   }];
@@ -829,12 +719,12 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
     ```mlir
     %ch:  !mgp.chain
     %ctx : !mgp.context
-    %in_buf : !mgp.buffer<24>
+    %in_buf : !mgp.buffer
     %offset : index
     %size : index
     %out_buf =
-        mgp.buffer.slice %in_buf, %offset, %size : !mgp.buffer<24>
-    %out_buf : !mgp.buffer<>
+        mgp.buffer.slice %in_buf, %offset, %size : !mgp.buffer
+    %out_buf : !mgp.buffer
     ```
   }];
 
@@ -870,7 +760,7 @@ def BufferToIndexOp : MGP_Op<"buffer.to_index", [
 
     Example:
     ```mlir
-    %0 = mgp.buffer.to_index %ch0, %buf : !mgp.buffer<8>
+    %0 = mgp.buffer.to_index %ch0, %buf : !mgp.buffer
     ```
   }];
 
@@ -897,7 +787,7 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
 
     Example:
     ```mlir
-    %0 = mgp.to_bool %ch0, %ctx[5], %buf : !mgp.buffer<1, <"gpu", 3>>
+    %0 = mgp.to_bool %ch0, %ctx[5], %buf : !mgp.buffer<<"gpu", 3>>
     ```
   }];
 
@@ -938,15 +828,15 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     Example:
     ```mlir
     %ctx : !mgp.context
-    %buf0 : !mgp.buffer<4, <"gpu", 3>>
+    %buf0 : !mgp.buffer<<"gpu", 3>>
     %idx0 : index
-    %ch0 = mgp.buffer.set_with_index %buf0, %idx0 : !mgp.buffer<4, <"gpu", 3>>
+    %ch0 = mgp.buffer.set_with_index %buf0, %idx0 : !mgp.buffer<<"gpu", 3>>
     %ch0 : !mgp.chain<<"gpu", 3>>
 
     %idx1 : index
     %idx2 : index
-    %buf1 : !mgp.buffer<24, <"gpu", 3>>
-    %ch1 = mgp.buffer.set_with_index %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<24, <"gpu", 3>>
+    %buf1 : !mgp.buffer<<"gpu", 3>>
+    %ch1 = mgp.buffer.set_with_index %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<<"gpu", 3>>
     %ch1 : !mgp.chain<<"gpu", 3>>
     ```
   }];
@@ -990,7 +880,7 @@ def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
     ```mlir
     %ch0: !mef.chain
     %ctx: !mgp.context
-    %buf: !mgp.buffer<2048, <"gpu", 3>>
+    %buf: !mgp.buffer<<"gpu", 3>>
     %spec: !mgp.tensor_spec<8x64xf32>
     %ch1 = mgp.debug.tensor.print %ch0, %ctx[5], %buf, %spec, "label"
            : !mgp.tensor<8x64xf32, <"gpu", 3>>

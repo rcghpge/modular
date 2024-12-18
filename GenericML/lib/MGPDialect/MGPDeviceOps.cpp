@@ -47,39 +47,6 @@ static LogicalResult getDeviceAttrOrDefault(Location location,
   return success();
 }
 
-/// Assigns to optSize from attribute with name in attrs.
-static LogicalResult getSizeAttr(Location location, DictionaryAttr attributes,
-                                 StringAttr name,
-                                 std::optional<uint64_t> &optSize) {
-  auto sizeAttr = dyn_cast_if_present<IntegerAttr>(attributes.get(name));
-  if (!sizeAttr) {
-    return mlir::emitError(location, "expected a uint64_t for attribute '")
-           << name << "'";
-  }
-  optSize = std::optional<uint64_t>(sizeAttr.getUInt());
-  return success();
-}
-
-/// Assigns to elements from attribute with name in attrs.
-static LogicalResult getElementsAttr(Location location,
-                                     DictionaryAttr attributes, StringAttr name,
-                                     ElementsAttr &elements) {
-  elements = dyn_cast_if_present<ElementsAttr>(attributes.get(name));
-  if (!elements) {
-    return mlir::emitError(location, "expecting ElementsAttr for attribute '")
-           << name << "'";
-  }
-  return success();
-}
-
-/// Returns a description of optSize.
-static std::string optSizeToString(std::optional<uint64_t> optSize) {
-  if (optSize)
-    return std::to_string(*optSize);
-  else
-    return "unsized";
-}
-
 /// Returns the raw alignment for an elements attribute.
 static uint64_t getRawAlign(ElementsAttr value) {
   ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
@@ -134,16 +101,12 @@ LogicalResult BufferConstantExternalOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  // Directly take the size and device of the result buffer from op attributes.
-  uint64_t sizeBytes = cast<IntegerAttr>(attributes.get("cSize")).getUInt();
-
   DeviceRefAttr device;
   if (failed(getDeviceAttrOrDefault(
           location.value_or(operands[0].getLoc()), attributes,
           getEDeviceAttrName(/*name=*/{getOperationName(), context}), device)))
     return failure();
-  inferredReturnTypes.emplace_back(
-      DeviceBufferType::get(context, device, sizeBytes));
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
   return success();
 }
 
@@ -172,18 +135,6 @@ LogicalResult BufferConstantOp::verify() {
     return emitOpError("only supports attributes of uint8_t elements")
            << " (have " << elemType << ").";
 
-  // The resulting constant's type must be sized, and the size must match
-  // the attribute's size.
-  uint64_t actualSize = static_cast<uint64_t>(value.getNumElements());
-  DeviceRefAttr device = DeviceRefAttr::getDefault(value.getContext());
-  auto expectedBufferType =
-      DeviceBufferType::get(device, std::optional<uint64_t>(actualSize));
-  if (expectedBufferType != getOutBuffer().getType()) {
-    return emitOpError("expected result buffer type does not match actual "
-                       "result buffer type (")
-           << expectedBufferType << " vs " << getOutBuffer().getType() << ").";
-  }
-
   // Only BufferAttr and DenseResourceElementsAttr can convey an align
   // constraint. Check they are valid.
   ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
@@ -211,16 +162,8 @@ LogicalResult BufferConstantOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  ElementsAttr elementsAttr;
-  if (failed(getElementsAttr(location.value(), attributes,
-                             getAValueAttrName(name), elementsAttr)))
-    return failure();
-  std::optional<uint64_t> optSize = elementsAttr.size();
   DeviceRefAttr device = DeviceRefAttr::getDefault(context);
-  ;
-  inferredReturnTypes.emplace_back(
-      DeviceBufferType::get(context, device, optSize));
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
   return success();
 }
 
@@ -244,20 +187,19 @@ LogicalResult BufferAllocOp::verify() {
   return verifyConsistentDevices(getOperation(), {getCDevice()});
 }
 
-// LogicalResult BufferAllocOp::inferReturnTypes(
-//     MLIRContext *context, std::optional<Location> location, ValueRange
-//     operands, DictionaryAttr attributes, mlir::OpaqueProperties properties,
-//     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-//   mlir::OperationName name(getOperationName(), context);
-//   DeviceRefAttr device;
-//   if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-//                                     attributes, getCDeviceAttrName(name),
-//                                     device)))
-//     return failure();
-//   inferredReturnTypes.emplace_back(
-//       DeviceBufferType::get(device, std::optional<uint64_t>()));
-//   return success();
-// }
+LogicalResult BufferAllocOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+  mlir::OperationName name(getOperationName(), context);
+  DeviceRefAttr device;
+  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
+                                    attributes, getCDeviceAttrName(name),
+                                    device)))
+    return failure();
+  inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
+  return success();
+}
 
 void BufferAllocOp::setInChain(Value chain) {
   getInChainMutable().assign(chain);
@@ -282,11 +224,6 @@ LogicalResult BufferHostToDeviceOp::verify() {
   if (getOtherBuffer().getType().getDevice() != getDOtherDevice())
     return emitOpError("expected other buffer to be on 'other' device ")
            << getDOtherDevice() << ".";
-  if (getHostBuffer().getType().getRawSize() !=
-      getOtherBuffer().getType().getRawSize())
-    return emitOpError("host and other buffer sizes do not match (")
-           << optSizeToString(getHostBuffer().getType().getOptSize()) << " vs "
-           << optSizeToString(getOtherBuffer().getType().getOptSize()) << ").";
   return success();
 }
 
@@ -309,11 +246,6 @@ LogicalResult BufferDeviceToHostOp::verify() {
   if (getOtherBuffer().getType().getDevice() != getCOtherDevice())
     return emitOpError("expected other buffer to be on 'other' device ")
            << getCOtherDevice() << ".";
-  if (getHostBuffer().getType().getRawSize() !=
-      getOtherBuffer().getType().getRawSize())
-    return emitOpError("host and other buffer sizes do not match (")
-           << optSizeToString(getHostBuffer().getType().getOptSize()) << " vs "
-           << optSizeToString(getOtherBuffer().getType().getOptSize()) << ").";
   return success();
 }
 
@@ -330,11 +262,6 @@ BufferDeviceToHostOp::getInOutSemantics(size_t index) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult BufferDeviceToDeviceOp::verify() {
-  if (getSrcBuffer().getType().getRawSize() !=
-      getDstBuffer().getType().getRawSize())
-    return emitOpError("src and dst buffer sizes do not match (")
-           << optSizeToString(getSrcBuffer().getType().getOptSize()) << " vs "
-           << optSizeToString(getDstBuffer().getType().getOptSize()) << ").";
   if (getCSrcDevice().getLabel() != getDDstDevice().getLabel()) {
     return emitOpError("expecting source and destination devices to have the "
                        "same device label.");
@@ -359,115 +286,17 @@ BufferDeviceToDeviceOp::getInOutSemantics(size_t index) {
 }
 
 //===----------------------------------------------------------------------===//
-// BufferUnsizeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult BufferUnsizeOp::verify() {
-  if (!getInBuffer().getType().getOptSize())
-    return emitOpError("expected input buffer to be statically sized.");
-  if (getOutBuffer().getType().getOptSize())
-    return emitOpError("expected output buffer to be dynamically sized.");
-  return verifyConsistentDevices(getOperation(),
-                                 {getInBuffer().getType().getDevice()});
-}
-
-LogicalResult BufferUnsizeOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  if (operands.size() != 1) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
-                           "expected one operand.");
-  }
-  auto bufferType = dyn_cast<DeviceBufferType>(operands[0].getType());
-  if (!bufferType) {
-    return mlir::emitError(operands[0].getLoc(),
-                           "expected !mgp.buffer operand.");
-  }
-  inferredReturnTypes.emplace_back(
-      DeviceBufferType::get(bufferType.getDevice(), std::optional<uint64_t>()));
-  return success();
-}
-
-bool BufferUnsizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-  return true;
-}
-
-//===----------------------------------------------------------------------===//
-// BufferResizeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult BufferResizeOp::verify() {
-  if (getInBuffer().getType().getOptSize())
-    return emitOpError("expected input buffer to be dynamically sized.");
-  if (!getOutBuffer().getType().getOptSize())
-    return emitOpError("expected output buffer to be statically sized.");
-  auto expectedBufferType =
-      DeviceBufferType::get(getBDevice(), std::optional<uint64_t>(getASize()));
-  if (expectedBufferType != getOutBuffer().getType()) {
-    return emitOpError("expected output buffer type does not match actual "
-                       "output buffer type (")
-           << expectedBufferType << " vs " << getOutBuffer().getType() << ").";
-  }
-
-  return verifyConsistentDevices(getOperation(),
-                                 {getInBuffer().getType().getDevice()});
-}
-
-LogicalResult BufferResizeOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  std::optional<uint64_t> optSize;
-  if (failed(getSizeAttr(location.value_or(operands[0].getLoc()), attributes,
-                         getASizeAttrName(name), optSize)))
-    return failure();
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getBDeviceAttrName(name),
-                                    device)))
-    return failure();
-  inferredReturnTypes.emplace_back(DeviceBufferType::get(device, optSize));
-  return success();
-}
-
-bool BufferResizeOp::mayAlias(size_t operandIndex, size_t resultIndex) {
-  return true;
-}
-
-//===----------------------------------------------------------------------===//
 // BufferConcatOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult BufferConcatOp::verify() {
-  if (failed(verifyConsistentDevices(getOperation(), {getBDevice()})))
-    return failure();
-
-  // If possible, verify sum of input buffer sizes equals the output
-  // buffer size.
-  if (!getOutBuffer().getType().getOptSize())
-    // Output does not have a statically known size.
-    return success();
-
-  uint64_t inTotalSize = 0;
-  for (const auto &inBuffer : getInBuffers()) {
-    auto inBufferType = dyn_cast<DeviceBufferType>(inBuffer.getType());
-    std::optional<uint64_t> optSize = inBufferType.getOptSize();
-    if (!optSize)
-      // Not all input buffers have a statically known size.
-      return success();
-    inTotalSize += *optSize;
+  if (getOutBuffer().getType().getDevice() != getBDevice()) {
+    return emitOpError("expected output buffer device does not match actual "
+                       "output buffer device (")
+           << getBDevice() << " vs " << getOutBuffer().getType().getDevice()
+           << ").";
   }
-  DeviceBufferType expectedBufferType =
-      DeviceBufferType::get(getBDevice(), std::optional<uint64_t>(inTotalSize));
-  if (getOutBuffer().getType() != expectedBufferType) {
-    return emitOpError("expected output buffer type does not match actual "
-                       "output buffer type (")
-           << expectedBufferType << " vs " << getOutBuffer().getType() << ").";
-  }
-  return success();
+  return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
 InOutSignatureAttr::InOutSemantics
@@ -482,22 +311,17 @@ BufferConcatOp::getInOutSemantics(size_t index) {
 // BufferSliceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult BufferSliceOp::verify() {
-  if (getOutBuffer().getType().getOptSize())
-    return emitOpError("expected output buffer to be dynamically sized.");
-  return success();
-}
+LogicalResult BufferSliceOp::verify() { return success(); }
 
 LogicalResult BufferSliceOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::OpaqueProperties properties,
     mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-
   auto inBufferTy = dyn_cast<DeviceBufferType>(operands[0].getType());
   if (!inBufferTy)
     return failure();
   inferredReturnTypes.emplace_back(
-      DeviceBufferType::get(inBufferTy.getDevice(), std::optional<uint64_t>()));
+      DeviceBufferType::get(context, inBufferTy.getDevice()));
   return success();
 }
 
@@ -510,13 +334,6 @@ bool BufferSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult BufferToBoolOp::verify() {
-  auto expectedBufferType =
-      DeviceBufferType::get(getBDevice(), std::optional<uint64_t>(1));
-  if (expectedBufferType != getBuffer().getType()) {
-    return emitOpError("expected operand buffer type does not match actual "
-                       "operand buffer type (")
-           << expectedBufferType << " vs " << getBuffer().getType() << ").";
-  }
   return verifyConsistentDevices(getOperation(), {getBDevice()});
 }
 
@@ -539,8 +356,8 @@ BufferSetWithIndexOp::getInOutSemantics(size_t index) {
 //===----------------------------------------------------------------------===//
 // BufferPlanOp
 //===----------------------------------------------------------------------===//
-LogicalResult BufferPlanOp::verify() {
 
+LogicalResult BufferPlanOp::verify() {
   if (!llvm::all_equal({getRuntimeSizes().size(), getOffsets().size(),
                         getAAlignments().size(), getBMinPre().size(),
                         getCMinPost().size(), getDMaxPre().size(),
@@ -606,12 +423,5 @@ bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DebugTensorPrintOp::verify() {
-  auto expectedBufferType =
-      DeviceBufferType::get(getCDevice(), getSpec().getType());
-  if (expectedBufferType != getBuffer().getType()) {
-    return emitOpError("expected input buffer type does not match actual "
-                       "input buffer type (")
-           << expectedBufferType << " vs " << getBuffer().getType() << ").";
-  }
   return verifyConsistentDevices(getOperation(), {getCDevice()});
 }

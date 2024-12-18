@@ -779,14 +779,10 @@ MOOpLoweringState::createOutputTensorSpecs() {
 FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
     Value inChain, TypedValue<TensorSpecType> tensorSpec, Type tensorType) {
   BufferBuilder *bufferBuilder = getStorageBufferBuilder(tensorType);
-  TensorSpecType specType = tensorSpec.getType();
   MO::TensorType moTensorType = MO::dynCastFromTensorLike(tensorType);
   ASSERT_STREAM(moTensorType, << "input is not a !mo.tensor or !mo.buffer");
 
   Value numBytes = bufferSizeBytes(tensorSpec, moTensorType);
-
-  // If static size is known, it's used for the output type
-  std::optional<uint64_t> optSize = specType.getSizeInBytes();
 
   auto bufferDevice = bufferBuilder->getDevice();
   auto preferredAlignment =
@@ -796,7 +792,7 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
   auto deviceContext = loweringState.getExecuteDevice(bufferDevice);
   return BufferizedTensor(
       bufferBuilder->bufferAlloc(builder, loc, context, inChain, numBytes,
-                                 deviceContext, preferredAlignment, optSize),
+                                 deviceContext, preferredAlignment),
       tensorSpec);
 }
 

@@ -139,27 +139,7 @@ Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
                                      Value inChain, Value buffer,
                                      TypedValue<TensorSpecType> tensorSpec) {
-  // The buffer type and tensor spec types don't need to agree on whether they
-  // are static. This can arise when lowering value-semantic reshapes
-  // into buffer-semantic form. For example:
-  //   %z = reshape %x, %y : (tensor<?x?xf32>, tensor<2xui32>) ->
-  //                         tensor<8x16xf32>
-  // Here %z will be created from the same buffer as %x, but will now have
-  // a known size. Conversely, in:
-  //   %z = reshape %x, %y : (tensor<8x4xf32>, tensor<2xui32>) ->
-  //                         tensor<?x?xf32>
-  // the buffer for %z will now have an unknown size.
-  // We may need to insert mgp.buffer.{unsize, resize} ops to compensate.
   auto deviceBuffer = cast<TypedValue<DeviceBufferType>>(buffer);
-  std::optional<uint64_t> specOptSize = tensorSpec.getType().getSizeInBytes();
-  std::optional<uint64_t> bufferOptSize = deviceBuffer.getType().getOptSize();
-  if (specOptSize.has_value() && !bufferOptSize.has_value()) {
-    deviceBuffer = cast<TypedValue<DeviceBufferType>>(
-        bufferResize(builder, loc, deviceBuffer, *specOptSize));
-  } else if (!specOptSize.has_value() && bufferOptSize.has_value()) {
-    deviceBuffer = cast<TypedValue<DeviceBufferType>>(
-        bufferUnsize(builder, loc, context, deviceBuffer));
-  }
   return builder.create<TensorCreateOp>(loc,
                                         /*inChain=*/inChain,
                                         /*buffer=*/deviceBuffer,
@@ -169,10 +149,8 @@ Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
 Value MGPBufferBuilder::bufferAlloc(OpBuilder &builder, Location loc,
                                     TypedValue<ContextType> context,
                                     Value inChain, Value size,
-                                    Value deviceContext, uint64_t alignment,
-                                    std::optional<uint64_t> optSize) {
-  return builder.create<BufferAllocOp>(loc,
-                                       DeviceBufferType::get(device, optSize),
+                                    Value deviceContext, uint64_t alignment) {
+  return builder.create<BufferAllocOp>(loc, DeviceBufferType::get(device),
                                        /*inChain=*/inChain,
                                        /*runtimeSize=*/size,
                                        /*deviceContext=*/deviceContext,
@@ -259,23 +237,6 @@ Value MGPBufferBuilder::bufferTransferDevice(
       /*deviceContext*/ cast<TypedValue<OpaqueType>>(dstDeviceContext),
       /*cSrcDevice=*/device,
       /*dDstDevice=*/dstMGPBufferBuilder->device);
-}
-
-Value MGPBufferBuilder::bufferUnsize(OpBuilder &builder, Location loc,
-                                     TypedValue<ContextType> context,
-                                     Value inBuffer) {
-  return builder.create<BufferUnsizeOp>(
-      loc,
-      /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer));
-}
-
-Value MGPBufferBuilder::bufferResize(OpBuilder &builder, Location loc,
-                                     Value inBuffer, uint64_t size) {
-  return builder.create<BufferResizeOp>(
-      loc,
-      /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer),
-      /*aSize=*/size,
-      /*bDevice=*/device);
 }
 
 Value MGPBufferBuilder::bufferGetSize(OpBuilder &builder, Location loc,

@@ -137,24 +137,6 @@ static void mgp_buffer_cache_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.resize.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_resize_cpu(AsyncValueRef<TensorBufferRef> inBuffer,
-                                  RemainingResults outBuffer,
-                                  MEFAttr<uint64_t> aSize,
-                                  MEFAttr<uint64_t> bDeviceId,
-                                  EncodedLocation loc) {
-  if (inBuffer->getSize() != static_cast<size_t>(*aSize)) {
-    return std::move(outBuffer).setAllToError(
-        Twine("attempting to resize from buffer of size ") +
-            Twine(inBuffer->getSize()) + " to buffer of size " + Twine(*aSize),
-        loc);
-  }
-  *outBuffer.begin() = std::move(inBuffer);
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor.buffer.print.cpu
 //===----------------------------------------------------------------------===//
 
@@ -185,26 +167,12 @@ using MGPProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.unsize.cpu
-//===----------------------------------------------------------------------===//
-
-// TODO(#30906): Move into MGPPrimitives once mgp.buffer.unsize removed.
-static void mgp_buffer_unsize(AnyAsyncValueRef inBuffer,
-                              RemainingResults outputs) {
-  *outputs.begin() = std::move(inBuffer);
-}
-
-//===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.resize.cpu", mgp_buffer_resize_cpu);
   ADD_PRIMITIVE(registry, "mgp.debug.tensor.print.cpu",
                 mgp_debug_tensor_print_cpu);
-
-  // TODO(#30906): Move into MGPPrimitives once mgp.buffer.unsize removed.
-  ADD_PRIMITIVE(registry, "mgp.buffer.unsize", mgp_buffer_unsize);
 }

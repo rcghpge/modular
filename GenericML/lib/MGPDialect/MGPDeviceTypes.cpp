@@ -27,69 +27,25 @@ using namespace MGP;
 // DeviceBufferType
 //===----------------------------------------------------------------------===//
 
-/// Verifies the buffer size and align constraints are valid.
+/// Verifies the buffer constraints are valid.
 LogicalResult
 DeviceBufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                         DeviceRefAttr device,
-                         std::optional<uint64_t> optSize) {
-  if (!isValidOptSize(optSize))
-    return emitError() << "buffer size must be strictly positive.";
+                         DeviceRefAttr device) {
   return success();
 }
 
-DeviceBufferType DeviceBufferType::get(DeviceRefAttr device,
-                                       std::optional<uint64_t> optSize) {
-  return DeviceBufferType::get(device.getContext(), device, optSize);
+DeviceBufferType DeviceBufferType::get(DeviceRefAttr device) {
+  return DeviceBufferType::get(device.getContext(), device);
 }
 
 DeviceBufferType
 DeviceBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                             DeviceRefAttr device,
-                             std::optional<uint64_t> optSize) {
-  return DeviceBufferType::get(device, optSize);
-}
-
-DeviceBufferType DeviceBufferType::get(DeviceRefAttr device, uint64_t rawSize) {
-  return DeviceBufferType::get(device.getContext(), device,
-                               rawSizeToOptSize(rawSize));
-}
-
-DeviceBufferType
-DeviceBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                             DeviceRefAttr device, uint64_t rawSize) {
-  return DeviceBufferType::get(device, rawSize);
-}
-
-DeviceBufferType DeviceBufferType::get(DeviceRefAttr device,
-                                       IntegerAttr rawSizeOrNull) {
-  std::optional<uint64_t> optSize;
-  if (rawSizeOrNull)
-    optSize = rawSizeToOptSize(rawSizeOrNull.getUInt());
-  return DeviceBufferType::get(device.getContext(), device, optSize);
-}
-
-DeviceBufferType
-DeviceBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                             DeviceRefAttr device, IntegerAttr rawSizeOrNull) {
-  return DeviceBufferType::get(device, rawSizeOrNull);
-}
-
-DeviceBufferType DeviceBufferType::get(DeviceRefAttr device,
-                                       TensorSpecType tensorSpecType) {
-  return DeviceBufferType::get(device.getContext(), device,
-                               tensorSpecType.getSizeInBytes());
-}
-
-DeviceBufferType
-DeviceBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                             DeviceRefAttr device,
-                             TensorSpecType tensorSpecType) {
-  return get(device, tensorSpecType);
+                             DeviceRefAttr device) {
+  return DeviceBufferType::get(device);
 }
 
 DeviceBufferType DeviceBufferType::get(DeviceTensorType tensorType) {
-  return DeviceBufferType::get(tensorType.getContext(), tensorType.getDevice(),
-                               tensorType.getTensorSpec().getSizeInBytes());
+  return DeviceBufferType::get(tensorType.getContext(), tensorType.getDevice());
 }
 
 DeviceBufferType
@@ -98,20 +54,13 @@ DeviceBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
   return get(tensorType);
 }
 
-IntegerAttr DeviceBufferType::getRawSize() const {
-  Type ui64 = IntegerType::get(getContext(), 64, IntegerType::Unsigned);
-  APInt value(ui64.getIntOrFloatBitWidth(), optSizeToRawSize(getOptSize()),
-              ui64.isSignedInteger());
-  return IntegerAttr::get(ui64, value);
-}
-
 ShapedType DeviceBufferType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                        Type elementType) const {
   ASSERT_STREAM(
       !shape, << "cannot change shape in DeviceBufferType::cloneWith");
   ASSERT_STREAM(elementType.isUnsignedInteger(8),
                 << "invalid dtype for DeviceBufferType::cloneWith");
-  return DeviceBufferType::get(getContext(), getDevice(), getOptSize());
+  return DeviceBufferType::get(getContext(), getDevice());
 }
 
 Type DeviceBufferType::getElementType() const {

@@ -30,18 +30,18 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
-  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %alloc2 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %alloc2 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
 
 
   // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"(%{{.*}}, %[[INBUFFER]], %[[ALLOC0]])
-  %outChain_0 = "kernel_execute"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %outChain_0 = "kernel_execute"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer, !mgp.buffer) -> !mef.chain
   // CHECK-NEXT: %[[CH1:.*]] = "kernel_execute"(%{{.*}}, %[[ALLOC0]], %[[ALLOC1]])
-  %outChain_1 = "kernel_execute"(%outChain_0, %alloc0, %alloc1) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %outChain_1 = "kernel_execute"(%outChain_0, %alloc0, %alloc1) : (!mef.chain, !mgp.buffer, !mgp.buffer) -> !mef.chain
   // Check to make sure all uses of %alloc2 are replaced with %alloc0
   // CHECK-NEXT: %[[CH2:.*]] = "kernel_execute"(%[[CH1]], %[[ALLOC1]], %[[ALLOC0]])
-  %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer, !mgp.buffer) -> !mef.chain
 
   // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]]
   %outTensor = mgp.tensor.create %outChain_2, %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
@@ -75,17 +75,17 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
-  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
-  %alloc2 = mgp.buffer.alloc %arg0, %allocSizeDifferent, %cpu, align 16 : !mgp.buffer<>, !mgp.opaque<"cpu0_context">
+  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %alloc2 = mgp.buffer.alloc %arg0, %allocSizeDifferent, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
 
 
   // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])
-  %outChain_0 = "kernel_execute"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %outChain_0 = "kernel_execute"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer, !mgp.buffer) -> !mef.chain
   // CHECK-NEXT: %[[CH1:.*]] = "kernel_execute"({{.*}}, %[[ALLOC0]], %[[ALLOC1]])
-  %outChain_1 = "kernel_execute"(%outChain_0, %alloc0, %alloc1) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %outChain_1 = "kernel_execute"(%outChain_0, %alloc0, %alloc1) : (!mef.chain, !mgp.buffer, !mgp.buffer) -> !mef.chain
   // CHECK-NEXT: %[[CH2:.*]] = "kernel_execute"(%[[CH1]], %[[ALLOC1]], %[[ALLOC2]])
-  %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer<>, !mgp.buffer<>) -> !mef.chain
+  %outChain_2 = "kernel_execute"(%outChain_1, %alloc1, %alloc2) : (!mef.chain, !mgp.buffer, !mgp.buffer) -> !mef.chain
 
   // CHECK-NEXT: %[[OUTTENSOR:.*]] = mgp.tensor.create %[[CH2]]
   %outTensor = mgp.tensor.create %outChain_2, %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>

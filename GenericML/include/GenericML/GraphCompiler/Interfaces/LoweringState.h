@@ -773,22 +773,20 @@ struct MOOpLoweringState {
   }
 
   Value hostBufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,
-                        uint64_t align,
-                        std::optional<uint64_t> staticSize = std::nullopt) {
+                        uint64_t align) {
     auto deviceContext =
         loweringState.getExecuteDevice(loweringState.getHostDevice());
     return loweringState.getHostBufferBuilder()->bufferAlloc(
-        builder, loc, context, inChain, size, deviceContext, align, staticSize);
+        builder, loc, context, inChain, size, deviceContext, align);
   }
 
   Value bufferAlloc(TypedValue<MEF::ChainType> inChain, Value size,
-                    uint64_t align, Type moTensorType,
-                    std::optional<uint64_t> staticSize = std::nullopt) {
+                    uint64_t align, Type moTensorType) {
     auto deviceRef = getStorageBufferBuilder(moTensorType)->getDevice();
     auto deviceContext = loweringState.getExecuteDevice(deviceRef);
     return getStorageBufferBuilder(moTensorType)
         ->bufferAlloc(builder, loc, context, inChain, size, deviceContext,
-                      align, staticSize);
+                      align);
   }
 
   Value bufferSizeBytes(TypedValue<TensorSpecType> tensorSpec,

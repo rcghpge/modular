@@ -797,8 +797,8 @@ constHostBufferToTarget(MGP::MOOpLoweringState &opLoweringState,
   uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
   Value bufferSize =
       opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
-  Value deviceBuffer = opLoweringState.bufferAlloc(chain, bufferSize, alignment,
-                                                   moTensorType, sizeInBytes);
+  Value deviceBuffer =
+      opLoweringState.bufferAlloc(chain, bufferSize, alignment, moTensorType);
   // Use bufferTransferFromHost to also take care of the stream sync.
   // Note that this is needlessly conservative because the constant external's
   // lifetime is controlled outside the graph.
@@ -999,8 +999,7 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
     bufferSize = opLoweringState.bufferSizeBytes(tensorSpec, moTensorType);
   Value hostBuffer = opLoweringState.hostBufferAlloc(
       cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
-      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()),
-      maybeTensorSizeInBytes);
+      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()));
   auto transferChain = opLoweringState.bufferTransferToHost(
       chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
       moTensorType);
@@ -1049,7 +1048,7 @@ LogicalResult MOGraphLowering::lowerDebugTensorUnsafePrint(
       opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
   Value hostBuffer = opLoweringState.hostBufferAlloc(
       cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
-      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()), sizeInBytes);
+      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()));
   auto transferChain = opLoweringState.bufferTransferToHost(
       chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
       moTensorType);

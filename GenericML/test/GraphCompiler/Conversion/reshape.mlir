@@ -75,8 +75,7 @@ mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 
 
 // CHECK: %[[BUF:.*]] = mgp.tensor.extract.buffer
 // CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<10x5xsi32>
-// CHECK: %[[RESIZE:.*]] = mgp.buffer.resize %[[BUF]] : !mgp.buffer<200>
-// CHECK: mgp.tensor.create %[[CH0]], %[[RESIZE]], %[[SPEC]] : !mgp.tensor<10x5xsi32>
+// CHECK: mgp.tensor.create %[[CH0]], %[[BUF]], %[[SPEC]] : !mgp.tensor<10x5xsi32>
 
 mo.graph @split_dim_mgp<N>(%arg0: !mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32> {
   %0 = mo.split_dim[0 : si64] (%arg0) : (!mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32>
