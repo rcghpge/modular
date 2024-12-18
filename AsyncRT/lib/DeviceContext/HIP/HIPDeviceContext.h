@@ -48,7 +48,7 @@ public:
 
   using DeviceList = std::vector<HIPDeviceRef>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-            std::string name, size_t alloc_alignment);
+            std::string name, size_t allocAlignment);
   ~HIPDevice() override = default;
 
   const HIPDriver &hip_driver() const;
@@ -137,7 +137,7 @@ public:
   cast(const DeviceFunction::Arguments &args);
 
 private:
-  std::vector<void *> arg_values_;
+  std::vector<void *> argValues_;
   std::vector<DeviceBufferRef> refs_;
 };
 
@@ -197,7 +197,7 @@ private:
 class HIPDeviceContext : public DeviceContext {
 public:
   HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                   hipStream_t stream, void *buffer_cache_base,
+                   hipStream_t stream, void *bufferCacheBase,
                    size_t bufferCacheSize);
   ~HIPDeviceContext() override;
 
@@ -261,7 +261,7 @@ public:
   const HIPDriver &hip_driver() const;
   hipStream_t hip_stream() const;
 
-  BufferCache &buffer_cache() const;
+  BufferCache &bufferCache() const;
 
   HIPDriver::Result setCurrent() const;
 
@@ -273,9 +273,9 @@ private:
   hipStream_t stream_;
 
   mutable std::mutex mu_;
-  mutable llvm::StringMap<HIPDeviceFunctionRef> func_map_;
+  mutable llvm::StringMap<HIPDeviceFunctionRef> funcMap_;
 
-  mutable BufferCache buf_cache_;
+  mutable BufferCache bufCache_;
 };
 
 } // namespace M::AsyncRT

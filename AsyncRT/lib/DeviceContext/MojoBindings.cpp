@@ -379,7 +379,7 @@ AsyncRT_DeviceContext_cuda_context(CUcontext *result,
   if (verifiedCtx == nullptr) {
     return strdup("Not a CUDAContext");
   }
-  *result = verifiedCtx->cuda_context();
+  *result = verifiedCtx->cudaContext();
   return nullptr;
 }
 
@@ -390,7 +390,7 @@ AsyncRT_DeviceStream_cuda_stream(CUstream *result, const DeviceStream *stream) {
   if (verifiedStream == nullptr) {
     return strdup("Not a CUDAStream");
   }
-  *result = verifiedStream->cuda_stream();
+  *result = verifiedStream->cudaStream();
   return nullptr;
 }
 
@@ -406,7 +406,7 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
   if (verifiedCtx == nullptr) {
     return strdup("Not a CUDADeviceBuffer");
   }
-  return checkSuccess(verifiedCtx->cuda_TensorMapEncodeTiled(
+  return checkSuccess(verifiedCtx->cudaTensorMapEncodeTiled(
       tensorMap, static_cast<CUtensorMapDataType>(tensorDataType), tensorRank,
       *globalAddress, globalDim, globalStrides, boxDim, elementStrides,
       static_cast<CUtensorMapInterleave>(interleave),

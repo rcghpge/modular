@@ -52,11 +52,11 @@ public:
   using DeviceList = std::vector<CUDADeviceRef>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-             std::string name, size_t alloc_alignment);
+             std::string name, size_t allocAlignment);
   ~CUDADevice() override = default;
 
-  const CUDADriver &cuda_driver() const;
-  CUdevice cuda_device() const;
+  const CUDADriver &cudaDriver() const;
+  CUdevice cudaDevice() const;
 
   ErrorOr<int> getDriverVersion() const override;
   ErrorOrSuccess isCompatibleWithMAX() const override;
@@ -98,7 +98,7 @@ public:
                    CUdeviceptr ptr, bool owning);
   ~CUDADeviceBuffer() override;
 
-  CUdeviceptr cuda_ptr() const;
+  CUdeviceptr cudaPtr() const;
   void *ptr() const override;
   // TODO: Remove the V1 compatibility.
   void *releasePtr() const override;
@@ -121,7 +121,7 @@ public:
 
   virtual ErrorOrSuccess synchronize() const override;
 
-  CUstream cuda_stream() const;
+  CUstream cudaStream() const;
 
 private:
   CUstream stream_;
@@ -135,13 +135,13 @@ public:
   void pushArg(int index, const uint64_t &val) override;
   void pushArg(int index, const DeviceBuffer &val) override;
 
-  std::vector<void *> cuda_args() const;
+  std::vector<void *> cudaArgs() const;
 
   static const CUDADeviceFunctionArguments &
   cast(const DeviceFunction::Arguments &args);
 
 private:
-  std::vector<void *> arg_values_;
+  std::vector<void *> argValues_;
   std::vector<DeviceBufferRef> refs_;
 };
 
@@ -152,9 +152,9 @@ public:
   ~CUDAModuleFunction();
 
   const std::string &name() const;
-  const CUDADriver &cuda_driver() const;
-  CUmodule cuda_module() const;
-  CUfunction cuda_function() const;
+  const CUDADriver &cudaDriver() const;
+  CUmodule cudaModule() const;
+  CUfunction cudaFunction() const;
 
 private:
   const CUDADriver &driver_;
@@ -167,7 +167,7 @@ class CUDADeviceFunction : public DeviceFunction {
 public:
   CUDADeviceFunction(const CUDADeviceContext &context,
                      const DeviceFunction::SignatureBuilder &signature,
-                     CUDAModuleFunctionRef mod_func);
+                     CUDAModuleFunctionRef modFunc);
   ~CUDADeviceFunction() override;
 
   const std::string &name() const override;
@@ -186,17 +186,17 @@ public:
                                  const CUDADeviceFunctionArguments &args,
                                  CUstream stream) const;
   ErrorOrSuccess
-  cuda_callKernelDirect(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-                        uint32_t blockX, uint32_t blockY, uint32_t blockZ,
-                        uint32_t sharedMemBytes, CUlaunchAttribute *attrs,
-                        uint32_t numAttrs, void **args, CUstream stream) const;
+  cudaCallKernelDirect(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+                       uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+                       uint32_t sharedMemBytes, CUlaunchAttribute *attrs,
+                       uint32_t numAttrs, void **args, CUstream stream) const;
 
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
 
 private:
-  // The module_function_ holds the CUDA specific implementation. Methods on
-  // CUDADeviceFunction forward to module_function_ as needed.
-  CUDAModuleFunctionRef module_function_;
+  // The moduleFunction_ holds the CUDA specific implementation. Methods on
+  // CUDADeviceFunction forward to moduleFunction_ as needed.
+  CUDAModuleFunctionRef moduleFunction_;
 };
 
 class CUDADeviceTimer : public DeviceTimer {
@@ -205,8 +205,8 @@ public:
                   CUevent stop);
   ~CUDADeviceTimer() override;
 
-  CUevent cuda_start_event() const;
-  CUevent cuda_stop_event() const;
+  CUevent cudaStartEvent() const;
+  CUevent cudaStopEvent() const;
 
   static const CUDADeviceTimer &cast(const DeviceTimer &timer);
 
@@ -218,7 +218,7 @@ private:
 class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(const CUDADevice &device, CUcontext context,
-                    CUstream stream, void *buffer_cache_base,
+                    CUstream stream, void *bufferCacheBase,
                     size_t bufferCacheSize);
   ~CUDADeviceContext() override;
 
@@ -279,11 +279,11 @@ public:
 
   ErrorOr<MemInfo> getMemoryInfo() const override;
 
-  const CUDADriver &cuda_driver() const;
-  CUcontext cuda_context() const;
-  CUstream cuda_stream() const;
+  const CUDADriver &cudaDriver() const;
+  CUcontext cudaContext() const;
+  CUstream cudaStream() const;
 
-  ErrorOrSuccess cuda_TensorMapEncodeTiled(
+  ErrorOrSuccess cudaTensorMapEncodeTiled(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
       const DeviceBuffer &globalAddress, const uint64_t *globalDim,
       const uint64_t *globalStrides, const uint32_t *boxDim,
@@ -291,7 +291,7 @@ public:
       CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
       CUtensorMapFloatOOBfill oobFill) const;
 
-  BufferCache &buffer_cache() const;
+  BufferCache &bufferCache() const;
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
@@ -305,9 +305,9 @@ private:
   // which do not keep contain a device context reference to avoid reference
   // counting cycles.
   mutable std::mutex mu_;
-  mutable llvm::StringMap<CUDAModuleFunctionRef> func_map_;
+  mutable llvm::StringMap<CUDAModuleFunctionRef> funcMap_;
 
-  mutable BufferCache buf_cache_;
+  mutable BufferCache bufCache_;
 };
 
 } // namespace M::AsyncRT

@@ -124,9 +124,8 @@ gethipDeviceAttribute(Device::Attribute attr) {
 }
 
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-                     std::string name, size_t alloc_alignment)
-    : Device(api, name, id, alloc_alignment), driver_(driver), device_(device) {
-}
+                     std::string name, size_t allocAlignment)
+    : Device(api, name, id, allocAlignment), driver_(driver), device_(device) {}
 
 const HIPDriver &HIPDevice::hip_driver() const { return driver_; }
 
@@ -282,7 +281,7 @@ HIPDeviceBuffer::~HIPDeviceBuffer() {
   }
 
   const auto &hip_context = HIPDeviceContext::cast(context());
-  if (!hip_context.buffer_cache().free(dptr_)) {
+  if (!hip_context.bufferCache().free(dptr_)) {
     HIP_CHECK(
         hip_context.hip_driver().MemFreeAsync(dptr_, hip_context.hip_stream()));
   }
@@ -337,21 +336,21 @@ HIPDeviceFunctionArguments::HIPDeviceFunctionArguments(
     : DeviceFunction::Arguments(fn) {}
 
 void HIPDeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
-  arg_values_.push_back(reinterpret_cast<void *>(val));
+  argValues_.push_back(reinterpret_cast<void *>(val));
 }
 
 void HIPDeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
   // Ensure buffer is preserved by increasing the reference count through
   // copy().
   refs_.emplace_back(DeviceBufferRef::copy(&val));
-  arg_values_.push_back(HIPDeviceBuffer::cast(val).hip_ptr());
+  argValues_.push_back(HIPDeviceBuffer::cast(val).hip_ptr());
 }
 
 std::vector<void *> HIPDeviceFunctionArguments::hip_args() const {
   std::vector<void *> launch_args;
-  launch_args.reserve(arg_values_.size());
-  for (size_t i = 0; i < arg_values_.size(); i++) {
-    launch_args.push_back(const_cast<void **>(&arg_values_[i]));
+  launch_args.reserve(argValues_.size());
+  for (size_t i = 0; i < argValues_.size(); i++) {
+    launch_args.push_back(const_cast<void **>(&argValues_[i]));
   }
   return launch_args;
 }
@@ -458,16 +457,16 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 
 // ===== HIPDeviceContext ===== //
 HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                                   hipStream_t stream, void *buffer_cache_base,
+                                   hipStream_t stream, void *bufferCacheBase,
                                    size_t bufferCacheSize)
     : DeviceContext(device), driver_(device.hip_driver()), context_(context),
-      stream_(stream), buf_cache_(buffer_cache_base, bufferCacheSize,
-                                  device.allocationAlignment()) {}
+      stream_(stream), bufCache_(bufferCacheBase, bufferCacheSize,
+                                 device.allocationAlignment()) {}
 
 HIPDeviceContext::~HIPDeviceContext() {
   // We do not need to synchronize on possible work queued on this stream.
   // Resources will be released automatically once work has been completed.
-  buffer_cache().clear();
+  bufferCache().clear();
   HIP_CHECK(driver_.StreamDestroy(stream_));
   HIP_CHECK(driver_.CtxDestroy(context_));
 }
@@ -491,7 +490,7 @@ ErrorOr<DeviceBufferRef> HIPDeviceContext::createBuffer(size_t byteSize,
   // A zero size buffer is associated with a nullptr pointer. Skip allocating in
   // that case.
   if (byteSize != 0) {
-    dptr = buffer_cache().allocate(byteSize);
+    dptr = bufferCache().allocate(byteSize);
     if (dptr == nullptr) {
       if (mode == ASYNC) {
         HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
@@ -618,8 +617,8 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(moduleName);
-    if (iter != func_map_.end()) {
+    auto iter = funcMap_.find(moduleName);
+    if (iter != funcMap_.end()) {
       HIPDeviceFunctionRef result = iter->second;
       return result;
     }
@@ -657,11 +656,11 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   HIPDeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(moduleName);
-    if (iter != func_map_.end()) {
+    auto iter = funcMap_.find(moduleName);
+    if (iter != funcMap_.end()) {
       result = HIPDeviceFunctionRef::copy(iter->second.getPointer());
     } else {
-      func_map_.insert({moduleName, func});
+      funcMap_.insert({moduleName, func});
       result = std::move(func);
     }
   }
@@ -749,7 +748,7 @@ const HIPDriver &HIPDeviceContext::hip_driver() const { return driver_; }
 
 hipStream_t HIPDeviceContext::hip_stream() const { return stream_; }
 
-BufferCache &HIPDeviceContext::buffer_cache() const { return buf_cache_; }
+BufferCache &HIPDeviceContext::bufferCache() const { return bufCache_; }
 
 HIPDriver::Result HIPDeviceContext::setCurrent() const {
   return driver_.CtxSetCurrent(context_);

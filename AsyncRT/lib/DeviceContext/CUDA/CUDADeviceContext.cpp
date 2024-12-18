@@ -92,13 +92,11 @@ private:
   } while (0)
 
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
-  CUDAContextScope __cudaWithContext((ctx).cuda_context(),                     \
-                                     (ctx).cuda_driver());                     \
+  CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
   CUDA_CHECK_ERR(__cudaWithContext.status());
 
 #define CUDA_WITH_CTX(ctx)                                                     \
-  CUDAContextScope __cudaWithContext((ctx).cuda_context(),                     \
-                                     (ctx).cuda_driver());                     \
+  CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
   CUDA_CHECK(__cudaWithContext.status());
 
 namespace M::AsyncRT {
@@ -153,13 +151,13 @@ static Error formatError(const char *file, int line, const char *func,
 
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-                       std::string name, size_t alloc_alignment)
+                       std::string name, size_t allocAlignment)
     // GEX-1416: Do not expect hardcoded number.
     : Device(api, std::move(name), id, 256), driver_(driver), device_(device) {}
 
-const CUDADriver &CUDADevice::cuda_driver() const { return driver_; }
+const CUDADriver &CUDADevice::cudaDriver() const { return driver_; }
 
-CUdevice CUDADevice::cuda_device() const { return device_; }
+CUdevice CUDADevice::cudaDevice() const { return device_; }
 
 ErrorOr<int> CUDADevice::getDriverVersion() const {
   int driver_version = 0;
@@ -188,49 +186,48 @@ ErrorOr<int> CUDADevice::computeCapability() const {
   int compute_major = 0, compute_minor = 0;
   CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
       &compute_major, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
-      cuda_device()));
+      cudaDevice()));
   CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
       &compute_minor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
-      cuda_device()));
+      cudaDevice()));
   return 10 * compute_major + compute_minor;
 }
 
 ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
   int canAccessPeer = 0;
   CUDA_CHECK_ERR(driver_.DeviceCanAccessPeer(
-      &canAccessPeer, cuda_device(), CUDADevice::cast(peer).cuda_device()));
+      &canAccessPeer, cudaDevice(), CUDADevice::cast(peer).cudaDevice()));
   return canAccessPeer;
 }
 
 ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
   int value = 0;
   CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
-      &value, static_cast<CUdevice_attribute>(attr), cuda_device()));
+      &value, static_cast<CUdevice_attribute>(attr), cudaDevice()));
   return value;
 }
 
 ErrorOr<DeviceContextRef>
 CUDADevice::createContext(size_t bufferCacheSize) const {
   CUcontext context;
-  CUDA_CHECK_ERR(
-      this->cuda_driver().CtxCreate(&context, 0, this->cuda_device()));
+  CUDA_CHECK_ERR(this->cudaDriver().CtxCreate(&context, 0, this->cudaDevice()));
   // CtxCreate() pushed the context as part of creation, we ensure that it is
   // properly removed again.
   CUcontext tmpCtx = nullptr;
-  CUDA_CHECK_ERR(this->cuda_driver().CtxPopCurrent(&tmpCtx));
+  CUDA_CHECK_ERR(this->cudaDriver().CtxPopCurrent(&tmpCtx));
   assert(context == tmpCtx);
 
   // For the remainder of this method we push, somewhat redundantly, the context
   // scope to ensure that the newly created context is properly removed when an
   // error happens or then at the return.
-  CUDAContextScope withCtx(context, this->cuda_driver());
+  CUDAContextScope withCtx(context, this->cudaDriver());
 
   CUstream stream;
-  CUDA_CHECK_ERR(this->cuda_driver().StreamCreate(&stream, 0));
+  CUDA_CHECK_ERR(this->cudaDriver().StreamCreate(&stream, 0));
 
   CUdeviceptr cache_base = nullptr;
   if (bufferCacheSize != 0) {
-    CUDA_CHECK_ERR(this->cuda_driver().MemAlloc(&cache_base, bufferCacheSize));
+    CUDA_CHECK_ERR(this->cudaDriver().MemAlloc(&cache_base, bufferCacheSize));
   }
 
   return CUDADeviceContextRef::create(*this, context, stream, cache_base,
@@ -318,16 +315,16 @@ CUDADeviceBuffer::~CUDADeviceBuffer() {
     return;
   }
 
-  const auto &cuda_context = CUDADeviceContext::cast(context());
-  if (!cuda_context.buffer_cache().free(dptr_)) {
-    CUDA_WITH_CTX(cuda_context);
-    CUDA_CHECK(cuda_context.cuda_driver().MemFreeAsync(
-        dptr_, cuda_context.cuda_stream()));
+  const auto &cudaContext = CUDADeviceContext::cast(context());
+  if (!cudaContext.bufferCache().free(dptr_)) {
+    CUDA_WITH_CTX(cudaContext);
+    CUDA_CHECK(
+        cudaContext.cudaDriver().MemFreeAsync(dptr_, cudaContext.cudaStream()));
   }
 }
 
-CUdeviceptr CUDADeviceBuffer::cuda_ptr() const { return dptr_; }
-void *CUDADeviceBuffer::ptr() const { return cuda_ptr(); }
+CUdeviceptr CUDADeviceBuffer::cudaPtr() const { return dptr_; }
+void *CUDADeviceBuffer::ptr() const { return cudaPtr(); }
 
 // TODO: Remove the V1 compatibility.
 void *CUDADeviceBuffer::releasePtr() const {
@@ -339,7 +336,7 @@ void *CUDADeviceBuffer::releasePtr() const {
 
 ErrorOr<DeviceBufferRef>
 CUDADeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
-  char *orig_ptr = static_cast<char *>(this->cuda_ptr());
+  char *orig_ptr = static_cast<char *>(this->cudaPtr());
   size_t origByteSize = this->byteSize();
 
   if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
@@ -360,14 +357,14 @@ CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &context,
     : DeviceStream(context), stream_(stream) {}
 
 ErrorOrSuccess CUDADeviceStream::synchronize() const {
-  const auto &cuda_context = CUDADeviceContext::cast(context());
+  const auto &cudaContext = CUDADeviceContext::cast(context());
 
-  CUDA_WITH_CTX_ERR(cuda_context);
-  CUDA_CHECK_ERR(cuda_context.cuda_driver().StreamSynchronize(stream_));
+  CUDA_WITH_CTX_ERR(cudaContext);
+  CUDA_CHECK_ERR(cudaContext.cudaDriver().StreamSynchronize(stream_));
   return success();
 }
 
-CUstream CUDADeviceStream::cuda_stream() const { return stream_; }
+CUstream CUDADeviceStream::cudaStream() const { return stream_; }
 
 // ===== CUDADeviceFunctionArguments ===== //
 CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
@@ -375,21 +372,21 @@ CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
     : DeviceFunction::Arguments(fn) {}
 
 void CUDADeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
-  arg_values_.push_back(reinterpret_cast<void *>(val));
+  argValues_.push_back(reinterpret_cast<void *>(val));
 }
 
 void CUDADeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
   // Ensure buffer is preserved by increasing the reference count through
   // copy().
   refs_.emplace_back(DeviceBufferRef::copy(&val));
-  arg_values_.push_back(CUDADeviceBuffer::cast(val).cuda_ptr());
+  argValues_.push_back(CUDADeviceBuffer::cast(val).cudaPtr());
 }
 
-std::vector<void *> CUDADeviceFunctionArguments::cuda_args() const {
+std::vector<void *> CUDADeviceFunctionArguments::cudaArgs() const {
   std::vector<void *> launch_args;
-  launch_args.reserve(arg_values_.size());
-  for (size_t i = 0; i < arg_values_.size(); i++) {
-    launch_args.push_back(const_cast<void **>(&arg_values_[i]));
+  launch_args.reserve(argValues_.size());
+  for (size_t i = 0; i < argValues_.size(); i++) {
+    launch_args.push_back(const_cast<void **>(&argValues_[i]));
   }
   return launch_args;
 }
@@ -407,21 +404,20 @@ CUDAModuleFunction::CUDAModuleFunction(const std::string name,
       name_(std::move(name)) {}
 
 CUDAModuleFunction::~CUDAModuleFunction() {
-  CUDA_CHECK(cuda_driver().ModuleUnload(module_));
+  CUDA_CHECK(cudaDriver().ModuleUnload(module_));
 }
 
 const std::string &CUDAModuleFunction::name() const { return name_; }
-const CUDADriver &CUDAModuleFunction::cuda_driver() const { return driver_; }
-CUmodule CUDAModuleFunction::cuda_module() const { return module_; }
-CUfunction CUDAModuleFunction::cuda_function() const { return function_; }
+const CUDADriver &CUDAModuleFunction::cudaDriver() const { return driver_; }
+CUmodule CUDAModuleFunction::cudaModule() const { return module_; }
+CUfunction CUDAModuleFunction::cudaFunction() const { return function_; }
 
 // ===== CUDADeviceFunction ===== //
 CUDADeviceFunction::CUDADeviceFunction(
     const CUDADeviceContext &context,
     const DeviceFunction::SignatureBuilder &signature,
-    CUDAModuleFunctionRef mod_func)
-    : DeviceFunction(context, signature),
-      module_function_(std::move(mod_func)) {}
+    CUDAModuleFunctionRef modFunc)
+    : DeviceFunction(context, signature), moduleFunction_(std::move(modFunc)) {}
 CUDADeviceFunction::~CUDADeviceFunction() {}
 
 DeviceFunction::Arguments *
@@ -433,13 +429,13 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const CUDADeviceFunctionArguments &args, CUstream stream) const {
-  CUDA_CHECK_ERR(module_function_->cuda_driver().LaunchKernel(
-      module_function_->cuda_function(), gridX, gridY, gridZ, blockX, blockY,
-      blockZ, sharedMemBytes, stream, args.cuda_args().data(), nullptr));
+  CUDA_CHECK_ERR(moduleFunction_->cudaDriver().LaunchKernel(
+      moduleFunction_->cudaFunction(), gridX, gridY, gridZ, blockX, blockY,
+      blockZ, sharedMemBytes, stream, args.cudaArgs().data(), nullptr));
   return success();
 }
 
-ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
+ErrorOrSuccess CUDADeviceFunction::cudaCallKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     CUlaunchAttribute *attrs, uint32_t numAttrs, void **args,
@@ -456,13 +452,13 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernelDirect(
   config.attrs = attrs;
   config.numAttrs = numAttrs;
 
-  CUDA_CHECK_ERR(module_function_->cuda_driver().LaunchKernelEx(
-      &config, module_function_->cuda_function(), args, nullptr));
+  CUDA_CHECK_ERR(moduleFunction_->cudaDriver().LaunchKernelEx(
+      &config, moduleFunction_->cudaFunction(), args, nullptr));
   return success();
 }
 
 const std::string &CUDADeviceFunction::name() const {
-  return module_function_->name();
+  return moduleFunction_->name();
 }
 
 ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
@@ -470,24 +466,24 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
                                                        size_t byteSize) const {
   CUdeviceptr device_ptr;
   size_t device_size;
-  const auto &cuda_context = CUDADeviceContext::cast(context());
-  CUDA_CHECK_ERR(cuda_context.cuda_driver().ModuleGetGlobal(
-      &device_ptr, &device_size, module_function_->cuda_module(), name));
+  const auto &cudaContext = CUDADeviceContext::cast(context());
+  CUDA_CHECK_ERR(cudaContext.cudaDriver().ModuleGetGlobal(
+      &device_ptr, &device_size, moduleFunction_->cudaModule(), name));
 
   if (device_size < byteSize) {
     RAISE_ERROR("byteSize too big");
   }
 
-  CUDA_CHECK_ERR(cuda_context.cuda_driver().MemcpyHtoDAsync(
-      device_ptr, data, byteSize, cuda_context.cuda_stream()));
+  CUDA_CHECK_ERR(cudaContext.cudaDriver().MemcpyHtoDAsync(
+      device_ptr, data, byteSize, cudaContext.cudaStream()));
   return success();
 }
 
 ErrorOr<int32_t> CUDADeviceFunction::getAttribute(int32_t code) const {
   int32_t result;
-  CUDA_CHECK_ERR(module_function_->cuda_driver().FuncGetAttribute(
+  CUDA_CHECK_ERR(moduleFunction_->cudaDriver().FuncGetAttribute(
       &result, static_cast<CUfunction_attribute>(code),
-      module_function_->cuda_function()));
+      moduleFunction_->cudaFunction()));
   return result;
 }
 
@@ -501,14 +497,14 @@ CUDADeviceTimer::CUDADeviceTimer(const CUDADeviceContext &context,
     : DeviceTimer(context), start_(start), stop_(stop) {}
 
 CUDADeviceTimer::~CUDADeviceTimer() {
-  const auto &cuda_context = CUDADeviceContext::cast(context());
+  const auto &cudaContext = CUDADeviceContext::cast(context());
 
-  CUDA_CHECK(cuda_context.cuda_driver().EventDestroy(start_));
-  CUDA_CHECK(cuda_context.cuda_driver().EventDestroy(stop_));
+  CUDA_CHECK(cudaContext.cudaDriver().EventDestroy(start_));
+  CUDA_CHECK(cudaContext.cudaDriver().EventDestroy(stop_));
 }
 
-CUevent CUDADeviceTimer::cuda_start_event() const { return start_; }
-CUevent CUDADeviceTimer::cuda_stop_event() const { return stop_; }
+CUevent CUDADeviceTimer::cudaStartEvent() const { return start_; }
+CUevent CUDADeviceTimer::cudaStopEvent() const { return stop_; }
 
 const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
   return static_cast<const CUDADeviceTimer &>(timer);
@@ -517,11 +513,11 @@ const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
 // ===== CUDADeviceContext ===== //
 CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                      CUcontext context, CUstream stream,
-                                     void *buffer_cache_base,
+                                     void *bufferCacheBase,
                                      size_t bufferCacheSize)
-    : DeviceContext(device), driver_(device.cuda_driver()), context_(context),
-      stream_(stream), buf_cache_(buffer_cache_base, bufferCacheSize,
-                                  device.allocationAlignment()) {}
+    : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
+      stream_(stream), bufCache_(bufferCacheBase, bufferCacheSize,
+                                 device.allocationAlignment()) {}
 
 CUDADeviceContext::~CUDADeviceContext() {
   {
@@ -530,17 +526,17 @@ CUDADeviceContext::~CUDADeviceContext() {
     // to be destroyed.
     CUDA_WITH_CTX(*this);
     // Destroy the function map before destroying the context.
-    func_map_.clear();
+    funcMap_.clear();
     CUDA_CHECK(driver_.StreamSynchronize(stream_));
-    buffer_cache().clear();
+    bufferCache().clear();
     // We do not need to synchronize on possible work queued on this stream.
     // Resources will be released automatically once work has been completed.
     CUDA_CHECK(driver_.StreamDestroy(stream_));
   }
   CUcontext cur = nullptr;
   driver_.CtxGetCurrent(&cur);
-  if (cur != cuda_context())
-    CUDA_CHECK(driver_.CtxPushCurrent(cuda_context()));
+  if (cur != cudaContext())
+    CUDA_CHECK(driver_.CtxPushCurrent(cudaContext()));
   CUDA_CHECK(driver_.CtxDestroy(context_));
 }
 
@@ -565,7 +561,7 @@ ErrorOr<DeviceBufferRef> CUDADeviceContext::createBuffer(size_t byteSize,
   // A zero size buffer is associated with a nullptr pointer. Skip allocating in
   // that case.
   if (byteSize != 0) {
-    dptr = buffer_cache().allocate(byteSize);
+    dptr = bufferCache().allocate(byteSize);
     if (dptr == nullptr) {
       if (mode == ASYNC) {
         CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
@@ -589,7 +585,7 @@ ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,
                                                SyncMode mode) const {
   CUDA_WITH_CTX_ERR(*this);
 
-  CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
+  CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cudaPtr();
   size_t byteSize = dst.byteSize();
   if (mode == ASYNC) {
     CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byteSize, stream_));
@@ -604,7 +600,7 @@ ErrorOrSuccess CUDADeviceContext::copyFromDevice(void *dst,
                                                  SyncMode mode) const {
   CUDA_WITH_CTX_ERR(*this);
 
-  CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cuda_ptr();
+  CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cudaPtr();
   size_t byteSize = src.byteSize();
   if (mode == ASYNC) {
     CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byteSize, stream_));
@@ -628,8 +624,8 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
     RAISE_ERROR("device context does not match context of dst");
   }
 
-  CUdeviceptr src_ptr = src_buffer.cuda_ptr();
-  CUdeviceptr dst_ptr = dst_buffer.cuda_ptr();
+  CUdeviceptr src_ptr = src_buffer.cudaPtr();
+  CUdeviceptr dst_ptr = dst_buffer.cudaPtr();
   size_t dstByteSize = dst.byteSize();
   size_t srcByteSize = src.byteSize();
   if (srcByteSize < dstByteSize) {
@@ -660,7 +656,7 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
                                             SyncMode mode) const {
   CUDA_WITH_CTX_ERR(*this);
 
-  void *ptr = CUDADeviceBuffer::cast(dst).cuda_ptr();
+  void *ptr = CUDADeviceBuffer::cast(dst).cudaPtr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
     if (mode == ASYNC) {
@@ -706,8 +702,8 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(moduleName);
-    if (iter != func_map_.end()) {
+    auto iter = funcMap_.find(moduleName);
+    if (iter != funcMap_.end()) {
       CUDAModuleFunctionRef module_func = iter->second;
       return CUDADeviceFunctionRef::create(*this, signature,
                                            std::move(module_func));
@@ -798,17 +794,17 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   // lock. If this functionName has been registered concurrently, then we will
   // release this ref outside of the lock region before returning.
   auto module_func = CUDAModuleFunctionRef::create(
-      std::string(functionName), this->cuda_driver(), module, function);
+      std::string(functionName), this->cudaDriver(), module, function);
   CUDADeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = func_map_.find(moduleName);
-    if (iter != func_map_.end()) {
+    auto iter = funcMap_.find(moduleName);
+    if (iter != funcMap_.end()) {
       result = CUDADeviceFunctionRef::create(
           *this, signature,
           CUDAModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      func_map_.insert({moduleName, module_func});
+      funcMap_.insert({moduleName, module_func});
       result = CUDADeviceFunctionRef::create(*this, signature,
                                              std::move(module_func));
     }
@@ -839,7 +835,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
   const auto &cuda_func = CUDADeviceFunction::cast(func);
 
   CUDA_WITH_CTX_ERR(*this);
-  return cuda_func.cuda_callKernelDirect(
+  return cuda_func.cudaCallKernelDirect(
       gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
       reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args, stream_);
 }
@@ -864,7 +860,7 @@ ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() const {
 
   auto timer = CUDADeviceTimerRef::create(*this, start, stop);
 
-  CUDA_CHECK_ERR(driver_.EventRecord(timer->cuda_start_event(), stream_));
+  CUDA_CHECK_ERR(driver_.EventRecord(timer->cudaStartEvent(), stream_));
 
   return timer;
 }
@@ -874,12 +870,12 @@ CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
   const auto &cuda_timer = CUDADeviceTimer::cast(timer);
 
   CUDA_WITH_CTX_ERR(*this);
-  CUDA_CHECK_ERR(driver_.EventRecord(cuda_timer.cuda_stop_event(), stream_));
-  CUDA_CHECK_ERR(driver_.EventSynchronize(cuda_timer.cuda_stop_event()));
+  CUDA_CHECK_ERR(driver_.EventRecord(cuda_timer.cudaStopEvent(), stream_));
+  CUDA_CHECK_ERR(driver_.EventSynchronize(cuda_timer.cudaStopEvent()));
 
   float millis;
-  CUDA_CHECK_ERR(driver_.EventElapsedTime(
-      &millis, cuda_timer.cuda_start_event(), cuda_timer.cuda_stop_event()));
+  CUDA_CHECK_ERR(driver_.EventElapsedTime(&millis, cuda_timer.cudaStartEvent(),
+                                          cuda_timer.cudaStopEvent()));
 
   constexpr double nanos_per_millisecond = 1000.0 * 1000.0;
   double nanos = static_cast<double>(millis) * nanos_per_millisecond;
@@ -890,7 +886,7 @@ ErrorOrSuccess
 CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.CtxEnablePeerAccess(
-      CUDADeviceContext::cast(peer).cuda_context(), 0));
+      CUDADeviceContext::cast(peer).cudaContext(), 0));
   return success();
 }
 
@@ -901,13 +897,13 @@ ErrorOr<DeviceContext::MemInfo> CUDADeviceContext::getMemoryInfo() const {
   return mem_info;
 }
 
-const CUDADriver &CUDADeviceContext::cuda_driver() const { return driver_; }
+const CUDADriver &CUDADeviceContext::cudaDriver() const { return driver_; }
 
-CUstream CUDADeviceContext::cuda_stream() const { return stream_; }
+CUstream CUDADeviceContext::cudaStream() const { return stream_; }
 
-CUcontext CUDADeviceContext::cuda_context() const { return context_; }
+CUcontext CUDADeviceContext::cudaContext() const { return context_; }
 
-ErrorOrSuccess CUDADeviceContext::cuda_TensorMapEncodeTiled(
+ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeTiled(
     void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
     const DeviceBuffer &globalAddress, const uint64_t *globalDim,
     const uint64_t *globalStrides, const uint32_t *boxDim,
@@ -917,13 +913,12 @@ ErrorOrSuccess CUDADeviceContext::cuda_TensorMapEncodeTiled(
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.TensorMapEncodeTiled(
       tensorMap, tensorDataType, tensorRank,
-      CUDADeviceBuffer::cast(globalAddress).cuda_ptr(), globalDim,
-      globalStrides, boxDim, elementStrides, interleave, swizzle, l2Promotion,
-      oobFill));
+      CUDADeviceBuffer::cast(globalAddress).cudaPtr(), globalDim, globalStrides,
+      boxDim, elementStrides, interleave, swizzle, l2Promotion, oobFill));
   return success();
 }
 
-BufferCache &CUDADeviceContext::buffer_cache() const { return buf_cache_; }
+BufferCache &CUDADeviceContext::bufferCache() const { return bufCache_; }
 
 const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CUDADeviceContext &>(ctx);
