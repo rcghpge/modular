@@ -410,6 +410,9 @@ def BoolScalarPred : CPred<
 
 def MO_BoolScalar : MO_ConfinedScalar<[BoolScalarPred], "boolean scalar">;
 
+def MO_RankedTensor : MO_ConfinedTensor<
+  [MO_HasRankPred], "A tensor with a statically known rank.">;
+
 /// Confines the MO_TensorType so that it's ranked and a scalar.
 def MO_RankedScalarTensor : MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[0]>], "ranked scalar tensor">;
