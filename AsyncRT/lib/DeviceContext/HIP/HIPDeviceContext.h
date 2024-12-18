@@ -51,8 +51,8 @@ public:
             std::string name, size_t allocAlignment);
   ~HIPDevice() override = default;
 
-  const HIPDriver &hip_driver() const;
-  hipDevice_t hip_device() const;
+  const HIPDriver &hipDriver() const;
+  hipDevice_t hipDevice() const;
 
   ErrorOr<int> getDriverVersion() const override;
   ErrorOrSuccess isCompatibleWithMAX() const override;
@@ -94,7 +94,7 @@ public:
                   hipDeviceptr_t ptr, bool owning);
   ~HIPDeviceBuffer() override;
 
-  hipDeviceptr_t hip_ptr() const;
+  hipDeviceptr_t hipPtr() const;
   void *ptr() const override;
   // TODO: Remove the V1 compatibility.
   void *releasePtr() const override;
@@ -117,7 +117,7 @@ public:
 
   virtual ErrorOrSuccess synchronize() const override;
 
-  hipStream_t hip_stream() const;
+  hipStream_t hipStream() const;
 
 private:
   hipStream_t stream_;
@@ -131,7 +131,7 @@ public:
   void pushArg(int index, const uint64_t &val) override;
   void pushArg(int index, const DeviceBuffer &val) override;
 
-  std::vector<void *> hip_args() const;
+  std::vector<void *> hipArgs() const;
 
   static const HIPDeviceFunctionArguments &
   cast(const DeviceFunction::Arguments &args);
@@ -158,17 +158,17 @@ public:
   DeviceFunction::Arguments *
   allocateArguments(const DeviceFunction &fn) const override;
 
-  ErrorOrSuccess hip_callKernel(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-                                uint32_t blockX, uint32_t blockY,
-                                uint32_t blockZ, uint32_t sharedMemBytes,
-                                const HIPDeviceFunctionArguments &args,
-                                hipStream_t stream) const;
+  ErrorOrSuccess hipCallKernel(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+                               uint32_t blockX, uint32_t blockY,
+                               uint32_t blockZ, uint32_t sharedMemBytes,
+                               const HIPDeviceFunctionArguments &args,
+                               hipStream_t stream) const;
 
-  ErrorOrSuccess hip_callKernelDirect(uint32_t gridX, uint32_t gridY,
-                                      uint32_t gridZ, uint32_t blockX,
-                                      uint32_t blockY, uint32_t blockZ,
-                                      uint32_t sharedMemBytes, void **args,
-                                      hipStream_t stream) const;
+  ErrorOrSuccess hipCallKernelDirect(uint32_t gridX, uint32_t gridY,
+                                     uint32_t gridZ, uint32_t blockX,
+                                     uint32_t blockY, uint32_t blockZ,
+                                     uint32_t sharedMemBytes, void **args,
+                                     hipStream_t stream) const;
 
   static const HIPDeviceFunction &cast(const DeviceFunction &func);
 
@@ -184,8 +184,8 @@ public:
                  hipEvent_t stop);
   ~HIPDeviceTimer() override;
 
-  hipEvent_t hip_start_event() const;
-  hipEvent_t hip_stop_event() const;
+  hipEvent_t hipStartEvent() const;
+  hipEvent_t hipStopEvent() const;
 
   static const HIPDeviceTimer &cast(const DeviceTimer &timer);
 
@@ -258,8 +258,8 @@ public:
 
   ErrorOr<MemInfo> getMemoryInfo() const override;
 
-  const HIPDriver &hip_driver() const;
-  hipStream_t hip_stream() const;
+  const HIPDriver &hipDriver() const;
+  hipStream_t hipStream() const;
 
   BufferCache &bufferCache() const;
 
