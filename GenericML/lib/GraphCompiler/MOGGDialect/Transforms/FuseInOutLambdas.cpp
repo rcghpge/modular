@@ -783,7 +783,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       srcSimdStoreOp = callOp;
 
     // Assert that the last operator are the store function we expect.
-    auto simdStoreFunc = analysis.getRegisteredMojoKernelFor(
+    [[maybe_unused]] auto simdStoreFunc = analysis.getRegisteredMojoKernelFor(
         Utils::DPSManagedTensorSliceStoreSIMD);
     ASSERT_STREAM(srcSimdStoreOp.getCallee().getSymbol().getLeafReference() ==
                       simdStoreFunc.getSymNameAttr(),
