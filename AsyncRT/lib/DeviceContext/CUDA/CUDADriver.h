@@ -177,6 +177,15 @@ public:
     return cuDeviceCanAccessPeer_(canAccessPeer, dev, peerDev);
   }
 
+  Result DevicePrimaryCtxRetain(CUcontext *pctx, CUdevice dev) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuDevicePrimaryCtxRetain_(pctx, dev);
+  }
+  Result DevicePrimaryCtxRelease(CUdevice dev) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuDevicePrimaryCtxRelease_(dev);
+  }
+
   Result CtxCreate(CUcontext *pctx, unsigned int flags, CUdevice dev) const {
     CUDA_DRIVER_CALL_LOG();
     return cuCtxCreate_v2_(pctx, flags, dev);
@@ -469,6 +478,12 @@ private:
 
   using tcuDeviceCanAccessPeer = Result(int *, CUdevice, CUdevice);
   tcuDeviceCanAccessPeer *cuDeviceCanAccessPeer_;
+
+  using tcuDevicePrimaryCtxRetain = Result(CUcontext *, CUdevice);
+  tcuDevicePrimaryCtxRetain *cuDevicePrimaryCtxRetain_;
+
+  using tcuDevicePrimaryCtxRelease = Result(CUdevice);
+  tcuDevicePrimaryCtxRelease *cuDevicePrimaryCtxRelease_;
 
   using tcuCtxCreate_v2 = Result(CUcontext *, unsigned int, CUdevice);
   tcuCtxCreate_v2 *cuCtxCreate_v2_;

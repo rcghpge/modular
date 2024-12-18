@@ -31,14 +31,16 @@ public:
       : driver_(driver), ctx_(ctx), prevCtx_(nullptr),
         status_(CUDADriver::SUCCESS) {
     driver_.CtxGetCurrent(&prevCtx_);
+    if (prevCtx_ == ctx_)
+      return;
     status_ = driver_.CtxSetCurrent(ctx_);
   }
 
   ~CUDAContextScope() {
-    if (status_ != CUDADriver::SUCCESS)
+    if ((prevCtx_ == ctx_) || (status_ != CUDADriver::SUCCESS))
       return;
 
-    // Only pop the context if push was successful.
+    // Only pop the context if push was necessary and successful.
     CUcontext ctx = nullptr;
     driver_.CtxGetCurrent(&ctx);
     driver_.CtxSetCurrent(prevCtx_);
@@ -153,11 +155,28 @@ static Error formatError(const char *file, int line, const char *func,
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        std::string name, size_t allocAlignment)
     // GEX-1416: Do not expect hardcoded number.
-    : Device(api, std::move(name), id, 256), driver_(driver), device_(device) {}
+    : Device(api, std::move(name), id, 256), driver_(driver), device_(device),
+      context_(nullptr) {}
+
+CUDADevice::~CUDADevice() {
+  if (context_ != nullptr)
+    // We ignore the result here as there is not much we can do if it fails
+    // since in most cases the CUDA driver is in the process of shutting down.
+    cudaDriver().DevicePrimaryCtxRelease(cudaDevice());
+}
 
 const CUDADriver &CUDADevice::cudaDriver() const { return driver_; }
 
 CUdevice CUDADevice::cudaDevice() const { return device_; }
+
+ErrorOr<CUcontext> CUDADevice::cudaContext() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (context_ == nullptr) {
+    CUDA_CHECK_ERR(
+        cudaDriver().DevicePrimaryCtxRetain(&context_, cudaDevice()));
+  }
+  return context_;
+}
 
 ErrorOr<int> CUDADevice::getDriverVersion() const {
   int driver_version = 0;
@@ -209,18 +228,14 @@ ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
 
 ErrorOr<DeviceContextRef>
 CUDADevice::createContext(size_t bufferCacheSize) const {
-  CUcontext context;
-  CUDA_CHECK_ERR(this->cudaDriver().CtxCreate(&context, 0, this->cudaDevice()));
-  // CtxCreate() pushed the context as part of creation, we ensure that it is
-  // properly removed again.
-  CUcontext tmpCtx = nullptr;
-  CUDA_CHECK_ERR(this->cudaDriver().CtxPopCurrent(&tmpCtx));
-  assert(context == tmpCtx);
+  ErrorOr<CUcontext> context = cudaContext();
+  if (context.isError())
+    return context.takeError();
 
-  // For the remainder of this method we push, somewhat redundantly, the context
-  // scope to ensure that the newly created context is properly removed when an
-  // error happens or then at the return.
-  CUDAContextScope withCtx(context, this->cudaDriver());
+  // For the remainder of this method we use the context scope to ensure that
+  // the context is properly removed when an error happens or then at the
+  // return.
+  CUDAContextScope withCtx(*context, this->cudaDriver());
 
   CUstream stream;
   CUDA_CHECK_ERR(this->cudaDriver().StreamCreate(&stream, 0));
@@ -230,7 +245,7 @@ CUDADevice::createContext(size_t bufferCacheSize) const {
     CUDA_CHECK_ERR(this->cudaDriver().MemAlloc(&cache_base, bufferCacheSize));
   }
 
-  return CUDADeviceContextRef::create(*this, context, stream, cache_base,
+  return CUDADeviceContextRef::create(*this, *context, stream, cache_base,
                                       bufferCacheSize);
 }
 
@@ -533,11 +548,6 @@ CUDADeviceContext::~CUDADeviceContext() {
     // Resources will be released automatically once work has been completed.
     CUDA_CHECK(driver_.StreamDestroy(stream_));
   }
-  CUcontext cur = nullptr;
-  driver_.CtxGetCurrent(&cur);
-  if (cur != cudaContext())
-    CUDA_CHECK(driver_.CtxPushCurrent(cudaContext()));
-  CUDA_CHECK(driver_.CtxDestroy(context_));
 }
 
 ErrorOr<void *> CUDADeviceContext::mallocHost(size_t size) const {

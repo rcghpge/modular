@@ -53,10 +53,11 @@ public:
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
              std::string name, size_t allocAlignment);
-  ~CUDADevice() override = default;
+  ~CUDADevice() override;
 
   const CUDADriver &cudaDriver() const;
   CUdevice cudaDevice() const;
+  ErrorOr<CUcontext> cudaContext() const;
 
   ErrorOr<int> getDriverVersion() const override;
   ErrorOrSuccess isCompatibleWithMAX() const override;
@@ -83,7 +84,13 @@ private:
   static ErrorOr<const DeviceList &> deviceList();
 
   const CUDADriver &driver_;
-  CUdevice device_;
+  const CUdevice device_;
+
+  // Lazily allocated device context to be shared across all `CUDADeviceContext`
+  // objects. We initialize this with the primary device context for the device
+  // to be able to share resources with libraries using the CUDA Runtime API.
+  mutable std::mutex mu_;
+  mutable CUcontext context_;
 };
 
 class CUDADeviceBuffer : public DeviceBuffer {
@@ -298,8 +305,8 @@ public:
 
 private:
   const CUDADriver &driver_;
-  CUcontext context_;
-  CUstream stream_;
+  const CUcontext context_;
+  const CUstream stream_;
 
   // The function cache holds the lower-level CUDAModuleFunction references
   // which do not keep contain a device context reference to avoid reference
