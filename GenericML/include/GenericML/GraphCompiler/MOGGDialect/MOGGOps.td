@@ -475,7 +475,9 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
   }];
 }
 
-def MOGG_CallOp : MOGG_Op<"call"> {
+def MOGG_CallOp : MOGG_Op<"call", [
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
+  ]> {
   let summary = "Represents a KGEN function to call";
   let description = [{
     This represents a call to a KGEN function. The kernel target will be a

@@ -289,6 +289,25 @@ static void printLambda(OpAsmPrinter &p, Operation *lambda, StringAttr name,
 // MOGG CallOp
 //===----------------------------------------------------------------------===//
 
+void CallOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+
+  bool hasWriteEffect = true;
+  bool hasReadEffect = true;
+  std::string target = getMojoKernelTargetAttr().str();
+  if (target == "mgp.tensor.extract.tensor_spec" ||
+      target == "mgp.tensor_spec.get_dim" ||
+      target == "builtin.unpack_buffer_ref") {
+    hasWriteEffect = false;
+    hasReadEffect = false;
+  }
+
+  if (hasWriteEffect)
+    effects.emplace_back(mlir::MemoryEffects::Write::get());
+  if (hasReadEffect)
+    effects.emplace_back(mlir::MemoryEffects::Read::get());
+}
+
 bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
   // Exit out if we don't have the parameter already (we can't add new ones as
   // the params come from mojo).
