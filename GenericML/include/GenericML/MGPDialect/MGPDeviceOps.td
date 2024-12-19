@@ -702,6 +702,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
 //===----------------------------------------------------------------------===//
 
 def BufferSliceOp : MGP_Op<"buffer.slice", [
+    Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
 ]> {
