@@ -34,7 +34,12 @@ struct DebugPrintAllTensorsPass
   std::string valueToLabel(Value value) {
     std::string str;
     llvm::raw_string_ostream os(str);
+
+    if (auto op = value.getDefiningOp())
+      os << " " << op->getName() << " ";
+
     value.printAsOperand(os, mlir::OpPrintingFlags().printGenericOpForm());
+
     return str;
   }
 
