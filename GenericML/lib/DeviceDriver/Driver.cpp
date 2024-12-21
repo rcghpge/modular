@@ -278,13 +278,6 @@ static ErrorOr<Device *> createCUDADevice(ssize_t gpuID) {
   DeviceSpec spec;
   spec.ref.label = kGPULabel;
   spec.ref.id = gpuID;
-  // Since the ctx creation above succeeded, we can assume we have cuda or hip.
-  // Match the target triple from gpu/host/info.mojo.
-  // TODO: where is this actually used?
-  spec.target.triple = ctx->device().api() == "cuda"
-                           ? llvm::Triple("nvptx64-nvidia-cuda")
-                           : llvm::Triple("amdgcn-amd-amdhsa");
-  spec.target.arch = ctx->device().getAcceleratorArchOrEmpty();
   auto device = RCRef<Device>::create(spec, DeviceKind::kACCELERATOR, ctx);
 
   return device.release();
