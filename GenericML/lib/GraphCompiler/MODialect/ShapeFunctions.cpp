@@ -12,6 +12,7 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <optional>
 #include <utility>
@@ -492,6 +493,9 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     stop = maybeStopConst && *maybeStopConst < 0
                ? b.createVar(*maybeStopConst) + inputDim
                : stop;
+    // Offset for computing ceil((stop - start) / step).
+    int64_t stepOffset = step > 0 ? step - 1 : step + 1;
+
     // NOTE: if start/stop aren't statically known to be < 0 they are assumed to
     // be greater than 0.
     // This is checked with an assert staged in the RMO to MO lowering.
@@ -514,6 +518,18 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
             "and decreasing for negative step, but got "
             "start {0}, stop {1} for step {2}",
             startConst, stopConst, step));
+
+      int64_t diff;
+      int64_t dim;
+      // Check statically whether the downstream error will overflow.
+      // Otherwise TensorType's verifier asserts due to a negative dim.
+      if (llvm::SubOverflow(stopConst, startConst, diff) ||
+          llvm::AddOverflow(diff, stepOffset, dim)) {
+        return ShapeMaterializeResult::error(llvm::formatv(
+            "rmo.slice index computation overflow: doesn't fit in an int64 "
+            "start {0}, stop {1} for step {2}",
+            startConst, stopConst, step));
+      }
     }
 
     // Invariants that should hold at this point:
@@ -527,8 +543,7 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
 
     // Compute the out dim as the size of the range:
     // ceil((stop - start) / step).
-    int64_t offset = step > 0 ? step - 1 : step + 1;
-    Var outDim = ((stop - start) + offset) / step;
+    Var outDim = ((stop - start) + stepOffset) / step;
     outDims.push_back(outDim.getAttr());
   }
 
