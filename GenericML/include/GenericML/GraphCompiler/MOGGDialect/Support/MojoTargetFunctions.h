@@ -17,6 +17,9 @@ namespace M::MOGG::Utils {
 constexpr llvm::StringLiteral DPSTensorForEach =
     "tensor_utils_internal::managed_tensor_slice::foreach";
 
+constexpr llvm::StringLiteral DPSTensorGetKernelSimdWidth =
+    "tensor_utils_internal::managed_tensor_slice::get_kernel_simd_width";
+
 constexpr llvm::StringLiteral MOGGElementwiseTarget = "elementwise";
 
 constexpr llvm::StringLiteral MOGGSimdLoadTarget = "simd_load";

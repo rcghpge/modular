@@ -168,11 +168,26 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
     non-view kernel, and fuses the body lambda of the former into that of the
     consumer kernel.
   }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
+  // Balloons due to dependency on MojoLibrarryAnalysis
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::Custom::CustomDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::HLCF::HLCFDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::index::IndexDialect",
+  ];
   let options = [
     Option<"dumpDotGraph", "dump-dot-graph",
            "bool", /*default=*/"false",
            "Prints the connected elementwise graph we traverse to find fusions.">,
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
   ];
 }
 

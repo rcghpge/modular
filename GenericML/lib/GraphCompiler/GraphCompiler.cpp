@@ -255,7 +255,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // Fuse connected elementwise kernels.
   if (opts.fuseJitKernels) {
     pm.addPass(MOGG::createFuseAffineViews());
-    pm.addPass(MOGG::createFuseElementwise());
+    MOGG::FuseElementwiseOptions fuseElementwiseOptions;
+    fuseElementwiseOptions.kernelLibraryPaths = kernelLibraryPaths;
+    pm.addPass(MOGG::createFuseElementwise(fuseElementwiseOptions));
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
     pm.addPass(MOGG::createSimplifyKernelOperands());

@@ -9,10 +9,13 @@
 #include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Runtime/Tensor/Tensor.h"
@@ -83,9 +86,107 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   return true;
 }
 
+static void
+fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
+                           const llvm::SmallSetVector<DType, 4> &allDtypes) {
+  kernelOp.walk([&](KGEN::CallOp callOp) {
+    // Find the foreach call.
+    StringRef funcName =
+        cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
+    if (!funcName.starts_with(Utils::DPSTensorForEach))
+      return;
+
+    // It has a parameter which is the simd_width of the output type.
+    // Replace it with the minimum simd_width of all kernel dtypes.
+    constexpr unsigned simdWidthParamIndex = 5;
+
+    TypedAttr oldSimdWithAttr = callOp.getParamValues()[simdWidthParamIndex];
+    TypedAttr newSimdWithAttr = nullptr;
+
+    // The simdwidth is of the form apply(get_kernel_simd_width[dtype, ...]).
+    // Just replace the old dtype with the dtypes in allDtypes.
+    // And aggregate all with a min operation.
+    auto applyExpr = dyn_cast<KGEN::ParamOperatorAttr>(oldSimdWithAttr);
+    if (!applyExpr || applyExpr.getOpcode() != KGEN::POC::Apply)
+      return;
+
+    auto applyCallee =
+        dyn_cast<KGEN::SymbolConstantAttr>(applyExpr.getOperand(0));
+    if (!applyCallee)
+      return;
+    StringRef applySymName =
+        cast<mlir::FlatSymbolRefAttr>(applyCallee.getSymbol()).getValue();
+    if (!applySymName.starts_with(Utils::DPSTensorGetKernelSimdWidth))
+      return;
+    SmallVector<TypedAttr> newCalleeParams(applyCallee.getParamValues());
+
+    for (DType dtype : allDtypes) {
+      // The first parameter is the dtype.
+      newCalleeParams[0] = typeManager.typeMap.at(dtype).typeBinding;
+      auto newCallee = KGEN::SymbolConstantAttr::get(
+          applyCallee.getSymbol(), applyCallee.getType(), newCalleeParams);
+
+      TypedAttr simdWidthOfDtype = KGEN::ParamOperatorAttr::get(
+          KGEN::POC::Apply, {newCallee}, applyExpr.getType());
+
+      if (newSimdWithAttr == nullptr)
+        newSimdWithAttr = simdWidthOfDtype;
+      else
+        newSimdWithAttr = KGEN::ParamOperatorAttr::get(
+            KGEN::POC::Max, {newSimdWithAttr, simdWidthOfDtype});
+    }
+
+    // Now change the parameter of the foreach call.
+    SmallVector<TypedAttr> newForEachParams(callOp.getParamValues());
+    newForEachParams[simdWidthParamIndex] = newSimdWithAttr;
+    auto newForEachCallee = KGEN::SymbolConstantAttr::get(
+        callOp.getCalleeSymbol(), callOp.getCalleeSignature(),
+        newForEachParams);
+    callOp.setCalleeAttr(newForEachCallee);
+  });
+}
+
 struct FuseElementwisePass
     : public impl::FuseElementwiseBase<FuseElementwisePass> {
   using FuseElementwiseBase::FuseElementwiseBase;
+
+  void fixupKGENKernelsSimdWidth(MO::GraphOp graphOp) {
+    // Fixup simd_width for fused kernels when needed.
+    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
+    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
+        analysis.initIfNeeded(graphOp->getContext(), kernelLibraryPaths);
+    if (errOr.isError())
+      return signalPassFailure();
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+    auto typeManager =
+        TypeManager::get(graphOp->getContext(), mojoLibraryAnalysis);
+    if (typeManager.isError())
+      return signalPassFailure();
+
+    graphOp.walk([&](MOGG::KernelOp kernelOp) {
+      bool isKGEN = kernelOp.getIsKGEN().value_or(false);
+      if (!isKGEN)
+        return;
+
+      llvm::SmallSetVector<DType, 4> allDtypes;
+      auto findDType = [&allDtypes](Type ty) {
+        if (auto tensorTy = dyn_cast<MO::TensorType>(ty))
+          allDtypes.insert(tensorTy.getDtype());
+        else if (auto bufferTy = dyn_cast<MO::BufferType>(ty))
+          allDtypes.insert(bufferTy.getDtype());
+      };
+      for (Type ty : kernelOp->getOperandTypes())
+        findDType(ty);
+      for (Type ty : kernelOp.getResultTypes())
+        findDType(ty);
+
+      // Only fix kernels with multiple dtypes
+      if (allDtypes.size() <= 1)
+        return;
+
+      fixElemwiseKernelSimdWidth(*typeManager, kernelOp, allDtypes);
+    });
+  }
 
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
@@ -121,6 +222,8 @@ struct FuseElementwisePass
         dstKernelOp.walk([](Block *block) { mlir::sortTopologically(block); });
       }
     }
+
+    fixupKGENKernelsSimdWidth(graphOp);
   }
 
   // The fusion itself is applied by the following steps.
