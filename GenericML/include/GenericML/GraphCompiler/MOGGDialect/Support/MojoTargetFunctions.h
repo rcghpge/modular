@@ -57,6 +57,11 @@ constexpr llvm::StringLiteral DPSManagedTensorSliceReshape =
 constexpr llvm::StringLiteral SplitDimIndices = "split_dim_indices";
 constexpr llvm::StringLiteral InsertIndex = "insert_index";
 
+// Name of the tensor_utils_internals module, to find all functions defined
+// there.
+constexpr llvm::StringLiteral DPSTensorUtilsInternalModule =
+    "tensor_utils_internal::";
+
 } // namespace M::MOGG::Utils
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_MOJOTARGETFUNCTIONS_H
