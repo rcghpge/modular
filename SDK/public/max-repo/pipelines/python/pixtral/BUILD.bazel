@@ -7,7 +7,6 @@ modular_py_library(
     imports = [".."],
     deps = [
         requirement("numpy"),
-        requirement("torch"),
         requirement("sentencepiece"),
         requirement("transformers"),
         requirement("pillow"),

@@ -7,7 +7,6 @@ modular_py_library(
     imports = [".."],
     deps = [
         requirement("numpy"),
-        requirement("torch"),
         requirement("gguf"),
         requirement("sentencepiece"),
         "//SDK/lib/API/python/max/dtype",

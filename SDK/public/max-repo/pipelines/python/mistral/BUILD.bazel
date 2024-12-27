@@ -15,7 +15,6 @@ modular_py_library(
         requirement("gguf"),
         requirement("numpy"),
         requirement("sentencepiece"),
-        requirement("torch"),
         requirement("transformers"),
     ],
 )

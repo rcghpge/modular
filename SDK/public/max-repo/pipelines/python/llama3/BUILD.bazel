@@ -8,6 +8,7 @@ modular_py_library(
     tags = ["no-mypy"],  # TODO: Fix and remove
     deps = [
         requirement("numpy"),
+        # TODO(AIPIPE-287): remove dependency on torch.
         requirement("torch"),
         requirement("gguf"),
         requirement("sentencepiece"),
