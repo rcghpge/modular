@@ -22,7 +22,6 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -72,7 +71,6 @@ def TestRunningMogg: Pass<"test-run-mogg", "ModuleOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -129,7 +127,6 @@ def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -172,7 +169,6 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -224,7 +220,6 @@ def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -288,7 +283,6 @@ def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -374,7 +368,6 @@ def FuseKernelSequences: Pass<"fuse-kernel-sequences", "ModuleOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -417,7 +410,6 @@ def TranslateMOGGToKGEN: Pass<"translate-mogg-to-kgen", "ModuleOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",

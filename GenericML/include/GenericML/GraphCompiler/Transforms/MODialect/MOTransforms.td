@@ -28,7 +28,6 @@ def AddFallbackShapeFunctions :
     "mlir::index::IndexDialect",
     "M::DebugInfo::DebugInfoDialect",
     "M::HLCF::HLCFDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -236,7 +235,6 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
     "M::MOGG::MOGGDialect",
     "M::MGP::MGPDialect",
     "M::GRT::GRTDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -355,7 +353,6 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
     "mlir::index::IndexDialect",
     "M::DebugInfo::DebugInfoDialect",
     "M::HLCF::HLCFDialect",
-    "M::KGEN::Custom::CustomDialect",
     "M::KGEN::KGENDialect",
     "M::KGEN::LIT::LITDialect",
     "M::KGEN::POP::POPDialect",
@@ -532,7 +529,6 @@ def VerifyCustomOps : Pass<"verify-custom-ops", "GraphOp"> {
   ];
   let dependentDialects = [
       "M::KGEN::KGENDialect",
-      "M::KGEN::Custom::CustomDialect",
       "M::KGEN::LIT::LITDialect",
       "M::KGEN::POP::POPDialect",
       "M::HLCF::HLCFDialect",

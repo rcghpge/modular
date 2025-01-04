@@ -12,7 +12,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
 
-#include "KGEN/CustomDialect/CustomDialect.h"
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/LITDialect/LITAttrs.h"
 #include "KGEN/LITDialect/LITDialect.h"
