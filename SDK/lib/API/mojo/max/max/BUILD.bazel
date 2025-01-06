@@ -41,6 +41,7 @@ pkg_filegroup(
     srcs = [
         ":docs",
         "//Kernels/mojo/extensibility/tensor_internal:docs",
+        "//Kernels/mojo/extensibility/tensor_utils_internal:docs",
     ],
     visibility = ["//visibility:public"],
 )
