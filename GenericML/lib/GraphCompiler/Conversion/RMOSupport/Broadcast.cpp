@@ -95,14 +95,12 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
   TensorType yType = y.getType();
   assert(yType.hasRank());
 
-  // Assert that devices are the same if at least one is assigned.
+  // Assert that devices are the same if both are assigned.
   DeviceRefAttr deviceRef = xType.getDeviceRef();
   if (!deviceRef)
     deviceRef = yType.getDeviceRef();
   else if (DeviceRefAttr yDeviceRef = yType.getDeviceRef())
     assert(deviceRef == yDeviceRef);
-  else
-    deviceRef = deviceRef.getDefault(builder.getContext());
 
   // We propagate device refs explicitly to keep shapes on the same device.
   auto intType = builder.getIntegerType(64, /*isSigned=*/true);
