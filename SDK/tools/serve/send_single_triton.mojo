@@ -58,7 +58,7 @@ fn main() raises:
     var num_requests = 1
     while i < len(argv):
         if argv[i] == "-a":
-            address = str(argv[i + 1]).strip()
+            address = String(str(argv[i + 1]).strip())
             if not address:
                 raise Error("Must specify non-empty address")
             i += 2
