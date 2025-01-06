@@ -27,7 +27,9 @@ static constexpr const char *kMAXProductName = "max";
 
 namespace {
 struct DriverOptTable : public llvm::opt::PrecomputedOptTable {
-  DriverOptTable() : llvm::opt::PrecomputedOptTable(InfoTable, PrefixTable) {}
+  DriverOptTable()
+      : llvm::opt::PrecomputedOptTable(OptionStrTable, OptionPrefixesTable,
+                                       InfoTable, OptionPrefixesUnion) {}
 };
 } // namespace
 

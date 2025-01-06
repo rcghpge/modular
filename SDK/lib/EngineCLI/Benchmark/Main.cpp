@@ -42,7 +42,8 @@ namespace {
 
 struct BenchmarkOptTable : public llvm::opt::PrecomputedOptTable {
   BenchmarkOptTable()
-      : llvm::opt::PrecomputedOptTable(InfoTable, PrefixTable) {}
+      : llvm::opt::PrecomputedOptTable(OptionStrTable, OptionPrefixesTable,
+                                       InfoTable, OptionPrefixesUnion) {}
 };
 
 struct ClOptions {

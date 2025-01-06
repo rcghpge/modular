@@ -40,7 +40,8 @@ namespace {
 
 struct VisualizeOptTable : public llvm::opt::PrecomputedOptTable {
   VisualizeOptTable()
-      : llvm::opt::PrecomputedOptTable(InfoTable, PrefixTable) {}
+      : llvm::opt::PrecomputedOptTable(OptionStrTable, OptionPrefixesTable,
+                                       InfoTable, OptionPrefixesUnion) {}
 };
 
 struct ClOptions {
