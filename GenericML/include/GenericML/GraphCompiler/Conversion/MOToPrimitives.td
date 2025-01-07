@@ -140,4 +140,17 @@ def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
                           "MOGG::MOGGDialect"];
 }
 
+def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls",
+                                    "MOGG::GenericCompiledRegionOp"> {
+  let summary = "Removes redundant mogg.calls";
+  let description = [{
+    Removes redundant `mogg.call`s to the same target using the same arguments.
+    Those targets are not pure or side-effect free (e.g., "assert",
+    "builtin.create_async_xxx"), thus can not be handled correctly by a common
+    cse pass.
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
