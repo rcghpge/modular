@@ -62,8 +62,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
   } else if (fileExtension.contains("pt") || fileExtension.contains("ptc") ||
              fileExtension.contains("torchscript")) {
     return FileFormat::kPTPickle;
-  } else if (fileExtension.contains("safetensors")) {
-    return FileFormat::kSafeTensors;
   }
 
   // If there's nothing in the file, then we can't sniff anything.
