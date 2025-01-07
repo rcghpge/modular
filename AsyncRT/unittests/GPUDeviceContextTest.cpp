@@ -94,14 +94,14 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
       'E',
   };
 
-  const int copyLengths[] = {256, 1024 * 1024};
+  const int copyLengths[] = {0, 256, 1024 * 1024};
 
   for (int i = 0; i < 4; i++) {
     bool doSyncCopies = i & 1;
     int allocLen = copyLengths[(i >> 1) & 1];
 
-    ErrorOr<DeviceBufferRef> emptyBufErr = ctx->createBuffer(
-        0, doSyncCopies ? DeviceContext::SYNC : DeviceContext::ASYNC);
+    ErrorOr<DeviceBufferRef> emptyBufErr =
+        (doSyncCopies) ? ctx->createBuffer(0) : ctx->enqueueCreateBuffer(0);
     EXPECT_FALSE(emptyBufErr);
     EXPECT_EQ((*emptyBufErr)->ptr(), nullptr);
     EXPECT_EQ((*emptyBufErr)->byteSize(), 0);
@@ -112,7 +112,7 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     ErrorOr<void *> errPtr = ctx->mallocHost(allocLen);
     EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
     void *aPtr = errPtr.get();
-    EXPECT_NE(aPtr, nullptr);
+    EXPECT_TRUE((aPtr != nullptr) || (allocLen == 0));
 
     ErrorOr<DeviceBufferRef> errRef = ctx->createBuffer(allocLen);
     EXPECT_FALSE(errRef) << errRef.getError() << "\n";
@@ -191,12 +191,16 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 
     // Create a source buffer that is too small.
     ErrorOr<DeviceBufferRef> errRef =
-        ctx->createBuffer(allocLen - 32, syncMode);
+        (syncMode == DeviceContext::SYNC)
+            ? ctx->createBuffer(allocLen - 32)
+            : ctx->enqueueCreateBuffer(allocLen - 32);
     EXPECT_FALSE(errRef) << errRef.getError() << "\n";
     DeviceBufferRef bBuf = std::move(errRef.get());
     EXPECT_TRUE(bBuf);
 
-    errRef = ctx->createBuffer(allocLen, syncMode);
+    errRef = (syncMode == DeviceContext::SYNC)
+                 ? ctx->createBuffer(allocLen)
+                 : ctx->enqueueCreateBuffer(allocLen);
     EXPECT_FALSE(errRef) << errRef.getError() << "\n";
     DeviceBufferRef cBuf = std::move(errRef.get());
     EXPECT_TRUE(cBuf);

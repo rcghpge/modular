@@ -563,21 +563,17 @@ ErrorOrSuccess CUDADeviceContext::freeHost(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> CUDADeviceContext::createBuffer(size_t byteSize,
-                                                         SyncMode mode) const {
+ErrorOr<DeviceBufferRef> CUDADeviceContext::allocBuffer(size_t byteSize,
+                                                        SyncMode mode) const {
+  assert(byteSize != 0);
   CUDA_WITH_CTX(*this);
 
-  CUdeviceptr dptr = nullptr;
-  // A zero size buffer is associated with a nullptr pointer. Skip allocating in
-  // that case.
-  if (byteSize != 0) {
-    dptr = bufferCache().allocate(byteSize);
-    if (dptr == nullptr) {
-      if (mode == ASYNC) {
-        CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
-      } else {
-        CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
-      }
+  CUdeviceptr dptr = bufferCache().allocate(byteSize);
+  if (dptr == nullptr) {
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
+    } else {
+      CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
     }
   }
   return CUDADeviceBufferRef::create(*this, byteSize, dptr);

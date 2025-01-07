@@ -482,21 +482,17 @@ ErrorOrSuccess HIPDeviceContext::freeHost(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> HIPDeviceContext::createBuffer(size_t byteSize,
-                                                        SyncMode mode) const {
+ErrorOr<DeviceBufferRef> HIPDeviceContext::allocBuffer(size_t byteSize,
+                                                       SyncMode mode) const {
+  assert(byteSize != 0);
   HIP_CHECK_ERR(setCurrent());
 
-  hipDeviceptr_t dptr = nullptr;
-  // A zero size buffer is associated with a nullptr pointer. Skip allocating in
-  // that case.
-  if (byteSize != 0) {
-    dptr = bufferCache().allocate(byteSize);
-    if (dptr == nullptr) {
-      if (mode == ASYNC) {
-        HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
-      } else {
-        HIP_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
-      }
+  hipDeviceptr_t dptr = bufferCache().allocate(byteSize);
+  if (dptr == nullptr) {
+    if (mode == ASYNC) {
+      HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
+    } else {
+      HIP_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
     }
   }
   return HIPDeviceBufferRef::create(*this, byteSize, dptr);

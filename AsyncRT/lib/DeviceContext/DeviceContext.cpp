@@ -240,11 +240,15 @@ const Device &DeviceContext::device() const { return *device_; }
 
 ErrorOr<DeviceBufferRef>
 DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
-  return createBuffer(byteSize, ASYNC);
+  if (byteSize == 0)
+    return this->createBufferOwning(nullptr, 0, true);
+  return allocBuffer(byteSize, ASYNC);
 }
 
 ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t byteSize) const {
-  return createBuffer(byteSize, SYNC);
+  if (byteSize == 0)
+    return this->createBufferOwning(nullptr, 0, true);
+  return allocBuffer(byteSize, SYNC);
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,

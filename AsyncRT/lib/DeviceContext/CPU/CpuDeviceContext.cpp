@@ -189,14 +189,12 @@ ErrorOrSuccess CpuDeviceContext::freeHost(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> CpuDeviceContext::createBuffer(size_t byteSize,
-                                                        SyncMode mode) const {
-  void *ptr = nullptr;
-  if (byteSize != 0) {
-    ptr = TCMallocGlobals::tc_new(byteSize, 1);
-    if (ptr == nullptr) {
-      RAISE_ERROR();
-    }
+ErrorOr<DeviceBufferRef> CpuDeviceContext::allocBuffer(size_t byteSize,
+                                                       SyncMode mode) const {
+  assert(byteSize != 0);
+  void *ptr = TCMallocGlobals::tc_new(byteSize, 1);
+  if (ptr == nullptr) {
+    RAISE_ERROR();
   }
   return CpuDeviceBufferRef::create(*this, byteSize, ptr);
 }

@@ -266,8 +266,6 @@ public:
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
   ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize) const;
-  virtual ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize,
-                                                SyncMode mode) const = 0;
   // TODO: Remove the V1 compatibility.
   virtual DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
                                              bool owning) const = 0;
@@ -344,6 +342,9 @@ private:
   DeviceContext(DeviceContext &&other) = delete;
   DeviceContext &operator=(const DeviceContext &) = delete;
   DeviceContext &operator=(DeviceContext &&other) = delete;
+
+  virtual ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
+                                               SyncMode mode) const = 0;
 };
 
 // TODO: Delete any that seem too CUDA-specific

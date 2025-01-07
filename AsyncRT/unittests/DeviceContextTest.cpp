@@ -102,7 +102,9 @@ TEST(DeviceContextTest, DeviceBuffers) {
         ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
     int allocLen = copyLengths[(i >> 1) & 1];
 
-    ErrorOr<DeviceBufferRef> emptyBufErr = ctx->createBuffer(0, syncMode);
+    ErrorOr<DeviceBufferRef> emptyBufErr = (syncMode == DeviceContext::SYNC)
+                                               ? ctx->createBuffer(0)
+                                               : ctx->enqueueCreateBuffer(0);
     EXPECT_FALSE(emptyBufErr);
     EXPECT_EQ((*emptyBufErr)->ptr(), nullptr);
     EXPECT_EQ((*emptyBufErr)->byteSize(), 0);
@@ -116,12 +118,16 @@ TEST(DeviceContextTest, DeviceBuffers) {
     void *aPtr = errPtr.get();
     EXPECT_NE(aPtr, nullptr);
 
-    ErrorOr<DeviceBufferRef> errRef = ctx->createBuffer(allocLen, syncMode);
+    ErrorOr<DeviceBufferRef> errRef = (syncMode == DeviceContext::SYNC)
+                                          ? ctx->createBuffer(allocLen)
+                                          : ctx->enqueueCreateBuffer(allocLen);
     EXPECT_FALSE(errRef) << errRef.getError() << "\n";
     DeviceBufferRef bBuf = std::move(errRef.get());
     EXPECT_TRUE(bBuf);
 
-    errRef = ctx->createBuffer(allocLen, syncMode);
+    errRef = (syncMode == DeviceContext::SYNC)
+                 ? ctx->createBuffer(allocLen)
+                 : ctx->enqueueCreateBuffer(allocLen);
     EXPECT_FALSE(errRef) << errRef.getError() << "\n";
     DeviceBufferRef cBuf = std::move(errRef.get());
     EXPECT_TRUE(cBuf);
@@ -182,12 +188,16 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 
     // Create a source buffer that is too small.
     ErrorOr<DeviceBufferRef> errRef =
-        ctx->createBuffer(allocLen - 32, syncMode);
+        (syncMode == DeviceContext::SYNC)
+            ? ctx->createBuffer(allocLen - 32)
+            : ctx->enqueueCreateBuffer(allocLen - 32);
     EXPECT_FALSE(errRef) << errRef.getError() << "\n";
     DeviceBufferRef bBuf = std::move(errRef.get());
     EXPECT_TRUE(bBuf);
 
-    errRef = ctx->createBuffer(allocLen, syncMode);
+    errRef = (syncMode == DeviceContext::SYNC)
+                 ? ctx->createBuffer(allocLen)
+                 : ctx->enqueueCreateBuffer(allocLen);
     EXPECT_FALSE(errRef) << errRef.getError() << "\n";
     DeviceBufferRef cBuf = std::move(errRef.get());
     EXPECT_TRUE(cBuf);

@@ -234,8 +234,8 @@ public:
   ErrorOrSuccess freeHost(void *ptr) const override;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize,
-                                        SyncMode mode) const override;
+  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
+                                       SyncMode mode) const override;
   DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
                                      bool owning) const override;
 
