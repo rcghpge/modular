@@ -204,7 +204,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       OpBuilder b(call);
       for (auto [arg, opOperand, type] :
            llvm::zip(call.getOperands(), call->getOpOperands(),
-                     call.getCallee().getType().getArguments())) {
+                     call.getCallee().getType().getBody().getArguments())) {
         if (arg.getType() != type) {
           Value rebound = b.create<KGEN::RebindOp>(call.getLoc(), type, arg);
           opOperand.set(rebound);
@@ -424,8 +424,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
         // Create parametric call which produces the static spec
         SmallVector<mlir::TypedAttr> lambdaArgs{
-            KGEN::SymbolConstantAttr::get(
-                buildSpecFn, buildSpecSigGen.asOldSignature(), buildSpecParams),
+            KGEN::SymbolConstantAttr::get(buildSpecFn, buildSpecSigGen,
+                                          buildSpecParams),
             oldTensorSpecttr, viewStridesAttr};
         auto resulTy = buildSpecSigGen.getBody().getResults()[0];
 

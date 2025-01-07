@@ -32,6 +32,7 @@ using M::KGEN::NewSignatureType;
 using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParameterExprArrayAttr;
+using M::KGEN::SignatureGeneratorType;
 using M::KGEN::SignatureType;
 
 namespace M::MO {

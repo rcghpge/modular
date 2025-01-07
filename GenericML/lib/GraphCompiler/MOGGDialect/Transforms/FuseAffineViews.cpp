@@ -267,8 +267,7 @@ struct FuseAffineViewsPass
     Value toShapeKGENRebound = builder.create<KGEN::RebindOp>(
         loc, reshapeSignature.getBody().getArguments()[1], toShapeKGEN);
     auto symbol = KGEN::SymbolConstantAttr::get(
-        reshapeKGENFunc, reshapeSignature.asOldSignature(),
-        reshapeParameterValues);
+        reshapeKGENFunc, reshapeSignature, reshapeParameterValues);
 
     auto callArgs = SmallVector<Value>{kgenTensor, toShapeKGENRebound};
     auto reshapedTensorCall = builder.create<KGEN::CallOp>(
@@ -325,9 +324,9 @@ struct FuseAffineViewsPass
         splitDimIndicesFunc.getSignatureGenerator().getSpecializedGenerator(
             splitDimIndicesParameterValues);
 
-    auto symbol = KGEN::SymbolConstantAttr::get(
-        splitDimIndicesFunc, splitDimIndicesSignature.asOldSignature(),
-        splitDimIndicesParameterValues);
+    auto symbol = KGEN::SymbolConstantAttr::get(splitDimIndicesFunc,
+                                                splitDimIndicesSignature,
+                                                splitDimIndicesParameterValues);
 
     // Calculate the split dim size for the function
     int64_t i = splitDimOp.getAxis().getValue().getLimitedValue();
@@ -368,8 +367,7 @@ struct FuseAffineViewsPass
             insertIndexParameterValues);
 
     auto symbol = KGEN::SymbolConstantAttr::get(
-        insertIndexFunc, insertIndexSignature.asOldSignature(),
-        insertIndexParameterValues);
+        insertIndexFunc, insertIndexSignature, insertIndexParameterValues);
 
     auto callArgs = SmallVector<Value>{kgenIndicesOperand};
 
@@ -475,7 +473,7 @@ struct FuseAffineViewsPass
             simdStoreInternalParameterValues);
 
     auto symbol = KGEN::SymbolConstantAttr::get(
-        simdStoreInternalFunc, simdStoreInternalSignature.asOldSignature(),
+        simdStoreInternalFunc, simdStoreInternalSignature,
         simdStoreInternalParameterValues);
 
     Value kgenNewIndicesOperandRebound = builder.create<KGEN::RebindOp>(

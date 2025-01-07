@@ -629,7 +629,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     auto findParamDeclMapping = [&](KGEN::ParamDeclareOp paramDeclOp) {
       mlir::AttrTypeWalker walker;
       walker.addWalk([&](KGEN::ParamDeclRefAttr refAttr) {
-        if (isa<KGEN::SignatureType>(refAttr.getType()))
+        if (isa<KGEN::SignatureGeneratorType>(refAttr.getType()))
           lambdaToParamDeclareOpMapping[refAttr.getName()].push_back(
               paramDeclOp);
       });
@@ -1339,7 +1339,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       OpBuilder b(call);
       for (auto [arg, opOperand, type] :
            llvm::zip(call.getOperands(), call->getOpOperands(),
-                     call.getCallee().getType().getArguments())) {
+                     call.getCallee().getType().getBody().getArguments())) {
         if (arg.getType() != type) {
           Value rebound = b.create<KGEN::RebindOp>(call.getLoc(), type, arg);
           opOperand.set(rebound);

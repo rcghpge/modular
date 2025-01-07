@@ -36,7 +36,7 @@ using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParamDefValue;
 using M::KGEN::ParameterExprArrayAttr;
 using M::KGEN::printStringParam;
-using M::KGEN::SignatureType;
+using M::KGEN::SignatureGeneratorType;
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
