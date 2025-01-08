@@ -158,6 +158,11 @@ modular_pybind_library(
     name = "ProfilerPython",
     srcs = glob(["lib/Profiler/python/*.cpp"]),
     hdrs = glob(["include/SDK/Profiler/python/*.h"]),
+    local_defines = select({
+        "//:kernel_e2e_gpu_profiling_setting": ["KERNEL_E2E_GPU_PROFILING"],
+        "//:kernel_e2e_gpu_profiling_detailed_setting": ["KERNEL_E2E_GPU_PROFILING_DETAILED"],
+        "//conditions:default": [],
+    }),
     deps = [
         "//Kernels:Tracing",
     ],
