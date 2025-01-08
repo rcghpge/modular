@@ -403,7 +403,7 @@ def MO_YieldOp
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<MO_AnyNonBufferType>:$operands);
 
   let assemblyFormat = [{
     `` attr-dict ($operands^ `:` type($operands))?
@@ -4698,9 +4698,9 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
   }];
 
   let arguments = (ins MO_Chain:$chain,
-                       Variadic<AnyType>:$inputs);
+                       Variadic<MO_AnyNonBufferType>:$inputs);
 
-  let results = (outs Variadic<AnyType>:$results);
+  let results = (outs Variadic<MO_AnyNonBufferType>:$results);
 
   let assemblyFormat = [{
     `[` $chain `]` `(` $inputs `)` attr-dict `:` type($inputs)

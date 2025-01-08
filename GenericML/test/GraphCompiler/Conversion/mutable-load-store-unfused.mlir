@@ -26,8 +26,5 @@ mo.graph @unfused_mutable_load_store(%buf: !bt, %rhs: !tt) -> !bt
   %res2 = mo.negative(%res1) : !tt
   %ch4 = mo.mutable.store(%ch1, %buf, %res2) : (!ct, !bt, !tt) -> (!ct)
 
-  %cf = mo.chain.create(%ch4) : !ct
-  %gb = mo.guard[%cf](%buf) : !bt
-
-  mo.output %gb : !bt
+  mo.output %buf : !bt
 }

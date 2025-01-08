@@ -410,6 +410,15 @@ def BoolScalarPred : CPred<
 
 def MO_BoolScalar : MO_ConfinedScalar<[BoolScalarPred], "boolean scalar">;
 
+/// There's currently no alias analysis around !mo.buffer values which is
+/// problematic in the face of operations that can directly forward their inputs
+/// (such as mo.guard or one of the control flow ops in conjunction with
+/// mo.yield). For now have this alias which allows AnyType except !mo.buffer.
+/// TODO(GEX-1576): Implement alias analysis
+def MO_AnyNonBufferType : Type<
+  CPred<"!llvm::isa<::M::MO::BufferType>($_self)">,
+  "any type but !mo.buffer">;
+
 /// Confines the MO_TensorType so that it's ranked and a scalar.
 def MO_RankedScalarTensor : MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[0]>], "ranked scalar tensor">;

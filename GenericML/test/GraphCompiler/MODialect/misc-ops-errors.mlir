@@ -906,6 +906,18 @@ mo.graph @guard_mismatched_num_results(%X: !mo.tensor<[D0, D1], f32>, %Y: !mo.te
 
 // -----
 
+mo.graph @guard_disallows_buffer(%X: !mo.buffer<[2, 2], f32>)
+{
+  %ch0 = mo.chain.create()
+
+  //expected-error@+1 {{'mo.guard' op operand #1 must be variadic of any type but !mo.buffer, but got '!mo.buffer<[2, 2], f32>'}}
+  mo.guard[%ch0](%X) : !mo.buffer<[2, 2], f32>
+
+  mo.output
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//

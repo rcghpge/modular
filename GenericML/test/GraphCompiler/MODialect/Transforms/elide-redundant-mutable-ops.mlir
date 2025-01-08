@@ -13,7 +13,7 @@
 // CHECK-NOT: mo.mutable.load
 // CHECK: [[res2:%.*]] = mo.add([[res1]], [[rhs]])
 // CHECK: mo.mutable.store([[ch1]], [[buf]], [[res2]])
-mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
+mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> (!bt)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
@@ -27,9 +27,7 @@ mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
 
   %cf = mo.chain.create(%ch4) : !ct
 
-  %gb = mo.guard[%cf](%buf) : !bt
-
-  mo.output %buf, %gb : !bt, !bt
+  mo.output %buf : !bt
 }
 
 // CHECK-LABEL: mo.graph @add_relu(
@@ -51,10 +49,7 @@ mo.graph @add_relu(%buf: !bt, %rhs: !tt) -> !bt
   %res2 = mo.relu(%res1) : !tt
   %ch4 = mo.mutable.store(%ch1, %buf, %res2) : (!ct, !bt, !tt) -> (!ct)
 
-  %cf = mo.chain.create(%ch4) : !ct
-  %gb = mo.guard[%cf](%buf) : !bt
-
-  mo.output %gb : !bt
+  mo.output %buf : !bt
 }
 
 // CHECK-LABEL: mo.graph @multiple_chain_users_load(
@@ -63,7 +58,7 @@ mo.graph @add_relu(%buf: !bt, %rhs: !tt) -> !bt
 // CHECK: [[ch1:%.*]], [[vbuf:%.*]] = mo.mutable.load
 // CHECK: [[res1:%.*]] = mo.add([[vbuf]], [[rhs]])
 // CHECK: [[ch2:%.*]] =  mo.mutable.store([[ch1]]
-mo.graph @multiple_chain_users_load(%buf: !bt, %rhs: !tt) -> (!bt, !bt, !tt)
+mo.graph @multiple_chain_users_load(%buf: !bt, %rhs: !tt) -> (!bt, !tt, !ct)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
@@ -79,9 +74,7 @@ mo.graph @multiple_chain_users_load(%buf: !bt, %rhs: !tt) -> (!bt, !bt, !tt)
 
   %cf = mo.chain.create(%ch3, %ch5, %ch6) : !ct, !ct, !ct
 
-  %gb = mo.guard[%cf](%buf) : !bt
-
-  mo.output %buf, %gb, %res2 : !bt, !bt, !tt 
+  mo.output %buf, %res2, %cf : !bt, !tt, !ct
 }
 
 // CHECK-LABEL: mo.graph @multiple_chain_users_store(
@@ -92,7 +85,7 @@ mo.graph @multiple_chain_users_load(%buf: !bt, %rhs: !tt) -> (!bt, !bt, !tt)
 // CHECK: [[ch2:%.*]] = mo.mutable.store([[ch1]], [[buf]], [[res1]])
 // CHECK: [[res2:%.*]] = mo.add([[res1]], [[rhs]])
 // CHECK: mo.mutable.store([[ch2]], [[buf]], [[res2]])
-mo.graph @multiple_chain_users_store(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
+mo.graph @multiple_chain_users_store(%buf: !bt, %rhs: !tt) -> (!bt, !ct)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
@@ -108,7 +101,5 @@ mo.graph @multiple_chain_users_store(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
 
   %cf = mo.chain.create(%ch4, %ch5, %ch6) : !ct, !ct, !ct
 
-  %gb = mo.guard[%cf](%buf) : !bt
-
-  mo.output %buf, %gb : !bt, !bt
+  mo.output %buf, %cf : !bt, !ct
 }

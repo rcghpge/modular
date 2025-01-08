@@ -60,6 +60,18 @@ mo.graph @if_op_type_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
 
 // -----
 
+mo.graph @if_op_yield_returning_buffer(%arg0: !mo.buffer<[2, 2], f32>, %cond : !mo.tensor<[], bool>) {
+  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.buffer<[2, 2], f32> {
+    // expected-error@+1 {{'mo.yield' op operand #0 must be variadic of any type but !mo.buffer, but got '!mo.buffer<[2, 2], f32>'}}
+    mo.yield %arg0 : !mo.buffer<[2, 2], f32>
+  } else {
+    mo.yield %arg0 : !mo.buffer<[2, 2], f32>
+  }
+  mo.output
+}
+
+// -----
+
 mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
     // expected-error@+1 {{'mo.yield' op expected single operand of type '!mo.tensor<[], bool>'.}}
