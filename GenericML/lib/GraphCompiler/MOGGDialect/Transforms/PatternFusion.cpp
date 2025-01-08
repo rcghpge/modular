@@ -1964,7 +1964,6 @@ public:
   }
 };
 
-// For MIN Llama 2 demo
 struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
   bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern;
   DeviceRefAttr targetDevice;
@@ -1979,6 +1978,10 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
                                TypedAttr beforeShape, TypedAttr afterShape,
                                Location loc, const Twine &checkName,
                                const Twine &errorMsg) {
+    // Skip the guard if the shapes are equal at compile time
+    if (beforeShape == afterShape)
+      return;
+
     // Inserts a runtime guard checking (beforeShape == afterShape)
     IntegerType boolTy = rewriter.getI1Type();
     TypedAttr cmpAttr =
@@ -2025,90 +2028,6 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
                      "MHA_BCAST_CHECK",
                      "MHA Pattern Detected unsafe broadcast. This is of great "
                      "interest so please report!");
-  }
-
-  // For CPU annotated operations do this rewrite
-  void rewriteCPU(BatchMatmulOp rootOp, PatternRewriter &rewriter,
-                  MultiHeadAttentionPatternHelper &matcher) const {
-    // NOTE: the creation of `matcher` must imply future success()
-    // as it has a handle to the rewriter which can be used to create new ops.
-    // Creating new ops and then returning failure may result in the pass
-    // not converging (as the new ops will tend to be DCEd.).
-    // Attention masking case
-    if (matcher.hasAttentionMask()) {
-
-      // QKV are guaranteed to have the same ranks.
-      TensorValue query = matcher.getQuery();
-      TensorValue keyT = matcher.getKeyT();
-      TensorValue value = matcher.getValue();
-
-      // Attention mask may or may not have the same rank
-      TensorValue attentionMask = matcher.getAttentionMask();
-      TensorValue attentionMatrix = matcher.getAttentionMatrix();
-
-      TensorType fusedKernelOutType = rootOp.getResult().getType();
-      GraphOp graphOp = rootOp->getParentOfType<GraphOp>();
-
-      // Sometimes the BMM are done in rank 3 where the batch and head dims
-      // are combined. Masking is still done in rank4 however.
-      //
-      // To get around this we just reshape the attention mask to the
-      // attentionMatrix
-      if (attentionMask.getType().getRank() !=
-          attentionMatrix.getType().getRank()) {
-        // Here just compare the symbolic number of elements.
-        TypedAttr numElementsMask =
-            attentionMask.getType().getSymbolicNumElements();
-        TypedAttr numElementsMatrix =
-            attentionMatrix.getType().getSymbolicNumElements();
-        auto shapeTy = MOSH::ShapeType::get(rewriter.getContext());
-
-        auto maskEleCntShape = MOSH::ShapeAttr::get(
-            SmallVector<TypedAttr>{numElementsMask}, shapeTy);
-        auto matrixEleCntShape = MOSH::ShapeAttr::get(
-            SmallVector<TypedAttr>{numElementsMatrix}, shapeTy);
-
-        insertShapeGuard(rewriter, graphOp, maskEleCntShape, matrixEleCntShape,
-                         attentionMask.getLoc(), "MHA_RESHAPE_CHECK",
-                         "MHA Pattern Detected unsafe internal reshape. This "
-                         "is of great interest so please report!");
-
-        attentionMask = rewriter.create<Static::ReshapeOp>(
-            rootOp.getLoc(),
-            attentionMask.getType().cloneWith(
-                attentionMatrix.getType().getShapeAttr()),
-            attentionMask);
-      }
-
-      SmallVector<Value> inputValues = {query, keyT, value, attentionMask,
-                                        matcher.getNormScalar()};
-
-      SmallVector<Type> outputTypes = {fusedKernelOutType};
-      ValueRange inputs(inputValues);
-      TypeRange outputTy(outputTypes);
-      rewriter.setInsertionPointAfterValue(rootOp);
-      auto result = rewriter.create<CustomOp>(
-          rootOp->getLoc(), outputTy, inputs, "with_mask_flash_attention_cpu");
-      auto fusedKernelResult = cast<TensorValue>(result->getResult(0));
-      fusedKernelResult.setType(fusedKernelOutType);
-
-      rewriter.replaceAllUsesWith(rootOp, fusedKernelResult);
-    } else {
-      // No attention masking case
-      SmallVector<Value> inputValues = {matcher.getQuery(), matcher.getKeyT(),
-                                        matcher.getValue(),
-                                        matcher.getNormScalar()};
-      SmallVector<Type> outputTypes = {rootOp.getType()};
-      ValueRange inputs(inputValues);
-      TypeRange outputTy(outputTypes);
-      rewriter.setInsertionPointAfterValue(rootOp);
-      auto result = rewriter.create<CustomOp>(
-          rootOp->getLoc(), outputTy, inputs, "no_mask_flash_attention_cpu");
-
-      auto fused_kernel_result = cast<TensorValue>(result->getResult(0));
-      fused_kernel_result.setType(rootOp.getType());
-      rewriter.replaceAllUsesWith(rootOp, fused_kernel_result);
-    }
   }
 
   // The matcher's for QKV returns values with the following layouts:
@@ -2328,9 +2247,9 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     }
   };
 
-  // For GPU annotated operations do this rewrite
-  void rewriteGPU(BatchMatmulOp rootOp, PatternRewriter &rewriter,
-                  MultiHeadAttentionPatternHelper &matcher) const {
+  void rewriteRootOp(BatchMatmulOp rootOp, PatternRewriter &rewriter,
+                     MultiHeadAttentionPatternHelper &matcher,
+                     bool isCPUDevice) const {
     // The matcher returns QKV with the following layouts:
     // Q: BHSD
     // K: BHDS
@@ -2348,7 +2267,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     auto permuteBSHD2BHSDValue =
         rewriter.create<ConstantOp>(rootOp.getLoc(), permuteBSHD2BHSD);
 
-    // However the GPU kernel wants the layout `BSHD` which we get below
+    // However the kernel wants the layout `BSHD` which we get below
     // (this also handles elided batch dimensions gracefully).
     auto graphOp = rootOp->getParentOfType<MO::GraphOp>();
     TensorValue query = TransposeTensorHelper::backwardGetBSHDTensor(
@@ -2372,8 +2291,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       value = maybeGroupedValue.takeValue();
     }
 
-    // GPU flash attention pattern includes the transposes from
-    // `mhaResult` which is BHSD to BSHD.
+    // Flash attention pattern includes the transposes from `mhaResult`
+    // which is BHSD to BSHD.
     SmallVector<TypedAttr> initialOutputShape = {
         rootOp.getType().getTypedShapeAttr().getValues().begin(),
         rootOp.getType().getTypedShapeAttr().getValues().end()};
@@ -2404,22 +2323,30 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
     SmallVector<TypedAttr> mhaOutputShape =
         permute(initialOutputShape, permuteBHSD2BSHD);
+    SmallVector<Value> customOpInputs = {query, key, value};
 
-    // Kernel explicitly requires mask of shape BSS. `gpuMask` may be
-    // BSS OR B1SS.
-    TensorValue gpuMask = matcher.getAttentionMask();
+    if (matcher.hasAttentionMask()) {
+      customOpInputs.push_back(matcher.getAttentionMask());
+    }
+
+    // Kernel expects FP32 scale
     auto normScalar = cast<TensorValue>(matcher.getNormScalar());
-
-    // GPU expects fp32 input
     TensorValue normScalarAsFP32 = rewriter.create<CastOp>(
         rootOp.getLoc(), normScalar.getType().cloneWith(DType::f32),
         normScalar);
-    SmallVector<Value> customOpInputs{query, key, value, gpuMask,
-                                      normScalarAsFP32};
+    customOpInputs.push_back(normScalarAsFP32);
+
+    StringRef kernelName;
+    if (isCPUDevice) {
+      kernelName = matcher.hasAttentionMask() ? "with_mask_flash_attention_cpu"
+                                              : "no_mask_flash_attention_cpu";
+    } else {
+      kernelName = "masked_flash_attention_gpu";
+    }
 
     auto customOp = rewriter.create<CustomOp>(
         rootOp.getLoc(), TypeRange{rootOp.getType().cloneWith(mhaOutputShape)},
-        customOpInputs, "masked_flash_attention_gpu");
+        customOpInputs, kernelName);
     auto mhaResult = cast<TensorValue>(customOp.getResult(0));
 
     // The mhaResult should be shape BSHD, however the rooted op is layout BHSD.
@@ -2544,6 +2471,10 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     if (dimD != 128 || !isDimHStatic)
       return Error("Right now must prove D == 128 && static H for llama2.");
 
+    // CHECK 3: The GPU kernel requires an attention mask tensor.
+    if (!matcher->hasAttentionMask())
+      return Error("GPU Kernel expects attention mask tensor.");
+
     return success();
   }
 
@@ -2572,6 +2503,13 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     if (matcher.isError())
       return rewriter.notifyMatchFailure(op.getLoc(), matcher.getError());
 
+    // TODO: The tail logic of rewriteRootOp appends a rank 4 transpose op if no
+    // transpose op already exists, but this does not work if QKV is rank 3.
+    // Disable support for rank 3 tensors until the flow can be fixed.
+    if (matcher->getQuery().getType().getRank() != 4)
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "Supports rank 4 QKV only");
+
     // The GPU kernel has some additional checks and needs an extracted rank3 op
     if (!isCPUDevice) {
       ErrorOrSuccess gpuCheck = runAdditionalGPUChecks(matcher);
@@ -2587,10 +2525,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     for (Static::BroadcastToOp unsafeBCast : matcher->getUnsafeBroadcasts())
       guardUnsafeBCast(unsafeBCast, rewriter);
 
-    if (isCPUDevice)
-      rewriteCPU(op, rewriter, *matcher);
-    else // isCUDADevice
-      rewriteGPU(op, rewriter, *matcher);
+    rewriteRootOp(op, rewriter, *matcher, isCPUDevice);
 
     return mlir::success();
   }
