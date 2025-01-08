@@ -1,3 +1,9 @@
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+load("@protobuf//bazel:py_proto_library.bzl", "py_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("//bazel:api.bzl", "modular_py_library", "requirement")
 
 modular_py_library(
@@ -9,9 +15,9 @@ modular_py_library(
     imports = ["."],
     tags = ["no-mypy"],  # grpc doesn't get along with my-py
     deps = [
-        "//ModelServing/proto:grpc_predict_v2_grpc_py",
-        "//ModelServing/proto:grpc_predict_v2_py",
-        "//ModelServing/proto:grpc_proto",
+        ":grpc_predict_v2_grpc_py",
+        ":grpc_predict_v2_py",
+        ":grpc_proto",
         "//SDK/lib/API/python/max/engine",
         "//SDK/lib/API/python/max/serve/pipelines",
         "//SDK/lib/API/python/max/serve/router",
@@ -22,5 +28,65 @@ modular_py_library(
         requirement("grpcio"),
         requirement("grpcio-tools"),
         requirement("grpcio-reflection"),
+    ],
+)
+
+cc_grpc_library(
+    name = "grpc_predict_v2_grpc_cc",
+    srcs = [":grpc_predict_v2"],
+    grpc_only = True,
+    visibility = ["//visibility:public"],
+    deps = [":grpc_predict_v2_cc"],
+)
+
+proto_library(
+    name = "grpc_predict_v2",
+    srcs = [
+        "grpc_predict_v2.proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "grpc_predict_v2_cc",
+    deps = [":grpc_predict_v2"],
+)
+
+go_proto_library(
+    name = "inference_go_proto",
+    compilers = ["@io_bazel_rules_go//proto:go_grpc"],
+    importpath = "modular/SDK/lib/API/python/max/serve/grpc_serve",
+    proto = ":grpc_predict_v2",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "proto",
+    embed = [":inference_go_proto"],
+    importpath = "max/serve/proto",
+    visibility = ["//visibility:public"],
+)
+
+# At some point, we should move the proto and other files to the python serving
+# directories since this is mostly for the triton backend.
+py_grpc_library(
+    name = "grpc_predict_v2_grpc_py",
+    srcs = [":grpc_predict_v2"],
+    visibility = ["//visibility:public"],
+    deps = [":grpc_predict_v2_py"],
+)
+
+py_proto_library(
+    name = "grpc_predict_v2_py",
+    visibility = ["//visibility:public"],
+    deps = [":grpc_predict_v2"],
+)
+
+modular_py_library(
+    name = "grpc_proto",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_predict_v2_grpc_py",
+        ":grpc_predict_v2_py",
     ],
 )
