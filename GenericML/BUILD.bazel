@@ -22,7 +22,6 @@ pkg_files(
         ":MOTransformsIncGen.doc",
         ":RMODialect.doc",
         ":RMOTransformsIncGen.doc",
-        ":TransformsIncGen.doc",
     ],
     prefix = "GenericML/docs",
     visibility = ["//visibility:public"],
@@ -1136,35 +1135,6 @@ modular_shared_library(
     deps = [
         "//Support:Base",
         "//Support:SymbolExport",
-    ],
-)
-
-td_library(
-    name = "TransformsTdFiles",
-    srcs = glob(["include/GenericML/Transforms/*.td"]),
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_modular_passes(
-    name = "TransformsIncGen",
-    td_file = "include/GenericML/Transforms/BisectGraphPass.td",
-    deps = [
-        ":TransformsTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "Transforms",
-    srcs = glob(["lib/Transforms/*.cpp"]),
-    hdrs = glob(["include/GenericML/Transforms/*.h"]),
-    deps = [
-        ":Interfaces",
-        ":TransformsIncGen",
-        "@llvm-project//mlir:Pass",
     ],
 )
 
