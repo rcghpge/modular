@@ -96,8 +96,6 @@ getFileContentIdentity(M::BufferRef file, FileFormat format,
   switch (format) {
   default:
     return "input has unknown contents";
-  case FileFormat::kFauxDialect:
-    return "input is Faux model in MLIR form";
   case FileFormat::kMODialect:
     [[fallthrough]];
   case FileFormat::kMGPDialect:

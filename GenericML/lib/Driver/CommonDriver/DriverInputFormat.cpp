@@ -105,8 +105,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
                     .value) {
         case CompiledFrameworkLabel::kUnknown:
           return FileFormat::kUnknown;
-        case CompiledFrameworkLabel::kFauxModel:
-          return FileFormat::kFauxDialect;
         case CompiledFrameworkLabel::kModularModel:
           return FileFormat::kMGPDialect;
         case CompiledFrameworkLabel::kONNXModel:
@@ -116,8 +114,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
         }
       }
     }
-    if (fileContents.contains("faux.testcase"))
-      return FileFormat::kFauxDialect;
   } else if (mlir::isBytecode(llvm::MemoryBufferRef(fileContents, ""))) {
     // Sniff the MLIR bytecode looking for the dialect id on a word boundary.
     // TODO(#26701): Replace this with a reliable / fast dialect ID encoding.

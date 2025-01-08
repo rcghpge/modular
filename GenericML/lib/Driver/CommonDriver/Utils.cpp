@@ -39,8 +39,6 @@ M::ErrorOr<std::string> M::getFileContentIdentity(const BufferRef &file,
   switch (format) {
   default:
     return "input has unknown contents";
-  case FileFormat::kFauxDialect:
-    return "input is Faux model in MLIR form";
   case FileFormat::kMONNXDialect:
     return "input is an ONNX model in MLIR form";
   case FileFormat::kONNXProtobuf:

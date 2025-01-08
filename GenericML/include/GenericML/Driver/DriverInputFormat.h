@@ -34,9 +34,6 @@ enum class FileFormat : uint8_t {
   /// This looks like a MEF file of unknown contents.
   kMEFFile,
 
-  /// This looks like a textual MLIR file with the faux dialect in it.
-  kFauxDialect,
-
   /// This is a MLIR file with the mo dialect in it.
   kMODialect,
 
@@ -123,8 +120,6 @@ private:
           clEnumValN(FileFormat::kMODialect, "mo", "Input is a MO file"),
           clEnumValN(FileFormat::kMEFFile, "mef",
                      "Input is an executable MEF file"),
-          clEnumValN(FileFormat::kFauxDialect, "faux",
-                     "Input is a faux dialect file"),
           clEnumValN(FileFormat::kMGPDialect, "mgp",
                      "Input is an mgp dialect file"),
 
