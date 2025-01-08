@@ -618,7 +618,7 @@ def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors", [Pure]> {
   }];
 }
 
-def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques", [Pure]> {
+def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
   let results = (outs Variadic<AnyTypeOf<[MO_Opaque, MGP_OpaqueType]>>:$results);
 
   let summary = "Allocates opaque types on the host's stack.";
@@ -933,7 +933,7 @@ def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
 
 }
 
-def MOGG_AnyAsyncRefPlaceholderOp : MOGG_Op<"any_async_ref_placeholder", [Pure]> {
+def MOGG_AnyAsyncRefPlaceholderOp : MOGG_Op<"any_async_ref_placeholder"> {
   // Allocate a `void *`, returning a `void **`
   let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
   let summary = "Returns a placeholder for holding a AsyncRT::AnyAsyncValueRef";

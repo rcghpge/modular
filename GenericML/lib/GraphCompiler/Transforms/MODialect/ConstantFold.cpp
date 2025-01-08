@@ -885,6 +885,9 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
       defaultDeviceLabel.empty() ? defaultDeviceLabel : kCPULabel;
   // Force all kernels to be synchronous. This prevents higher memory usage.
   moOpts.forceSync = true;
+  // We gain little benefit by enabling post-abi as most constant subgraphs are
+  // isolated, besides, it hurts compilation time.
+  moOpts.enablePostABIRegionFusion = false;
   MO::buildMoToMgpPipeline(pm, moOpts);
   // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))

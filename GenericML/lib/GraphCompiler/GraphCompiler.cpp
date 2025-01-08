@@ -382,15 +382,17 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   abiOpts.kernelLibraryPaths = kernelLibraryPaths;
   pm.addPass(MGP::createLowerMOGGABI(abiOpts));
 
-  // pm.addPass(MGP::createPostABIFuseGenericRegions());
-  // pm.addPass(MGP::createRemoveRedundantOperands());
-  // // Run cleanup per MOGG::GenericCompiledRegionOp for pass multi-threading.
-  // // TODO: we should re-exam all passes, many of them can be triggered more
-  // // locally.
-  // mlir::OpPassManager &localPass =
-  //     pm.nest<MGP::ModelOp>().nest<MOGG::GenericCompiledRegionOp>();
-  // localPass.addPass(mlir::createCSEPass());
-  // localPass.addPass(MGP::createRemoveRedundantMOGGCalls());
+  if (opts.enablePostABIRegionFusion) {
+    pm.addPass(MGP::createPostABIFuseGenericRegions());
+    pm.addPass(MGP::createRemoveRedundantOperands());
+    // Run cleanup per MOGG::GenericCompiledRegionOp for pass multi-threading.
+    // TODO: we should re-exam all passes, many of them can be triggered more
+    // locally.
+    mlir::OpPassManager &localPass =
+        pm.nest<MGP::ModelOp>().nest<MOGG::GenericCompiledRegionOp>();
+    localPass.addPass(mlir::createCSEPass());
+    localPass.addPass(MGP::createRemoveRedundantMOGGCalls());
+  }
 
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;
