@@ -713,10 +713,11 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
   auto out =
       builder.create<OutputOp>(loc, newOutputs, KGEN::ParameterExprArrayAttr{});
   // Have to update the GraphOp's signature.
+  auto functionType =
+      mlir::FunctionType::get(ctx, argTypes, out.getOperandTypes());
   graphop.setSignature(
-      SignatureType::get(ctx, argTypes, out.getOperandTypes()));
-  graphop.setFunctionType(
-      mlir::FunctionType::get(ctx, argTypes, out.getOperandTypes()));
+      SignatureGeneratorType::get(/*inputParamTypes=*/{}, functionType));
+  graphop.setFunctionType(functionType);
 
   // Rewrite all device attrs to target CPU.
   mlir::AttrTypeReplacer replacer;

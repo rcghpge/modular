@@ -436,8 +436,9 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
   }
 
   auto funcType = FunctionType::get(ctx, newArgTypes, newResTypes);
-  SignatureType signature = KGEN::SignatureType::remapToSignature(
-      op.getInputParams(), op.getResultParams(), funcType);
+  SignatureGeneratorType signature =
+      KGEN::SignatureGeneratorType::remapToSignatureGenerator(
+          op.getInputParams(), funcType);
   NamedAttrList attrs = op->getAttrDictionary();
   attrs.set(op.getSignatureAttrName(), TypeAttr::get(signature));
   attrs.set(op.getFunctionTypeAttrName(), TypeAttr::get(funcType));
@@ -603,7 +604,8 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
 
   // Add signature attribute
   FunctionType funcType = builder.getFunctionType(inputTypes, resultTypes);
-  auto sig = KGEN::SignatureType::get(funcType);
+  auto sig =
+      KGEN::SignatureGeneratorType::get(/*inputParamTypes=*/{}, funcType);
   state.addAttribute(getSignatureAttrName(state.name), TypeAttr::get(sig));
   state.addAttribute(getFunctionTypeAttrName(state.name),
                      TypeAttr::get(funcType));
@@ -641,11 +643,11 @@ parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
   };
 
   SmallVector<OpAsmParser::Argument> args;
-  KGEN::SignatureType signature;
+  KGEN::SignatureGeneratorType signature;
   FunctionType functionType;
-  if (KGEN::parseFunctionSignature(p, args, inputParams, resultParams,
-                                   functionType, signature,
-                                   /*parseDeclElt=*/parserHook))
+  if (KGEN::parseFunctionSignatureGenerator(p, args, inputParams, resultParams,
+                                            functionType, signature,
+                                            /*parseDeclElt=*/parserHook))
     return failure();
   signatureAttr = TypeAttr::get(signature);
   functionTypeAttr = TypeAttr::get(functionType);
@@ -682,11 +684,12 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
   };
 
   p.printSymbolName(name);
-  printFunctionSignature(p, &body, inputParams, resultParams,
-                         cast<FunctionType>(functionType.getValue()),
-                         cast<SignatureType>(signature.getValue()),
-                         /*printInputElt=*/printerHook,
-                         /*printResultElt=*/printerHook);
+  KGEN::printFunctionSignatureGenerator(
+      p, &body, inputParams, resultParams,
+      cast<FunctionType>(functionType.getValue()),
+      cast<SignatureGeneratorType>(signature.getValue()),
+      /*printInputElt=*/printerHook,
+      /*printResultElt=*/printerHook);
 
   auto graph = cast<GraphOp>(op);
   SmallVector<StringRef, 6> elidedAttrs{

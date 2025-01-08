@@ -155,7 +155,7 @@ def MO_GraphOp : MO_TensorOp<"graph", [
 
   let arguments = (ins
     StrAttr:$name,
-    TypeAttrOf<KGEN_SignatureType>:$signature,
+    TypeAttrOf<KGEN_SignatureGeneratorType>:$signature,
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$inputParams,
     KGEN_ParamDeclArrayAttr:$resultParams,
