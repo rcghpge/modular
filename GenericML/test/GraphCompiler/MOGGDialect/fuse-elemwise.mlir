@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --canonicalize --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 mo.graph @blocked_by_unfusible(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {

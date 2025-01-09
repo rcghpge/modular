@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --fuse-views --cse --fuse-in-out-lambdas --cse %s | FileCheck %s
 
 mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>) {

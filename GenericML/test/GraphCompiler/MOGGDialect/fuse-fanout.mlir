@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse %s | FileCheck %s
 
 // If we need to materialize a kernel then that should prevent it from being

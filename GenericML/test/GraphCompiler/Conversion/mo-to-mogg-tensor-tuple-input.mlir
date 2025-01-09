@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --mo-to-mogg --canonicalize --split-input-file | FileCheck %s
 
 

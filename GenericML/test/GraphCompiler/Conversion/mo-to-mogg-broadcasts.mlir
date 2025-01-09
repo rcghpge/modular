@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s
 
 mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.tensor<[N, M, K], f32>) {

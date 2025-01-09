@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse --fuse-views --canonicalize --cse %s | FileCheck %s
 
 mo.graph @basicBroadcastFuse<N, M, K>(%arg0: !mo.tensor<[N, M], f32>, %arg1: !mo.tensor<[K, M], f32>) -> (!mo.tensor<[K, M], f32>) {

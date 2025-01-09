@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --fuse-mutable-loads --fuse-mutable-stores %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(

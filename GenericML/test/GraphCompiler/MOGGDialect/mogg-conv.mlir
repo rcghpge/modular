@@ -1,4 +1,5 @@
-
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --infer-layouts --mo-to-mogg | FileCheck %s
 
 mo.graph @conv_const_params(

@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse --fuse-views --canonicalize --cse --fuse-consts %s | FileCheck %s
 
 mo.graph @basic_constant_fuse(%arg0: !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<[2, 2, 4], f32>) {
@@ -220,7 +222,7 @@ mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], 
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check permutation is in kernel and used in transpose.
-// CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> 
+// CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0>
 // CHECK-NEXT: mogg.call "mo.transpose"(%[[NULL:.*]], %[[PERM]]
 
 mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[12, 64], f32> {

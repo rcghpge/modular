@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%extra_test_lib" --fuse-in-out-lambdas=kernel-library-paths="%extra_test_lib" --cse | FileCheck %s
 
 // CHECK: mo.graph @input_output_fusion(%[[ARG0:.*]]: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {

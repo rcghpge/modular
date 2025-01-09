@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @add_singleton_non_elementwise<seq_len>

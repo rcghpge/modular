@@ -1,3 +1,5 @@
+// REQUIRES: disabled
+// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --infer-layouts --mo-pattern-fusion --mo-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @conv2d_constant_filter
