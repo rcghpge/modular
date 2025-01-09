@@ -334,7 +334,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     llvm::errs() << msg << "\n";
     return Error(msg);
   }
-  // Load MOGG.mojo
+  // Load MOGGKernelAPI.mojo [new API] / MOGG.mojo [old API]
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
       useOnlyOldAPI ? getEmbeddingsSourceBuffer()
                     : getEmbeddingsNewAPISourceBuffer();
@@ -362,7 +362,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   Operation *primitiveModule = moduleOr.takeValue();
   updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
 
-  // Load new API kernels. This path assumes we also load MOGG.mojo
+  // Load old API kernels. This path assumes we also load MOGGKernelAPI.mojo
   if (enableOldAPI) {
     bufferOr = getEmbeddingsSourceBuffer();
     if (failed(bufferOr))
