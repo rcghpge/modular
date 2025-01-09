@@ -399,8 +399,8 @@ mo.graph @disjoint_set() -> (!mo.tensor<[600, 600], f32>, !mo.tensor<[1, 600], f
 // CHECK-CONST-MO-SUBGRAPH-LABEL: @partial_fold_bcast_constant_subgraphs
 // CHECK-CONST-MO-SUBGRAPH: mo.static.broadcast_to
 
-// COM: For the reshape impl:
-// CHECK-CONST-MO-SUBGRAPH: @copy_view
+// What the reshape lowers to
+// CHECK-CONST-MO-SUBGRAPH: mo.add_singleton_dim
 
 // COM: Do not constant fold broadcasts in the output, but allow them internally
 // CHECK-LABEL: mo.graph

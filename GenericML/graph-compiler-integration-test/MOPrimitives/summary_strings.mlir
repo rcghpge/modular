@@ -1,6 +1,3 @@
-// Unittest to test the printing of summary strings
-
-// RUN: export MODULAR_ONLY_USE_NEW_EXTENSIBILITY_API=true
 
 // Check std:err
 // RUN: mo-opt --mo-to-mgp %s --mlir-print-ir-before=jit-compile-kernels -o %t.mlir 2>&1 | FileCheck %s

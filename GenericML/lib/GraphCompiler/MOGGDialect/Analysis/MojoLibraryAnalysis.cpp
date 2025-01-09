@@ -321,21 +321,23 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   // load the new API kernels and don't use MOGG kernels.
   //
   // TODO(GEX-1159): remove the need for this.
-  bool onlyUseNewAPI =
-      envVarExistsAndIsTrue("MODULAR_ONLY_USE_NEW_EXTENSIBILITY_API");
-  bool enableNewAPI =
-      envVarExistsAndIsTrue("MODULAR_ENABLE_NEW_EXTENSIBILITY_API");
-  if (onlyUseNewAPI && enableNewAPI) {
-    auto msg = "Can only set one of MODULAR_ONLY_USE_NEW_EXTENSIBILITY_API or "
-               "MODULAR_ENABLE_NEW_EXTENSIBILITY_API";
+  bool useOnlyOldAPI =
+      envVarExistsAndIsTrue("MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API");
+
+  // TODO(GEX-1159): remove the need for all fallbacks and re-gate under envvar
+  bool enableOldAPI = true;
+  // envVarExistsAndIsTrue("MODULAR_ENABLE_OLD_EXTENSIBILITY_API");
+  if (useOnlyOldAPI && enableOldAPI) {
+    auto msg = "Can only set one of MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API or "
+               "MODULAR_ENABLE_OLD_EXTENSIBILITY_API";
     // Right now, the error doesn't seem to be properly propagated, so do this.
     llvm::errs() << msg << "\n";
     return Error(msg);
   }
   // Load MOGG.mojo
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
-      onlyUseNewAPI ? getEmbeddingsNewAPISourceBuffer()
-                    : getEmbeddingsSourceBuffer();
+      useOnlyOldAPI ? getEmbeddingsSourceBuffer()
+                    : getEmbeddingsNewAPISourceBuffer();
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled main module: ") +
                  bufferOr.getError());
@@ -361,8 +363,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
 
   // Load new API kernels. This path assumes we also load MOGG.mojo
-  if (enableNewAPI) {
-    bufferOr = getEmbeddingsNewAPISourceBuffer();
+  if (enableOldAPI) {
+    bufferOr = getEmbeddingsSourceBuffer();
     if (failed(bufferOr))
       return Error(Twine("failed to load compiled MOGGKernelAPI.mojo: ") +
                    bufferOr.getError());

@@ -1,4 +1,3 @@
-// RUN: export MODULAR_ONLY_USE_NEW_EXTENSIBILITY_API=true
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @mean
