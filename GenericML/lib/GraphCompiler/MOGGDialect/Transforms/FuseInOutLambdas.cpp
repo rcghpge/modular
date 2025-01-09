@@ -931,6 +931,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       originOutputOp.erase();
       newOuts->erase();
       originalOuts.erase();
+      srcSimdStoreOp.erase();
 
       builder.setInsertionPoint(kernelToFuseInto);
       auto newDstKernel = builder.create<MOGG::KernelOp>(
