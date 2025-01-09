@@ -1,4 +1,4 @@
-// REQUIRES: disabled
+// RUN: export MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API=true
 // TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --infer-layouts --mo-to-mogg | FileCheck %s
 
