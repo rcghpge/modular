@@ -31,6 +31,10 @@ LogicalResult lowerMOToMGP(ModuleOp module,
 /// in the module op, so it is a destructive conversion.
 ErrorOr<BufferRef> convertMGPToMEF(ModuleOp module, bool enableMEFMetadata);
 
+/// Get a unique string that embeds the binary version of the graph compiler
+/// implementation.
+std::string getGraphCompilerVersionString();
+
 constexpr StringLiteral BugReportMessage =
     "=================================================================\n"
     "    !!! MAX AI Engine has encountered an internal error !!!\n"

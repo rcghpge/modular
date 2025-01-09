@@ -107,7 +107,7 @@ M::cacheMEFTransform(StringRef frameworkName,
 
   auto mefBackendOr = Cache::getLocalDefaultBackendChain(
       (baseCacheDir / frameworkName.str() / "mef").string(),
-      std::string(M::getModularVersionString()));
+      M::MO::getGraphCompilerVersionString());
 
   // We couldn't create a cache. Don't cache.
   if (mefBackendOr.isError())

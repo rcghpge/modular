@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "AsyncRT/Runtime/Runtime.h"
+#include "Config/Version.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -26,6 +27,7 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
+#include "Support/BinaryID.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/PassManager.h"
@@ -502,4 +504,13 @@ ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
   });
 
   return outputBuffer;
+}
+
+std::string M::MO::getGraphCompilerVersionString() {
+  // TODO(GEX-1565): The binary ID for graph compiler library is not sufficient
+  // to solely determine whether a cache invalidation is needed. Updates on
+  // shared libraries, e.g., MOGGLoader, might result in a different compiled
+  // MEF file too, include the binary ID for relevant shared libraries too.
+  return M::getModularVersionString() + M::getBinaryID() + "-" +
+         M::getModularVersion().buildType;
 }
