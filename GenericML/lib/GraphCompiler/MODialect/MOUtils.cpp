@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOUtils.h"
+#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+
 using namespace M;
 using namespace MO;
 
@@ -46,3 +48,7 @@ M::MO::tryGetConstantBlob(mlir::ElementsAttr attr, DType dType) {
 
   return std::nullopt;
 }
+
+bool M::MO::isMutableOperand(Value val) {
+  return isa<MO::BufferType, MO::OpaqueType>(val.getType());
+};

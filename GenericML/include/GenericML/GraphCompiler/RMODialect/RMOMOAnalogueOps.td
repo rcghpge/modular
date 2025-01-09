@@ -2681,7 +2681,7 @@ def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
 }
 
 def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
-  MemoryEffects<[MemRead]>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   AllDTypesMatch<["inBuffer", "outTensor"]>,
   DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
@@ -2697,7 +2697,7 @@ def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
 }
 
 def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
-  MemoryEffects<[MemWrite]>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   AllDTypesMatch<["inBuffer", "inTensor"]>,
   DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
@@ -2717,7 +2717,7 @@ def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
 }
 
 def RMO_MOMutableStoreSliceOp : RMO_MOAnalogueOp<"mutable.store.slice", [
-  MemoryEffects<[MemWrite]>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   AllDTypesMatch<["inBuffer", "slice"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]> {

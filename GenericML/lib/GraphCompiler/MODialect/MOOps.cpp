@@ -29,6 +29,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/include/mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SetVector.h"
@@ -4178,6 +4179,36 @@ LogicalResult CustomOp::verify() {
     }
   }
 
+  // If mutSpec is present make sure it's valid.
+  if (getMutSpec().has_value()) {
+    llvm::SmallVector<unsigned> mutableOperandIdxs;
+    for (auto &opOperand : getOperation()->getOpOperands()) {
+      if (isMutableOperand(opOperand.get()))
+        mutableOperandIdxs.push_back(opOperand.getOperandNumber());
+    }
+
+    auto mutSpec = getMutSpec()->getValues();
+    if (mutSpec.size() != mutableOperandIdxs.size()) {
+      return emitError(
+          llvm::formatv("The number of entries in mutSpec (if specified) must "
+                        "match the number of mutable operands. size(mutSpec) = "
+                        "{0} and size(mutableOperands) = {1}",
+                        mutSpec.size(), mutableOperandIdxs.size()));
+    }
+
+    for (auto &&[mutOperandIdx, mutSpec] :
+         llvm::zip(mutableOperandIdxs, getMutSpec()->getValues())) {
+      auto mutSpecIdx = std::get<0>(mutSpec);
+
+      if (mutSpecIdx != mutOperandIdx) {
+        return emitError(
+            llvm::formatv("Encountered a mutable spec entry with idx: {0} but "
+                          "this operand is not a mutable operand",
+                          mutSpecIdx));
+      }
+    }
+  }
+
   return success();
 }
 
@@ -4220,13 +4251,28 @@ mlir::SmallVector<Value> CustomOp::getBufferOperands() {
 
 void CustomOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  // Pessimistically define side effecting as ops that have at least one mutable
-  // operand type and take and return a chain.
-  // TODO(GEX-1181): refine this through a kernel API/registration mechanism.
-  if (hasMutableOperand(getOperands()) && maybeGetInChain() &&
-      maybeGetOutChain()) {
-    effects.emplace_back(mlir::MemoryEffects::Write::get());
-    effects.emplace_back(mlir::MemoryEffects::Read::get());
+
+  bool hasMutableSpec = getMutSpec().has_value();
+  bool isInPlace = this->isInPlace();
+
+  // The mutable spec isn't a required attr at the moment. If it's not set
+  // conservatively assume that there's a read and write effect on all mutable
+  // operands.
+  if (isInPlace && !hasMutableSpec) {
+    for (auto &&opOperand : getOperation()->getOpOperands()) {
+      effects.emplace_back(mlir::MemoryEffects::Read::get(), &opOperand);
+      effects.emplace_back(mlir::MemoryEffects::Write::get(), &opOperand);
+    }
+  }
+  if (isInPlace && hasMutableSpec) {
+    for (auto &&[idx, read, write] : getMutSpec()->getValues()) {
+      if (read)
+        effects.emplace_back(mlir::MemoryEffects::Read::get(),
+                             &getOperation()->getOpOperand(idx));
+      if (write)
+        effects.emplace_back(mlir::MemoryEffects::Write::get(),
+                             &getOperation()->getOpOperand(idx));
+    }
   }
 
   // Handle generic parameterization logic.
@@ -4276,23 +4322,27 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
 
 void BufferTransferOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  effects.emplace_back(mlir::MemoryEffects::Read::get());
-  effects.emplace_back(mlir::MemoryEffects::Write::get());
+
+  effects.emplace_back(mlir::MemoryEffects::Read::get(), &getSrcMutable());
+
+  effects.emplace_back(mlir::MemoryEffects::Write::get(), &getDstMutable());
 }
 
 void MutableLoadOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  effects.emplace_back(mlir::MemoryEffects::Read::get());
+  effects.emplace_back(mlir::MemoryEffects::Read::get(), &getInBufferMutable());
 }
 
 void MutableStoreOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  effects.emplace_back(mlir::MemoryEffects::Write::get());
+  effects.emplace_back(mlir::MemoryEffects::Write::get(),
+                       &getInBufferMutable());
 }
 
 void MutableStoreSliceOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  effects.emplace_back(mlir::MemoryEffects::Write::get());
+  effects.emplace_back(mlir::MemoryEffects::Write::get(),
+                       &getInBufferMutable());
 }
 
 DeviceRefAttr MutableStoreSliceOp::getOperandDevice(size_t index) {

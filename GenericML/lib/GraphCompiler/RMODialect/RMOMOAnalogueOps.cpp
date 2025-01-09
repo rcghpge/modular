@@ -1938,3 +1938,20 @@ void MOMutableStoreSliceOp::inferMOTypesImpl(
   moResultTypes.push_back(chainTy);
   moOutputParamDecls.push_back({});
 }
+
+void MOMutableLoadOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Read::get(), &getInBufferMutable());
+}
+
+void MOMutableStoreOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Write::get(),
+                       &getInBufferMutable());
+}
+
+void MOMutableStoreSliceOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Write::get(),
+                       &getInBufferMutable());
+}

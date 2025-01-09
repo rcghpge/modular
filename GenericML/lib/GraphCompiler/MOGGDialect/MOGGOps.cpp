@@ -1461,6 +1461,12 @@ LogicalResult KernelOp::verify() {
     if (llvm::count_if(getResults(), isChain) != 1)
       return emitError(
           "Kernels with MemoryEffects must have exactly one output chain");
+
+    auto nMutOperands = llvm::count_if(getOperands(), MO::isMutableOperand);
+    if (nMutOperands == 0) {
+      return emitError("Kernel has no mutable operands but either "
+                       "hasReadEffect or hasWriteEffect is set to true\n");
+    }
   }
 
   return success();
@@ -1531,12 +1537,20 @@ void KernelOp::getEffects(
     hasWriteEffect |= true;
 
   if (!getOutputParamDecls().empty())
-    hasWriteEffect |= true;
+    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
 
-  if (hasWriteEffect)
-    effects.emplace_back(mlir::MemoryEffects::Write::get());
-  if (hasReadEffect)
-    effects.emplace_back(mlir::MemoryEffects::Read::get());
+  // Right now this will apply read/write effects to ALL mutable operands if the
+  // hasReadEffect/hasWriteEffect flag is true.
+  // TODO(GEX-1516): Establish fine-grained tracking of mem-effects for
+  // mogg.kernel operands and maintain it through transforms.
+  for (auto &&opOperand : getOperation()->getOpOperands()) {
+    if (!MO::isMutableOperand(opOperand.get()))
+      continue;
+    if (hasWriteEffect)
+      effects.emplace_back(mlir::MemoryEffects::Write::get(), &opOperand);
+    if (hasReadEffect)
+      effects.emplace_back(mlir::MemoryEffects::Read::get(), &opOperand);
+  }
 }
 
 void KernelOp::setKGENKernelParamValueIfPresent(MojoLibraryAnalysis &analysis,

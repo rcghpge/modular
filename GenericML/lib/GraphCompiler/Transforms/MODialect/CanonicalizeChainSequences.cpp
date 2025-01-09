@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/MOUtils.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "Support/AssertStream.h"
 #include "mlir/Pass/Pass.h"
@@ -27,19 +28,50 @@ using namespace M::MO;
 
 namespace {
 
-static bool opsHaveAliasedMutableOperands(Operation *op1, Operation *op2) {
-  auto isMutableOperand = [](Value val) {
-    return isa<MO::BufferType, MO::OpaqueType>(val.getType());
-  };
+mlir::DenseSet<Value> collectWriteEffectOperands(MOMutableOpInterface mutOp) {
+  SmallVector<mlir::MemoryEffects::EffectInstance> effects;
+  mutOp.getEffects(effects);
 
-  auto r1 = llvm::make_filter_range(op1->getOperands(), isMutableOperand);
-  auto r2 = llvm::make_filter_range(op2->getOperands(), isMutableOperand);
+  llvm::DenseSet<Value> result;
 
-  // Simple check for equality of any of the mutable operands.
-  auto s1 = mlir::DenseSet<Value>{r1.begin(), r1.end()};
-  auto s2 = mlir::DenseSet<Value>{r2.begin(), r2.end()};
-  if (llvm::any_of(s1, [&s2](Value val) { return s2.contains(val); }))
-    return true;
+  for (auto &&effect : effects) {
+    if (isa<mlir::MemoryEffects::Write>(effect.getEffect())) {
+      Value val = effect.getValue();
+      // NOTE: Alternately you could assume write effects on any operands that
+      // aren't encountered in this loop.
+      ASSERT_STREAM(val, "Needs to have attached value!");
+      result.insert(val);
+    }
+  }
+
+  return result;
+}
+
+/// Checks if it's possible to re-write the chain structure linking mutOp1 and
+/// mutOp2 such that no data race is possible. This primarily comes
+/// down to checking that the ops don't share an operand that has a write effect
+/// on it.
+bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
+                                MOMutableOpInterface mutOp2) {
+  // Check that the ops don't share an operand they both have a write effect on.
+  auto r1 = llvm::make_filter_range(mutOp1->getOperands(), isMutableOperand);
+  auto r2 = llvm::make_filter_range(mutOp2->getOperands(), isMutableOperand);
+
+  auto mutableOperands1 = llvm::DenseSet<Value>{r1.begin(), r1.end()};
+  auto mutableOperands2 = llvm::DenseSet<Value>{r2.begin(), r2.end()};
+
+  auto writeEffectOperands1 = collectWriteEffectOperands(mutOp1);
+  auto writeEffectOperands2 = collectWriteEffectOperands(mutOp2);
+
+  if (llvm::any_of(mutableOperands1, [&writeEffectOperands2](Value val) {
+        return writeEffectOperands2.contains(val);
+      }))
+    return false;
+
+  if (llvm::any_of(mutableOperands2, [&writeEffectOperands1](Value val) {
+        return writeEffectOperands1.contains(val);
+      }))
+    return false;
 
   // It's my understanding that a kernel could potentially return a ref to an
   // input opaque type back out. In lieu of a more sophisticated alias analysis
@@ -57,7 +89,7 @@ static bool opsHaveAliasedMutableOperands(Operation *op1, Operation *op2) {
     return false;
   });
 
-  return hasSameOpaqueType;
+  return !hasSameOpaqueType;
 }
 
 struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
@@ -85,7 +117,7 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
 
     auto parent = llvm::dyn_cast_or_null<MOMutableOpInterface>(rawParent);
 
-    if (parent && !opsHaveAliasedMutableOperands(mutOp, parent)) {
+    if (parent && canSafelyReorderMutableOps(mutOp, parent)) {
       mutOp.getInChainMutable().set(parent.getInChain());
 
       Value parentOutChain = parent.getOutChain();
@@ -107,9 +139,8 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
         if (!isa<ChainType>(operand.getType()))
           continue;
 
-        auto upstreamOp = operand.getDefiningOp();
-        if (isa<MOMutableOpInterface>(upstreamOp) &&
-            !opsHaveAliasedMutableOperands(mutOp, upstreamOp)) {
+        auto upstreamOp = operand.getDefiningOp<MOMutableOpInterface>();
+        if (upstreamOp && canSafelyReorderMutableOps(mutOp, upstreamOp)) {
           eraseIdxs[idx] = true;
           newCreateOperands.push_back(operand);
         }

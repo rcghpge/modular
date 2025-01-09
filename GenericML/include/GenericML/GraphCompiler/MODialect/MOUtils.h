@@ -133,6 +133,8 @@ template <>
 std::optional<SmallVector<APInt>>
 tryGetConstantBlob<APInt>(mlir::ElementsAttr attr, DType dType);
 
+bool isMutableOperand(Value val);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOUTILS_H
