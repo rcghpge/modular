@@ -325,8 +325,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
       envVarExistsAndIsTrue("MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API");
 
   // TODO(GEX-1159): remove the need for all fallbacks and re-gate under envvar
-  bool enableOldAPI = true;
-  // envVarExistsAndIsTrue("MODULAR_ENABLE_OLD_EXTENSIBILITY_API");
+  bool enableOldAPI =
+      envVarExistsAndIsTrue("MODULAR_ENABLE_OLD_EXTENSIBILITY_API");
   if (useOnlyOldAPI && enableOldAPI) {
     auto msg = "Can only set one of MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API or "
                "MODULAR_ENABLE_OLD_EXTENSIBILITY_API";
