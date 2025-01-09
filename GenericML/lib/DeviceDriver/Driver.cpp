@@ -139,6 +139,10 @@ MODULAR_API_EXPORT ErrorOr<std::string> Device::getStats() {
   return s;
 }
 
+MODULAR_API_EXPORT ErrorOr<std::string> Device::getApi() {
+  return ctx->device().api().str();
+}
+
 MODULAR_API_EXPORT ErrorOr<void *> Device::allocateData(size_t bytes) {
   ASSIGN_OR_RETURN(buf, ctx->enqueueCreateBuffer(bytes));
   // TODO change return type to DeviceBufferRef instead of returning naked void

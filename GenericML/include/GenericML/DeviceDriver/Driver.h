@@ -133,6 +133,9 @@ struct Device : M::ReferenceCounted<Device> {
   /// Gets utilization stats for the device.
   ErrorOr<std::string> getStats();
 
+  // Gets the programming API of the device.
+  ErrorOr<std::string> getApi();
+
 protected:
   const DeviceKind kind;
   AsyncRT::DeviceContextRef ctx;
