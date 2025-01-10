@@ -67,19 +67,21 @@ struct AddStackTracesToAssertsPass
     if (result.wasInterrupted())
       return signalPassFailure();
 
-    // TODO(GEX-1435): Something farther down the stack occasionally crashes if
-    // passed an OpaqueLoc. For now, remove all OpaqueLoc from the graph during
-    // this pass. All the code below this should be removed when that is fixed.
-    auto unknown = mlir::UnknownLoc::get(ctx);
-    result = getOperation()->walk([&unknown](Operation *op) {
+    // An OpaqueLoc should serialize to its fallback location when emitting
+    // bytecode, but it seems that does not work correctly. This might be an
+    // issue in upstream MLIR, we're not sure. For the time being, manually
+    // replace the OpaqueLoc with its fallback to avoid this issue. See GEX-1435
+    // for more details.
+    result = getOperation()->walk([](Operation *op) {
       Location loc = op->getLoc();
       auto opaque_loc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
       if (!opaque_loc)
         return WalkResult::advance();
 
-      op->setLoc(unknown);
+      op->setLoc(opaque_loc.getFallbackLocation());
       return WalkResult::advance();
     });
+
     if (result.wasInterrupted())
       return signalPassFailure();
   }
