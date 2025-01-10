@@ -119,7 +119,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   Option<bool> enablePostABIRegionFusion{
       *this, "enable-post-abi-regions-fusion",
       llvm::cl::desc("If false, will disable post-abi compiled region fusion"),
-      llvm::cl::init(true)};
+      llvm::cl::init(false)};
   Option<bool> genVizSpec{
       *this, "gen-viz-spec",
       llvm::cl::desc(
