@@ -32,7 +32,7 @@ buildMojoObjectInfosOutputMethodsDict(Operation *mojoKernelOp,
   auto findMethod =
       [&](StringRef methodName) -> FailureOr<KGEN::VTableEntryAttr> {
     for (TypedAttr attr : conformancesAttr) {
-      auto typeAttr = cast<KGEN::TypeConstantAttr>(attr);
+      auto typeAttr = cast<KGEN::TypeParamAttr>(attr);
       for (KGEN::VTableEntryAttr entry : typeAttr.getVTable().getEntries()) {
         if (entry.getName() == methodName)
           return entry;
