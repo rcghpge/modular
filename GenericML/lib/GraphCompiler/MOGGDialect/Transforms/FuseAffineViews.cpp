@@ -584,11 +584,6 @@ struct FuseAffineViewsPass
                                    newResultToKGEN.getResult(), viewOpUser,
                                    builder, mojoLibraryAnalysis, typeManager);
 
-    // Propagate the fact that we must call the output lambda now it exists.
-    kernel.setKGENKernelParamValueIfPresent(
-        mojoLibraryAnalysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
-        BoolAttr::get(&getContext(), true));
-
     // Change graph level type of the mogg kernel op and replace the
     // old view.
     result.setType(newOutputTensorType);
