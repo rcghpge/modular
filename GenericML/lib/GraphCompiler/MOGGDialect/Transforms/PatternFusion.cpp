@@ -2372,9 +2372,38 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         curOp = *result.getUsers().begin();
       }
     }
-    auto finalTranspose = dyn_cast<TransposeOp>(curOp);
 
-    if (finalTranspose && oneUseBMM) {
+    // We only want to take the final transpose as part of our pattern if we
+    // know the final shape is potentially as we expect. Specifically we want
+    //
+    // The transpose to turn the layout from BHSD --> BSHD.
+    //
+    // In practice this is impossible to always prove so for many models
+    // we assume the transpose is to BSHD and insert a dynamic runtime check
+    // later in case this is violated.
+    //
+    // However if we can prove this is false at compile time, e.g. if the shapes
+    // are all integral, we can just check directly and avoid this optimizing
+    // pass instead.
+    //
+    // This is a bit odd and may be a good target of spring cleaning to see
+    // if we need this anymore.
+    auto finalTranspose = dyn_cast<TransposeOp>(curOp);
+    auto tranposeIsStaticallyWrong = [&]() {
+      ArrayRef<TypedAttr> transposeShapeAttr =
+          finalTranspose.getType().getTypedShapeAttr().getValues();
+      ArrayRef<TypedAttr> finalResultShapeAttr =
+          mhaResult.getType().getTypedShapeAttr().getValues();
+      return llvm::any_of(llvm::zip(transposeShapeAttr, finalResultShapeAttr),
+                          [&](std::tuple<TypedAttr, TypedAttr> values) {
+                            auto &[a, b] = values;
+                            return MO::TensorType::isIntegerDimParam(a) &&
+                                   MO::TensorType::isIntegerDimParam(b) &&
+                                   a != b;
+                          });
+    };
+
+    if (finalTranspose && !tranposeIsStaticallyWrong() && oneUseBMM) {
       // The idea is we now have a chain of ops like
       // *rootOp (BHSD) --> *bcast/reshape --> *bcast/reshape
       //                --> transpose (BSHD)
