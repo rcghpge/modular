@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
-load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
+load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -345,6 +345,7 @@ gentbl_filegroup(
 
 gentbl_filegroup(
     name = "rmo_json",
+    tags = [ALLOW_UNUSED_TAG],  # TODO: Remove when used
     tbl_outs = [(
         ["--dump-json"],
         "rmo.json",
