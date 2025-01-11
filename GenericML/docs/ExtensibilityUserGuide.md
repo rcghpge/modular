@@ -26,8 +26,8 @@ struct BottomK:
     ):
         top_k(
             managed_tensor_slice_to_ndbuffer(input),
-            int(k),
-            int(axis),
+            Int(k),
+            Int(axis),
             False,
             managed_tensor_slice_to_ndbuffer(values),
             managed_tensor_slice_to_ndbuffer(indices),
@@ -309,7 +309,7 @@ struct Transpose:
 
         @parameter
         for i in range(input.rank):
-            var dim = int(permutations[i])
+            var dim = Int(permutations[i])
             new_shape[i] = input.dim_size(dim)
             new_stride[i] = input.stride_length(dim)
 
