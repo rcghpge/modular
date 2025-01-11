@@ -2595,7 +2595,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     }
 
     MO::GraphOp graphOp = getOperation();
-    if (failed(applyPatternsAndFoldGreedily(graphOp, std::move(patterns))))
+    if (failed(applyPatternsGreedily(graphOp, std::move(patterns))))
       return signalPassFailure();
     MO::synchronizeMetadataUpdates(graphOp);
   }

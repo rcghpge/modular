@@ -159,7 +159,7 @@ def MO_GraphOp : MO_TensorOp<"graph", [
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$inputParams,
     KGEN_ParamDeclArrayAttr:$resultParams,
-    IntProperty<"int64_t">:$counter
+    IntProp<"int64_t">:$counter
   );
   let regions = (region SizedRegion<1>:$body);
 

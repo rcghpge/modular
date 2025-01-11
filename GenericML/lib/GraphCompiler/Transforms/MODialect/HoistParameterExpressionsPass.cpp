@@ -210,8 +210,7 @@ struct HoistParameterExpressionsPass
     // identical input/output types); the alternative is to add an entire
     // canonicalization pass after this pass.
     RebindOp::getCanonicalizationPatterns(patterns, ctx);
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 };

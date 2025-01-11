@@ -4724,8 +4724,7 @@ struct SymbolicOptimizationPass
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;
-    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                        config);
+    return applyPatternsGreedily(getOperation(), std::move(patterns), config);
   }
 
   LogicalResult applyForwardMathematicalCanonicalizations() {
@@ -4744,8 +4743,7 @@ struct SymbolicOptimizationPass
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;
-    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                        config);
+    return applyPatternsGreedily(getOperation(), std::move(patterns), config);
   }
 
   LogicalResult applyBackwardMathematicalCanonicalizations() {
@@ -4763,8 +4761,7 @@ struct SymbolicOptimizationPass
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;
-    return applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                        config);
+    return applyPatternsGreedily(getOperation(), std::move(patterns), config);
   }
 
   LogicalResult applyCorePatterns() {

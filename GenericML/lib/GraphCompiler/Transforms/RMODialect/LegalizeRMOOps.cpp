@@ -1305,8 +1305,7 @@ struct LegalizeRMOOps
                                           RMO::MOGreaterEqualOp>,
         LowerThirdPartyPadConstantOp>(context);
 
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(blockPatterns))))
+    if (failed(applyPatternsGreedily(getOperation(), std::move(blockPatterns))))
       return signalPassFailure();
   }
 };

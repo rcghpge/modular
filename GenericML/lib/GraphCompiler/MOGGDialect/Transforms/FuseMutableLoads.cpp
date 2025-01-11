@@ -317,8 +317,7 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
     RewritePatternSet patterns{ctx};
     patterns.add<ParallelizeLoadsWithMultipleUsers>(ctx);
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
 
     LLVM_DEBUG(llvm::dbgs() << "Graph after load parallelization:\n";
