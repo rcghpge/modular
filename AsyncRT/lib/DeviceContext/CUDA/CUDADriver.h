@@ -366,10 +366,6 @@ public:
     CUDA_DRIVER_CALL_LOG();
     return cuFuncSetAttribute_(hfunc, attrib, value);
   }
-  Result FuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuFuncSetCacheConfig_(hfunc, config);
-  }
 
   Result LaunchHostFunc(CUstream hStream, CUhostFn fn, void *userData) const {
     CUDA_DRIVER_CALL_LOG();
@@ -603,9 +599,6 @@ private:
 
   using tcuFuncSetAttribute = Result(CUfunction, CUfunction_attribute, int);
   tcuFuncSetAttribute *cuFuncSetAttribute_;
-
-  using tcuFuncSetCacheConfig = Result(CUfunction, CUfunc_cache);
-  tcuFuncSetCacheConfig *cuFuncSetCacheConfig_;
 
   using tcuLaunchHostFunc = Result(CUstream, CUhostFn fn, void *);
   tcuLaunchHostFunc *cuLaunchHostFunc_;

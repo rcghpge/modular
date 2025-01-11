@@ -703,8 +703,8 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t maxRegisters, int32_t threadsPerBlock, int32_t cacheMode,
-    int32_t cacheConfig, int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t maxRegisters, int32_t threadsPerBlock,
+    int32_t maxDynamicSharedBytes, const char *debugLevel,
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -737,12 +737,6 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   if (threadsPerBlock >= 0) {
     option_kind[num_options] = CUjit_option::JIT_THREADS_PER_BLOCK;
     option_values[num_options] = threadsPerBlock;
-    num_options++;
-  }
-
-  if (cacheMode >= 0) {
-    option_kind[num_options] = CUjit_option::JIT_CACHE_MODE;
-    option_values[num_options] = cacheMode;
     num_options++;
   }
 
@@ -783,11 +777,6 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   CUfunction function;
   CUDA_CHECK_ERR_MSG(driver_.ModuleGetFunction(&function, module, functionName),
                      std::string("function name: ") + functionName);
-
-  if (cacheConfig >= 0) {
-    CUDA_CHECK_ERR(driver_.FuncSetCacheConfig(
-        function, static_cast<CUfunc_cache>(cacheConfig)));
-  }
 
   if (maxDynamicSharedBytes >= 0) {
     CUDA_CHECK_ERR(driver_.FuncSetAttribute(
