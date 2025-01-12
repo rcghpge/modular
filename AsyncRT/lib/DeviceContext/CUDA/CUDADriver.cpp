@@ -22,7 +22,7 @@ namespace M::AsyncRT {
 #ifdef MODULAR_LINUX
 const char CUDADriver::lib_name[] = "libcuda.so.1";
 #else
-const char CUDADriver::lib_name[] = ""
+const char CUDADriver::lib_name[] = "";
 #endif
 
 #define GET_FUNC(name)                                                         \
