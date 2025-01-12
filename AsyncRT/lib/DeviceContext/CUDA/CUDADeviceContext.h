@@ -255,7 +255,7 @@ public:
   ErrorOr<DeviceFunctionRef>
   loadFunction(const char *moduleName, const char *functionName,
                const DeviceFunction::SignatureBuilder &signature,
-               const void *data, int32_t maxRegisters, int32_t threadsPerBlock,
+               const void *data, int32_t maxRegisters,
                int32_t maxDynamicSharedBytes, const char *debugLevel,
                int32_t optimizationLevel) const override;
   ErrorOrSuccess

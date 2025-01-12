@@ -608,8 +608,7 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
 ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t maxRegisters, int32_t threadsPerBlock,
-    int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t maxRegisters, int32_t maxDynamicSharedBytes, const char *debugLevel,
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -629,10 +628,6 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
 
   if (maxRegisters >= 0) {
     RAISE_ERROR("not implemented yet: maxRegisters");
-  }
-
-  if (threadsPerBlock >= 0) {
-    RAISE_ERROR("not implemented yet: threadsPerBlock");
   }
 
   HIP_CHECK_ERR(driver_.ModuleLoadData(&module, data));

@@ -267,8 +267,7 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
 ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
     const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t maxRegisters, int32_t threadsPerBlock,
-    int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t maxRegisters, int32_t maxDynamicSharedBytes, const char *debugLevel,
     int32_t optimizationLevel) const {
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
