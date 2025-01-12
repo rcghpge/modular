@@ -11,6 +11,7 @@
 #include "CUDADriver.h"
 
 #include "Support/ErrorOr.h"
+#include "Support/PlatformUtils.h"
 #include "llvm/ADT/Twine.h"
 
 #include <dlfcn.h>
@@ -18,12 +19,10 @@
 
 namespace M::AsyncRT {
 
-#if defined(__APPLE__) || defined(__MACOSX)
-const char CUDADriver::lib_name[] = "/usr/local/cuda/lib/libcuda.dylib";
-#elif defined(__unix__)
+#ifdef MODULAR_LINUX
 const char CUDADriver::lib_name[] = "libcuda.so.1";
 #else
-#error Unsupported platform
+const char CUDADriver::lib_name[] = ""
 #endif
 
 #define GET_FUNC(name)                                                         \

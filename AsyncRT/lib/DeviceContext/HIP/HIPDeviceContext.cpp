@@ -138,6 +138,10 @@ ErrorOr<int> HIPDevice::getDriverVersion() const {
 }
 
 ErrorOrSuccess HIPDevice::isCompatibleWithMAX() const {
+#ifndef MODULAR_LINUX
+  return Error("MAX with GPUs is only supported on Linux based systems.");
+#endif
+
   ErrorOr<int> compute = computeCapability();
   if (compute.isError())
     return compute.takeError();

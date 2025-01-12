@@ -15,6 +15,7 @@
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "HIPDriver.h"
 #include "Support/ErrorOr.h"
+#include "Support/PlatformUtils.h"
 #include "Support/RCRef.h"
 #include "llvm/ADT/StringMap.h"
 

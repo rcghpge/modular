@@ -13,6 +13,7 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "CUDADriver.h"
 #include "Support/ErrorOr.h"
+#include "Support/PlatformUtils.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -185,6 +186,10 @@ ErrorOr<int> CUDADevice::getDriverVersion() const {
 }
 
 ErrorOrSuccess CUDADevice::isCompatibleWithMAX() const {
+#ifndef MODULAR_LINUX
+  return Error("MAX with GPUs is only supported on Linux based systems.");
+#endif
+
   ErrorOr<int> compute = computeCapability();
   if (compute.isError())
     return compute.takeError();
