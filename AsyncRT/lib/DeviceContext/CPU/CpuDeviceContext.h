@@ -135,8 +135,8 @@ public:
   ErrorOr<DeviceFunctionRef>
   loadFunction(const char *moduleName, const char *functionName,
                const DeviceFunction::SignatureBuilder &signature,
-               const void *data, int32_t maxRegisters,
-               int32_t maxDynamicSharedBytes, const char *debugLevel,
+               const void *data, int32_t maxDynamicSharedBytes,
+               const char *debugLevel,
                int32_t optimizationLevel) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,

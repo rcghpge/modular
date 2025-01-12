@@ -703,7 +703,7 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t maxRegisters, int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t maxDynamicSharedBytes, const char *debugLevel,
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -726,12 +726,6 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   uintptr_t option_values[10];
 
   CUDA_WITH_CTX_ERR(*this);
-
-  if (maxRegisters >= 0) {
-    option_kind[num_options] = CUjit_option::JIT_MAX_REGISTERS;
-    option_values[num_options] = maxRegisters;
-    num_options++;
-  }
 
   if (strcmp(debugLevel, "full") == 0) {
     option_kind[num_options] = CUjit_option::JIT_GENERATE_DEBUG_INFO;

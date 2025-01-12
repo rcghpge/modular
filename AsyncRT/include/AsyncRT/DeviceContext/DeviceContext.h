@@ -298,8 +298,8 @@ public:
   virtual ErrorOr<DeviceFunctionRef>
   loadFunction(const char *moduleName, const char *functionName,
                const DeviceFunction::SignatureBuilder &signature,
-               const void *data, int32_t maxRegisters = -1,
-               int32_t maxDynamicSharedBytes = -1, const char *debugLevel = "",
+               const void *data, int32_t maxDynamicSharedBytes = -1,
+               const char *debugLevel = "",
                int32_t optimizationLevel = -1) const = 0;
   virtual ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
