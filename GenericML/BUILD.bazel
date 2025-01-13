@@ -1111,7 +1111,7 @@ modular_cc_library(
         "//AsyncRT:RuntimeGlobals",
         "//GraphRT:Primitives",
         "//KGEN:Compiler",
-        "//KGEN:CompilerRT.headers",
+        "//KGEN:CompilerRT",
         "//KGEN:ExecutionEngine",
         "//KGEN:ObjectCompiler",
         "//Kernels:WeightsRegistry",
@@ -1404,6 +1404,14 @@ modular_shared_library(
         "//Support:Globals",
         "//Support:Metering",
     ],
+)
+
+# TODO: Break circular dependency and remove this
+modular_cc_library(
+    name = "DeviceDriver.headers",
+    hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
+    tags = ["no-clang-tidy-headers"],
+    visibility = ["//visibility:private"],
 )
 
 modular_shared_library(
