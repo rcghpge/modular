@@ -14,6 +14,7 @@
 #include "CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -705,6 +706,67 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
   return success();
 }
 
+static ErrorOr<
+    std::tuple<int, std::array<CUjit_option, 4>, std::array<uintptr_t, 4>>>
+setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
+
+  unsigned int numOptions = 0;
+  std::array<CUjit_option, 4> optionKind;
+  std::array<uintptr_t, 4> optionValues;
+
+  if (debugLevel == "full") {
+    optionKind[numOptions] = CUjit_option::JIT_GENERATE_DEBUG_INFO;
+    optionValues[numOptions] = 1;
+    numOptions++;
+  } else if (debugLevel == "line-tables") {
+    optionKind[numOptions] = CUjit_option::JIT_GENERATE_LINE_INFO;
+    optionValues[numOptions] = 1;
+    numOptions++;
+  }
+
+  if (optimizationLevel >= 0) {
+    if (optimizationLevel < 3) {
+      // Note that NVidia's optimization level goes up to (and defaults to)
+      // 4, while ours only goes up to (and defaults to) 3.
+      if (debugLevel == "full" && optimizationLevel > 0) {
+        // Note that the PTX compiler complains if debugLevel=full and
+        // optimization level is something other than 0 or default.
+        RAISE_ERROR("debugLevel of \"full\" requires optimizationLevel of "
+                    "zero (or default)");
+      }
+      optionKind[numOptions] = CUjit_option::JIT_OPTIMIZATION_LEVEL;
+      optionValues[numOptions] = optimizationLevel;
+      numOptions++;
+    }
+  }
+  return std::make_tuple(numOptions, optionKind, optionValues);
+}
+
+ErrorOr<ArrayRef<std::byte>>
+CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
+                                   int32_t optimizationLevel) const {
+  auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
+  if (errorOrOpts)
+    return errorOrOpts.takeError();
+  auto [numOptions, optionKind, optionValues] = errorOrOpts.get();
+
+  CUlinkState linkState;
+  CUDA_CHECK_ERR(driver_.LinkCreate(numOptions, optionKind.data(),
+                                    (void **)optionValues.data(), &linkState));
+
+  CUDA_CHECK_ERR(driver_.LinkAddData(
+      linkState, CUjitInputType::CU_JIT_INPUT_PTX, (void *)ptx.data(),
+      ptx.size(), "", 0, nullptr, nullptr));
+
+  void *cubin;
+  size_t cubinSize;
+  CUDA_CHECK_ERR(driver_.LinkComplete(linkState, &cubin, &cubinSize));
+
+  CUDA_CHECK_ERR(driver_.LinkDestroy(linkState));
+
+  return ArrayRef((std::byte *)cubin, cubinSize);
+}
+
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const char *moduleName, const char *functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
@@ -725,43 +787,18 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     llvm::errs() << "CUDADeviceContext::loadFunction(" << functionName << "):\n"
                  << reinterpret_cast<const char *>(data) << "\n";
   }
-  CUmodule module;
-  unsigned int num_options = 0;
-  CUjit_option option_kind[10];
-  uintptr_t option_values[10];
+  auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
+  if (errorOrOpts)
+    return errorOrOpts.takeError();
+  auto [numOptions, optionKind, optionValues] = errorOrOpts.get();
 
+  CUmodule module;
   CUDA_WITH_CTX_ERR(*this);
 
-  if (strcmp(debugLevel, "full") == 0) {
-    option_kind[num_options] = CUjit_option::JIT_GENERATE_DEBUG_INFO;
-    option_values[num_options] = 1;
-    num_options++;
-  } else if (strcmp(debugLevel, "line-tables") == 0) {
-    option_kind[num_options] = CUjit_option::JIT_GENERATE_LINE_INFO;
-    option_values[num_options] = 1;
-    num_options++;
-  }
-
-  if (optimizationLevel >= 0) {
-    if (optimizationLevel < 3) {
-      // Note that NVidia's optimization level goes up to (and defaults to)
-      // 4, while ours only goes up to (and defaults to) 3.
-      if ((strcmp(debugLevel, "full") == 0) && (optimizationLevel > 0)) {
-        // Note that the PTX compiler complains if debugLevel=full and
-        // optimization level is something other than 0 or default.
-        RAISE_ERROR("debugLevel of \"full\" requires optimizationLevel of "
-                    "zero (or default)");
-      }
-      option_kind[num_options] = CUjit_option::JIT_OPTIMIZATION_LEVEL;
-      option_values[num_options] = optimizationLevel;
-      num_options++;
-    }
-  }
-
-  if (num_options > 0) {
-    CUDA_CHECK_ERR(
-        driver_.ModuleLoadDataEx(&module, data, num_options, option_kind,
-                                 reinterpret_cast<void **>(option_values)));
+  if (numOptions > 0) {
+    CUDA_CHECK_ERR(driver_.ModuleLoadDataEx(
+        &module, data, numOptions, optionKind.data(),
+        reinterpret_cast<void **>(optionValues.data())));
   } else {
     CUDA_CHECK_ERR(driver_.ModuleLoadData(&module, data));
   }

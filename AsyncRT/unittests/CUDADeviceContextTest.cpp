@@ -19,27 +19,7 @@ using M::ErrorOrSuccess;
 
 namespace {
 
-class CUDADeviceContextTest : public ::testing::Test {
-protected:
-  void SetUp() override {
-    // Allocate the GPU device for this platform. Then check that we are running
-    // on a CUDA enabled platform, if not skip the CUDA specific tests in this
-    // fixture.
-
-    ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-    if (device.isError())
-      // Have the tests deal with device errors.
-      return;
-
-    if ((*device)->api() != Device::cudaAPI) {
-      GTEST_SKIP() << "Skipping CUDA tests for GPU \"" << (*device)->vendor()
-                   << ":" << (*device)->api() << "\"";
-    }
-  }
-};
-
-TEST_F(CUDADeviceContextTest, DeviceExec) {
-  const char *vecAddPtx = R"PTX(
+static const char *vecAddPtx = R"PTX(
 // From Kernels/test/gpu/vec_add.ptx
 
 .version 6.3
@@ -111,6 +91,27 @@ $L__BB0_2:
 	ret;
 }
 )PTX";
+
+class CUDADeviceContextTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    // Allocate the GPU device for this platform. Then check that we are running
+    // on a CUDA enabled platform, if not skip the CUDA specific tests in this
+    // fixture.
+
+    ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
+    if (device.isError())
+      // Have the tests deal with device errors.
+      return;
+
+    if ((*device)->api() != Device::cudaAPI) {
+      GTEST_SKIP() << "Skipping CUDA tests for GPU \"" << (*device)->vendor()
+                   << ":" << (*device)->api() << "\"";
+    }
+  }
+};
+
+TEST_F(CUDADeviceContextTest, DeviceExec) {
 
   ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cudaAPI);
   ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
