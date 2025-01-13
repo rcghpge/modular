@@ -111,6 +111,8 @@ public:
   // TODO: Remove the V1 compatibility.
   virtual void *releasePtr() const = 0;
 
+  virtual ErrorOrSuccess copyTo(const DeviceBuffer &dst) const;
+
   virtual ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
                                                    size_t byteSize) const = 0;
 

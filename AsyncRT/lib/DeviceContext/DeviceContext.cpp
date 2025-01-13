@@ -114,6 +114,22 @@ const DeviceBuffer *DeviceBuffer::parent() const {
 
 size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
+// Default implementation, which can be specialized by subclasses.
+ErrorOrSuccess DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
+  const DeviceBuffer &src = *this;
+  const Device::API src_api = src.context().device().api();
+  const Device::API dst_api = dst.context().device().api();
+  if (src_api == CpuDevice::api) {
+    return dst.context().enqueueCopyToDevice(dst, src.ptr());
+  } else if (dst_api == CpuDevice::api) {
+    return src.context().enqueueCopyFromDevice(dst.ptr(), src);
+  } else if (src_api == dst_api) {
+    return dst.context().enqueueCopyDeviceToDevice(dst, src);
+  }
+  return Error("Device API mismatch copying from \"" + src_api + "\" to \"" +
+               dst_api + "\"");
+}
+
 //
 // ===== DeviceStream ===== //
 //

@@ -30,19 +30,7 @@ MODULAR_API_EXPORT DeviceMemory::~DeviceMemory() {
 
 MODULAR_API_EXPORT ErrorOrSuccess
 DeviceMemory::copyTo(DeviceMemory &dst) const {
-  // Here we ensure that the context iniating the copy is a GPU context, since
-  // DeviceContext::copyDeviceToDevice() only works when both are the same kind.
-  // TODO: Handle this within AsyncRT:DeviceContext.
-  const auto &src = *this;
-  if (src.getKind() == DeviceKind::kCPU)
-    return dst.buf->context().enqueueCopyToDevice(*dst.buf, src.buf->ptr());
-  if (src.getKind() == DeviceKind::kACCELERATOR) {
-    if (dst.getKind() == DeviceKind::kCPU)
-      return src.buf->context().enqueueCopyFromDevice(dst.buf->ptr(), *src.buf);
-    if (dst.getKind() == DeviceKind::kACCELERATOR)
-      return dst.buf->context().enqueueCopyDeviceToDevice(*dst.buf, *src.buf);
-  }
-  return Error("Unhandled device memory type");
+  return this->buf->copyTo(*dst.buf);
 }
 
 MODULAR_API_EXPORT ErrorOrSuccess DeviceMemory::memset(int value) {

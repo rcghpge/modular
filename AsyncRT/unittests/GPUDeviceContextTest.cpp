@@ -350,79 +350,87 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
   int numDevices = Device::numberOfDevices(Device::gpuAPI);
   std::cerr << "Number of GPU devices: " << numDevices << "\n";
 
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::gpuAPI, 0);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef srcCtx = std::move(errCtx.get());
-  ASSERT_TRUE(srcCtx);
-
-  for (int curDeviceId = -1; curDeviceId < numDevices; curDeviceId++) {
-    DeviceContextRef dstCtx;
-    if (curDeviceId < 0) {
-      std::cerr << "Copying within the same device context.\n";
-      dstCtx = DeviceContextRef::copy(srcCtx.getPointer());
-    } else {
-      std::cerr << "Copying from context on GPU[0] to context on GPU["
-                << curDeviceId << "].\n";
-
+  // Allocate a vector filled with all available devices prefixed with CPU and
+  // GPU[0].
+  std::vector<DeviceContextRef> contexts;
+  for (int i = 0; i < numDevices + 2; i++) {
+    if (i == 0) {
       ErrorOr<DeviceContextRef> errCtx =
-          DeviceContext::create(Device::gpuAPI, curDeviceId);
+          DeviceContext::create(Device::cpuAPI, 0);
       ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-      dstCtx = std::move(errCtx.get());
+      contexts.emplace_back(errCtx.takeValue());
+    } else if (i == 1) {
+      ErrorOr<DeviceContextRef> errCtx =
+          DeviceContext::create(Device::gpuAPI, 0);
+      ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+      contexts.emplace_back(errCtx.takeValue());
+    } else {
+      ErrorOr<DeviceContextRef> errCtx =
+          DeviceContext::create(Device::gpuAPI, i - 2);
+      ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+      contexts.emplace_back(errCtx.takeValue());
     }
-    ASSERT_TRUE(dstCtx);
+  }
 
-    const int allocLen = 256;
-    char *checkData = new char[allocLen];
-    // Initialize checkData with a pattern specific for this run.
-    for (int i = 0; i < allocLen; i++) {
-      checkData[i] = curDeviceId + i;
+  for (int srcDeviceId = 0; srcDeviceId < numDevices + 2; srcDeviceId++) {
+    const DeviceContext *srcCtx = contexts[srcDeviceId].getPointer();
+    for (int dstDeviceId = 0; dstDeviceId < numDevices + 2; dstDeviceId++) {
+      const DeviceContext *dstCtx = contexts[dstDeviceId].getPointer();
+
+      std::cerr << "Copying from contexts[" << srcDeviceId << "] to contexts["
+                << dstDeviceId << "].\n";
+
+      const int allocLen = 256;
+      char *checkData = new char[allocLen];
+      // Initialize checkData with a pattern specific for this run.
+      for (int i = 0; i < allocLen; i++) {
+        checkData[i] = (srcDeviceId * 8) + dstDeviceId + i;
+      }
+
+      ErrorOr<void *> errPtr = srcCtx->mallocHost(allocLen);
+      EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
+      void *srcPtr = errPtr.get();
+      EXPECT_NE(srcPtr, nullptr);
+
+      ErrorOr<DeviceBufferRef> errRef = srcCtx->enqueueCreateBuffer(allocLen);
+      EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+      DeviceBufferRef srcBuf = std::move(errRef.get());
+      EXPECT_TRUE(srcBuf);
+
+      errRef = dstCtx->enqueueCreateBuffer(allocLen);
+      EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+      DeviceBufferRef dstBuf = std::move(errRef.get());
+      EXPECT_TRUE(dstBuf);
+
+      char *dstPtr = static_cast<char *>(malloc(allocLen));
+      EXPECT_NE(dstPtr, nullptr);
+      // Initialize with known bad values.
+      for (int i = 0; i < allocLen; i++) {
+        // Use a different factor for i than the checkData, so that we can't
+        // ever overlap.
+        dstPtr[i] = -static_cast<char>((7 + 2 * i) & 127);
+      }
+
+      // Copy between different buffers.
+      memcpy(srcPtr, checkData, allocLen);
+      ErrorOrSuccess err = srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+      err = srcBuf->copyTo(*dstBuf);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+      err = dstCtx->enqueueCopyFromDevice(dstPtr, *dstBuf);
+      EXPECT_FALSE(err) << err.getError() << "\n";
+
+      // Ensure that all copy operations have finished.
+      err = dstCtx->synchronize();
+      err = srcCtx->synchronize();
+      EXPECT_FALSE(err) << err.getError() << "\n";
+
+      EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
+
+      free(dstPtr);
+      err = srcCtx->freeHost(srcPtr);
+      EXPECT_FALSE(err) << err.getError() << "\n";
     }
-
-    ErrorOr<void *> errPtr = srcCtx->mallocHost(allocLen);
-    EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
-    void *srcPtr = errPtr.get();
-    EXPECT_NE(srcPtr, nullptr);
-
-    ErrorOr<DeviceBufferRef> errRef = srcCtx->enqueueCreateBuffer(allocLen);
-    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-    DeviceBufferRef srcBuf = std::move(errRef.get());
-    EXPECT_TRUE(srcBuf);
-
-    errRef = dstCtx->enqueueCreateBuffer(allocLen);
-    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-    DeviceBufferRef dstBuf = std::move(errRef.get());
-    EXPECT_TRUE(dstBuf);
-
-    char *dstPtr = static_cast<char *>(malloc(allocLen));
-    EXPECT_NE(dstPtr, nullptr);
-    // Initialize with known bad values.
-    for (int i = 0; i < allocLen; i++) {
-      // Use a different factor for i than the checkData, so that we can't ever
-      // overlap.
-      dstPtr[i] = -static_cast<char>((7 + 2 * i) & 127);
-    }
-
-    // Copy between different buffers.
-    memcpy(srcPtr, checkData, allocLen);
-    ErrorOrSuccess err = srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr);
-    EXPECT_FALSE(err) << err.getError() << "\n";
-    // Make sure to use the dstCtx here to properly enqueue future work on
-    // dstCtx within the stream.
-    err = dstCtx->enqueueCopyDeviceToDevice(*dstBuf, *srcBuf);
-    EXPECT_FALSE(err) << err.getError() << "\n";
-    err = dstCtx->enqueueCopyFromDevice(dstPtr, *dstBuf);
-    EXPECT_FALSE(err) << err.getError() << "\n";
-
-    // Ensure that all copy operations have finished.
-    err = dstCtx->synchronize();
-    err = srcCtx->synchronize();
-    EXPECT_FALSE(err) << err.getError() << "\n";
-
-    EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
-
-    free(dstPtr);
-    err = srcCtx->freeHost(srcPtr);
-    EXPECT_FALSE(err) << err.getError() << "\n";
   }
 }
 
