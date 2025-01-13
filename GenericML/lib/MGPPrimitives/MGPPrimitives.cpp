@@ -37,14 +37,6 @@ using namespace M::GML;
 using namespace M::MGP;
 
 //===----------------------------------------------------------------------===//
-// Helpers
-//===----------------------------------------------------------------------===//
-
-/// Profiler entry for launched CPU kernels.
-using MGPProfilerEntry =
-    ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
-
-//===----------------------------------------------------------------------===//
 // mgp.context.create
 //===----------------------------------------------------------------------===//
 
@@ -58,10 +50,6 @@ static void mgp_context_create(Result<StateContext> result,
 //===----------------------------------------------------------------------===//
 // mgp.generic.execute
 //===----------------------------------------------------------------------===//
-
-/// Profiler entry for launched CPU kernels.
-using MGPProfilerEntry =
-    ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
 /// The kernel expects the inputs to be a list of pointers to async values. This
 /// function just packs the input / output asyncs into one array.

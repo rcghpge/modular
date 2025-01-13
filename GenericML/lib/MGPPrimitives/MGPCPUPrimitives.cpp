@@ -162,10 +162,6 @@ mgp_debug_tensor_print_cpu(Chain inChain, const TensorBufferRef &buffer,
   std::move(outChain).emplace();
 }
 
-/// Profiler entry for launched CPU kernels.
-using MGPProfilerEntry =
-    ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
-
 //===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
