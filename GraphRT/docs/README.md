@@ -63,7 +63,6 @@ Here are some good entry point documents to understand the GraphRT library:
 - A guide to [defining and implementing GraphRT
    primitives](DefiningPrimitives.md).
 - Documentation for the [MEF binary file format](ModularExecutorFormat.md).
-- Benchmarking with [`grt.benchmark`](Benchmarking.md).
 
 ## GraphRT code base
 

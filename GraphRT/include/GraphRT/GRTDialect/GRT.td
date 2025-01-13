@@ -11,7 +11,6 @@
 #ifndef GRT_TD
 #define GRT_TD
 
-include "GraphRT/GRTDialect/GRTBenchmarkingOps.td"
 include "GraphRT/GRTDialect/GRTIntegerOps.td"
 include "GraphRT/GRTDialect/GRTControlFlowOps.td"
 include "GraphRT/GRTDialect/GRTTestOps.td"
