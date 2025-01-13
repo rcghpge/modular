@@ -147,6 +147,11 @@ MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(const DeviceBuffer *buffer) {
   DeviceBufferRef::lowLevelDropRef(buffer);
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceBuffer_copyTo(const DeviceBuffer *src, const DeviceBuffer *dst) {
+  return checkSuccess(src->copyTo(*dst));
+}
+
 // TODO: Remove the V1 compatibility.
 MODULAR_EXPORT void
 AsyncRT_DeviceBuffer_release_ptr(const DeviceBuffer *buffer) {
