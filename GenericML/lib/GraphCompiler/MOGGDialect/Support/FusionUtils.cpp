@@ -345,32 +345,6 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
   }
 }
 
-template <typename OpTy>
-static void mergeAllocationOfType(MOGG::KernelOp kernelOp) {
-  SmallVector<OpTy> allocs;
-  SmallVector<Type> resultTypes;
-  for (auto alloc : kernelOp.getOps<OpTy>()) {
-    allocs.push_back(alloc);
-    for (auto type : alloc.getResultTypes())
-      resultTypes.push_back(type);
-  }
-
-  if (allocs.size() < 2)
-    return;
-
-  OpBuilder builder(kernelOp.getContext());
-  builder.setInsertionPoint(allocs.front());
-  auto mergedAlloc = builder.create<OpTy>(kernelOp->getLoc(), resultTypes);
-
-  int idx = 0;
-  for (auto alloc : allocs) {
-    for (auto result : alloc.getResults())
-      result.replaceAllUsesWith(mergedAlloc.getResult(idx++));
-
-    alloc.erase();
-  }
-}
-
 /// Helper function for "soft" fusing kernels.
 /// - It is expected that all kernels in `kernelOpsToFuseTogether` are sorted
 /// topologically.

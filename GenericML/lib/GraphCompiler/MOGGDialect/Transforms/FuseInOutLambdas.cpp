@@ -432,6 +432,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Step 7: Cleanup the kernel.
 
+    // Ensure only one instance of these ops exist after fusing
+    mergeAllocationOfType<MOGG::StackAllocateTensorsOp>(kernelToFuseInto);
+    mergeAllocationOfType<MOGG::CreateEmptyTensorsOp>(kernelToFuseInto);
+
     // Update the lambdas_have_fusion parameter for the extensibility kernels
     kernelToFuseInto.setKGENKernelParamValueIfPresent(
         analysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
