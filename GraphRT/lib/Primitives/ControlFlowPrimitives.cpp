@@ -31,21 +31,6 @@ static AsyncValueRef<Chain> grt_chain_create(RemainingArguments arguments,
 }
 
 //===----------------------------------------------------------------------===//
-// grt.chain.fanout
-//===----------------------------------------------------------------------===//
-
-static void grt_chain_fanout(Chain inChain, RemainingResults results,
-                             MEFAttr<uint32_t> numResults, Runtime &runtime) {
-  assert(static_cast<size_t>(*numResults) == results.size());
-  for (AnyAsyncValueRef &result : results) {
-    result = AsyncValueRef<Chain>::allocate(runtime);
-    AsyncRT::addTask(runtime, [result = result.copy()]() mutable {
-      std::move(result).emplace<Chain>();
-    });
-  }
-}
-
-//===----------------------------------------------------------------------===//
 // grt.invoke
 //===----------------------------------------------------------------------===//
 
@@ -368,7 +353,6 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 /// This registers the 'graphrt' dialect primitives for control flow.
 void M::registerGraphRTControlFlowPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "grt.chain.create", grt_chain_create);
-  ADD_PRIMITIVE(registry, "grt.chain.fanout", grt_chain_fanout);
   ADD_PRIMITIVE(registry, "grt.invoke", grt_invoke);
   ADD_PRIMITIVE(registry, "grt.if", grt_if);
   ADD_PRIMITIVE(registry, "grt.while", grt_while);
