@@ -26,6 +26,7 @@
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MLIRToMEF.h"
+#include "Kernels/mojo/Mogg/MOGGLoader.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/BinaryID.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
@@ -512,5 +513,6 @@ std::string M::MO::getGraphCompilerVersionString() {
   // shared libraries, e.g., MOGGLoader, might result in a different compiled
   // MEF file too, include the binary ID for relevant shared libraries too.
   return M::getModularVersionString() + M::getBinaryID() + "-" +
+         M::MOGG::Embeddings::getMOGGEmbeddingID() + "-" +
          M::getModularVersion().buildType;
 }
