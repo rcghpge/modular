@@ -171,7 +171,7 @@ mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 } // namespace M
 
 MODULAR_API_EXPORT M::Driver::Device *
-M_createCUDADevice(ssize_t gpuID, M::Driver::Status *status);
+M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status);
 
 MODULAR_API_EXPORT M::Driver::Device *
 M_createCPUDevice(ssize_t numaId, M::Driver::Status *status);

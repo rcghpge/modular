@@ -261,8 +261,7 @@ M::Driver::makeCPUDevice() {
                                                              &M_destroyDevice};
 }
 
-// TODO: Rename to createAccelerator.
-static ErrorOr<Device *> createCUDADevice(ssize_t gpuID) {
+static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
   size_t id = gpuID >= 0 ? gpuID : 0;
 
   ASSIGN_OR_RETURN(ctx,
@@ -275,9 +274,9 @@ static ErrorOr<Device *> createCUDADevice(ssize_t gpuID) {
   return device.release();
 }
 
-MODULAR_API_EXPORT Device *M_createCUDADevice(ssize_t gpuID,
-                                              M::Driver::Status *status) {
-  auto deviceOrError = createCUDADevice(gpuID);
+MODULAR_API_EXPORT Device *
+M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status) {
+  auto deviceOrError = createAccelerator(gpuID);
   if (deviceOrError.isError()) {
     status->errorOr = deviceOrError.takeError();
     return nullptr;
