@@ -342,11 +342,6 @@ public:
     return cuMemsetD32_v2_(dstDevice, ui, N);
   }
 
-  Result ModuleLoadData(CUmodule *module, const void *image) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuModuleLoadData_(module, image);
-  }
-
   Result LinkCreate(unsigned int numOptions, CUjit_option *options,
                     void **optionValues, CUlinkState *stateOut) const {
     CUDA_DRIVER_CALL_LOG();
@@ -629,9 +624,6 @@ private:
 
   using tcuLinkDestroy = Result(CUlinkState state);
   tcuLinkDestroy *cuLinkDestroy_;
-
-  using tcuModuleLoadData = Result(CUmodule *, const void *);
-  tcuModuleLoadData *cuModuleLoadData_;
 
   using tcuModuleGetGlobal_v2 = Result(CUdeviceptr *, size_t *, CUmodule,
                                        const char *);

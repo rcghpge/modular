@@ -226,11 +226,10 @@ public:
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef>
-  loadFunction(const char *moduleName, const char *functionName,
+  loadFunction(StringRef moduleName, StringRef functionName,
                const DeviceFunction::SignatureBuilder &signature,
                const void *data, int32_t maxDynamicSharedBytes,
-               const char *debugLevel,
-               int32_t optimizationLevel) const override;
+               StringRef debugLevel, int32_t optimizationLevel) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,

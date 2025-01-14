@@ -706,40 +706,42 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
   return success();
 }
 
-static ErrorOr<
-    std::tuple<int, std::array<CUjit_option, 4>, std::array<uintptr_t, 4>>>
+static ErrorOr<std::pair<SmallVector<CUjit_option>, SmallVector<uintptr_t>>>
 setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
+  static constexpr int kDefaultOptimizationLevel = 4;
 
-  unsigned int numOptions = 0;
-  std::array<CUjit_option, 4> optionKind;
-  std::array<uintptr_t, 4> optionValues;
+  SmallVector<CUjit_option> optionKind;
+  SmallVector<uintptr_t> optionValues;
+
+  optionKind.reserve(2);
+  optionValues.reserve(2);
+
+  // The default optimization level for NVIDIA GPUs is 4.
+  if (optimizationLevel < 0)
+    optimizationLevel = kDefaultOptimizationLevel;
 
   if (debugLevel == "full") {
-    optionKind[numOptions] = CUjit_option::JIT_GENERATE_DEBUG_INFO;
-    optionValues[numOptions] = 1;
-    numOptions++;
+    // Note that the PTX compiler complains if debugLevel=full and optimization
+    // level is something other than 0 or 4 (the default).
+    if (!llvm::is_contained({0, kDefaultOptimizationLevel},
+                            optimizationLevel)) {
+      RAISE_ERROR("debugLevel of \"full\" requires optimizationLevel of "
+                  "zero (or default)");
+    }
+
+    optionKind.push_back(CUjit_option::JIT_GENERATE_DEBUG_INFO);
+    optionValues.push_back(1);
   } else if (debugLevel == "line-tables") {
-    optionKind[numOptions] = CUjit_option::JIT_GENERATE_LINE_INFO;
-    optionValues[numOptions] = 1;
-    numOptions++;
+    optionKind.push_back(CUjit_option::JIT_GENERATE_LINE_INFO);
+    optionValues.push_back(1);
   }
 
-  if (optimizationLevel >= 0) {
-    if (optimizationLevel < 3) {
-      // Note that NVidia's optimization level goes up to (and defaults to)
-      // 4, while ours only goes up to (and defaults to) 3.
-      if (debugLevel == "full" && optimizationLevel > 0) {
-        // Note that the PTX compiler complains if debugLevel=full and
-        // optimization level is something other than 0 or default.
-        RAISE_ERROR("debugLevel of \"full\" requires optimizationLevel of "
-                    "zero (or default)");
-      }
-      optionKind[numOptions] = CUjit_option::JIT_OPTIMIZATION_LEVEL;
-      optionValues[numOptions] = optimizationLevel;
-      numOptions++;
-    }
+  if (optimizationLevel != kDefaultOptimizationLevel) {
+    optionKind.push_back(CUjit_option::JIT_OPTIMIZATION_LEVEL);
+    optionValues.push_back(optimizationLevel);
   }
-  return std::make_tuple(numOptions, optionKind, optionValues);
+
+  return std::make_pair(optionKind, optionValues);
 }
 
 ErrorOr<ArrayRef<std::byte>>
@@ -748,10 +750,10 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
   if (errorOrOpts)
     return errorOrOpts.takeError();
-  auto [numOptions, optionKind, optionValues] = errorOrOpts.get();
+  auto [optionKind, optionValues] = errorOrOpts.takeValue();
 
   CUlinkState linkState;
-  CUDA_CHECK_ERR(driver_.LinkCreate(numOptions, optionKind.data(),
+  CUDA_CHECK_ERR(driver_.LinkCreate(optionKind.size(), optionKind.data(),
                                     (void **)optionValues.data(), &linkState));
 
   CUDA_CHECK_ERR(driver_.LinkAddData(
@@ -768,9 +770,9 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
-    const char *moduleName, const char *functionName,
+    StringRef moduleName, StringRef functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -790,22 +792,19 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
   if (errorOrOpts)
     return errorOrOpts.takeError();
-  auto [numOptions, optionKind, optionValues] = errorOrOpts.get();
+  auto [optionKind, optionValues] = errorOrOpts.takeValue();
 
   CUmodule module;
   CUDA_WITH_CTX_ERR(*this);
 
-  if (numOptions > 0) {
-    CUDA_CHECK_ERR(driver_.ModuleLoadDataEx(
-        &module, data, numOptions, optionKind.data(),
-        reinterpret_cast<void **>(optionValues.data())));
-  } else {
-    CUDA_CHECK_ERR(driver_.ModuleLoadData(&module, data));
-  }
+  CUDA_CHECK_ERR(driver_.ModuleLoadDataEx(
+      &module, data, optionKind.size(), optionKind.data(),
+      reinterpret_cast<void **>(optionValues.data())));
 
   CUfunction function;
-  CUDA_CHECK_ERR_MSG(driver_.ModuleGetFunction(&function, module, functionName),
-                     std::string("function name: ") + functionName);
+  CUDA_CHECK_ERR_MSG(
+      driver_.ModuleGetFunction(&function, module, functionName.data()),
+      "function name: " + functionName.str());
 
   if (maxDynamicSharedBytes >= 0) {
     CUDA_CHECK_ERR(driver_.FuncSetAttribute(

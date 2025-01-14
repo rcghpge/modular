@@ -610,9 +610,9 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
 }
 
 ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
-    const char *moduleName, const char *functionName,
+    StringRef moduleName, StringRef functionName,
     const DeviceFunction::SignatureBuilder &signature, const void *data,
-    int32_t maxDynamicSharedBytes, const char *debugLevel,
+    int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -625,7 +625,8 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
 
   // TODO(iposva): Remove once not needed for debugging.
   if (false) {
-    std::cerr << "HIPDeviceContext::loadFunction(" << functionName << "):\n"
+    std::cerr << "HIPDeviceContext::loadFunction(" << functionName.str()
+              << "):\n"
               << reinterpret_cast<const char *>(data) << "\n";
   }
   hipModule_t module;
@@ -633,7 +634,8 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   HIP_CHECK_ERR(driver_.ModuleLoadData(&module, data));
 
   hipFunction_t function;
-  HIP_CHECK_ERR(driver_.ModuleGetFunction(&function, module, functionName));
+  HIP_CHECK_ERR(
+      driver_.ModuleGetFunction(&function, module, functionName.data()));
 
   // Allocate func outside of the lock region to reduce the time spent under
   // lock. If this functionName has been registered concurrently, then we will
