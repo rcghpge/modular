@@ -3,23 +3,43 @@ load("//bazel:api.bzl", "lit_tests")
 lit_tests(
     name = "test",
     size = "large",
-    srcs = glob(["**/*.mojo"]),
+    srcs = glob(
+        ["**/*.mojo"],
+        exclude = ["mojo/cuda/*.mojo"],
+    ),
     data = [
         "//GenericML:DeviceDriver",
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
     ],
-    gpu_only_srcs = glob(["mojo/cuda/*.mojo"]),
+    mojo_deps = [
+        "//SDK/lib/API/mojo/max/max",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+    target_compatible_with = select({
+        "//:asan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tools = [
+        "//KGEN/tools/mojo",
+    ],
+)
+
+lit_tests(
+    name = "gpu-test",
+    size = "large",
+    srcs = glob(["mojo/cuda/*.mojo"]),
+    data = [
+        "//GenericML:DeviceDriver",
+        "//KGEN:CompilerRT",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
     mojo_configure_gpu = True,
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
     tags = ["gpu"],
-    target_compatible_with = select({
-        "//:asan": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
     tools = [
         "//KGEN/tools/mojo",
     ],
