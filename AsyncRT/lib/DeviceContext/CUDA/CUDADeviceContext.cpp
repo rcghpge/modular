@@ -12,6 +12,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "CUDADriver.h"
+#include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -538,7 +539,18 @@ CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                      size_t bufferCacheSize)
     : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
       stream_(stream), bufCache_(bufferCacheBase, bufferCacheSize,
-                                 device.allocationAlignment()) {}
+                                 device.allocationAlignment()) {
+  ErrorOr<Config> configOr = Config::open();
+  if (!configOr.isError()) {
+    ErrorOr<bool> envVal =
+        configOr->getValueAsBool("device-context.log_load_function", false);
+    if (!envVal.isError())
+      logLoadFunction_ = *envVal;
+    envVal = configOr->getValueAsBool("device-context.log_verbose", false);
+    if (!envVal.isError())
+      logVerbose_ = *envVal;
+  }
+}
 
 CUDADeviceContext::~CUDADeviceContext() {
   {
@@ -784,10 +796,11 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     }
   }
 
-  // TODO(iposva): Remove once not needed for debugging.
-  if (false) {
-    llvm::errs() << "CUDADeviceContext::loadFunction(" << functionName << "):\n"
-                 << reinterpret_cast<const char *>(data) << "\n";
+  if (logLoadFunction_) {
+    llvm::errs() << "CUDADeviceContext::loadFunction(" << functionName
+                 << (logVerbose_ ? "):\n" : ")")
+                 << (logVerbose_ ? reinterpret_cast<const char *>(data) : "")
+                 << "\n";
   }
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
   if (errorOrOpts)

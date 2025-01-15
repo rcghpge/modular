@@ -318,6 +318,9 @@ private:
   mutable llvm::StringMap<CUDAModuleFunctionRef> funcMap_;
 
   mutable BufferCache bufCache_;
+
+  bool logLoadFunction_ = false;
+  bool logVerbose_ = false;
 };
 
 } // namespace M::AsyncRT
