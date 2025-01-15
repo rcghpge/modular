@@ -136,6 +136,9 @@ struct Device : M::ReferenceCounted<Device> {
   // Gets the programming API of the device.
   ErrorOr<std::string> getApi();
 
+  /// Returns whether or not the device is compatible with MAX.
+  ErrorOrSuccess isCompatibleWithMAX() const;
+
 protected:
   const DeviceKind kind;
   AsyncRT::DeviceContextRef ctx;

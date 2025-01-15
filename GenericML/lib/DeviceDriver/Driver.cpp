@@ -131,6 +131,10 @@ MODULAR_API_EXPORT ErrorOr<std::string> Device::getApi() {
   return ctx->device().api().str();
 }
 
+MODULAR_API_EXPORT ErrorOrSuccess Device::isCompatibleWithMAX() const {
+  return ctx->device().isCompatibleWithMAX();
+}
+
 MODULAR_API_EXPORT ErrorOr<void *> Device::allocateData(size_t bytes) {
   ASSIGN_OR_RETURN(buf, ctx->enqueueCreateBuffer(bytes));
   // TODO change return type to DeviceBufferRef instead of returning naked void
@@ -238,6 +242,11 @@ static ErrorOr<Device *> createCPUDevice(ssize_t numaId) {
   spec.target = std::move(targetInfo);
   ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create("cpu"));
   auto device = RCRef<Device>::create(spec, DeviceKind::kCPU, ctx);
+
+  ErrorOrSuccess compatibleOr = device->isCompatibleWithMAX();
+  if (compatibleOr.isError())
+    return compatibleOr.takeError();
+
   return device.release();
 }
 
@@ -270,6 +279,10 @@ static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
   spec.ref.label = kGPULabel;
   spec.ref.id = gpuID;
   auto device = RCRef<Device>::create(spec, DeviceKind::kACCELERATOR, ctx);
+
+  ErrorOrSuccess compatibleOr = device->isCompatibleWithMAX();
+  if (compatibleOr.isError())
+    return compatibleOr.takeError();
 
   return device.release();
 }
