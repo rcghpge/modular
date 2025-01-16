@@ -68,6 +68,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuStreamCreate);
   GET_FUNC(cuStreamDestroy);
   GET_FUNC(cuStreamSynchronize);
+  GET_FUNC(cuStreamWaitEvent);
 
   GET_FUNC(cuMemAllocHost_v2);
   GET_FUNC(cuMemFreeHost);

@@ -373,6 +373,30 @@ const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const CUDADeviceBuffer &>(buf);
 }
 
+// ===== CUDADeviceEvent ===== //
+CUDADeviceEvent::CUDADeviceEvent(const CUDADeviceContext &context,
+                                 CUevent event)
+    : DeviceEvent(context), event_(event) {}
+
+CUDADeviceEvent::~CUDADeviceEvent() {
+  const auto &cudaContext = CUDADeviceContext::cast(context());
+  CUDA_WITH_CTX(cudaContext);
+  CUDA_CHECK(cudaContext.cudaDriver().EventDestroy(event_));
+}
+
+ErrorOrSuccess CUDADeviceEvent::synchronize() const {
+  const auto &cudaContext = CUDADeviceContext::cast(context());
+  CUDA_WITH_CTX_ERR(cudaContext);
+  CUDA_CHECK_ERR(cudaContext.cudaDriver().EventSynchronize(event_));
+  return success();
+}
+
+CUevent CUDADeviceEvent::cudaEvent() const { return event_; }
+
+const CUDADeviceEvent &CUDADeviceEvent::cast(const DeviceEvent &event) {
+  return static_cast<const CUDADeviceEvent &>(event);
+}
+
 // ===== CUDADeviceStream ===== //
 CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &context,
                                    CUstream stream)
@@ -883,6 +907,22 @@ ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
+  return success();
+}
+
+ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
+  CUDA_WITH_CTX_ERR(*this);
+  CUevent event;
+  CUDA_CHECK_ERR(driver_.EventCreate(&event, 0));
+  CUDA_CHECK_ERR(driver_.EventRecord(event, stream_));
+  return CUDADeviceEventRef::create(*this, event);
+}
+
+ErrorOrSuccess
+CUDADeviceContext::enqueueWaitForEvent(const DeviceEvent &event) const {
+  const auto &cudaEvent = CUDADeviceEvent::cast(event);
+  CUDA_WITH_CTX_ERR(*this);
+  CUDA_CHECK_ERR(driver_.StreamWaitEvent(stream_, cudaEvent.cudaEvent(), 0));
   return success();
 }
 

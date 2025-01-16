@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
-#include "AsyncRT/include/AsyncRT/DeviceContext/DeviceContext.h"
 
 #include "gtest/gtest.h"
 

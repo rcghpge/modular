@@ -30,6 +30,7 @@ namespace M::AsyncRT {
 class HIPDevice;
 class HIPDeviceBuffer;
 class HIPDeviceContext;
+class HIPDeviceEvent;
 class HIPDeviceFunction;
 class HIPDeviceFunctionArguments;
 class HIPDeviceStream;
@@ -38,6 +39,7 @@ class HIPDeviceTimer;
 using HIPDeviceRef = RCRef<const HIPDevice>;
 using HIPDeviceBufferRef = RCRef<const HIPDeviceBuffer>;
 using HIPDeviceContextRef = RCRef<const HIPDeviceContext>;
+using HIPDeviceEventRef = RCRef<const HIPDeviceEvent>;
 using HIPDeviceFunctionRef = RCRef<const HIPDeviceFunction>;
 using HIPDeviceFunctionArgumentsRef = RCRef<const HIPDeviceFunctionArguments>;
 using HIPDeviceStreamRef = RCRef<const HIPDeviceStream>;
@@ -109,6 +111,21 @@ private:
   // TODO: Remove the V1 compatibility.
   mutable hipDeviceptr_t dptr_;
   mutable bool owning_ = true;
+};
+
+class HIPDeviceEvent : public DeviceEvent {
+public:
+  HIPDeviceEvent(const HIPDeviceContext &context, hipEvent_t event);
+  ~HIPDeviceEvent() override;
+
+  ErrorOrSuccess synchronize() const override;
+
+  hipEvent_t hipEvent() const;
+
+  static const HIPDeviceEvent &cast(const DeviceEvent &event);
+
+private:
+  hipEvent_t event_;
 };
 
 class HIPDeviceStream : public DeviceStream {
@@ -244,10 +261,13 @@ public:
                                            uint32_t numAttrs,
                                            void **args) const override;
 
+  // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
 
-  // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;
+
+  ErrorOr<DeviceEventRef> enqueueEvent() const override;
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
   ErrorOr<DeviceTimerRef> startTimer() const override;
   ErrorOr<std::chrono::nanoseconds>

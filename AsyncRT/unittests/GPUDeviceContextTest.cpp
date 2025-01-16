@@ -434,4 +434,76 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
   }
 }
 
+TEST(GPUDeviceContextTest, CrossContextEvent) {
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::gpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef srcCtx = std::move(errCtx.get());
+  ASSERT_TRUE(srcCtx);
+  errCtx = DeviceContext::create(Device::gpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef dstCtx = std::move(errCtx.get());
+  ASSERT_TRUE(srcCtx);
+
+  const int allocLen = 12 * 1024 * 1024;
+  char *checkData = new char[allocLen];
+  // Initialize checkData with a pattern specific for this run.
+  for (int i = 0; i < allocLen; i++) {
+    checkData[i] = i;
+  }
+
+  ErrorOr<void *> errPtr = srcCtx->mallocHost(allocLen);
+  EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
+  void *srcPtr = errPtr.get();
+  EXPECT_NE(srcPtr, nullptr);
+
+  errPtr = dstCtx->mallocHost(allocLen);
+  EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
+  void *dstPtr = errPtr.get();
+  EXPECT_NE(srcPtr, nullptr);
+
+  memcpy(srcPtr, checkData, allocLen);
+
+  ErrorOr<DeviceBufferRef> errRef = srcCtx->enqueueCreateBuffer(allocLen);
+  EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+  DeviceBufferRef srcBuf = std::move(errRef.get());
+  EXPECT_TRUE(srcBuf);
+
+  errRef = dstCtx->enqueueCreateBuffer(allocLen);
+  EXPECT_FALSE(errRef) << errRef.getError() << "\n";
+  DeviceBufferRef dstBuf = std::move(errRef.get());
+  EXPECT_TRUE(srcBuf);
+
+  ErrorOrSuccess err = srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  ErrorOr<DeviceEventRef> errEvt = srcCtx->enqueueEvent();
+  EXPECT_FALSE(errEvt) << errEvt.getError() << "\n";
+  DeviceEventRef copyDoneEvent = std::move(errEvt.get());
+  EXPECT_TRUE(copyDoneEvent);
+
+  err = dstCtx->enqueueWaitForEvent(*copyDoneEvent);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  err = dstCtx->enqueueCopyDeviceToDevice(*dstBuf, *srcBuf);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  err = dstCtx->enqueueCopyFromDevice(dstPtr, *dstBuf);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  // An event based sequence equivalent to: err = dstCtx->synchronize();
+  errEvt = dstCtx->enqueueEvent();
+  EXPECT_FALSE(errEvt) << errEvt.getError() << "\n";
+  copyDoneEvent = errEvt.takeValue();
+  EXPECT_TRUE(copyDoneEvent);
+  err = copyDoneEvent->synchronize();
+  EXPECT_FALSE(err) << err.getError() << "\n";
+
+  EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
+
+  err = srcCtx->freeHost(srcPtr);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+  err = dstCtx->freeHost(dstPtr);
+  EXPECT_FALSE(err) << err.getError() << "\n";
+}
+
 } // namespace

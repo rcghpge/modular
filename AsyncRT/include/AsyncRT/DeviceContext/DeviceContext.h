@@ -28,6 +28,7 @@ namespace M::AsyncRT {
 class Device;
 class DeviceBuffer;
 class DeviceContext;
+class DeviceEvent;
 class DeviceFunction;
 class DeviceStream;
 class DeviceTimer;
@@ -35,6 +36,7 @@ class DeviceTimer;
 using DeviceRef = RCRef<const Device>;
 using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
+using DeviceEventRef = RCRef<const DeviceEvent>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
 using DeviceStreamRef = RCRef<const DeviceStream>;
 using DeviceTimerRef = RCRef<const DeviceTimer>;
@@ -125,6 +127,20 @@ private:
   DeviceContextRef context_;
   DeviceBufferRef parent_;
   size_t byteSize_;
+};
+
+class DeviceEvent : public ReferenceCounted<DeviceEvent> {
+public:
+  virtual ~DeviceEvent() = default;
+  const DeviceContext &context() const;
+
+  virtual ErrorOrSuccess synchronize() const = 0;
+
+protected:
+  DeviceEvent(const DeviceContext &context);
+
+private:
+  DeviceContextRef context_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
@@ -315,10 +331,14 @@ public:
                             uint32_t sharedMemBytes, void *attrs,
                             uint32_t numAttrs, void **args) const = 0;
 
+  // Synchronize asynchronous operations.
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
 
-  // Synchronize asynchronous operations.
   virtual ErrorOrSuccess synchronize() const = 0;
+
+  virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
+  virtual ErrorOrSuccess
+  enqueueWaitForEvent(const DeviceEvent &event) const = 0;
 
   virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
   virtual ErrorOr<std::chrono::nanoseconds>

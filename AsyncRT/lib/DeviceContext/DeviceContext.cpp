@@ -27,7 +27,7 @@ size_t getPreferredAlignment(std::string label) {
 }
 
 //
-// ===== DeviceBuffer ===== //
+// ===== Device ===== //
 //
 Device::Device(API api, std::string name, int id, size_t allocAligment)
     : name_(std::move(name)), id_(id), api_(api),
@@ -129,6 +129,14 @@ ErrorOrSuccess DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
   return Error("Device API mismatch copying from \"" + src_api + "\" to \"" +
                dst_api + "\"");
 }
+
+//
+// ===== DeviceEvent ===== //
+//
+DeviceEvent::DeviceEvent(const DeviceContext &context)
+    : context_(DeviceContextRef::copy(&context)) {}
+
+const DeviceContext &DeviceEvent::context() const { return *context_; }
 
 //
 // ===== DeviceStream ===== //

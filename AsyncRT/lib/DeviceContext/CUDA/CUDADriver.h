@@ -238,6 +238,11 @@ public:
     CUDA_DRIVER_CALL_LOG();
     return cuStreamSynchronize_(hStream);
   }
+  Result StreamWaitEvent(CUstream hStream, CUevent hEvent,
+                         unsigned int flags) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuStreamWaitEvent_(hStream, hEvent, flags);
+  }
 
   Result MemAllocHost(void **pp, size_t bytesize) const {
     CUDA_DRIVER_CALL_LOG();
@@ -542,6 +547,9 @@ private:
 
   using tcuStreamSynchronize = Result(CUstream);
   tcuStreamSynchronize *cuStreamSynchronize_;
+
+  using tcuStreamWaitEvent = Result(CUstream, CUevent, unsigned int);
+  tcuStreamWaitEvent *cuStreamWaitEvent_;
 
   using tcuMemAllocHost_v2 = Result(void **, size_t);
   tcuMemAllocHost_v2 *cuMemAllocHost_v2_;

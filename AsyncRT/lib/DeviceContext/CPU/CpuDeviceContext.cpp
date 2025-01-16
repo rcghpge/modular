@@ -298,6 +298,15 @@ ErrorOrSuccess CpuDeviceContext::synchronize() const {
   return success();
 }
 
+ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOrSuccess
+CpuDeviceContext::enqueueWaitForEvent(const DeviceEvent &event) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
 ErrorOr<DeviceTimerRef> CpuDeviceContext::startTimer() const {
   return CpuDeviceTimerRef::create(*this, std::chrono::steady_clock::now());
 }

@@ -228,6 +228,10 @@ public:
   Result StreamSynchronize(hipStream_t hStream) const {
     return hipStreamSynchronize_(hStream);
   }
+  Result StreamWaitEvent(hipStream_t hStream, hipEvent_t hEvent,
+                         unsigned int flags) const {
+    return hipStreamWaitEvent_(hStream, hEvent, flags);
+  }
 
   Result MemAllocHost(void **pp, size_t bytesize) const {
     return hipHostMalloc_(pp, bytesize);
@@ -404,6 +408,8 @@ private:
 
   using thipStreamSynchronize = Result(hipStream_t);
   thipStreamSynchronize *hipStreamSynchronize_;
+  using thipStreamWaitEvent = Result(hipStream_t, hipEvent_t, unsigned int);
+  thipStreamWaitEvent *hipStreamWaitEvent_;
 
   using thipHostMalloc = Result(void **, size_t);
   thipHostMalloc *hipHostMalloc_;

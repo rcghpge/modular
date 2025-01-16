@@ -61,6 +61,7 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   GET_FUNC(hipStreamCreate);
   GET_FUNC(hipStreamDestroy);
   GET_FUNC(hipStreamSynchronize);
+  GET_FUNC(hipStreamWaitEvent);
 
   GET_FUNC(hipHostMalloc);
   GET_FUNC(hipHostFree);

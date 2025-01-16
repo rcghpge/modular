@@ -150,10 +150,13 @@ public:
                                            uint32_t numAttrs,
                                            void **args) const override;
 
+  // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
 
-  // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;
+
+  ErrorOr<DeviceEventRef> enqueueEvent() const override;
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
   ErrorOr<DeviceTimerRef> startTimer() const override;
   ErrorOr<std::chrono::nanoseconds>

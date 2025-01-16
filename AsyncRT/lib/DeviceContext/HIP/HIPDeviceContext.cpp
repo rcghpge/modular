@@ -319,6 +319,28 @@ const HIPDeviceBuffer &HIPDeviceBuffer::cast(const DeviceBuffer &buf) {
   return static_cast<const HIPDeviceBuffer &>(buf);
 }
 
+// ===== HIPDeviceEvent ===== //
+HIPDeviceEvent::HIPDeviceEvent(const HIPDeviceContext &context,
+                               hipEvent_t event)
+    : DeviceEvent(context), event_(event) {}
+
+HIPDeviceEvent::~HIPDeviceEvent() {
+  const auto &hipContext = HIPDeviceContext::cast(context());
+  HIP_CHECK(hipContext.hipDriver().EventDestroy(event_));
+}
+
+ErrorOrSuccess HIPDeviceEvent::synchronize() const {
+  const auto &hipContext = HIPDeviceContext::cast(context());
+  HIP_CHECK_ERR(hipContext.hipDriver().EventSynchronize(event_));
+  return success();
+}
+
+hipEvent_t HIPDeviceEvent::hipEvent() const { return event_; }
+
+const HIPDeviceEvent &HIPDeviceEvent::cast(const DeviceEvent &event) {
+  return static_cast<const HIPDeviceEvent &>(event);
+}
+
 // ===== HIPDeviceStream ===== //
 HIPDeviceStream::HIPDeviceStream(const HIPDeviceContext &context,
                                  hipStream_t stream)
@@ -689,6 +711,20 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
 
 ErrorOrSuccess HIPDeviceContext::synchronize() const {
   HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
+  return success();
+}
+
+ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
+  hipEvent_t event;
+  HIP_CHECK_ERR(driver_.EventCreate(&event, 0));
+  HIP_CHECK_ERR(driver_.EventRecord(event, stream_));
+  return HIPDeviceEventRef::create(*this, event);
+}
+
+ErrorOrSuccess
+HIPDeviceContext::enqueueWaitForEvent(const DeviceEvent &event) const {
+  const auto &hipEvent = HIPDeviceEvent::cast(event);
+  HIP_CHECK_ERR(driver_.StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
   return success();
 }
 

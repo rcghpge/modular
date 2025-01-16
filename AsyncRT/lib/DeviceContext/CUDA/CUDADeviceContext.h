@@ -31,6 +31,7 @@ namespace M::AsyncRT {
 class CUDADevice;
 class CUDADeviceBuffer;
 class CUDADeviceContext;
+class CUDADeviceEvent;
 class CUDAModuleFunction;
 class CUDADeviceFunction;
 class CUDADeviceFunctionArguments;
@@ -40,6 +41,7 @@ class CUDADeviceTimer;
 using CUDADeviceRef = RCRef<const CUDADevice>;
 using CUDADeviceBufferRef = RCRef<const CUDADeviceBuffer>;
 using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
+using CUDADeviceEventRef = RCRef<const CUDADeviceEvent>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
 using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
@@ -120,6 +122,21 @@ private:
   // TODO: Remove the V1 compatibility.
   mutable CUdeviceptr dptr_;
   mutable bool owning_ = true;
+};
+
+class CUDADeviceEvent : public DeviceEvent {
+public:
+  CUDADeviceEvent(const CUDADeviceContext &context, CUevent event);
+  ~CUDADeviceEvent() override;
+
+  ErrorOrSuccess synchronize() const override;
+
+  CUevent cudaEvent() const;
+
+  static const CUDADeviceEvent &cast(const DeviceEvent &event);
+
+private:
+  CUevent event_;
 };
 
 class CUDADeviceStream : public DeviceStream {
@@ -276,10 +293,13 @@ public:
                                            uint32_t numAttrs,
                                            void **args) const override;
 
+  // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
 
-  // Synchronize asynchronous operations.
   ErrorOrSuccess synchronize() const override;
+
+  ErrorOr<DeviceEventRef> enqueueEvent() const override;
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
   ErrorOr<DeviceTimerRef> startTimer() const override;
   ErrorOr<std::chrono::nanoseconds>
