@@ -327,6 +327,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       llvm::StringMap<TypedAttr> paramMapping;
 
       MOGG::ToKGENOp producerKernelToKGEN = nullptr;
+
       for (Operation &op : producerKernel.getOps()) {
         if (isa<MOGG::OutputPlaceholdersOp>(op)) {
           remapper.map(op.getResult(0), target);
@@ -377,7 +378,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
       alreadyFused[operand] = stackAlloc;
 
-      TypedAttr newStaticTensorSpec = nullptr;
+      KGEN::ParamDeclRefAttr newStaticTensorSpec = nullptr;
       DenseSet<StringAttr> oldStrideParams;
       // Iterating through all the mogg.to_kgen that relate to the output of the
       // view we are fusing in.
@@ -390,7 +391,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
       // Build a new StaticTensorSpec parameter, changing only the strides.
       auto buildTensorSpecWithViewStrides =
-          [&](TypedAttr oldTensorSpecttr) -> ErrorOr<TypedAttr> {
+          [&](TypedAttr oldTensorSpecttr,
+              StringRef oldAttrName) -> ErrorOr<KGEN::ParamDeclRefAttr> {
         auto tensorType = cast<MO::TensorType>(target.getType());
 
         // Get The view strides from the viewcopy call.
@@ -427,15 +429,24 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
             KGEN::SymbolConstantAttr::get(buildSpecFn, buildSpecSigGen,
                                           buildSpecParams),
             oldTensorSpecttr, viewStridesAttr};
-        auto resulTy = buildSpecSigGen.getBody().getResults()[0];
+        auto resultTy = buildSpecSigGen.getBody().getResults()[0];
 
-        return KGEN::ParamOperatorAttr::get(KGEN::POC::Apply, lambdaArgs,
-                                            resulTy);
+        auto newLambda = KGEN::ParamOperatorAttr::get(KGEN::POC::Apply,
+                                                      lambdaArgs, resultTy);
+
+        auto newParamName = mlir::StringAttr::get(
+            newLambda.getContext(), oldAttrName + "_MOGG_FUSE_VIEWS");
+        auto newParam = KGEN::ParamDeclAttr::get(newParamName, resultTy);
+        auto paramDeclarationOp = builder.create<KGEN::ParamDeclareOp>(
+            operand.getLoc(), newParam, newLambda);
+
+        return KGEN::ParamDeclRefAttr::get(
+            paramDeclarationOp.getParamDeclAttr());
       };
 
       mlir::AttrTypeReplacer walker;
       walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
-                                -> std::optional<TypedAttr> {
+                                -> std::optional<KGEN::ParamDeclRefAttr> {
         if (oldStrideParams.contains(attr.getName())) {
           ASSERT_STREAM(
               producerKernelToKGEN.getStaticTensorSpecNameAttr() != nullptr,
@@ -444,7 +455,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                  "the view kernel was not explicitly parametrized on strides?");
           if (newStaticTensorSpec == nullptr) {
             auto specOrErr = buildTensorSpecWithViewStrides(
-                producerKernelToKGEN.getStaticTensorRefAttr());
+                producerKernelToKGEN.getStaticTensorRefAttr(), attr.getName());
             ASSERT_STREAM(!specOrErr.isError(), "failed to build the new spec");
             newStaticTensorSpec = specOrErr.takeValue();
           }
@@ -455,6 +466,17 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       walker.recursivelyReplaceElementsIn(leaf, /*replaceAttrs=*/true,
                                           /*replaceLocs=*/false,
                                           /*replaceTypes=*/true);
+
+      // Don't forget to update the annotation.
+      if (newStaticTensorSpec) {
+        for (auto toKGENOp : leafBlock.getOps<ToKGENOp>()) {
+          StringAttr oldTensorSpec = toKGENOp.getStaticTensorSpecNameAttr();
+          if (!oldStrideParams.contains(oldTensorSpec))
+            continue;
+
+          toKGENOp.setStaticTensorSpecNameAttr(newStaticTensorSpec.getName());
+        }
+      }
 
       Type bindType = producerKernelToKGEN.getType();
       KGEN::RebindOp rebind =
