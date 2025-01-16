@@ -9,7 +9,7 @@
 // CHECK-DAG:    %[[VAL0:.*]] = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000004000004040", align {{.*}}> : !M.array<12xui8>
 // CHECK-DAG:    %[[VAL1:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<3xf32>
 // CHECK-DAG:    %[[VAL3:.*]] = mgp.tensor.create %[[ARG0]], %[[VAL0]], %[[VAL1]] : !mgp.tensor<3xf32>
-// CHECK-DAG:    %[[VAL4:.*]] = mgp.buffer.constant dense_resource<mtfl_buffer> : !M.aligned_bytes<4, align 64>
+// CHECK-DAG:    %[[VAL4:.*]] = mgp.buffer.constant dense_resource<weight_buffer> : !M.aligned_bytes<4, align 64>
 // CHECK-DAG:    %[[VAL5:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<4xsi8>
 // CHECK:    %[[VAL7:.*]] = mgp.tensor.create %[[ARG0]], %[[VAL4]], %[[VAL5]] : !mgp.tensor<4xsi8>
 // CHECK:    mef.output %[[ARG0]], %[[ARG2]], %[[VAL3]], %[[VAL3]], %[[ARG3]], %[[ARG3]], %[[VAL7]] : !mef.chain, !mgp.tensor<2xf32>, !mgp.tensor<3xf32>, !mgp.tensor<3xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<5x1xf32>, !mgp.tensor<4xsi8>
@@ -19,7 +19,7 @@ mo.graph @constants_with_multiple_returns(%arg0: !mo.tensor<[2], f32>, %arg1: !m
     !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 ) {
   %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
-  %1 = mo.constant {value = dense_resource<mtfl_buffer> : tensor<4xsi8>} : !mo.tensor<[4], si8>
+  %1 = mo.constant {value = dense_resource<weight_buffer> : tensor<4xsi8>} : !mo.tensor<[4], si8>
   mo.output %arg0, %0, %0, %arg1, %arg1, %1 : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[5, 1], f32>, !mo.tensor<[4], si8>
 }
 
@@ -48,7 +48,7 @@ mo.graph @scalar_arg(%arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
 {-#
   dialect_resources: {
     builtin: {
-      mtfl_buffer: "0x4000000001234567"
+      weight_buffer: "0x4000000001234567"
     }
   }
 #-}

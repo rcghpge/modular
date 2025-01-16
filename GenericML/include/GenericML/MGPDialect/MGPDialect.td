@@ -20,7 +20,7 @@ def MGPDialect : Dialect {
                 "glue.";
   let description = [{
     The MGP (pronounced "em-goop") dialect is intended to provide the 'glue'
-    for binding framework-specific (eg `mtfl.add`) and KGENned kernels/ops
+    for binding framework-specific (eg `mo.add`) and KGENned kernels/ops
     together into a single executable model.
 
     MGP itself does not provide any op implementations. MGP is directly
