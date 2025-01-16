@@ -34,6 +34,7 @@ lit_tests(
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
     ],
+    gpu_constraints = ["//:has_gpu"],
     mojo_configure_gpu = True,
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
