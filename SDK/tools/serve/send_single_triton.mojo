@@ -51,14 +51,16 @@ fn test_basic_add_request(
 
 fn main() raises:
     var argv = sys.argv()
-    var USAGE = str("Usage: mojo ") + argv[0] + " [-a address] [-n iterations]"
+    var USAGE = String("Usage: mojo ") + argv[
+        0
+    ] + " [-a address] [-n iterations]"
 
     var i = 1
     var address: String = "localhost:8000"
     var num_requests = 1
     while i < len(argv):
         if argv[i] == "-a":
-            address = String(str(argv[i + 1]).strip())
+            address = String(String(argv[i + 1]).strip())
             if not address:
                 raise Error("Must specify non-empty address")
             i += 2
