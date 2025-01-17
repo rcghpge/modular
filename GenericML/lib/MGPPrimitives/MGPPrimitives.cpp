@@ -86,8 +86,7 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
                     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
                     MEFAttr<uint64_t> cFunctionIndex,
                     MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
-                    MEFListAttr fConstantResources, Runtime &runtime,
-                    EncodedLocation loc) {
+                    MEFListAttr fConstantResources, Runtime &runtime) {
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
           static_cast<size_t>(*aSlot));
@@ -98,10 +97,10 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
 
   // Wrapper to run a kernel without extending any lifetimes.
   auto runKernel = [kernelPtr, deviceContext = std::move(deviceContext),
-                    runtimePtr = runtimePtr, loc = std::move(loc)](
-                       llvm::SmallVector<void *> &kernelInputs) {
+                    runtimePtr =
+                        runtimePtr](llvm::SmallVector<void *> &kernelInputs) {
     auto deviceContextRef = deviceContext.get<AsyncRT::DeviceContextRef>();
-    MojoCallContext callContext(loc.copy(), deviceContextRef);
+    MojoCallContext callContext{deviceContextRef};
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
               reinterpret_cast<void *>(runtimePtr.get()),
               reinterpret_cast<void *>(&callContext));
