@@ -477,7 +477,7 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
       if (includedInASubgraph.contains(op))
         continue;
 
-      DenseSet<Operation *> curSubgraph;
+      llvm::SetVector<Operation *> curSubgraph;
 
       typedef std::tuple<mlir::Operation *, Operation *> FusionPair;
 

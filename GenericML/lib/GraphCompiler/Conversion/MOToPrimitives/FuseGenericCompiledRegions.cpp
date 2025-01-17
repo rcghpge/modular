@@ -14,9 +14,9 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "mlir/IR/IRMapping.h"
-
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "mlir/IR/IRMapping.h"
+#include "llvm/ADT/SetVector.h"
 
 using namespace M;
 
@@ -100,7 +100,7 @@ static void doSourceDestinationSequenceFusion(ModuleOp module) {
       for (auto &subgraph : subgraphs)
         parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
 
-      DenseSet<Operation *> opsToErase;
+      mlir::SetVector<Operation *> opsToErase;
       for (auto &subgraph : subgraphs)
         opsToErase.insert(subgraph.begin(), subgraph.end());
       SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
@@ -131,7 +131,7 @@ doTransitiveDependencySequenceFusion(ModuleOp module) {
       for (auto &subgraph : subgraphs)
         parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
 
-      DenseSet<Operation *> opsToErase;
+      mlir::SetVector<Operation *> opsToErase;
       for (auto &subgraph : subgraphs)
         opsToErase.insert(subgraph.begin(), subgraph.end());
       SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
@@ -157,8 +157,10 @@ struct FuseGenericCompiledRegions
       // TODO(GEX-784): NOTE: all generic regions should not allow duplication.
       // Fuse in any op that can be duplicated.
       doSourceDestinationSequenceFusion<true>(module);
+
       // Fuse in any op that can't be duplicated (must have one user).
       doSourceDestinationSequenceFusion<false>(module);
+
       // Fuse in anything that remains while preserving parallelism.
       doTransitiveDependencySequenceFusion(module);
     }
