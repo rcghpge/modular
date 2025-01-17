@@ -71,8 +71,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   TargetInfoAttr target = *targetOr;
 
   // Set the environment (defines) for the module.
-  auto *compileCtx = loadContext(ctx)->get<KGEN::CompilationContext>();
-  KGEN::extendWithModularEnvAttr(*kgenModule, compileCtx);
+  KGEN::extendWithModularEnvAttr(*kgenModule);
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
