@@ -240,12 +240,6 @@ struct FuseAffineViewsPass
       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, OpBuilder &builder,
       TypeManager &typeManager, Location loc) {
 
-    // Step 1: Find the function we want to call.
-    auto reshapeKGENFunc = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-        Utils::DPSManagedTensorSliceReshape);
-    ASSERT_STREAM(reshapeKGENFunc, << "Could not find intrinsic "
-                                   << Utils::DPSManagedTensorSliceReshape);
-
     ASSERT_STREAM(fromType.getDtype() == toType.getDtype(),
                   << "Expect tensors to have the same dtype");
     TypedAttr typeBinding =
@@ -258,20 +252,23 @@ struct FuseAffineViewsPass
     // construct fully specialized kgen tensor signature (managed_tensor_slice)
     SmallVector<TypedAttr> reshapeParameterValues = {typeBinding, fromRankAttr,
                                                      toRankAttr};
-    auto reshapeSignature =
-        reshapeKGENFunc.getSignatureGenerator().getSpecializedGenerator(
-            reshapeParameterValues);
+
+    ErrorOr<KGEN::SymbolConstantAttr> reshapeKGENSymbol =
+        mojoLibraryAnalysis.getSpecializedKernel(
+            Utils::DPSManagedTensorSliceReshape, reshapeParameterValues);
+    ASSERT_STREAM(mlir::succeeded(reshapeKGENSymbol),
+                  << reshapeKGENSymbol.takeError());
+
+    NewSignatureType reshapeSignature = reshapeKGENSymbol->getType().getBody();
 
     // We may need a rebind since some complex default parameter value logic
     // may not be folded all the way at the start.
     Value toShapeKGENRebound = builder.create<KGEN::RebindOp>(
-        loc, reshapeSignature.getBody().getArguments()[1], toShapeKGEN);
-    auto symbol = KGEN::SymbolConstantAttr::get(
-        reshapeKGENFunc, reshapeSignature, reshapeParameterValues);
+        loc, reshapeSignature.getArguments()[1], toShapeKGEN);
 
     auto callArgs = SmallVector<Value>{kgenTensor, toShapeKGENRebound};
-    auto reshapedTensorCall = builder.create<KGEN::CallOp>(
-        reshapeKGENFunc->getLoc(), symbol, callArgs);
+    auto reshapedTensorCall =
+        builder.create<KGEN::CallOp>(loc, *reshapeKGENSymbol, callArgs);
 
     return reshapedTensorCall->getResult(0);
   }
@@ -286,21 +283,20 @@ struct FuseAffineViewsPass
     uint64_t rank = std::max(1ul, moType.getRank());
 
     auto newRankAttr = builder.getIndexAttr(rank);
-    auto toManagedTensorSlice = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-        MOJO_INTRINSIC_TO_MANAGED_TENSOR_SLICE);
-    ASSERT_STREAM(toManagedTensorSlice,
-                  << "Could not find intrinsic "
-                  << MOJO_INTRINSIC_TO_MANAGED_TENSOR_SLICE);
 
     // construct fully specialized kgen tensor signature (managed_tensor_slice)
     SmallVector<TypedAttr> parameterValues = {typeBinding, newRankAttr};
-    auto signature =
-        toManagedTensorSlice.getSignatureGenerator().getSpecializedGenerator(
-            parameterValues);
 
-    assert(signature.getBody().getNumArguments() == 2);
-    assert(signature.getBody().getNumResults() == 1);
-    return signature.getBody().getResults().front();
+    auto toManagedTensorSlice = mojoLibraryAnalysis.getSpecializedKernel(
+        MOJO_INTRINSIC_TO_MANAGED_TENSOR_SLICE, parameterValues);
+    ASSERT_STREAM(succeeded(toManagedTensorSlice),
+                  << toManagedTensorSlice.takeError());
+
+    NewSignatureType signature = toManagedTensorSlice->getType().getBody();
+
+    assert(signature.getNumArguments() == 2);
+    assert(signature.getNumResults() == 1);
+    return signature.getResults().front();
   }
 
   /// Given `indices` in KGEN, remap them according to provided `splitDimOp`
@@ -308,25 +304,17 @@ struct FuseAffineViewsPass
   getKGENSplitDimIndices(Value kgenIndicesOperand, MO::SplitDimOp splitDimOp,
                          MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                          OpBuilder &builder) {
-    // Create call to the indices mapping function
-    auto splitDimIndicesFunc =
-        mojoLibraryAnalysis.getRegisteredMojoKernelFor(Utils::SplitDimIndices);
-    ASSERT_STREAM(splitDimIndicesFunc,
-                  << "Could not find intrinsic " << Utils::SplitDimIndices);
-
     // construct fully specialized kgen tensor signature
     // (managed_tensor_slice)
     SmallVector<TypedAttr> splitDimIndicesParameterValues = {
         builder.getIndexAttr(splitDimOp.getInput().getType().getRankNonZero()),
         builder.getIndexAttr(splitDimOp.getAxis().getInt())};
 
-    auto splitDimIndicesSignature =
-        splitDimIndicesFunc.getSignatureGenerator().getSpecializedGenerator(
-            splitDimIndicesParameterValues);
-
-    auto symbol = KGEN::SymbolConstantAttr::get(splitDimIndicesFunc,
-                                                splitDimIndicesSignature,
-                                                splitDimIndicesParameterValues);
+    // Create call to the indices mapping function
+    auto splitDimIndicesFunc = mojoLibraryAnalysis.getSpecializedKernel(
+        Utils::SplitDimIndices, splitDimIndicesParameterValues);
+    ASSERT_STREAM(succeeded(splitDimIndicesFunc),
+                  << splitDimIndicesFunc.takeError());
 
     // Calculate the split dim size for the function
     int64_t i = splitDimOp.getAxis().getValue().getLimitedValue();
@@ -339,7 +327,8 @@ struct FuseAffineViewsPass
     auto callArgs = SmallVector<Value>{kgenIndicesOperand, splitDim};
 
     return builder
-        .create<KGEN::CallOp>(splitDimIndicesFunc->getLoc(), symbol, callArgs)
+        .create<KGEN::CallOp>(splitDimOp->getLoc(), *splitDimIndicesFunc,
+                              callArgs)
         ->getResult(0);
   }
 
@@ -348,12 +337,6 @@ struct FuseAffineViewsPass
   static Value getKGENAddSingletonIndices(
       Value kgenIndicesOperand, MO::AddSingletonDimOp addSingleton,
       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, OpBuilder &builder) {
-    // Create call to the indices mapping function
-    auto insertIndexFunc =
-        mojoLibraryAnalysis.getRegisteredMojoKernelFor(Utils::InsertIndex);
-    ASSERT_STREAM(insertIndexFunc,
-                  << "Could not find intrinsic " << Utils::InsertIndex);
-
     // construct fully specialized kgen tensor signature
     // (managed_tensor_slice)
     SmallVector<TypedAttr> insertIndexParameterValues = {
@@ -362,17 +345,18 @@ struct FuseAffineViewsPass
         builder.getIndexAttr(addSingleton.getAxis().getInt()),
         builder.getIndexAttr(0)};
 
-    auto insertIndexSignature =
-        insertIndexFunc.getSignatureGenerator().getSpecializedGenerator(
-            insertIndexParameterValues);
-
-    auto symbol = KGEN::SymbolConstantAttr::get(
-        insertIndexFunc, insertIndexSignature, insertIndexParameterValues);
+    // Create call to the indices mapping function
+    ErrorOr<KGEN::SymbolConstantAttr> insertIndexSymbol =
+        mojoLibraryAnalysis.getSpecializedKernel(Utils::InsertIndex,
+                                                 insertIndexParameterValues);
+    ASSERT_STREAM(succeeded(insertIndexSymbol),
+                  << insertIndexSymbol.takeError());
 
     auto callArgs = SmallVector<Value>{kgenIndicesOperand};
 
     return builder
-        .create<KGEN::CallOp>(insertIndexFunc->getLoc(), symbol, callArgs)
+        .create<KGEN::CallOp>(addSingleton->getLoc(), *insertIndexSymbol,
+                              callArgs)
         ->getResult(0);
   }
 
@@ -436,13 +420,6 @@ struct FuseAffineViewsPass
                      "found! Likely using unsupported view op type: "
                   << viewOpUser);
 
-    // Create new call to store values
-    auto simdStoreInternalFunc = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-        Utils::DPSManagedTensorSliceStoreSIMD);
-    ASSERT_STREAM(simdStoreInternalFunc,
-                  << "Could not find intrinsic "
-                  << Utils::DPSManagedTensorSliceStoreSIMD);
-
     ASSERT_STREAM(outputLambdaToRewrite.getInputParams().size() == 1,
                   "Expect output lambda to only declare one parameter "
                   "(simd width)");
@@ -468,17 +445,16 @@ struct FuseAffineViewsPass
         stridesOrError.takeValue(),                        // static_strides
     };
 
-    auto simdStoreInternalSignature =
-        simdStoreInternalFunc.getSignatureGenerator().getSpecializedGenerator(
-            simdStoreInternalParameterValues);
-
-    auto symbol = KGEN::SymbolConstantAttr::get(
-        simdStoreInternalFunc, simdStoreInternalSignature,
+    auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
+        Utils::DPSManagedTensorSliceStoreSIMD,
         simdStoreInternalParameterValues);
+    ASSERT_STREAM(succeeded(simdStoreInternalSymbol),
+                  << simdStoreInternalSymbol.takeValue());
+
+    auto signature = simdStoreInternalSymbol->getType().getBody();
 
     Value kgenNewIndicesOperandRebound = builder.create<KGEN::RebindOp>(
-        kgenNewIndicesOperand.getLoc(),
-        simdStoreInternalSignature.getBody().getArguments()[1],
+        kgenNewIndicesOperand.getLoc(), signature.getArguments()[1],
         kgenNewIndicesOperand);
 
     // Applying a bunch of logic on the parameters
@@ -486,8 +462,8 @@ struct FuseAffineViewsPass
 
     SmallVector<Value> callArgs = {
         kgenNewOutputTensor, kgenNewIndicesOperandRebound, kgenSIMDOperand};
-    builder.create<KGEN::CallOp>(outputLambdaToRewrite->getLoc(), symbol,
-                                 callArgs);
+    builder.create<KGEN::CallOp>(outputLambdaToRewrite->getLoc(),
+                                 *simdStoreInternalSymbol, callArgs);
 
     // store op has got it handled now
     oldStoreOp.erase();

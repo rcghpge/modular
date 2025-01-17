@@ -400,37 +400,25 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         TypedAttr viewStridesAttr =
             viewCopyCallOp.getParamValues()[viewStridesParameterIdx];
 
-        // Load the function to build StaticTensorSpec parameter.
-        auto buildSpecFn = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-            Utils::DPSRebuildTensorSpecsWithStrides);
-        if (!buildSpecFn)
-          return Error(llvm::Twine("Cannot find mojo kernel for ") +
-                       Utils::DPSRebuildTensorSpecsWithStrides);
-
         // Build the function params
         TypedAttr dtypeParam =
             typeManager.typeMap.at(tensorType.getDtype()).dtype;
         TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
         SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
 
-        auto buildSpecSigGen =
-            buildSpecFn.getSignatureGenerator().getSpecializedGenerator(
-                buildSpecParams, [&]() -> mlir::InFlightDiagnostic {
-                  return viewCopyCallOp->emitError(
-                      "couldn't not retrieve specialized signature");
-                });
+        // Load the function to build StaticTensorSpec parameter.
+        ErrorOr<KGEN::SymbolConstantAttr> buildSpecSymbol =
+            mojoLibraryAnalysis.getSpecializedKernel(
+                Utils::DPSRebuildTensorSpecsWithStrides, buildSpecParams);
 
-        if (!buildSpecSigGen)
-          return Error("Cannot get specialized signature for "
-                       "rebuild_static_tensor_specs_with_strides");
+        if (failed(buildSpecSymbol))
+          return buildSpecSymbol.takeError();
 
         // Create parametric call which produces the static spec
         SmallVector<mlir::TypedAttr> lambdaArgs{
-            KGEN::SymbolConstantAttr::get(buildSpecFn, buildSpecSigGen,
-                                          buildSpecParams),
-            oldTensorSpecttr, viewStridesAttr};
-        auto resultTy = buildSpecSigGen.getBody().getResults()[0];
+            *buildSpecSymbol, oldTensorSpecttr, viewStridesAttr};
 
+        auto resultTy = buildSpecSymbol->getType().getBody().getResults()[0];
         auto newLambda = KGEN::ParamOperatorAttr::get(KGEN::POC::Apply,
                                                       lambdaArgs, resultTy);
 

@@ -134,6 +134,26 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) {
   return nullptr;
 }
 
+ErrorOr<KGEN::SymbolConstantAttr>
+MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
+                                          ArrayRef<TypedAttr> params) {
+  KGEN::GeneratorOp generator = getRegisteredMojoKernelFor(name);
+  if (!generator)
+    return Error("Cannot find mojo kernel for " + name);
+
+  auto emitError = [&]() -> mlir::InFlightDiagnostic {
+    return generator->emitError("couldn't not retrieve specialized signature");
+  };
+
+  SignatureGeneratorType signature =
+      generator.getSignatureGenerator().getSpecializedGenerator(params,
+                                                                emitError);
+  if (!signature)
+    return Error("unable to specialize signature for " + name);
+
+  return KGEN::SymbolConstantAttr::get(generator, signature, params);
+}
+
 llvm::MemoryBufferRef MojoLibraryAnalysis::internMLIRFile(
     std::unique_ptr<llvm::MemoryBuffer> buffer) {
   unsigned bufferId =

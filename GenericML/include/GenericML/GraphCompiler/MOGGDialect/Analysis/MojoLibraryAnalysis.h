@@ -100,6 +100,10 @@ public:
   /// Looks up and returns a mojo function as is.
   KGEN::GeneratorOp getMojoFunctionNamed(StringRef name);
 
+  /// Lookup the kernel and specialize it on the given parameters.
+  ErrorOr<KGEN::SymbolConstantAttr>
+  getSpecializedKernel(StringRef name, ArrayRef<TypedAttr> params);
+
   /// Return true if the provided kernel or shape function has the input
   /// parameter named `parameterName`.
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
