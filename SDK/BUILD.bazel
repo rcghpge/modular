@@ -1,21 +1,21 @@
-load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "modular_pybind_library", "py_repl", "requirement", "td_library")
+load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "modular_nanobind_library", "py_repl", "requirement", "td_library")
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
-load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_pybind")
+load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_nanobind")
 
-modular_pybind_library(
+modular_nanobind_library(
     name = "DLPack",
     srcs = glob(["lib/API/python/lib/DLPack/*.cpp"]),
     hdrs = glob(["include/SDK/DLPack/**/*.h"]),
 )
 
-modular_pybind_library(
+modular_nanobind_library(
     name = "ModularFrameworkPython",
     srcs = glob(["lib/API/python/lib/Engine/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
-    pybind_deps = [
+    nanobind_deps = [
         "//:MLIRBindingsPythonHeaders",
-        "//Support:CPythonPybind",
+        "//Support:CPythonNanobind",
         "//SDK:DriverPython",
         "//SDK:DLPack",
     ],
@@ -23,6 +23,7 @@ modular_pybind_library(
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
+        "@pybind11",
     ],
 )
 
@@ -127,11 +128,11 @@ driver_option_tablegen(
     ],
 )
 
-modular_pybind_library(
+modular_nanobind_library(
     name = "DriverPython",
     srcs = glob(["lib/API/python/lib/Driver/*.cpp"]),
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
-    pybind_deps = [
+    nanobind_deps = [
         "//SDK:DLPack",
     ],
     deps = [
@@ -139,14 +140,15 @@ modular_pybind_library(
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
         "//Support:ML",
+        "@pybind11",
     ],
 )
 
-modular_pybind_library(
+modular_nanobind_library(
     name = "GraphPython",
     srcs = glob(["lib/API/python/lib/Graph/*.cpp"]),
     hdrs = glob(["include/SDK/GraphAPI/python/*.h"]),
-    pybind_deps = [
+    nanobind_deps = [
         "//:MLIRBindingsPythonHeaders",
     ],
     deps = [
@@ -154,7 +156,7 @@ modular_pybind_library(
     ],
 )
 
-modular_pybind_library(
+modular_nanobind_library(
     name = "ProfilerPython",
     srcs = glob(["lib/Profiler/python/*.cpp"]),
     hdrs = glob(["include/SDK/Profiler/python/*.h"]),
@@ -168,8 +170,8 @@ modular_pybind_library(
     ],
 )
 
-tblgen_pybind(
-    name = "MODialectPybindInc",
+tblgen_nanobind(
+    name = "MODialectNanobindInc",
     src = "//GenericML:mo_json",
     dialect = "MODialect",
     # MO_ConstantScalarOp isn't actually defined.
@@ -178,7 +180,7 @@ tblgen_pybind(
         "MO_ConstantScalarOp",
         "MO_Chain",
     ],
-    output = "include/SDK/GraphAPI/python/mo_dialect_pybind.cpp.inc",
+    output = "include/SDK/GraphAPI/python/mo_dialect_nanobind.cpp.inc",
     visibility = ["//visibility:public"],
 )
 

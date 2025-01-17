@@ -1,6 +1,6 @@
-load("//bazel:api.bzl", "modular_pybind_library_test", "requirement")
+load("//bazel:api.bzl", "modular_python_binding_library_test", "requirement")
 
-modular_pybind_library_test(
+modular_python_binding_library_test(
     name = "tests",
     srcs = glob(["*.cpp"]),
     py_deps = [

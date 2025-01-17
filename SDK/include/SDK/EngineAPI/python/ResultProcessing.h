@@ -8,15 +8,15 @@
 #define SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H
 
 #include "GenericML/API/max/cpp/aliases.h"
-#include "pybind11/pybind11.h"
+#include "nanobind/nanobind.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 namespace M::core {
 
-/// Creates a new `py::array` by copying the tensor data from a
+/// Creates a new `nb::ndarray` by copying the tensor data from a
 /// `Tensor`.
-py::object processTensorResult(TensorPtr outTensor);
+nb::object processTensorResult(TensorPtr outTensor);
 
 } // namespace M::core
 

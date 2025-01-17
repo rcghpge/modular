@@ -6,7 +6,11 @@
 
 #include "SDK/EngineAPI/python/Utils.h"
 #include "max/c/common.h"
-#include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "mlir/Bindings/Python/NanobindAdaptors.h"
+#include "nanobind/nanobind.h"
+#include "pybind11/pybind11.h"
+
+namespace nb = nanobind;
 
 using namespace M;
 
@@ -53,15 +57,15 @@ std::vector<std::optional<std::string>> core::convertToDimNames(
   return dimNames;
 }
 
-void *core::getUnderlyingPtr(const py::object &obj) {
-  auto *wrapper = reinterpret_cast<py::detail::instance *>(obj.ptr());
+void *core::getUnderlyingPtr(const pybind11::object &obj) {
+  auto *wrapper = reinterpret_cast<pybind11::detail::instance *>(obj.ptr());
   wrapper->owned = false;
   void *&valueptr =
-      py::detail::values_and_holders(wrapper).begin()->value_ptr();
+      pybind11::detail::values_and_holders(wrapper).begin()->value_ptr();
   return valueptr;
 }
 
-void *core::getUnderlyingCapsulePtr(const py::object &obj, const char *name) {
-  py::object capsule = mlirApiObjectToCapsule(obj);
+void *core::getUnderlyingCapsulePtr(const nb::handle &obj, const char *name) {
+  nb::object capsule = nb::detail::mlirApiObjectToCapsule(obj);
   return PyCapsule_GetPointer(capsule.ptr(), name);
 }

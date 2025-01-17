@@ -1,9 +1,9 @@
-load("//bazel:api.bzl", "modular_pybind_extension", "modular_pybind_py_library")
+load("//bazel:api.bzl", "modular_nanobind_extension", "modular_python_binding_py_library")
 
-modular_pybind_extension(
+modular_nanobind_extension(
     name = "core",
     srcs = glob(["*.cpp"]),
-    pybind_deps = [
+    nanobind_deps = [
         "//SDK:ModularFrameworkPython",
         "//SDK:ProfilerPython",
     ],
@@ -13,9 +13,9 @@ modular_pybind_extension(
     ],
 )
 
-modular_pybind_py_library(
+modular_python_binding_py_library(
     name = "_engine",
     srcs = glob(["*.py"]),
+    bindings_data = [":core"],
     data = glob(["*.pyi"]),
-    pybind_data = [":core"],
 )

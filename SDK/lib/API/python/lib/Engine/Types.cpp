@@ -6,71 +6,91 @@
 
 #include "GenericML/API/max/c/types.h"
 #include "SDK/EngineAPI/python/Types.h"
-#include "pybind11/pybind11.h"
+#include "nanobind/nanobind.h"
 
 using namespace M::core;
 
-M_Dtype M::core::mapPybind11Type(pybind11::dtype dtype) {
-  if (dtype.is(pybind11::dtype::of<int8_t>()))
-    return M_INT8;
-  else if (dtype.is(pybind11::dtype::of<int16_t>()))
-    return M_INT16;
-  else if (dtype.is(pybind11::dtype::of<int32_t>()))
-    return M_INT32;
-  else if (dtype.is(pybind11::dtype::of<int64_t>()))
-    return M_INT64;
-  else if (dtype.is(pybind11::dtype::of<uint8_t>()))
-    return M_UINT8;
-  else if (dtype.is(pybind11::dtype::of<uint16_t>()))
-    return M_UINT16;
-  else if (dtype.is(pybind11::dtype::of<uint32_t>()))
-    return M_UINT32;
-  else if (dtype.is(pybind11::dtype::of<uint64_t>()))
-    return M_UINT64;
-  else if (dtype.is(pybind11::dtype("half")))
-    return M_FLOAT16;
-  else if (dtype.is(pybind11::dtype::of<float>()))
-    return M_FLOAT32;
-  else if (dtype.is(pybind11::dtype::of<double>()))
-    return M_FLOAT64;
-  else if (dtype.is(pybind11::dtype::of<bool>()))
+M_Dtype M::core::mapNanobindType(nb::dlpack::dtype dtype) {
+  switch (dtype.code) {
+  case /* nb::dlpack::dtype_code::Int*/ 0:
+    switch (dtype.bits) {
+    case 8:
+      return M_INT8;
+    case 16:
+      return M_INT16;
+    case 32:
+      return M_INT32;
+    case 64:
+      return M_INT64;
+    }
+    break;
+  case /* nb::dlpack::dtype_code::UInt */ 1:
+    switch (dtype.bits) {
+    case 8:
+      return M_UINT8;
+    case 16:
+      return M_UINT16;
+    case 32:
+      return M_UINT32;
+    case 64:
+      return M_UINT64;
+    }
+    break;
+  case /* nb::dlpack::dtype_code::Float */ 2:
+    switch (dtype.bits) {
+    case 16:
+      return M_FLOAT16;
+    case 32:
+      return M_FLOAT32;
+    case 64:
+      return M_FLOAT64;
+    }
+    break;
+  case /* nb::dlpack::dtype_code::Bfloat */ 4:
+    switch (dtype.bits) {
+    case 16:
+      return M_BFLOAT16;
+    }
+    break;
+  case /* nb::dlpack::dtype_code::Bool */ 6:
     return M_BOOL;
-  else
-    throw pybind11::type_error("Unrecognized DType");
+  }
+
+  throw nb::type_error("Unrecognized DType");
 }
 
-pybind11::dtype M::core::mapDType(M_Dtype dtype) {
+nb::dlpack::dtype M::core::mapDType(M_Dtype dtype) {
   switch (dtype) {
   case M_INT8:
-    return pybind11::dtype::of<int8_t>();
+    return nb::dtype<int8_t>();
   case M_INT16:
-    return pybind11::dtype::of<int16_t>();
+    return nb::dtype<int16_t>();
   case M_INT32:
-    return pybind11::dtype::of<int32_t>();
+    return nb::dtype<int32_t>();
   case M_INT64:
-    return pybind11::dtype::of<int64_t>();
+    return nb::dtype<int64_t>();
   case M_UINT8:
-    return pybind11::dtype::of<uint8_t>();
+    return nb::dtype<uint8_t>();
   case M_UINT16:
-    return pybind11::dtype::of<uint16_t>();
+    return nb::dtype<uint16_t>();
   case M_UINT32:
-    return pybind11::dtype::of<uint32_t>();
+    return nb::dtype<uint32_t>();
   case M_UINT64:
-    return pybind11::dtype::of<uint64_t>();
+    return nb::dtype<uint64_t>();
   case M_FLOAT16:
-    return pybind11::dtype("half");
+    return nb::dlpack::dtype{
+        static_cast<uint8_t>(nb::dlpack::dtype_code::Float), 16, 1};
   case M_BFLOAT16:
-    // TODO(10844): Figure out bfloat16 support using pybind casting
-    // utilities
-    return pybind11::dtype::of<float>();
+    return nb::dlpack::dtype{
+        static_cast<uint8_t>(nb::dlpack::dtype_code::Bfloat), 16, 1};
   case M_FLOAT32:
-    return pybind11::dtype::of<float>();
+    return nb::dtype<float>();
   case M_FLOAT64:
-    return pybind11::dtype::of<double>();
+    return nb::dtype<double>();
   case M_BOOL:
-    return pybind11::dtype::of<bool>();
+    return nb::dtype<bool>();
   default:
-    throw pybind11::type_error("Unrecognized DType");
+    throw nb::type_error("Unrecognized DType");
   }
 }
 
@@ -111,6 +131,6 @@ std::string M::core::printDType(M_Dtype dtype) {
   case M_BOOL:
     return "DType.bool";
   default:
-    throw pybind11::type_error("Unrecognized DType");
+    throw nb::type_error("Unrecognized DType");
   }
 }

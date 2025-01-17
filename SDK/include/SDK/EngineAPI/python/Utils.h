@@ -6,14 +6,16 @@
 #ifndef SDK_ENGINEAPI_PYTHON_UTILS_H
 #define SDK_ENGINEAPI_PYTHON_UTILS_H
 
+#include "nanobind/nanobind.h"
 #include "pybind11/pybind11.h"
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 namespace M::core {
 
@@ -27,8 +29,11 @@ std::vector<std::optional<std::string>> convertToDimNames(
         &optionalShape);
 
 /// Extract the underlying data pointer of a pybind11 class.
-void *getUnderlyingPtr(const py::object &obj);
-void *getUnderlyingCapsulePtr(const py::object &obj, const char *name);
+/// This is pybind11 specific behavior - do not call this with a nanobind-bound
+/// object.
+void *getUnderlyingPtr(const pybind11::object &obj);
+
+void *getUnderlyingCapsulePtr(const nb::handle &obj, const char *name);
 
 /// Wrapping cast where the `obj` will be unpacked, the pybind11 class pointer
 /// extracted, cast to the underlying type (which doesn't have to be defined or
@@ -36,13 +41,13 @@ void *getUnderlyingCapsulePtr(const py::object &obj, const char *name);
 /// T. T needs to declare a constructor that takes a `void *` and is aware of
 /// the underlying type. The method has no type safety.
 template <typename T>
-T unsafeWrapCast(const py::object &obj) {
+T unsafeWrapCast(const pybind11::object &obj) {
   return T(getUnderlyingPtr(obj));
 }
 
 /// Wrap cast with custom conversion function.
 template <typename T>
-T unsafeWrapCast(const py::object &obj, std::function<T(void *)> fn) {
+T unsafeWrapCast(const pybind11::object &obj, std::function<T(void *)> fn) {
   return fn(getUnderlyingPtr(obj));
 }
 

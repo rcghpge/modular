@@ -15,13 +15,13 @@
 
 using namespace M;
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
-/// Verifies that the array in the pybind object `obj` has the same shape and
+/// Verifies that the array in the nanobind object `obj` has the same shape and
 /// data type as the tensor spec.
-void core::verifyTensorInputSpecs(const py::object &obj,
+void core::verifyTensorInputSpecs(const nb::object &obj,
                                   const TensorSpec &inputTensorSpec) {
-  TensorData tensor = obj.cast<core::TensorData>();
+  TensorData tensor = nb::cast<core::TensorData>(obj);
   // Assert the input tensor has the same tensor specification
   // Assert same dtype.
   if (M_Dtype expectedDtype = inputTensorSpec.getDtype();
@@ -60,13 +60,13 @@ void core::verifyTensorInputSpecs(const py::object &obj,
   }
 }
 
-/// Borrows the data from the array in the pybind object `obj` into a new
+/// Borrows the data from the array in the nanobind object `obj` into a new
 /// `Tensor` wrapped in an `AsyncValue` and sets its name to
 /// `name`.
-M_AsyncValue *core::processTensorInput(const py::object &obj,
+M_AsyncValue *core::processTensorInput(const nb::object &obj,
                                        const std::string &name,
                                        M_RuntimeContext *context) {
-  TensorData tensor = obj.cast<core::TensorData>();
+  TensorData tensor = nb::cast<core::TensorData>(obj);
   TensorSpecPtr tensorSpec{M_newTensorSpec(tensor.shape.data(),
                                            tensor.shape.size(), tensor.dtype,
                                            name.c_str()),
@@ -81,26 +81,26 @@ M_AsyncValue *core::processTensorInput(const py::object &obj,
   return M_createBorrowedTensor(tensor.dataPtr, tensorSpec.get(), context);
 }
 
-/// Recursively converts the pybind object `pyObj` containing a value composed
+/// Recursively converts the nanobind object `pyObj` containing a value composed
 /// of `array`, `dict`, `list`, `tuple`, `none`, `double`, `long`, `bool`
 /// objects to a nested value of generic composed (`Dict`, `List`, Tuple`),
 /// tensor (`Tensor`) and primitive types. Tensor data arrays are
 /// borrowed and not copied.
-M_AsyncValue *core::processValueInput(const py::object &pyObj,
+M_AsyncValue *core::processValueInput(const nb::object &pyObj,
                                       M_RuntimeContext *context,
                                       M_Status *status) {
-  if (py::isinstance<core::TensorData>(pyObj))
+  if (nb::isinstance<core::TensorData>(pyObj))
     return processTensorInput(pyObj, /*name=*/"", context);
 
-  if (py::isinstance<py::dict>(pyObj)) {
-    const auto pyDict = pyObj.cast<py::dict>();
+  if (nb::isinstance<nb::dict>(pyObj)) {
+    const auto pyDict = nb::cast<nb::dict>(pyObj);
     M_AsyncValue *dictValue = M_createDictAsyncValue(context);
     M_AsyncDict *dict = M_getDictFromValue(dictValue);
     for (auto elem : pyDict) {
       M_AsyncValue *key =
-          processValueInput(elem.first.cast<py::object>(), context, status);
+          processValueInput(nb::cast<nb::object>(elem.first), context, status);
       M_AsyncValue *value =
-          processValueInput(elem.second.cast<py::object>(), context, status);
+          processValueInput(nb::cast<nb::object>(elem.second), context, status);
       M_insertIntoDict(dict, key, value);
       M_freeValue(key);
       M_freeValue(value);
@@ -109,13 +109,13 @@ M_AsyncValue *core::processValueInput(const py::object &pyObj,
     return dictValue;
   }
 
-  if (py::isinstance<py::list>(pyObj)) {
-    const auto pyList = pyObj.cast<py::list>();
+  if (nb::isinstance<nb::list>(pyObj)) {
+    const auto pyList = nb::cast<nb::list>(pyObj);
     M_AsyncValue *listValue = M_createListAsyncValue(context);
     M_AsyncList *list = M_getListFromValue(listValue);
     for (auto elem : pyList) {
       M_AsyncValue *value =
-          processValueInput(elem.cast<py::object>(), context, status);
+          processValueInput(nb::cast<nb::object>(elem), context, status);
       M_appendToList(list, value);
       M_freeValue(value);
     }
@@ -123,13 +123,13 @@ M_AsyncValue *core::processValueInput(const py::object &pyObj,
     return listValue;
   }
 
-  if (py::isinstance<py::tuple>(pyObj)) {
-    const auto pyTuple = pyObj.cast<py::tuple>();
+  if (nb::isinstance<nb::tuple>(pyObj)) {
+    const auto pyTuple = nb::cast<nb::tuple>(pyObj);
     M_AsyncValue *tupleValue = M_createTupleAsyncValue(context);
     M_AsyncTuple *tuple = M_getTupleFromValue(tupleValue);
     for (auto elem : pyTuple) {
       M_AsyncValue *value =
-          processValueInput(elem.cast<py::object>(), context, status);
+          processValueInput(nb::cast<nb::object>(elem), context, status);
       M_borrowIntoTuple(tuple, value);
       M_freeValue(value);
     }
@@ -137,26 +137,26 @@ M_AsyncValue *core::processValueInput(const py::object &pyObj,
     return tupleValue;
   }
 
-  if (py::isinstance<py::none>(pyObj))
+  if (pyObj.is_none())
     return M_createNoneAsyncValue(context);
 
-  if (py::isinstance<py::str>(pyObj)) {
-    std::string str = pyObj.cast<std::string>();
+  if (nb::isinstance<nb::str>(pyObj)) {
+    std::string str = nb::cast<std::string>(pyObj);
     return M_createStringAsyncValue(str.c_str(), context);
   }
 
-  if (py::isinstance<py::float_>(pyObj))
-    return M_createDoubleAsyncValue(pyObj.cast<double>(), context);
+  if (nb::isinstance<nb::float_>(pyObj))
+    return M_createDoubleAsyncValue(nb::cast<double>(pyObj), context);
 
-  if (py::isinstance<py::int_>(pyObj))
-    return M_createLongAsyncValue(pyObj.cast<int64_t>(), context);
+  if (nb::isinstance<nb::int_>(pyObj))
+    return M_createLongAsyncValue(nb::cast<int64_t>(pyObj), context);
 
-  if (py::isinstance<py::bool_>(pyObj))
-    return M_createBoolAsyncValue(pyObj.cast<bool>(), context);
+  if (nb::isinstance<nb::bool_>(pyObj))
+    return M_createBoolAsyncValue(nb::cast<bool>(pyObj), context);
 
-  if (py::isinstance<core::MojoValue>(pyObj))
+  if (nb::isinstance<core::MojoValue>(pyObj))
     return M_createMojoAsyncValueBorrowingFromExisting(
-        pyObj.cast<core::MojoValue *>()->value.get(), context);
+        nb::cast<core::MojoValue *>(pyObj)->value.get(), context);
 
   using namespace ::M::CPython;
   PythonObjectWrapper *wrapper = new PythonObjectWrapper(pyObj.ptr());

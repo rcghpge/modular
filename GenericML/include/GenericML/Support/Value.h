@@ -18,7 +18,7 @@ namespace M::GML {
 /// non-tensor inputs and outputs require a different set of runtime types.
 /// This is required because, depending on the compiled model's internal values,
 /// they can't be used outside of the execution. On the other hand,
-/// `pybind11::dict` and friends cannot be passed deeper into our stack (beyond
+/// `nanobind::dict` and friends cannot be passed deeper into our stack (beyond
 /// the Python bindings) due to requiring RTTI. The classes here are a
 /// lightweight implementation of similar classes wrapped by Python's `Dict`,
 /// `List`, `Tuple` and `None` types. The implementation does not depend on

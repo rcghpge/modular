@@ -7,14 +7,16 @@
 #define SDK_ENGINEAPI_PYTHON_TYPES_H
 
 #include "GenericML/API/max/c/types.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/ndarray.h"
+#include <string>
+
+namespace nb = nanobind;
 
 namespace M::core {
-M_Dtype mapPybind11Type(pybind11::dtype dtype);
+M_Dtype mapNanobindType(nb::dlpack::dtype dtype);
 
-pybind11::dtype mapDType(M_Dtype dtype);
+nb::dlpack::dtype mapDType(M_Dtype dtype);
 
 std::string printDType(M_Dtype dtype);
 

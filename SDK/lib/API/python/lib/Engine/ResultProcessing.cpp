@@ -10,23 +10,24 @@
 #include "GenericML/API/max/cpp/aliases.h"
 #include "SDK/EngineAPI/python/MojoValue.h"
 #include "SDK/EngineAPI/python/Types.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/ndarray.h"
 #include <vector>
 
 using namespace M;
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
-/// Creates a new `py::array` by copying the tensor data from a
-/// `Tensor`.
-py::object core::processTensorResult(TensorPtr outTensor) {
+/// Creates a new `nb::ndarray` by copying the tensor data from a `Tensor`.
+nb::object core::processTensorResult(TensorPtr outTensor) {
   TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get()), &M_freeTensorSpec};
   int64_t numDims = M_getRank(tensorSpec.get());
   if (numDims == M_getDynamicRankValue())
     throw std::invalid_argument("dynamic ranked tensor is not supported yet.");
 
-  std::vector<int64_t> shape;
+  std::vector<size_t> shape;
   for (size_t d = 0; d < (size_t)numDims; ++d)
-    shape.push_back(M_getDimAt(tensorSpec.get(), d));
+    shape.push_back(static_cast<size_t>(M_getDimAt(tensorSpec.get(), d)));
 
   // TODO(8114): Currently always copy out.
   // The underlying M::TensorMap -> Tensor -> M::BufferRef is
@@ -41,7 +42,9 @@ py::object core::processTensorResult(TensorPtr outTensor) {
   // usual.
   void *outTensorDestBuffer = ::operator new(outputTensorSizeInBytes);
   std::memcpy(outTensorDestBuffer, outTensorSrcBuffer, outputTensorSizeInBytes);
-  py::array outNdArray =
-      py::array(mapDType(type), shape, /*strides=*/{}, outTensorDestBuffer);
-  return outNdArray;
+  return nb::ndarray<nb::numpy>(
+             /*data=*/outTensorDestBuffer, /*ndim=*/(size_t)numDims,
+             /*shape=*/shape.data(), /*owner=*/{}, /*strides=*/nullptr,
+             /*dtype=*/mapDType(type))
+      .cast();
 }

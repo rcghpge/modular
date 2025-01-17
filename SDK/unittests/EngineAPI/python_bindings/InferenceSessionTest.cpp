@@ -95,16 +95,16 @@ struct InferenceSessionTest : ::testing::Test {
   ErrorOr<ScopedInterpreter> interpreterOr{ScopedInterpreter::getInterpreter()};
 };
 
-TEST_F(InferenceSessionTest, DTypePybindConversionTest) {
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_BOOL)), M_BOOL);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_INT16)), M_INT16);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_INT32)), M_INT32);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_INT64)), M_INT64);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_UINT8)), M_UINT8);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_UINT16)), M_UINT16);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_UINT64)), M_UINT64);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_FLOAT16)), M_FLOAT16);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_FLOAT32)), M_FLOAT32);
-  EXPECT_EQ(core::mapPybind11Type(core::mapDType(M_FLOAT64)), M_FLOAT64);
+TEST_F(InferenceSessionTest, DTypeNanobindConversionTest) {
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_BOOL)), M_BOOL);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_INT16)), M_INT16);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_INT32)), M_INT32);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_INT64)), M_INT64);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_UINT8)), M_UINT8);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_UINT16)), M_UINT16);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_UINT64)), M_UINT64);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_FLOAT16)), M_FLOAT16);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_FLOAT32)), M_FLOAT32);
+  EXPECT_EQ(core::mapNanobindType(core::mapDType(M_FLOAT64)), M_FLOAT64);
   EXPECT_THROW(core::mapDType(M_UNKNOWN), std::runtime_error);
 }
