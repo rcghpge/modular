@@ -34,9 +34,9 @@ protected:
     loc.getContext()->loadDialect<MOGG::MOGGDialect>();
 
     SmallVector<Type> inputTypes{
-        MO::TensorType::get({1}, FloatType::getF32(&ctx)),
-        MO::TensorType::get({1, 2}, FloatType::getF32(&ctx)),
-        MO::TensorType::get({1, 2, 3}, FloatType::getF32(&ctx))};
+        MO::TensorType::get({1}, Float32Type::get(&ctx)),
+        MO::TensorType::get({1, 2}, Float32Type::get(&ctx)),
+        MO::TensorType::get({1, 2, 3}, Float32Type::get(&ctx))};
     graph = builder.create<MO::GraphOp>(module.getLoc(), "test", inputTypes,
                                         SmallVector<Type>{});
     builder.setInsertionPointToEnd(graph.getBodyBlock());
@@ -61,10 +61,10 @@ protected:
   // C++20clang(template_nontype_parm_bad_structural_type)
   template <int value = 0>
   MO::TensorValue getFloatConst(ArrayRef<int64_t> shape) {
-    auto type = MO::TensorType::get(shape, FloatType::getF32(&ctx));
+    auto type = MO::TensorType::get(shape, Float32Type::get(&ctx));
     SmallVector<APFloat> values(1, APFloat(float(value)));
     MO::TensorValue out = builder.create<ConstantOp>(
-        loc, ArrayRef<APFloat>(values), FloatType::getF32(&ctx));
+        loc, ArrayRef<APFloat>(values), Float32Type::get(&ctx));
     // Overwrite the output type
     out.setType(type);
     return out;

@@ -336,34 +336,34 @@ bool MEFToMLIRConverter::parseAttribute(size_t offset,
     Type resultType;
     switch (typeKind.getValue()) {
     case MEF::TypeKind::f16:
-      resultType = FloatType::getF16(getContext());
+      resultType = Float16Type::get(getContext());
       break;
     case MEF::TypeKind::bf16:
-      resultType = FloatType::getBF16(getContext());
+      resultType = BFloat16Type::get(getContext());
       break;
     case MEF::TypeKind::f8e4m3:
-      resultType = FloatType::getFloat8E4M3(getContext());
+      resultType = Float8E4M3Type::get(getContext());
       break;
     case MEF::TypeKind::f8e4m3fnuz:
-      resultType = FloatType::getFloat8E4M3FNUZ(getContext());
+      resultType = Float8E4M3FNUZType::get(getContext());
       break;
     case MEF::TypeKind::f8e5m2:
-      resultType = FloatType::getFloat8E5M2(getContext());
+      resultType = Float8E5M2Type::get(getContext());
       break;
     case MEF::TypeKind::f8e5m2fnuz:
-      resultType = FloatType::getFloat8E5M2FNUZ(getContext());
+      resultType = Float8E5M2FNUZType::get(getContext());
       break;
     case MEF::TypeKind::f32:
-      resultType = FloatType::getF32(getContext());
+      resultType = Float32Type::get(getContext());
       break;
     case MEF::TypeKind::f64:
-      resultType = FloatType::getF64(getContext());
+      resultType = Float64Type::get(getContext());
       break;
     case MEF::TypeKind::f80:
-      resultType = FloatType::getF80(getContext());
+      resultType = Float80Type::get(getContext());
       break;
     case MEF::TypeKind::f128:
-      resultType = FloatType::getF128(getContext());
+      resultType = Float128Type::get(getContext());
       break;
     case MEF::TypeKind::kBool:
       resultType = IntegerType::get(getContext(), 1);
