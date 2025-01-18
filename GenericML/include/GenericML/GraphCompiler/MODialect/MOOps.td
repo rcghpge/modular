@@ -2267,6 +2267,24 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [Pure]> {
   }];
 }
 
+def MO_MergeDimOp : MO_TensorOp<"merge_dim", [Pure]> {
+  let summary = "Merge two dimensions of a tensor into one";
+  let description = [{
+    Merges two adjacent dimensions of a tensor into one. Example:
+    Input=[A, B, C, D], Axis=1
+
+    Output=[A, B*C, D].
+
+    We merge axis i and i+1 into one dimension.
+  }];
+  let arguments = (ins MO_Tensor:$input, Builtin_IntegerAttr:$axis);
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `[` $axis `]``(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,

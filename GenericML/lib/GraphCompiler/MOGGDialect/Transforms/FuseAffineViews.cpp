@@ -101,30 +101,46 @@ struct FuseAffineViewsPass
     });
   }
 
-  void addSplitDimMOGG(Value indices, MO::TensorType outputTensorType,
-                       MO::SplitDimOp splitDim, Operation *insertPt,
-                       OpBuilder &builder) {
+  template <typename SplitOrMergeDimOp>
+  void addSplitOrMergeDimMOGG(Value indices, MO::TensorType outputTensorType,
+                              SplitOrMergeDimOp splitOrMergeDimOp,
+                              Operation *insertPt, OpBuilder &builder) {
     mlir::MLIRContext *ctx = builder.getContext();
 
     mlir::NamedAttrList attrs;
     attrs.set("rank", builder.getIndexAttr(outputTensorType.getRank()));
-    attrs.set("axis", splitDim.getAxis());
+    attrs.set("axis", splitOrMergeDimOp.getAxis());
 
-    int64_t i = splitDim.getAxis().getValue().getLimitedValue();
+    int64_t i = splitOrMergeDimOp.getAxis().getValue().getLimitedValue();
 
     // Insert the shape calculation outside of the lambda so the index is
     // captured by the lambda rather than the pointer to the shape.
     OpBuilder shapeCalcBuilder{ctx};
     shapeCalcBuilder.setInsertionPointAfter(insertPt);
 
-    // Get the the dimension we are splitting by. For insance for [N] -> [n1,
-    // n2], this value refers to `n2`.
-    Value getDim = MOGG::lowerDimToKGEN(splitDim.getLoc(), shapeCalcBuilder,
-                                        splitDim.getType().getDims()[i + 1]);
+    // Get the dimension we are splitting / merging by.
+    // For split ([N] -> [n1, n2]) or merge ([n1, n2] -> [N]), this value
+    // refers to `n2`.
+    TypedAttr axis;
+    if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::SplitDimOp>) {
+      axis = splitOrMergeDimOp.getType().getDims()[i + 1];
+    } else if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::MergeDimOp>) {
+      axis = splitOrMergeDimOp.getInput().getType().getDims()[i + 1];
+    }
+    Value getDim = MOGG::lowerDimToKGEN(splitOrMergeDimOp.getLoc(),
+                                        shapeCalcBuilder, axis);
+
+    std::optional<llvm::StringLiteral> funcName;
+    if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::SplitDimOp>) {
+      funcName = Utils::SplitDimIndices;
+    } else if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::MergeDimOp>) {
+      funcName = Utils::MergeDimIndices;
+    }
+    ASSERT_STREAM(funcName, "funcName should be non-null");
 
     // Add the actual indices transfrom into the lambda expression.
     auto call = builder.create<MOGG::CallOp>(
-        splitDim.getLoc(), TypeRange{indices.getType()}, "split_dim_indices",
+        splitOrMergeDimOp.getLoc(), TypeRange{indices.getType()}, *funcName,
         ValueRange{indices, getDim}, mlir::ArrayAttr{},
         /*kgenAttrs=*/builder.getDictionaryAttr(attrs));
 
@@ -220,8 +236,12 @@ struct FuseAffineViewsPass
 
         if constexpr (std::is_same_v<ViewOp, MO::AddSingletonDimOp>)
           addSingletonDimTransformMOGG(indices, oldType, viewOpUser, builder);
-        else if (std::is_same_v<ViewOp, MO::SplitDimOp>)
-          addSplitDimMOGG(indices, oldType, viewOpUser, reshape, builder);
+        else if constexpr (std::is_same_v<ViewOp, MO::SplitDimOp>)
+          addSplitOrMergeDimMOGG(indices, oldType, viewOpUser, reshape,
+                                 builder);
+        else if constexpr (std::is_same_v<ViewOp, MO::MergeDimOp>)
+          addSplitOrMergeDimMOGG(indices, oldType, viewOpUser, reshape,
+                                 builder);
       }
     });
 
@@ -300,35 +320,51 @@ struct FuseAffineViewsPass
   }
 
   /// Given `indices` in KGEN, remap them according to provided `splitDimOp`
-  static Value
-  getKGENSplitDimIndices(Value kgenIndicesOperand, MO::SplitDimOp splitDimOp,
-                         MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                         OpBuilder &builder) {
+  template <typename SplitOrMergeDimOp>
+  static Value getKGENSplitOrMergeDimIndices(
+      Value kgenIndicesOperand, SplitOrMergeDimOp splitOrMergeDimOp,
+      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, OpBuilder &builder) {
     // construct fully specialized kgen tensor signature
     // (managed_tensor_slice)
-    SmallVector<TypedAttr> splitDimIndicesParameterValues = {
-        builder.getIndexAttr(splitDimOp.getInput().getType().getRankNonZero()),
-        builder.getIndexAttr(splitDimOp.getAxis().getInt())};
+    SmallVector<TypedAttr> splitOrMergeDimIndicesParameterValues = {
+        builder.getIndexAttr(
+            splitOrMergeDimOp.getInput().getType().getRankNonZero()),
+        builder.getIndexAttr(splitOrMergeDimOp.getAxis().getInt())};
+
+    std::optional<llvm::StringLiteral> funcName;
+    if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::SplitDimOp>) {
+      funcName = Utils::SplitDimIndices;
+    } else if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::MergeDimOp>) {
+      funcName = Utils::MergeDimIndices;
+    }
+    ASSERT_STREAM(funcName, "funcName should be non-null");
 
     // Create call to the indices mapping function
-    auto splitDimIndicesFunc = mojoLibraryAnalysis.getSpecializedKernel(
-        Utils::SplitDimIndices, splitDimIndicesParameterValues);
-    ASSERT_STREAM(succeeded(splitDimIndicesFunc),
-                  << splitDimIndicesFunc.takeError());
+    auto splitOrMergeDimIndicesFunc = mojoLibraryAnalysis.getSpecializedKernel(
+        *funcName, splitOrMergeDimIndicesParameterValues);
+    ASSERT_STREAM(succeeded(splitOrMergeDimIndicesFunc),
+                  << splitOrMergeDimIndicesFunc.takeError());
 
     // Calculate the split dim size for the function
-    int64_t i = splitDimOp.getAxis().getValue().getLimitedValue();
+    int64_t i = splitOrMergeDimOp.getAxis().getValue().getLimitedValue();
 
-    // Get the the dimension we are splitting by. For insance for [N] ->
-    // [n1, n2], this value refers to `n2`.
-    Value splitDim = MOGG::lowerDimToKGEN(
-        splitDimOp.getLoc(), builder, splitDimOp.getType().getDims()[i + 1]);
+    // Get the dimension we are splitting / merging by.
+    // For split ([N] -> [n1, n2]) or merge ([n1, n2] -> [N]), this value
+    // refers to `n2`.
+    TypedAttr axis;
+    if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::SplitDimOp>) {
+      axis = splitOrMergeDimOp.getType().getDims()[i + 1];
+    } else if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::MergeDimOp>) {
+      axis = splitOrMergeDimOp.getInput().getType().getDims()[i + 1];
+    }
+    Value splitDim =
+        MOGG::lowerDimToKGEN(splitOrMergeDimOp.getLoc(), builder, axis);
 
     auto callArgs = SmallVector<Value>{kgenIndicesOperand, splitDim};
 
     return builder
-        .create<KGEN::CallOp>(splitDimOp->getLoc(), *splitDimIndicesFunc,
-                              callArgs)
+        .create<KGEN::CallOp>(splitOrMergeDimOp.getLoc(),
+                              *splitOrMergeDimIndicesFunc, callArgs)
         ->getResult(0);
   }
 
@@ -411,8 +447,9 @@ struct FuseAffineViewsPass
       // canonicalize away to SplitDimOp.
       kgenNewIndicesOperand = getKGENAddSingletonIndices(
           kgenIndicesOperand, viewOpUser, mojoLibraryAnalysis, builder);
-    } else if (std::is_same_v<ViewOp, MO::SplitDimOp>) {
-      kgenNewIndicesOperand = getKGENSplitDimIndices(
+    } else if constexpr (std::is_same_v<ViewOp, MO::SplitDimOp> ||
+                         std::is_same_v<ViewOp, MO::MergeDimOp>) {
+      kgenNewIndicesOperand = getKGENSplitOrMergeDimIndices(
           kgenIndicesOperand, viewOpUser, mojoLibraryAnalysis, builder);
     }
     ASSERT_STREAM(kgenNewIndicesOperand,
@@ -743,6 +780,9 @@ struct FuseAffineViewsPass
                         typeManager);
         else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user))
           fuseViewOpDim(kernel, split, result, mojoLibraryAnalysis,
+                        typeManager);
+        else if (auto merge = dyn_cast_or_null<MO::MergeDimOp>(user))
+          fuseViewOpDim(kernel, merge, result, mojoLibraryAnalysis,
                         typeManager);
       }
 

@@ -1829,6 +1829,16 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
+    if (auto reshapeOp = dyn_cast<MO::MergeDimOp>(op)) {
+      MGP::MOOpLoweringState opLoweringState(loweringState, reshapeOp);
+
+      if (failed(lowerReshapeImpl(
+              opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
+              loweringState.getExecuteChain(), reshapeOp.getType())))
+        return failure();
+      continue;
+    }
+
     if (auto debugPrintOp = dyn_cast<MO::DebugPrintOp>(op)) {
       if (failed(lowerDebugPrint(debugPrintOp)))
         return failure();

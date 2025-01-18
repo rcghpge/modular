@@ -134,3 +134,23 @@ mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>,
   %2 = mo.custom {symbol = "rms_norm"}(%1, %arg1, %arg0) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[4], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[4, 4, 4], f32>
   mo.output %2 : !mo.tensor<[4, 4, 4], f32>
 }
+
+
+// CHECK-LABEL: mo.graph @merge_dim
+// CHECK-NEXT: mogg.kernel
+
+// CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[64], f32>
+// CHECK: %[[SHAPE:.*]] = "mogg.to_mogg
+// CHECK-NEXT: %[[ORIG_TENSOR:.*]] = mogg.call "reshape_contiguous_buffer"(%[[OUT_PH]], %[[SHAPE]])
+
+// CHECK: mogg.lambda @{{.*}} = (%[[INDICES:.*]]: !mogg.indices
+// CHECK: %[[NEW_IND:.*]] = mogg.call "merge_dim_indices"(%[[INDICES]], %[[NEW_DIM:.*]]) {axis = 0 : index, rank = 2 : index} : !mogg.indices, !pop.scalar<si64> -> !mogg.indices
+// CHECK-NEXT: mogg.call "simd_store"(%[[OUT_PH]], %[[NEW_IND]]
+
+// CHECK: mogg.call "mo.matmul" [@{{.*}}](%{{.*}}, %[[ORIG_TENSOR]])
+// CHECK-NEXT: mogg.output %[[OUT_PH]] : !mo.tensor<[64], f32>
+mo.graph @merge_dim(%arg0: !mo.tensor<[8, 8], f32>, %arg1: !mo.tensor<[8, 8], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[64], f32> {
+  %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[8, 8], f32>
+  %1 = mo.merge_dim[0 : index] (%0) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[64], f32>
+  mo.output %1: !mo.tensor<[64], f32>
+}

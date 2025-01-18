@@ -55,6 +55,11 @@ constexpr llvm::StringLiteral DPSManagedTensorSliceReshape =
 // Given input indices to a `mo.split_dim` op, returns the associated
 // output indices.
 constexpr llvm::StringLiteral SplitDimIndices = "split_dim_indices";
+
+// Given input indices to a `mo.merge_dim` op, returns the associated
+// output indices.
+constexpr llvm::StringLiteral MergeDimIndices = "merge_dim_indices";
+
 constexpr llvm::StringLiteral InsertIndex = "insert_index";
 
 // Name of the tensor_utils_internals module, to find all functions defined
