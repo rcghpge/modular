@@ -35,6 +35,7 @@ class HIPDeviceFunction;
 class HIPDeviceFunctionArguments;
 class HIPDeviceStream;
 class HIPDeviceTimer;
+class HIPModuleFunction;
 
 using HIPDeviceRef = RCRef<const HIPDevice>;
 using HIPDeviceBufferRef = RCRef<const HIPDeviceBuffer>;
@@ -44,6 +45,7 @@ using HIPDeviceFunctionRef = RCRef<const HIPDeviceFunction>;
 using HIPDeviceFunctionArgumentsRef = RCRef<const HIPDeviceFunctionArguments>;
 using HIPDeviceStreamRef = RCRef<const HIPDeviceStream>;
 using HIPDeviceTimerRef = RCRef<const HIPDeviceTimer>;
+using HIPModuleFunctionRef = RCRef<const HIPModuleFunction>;
 
 class HIPDevice : public Device {
 public:
@@ -159,11 +161,29 @@ private:
   std::vector<DeviceBufferRef> refs_;
 };
 
+class HIPModuleFunction : public ReferenceCounted<HIPModuleFunction> {
+public:
+  HIPModuleFunction(const std::string name, const HIPDriver &driver,
+                    hipModule_t module, hipFunction_t function);
+  ~HIPModuleFunction();
+
+  const std::string &name() const;
+  const HIPDriver &hipDriver() const;
+  hipModule_t hipModule() const;
+  hipFunction_t hipFunction() const;
+
+private:
+  const HIPDriver &driver_;
+  hipModule_t module_;
+  hipFunction_t function_;
+  std::string name_;
+};
+
 class HIPDeviceFunction : public DeviceFunction {
 public:
-  HIPDeviceFunction(const HIPDeviceContext &context, std::string name,
+  HIPDeviceFunction(const HIPDeviceContext &context,
                     const DeviceFunction::SignatureBuilder &signature,
-                    hipModule_t module, hipFunction_t function);
+                    HIPModuleFunctionRef modFunc);
   ~HIPDeviceFunction() override;
 
   const std::string &name() const override;
@@ -191,9 +211,11 @@ public:
   static const HIPDeviceFunction &cast(const DeviceFunction &func);
 
 private:
-  hipModule_t module_;
-  hipFunction_t function_;
-  std::string name_;
+  // The moduleFunction_ holds the HIP specific implementation. Methods on
+  // HIPDeviceFunction forward to moduleFunction_ as needed.
+  // This layout is needed to break the reference cycle between the funcMap_
+  // cache in the HIPDeviceContext and the cached functions.
+  HIPModuleFunctionRef moduleFunction_;
 };
 
 class HIPDeviceTimer : public DeviceTimer {
@@ -292,7 +314,7 @@ private:
   hipStream_t stream_;
 
   mutable std::mutex mu_;
-  mutable llvm::StringMap<HIPDeviceFunctionRef> funcMap_;
+  mutable llvm::StringMap<HIPModuleFunctionRef> funcMap_;
 
   mutable BufferCache bufCache_;
 };

@@ -386,19 +386,30 @@ HIPDeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
   return static_cast<const HIPDeviceFunctionArguments &>(args);
 }
 
-// ===== HIPDeviceFunction ===== //
-HIPDeviceFunction::HIPDeviceFunction(
-    const HIPDeviceContext &context, std::string name,
-    const DeviceFunction::SignatureBuilder &signature, hipModule_t module,
-    hipFunction_t function)
-    : DeviceFunction(context, signature), module_(module), function_(function),
+// ===== HIPModuleFunction ===== //
+HIPModuleFunction::HIPModuleFunction(const std::string name,
+                                     const HIPDriver &driver,
+                                     hipModule_t module, hipFunction_t function)
+    : driver_(driver), module_(module), function_(function),
       name_(std::move(name)) {}
 
-HIPDeviceFunction::~HIPDeviceFunction() {
-  const auto &hip_context = HIPDeviceContext::cast(context());
-
-  HIP_CHECK(hip_context.hipDriver().ModuleUnload(module_));
+HIPModuleFunction::~HIPModuleFunction() {
+  HIP_CHECK(hipDriver().ModuleUnload(module_));
 }
+
+const std::string &HIPModuleFunction::name() const { return name_; }
+const HIPDriver &HIPModuleFunction::hipDriver() const { return driver_; }
+hipModule_t HIPModuleFunction::hipModule() const { return module_; }
+hipFunction_t HIPModuleFunction::hipFunction() const { return function_; }
+
+// ===== HIPDeviceFunction ===== //
+HIPDeviceFunction::HIPDeviceFunction(
+    const HIPDeviceContext &context,
+    const DeviceFunction::SignatureBuilder &signature,
+    HIPModuleFunctionRef modFunc)
+    : DeviceFunction(context, signature), moduleFunction_(std::move(modFunc)) {}
+
+HIPDeviceFunction::~HIPDeviceFunction() {}
 
 DeviceFunction::Arguments *
 HIPDeviceFunction::allocateArguments(const DeviceFunction &fn) const {
@@ -412,8 +423,8 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernel(
   const auto &hip_context = HIPDeviceContext::cast(context());
 
   HIP_CHECK_ERR(hip_context.hipDriver().ModuleLaunchKernel(
-      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      stream, args.hipArgs().data(), nullptr));
+      moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
+      blockZ, sharedMemBytes, stream, args.hipArgs().data(), nullptr));
   return success();
 }
 
@@ -424,12 +435,14 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
   const auto &hip_context = HIPDeviceContext::cast(context());
 
   HIP_CHECK_ERR(hip_context.hipDriver().ModuleLaunchKernel(
-      function_, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      stream, args, nullptr));
+      moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
+      blockZ, sharedMemBytes, stream, args, nullptr));
   return success();
 }
 
-const std::string &HIPDeviceFunction::name() const { return name_; }
+const std::string &HIPDeviceFunction::name() const {
+  return moduleFunction_->name();
+}
 
 ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
                                                       const void *data,
@@ -438,7 +451,7 @@ ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
   size_t device_size;
   const auto &hip_context = HIPDeviceContext::cast(context());
   HIP_CHECK_ERR(hip_context.hipDriver().ModuleGetGlobal(
-      &device_ptr, &device_size, module_, name));
+      &device_ptr, &device_size, moduleFunction_->hipModule(), name));
 
   if (device_size < byteSize) {
     RAISE_ERROR("byteSize too big");
@@ -454,7 +467,8 @@ ErrorOr<int32_t> HIPDeviceFunction::getAttribute(int32_t code) const {
   const auto &hip_context = HIPDeviceContext::cast(context());
 
   HIP_CHECK_ERR(hip_context.hipDriver().FuncGetAttribute(
-      &result, static_cast<hipFunction_attribute>(code), function_));
+      &result, static_cast<hipFunction_attribute>(code),
+      moduleFunction_->hipFunction()));
   return result;
 }
 
@@ -490,10 +504,13 @@ HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
                                  device.allocationAlignment()) {}
 
 HIPDeviceContext::~HIPDeviceContext() {
-  // We do not need to synchronize on possible work queued on this stream.
-  // Resources will be released automatically once work has been completed.
+  // Destroy the function map before destroying the context.
+  funcMap_.clear();
+  HIP_CHECK(driver_.StreamSynchronize(stream_));
   bufferCache().clear();
   HIP_CHECK(driver_.StreamDestroy(stream_));
+  // We do not need to re-synchronize on possible work queued on this stream.
+  // Resources will be released automatically once work has been completed.
   HIP_CHECK(driver_.CtxDestroy(context_));
 }
 
@@ -640,8 +657,9 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     std::lock_guard<std::mutex> lock(mu_);
     auto iter = funcMap_.find(moduleName);
     if (iter != funcMap_.end()) {
-      HIPDeviceFunctionRef result = iter->second;
-      return result;
+      HIPModuleFunctionRef module_func = iter->second;
+      return HIPDeviceFunctionRef::create(*this, signature,
+                                          std::move(module_func));
     }
   }
 
@@ -662,17 +680,20 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   // Allocate func outside of the lock region to reduce the time spent under
   // lock. If this functionName has been registered concurrently, then we will
   // release this ref outside of the lock region before returning.
-  auto func = HIPDeviceFunctionRef::create(*this, std::string(functionName),
-                                           signature, module, function);
+  auto module_func = HIPModuleFunctionRef::create(
+      std::string(functionName), this->hipDriver(), module, function);
   HIPDeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
     auto iter = funcMap_.find(moduleName);
     if (iter != funcMap_.end()) {
-      result = HIPDeviceFunctionRef::copy(iter->second.getPointer());
+      result = HIPDeviceFunctionRef::create(
+          *this, signature,
+          HIPModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      funcMap_.insert({moduleName, func});
-      result = std::move(func);
+      funcMap_.insert({moduleName, module_func});
+      result = HIPDeviceFunctionRef::create(*this, signature,
+                                            std::move(module_func));
     }
   }
   return result;

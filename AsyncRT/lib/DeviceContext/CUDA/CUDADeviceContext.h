@@ -221,6 +221,8 @@ public:
 private:
   // The moduleFunction_ holds the CUDA specific implementation. Methods on
   // CUDADeviceFunction forward to moduleFunction_ as needed.
+  // This layout is needed to break the reference cycle between the funcMap_
+  // cache in the CUDADeviceContext and the cached functions.
   CUDAModuleFunctionRef moduleFunction_;
 };
 
