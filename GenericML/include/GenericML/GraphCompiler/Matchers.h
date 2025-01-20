@@ -548,7 +548,7 @@ struct constant_op_binder {
                   << "expected ConstantLike op to be foldable");
 
     if (auto attr =
-            llvm::dyn_cast<AttrT>(foldedOp.front().get<mlir::Attribute>())) {
+            llvm::dyn_cast<AttrT>(cast<mlir::Attribute>(foldedOp.front()))) {
       if (bind_value)
         *bind_value = attr;
       if (log)
