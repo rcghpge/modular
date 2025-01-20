@@ -1,4 +1,4 @@
-// RUN: mo-opt --jit-compile-kernels="dry-run=true dump-stub=true kernel-library-paths="%extra_test_lib"" %s -o %t 2>&1 | FileCheck %s
+// RUN: mo-opt --jit-compile-kernels="dry-run=true dump-stub=true" %s -o %t 2>&1 | FileCheck %s
 
 
 module {
