@@ -21,6 +21,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/CSE.h"
 
 using namespace M;
 
@@ -415,7 +416,6 @@ struct FuseAffineViewsPass
     MO::TensorType newOutputTensorTy = viewOpUser.getResult().getType();
 
     mlir::Block &block = outputLambdaToRewrite.getBodyRegion().front();
-    builder.setInsertionPoint(&block, block.begin());
     auto simdStoreFunction = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
         Utils::DPSManagedTensorSliceStoreSIMD);
 
@@ -430,6 +430,8 @@ struct FuseAffineViewsPass
       ASSERT_STREAM(!oldStoreOp, << "Expect only one op to write to tensor");
       oldStoreOp = op;
     });
+
+    builder.setInsertionPoint(oldStoreOp);
 
     ASSERT_STREAM(oldStoreOp, << "Could not find store operation in lambda");
     ASSERT_STREAM(oldStoreOp->getNumOperands() == 3,
@@ -744,8 +746,6 @@ struct FuseAffineViewsPass
   }
 
   void runOnOperation() override {
-    auto graph = getOperation();
-
     // Initialize mojoLibraryAnalysis
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
@@ -767,30 +767,55 @@ struct FuseAffineViewsPass
     }
     TypeManager typeManager = maybeTypeManager.get();
 
-    graph.walk([&](MOGG::KernelOp kernel) {
-      // These fusions fuse `kernel` into users of the kernel for certain ops.
-      if (isOutputFusibleNonElementwise(kernel)) {
-        Value result = kernel.getResult(0);
-        Operation *user = *result.getUsers().begin();
-        if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user))
-          fuseViewOpDim(kernel, addDim, result, mojoLibraryAnalysis,
-                        typeManager);
-        else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user))
-          fuseViewOpDim(kernel, split, result, mojoLibraryAnalysis,
-                        typeManager);
-        else if (auto merge = dyn_cast_or_null<MO::MergeDimOp>(user))
-          fuseViewOpDim(kernel, merge, result, mojoLibraryAnalysis,
-                        typeManager);
+    // Repeatedly fuse affine views until convergence.
+    bool changed = true;
+    while (changed) {
+      SmallVector<Operation *> opsToErase;
+
+      auto graph = getOperation();
+      graph.walk([&](MOGG::KernelOp kernel) {
+        // These fusions fuse `kernel` into users of the kernel for certain ops.
+        if (isOutputFusibleNonElementwise(kernel)) {
+          Value result = kernel.getResult(0);
+          Operation *user = *result.getUsers().begin();
+          if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user)) {
+            fuseViewOpDim(kernel, addDim, result, mojoLibraryAnalysis,
+                          typeManager);
+            opsToErase.push_back(user);
+          } else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user)) {
+            fuseViewOpDim(kernel, split, result, mojoLibraryAnalysis,
+                          typeManager);
+            opsToErase.push_back(user);
+          } else if (auto merge = dyn_cast_or_null<MO::MergeDimOp>(user)) {
+            fuseViewOpDim(kernel, merge, result, mojoLibraryAnalysis,
+                          typeManager);
+            opsToErase.push_back(user);
+          }
+        }
+
+        // These fusions fuse operands into the kernel.
+        // TODO(GEX-1506): Support gather fusion for new API.
+        if (!kernel.getIsKGEN())
+          handleGatherFusion(kernel);
+
+        MOGG::addForwardDeclsOfReferencedFuncs(
+            kernel, kernel->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
+      });
+
+      // Check if we did anything
+      changed = !opsToErase.empty();
+
+      // Delete all fused view ops
+      for (Operation *oldViewOp : opsToErase)
+        oldViewOp->erase();
+
+      // Run CSE pass prior to the next iteration.
+      if (changed) {
+        IRRewriter rewriter(&getContext());
+        mlir::DominanceInfo domInfo;
+        eliminateCommonSubExpressions(rewriter, domInfo, graph);
       }
-
-      // These fusions fuse operands into the kernel.
-      // TODO(GEX-1506): Support gather fusion for new API.
-      if (!kernel.getIsKGEN())
-        handleGatherFusion(kernel);
-
-      MOGG::addForwardDeclsOfReferencedFuncs(
-          kernel, kernel->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
-    });
+    }
   }
 };
 
