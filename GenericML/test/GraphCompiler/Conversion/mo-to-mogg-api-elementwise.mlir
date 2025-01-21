@@ -1,4 +1,3 @@
-// RUN: export MODULAR_ENABLE_NEW_EXTENSIBILITY_API=true
 // RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
 
 // Check mo-to-mogg correctly lowers an elementwise KernelAPI

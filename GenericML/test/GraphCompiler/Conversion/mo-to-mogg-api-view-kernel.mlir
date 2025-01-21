@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_lib" | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg | FileCheck %s
 
 // Check mo-to-mogg correctly lowers a view KernelAPI
 
