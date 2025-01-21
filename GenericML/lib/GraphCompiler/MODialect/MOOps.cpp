@@ -2828,6 +2828,9 @@ LogicalResult AddSingletonDimOp::verify() {
   TensorType newResultTy = inputTy.cloneWith(resultTy.getDims());
   if (auto layout = resultTy.getLayoutAttr())
     newResultTy = newResultTy.cloneWith(layout);
+  else
+    newResultTy = newResultTy.cloneWithoutLayout();
+
   if (newResultTy != resultTy)
     return emitOpError(
         "More than shape / layout has changed between input and output.");
@@ -2867,6 +2870,9 @@ LogicalResult SplitDimOp::verify() {
   TensorType newResultTy = inputTy.cloneWith(resultTy.getDims());
   if (auto layout = resultTy.getLayoutAttr())
     newResultTy = newResultTy.cloneWith(layout);
+  else
+    newResultTy = newResultTy.cloneWithoutLayout();
+
   if (newResultTy != resultTy)
     return emitOpError(
         "More than shape / layout has changed between input and output.");
@@ -2912,6 +2918,9 @@ LogicalResult MergeDimOp::verify() {
   TensorType newResultTy = inputTy.cloneWith(resultTy.getDims());
   if (auto layout = resultTy.getLayoutAttr())
     newResultTy = newResultTy.cloneWith(layout);
+  else
+    newResultTy = newResultTy.cloneWithoutLayout();
+
   if (newResultTy != resultTy)
     return emitOpError(
         "More than shape / layout has changed between input and output.");

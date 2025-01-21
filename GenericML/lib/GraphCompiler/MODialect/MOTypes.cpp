@@ -425,6 +425,14 @@ TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
                          newMetadata);
 }
 
+TensorType TensorType::cloneWithoutLayout() const {
+  NamedAttrList namedAttrs(getMetadata());
+  namedAttrs.erase(kLayoutMetadataName);
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
+                         newMetadata);
+}
+
 TensorType TensorType::cloneWith(DictionaryAttr metadataAttr) const {
   return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
                          metadataAttr);

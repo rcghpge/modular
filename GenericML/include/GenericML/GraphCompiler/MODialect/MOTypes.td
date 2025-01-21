@@ -113,6 +113,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
     /// Returns a clone with a new layout attribute.
     TensorType cloneWith(LayoutAttr layoutAttr) const;
 
+    /// Returns a clone without the layout attribute.
+    TensorType cloneWithoutLayout() const;
+
     /// Returns clone with a new metadata attribute.
     TensorType cloneWith(DictionaryAttr metadataAttr) const;
 
