@@ -47,7 +47,7 @@ getFile(llvm::StringRef filepath) {
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getEmbeddingsNewAPISourceBuffer() {
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
-      llvm::MemoryBuffer::getMemBuffer(Embeddings::newAPISource(),
+      llvm::MemoryBuffer::getMemBuffer(Embeddings::moggKernelSource(),
                                        "embedded MOGG bindings",
                                        /*RequiresNullTerminator=*/false));
 }
