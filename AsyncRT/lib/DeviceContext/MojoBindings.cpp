@@ -11,6 +11,8 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
+#include "AsyncRT/lib/DeviceContext/HIP/HIPDeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/HIP/HIPDriver.h"
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -388,7 +390,7 @@ AsyncRT_DeviceContext_cuda_context(CUcontext *result,
 MODULAR_EXPORT const char *
 AsyncRT_DeviceStream_cuda_stream(CUstream *result, const DeviceStream *stream) {
   const CUDADeviceStream *verifiedStream =
-      static_cast<const CUDADeviceStream *>(stream);
+      CUDADeviceStream::verified_cast(stream);
   if (verifiedStream == nullptr) {
     return strdup("Not a CUDAStream");
   }
@@ -415,4 +417,29 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
       static_cast<CUtensorMapSwizzle>(swizzle),
       static_cast<CUtensorMapL2promotion>(l2Promotion),
       static_cast<CUtensorMapFloatOOBfill>(oobFill)));
+}
+
+//
+// Raw HIP accessors
+//
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_hip_context(hipCtx_t *result, const DeviceContext *ctx) {
+  const HIPDeviceContext *verifiedCtx = HIPDeviceContext::verified_cast(ctx);
+  if (verifiedCtx == nullptr) {
+    return strdup("Not a HIPContext");
+  }
+  *result = verifiedCtx->hipContext();
+  return nullptr;
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceStream_hip_stream(hipStream_t *result,
+                                const DeviceStream *stream) {
+  const HIPDeviceStream *verifiedStream =
+      HIPDeviceStream::verified_cast(stream);
+  if (verifiedStream == nullptr) {
+    return strdup("Not a HIPStream");
+  }
+  *result = verifiedStream->hipStream();
+  return nullptr;
 }

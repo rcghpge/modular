@@ -356,6 +356,14 @@ ErrorOrSuccess HIPDeviceStream::synchronize() const {
 
 hipStream_t HIPDeviceStream::hipStream() const { return stream_; }
 
+const HIPDeviceStream *
+HIPDeviceStream::verified_cast(const DeviceStream *stream) {
+  if (stream->context().device().api() != HIPDevice::api) {
+    return nullptr;
+  }
+  return static_cast<const HIPDeviceStream *>(stream);
+}
+
 // ===== HIPDeviceFunctionArguments ===== //
 HIPDeviceFunctionArguments::HIPDeviceFunctionArguments(
     const HIPDeviceFunction &fn)
@@ -792,6 +800,8 @@ ErrorOr<DeviceContext::MemInfo> HIPDeviceContext::getMemoryInfo() const {
 
 const HIPDriver &HIPDeviceContext::hipDriver() const { return driver_; }
 
+hipCtx_t HIPDeviceContext::hipContext() const { return context_; }
+
 hipStream_t HIPDeviceContext::hipStream() const { return stream_; }
 
 BufferCache &HIPDeviceContext::bufferCache() const { return bufCache_; }
@@ -802,6 +812,14 @@ HIPDriver::Result HIPDeviceContext::setCurrent() const {
 
 const HIPDeviceContext &HIPDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const HIPDeviceContext &>(ctx);
+}
+
+const HIPDeviceContext *
+HIPDeviceContext::verified_cast(const DeviceContext *ctx) {
+  if (ctx->device().api() != HIPDevice::api) {
+    return nullptr;
+  }
+  return static_cast<const HIPDeviceContext *>(ctx);
 }
 
 } // namespace M::AsyncRT

@@ -148,6 +148,8 @@ public:
 
   CUstream cudaStream() const;
 
+  static const CUDADeviceStream *verified_cast(const DeviceStream *stream);
+
 private:
   CUstream stream_;
 };

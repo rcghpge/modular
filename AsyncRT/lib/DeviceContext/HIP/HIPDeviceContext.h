@@ -139,6 +139,8 @@ public:
 
   hipStream_t hipStream() const;
 
+  static const HIPDeviceStream *verified_cast(const DeviceStream *stream);
+
 private:
   hipStream_t stream_;
 };
@@ -300,6 +302,7 @@ public:
   ErrorOr<MemInfo> getMemoryInfo() const override;
 
   const HIPDriver &hipDriver() const;
+  hipCtx_t hipContext() const;
   hipStream_t hipStream() const;
 
   BufferCache &bufferCache() const;
@@ -307,6 +310,7 @@ public:
   HIPDriver::Result setCurrent() const;
 
   static const HIPDeviceContext &cast(const DeviceContext &ctx);
+  static const HIPDeviceContext *verified_cast(const DeviceContext *ctx);
 
 private:
   const HIPDriver &driver_;

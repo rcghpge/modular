@@ -412,6 +412,14 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
 
 CUstream CUDADeviceStream::cudaStream() const { return stream_; }
 
+const CUDADeviceStream *
+CUDADeviceStream::verified_cast(const DeviceStream *stream) {
+  if (stream->context().device().api() != CUDADevice::api) {
+    return nullptr;
+  }
+  return static_cast<const CUDADeviceStream *>(stream);
+}
+
 // ===== CUDADeviceFunctionArguments ===== //
 CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
     const CUDADeviceFunction &fn)
