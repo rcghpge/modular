@@ -1,4 +1,4 @@
-// RUN: export MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API=true
+// REQUIRES: disabled
 // TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%extra_test_lib" --fuse-in-out-lambdas=kernel-library-paths="%extra_test_lib" --cse | FileCheck %s
 

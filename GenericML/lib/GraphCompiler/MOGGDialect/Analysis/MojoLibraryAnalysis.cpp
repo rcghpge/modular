@@ -45,14 +45,6 @@ getFile(llvm::StringRef filepath) {
 }
 
 static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsSourceBuffer() {
-  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
-      llvm::MemoryBuffer::getMemBuffer(Embeddings::source(),
-                                       "embedded MOGG bindings",
-                                       /*RequiresNullTerminator=*/false));
-}
-
-static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getEmbeddingsNewAPISourceBuffer() {
   return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
       llvm::MemoryBuffer::getMemBuffer(Embeddings::newAPISource(),
@@ -326,38 +318,11 @@ struct Candidate {
   int64_t priority = -1;
 };
 
-static bool envVarExistsAndIsTrue(const char *envVar) {
-  const char *c_str = std::getenv(envVar);
-  if (c_str == nullptr)
-    return false;
-  std::string str(c_str);
-  std::transform(str.begin(), str.end(), str.begin(), tolower);
-  return str == "true" || str == "1";
-}
-
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  // Enable allows the new API kernels to be used. `onlyUse` implies we only
-  // load the new API kernels and don't use MOGG kernels.
-  //
-  // TODO(GEX-1159): remove the need for this.
-  bool useOnlyOldAPI =
-      envVarExistsAndIsTrue("MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API");
-
-  // TODO(GEX-1159): remove the need for all fallbacks and re-gate under envvar
-  bool enableOldAPI =
-      envVarExistsAndIsTrue("MODULAR_ENABLE_OLD_EXTENSIBILITY_API");
-  if (useOnlyOldAPI && enableOldAPI) {
-    auto msg = "Can only set one of MODULAR_ONLY_USE_OLD_EXTENSIBILITY_API or "
-               "MODULAR_ENABLE_OLD_EXTENSIBILITY_API";
-    // Right now, the error doesn't seem to be properly propagated, so do this.
-    llvm::errs() << msg << "\n";
-    return Error(msg);
-  }
   // Load MOGGKernelAPI.mojo [new API] / MOGG.mojo [old API]
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
-      useOnlyOldAPI ? getEmbeddingsSourceBuffer()
-                    : getEmbeddingsNewAPISourceBuffer();
+      getEmbeddingsNewAPISourceBuffer();
   if (failed(bufferOr))
     return Error(Twine("failed to load compiled main module: ") +
                  bufferOr.getError());
@@ -381,22 +346,6 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     return moduleOr.takeError();
   Operation *primitiveModule = moduleOr.takeValue();
   updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
-
-  // Load old API kernels. This path assumes we also load MOGGKernelAPI.mojo
-  if (enableOldAPI) {
-    bufferOr = getEmbeddingsSourceBuffer();
-    if (failed(bufferOr))
-      return Error(Twine("failed to load compiled MOGGKernelAPI.mojo: ") +
-                   bufferOr.getError());
-    bufferRef = internMLIRFile(bufferOr.takeValue());
-    moduleOr = loadMLIRKernels(bufferRef, primitiveRawMojoKernel,
-                               "the standard library");
-    if (failed(moduleOr))
-      return moduleOr.takeError();
-
-    Operation *primitiveModule = moduleOr.takeValue();
-    updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
-  }
 
   if (auto loadError = loadUserProvidedKernels(kernelLibraryPaths))
     return Error(Twine("failed to load user-provided kernels: ") +
