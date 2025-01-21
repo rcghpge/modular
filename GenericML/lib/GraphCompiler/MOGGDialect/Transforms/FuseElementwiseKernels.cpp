@@ -122,7 +122,7 @@ fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
 
     for (DType dtype : allDtypes) {
       // The first parameter is the dtype.
-      newCalleeParams[0] = typeManager.typeMap.at(dtype).typeBinding;
+      newCalleeParams[0] = typeManager.lookupTypeBinding(dtype);
       auto newCallee = KGEN::SymbolConstantAttr::get(
           applyCallee.getSymbol(), applyCallee.getType(), newCalleeParams);
 

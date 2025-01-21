@@ -401,8 +401,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
             viewCopyCallOp.getParamValues()[viewStridesParameterIdx];
 
         // Build the function params
-        TypedAttr dtypeParam =
-            typeManager.typeMap.at(tensorType.getDtype()).dtype;
+        TypedAttr dtypeParam = typeManager.lookupDType(tensorType.getDtype());
         TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
         SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
 

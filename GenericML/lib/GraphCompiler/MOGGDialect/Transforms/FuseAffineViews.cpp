@@ -262,8 +262,7 @@ struct FuseAffineViewsPass
 
     ASSERT_STREAM(fromType.getDtype() == toType.getDtype(),
                   << "Expect tensors to have the same dtype");
-    TypedAttr typeBinding =
-        typeManager.typeMap.at(fromType.getDtype()).typeBinding;
+    TypedAttr typeBinding = typeManager.lookupTypeBinding(fromType.getDtype());
 
     Value toShapeKGEN = MOGG::lowerShapeToKGEN(loc, builder, toType.getDims());
     auto toRankAttr = builder.getIndexAttr(toType.getRankNonZero());
@@ -298,8 +297,7 @@ struct FuseAffineViewsPass
                                 MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                                 OpBuilder &builder, TypeManager &typeManager) {
 
-    TypedAttr typeBinding =
-        typeManager.typeMap.at(moType.getDtype()).typeBinding;
+    TypedAttr typeBinding = typeManager.lookupTypeBinding(moType.getDtype());
     uint64_t rank = std::max(1ul, moType.getRank());
 
     auto newRankAttr = builder.getIndexAttr(rank);
@@ -473,13 +471,12 @@ struct FuseAffineViewsPass
     auto stridesOrError = typeManager.lowerStaticDims(builder, strideVals);
     ASSERT_STREAM(!stridesOrError, << "expected stride calculation to work!");
     SmallVector<TypedAttr> simdStoreInternalParameterValues = {
-        typeManager.typeMap.at(newOutputTensorTy.getDtype())
-            .typeBinding,                                  // type
-        builder.getIndexAttr(newOutputTensorTy.getRank()), // rank
-        KGEN::ParamDeclRefAttr::get(simdWidthAttr),        // simd_width
-        oldStoreOpParameters[3],                           // alignment
-        oldStoreOpParameters[4],                           // address_space
-        stridesOrError.takeValue(),                        // static_strides
+        typeManager.lookupTypeBinding(newOutputTensorTy.getDtype()), // type
+        builder.getIndexAttr(newOutputTensorTy.getRank()),           // rank
+        KGEN::ParamDeclRefAttr::get(simdWidthAttr), // simd_width
+        oldStoreOpParameters[3],                    // alignment
+        oldStoreOpParameters[4],                    // address_space
+        stridesOrError.takeValue(),                 // static_strides
     };
 
     auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
