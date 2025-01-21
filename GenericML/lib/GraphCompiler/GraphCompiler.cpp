@@ -285,9 +285,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // Soft fuse trivial and non-host kernels where possible.
     if (opts.fuseJitKernels) {
       pm.addPass(MOGG::createInlineLambdas());
-      MOGG::SoftFuseOptions softFuseOpts;
-      softFuseOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
-      pm.addPass(MOGG::createSoftFuse(softFuseOpts));
 
       MOGG::FuseKernelSequencesOptions sequenceFusionOpts;
       sequenceFusionOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;

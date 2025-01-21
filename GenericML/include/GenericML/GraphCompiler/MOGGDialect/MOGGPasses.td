@@ -187,28 +187,6 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   ];
 }
 
-def SoftFuse: Pass<"soft-fuse", "MO::GraphOp"> {
-  let summary = "Fuse a sequence of kernels into a single kernel.";
-  let description = [{
-    This pass will combine a sequence of MOGG::KernelOp invocations into a
-    single invocation. The original kernels will be called in some topological
-    order. Intermediate tensors may be stack-allocated within the fused kernel.
-
-    Generally only 'small' kernels and 'small' intermediate tensors may be
-    fused.
-  }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
-
-  let options = [
-    Option<"smallTensorLimit", "small-tensor-limit", "int64_t", "1024",
-           "Maximum number of elements a tensor may have to be considered "
-           "'small'. These may be stack allocated within the fused kernel.">,
-    Option<"nonHostKernelLimit", "non-host-kernel-limit", "size_t", "3",
-           "Maximum number of non-host kernels to place in a single fused "
-           "kernel.">,
-  ];
-}
-
 def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
   let summary = "Fuse kernels into the lambda of their users";
   let description = [{
