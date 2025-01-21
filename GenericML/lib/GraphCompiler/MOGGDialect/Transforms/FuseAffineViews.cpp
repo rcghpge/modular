@@ -81,77 +81,6 @@ struct FuseAffineViewsPass
     return !kernel.getInputFusionInterfaceAt(inputNum).strref().empty();
   }
 
-  void addSingletonDimTransformMOGG(Value indices,
-                                    MO::TensorType outputTensorType,
-                                    MO::AddSingletonDimOp addDim,
-                                    OpBuilder &builder) {
-    mlir::NamedAttrList attrs;
-    attrs.set("rank", builder.getIndexAttr(outputTensorType.getRank()));
-    attrs.set("axis", addDim.getAxis());
-    attrs.set("value", builder.getIndexAttr(0));
-
-    auto call = builder.create<MOGG::CallOp>(
-        addDim.getLoc(), TypeRange{indices.getType()}, "insert_index",
-        ValueRange{indices}, mlir::ArrayAttr{},
-        /*kgenAttrs=*/builder.getDictionaryAttr(attrs));
-
-    indices.replaceUsesWithIf(call->getResult(0), [&](OpOperand &operand) {
-      if (operand.getOwner() == call)
-        return false;
-      return true;
-    });
-  }
-
-  template <typename SplitOrMergeDimOp>
-  void addSplitOrMergeDimMOGG(Value indices, MO::TensorType outputTensorType,
-                              SplitOrMergeDimOp splitOrMergeDimOp,
-                              Operation *insertPt, OpBuilder &builder) {
-    mlir::MLIRContext *ctx = builder.getContext();
-
-    mlir::NamedAttrList attrs;
-    attrs.set("rank", builder.getIndexAttr(outputTensorType.getRank()));
-    attrs.set("axis", splitOrMergeDimOp.getAxis());
-
-    int64_t i = splitOrMergeDimOp.getAxis().getValue().getLimitedValue();
-
-    // Insert the shape calculation outside of the lambda so the index is
-    // captured by the lambda rather than the pointer to the shape.
-    OpBuilder shapeCalcBuilder{ctx};
-    shapeCalcBuilder.setInsertionPointAfter(insertPt);
-
-    // Get the dimension we are splitting / merging by.
-    // For split ([N] -> [n1, n2]) or merge ([n1, n2] -> [N]), this value
-    // refers to `n2`.
-    TypedAttr axis;
-    if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::SplitDimOp>) {
-      axis = splitOrMergeDimOp.getType().getDims()[i + 1];
-    } else if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::MergeDimOp>) {
-      axis = splitOrMergeDimOp.getInput().getType().getDims()[i + 1];
-    }
-    Value getDim = MOGG::lowerDimToKGEN(splitOrMergeDimOp.getLoc(),
-                                        shapeCalcBuilder, axis);
-
-    std::optional<llvm::StringLiteral> funcName;
-    if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::SplitDimOp>) {
-      funcName = Utils::SplitDimIndices;
-    } else if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::MergeDimOp>) {
-      funcName = Utils::MergeDimIndices;
-    }
-    ASSERT_STREAM(funcName, "funcName should be non-null");
-
-    // Add the actual indices transfrom into the lambda expression.
-    auto call = builder.create<MOGG::CallOp>(
-        splitOrMergeDimOp.getLoc(), TypeRange{indices.getType()}, *funcName,
-        ValueRange{indices, getDim}, mlir::ArrayAttr{},
-        /*kgenAttrs=*/builder.getDictionaryAttr(attrs));
-
-    indices.replaceUsesWithIf(call->getResult(0), [&](OpOperand &operand) {
-      if (operand.getOwner() == call)
-        return false;
-      return true;
-    });
-  }
-
   Value addGatherIndicesTranslation(Location loc, OpBuilder &builder,
                                     Value indicesAfterGather,
                                     Value indicesBuffer, Value gatherAxis,
@@ -168,88 +97,6 @@ struct FuseAffineViewsPass
         /*kgenAttrs=*/builder.getDictionaryAttr({}));
 
     return call.getResult(0);
-  }
-
-  // Support fusion for old-style kernels which use high level MOGG ops
-  template <typename ViewOp>
-  void fuseViewOpDimMOGG(MOGG::KernelOp kernel, ViewOp viewOpUser,
-                         Value result) {
-    MO::TensorType newType = viewOpUser.getResult().getType();
-
-    OutputPlaceholdersOp outPh = kernel.getOutputPlaceholder();
-    Value outTensor = outPh.getResults()[0];
-    auto oldType = cast<MO::TensorType>(outTensor.getType());
-
-    // Update the internal placeholder op.
-    outTensor.setType(newType);
-
-    // Insert a view to the old shape and replace everything EXCEPT the
-    // output return and the internal simd store with this view.
-    OpBuilder builder{outPh};
-    builder.setInsertionPointAfter(outPh);
-
-    auto shapeTy =
-        MOGG::ShapeType::get(kernel.getContext(), oldType.getTypedShapeAttr());
-    Value shapeInKGEN =
-        MOGG::lowerShapeToKGEN(outPh->getLoc(), builder, oldType.getDims());
-    Value shape = builder.create<MOGG::ToMOGGOp>(
-        outPh->getLoc(), TypeRange{shapeTy}, ValueRange{shapeInKGEN});
-
-    auto reshape = builder.create<MOGG::CallOp>(
-        outPh.getLoc(), TypeRange{oldType}, "reshape_contiguous_buffer",
-        ValueRange{outTensor, shape}, mlir::ArrayAttr{},
-        /*kgenAttrs=*/mlir::DictionaryAttr{});
-    Value reshapedOutput = reshape.getResult(0);
-
-    outTensor.replaceUsesWithIf(reshapedOutput, [&](OpOperand &operand) {
-      Operation *usr = operand.getOwner();
-
-      // Don't replace the reshape we just added, ofc.
-      if (usr == reshape)
-        return false;
-
-      // Output should be returning the same shape as the graph level
-      // expects.
-      if (isa<MOGG::OutputOp>(usr))
-        return false;
-
-      // The store should be operating on the tensor with the same
-      // dimension as the output expects.
-      if (auto callOp = dyn_cast<MOGG::CallOp>(usr)) {
-        if (callOp.getMojoKernelTarget() == Utils::MOGGSimdStoreTarget &&
-            callOp.getOperand(0) == outTensor) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    // 2.Transform the indices of the output lambda by fusing in the view
-    // operation.
-    StringAttr lambdaName = kernel.getOutputFusionInterfaceAt(0);
-
-    kernel.walk([&](MOGG::LambdaOp lambda) {
-      // Insert call to inverse of the view op to invert the indices.
-      if (lambda.getSymName() == lambdaName) {
-        mlir::Block &block = lambda.getBodyRegion().front();
-        Value indices = block.getArgument(0);
-        builder.setInsertionPoint(&block, block.begin());
-
-        if constexpr (std::is_same_v<ViewOp, MO::AddSingletonDimOp>)
-          addSingletonDimTransformMOGG(indices, oldType, viewOpUser, builder);
-        else if constexpr (std::is_same_v<ViewOp, MO::SplitDimOp>)
-          addSplitOrMergeDimMOGG(indices, oldType, viewOpUser, reshape,
-                                 builder);
-        else if constexpr (std::is_same_v<ViewOp, MO::MergeDimOp>)
-          addSplitOrMergeDimMOGG(indices, oldType, viewOpUser, reshape,
-                                 builder);
-      }
-    });
-
-    // Change the graph level type of the mogg kernel op and replace the
-    // old view.
-    result.setType(newType);
-    viewOpUser.getResult().replaceAllUsesWith(result);
   }
 
   // Calls `reshape_contiguous_managed_tensor_slice` on the given `kgenTensor`,
@@ -606,11 +453,7 @@ struct FuseAffineViewsPass
   void fuseViewOpDim(MOGG::KernelOp kernel, ViewOp viewOp, Value result,
                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                      TypeManager &typeManager) {
-    if (kernel.getIsKGEN())
-      fuseViewOpDimKGEN(kernel, viewOp, result, mojoLibraryAnalysis,
-                        typeManager);
-    else
-      fuseViewOpDimMOGG(kernel, viewOp, result);
+    fuseViewOpDimKGEN(kernel, viewOp, result, mojoLibraryAnalysis, typeManager);
 
     // construct the new summary string
     SmallVector<Operation *> ops{kernel, viewOp};

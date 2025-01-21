@@ -713,10 +713,6 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
   const bool canDuplicate = llvm::all_of(toFuse, [&](auto region) {
     return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
   });
-  assert(llvm::all_of(toFuse, [&](auto region) {
-    return cast<MOGG::GenericCompiledRegionOp>(region).getIsKGEN().value_or(
-               false) == firstRegionOp.getIsKGEN().value_or(false);
-  }));
   DeviceRefAttr device =
       cast<MOGG::GenericCompiledRegionOp>(toFuse.front()).getDeviceRef();
   // For now we set the device to be a cuda device if one exists.

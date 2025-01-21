@@ -62,9 +62,6 @@ static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
   if (!parentRegion || !childRegion)
     return false;
 
-  if (parentRegion.getIsKGEN() != childRegion.getIsKGEN())
-    return false;
-
   if (!parentRegion.getCanFuseIntoOther())
     return false;
 

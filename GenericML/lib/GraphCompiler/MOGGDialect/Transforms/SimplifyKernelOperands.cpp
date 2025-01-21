@@ -30,9 +30,6 @@ struct SimplifyKernelOperands
     OpBuilder builder{graphOp.getContext()};
 
     graphOp.walk([](MOGG::KernelOp kernelOp) {
-      if (!kernelOp.getIsKGEN().value_or(false))
-        return;
-
       auto kernelArguments = kernelOp.getBody().front().getArguments();
 
       struct CacheEntryWithLambda {

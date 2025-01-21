@@ -77,9 +77,6 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcKernel = cast<KernelOp>(src);
   auto dstKernel = cast<KernelOp>(dst);
 
-  if (srcKernel.getIsKGEN() != dstKernel.getIsKGEN())
-    return false;
-
   if (!getFusionIndices(srcKernel, dstKernel).has_value())
     return false;
 
@@ -164,10 +161,6 @@ struct FuseElementwisePass
       return signalPassFailure();
 
     graphOp.walk([&](MOGG::KernelOp kernelOp) {
-      bool isKGEN = kernelOp.getIsKGEN().value_or(false);
-      if (!isKGEN)
-        return;
-
       llvm::SmallSetVector<DType, 4> allDtypes;
       auto findDType = [&allDtypes](Type ty) {
         if (auto tensorTy = dyn_cast<MO::TensorType>(ty))
@@ -202,238 +195,22 @@ struct FuseElementwisePass
 
     for (auto &subgraph : subgraphs) {
       auto dstKernelOp = cast<KernelOp>(subgraph.back());
-      bool isKGEN = dstKernelOp.getIsKGEN().value_or(false);
       for (auto op : llvm::reverse(subgraph)) {
         if (op == dstKernelOp)
           continue;
 
         auto srcKernelOp = cast<KernelOp>(op);
-        if (isKGEN)
-          fuseSrcKernelIntoDstKernelKGEN(srcKernelOp, dstKernelOp);
-        else
-          fuseSrcKernelIntoDstKernelMOGG(srcKernelOp, dstKernelOp);
+        fuseSrcKernelIntoDstKernelKGEN(srcKernelOp, dstKernelOp);
 
         dstKernelOp.setSummaryAttr(
             getSummaryString({srcKernelOp, dstKernelOp}, FusionType::HARD));
         srcKernelOp.erase();
       }
 
-      if (isKGEN) {
-        dstKernelOp.walk([](Block *block) { mlir::sortTopologically(block); });
-      }
+      dstKernelOp.walk([](Block *block) { mlir::sortTopologically(block); });
     }
 
     fixupKGENKernelsSimdWidth(graphOp);
-  }
-
-  // The fusion itself is applied by the following steps.
-  // 1. Add all operands of the src kernel to the dst kernel, and add new args
-  //    to the body.
-  // 2. For each input lambda on the src kernel clone it into the dst kernel
-  //    and remap to refer to the added arguments.
-  // 3. Take the elementwise lambda from the src kernel and replace the lambda
-  //    invoke of the argument we are replacing (remember we are fusing the
-  //    src body into a use of the src kernel). Remap each input invocation
-  //    to point to the cloned input lambdas.
-  // 4. Remove the old argument and associated lambda.
-  // 5. Update the attributes to reflect the new inputs.
-  void fuseSrcKernelIntoDstKernelMOGG(MOGG::KernelOp srcKernel,
-                                      MOGG::KernelOp dstKernel) {
-    auto fusionIndices = *getFusionIndices(srcKernel, dstKernel);
-    // This assumes that srcKernel has a single output. When that changes, we
-    // will have to create a mapping.
-    Value previouslyFusedValue;
-    // Iterating in reverse to get the right index (each iteration will erase an
-    // operand and a fusion interface). The first iteration, we actually fuse.
-    // The subsequent iterations will use previouslyFusedValue.
-    for (int fusionIndex : llvm::reverse(fusionIndices)) {
-      // The input lambda we are going to replace with the fused body.
-      ArrayAttr dstHooks = dstKernel.getInputFusionInterfaceAttr();
-      StringAttr dstKernelInputLambdaName =
-          cast<StringAttr>(dstHooks[fusionIndex]);
-
-      // Get the output placeholder operation in the block we are inserting
-      // into. We want to this to be at the top as that simplifies other
-      // transforms so we use this as the start of the block.
-      MOGG::OutputPlaceholdersOp dstOuts = dstKernel.getOutputPlaceholder();
-
-      // Symbol tables for both the incoming kernel and the kernel we are fusing
-      // into.
-      mlir::SymbolTable dstSymTable{dstKernel};
-      mlir::SymbolTable srcSymTable{srcKernel};
-
-      // Add the new lambdas to the top of the dst kernel after the output
-      // placeholders.
-      mlir::OpBuilder inserter{dstOuts->getContext()};
-      dstKernel.setInsertionPointToTop(inserter);
-
-      // Get the main elementwise block in the kernel we are fusing into.
-      StringRef dstMainBody = *dstKernel.getFusionBodyLambda();
-      auto dstElemwiseLambda = cast<LambdaOp>(dstSymTable.lookup(dstMainBody));
-
-      // If we've already fused then early exit by just reusing the value we
-      // have already replaced. This occurs when the srcKernel feeds into many
-      // arguments of the dstKernel.
-      if (previouslyFusedValue) {
-        replaceLoadWithExistingUse(dstKernel, dstKernelInputLambdaName,
-                                   dstElemwiseLambda, inserter,
-                                   previouslyFusedValue);
-        dstKernel.removeOperandAtIndex(fusionIndex);
-        continue;
-      }
-
-      llvm::StringMap<StringRef> oldNameToNew;
-
-      // Clone each of the input lambdas for the inputs we don't already have.
-      ArrayAttr srcInputLambdas = srcKernel.getInputFusionInterfaceAttr();
-      ArrayAttr dstInputLambdas = dstKernel.getInputFusionInterfaceAttr();
-
-      llvm::SmallDenseMap<Value, size_t> dstOperands;
-      for (size_t i = 0, e = dstKernel->getNumOperands(); i < e; ++i) {
-        Value operand = dstKernel->getOperand(i);
-        dstOperands[operand] = i;
-      }
-
-      IRMapping remapper;
-      Block &oldBlock = srcKernel.getBody().front();
-      Block &dstBlock = dstKernel.getBody().front();
-      // Add the operands to the graph level op and remap the values from the
-      // incoming kernel.
-      for (size_t i = 0, e = srcKernel->getNumOperands(); i < e; ++i) {
-        // The values on the kernel being fused in.
-        Value srcOperand = srcKernel->getOperand(i);
-        Value srcBlockArg = oldBlock.getArgument(i);
-
-        // Get the lambda which loads this operand in the src kernel. If the
-        // kernel doesn't expose any input attributes or only exposes null
-        // attributes then we should add the null attribute.
-        LambdaOp srcLambda = nullptr;
-        if (srcInputLambdas) {
-          StringRef name = cast<StringAttr>(srcInputLambdas[i]).getValue();
-          if (!name.empty())
-            srcLambda = cast<LambdaOp>(srcSymTable.lookup(name));
-        }
-
-        auto itr = dstOperands.find(srcOperand);
-        if (itr != dstOperands.end()) {
-          // The input of the srcKernel is already an input of the dstKernel,
-          // re-use the already existing lambda or completely nullify it.
-          size_t dstInIndex = itr->second;
-          remapper.map(srcBlockArg, dstBlock.getArgument(dstInIndex));
-
-          StringRef dstLambdaName =
-              cast<StringAttr>(dstInputLambdas[dstInIndex]).getValue();
-
-          if (!srcLambda || dstLambdaName.empty())
-            dstKernel.setInputFusionInterface(dstInIndex, "");
-          else
-            oldNameToNew[srcLambda.getSymName()] = dstLambdaName;
-        } else {
-          // Otherwise, just add the new operand and the lambda that comes with
-          // it.
-          Value dstBlockArg = dstKernel.addOperand(srcOperand);
-          remapper.map(srcBlockArg, dstBlockArg);
-          if (srcLambda) {
-            // As we have added a new input we need to clone the lambda which
-            // loads that input.
-            auto newLambda = cast<LambdaOp>(srcLambda->clone(remapper));
-            // Add the lambda to the kernel.
-            dstSymTable.insert(newLambda, inserter.getInsertionPoint());
-            // Add to the input interfaces so they can then be fused into later.
-            dstKernel.setInputFusionInterface(dstKernel.getNumOperands() - 1,
-                                              newLambda.getSymName());
-            // Remap so any uses of the old lambda can be remapped onto the new
-            // lambda when we fuse the main elementwise body.
-            oldNameToNew[srcLambda.getSymName()] = newLambda.getSymName();
-          } else {
-            dstKernel.setInputFusionInterface(dstKernel.getNumOperands() - 1,
-                                              "");
-          }
-        }
-      }
-
-      StringRef mainBody = *srcKernel.getFusionBodyLambda();
-      auto srcElementwiseLambda = cast<LambdaOp>(srcSymTable.lookup(mainBody));
-
-      // Clone the block.
-      auto newOp = cast<LambdaOp>(srcElementwiseLambda->clone(remapper));
-
-      // Track the calls to the output lambda[s] so they can be removed.
-      llvm::SmallDenseSet<StringRef> outputFns;
-      ArrayAttr outputHooks = srcKernel.getOutputFusionInterfaceAttr();
-      for (StringRef name : outputHooks.getAsValueRange<StringAttr>())
-        outputFns.insert(name);
-
-      auto returnOp =
-          cast<MOGG::OutputOp>(newOp.getBody().front().getTerminator());
-
-      // When we inline the new body we will have lambda invokes representing
-      // loads from the input lambdas. These symbols will be references to
-      // lambdas in the other kernel so we need to remap onto the ones in this
-      // kernel.
-      for (auto invokeOp :
-           llvm::make_early_inc_range(newOp.getOps<MOGG::LambdaInvokeOp>())) {
-        StringRef oldName = invokeOp.getLambda().getLeafReference().strref();
-
-        // Remove all references to the old stores.
-        if (outputFns.contains(oldName)) {
-          // Add the values we previously stored as the output.
-          for (Value arg : invokeOp.getOperands()) {
-            // Add everything but indices.
-            if (!isa<MOGG::IndicesType>(arg.getType()))
-              returnOp->insertOperands(returnOp.getNumOperands(), arg);
-          }
-
-          invokeOp.erase();
-        } else {
-          auto itr = oldNameToNew.find(oldName);
-          if (itr != oldNameToNew.end()) {
-            invokeOp.setLambdaAttr(
-                FlatSymbolRefAttr::get(invokeOp.getContext(), itr->second));
-          }
-        }
-      }
-
-      // Add the new lambda to the table.
-      dstSymTable.insert(newOp, inserter.getInsertionPoint());
-      inserter.setInsertionPointAfter(newOp);
-
-      // Replace all uses of the old input lambda inside the main body with the
-      // inlined body of the replacement lambda. The only reason we don't
-      // replace it with a call is because it returns void so we would need to
-      // create a new one for a legal call.
-      auto uses = *dstSymTable.getSymbolUses(dstKernelInputLambdaName,
-                                             dstElemwiseLambda);
-      for (auto use : llvm::make_early_inc_range(uses)) {
-        auto toReplace = cast<MOGG::LambdaInvokeOp>(use.getUser());
-        // Inline the first invoke and then reuse those values.
-        if (!previouslyFusedValue) {
-          auto newValues = inlineInvoke(toReplace, newOp);
-          ASSERT_STREAM(
-              newValues.size() == 1,
-              << "Currently assuming one return from elementwise ops when "
-                 "fusing but got "
-              << newValues.size());
-          previouslyFusedValue = newValues.front();
-        } else {
-          toReplace->replaceAllUsesWith(ValueRange{previouslyFusedValue});
-        }
-
-        // Remove the lambda if we didn't already remove it.
-        auto op = SymbolTable::lookupSymbolIn(dstKernel, toReplace.getLambda());
-        if (op)
-          op->erase();
-
-        // Remove the call to the old input lambda.
-        toReplace.erase();
-      }
-
-      // All uses have been inlined so get rid of the new lambda.
-      newOp.erase();
-
-      // Remove the argument we have effectively inlined.
-      dstKernel.removeOperandAtIndex(fusionIndex);
-    }
   }
 
   // Replace all loads from `dstKernelInputLambdaName` in `dstElemwiseLambda`

@@ -128,77 +128,6 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                                              mojoLibraryAnalysis);
     });
 
-    auto replaceArg = [](KernelOp kernel, size_t index, Value newVal) {
-      Block &thisBlock = kernel.getBody().front();
-      thisBlock.getArgument(index).replaceAllUsesWith(newVal);
-      kernel.removeOperandAtIndex(index);
-    };
-
-    // Once we have fused the views we can fuse reshapes into the kernel. This
-    // is technically a view but it must come last as it only can reshape
-    // contigious inputs and can always be fused regardless of whether or not
-    // the kernel has opted into fusion or not as it returns a contigious
-    // tensor with the same number of elements.
-    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>()) {
-      // Don't fuse kernels with parameter decls.
-      if (!kernel.getOutputParamDecls().empty())
-        continue;
-
-      // Don't fuse reshapes into new API kernels because we will handle it in
-      // another pass.
-      if (kernel.getIsKGEN().value_or(false))
-        continue;
-
-      if (kernel.isInPlaceAlloc())
-        continue;
-
-      int32_t preFuseNumOperands = kernel.getNumOperands();
-
-      // For safety we check which have already been fused and won't fuse
-      // something again.
-      DenseMap<Value, Value> alreadyFused;
-
-      // Start from the end so we can safely remove and append arguments.
-      for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
-        // Get the creator of this operand.
-        Value operand = kernel.getOperand(index);
-        Operation *op = operand.getDefiningOp();
-
-        auto itr = alreadyFused.find(operand);
-        if (itr != alreadyFused.end()) {
-          replaceArg(kernel, index, itr->second);
-          continue;
-        }
-
-        if (auto reshape = dyn_cast_or_null<MO::Static::ReshapeOp>(op)) {
-          MO::TensorType outType = reshape.getResult().getType();
-          MO::TensorType inType = reshape.getInput().getType();
-
-          // We can't fuse this if there are any fancy symbolic dims.
-          if (hasCompoundParameters(inType) || hasCompoundParameters(outType))
-            continue;
-
-          // Insert after the output placeholders.
-          mlir::OpBuilder builder{ctx};
-          kernel.setInsertionPointToTop(builder);
-
-          // Add the old reshape argument to this kernel.
-          Value reshapeInput = kernel.addOperand(reshape.getInput());
-
-          // Add the new reshape.
-          MOGG::CallOp newReshape =
-              createMOGGReshape(builder, reshape.getLoc(), reshapeInput,
-                                outType, "ndbuffer_reshape");
-
-          // Replace all uses of the old operand and then remove it from this
-          // kernel.
-          replaceArg(kernel, index, newReshape->getResult(0));
-
-          alreadyFused[reshape.getResult()] = newReshape->getResult(0);
-        }
-      }
-    }
-
     // FIXME(GEX-865): This pass is generating invalid IR. Fix it up here.
     getOperation().walk([](KGEN::CallOp call) {
       OpBuilder b(call);
@@ -247,12 +176,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     if (otherKernel.getOutputPlaceholder() == nullptr)
       return false;
 
-    // Make sure both kernels are compatible regarding KGEN.
-    if (kernel.getIsKGENAttr() != otherKernel.getIsKGENAttr())
-      return false;
-
     // For KGEN view fusion, the src kernel must only have 1 output.
-    if (kernel.getIsKGEN().value_or(false) && otherKernel.getNumResults() != 1)
+    if (otherKernel.getNumResults() != 1)
       return false;
 
     // Only fuse view operations.
@@ -481,54 +406,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       MOGG::remapTypesAndAttrs(leaf, paramMapping);
     };
 
-    // Fusion helper function for MOGG version.
-    auto fuseInputImplMOGG = [&](KernelOp producerKernel, KernelOp leaf,
-                                 Value operand) {
-      mlir::SymbolTable symTable{leaf};
-      llvm::StringMap<StringRef> oldNameToNew;
-      // Don't fuse in the elementwise kernel invoke or any lambdas. We just
-      // want the view ops at the top.
-      auto skipElementwiseAndLambdas = [](Operation *op) {
-        if (isa<MOGG::LambdaOp, MOGG::OutputPlaceholdersOp>(op))
-          return true;
-        if (auto call = dyn_cast<MOGG::CallOp>(op)) {
-          if (call.getMojoKernelTarget() == "elementwise")
-            return true;
-        }
-        return false;
-      };
-
-      // Copy the body into the new one.
-      producerKernel.fuseBodyIntoNewWithSkip(
-          builder, symTable, remapper, oldNameToNew, skipElementwiseAndLambdas);
-
-      // Find "The view" being fused in. The view we just fused in will be the
-      // operation which has a return but that has no use (since it was
-      // previously used in a lambda which we haven't fused). With improved
-      // composability in the future we won't need this hack.
-      Operation *newView = nullptr;
-      for (auto op : leaf.getOps<MOGG::CallOp>()) {
-        if (op->getNumResults() == 1 && op->getResult(0).use_empty()) {
-          ASSERT_STREAM(
-              newView == nullptr,
-              << "More than one view op detected in kernel being fused.");
-          newView = op;
-        }
-      }
-      ASSERT_STREAM(
-          newView,
-          << "Kernel was marked as a view but could not find a view op");
-
-      leafBlock.getArgument(idx).replaceAllUsesWith(newView->getResult(0));
-      leaf.removeOperandAtIndex(idx);
-      alreadyFused[operand] = newView->getResult(0);
-    };
-
-    if (leaf.getIsKGEN().value_or(false)) {
-      fuseInputImplKGEN(producerKernel, leaf, operandBeingReplaced);
-    } else {
-      fuseInputImplMOGG(producerKernel, leaf, operandBeingReplaced);
-    }
+    fuseInputImplKGEN(producerKernel, leaf, operandBeingReplaced);
 
     // Ensure the block is in topologically sorted order. This is needed for
     // somewhat contrived test cases.
