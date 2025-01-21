@@ -2240,13 +2240,20 @@ def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [Pure]> {
   let summary = "Add a singleton dimension to a tensor shape";
   let description = [{
     Adds a dimension of `1` to a shape at the given axis.
+
+    Example:
+    ```mlir
+      mo.add_singleton_dim[1: i64](%res): (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+    ```
   }];
-  let arguments = (ins MO_Tensor:$input, Builtin_IntegerAttr:$axis);
-  let results = (outs MO_Tensor:$result);
+  let arguments = (ins MO_RankedTensor:$input, Builtin_IntegerAttr:$axis);
+  let results = (outs MO_RankedTensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def MO_SplitDimOp : MO_TensorOp<"split_dim", [Pure]> {
@@ -2258,13 +2265,20 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [Pure]> {
     Output=[S1, S2, K], where S1 = N / S2.
 
     Value of S2 is taken from the output shape.
+
+    Example:
+    ```mlir
+      %out = mo.split_dim[0: i64](%res): (!mo.tensor<[4, 9], f32>) -> !mo.tensor<[2, 2, 9], f32>
+    ```
   }];
-  let arguments = (ins MO_Tensor:$input, Builtin_IntegerAttr:$axis);
-  let results = (outs MO_Tensor:$result);
+  let arguments = (ins MO_RankedTensor:$input, Builtin_IntegerAttr:$axis);
+  let results = (outs MO_RankedTensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def MO_MergeDimOp : MO_TensorOp<"merge_dim", [Pure]> {
@@ -2276,13 +2290,20 @@ def MO_MergeDimOp : MO_TensorOp<"merge_dim", [Pure]> {
     Output=[A, B*C, D].
 
     We merge axis i and i+1 into one dimension.
+
+    Example:
+    ```mlir
+      %out = mo.merge_dim[1: i64](%res): (!mo.tensor<[1, 2, 3, 4], f32>) -> !mo.tensor<[1, 6, 4], f32>
+    ```
   }];
-  let arguments = (ins MO_Tensor:$input, Builtin_IntegerAttr:$axis);
-  let results = (outs MO_Tensor:$result);
+  let arguments = (ins MO_RankedTensor:$input, Builtin_IntegerAttr:$axis);
+  let results = (outs MO_RankedTensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [

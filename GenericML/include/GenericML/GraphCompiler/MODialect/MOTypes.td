@@ -410,6 +410,9 @@ def BoolScalarPred : CPred<
 
 def MO_BoolScalar : MO_ConfinedScalar<[BoolScalarPred], "boolean scalar">;
 
+def MO_RankedTensor : MO_ConfinedTensor<
+  [MO_HasRankPred], "A tensor with a statically known rank.">;
+
 /// There's currently no alias analysis around !mo.buffer values which is
 /// problematic in the face of operations that can directly forward their inputs
 /// (such as mo.guard or one of the control flow ops in conjunction with

@@ -2814,6 +2814,135 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 bool ReshapeOp::preferResultsDevice() { return true; }
 
 //===----------------------------------------------------------------------===//
+// MO_AddSingletonDimOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult AddSingletonDimOp::verify() {
+  TensorType inputTy = getInput().getType();
+  TensorType resultTy = getResult().getType();
+  int64_t inputRank = inputTy.getRank();
+  int64_t resultRank = resultTy.getRank();
+  if (resultRank != inputRank + 1)
+    return emitOpError("Output rank must be one greater than input.");
+
+  TensorType newResultTy = inputTy.cloneWith(resultTy.getDims());
+  if (auto layout = resultTy.getLayoutAttr())
+    newResultTy = newResultTy.cloneWith(layout);
+  if (newResultTy != resultTy)
+    return emitOpError(
+        "More than shape / layout has changed between input and output.");
+
+  // Check surrounding dims around axis are the same
+  int64_t axis = getAxis().getValue().getLimitedValue();
+  for (int64_t i = 0; i < resultRank; i++) {
+    if (i < axis) {
+      if (resultTy.getDim(i) != inputTy.getDim(i))
+        return emitOpError("Input and output dims do not match around axis.");
+    } else if (i == axis) {
+      if (resultTy.getIntDim(i) != 1)
+        return emitOpError("Output dim does not have 1 for `axis`");
+    } else {
+      // i > axis
+      if (resultTy.getDim(i) != inputTy.getDim(i - 1))
+        return emitOpError("Input and output dims do not match around axis.");
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MO_SplitDimOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult SplitDimOp::verify() {
+  TensorType inputTy = getInput().getType();
+  TensorType resultTy = getResult().getType();
+
+  int64_t inputRank = inputTy.getRank();
+  int64_t resultRank = resultTy.getRank();
+  if (resultRank != inputRank + 1)
+    return emitOpError("Output rank must be one greater than input.");
+
+  TensorType newResultTy = inputTy.cloneWith(resultTy.getDims());
+  if (auto layout = resultTy.getLayoutAttr())
+    newResultTy = newResultTy.cloneWith(layout);
+  if (newResultTy != resultTy)
+    return emitOpError(
+        "More than shape / layout has changed between input and output.");
+
+  // Check surrounding dims around axis are the same
+  int64_t axis = getAxis().getValue().getLimitedValue();
+  for (int64_t i = 0; i < resultRank; i++) {
+    if (i < axis) {
+      if (resultTy.getDim(i) != inputTy.getDim(i))
+        return emitOpError("Input and output dims do not match around axis.");
+    } else if (i > axis + 1) {
+      if (resultTy.getDim(i) != inputTy.getDim(i - 1))
+        return emitOpError("Input and output dims do not match around axis.");
+    }
+  }
+
+  // Make sure split dimensions are correct
+  if (resultTy.isIntegerDim(axis) && resultTy.isIntegerDim(axis + 1) &&
+      inputTy.isIntegerDim(axis)) {
+    int64_t origDim = inputTy.getIntDim(axis);
+    int64_t splitDimProduct =
+        resultTy.getIntDim(axis) * resultTy.getIntDim(axis + 1);
+
+    if (origDim != splitDimProduct)
+      return emitOpError("Split dimensions do not multiply to final.");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MO_MergeDimOp support
+//===----------------------------------------------------------------------===//
+
+LogicalResult MergeDimOp::verify() {
+  TensorType inputTy = getInput().getType();
+  TensorType resultTy = getResult().getType();
+
+  int64_t inputRank = inputTy.getRank();
+  int64_t resultRank = resultTy.getRank();
+  if (resultRank != inputRank - 1)
+    return emitOpError("Output rank must be one less than input.");
+
+  TensorType newResultTy = inputTy.cloneWith(resultTy.getDims());
+  if (auto layout = resultTy.getLayoutAttr())
+    newResultTy = newResultTy.cloneWith(layout);
+  if (newResultTy != resultTy)
+    return emitOpError(
+        "More than shape / layout has changed between input and output.");
+
+  // Check surrounding dims around axis are the same
+  int64_t axis = getAxis().getValue().getLimitedValue();
+  for (int64_t i = 0; i < resultRank; i++) {
+    if (i < axis) {
+      if (resultTy.getDim(i) != inputTy.getDim(i))
+        return emitOpError("Input and output dims do not match around axis.");
+    } else if (i > axis) {
+      if (resultTy.getDim(i) != inputTy.getDim(i + 1))
+        return emitOpError("Input and output dims do not match around axis.");
+    }
+  }
+
+  // Make sure merged dimensions are correct
+  if (inputTy.isIntegerDim(axis) && inputTy.isIntegerDim(axis + 1) &&
+      resultTy.isIntegerDim(axis)) {
+    int64_t newDim = resultTy.getIntDim(axis);
+    int64_t mergeDimProduct =
+        inputTy.getIntDim(axis) * inputTy.getIntDim(axis + 1);
+
+    if (newDim != mergeDimProduct)
+      return emitOpError("Merge dimensions do not multiply to final.");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_UnsqueezeShapeOp support
 //===----------------------------------------------------------------------===//
 LogicalResult UnsqueezeShapeOp::verify() {
