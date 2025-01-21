@@ -150,3 +150,135 @@ mo.graph @split_dim<N, K>(%input: !mo.tensor<[N, K], si32>) -> (!mo.tensor<[4, 8
     %res = mo.static.reshape(%input) : !mo.tensor<[N, K], si32> -> !mo.tensor<[4, 8, K], si32>
 	mo.output %res : !mo.tensor<[4, 8, K], si32>
 }
+
+// CHECK-LABEL: mo.graph @flatten_dim
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[1, 2, 3, 4, 5], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.merge_dim[3 : index] (%[[ARG0]]) : (!mo.tensor<[1, 2, 3, 4, 5], si32>) -> !mo.tensor<[1, 2, 3, 20], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.merge_dim[2 : index] (%[[V0]]) : (!mo.tensor<[1, 2, 3, 20], si32>) -> !mo.tensor<[1, 2, 60], si32>
+// CHECK-NEXT: %[[V2:.*]] = mo.merge_dim[1 : index] (%[[V1]]) : (!mo.tensor<[1, 2, 60], si32>) -> !mo.tensor<[1, 120], si32>
+// CHECK-NEXT: %[[V3:.*]] = mo.merge_dim[0 : index] (%[[V2]]) : (!mo.tensor<[1, 120], si32>) -> !mo.tensor<[120], si32>
+// CHECK-NEXT: mo.output %[[V3]]
+mo.graph @flatten_dim(%input : !mo.tensor<[1,2,3,4,5], si32>) -> (!mo.tensor<[120], si32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[1,2,3,4,5], si32> -> !mo.tensor<[120], si32>
+	mo.output %res : !mo.tensor<[120], si32>
+}
+
+// CHECK-LABEL: mo.graph @unflatten_dim
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[120], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.split_dim[0 : index] (%[[ARG0]]) : (!mo.tensor<[120], si32>) -> !mo.tensor<[1, 120], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.split_dim[1 : index] (%[[V0]]) : (!mo.tensor<[1, 120], si32>) -> !mo.tensor<[1, 2, 60], si32>
+// CHECK-NEXT: %[[V2:.*]] = mo.split_dim[2 : index] (%[[V1]]) : (!mo.tensor<[1, 2, 60], si32>) -> !mo.tensor<[1, 2, 3, 20], si32>
+// CHECK-NEXT: %[[V3:.*]] = mo.split_dim[3 : index] (%[[V2]]) : (!mo.tensor<[1, 2, 3, 20], si32>) -> !mo.tensor<[1, 2, 3, 4, 5], si32>
+// CHECK-NEXT: mo.output %[[V3]]
+mo.graph @unflatten_dim(%input : !mo.tensor<[120], si32>) -> (!mo.tensor<[1,2,3,4,5], si32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[120], si32> -> !mo.tensor<[1,2,3,4,5], si32>
+	mo.output %res : !mo.tensor<[1,2,3,4,5], si32>
+}
+
+// CHECK-LABEL: mo.graph @dont_unflatten_reshape_with_zero_elts
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[0], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[0], si32> -> !mo.tensor<[2, 3, 4, 0], si32>
+// CHECK-NEXT: mo.output %[[V0]]
+mo.graph @dont_unflatten_reshape_with_zero_elts(%input : !mo.tensor<[0], si32>) -> (!mo.tensor<[2,3,4,0], si32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[0], si32> -> !mo.tensor<[2,3,4,0], si32>
+	mo.output %res : !mo.tensor<[2,3,4,0], si32>
+}
+
+// CHECK-LABEL: mo.graph @dont_flatten_reshape_with_zero_elts
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[2, 3, 4, 0], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[2, 3, 4, 0], si32> -> !mo.tensor<[0], si32>
+// CHECK-NEXT: mo.output %[[V0]]
+mo.graph @dont_flatten_reshape_with_zero_elts(%input : !mo.tensor<[2,3,4,0], si32>) -> (!mo.tensor<[0], si32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[2,3,4,0], si32> -> !mo.tensor<[0], si32>
+	mo.output %res : !mo.tensor<[0], si32>
+}
+
+// CHECK-LABEL: mo.graph @flatten_dim_with_layout
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[1, 2, 3, 4], si32, {layout = #mo.layout<NHWC>}>)
+// CHECK-NEXT: %[[V0:.*]] = mo.merge_dim[2 : index] (%[[ARG0]]) : (!mo.tensor<[1, 2, 3, 4], si32, {layout = #mo.layout<NHWC>}>) -> !mo.tensor<[1, 2, 12], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.merge_dim[1 : index] (%[[V0]]) : (!mo.tensor<[1, 2, 12], si32>) -> !mo.tensor<[1, 24], si32>
+// CHECK-NEXT: %[[V2:.*]] = mo.merge_dim[0 : index] (%[[V1]]) : (!mo.tensor<[1, 24], si32>) -> !mo.tensor<[24], si32>
+// CHECK-NEXT: mo.output %[[V2]]
+mo.graph @flatten_dim_with_layout(%input : !mo.tensor<[1,2,3,4], si32, {layout = #mo.layout<NHWC>}>) -> (!mo.tensor<[24], si32>) {
+  %res = mo.static.reshape(%input) : !mo.tensor<[1,2,3,4], si32, {layout = #mo.layout<NHWC>}> -> !mo.tensor<[24], si32>
+	mo.output %res : !mo.tensor<[24], si32>
+}
+
+// CHECK-LABEL: mo.graph @flatten_dim_with_device
+// CHECK: {{.*}} = mo.merge_dim[0 : index] ({{.*}}) : (!mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
+mo.graph @flatten_dim_with_device() -> (!mo.tensor<[4], f32, gpu:0>) {
+    %0 = mo.constant {device = #M.device_ref<"gpu", 0>, value = #M.dense_array<4.0, 5.0, 6.0, 7.0> : tensor<4xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
+	%1 = mo.static.reshape(%0) : !mo.tensor<[2, 2], f32, gpu:0> -> !mo.tensor<[4], f32, gpu:0>
+	mo.output %1 : !mo.tensor<[4], f32, gpu:0>
+}
+
+// CHECK-LABEL: mo.graph @unflatten_dim_with_layout
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[24], si32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.split_dim[0 : index] (%[[ARG0]]) : (!mo.tensor<[24], si32>) -> !mo.tensor<[1, 24], si32>
+// CHECK-NEXT: %[[V1:.*]] = mo.split_dim[1 : index] (%[[V0]]) : (!mo.tensor<[1, 24], si32>) -> !mo.tensor<[1, 2, 12], si32>
+// CHECK-NEXT: %[[V2:.*]] = mo.split_dim[2 : index] (%[[V1]]) : (!mo.tensor<[1, 2, 12], si32>) -> !mo.tensor<[1, 2, 3, 4], si32, {layout = #mo.layout<NHWC>}>
+// CHECK-NEXT: mo.output %[[V2]]
+mo.graph @unflatten_dim_with_layout(%input : !mo.tensor<[24], si32>) -> (!mo.tensor<[1,2,3,4], si32, {layout = #mo.layout<NHWC>}>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[24], si32> -> !mo.tensor<[1,2,3,4], si32, {layout = #mo.layout<NHWC>}>
+	mo.output %res : !mo.tensor<[1,2,3,4], si32, {layout = #mo.layout<NHWC>}>
+}
+
+// CHECK-LABEL: mo.graph @flatten_dim_symbolic
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[D1, D2, D3, D4], f32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.merge_dim[2 : index] (%arg0) : (!mo.tensor<[D1, D2, D3, D4], f32>) -> !mo.tensor<[D1, D2, mul_nuw(D3, D4)], f32>
+// CHECK-NEXT: %[[V1:.*]] = mo.merge_dim[1 : index] (%[[V0]]) : (!mo.tensor<[D1, D2, mul_nuw(D3, D4)], f32>) -> !mo.tensor<[D1, mul_nuw(D2, D3, D4)], f32>
+// CHECK-NEXT: %[[V2:.*]] = mo.merge_dim[0 : index] (%[[V1]]) : (!mo.tensor<[D1, mul_nuw(D2, D3, D4)], f32>) -> !mo.tensor<[mul_nuw(D1, D2, D3, D4)], f32>
+// CHECK-NEXT: mo.output %[[V2]]
+mo.graph @flatten_dim_symbolic<D1,D2,D3,D4>(%input : !mo.tensor<[D1,D2,D3,D4], f32>) -> (!mo.tensor<[mul_nuw(D1,D2,D3,D4)], f32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[D1,D2,D3,D4], f32> -> !mo.tensor<[mul_nuw(D1,D2,D3,D4)], f32>
+	mo.output %res : !mo.tensor<[mul_nuw(D1,D2,D3,D4)], f32>
+}
+
+// CHECK-LABEL: @flatten_dim_symbolic_with_rebind<D1, D2, D12>
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[D1, D2], f32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.merge_dim[0 : index] (%[[ARG0]]) : (!mo.tensor<[D1, D2], f32>) -> !mo.tensor<[mul_nuw(D1, D2)], f32>
+// CHECK-NEXT: %[[V1:.*]] = mo.rebind(%[[V0]]) : !mo.tensor<[mul_nuw(D1, D2)], f32> -> !mo.tensor<[D12], f32>
+// CHECK-NEXT: mo.output %[[V1]] : !mo.tensor<[D12], f32>
+mo.graph @flatten_dim_symbolic_with_rebind<D1,D2,D12>(%input : !mo.tensor<[D1,D2], f32>) -> (!mo.tensor<[D12], f32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[D1,D2], f32> -> !mo.tensor<[D12], f32>
+	mo.output %res : !mo.tensor<[D12], f32>
+}
+
+// CHECK-LABEL: mo.graph @unflatten_dim_symbolic
+// CHECK: %[[V1:.*]] = mo.split_dim[0 : index] ({{.*}}) : (!mo.tensor<[mul_nuw(D1, D2, D3, D4)], f32>) -> !mo.tensor<[D1, mul_nuw(D2, D3, D4)], f32>
+// CHECK-NEXT: %[[V2:.*]] = mo.split_dim[1 : index] (%[[V1]]) : (!mo.tensor<[D1, mul_nuw(D2, D3, D4)], f32>) -> !mo.tensor<[D1, D2, mul_nuw(D3, D4)], f32>
+// CHECK-NEXT: %[[V3:.*]] = mo.split_dim[2 : index] (%[[V2]]) : (!mo.tensor<[D1, D2, mul_nuw(D3, D4)], f32>) -> !mo.tensor<[D1, D2, D3, D4], f32>
+// CHECK-NEXT: %[[V4:.*]] = mo.relu(%[[V3]]) : !mo.tensor<[D1, D2, D3, D4], f32>
+// CHECK-NEXT: mo.output %[[V4]] : !mo.tensor<[D1, D2, D3, D4], f32>
+mo.graph @unflatten_dim_symbolic<D1,D2,D3,D4>() -> (!mo.tensor<[D1,D2,D3,D4], f32>) {
+	%0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+	%1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[mul_nuw(D1,D2,D3,D4)], f32>
+	%2 = mo.static.reshape(%1) : !mo.tensor<[mul_nuw(D1,D2,D3,D4)], f32> -> !mo.tensor<[D1,D2,D3,D4], f32>
+	%3 = mo.relu(%2) : !mo.tensor<[D1,D2,D3,D4], f32>
+	mo.output %3 : !mo.tensor<[D1,D2,D3,D4], f32>
+}
+
+// CHECK-LABEL: mo.graph @flatten_dim_partially_symbolic
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[D1, D2, 8, D3, D4], f32>)
+// CHECK-NEXT: %[[V0:.*]] = mo.merge_dim[3 : index] (%[[ARG0]]) : (!mo.tensor<[D1, D2, 8, D3, D4], f32>) -> !mo.tensor<[D1, D2, 8, mul_nuw(D3, D4)], f32>
+// CHECK-NEXT: %[[V1:.*]] = mo.merge_dim[2 : index] (%[[V0]]) : (!mo.tensor<[D1, D2, 8, mul_nuw(D3, D4)], f32>) -> !mo.tensor<[D1, D2, mul_nuw(D3, D4, 8)], f32>
+// CHECK-NEXT: %[[V2:.*]] = mo.merge_dim[1 : index] (%[[V1]]) : (!mo.tensor<[D1, D2, mul_nuw(D3, D4, 8)], f32>) -> !mo.tensor<[D1, mul_nuw(D2, D3, D4, 8)], f32>
+// CHECK-NEXT: %[[V3:.*]] = mo.merge_dim[0 : index] (%[[V2]]) : (!mo.tensor<[D1, mul_nuw(D2, D3, D4, 8)], f32>) -> !mo.tensor<[mul_nuw(D1, D2, D3, D4, 8)], f32>
+// CHECK-NEXT: mo.output %[[V3]]
+mo.graph @flatten_dim_partially_symbolic<D1,D2,D3,D4>(%input : !mo.tensor<[D1,D2,8,D3,D4], f32>) -> (!mo.tensor<[mul_nuw(D1,D2,8,D3,D4)], f32>) {
+    %res = mo.static.reshape(%input) : !mo.tensor<[D1,D2,8,D3,D4], f32> -> !mo.tensor<[mul_nuw(D1,D2,8,D3,D4)], f32>
+	mo.output %res : !mo.tensor<[mul_nuw(D1,D2,8,D3,D4)], f32>
+}
+
+// CHECK-LABEL: mo.graph @unflatten_dim_symbolic_with_rebind<D1, D2, D12>() -> !mo.tensor<[D1, D2, 3], f32> {
+// CHECK: %[[V0:.*]] = mo.split_dim[0 : index] ({{.*}}) : (!mo.tensor<[D12], f32>) -> !mo.tensor<[D1, cond(eq(:si64 D1, 0), 0, div(D12, D1))], f32>
+// CHECK-NEXT: %[[V1:.*]] = mo.split_dim[1 : index] (%[[V0]]) : (!mo.tensor<[D1, cond(eq(:si64 D1, 0), 0, div(D12, D1))], f32>) -> !mo.tensor<[D1, D2, cond(eq(:si64 D2, 0), 0, div(cond(eq(:si64 D1, 0), 0, div(D12, D1)), D2))], f32>
+// CHECK-NEXT: %[[V2:.*]] = mo.rebind(%[[V1]]) : !mo.tensor<[D1, D2, cond(eq(:si64 D2, 0), 0, div(cond(eq(:si64 D1, 0), 0, div(D12, D1)), D2))], f32> -> !mo.tensor<[D1, D2, 3], f32>
+// CHECK-NEXT: %[[V3:.*]] = mo.relu(%[[V2]]) : !mo.tensor<[D1, D2, 3], f32>
+mo.graph @unflatten_dim_symbolic_with_rebind<D1,D2,D12>() -> (!mo.tensor<[D1,D2,3], f32>) {
+	%0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+	%1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[D12], f32>
+	%2 = mo.static.reshape(%1) : !mo.tensor<[D12], f32> -> !mo.tensor<[D1,D2,3], f32>
+	%3 = mo.relu(%2) : !mo.tensor<[D1,D2,3], f32>
+	mo.output %3 : !mo.tensor<[D1,D2,3], f32>
+}
