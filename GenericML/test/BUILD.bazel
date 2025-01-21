@@ -12,11 +12,6 @@ lit_tests(
         ],
     ),
     custom_substitutions = {
-        "%extra_test_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestsLib)",
-        "%duplicate_override_mojo_bindings": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideFailLib)",
-        "%override_succ_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideSuccLib)",
-        "%override_extra_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGTestOverrideExtraLib)",
-        "%kernel_api_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGKernelAPILib)",
         "%kernel_api_test_lib": "$(rlocationpath //Kernels/mojo/Mogg:MOGGKernelAPITestLib)",
     },
     data = [
@@ -24,10 +19,6 @@ lit_tests(
         "//KGEN:CompilerRT",
         "//Kernels/mojo/Mogg:MOGGKernelAPILib",
         "//Kernels/mojo/Mogg:MOGGKernelAPITestLib",
-        "//Kernels/mojo/Mogg:MOGGTestOverrideExtraLib",
-        "//Kernels/mojo/Mogg:MOGGTestOverrideFailLib",
-        "//Kernels/mojo/Mogg:MOGGTestOverrideSuccLib",
-        "//Kernels/mojo/Mogg:MOGGTestsLib",
         "@llvm-project//compiler-rt:orc_rt",
     ],
     target_compatible_with = select({
