@@ -292,24 +292,6 @@ bool M::MGP::isGatingOperand(const OpOperand *opOperand) {
   return false;
 }
 
-SmallVector<OpOperand *> M::MGP::allReadingUsers(Value value) {
-  SmallVector<OpOperand *> result;
-  for (OpOperand &use : value.getUses()) {
-    if (!isMutated(use))
-      result.emplace_back(&use);
-  }
-  return result;
-}
-
-SmallVector<OpOperand *> M::MGP::allMutatingUsers(Value value) {
-  SmallVector<OpOperand *> result;
-  for (OpOperand &use : value.getUses()) {
-    if (isMutated(use))
-      result.emplace_back(&use);
-  }
-  return result;
-}
-
 OpOperand *M::MGP::getUniqueMutator(Value value) {
   OpOperand *candidate = nullptr;
   for (OpOperand &use : value.getUses()) {
@@ -329,17 +311,6 @@ SmallVector<OpOperand *, 1> M::MGP::getInputChainOpOperands(Operation *op) {
       result.emplace_back(&operand);
   }
   return result;
-}
-
-Operation *M::MGP::earliestUsingOp(ArrayRef<Value> results) {
-  Operation *earliest = nullptr;
-  for (auto result : results) {
-    for (auto user : result.getUsers()) {
-      if (earliest == nullptr || user->isBeforeInBlock(earliest))
-        earliest = user;
-    }
-  }
-  return earliest;
 }
 
 void M::MGP::moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp) {

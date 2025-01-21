@@ -101,12 +101,6 @@ SmallVector<Value> getGatingOperands(Operation *op);
 /// Returns true if opOperand is a 'gating operand' for its operation.
 bool isGatingOperand(const OpOperand *opOperand);
 
-/// Returns all the OpOperands which are used with 'in' semantics.
-SmallVector<OpOperand *> allReadingUsers(Value value);
-
-/// Returns all the OpOperands which are used with 'out' or 'mut' semantics.
-SmallVector<OpOperand *> allMutatingUsers(Value value);
-
 /// Returns the unique OpOperand which is used with 'out' or 'mut' semantics.
 /// Returns nullptr if either no mutator or multiple mutators.
 OpOperand *getUniqueMutator(Value value);
