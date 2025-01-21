@@ -19,6 +19,7 @@
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
 #include "GenericML/GraphCompiler/Passes.h"
+#include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/Support/CASConfig.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/ModelCollection.h"
@@ -33,6 +34,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -233,11 +235,79 @@ bool M_isBinary(FrameworkContextHandle ctx, M::BufferRef file,
   return false;
 }
 
+/// A diagnostic handler for the graph api.
+/// It uses the graph api python location information to print a python like
+/// stacktrace. It also only prints the first error diagnostic (as that would be
+/// equivalent to the first python exception).
+///
+/// If a python stacktrace does not exist, falls back to the
+/// FormatScopedDiagnosticHandler.
+class GraphApiDiagnosticHandler : public mlir::ScopedDiagnosticHandler {
+public:
+  GraphApiDiagnosticHandler(MLIRContext *ctx)
+      : ScopedDiagnosticHandler(ctx, [&](Diagnostic &diag) {
+          diagnostics.push_back(std::move(diag));
+        }) {}
+
+  std::string formatMessage() const {
+    std::string message;
+    llvm::raw_string_ostream messageStream(message);
+    emitDiagnosticToStream(messageStream);
+    return message;
+  }
+
+private:
+  // The full set of diagnostics printed on fallback.
+  std::vector<mlir::Diagnostic> diagnostics;
+
+  void emitDiagnosticToStream(raw_ostream &os) const {
+    // Note: `std::find_if` does not work with `mlir::Diagnostic` due to deleted
+    // constructor.
+    const Diagnostic *firstErrorDiag;
+    for (auto &diag : diagnostics) {
+      if (diag.getSeverity() == mlir::DiagnosticSeverity::Error) {
+        firstErrorDiag = &diag;
+        break;
+      }
+    }
+    if (firstErrorDiag == nullptr) {
+      emitFallbackDiagnosticsToStream(os);
+      return;
+    }
+
+    Location loc = firstErrorDiag->getLocation();
+    auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
+    if (!opaqueLoc) {
+      emitFallbackDiagnosticsToStream(os);
+      return;
+    }
+
+    void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
+        RMO::PythonFrameAttr::ImplType *>(opaqueLoc);
+    if (!attrPtr) {
+      emitFallbackDiagnosticsToStream(os);
+      return;
+    }
+    auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
+
+    os << "\nBuild Time Traceback (most recent call last):\n"
+       << attr.stack_trace() << "\nMAX Compile Error: " << *firstErrorDiag
+       << '\n';
+  }
+
+  // If there is no python stacktrace, fallback to the
+  // FormatScopedDiagnosticHandler.
+  void emitFallbackDiagnosticsToStream(raw_ostream &os) const {
+    for (auto &diag : diagnostics)
+      FormatScopedDiagnosticHandler::emitDiagnosticToStream(os, diag);
+  }
+};
+
 /// Lowers a module op to MGP then exports it to MEF.
 static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
                                          mlir::PassManager &moToMgpPasses,
                                          bool enableMEFMetadata) {
-  FormatScopedDiagnosticHandler diagnostics(moToMgpPasses.getContext());
+  GraphApiDiagnosticHandler diagnostics(moToMgpPasses.getContext());
   if (failed(moToMgpPasses.run(moduleOp))) {
     return Error(Twine("Failed to run the MOToMGP pass manager:\n") +
                  diagnostics.formatMessage());
@@ -438,7 +508,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
 
       mofLoweringOptions.setupContext(compileCtx.context.copy());
 
-      FormatScopedDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
+      GraphApiDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
       if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions)))
         return Error(Twine("unable to lower MO to MGP") +
                      diagnostics.formatMessage());
