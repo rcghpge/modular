@@ -4953,11 +4953,12 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   MO_StaticTupleOutputs,
   ]>
 {
-  let summary = "Take a collection of tensors across devices and perform an allreduce.sum";
+  let summary = "Takes a collection of tensors across devices and performs an allreduce.sum.";
   let description = [{
-      Allreduce takes in inputs each coming from a different device with the same shape as the final output
-      and performs a reduction operation across the devices.  The output is the replicated across the same
-      devices.
+      Allreduce takes in inputs each coming from a different device with the
+      same shape as the final output and performs a reduction operation across
+      the devices.
+      The output is then replicated across the same devices.
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
