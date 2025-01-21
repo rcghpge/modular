@@ -1,0 +1,10 @@
+// RUN: mo-opt -mo-to-mogg %s | FileCheck %s
+
+// Expecting `head_dim` not to collide with mo.custom's `head_dim` attribute.
+mo.graph @create_collection<num_blocks, num_layers, max_seq_len, num_kv_heads, head_dim, batch_size, steps_remaining>(%arg0: !mo.tensor<[num_blocks, 2, num_layers, max_seq_len, num_kv_heads, head_dim], f32, cpu:0>, %arg1: !mo.tensor<[batch_size], ui32, cpu:0>, %arg2: !mo.tensor<[batch_size], ui32, cpu:0>, %arg3: !mo.tensor<[steps_remaining, 2], ui32, cpu:0>) -> !mo.opaque<"ContinuousBatchingKVCacheCollection"> attributes {argument_names = ["input0", "input1", "input2", "input3"], result_names = ["output0"]} {
+  %0 = mo.custom {head_dim = 128 : index, num_heads = 8 : index, symbol = "mo.kv_collection_ctor.continuous_batching"}(%arg0, %arg1, %arg2, %arg3) : (!mo.tensor<[num_blocks, 2, num_layers, max_seq_len, num_kv_heads, head_dim], f32, cpu:0>, !mo.tensor<[batch_size], ui32, cpu:0>, !mo.tensor<[batch_size], ui32, cpu:0>, !mo.tensor<[steps_remaining, 2], ui32, cpu:0>) -> !mo.opaque<"ContinuousBatchingKVCacheCollection">
+  mo.output %0 : !mo.opaque<"ContinuousBatchingKVCacheCollection">
+}
+
+// CHECK-LABEL: @create_collection
+// CHECK: mogg.kernel{{.*}}head_dim
