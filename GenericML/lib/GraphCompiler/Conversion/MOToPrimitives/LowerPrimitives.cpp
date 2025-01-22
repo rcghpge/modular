@@ -179,41 +179,11 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
 
   KGEN::GeneratorOp kernel = nullptr;
 
-  // Convert opaque inputs.
+  // Remove chains from the inputs as they lower to NOPs.
   SmallVector<Value> inputs;
   for (auto [idx, val] : llvm::enumerate(args)) {
-    Type ty = val.getType();
-    if (!isa<MGP::OpaqueType>(ty)) {
-      // Skip chains, they lower to NOPs.
-      if (!isa<MEF::ChainType>(ty))
-        inputs.push_back(val);
-      continue;
-    }
-
-    // Need to add extra ops for opaque outputs.
-    // Load the type infos from the kernel.
-    if (!kernel) {
-      kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-          op->getName().getStringRef());
-    }
-    ASSERT_STREAM(kernel != nullptr, << "kernel `"
-                                     << op->getName().getStringRef()
-                                     << "` not found");
-    bool isRegisterType =
-        kernel.getSignatureGenerator().getBody().getArgConvention(idx) ==
-        KGEN::ArgConvention::ReadReg;
-
-    // Convert MGP value to opaque.
-    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
-    auto moOpaqueTy = MO::OpaqueType::get(
-        kernel->getContext(),
-        StringAttr::get(kernel->getContext(), "OpaquePrimitive"), std::nullopt);
-    Value convert =
-        builder.create<MOGG::ToOpaqueFromMGPOp>(loc, moOpaqueTy, val);
-    inputs.push_back(builder.create<MOGG::ToKGENOp>(
-        loc, kernel.getFunctionType().getInput(idx), convert,
-        /*static_tensor_spec=*/nullptr, /*typeMethodDict=*/nullptr,
-        isRegisterType));
+    if (!isa<MEF::ChainType>(val.getType()))
+      inputs.push_back(val);
   }
 
   // Add the call to the actual implementing function in mojo.

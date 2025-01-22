@@ -716,24 +716,6 @@ def MOGG_ToMGPFromTensorOp : MOGG_Op<"to_mgp_from_tensor", [Pure]> {
   }];
 }
 
-def MOGG_ToOpaqueFromMGPOp : MOGG_Op<"to_opaque_from_mgp", [Pure]> {
-  let arguments = (ins AnyType:$dataPointer);
-  let results = (outs AnyType:$result);
-  let summary = "Represents the construction of an opaque type from a pointer";
-  let description = [{
-    Takes a pointer to the opaque object.
-    `dataPointer` is an !mgp.opaque object and `result` is an !mo.opaque.
-    During lowering, the pointer is passed to the kernel.
-    At the implementation level, it's just a bitcast / rebind / no-op.
-    But it helps preserving the correct types in the IR during lowering.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-        functional-type(operands, results)
-  }];
-}
-
 def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
   let arguments = (
     ins AnyType:$dataPointer,
@@ -1021,7 +1003,7 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
     the stride parameter that appears in the kernel.
   }];
 
-  let arguments = (ins AnyTypeOf<[MOGG_Simd, MO_Tensor, MO_Buffer, MOGG_Indices, MOGG_Shape, MGP_OpaqueType, MGP_List, MO_List, MO_Opaque]>:$input,
+  let arguments = (ins AnyType:$input,
     OptionalAttr<Builtin_StringAttr>:$staticTensorSpecName,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict,
     UnitAttr:$isRegisterType

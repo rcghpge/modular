@@ -627,8 +627,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     // Opaque types are already pointer to objects, they don't need any
     // transformation to be passed to the kernel.
     if (isa<MGP::OpaqueType>(input.getType())) {
-      return builder.create<MOGG::ToOpaqueFromMGPOp>(input.getLoc(), oldTy,
-                                                     input);
+      return input;
     } else if (isa<MO::TensorType, MO::BufferType>(oldTy)) {
       MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
 
@@ -660,26 +659,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       llvm_unreachable("[convertMGPInputToMOValue] Unknown type.");
       return {};
     }
-
-    Value dataPtr = builder.create<MOGG::DataPointerFromBufferOp>(
-        input.getLoc(), voidStar, input);
-
-    MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
-
-    SmallVector<Value> operands;
-    operands.push_back(dataPtr);
-    for (auto dim : asTensor.getDims()) {
-      auto loweredParam = loweredParams.at(dim);
-      if (!loweredParam.getType().isIndex()) {
-        loweredParam = builder.create<mlir::index::CastSOp>(
-            input.getLoc(), builder.getIndexType(), loweredParam);
-      }
-
-      operands.push_back(loweredParam);
-    }
-
-    return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), asTensor,
-                                                   operands);
   };
 
   IRMapping mapper;
