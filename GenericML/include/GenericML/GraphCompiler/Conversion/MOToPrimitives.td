@@ -70,6 +70,7 @@ def LowerPrimitives: Pass<"lower-primitives", "ModuleOp"> {
                           "M::HLCF::HLCFDialect",
                           "M::DebugInfo::DebugInfoDialect",
                           "mlir::NVVM::NVVMDialect",
+                          "mlir::ROCDL::ROCDLDialect",
                           "mlir::index::IndexDialect",
   ];
 }
@@ -97,6 +98,7 @@ def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
                           "M::HLCF::HLCFDialect",
                           "M::DebugInfo::DebugInfoDialect",
                           "mlir::NVVM::NVVMDialect",
+                          "mlir::ROCDL::ROCDLDialect",
                           "mlir::index::IndexDialect",
   ];
 }

@@ -35,6 +35,7 @@ def MOToMOGG : Pass<"mo-to-mogg", "ModuleOp"> {
       "M::HLCF::HLCFDialect",
       "M::DebugInfo::DebugInfoDialect",
       "mlir::NVVM::NVVMDialect",
+      "mlir::ROCDL::ROCDLDialect",
       "mlir::index::IndexDialect",
   ];
 }

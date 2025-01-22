@@ -22,6 +22,7 @@
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Pass/AnalysisManager.h"
 
 //===----------------------------------------------------------------------===//

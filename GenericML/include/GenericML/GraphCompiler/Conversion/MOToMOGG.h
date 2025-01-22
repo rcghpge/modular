@@ -25,6 +25,7 @@
 #include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 
 namespace M::MO {
 

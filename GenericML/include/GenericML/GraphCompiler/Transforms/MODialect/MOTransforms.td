@@ -33,6 +33,7 @@ def AddFallbackShapeFunctions :
     "M::KGEN::POP::POPDialect",
     "M::MDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
   ];
 }
 
@@ -242,6 +243,7 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
   let options = [
@@ -358,6 +360,7 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
     "M::KGEN::POP::POPDialect",
     "M::MDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
   ];
 }
 
@@ -534,6 +537,7 @@ def VerifyCustomOps : Pass<"verify-custom-ops", "GraphOp"> {
       "M::HLCF::HLCFDialect",
       "M::DebugInfo::DebugInfoDialect",
       "mlir::NVVM::NVVMDialect",
+      "mlir::ROCDL::ROCDLDialect",
       "mlir::index::IndexDialect",
   ];
 }

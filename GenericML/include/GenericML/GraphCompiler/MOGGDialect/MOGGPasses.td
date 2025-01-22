@@ -29,6 +29,7 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
 
@@ -78,6 +79,7 @@ def TestRunningMogg: Pass<"test-run-mogg", "ModuleOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
 }
@@ -134,6 +136,7 @@ def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
 }
@@ -176,6 +179,7 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
   let options = [
@@ -205,6 +209,7 @@ def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
 
@@ -268,6 +273,7 @@ def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
 
@@ -353,6 +359,7 @@ def FuseKernelSequences: Pass<"fuse-kernel-sequences", "ModuleOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
 }
@@ -376,6 +383,7 @@ def FuseConcatAsSlice: Pass<"fuse-concat-as-slice", "ModuleOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
   ];
 }
 
@@ -395,6 +403,7 @@ def TranslateMOGGToKGEN: Pass<"translate-mogg-to-kgen", "ModuleOp"> {
     "M::DebugInfo::DebugInfoDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
 
