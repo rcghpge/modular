@@ -50,7 +50,7 @@ ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
   if (!storageRef) {
     // If we hit a situation where we're returning a null storage ref on a GPU,
     // we should just error out, since this situation should be impossible.
-    if (device->getKind() != Driver::DeviceKind::kCPU)
+    if (!device->isHost())
       return Error("Execution returned a null result on a GPU.");
 
     ErrorOr<Driver::DeviceMemory *> memoryOr =

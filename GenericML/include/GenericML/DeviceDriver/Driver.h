@@ -31,16 +31,10 @@ struct CPUDeviceMemory;
 
 using DeviceMap = llvm::DenseMap<DeviceRef, RCRef<M::Driver::Device>>;
 
-/// Kinds of devices that are supported.
-enum class DeviceKind {
-  kCPU,
-  kACCELERATOR,
-};
-
 struct DeviceMemory {
   DeviceMemory(RCRef<Device> device, AsyncRT::DeviceBufferRef buf,
-               const TensorSpec &spec, DeviceKind kind)
-      : device(device), buf(buf), spec(spec), kind(kind) {}
+               const TensorSpec &spec)
+      : device(device), buf(buf), spec(spec) {}
 
   /// Relinquishes ownership of the underlying data, and returns the pointer.
   void *release() { return buf->releasePtr(); }
@@ -58,7 +52,9 @@ struct DeviceMemory {
 
   ~DeviceMemory();
 
-  DeviceKind getKind() const { return kind; }
+  bool isHost() const {
+    return buf->context().device().api() == M::AsyncRT::Device::cpuAPI;
+  }
 
   const TensorSpec &getSpec() const { return spec; }
 
@@ -77,15 +73,14 @@ protected:
   RCRef<Device> device;
   AsyncRT::DeviceBufferRef buf;
   M::TensorSpec spec;
-  const DeviceKind kind;
   std::optional<llvm::unique_function<void(void *, const TensorSpec &spec)>>
       destructorFn = std::nullopt;
 };
 
 struct Device : M::ReferenceCounted<Device> {
 
-  Device(DeviceSpec spec, DeviceKind kind, AsyncRT::DeviceContextRef ctx)
-      : kind(kind), ctx(ctx), deviceSpecification(std::move(spec)),
+  Device(DeviceSpec spec, AsyncRT::DeviceContextRef ctx)
+      : ctx(ctx), deviceSpecification(std::move(spec)),
         deviceDescription(toString()) {}
 
   llvm::StringRef getString() const { return deviceDescription; };
@@ -126,7 +121,9 @@ struct Device : M::ReferenceCounted<Device> {
   /// Blocks until any pending async work on the device completes.
   ErrorOrSuccess synchronize() { return ctx->synchronize(); };
 
-  DeviceKind getKind() const { return kind; }
+  bool isHost() const {
+    return ctx->device().api() == M::AsyncRT::Device::cpuAPI;
+  }
 
   DeviceId getId() const { return deviceSpecification.ref.id; }
 
@@ -140,7 +137,6 @@ struct Device : M::ReferenceCounted<Device> {
   ErrorOrSuccess isCompatibleWithMAX() const;
 
 protected:
-  const DeviceKind kind;
   AsyncRT::DeviceContextRef ctx;
   DeviceSpec deviceSpecification;
   std::string toString() const;

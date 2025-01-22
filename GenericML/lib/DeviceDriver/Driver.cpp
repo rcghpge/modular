@@ -104,7 +104,7 @@ MODULAR_API_EXPORT std::string Device::toString() const {
   std::string str;
   llvm::raw_string_ostream oss(str);
   oss << "Device(type=" << deviceSpecification.ref.label << ",";
-  if (getKind() != DeviceKind::kCPU)
+  if (!isHost())
     oss << "gpu_id=" << deviceSpecification.ref.id << ",";
   oss << formatTarget(deviceSpecification);
   return str;
@@ -155,14 +155,14 @@ MODULAR_API_EXPORT ErrorOr<DeviceMemory *>
 Device::createDeviceMemory(const TensorSpec &spec) {
   auto byteSize = spec.getNumElements() * spec.getEltType().getSizeInBytes();
   ASSIGN_OR_RETURN(buf, ctx->enqueueCreateBuffer(byteSize));
-  return new DeviceMemory(M::copyRCRef(this), buf, spec, getKind());
+  return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
 MODULAR_API_EXPORT DeviceMemory *
 Device::createDeviceMemory(void *data, const TensorSpec &spec) {
   auto byteSize = spec.getNumElements() * spec.getEltType().getSizeInBytes();
   auto buf = ctx->createBufferOwning(data, byteSize, /*owning=*/true);
-  return new DeviceMemory(M::copyRCRef(this), buf, spec, getKind());
+  return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
 MODULAR_API_EXPORT DeviceMemory *Device::createDeviceMemory(
@@ -241,7 +241,7 @@ static ErrorOr<Device *> createCPUDevice(ssize_t numaId) {
   spec.ref.label = kCPULabel;
   spec.target = std::move(targetInfo);
   ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create("cpu"));
-  auto device = RCRef<Device>::create(spec, DeviceKind::kCPU, ctx);
+  auto device = RCRef<Device>::create(spec, ctx);
 
   ErrorOrSuccess compatibleOr = device->isCompatibleWithMAX();
   if (compatibleOr.isError())
@@ -278,7 +278,7 @@ static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
   DeviceSpec spec;
   spec.ref.label = kGPULabel;
   spec.ref.id = gpuID;
-  auto device = RCRef<Device>::create(spec, DeviceKind::kACCELERATOR, ctx);
+  auto device = RCRef<Device>::create(spec, ctx);
 
   ErrorOrSuccess compatibleOr = device->isCompatibleWithMAX();
   if (compatibleOr.isError())
