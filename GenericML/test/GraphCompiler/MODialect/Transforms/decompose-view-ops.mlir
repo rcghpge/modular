@@ -282,3 +282,14 @@ mo.graph @unflatten_dim_symbolic_with_rebind<D1,D2,D12>() -> (!mo.tensor<[D1,D2,
 	%3 = mo.relu(%2) : !mo.tensor<[D1,D2,3], f32>
 	mo.output %3 : !mo.tensor<[D1,D2,3], f32>
 }
+
+// CHECK-LABEL: mo.graph @unflatten_with_div<D1>
+// CHECK: %[[V1:.*]] = mo.static.reshape(%{{.*}}) : !mo.tensor<[], f32> -> !mo.tensor<[div(D1, 2)], f32>
+// CHECK: %[[V2:.*]] = mo.split_dim[0 : index] (%[[V1]]) : (!mo.tensor<[div(D1, 2)], f32>) -> !mo.tensor<[1, div(D1, 2)], f32>
+// CHECK: mo.output %[[V2]]
+mo.graph @unflatten_with_div<D1>() -> (!mo.tensor<[1, div(D1, 2)], f32>) {
+    %0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+    %1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[div(D1, 2)], f32>
+    %2 = mo.static.reshape(%1) : !mo.tensor<[div(D1, 2)], f32> -> !mo.tensor<[1, div(D1, 2)], f32>
+    mo.output %2 : !mo.tensor<[1, div(D1, 2)], f32>
+}

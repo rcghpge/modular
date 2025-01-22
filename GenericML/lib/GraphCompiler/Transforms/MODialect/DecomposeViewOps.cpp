@@ -270,28 +270,27 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
         KGEN::ParamOperatorAttr::get(KGEN::POC::Div, dimsToDivide);
     // If this results in a divide that is not simplified out, we need to handle
     // the case where `currDimOfOutput` is zero.
-    if (auto algebraicDim = dyn_cast<KGEN::ParamOperatorAttr>(remaining)) {
-      auto opcode = algebraicDim.getOpcode();
-      if (opcode == KGEN::POC::Div) {
-        auto operands = algebraicDim.getOperands();
-        ASSERT_STREAM(operands.size() == 2,
-                      "Expected a divide to have two operands");
-        auto divisor = operands[1];
-        ASSERT_STREAM(divisor == currDimOfOutput,
-                      "Expected that if a divide was not simplified, divisor "
-                      "should not change");
-
-        // add a guard to the divide to handle the case where the divisor is
-        // zero.
-        Type i64 =
-            IntegerType::get(builder.getContext(), 64, IntegerType::Signed);
-        IntegerAttr zero = IntegerAttr::get(i64, 0);
-        SmallVector<TypedAttr> eqArgs{divisor, zero};
-        auto guard = KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, eqArgs);
-        SmallVector<TypedAttr> condArgs{guard, zero, remaining};
-        auto guardResult =
-            KGEN::ParamOperatorAttr::get(KGEN::POC::Cond, condArgs);
-        remaining = guardResult;
+    if (!isa<IntegerAttr>(currDimOfOutput)) {
+      if (auto algebraicDim = dyn_cast<KGEN::ParamOperatorAttr>(remaining)) {
+        if (algebraicDim.getOpcode() == KGEN::POC::Div) {
+          auto operands = algebraicDim.getOperands();
+          ASSERT_STREAM(operands.size() == 2,
+                        "Expected a divide to have two operands");
+          auto divisor = operands[1];
+          if (divisor == currDimOfOutput) {
+            // add a guard to the divide to handle the case where the divisor is
+            // zero.
+            Type i64 =
+                IntegerType::get(builder.getContext(), 64, IntegerType::Signed);
+            IntegerAttr zero = IntegerAttr::get(i64, 0);
+            SmallVector<TypedAttr> eqArgs{divisor, zero};
+            auto guard = KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, eqArgs);
+            SmallVector<TypedAttr> condArgs{guard, zero, remaining};
+            auto guardResult =
+                KGEN::ParamOperatorAttr::get(KGEN::POC::Cond, condArgs);
+            remaining = guardResult;
+          }
+        }
       }
     }
 
