@@ -304,10 +304,12 @@ struct FuseAffineViewsPass
                      "found! Likely using unsupported view op type: "
                   << viewOpUser);
 
-    ASSERT_STREAM(outputLambdaToRewrite.getInputParams().size() == 1,
-                  "Expect output lambda to only declare one parameter "
-                  "(simd width)");
+    ASSERT_STREAM(outputLambdaToRewrite.getInputParams().size() == 2,
+                  "Expect output lambda to only declare two parameters "
+                  "(simd width) and (element_alignment)");
     ParamDeclAttr simdWidthAttr = outputLambdaToRewrite.getInputParams()[0];
+    ParamDeclAttr elementAlignmentAttr =
+        outputLambdaToRewrite.getInputParams()[1];
     ASSERT_STREAM(isa<mlir::IndexType>(simdWidthAttr.getType()),
                   << "Expect output lambda to only declare one parameter "
                      "(simd width)");
@@ -322,10 +324,11 @@ struct FuseAffineViewsPass
     SmallVector<TypedAttr> simdStoreInternalParameterValues = {
         typeManager.lookupTypeBinding(newOutputTensorTy.getDtype()), // type
         builder.getIndexAttr(newOutputTensorTy.getRank()),           // rank
-        KGEN::ParamDeclRefAttr::get(simdWidthAttr), // simd_width
-        oldStoreOpParameters[3],                    // alignment
-        oldStoreOpParameters[4],                    // address_space
-        stridesOrError.takeValue(),                 // static_strides
+        KGEN::ParamDeclRefAttr::get(simdWidthAttr),        // simd_width
+        oldStoreOpParameters[3],                           // alignment
+        oldStoreOpParameters[4],                           // address_space
+        stridesOrError.takeValue(),                        // static_strides
+        KGEN::ParamDeclRefAttr::get(elementAlignmentAttr), // element_alignment
     };
 
     auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
