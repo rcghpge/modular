@@ -81,8 +81,20 @@ public:
 private:
   // We only support CUDA architectures sm_80 and above.
   static constexpr int MIN_COMPUTE_CAPABILITY = 80;
-  // We only support CUDA versions 12.0 and above.
-  static constexpr int MIN_DRIVER_VERSION = 12.0;
+
+  // We only support CUDA 12.5 and NVIDIA driver 555 and above.
+  // We should support CUDA 12.0 and later, but some users reported problems
+  // with NVIDIA drivers earlier than 555. We don't have a good way to check the
+  // NVIDIA driver version, but we can check the CUDA version.
+  //
+  // It is a bit difficult to find the mapping of NVIDIA driver version to CUDA
+  // version. This table is the best I can find:
+  // https://docs.nvidia.com/deploy/cuda-compatibility/index.html#use-the-right-compat-package
+  //
+  // So following this table, we assume that CUDA 12.5 corresponds to NVIDIA
+  // driver 555.
+  static constexpr int MIN_CUDA_DRIVER_VERSION = 12050;
+  static constexpr int MIN_NVIDIA_DRIVER_VERSION = 555;
 
   static ErrorOr<const DeviceList &> deviceList();
 

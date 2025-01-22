@@ -187,6 +187,17 @@ ErrorOr<int> CUDADevice::getDriverVersion() const {
   return driver_version;
 }
 
+// The value returned by `cuDriverGetVersion_` from the CUDA API is an integer
+// with the driver version embedded. The major version number is in the
+// thousands place and the minor version number is in the hundreds place, scaled
+// up by ten.
+static std::string driverVersionToString(int driver_version) {
+  int major_version = driver_version / 1000;
+  int minor_version = (driver_version % 1000) / 10;
+
+  return (llvm::Twine(major_version) + "." + llvm::Twine(minor_version)).str();
+}
+
 ErrorOrSuccess CUDADevice::isCompatibleWithMAX() const {
 #ifndef MODULAR_LINUX
   return Error("MAX with GPUs is only supported on Linux based systems.");
@@ -201,8 +212,16 @@ ErrorOrSuccess CUDADevice::isCompatibleWithMAX() const {
 
   int driver_version = 0;
   CUDA_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
-  if (driver_version < MIN_DRIVER_VERSION) {
-    RAISE_ERROR("MAX not supported using current GPU driver");
+  if (driver_version < MIN_CUDA_DRIVER_VERSION) {
+    RAISE_ERROR(
+        "MAX is not supported using current GPU driver. MAX "
+        "requires a minimum driver version of " +
+        llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version " +
+        driverVersionToString(MIN_CUDA_DRIVER_VERSION) +
+        ". See https://modul.ar/nvidia-driver-version for "
+        "details about how to install the proper NVIDIA driver. The current "
+        "CUDA version MAX detected is: " +
+        driverVersionToString(driver_version));
   }
 
   return success();
