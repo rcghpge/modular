@@ -1,10 +1,10 @@
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @mean
+// CHECK: "mogg.to_kgen"
+// CHECK: "mogg.to_kgen"
 // CHECK: %[[TENSOR:.*]] = "mogg.to_kgen"
 // CHECK: %[[SCALAR:.*]] = kgen.call @"MOGGKernelAPI::get_scalar_from_managed_tensor_slice{{.*}}"{{.*}}(%[[TENSOR:.*]])
-// CHECK: "mogg.to_kgen"
-// CHECK: "mogg.to_kgen"
 // CHECK: kgen.call @"MOGGKernelAPI::Mean::execute{{.*}}"{{.*}}({{.*}}%[[SCALAR:.*]]{{.*}})
 
 mo.graph @mean(%input: !mo.tensor<[100, 50], f32>) -> (!mo.tensor<[100, 1], f32>) {
