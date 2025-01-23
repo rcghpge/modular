@@ -331,14 +331,21 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
   reshape.erase();
 }
 
-static bool isStaticShapeWithZeroElts(MOSH::ShapeAttr shapeAttr) {
-  if (!shapeAttr.isStatic())
+static bool isFlattenable(MOSH::ShapeAttr shapeAttr) {
+  // can't flatten if there are unknown dims
+  if (shapeAttr.hasUnknownDims())
     return false;
 
-  auto numElts = shapeAttr.getSymbolicNumElements();
-  auto asInt = cast<IntegerAttr>(numElts);
-  auto asIntVal = asInt.getValue().getSExtValue();
-  return asIntVal == 0;
+  // can't flatten if it is statically known that there are 0 elts
+  if (shapeAttr.isStatic()) {
+    auto numElts = shapeAttr.getSymbolicNumElements();
+    auto asInt = cast<IntegerAttr>(numElts);
+    auto asIntVal = asInt.getValue().getSExtValue();
+    if (asIntVal == 0)
+      return false;
+  }
+
+  return true;
 }
 
 static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
@@ -353,9 +360,7 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
 
   // The following decompositions require that all dims are known at compile
   // time and that the number of elements is non-zero.
-  if (!inShapeAttr.hasUnknownDims() && !outShapeAttr.hasUnknownDims() &&
-      !isStaticShapeWithZeroElts(inShapeAttr) &&
-      !isStaticShapeWithZeroElts(outShapeAttr)) {
+  if (isFlattenable(inShapeAttr) && isFlattenable(outShapeAttr)) {
     // Ultra specific decompositions for flattening and unflattening
     if (inRank > 1 && outRank == 1) {
       decomposeFlatteningReshape(reshape, builder);
@@ -431,7 +436,37 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
           /*axis*/ builder.getIndexAttr(0));
       reshape.replaceAllUsesWith(split);
       reshape.erase();
+      return;
     }
+  }
+
+  // As a last resort, we can usually decompose the view by flattening and
+  // unflattening it. e.g: ND -> 1D -> MD
+  // We currently don't handle 0 dim scalars here.
+  if (isFlattenable(inShapeAttr) && isFlattenable(outShapeAttr) &&
+      newInRank > 1 && newOutRank > 1) {
+    TensorType nD = reshape.getInput().getType();
+    TensorType mD = reshape.getType();
+
+    // Calculate the 1D flattened shape
+    MOSH::ShapeAttr nDShape = nD.getTypedShapeAttr();
+    TypedAttr flattenedSize = nDShape.getSymbolicNumElements();
+    MOSH::ShapeAttr flattenedShape =
+        MOSH::ShapeAttr::get({flattenedSize}, nDShape.getType());
+    TensorType oneD = nD.cloneWith(flattenedShape).cloneWithoutLayout();
+
+    // Create two reshapes
+    auto flatten = builder.create<Static::ReshapeOp>(reshape.getLoc(), oneD,
+                                                     reshape.getInput());
+    auto unflatten = builder.create<Static::ReshapeOp>(reshape.getLoc(), mD,
+                                                       flatten.getResult());
+    reshape.replaceAllUsesWith(unflatten.getResult());
+    reshape.erase();
+
+    // Decompose the reshapes
+    decomposeFlatteningReshape(flatten, builder);
+    decomposeUnflatteningReshape(unflatten, builder);
+    return;
   }
 }
 
