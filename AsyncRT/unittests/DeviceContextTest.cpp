@@ -6,8 +6,8 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
+#include "TestUtils.h"
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include <cstring>
@@ -20,22 +20,19 @@ using M::ErrorOrSuccess;
 namespace {
 
 TEST(DeviceContextTest, Smoke) {
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef ctx = std::move(errCtx.get());
-  ASSERT_TRUE(ctx);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   EXPECT_EQ(ctx->device().name(), Device::cpuAPI);
 }
 
 TEST(DeviceContextTest, CreationFailure) {
   ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI, 1);
-  ASSERT_TRUE(errCtx);
+  ASSERT_TRUE(errCtx.isError());
   EXPECT_EQ(strcmp(errCtx.getError(), "CPU device only supports id == 0."), 0)
       << errCtx.getError();
 
   errCtx = DeviceContext::create("pcu");
-  ASSERT_TRUE(errCtx);
+  ASSERT_TRUE(errCtx.isError());
   EXPECT_EQ(strcmp(errCtx.getError(), "Unsupported device api: \"pcu\""), 0)
       << errCtx.getError();
 }
@@ -69,10 +66,7 @@ static void compareWithData(const void *dst, size_t dstLen,
 }
 
 TEST(DeviceContextTest, DeviceBuffers) {
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef ctx = std::move(errCtx.get());
-  ASSERT_TRUE(ctx);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   char checkData[] = {
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
@@ -102,35 +96,29 @@ TEST(DeviceContextTest, DeviceBuffers) {
         ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
     int allocLen = copyLengths[(i >> 1) & 1];
 
-    ErrorOr<DeviceBufferRef> emptyBufErr = (syncMode == DeviceContext::SYNC)
-                                               ? ctx->createBuffer(0)
-                                               : ctx->enqueueCreateBuffer(0);
-    EXPECT_FALSE(emptyBufErr);
-    EXPECT_EQ((*emptyBufErr)->ptr(), nullptr);
-    EXPECT_EQ((*emptyBufErr)->byteSize(), 0);
+    ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf,
+                  (syncMode == DeviceContext::SYNC)
+                      ? ctx->createBuffer(0)
+                      : ctx->enqueueCreateBuffer(0));
+    EXPECT_EQ(emptyBuf->ptr(), nullptr);
+    EXPECT_EQ(emptyBuf->byteSize(), 0);
 
     std::cerr << "DeviceContext copies(len: " << allocLen << ", syncMode: "
               << ((syncMode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
               << ")\n";
 
-    ErrorOr<void *> errPtr = ctx->mallocHost(allocLen);
-    EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
-    void *aPtr = errPtr.get();
+    ASSIGN_NO_ERR(void *, aPtr, ctx->mallocHost(allocLen));
     EXPECT_NE(aPtr, nullptr);
 
-    ErrorOr<DeviceBufferRef> errRef = (syncMode == DeviceContext::SYNC)
-                                          ? ctx->createBuffer(allocLen)
-                                          : ctx->enqueueCreateBuffer(allocLen);
-    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-    DeviceBufferRef bBuf = std::move(errRef.get());
-    EXPECT_TRUE(bBuf);
+    ASSIGN_NO_ERR(DeviceBufferRef, bBuf,
+                  (syncMode == DeviceContext::SYNC)
+                      ? ctx->createBuffer(allocLen)
+                      : ctx->enqueueCreateBuffer(allocLen));
 
-    errRef = (syncMode == DeviceContext::SYNC)
-                 ? ctx->createBuffer(allocLen)
-                 : ctx->enqueueCreateBuffer(allocLen);
-    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-    DeviceBufferRef cBuf = std::move(errRef.get());
-    EXPECT_TRUE(cBuf);
+    ASSIGN_NO_ERR(DeviceBufferRef, cBuf,
+                  (syncMode == DeviceContext::SYNC)
+                      ? ctx->createBuffer(allocLen)
+                      : ctx->enqueueCreateBuffer(allocLen));
 
     char *dPtr = static_cast<char *>(malloc(allocLen));
     EXPECT_NE(dPtr, nullptr);
@@ -142,34 +130,25 @@ TEST(DeviceContextTest, DeviceBuffers) {
       dPtr[i] = -static_cast<char>((7 + i) & 127);
     }
 
-    ErrorOrSuccess err;
     // Copy between different buffers.
-    err = ctx->copyToDevice(*bBuf, aPtr, syncMode);
-    EXPECT_FALSE(err) << err.getError() << "\n";
-    err = ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode);
-    EXPECT_FALSE(err) << err.getError() << "\n";
-    err = ctx->copyFromDevice(dPtr, *cBuf, syncMode);
-    EXPECT_FALSE(err) << err.getError() << "\n";
+    EXPECT_NO_ERR(ctx->copyToDevice(*bBuf, aPtr, syncMode));
+    EXPECT_NO_ERR(ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode));
+    EXPECT_NO_ERR(ctx->copyFromDevice(dPtr, *cBuf, syncMode));
 
     if (syncMode == DeviceContext::ASYNC) {
       // Ensure that all copy operations have finished.
-      err = ctx->synchronize();
-      EXPECT_FALSE(err) << err.getError() << "\n";
+      EXPECT_NO_ERR(ctx->synchronize());
     }
 
     compareWithData(dPtr, allocLen, checkData, sizeof(checkData));
 
     free(dPtr);
-    err = ctx->freeHost(aPtr);
-    EXPECT_FALSE(err) << err.getError() << "\n";
+    EXPECT_NO_ERR(ctx->freeHost(aPtr));
   }
 }
 
 TEST(DeviceContextTest, FailDeviceBuffers) {
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef ctx = std::move(errCtx.get());
-  ASSERT_TRUE(ctx);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   const int copyLengths[] = {256};
 
@@ -187,20 +166,15 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
     EXPECT_NE(aPtr, nullptr);
 
     // Create a source buffer that is too small.
-    ErrorOr<DeviceBufferRef> errRef =
-        (syncMode == DeviceContext::SYNC)
-            ? ctx->createBuffer(allocLen - 32)
-            : ctx->enqueueCreateBuffer(allocLen - 32);
-    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-    DeviceBufferRef bBuf = std::move(errRef.get());
-    EXPECT_TRUE(bBuf);
+    ASSIGN_NO_ERR(DeviceBufferRef, bBuf,
+                  (syncMode == DeviceContext::SYNC)
+                      ? ctx->createBuffer(allocLen - 32)
+                      : ctx->enqueueCreateBuffer(allocLen - 32));
 
-    errRef = (syncMode == DeviceContext::SYNC)
-                 ? ctx->createBuffer(allocLen)
-                 : ctx->enqueueCreateBuffer(allocLen);
-    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-    DeviceBufferRef cBuf = std::move(errRef.get());
-    EXPECT_TRUE(cBuf);
+    ASSIGN_NO_ERR(DeviceBufferRef, cBuf,
+                  (syncMode == DeviceContext::SYNC)
+                      ? ctx->createBuffer(allocLen)
+                      : ctx->enqueueCreateBuffer(allocLen));
 
     // Initialize with known good and bad values.
     for (int i = 0; i < allocLen; i++) {
@@ -209,16 +183,13 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 
     ErrorOrSuccess err;
     // Copy between different buffers.
-    err = ctx->copyToDevice(*bBuf, aPtr, syncMode);
-    EXPECT_FALSE(err) << err.getError() << "\n";
-    err = ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode);
-    EXPECT_TRUE(err);
-    EXPECT_THAT(err.getError(), testing::HasSubstr("not enough data in src"));
+    EXPECT_NO_ERR(ctx->copyToDevice(*bBuf, aPtr, syncMode));
+    EXPECT_ERR_MSG(ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode),
+                   "not enough data in src");
 
     if (syncMode == DeviceContext::ASYNC) {
       // Ensure that all copy operations have finished.
-      err = ctx->synchronize();
-      EXPECT_FALSE(err) << err.getError() << "\n";
+      EXPECT_NO_ERR(ctx->synchronize());
     }
 
     free(aPtr);
@@ -226,10 +197,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 }
 
 TEST(CUDADeviceContextTest, SubBuffer) {
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef ctx = std::move(errCtx.get());
-  ASSERT_TRUE(ctx);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   int allocLen = 256;
 
@@ -241,15 +209,9 @@ TEST(CUDADeviceContextTest, SubBuffer) {
   char *aPtr = static_cast<char *>(malloc(allocLen));
   EXPECT_NE(aPtr, nullptr);
 
-  ErrorOr<DeviceBufferRef> errRef = ctx->enqueueCreateBuffer(allocLen);
-  EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-  DeviceBufferRef bBuf = std::move(errRef.get());
-  EXPECT_TRUE(bBuf);
-
-  errRef = bBuf->createSubBuffer(subOffset, subAllocLen * 4);
-  EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-  DeviceBufferRef cBuf = std::move(errRef.get());
-  EXPECT_TRUE(cBuf);
+  ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, cBuf,
+                bBuf->createSubBuffer(subOffset, subAllocLen * 4));
 
   char *dPtr = static_cast<char *>(malloc(allocLen));
   EXPECT_NE(dPtr, nullptr);
@@ -268,16 +230,13 @@ TEST(CUDADeviceContextTest, SubBuffer) {
   }
 
   // Copy base pattern into base buffer.
-  ErrorOrSuccess err = ctx->enqueueCopyToDevice(*bBuf, aPtr);
-  EXPECT_FALSE(err) << err.getError() << "\n";
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*bBuf, aPtr));
 
   // Copy overlay pattern into sub buffer.
-  err = ctx->enqueueCopyToDevice(*cBuf, ePtr);
-  EXPECT_FALSE(err) << err.getError() << "\n";
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*cBuf, ePtr));
 
   // Copy base buffer back to host memory.
-  err = ctx->enqueueCopyFromDevice(dPtr, *bBuf);
-  EXPECT_FALSE(err) << err.getError() << "\n";
+  EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(dPtr, *bBuf));
 
   uint32_t *dIntPtr = reinterpret_cast<uint32_t *>(dPtr);
   uint32_t expectedVals[] = {0x80000000, 0x3f800000, 0xc0000000};
@@ -375,10 +334,7 @@ $L__BB0_2:
 }
 )PTX";
 
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef ctx = std::move(errCtx.get());
-  ASSERT_TRUE(ctx);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   std::cerr << "Compiling vecAddPtx...\n";
   DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
@@ -386,51 +342,33 @@ $L__BB0_2:
                                              .addBuffer()
                                              .addBuffer()
                                              .addUInt64();
-  ErrorOr<DeviceFunctionRef> errFun =
-      ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx);
   // Expecting for an error to be set in the case of CPU device context.
-  ASSERT_TRUE(errFun) << errFun.getError() << "\n";
+  EXPECT_ERR(ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
 }
 
 TEST(DeviceContextTest, Timers) {
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef ctx = std::move(errCtx.get());
-  ASSERT_TRUE(ctx);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
-  ErrorOr<DeviceTimerRef> errTimer = ctx->startTimer();
-  EXPECT_FALSE(errTimer) << errTimer.getError() << "\n";
-  DeviceTimerRef timer = std::move(errTimer.get());
-  ASSERT_TRUE(timer);
+  ASSIGN_NO_ERR(DeviceTimerRef, timer, ctx->startTimer());
 
   { // Run some memory copies within the timer.
     const size_t allocLen = 1024 * 1024;
 
-    ErrorOr<void *> errPtr = ctx->mallocHost(allocLen);
-    EXPECT_FALSE(errPtr) << errPtr.getError() << "\n";
-    void *aPtr = errPtr.get();
+    ASSIGN_NO_ERR(void *, aPtr, ctx->mallocHost(allocLen));
     EXPECT_NE(aPtr, nullptr);
 
-    ErrorOr<DeviceBufferRef> errRef = ctx->enqueueCreateBuffer(256);
-    EXPECT_FALSE(errRef) << errRef.getError() << "\n";
-    DeviceBufferRef bBuf = std::move(errRef.get());
-    EXPECT_TRUE(bBuf);
+    ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(256));
 
-    ErrorOrSuccess err;
     for (int i = 0; i < 20; i++) {
-      err = ctx->enqueueCopyToDevice(*bBuf, aPtr);
-      EXPECT_FALSE(err) << err.getError() << "\n";
+      EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*bBuf, aPtr));
     }
-    err = ctx->synchronize();
-    EXPECT_FALSE(err) << err.getError() << "\n";
+    EXPECT_NO_ERR(ctx->synchronize());
 
-    err = ctx->freeHost(aPtr);
-    EXPECT_FALSE(err) << err.getError() << "\n";
+    EXPECT_NO_ERR(ctx->freeHost(aPtr));
   }
 
-  ErrorOr<std::chrono::nanoseconds> errNanos = ctx->stopTimer(*timer);
-  EXPECT_FALSE(errNanos) << errNanos.getError() << "\n";
-  int64_t elapsedNanos = errNanos.get().count();
+  ASSIGN_NO_ERR(std::chrono::nanoseconds, nanos, ctx->stopTimer(*timer));
+  int64_t elapsedNanos = nanos.count();
 
   std::cerr << "Timer measured: " << elapsedNanos << "ns\n";
 
