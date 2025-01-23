@@ -321,10 +321,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createFuseMutableStores());
   }
 
-  MOGG::TranslateMOGGToKGENOptions translationOpts;
-  translationOpts.kernelLibraryPaths = kernelLibraryPaths;
-  translationOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  pm.addPass(MOGG::createTranslateMOGGToKGEN(translationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
