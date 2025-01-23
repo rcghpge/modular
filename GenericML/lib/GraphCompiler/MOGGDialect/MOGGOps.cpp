@@ -1347,6 +1347,13 @@ LogicalResult KernelOp::verify() {
   auto inputInterfaces = getInputFusionInterface();
   auto outputInterfaces = getOutputFusionInterface();
 
+  if (getOutputOp()->getOperandTypes() != getResultTypes()) {
+    return emitError("Output types do not match what is returned by body. Body "
+                     "returns: ")
+           << getOutputOp()->getOperandTypes() << " but got "
+           << getResultTypes();
+  }
+
   if (inputInterfaces.has_value() &&
       getNumOperands() != inputInterfaces->size()) {
     return emitError("Number of input fusion interfaces does not match number "
