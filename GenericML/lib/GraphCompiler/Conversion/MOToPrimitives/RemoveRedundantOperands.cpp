@@ -65,49 +65,68 @@ struct RemoveRedundantOperands
       auto outputOp =
           cast<MOGG::OutputOp>(regionOp.getRegion().front().getTerminator());
       // Filter out duplicated !mef.chain output.
-      auto chainOutRange =
-          llvm::make_filter_range(outputOp->getOpOperands(), [](OpOperand &op) {
-            return isa<MEF::ChainType>(op.get().getType());
+      auto unUsedOrChain = llvm::make_filter_range(
+          outputOp->getOpOperands(), [&](OpOperand &op) {
+            return isa<MEF::ChainType>(op.get().getType()) ||
+                   regionOp->getResult(op.getOperandNumber()).use_empty();
           });
-      SmallVector<OpOperand *> chainOutVec =
-          llvm::map_to_vector(chainOutRange, [](OpOperand &op) { return &op; });
+      SmallVector<OpOperand *> unUsedOrChainVec =
+          llvm::map_to_vector(unUsedOrChain, [](OpOperand &op) { return &op; });
 
       // no chain output, skip
-      if (chainOutVec.empty())
+      if (unUsedOrChainVec.empty())
         return;
 
-      // We should keep the last chain, which is also the chain that is created
-      // closet to the exit point of the region.
-      OpOperand *toKeep = nullptr;
-      SmallVector<Value> chainsToRemove;
       llvm::BitVector toRemoveBits(outputOp->getNumOperands());
       bool usedChain = false;
-      for (OpOperand *toRemove : chainOutVec) {
-        unsigned chainIdx = toRemove->getOperandNumber();
-        usedChain = usedChain || !regionOp->getResult(chainIdx).use_empty();
-        toRemoveBits.set(chainIdx);
-        chainsToRemove.push_back(toRemove->get());
+      for (OpOperand *toRemove : unUsedOrChainVec) {
+        unsigned idx = toRemove->getOperandNumber();
 
-        if (toRemove == chainOutVec.back() &&
-            (usedChain || toRemoveBits.all())) {
-          // We keep the last chain if
-          // 1. any of the chain has uses or
-          // 2. the chain is the only output after folding.
-          toRemoveBits.reset(chainIdx);
-          chainsToRemove.pop_back();
+        // Check wether all chains has no use.
+        if (isa<MEF::ChainType>(toRemove->get().getType()))
+          usedChain = usedChain || !regionOp->getResult(idx).use_empty();
 
-          toKeep = toRemove;
-          continue;
+        toRemoveBits.set(idx);
+      }
+
+      OpOperand *keptChain = nullptr;
+      if (usedChain || toRemoveBits.all()) {
+        // We keep the last chain if
+        // 1. any of the chain has uses or
+        // 2. the chain is the only output after folding.
+        for (OpOperand &op : llvm::reverse(outputOp->getOpOperands())) {
+          if (isa<MEF::ChainType>(op.get().getType())) {
+            toRemoveBits.reset(op.getOperandNumber());
+            keptChain = &op;
+            break;
+          }
         }
       }
+
+      // Can we simply erase the regionOp in this case?
+      ASSERT_STREAM(
+          !toRemoveBits.all(),
+          "A region should at least have one used result or it should have "
+          "a chain result for side effect:\n"
+              << regionOp);
 
       // No need to deduplicate
       if (toRemoveBits.none())
         return;
+
+      SmallVector<Value> resultsToRemove = llvm::map_to_vector(
+          toRemoveBits.set_bits(), [outputOp](unsigned operandNumber) {
+            return outputOp->getOperand(operandNumber);
+          });
+
       // remove operands from mogg.output.
       outputOp->eraseOperands(toRemoveBits);
 
-      for (Value toRemove : chainsToRemove) {
+      for (Value toRemove : resultsToRemove) {
+        if (!isa<MEF::ChainType>(toRemove.getType())) {
+          ASSERT_STREAM(toRemove.use_empty(), << toRemove << "has uses");
+          continue;
+        }
         // Also erase creation of the chain too (they have already been inserted
         // when the pass runs after post-abi fusion).
         for (Operation *user :
@@ -134,10 +153,10 @@ struct RemoveRedundantOperands
       unsigned curIdx = 0;
       for (OpResult result : regionOp->getOpResults()) {
         if (toRemoveBits.test(result.getResultNumber())) {
-          if (toKeep) {
-            unsigned pos = toKeep->getOperandNumber() - chainsToRemove.size();
-            Value keptChain = newKernel->getResult(pos);
-            result.replaceAllUsesWith(keptChain);
+          if (keptChain && isa<MEF::ChainType>(result.getType())) {
+            unsigned pos =
+                keptChain->getOperandNumber() - resultsToRemove.size();
+            result.replaceAllUsesWith(newKernel->getResult(pos));
           }
         } else {
           result.replaceAllUsesWith(newKernel.getResult(curIdx));
