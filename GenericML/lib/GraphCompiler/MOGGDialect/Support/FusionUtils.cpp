@@ -74,7 +74,8 @@ StringAttr getSummaryString(Operation *op) {
 }
 
 StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType) {
-  assert(!ops.empty());
+  if (ops.empty())
+    return StringAttr::get(ops.front()->getContext(), "");
 
   if (ops.size() == 1)
     return getSummaryString(ops.front());
@@ -421,7 +422,7 @@ Operation *sequenceFuseKernelsAndReplaceUses(
                                return cast<KernelOp>(kernelOp).getDeviceRef() ==
                                       deviceRef;
                              }),
-                << "Not all kernels to fuse have the same device!");
+                << "Not all kernels to sequence fuse have the same device!");
 
   auto fusedKernelOp = builder.create<KernelOp>(
       loc,
@@ -637,8 +638,12 @@ void clearUnusedParamDecls(Operation *fusedKernel,
 void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
                                    ArrayRef<Operation *> toFuse,
                                    fuseRegionInlineCallBackT inlineOpCallBack) {
-  assert(llvm::all_of(
-      toFuse, [](auto op) { return isa<MOGG::GenericCompiledRegionOp>(op); }));
+  ASSERT_STREAM(llvm::all_of(toFuse,
+                             [](auto op) {
+                               return isa<MOGG::GenericCompiledRegionOp>(op);
+                             }),
+                << "Expected all operations to be "
+                << MOGG::GenericCompiledRegionOp::getOperationName());
 
   MOGG::stageKernelsForFusion(toFuse);
 
@@ -805,7 +810,9 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
   // resultsThatShouldBeReplaced.size(). Otherwise, the `fusedCompiledRegionOp`
   // output still have an implicit mef.chain and valuesToOutput.size() + 1 ==
   // resultsThatShouldBeReplaced.size().
-  assert(valuesToOutput.size() + 1 >= resultsThatShouldBeReplaced.size());
+  ASSERT_STREAM(valuesToOutput.size() + 1 >= resultsThatShouldBeReplaced.size(),
+                << "Expected the kernel to have at least as many outputs as "
+                   "internal result values that should be replaced");
 
   // After fusion, some opaque outputs become intermediates (they are leaking).
   // Manually insert destructor calls.
