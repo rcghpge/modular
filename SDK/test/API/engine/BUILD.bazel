@@ -12,6 +12,7 @@ lit_tests(
         "//PyTorch:modular-framework-torch-ext",
         "@llvm-project//compiler-rt:orc_rt",
     ],
+    generate_litcfg = True,
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",

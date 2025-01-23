@@ -14,8 +14,12 @@ lit_tests(
         "@llvm-project//compiler-rt:orc_rt",
     ],
     env = {
+        # TODO(#23665): Fix memory leaks.
+        "LSAN_OPTIONS": "detect_leaks=0",
+        # TODO(#25946): Fix ODR violations.
         "ASAN_OPTIONS": "detect_odr_violation=0,use_sigaltstack=0",
     },
+    generate_litcfg = True,
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",

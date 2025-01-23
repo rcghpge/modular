@@ -8,6 +8,7 @@ lit_tests(
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
     ],
+    generate_litcfg = True,
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
