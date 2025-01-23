@@ -20,7 +20,7 @@
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/include/llvm/Support/FormatVariadic.h"
+#include "llvm/Support/FormatVariadic.h"
 #include <optional>
 
 using namespace M;

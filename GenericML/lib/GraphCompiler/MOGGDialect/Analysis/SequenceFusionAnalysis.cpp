@@ -8,8 +8,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/AssertStream.h"
 
-#include "llvm-project/llvm/include/llvm/ADT/PriorityQueue.h"
-#include "llvm-project/llvm/include/llvm/ADT/SetOperations.h"
+#include "llvm/ADT/PriorityQueue.h"
+#include "llvm/ADT/SetOperations.h"
 
 namespace M::MOGG {
 
