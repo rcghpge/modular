@@ -25,6 +25,7 @@
 #include "GenericML/Support/ModelCollection.h"
 #include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
+#include "KGEN/KGENDialect/KGENCompilationContext.h"
 
 #include "MOF/Driver/DriverConfig.h"
 #include "MOF/Driver/DriverImpl.h"
@@ -405,6 +406,12 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   mofLoweringOptions.print(*keyBuf);
   moToMgpOptions.print(*keyBuf);
   moToMgpPasses.printAsTextualPipeline(*keyBuf);
+
+  // We also cache the flags passed to mojo for compilation.
+  // If these change, the mojo kernels must be recompiled.
+  auto *compileCtx = ctxHandle.maxContext->get<KGEN::CompilationContext>();
+  if (compileCtx)
+    compileCtx->print(*keyBuf);
 
   // We specifically use a version of the module without location information
   // for caching. Otherwise, python refactors that don't change the module would
