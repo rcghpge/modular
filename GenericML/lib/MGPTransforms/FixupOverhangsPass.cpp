@@ -37,10 +37,13 @@ class FixupOverhangsPass
 
       for (Operation &op : block->getOperations()) {
         for (auto result : op.getResults()) {
-          const bool isChain =
-              isa<MEF::MEFChainTypeInterface>(result.getType());
-          if (isChain && result.use_empty())
+          // All async ref results will be set to error upon failure, thus one
+          // async value per operation is sufficient to propagate error
+          // correctly.
+          if (result.use_empty()) {
             hangingChains.push_back(result);
+            break;
+          }
         }
       }
 

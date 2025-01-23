@@ -73,19 +73,38 @@ struct RemoveRedundantOperands
       SmallVector<OpOperand *> chainOutVec =
           llvm::map_to_vector(chainOutRange, [](OpOperand &op) { return &op; });
 
-      // no duplication, skip
-      if (chainOutVec.size() <= 1)
+      // no chain output, skip
+      if (chainOutVec.empty())
         return;
 
       // We should keep the last chain, which is also the chain that is created
       // closet to the exit point of the region.
-      OpOperand *toKeep = chainOutVec.back();
+      OpOperand *toKeep = nullptr;
       SmallVector<Value> chainsToRemove;
       llvm::BitVector toRemoveBits(outputOp->getNumOperands());
-      for (OpOperand *toRemove : ArrayRef(chainOutVec).drop_back()) {
-        toRemoveBits.set(toRemove->getOperandNumber());
+      bool usedChain = false;
+      for (OpOperand *toRemove : chainOutVec) {
+        unsigned chainIdx = toRemove->getOperandNumber();
+        usedChain = usedChain || !regionOp->getResult(chainIdx).use_empty();
+        toRemoveBits.set(chainIdx);
         chainsToRemove.push_back(toRemove->get());
+
+        if (toRemove == chainOutVec.back() &&
+            (usedChain || toRemoveBits.all())) {
+          // We keep the last chain if
+          // 1. any of the chain has uses or
+          // 2. the chain is the only output after folding.
+          toRemoveBits.reset(chainIdx);
+          chainsToRemove.pop_back();
+
+          toKeep = toRemove;
+          continue;
+        }
       }
+
+      // No need to deduplicate
+      if (toRemoveBits.none())
+        return;
       // remove operands from mogg.output.
       outputOp->eraseOperands(toRemoveBits);
 
@@ -113,12 +132,14 @@ struct RemoveRedundantOperands
           builder, regionOp, outputOp->getOperandTypes());
 
       // The kept chain position relative to the new kernel results.
-      unsigned pos = toKeep->getOperandNumber() - chainsToRemove.size();
-      Value keptChain = newKernel->getResult(pos);
       unsigned curIdx = 0;
       for (OpResult result : regionOp->getOpResults()) {
         if (toRemoveBits.test(result.getResultNumber())) {
-          result.replaceAllUsesWith(keptChain);
+          if (toKeep) {
+            unsigned pos = toKeep->getOperandNumber() - chainsToRemove.size();
+            Value keptChain = newKernel->getResult(pos);
+            result.replaceAllUsesWith(keptChain);
+          }
         } else {
           result.replaceAllUsesWith(newKernel.getResult(curIdx));
           curIdx++;

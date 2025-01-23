@@ -186,12 +186,27 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
       inputs.push_back(val);
   }
 
+  // Filter out returned chain type.
+  SmallVector<Type> callResultTps = llvm::filter_to_vector(
+      op->getResultTypes(), [](Type t) { return !isa<MEF::ChainType>(t); });
+
   // Add the call to the actual implementing function in mojo.
   MOGG::CallOp call = builder.create<MOGG::CallOp>(
-      loc, op->getResultTypes(), op->getName().getStringRef(), inputs,
-      ArrayAttr{}, getMoggCallAttrs(builder, op));
+      loc, callResultTps, op->getName().getStringRef(), inputs, ArrayAttr{},
+      getMoggCallAttrs(builder, op));
 
-  SmallVector<Value> outputs(call->getResults());
+  SmallVector<Value> outputs;
+  unsigned resultIdx = 0;
+  for (Type t : op->getResultTypes()) {
+    if (isa<MEF::ChainType>(t)) {
+      // We create a separate op for chain creation, this allows us to optimize
+      // redundant chains independently from the MOGG.call itself.
+      outputs.push_back(builder.create<MOGG::CreateReadyChainOp>(
+          loc, MEF::ChainType::get(builder.getContext())));
+    } else {
+      outputs.push_back(call->getResult(resultIdx++));
+    }
+  }
 
   // Handle ops that may extend buffer lifetimes
   if (auto extendsLifetime = dyn_cast<GRT::GRTExtendsLifetimeInterface>(*op)) {

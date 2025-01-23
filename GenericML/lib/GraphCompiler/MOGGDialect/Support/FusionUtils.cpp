@@ -666,7 +666,7 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
 
   bool isFirstChain = false;
   for (auto result : allResults) {
-    // We keep at least one chain output such that error could be  propagated
+    // We keep at least one chain output such that error could be propagated
     // properly. The duplicated chain will be removed later in the pipeline
     // (namely, remove-redundant-operands pass).
     isFirstChain = isa<MEF::ChainType>(result.getType()) && !isFirstChain;
