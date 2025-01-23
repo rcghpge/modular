@@ -19,10 +19,6 @@ def MOGG_CompilableKernel : OpInterface<"CompilableKernel"> {
 
   let methods = [
     InterfaceMethod<
-      "Returns true if this kernel contains KGEN IR from the new experimental path",
-      "bool", "isKGEN", (ins), "return $_op.getIsKGEN().value_or(false);"
-    >,
-    InterfaceMethod<
       "Return the body of the kernel, which should be the code we will compile",
       "mlir::Block&", "getBody", (ins), "return $_op.getBody().front();"
     >,

@@ -339,7 +339,7 @@ void KernelOp::build(OpBuilder &builder, OperationState &state,
                      ArrayAttr inputFusionInterface,
                      ArrayAttr outputFusionInterface,
                      StringAttr fusionBodyLambda, BoolAttr isViewOp,
-                     BoolAttr isKGEN, StringAttr summary, BoolAttr isAsync,
+                     StringAttr summary, BoolAttr isAsync,
                      ArrayAttr allocIndices, bool hasReadEffect,
                      bool hasWriteEffect, DeviceRefAttr device) {
   state.addOperands(operands);
@@ -362,9 +362,6 @@ void KernelOp::build(OpBuilder &builder, OperationState &state,
 
   if (isViewOp)
     state.addAttribute(getIsViewOpAttrName(state.name), isViewOp);
-
-  if (isKGEN)
-    state.addAttribute(getIsKGENAttrName(state.name), isKGEN);
 
   if (summary)
     state.addAttribute(getSummaryAttrName(state.name), summary);
@@ -539,7 +536,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
       getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
-      BoolAttr::get(ctx, true),                         // isKGEN
       getSummaryAttr(),                                 // summary
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
       ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
@@ -650,9 +646,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                                      operands);
     } else if (auto asListTy = dyn_cast<MO::ListType>(oldTy)) {
       // Assume the new extensibility API uses KGEN types.
-      bool useExtensibilityAPI = getIsKGEN().value_or(false);
-      return builder.create<MOGG::ToListFromMGPOp>(input.getLoc(), oldTy, input,
-                                                   useExtensibilityAPI);
+      return builder.create<MOGG::ToListFromMGPOp>(input.getLoc(), oldTy,
+                                                   input);
     } else {
       ASSERT_STREAM(false, << "Unknown type " << oldTy << " with value "
                            << input);

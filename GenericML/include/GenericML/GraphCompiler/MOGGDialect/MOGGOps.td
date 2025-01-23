@@ -224,9 +224,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     a view, e.g., a broadcast in the form of a view change followed by a copy. We
     can drop the copy and keep the view change op.
 
-    `isKGEN` Is an attribute which marks the MOGG kernel as being represented
-    using KGEN ops rather than a kernel composed of mogg ops.
-
     `allocIndices` is a list attribute containing the indices of the output tensors
     that have in-place allocation. For example, allocIndices = [0] means the first
     output tensor has been allocated in the kernel.
@@ -240,7 +237,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     OptionalAttr<ArrayAttr>:$outputFusionInterface,
     OptionalAttr<StrAttr>:$fusionBodyLambda,
     OptionalAttr<BoolAttr>:$isViewOp,
-    OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
     OptionalAttr<ArrayAttr>:$allocIndices,
@@ -362,7 +358,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
       "ArrayAttr":$outputFusionInterface,
       "StringAttr":$fusionBodyLambda,
       "BoolAttr":$isViewOp,
-      "BoolAttr":$isKGEN,
       "StringAttr":$summary,
       "BoolAttr":$isAsync,
       "ArrayAttr":$allocIndices,
@@ -415,7 +410,6 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     Variadic<AnyType>:$operands,
     MO_ParamDecls:$outputParamDecls,
     M_InOutSignatureAttr:$inOutSignature,
-    OptionalAttr<BoolAttr>:$isKGEN,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
@@ -718,8 +712,7 @@ def MOGG_ToMGPFromTensorOp : MOGG_Op<"to_mgp_from_tensor", [Pure]> {
 
 def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
   let arguments = (
-    ins AnyType:$dataPointer,
-    DefaultValuedAttr<BoolAttr, "false">:$useExtensibilityAPI
+    ins AnyType:$dataPointer
   );
   let results = (outs AnyType:$result);
   let summary = "Represents the construction of an list type from a pointer";
@@ -730,9 +723,6 @@ def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
 
     At the implementation level, it's just a rebind since we define the ABI for
     both objects the same way (ABIList).
-
-    `useExtensibilityAPI` if true, tells lowering of this stub to use the
-    expected lowering for the API which uses `ManagedTensorSlice.`
   }];
 
   let assemblyFormat = [{

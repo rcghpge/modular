@@ -288,7 +288,6 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
       loc, op->getResultTypes(), op->getOperands(),
       KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
       InOutSignatureAttr::get(builder.getContext(), operandSemantics),
-      builder.getBoolAttr(true),            // isKGEN
       MOGG::getSummaryString(op),           // summary
       builder.getBoolAttr(isAsync(op)),     // isAsync
       constResources,                       // constantResources

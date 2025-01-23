@@ -803,7 +803,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           kernelToFuseInto.getOutputFusionInterfaceAttr(),
           /*fusionBodyLambda=*/kernelToFuseInto.getFusionBodyLambdaAttr(),
           /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
-          /*isKGEN=*/kernelToFuseInto.getIsKGENAttr(),
           /*summary=*/
           getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD),
           /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),

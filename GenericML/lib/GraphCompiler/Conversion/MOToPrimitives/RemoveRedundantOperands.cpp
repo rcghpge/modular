@@ -31,7 +31,6 @@ buildRegionOpWithResultType(OpBuilder &builder,
   auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
       regionOp->getLoc(), resultTypes, regionOp.getOperands(),
       regionOp.getOutputParamDeclsAttr(), regionOp.getInOutSignatureAttr(),
-      regionOp.getIsKGENAttr(),
       regionOp.getSummaryAttr(),           // summary
       regionOp.getIsAsyncAttr(),           // isAsync
       regionOp.getConstantResourcesAttr(), // constantResources
