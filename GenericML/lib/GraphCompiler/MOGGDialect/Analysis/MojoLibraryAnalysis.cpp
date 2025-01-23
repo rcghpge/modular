@@ -532,9 +532,6 @@ bool MojoLibraryAnalysis::kernelTakesIndices(KGEN::GeneratorOp kernel) {
 
 bool MojoLibraryAnalysis::kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel) {
   return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel) ||
-         kernel->hasAttr(KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
-
-  // TODO(GEX-1057): support once opaque type support is landed.
-  // PT functions depend on opaque `PythonObjects`
-  // || kernel->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
+         kernel->hasAttr(KGEN::MOGGPreElab::kMOGGShapeFunctionLabel) ||
+         kernel->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
 }
