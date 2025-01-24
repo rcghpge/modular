@@ -15,7 +15,6 @@
 
 using namespace M::AsyncRT;
 using M::ErrorOr;
-using M::ErrorOrSuccess;
 
 namespace {
 
@@ -181,7 +180,6 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
       aPtr[i] = static_cast<char>(i & 127);
     }
 
-    ErrorOrSuccess err;
     // Copy between different buffers.
     EXPECT_NO_ERR(ctx->copyToDevice(*bBuf, aPtr, syncMode));
     EXPECT_ERR_MSG(ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode),
