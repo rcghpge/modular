@@ -952,6 +952,33 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                              newKernel.getResult(0));
   }
 
+  // Replace any device context placeholder with the actual context.
+  newKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholdCtx) {
+    OpBuilder::InsertionGuard guard{builder};
+    builder.setInsertionPoint(placeholdCtx);
+
+    Value old = placeholdCtx.getResult();
+    Value actualCtx = loweringState.getExecuteDevice(placeholdCtx.getDevice());
+    newKernel->insertOperands(newKernel.getNumOperands(), {actualCtx});
+
+    Value asArg =
+        kernelBody.addArgument(actualCtx.getType(), actualCtx.getLoc());
+
+    builder.setInsertionPoint(placeholdCtx);
+    Value toKGEN =
+        builder.create<ToKGENOp>(actualCtx.getLoc(), old.getType(), asArg);
+    placeholdCtx.replaceAllUsesWith(toKGEN);
+    placeholdCtx.erase();
+
+    // Update the kernel InOut semantics if needed.
+    if (newKernel.getInOutSignature().size() != 0) {
+      SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
+          1, InOutSignatureAttr::InOutSemantics::kNone);
+      InOutSignatureAttr oldSemantics = newKernel.getInOutSignature();
+      newKernel.setInOutSignatureAttr(oldSemantics.append(newSemantics));
+    }
+  });
+
   return success();
 }
 

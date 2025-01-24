@@ -34,6 +34,30 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
   return getHostDevice(op);
 }
 
+SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
+  SmallVector<DeviceRefAttr> devices;
+  llvm::DenseSet<DeviceRefAttr> seenDevices;
+
+  // Helper to add device if not seen before
+  auto addDeviceIfNew = [&](TensorType tensorType) {
+    if (auto deviceRef = tensorType.getDeviceRef())
+      if (seenDevices.insert(deviceRef).second)
+        devices.push_back(deviceRef);
+  };
+
+  // Check operands
+  for (Value operand : op->getOperands())
+    if (auto tensorType = dyn_cast<TensorType>(operand.getType()))
+      addDeviceIfNew(tensorType);
+
+  // Check results
+  for (Value result : op->getResults())
+    if (auto tensorType = dyn_cast<TensorType>(result.getType()))
+      addDeviceIfNew(tensorType);
+
+  return devices;
+}
+
 DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
   // Check the type annotation.
   DeviceRefAttr device = type.getDeviceRef();

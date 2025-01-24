@@ -985,6 +985,19 @@ def MOGG_MojoCallContextPlaceholderOp: MOGG_Op<"runtime_mojocallcontext_placehol
   let results = (outs AnyType:$results);
 }
 
+def MOGG_DeviceContextPlaceholderOp: MOGG_Op<"device_context_placeholder", [Pure]> {
+  let summary = "Launders the runtime device context into KGEN land";
+  let description = [{
+    Returns the device context passed to the Mojo kernel by the C++ runtime.
+  }];
+  let arguments = (ins M_DeviceRefAttr:$device);
+  let results = (outs AnyType:$results);
+
+  let assemblyFormat = [{
+    attr-dict `:` type($results)
+  }];
+}
+
 def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
   DeclareOpInterfaceMethods<MOGG_MojoObjectInfosInterface>]> {
   let summary = "Converts a MOGG value to a KGEN value";

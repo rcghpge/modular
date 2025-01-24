@@ -31,6 +31,10 @@ DeviceRefAttr getDeviceOrDefault(GraphOp graphOp, TensorType type);
 /// As above, but for any type.
 DeviceRefAttr getDeviceOrDefaultAny(GraphOp graphOp, Type type);
 
+/// Returns all devices used by the inputs or outputs of a given MO op, with
+/// duplicates removed.
+SmallVector<DeviceRefAttr> getUniqueDevicesFromKernel(Operation *op);
+
 // (See also getHostDevice, declared in MOOps.h so can be used in MOOps.td)
 
 /// Returns true if op should execute on the 'host'.
