@@ -25,5 +25,5 @@ void M_useKernelsFrom(M_CompileConfig *compileConfig, const char *path,
   }
 
   auto &config = compileConfig->config;
-  config.setKernelLibraryPath(std::move(kernelLibraryPath));
+  config.addKernelLibraryPath(std::move(kernelLibraryPath));
 }
