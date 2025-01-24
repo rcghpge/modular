@@ -284,8 +284,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
     // Soft fuse trivial and non-host kernels where possible.
     if (opts.fuseJitKernels) {
-      pm.addPass(MOGG::createInlineLambdas());
-
       MOGG::FuseKernelSequencesOptions sequenceFusionOpts;
       sequenceFusionOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
       // First fuse obvious sequences and then across edges.
@@ -329,7 +327,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   if (opts.compiledFrameworkLabel.hasValue())
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
-  pm.addPass(MOGG::createInlineLambdas());
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
   pm.addPass(mlir::createCSEPass());

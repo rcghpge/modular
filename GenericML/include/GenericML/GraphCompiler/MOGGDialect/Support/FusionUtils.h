@@ -26,16 +26,6 @@ StringAttr getSummaryString(Operation *op);
 // hard fusion.
 StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType);
 
-/// Inline the given lambda into the call site of the invoke and return the new
-/// results which have replaced the old operation.
-SmallVector<Value> inlineInvoke(MOGG::LambdaInvokeOp invokeOp,
-                                MOGG::LambdaOp invokeTarget);
-
-/// This inlines all lambdas which are only invoked within other lambdas
-/// and removed any unused lambdas. Returns true if there was any
-/// modification
-bool inlineLambdasInKernel(KernelOp kernel);
-
 /// Create a call to the reshape kernel directly in MOGG. The overrideName is
 /// used in case call site needs to call a particular implementation of reshape.
 /// This occurs when we have multiple implementations and we would like to
