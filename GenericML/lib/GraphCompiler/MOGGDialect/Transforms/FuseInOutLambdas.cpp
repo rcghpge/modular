@@ -221,9 +221,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // It is guaranteed that the user kernel is an elementwise op.
     StringAttr elementwiseLambdaName = inputKernel.getFusionBodyLambdaAttr();
     auto elementwiseOp = inputKernel.findLambda(elementwiseLambdaName);
-    KGEN::CallOp elementwiseCallOp =
-        *elementwiseOp.getOps<KGEN::CallOp>().begin();
-    assert(elementwiseCallOp);
 
     // Get the original load inside the dst input lambda.
     // We want to replace it with the elementwise function call.
@@ -237,20 +234,23 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     oldToNew.map(elementwiseOp.getFunctionBody().getArgument(0),
                  dstInputLambdaOp.getFunctionBody().getArgument(0));
 
-    // Clone the elementwise call.
+    // Clone the elementwise kernel body.
+    SmallVector<Operation *> clonedElementwiseBodyOps;
     builder.setInsertionPoint(dstInputLoadOp);
-    KGEN::CallOp newElementwiseCallOp = cast<KGEN::CallOp>(
-        builder.clone(*elementwiseCallOp.getOperation(), oldToNew));
+    for (Operation &elemwOp : elementwiseOp.getBody()->without_terminator()) {
+      clonedElementwiseBodyOps.push_back(builder.clone(elemwOp, oldToNew));
+    }
 
-    // Replace the uses of the load with the call instead.
+    // Replace the uses of the load with the elementwise output instead.
+    Operation *elemwiseBodyReturnOp = elementwiseOp.getBody()->getTerminator();
     assert(dstInputLoadOp->getNumResults() == 1 &&
-           newElementwiseCallOp->getNumResults() == 1);
+           elemwiseBodyReturnOp->getNumOperands() == 1);
     dstInputLoadOp.getResult(0).replaceAllUsesWith(
-        newElementwiseCallOp.getResult(0));
+        oldToNew.lookup(elemwiseBodyReturnOp->getOperand(0)));
     // Get rid of the load.
     dstInputLoadOp->erase();
 
-    // Step 5. Remap the parameters for the elementwise call.
+    // Step 5. Remap the parameters for the elementwise body.
     DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> paramRemaps;
     auto oldElementwiseParams = elementwiseOp.getInputParams();
     auto newElementwiseParams = dstInputLambdaOp.getInputParams();
@@ -273,10 +273,12 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           return std::nullopt;
         });
 
-    walker.recursivelyReplaceElementsIn(newElementwiseCallOp,
-                                        /*replaceAttrs=*/true,
-                                        /*replaceLocs=*/false,
-                                        /*replaceTypes=*/true);
+    for (Operation *newElemwOp : clonedElementwiseBodyOps) {
+      walker.recursivelyReplaceElementsIn(newElemwOp,
+                                          /*replaceAttrs=*/true,
+                                          /*replaceLocs=*/false,
+                                          /*replaceTypes=*/true);
+    }
 
     // Step 6: Get rid of the fused argument (elementwise op output)
     // It still has some uses, which shouldn't do anything since it should be
@@ -624,8 +626,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // It is guaranteed that the user kernel is an elementwise op.
     auto elementwiseOp = userToFuseIn.findLambda(elementwiseLambdaName);
-    KGEN::CallOp outlinedCallOp = *elementwiseOp.getOps<KGEN::CallOp>().begin();
-    assert(outlinedCallOp);
 
     auto userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
         userSymTable.lookup(userOutputLambdaName));
@@ -666,20 +666,14 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     oldToNew.map(userSimdStoreOp.getOperand(1), srcSimdStoreOp.getOperand(1));
 
     // Remap SIMD indices for the COMPUTE_OUTLINED call.
-    builder.setInsertionPointAfter(newInputLambdaOp);
-    for (Value operand : outlinedCallOp->getOperands()) {
-      if (isa<mlir::BlockArgument>(operand)) {
-        oldToNew.map(operand, srcSimdStoreOp.getOperand(1));
-        // FIXME(GEX-865): FuseViews might have inserted a rebind.
-      } else if (auto rebind = operand.getDefiningOp<KGEN::RebindOp>();
-                 rebind && elementwiseOp.getBodyRegion().isAncestor(
-                               rebind->getParentRegion())) {
-        oldToNew.map(operand,
-                     cast<KGEN::RebindOp>(builder.clone(*rebind, oldToNew)));
-      }
-    }
+    // The body should only have a single argument (the SIMD indices).
+    assert(elementwiseOp.getBody()->getNumArguments() == 1);
+    constexpr unsigned simdStoreIndicesOperandIdx = 1;
+    oldToNew.map(elementwiseOp.getBody()->getArgument(0),
+                 srcSimdStoreOp.getOperand(simdStoreIndicesOperandIdx));
 
     // Clone all the elementwise lambdas except the final one.
+    builder.setInsertionPointAfter(newInputLambdaOp);
     for (auto declRegion : userToFuseIn.getOps<KGEN::ParamDeclareRegionOp>()) {
       StringAttr regionName = declRegion.getParamDeclAttr().getName();
       if (!lambdaSkipSet.contains(regionName)) {
@@ -701,14 +695,20 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     builder.setInsertionPoint(
         builder.getInsertionPoint()->getBlock()->getTerminator());
 
-    // Insert the COMPUTE_OUTLINED call for the final elementwise lambda. We
+    // Insert the elementwise body for the final elementwise lambda. We
     // clone the user kernel's SIMD store into the src kernel to account for the
     // mixed precision case.
-    KGEN::CallOp newOutlinedCallOp = cast<KGEN::CallOp>(
-        builder.clone(*outlinedCallOp.getOperation(), oldToNew));
+    SmallVector<Operation *> clonedElementwiseBodyOps;
+    for (Operation &elemwOp : elementwiseOp.getBody()->without_terminator()) {
+      clonedElementwiseBodyOps.push_back(builder.clone(elemwOp, oldToNew));
+    }
 
-    oldToNew.map(userSimdStoreOp.getOperand(2), newOutlinedCallOp.getResult(0));
-    auto newSimdStoreOp = cast<KGEN::CallOp>(
+    Operation *elemwiseBodyReturnOp = elementwiseOp.getBody()->getTerminator();
+    assert(elemwiseBodyReturnOp->getNumOperands() == 1);
+    constexpr unsigned simdStoreValuesOperandIdx = 2;
+    oldToNew.map(userSimdStoreOp.getOperand(simdStoreValuesOperandIdx),
+                 oldToNew.lookup(elemwiseBodyReturnOp->getOperand(0)));
+    clonedElementwiseBodyOps.push_back(
         builder.clone(*userSimdStoreOp.getOperation(), oldToNew));
 
     // Step 5: Remap all the template parameters of the two new calls inserted
@@ -741,14 +741,12 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           return std::nullopt;
         });
 
-    walker.recursivelyReplaceElementsIn(newOutlinedCallOp,
-                                        /*replaceAttrs=*/true,
-                                        /*replaceLocs=*/false,
-                                        /*replaceTypes=*/true);
-    walker.recursivelyReplaceElementsIn(newSimdStoreOp,
-                                        /*replaceAttrs=*/true,
-                                        /*replaceLocs=*/false,
-                                        /*replaceTypes=*/true);
+    for (Operation *newElemwOp : clonedElementwiseBodyOps) {
+      walker.recursivelyReplaceElementsIn(newElemwOp,
+                                          /*replaceAttrs=*/true,
+                                          /*replaceLocs=*/false,
+                                          /*replaceTypes=*/true);
+    }
 
     // Step 6: Finally, we clean up the kernel metadata, eliminate the user
     // kernel, and handle the mixed precision case.
