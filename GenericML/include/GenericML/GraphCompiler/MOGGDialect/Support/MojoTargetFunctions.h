@@ -15,10 +15,10 @@ namespace M::MOGG::Utils {
 // passes (e.g., in/out lambda fusion).
 
 constexpr llvm::StringLiteral DPSTensorForEach =
-    "tensor_utils_internal::managed_tensor_slice::foreach";
+    "tensor_internal::managed_tensor_slice::foreach";
 
 constexpr llvm::StringLiteral DPSTensorGetKernelSimdWidth =
-    "tensor_utils_internal::managed_tensor_slice::get_kernel_simd_width";
+    "tensor_internal::managed_tensor_slice::get_kernel_simd_width";
 
 constexpr llvm::StringLiteral MOGGElementwiseTarget = "elementwise";
 
@@ -29,10 +29,10 @@ constexpr llvm::StringLiteral MOGGSimdStoreTarget = "simd_store";
 constexpr llvm::StringLiteral LambdasHaveFusion = "lambdas_have_fusion";
 
 constexpr llvm::StringLiteral DPSTensorCopy =
-    "tensor_utils_internal::managed_tensor_slice::view_copy_impl";
+    "tensor_internal::managed_tensor_slice::view_copy_impl";
 
 constexpr llvm::StringLiteral DPSTensorGetTensorSpecWithoutLambdas =
-    "tensor_utils_internal::managed_tensor_slice::_get_tensor_specs_without_"
+    "tensor_internal::managed_tensor_slice::_get_tensor_specs_without_"
     "lambdas";
 
 constexpr llvm::StringLiteral DPSBuildTensorSpecs = "build_static_tensor_specs";
@@ -62,10 +62,9 @@ constexpr llvm::StringLiteral MergeDimIndices = "merge_dim_indices";
 
 constexpr llvm::StringLiteral InsertIndex = "insert_index";
 
-// Name of the tensor_utils_internals module, to find all functions defined
-// there.
+// Name of the tensor_internals module, to find all functions defined there.
 constexpr llvm::StringLiteral DPSTensorUtilsInternalModule =
-    "tensor_utils_internal::";
+    "tensor_internal::";
 
 } // namespace M::MOGG::Utils
 
