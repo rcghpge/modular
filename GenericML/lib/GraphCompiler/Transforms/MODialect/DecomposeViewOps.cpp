@@ -178,8 +178,8 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
 static void decomposeFlatteningReshape(Static::ReshapeOp reshape,
                                        OpBuilder &builder) {
   auto oldOutType = reshape.getResult().getType();
-  auto inRank = reshape.getInput().getType().getRank();
-  auto outRank = reshape.getType().getRank();
+  [[maybe_unused]] auto inRank = reshape.getInput().getType().getRank();
+  [[maybe_unused]] auto outRank = reshape.getType().getRank();
   ASSERT_STREAM(inRank > 1 && outRank == 1,
                 "Expected a reshape to be a flattening reshape");
 
@@ -244,7 +244,7 @@ static void decomposeFlatteningReshape(Static::ReshapeOp reshape,
 static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
                                          OpBuilder &builder) {
   auto oldOutType = reshape.getResult().getType();
-  auto inRank = reshape.getInput().getType().getRank();
+  [[maybe_unused]] auto inRank = reshape.getInput().getType().getRank();
   auto outRank = reshape.getType().getRank();
   ASSERT_STREAM(inRank == 1 && outRank > 1,
                 "Expected a reshape to be an unflattening reshape");

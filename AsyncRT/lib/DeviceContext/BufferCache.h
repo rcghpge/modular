@@ -52,7 +52,7 @@ private:
   Desc *popDesc();
   void pushDesc(Desc *desc);
 
-  const void *const base_;
+  [[maybe_unused]] const void *const base_;
   const size_t size_;
 
   const size_t alignment_offset_;
