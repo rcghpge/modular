@@ -257,7 +257,7 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
                    "__moveinit__ / __del__ not found");
     }
     bool isRegister =
-        !kernel.getSignatureGenerator().getBody().hasMemoryOnlyResult();
+        !kernel.getFuncTypeGenerator().getBody().hasMemoryOnlyResult();
 
     // Convert opaque to MGP value.
     // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).

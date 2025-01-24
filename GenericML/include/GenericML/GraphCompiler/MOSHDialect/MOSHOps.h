@@ -31,12 +31,12 @@ class FuncOp;
 } // namespace M::KGEN
 
 // Needed because the ODS definition of some KGEN ops don't have the namespace.
+using M::KGEN::FuncTypeGeneratorType;
 using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParamDefValue;
 using M::KGEN::ParameterExprArrayAttr;
 using M::KGEN::printStringParam;
-using M::KGEN::SignatureGeneratorType;
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

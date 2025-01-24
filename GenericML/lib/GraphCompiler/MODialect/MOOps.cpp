@@ -437,9 +437,9 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
   }
 
   auto funcType = FunctionType::get(ctx, newArgTypes, newResTypes);
-  SignatureGeneratorType signature =
-      KGEN::SignatureGeneratorType::remapToSignatureGenerator(
-          op.getInputParams(), funcType);
+  FuncTypeGeneratorType signature =
+      KGEN::FuncTypeGeneratorType::remapToFuncTypeGenerator(op.getInputParams(),
+                                                            funcType);
   NamedAttrList attrs = op->getAttrDictionary();
   attrs.set(op.getSignatureAttrName(), TypeAttr::get(signature));
   attrs.set(op.getFunctionTypeAttrName(), TypeAttr::get(funcType));
@@ -605,8 +605,7 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
 
   // Add signature attribute
   FunctionType funcType = builder.getFunctionType(inputTypes, resultTypes);
-  auto sig =
-      KGEN::SignatureGeneratorType::get(/*inputParamTypes=*/{}, funcType);
+  auto sig = KGEN::FuncTypeGeneratorType::get(/*inputParamTypes=*/{}, funcType);
   state.addAttribute(getSignatureAttrName(state.name), TypeAttr::get(sig));
   state.addAttribute(getFunctionTypeAttrName(state.name),
                      TypeAttr::get(funcType));
@@ -644,11 +643,11 @@ parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
   };
 
   SmallVector<OpAsmParser::Argument> args;
-  KGEN::SignatureGeneratorType signature;
+  KGEN::FuncTypeGeneratorType signature;
   FunctionType functionType;
-  if (KGEN::parseFunctionSignatureGenerator(p, args, inputParams, resultParams,
-                                            functionType, signature,
-                                            /*parseDeclElt=*/parserHook))
+  if (KGEN::parseFunctionFuncTypeGenerator(p, args, inputParams, resultParams,
+                                           functionType, signature,
+                                           /*parseDeclElt=*/parserHook))
     return failure();
   signatureAttr = TypeAttr::get(signature);
   functionTypeAttr = TypeAttr::get(functionType);
@@ -685,10 +684,10 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
   };
 
   p.printSymbolName(name);
-  KGEN::printFunctionSignatureGenerator(
+  KGEN::printFunctionFuncTypeGenerator(
       p, &body, inputParams, resultParams,
       cast<FunctionType>(functionType.getValue()),
-      cast<SignatureGeneratorType>(signature.getValue()),
+      cast<FuncTypeGeneratorType>(signature.getValue()),
       /*printInputElt=*/printerHook,
       /*printResultElt=*/printerHook);
 

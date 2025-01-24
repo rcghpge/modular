@@ -108,7 +108,7 @@ struct FuseAffineViewsPass
     ASSERT_STREAM(mlir::succeeded(reshapeKGENSymbol),
                   << reshapeKGENSymbol.takeError());
 
-    NewSignatureType reshapeSignature = reshapeKGENSymbol->getType().getBody();
+    FuncType reshapeSignature = reshapeKGENSymbol->getType().getBody();
 
     // We may need a rebind since some complex default parameter value logic
     // may not be folded all the way at the start.
@@ -140,7 +140,7 @@ struct FuseAffineViewsPass
     ASSERT_STREAM(succeeded(toManagedTensorSlice),
                   << toManagedTensorSlice.takeError());
 
-    NewSignatureType signature = toManagedTensorSlice->getType().getBody();
+    FuncType signature = toManagedTensorSlice->getType().getBody();
 
     assert(signature.getNumArguments() == 2);
     assert(signature.getNumResults() == 1);

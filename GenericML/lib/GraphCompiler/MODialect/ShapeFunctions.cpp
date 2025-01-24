@@ -82,7 +82,7 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
   Type chainType = MO::ChainType::get(ctx);
 
   // Build a new operand list which starts with MLIROpAttr.
-  auto signature = SignatureGeneratorType::get(
+  auto signature = FuncTypeGeneratorType::get(
       /*inputParamTypes=*/{},
       FunctionType::get(ctx, {condAttr.getType()}, chainType));
   NamedAttribute msgAttr(StringAttr::get(ctx, "message"),

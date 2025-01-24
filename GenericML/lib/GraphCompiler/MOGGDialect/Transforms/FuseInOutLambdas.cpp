@@ -489,7 +489,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     auto findParamDeclMapping = [&](KGEN::ParamDeclareOp paramDeclOp) {
       mlir::AttrTypeWalker walker;
       walker.addWalk([&](KGEN::ParamDeclRefAttr refAttr) {
-        if (isa<KGEN::SignatureGeneratorType>(refAttr.getType()))
+        if (isa<KGEN::FuncTypeGeneratorType>(refAttr.getType()))
           lambdaToParamDeclareOpMapping[refAttr.getName()].push_back(
               paramDeclOp);
       });

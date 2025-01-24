@@ -28,7 +28,7 @@ using namespace MOGG;
 
 static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
                                 KGEN::GeneratorOp gen2) {
-  if (gen1.getSignatureGenerator() != gen2.getSignatureGenerator())
+  if (gen1.getFuncTypeGenerator() != gen2.getFuncTypeGenerator())
     return false;
   return areBlocksSame(*gen1.getBody(), *gen2.getBody());
 }
@@ -137,9 +137,9 @@ MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
     return generator->emitError("couldn't not retrieve specialized signature");
   };
 
-  SignatureGeneratorType signature =
-      generator.getSignatureGenerator().getSpecializedGenerator(params,
-                                                                emitError);
+  FuncTypeGeneratorType signature =
+      generator.getFuncTypeGenerator().getSpecializedGenerator(params,
+                                                               emitError);
   if (!signature)
     return Error("unable to specialize signature for " + name);
 
@@ -259,7 +259,7 @@ void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
       continue;
 
     bool hasSameSig =
-        op.getSignatureGenerator() == itr->second.getSignatureGenerator();
+        op.getFuncTypeGenerator() == itr->second.getFuncTypeGenerator();
     // Prevent the same kernel from colliding with itself.
     if (hasSameSig && op.getLoc() == rawMojoKernel[newSymName].getLoc() &&
         !isa<mlir::UnknownLoc>(op.getLoc()))

@@ -181,8 +181,8 @@ void updateGraphSignature(GraphOp graphOp) {
   NamedAttrList attrs = graphOp->getAttrDictionary();
   attrs.set(graphOp.getResultParamsAttrName(), newResultParamsAttr);
 
-  SignatureGeneratorType signature =
-      KGEN::SignatureGeneratorType::remapToSignatureGenerator(
+  FuncTypeGeneratorType signature =
+      KGEN::FuncTypeGeneratorType::remapToFuncTypeGenerator(
           graphOp.getInputParams(), graphOp.getFunctionType());
   attrs.set(graphOp.getSignatureAttrName(), TypeAttr::get(signature));
   graphOp->setAttrs(attrs.getDictionary(graphOp->getContext()));

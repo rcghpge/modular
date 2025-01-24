@@ -28,11 +28,11 @@ class ModuleOp;
 } // namespace mlir
 
 // Needed because the ODS definition of some KGEN ops don't have the namespace.
-using M::KGEN::NewSignatureType;
+using M::KGEN::FuncType;
+using M::KGEN::FuncTypeGeneratorType;
 using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParameterExprArrayAttr;
-using M::KGEN::SignatureGeneratorType;
 
 namespace M::MO {
 /// Returns the default CPU device.
