@@ -401,11 +401,13 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   // - The pass pipeline as a list of pass names.
   // - Graph compiler options that affect lowering and export.
   // - The model IR, by writing the ModuleOp.
-  //   This currently includes the model weights.
+  //   This does NOT include the model weights
+  // - The graph compiler version string
   WriteableBufferRef keyBuf = WriteableBuffer::get();
   mofLoweringOptions.print(*keyBuf);
   moToMgpOptions.print(*keyBuf);
   moToMgpPasses.printAsTextualPipeline(*keyBuf);
+  *keyBuf << M::MO::getGraphCompilerVersionString();
 
   // We also cache the flags passed to mojo for compilation.
   // If these change, the mojo kernels must be recompiled.
