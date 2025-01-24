@@ -6,5 +6,6 @@ mojo_library(
     visibility = ["//visibility:public"],
     deps = [
         "//Kernels/mojo/extensibility/tensor_internal",
+        "//Kernels/mojo/extensibility/tensor_utils_internal",
     ],
 )
