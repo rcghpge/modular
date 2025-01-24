@@ -473,8 +473,8 @@ def DecomposeViewOps : Pass<"decompose-views", "ModuleOp"> {
 def FlattenElementwise : Pass<"flatten-elementwise", "ModuleOp"> {
   let summary = "Flattens elementwise ops";
   let description = [{
-    This pass will flatten the tensor shapes for all elementwise ops. This will
-    unblock elementwise fusion opportunities.
+    This pass will flatten the tensor shapes for certain elementwise ops if it
+    unblocks elementwise fusion opportunities.
   }];
 }
 

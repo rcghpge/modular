@@ -102,3 +102,36 @@ mo.graph @many_reshapes(%arg1 : !tt, %arg2 : !tt) -> !tt {
 
     mo.output %out : !tt
 }
+
+// CHECK-MO-LABEL: mo.graph @with_cast
+// CHECK-MO: mo.cast({{.*}}) : (!mo.tensor<[24], f32>) -> !mo.tensor<[24], f16>
+// CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[24], f16>
+// CHECK-MO: mo.cast({{.*}}) : (!mo.tensor<[24], f16>) -> !mo.tensor<[24], f64>
+
+// CHECK-MOGG-LABEL: mo.graph @with_cast
+// CHECK-MOGG: mogg.kernel
+// CHECK-MOGG: summary = "mo.cast:{{.*}}+mo.relu:{{.*}}+mo.cast:{{.*}}"
+// CHECK-MOGG-NOT: mogg.kernel
+mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f64> {
+    %0 = mo.cast(%arg0) : (!mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f16>
+    %1 = mo.relu(%0) : !mo.tensor<[1,2,3,4], f16>
+    %2 = mo.static.reshape(%1) : !mo.tensor<[1,2,3,4], f16> -> !mo.tensor<[2,3,4], f16>
+    %3 = mo.cast(%2) : (!mo.tensor<[2,3,4], f16>) -> !mo.tensor<[2,3,4], f64>
+    mo.output %3 : !mo.tensor<[2,3,4], f64>
+}
+
+// CHECK-MO-LABEL: mo.graph @with_pow
+// CHECK-MO: mo.pow({{.*}} : !mo.tensor<[6], f32>, {{.*}} : !mo.tensor<[6], si32>) : !mo.tensor<[6], f32>
+// CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[6], f32>
+
+// CHECK-MOGG-LABEL: mo.graph @with_pow
+// CHECK-MOGG: mogg.kernel
+// CHECK-MOGG: summary = "mo.pow:{{.*}}+mo.relu:{{.*}}"
+// CHECK-MOGG-NOT: mogg.kernel
+mo.graph @with_pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) -> !mo.tensor<[3,2], f32> {
+    %0 = mo.pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) : !mo.tensor<[3,2], f32>
+    %1 = mo.static.reshape(%0) : !mo.tensor<[3,2], f32> -> !mo.tensor<[3,2,1], f32>
+    %2 = mo.relu(%1) : !mo.tensor<[3,2,1], f32>
+    %3 = mo.static.reshape(%2) : !mo.tensor<[3,2,1], f32> -> !mo.tensor<[3,2], f32>
+    mo.output %3 : !mo.tensor<[3,2], f32>
+}
