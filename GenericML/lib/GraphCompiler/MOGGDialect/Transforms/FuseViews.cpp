@@ -414,7 +414,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
     // Update the leaf's summary to capture the producer's summary.
     leaf.setSummaryAttr(
-        getSummaryString({producerKernel, leaf}, FusionType::SOFT));
+        getSummaryString({producerKernel, leaf}, FusionType::HARD));
   }
 
   DenseMap<KernelOp, MO::Static::ReshapeOp>
