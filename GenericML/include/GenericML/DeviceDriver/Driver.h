@@ -79,9 +79,8 @@ protected:
 
 struct Device : M::ReferenceCounted<Device> {
 
-  Device(DeviceSpec spec, AsyncRT::DeviceContextRef ctx)
-      : ctx(ctx), deviceSpecification(std::move(spec)),
-        deviceDescription(toString()) {}
+  Device(const DeviceSpec &spec, AsyncRT::DeviceContextRef ctx)
+      : ctx(ctx), deviceSpecification(spec), deviceDescription(toString()) {}
 
   llvm::StringRef getString() const { return deviceDescription; };
 
@@ -91,7 +90,7 @@ struct Device : M::ReferenceCounted<Device> {
   /// Frees ptr created with `allocateData`.
   ErrorOrSuccess freeData(void *ptr);
 
-  DeviceSpec getDeviceSpec() const { return deviceSpecification; };
+  const DeviceSpec &getDeviceSpec() const { return deviceSpecification; };
 
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
