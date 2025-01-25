@@ -278,17 +278,30 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
                         "Expected a divide to have two operands");
           auto divisor = operands[1];
           if (divisor == currDimOfOutput) {
-            // add a guard to the divide to handle the case where the divisor is
+            // Add a guard to the divide to handle the case where the divisor is
             // zero.
+            //
+            // Note that KGEN::POC::Cond lowers to pop.select which evaluates
+            // both sides of the condition.
+            //
+            // This means that this naive expression may still yield a division
+            // by zero:
+            //   `cond(eq(D2, 0), 0, div(D1, D2))`
+            // To remedy this, we generate a much uglier expression:
+            //   `cond(eq(D2, 0), 0, div(D1, cond(eq(D2, 0), 1, D2)))`
             Type i64 =
                 IntegerType::get(builder.getContext(), 64, IntegerType::Signed);
             IntegerAttr zero = IntegerAttr::get(i64, 0);
-            SmallVector<TypedAttr> eqArgs{divisor, zero};
-            auto guard = KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, eqArgs);
-            SmallVector<TypedAttr> condArgs{guard, zero, remaining};
-            auto guardResult =
-                KGEN::ParamOperatorAttr::get(KGEN::POC::Cond, condArgs);
-            remaining = guardResult;
+            IntegerAttr one = IntegerAttr::get(i64, 1);
+
+            auto isDivisorZero =
+                KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, {divisor, zero});
+            auto nonZeroDivisor = KGEN::ParamOperatorAttr::get(
+                KGEN::POC::Cond, {isDivisorZero, one, divisor});
+            auto safeDivision = KGEN::ParamOperatorAttr::get(
+                KGEN::POC::Div, {lastDim, nonZeroDivisor});
+            remaining = KGEN::ParamOperatorAttr::get(
+                KGEN::POC::Cond, {isDivisorZero, zero, safeDivision});
           }
         }
       }

@@ -271,9 +271,9 @@ mo.graph @flatten_dim_partially_symbolic<D1,D2,D3,D4>(%input : !mo.tensor<[D1,D2
 }
 
 // CHECK-LABEL: mo.graph @unflatten_dim_symbolic_with_rebind<D1, D2, D12>() -> !mo.tensor<[D1, D2, 3], f32> {
-// CHECK: %[[V0:.*]] = mo.split_dim[0 : index] ({{.*}}) : (!mo.tensor<[D12], f32>) -> !mo.tensor<[D1, cond(eq(:si64 D1, 0), 0, div(D12, D1))], f32>
-// CHECK-NEXT: %[[V1:.*]] = mo.split_dim[1 : index] (%[[V0]]) : (!mo.tensor<[D1, cond(eq(:si64 D1, 0), 0, div(D12, D1))], f32>) -> !mo.tensor<[D1, D2, cond(eq(:si64 D2, 0), 0, div(cond(eq(:si64 D1, 0), 0, div(D12, D1)), D2))], f32>
-// CHECK-NEXT: %[[V2:.*]] = mo.rebind(%[[V1]]) : !mo.tensor<[D1, D2, cond(eq(:si64 D2, 0), 0, div(cond(eq(:si64 D1, 0), 0, div(D12, D1)), D2))], f32> -> !mo.tensor<[D1, D2, 3], f32>
+// CHECK: %[[V0:.*]] = mo.split_dim[0 : index] ({{.*}}) : (!mo.tensor<[D12], f32>) -> !mo.tensor<[D1, cond(eq(:si64 D1, 0), 0, div(D12, cond(eq(:si64 D1, 0), 1, D1)))], f32>
+// CHECK-NEXT: %[[V1:.*]] = mo.split_dim[1 : index] (%[[V0]]) : (!mo.tensor<[D1, cond(eq(:si64 D1, 0), 0, div(D12, cond(eq(:si64 D1, 0), 1, D1)))], f32>) -> !mo.tensor<[D1, D2, cond(eq(:si64 D2, 0), 0, div(cond(eq(:si64 D1, 0), 0, div(D12, cond(eq(:si64 D1, 0), 1, D1))), cond(eq(:si64 D2, 0), 1, D2)))], f32>
+// CHECK-NEXT: %[[V2:.*]] = mo.rebind(%[[V1]]) : !mo.tensor<[D1, D2, cond(eq(:si64 D2, 0), 0, div(cond(eq(:si64 D1, 0), 0, div(D12, cond(eq(:si64 D1, 0), 1, D1))), cond(eq(:si64 D2, 0), 1, D2)))], f32> -> !mo.tensor<[D1, D2, 3], f32>
 // CHECK-NEXT: %[[V3:.*]] = mo.relu(%[[V2]]) : !mo.tensor<[D1, D2, 3], f32>
 mo.graph @unflatten_dim_symbolic_with_rebind<D1,D2,D12>() -> (!mo.tensor<[D1,D2,3], f32>) {
 	%0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
