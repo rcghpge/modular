@@ -227,12 +227,12 @@ public:
   void setInitChain(Value chain) { init.chain = chain; }
 
   /// Get the device context for a device ref in init.
-  TypedValue<OpaqueType> getInitDevice(DeviceRefAttr dev) {
+  TypedValue<DeviceContextType> getInitDevice(DeviceRefAttr dev) {
     return initDevices[dev];
   }
 
   /// Set the device context form a device ref in init.
-  void setInitDevice(DeviceRefAttr dev, TypedValue<OpaqueType> val) {
+  void setInitDevice(DeviceRefAttr dev, TypedValue<DeviceContextType> val) {
     initDevices[dev] = val;
   }
 
@@ -267,11 +267,12 @@ public:
   }
 
   /// Get the device context for a device ref in init.
-  TypedValue<OpaqueType> getExecuteDevice(DeviceRefAttr dev) {
+  TypedValue<DeviceContextType> getExecuteDevice(DeviceRefAttr dev) {
     for (auto [deviceRefAttr, deviceContext] : llvm::zip(
-             common.modelOp.getDevices(), common.modelOp.getExecuteDevices()))
+             common.modelOp.getDevices(), common.modelOp.getExecuteDevices())) {
       if (deviceRefAttr == dev)
-        return cast<TypedValue<MGP::OpaqueType>>(deviceContext);
+        return cast<TypedValue<MGP::DeviceContextType>>(deviceContext);
+    }
     llvm_unreachable("Could not find device in model args");
   }
 
@@ -477,10 +478,10 @@ private:
   DenseMap<Value, SmallVector<Value>> placeholderMap;
 
   /// Mapping from device ref to value in init.
-  SmallDenseMap<DeviceRefAttr, TypedValue<OpaqueType>> initDevices;
+  SmallDenseMap<DeviceRefAttr, TypedValue<DeviceContextType>> initDevices;
 
   /// Mapping from device ref to value in exec.
-  SmallDenseMap<DeviceRefAttr, TypedValue<OpaqueType>> execDevices;
+  SmallDenseMap<DeviceRefAttr, TypedValue<DeviceContextType>> execDevices;
 };
 
 //===----------------------------------------------------------------------===//

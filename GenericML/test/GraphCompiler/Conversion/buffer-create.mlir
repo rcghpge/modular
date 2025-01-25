@@ -1,7 +1,7 @@
 // RUN: mo-opt --mo-to-primitives %s | FileCheck --enable-var-scope %s
 
 // CHECK-LABEL: mgp.model @no_params
-// CHECK: execute ([[CHAIN:%.*]]: !mef.chain{{.*}}[[GPU:%.*]]: !mgp.opaque<"gpu0_context">
+// CHECK: execute ([[CHAIN:%.*]]: !mef.chain{{.*}}[[GPU:%.*]]: !mgp.device_context<<"gpu", 0>>
 // CHECK: [[SPEC:%.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<2x2xf32>
 // CHECK: [[IDX4:%.*]] = index.constant 4
 // CHECK: [[DIM0:%.*]] = mgp.tensor_spec.get_dim[0] [[SPEC]]
@@ -17,7 +17,7 @@ mo.graph @no_params() {
 }
 
 // CHECK-LABEL: mgp.model @params
-// CHECK: execute ([[CHAIN:%.*]]: !mef.chain{{.*}}[[GPU:%.*]]: !mgp.opaque<"gpu0_context">
+// CHECK: execute ([[CHAIN:%.*]]: !mef.chain{{.*}}[[GPU:%.*]]: !mgp.device_context<<"gpu", 0>>
 // CHECK: [[D0:%.*]] = mosh.param.to_value = <d0>
 // CHECK: [[D0_IDX:%.*]] = index.casts [[D0]]
 // CHECK: [[D1:%.*]] = mosh.param.to_value = <d1>

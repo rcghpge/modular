@@ -422,9 +422,11 @@ LogicalResult MOGraphLowering::createModelOp() {
   loweringState.setExecuteMgpContext(executeBlock->getArgument(1));
 
   for (auto [devRef, devArg] :
-       llvm::zip(modelOp.getDevices(), modelOp.getInitDevices()))
-    loweringState.setInitDevice(dyn_cast<DeviceRefAttr>(devRef),
-                                dyn_cast<TypedValue<MGP::OpaqueType>>(devArg));
+       llvm::zip(modelOp.getDevices(), modelOp.getInitDevices())) {
+    loweringState.setInitDevice(
+        dyn_cast<DeviceRefAttr>(devRef),
+        dyn_cast<TypedValue<MGP::DeviceContextType>>(devArg));
+  }
 
   // Establish buffer builders for all the devices. This may require some
   // extra device-specific setup in the 'init' block.

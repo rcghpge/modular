@@ -47,7 +47,7 @@ CompileDiagnosticOrSuccess MGPDeviceSpecificDialect::makeBufferBuilder(
   auto chain = bufferBuilder->setupForModel(
       loweringState.getModelOp(), hostBufferBuilder,
       loweringState.getInitOpBuilder(), loweringState.getGraph()->getLoc(),
-      inChain, loweringState.getInitDevice(bufferBuilder->device));
+      inChain);
   loweringState.setInitChain(chain);
   loweringState.registerBufferBuilder(targetDevice, std::move(bufferBuilder));
   return success();

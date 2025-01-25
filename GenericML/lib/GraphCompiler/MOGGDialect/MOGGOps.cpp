@@ -622,7 +622,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto convertMGPInputToTensorOrOpaque = [&](Value input, Type oldTy) -> Value {
     // Opaque types are already pointer to objects, they don't need any
     // transformation to be passed to the kernel.
-    if (isa<MGP::OpaqueType>(input.getType())) {
+    if (isa<MGP::OpaqueType, MGP::DeviceContextType>(input.getType())) {
       return input;
     } else if (isa<MO::TensorType, MO::BufferType>(oldTy)) {
       MO::TensorType asTensor = MO::castFromTensorLike(oldTy);

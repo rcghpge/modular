@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: mgp.model @buffer_transfer_h2d
 // CHECK: execute
-// CHECK-SAME: (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[WREG:.*]]: !mgp.opaque<"weights_registry">, %[[CPU_CTX:.*]]: !mgp.opaque<"cpu0_context">, %[[GPU_CTX:.*]]: !mgp.opaque<"gpu0_context">, %[[ARG:.*]]: !mgp.tensor<2x2xf32>)
+// CHECK-SAME: (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[WREG:.*]]: !mgp.opaque<"weights_registry">, %[[CPU_CTX:.*]]: !mgp.device_context<<"cpu", 0>>, %[[GPU_CTX:.*]]: !mgp.device_context<<"gpu", 0>>, %[[ARG:.*]]: !mgp.tensor<2x2xf32>)
 // CHECK: %[[CH0:.*]] = grt.chain.create ()
 // CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create
 // CHECK: %[[IDX4:.*]] = index.constant 4
@@ -32,7 +32,7 @@ mo.graph @buffer_transfer_h2d(%arg0: !mo.buffer<[2, 2], f32, cpu:0>) -> !mo.buff
 
 // CHECK-LABEL: mgp.model @buffer_transfer_d2d
 // CHECK: execute
-// CHECK-SAME: (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[WREG:.*]]: !mgp.opaque<"weights_registry">, %[[CPU_CTX:.*]]: !mgp.opaque<"cpu0_context">, %[[GPU0_CTX:.*]]: !mgp.opaque<"gpu0_context">, %[[GPU1_CTX:.*]]: !mgp.opaque<"gpu1_context">, %[[ARG:.*]]: !mgp.tensor<2x2xf32, <"gpu", 0>>)
+// CHECK-SAME: (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[WREG:.*]]: !mgp.opaque<"weights_registry">, %[[CPU_CTX:.*]]: !mgp.device_context<<"cpu", 0>>, %[[GPU0_CTX:.*]]: !mgp.device_context<<"gpu", 0>>, %[[GPU1_CTX:.*]]: !mgp.device_context<<"gpu", 1>>, %[[ARG:.*]]: !mgp.tensor<2x2xf32, <"gpu", 0>>)
 // CHECK: %[[CH0:.*]] = grt.chain.create ()
 // CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create
 // CHECK: %[[IDX4:.*]] = index.constant 4

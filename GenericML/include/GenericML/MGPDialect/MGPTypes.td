@@ -16,7 +16,7 @@ include "GenericML/MGPDialect/MGPTypeInterfaces.td"
 include "GraphRT/MEFDialect/MEFTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
-include "mlir/IR/AttrTypeBase.td"
+include "Support/MDialect/MAttrs.td"
 
 // Base class for types in this dialect.
 class MGP_Type<string name, string typeMnemonic, list<Trait> traits = []>
@@ -273,6 +273,27 @@ def MGP_OpaqueType : MGP_Type<"Opaque", "opaque",
   let parameters = (ins "StringAttr": $symbol,
                         OptionalParameter<"std::optional<DictionaryAttr>">:$metadata);
   let assemblyFormat = "`<` $symbol (`,` $metadata^)? `>`";
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceContextType
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceContextType : MGP_Type<"DeviceContext", "device_context", []> {
+  let summary = "MGP representation of the driver DeviceContext";
+  let description = [{
+    This is essentially opaque to MGP but it is still useful to represent
+    directly as it is simpler to introspect.
+
+    Examples:
+    ```mlir
+    // A device context for CUDA gpu 3.
+    !mgp.device_context<<"gpu", 3>>
+    ```
+  }];
+
+  let parameters = (ins M_DeviceRefAttr:$device);
+  let assemblyFormat = "`<` $device `>`";
 }
 
 include "GenericML/MGPDialect/MGPDeviceTypes.td"

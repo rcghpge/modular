@@ -119,7 +119,7 @@ def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_DeviceContextType:$deviceContext,
                        MGP_OptDeviceRefAttr:$bDevice,  // 1
                        StrAttr:$cTag,
                        StrAttr:$dFilePath); // 2
@@ -141,7 +141,7 @@ def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_DeviceContextType:$deviceContext,
                        MGP_OptDeviceRefAttr:$bDevice,  // 1
                        StrAttr:$cTag,
                        StrAttr:$dFilePath); // 2
@@ -339,7 +339,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
   // names.
   let arguments = (ins ChainType:$inChain,
                        Index:$runtimeSize,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_DeviceContextType:$deviceContext,
                        DefaultValuedAttr<UI64Attr, "kUnknownSize">:$bRawAlign, // 1
                        MGP_OptDeviceRefAttr:$cDevice);                         // 2
   let results = (outs MGP_DeviceBufferType:$outBuffer);
@@ -475,7 +475,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
   let arguments = (ins ChainType:$inChain,
                        MGP_DeviceBufferType:$hostBuffer,
                        MGP_DeviceBufferType:$otherBuffer,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_DeviceContextType:$deviceContext,
                        MGP_OptDeviceRefAttr:$cHostDevice,   // 2
                        MGP_OptDeviceRefAttr:$dOtherDevice); // 3
   let results = (outs ChainType:$outChain);
@@ -528,7 +528,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
   let arguments = (ins ChainType:$inChain,
                        MGP_DeviceBufferType:$otherBuffer,
                        MGP_DeviceBufferType:$hostBuffer,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_DeviceContextType:$deviceContext,
                        MGP_OptDeviceRefAttr:$cOtherDevice, // 2
                        MGP_OptDeviceRefAttr:$dHostDevice); // 3
   let results = (outs ChainType:$outChain);
@@ -580,8 +580,8 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
   let arguments = (ins ChainType:$inChain,
                        MGP_DeviceBufferType:$srcBuffer,
                        MGP_DeviceBufferType:$dstBuffer,
-                       MGP_OpaqueType:$srcDeviceContext,
-                       MGP_OpaqueType:$dstDeviceContext,
+                       MGP_DeviceContextType:$srcDeviceContext,
+                       MGP_DeviceContextType:$dstDeviceContext,
                        M_DeviceRefAttr:$cSrcDevice,   // 0
                        M_DeviceRefAttr:$dDstDevice);  // 1
   let results = (outs ChainType:$outChain);
@@ -926,7 +926,7 @@ def MGP_SyncOp : MGP_DeviceOp<"sync",
 
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_DeviceContextType:$deviceContext,
                        MGP_OptDeviceRefAttr:$bDevice);               // 1
   let results = (outs ChainType: $outChain);
   let assemblyFormat = [{

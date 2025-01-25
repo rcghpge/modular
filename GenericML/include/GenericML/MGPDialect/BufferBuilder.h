@@ -342,7 +342,8 @@ public:
   /// synchronized.
   virtual Value sync(OpBuilder &builder, Location loc,
                      TypedValue<ContextType> context,
-                     TypedValue<OpaqueType> deviceContext, Value chain) = 0;
+                     TypedValue<DeviceContextType> deviceContext,
+                     Value chain) = 0;
 
   virtual void vtableAnchor();
 };
@@ -363,8 +364,7 @@ public:
   TypedValue<MEF::ChainType> setupForModel(ModelOp modelOp,
                                            MGPBufferBuilder *hostBufferBuilder,
                                            OpBuilder &builder, Location loc,
-                                           TypedValue<MEF::ChainType> inChain,
-                                           TypedValue<OpaqueType> inDevice);
+                                           TypedValue<MEF::ChainType> inChain);
 
   /// Recover the state from modelOp for this device-specific buffer builder.
   void recoverFromModel(ModelOp modelOp, MGPBufferBuilder *hostBufferBuilder);
@@ -468,7 +468,7 @@ public:
                            ArrayRef<Value> values) override;
 
   Value sync(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
-             TypedValue<OpaqueType> deviceContext, Value chain) override;
+             TypedValue<DeviceContextType> deviceContext, Value chain) override;
 
   std::pair<uint64_t, uint64_t> getFunction(StringRef name) {
     auto itr = functionToIndexPair.find(name);

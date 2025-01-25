@@ -329,7 +329,7 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
   }];
 
   let arguments = (ins MGP_ContextType:$theContext,
-                       MGP_OpaqueType:$deviceContext,
+                       MGP_DeviceContextType:$deviceContext,
                        Variadic<AnyType>:$args,
                        UI64Attr:$aRuntimeSlot,                         // 0
                        UI64Attr:$bModuleIndex,                         // 1
@@ -652,8 +652,8 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     representing its 'init' and 'execute' entry points.
 
     The 'init' entry point has the implicit signature:
-      (!mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, ...) ->
-      (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">, ...)
+      (!mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, ...) ->
+      (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, ...)
     where:
       mgp.opaques are the weights registry and device contexts.
 
@@ -684,7 +684,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     ```mlir
     // At the top-level
     mgp.model @example_model : mof { attr="value" }
-      init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
+      init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
         %ch = mef.chain.new
         %ctx = mgp.context.create 0
         mef.output %ch, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque, !mgp.opaque

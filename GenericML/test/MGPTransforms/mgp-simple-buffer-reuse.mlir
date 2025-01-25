@@ -12,12 +12,12 @@
 //  -> execute(in %alloc0, out %alloc1)
 //  -> execute(in %alloc1, out %alloc0)
 
-mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+  mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
   %inBuffer = mgp.tensor.extract.buffer %inTensor : !mgp.tensor<?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
@@ -30,9 +30,9 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
-  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
-  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
-  %alloc2 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+  %alloc2 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
 
 
   // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"(%{{.*}}, %[[INBUFFER]], %[[ALLOC0]])
@@ -54,12 +54,12 @@ mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 // Even though the lifetimes are the same as above and indicate that the buffer
 // can be reused, the sizes are different so the simple buffer reuse pass will
 // not reuse.
-mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">) {
+mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
-  mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.opaque<"cpu0_context">
+  mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 
-} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.opaque<"cpu0_context">, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %inTensor: !mgp.tensor<?x?xf32>) -> (!mef.chain, !mgp.tensor<?x?xf32>) {
   // CHECK: %[[INBUFFER:.*]] = mgp.tensor.extract.buffer
   %inBuffer = mgp.tensor.extract.buffer %inTensor : !mgp.tensor<?x?xf32>
   %inTensorSpec = mgp.tensor.extract.tensor_spec %inTensor : <?x?xf32>
@@ -75,9 +75,9 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc {{.*}}
   // CHECK-NEXT: %[[ALLOC2:.*]] = mgp.buffer.alloc {{.*}}
-  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
-  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
-  %alloc2 = mgp.buffer.alloc %arg0, %allocSizeDifferent, %cpu, align 16 : !mgp.buffer, !mgp.opaque<"cpu0_context">
+  %alloc0 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+  %alloc1 = mgp.buffer.alloc %arg0, %allocSize, %cpu, align 16 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+  %alloc2 = mgp.buffer.alloc %arg0, %allocSizeDifferent, %cpu, align 16 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
 
 
   // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"({{.*}}, %[[INBUFFER]], %[[ALLOC0]])

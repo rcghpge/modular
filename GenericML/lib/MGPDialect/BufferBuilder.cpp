@@ -35,8 +35,7 @@ void BufferBuilder::vtableAnchor() {}
 
 TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
     ModelOp modelOp, MGPBufferBuilder *hostBufferBuilder, OpBuilder &builder,
-    Location loc, TypedValue<MEF::ChainType> inChain,
-    TypedValue<OpaqueType> inDevice) {
+    Location loc, TypedValue<MEF::ChainType> inChain) {
   this->hostBufferBuilder = hostBufferBuilder;
 
   // Allocate a runtime slot to hold the runtime.
@@ -171,7 +170,8 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
               /*inChain=*/inChain,
               /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
               /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-              /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
+              /*deviceContext*/
+              cast<TypedValue<DeviceContextType>>(deviceContext),
               /*cHostDevice=*/hostBufferBuilder->device,
               /*dOtherDevice=*/device)
           .getResult();
@@ -207,7 +207,8 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
               /*inChain=*/inChain,
               /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
               /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-              /*deviceContext*/ cast<TypedValue<OpaqueType>>(deviceContext),
+              /*deviceContext*/
+              cast<TypedValue<DeviceContextType>>(deviceContext),
               /*cOtherDevice=*/device,
               /*dHostDevice=*/hostBufferBuilder->device)
           .getResult();
@@ -233,8 +234,8 @@ Value MGPBufferBuilder::bufferTransferDevice(
       /*inChain=*/inChain,
       /*srcBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
       /*dstBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-      /*deviceContext*/ cast<TypedValue<OpaqueType>>(srcDeviceContext),
-      /*deviceContext*/ cast<TypedValue<OpaqueType>>(dstDeviceContext),
+      /*deviceContext*/ cast<TypedValue<DeviceContextType>>(srcDeviceContext),
+      /*deviceContext*/ cast<TypedValue<DeviceContextType>>(dstDeviceContext),
       /*cSrcDevice=*/device,
       /*dDstDevice=*/dstMGPBufferBuilder->device);
 }
@@ -392,7 +393,7 @@ Value MGPBufferBuilder::bufferSetWithIndex(OpBuilder &builder, Location loc,
 
 Value MGPBufferBuilder::sync(OpBuilder &builder, Location loc,
                              TypedValue<ContextType> context,
-                             TypedValue<OpaqueType> deviceContext,
+                             TypedValue<DeviceContextType> deviceContext,
                              Value chain) {
   return builder
       .create<MGP::SyncOp>(loc, chain, context, deviceContext,

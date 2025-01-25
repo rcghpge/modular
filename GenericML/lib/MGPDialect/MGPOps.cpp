@@ -913,11 +913,6 @@ static OpaqueType opaqueType(MLIRContext *ctx, StringRef symbol) {
                          /*metadata=*/{});
 };
 
-// Gets a device context symbol for a device. For example: cpu0_context.
-static std::string deviceCtxSymbol(const DeviceRef &device) {
-  return device.label + std::to_string(device.id) + "_context";
-}
-
 // Extends args with the weights registry and device context implicit args.
 static void appendInitExecImplicitArgs(SmallVectorImpl<Type> &args,
                                        MLIRContext *ctx,
@@ -926,8 +921,10 @@ static void appendInitExecImplicitArgs(SmallVectorImpl<Type> &args,
   args.push_back(opaqueType(ctx, "weights_registry"));
 
   // Add all the device contexts to the implicit signature.
-  for (const DeviceRef &device : devices)
-    args.push_back(opaqueType(ctx, deviceCtxSymbol(device)));
+  for (const DeviceRef &device : devices) {
+    args.push_back(DeviceContextType::get(
+        ctx, DeviceRefAttr::get(ctx, device.label, device.id)));
+  }
 }
 
 /// Returns the implicit signature of the 'init' entry point.
@@ -1126,9 +1123,10 @@ LogicalResult ModelOp::verifyRegions() {
                            << ".";
     }
     for (auto t : initArgTypes) {
-      if (!mlir::isa<OpaqueType>(t)) {
-        return emitOpError()
-               << "init block arguments must be !mgp.opaque, but got " << t;
+      if (!mlir::isa<OpaqueType, DeviceContextType>(t)) {
+        return emitOpError() << "init block arguments must be !mgp.opaque or "
+                                "!mgp.device_context, but got "
+                             << t;
       }
     }
 
@@ -1148,11 +1146,12 @@ LogicalResult ModelOp::verifyRegions() {
     ArrayRef<Type> modelArgTypes = getInputOutputTypes().getInputs();
     SmallVector<Type> expectedArgTypes(implicitExecSig.getInputs());
     expectedArgTypes.append(modelArgTypes.begin(), modelArgTypes.end());
-    if (execBlock->getArgumentTypes() != expectedArgTypes)
+    if (execBlock->getArgumentTypes() != expectedArgTypes) {
       return emitOpError() << "expected the arguments of the "
                               "'execute' body to be "
                            << expectedArgTypes << ", but got "
                            << execBlock->getArgumentTypes() << ".";
+    }
 
     ArrayRef<Type> modelResultTypes = getInputOutputTypes().getResults();
     SmallVector<Type> expectedResultTypes(implicitExecSig.getResults());
