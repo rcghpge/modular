@@ -195,7 +195,6 @@ py_repl(
     tags = ["manual"],
     deps = [
         "//SDK/lib/API/python/max/engine",
-        "//SDK/lib/API/python/max/experimental",
         "//SDK/lib/API/python/max/graph",
         "//SDK/lib/API/python/max/pipelines",
         "//SDK/lib/API/python/max/serve",
