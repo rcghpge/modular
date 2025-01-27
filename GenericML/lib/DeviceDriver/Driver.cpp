@@ -211,20 +211,11 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
         // mt command and remove all of the code in this else branch.
         size_t numPhysicalDevices =
             AsyncRT::Device::numberOfDevices(AsyncRT::Device::gpuAPI);
-        if (numPhysicalDevices == 0)
-          // No GPU device found: Return an error.
-          return Error("No GPU device available.");
-        auto envPtr = std::getenv("MODULAR_NUM_VIRTUAL_CUDA_DEVICES");
-        size_t numVirtualDevices =
-            envPtr ? std::stoi(envPtr) : numPhysicalDevices;
-        if (devRef.id >= numVirtualDevices)
+        if (devRef.id >= numPhysicalDevices)
           return Error(devRef.toString() +
-                       " id exceeds number of available devices. Set "
-                       "MODULAR_NUM_VIRTUAL_CUDA_DEVICES to allow the creation "
-                       "of virtual devices.");
-        auto virtualDeviceId = devRef.id % numPhysicalDevices;
+                       " id exceeds number of available accelerator devices.");
         ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create(
-                                  AsyncRT::Device::gpuAPI, virtualDeviceId));
+                                  AsyncRT::Device::gpuAPI, devRef.id));
         deviceContexts.push_back(
             AnyAsyncValueRef::createReady<AsyncRT::DeviceContextRef>(runtime,
                                                                      ctx));
