@@ -22,6 +22,7 @@
 #include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPRT/BinaryID.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
@@ -507,5 +508,5 @@ std::string M::MO::getGraphCompilerVersionString() {
   // MEF file too, include the binary ID for relevant shared libraries too.
   return M::getModularVersionString() + M::getBinaryID() + "-" +
          M::MOGG::Embeddings::getMOGGEmbeddingID() + "-" +
-         M::getModularVersion().buildType;
+         M::MGPRT::getMGPRTBinaryID() + "-" + M::getModularVersion().buildType;
 }

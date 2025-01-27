@@ -1432,6 +1432,7 @@ modular_shared_library(
     srcs = glob([
         "lib/MGPRT/*.cpp",
     ]),
+    hdrs = glob(["include/GenericML/MGPRT/*.h"]),
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     output_name = "MGPRT",
     deps = [
@@ -1443,6 +1444,7 @@ modular_shared_library(
         "//Runtime",
         "//Runtime:Tensor",
         "//Support:Base",
+        "//Support:BinaryID",
         "//Support:Configuration",
         "//Support:Filesystem",
         "//Support:Globals",
