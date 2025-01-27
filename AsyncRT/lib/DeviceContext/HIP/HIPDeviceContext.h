@@ -12,7 +12,6 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPDEVICECONTEXT_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "HIPDriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
@@ -28,7 +27,6 @@
 namespace M::AsyncRT {
 
 class HIPDevice;
-class HIPDeviceBuffer;
 class HIPDeviceContext;
 class HIPDeviceEvent;
 class HIPDeviceFunction;
@@ -38,7 +36,6 @@ class HIPDeviceTimer;
 class HIPModuleFunction;
 
 using HIPDeviceRef = RCRef<const HIPDevice>;
-using HIPDeviceBufferRef = RCRef<const HIPDeviceBuffer>;
 using HIPDeviceContextRef = RCRef<const HIPDeviceContext>;
 using HIPDeviceEventRef = RCRef<const HIPDeviceEvent>;
 using HIPDeviceFunctionRef = RCRef<const HIPDeviceFunction>;
@@ -85,34 +82,6 @@ private:
 
   const HIPDriver &driver_;
   hipDevice_t device_;
-};
-
-class HIPDeviceBuffer : public DeviceBuffer {
-public:
-  HIPDeviceBuffer(const HIPDeviceContext &context, size_t byteSize,
-                  hipDeviceptr_t ptr);
-  HIPDeviceBuffer(const HIPDeviceContext &context,
-                  const HIPDeviceBuffer &parent, size_t byteSize,
-                  hipDeviceptr_t ptr);
-  // TODO: Remove the V1 compatibility.
-  HIPDeviceBuffer(const HIPDeviceContext &context, size_t byteSize,
-                  hipDeviceptr_t ptr, bool owning);
-  ~HIPDeviceBuffer() override;
-
-  hipDeviceptr_t hipPtr() const;
-  void *ptr() const override;
-  // TODO: Remove the V1 compatibility.
-  void *releasePtr() const override;
-
-  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
-                                           size_t byteSize) const override;
-
-  static const HIPDeviceBuffer &cast(const DeviceBuffer &buf);
-
-private:
-  // TODO: Remove the V1 compatibility.
-  mutable hipDeviceptr_t dptr_;
-  mutable bool owning_ = true;
 };
 
 class HIPDeviceEvent : public DeviceEvent {
@@ -247,12 +216,6 @@ public:
   ErrorOr<void *> mallocHost(size_t size) const override;
   ErrorOrSuccess freeHost(void *ptr) const override;
 
-  // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
-                                       SyncMode mode) const override;
-  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
-                                     bool owning) const override;
-
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
                               SyncMode mode) const override;
@@ -305,8 +268,6 @@ public:
   hipCtx_t hipContext() const;
   hipStream_t hipStream() const;
 
-  BufferCache &bufferCache() const;
-
   HIPDriver::Result setCurrent() const;
 
   static const HIPDeviceContext &cast(const DeviceContext &ctx);
@@ -320,7 +281,9 @@ private:
   mutable std::mutex mu_;
   mutable llvm::StringMap<HIPModuleFunctionRef> funcMap_;
 
-  mutable BufferCache bufCache_;
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                          SyncMode mode) const override;
+  ErrorOrSuccess memFree(void *ptr) const override;
 };
 
 } // namespace M::AsyncRT

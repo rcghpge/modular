@@ -22,13 +22,11 @@
 namespace M::AsyncRT {
 
 class CpuDevice;
-class CpuDeviceBuffer;
 class CpuDeviceContext;
 class CpuDeviceStream;
 class CpuDeviceTimer;
 
 using CpuDeviceRef = RCRef<const CpuDevice>;
-using CpuDeviceBufferRef = RCRef<const CpuDeviceBuffer>;
 using CpuDeviceContextRef = RCRef<const CpuDeviceContext>;
 using CpuDeviceStreamRef = RCRef<const CpuDeviceStream>;
 using CpuDeviceTimerRef = RCRef<const CpuDeviceTimer>;
@@ -53,32 +51,6 @@ public:
   createContext(size_t bufferCacheSize) const override;
 
   static ErrorOr<const CpuDevice &> get(int id);
-};
-
-class CpuDeviceBuffer : public DeviceBuffer {
-public:
-  CpuDeviceBuffer(const CpuDeviceContext &context, size_t byteSize, void *ptr);
-  CpuDeviceBuffer(const CpuDeviceContext &context,
-                  const CpuDeviceBuffer &parent, size_t byteSize, void *ptr);
-  // TODO: Remove the V1 compatibility.
-  CpuDeviceBuffer(const CpuDeviceContext &context, size_t byteSize, void *ptr,
-                  bool owning);
-  ~CpuDeviceBuffer() override;
-
-  void *cpuPtr() const;
-  void *ptr() const override;
-  // TODO: Remove the V1 compatibility.
-  void *releasePtr() const override;
-
-  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
-                                           size_t byteSize) const override;
-
-  static const CpuDeviceBuffer &cast(const DeviceBuffer &buf);
-
-private:
-  // TODO: Remove the V1 compatibility.
-  mutable void *ptr_;
-  mutable bool owning_ = true;
 };
 
 class CpuDeviceStream : public DeviceStream {
@@ -111,13 +83,6 @@ public:
   // Host memory allocation.
   ErrorOr<void *> mallocHost(size_t size) const override;
   ErrorOrSuccess freeHost(void *ptr) const override;
-
-  // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
-                                       SyncMode mode) const override;
-  // TODO: Remove the V1 compatibility.
-  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
-                                     bool owning) const override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
@@ -167,6 +132,11 @@ public:
   ErrorOr<MemInfo> getMemoryInfo() const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
+
+private:
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                          SyncMode mode) const override;
+  ErrorOrSuccess memFree(void *ptr) const override;
 };
 
 } // namespace M::AsyncRT

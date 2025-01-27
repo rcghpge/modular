@@ -12,6 +12,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/Runtime/Globals/Globals.h"
+#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
@@ -20,9 +21,27 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <sys/resource.h>
 #include <unistd.h>
+
+#define RAISE_ERROR()                                                          \
+  do {                                                                         \
+    return formatError(__FILE__, __LINE__, __FUNCTION__);                      \
+  } while (0)
+
+#define RAISE_ERROR_MESSAGE(msg)                                               \
+  do {                                                                         \
+    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+  } while (0)
+
+#define CHECK_IS_CPU_ERR(dev)                                                  \
+  do {                                                                         \
+    if ((dev).api() != Device::cpuAPI) {                                       \
+      RAISE_ERROR_MESSAGE("Not a CPU device.");                                \
+    }                                                                          \
+  } while (0)
 
 namespace M::AsyncRT {
 namespace {
@@ -42,16 +61,6 @@ Error formatError(const char *file, int line, const char *func,
 }
 } // namespace
 } // namespace M::AsyncRT
-
-#define RAISE_ERROR()                                                          \
-  do {                                                                         \
-    return formatError(__FILE__, __LINE__, __FUNCTION__);                      \
-  } while (0)
-
-#define RAISE_ERROR_MESSAGE(msg)                                               \
-  do {                                                                         \
-    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
-  } while (0)
 
 namespace M::AsyncRT {
 
@@ -93,62 +102,6 @@ ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
   return *device;
 }
 
-//
-// ===== CpuDeviceBuffer === //
-//
-CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
-                                 size_t byteSize, void *ptr)
-    : DeviceBuffer(context, byteSize), ptr_(ptr) {}
-CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
-                                 const CpuDeviceBuffer &parent, size_t byteSize,
-                                 void *ptr)
-    : DeviceBuffer(context, parent, byteSize), ptr_(ptr) {}
-// TODO: Remove the V1 compatibility.
-CpuDeviceBuffer::CpuDeviceBuffer(const CpuDeviceContext &context,
-                                 size_t byteSize, void *ptr, bool owning)
-    : DeviceBuffer(context, byteSize), ptr_(ptr), owning_(owning) {}
-
-CpuDeviceBuffer::~CpuDeviceBuffer() {
-  if (!owning_) {
-    // TODO: Remove the V1 compatibility.
-    // This is a device buffer created by pointer in Mojo while ownership is
-    // maintained elsewhere.
-    return;
-  }
-  if (parent() != nullptr) {
-    // Parent owns the memory.
-    return;
-  }
-  TCMallocGlobals::tc_delete(ptr_);
-}
-
-void *CpuDeviceBuffer::cpuPtr() const { return ptr_; }
-void *CpuDeviceBuffer::ptr() const { return cpuPtr(); }
-
-// TODO: Remove the V1 compatibility.
-void *CpuDeviceBuffer::releasePtr() const {
-  auto tmp = ptr_;
-  ptr_ = nullptr;
-  owning_ = false;
-  return tmp;
-}
-
-ErrorOr<DeviceBufferRef>
-CpuDeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
-  char *orig_ptr = static_cast<char *>(this->cpuPtr());
-  size_t origByteSize = this->byteSize();
-
-  if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
-    RAISE_ERROR_MESSAGE("offset, len and elem_size are out of range");
-  }
-  return CpuDeviceBufferRef::create(CpuDeviceContext::cast(context()), *this,
-                                    byteSize, orig_ptr + byteOffset);
-}
-
-const CpuDeviceBuffer &CpuDeviceBuffer::cast(const DeviceBuffer &buf) {
-  return static_cast<const CpuDeviceBuffer &>(buf);
-}
-
 // ===== CpuDeviceStream ===== //
 CpuDeviceStream::CpuDeviceStream(const CpuDeviceContext &context)
     : DeviceStream(context) {}
@@ -174,7 +127,8 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 // ===== CpuDeviceContext === //
 //
 CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
-    : DeviceContext(device) {}
+    : DeviceContext(device, std::make_unique<BufferCache>(
+                                nullptr, 0, device.allocationAlignment())) {}
 
 ErrorOr<void *> CpuDeviceContext::mallocHost(size_t size) const {
   void *ptr = TCMallocGlobals::tc_new(size, 1);
@@ -184,30 +138,31 @@ ErrorOr<void *> CpuDeviceContext::mallocHost(size_t size) const {
   return ptr;
 }
 
+ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
+                                          SyncMode mode) const {
+  assert(byteSize != 0);
+  *ptr = TCMallocGlobals::tc_new(byteSize, 1);
+  if (*ptr == nullptr) {
+    RAISE_ERROR();
+  }
+  return success();
+}
+
+ErrorOrSuccess CpuDeviceContext::memFree(void *ptr) const {
+  TCMallocGlobals::tc_delete(ptr);
+  return success();
+}
+
 ErrorOrSuccess CpuDeviceContext::freeHost(void *ptr) const {
   TCMallocGlobals::tc_delete(ptr);
   return success();
 }
 
-ErrorOr<DeviceBufferRef> CpuDeviceContext::allocBuffer(size_t byteSize,
-                                                       SyncMode mode) const {
-  assert(byteSize != 0);
-  void *ptr = TCMallocGlobals::tc_new(byteSize, 1);
-  if (ptr == nullptr) {
-    RAISE_ERROR();
-  }
-  return CpuDeviceBufferRef::create(*this, byteSize, ptr);
-}
-
-DeviceBufferRef CpuDeviceContext::createBufferOwning(void *ptr, size_t byteSize,
-                                                     bool owning) const {
-  return CpuDeviceBufferRef::create(*this, byteSize, ptr, owning);
-}
-
 ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
                                               const void *src,
                                               SyncMode mode) const {
-  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpuPtr();
+  CHECK_IS_CPU_ERR(dst.context().device());
+  void *dst_ptr = dst.ptr();
   memcpy(dst_ptr, src, dst.byteSize());
   return success();
 }
@@ -215,7 +170,8 @@ ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
                                                 const DeviceBuffer &src,
                                                 SyncMode mode) const {
-  void *src_ptr = CpuDeviceBuffer::cast(src).cpuPtr();
+  CHECK_IS_CPU_ERR(src.context().device());
+  void *src_ptr = src.ptr();
   memcpy(dst, src_ptr, src.byteSize());
   return success();
 }
@@ -223,8 +179,10 @@ ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
 ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                     const DeviceBuffer &src,
                                                     SyncMode mode) const {
-  void *src_ptr = CpuDeviceBuffer::cast(src).cpuPtr();
-  void *dst_ptr = CpuDeviceBuffer::cast(dst).cpuPtr();
+  CHECK_IS_CPU_ERR(src.context().device());
+  CHECK_IS_CPU_ERR(dst.context().device());
+  void *src_ptr = src.ptr();
+  void *dst_ptr = dst.ptr();
   if (src.byteSize() < dst.byteSize()) {
     RAISE_ERROR_MESSAGE("not enough data in src");
   }
@@ -235,7 +193,8 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
                                            uint32_t val, size_t valSize,
                                            SyncMode mode) const {
-  void *ptr = CpuDeviceBuffer::cast(dst).cpuPtr();
+  CHECK_IS_CPU_ERR(dst.context().device());
+  void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
     memset(ptr, static_cast<uint8_t>(val), byteSize);

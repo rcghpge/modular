@@ -11,6 +11,7 @@
 #include "HIPDeviceContext.h"
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "HIPDriver.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
@@ -44,6 +45,13 @@
 #define RAISE_ERROR(msg)                                                       \
   do {                                                                         \
     return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+  } while (0)
+
+#define CHECK_IS_HIP_ERR(dev)                                                  \
+  do {                                                                         \
+    if ((dev).api() != Device::hipAPI) {                                       \
+      RAISE_ERROR("Not a HIP device.");                                        \
+    }                                                                          \
   } while (0)
 
 namespace M::AsyncRT {
@@ -258,67 +266,6 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
   return devices;
 }
 
-// ===== HIPDeviceBuffer ===== //
-HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context,
-                                 size_t byteSize, hipDeviceptr_t dptr)
-    : DeviceBuffer(context, byteSize), dptr_(dptr) {}
-
-HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context,
-                                 const HIPDeviceBuffer &parent, size_t byteSize,
-                                 hipDeviceptr_t dptr)
-    : DeviceBuffer(context, parent, byteSize), dptr_(dptr) {}
-HIPDeviceBuffer::HIPDeviceBuffer(const HIPDeviceContext &context,
-                                 size_t byteSize, hipDeviceptr_t dptr,
-                                 bool owning)
-    : DeviceBuffer(context, byteSize), dptr_(dptr), owning_(owning) {}
-
-HIPDeviceBuffer::~HIPDeviceBuffer() {
-  if (!owning_) {
-    // TODO: Remove the V1 compatibility.
-    // This is a device buffer created by pointer in Mojo while ownership is
-    // maintained elsewhere.
-    return;
-  }
-  if ((parent() != nullptr) || (dptr_ == nullptr)) {
-    // Parent owns the device memory or detached buffer.
-    return;
-  }
-
-  const auto &hip_context = HIPDeviceContext::cast(context());
-  if (!hip_context.bufferCache().free(dptr_)) {
-    HIP_CHECK(
-        hip_context.hipDriver().MemFreeAsync(dptr_, hip_context.hipStream()));
-  }
-}
-
-hipDeviceptr_t HIPDeviceBuffer::hipPtr() const { return dptr_; }
-void *HIPDeviceBuffer::ptr() const { return hipPtr(); }
-
-// TODO: Remove the V1 compatibility.
-void *HIPDeviceBuffer::releasePtr() const {
-  auto tmp = dptr_;
-  dptr_ = nullptr;
-  owning_ = false;
-  return tmp;
-}
-
-ErrorOr<DeviceBufferRef>
-HIPDeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
-  char *orig_ptr = static_cast<char *>(this->hipPtr());
-  size_t origByteSize = this->byteSize();
-
-  if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
-    RAISE_ERROR("offset, len and elem_size are out of range");
-  }
-  return HIPDeviceBufferRef::create(
-      HIPDeviceContext::cast(context()), *this, byteSize,
-      static_cast<hipDeviceptr_t>(orig_ptr + byteOffset));
-}
-
-const HIPDeviceBuffer &HIPDeviceBuffer::cast(const DeviceBuffer &buf) {
-  return static_cast<const HIPDeviceBuffer &>(buf);
-}
-
 // ===== HIPDeviceEvent ===== //
 HIPDeviceEvent::HIPDeviceEvent(const HIPDeviceContext &context,
                                hipEvent_t event)
@@ -376,8 +323,9 @@ void HIPDeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
 void HIPDeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
   // Ensure buffer is preserved by increasing the reference count through
   // copy().
+  assert(val.context().device().api() == Device::hipAPI);
   refs_.emplace_back(DeviceBufferRef::copy(&val));
-  argValues_.push_back(HIPDeviceBuffer::cast(val).hipPtr());
+  argValues_.push_back(val.ptr());
 }
 
 std::vector<void *> HIPDeviceFunctionArguments::hipArgs() const {
@@ -507,9 +455,10 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
                                    hipStream_t stream, void *bufferCacheBase,
                                    size_t bufferCacheSize)
-    : DeviceContext(device), driver_(device.hipDriver()), context_(context),
-      stream_(stream), bufCache_(bufferCacheBase, bufferCacheSize,
-                                 device.allocationAlignment()) {}
+    : DeviceContext(device, std::make_unique<BufferCache>(
+                                bufferCacheBase, bufferCacheSize,
+                                device.allocationAlignment())),
+      driver_(device.hipDriver()), context_(context), stream_(stream) {}
 
 HIPDeviceContext::~HIPDeviceContext() {
   // Destroy the function map before destroying the context.
@@ -520,6 +469,25 @@ HIPDeviceContext::~HIPDeviceContext() {
   // We do not need to re-synchronize on possible work queued on this stream.
   // Resources will be released automatically once work has been completed.
   HIP_CHECK(driver_.CtxDestroy(context_));
+}
+
+ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
+                                          SyncMode mode) const {
+  assert(byteSize != 0);
+  HIP_CHECK_ERR(setCurrent());
+  if (mode == ASYNC) {
+    HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+  } else {
+    HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  }
+  return success();
+}
+
+ErrorOrSuccess HIPDeviceContext::memFree(void *ptr) const {
+  HIP_CHECK_ERR(setCurrent());
+
+  HIP_CHECK_ERR(driver_.MemFreeAsync(ptr, stream_));
+  return success();
 }
 
 ErrorOr<void *> HIPDeviceContext::mallocHost(size_t size) const {
@@ -533,34 +501,13 @@ ErrorOrSuccess HIPDeviceContext::freeHost(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> HIPDeviceContext::allocBuffer(size_t byteSize,
-                                                       SyncMode mode) const {
-  assert(byteSize != 0);
-  HIP_CHECK_ERR(setCurrent());
-
-  hipDeviceptr_t dptr = bufferCache().allocate(byteSize);
-  if (dptr == nullptr) {
-    if (mode == ASYNC) {
-      HIP_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
-    } else {
-      HIP_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
-    }
-  }
-  return HIPDeviceBufferRef::create(*this, byteSize, dptr);
-}
-
-DeviceBufferRef HIPDeviceContext::createBufferOwning(void *ptr, size_t byteSize,
-                                                     bool owning) const {
-  hipDeviceptr_t dptr = static_cast<hipDeviceptr_t>(ptr);
-  return HIPDeviceBufferRef::create(*this, byteSize, dptr, owning);
-}
-
 ErrorOrSuccess HIPDeviceContext::copyToDevice(const DeviceBuffer &dst,
                                               const void *src,
                                               SyncMode mode) const {
+  CHECK_IS_HIP_ERR(dst.context().device());
   HIP_CHECK_ERR(setCurrent());
 
-  hipDeviceptr_t dst_ptr = HIPDeviceBuffer::cast(dst).hipPtr();
+  hipDeviceptr_t dst_ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (mode == ASYNC) {
     HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byteSize, stream_));
@@ -573,9 +520,10 @@ ErrorOrSuccess HIPDeviceContext::copyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess HIPDeviceContext::copyFromDevice(void *dst,
                                                 const DeviceBuffer &src,
                                                 SyncMode mode) const {
+  CHECK_IS_HIP_ERR(src.context().device());
   HIP_CHECK_ERR(setCurrent());
 
-  hipDeviceptr_t src_ptr = HIPDeviceBuffer::cast(src).hipPtr();
+  hipDeviceptr_t src_ptr = src.ptr();
   size_t byteSize = src.byteSize();
   if (mode == ASYNC) {
     HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byteSize, stream_));
@@ -588,13 +536,13 @@ ErrorOrSuccess HIPDeviceContext::copyFromDevice(void *dst,
 ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                     const DeviceBuffer &src,
                                                     SyncMode mode) const {
-  const auto &src_buffer = HIPDeviceBuffer::cast(src);
-  const auto &dst_buffer = HIPDeviceBuffer::cast(dst);
-  const auto &src_ctx = HIPDeviceContext::cast(src_buffer.context());
-  const auto &dst_ctx = HIPDeviceContext::cast(dst_buffer.context());
+  CHECK_IS_HIP_ERR(src.context().device());
+  CHECK_IS_HIP_ERR(dst.context().device());
+  const auto &src_ctx = HIPDeviceContext::cast(src.context());
+  const auto &dst_ctx = HIPDeviceContext::cast(dst.context());
 
-  auto src_ptr = src_buffer.hipPtr();
-  auto dst_ptr = dst_buffer.hipPtr();
+  auto src_ptr = src.ptr();
+  auto dst_ptr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   size_t srcByteSize = src.byteSize();
   if (srcByteSize < dstByteSize) {
@@ -619,7 +567,8 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
                                            uint32_t val, size_t valSize,
                                            SyncMode mode) const {
-  void *ptr = HIPDeviceBuffer::cast(dst).hipPtr();
+  CHECK_IS_HIP_ERR(dst.context().device());
+  void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
     if (mode == ASYNC) {
@@ -726,7 +675,6 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args) const {
-
   const auto &hipFunc = HIPDeviceFunction::cast(func);
   if (numAttrs > 0)
     RAISE_ERROR("Function launch attributes not supported;");
@@ -803,8 +751,6 @@ const HIPDriver &HIPDeviceContext::hipDriver() const { return driver_; }
 hipCtx_t HIPDeviceContext::hipContext() const { return context_; }
 
 hipStream_t HIPDeviceContext::hipStream() const { return stream_; }
-
-BufferCache &HIPDeviceContext::bufferCache() const { return bufCache_; }
 
 HIPDriver::Result HIPDeviceContext::setCurrent() const {
   return driver_.CtxSetCurrent(context_);

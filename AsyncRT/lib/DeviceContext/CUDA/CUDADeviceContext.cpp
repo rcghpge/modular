@@ -11,6 +11,7 @@
 #include "CUDADeviceContext.h"
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "CUDADriver.h"
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
@@ -103,6 +104,13 @@ private:
 #define CUDA_WITH_CTX(ctx)                                                     \
   CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
   CUDA_CHECK(__cudaWithContext.status());
+
+#define CHECK_IS_CUDA_ERR(dev)                                                 \
+  do {                                                                         \
+    if ((dev).api() != Device::cudaAPI) {                                      \
+      RAISE_ERROR("Not a CUDA device.");                                       \
+    }                                                                          \
+  } while (0)
 
 namespace M::AsyncRT {
 
@@ -330,68 +338,6 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
   return devices;
 }
 
-// ===== CUDADeviceBuffer ===== //
-CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
-                                   size_t byteSize, CUdeviceptr dptr)
-    : DeviceBuffer(context, byteSize), dptr_(dptr) {}
-
-CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
-                                   const CUDADeviceBuffer &parent,
-                                   size_t byteSize, CUdeviceptr dptr)
-    : DeviceBuffer(context, parent, byteSize), dptr_(dptr) {}
-CUDADeviceBuffer::CUDADeviceBuffer(const CUDADeviceContext &context,
-                                   size_t byteSize, CUdeviceptr dptr,
-                                   bool owning)
-    : DeviceBuffer(context, byteSize), dptr_(dptr), owning_(owning) {}
-
-CUDADeviceBuffer::~CUDADeviceBuffer() {
-  if (!owning_) {
-    // TODO: Remove the V1 compatibility.
-    // This is a device buffer created by pointer in Mojo while ownership is
-    // maintained elsewhere.
-    return;
-  }
-  if ((parent() != nullptr) || (dptr_ == nullptr)) {
-    // Parent owns the device memory or detached buffer.
-    return;
-  }
-
-  const auto &cudaContext = CUDADeviceContext::cast(context());
-  if (!cudaContext.bufferCache().free(dptr_)) {
-    CUDA_WITH_CTX(cudaContext);
-    CUDA_CHECK(
-        cudaContext.cudaDriver().MemFreeAsync(dptr_, cudaContext.cudaStream()));
-  }
-}
-
-CUdeviceptr CUDADeviceBuffer::cudaPtr() const { return dptr_; }
-void *CUDADeviceBuffer::ptr() const { return cudaPtr(); }
-
-// TODO: Remove the V1 compatibility.
-void *CUDADeviceBuffer::releasePtr() const {
-  auto tmp = dptr_;
-  dptr_ = nullptr;
-  owning_ = false;
-  return tmp;
-}
-
-ErrorOr<DeviceBufferRef>
-CUDADeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
-  char *orig_ptr = static_cast<char *>(this->cudaPtr());
-  size_t origByteSize = this->byteSize();
-
-  if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
-    RAISE_ERROR("byteOffset, byteSize are out of range");
-  }
-  return CUDADeviceBufferRef::create(
-      CUDADeviceContext::cast(context()), *this, byteSize,
-      static_cast<CUdeviceptr>(orig_ptr + byteOffset));
-}
-
-const CUDADeviceBuffer &CUDADeviceBuffer::cast(const DeviceBuffer &buf) {
-  return static_cast<const CUDADeviceBuffer &>(buf);
-}
-
 // ===== CUDADeviceEvent ===== //
 CUDADeviceEvent::CUDADeviceEvent(const CUDADeviceContext &context,
                                  CUevent event)
@@ -433,7 +379,7 @@ CUstream CUDADeviceStream::cudaStream() const { return stream_; }
 
 const CUDADeviceStream *
 CUDADeviceStream::verified_cast(const DeviceStream *stream) {
-  if (stream->context().device().api() != CUDADevice::api) {
+  if (stream->context().device().api() != Device::cudaAPI) {
     return nullptr;
   }
   return static_cast<const CUDADeviceStream *>(stream);
@@ -451,8 +397,9 @@ void CUDADeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
 void CUDADeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
   // Ensure buffer is preserved by increasing the reference count through
   // copy().
+  assert(val.context().device().api() == Device::cudaAPI);
   refs_.emplace_back(DeviceBufferRef::copy(&val));
-  argValues_.push_back(CUDADeviceBuffer::cast(val).cudaPtr());
+  argValues_.push_back(val.ptr());
 }
 
 std::vector<void *> CUDADeviceFunctionArguments::cudaArgs() const {
@@ -588,9 +535,10 @@ CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                      CUcontext context, CUstream stream,
                                      void *bufferCacheBase,
                                      size_t bufferCacheSize)
-    : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
-      stream_(stream), bufCache_(bufferCacheBase, bufferCacheSize,
-                                 device.allocationAlignment()) {
+    : DeviceContext(device, std::make_unique<BufferCache>(
+                                bufferCacheBase, bufferCacheSize,
+                                device.allocationAlignment())),
+      driver_(device.cudaDriver()), context_(context), stream_(stream) {
   ErrorOr<Config> configOr = Config::open();
   if (!configOr.isError()) {
     ErrorOr<bool> envVal =
@@ -619,6 +567,25 @@ CUDADeviceContext::~CUDADeviceContext() {
   }
 }
 
+ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
+                                           SyncMode mode) const {
+  assert(byteSize != 0);
+  CUDA_WITH_CTX_ERR(*this);
+  if (mode == ASYNC) {
+    CUDA_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+  } else {
+    CUDA_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  }
+  return success();
+}
+
+ErrorOrSuccess CUDADeviceContext::memFree(void *ptr) const {
+  CUDA_WITH_CTX(*this);
+  CUDA_CHECK_ERR(driver_.MemFreeAsync(ptr, cudaStream()));
+
+  return success();
+}
+
 ErrorOr<void *> CUDADeviceContext::mallocHost(size_t size) const {
   void *ptr;
   CUDA_WITH_CTX_ERR(*this);
@@ -632,35 +599,13 @@ ErrorOrSuccess CUDADeviceContext::freeHost(void *ptr) const {
   return success();
 }
 
-ErrorOr<DeviceBufferRef> CUDADeviceContext::allocBuffer(size_t byteSize,
-                                                        SyncMode mode) const {
-  assert(byteSize != 0);
-  CUDA_WITH_CTX(*this);
-
-  CUdeviceptr dptr = bufferCache().allocate(byteSize);
-  if (dptr == nullptr) {
-    if (mode == ASYNC) {
-      CUDA_CHECK_ERR(driver_.MemAllocAsync(&dptr, byteSize, stream_));
-    } else {
-      CUDA_CHECK_ERR(driver_.MemAlloc(&dptr, byteSize));
-    }
-  }
-  return CUDADeviceBufferRef::create(*this, byteSize, dptr);
-}
-
-DeviceBufferRef CUDADeviceContext::createBufferOwning(void *ptr,
-                                                      size_t byteSize,
-                                                      bool owning) const {
-  CUdeviceptr dptr = static_cast<CUdeviceptr>(ptr);
-  return CUDADeviceBufferRef::create(*this, byteSize, dptr, owning);
-}
-
 ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,
                                                const void *src,
                                                SyncMode mode) const {
+  CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
-  CUdeviceptr dst_ptr = CUDADeviceBuffer::cast(dst).cudaPtr();
+  CUdeviceptr dst_ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (mode == ASYNC) {
     CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byteSize, stream_));
@@ -673,9 +618,10 @@ ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess CUDADeviceContext::copyFromDevice(void *dst,
                                                  const DeviceBuffer &src,
                                                  SyncMode mode) const {
+  CHECK_IS_CUDA_ERR(src.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
-  CUdeviceptr src_ptr = CUDADeviceBuffer::cast(src).cudaPtr();
+  CUdeviceptr src_ptr = src.ptr();
   size_t byteSize = src.byteSize();
   if (mode == ASYNC) {
     CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byteSize, stream_));
@@ -688,19 +634,19 @@ ErrorOrSuccess CUDADeviceContext::copyFromDevice(void *dst,
 ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                      const DeviceBuffer &src,
                                                      SyncMode mode) const {
+  CHECK_IS_CUDA_ERR(src.context().device());
+  CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
-  const auto &src_buffer = CUDADeviceBuffer::cast(src);
-  const auto &dst_buffer = CUDADeviceBuffer::cast(dst);
-  const auto &src_ctx = CUDADeviceContext::cast(src_buffer.context());
-  const auto &dst_ctx = CUDADeviceContext::cast(dst_buffer.context());
+  const auto &src_ctx = CUDADeviceContext::cast(src.context());
+  const auto &dst_ctx = CUDADeviceContext::cast(dst.context());
 
   if (this->context_ != dst_ctx.context_) {
     RAISE_ERROR("device context does not match context of dst");
   }
 
-  CUdeviceptr src_ptr = src_buffer.cudaPtr();
-  CUdeviceptr dst_ptr = dst_buffer.cudaPtr();
+  CUdeviceptr src_ptr = src.ptr();
+  CUdeviceptr dst_ptr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   size_t srcByteSize = src.byteSize();
   if (srcByteSize < dstByteSize) {
@@ -729,9 +675,9 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
                                             uint32_t val, size_t valSize,
                                             SyncMode mode) const {
+  CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
-
-  void *ptr = CUDADeviceBuffer::cast(dst).cudaPtr();
+  void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
     if (mode == ASYNC) {
@@ -1013,15 +959,14 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeTiled(
     const uint32_t *elementStrides, CUtensorMapInterleave interleave,
     CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
     CUtensorMapFloatOOBfill oobFill) const {
+  CHECK_IS_CUDA_ERR(globalAddress.context().device());
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.TensorMapEncodeTiled(
-      tensorMap, tensorDataType, tensorRank,
-      CUDADeviceBuffer::cast(globalAddress).cudaPtr(), globalDim, globalStrides,
-      boxDim, elementStrides, interleave, swizzle, l2Promotion, oobFill));
+      tensorMap, tensorDataType, tensorRank, globalAddress.ptr(), globalDim,
+      globalStrides, boxDim, elementStrides, interleave, swizzle, l2Promotion,
+      oobFill));
   return success();
 }
-
-BufferCache &CUDADeviceContext::bufferCache() const { return bufCache_; }
 
 const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CUDADeviceContext &>(ctx);

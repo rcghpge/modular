@@ -10,6 +10,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 
+#include "BufferCache.h"
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
@@ -18,7 +19,48 @@
 
 #include <string.h>
 
+#define ERR_CHECK_ERR(err_call)                                                \
+  do {                                                                         \
+    auto err_result = (err_call);                                              \
+    if (err_result.isError()) {                                                \
+      return formatError(__FILE__, __LINE__, __FUNCTION__,                     \
+                         err_result.getError());                               \
+    }                                                                          \
+  } while (0)
+
+#define ERR_CHECK(err_call)                                                    \
+  do {                                                                         \
+    auto err_result = (err_call);                                              \
+    if (err_result.isError()) {                                                \
+      M::Error err = formatError(__FILE__, __LINE__, __FUNCTION__,             \
+                                 err_result.getError());                       \
+      /* We are not in a context where we can return an Error here. So we   */ \
+      /* print the message and abort().                                     */ \
+      llvm::errs() << err << "\n";                                             \
+      abort();                                                                 \
+    }                                                                          \
+  } while (0)
+
+#define RAISE_ERROR_MESSAGE(msg)                                               \
+  do {                                                                         \
+    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+  } while (0)
+
 namespace M::AsyncRT {
+
+// Allow printing of detailed error messages with C++ source information when
+// debugging low-level implementation.
+static constexpr bool detailed_err_msg = false;
+
+static Error formatError(const char *file, int line, const char *func,
+                         const char *msg = nullptr) {
+  if (detailed_err_msg || (msg == nullptr)) {
+    return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
+                 " failed" + ((msg == nullptr) ? "." : ": ") +
+                 ((msg == nullptr) ? "" : msg));
+  }
+  return Error(msg);
+}
 
 // TODO: Remove once users have been updated to use
 // `Device::preferredAlignment`.
@@ -98,18 +140,50 @@ ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
 //
 // ===== DeviceBuffer ===== //
 //
-DeviceBuffer::DeviceBuffer(const DeviceContext &context, size_t byteSize)
-    : context_(DeviceContextRef::copy(&context)), byteSize_(byteSize) {}
-
+DeviceBuffer::DeviceBuffer(const DeviceContext &context, void *ptr,
+                           size_t byteSize)
+    : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
+      byteSize_(byteSize) {}
 DeviceBuffer::DeviceBuffer(const DeviceContext &context,
-                           const DeviceBuffer &parent, size_t byteSize)
+                           const DeviceBuffer &parent, void *ptr,
+                           size_t byteSize)
     : context_(DeviceContextRef::copy(&context)),
-      parent_(DeviceBufferRef::copy(&parent)), byteSize_(byteSize) {}
+      parent_(DeviceBufferRef::copy(&parent)), ptr_(ptr), byteSize_(byteSize) {}
+// TODO: Remove the V1 compatibility.
+DeviceBuffer::DeviceBuffer(const DeviceContext &context, void *ptr,
+                           size_t byteSize, bool owning)
+    : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
+      byteSize_(byteSize), owning_(owning) {}
 
+DeviceBuffer::~DeviceBuffer() {
+  if (!owning_) {
+    // TODO: Remove the V1 compatibility.
+    // This is a device buffer created by pointer in Mojo while ownership is
+    // maintained elsewhere.
+    return;
+  }
+  if ((parent() != nullptr) || (ptr_ == nullptr)) {
+    // Parent owns the memory.
+    return;
+  }
+  if (!context().bufferCache().free(ptr_)) {
+    ERR_CHECK(context().memFree(ptr_));
+  }
+}
 const DeviceContext &DeviceBuffer::context() const { return *context_; }
 
 const DeviceBuffer *DeviceBuffer::parent() const {
   return parent_.getPointer();
+}
+
+void *DeviceBuffer::ptr() const { return ptr_; }
+
+// TODO: Remove the V1 compatibility.
+void *DeviceBuffer::releasePtr() const {
+  auto tmp = ptr_;
+  ptr_ = nullptr;
+  owning_ = false;
+  return tmp;
 }
 
 size_t DeviceBuffer::byteSize() const { return byteSize_; }
@@ -119,15 +193,27 @@ ErrorOrSuccess DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
   const DeviceBuffer &src = *this;
   const Device::API src_api = src.context().device().api();
   const Device::API dst_api = dst.context().device().api();
-  if (src_api == CpuDevice::api) {
+  if (src_api == Device::cpuAPI) {
     return dst.context().enqueueCopyToDevice(dst, src.ptr());
-  } else if (dst_api == CpuDevice::api) {
+  } else if (dst_api == Device::cpuAPI) {
     return src.context().enqueueCopyFromDevice(dst.ptr(), src);
   } else if (src_api == dst_api) {
     return dst.context().enqueueCopyDeviceToDevice(dst, src);
   }
   return Error("Device API mismatch copying from \"" + src_api + "\" to \"" +
                dst_api + "\"");
+}
+
+ErrorOr<DeviceBufferRef> DeviceBuffer::createSubBuffer(size_t byteOffset,
+                                                       size_t byteSize) const {
+  char *orig_ptr = static_cast<char *>(this->ptr());
+  size_t origByteSize = this->byteSize();
+
+  if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
+    RAISE_ERROR_MESSAGE("offset, len and elem_size are out of range");
+  }
+  return DeviceBufferRef::take(
+      new DeviceBuffer(context(), *this, orig_ptr + byteOffset, byteSize));
 }
 
 //
@@ -257,8 +343,13 @@ const DeviceContext &DeviceTimer::context() const { return *context_; }
 //
 // ===== DeviceContext ===== //
 //
-DeviceContext::DeviceContext(const Device &device)
-    : device_(DeviceRef::copy(&device)) {}
+DeviceContext::DeviceContext(const Device &device,
+                             std::unique_ptr<BufferCache> bufferCache)
+    : device_(DeviceRef::copy(&device)), bufferCache_(std::move(bufferCache)) {
+  assert(bufferCache_ != nullptr);
+}
+
+DeviceContext::~DeviceContext() {}
 
 const Device &DeviceContext::device() const { return *device_; }
 
@@ -275,6 +366,21 @@ ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t byteSize) const {
   return allocBuffer(byteSize, SYNC);
 }
 
+DeviceBufferRef DeviceContext::createBufferOwning(void *ptr, size_t byteSize,
+                                                  bool owning) const {
+  return DeviceBufferRef::take(new DeviceBuffer(*this, ptr, byteSize, owning));
+}
+
+ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
+                                                    SyncMode mode) const {
+  assert(byteSize != 0);
+  void *ptr = bufferCache().allocate(byteSize);
+  if (ptr == nullptr) {
+    ERR_CHECK_ERR(memAlloc(&ptr, byteSize, mode));
+  }
+  return DeviceBufferRef::take(new DeviceBuffer(*this, ptr, byteSize));
+}
+
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
                                                 size_t bufferCacheSize) {
   ErrorOr<DeviceRef> device = Device::create(api, id);
@@ -283,6 +389,8 @@ ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
   }
   return (*device)->createContext(bufferCacheSize);
 }
+
+BufferCache &DeviceContext::bufferCache() const { return *bufferCache_; }
 
 int Device::numberOfDevices(StringRef api) {
   ErrorOr<DeviceRef> device = Device::create(api);

@@ -12,7 +12,6 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADEVICECONTEXT_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
@@ -29,7 +28,6 @@
 namespace M::AsyncRT {
 
 class CUDADevice;
-class CUDADeviceBuffer;
 class CUDADeviceContext;
 class CUDADeviceEvent;
 class CUDAModuleFunction;
@@ -39,7 +37,6 @@ class CUDADeviceStream;
 class CUDADeviceTimer;
 
 using CUDADeviceRef = RCRef<const CUDADevice>;
-using CUDADeviceBufferRef = RCRef<const CUDADeviceBuffer>;
 using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
 using CUDADeviceEventRef = RCRef<const CUDADeviceEvent>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
@@ -106,34 +103,6 @@ private:
   // to be able to share resources with libraries using the CUDA Runtime API.
   mutable std::mutex mu_;
   mutable CUcontext context_;
-};
-
-class CUDADeviceBuffer : public DeviceBuffer {
-public:
-  CUDADeviceBuffer(const CUDADeviceContext &context, size_t byteSize,
-                   CUdeviceptr ptr);
-  CUDADeviceBuffer(const CUDADeviceContext &context,
-                   const CUDADeviceBuffer &parent, size_t byteSize,
-                   CUdeviceptr ptr);
-  // TODO: Remove the V1 compatibility.
-  CUDADeviceBuffer(const CUDADeviceContext &context, size_t byteSize,
-                   CUdeviceptr ptr, bool owning);
-  ~CUDADeviceBuffer() override;
-
-  CUdeviceptr cudaPtr() const;
-  void *ptr() const override;
-  // TODO: Remove the V1 compatibility.
-  void *releasePtr() const override;
-
-  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
-                                           size_t byteSize) const override;
-
-  static const CUDADeviceBuffer &cast(const DeviceBuffer &buf);
-
-private:
-  // TODO: Remove the V1 compatibility.
-  mutable CUdeviceptr dptr_;
-  mutable bool owning_ = true;
 };
 
 class CUDADeviceEvent : public DeviceEvent {
@@ -267,12 +236,6 @@ public:
   ErrorOr<void *> mallocHost(size_t size) const override;
   ErrorOrSuccess freeHost(void *ptr) const override;
 
-  // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
-                                       SyncMode mode) const override;
-  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
-                                     bool owning) const override;
-
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
                               SyncMode mode) const override;
@@ -337,8 +300,6 @@ public:
       CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
       CUtensorMapFloatOOBfill oobFill) const;
 
-  BufferCache &bufferCache() const;
-
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
 
@@ -353,10 +314,12 @@ private:
   mutable std::mutex mu_;
   mutable llvm::StringMap<CUDAModuleFunctionRef> funcMap_;
 
-  mutable BufferCache bufCache_;
-
   bool logLoadFunction_ = false;
   bool logVerbose_ = false;
+
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                          SyncMode mode) const override;
+  ErrorOrSuccess memFree(void *ptr) const override;
 };
 
 } // namespace M::AsyncRT

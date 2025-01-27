@@ -25,6 +25,7 @@
 
 namespace M::AsyncRT {
 
+class BufferCache;
 class Device;
 class DeviceBuffer;
 class DeviceContext;
@@ -99,34 +100,41 @@ private:
   size_t allocAlignment_;
 };
 
-class DeviceBuffer : public ReferenceCounted<DeviceBuffer> {
+class DeviceBuffer final : public ReferenceCounted<DeviceBuffer> {
 public:
-  virtual ~DeviceBuffer() = default;
+  ~DeviceBuffer();
 
   const DeviceContext &context() const;
   const DeviceBuffer *parent() const;
 
+  // Returns the raw device pointer, which is not safe to access on the host
+  void *ptr() const;
+  // TODO: Remove the V1 compatibility.
+  void *releasePtr() const;
+
   size_t byteSize() const;
 
-  // Returns the raw device pointer, which is not safe to deref on the host
-  virtual void *ptr() const = 0;
-  // TODO: Remove the V1 compatibility.
-  virtual void *releasePtr() const = 0;
+  ErrorOrSuccess copyTo(const DeviceBuffer &dst) const;
 
-  virtual ErrorOrSuccess copyTo(const DeviceBuffer &dst) const;
-
-  virtual ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
-                                                   size_t byteSize) const = 0;
-
-protected:
-  DeviceBuffer(const DeviceContext &context, size_t byteSize);
-  DeviceBuffer(const DeviceContext &context, const DeviceBuffer &parent,
-               size_t byteSize);
+  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
+                                           size_t byteSize) const;
 
 private:
+  friend class DeviceContext;
+
   DeviceContextRef context_;
   DeviceBufferRef parent_;
+  mutable void *ptr_;
   size_t byteSize_;
+  // TODO: Remove the V1 compatibility.
+  mutable bool owning_ = true;
+
+  DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize);
+  DeviceBuffer(const DeviceContext &context, const DeviceBuffer &parent,
+               void *ptr, size_t byteSize);
+  // TODO: Remove the V1 compatibility.
+  DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize,
+               bool owning);
 };
 
 class DeviceEvent : public ReferenceCounted<DeviceEvent> {
@@ -273,7 +281,7 @@ public:
   static constexpr SyncMode SYNC = SyncMode::SYNC;
   static constexpr SyncMode ASYNC = SyncMode::ASYNC;
 
-  virtual ~DeviceContext() = default;
+  virtual ~DeviceContext();
 
   const Device &device() const;
 
@@ -286,7 +294,7 @@ public:
   ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize) const;
   // TODO: Remove the V1 compatibility.
   virtual DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
-                                             bool owning) const = 0;
+                                             bool owning) const;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
@@ -348,14 +356,20 @@ public:
 
   virtual ErrorOr<MemInfo> getMemoryInfo() const = 0;
 
+  BufferCache &bufferCache() const;
+
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0,
                                           size_t bufferCacheSize = 0);
 
 protected:
-  DeviceContext(const Device &device);
+  DeviceContext(const Device &device, std::unique_ptr<BufferCache> bufferCache);
 
 private:
+  friend class DeviceBuffer;
+
   DeviceRef device_;
+
+  std::unique_ptr<BufferCache> bufferCache_;
 
   // Explicitly mark copy and assignment as unsupported.
   DeviceContext(const DeviceContext &other) = delete;
@@ -363,8 +377,15 @@ private:
   DeviceContext &operator=(const DeviceContext &) = delete;
   DeviceContext &operator=(DeviceContext &&other) = delete;
 
+  // DeviceBuffer allocation.
   virtual ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
-                                               SyncMode mode) const = 0;
+                                               SyncMode mode) const;
+
+  // Low-level uncached allocation of device memory.
+  // REQUIRES: byteSize > 0
+  virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                                  SyncMode mode) const = 0;
+  virtual ErrorOrSuccess memFree(void *ptr) const = 0;
 };
 
 // TODO: Delete any that seem too CUDA-specific
