@@ -57,6 +57,12 @@ template <typename OperandTy, typename ResultTy>
 llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
                                           ResultTy &results,
                                           MEFListAttr constantResources) {
+  // Increase the refcount but do not keep the ownership. This accounts
+  // for the implied extra reference to the AsyncValue we'll pass over the
+  // compiled kernel.
+  for (const AnyAsyncValueRef &ref : operands)
+    ref.copy().releasePointer();
+
   llvm::SmallVector<void *> kernelInputs;
   kernelInputs.reserve(results.size() + operands.size() +
                        constantResources.size());
