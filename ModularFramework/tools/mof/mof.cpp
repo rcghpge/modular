@@ -5,10 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Algorithms.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
-#include "Cache/Support/Keys.h"
 #include "Config/Version.h"
 #include "GenericML/Driver/CompileDriver.h"
 #include "GenericML/Driver/CompileToBinary.h"
@@ -21,29 +19,25 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/Support/CASConfig.h"
-#include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
-
-#include "MOF/Driver/DriverConfig.h"
 #include "MOF/Driver/DriverImpl.h"
 #include "MOF/ModularModel/ModularModelFile.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/ErrorOr.h"
+#include "Support/FileSystemExtras.h"
+#include "Support/Filesystem/Paths.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "llvm/ADT/TypeSwitch.h"
-#include "llvm/ADT/bit.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Threading.h"
-#include "llvm/Support/ToolOutputFile.h"
 
 #include <string>
 #include <utility>
@@ -414,6 +408,23 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   auto *compileCtx = ctxHandle.maxContext->get<KGEN::CompilationContext>();
   if (compileCtx)
     compileCtx->print(*keyBuf);
+
+  // We include the binary contents of any extra kernel mojo packages provided.
+  // These paths have already been validated by MOToMGP pass pipeline.
+  for (const std::string &libraryPath : moToMgpOptions.kernelLibraryPaths) {
+    // TODO(MOCO-1570): If mojopkg files had a hash key as part of its format,
+    // this wouldn't be needed. We would have to detect the file is a mojopkg
+    // and act accordingly for this.
+    auto bufferOr = M::openInputFile(libraryPath);
+
+    if (bufferOr.isError())
+      return Error(
+          Twine(
+              "failed to open file specified as additional kernel library: ") +
+          libraryPath);
+
+    *keyBuf << (*bufferOr)->getBuffer();
+  }
 
   // We specifically use a version of the module without location information
   // for caching. Otherwise, python refactors that don't change the module would
