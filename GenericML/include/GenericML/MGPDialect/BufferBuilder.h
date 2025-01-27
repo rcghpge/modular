@@ -321,8 +321,9 @@ public:
   /// Returns a chain indicating when the given input buffers have been
   /// copied into the output buffer.
   virtual Value bufferConcat(OpBuilder &builder, Location loc,
-                             TypedValue<ContextType> context, Value inChain,
-                             Value outBuffer, ArrayRef<Value> inBuffers) = 0;
+                             TypedValue<DeviceContextType> deviceContext,
+                             Value inChain, Value outBuffer,
+                             ArrayRef<Value> inBuffers) = 0;
 
   virtual Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,
                             Value offset, Value size) = 0;
@@ -453,7 +454,7 @@ public:
                      uint64_t bufferSlot) override;
 
   Value bufferConcat(OpBuilder &builder, Location loc,
-                     TypedValue<ContextType> context, Value inChain,
+                     TypedValue<DeviceContextType> deviceContext, Value inChain,
                      Value outBuffer, ArrayRef<Value> inBuffers) override;
 
   Value bufferSlice(OpBuilder &builder, Location loc, Value inBuffer,

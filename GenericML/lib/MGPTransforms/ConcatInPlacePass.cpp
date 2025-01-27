@@ -74,7 +74,7 @@ class ConcatInPlacePass
       // We are now ready to create the split op.
       // For the moment, place it before the concat it will replace.
       execState.builder.setInsertionPoint(concatOp);
-      Value concatBuffer = concatOp.getOutBuffer();
+      TypedValue<MGP::DeviceBufferType> concatBuffer = concatOp.getOutBuffer();
 
       auto loc = concatOp.getLoc();
 
@@ -82,7 +82,7 @@ class ConcatInPlacePass
       SmallVector<Value> runtimeSizes;
 
       BufferBuilder *bufferBuilder =
-          builderContext.getBufferBuilder(concatOp.getDevice());
+          builderContext.getBufferBuilder(concatBuffer.getType().getDevice());
       OpBuilder &builder = execState.builder;
 
       SmallVector<Value> outBuffers;

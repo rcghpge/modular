@@ -640,18 +640,15 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
     ```
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_DeviceBufferType:$outBuffer,
                        Variadic<MGP_DeviceBufferType>:$inBuffers,
+                       MGP_DeviceContextType:$ctx,
                        MGP_OptDeviceRefAttr:$bDevice); // 1
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $outBuffer `,`
-    $inBuffers attr-dict
-    `:` custom<BufferTypesToDevice>(type($inBuffers), type($outBuffer),
-                                    $bDevice, type($inChain))
+    `(` operands `)` attr-dict `:`
+        functional-type(operands, results)
   }];
   let hasVerifier = 1;
 

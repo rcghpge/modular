@@ -344,14 +344,25 @@ void LowerPrimitivesPass::runOnOperation() {
                              ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
     SmallVector<Value> inputVec(inputs);
     if (auto bufferConcat = dyn_cast<MGP::BufferConcatOp>(op)) {
-      // Packs the variadic input buffers into tuple.
-      ValueRange inBuffers =
-          inputs.take_back(bufferConcat.getInBuffers().size());
-      Value tuple = builder.create<MOGG::TupleCreateOp>(
-          op->getLoc(), builder.getTupleType(inBuffers.getTypes()), inBuffers);
 
-      inputVec.pop_back_n(inBuffers.size());
+      // The inputs will be in the form [chain, outBuffer, *inBuffers] so we
+      // skip over the first two to get the input buffers.
+      SmallVector<Value> ins;
+      for (size_t i = 0; i < bufferConcat.getInBuffers().size(); ++i)
+        ins.push_back(inputs[i + 2]);
+
+      // Packs the variadic input buffers into tuple.
+      Value tuple = builder.create<MOGG::TupleCreateOp>(
+          op->getLoc(),
+          builder.getTupleType(bufferConcat.getInBuffers().getTypes()), ins);
+
+      // Rebuild the input vector.
+      inputVec.clear();
+      // Chain is dropped then output is the new first argument.
+      inputVec.push_back(inputs[1]);
       inputVec.push_back(tuple);
+      // Device context is at the end.
+      inputVec.push_back(inputs[inputs.size() - 1]);
     } else if (isa<MGP::BufferGetCachedOp, MGP::BufferConstantOp>(op)) {
       // This is the storage_ref handle to the buffer.
       Value asyncRef = builder.create<MOGG::AnyAsyncRefPlaceholderOp>(loc);

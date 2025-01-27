@@ -268,6 +268,10 @@ public:
 
   /// Get the device context for a device ref in init.
   TypedValue<DeviceContextType> getExecuteDevice(DeviceRefAttr dev) {
+    // If a null device was asked for, provide the default device.
+    if (!dev)
+      dev = DeviceRefAttr::getDefault(execute.builder.getContext());
+
     for (auto [deviceRefAttr, deviceContext] : llvm::zip(
              common.modelOp.getDevices(), common.modelOp.getExecuteDevices())) {
       if (deviceRefAttr == dev)
@@ -752,8 +756,11 @@ struct MOOpLoweringState {
 
   Value bufferConcat(Value inChain, Value outBuffer, ArrayRef<Value> inBuffers,
                      Type outMoTensorType) {
+    auto ty = cast<MO::TensorType>(outMoTensorType);
+    auto deviceContext = loweringState.getExecuteDevice(ty.getDeviceRef());
     return getStorageBufferBuilder(outMoTensorType)
-        ->bufferConcat(builder, loc, context, inChain, outBuffer, inBuffers);
+        ->bufferConcat(builder, loc, deviceContext, inChain, outBuffer,
+                       inBuffers);
   }
 
   Value bufferSlice(Value inBuffer, Value offset, Value size,

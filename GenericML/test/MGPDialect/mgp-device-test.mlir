@@ -164,17 +164,10 @@ func.func @buffer_get_size(%ch : !mef.chain, %in_buf : !mgp.buffer<<"gpu", 3>>) 
 // mgp.buffer.concat
 //
 
-// CHECK-LABEL: @buffer_concat_static
-func.func @buffer_concat_static(%ctx : !mgp.context, %ch0 : !mef.chain, %out_buf : !mgp.buffer<<"gpu", 3>>, %buf0 : !mgp.buffer<<"gpu", 3>>, %buf1 : !mgp.buffer<<"gpu", 3>>) {
-  // CHECK: %{{.*}} = mgp.buffer.concat %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : (!mgp.buffer<<"gpu", 3>>, !mgp.buffer<<"gpu", 3>>) -> !mgp.buffer<<"gpu", 3>>
-  %ch1 = mgp.buffer.concat %ch0, %out_buf, %buf0, %buf1 : (!mgp.buffer<<"gpu", 3>>, !mgp.buffer<<"gpu", 3>>) -> !mgp.buffer<<"gpu", 3>>
-  mef.output %ch1 : !mef.chain
-}
-
-// CHECK-LABEL: @buffer_concat_dynamic
-func.func @buffer_concat_dynamic(%ctx : !mgp.context, %ch0 : !mef.chain, %out_buf : !mgp.buffer<<"gpu", 3>>, %buf0 : !mgp.buffer<<"gpu", 3>>, %buf1 : !mgp.buffer<<"gpu", 3>>) {
-  // CHECK: %{{.*}} = mgp.buffer.concat %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : (!mgp.buffer<<"gpu", 3>>, !mgp.buffer<<"gpu", 3>>) -> !mgp.buffer<<"gpu", 3>>
-  %ch1 = mgp.buffer.concat %ch0, %out_buf, %buf0, %buf1 : (!mgp.buffer<<"gpu", 3>>, !mgp.buffer<<"gpu", 3>>) -> !mgp.buffer<<"gpu", 3>>
+// CHECK-LABEL: @buffer_concat
+func.func @buffer_concat(%ctx : !mgp.context, %ch0 : !mef.chain, %out_buf : !mgp.buffer<<"gpu", 3>>, %buf0 : !mgp.buffer<<"gpu", 3>>, %buf1 : !mgp.buffer<<"gpu", 3>>, %gpu: !mgp.device_context<<"gpu", 3>>) {
+  // CHECK: %{{.*}} = mgp.buffer
+  %ch1 = mgp.buffer.concat(%ch0, %out_buf, %buf0, %buf1, %gpu) {bDevice = #M.device_ref<"gpu", 3>} : (!mef.chain, !mgp.buffer<<"gpu", 3>>, !mgp.buffer<<"gpu", 3>>, !mgp.buffer<<"gpu", 3>>, !mgp.device_context<<"gpu", 3>>) -> !mef.chain
   mef.output %ch1 : !mef.chain
 }
 

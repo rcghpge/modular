@@ -351,14 +351,14 @@ Value MGPBufferBuilder::removeCached(OpBuilder &builder, Location loc,
                                               /*bBufferSlot=*/bufferSlot);
 }
 
-Value MGPBufferBuilder::bufferConcat(OpBuilder &builder, Location loc,
-                                     TypedValue<ContextType> context,
-                                     Value inChain, Value outBuffer,
-                                     ArrayRef<Value> inBuffers) {
+Value MGPBufferBuilder::bufferConcat(
+    OpBuilder &builder, Location loc,
+    TypedValue<DeviceContextType> deviceContext, Value inChain, Value outBuffer,
+    ArrayRef<Value> inBuffers) {
   return builder.create<BufferConcatOp>(
       loc, /*inChain=*/inChain,
       /*outBuffer=*/cast<TypedValue<DeviceBufferType>>(outBuffer),
-      /*inBuffers=*/inBuffers,
+      /*inBuffers=*/inBuffers, deviceContext,
       /*bDevice=*/device);
 }
 

@@ -222,49 +222,6 @@ static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
   p << tensorType;
 }
 
-// Parses a function type consisting of N input buffers and one output
-// buffer type, assigns their (consistent!) device to device, and
-// assigns chain the type !mgp.chain<device>.
-static ParseResult
-parseBufferTypesToDevice(OpAsmParser &p, SmallVectorImpl<Type> &inBuffers,
-                         Type &outBuffer, DeviceRefAttr &device, Type &chain) {
-  llvm::SMLoc loc;
-  if (p.getCurrentLocation(&loc) || p.parseLParen() ||
-      p.parseTypeList(inBuffers) || p.parseRParen() || p.parseArrow() ||
-      p.parseType(outBuffer))
-    return failure();
-
-  for (auto inBuffer : inBuffers) {
-    auto inBufferType = dyn_cast<DeviceBufferType>(inBuffer);
-    if (!inBufferType)
-      return p.emitError(loc, "expected an !mgp.buffer type");
-    if (device && device != inBufferType.getDevice())
-      return p.emitError(loc, "all !mgp.buffer types must agree on device");
-    device = inBufferType.getDevice();
-  }
-
-  auto outBufferType = dyn_cast<DeviceBufferType>(outBuffer);
-  if (!outBufferType)
-    return p.emitError(loc, "expected an !mgp.buffer type");
-  if (device && device != outBufferType.getDevice())
-    return p.emitError(loc, "all !mgp.buffer types must agree on device");
-  device = outBufferType.getDevice();
-
-  chain = MEF::ChainType::get(p.getContext());
-  return success();
-}
-
-static void printBufferTypesToDevice(OpAsmPrinter &p, Operation *op,
-                                     TypeRange inBuffers, Type outBuffer,
-                                     DeviceRefAttr device,
-                                     MEF::ChainType chain) {
-  p.getStream() << "(";
-  llvm::interleaveComma(inBuffers, p.getStream(),
-                        [&](Type inBuffer) { p.printType(inBuffer); });
-  p.getStream() << ") -> ";
-  p.printType(outBuffer);
-}
-
 /// Parses a function type consisting of one input buffer and one output buffer
 /// type, assigns their devices to srcDevice and dstDevice, and assigns inChain
 /// the type !mgp.chain<srcDevice>.

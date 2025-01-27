@@ -4,8 +4,13 @@
 // CHECK:  } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[OUT_CHAIN0:.*]] = mogg.generic.compiled.region
 // CHECK: %[[OUT_CHAIN1:.*]] = mogg.generic.compiled.region
+
+// CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer
+// CHECK: %[[IN_BUF2:.*]] = mgp.tensor.extract.buffer
+// CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc
+
 // CHECK: %[[OUT_CHAIN3:.*]] = grt.chain.create (%[[OUT_CHAIN0]], %[[OUT_CHAIN1]], %[[CH0]]
-// CHECK: %[[CH2:.*]] = mgp.buffer.concat %[[OUT_CHAIN3]], %[[BUF:.*]], %{{.*}}, %{{.*}}
+// CHECK: %[[CH2:.*]] = mgp.buffer.concat(%[[OUT_CHAIN3]], %[[OUT_BUF]], %[[IN_BUF]], %[[IN_BUF2]]
 
 // CHECK: %[[CH3:.*]] = grt.chain.create (%[[CH2]], %[[CH0]])
 
