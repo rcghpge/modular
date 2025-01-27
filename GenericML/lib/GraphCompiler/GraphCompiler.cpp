@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
+#include "AsyncRT/DeviceContext/BinaryID.h"
 #include "AsyncRT/Runtime/Runtime.h"
 #include "Config/Version.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
@@ -513,5 +514,6 @@ std::string M::MO::getGraphCompilerVersionString() {
   return M::getModularVersionString() + M::getBinaryID() + "-" +
          M::MOGG::Embeddings::getMOGGEmbeddingID() + "-" +
          M::MGPRT::getMGPRTBinaryID() + "-" + M::Torch::getATenRTBinaryID() +
-         "-" + M::getModularVersion().buildType;
+         "-" + M::AsyncRT::getMojoBindingsBinaryID() + "-" +
+         M::getModularVersion().buildType;
 }

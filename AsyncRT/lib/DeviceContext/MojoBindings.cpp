@@ -8,12 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/DeviceContext/BinaryID.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "AsyncRT/lib/DeviceContext/HIP/HIPDeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/HIP/HIPDriver.h"
-#include "Support/SymbolExport.h"
+#include "Support/BinaryID.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <chrono>
@@ -446,4 +447,14 @@ AsyncRT_DeviceStream_hip_stream(hipStream_t *result,
   }
   *result = verifiedStream->hipStream();
   return nullptr;
+}
+
+//
+// BinaryID
+//
+MODULAR_CXX_EXPORT std::string M::AsyncRT::getMojoBindingsBinaryID() {
+  // M::getBinaryID() returns the binary ID of the shared library that contains
+  // it. For the purposes of MEF cache invalidation, we need to know when
+  // there's been a change in these shared libraries.
+  return M::getBinaryID();
 }
