@@ -97,6 +97,7 @@ modular_cc_library(
         ":RMOTransforms",
         ":Support",
         "//AsyncRT:MojoBindings",
+        "//AsyncRT:RuntimeGlobals",
         "//GraphRT:MLIRToMEF",
         "//PyTorch:ATenRT",
         "//Support:Base",
