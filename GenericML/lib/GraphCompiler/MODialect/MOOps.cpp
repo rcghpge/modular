@@ -4514,22 +4514,28 @@ LogicalResult MutableStoreSliceOp::verify() {
 // MO_AllReduceSumOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AllReduceSumOp::verify() {
-  // Number of inputs and outputs need to match in all-reduce
-  if (getInputs().size() != getOutputs().size())
-    return emitError(
+/// Common verify logic for any AllReduceSum variant.
+/// Checks input/output counts and that corresponding device types match.
+template <typename ConcreteOp>
+static LogicalResult verifyAllReduceSum(ConcreteOp op) {
+  auto allReduceOp = cast<ConcreteOp>(op);
+  if (allReduceOp.getInputs().size() != allReduceOp.getOutputs().size())
+    return op->emitError(
         "number of inputs and outputs should match for all-reduce");
 
-  // Device for inputs and outputs must match 1:1
-  for (auto [input, output] : llvm::zip(getInputs(), getOutputs())) {
-    auto inputDeviceRef = dyn_cast<TensorType>(input.getType());
-    auto outputDeviceRef = dyn_cast<TensorType>(output.getType());
-    if (inputDeviceRef != outputDeviceRef)
-      return emitError("Input and Output device type needs to match");
+  // Check that the devices for inputs and outputs match 1:1.
+  for (auto [input, output] :
+       llvm::zip(allReduceOp.getInputs(), allReduceOp.getOutputs())) {
+    auto inputTy = dyn_cast<TensorType>(input.getType());
+    auto outputTy = dyn_cast<TensorType>(output.getType());
+    if (!inputTy || !outputTy || inputTy != outputTy)
+      return op->emitError("each input/output must have the same tensor type");
   }
 
   return success();
 }
+
+LogicalResult AllReduceSumOp::verify() { return verifyAllReduceSum(*this); }
 
 LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult> &results) {
@@ -4541,6 +4547,27 @@ LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
   }
   return failure();
 }
+
+LogicalResult AllReduce2GPUSumOp::verify() {
+  if (failed(verifyAllReduceSum(*this)))
+    return failure();
+
+  if (getInputs().size() != 2)
+    return emitError("expected exactly 2 inputs for 2-GPU all-reduce");
+
+  return success();
+}
+
+LogicalResult AllReduce4GPUSumOp::verify() {
+  if (failed(verifyAllReduceSum(*this)))
+    return failure();
+
+  if (getInputs().size() != 4)
+    return emitError("expected exactly 4 inputs for 4-GPU all-reduce");
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_LayerNormOp
 //===----------------------------------------------------------------------===//

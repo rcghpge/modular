@@ -4966,23 +4966,33 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
+class MO_AllReduceSumBase<string opName> : MO_DistributedOp<opName, [
   Pure,
   MO_HasDeviceInterface,
   MO_SameOperandsAndResultShape,
   MO_StaticTupleInputs,
-  MO_StaticTupleOutputs,
-  ]>
-{
-  let summary = "Takes a collection of tensors across devices and performs an allreduce.sum.";
-  let description = [{
-      Allreduce takes in inputs each coming from a different device with the
-      same shape as the final output and performs a reduction operation across
-      the devices.
-      The output is then replicated across the same devices.
-  }];
+  MO_StaticTupleOutputs
+]> {
   let hasVerifier = 1;
+  let description = [{
+    Allreduce takes in inputs each coming from a different device with
+    the same shape as the final output and performs a sum reduction
+    across the devices. The output is replicated across the same devices.
+  }];
+}
+
+def MO_AllReduceSumOp : MO_AllReduceSumBase<"distributed.allreduce.sum"> {
+  let summary = "Allreduce sum across N devices (variadic).";
+  // Variadic allreduce has a folder since it can take 1 input.
   let hasFolder = 1;
+}
+
+def MO_AllReduce2GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.2gpu.sum"> {
+  let summary = "Allreduce sum across 2 devices.";
+}
+
+def MO_AllReduce4GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.4gpu.sum"> {
+  let summary = "Allreduce sum across 4 devices.";
 }
 
 //===----------------------------------------------------------------------===//
