@@ -97,6 +97,7 @@ modular_cc_library(
         ":RMOTransforms",
         ":Support",
         "//GraphRT:MLIRToMEF",
+        "//PyTorch:ATenRT",
         "//Support:Base",
         "//Support:BinaryID",
         "//Support:Diagnostics",

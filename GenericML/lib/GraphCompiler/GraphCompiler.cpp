@@ -28,6 +28,7 @@
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MLIRToMEF.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
+#include "PyTorch/ATenRT/BinaryID.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/BinaryID.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
@@ -511,5 +512,6 @@ std::string M::MO::getGraphCompilerVersionString() {
   // MEF file too, include the binary ID for relevant shared libraries too.
   return M::getModularVersionString() + M::getBinaryID() + "-" +
          M::MOGG::Embeddings::getMOGGEmbeddingID() + "-" +
-         M::MGPRT::getMGPRTBinaryID() + "-" + M::getModularVersion().buildType;
+         M::MGPRT::getMGPRTBinaryID() + "-" + M::Torch::getATenRTBinaryID() +
+         "-" + M::getModularVersion().buildType;
 }
