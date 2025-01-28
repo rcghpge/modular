@@ -8,7 +8,7 @@
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "Config/Version.h"
-#include "GenericML/GraphCompiler/GraphCompiler.h"
+#include "GenericML/GraphCompiler/Version.h"
 #include "GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/Configuration.h"
