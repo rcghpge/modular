@@ -39,7 +39,7 @@ public:
   ~CpuDevice() override = default;
 
   ErrorOr<int> getDriverVersion() const override;
-  ErrorOrSuccess isCompatibleWithMAX() const override;
+  ErrorOrSuccess isCompatible() const override;
   ErrorOr<int> computeCapability() const override;
 
   ErrorOr<bool> canAccess(const Device &peer) const override;

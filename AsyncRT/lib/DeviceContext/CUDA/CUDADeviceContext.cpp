@@ -206,7 +206,7 @@ static std::string driverVersionToString(int driver_version) {
   return (llvm::Twine(major_version) + "." + llvm::Twine(minor_version)).str();
 }
 
-ErrorOrSuccess CUDADevice::isCompatibleWithMAX() const {
+ErrorOrSuccess CUDADevice::isCompatible() const {
 #ifndef MODULAR_LINUX
   return Error("MAX with GPUs is only supported on Linux based systems.");
 #endif

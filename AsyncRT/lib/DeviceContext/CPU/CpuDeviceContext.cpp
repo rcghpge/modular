@@ -72,7 +72,7 @@ CpuDevice::CpuDevice() : Device(api, "cpu", 0, M::kPreferredMemoryAlignment) {}
 
 ErrorOr<int> CpuDevice::getDriverVersion() const { return 0; };
 
-ErrorOrSuccess CpuDevice::isCompatibleWithMAX() const { return success(); }
+ErrorOrSuccess CpuDevice::isCompatible() const { return success(); }
 
 ErrorOr<int> CpuDevice::computeCapability() const {
   // RUNP-494 Remove this, compute capability is a CUDA-specific concept.

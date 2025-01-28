@@ -67,7 +67,7 @@ public:
   StringRef vendor() const;
 
   virtual ErrorOr<int> getDriverVersion() const = 0;
-  virtual ErrorOrSuccess isCompatibleWithMAX() const = 0;
+  virtual ErrorOrSuccess isCompatible() const = 0;
   virtual ErrorOr<int> computeCapability() const = 0;
 
   size_t allocationAlignment() const;

@@ -131,8 +131,8 @@ MODULAR_API_EXPORT ErrorOr<std::string> Device::getApi() {
   return ctx->device().api().str();
 }
 
-MODULAR_API_EXPORT ErrorOrSuccess Device::isCompatibleWithMAX() const {
-  return ctx->device().isCompatibleWithMAX();
+MODULAR_API_EXPORT ErrorOrSuccess Device::isCompatible() const {
+  return ctx->device().isCompatible();
 }
 
 MODULAR_API_EXPORT ErrorOr<void *> Device::allocateData(size_t bytes) {
@@ -234,7 +234,7 @@ static ErrorOr<Device *> createCPUDevice(ssize_t numaId) {
   ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create("cpu"));
   auto device = RCRef<Device>::create(spec, ctx);
 
-  ErrorOrSuccess compatibleOr = device->isCompatibleWithMAX();
+  ErrorOrSuccess compatibleOr = device->isCompatible();
   if (compatibleOr.isError())
     return compatibleOr.takeError();
 
@@ -271,7 +271,7 @@ static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
   spec.ref.id = gpuID;
   auto device = RCRef<Device>::create(spec, ctx);
 
-  ErrorOrSuccess compatibleOr = device->isCompatibleWithMAX();
+  ErrorOrSuccess compatibleOr = device->isCompatible();
   if (compatibleOr.isError())
     return compatibleOr.takeError();
 

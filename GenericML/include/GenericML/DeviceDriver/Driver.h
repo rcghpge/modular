@@ -133,7 +133,7 @@ struct Device : M::ReferenceCounted<Device> {
   ErrorOr<std::string> getApi();
 
   /// Returns whether or not the device is compatible with MAX.
-  ErrorOrSuccess isCompatibleWithMAX() const;
+  ErrorOrSuccess isCompatible() const;
 
 protected:
   AsyncRT::DeviceContextRef ctx;

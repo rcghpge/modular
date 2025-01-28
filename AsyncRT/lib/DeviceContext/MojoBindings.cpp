@@ -334,8 +334,8 @@ AsyncRT_DeviceContext_getAttribute(int *result, const DeviceContext *ctx,
 }
 
 MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_isCompatibleWithMAX(const DeviceContext *ctx) {
-  return checkSuccess(ctx->device().isCompatibleWithMAX());
+AsyncRT_DeviceContext_isCompatible(const DeviceContext *ctx) {
+  return checkSuccess(ctx->device().isCompatible());
 }
 
 MODULAR_EXPORT int64_t AsyncRT_DeviceContext_id(const DeviceContext *ctx) {
