@@ -99,6 +99,7 @@ modular_cc_library(
         "//AsyncRT:MojoBindings",
         "//AsyncRT:RuntimeGlobals",
         "//GraphRT:MLIRToMEF",
+        "//KGEN:CompilerRT",
         "//PyTorch:ATenRT",
         "//Support:Base",
         "//Support:BinaryID",

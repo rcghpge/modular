@@ -9,6 +9,7 @@
 #include "AsyncRT/Runtime/Globals/Globals.h"
 #include "Config/Version.h"
 #include "GenericML/MGPRT/BinaryID.h"
+#include "KGEN/CompilerRT/BinaryID.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
 #include "PyTorch/ATenRT/BinaryID.h"
 #include "Support/BinaryID.h"
@@ -23,5 +24,6 @@ std::string M::MO::getGraphCompilerVersionString() {
          M::MGPRT::getMGPRTBinaryID() + "-" + M::Torch::getATenRTBinaryID() +
          "-" + M::AsyncRT::getMojoBindingsBinaryID() + "-" +
          M::AsyncRT::getRuntimeGlobalsBinaryID() + "-" +
+         M::KGEN::getCompilerRTBinaryID() + "-" +
          M::getModularVersion().buildType;
 }
