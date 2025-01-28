@@ -4985,14 +4985,25 @@ def MO_AllReduceSumOp : MO_AllReduceSumBase<"distributed.allreduce.sum"> {
   let summary = "Allreduce sum across N devices (variadic).";
   // Variadic allreduce has a folder since it can take 1 input.
   let hasFolder = 1;
+  let extraClassDeclaration = [{
+    // `numDevices` is `std::nullopt` since this allreduce is variadic.
+    static constexpr std::optional<int> numDevices;
+  }];
 }
 
+// TODO(GEX-1755): Remove once we support lowering variadic device contexts.
 def MO_AllReduce2GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.2gpu.sum"> {
   let summary = "Allreduce sum across 2 devices.";
+  let extraClassDeclaration = [{
+    static constexpr std::optional<int> numDevices{2};
+  }];
 }
 
 def MO_AllReduce4GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.4gpu.sum"> {
   let summary = "Allreduce sum across 4 devices.";
+  let extraClassDeclaration = [{
+    static constexpr std::optional<int> numDevices{4};
+  }];
 }
 
 //===----------------------------------------------------------------------===//

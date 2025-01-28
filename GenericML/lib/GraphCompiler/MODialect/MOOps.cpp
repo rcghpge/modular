@@ -4532,6 +4532,12 @@ static LogicalResult verifyAllReduceSum(ConcreteOp op) {
       return op->emitError("each input/output must have the same tensor type");
   }
 
+  if (allReduceOp.numDevices &&
+      (allReduceOp.getInputs().size() != *allReduceOp.numDevices))
+    return op->emitError("expected exactly " + Twine(*allReduceOp.numDevices) +
+                         " inputs for " + Twine(*allReduceOp.numDevices) +
+                         "-GPU allreduce");
+
   return success();
 }
 
@@ -4539,7 +4545,7 @@ LogicalResult AllReduceSumOp::verify() { return verifyAllReduceSum(*this); }
 
 LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult> &results) {
-  // If the all-reduce has 1 input -- identity
+  // If the all-reduce has 1 input, return the input (identity op).
   if (getNumResults() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
@@ -4548,25 +4554,9 @@ LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
   return failure();
 }
 
-LogicalResult AllReduce2GPUSumOp::verify() {
-  if (failed(verifyAllReduceSum(*this)))
-    return failure();
+LogicalResult AllReduce2GPUSumOp::verify() { return verifyAllReduceSum(*this); }
 
-  if (getInputs().size() != 2)
-    return emitError("expected exactly 2 inputs for 2-GPU all-reduce");
-
-  return success();
-}
-
-LogicalResult AllReduce4GPUSumOp::verify() {
-  if (failed(verifyAllReduceSum(*this)))
-    return failure();
-
-  if (getInputs().size() != 4)
-    return emitError("expected exactly 4 inputs for 4-GPU all-reduce");
-
-  return success();
-}
+LogicalResult AllReduce4GPUSumOp::verify() { return verifyAllReduceSum(*this); }
 
 //===----------------------------------------------------------------------===//
 // MO_LayerNormOp
