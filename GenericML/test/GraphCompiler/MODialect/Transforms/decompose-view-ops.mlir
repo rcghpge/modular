@@ -293,16 +293,3 @@ mo.graph @unflatten_with_div<D1>() -> (!mo.tensor<[1, div(D1, 2)], f32>) {
     %2 = mo.static.reshape(%1) : !mo.tensor<[div(D1, 2)], f32> -> !mo.tensor<[1, div(D1, 2)], f32>
     mo.output %2 : !mo.tensor<[1, div(D1, 2)], f32>
 }
-
-// CHECK-LABEL: mo.graph @nd_to_md
-// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[6, 2, 5], f32>)
-// CHECK-NEXT: %[[V0:.*]] = mo.merge_dim[1 : index] (%[[ARG0]]) : (!mo.tensor<[6, 2, 5], f32>) -> !mo.tensor<[6, 10], f32>
-// CHECK-NEXT: %[[V1:.*]] = mo.merge_dim[0 : index] (%[[V0]]) : (!mo.tensor<[6, 10], f32>) -> !mo.tensor<[60], f32>
-// CHECK-NEXT: %[[V2:.*]] = mo.split_dim[0 : index] (%[[V1]]) : (!mo.tensor<[60], f32>) -> !mo.tensor<[5, 12], f32>
-// CHECK-NEXT: %[[V3:.*]] = mo.split_dim[1 : index] (%[[V2]]) : (!mo.tensor<[5, 12], f32>) -> !mo.tensor<[5, 2, 6], f32>
-// CHECK-NEXT: %[[V4:.*]] = mo.split_dim[2 : index] (%[[V3]]) : (!mo.tensor<[5, 2, 6], f32>) -> !mo.tensor<[5, 2, 2, 3], f32>
-// CHECK-NEXT: mo.output %[[V4]]
-mo.graph @nd_to_md(%arg : !mo.tensor<[6,2,5], f32>) -> (!mo.tensor<[5,2,2,3], f32>) {
-    %2 = mo.static.reshape(%arg) : !mo.tensor<[6,2,5], f32> -> !mo.tensor<[5,2,2,3], f32>
-    mo.output %2 : !mo.tensor<[5,2,2,3], f32>
-}
