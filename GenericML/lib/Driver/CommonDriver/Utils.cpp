@@ -80,7 +80,11 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
   auto writeFile = [&](const CommonOptions *opt) {
     std::unique_ptr<llvm::ToolOutputFile> intermediateFile =
         opt->getIntermediateFile(filePath, ext);
-    module->print(intermediateFile->os());
+    if (opt->printTempsLocalScope)
+      module->print(intermediateFile->os(),
+                    mlir::OpPrintingFlags().useLocalScope());
+    else
+      module->print(intermediateFile->os());
     intermediateFile->keep();
   };
 
@@ -95,9 +99,13 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
   auto configOr = Config::open();
   if (!configOr.isError()) {
     StringRef tempsDir = configOr->getValue("max.temps_dir");
+    ErrorOr<bool> writeFileLocally =
+        configOr->getValueAsBool("max.temps_use_local_scope", false);
+    assert(!writeFileLocally.isError() && "Parsed config is not found.");
     if (!tempsDir.empty()) {
       CommonOptions tempOptions;
       tempOptions.saveTemps = true;
+      tempOptions.printTempsLocalScope = writeFileLocally.takeValue();
       tempOptions.tempsDir = tempsDir.str();
       writeFile(&tempOptions);
     }
