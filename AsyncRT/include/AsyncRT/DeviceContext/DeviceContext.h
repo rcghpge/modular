@@ -11,6 +11,7 @@
 #ifndef ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 #define ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 
+#include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
@@ -319,6 +320,11 @@ public:
 
   virtual ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
                                    size_t valSize, SyncMode mode) const = 0;
+
+  // DeviceFunction compiling.
+  virtual ErrorOr<M::BufferRef>
+  compileFunction(StringRef ir, StringRef debugLevel,
+                  int32_t optimizationLevel) const;
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>

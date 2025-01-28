@@ -392,6 +392,16 @@ ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
 
 BufferCache &DeviceContext::bufferCache() const { return *bufferCache_; }
 
+// DeviceFunction compiling, loading, and execution.
+ErrorOr<M::BufferRef>
+DeviceContext::compileFunction(StringRef ir, StringRef debugLevel,
+                               int32_t optimizationLevel) const {
+  return Error("compileFunction for this device is not supported");
+}
+
+//
+// ===== Device ===== //
+//
 int Device::numberOfDevices(StringRef api) {
   ErrorOr<DeviceRef> device = Device::create(api);
   if (device.isError()) {

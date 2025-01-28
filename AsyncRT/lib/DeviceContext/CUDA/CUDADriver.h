@@ -350,15 +350,15 @@ public:
   Result LinkCreate(unsigned int numOptions, CUjit_option *options,
                     void **optionValues, CUlinkState *stateOut) const {
     CUDA_DRIVER_CALL_LOG();
-    return cuLinkCreate_(numOptions, options, optionValues, stateOut);
+    return cuLinkCreate_v2_(numOptions, options, optionValues, stateOut);
   }
 
   Result LinkAddData(CUlinkState state, CUjitInputType type, void *data,
                      size_t size, const char *name, unsigned int numOptions,
                      CUjit_option *options, void **optionValues) const {
     CUDA_DRIVER_CALL_LOG();
-    return cuLinkAddData_(state, type, data, size, name, numOptions, options,
-                          optionValues);
+    return cuLinkAddData_v2_(state, type, data, size, name, numOptions, options,
+                             optionValues);
   }
 
   Result LinkComplete(CUlinkState state, void **cubinOut,
@@ -616,15 +616,16 @@ private:
   using tcuMemsetD32_v2 = Result(CUdeviceptr, unsigned int, size_t);
   tcuMemsetD32_v2 *cuMemsetD32_v2_;
 
-  using tcuLinkCreate = Result(unsigned int numOptions, CUjit_option *options,
-                               void **optionValues, CUlinkState *stateOut);
-  tcuLinkCreate *cuLinkCreate_;
+  using tcuLinkCreate_v2 = Result(unsigned int numOptions,
+                                  CUjit_option *options, void **optionValues,
+                                  CUlinkState *stateOut);
+  tcuLinkCreate_v2 *cuLinkCreate_v2_;
 
-  using tcuLinkAddData = Result(CUlinkState state, CUjitInputType type,
-                                void *data, size_t size, const char *name,
-                                unsigned int numOptions, CUjit_option *options,
-                                void **optionValues);
-  tcuLinkAddData *cuLinkAddData_;
+  using tcuLinkAddData_v2 = Result(CUlinkState state, CUjitInputType type,
+                                   void *data, size_t size, const char *name,
+                                   unsigned int numOptions,
+                                   CUjit_option *options, void **optionValues);
+  tcuLinkAddData_v2 *cuLinkAddData_v2_;
 
   using tcuLinkComplete = Result(CUlinkState state, void **cubinOut,
                                  size_t *sizeOut);

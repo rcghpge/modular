@@ -13,6 +13,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "CUDADriver.h"
+#include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/RCRef.h"
@@ -248,10 +249,10 @@ public:
   ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint32_t val,
                            size_t valSize, SyncMode mode) const override;
 
-  // DeviceFunction compiling, loading, and execution.
-  ErrorOr<ArrayRef<std::byte>> compileFunction(StringRef ir,
-                                               StringRef debugLevel,
-                                               int32_t optimizationLevel) const;
+  // DeviceFunction compiling.
+  ErrorOr<M::BufferRef>
+  compileFunction(StringRef ir, StringRef debugLevel,
+                  int32_t optimizationLevel) const override;
 
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName,

@@ -753,13 +753,15 @@ setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
   return std::make_pair(optionKind, optionValues);
 }
 
-ErrorOr<ArrayRef<std::byte>>
+ErrorOr<M::BufferRef>
 CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
                                    int32_t optimizationLevel) const {
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
   if (errorOrOpts)
     return errorOrOpts.takeError();
   auto [optionKind, optionValues] = errorOrOpts.takeValue();
+
+  CUDA_WITH_CTX_ERR(*this);
 
   CUlinkState linkState;
   CUDA_CHECK_ERR(driver_.LinkCreate(optionKind.size(), optionKind.data(),
@@ -773,9 +775,7 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   size_t cubinSize;
   CUDA_CHECK_ERR(driver_.LinkComplete(linkState, &cubin, &cubinSize));
 
-  CUDA_CHECK_ERR(driver_.LinkDestroy(linkState));
-
-  return ArrayRef((std::byte *)cubin, cubinSize);
+  return M::BufferRef::create(StringRef((char *)cubin, cubinSize));
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
