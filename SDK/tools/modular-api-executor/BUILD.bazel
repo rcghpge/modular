@@ -2,10 +2,7 @@ load("//bazel:api.bzl", "modular_cc_binary")
 
 modular_cc_binary(
     name = "modular-api-executor",
-    srcs = glob([
-        "*.cpp",
-        "*.h",
-    ]),
+    srcs = glob(["*.cpp"]),
     data = [
         "//KGEN:CompilerRT",
         "@llvm-project//compiler-rt:orc_rt",
