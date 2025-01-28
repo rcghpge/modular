@@ -90,8 +90,7 @@ M_AsyncValue *core::processValueInput(const nb::object &pyObj,
   if (nb::isinstance<core::TensorData>(pyObj))
     return processTensorInput(pyObj, /*name=*/"", context);
 
-  if (nb::isinstance<nb::dict>(pyObj)) {
-    const auto pyDict = nb::cast<nb::dict>(pyObj);
+  if (nb::dict pyDict; nb::try_cast(pyObj, pyDict)) {
     M_AsyncValue *dictValue = M_createDictAsyncValue(context);
     M_AsyncDict *dict = M_getDictFromValue(dictValue);
     for (auto elem : pyDict) {
@@ -107,8 +106,7 @@ M_AsyncValue *core::processValueInput(const nb::object &pyObj,
     return dictValue;
   }
 
-  if (nb::isinstance<nb::list>(pyObj)) {
-    const auto pyList = nb::cast<nb::list>(pyObj);
+  if (nb::list pyList; nb::try_cast(pyObj, pyList)) {
     M_AsyncValue *listValue = M_createListAsyncValue(context);
     M_AsyncList *list = M_getListFromValue(listValue);
     for (auto elem : pyList) {
@@ -121,8 +119,7 @@ M_AsyncValue *core::processValueInput(const nb::object &pyObj,
     return listValue;
   }
 
-  if (nb::isinstance<nb::tuple>(pyObj)) {
-    const auto pyTuple = nb::cast<nb::tuple>(pyObj);
+  if (nb::tuple pyTuple; nb::try_cast(pyObj, pyTuple)) {
     M_AsyncValue *tupleValue = M_createTupleAsyncValue(context);
     M_AsyncTuple *tuple = M_getTupleFromValue(tupleValue);
     for (auto elem : pyTuple) {
@@ -138,23 +135,22 @@ M_AsyncValue *core::processValueInput(const nb::object &pyObj,
   if (pyObj.is_none())
     return M_createNoneAsyncValue(context);
 
-  if (nb::isinstance<nb::str>(pyObj)) {
-    std::string str = nb::cast<std::string>(pyObj);
+  if (nb::str str; nb::try_cast(pyObj, str)) {
     return M_createStringAsyncValue(str.c_str(), context);
   }
 
-  if (nb::isinstance<nb::float_>(pyObj))
-    return M_createDoubleAsyncValue(nb::cast<double>(pyObj), context);
+  if (int64_t i; nb::try_cast(pyObj, i))
+    return M_createLongAsyncValue(i, context);
 
-  if (nb::isinstance<nb::int_>(pyObj))
-    return M_createLongAsyncValue(nb::cast<int64_t>(pyObj), context);
+  if (double d; nb::try_cast(pyObj, d))
+    return M_createDoubleAsyncValue(d, context);
 
-  if (nb::isinstance<nb::bool_>(pyObj))
-    return M_createBoolAsyncValue(nb::cast<bool>(pyObj), context);
+  if (bool b; nb::try_cast(pyObj, b))
+    return M_createBoolAsyncValue(b, context);
 
-  if (nb::isinstance<core::MojoValue>(pyObj))
-    return M_createMojoAsyncValueBorrowingFromExisting(
-        nb::cast<core::MojoValue *>(pyObj)->value.get(), context);
+  if (core::MojoValue * mojoVal; nb::try_cast(pyObj, mojoVal))
+    return M_createMojoAsyncValueBorrowingFromExisting(mojoVal->value.get(),
+                                                       context);
 
   using namespace ::M::CPython;
   PythonObjectWrapper *wrapper = new PythonObjectWrapper(pyObj.ptr());
