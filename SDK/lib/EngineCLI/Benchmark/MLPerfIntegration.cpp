@@ -49,7 +49,7 @@ size_t QuerySampleLibrary::PerformanceSampleCount() {
 
 void QuerySampleLibrary::LoadSamplesToRam(
     const std::vector<mlperf::QuerySampleIndex> &samples) {
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   if (!status) {
     llvm::errs() << "Error loading samples: Unable to create M_Status (out of "
                     "memory?)\n";
@@ -115,7 +115,7 @@ void SystemUnderTest::IssueQuery(
 
 ErrorOrSuccess SystemUnderTest::issueQueryFallible(
     const std::vector<mlperf::QuerySample> &samples) {
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   if (!status)
     return Error("Failed to create M_Status (out of memory?)");
   std::vector<mlperf::QuerySampleResponse> responses{};
@@ -129,8 +129,7 @@ ErrorOrSuccess SystemUnderTest::issueQueryFallible(
       return Error("Query issued on unloaded sample");
     TensorMapPtr outputATM(
         M_executeModelSync(runtimeContext, model,
-                           generatedQuery->getAsyncTensorMap(), status.get()),
-        M_freeAsyncTensorMap);
+                           generatedQuery->getAsyncTensorMap(), status.get()));
     if (!outputATM)
       return Error(Twine("When executing inference: ") +
                    M_getError(status.get()));

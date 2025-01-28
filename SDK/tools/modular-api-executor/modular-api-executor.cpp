@@ -138,7 +138,7 @@ static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
 /// Get TensorSpec from a API Tensor.
 static M::TensorSpec getTensorSpec(const ModularAPIInterface &api,
                                    M_AsyncTensor *tensor) {
-  TensorSpecPtr spec = {api.getTensorSpec(tensor), api.freeTensorSpec};
+  TensorSpecPtr spec{api.getTensorSpec(tensor)};
   return getTensorSpec(api, spec.get());
 }
 
@@ -340,8 +340,7 @@ private:
 static Tensor getTensorFromValue(const M::ModularAPIInterface &api,
                                  M_AsyncValue *outputValue,
                                  AsyncRT::Runtime &runtime) {
-  TensorPtr outputTensor = {api.getTensorFromValue(outputValue),
-                            api.freeTensor};
+  TensorPtr outputTensor{api.getTensorFromValue(outputValue)};
 
   // Create an uninitialized GenericML Tensor to hold the output.
   auto tensor = Tensor::createOwned(getTensorSpec(api, outputTensor.get()),
@@ -381,12 +380,12 @@ static AnyAsyncValueRef getAsyncValue(ValuePtr value,
 static GML::Dict getDictFromValue(const M::ModularAPIInterface &api,
                                   M_AsyncValue *outputValue,
                                   AsyncRT::Runtime &runtime) {
-  DictPtr outputDict = {api.getDictFromValue(outputValue), api.freeDict};
+  DictPtr outputDict{api.getDictFromValue(outputValue)};
   size_t dictSize = api.getDictSize(outputDict.get());
   GML::Dict dict;
   for (size_t i = 0; i < dictSize; ++i) {
-    ValuePtr key = {api.getDictKey(outputDict.get(), i), api.freeValue};
-    ValuePtr value = {api.getDictValue(outputDict.get(), i), api.freeValue};
+    ValuePtr key{api.getDictKey(outputDict.get(), i)};
+    ValuePtr value{api.getDictValue(outputDict.get(), i)};
     dict.getElements().insert(
         {GML::Variant(getAsyncValue(std::move(key), api, runtime)),
          GML::Variant(getAsyncValue(std::move(value), api, runtime))});
@@ -397,12 +396,12 @@ static GML::Dict getDictFromValue(const M::ModularAPIInterface &api,
 static GML::List getListFromValue(const M::ModularAPIInterface &api,
                                   M_AsyncValue *outputValue,
                                   AsyncRT::Runtime &runtime) {
-  ListPtr outputList = {api.getListFromValue(outputValue), api.freeList};
+  ListPtr outputList{api.getListFromValue(outputValue)};
   size_t listSize = api.getListSize(outputList.get());
   SmallVector<AnyAsyncValueRef> list;
   list.reserve(listSize);
   for (size_t i = 0; i < listSize; ++i) {
-    ValuePtr value = {api.getListValue(outputList.get(), i), api.freeValue};
+    ValuePtr value{api.getListValue(outputList.get(), i)};
     list.push_back(getAsyncValue(std::move(value), api, runtime));
   }
   return GML::List(list);
@@ -411,11 +410,11 @@ static GML::List getListFromValue(const M::ModularAPIInterface &api,
 static GML::Tuple getTupleFromValue(const M::ModularAPIInterface &api,
                                     M_AsyncValue *outputValue,
                                     AsyncRT::Runtime &runtime) {
-  TuplePtr outputTuple = {api.getTupleFromValue(outputValue), api.freeTuple};
+  TuplePtr outputTuple{api.getTupleFromValue(outputValue)};
   size_t tupleSize = api.getTupleSize(outputTuple.get());
   GML::Tuple tuple;
   for (size_t i = 0; i < tupleSize; ++i) {
-    ValuePtr value = {api.getTupleValue(outputTuple.get(), i), api.freeValue};
+    ValuePtr value{api.getTupleValue(outputTuple.get(), i)};
     tuple.getElements().push_back(
         GML::Variant(getAsyncValue(std::move(value), api, runtime)));
   }
@@ -531,10 +530,9 @@ public:
         args, [modularModel, model, outputs = std::move(outputCopy), &runtime,
                &api](MutableArrayRef<AnyAsyncValueRef> args) mutable {
           const M_RuntimeContext *context = model->getContext();
-          TensorMapPtr inputTensors{api.newAsyncTensorMap(context),
-                                    api.freeAsyncTensorMap};
+          TensorMapPtr inputTensors{api.newAsyncTensorMap(context)};
 
-          StatusPtr status{api.newStatus(), api.freeStatus};
+          StatusPtr status{api.newStatus()};
           for (auto &&[inputIndex, input] : llvm::enumerate(args)) {
             auto &inputTensor = input.get<Tensor>();
 
@@ -544,8 +542,7 @@ public:
             TensorSpecPtr spec{
                 api.newTensorSpec(inputShape.data(), inputShape.size(),
                                   convertToCDataType(inputTensor.getEltType()),
-                                  model->getInputNames()[inputIndex].c_str()),
-                api.freeTensorSpec};
+                                  model->getInputNames()[inputIndex].c_str())};
             api.borrowTensorInto(inputTensors.get(), inputTensor.getBuffer(),
                                  spec.get(), status.get());
             if (api.isError(status.get())) {
@@ -554,7 +551,7 @@ public:
             }
           }
 
-          TensorMapPtr outputTensors = {nullptr, api.freeAsyncTensorMap};
+          TensorMapPtr outputTensors{nullptr};
 
           M_AsyncTensorMap *outputTensorMap = api.executeModelSync(
               context, modularModel, inputTensors.get(), status.get());
@@ -572,11 +569,9 @@ public:
           // the async outputs as ready.
           const auto &outputSpecs = model->getOutputSpecs();
           for (size_t i = 0, e = outputSpecs.size(); i < e; ++i) {
-            ValuePtr outputValue = {
-                api.getValueByNameFrom(outputTensors.get(),
-                                       model->getOutputNames()[i].c_str(),
-                                       status.get()),
-                api.freeValue};
+            ValuePtr outputValue{api.getValueByNameFrom(
+                outputTensors.get(), model->getOutputNames()[i].c_str(),
+                status.get())};
 
             if (api.isError(status.get())) {
               llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
@@ -598,7 +593,7 @@ public:
     auto model = getModel();
     const auto &api = model->getApi();
 
-    StatusPtr status{api.newStatus(), api.freeStatus};
+    StatusPtr status{api.newStatus()};
     api.waitForModel(initializedModel.get(), status.get());
     if (api.isError(status.get()))
       return Error(api.getError(status.get()));
@@ -618,11 +613,10 @@ ModularModel::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
                     const Driver::DeviceMap &deviceMap) const {
   checkUniqueRuntime(runtime);
   // Create the executable model.
-  StatusPtr status = {api.newStatus(), api.freeStatus};
-  ModelPtr initializedModel = {
+  StatusPtr status{api.newStatus()};
+  ModelPtr initializedModel{
       api.initModel(modelState.context, modelState.compiledModel,
-                    /*weightsRegistry=*/nullptr, status.get()),
-      api.freeModel};
+                    /*weightsRegistry=*/nullptr, status.get())};
   return {std::make_unique<ModularExecutableModel>(
       this, runtime, std::move(initializedModel))};
 }
@@ -632,11 +626,10 @@ ErrorOr<SmallVector<ModelSpec::ModelIOSpec>>
 convertSpecs(M_AsyncCompiledModel *model, TensorNamesPtr specNames,
              size_t specCount, SpecFunc func, ModularAPIInterface &api) {
   SmallVector<ModelSpec::ModelIOSpec> specs;
-  StatusPtr status = {api.newStatus(), api.freeStatus};
+  StatusPtr status{api.newStatus()};
   for (size_t i = 0; i < specCount; ++i) {
     std::string specName = api.getTensorNameAt(specNames.get(), i);
-    TensorSpecPtr spec = {func(model, specName.c_str(), status.get()),
-                          api.freeTensorSpec};
+    TensorSpecPtr spec{func(model, specName.c_str(), status.get())};
     if (api.isError(status.get()))
       return Error(api.getError(status.get()));
     specs.emplace_back(
@@ -649,9 +642,8 @@ convertSpecs(M_AsyncCompiledModel *model, TensorNamesPtr specNames,
 static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model,
                                        ModularAPIInterface &api) {
   ModelSpec modelSpec;
-  StatusPtr status = {api.newStatus(), api.freeStatus};
-  TensorNamesPtr inputNames = {api.getInputNames(model, status.get()),
-                               api.freeTensorNameArray};
+  StatusPtr status{api.newStatus()};
+  TensorNamesPtr inputNames{api.getInputNames(model, status.get())};
   if (api.isError(status.get()))
     return Error(api.getError(status.get()));
   size_t inputCount = api.getNumModelInputs(model, status.get());
@@ -663,8 +655,7 @@ static ErrorOr<ModelSpec> getModelSpec(M_AsyncCompiledModel *model,
     return inputsOr.takeError();
   modelSpec.inputs = std::move(*inputsOr);
 
-  TensorNamesPtr outputNames = {api.getOutputNames(model, status.get()),
-                                api.freeTensorNameArray};
+  TensorNamesPtr outputNames{api.getOutputNames(model, status.get())};
   if (api.isError(status.get()))
     return Error(api.getError(status.get()));
 
@@ -741,22 +732,20 @@ int main(int argc, char **argv) {
     llvm::errs() << "Error: " << ctxOr.getError() << "\n";
     exit(EXIT_FAILURE);
   }
-  StatusPtr status{api.newStatus(), api.freeStatus};
-  RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig(), api.freeRuntimeConfig};
+  StatusPtr status{api.newStatus()};
+  RuntimeConfigPtr runtimeConfig{api.newRuntimeConfig()};
   api.setMaxContext(runtimeConfig.get(),
                     reinterpret_cast<M_MaxContext *>(ctxOr->getPointer()));
 
-  RuntimeContextPtr context = {
-      api.newRuntimeContext(runtimeConfig.get(), status.get()),
-      api.freeRuntimeContext};
+  RuntimeContextPtr context{
+      api.newRuntimeContext(runtimeConfig.get(), status.get())};
 
   if (api.isError(status.get())) {
     llvm::errs() << "Error: " << api.getError(status.get()) << "\n";
     exit(EXIT_FAILURE);
   }
 
-  CompileConfigPtr compileConfig = {api.newCompileConfig(),
-                                    api.freeCompileConfig};
+  CompileConfigPtr compileConfig{api.newCompileConfig()};
   api.setModelPath(compileConfig.get(), clOptions.inputFilename.c_str());
 
   if (api.useKernelsFrom && !clOptions.kernelLibraryPaths.empty()) {
@@ -781,7 +770,7 @@ int main(int argc, char **argv) {
                                              ? clOptions.inputSpecs
                                              : clOptions.compileSpecs;
     for (auto &&[inputIndex, inputSpec] : llvm::enumerate(specSource)) {
-      TorchInputSpecPtr spec{nullptr, api.freeTorchInputSpec};
+      TorchInputSpecPtr spec{nullptr};
       if (inputSpec.hasRank()) {
         SmallVector<int64_t> inputShape;
         for (auto dim : inputSpec) {
@@ -858,8 +847,7 @@ int main(int argc, char **argv) {
     }
   }
   CompiledModelPtr compiledModel{
-      api.compileModel(context.get(), &configPtr, status.get()),
-      api.freeCompiledModel};
+      api.compileModel(context.get(), &configPtr, status.get())};
 
   api.waitForCompilation(compiledModel.get(), status.get());
 

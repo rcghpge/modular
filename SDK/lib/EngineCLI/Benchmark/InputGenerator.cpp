@@ -778,8 +778,8 @@ BCD::QueryGeneratorImpl::generateQuery(M_RuntimeContext *runtimeContext,
       return generatedInputOr.takeError();
     tensors.push_back(std::move(*generatedInputOr));
   }
-  TensorMapPtr atm(M_newAsyncTensorMap(runtimeContext), M_freeAsyncTensorMap);
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  TensorMapPtr atm(M_newAsyncTensorMap(runtimeContext));
+  StatusPtr status(M_newStatus());
   for (auto &generatedInput : tensors) {
     generatedInput->borrowInto(atm.get(), status.get());
     if (M_isError(status.get()))

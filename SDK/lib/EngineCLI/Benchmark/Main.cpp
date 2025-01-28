@@ -151,13 +151,12 @@ static ClOptions parseOptions(const State &state) {
 
 static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status,
                                                      size_t numThreads) {
-  RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig());
   if (!runtimeConfig)
     return Error("Failed to create M_RuntimeConfig (out of memory?)");
 
   M_setNumThreads(runtimeConfig.get(), numThreads);
-  RuntimeContextPtr context(M_newRuntimeContext(runtimeConfig.get(), status),
-                            M_freeRuntimeContext);
+  RuntimeContextPtr context(M_newRuntimeContext(runtimeConfig.get(), status));
   if (!context)
     return Error(M_getError(status));
   return std::move(context);
@@ -167,8 +166,7 @@ static ErrorOr<ModelPtr> prepareModel(M_RuntimeContext *runtimeContext,
                                       M_AsyncCompiledModel *compiledModel,
                                       M_Status *status) {
   ModelPtr model(M_initModel(runtimeContext, compiledModel,
-                             /*weightsRegistry=*/nullptr, status),
-                 M_freeModel);
+                             /*weightsRegistry=*/nullptr, status));
   if (!model)
     return Error(M_getError(status));
   M_waitForModel(model.get(), status);
@@ -209,7 +207,7 @@ static ErrorOr<double> estimateLatency(M_RuntimeContext *runtimeContext,
     return Error(Twine("Unable to generate sample query: ") +
                  queryOr.getError());
   M_AsyncTensorMap *inputs = (*queryOr)->getAsyncTensorMap();
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   if (!status)
     return Error("Failed to create M_Status (out of memory?)");
   M_validateInputTensorSpec(compiledModel, inputs, status.get());
@@ -264,7 +262,7 @@ int M::maxBenchmarkMain(int argc, char **argv) {
     return EXIT_SUCCESS;
   }
 
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   if (!status) {
     llvm::errs() << "Error: Failed to create M_Status (out of memory?)\n";
     return EXIT_FAILURE;
@@ -281,7 +279,7 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   llvm::outs() << "MLPerf scenario: " << opts.mlPerfScenario
                << " (use --mlperf-scenario to change)\n";
 
-  CompileConfigPtr compileConfig(M_newCompileConfig(), M_freeCompileConfig);
+  CompileConfigPtr compileConfig(M_newCompileConfig());
   if (!compileConfig) {
     llvm::errs()
         << "Error: Failed to create M_CompileConfig (out of memory?)\n";
@@ -309,15 +307,13 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   std::shared_ptr<Telemetry::Logs::Logger> logger =
       telemetryCtx->getLogger(kTelemetryLoggerName);
 
-  CompiledModelPtr compiledModel(nullptr, M_freeCompiledModel);
+  CompiledModelPtr compiledModel(nullptr);
   M_CompileConfig *compileConfigPtr = compileConfig.release();
   llvm::outs() << "Compiling model... ";
   {
     auto start = std::chrono::steady_clock::now();
-    compiledModel =
-        CompiledModelPtr(M_compileModelSync(runtimeContext.get(),
-                                            &compileConfigPtr, status.get()),
-                         M_freeCompiledModel);
+    compiledModel = CompiledModelPtr(M_compileModelSync(
+        runtimeContext.get(), &compileConfigPtr, status.get()));
     auto end = std::chrono::steady_clock::now();
     double duration =
         std::chrono::duration_cast<std::chrono::microseconds>(end - start)
@@ -353,7 +349,7 @@ int M::maxBenchmarkMain(int argc, char **argv) {
   if (!queryGenerator)
     return EXIT_FAILURE;
 
-  ModelPtr model(nullptr, M_freeModel);
+  ModelPtr model(nullptr);
   {
     auto modelOr =
         prepareModel(runtimeContext.get(), compiledModel.get(), status.get());

@@ -20,7 +20,7 @@ namespace nb = nanobind;
 
 /// Creates a new `nb::ndarray` by copying the tensor data from a `Tensor`.
 nb::object core::processTensorResult(TensorPtr outTensor) {
-  TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get()), &M_freeTensorSpec};
+  TensorSpecPtr tensorSpec{M_getTensorSpec(outTensor.get())};
   int64_t numDims = M_getRank(tensorSpec.get());
   if (numDims == M_getDynamicRankValue())
     throw std::invalid_argument("dynamic ranked tensor is not supported yet.");

@@ -226,7 +226,7 @@ struct RuntimeContextPhase {
     RuntimeContextPhase result;
     result.runtimeConfig = M_newRuntimeConfig();
     M_setNumThreads(result.runtimeConfig, options.numThreads);
-    StatusPtr status(M_newStatus(), M_freeStatus);
+    StatusPtr status(M_newStatus());
     if (!options.cacheDir.empty()) {
       M_setArtifactPath(result.runtimeConfig, options.cacheDir.c_str(),
                         status.get());
@@ -298,7 +298,7 @@ struct CompiledModelPhase {
     // TODO: We need to make framework loading thread safe before we can overlap
     // compilation of models.
     log(threaded, "INFO: Compiling %s", externalModel->path.c_str());
-    StatusPtr status(M_newStatus(), M_freeStatus);
+    StatusPtr status(M_newStatus());
     result.compiledModel = M_compileModel(runtimeContext->context,
                                           &result.compileConfig, status.get());
     RETURN_IF_ERROR(status);
@@ -351,7 +351,7 @@ struct InitializedModelPhase {
     InitializedModelPhase result;
     result.compiledModel = compiledModel;
 
-    StatusPtr status(M_newStatus(), M_freeStatus);
+    StatusPtr status(M_newStatus());
     log(threaded, "INFO: Initializing %s",
         compiledModel->externalModel->path.c_str());
     result.model = M_initModel(compiledModel->runtimeContext->context,
@@ -412,7 +412,7 @@ struct ExecutePhase {
     result.inputSpecs.reserve(numInputs);
     result.inputTensors.reserve(numInputs);
 
-    StatusPtr status(M_newStatus(), M_freeStatus);
+    StatusPtr status(M_newStatus());
     for (auto [inputShape, inputName] : llvm::zip(inputShapes, inputNames)) {
       SmallVector<int64_t> shape{};
       shape.reserve(inputShape.getRank());
@@ -436,7 +436,7 @@ struct ExecutePhase {
   ErrorOrSuccess execute(bool threaded) {
     // Currently, there's no way for users to allocate: the outputs are
     // allocated internally in the `execute` call for now.
-    StatusPtr status(M_newStatus(), M_freeStatus);
+    StatusPtr status(M_newStatus());
     log(threaded, "INFO: Executing %s",
         initializedModel->compiledModel->externalModel->path.c_str());
     outputs = M_executeModelSync(
@@ -456,10 +456,8 @@ struct ExecutePhase {
     if (numInputs != inputSpecs.size())
       return Error(Twine("expecting ") + Twine(numInputs) +
                    " --inputSpecs to match model arity");
-    TensorNamesPtr outputTensorNames{
-        M_getOutputNames(initializedModel->compiledModel->compiledModel,
-                         status.get()),
-        M_freeTensorNameArray};
+    TensorNamesPtr outputTensorNames{M_getOutputNames(
+        initializedModel->compiledModel->compiledModel, status.get())};
     for (size_t i = 0; i < numOutputs; ++i) {
       const char *outputTensorName =
           M_getTensorNameAt(outputTensorNames.get(), i);

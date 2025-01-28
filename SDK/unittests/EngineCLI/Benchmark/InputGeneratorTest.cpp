@@ -908,20 +908,18 @@ TEST(InputGenerator, basic) {
   auto inputOr = gen->generateInput(0);
   ASSERT_FALSE(inputOr.isError()) << inputOr.getError();
   ASSERT_NE(nullptr, *inputOr);
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   ASSERT_NE(nullptr, status.get());
-  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr config(M_newRuntimeConfig());
   ASSERT_NE(nullptr, config);
-  RuntimeContextPtr ctx(M_newRuntimeContext(config.get(), status.get()),
-                        M_freeRuntimeContext);
+  RuntimeContextPtr ctx(M_newRuntimeContext(config.get(), status.get()));
   ASSERT_NE(nullptr, ctx);
-  TensorMapPtr atm(M_newAsyncTensorMap(ctx.get()), M_freeAsyncTensorMap);
+  TensorMapPtr atm(M_newAsyncTensorMap(ctx.get()));
   ASSERT_NE(nullptr, atm);
   (*inputOr)->borrowInto(atm.get(), status.get());
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   EXPECT_EQ(size_t{1}, M_getTensorMapSize(atm.get(), status.get()));
-  TensorPtr tensor(M_getTensorByNameFrom(atm.get(), "example", status.get()),
-                   M_freeTensor);
+  TensorPtr tensor(M_getTensorByNameFrom(atm.get(), "example", status.get()));
   ASSERT_NE(nullptr, tensor);
   EXPECT_EQ(size_t{1 * 2 * 3}, M_getTensorNumElements(tensor.get()));
   EXPECT_EQ(M_FLOAT32, M_getTensorType(tensor.get()));
@@ -1016,12 +1014,11 @@ TEST(QueryGenerator, noInputs) {
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(-1, gen->getNumQueries());
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   ASSERT_NE(nullptr, status);
-  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr config(M_newRuntimeConfig());
   ASSERT_NE(nullptr, config);
-  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
-                            M_freeRuntimeContext);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()));
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
   auto queryOr = gen->generateQuery(runtime.get(), 0);
@@ -1055,12 +1052,11 @@ TEST(QueryGenerator, oneInput) {
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(-1, gen->getNumQueries());
   EXPECT_EQ(0, generateInputCalls);
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   ASSERT_NE(nullptr, status);
-  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr config(M_newRuntimeConfig());
   ASSERT_NE(nullptr, config);
-  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
-                            M_freeRuntimeContext);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()));
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
   auto queryOr = gen->generateQuery(runtime.get(), 123);
@@ -1083,12 +1079,11 @@ TEST(QueryGenerator, oneInputError) {
   auto gen = createQueryGenerator(std::move(inputGens), errorReporter);
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   ASSERT_NE(nullptr, status);
-  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr config(M_newRuntimeConfig());
   ASSERT_NE(nullptr, config);
-  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
-                            M_freeRuntimeContext);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()));
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
   auto queryOr = gen->generateQuery(runtime.get(), 0);
@@ -1152,12 +1147,11 @@ TEST(QueryGeneratorIntegration, basic) {
   EXPECT_TRUE(errorReporter.reportedNoErrors());
   ASSERT_NE(nullptr, gen);
   EXPECT_EQ(-1, gen->getNumQueries());
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   ASSERT_NE(nullptr, status);
-  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr config(M_newRuntimeConfig());
   ASSERT_NE(nullptr, config);
-  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()),
-                            M_freeRuntimeContext);
+  RuntimeContextPtr runtime(M_newRuntimeContext(config.get(), status.get()));
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtime);
   auto queryOr = gen->generateQuery(runtime.get(), 0);
@@ -1166,8 +1160,7 @@ TEST(QueryGeneratorIntegration, basic) {
   auto atm = (*queryOr)->getAsyncTensorMap();
   ASSERT_NE(nullptr, atm);
   EXPECT_EQ(size_t{1}, M_getTensorMapSize(atm, status.get()));
-  TensorPtr tensor(M_getTensorByNameFrom(atm, "example", status.get()),
-                   M_freeTensor);
+  TensorPtr tensor(M_getTensorByNameFrom(atm, "example", status.get()));
   ASSERT_NE(nullptr, tensor);
   EXPECT_EQ(size_t{1 * 2 * 3}, M_getTensorNumElements(tensor.get()));
   EXPECT_EQ(M_FLOAT32, M_getTensorType(tensor.get()));

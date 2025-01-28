@@ -75,12 +75,12 @@ TEST(QuerySampleLibrary, basic) {
   int generateCalls = 0;
   size_t lastQueryIndex = 0;
   std::vector<LivenessTrackingQuery *> liveQueries;
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   ASSERT_NE(nullptr, status);
-  RuntimeConfigPtr config(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr config(M_newRuntimeConfig());
   ASSERT_NE(nullptr, config);
   RuntimeContextPtr runtimeContext(
-      M_newRuntimeContext(config.get(), status.get()), M_freeRuntimeContext);
+      M_newRuntimeContext(config.get(), status.get()));
   EXPECT_FALSE(M_isError(status.get())) << M_getError(status.get());
   ASSERT_NE(nullptr, runtimeContext);
   QuerySampleLibrary qsl(

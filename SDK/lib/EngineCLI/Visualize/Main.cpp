@@ -101,11 +101,10 @@ static ClOptions parseOptions(const State &state) {
 }
 
 static ErrorOr<RuntimeContextPtr> makeRuntimeContext(M_Status *status) {
-  RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig(), M_freeRuntimeConfig);
+  RuntimeConfigPtr runtimeConfig(M_newRuntimeConfig());
   if (!runtimeConfig)
     return Error("Failed to create M_RuntimeConfig (out of memory?)");
-  RuntimeContextPtr context(M_newRuntimeContext(runtimeConfig.get(), status),
-                            M_freeRuntimeContext);
+  RuntimeContextPtr context(M_newRuntimeContext(runtimeConfig.get(), status));
   if (!context)
     return Error(M_getError(status));
   return std::move(context);
@@ -115,7 +114,7 @@ static ErrorOr<CompiledModelPtr>
 compileModel(const ClOptions &opts,
              const InputGenerationSchema &inputGenerationSchema,
              M_RuntimeContext *runtimeContext, M_Status *status) {
-  CompileConfigPtr compileConfig(M_newCompileConfig(), M_freeCompileConfig);
+  CompileConfigPtr compileConfig(M_newCompileConfig());
   if (!compileConfig)
     return Error("Failed to create M_CompileConfig (out of memory?)");
   if (auto result =
@@ -134,8 +133,7 @@ compileModel(const ClOptions &opts,
   M_setModelPath(compileConfig.get(), opts.modelPath.c_str());
   M_CompileConfig *compileConfigPtr = compileConfig.release();
   CompiledModelPtr model(
-      M_compileModelSync(runtimeContext, &compileConfigPtr, status),
-      M_freeCompiledModel);
+      M_compileModelSync(runtimeContext, &compileConfigPtr, status));
   if (!model)
     return Error(M_getError(status));
   return std::move(model);
@@ -160,7 +158,7 @@ int M::maxVisualizeMain(int argc, char **argv) {
     inputGenerationSchema = schemaOr.takeValue();
   }
 
-  StatusPtr status(M_newStatus(), M_freeStatus);
+  StatusPtr status(M_newStatus());
   if (!status) {
     llvm::errs() << "Error: Failed to create M_Status (out of memory?)\n";
     return EXIT_FAILURE;

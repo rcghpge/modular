@@ -17,13 +17,12 @@ using namespace M::BenchmarkCLI;
 
 static bool shouldOverwriteBatch(const M_AsyncCompiledModel *model,
                                  M_Status *status) {
-  TensorNamesPtr names(M_getInputNames(model, status), M_freeTensorNameArray);
+  TensorNamesPtr names(M_getInputNames(model, status));
   if (!names)
     return false;
   const char *name;
   for (size_t i = 0; (name = M_getTensorNameAt(names.get(), i)); ++i) {
-    TensorSpecPtr spec(M_getModelInputSpecByName(model, name, status),
-                       M_freeTensorSpec);
+    TensorSpecPtr spec(M_getModelInputSpecByName(model, name, status));
     if (!spec)
       return false;
     auto rank = M_getRank(spec.get());
@@ -53,8 +52,7 @@ void M::BenchmarkCLI::applyInputListDefaults(InputGenerationSchema &schema,
                                              M_Status *status) {
   if (schema.inputs)
     return;
-  TensorNamesPtr tensorNames(M_getInputNames(model, status),
-                             M_freeTensorNameArray);
+  TensorNamesPtr tensorNames(M_getInputNames(model, status));
   schema.inputs.emplace();
   const char *inputName;
   for (size_t index = 0;
@@ -74,8 +72,7 @@ void M::BenchmarkCLI::applyInputShapeDefaults(InputGenerationInput &inputSpec,
   if (!inputSpec.inputName)
     return;
   TensorSpecPtr capiTensorSpec(
-      M_getModelInputSpecByName(model, inputSpec.inputName->c_str(), status),
-      M_freeTensorSpec);
+      M_getModelInputSpecByName(model, inputSpec.inputName->c_str(), status));
   if (!capiTensorSpec)
     return;
   inputSpec.shape = capiToTensorSpec(capiTensorSpec.get());

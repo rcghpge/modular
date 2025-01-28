@@ -23,9 +23,9 @@ core::TorchInputSpec::TorchInputSpec(
 core::TorchInputSpec::TorchInputSpec(
     const core::TorchInputSpec::InputShapeTy &shapeOr, M_Dtype dtype,
     std::string device)
-    : specPtr({nullptr, &M_freeTorchInputSpec}), specShape(shapeOr),
-      specDtype(dtype), specDevice(device) {
-  StatusPtr status{M_newStatus(), M_freeStatus};
+    : specPtr(nullptr), specShape(shapeOr), specDtype(dtype),
+      specDevice(device) {
+  StatusPtr status{M_newStatus()};
   if (!status)
     throw std::invalid_argument("Unable to create status");
   if (specShape) {

@@ -110,8 +110,7 @@ TensorSpecPtr M::EngineCLI::tensorSpecToCAPI(const char *name,
     translatedRank = M_getDynamicRankValue();
   }
   return TensorSpecPtr(M_newTensorSpec(translatedShape.data(), translatedRank,
-                                       dtypeToCAPI(spec.getEltType()), name),
-                       M_freeTensorSpec);
+                                       dtypeToCAPI(spec.getEltType()), name));
 }
 
 ErrorOr<TorchInputSpecPtr>
@@ -129,14 +128,13 @@ M::EngineCLI::tensorSpecToCAPITorchSpec(const TensorSpec &spec) {
   } else {
     translatedRank = M_getDynamicRankValue();
   }
-  StatusPtr status{M_newStatus(), M_freeStatus};
+  StatusPtr status{M_newStatus()};
   if (!status)
     return Error("Unable to create status");
   TorchInputSpecPtr cSpec{
       M_newTorchInputSpec(translatedShape.data(), /*dimNames=*/nullptr,
                           translatedRank, dtypeToCAPI(spec.getEltType()),
-                          /*device=*/nullptr, status.get()),
-      M_freeTorchInputSpec};
+                          /*device=*/nullptr, status.get())};
   if (M_isError(status.get()))
     return Error(M_getError(status.get()));
   return cSpec;

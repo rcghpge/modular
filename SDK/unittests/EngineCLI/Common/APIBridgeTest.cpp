@@ -117,8 +117,7 @@ TEST(APIBridge, tensorSpecToCAPIUndefinedRank) {
 
 TEST(APIBridge, capiToTensorSpecBasic) {
   const int64_t cShape[]{1, 2, 3};
-  TensorSpecPtr cSpec(M_newTensorSpec(cShape, 3, M_FLOAT32, "example"),
-                      M_freeTensorSpec);
+  TensorSpecPtr cSpec(M_newTensorSpec(cShape, 3, M_FLOAT32, "example"));
   ASSERT_NE(cSpec, nullptr);
   EXPECT_EQ(TensorSpec({1, 2, 3}, DType::f32), capiToTensorSpec(cSpec.get()));
 }
@@ -126,16 +125,14 @@ TEST(APIBridge, capiToTensorSpecBasic) {
 TEST(APIBridge, capiToTensorSpecUndefinedDims) {
   const int64_t dyn = M_getDynamicDimensionValue();
   const int64_t cShape[]{dyn, 2, dyn};
-  TensorSpecPtr cSpec(M_newTensorSpec(cShape, 3, M_FLOAT32, "example"),
-                      M_freeTensorSpec);
+  TensorSpecPtr cSpec(M_newTensorSpec(cShape, 3, M_FLOAT32, "example"));
   EXPECT_EQ(TensorSpec({kDynamic, int64_t{2}, kDynamic}, DType::f32),
             capiToTensorSpec(cSpec.get()));
 }
 
 TEST(APIBridge, capiToTensorSpecUndefinedRank) {
   TensorSpecPtr cSpec(
-      M_newTensorSpec(nullptr, M_getDynamicRankValue(), M_FLOAT32, "example"),
-      M_freeTensorSpec);
+      M_newTensorSpec(nullptr, M_getDynamicRankValue(), M_FLOAT32, "example"));
   ASSERT_NE(nullptr, cSpec);
   EXPECT_EQ(TensorSpec(kDynamicallyRanked, DType::f32),
             capiToTensorSpec(cSpec.get()));
