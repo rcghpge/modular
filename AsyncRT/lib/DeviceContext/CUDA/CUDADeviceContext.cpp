@@ -13,7 +13,6 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "CUDADriver.h"
-#include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -539,16 +538,8 @@ CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                 bufferCacheBase, bufferCacheSize,
                                 device.allocationAlignment())),
       driver_(device.cudaDriver()), context_(context), stream_(stream) {
-  ErrorOr<Config> configOr = Config::open();
-  if (!configOr.isError()) {
-    ErrorOr<bool> envVal =
-        configOr->getValueAsBool("device-context.log_load_function", false);
-    if (!envVal.isError())
-      logLoadFunction_ = *envVal;
-    envVal = configOr->getValueAsBool("device-context.log_verbose", false);
-    if (!envVal.isError())
-      logVerbose_ = *envVal;
-  }
+  logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
+  logVerbose_ = DeviceContext::configAsBool("log_verbose", false);
 }
 
 CUDADeviceContext::~CUDADeviceContext() {

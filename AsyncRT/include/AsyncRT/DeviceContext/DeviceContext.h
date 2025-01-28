@@ -12,6 +12,7 @@
 #define ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
 
 #include "Support/Buffer.h"
+#include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
@@ -367,6 +368,11 @@ public:
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0,
                                           size_t bufferCacheSize = 0);
 
+  // Access configuration flags from the "device-context" section.
+  static bool configAsBool(StringRef key, bool defaultValue);
+  static int64_t configAsInt(StringRef key, int64_t defaultValue);
+  static StringRef configAsString(StringRef key, StringRef defaultValue);
+
 protected:
   DeviceContext(const Device &device, std::unique_ptr<BufferCache> bufferCache);
 
@@ -392,6 +398,8 @@ private:
   virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                                   SyncMode mode) const = 0;
   virtual ErrorOrSuccess memFree(void *ptr) const = 0;
+
+  static ErrorOr<Config> &getConfig();
 };
 
 // TODO: Delete any that seem too CUDA-specific

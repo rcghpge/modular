@@ -410,6 +410,44 @@ int Device::numberOfDevices(StringRef api) {
   return (*device)->deviceCount();
 }
 
+bool DeviceContext::configAsBool(StringRef key, bool defaultValue) {
+  ErrorOr<Config> &config = getConfig();
+  if (config.isError())
+    return defaultValue;
+
+  ErrorOr<bool> configValue = config->getValueAsBool(
+      (llvm::Twine("device-context.") + key).str(), defaultValue);
+  if (configValue.isError())
+    return defaultValue;
+  return *configValue;
+}
+
+int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue) {
+  ErrorOr<Config> &config = getConfig();
+  if (config.isError())
+    return defaultValue;
+
+  StringRef s = config->getValue((llvm::Twine("device-context.") + key).str());
+  long long result;
+  if (!llvm::getAsSignedInteger(s, 10, result))
+    return defaultValue;
+  return result;
+}
+
+StringRef DeviceContext::configAsString(StringRef key, StringRef defaultValue) {
+  ErrorOr<Config> &config = getConfig();
+  if (config.isError())
+    return defaultValue;
+
+  return config->getValueOr((llvm::Twine("device-context.") + key).str(),
+                            defaultValue);
+}
+
+ErrorOr<Config> &DeviceContext::getConfig() {
+  static ErrorOr<Config> configuration = Config::open();
+  return configuration;
+}
+
 const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
     ErrorOr<DeviceRef> device = Device::create(gpuAPI);
