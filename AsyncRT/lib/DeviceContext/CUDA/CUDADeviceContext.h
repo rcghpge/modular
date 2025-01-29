@@ -229,8 +229,8 @@ private:
 class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(const CUDADevice &device, CUcontext context,
-                    CUstream stream, void *bufferCacheBase,
-                    size_t bufferCacheSize);
+                    CUstream stream, size_t cacheChunkSize,
+                    size_t maxCacheSize);
   ~CUDADeviceContext() override;
 
   // Host memory allocation.

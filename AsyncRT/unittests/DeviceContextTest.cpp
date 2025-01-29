@@ -375,129 +375,161 @@ TEST(DeviceContextTest, Timers) {
 }
 
 TEST(DeviceContextTest, BufferCache) {
-  char *cacheBase = reinterpret_cast<char *>(1024);
-  size_t cacheSize = 4096;
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
+  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
+  DeviceContextRef ctx = std::move(errCtx.get());
+  ASSERT_TRUE(ctx);
+
+  size_t chunkSize = 1024;
+  size_t maxCacheSize = 4 * chunkSize;
   size_t allocAlignment = 32;
 
-  BufferCache bufCache(cacheBase, cacheSize, allocAlignment);
+  BufferCache bufCache(*ctx, chunkSize, maxCacheSize, allocAlignment);
+  ASSIGN_NO_ERR(void *, base, bufCache.allocate(1, DeviceContext::SYNC));
+  char *cacheBase = static_cast<char *>(base);
+  EXPECT_NO_ERR(bufCache.free(cacheBase));
 
-  // Allocation patterns to hit different kinds of allocation blocks and merges.
-  // These have been verified to have full coverage by instrumenting various
-  // branches.
-  EXPECT_EQ(nullptr, bufCache.allocate(cacheSize + 1));
-  EXPECT_FALSE(bufCache.free(nullptr));
-  EXPECT_FALSE(bufCache.free(cacheBase + 1));
-  void *a = bufCache.allocate(15);
+  // Allocation patterns to hit different kinds of allocation blocks and
+  // merges. These have been verified to have full coverage by instrumenting
+  // various branches.
+  EXPECT_NO_ERR(bufCache.free(nullptr));
+  ASSIGN_NO_ERR(void *, a, bufCache.allocate(15, DeviceContext::SYNC));
   EXPECT_EQ(a, cacheBase);
-  void *b = bufCache.allocate(15);
+  ASSIGN_NO_ERR(void *, b, bufCache.allocate(15, DeviceContext::SYNC));
   EXPECT_EQ(b, cacheBase + allocAlignment);
-  EXPECT_TRUE(bufCache.free(a));
-  void *c = bufCache.allocate(32);
+  EXPECT_NO_ERR(bufCache.free(a));
+  ASSIGN_NO_ERR(void *, c, bufCache.allocate(32, DeviceContext::SYNC));
   EXPECT_EQ(c, cacheBase);
-  EXPECT_TRUE(bufCache.free(c));
-  void *d = bufCache.allocate(33);
+  EXPECT_NO_ERR(bufCache.free(c));
+  ASSIGN_NO_ERR(void *, d, bufCache.allocate(33, DeviceContext::SYNC));
   EXPECT_EQ(d, cacheBase + 2 * allocAlignment);
-  void *e = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, e, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(e, cacheBase);
-  EXPECT_TRUE(bufCache.free(b));
-  void *f = bufCache.allocate(32);
+  EXPECT_NO_ERR(bufCache.free(b));
+  ASSIGN_NO_ERR(void *, f, bufCache.allocate(32, DeviceContext::SYNC));
   EXPECT_EQ(f, cacheBase + allocAlignment);
-  EXPECT_TRUE(bufCache.free(f));
-  EXPECT_TRUE(bufCache.free(e));
-  void *g = bufCache.allocate(64);
+  EXPECT_NO_ERR(bufCache.free(f));
+  EXPECT_NO_ERR(bufCache.free(e));
+  ASSIGN_NO_ERR(void *, g, bufCache.allocate(64, DeviceContext::SYNC));
   EXPECT_EQ(g, cacheBase);
-  void *h = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, h, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(h, cacheBase + 4 * allocAlignment);
-  void *i = bufCache.allocate(150);
+  ASSIGN_NO_ERR(void *, i, bufCache.allocate(150, DeviceContext::SYNC));
   EXPECT_EQ(i, cacheBase + 5 * allocAlignment);
-  EXPECT_TRUE(bufCache.free(g));
-  EXPECT_TRUE(bufCache.free(h));
-  void *j = bufCache.allocate(2);
+  EXPECT_NO_ERR(bufCache.free(g));
+  EXPECT_NO_ERR(bufCache.free(h));
+  ASSIGN_NO_ERR(void *, j, bufCache.allocate(2, DeviceContext::SYNC));
   EXPECT_EQ(j, cacheBase + 4 * allocAlignment);
-  EXPECT_TRUE(bufCache.free(j));
-  EXPECT_TRUE(bufCache.free(d));
-  void *k = bufCache.allocate(150);
+  EXPECT_NO_ERR(bufCache.free(j));
+  EXPECT_NO_ERR(bufCache.free(d));
+  ASSIGN_NO_ERR(void *, k, bufCache.allocate(150, DeviceContext::SYNC));
   EXPECT_EQ(k, cacheBase);
-  EXPECT_TRUE(bufCache.free(i));
-  EXPECT_TRUE(bufCache.free(k));
+  EXPECT_NO_ERR(bufCache.free(i));
+  EXPECT_NO_ERR(bufCache.free(k));
   /* ----- */
-  void *l = bufCache.allocate(cacheSize);
+  ASSIGN_NO_ERR(void *, l, bufCache.allocate(chunkSize, DeviceContext::SYNC));
   EXPECT_EQ(l, cacheBase);
-  EXPECT_TRUE(bufCache.free(l));
-  void *m = bufCache.allocate(1);
+  EXPECT_NO_ERR(bufCache.free(l));
+  ASSIGN_NO_ERR(void *, m, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(m, cacheBase);
-  void *n = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, n, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(n, cacheBase + allocAlignment);
-  void *o = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, o, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(o, cacheBase + 2 * allocAlignment);
-  void *p = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, p, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(p, cacheBase + 3 * allocAlignment);
-  void *q = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, q, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(q, cacheBase + 4 * allocAlignment);
-  EXPECT_TRUE(bufCache.free(o));
-  EXPECT_TRUE(bufCache.free(p));
-  EXPECT_TRUE(bufCache.free(n));
-  EXPECT_TRUE(bufCache.free(m));
-  EXPECT_TRUE(bufCache.free(q));
+  EXPECT_NO_ERR(bufCache.free(o));
+  EXPECT_NO_ERR(bufCache.free(p));
+  EXPECT_NO_ERR(bufCache.free(n));
+  EXPECT_NO_ERR(bufCache.free(m));
+  EXPECT_NO_ERR(bufCache.free(q));
   /* ----- */
-  void *r = bufCache.allocate(allocAlignment);
+  ASSIGN_NO_ERR(void *, r,
+                bufCache.allocate(allocAlignment, DeviceContext::SYNC));
   EXPECT_EQ(r, cacheBase);
-  void *s = bufCache.allocate(allocAlignment);
+  ASSIGN_NO_ERR(void *, s,
+                bufCache.allocate(allocAlignment, DeviceContext::SYNC));
   EXPECT_EQ(s, cacheBase + allocAlignment);
-  void *t = bufCache.allocate(2 * allocAlignment);
+  ASSIGN_NO_ERR(void *, t,
+                bufCache.allocate(2 * allocAlignment, DeviceContext::SYNC));
   EXPECT_EQ(t, cacheBase + 2 * allocAlignment);
-  void *u = bufCache.allocate(allocAlignment);
+  ASSIGN_NO_ERR(void *, u,
+                bufCache.allocate(allocAlignment, DeviceContext::SYNC));
   EXPECT_EQ(u, cacheBase + 4 * allocAlignment);
-  EXPECT_TRUE(bufCache.free(r));
-  EXPECT_TRUE(bufCache.free(t));
-  void *v = bufCache.allocate(2 * allocAlignment);
-  EXPECT_TRUE(bufCache.free(v));
-  EXPECT_TRUE(bufCache.free(u));
-  EXPECT_TRUE(bufCache.free(s));
+  EXPECT_NO_ERR(bufCache.free(r));
+  EXPECT_NO_ERR(bufCache.free(t));
+  ASSIGN_NO_ERR(void *, v,
+                bufCache.allocate(2 * allocAlignment, DeviceContext::SYNC));
+  EXPECT_NO_ERR(bufCache.free(v));
+  EXPECT_NO_ERR(bufCache.free(u));
+  EXPECT_NO_ERR(bufCache.free(s));
   /* ----- */
-  void *x = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, x, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(x, cacheBase);
-  void *y = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, y, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(y, cacheBase + allocAlignment);
-  void *z = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, z, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(z, cacheBase + 2 * allocAlignment);
-  void *aa = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, aa, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(aa, cacheBase + 3 * allocAlignment);
-  void *ab = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ab, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ab, cacheBase + 4 * allocAlignment);
-  void *ac = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ac, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ac, cacheBase + 5 * allocAlignment);
-  EXPECT_TRUE(bufCache.free(ac));
-  EXPECT_TRUE(bufCache.free(aa));
-  EXPECT_TRUE(bufCache.free(y));
-  EXPECT_TRUE(bufCache.free(z));
-  EXPECT_TRUE(bufCache.free(x));
-  EXPECT_TRUE(bufCache.free(ab));
+  EXPECT_NO_ERR(bufCache.free(ac));
+  EXPECT_NO_ERR(bufCache.free(aa));
+  EXPECT_NO_ERR(bufCache.free(y));
+  EXPECT_NO_ERR(bufCache.free(z));
+  EXPECT_NO_ERR(bufCache.free(x));
+  EXPECT_NO_ERR(bufCache.free(ab));
   /* ----- */
-  void *ad = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ad, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ad, cacheBase);
-  void *ae = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ae, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ae, cacheBase + allocAlignment);
-  void *af = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, af, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(af, cacheBase + 2 * allocAlignment);
-  void *ag = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ag, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ag, cacheBase + 3 * allocAlignment);
-  void *ah = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ah, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ah, cacheBase + 4 * allocAlignment);
-  void *ai = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ai, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ai, cacheBase + 5 * allocAlignment);
-  void *aj = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, aj, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(aj, cacheBase + 6 * allocAlignment);
-  void *ak = bufCache.allocate(1);
+  ASSIGN_NO_ERR(void *, ak, bufCache.allocate(1, DeviceContext::SYNC));
   EXPECT_EQ(ak, cacheBase + 7 * allocAlignment);
-  EXPECT_TRUE(bufCache.free(ak));
-  EXPECT_TRUE(bufCache.free(ag));
-  EXPECT_TRUE(bufCache.free(ai));
-  EXPECT_TRUE(bufCache.free(ae));
-  EXPECT_TRUE(bufCache.free(af));
-  EXPECT_TRUE(bufCache.free(aj));
-  EXPECT_TRUE(bufCache.free(ah));
-  EXPECT_TRUE(bufCache.free(ad));
+  EXPECT_NO_ERR(bufCache.free(ak));
+  EXPECT_NO_ERR(bufCache.free(ag));
+  EXPECT_NO_ERR(bufCache.free(ai));
+  EXPECT_NO_ERR(bufCache.free(ae));
+  EXPECT_NO_ERR(bufCache.free(af));
+  EXPECT_NO_ERR(bufCache.free(aj));
+  EXPECT_NO_ERR(bufCache.free(ah));
+  EXPECT_NO_ERR(bufCache.free(ad));
+
+  ASSIGN_NO_ERR(void *, al,
+                bufCache.allocate(chunkSize - 64, DeviceContext::SYNC));
+  EXPECT_EQ(al, cacheBase);
+  ASSIGN_NO_ERR(void *, am,
+                bufCache.allocate(chunkSize - 64, DeviceContext::SYNC));
+  EXPECT_NE(am, nullptr);
+  ASSIGN_NO_ERR(void *, an,
+                bufCache.allocate(chunkSize - 64, DeviceContext::SYNC));
+  EXPECT_NE(an, nullptr);
+  ASSIGN_NO_ERR(void *, ao,
+                bufCache.allocate(chunkSize - 64, DeviceContext::SYNC));
+  EXPECT_NE(ao, nullptr);
+  ASSIGN_NO_ERR(void *, ap,
+                bufCache.allocate(chunkSize - 64, DeviceContext::SYNC));
+  EXPECT_NE(ap, nullptr);
+  EXPECT_NO_ERR(bufCache.free(al));
+  EXPECT_NO_ERR(bufCache.free(am));
+  EXPECT_NO_ERR(bufCache.free(an));
+  EXPECT_NO_ERR(bufCache.free(ao));
+  EXPECT_FALSE(bufCache.free(ap));
 
   bufCache.clear();
 }

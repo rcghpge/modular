@@ -18,7 +18,6 @@
 #include "llvm/ADT/Twine.h"
 
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -128,7 +127,7 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 //
 CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
     : DeviceContext(device, std::make_unique<BufferCache>(
-                                nullptr, 0, device.allocationAlignment())) {}
+                                *this, 0, 0, device.allocationAlignment())) {}
 
 ErrorOr<void *> CpuDeviceContext::mallocHost(size_t size) const {
   void *ptr = TCMallocGlobals::tc_new(size, 1);

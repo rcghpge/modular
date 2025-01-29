@@ -11,7 +11,8 @@
 #ifndef ASYNCRT_LIB_DEVICECONTEXT_BUFFERCACHE_H
 #define ASYNCRT_LIB_DEVICECONTEXT_BUFFERCACHE_H
 
-#include <cstddef>
+#include <AsyncRT/DeviceContext/DeviceContext.h>
+
 #include <cstdint>
 #include <mutex>
 
@@ -19,6 +20,7 @@ namespace M::AsyncRT {
 
 class BufferCache {
 public:
+  class Chunk;
   struct Desc;
 
   class DescMap {
@@ -26,7 +28,7 @@ public:
     DescMap(int map_size_log2);
     ~DescMap();
 
-    void add(Desc *buf);
+    void add(Desc *desc);
     Desc *remove(void *ptr);
 
   private:
@@ -37,37 +39,64 @@ public:
     Desc **buckets_;
   };
 
-  BufferCache(void *base, size_t size, size_t alignment);
+  BufferCache(const DeviceContext &ctx, size_t chunkSize, size_t maxCacheSize,
+              size_t alignment);
   ~BufferCache();
 
   void clear();
 
-  void *allocate(size_t size);
-  bool free(void *ptr);
+  // Allocate and free memory by using the `BufferCache`. If the allocation
+  // cannot be serviced by the `BufferCache` due to allocation size or cache
+  // capacity, then the allocation request gets transparently forwarded to the
+  // `DeviceContext`.
+  ErrorOr<void *> allocate(size_t size, DeviceContext::SyncMode mode);
+  ErrorOrSuccess free(void *buf);
 
 private:
-  void self_check();
+  friend class Chunk;
+
+  void selfCheck();
+
+  void addToFreeList(Desc *desc);
+  void removeFromFreeList(Desc *desc);
+
+  bool allocateChunk();
+  void *allocate_locked(size_t size);
+  bool free_locked(void *buf);
 
   // Avoid malloc under lock.
   Desc *popDesc();
   void pushDesc(Desc *desc);
 
-  [[maybe_unused]] const void *const base_;
-  const size_t size_;
+  const DeviceContext &ctx_;
+  const size_t chunkSize_;
+  const size_t maxCacheSize_;
 
-  const size_t alignment_offset_;
-  const size_t alignment_mask_;
+  const size_t alignmentOffset_;
+  const size_t alignmentMask_;
 
   std::mutex mu_;
-  Desc *buffers_ = nullptr;      // Ordered list of all memory regions.
-  Desc *free_buffers_ = nullptr; // List of unallocated memory regions.
+  // List of all chunks allocated from the driver and their total size.
+  size_t cacheSize_ = 0;
+  Chunk *chunks_ = nullptr;
 
-  Desc *unused_descs_ = nullptr; // Free list of descriptors to avoid malloc.
-  DescMap allocated_map;
+  // List of unallocated memory regions.
+  Desc *freeBuffers_ = nullptr;
 
-  // For logging
-  size_t free_size_ = 0;
-  size_t free_count_ = 0;
+  // Free list of descriptors to avoid malloc under lock.
+  Desc *unusedDescs_ = nullptr;
+
+  // Map of allocated ptr->Desc*: Since the memory handled by the BufferCache is
+  // not accessible by the CPU we cannot store meta-data colocated with the
+  // managed memory.
+  DescMap allocatedMap_;
+
+  // For logging and debugging.
+  bool doSelfCheck_ = false;
+  bool doLog_ = false;
+  size_t freeSize_ = 0;
+  size_t freeCount_ = 0;
+  size_t chunkCount_ = 0;
 };
 
 } // namespace M::AsyncRT

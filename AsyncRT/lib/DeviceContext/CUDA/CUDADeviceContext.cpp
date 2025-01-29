@@ -17,6 +17,7 @@
 #include "Support/PlatformUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdint>
@@ -94,6 +95,27 @@ private:
 #define RAISE_ERROR(msg)                                                       \
   do {                                                                         \
     return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+  } while (0)
+
+#define ASSIGN_OR_RAISE(var, call)                                             \
+  auto _err_or_var_ = call;                                                    \
+  if (_err_or_var_.isError()) {                                                \
+    return formatError(__FILE__, __LINE__, __FUNCTION__,                       \
+                       _err_or_var_.getError());                               \
+  }                                                                            \
+  var = _err_or_var_.takeValue()
+
+#define ERR_CHECK(err_call)                                                    \
+  do {                                                                         \
+    auto err_result = (err_call);                                              \
+    if (err_result.isError()) {                                                \
+      M::Error err = formatError(__FILE__, __LINE__, __FUNCTION__,             \
+                                 err_result.getError());                       \
+      /* We are not in a context where we can return an Error here. So we   */ \
+      /* print the message and abort().                                     */ \
+      llvm::errs() << err << "\n";                                             \
+      abort();                                                                 \
+    }                                                                          \
   } while (0)
 
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
@@ -273,13 +295,30 @@ CUDADevice::createContext(size_t bufferCacheSize) const {
   CUstream stream;
   CUDA_CHECK_ERR(this->cudaDriver().StreamCreate(&stream, 0));
 
-  CUdeviceptr cache_base = nullptr;
+  size_t cacheChunkSize = 0;
+  size_t maxCacheSize = 0;
   if (bufferCacheSize != 0) {
-    CUDA_CHECK_ERR(this->cudaDriver().MemAlloc(&cache_base, bufferCacheSize));
+    constexpr size_t KB = 1024;
+    DeviceContext::MemInfo mem_info;
+    CUDA_CHECK_ERR(
+        this->cudaDriver().GetMemInfo(&mem_info.free, &mem_info.total));
+    // Make the buffer cache disabled by setting percentages to zero.
+    // Limit to 90% (default) of available memory.
+    int64_t cache_percent =
+        DeviceContext::configAsInt("buffer_cache_size_percent", 0);
+    maxCacheSize = std::min(
+        bufferCacheSize,
+        llvm::alignToPowerOf2((mem_info.free * cache_percent) / 100, 256 * KB));
+    // Allocate chunks of 2% (default) of maximum cache size.
+    int64_t chunk_percent =
+        DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
+    cacheChunkSize = std::min(
+        maxCacheSize,
+        llvm::alignToPowerOf2((maxCacheSize * chunk_percent) / 100, 256 * KB));
   }
 
-  return CUDADeviceContextRef::create(*this, *context, stream, cache_base,
-                                      bufferCacheSize);
+  return CUDADeviceContextRef::create(*this, *context, stream, cacheChunkSize,
+                                      maxCacheSize);
 }
 
 int CUDADevice::deviceCount() const {
@@ -532,10 +571,9 @@ const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
 // ===== CUDADeviceContext ===== //
 CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
                                      CUcontext context, CUstream stream,
-                                     void *bufferCacheBase,
-                                     size_t bufferCacheSize)
+                                     size_t cacheChunkSize, size_t maxCacheSize)
     : DeviceContext(device, std::make_unique<BufferCache>(
-                                bufferCacheBase, bufferCacheSize,
+                                *this, cacheChunkSize, maxCacheSize,
                                 device.allocationAlignment())),
       driver_(device.cudaDriver()), context_(context), stream_(stream) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
@@ -552,6 +590,8 @@ CUDADeviceContext::~CUDADeviceContext() {
     funcMap_.clear();
     CUDA_CHECK(driver_.StreamSynchronize(stream_));
     bufferCache().clear();
+    // Synchronize to ensure that all of the chunks have been freed.
+    CUDA_CHECK(driver_.StreamSynchronize(stream_));
     // We do not need to synchronize on possible work queued on this stream.
     // Resources will be released automatically once work has been completed.
     CUDA_CHECK(driver_.StreamDestroy(stream_));
@@ -573,7 +613,6 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
 ErrorOrSuccess CUDADeviceContext::memFree(void *ptr) const {
   CUDA_WITH_CTX(*this);
   CUDA_CHECK_ERR(driver_.MemFreeAsync(ptr, cudaStream()));
-
   return success();
 }
 

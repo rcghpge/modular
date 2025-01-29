@@ -166,9 +166,8 @@ DeviceBuffer::~DeviceBuffer() {
     // Parent owns the memory.
     return;
   }
-  if (!context().bufferCache().free(ptr_)) {
-    ERR_CHECK(context().memFree(ptr_));
-  }
+  // Release the memory (either to buffer cache or using memFree).
+  ERR_CHECK(context().bufferCache().free(ptr_));
 }
 const DeviceContext &DeviceBuffer::context() const { return *context_; }
 
@@ -349,7 +348,9 @@ DeviceContext::DeviceContext(const Device &device,
   assert(bufferCache_ != nullptr);
 }
 
-DeviceContext::~DeviceContext() {}
+DeviceContext::~DeviceContext() {
+  // Key function for vtable generation.
+}
 
 const Device &DeviceContext::device() const { return *device_; }
 
@@ -374,11 +375,11 @@ DeviceBufferRef DeviceContext::createBufferOwning(void *ptr, size_t byteSize,
 ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
                                                     SyncMode mode) const {
   assert(byteSize != 0);
-  void *ptr = bufferCache().allocate(byteSize);
-  if (ptr == nullptr) {
-    ERR_CHECK_ERR(memAlloc(&ptr, byteSize, mode));
+  ErrorOr<void *> err_ptr = bufferCache().allocate(byteSize, mode);
+  if (err_ptr.isError()) {
+    return err_ptr.takeError();
   }
-  return DeviceBufferRef::take(new DeviceBuffer(*this, ptr, byteSize));
+  return DeviceBufferRef::take(new DeviceBuffer(*this, *err_ptr, byteSize));
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
@@ -428,8 +429,8 @@ int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue) {
     return defaultValue;
 
   StringRef s = config->getValue((llvm::Twine("device-context.") + key).str());
-  long long result;
-  if (!llvm::getAsSignedInteger(s, 10, result))
+  long long result = defaultValue;
+  if (s.getAsInteger(10, result))
     return defaultValue;
   return result;
 }

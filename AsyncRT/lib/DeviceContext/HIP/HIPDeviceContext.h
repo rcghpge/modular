@@ -208,8 +208,8 @@ private:
 class HIPDeviceContext : public DeviceContext {
 public:
   HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                   hipStream_t stream, void *bufferCacheBase,
-                   size_t bufferCacheSize);
+                   hipStream_t stream, size_t cacheChunkSize,
+                   size_t maxCacheSize);
   ~HIPDeviceContext() override;
 
   // Host memory allocation.

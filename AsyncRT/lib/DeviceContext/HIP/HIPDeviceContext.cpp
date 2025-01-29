@@ -15,6 +15,7 @@
 #include "HIPDriver.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <cstdint>
 #include <iostream>
@@ -60,8 +61,8 @@ namespace M::AsyncRT {
 // debugging low-level implementation.
 static constexpr bool detailed_err_msg = false;
 
-// TODO(iposva) : Switch error handling to using `std::source_location` once we
-// are using C++ 20.
+// TODO(iposva) : Switch error handling to using `std::source_location` once
+// we are using C++ 20.
 static Error formatError(const char *file, int line, const char *func,
                          const llvm::Twine &msg) {
   if (detailed_err_msg) {
@@ -198,13 +199,30 @@ HIPDevice::createContext(size_t bufferCacheSize) const {
   hipStream_t stream;
   HIP_CHECK_ERR(this->hipDriver().StreamCreate(&stream, 0));
 
-  hipDeviceptr_t cache_base = nullptr;
+  size_t cacheChunkSize = 0;
+  size_t maxCacheSize = 0;
   if (bufferCacheSize != 0) {
-    HIP_CHECK_ERR(this->hipDriver().MemAlloc(&cache_base, bufferCacheSize));
+    constexpr size_t KB = 1024;
+    DeviceContext::MemInfo mem_info;
+    HIP_CHECK_ERR(
+        this->hipDriver().GetMemInfo(&mem_info.free, &mem_info.total));
+    // Make the buffer cache disabled by setting percentages to zero.
+    // Limit to 90% (default) of available memory.
+    int64_t cache_percent =
+        DeviceContext::configAsInt("buffer_cache_size_percent", 0);
+    maxCacheSize = std::min(
+        bufferCacheSize,
+        llvm::alignToPowerOf2((mem_info.free * cache_percent) / 100, 256 * KB));
+    // Allocate chunks of 2% (default) of available memory.
+    int64_t chunk_percent =
+        DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
+    cacheChunkSize = std::min(
+        maxCacheSize,
+        llvm::alignToPowerOf2((maxCacheSize * chunk_percent) / 100, 256 * KB));
   }
 
-  return HIPDeviceContextRef::create(*this, context, stream, cache_base,
-                                     bufferCacheSize);
+  return HIPDeviceContextRef::create(*this, context, stream, cacheChunkSize,
+                                     maxCacheSize);
 }
 
 int HIPDevice::deviceCount() const {
@@ -453,10 +471,10 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 
 // ===== HIPDeviceContext ===== //
 HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                                   hipStream_t stream, void *bufferCacheBase,
-                                   size_t bufferCacheSize)
+                                   hipStream_t stream, size_t cacheChunkSize,
+                                   size_t maxCacheSize)
     : DeviceContext(device, std::make_unique<BufferCache>(
-                                bufferCacheBase, bufferCacheSize,
+                                *this, cacheChunkSize, maxCacheSize,
                                 device.allocationAlignment())),
       driver_(device.hipDriver()), context_(context), stream_(stream) {}
 

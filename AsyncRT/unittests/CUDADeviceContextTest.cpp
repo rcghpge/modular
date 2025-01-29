@@ -111,8 +111,10 @@ protected:
 };
 
 TEST_F(CUDADeviceContextTest, DeviceExec) {
-
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cudaAPI);
+  // Disable the buffer cache to avoid reference counts from the memory blocks
+  // confusing our accounting here.
+  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(
+      Device::cudaAPI, /* id = */ 0, /* bufferCacheSize = */ 0);
   ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
   DeviceContextRef ctx = std::move(errCtx.get());
   ASSERT_TRUE(ctx);

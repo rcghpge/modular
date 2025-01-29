@@ -55,7 +55,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuDeviceCanAccessPeer);
 
   GET_FUNC(cuDevicePrimaryCtxRetain);
-  GET_FUNC(cuDevicePrimaryCtxRelease);
+  GET_FUNC(cuDevicePrimaryCtxRelease_v2);
 
   GET_FUNC(cuCtxCreate_v2);
   GET_FUNC(cuCtxDestroy);
@@ -75,7 +75,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemAllocAsync);
   GET_FUNC(cuMemFreeAsync);
   GET_FUNC(cuMemAlloc_v2);
-  GET_FUNC(cuMemFree);
+  GET_FUNC(cuMemFree_v2);
 
   GET_FUNC(cuMemcpyHtoDAsync_v2);
   GET_FUNC(cuMemcpyDtoHAsync_v2);

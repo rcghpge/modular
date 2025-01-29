@@ -8,15 +8,30 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/lib/DeviceContext/BufferCache.h"
+#include "BufferCache.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 #include <mutex>
 
 namespace M::AsyncRT {
 
-static constexpr bool do_log = false;
-static constexpr bool do_self_check = false;
+class BufferCache::Chunk {
+public:
+  Chunk(BufferCache &cache, void *base, size_t size);
+  ~Chunk() = default;
+
+  Desc *splitFreeDesc(Desc *freeDesc, size_t size);
+
+private:
+  friend class BufferCache;
+
+  BufferCache &cache_;
+  void *base_ = nullptr;
+  size_t size_ = 0;
+  Chunk *next_ = nullptr;
+  Desc *descs_ = nullptr; // Ordered list of all memory regions in this chunk.
+};
 
 struct BufferCache::Desc {
   Desc() { reset(); }
@@ -24,6 +39,7 @@ struct BufferCache::Desc {
   void reset() {
     ptr_ = nullptr;
     size_ = 0;
+    chunk_ = nullptr;
     next_ = nullptr;
     prev_ = nullptr;
     next_free_ = nullptr;
@@ -33,6 +49,8 @@ struct BufferCache::Desc {
 
   char *ptr_;
   size_t size_;
+
+  Chunk *chunk_;
 
   Desc *next_;
   Desc *prev_;
@@ -65,15 +83,15 @@ uint32_t BufferCache::DescMap::hash(void *ptr) {
   return static_cast<uint32_t>(hash_val);
 }
 
-void BufferCache::DescMap::add(Desc *buf) {
-  assert(!buf->free_);
-  assert(buf->next_free_ == nullptr);
-  assert(buf->prev_free_ == nullptr);
+void BufferCache::DescMap::add(Desc *desc) {
+  assert(!desc->free_);
+  assert(desc->next_free_ == nullptr);
+  assert(desc->prev_free_ == nullptr);
 
-  uint32_t h = hash(buf->ptr_);
+  uint32_t h = hash(desc->ptr_);
   Desc **bucket = &buckets_[h & bucket_mask_];
-  buf->next_free_ = *bucket;
-  *bucket = buf;
+  desc->next_free_ = *bucket;
+  *bucket = desc;
 }
 
 BufferCache::Desc *BufferCache::DescMap::remove(void *ptr) {
@@ -91,241 +109,430 @@ BufferCache::Desc *BufferCache::DescMap::remove(void *ptr) {
     } else {
       prev->next_free_ = result->next_free_;
     }
+    result->next_free_ = nullptr;
   }
   return result;
 }
 
-BufferCache::BufferCache(void *base, size_t size, size_t alignment)
-    : base_(base), size_(size), alignment_offset_(alignment - 1),
-      alignment_mask_(~(alignment - 1)), allocated_map(10) {
-  if (size == 0)
-    return;
+BufferCache::Chunk::Chunk(BufferCache &cache, void *base, size_t size)
+    : cache_(cache), base_(base), size_(size) {
+  descs_ = cache.popDesc();
+  descs_->reset();
+  descs_->ptr_ = static_cast<char *>(base_);
+  descs_->size_ = size_;
+  descs_->chunk_ = this;
 
-  if (do_log) {
-    llvm::errs() << "##(" << this << ")##: base = " << base
-                 << ", size = " << size << "\n";
+  cache_.addToFreeList(descs_);
+}
+
+BufferCache::Desc *BufferCache::Chunk::splitFreeDesc(Desc *freeDesc,
+                                                     size_t size) {
+  // Split the descriptor. Keep the current freeDesc in the free list.
+  assert(freeDesc->chunk_ == this);
+  assert(freeDesc->free_);
+  // Get a new descriptor for the result. And split of the first part of the
+  // freeDesc to the result.
+  Desc *result = cache_.popDesc();
+  result->chunk_ = this;
+  result->ptr_ = freeDesc->ptr_;
+  result->size_ = size;
+  freeDesc->ptr_ = freeDesc->ptr_ + size;
+  freeDesc->size_ = freeDesc->size_ - size;
+  // Insert into buffer list.
+  result->next_ = freeDesc;
+  result->prev_ = freeDesc->prev_;
+  if (descs_ == freeDesc) {
+    assert(freeDesc->prev_ == nullptr);
+    descs_ = result;
+  } else {
+    freeDesc->prev_->next_ = result;
   }
+  freeDesc->prev_ = result;
+  return result;
+}
 
-  buffers_ = new Desc();
-  buffers_->ptr_ = static_cast<char *>(base);
-  buffers_->size_ = size;
-  buffers_->free_ = true;
-
-  free_buffers_ = buffers_;
-  free_size_ = size;
-  free_count_ = 1;
+BufferCache::BufferCache(const DeviceContext &ctx, size_t chunkSize,
+                         size_t maxCacheSize, size_t alignment)
+    : ctx_(ctx), chunkSize_(chunkSize), maxCacheSize_(maxCacheSize),
+      alignmentOffset_(alignment - 1), alignmentMask_(~(alignment - 1)),
+      allocatedMap_(chunkSize == 0 ? 0 : 10) {
+  // chunks_ will be lazily initialized on the first allocation request.
+  doLog_ = DeviceContext::configAsBool("buffer_cache_log", false);
+  doSelfCheck_ = DeviceContext::configAsBool("buffer_cache_self_check", false);
+  if (doLog_ && (chunkSize_ != 0)) {
+    llvm::errs() << "##(" << this
+                 << ")##: buffer_cache(chunk_size: " << chunkSize_
+                 << "; max_cache_size: " << maxCacheSize_ << ")\n";
+  }
 }
 
 BufferCache::~BufferCache() {
-  if (do_log && (size_ != 0)) {
+  if (doLog_ && (chunkSize_ != 0)) {
     llvm::errs() << "##(" << this << ")##: destructor\n";
   }
-  assert(buffers_ == nullptr);
-  assert(free_buffers_ == nullptr);
-  assert(unused_descs_ == nullptr);
+  assert(chunks_ == nullptr);
+  assert(freeBuffers_ == nullptr);
+  assert(unusedDescs_ == nullptr);
 }
 
-void BufferCache::self_check() {
-  if (!do_self_check || size_ == 0) {
+void BufferCache::addToFreeList(Desc *desc) {
+  assert(!desc->free_);
+  assert(desc->next_free_ == nullptr);
+  assert(desc->prev_free_ == nullptr);
+  assert(desc->chunk_ != nullptr);
+
+  desc->free_ = true;
+  desc->next_free_ = freeBuffers_;
+  if (freeBuffers_ != nullptr) {
+    freeBuffers_->prev_free_ = desc;
+  }
+  freeBuffers_ = desc;
+
+  freeSize_ += desc->size_;
+  freeCount_++;
+}
+
+void BufferCache::removeFromFreeList(Desc *desc) {
+  assert(desc->free_);
+  assert(desc->chunk_ != nullptr);
+
+  if (desc == freeBuffers_) {
+    assert(desc->prev_free_ == nullptr);
+    freeBuffers_ = desc->next_free_;
+    if (freeBuffers_ != nullptr) {
+      freeBuffers_->prev_free_ = nullptr;
+    }
+  } else {
+    assert(desc->prev_free_ != nullptr);
+    desc->prev_free_->next_free_ = desc->next_free_;
+    if (desc->next_free_ != nullptr) {
+      desc->next_free_->prev_free_ = desc->prev_free_;
+    }
+  }
+  desc->next_free_ = nullptr;
+  desc->prev_free_ = nullptr;
+}
+
+bool BufferCache::allocateChunk() {
+  const size_t allocSize =
+      std::min(chunkSize_, std::max(0UL, maxCacheSize_ - cacheSize_));
+  const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
+  if (allocSize < minChunkSize) {
+    return false;
+  }
+  void *ptr = nullptr;
+  ErrorOrSuccess err = ctx_.memAlloc(&ptr, allocSize, DeviceContext::SYNC);
+  if (err.isError()) {
+    if (doLog_) {
+      llvm::errs() << "##(" << this << ")## allocate_chunk(" << allocSize
+                   << ") - failed with " << err.getError() << "\n";
+    }
+    // Keep chunks_ unmodified.
+    return false;
+  }
+  Chunk *chunk = new Chunk(*this, ptr, allocSize);
+  chunk->next_ = chunks_;
+  chunks_ = chunk;
+  cacheSize_ += allocSize;
+  chunkCount_++;
+  if (doLog_) {
+    llvm::errs() << "##(" << this << ")## allocate_chunk(" << ptr << "; "
+                 << allocSize << ") - " << cacheSize_ << ", " << chunkCount_
+                 << ", " << freeSize_ << ", " << freeCount_ << ", " << 0 << ", "
+                 << 0 << "\n";
+  }
+  return true;
+}
+
+void BufferCache::selfCheck() {
+  if (!doSelfCheck_ || chunks_ == nullptr) {
     return;
   }
 
-  // First buffer points to base of pre-allocated memory.
-  assert(buffers_->ptr_ == base_);
-  // Check no missing buffers, no cycle
-  Desc *cur = buffers_;
-  Desc *ahead = cur;
-  if (cur != nullptr) {
-    assert(cur->prev_ == nullptr);
-  }
-  while (cur != nullptr) {
-    Desc *next = cur->next_;
-    if (next != nullptr) {
-      assert((cur->ptr_ + cur->size_) == next->ptr_);
-      assert(next->prev_ == cur);
-    } else {
-      assert((cur->ptr_ + cur->size_) ==
-             (static_cast<const char *>(base_) + size_));
-    }
-    // Step ahead.
-    if ((ahead != nullptr) && (ahead->next_ != nullptr)) {
-      ahead = ahead->next_->next_;
-      if (ahead == cur) {
-        llvm::errs() << "##(" << this << ")## self_check: cycle - buffers\n";
+  Chunk *cur_chunk = chunks_;
+  while (cur_chunk != nullptr) {
+    // First buffer points to base of pre-allocated memory.
+    void *base = cur_chunk->base_;
+    size_t size = cur_chunk->size_;
+    assert(cur_chunk->descs_->ptr_ == base);
+
+    Desc *cur_desc = cur_chunk->descs_;
+    Desc *ahead_desc = cur_desc;
+    assert(cur_desc != nullptr);
+    assert(cur_desc->prev_ == nullptr);
+
+    // Check no missing buffers, no cycle
+    while (cur_desc != nullptr) {
+      if (!cur_desc->free_) {
+        // next_free_ is used in map collision resolution, so it is not
+        // necessarily nullptr.
+        // assert(cur_desc->next_free_ == nullptr);
+        assert(cur_desc->prev_free_ == nullptr);
       }
+      Desc *next_desc = cur_desc->next_;
+      if (next_desc != nullptr) {
+        assert((cur_desc->ptr_ + cur_desc->size_) == next_desc->ptr_);
+        assert(next_desc->prev_ == cur_desc);
+      } else {
+        assert((cur_desc->ptr_ + cur_desc->size_) ==
+               (static_cast<const char *>(base) + size));
+      }
+      // Step ahead.
+      if ((ahead_desc != nullptr) && (ahead_desc->next_ != nullptr)) {
+        ahead_desc = ahead_desc->next_->next_;
+        if (ahead_desc == cur_desc) {
+          llvm::errs() << "##(" << this << ")## selfCheck: cycle - buffers\n";
+          abort();
+        }
+      }
+      cur_desc = next_desc;
     }
-    cur = next;
+    cur_chunk = cur_chunk->next_;
   }
 
   // Check free markers, no cycle
-  cur = free_buffers_;
-  ahead = cur;
-  if (cur != nullptr) {
-    assert(cur->prev_free_ == nullptr);
+  Desc *cur_desc = freeBuffers_;
+  Desc *ahead_desc = cur_desc;
+  if (cur_desc != nullptr) {
+    assert(cur_desc->prev_free_ == nullptr);
   }
-  while (cur != nullptr) {
-    Desc *next = cur->next_free_;
-    assert(cur->free_);
+  while (cur_desc != nullptr) {
+    Desc *next = cur_desc->next_free_;
+    assert(cur_desc->free_);
     if (next != nullptr) {
-      assert(next->prev_free_ == cur);
+      assert(next->prev_free_ == cur_desc);
     }
-    if ((ahead != nullptr) && (ahead->next_free_ != nullptr)) {
-      ahead = ahead->next_free_->next_free_;
-      if (ahead == cur) {
+    if ((ahead_desc != nullptr) && (ahead_desc->next_free_ != nullptr)) {
+      ahead_desc = ahead_desc->next_free_->next_free_;
+      if (ahead_desc == cur_desc) {
         llvm::errs() << "##(" << this
-                     << ")## self_check: cycle - free buffers\n";
+                     << ")## selfCheck: cycle - free buffers\n";
+        abort();
       }
     }
-    cur = next;
+    cur_desc = next;
   }
-  if (do_log) {
-    llvm::errs() << "##(" << this << ")## self_check: OK\n";
+  if (doLog_) {
+    llvm::errs() << "##(" << this << ")## selfCheck: OK\n";
   }
 }
 
 BufferCache::Desc *BufferCache::popDesc() {
-  if (unused_descs_ == nullptr) {
+  if (unusedDescs_ == nullptr) {
     return new Desc();
   }
-  Desc *result = unused_descs_;
-  unused_descs_ = result->next_;
+  Desc *result = unusedDescs_;
+  unusedDescs_ = result->next_;
   result->next_ = nullptr;
   return result;
 }
 
 void BufferCache::pushDesc(Desc *desc) {
   desc->reset();
-  desc->next_ = unused_descs_;
-  unused_descs_ = desc;
+  desc->next_ = unusedDescs_;
+  unusedDescs_ = desc;
 }
 
 void BufferCache::clear() {
-  if (size_ == 0) {
+  if (chunks_ == nullptr) {
     return;
   }
 
-  self_check();
-  // Ensure one free buffer spanning the whole memory area.
-  assert(free_buffers_->ptr_ == base_);
-  assert(free_buffers_->size_ == size_);
-  assert(free_buffers_->next_free_ == nullptr);
-  assert(buffers_->ptr_ == base_);
-  assert(buffers_->size_ == size_);
-  assert(buffers_->next_ == nullptr);
-  assert(buffers_ == free_buffers_);
+  selfCheck();
 
-  delete buffers_;
+  // Ensure each free desc is spanning the whole chunk area.
+  Desc *desc = freeBuffers_;
+  while (desc != nullptr) {
+    Chunk *chunk = desc->chunk_;
+    assert(desc->ptr_ == chunk->base_);
+    assert(desc->size_ == chunk->size_);
 
-  Desc *cur = unused_descs_;
+    desc = desc->next_free_;
+  }
+
+  Chunk *chunk = chunks_;
+  while (chunk != nullptr) {
+    Chunk *nextChunk = chunk->next_;
+    void *base = chunk->base_;
+    size_t size = chunk->size_;
+
+    // Ensure each chunk only contains one free desc.
+    assert(chunk->descs_->ptr_ == base);
+    assert(chunk->descs_->size_ == size);
+    assert(chunk->descs_->prev_ == nullptr);
+    assert(chunk->descs_->next_ == nullptr);
+    assert(chunk->descs_->free_);
+
+    removeFromFreeList(chunk->descs_);
+    delete chunk->descs_;
+    // Release the chunk memory.
+    if (doLog_) {
+      llvm::errs() << "##(" << this << ")## free_chunk(" << chunk->base_ << ", "
+                   << chunk->size_ << ")\n";
+    }
+    ErrorOrSuccess err = ctx_.memFree(chunk->base_);
+    if (err.isError()) {
+      llvm::errs() << err.getError() << "\n";
+      abort();
+    }
+    assert(!err.isError());
+    delete chunk;
+
+    chunk = nextChunk;
+  }
+  chunks_ = nullptr;
+  assert(freeBuffers_ == nullptr);
+
+  Desc *cur = unusedDescs_;
   while (cur != nullptr) {
     Desc *next = cur->next_;
     delete cur;
     cur = next;
   }
-
-  buffers_ = nullptr;
-  free_buffers_ = nullptr;
-  unused_descs_ = nullptr;
+  unusedDescs_ = nullptr;
 }
 
-void *BufferCache::allocate(size_t size) {
-  if (size_ == 0) {
-    return nullptr;
+ErrorOr<void *> BufferCache::allocate(size_t size,
+                                      DeviceContext::SyncMode mode) {
+  assert(size != 0);
+  void *buf = nullptr;
+  if (chunkSize_ != 0) {
+    size = (size + alignmentOffset_) & alignmentMask_;
+
+    if (size <= chunkSize_) {
+      std::lock_guard<std::mutex> lock(mu_);
+      selfCheck();
+
+      buf = allocate_locked(size);
+    }
   }
 
-  assert(size != 0);
-  size = (size + alignment_offset_) & alignment_mask_;
+  if (buf == nullptr) {
+    // Allocate straight from device driver if cache was not able to fulfill the
+    // request. If the cache is disabled, the we pass on the allocation mode.
+    ErrorOrSuccess err = ctx_.memAlloc(
+        &buf, size, (chunkSize_ != 0) ? DeviceContext::SYNC : mode);
+    if (err.isError()) {
+      if (doLog_) {
+        llvm::errs() << "##(" << this << ")## allocate_buffer(" << size
+                     << ") - failed with " << err.getError() << "\n";
+      }
+      return err.takeError();
+    }
+    if (doLog_) {
+      llvm::errs() << "##(" << this << ")## allocate_buffer(" << (buf) << "; "
+                   << size << ") - , " << cacheSize_ << ", " << chunkCount_
+                   << ", " << freeSize_ << ", " << freeCount_ << ", " << 0
+                   << ", " << 0 << "\n";
+    }
+  }
+  assert(buf != nullptr);
+  return buf;
+}
 
-  std::lock_guard<std::mutex> lock(mu_);
-  self_check();
-
+void *BufferCache::allocate_locked(size_t size) {
+  assert((size & alignmentMask_) == size);
   // Find a fit in the free list.
-  Desc *result = free_buffers_;
+  Desc *desc = freeBuffers_;
   int iterations = 0;
-  while ((result != nullptr) && (result->size_ < size)) {
-    result = result->next_free_;
+  while ((desc != nullptr) && (desc->size_ < size)) {
+    desc = desc->next_free_;
     iterations++;
   }
-  if (result == nullptr) {
-    if (do_log) {
-      llvm::errs() << "##(" << this << ")## allocate(" << size
-                   << ") - nullptr (" << iterations << ")\n";
+  if (desc == nullptr) {
+    if (!allocateChunk()) {
+      if (doLog_) {
+        llvm::errs() << "##(" << this << ")## allocate(" << size
+                     << ") - nullptr (" << iterations << ")\n";
+      }
+      // No success allocating a new Chunk, so we bail from the cache.
+      return nullptr;
     }
-    return nullptr;
+    // Allocated a new chunk, try again.
+    return allocate_locked(size);
   }
 
-  assert(result->free_);
-  if (result->size_ == size) {
+  assert(desc->free_);
+  if (desc->size_ == size) {
     // Unhook from free list.
-    if (result->next_free_ != nullptr) {
-      result->next_free_->prev_free_ = result->prev_free_;
+    if (desc->next_free_ != nullptr) {
+      desc->next_free_->prev_free_ = desc->prev_free_;
     }
-    if (result->prev_free_ != nullptr) {
-      result->prev_free_->next_free_ = result->next_free_;
+    if (desc->prev_free_ != nullptr) {
+      desc->prev_free_->next_free_ = desc->next_free_;
     } else {
-      free_buffers_ = result->next_free_;
+      freeBuffers_ = desc->next_free_;
     }
-    free_count_--;
+    freeCount_--;
   } else {
-    // Split the descriptor. Keep the current descriptor in the free list.
-    Desc *buf = result;
-    result = popDesc();
-    result->ptr_ = buf->ptr_;
-    result->size_ = size;
-    buf->ptr_ = buf->ptr_ + size;
-    buf->size_ = buf->size_ - size;
-    // Insert into buffer list.
-    result->next_ = buf;
-    result->prev_ = buf->prev_;
-    if (buffers_ == buf) {
-      assert(buf->prev_ == nullptr);
-      buffers_ = result;
-    } else {
-      buf->prev_->next_ = result;
-    }
-    buf->prev_ = result;
+    desc = desc->chunk_->splitFreeDesc(desc, size);
   }
 
-  result->next_free_ = nullptr;
-  result->prev_free_ = nullptr;
-  result->free_ = false;
-  allocated_map.add(result);
-  free_size_ -= size;
-  if (do_log) {
-    llvm::errs() << "##(" << this << ")## allocate(" << size << ") - "
-                 << reinterpret_cast<void *>(result->ptr_) << " (" << iterations
-                 << ") -- " << free_size_ << ", " << free_count_ << "\n";
+  desc->next_free_ = nullptr;
+  desc->prev_free_ = nullptr;
+  desc->free_ = false;
+  allocatedMap_.add(desc);
+  freeSize_ -= size;
+  if (doLog_) {
+    llvm::errs() << "##(" << this << ")## allocate("
+                 << reinterpret_cast<void *>(desc->ptr_) << "; " << size
+                 << ") - "
+                 << " (" << iterations << ") , " << cacheSize_ << ", "
+                 << chunkCount_ << ", " << freeSize_ << ", " << freeCount_
+                 << ", " << iterations << ", -" << size << "\n";
   }
-  return result->ptr_;
+  return desc->ptr_;
 }
 
-bool BufferCache::free(void *ptr) {
-  if (size_ == 0) {
-    return false;
+ErrorOrSuccess BufferCache::free(void *buf) {
+  if (buf == nullptr)
+    return success();
+
+  bool freed = false;
+  if (chunks_ != nullptr) {
+    std::lock_guard<std::mutex> lock(mu_);
+    selfCheck();
+    freed = free_locked(buf);
   }
 
-  std::lock_guard<std::mutex> lock(mu_);
-  self_check();
+  if (!freed) {
+    if (doLog_) {
+      llvm::errs() << "##(" << this << ")## free_buffer(" << buf << ") -  ("
+                   << 0 << ") , " << cacheSize_ << ", " << chunkCount_ << ", "
+                   << freeSize_ << ", " << freeCount_ << ", " << 0 << ", " << 0
+                   << "\n";
+    }
+    return ctx_.memFree(buf);
+  }
+  return success();
+}
 
-  Desc *buf = allocated_map.remove(ptr);
-  if (buf == nullptr) {
-    if (do_log) {
-      llvm::errs() << "##(" << this << ")## free(" << ptr << ") - not found\n";
+bool BufferCache::free_locked(void *buf) {
+  assert(chunks_ != nullptr);
+  assert(buf != nullptr);
+
+  Desc *desc = allocatedMap_.remove(buf);
+  if (desc == nullptr) {
+    if (doLog_) {
+      llvm::errs() << "##(" << this << ")## free(" << buf << ") - not found\n";
     }
     return false;
   }
-  assert(!buf->free_);
-  free_size_ += buf->size_;
+  assert(!desc->free_);
+  size_t buf_size = desc->size_;
+
+  // The chunk where all the descriptors are situated.
+  Chunk *chunk = desc->chunk_;
 
   // Check if we can merge with the next buffer.
-  int iterations = 0;
-  Desc *next = buf->next_;
-  Desc *prev = buf->prev_;
+  int codePath = 0;
+  Desc *next = desc->next_;
+  Desc *prev = desc->prev_;
   if ((next != nullptr) && next->free_) {
     // Check if we can also merge with the previous buffer.
     if ((prev != nullptr) && prev->free_) {
       // Merge all three keeping prev on the free list.
-      prev->size_ += buf->size_ + next->size_;
+      prev->size_ += buf_size + next->size_;
       // Remove next from free list.
       if (prev->next_free_ == next) {
         // next is following previous in free list.
@@ -333,69 +540,65 @@ bool BufferCache::free(void *ptr) {
         if (next->next_free_ != nullptr) {
           next->next_free_->prev_free_ = prev;
         }
-        iterations = -1;
-      } else if (free_buffers_ == next) {
+        codePath = -1;
+      } else if (freeBuffers_ == next) {
         // next is at head.
-        free_buffers_ = next->next_free_;
+        freeBuffers_ = next->next_free_;
         next->next_free_->prev_free_ = nullptr;
-        iterations = -2;
+        codePath = -2;
       } else {
         // next is not at head.
         next->prev_free_->next_free_ = next->next_free_;
         if (next->next_free_ != nullptr) {
           next->next_free_->prev_free_ = next->prev_free_;
         }
-        iterations = -3;
+        codePath = -3;
       }
-      // Remove buf and next from buffers.
+      // Remove desc and next from buffers.
       prev->next_ = next->next_;
       if (next->next_ != nullptr) {
         next->next_->prev_ = prev;
       }
-      free_count_--;
-      pushDesc(buf);
+      freeCount_--;
+      pushDesc(desc);
       pushDesc(next);
     } else {
       // Merge, keeping next on the free list.
-      next->ptr_ = buf->ptr_;
-      next->size_ += buf->size_;
-      // Remove buf from buffers.
-      if (buffers_ == buf) {
-        buffers_ = next;
+      next->ptr_ = desc->ptr_;
+      next->size_ += buf_size;
+      // Remove desc from buffers.
+      if (chunk->descs_ == desc) {
+        chunk->descs_ = next;
         next->prev_ = nullptr;
       } else {
-        buf->prev_->next_ = next;
-        next->prev_ = buf->prev_;
+        desc->prev_->next_ = next;
+        next->prev_ = desc->prev_;
       }
-      iterations = -4;
-      pushDesc(buf);
+      codePath = -4;
+      pushDesc(desc);
     }
+    freeSize_ += buf_size;
   } else if ((prev != nullptr) && prev->free_) {
     // Merge, keeping prev on the free list.
-    prev->size_ += buf->size_;
-    // Remove buf from buffers.
-    prev->next_ = buf->next_;
-    if (buf->next_ != nullptr) {
-      buf->next_->prev_ = prev;
+    prev->size_ += buf_size;
+    // Remove desc from buffers.
+    prev->next_ = desc->next_;
+    if (desc->next_ != nullptr) {
+      desc->next_->prev_ = prev;
     }
-    iterations = -5;
-    pushDesc(buf);
+    codePath = -5;
+    pushDesc(desc);
+    freeSize_ += buf_size;
   } else {
-    // Add buf to the free list.
-    if (free_buffers_ != nullptr) {
-      free_buffers_->prev_free_ = buf;
-    }
-    buf->next_free_ = free_buffers_;
-    assert(buf->prev_free_ == nullptr);
-    free_buffers_ = buf;
-    buf->free_ = true;
-    free_count_++;
-    iterations = -6;
+    // Add desc to the free list.
+    addToFreeList(desc);
+    codePath = -6;
   }
-  if (do_log) {
-    llvm::errs() << "##(" << this << ")## free(" << ptr << ") -  ("
-                 << iterations << ") -- " << free_size_ << ", " << free_count_
-                 << "\n";
+  if (doLog_) {
+    llvm::errs() << "##(" << this << ")## free(" << buf << "; " << buf_size
+                 << ") -  (" << codePath << ") , " << cacheSize_ << ", "
+                 << chunkCount_ << ", " << freeSize_ << ", " << freeCount_
+                 << ", " << 0 << ", " << buf_size << "\n";
   }
   return true;
 }

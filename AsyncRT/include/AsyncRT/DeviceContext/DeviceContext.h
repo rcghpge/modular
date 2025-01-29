@@ -365,8 +365,10 @@ public:
 
   BufferCache &bufferCache() const;
 
-  static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0,
-                                          size_t bufferCacheSize = 0);
+  static ErrorOr<DeviceContextRef>
+  create(StringRef api, int id = 0,
+         // By default allow upto 1TB of bufferCacheSize.
+         size_t bufferCacheSize = 1024ULL * 1024ULL * 1024ULL * 1024ULL);
 
   // Access configuration flags from the "device-context" section.
   static bool configAsBool(StringRef key, bool defaultValue);
@@ -377,6 +379,7 @@ protected:
   DeviceContext(const Device &device, std::unique_ptr<BufferCache> bufferCache);
 
 private:
+  friend class BufferCache;
   friend class DeviceBuffer;
 
   DeviceRef device_;

@@ -194,7 +194,7 @@ public:
   }
   Result DevicePrimaryCtxRelease(CUdevice dev) const {
     CUDA_DRIVER_CALL_LOG();
-    return cuDevicePrimaryCtxRelease_(dev);
+    return cuDevicePrimaryCtxRelease_v2_(dev);
   }
 
   Result CtxCreate(CUcontext *pctx, unsigned int flags, CUdevice dev) const {
@@ -269,7 +269,7 @@ public:
   }
   Result MemFree(CUdeviceptr dptr) const {
     CUDA_DRIVER_CALL_LOG();
-    return cuMemFree_(dptr);
+    return cuMemFree_v2_(dptr);
   }
 
   Result MemcpyHtoDAsync(CUdeviceptr dstDevice, const void *srcHost,
@@ -515,8 +515,8 @@ private:
   using tcuDevicePrimaryCtxRetain = Result(CUcontext *, CUdevice);
   tcuDevicePrimaryCtxRetain *cuDevicePrimaryCtxRetain_;
 
-  using tcuDevicePrimaryCtxRelease = Result(CUdevice);
-  tcuDevicePrimaryCtxRelease *cuDevicePrimaryCtxRelease_;
+  using tcuDevicePrimaryCtxRelease_v2 = Result(CUdevice);
+  tcuDevicePrimaryCtxRelease_v2 *cuDevicePrimaryCtxRelease_v2_;
 
   using tcuCtxCreate_v2 = Result(CUcontext *, unsigned int, CUdevice);
   tcuCtxCreate_v2 *cuCtxCreate_v2_;
@@ -566,8 +566,8 @@ private:
   using tcuMemAlloc_v2 = Result(CUdeviceptr *, size_t);
   tcuMemAlloc_v2 *cuMemAlloc_v2_;
 
-  using tcuMemFree = Result(CUdeviceptr);
-  tcuMemFree *cuMemFree_;
+  using tcuMemFree_v2 = Result(CUdeviceptr);
+  tcuMemFree_v2 *cuMemFree_v2_;
 
   using tcuMemcpyHtoDAsync_v2 = Result(CUdeviceptr, const void *, size_t,
                                        CUstream);
