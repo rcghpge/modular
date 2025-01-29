@@ -211,7 +211,7 @@ HIPDevice::createContext(size_t bufferCacheSize) const {
     int64_t cache_percent =
         DeviceContext::configAsInt("buffer_cache_size_percent", 0);
     maxCacheSize = std::min(
-        bufferCacheSize,
+        (size_t)bufferCacheSize,
         llvm::alignToPowerOf2((mem_info.free * cache_percent) / 100, 256 * KB));
     // Allocate chunks of 2% (default) of available memory.
     int64_t chunk_percent =
