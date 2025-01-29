@@ -32,10 +32,8 @@ using namespace M::MGP;
 TensorBufferRef createBorrowedSlice(TensorBufferRef &borroweBufferRef,
                                     size_t offset, size_t size) {
   const void *newBuffer = borroweBufferRef.getBuffer<uint8_t>() + offset;
-
   return TensorBufferRef::create(const_cast<void *>(newBuffer), size,
-                                 borroweBufferRef.getMemStorageHandle(),
-                                 std::optional<size_t>());
+                                 borroweBufferRef.getMemStorageHandle());
 }
 
 //===----------------------------------------------------------------------===//

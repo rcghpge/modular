@@ -61,7 +61,7 @@ TensorBufferRef TensorBufferRef::createOwned(AsyncRT::CompactRuntimePtr runtime,
   memset(buffer, 0xad, size);
 #endif
   return TensorBufferRef::create(buffer, size, std::move(storageRef),
-                                 alignment);
+                                 makeMaybeAlign(alignment));
 }
 
 // Create an owned reference from a taken void* pointer -- This taken
@@ -72,8 +72,7 @@ TensorBufferRef TensorBufferRef::take(AsyncRT::CompactRuntimePtr runtime,
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
       runtime, size, std::nullopt, runtime, takeFrom);
   void *buffer = storageRef.get<OwnedMemoryBlock>().data;
-  return TensorBufferRef::create(buffer, size, std::move(storageRef),
-                                 std::optional<size_t>());
+  return TensorBufferRef::create(buffer, size, std::move(storageRef));
 }
 
 TensorBufferRef::~TensorBufferRef() {
@@ -93,8 +92,7 @@ TensorBufferRef &TensorBufferRef::operator=(TensorBufferRef &&rhs) {
 
 TensorBufferRef TensorBufferRef::borrow() const {
   return TensorBufferRef::create(
-      data, size, storageRef ? storageRef.copy() : AnyAsyncValueRef{},
-      std::optional<size_t>());
+      data, size, storageRef ? storageRef.copy() : AnyAsyncValueRef{});
 }
 
 void TensorBufferRef::reset() {

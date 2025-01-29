@@ -64,7 +64,7 @@ public:
                                 std::optional<size_t> alignment);
   static TensorBufferRef create(void *buffer, size_t size,
                                 AnyAsyncValueRef storageHandle,
-                                llvm::MaybeAlign alignment);
+                                llvm::MaybeAlign alignment = std::nullopt);
 
   /// Create a buffer ref which does not track its memory and will not free the
   /// memory.
