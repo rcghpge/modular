@@ -81,11 +81,34 @@ static ErrorOr<OwningOpRef<ModuleOp>>
 parseMojoPackage(MLIRContext *ctx, StringRef path,
                  const std::shared_ptr<llvm::SourceMgr> &sourceMgr) {
   AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
+
+  // Intercept parsing diagnostics to display them at the end if an error occurs
+  std::string errMsg;
+  llvm::raw_string_ostream errMsgStream(errMsg);
+
+  auto oldHandler = sourceMgr->getDiagHandler();
+  auto oldCtx = sourceMgr->getDiagContext();
+
+  // Intercept error messages to display them at the end for nice UX.
+  sourceMgr->setDiagHandler(
+      [](const llvm::SMDiagnostic &diag, void *context) {
+        llvm::raw_string_ostream *errMsgStream =
+            static_cast<llvm::raw_string_ostream *>(context);
+
+        *errMsgStream << "\t" << diag.getMessage();
+      },
+      &errMsgStream);
   OwningOpRef<ModuleOp> ownedModule =
       KGEN::LIT::importStandaloneMojoBinaryPackage(runtime, sourceMgr, ctx,
                                                    path);
   if (!ownedModule)
-    return Error("failed to load Mojo package: " + path);
+    return Error("failed to load Mojo package: " + path +
+                 "\nMojo Parser Trace:\n" + errMsg);
+  else if (!errMsg.empty())
+    llvm::errs() << errMsg << "\n";
+
+  // Reset the old state of the diagnostic handler
+  sourceMgr->setDiagHandler(oldHandler, oldCtx);
 
   // Generate a library from the package, ensuring that dependencies are
   // materialized to make it self contained.
