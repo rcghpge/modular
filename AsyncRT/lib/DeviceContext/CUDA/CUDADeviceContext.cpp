@@ -307,14 +307,14 @@ CUDADevice::createContext(size_t bufferCacheSize) const {
     int64_t cache_percent =
         DeviceContext::configAsInt("buffer_cache_size_percent", 0);
     maxCacheSize = std::min(
-        (size_t)bufferCacheSize,
-        llvm::alignToPowerOf2((mem_info.free * cache_percent) / 100, 256 * KB));
+        bufferCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
+                             (mem_info.free * cache_percent) / 100, 256 * KB)));
     // Allocate chunks of 2% (default) of maximum cache size.
     int64_t chunk_percent =
         DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
     cacheChunkSize = std::min(
-        maxCacheSize,
-        llvm::alignToPowerOf2((maxCacheSize * chunk_percent) / 100, 256 * KB));
+        maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
+                          (maxCacheSize * chunk_percent) / 100, 256 * KB)));
   }
 
   return CUDADeviceContextRef::create(*this, *context, stream, cacheChunkSize,
