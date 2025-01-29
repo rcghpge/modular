@@ -24,18 +24,6 @@ struct OwnedDeviceMemoryBlock {
 };
 } // namespace
 
-static M::Tensor getTensorFromDeviceMemory(AsyncRT::Runtime &runtime,
-                                           Driver::DeviceMemory *memory,
-                                           TensorSpec spec) {
-  AnyAsyncValueRef storageRef =
-      storageRef.createReady<OwnedDeviceMemoryBlock>(runtime, memory);
-  // FIXME: Get alignment of device memory.
-  return Tensor(TensorBufferRef::create(memory->data(), memory->bytecount(),
-                                        std::move(storageRef),
-                                        llvm::MaybeAlign(std::nullopt)),
-                TensorSpec{std::move(spec)});
-}
-
 // Construct on-device memory to hold a provided tensor.
 ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
     M::ContextRef context, Driver::Device *device, M::Tensor tensor) {
@@ -106,11 +94,18 @@ getMojoValueFromAsyncValue(AnyAsyncValueRef outputValue) {
 
 AnyAsyncValueRef M::Driver::prepareInput(Runtime &runtime,
                                          M::Driver::DeviceMemory *inputMemory,
-                                         const TensorSpec &inputSpec) {
-  // Convert inputs from device memory we received from mojo to AsyncValue
-  // of tensor as expected by graph. We take ownership of inputs here.
-  return AnyAsyncValueRef::createReady<Tensor>(
-      runtime, getTensorFromDeviceMemory(runtime, inputMemory, inputSpec));
+                                         TensorSpec inputSpec) {
+  // Convert inputs from device memory we received to AsyncValue of tensor as
+  // expected by graph. We take ownership of inputs here.
+  AnyAsyncValueRef storageRef =
+      storageRef.createReady<OwnedDeviceMemoryBlock>(runtime, inputMemory);
+  // FIXME: Get alignment of device memory.
+  Tensor tensor(TensorBufferRef::create(
+                    inputMemory->data(), inputMemory->bytecount(),
+                    std::move(storageRef), llvm::MaybeAlign(std::nullopt)),
+                std::move(inputSpec));
+
+  return AnyAsyncValueRef::createReady<Tensor>(runtime, std::move(tensor));
 }
 
 Driver::GraphExecutionResultsTy

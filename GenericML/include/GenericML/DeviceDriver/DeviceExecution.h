@@ -51,8 +51,8 @@ void addValueToOutputList(void *mojoExecutableGraph, void *outputList,
 
 /// Transforms a DeviceTensor representation into an AnyAsyncValueRef executable
 /// returned by an ExecutableModel.
-MODULAR_VISIBILITY_EXPORT AnyAsyncValueRef prepareInput(
-    Runtime &runtime, DeviceMemory *inputMemory, const TensorSpec &inputSpec);
+MODULAR_VISIBILITY_EXPORT AnyAsyncValueRef
+prepareInput(Runtime &runtime, DeviceMemory *inputMemory, TensorSpec inputSpec);
 
 using GraphExecutionResultsTy =
     SmallVector<std::variant<M::Tensor, Driver::DriverMojoValue>>;
