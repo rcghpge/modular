@@ -142,7 +142,8 @@ def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls", "ModuleOp"> {
+def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls",
+                                    "MOGG::GenericCompiledRegionOp"> {
   let summary = "Removes redundant mogg.calls";
   let description = [{
     Removes redundant `mogg.call`s to the same target using the same arguments.
@@ -153,19 +154,5 @@ def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls", "ModuleOp"> {
 
   let dependentDialects = ["MOGG::MOGGDialect"];
 }
-
-
-def LegalizeAsyncRefDeallocations: Pass<"legalize-async-ref-deallocations", "ModuleOp"> {
-  let summary = "Legalize deallocation calls on async values";
-  let description = [{
-    Legalizes deallocation calls on async values in a compiled region. Double
-    free might occur after post-abi fusion and/or cse. This pass tries to remove
-    extra deallocation calls such that the compiled region will be free of
-    memory errors.
-  }];
-
-  let dependentDialects = ["MOGG::MOGGDialect"];
-}
-
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD

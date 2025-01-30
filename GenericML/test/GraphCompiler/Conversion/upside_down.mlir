@@ -1,4 +1,4 @@
-// RUN: mo-opt -mo-to-mgp="fuse-jit-kernels=false" %s | FileCheck %s
+// RUN: mo-opt -mo-to-mgp="fuse-jit-kernels=false enable-post-abi-regions-fusion=true" %s | FileCheck %s
 
 mo.graph @updside_down(
     %arg0: !mo.tensor<[256], f32>
@@ -10,6 +10,4 @@ mo.graph @updside_down(
 }
 
 // CHECK-LABEL: mgp.model @updside_down
-// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.mul{{.*}}"
-// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.add{{.*}}"
-// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.relu{{.*}}"
+// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.mul{{.*}}{{.*}}mo.add{{.*}}{{.*}}mo.relu{{.*}}"
