@@ -110,15 +110,6 @@ public:
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
                                StringRef parameterName);
 
-  /// Returns true if the kernel is an elementwise kernel.
-  bool kernelIsElementwise(KGEN::GeneratorOp kernel);
-
-  /// Returns true if the kernel is expecting to take indices as last arg.
-  bool kernelIsViewOp(KGEN::GeneratorOp kernel);
-
-  /// Returns true if the kernel is a view operation.
-  bool kernelTakesIndices(KGEN::GeneratorOp kernel);
-
   /// Returns true if the kernel implementation is in the Extensibility API.
   bool kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel);
 

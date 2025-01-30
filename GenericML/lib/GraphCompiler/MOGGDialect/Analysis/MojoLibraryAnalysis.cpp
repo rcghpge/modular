@@ -541,18 +541,6 @@ MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) {
       name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
 }
 
-bool MojoLibraryAnalysis::kernelIsElementwise(KGEN::GeneratorOp kernel) {
-  return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::ELEMENTWISE.attr);
-}
-
-bool MojoLibraryAnalysis::kernelIsViewOp(KGEN::GeneratorOp kernel) {
-  return kernel->hasAttr(KGEN::MOGGPreElab::IS_VIEW_ATTR);
-}
-
-bool MojoLibraryAnalysis::kernelTakesIndices(KGEN::GeneratorOp kernel) {
-  return kernel->hasAttr(KGEN::MOGGPreElab::Decorators::TAKES_INDICES.attr);
-}
-
 bool MojoLibraryAnalysis::kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel) {
   return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel) ||
          kernel->hasAttr(KGEN::MOGGPreElab::kMOGGShapeFunctionLabel) ||
