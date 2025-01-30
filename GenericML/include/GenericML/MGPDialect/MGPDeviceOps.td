@@ -702,6 +702,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+    DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
   let summary = "Borrows a slice of parent buffer on device with dynamically "
                 "known offset and size.";
