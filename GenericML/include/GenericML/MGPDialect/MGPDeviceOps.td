@@ -748,6 +748,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 //===----------------------------------------------------------------------===//
 
 def BufferToIndexOp : MGP_Op<"buffer.to_index", [
+    Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
 ]> {
   let summary = "Returns contents of the buffer to an `index`";
