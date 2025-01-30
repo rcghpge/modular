@@ -142,8 +142,7 @@ def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls",
-                                    "MOGG::GenericCompiledRegionOp"> {
+def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls", "ModuleOp"> {
   let summary = "Removes redundant mogg.calls";
   let description = [{
     Removes redundant `mogg.call`s to the same target using the same arguments.
@@ -154,5 +153,56 @@ def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls",
 
   let dependentDialects = ["MOGG::MOGGDialect"];
 }
+
+
+def LegalizeAsyncRefDeallocations: Pass<"legalize-async-ref-deallocations", "ModuleOp"> {
+  let summary = "Legalize deallocation calls on async values";
+  let description = [{
+    Legalizes deallocation calls on async values in a compiled region. Double
+    free might occur after post-abi fusion and/or cse. This pass tries to remove
+    extra deallocation calls such that the compiled region will be free of
+    memory errors.
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
+
+def CoalesceAsyncRefs: Pass<"coalesce-async-refs", "ModuleOp"> {
+  let summary = "coalesce async ref (de)allocation sites";
+  let description = [{
+    Coalesces async ref (de)allocation sites and hoist the allocation sites to
+    the beginning of the block. This pass will make it easier to
+    async refs when a runtime error happens.
+
+    Note that the correspondence between async ref and the wrapped object will
+    no longer be available after the pass.
+
+    Before:
+    ```
+    ...
+    %a0 = allocate_async_ref_for(%a)
+    use(%a0)
+    ...
+    %a1 = allocate_async_ref_for(%b)
+    use(%a1)
+    ...
+    ```
+
+    After:
+    ```
+    // This is beginning of the block
+    %a:2 = mgp.allocate_async_refs
+    ...
+    use(%a#0)
+    ...
+    use(%a#1)
+    ```
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect",
+                           "MGP::MGPDialect"];
+}
+
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD

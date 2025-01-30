@@ -1,4 +1,4 @@
-// RUN: mo-opt --jit-compile-kernels="dry-run=true dump-stub=true" %s -o %t 2>&1 | FileCheck %s
+// RUN: mo-opt --coalesce-async-refs --jit-compile-kernels="dry-run=true dump-stub=true" %s -o %t 2>&1 | FileCheck %s
 
 
 module {
@@ -35,16 +35,17 @@ module {
 // CHECK-NEXT: [[INDEX1:%.*]] = kgen.param.constant = <1>
 // CHECK-NEXT: [[V0:%.*]] = pop.offset [[ARG0]][[[INDEX1]]] : !kgen.pointer<pointer<none>>
 
+// COM: Load the async value pointer.
+// CHECK-NEXT: [[INDEX0:%.*]] = kgen.param.constant = <0>
+// CHECK-NEXT: [[TMP:%.*]] = pop.offset [[V0]][[[INDEX0]]] : !kgen.pointer<pointer<none>>
+// CHECK-NEXT: [[V1:%.*]] = pop.load [[TMP]] align<8> : !kgen.pointer<pointer<none>>
+
 // COM: Do the stack allocation for the custom kernel output.
 // CHECK: [[V2:%.*]] = pop.stack_allocation 1 x struct<(index) memoryOnly>
 
 // COM: Call the custom kernel that creates the custom mojo value.
 // CHECK-NEXT: [[INDEX42:%.*]] = kgen.param.constant = <42>
 // CHECK: [[V4:%.*]] = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,::[[INT:[A-Za-z0-9_]*]])"([[INDEX42]], {{.*}})
-
-// COM: Load the async value pointer.
-// CHECK-NEXT: [[TMP:%.*]] = pop.offset [[ARG0]][[[INDEX1]]] : !kgen.pointer<pointer<none>>
-// CHECK-NEXT: [[V1:%.*]] = pop.load [[TMP]] align<8> : !kgen.pointer<pointer<none>>
 
 // COM: Get the move / del function pointers
 // CHECK-NEXT: [[V5:%.*]] = kgen.create_reg_stub [(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem, !kgen.pointer<struct<(index) memoryOnly>> byref_result) -> !kgen.none: @"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"] : <(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem, !kgen.pointer<struct<(index) memoryOnly>> byref_result) -> !kgen.none>

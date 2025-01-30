@@ -77,6 +77,7 @@ void M::MO::registerPasses() {
   MO::registerMOToMOGGPasses();
   MO::registerMOTransformsPasses();
   MO::registerNameInputDimsPass();
+  MGP::registerCoalesceAsyncRefsPass();
   MGP::registerMOToPrimitives();
   MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
@@ -85,6 +86,7 @@ void M::MO::registerPasses() {
   MGP::registerPostABIFuseGenericRegions();
   MGP::registerRemoveRedundantOperands();
   MGP::registerRemoveRedundantMOGGCalls();
+  MGP::registerLegalizeAsyncRefDeallocations();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
 
@@ -374,17 +376,22 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   abiOpts.kernelLibraryPaths = kernelLibraryPaths;
   pm.addPass(MGP::createLowerMOGGABI(abiOpts));
 
-  if (opts.enablePostABIRegionFusion) {
+  if (opts.enablePostABIRegionFusion && opts.fuseJitKernels) {
     pm.addPass(MGP::createPostABIFuseGenericRegions());
     pm.addPass(MGP::createRemoveRedundantOperands());
-    // Run cleanup per MOGG::GenericCompiledRegionOp for pass multi-threading.
-    // TODO: we should re-exam all passes, many of them can be triggered more
-    // locally.
-    mlir::OpPassManager &localPass =
-        pm.nest<MGP::ModelOp>().nest<MOGG::GenericCompiledRegionOp>();
-    localPass.addPass(mlir::createCSEPass());
-    localPass.addPass(MGP::createRemoveRedundantMOGGCalls());
+    // NOTE: We might be able to remove the CSE pass after modeling async value
+    // correctly.
+    pm.addPass(mlir::createCSEPass());
+    // TODO: Run cleanup per MOGG::GenericCompiledRegionOp for pass
+    // multi-threading. For now, we simply use a module pass, as the generic
+    // region might be enclosed inside a grt.if/while/... operations, making the
+    // pass nest harder to find. We should re-exam all passes, many of them can
+    // be triggered more locally.
+    pm.addPass(MGP::createRemoveRedundantMOGGCalls());
+    pm.addPass(MGP::createLegalizeAsyncRefDeallocations());
   }
+
+  pm.addPass(MGP::createCoalesceAsyncRefs());
 
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;

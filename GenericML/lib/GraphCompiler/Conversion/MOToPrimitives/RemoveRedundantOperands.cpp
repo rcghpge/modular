@@ -132,17 +132,24 @@ struct RemoveRedundantOperands
         for (Operation *user :
              llvm::make_early_inc_range(toRemove.getUsers())) {
           if (auto asyncAlloc = dyn_cast<MOGG::AllocateAsyncRefOp>(user)) {
-            // Now that the chain is not going to escape, we no longer need to
-            // create an async value for it.
-            assert(asyncAlloc->hasOneUse() &&
-                   isa<MOGG::CallOp>(*asyncAlloc->getUsers().begin()) &&
-                   cast<MOGG::CallOp>(*asyncAlloc->getUsers().begin())
-                           .getMojoKernelTargetAttr()
-                           .str() == "builtin.create_chain_async");
-            asyncAlloc->getUsers().begin()->erase();
+            for (Operation *op :
+                 llvm::make_early_inc_range(asyncAlloc->getUsers())) {
+              // Either a deallocation or calls to create the async ref for
+              // the chain. Since we no longer need the chain, they can be
+              // erased too.
+              assert(isa<MOGG::DeallocateAsyncRefOp>(op) ||
+                     (isa<MOGG::CallOp>(op) &&
+                      cast<MOGG::CallOp>(op).getMojoKernelTargetAttr().str() ==
+                          "builtin.create_chain_async"));
+              op->erase();
+            }
             asyncAlloc.erase();
           }
         }
+        // If this is simple result of a chain.create operation, erase it.
+        auto chainCreate = toRemove.getDefiningOp<MOGG::CreateReadyChainOp>();
+        if (chainCreate)
+          chainCreate->erase();
       }
 
       // Create a new region op but with collapsed result type.

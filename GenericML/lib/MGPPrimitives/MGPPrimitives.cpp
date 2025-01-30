@@ -122,6 +122,11 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
       llvm::SmallVector<void *> kernelInputs =
           getKernelInputs(takenOperands, outResults, constantResources);
       runKernel(kernelInputs);
+
+      // Must have all been released/reset by the compiled kernel.
+      assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
+        return !ref.getPointer();
+      }));
     };
 
     // Launch the kernel on a new thread.
@@ -131,6 +136,10 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
     runKernel(kernelInputs);
+    // Must have all been released/reset by the compiled kernel.
+    assert(llvm::all_of(operands, [](const AnyAsyncValueRef &ref) {
+      return !ref.getPointer();
+    }));
   }
 }
 

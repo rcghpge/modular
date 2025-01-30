@@ -839,6 +839,22 @@ def MOGG_AllocateAsyncRefOp : MOGG_Op<"allocate_async_ref_for", [Pure,
   }];
 }
 
+def MOGG_DeallocateAsyncRefOp : MOGG_Op<"deallocate_async_ref", [
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
+  let arguments = (ins Variadic<PointerOf<AnyType>>:$asyncRefs);
+  let summary = "Deallocate the async value ref";
+
+  let description = [{
+     Explicitly deallocate the provided AsyncValueRef * (i.e., the argument
+     should be the address of a AnyAsyncRef).
+  }];
+
+  let assemblyFormat = [{
+    `(` $asyncRefs `)` attr-dict `:` qualified(type($asyncRefs))
+  }];
+}
+
 def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
   let arguments = (ins
       AnyType:$mojoPointer,
@@ -966,10 +982,10 @@ def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [Pure]> {
 
     Example:
     ```mlir
-      %out = mogg.create_ready_chain : !mo.tensor<[2, 3], f32>
+      %out = mogg.create_ready_chain : !mef.chain
     ```
     This provides a `%out` SSA value which corresponds to the chain output that kernels
-    want to output
+    want to output.
   }];
 }
 
