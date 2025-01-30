@@ -759,13 +759,21 @@ setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
   if (optimizationLevel < 0)
     optimizationLevel = kDefaultOptimizationLevel;
 
+  // The Mojo compiler uses optimization level 3 as the highest optimization
+  // level, but 4 is the highest for CUDA.
+  if (optimizationLevel == 3)
+    optimizationLevel = kDefaultOptimizationLevel;
+
   if (debugLevel == "full") {
     // Note that the PTX compiler complains if debugLevel=full and optimization
     // level is something other than 0 or 4 (the default).
     if (!llvm::is_contained({0, kDefaultOptimizationLevel},
                             optimizationLevel)) {
-      RAISE_ERROR("debugLevel of \"full\" requires optimizationLevel of "
-                  "zero (or default)");
+      RAISE_ERROR((("debugLevel of \"full\" requires optimizationLevel of "
+                    "either '0' or '" +
+                    llvm::Twine(kDefaultOptimizationLevel) + "' but got '" +
+                    llvm::Twine(optimizationLevel) + "'"))
+                      .str());
     }
 
     optionKind.push_back(CUjit_option::JIT_GENERATE_DEBUG_INFO);
