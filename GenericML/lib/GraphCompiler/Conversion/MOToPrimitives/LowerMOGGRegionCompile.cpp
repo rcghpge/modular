@@ -36,59 +36,6 @@ namespace M::MGP {
 
 namespace {
 
-/// DeviceContextState is used to track device contexts within a model op
-struct DeviceContextState {
-  // State information to keep track of a deviceContext and the region it exists
-  // in
-  llvm::SmallDenseMap<std::tuple<Region *, DeviceRefAttr>, Value>
-      regionDeviceToContextMap;
-  llvm::SmallDenseMap<DeviceRefAttr, Value> initInputContextMap;
-
-  // Initializes the starting value
-  void init(MGP::ModelOp model) {
-    // Populate arguments for init region
-    for (const auto &[device, context] :
-         llvm::zip(model.getDevices(), model.getInitDevices()))
-      initInputContextMap[dyn_cast<DeviceRefAttr>(device)] = context;
-
-    // Populate starting value for init region using the output device-context
-    // because the device_context can be created by an init-phase operation
-    for (const auto &[device, context] :
-         llvm::zip(model.getDevices(), model.getInitOutputDevices())) {
-      Region *initRegion = model.getInitBlock()->getParent();
-      DeviceRefAttr deviceAttr = dyn_cast<DeviceRefAttr>(device);
-      setDeviceContext(deviceAttr, initRegion, context);
-    }
-
-    // Populate starting value for exec region using the input argument
-    for (const auto &[device, context] :
-         llvm::zip(model.getDevices(), model.getExecuteDevices())) {
-      Region *execRegion = model.getExecuteBlock()->getParent();
-      DeviceRefAttr deviceAttr = dyn_cast<DeviceRefAttr>(device);
-      setDeviceContext(deviceAttr, execRegion, context);
-    }
-  }
-
-  /// This function gets the DeviceContext defined for this region.
-  Value getDeviceContext(DeviceRefAttr deviceAttr, Region *region) {
-    assert(regionDeviceToContextMap.contains({region, deviceAttr}) &&
-           "Region must contain the context as args");
-    return regionDeviceToContextMap[{region, deviceAttr}];
-  }
-
-  /// This function sets the DeviceContext defined for this region.
-  void setDeviceContext(DeviceRefAttr deviceAttr, Region *region, Value value) {
-    regionDeviceToContextMap[{region, deviceAttr}] = value;
-  }
-
-  /// This function gets the DeviceContext from Init Args
-  Value getDeviceContextFromInitArgs(DeviceRefAttr deviceAttr) {
-    assert(initInputContextMap.contains(deviceAttr) &&
-           "Args must contain the context or the device as arg");
-    return initInputContextMap[deviceAttr];
-  }
-};
-
 struct LowerMOGGRegionCompilesPass
     : public MGP::impl::LowerMOGGRegionCompilesBase<
           LowerMOGGRegionCompilesPass> {
@@ -96,17 +43,15 @@ struct LowerMOGGRegionCompilesPass
   void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
-                                MOGG::ExecuteCompiledOp &oldKernel,
-                                Value deviceContext);
+                                MOGG::ExecuteCompiledOp &oldKernel);
   void runOnOperation() override;
-  DeviceContextState deviceContexts;
 };
 
 // Rewrite the MOGG::ExecuteCompiledOp into a MGP::ExecuteGenericOp
 void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
     size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &oldKernel, Value deviceContext) {
+    MOGG::ExecuteCompiledOp &oldKernel) {
   auto ctx = oldKernel.getOperation()->getContext();
   SmallVector<Value> outputs;
   SmallVector<Type> resultTypes;
@@ -121,10 +66,9 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     device = DeviceRefAttr::getDefault(ctx);
 
   auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-      oldKernel.getLoc(), resultTypes, context, deviceContext,
-      oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
-      oldKernel.getSummary(), oldKernel.getIsAsync(),
-      oldKernel.getConstantResources());
+      oldKernel.getLoc(), resultTypes, context, oldKernel->getOperands(),
+      runtimeSlot, module_index, kernel_index, oldKernel.getSummary(),
+      oldKernel.getIsAsync(), oldKernel.getConstantResources());
 
   for (auto [idx, result] : llvm::enumerate(outputs))
     result.replaceAllUsesWith(newExecuteOp.getResult(idx));
@@ -169,7 +113,6 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       lastDeviceRuntimeOp = op;
       deviceModuleIndex = 0;
     }
-    deviceContexts.init(model);
 
     llvm::StringMap<size_t> deviceKernelIndices;
     SmallVector<StringAttr> deviceKernelNameAttrs;
@@ -234,20 +177,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // Shunt all the executes for Init stage at the very end of init
     builder.setInsertionPoint(init.getTerminator());
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
-      auto device = kernel.getDeviceRef();
-      Value inDeviceContext =
-          deviceContexts.getDeviceContext(device, init.getParent());
-      bool isCreator = inDeviceContext.getDefiningOp() == kernel;
-      if (isCreator)
-        inDeviceContext = deviceContexts.getDeviceContextFromInitArgs(device);
       rewriteExecuteCompiledOp(builder, lastDeviceRuntimeOp.getTheContext(),
                                lastDeviceRuntimeOp.getSlot(), deviceModuleIndex,
                                deviceKernelIndices[kernel.getKernelName()],
-                               kernel, inDeviceContext);
-      // Since this execute op created the deviceContext, we should update the
-      // value mapping.
-      if (isCreator)
-        deviceContexts.init(model);
+                               kernel);
     });
 
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
@@ -267,12 +200,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       ASSERT_STREAM(executeContext,
                     << "Cannot find execute context in bounding region of "
                        "generic.execute");
-      Value inDeviceContext = deviceContexts.getDeviceContext(
-          kernel.getDeviceRef(), execute.getParent());
       rewriteExecuteCompiledOp(builder, executeContext,
                                lastDeviceRuntimeOp.getSlot(), deviceModuleIndex,
                                deviceKernelIndices[kernel.getKernelName()],
-                               kernel, inDeviceContext);
+                               kernel);
     });
     // The introduction of generic execute may introduce unbound free-values.
     // Use fixupIsolatedFromAbove to rebind these.

@@ -9,7 +9,6 @@
 
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/ExecutionEngine/ExecutionEngine.h"
-#include "Runtime/MojoCallContext.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/BLAKE3.h"
@@ -94,7 +93,7 @@ struct CompiledKernelCall {
 //   O = number of 'out' tensor buffers
 //   N = number of 'in' dimension values (for dynamic dims only)
 //   M = number of 'out' dimension values (for compiled shape functions only)
-//   void* args[I + O], ssize_t dims[N + M], MojoCallContext*
+//   void* args[I + O], ssize_t dims[N + M], Runtime*
 //
 // Both args and dims take 'in' args (ie read only) followed by 'out' args
 // (ie write only). Arguments representing tensors are passed as their
@@ -119,22 +118,16 @@ struct CompiledKernelCall {
 //    managed by the `CompiledKernelCall`, and the called kernel shim is
 //    responsible for unmarshalling before returning.
 //
-// If the called kernel is synchronous then it may signal error using
-// MojoCallcontext::setToError. Otherwise, it is free to just return.
 //
-// If the called kernel is asynchronous then the C++ runtime will
-// keep all operands and the MojoCallContext alive until the kernel's coroutine
-// completes. That is signalled by the kernel eventually calling back to
-// MojoCallContext::{complete, setToError}. Note that the kernel must unmarshal
-// all other arguments before returning to the caller after hitting a
-// suspension point.
-using CompiledKernelFn = void(void **, ssize_t *, MojoCallContext *);
+// If the called kernel is asynchronous then the C++ runtime will keep all
+// operands alive until the kernel's coroutine completes.
+using CompiledKernelFn = void(void **, ssize_t *, void *);
 
 // A function pointer representing an alternate ABI which takes in a list of
 // async value pointers as the first value and a runtime, and callContext as
 // third. The async values will be unpacked and manipulated directly within the
 // kernel.
-using CompiledKernelAsyncABIFn = void(void **, void *, void *);
+using CompiledKernelAsyncABIFn = void(void **, void *);
 //===----------------------------------------------------------------------===//
 // CompiledKernelsContext
 //===----------------------------------------------------------------------===//

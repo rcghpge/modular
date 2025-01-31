@@ -329,7 +329,6 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
   }];
 
   let arguments = (ins MGP_ContextType:$theContext,
-                       MGP_DeviceContextType:$deviceContext,
                        Variadic<AnyType>:$args,
                        UI64Attr:$aRuntimeSlot,                         // 0
                        UI64Attr:$bModuleIndex,                         // 1

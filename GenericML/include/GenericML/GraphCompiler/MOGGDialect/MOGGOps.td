@@ -993,14 +993,6 @@ def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [Pure]> {
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
 
-def MOGG_MojoCallContextPlaceholderOp: MOGG_Op<"runtime_mojocallcontext_placeholder", [Pure]> {
-  let summary = "Launders the runtime MojoCallContext into KGEN land";
-  let description = [{
-    Returns the MojoCallContextPtr passed to the Mojo kernel by the C++ runtime.
-  }];
-  let results = (outs AnyType:$results);
-}
-
 def MOGG_DeviceContextPlaceholderOp: MOGG_Op<"device_context_placeholder", [Pure]> {
   let summary = "Launders the runtime device context into KGEN land";
   let description = [{

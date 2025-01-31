@@ -80,13 +80,11 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
   return kernelInputs;
 }
 
-static void
-mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
-                    RemainingArguments operands, RemainingResults outResults,
-                    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
-                    MEFAttr<uint64_t> cFunctionIndex,
-                    MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
-                    MEFListAttr fConstantResources, Runtime &runtime) {
+static void mgp_generic_execute(
+    StateContext &ctx, RemainingArguments operands, RemainingResults outResults,
+    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
+    MEFAttr<uint64_t> cFunctionIndex, MEFAttr<StringRef> dSummary,
+    MEFAttr<bool> eIsAsync, MEFListAttr fConstantResources, Runtime &runtime) {
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
           static_cast<size_t>(*aSlot));
@@ -96,14 +94,10 @@ mgp_generic_execute(StateContext &ctx, AnyAsyncValueRef deviceContext,
   AsyncRT::CompactRuntimePtr runtimePtr(runtime);
 
   // Wrapper to run a kernel without extending any lifetimes.
-  auto runKernel = [kernelPtr, deviceContext = std::move(deviceContext),
-                    runtimePtr =
-                        runtimePtr](llvm::SmallVector<void *> &kernelInputs) {
-    auto deviceContextRef = deviceContext.get<AsyncRT::DeviceContextRef>();
-    MojoCallContext callContext{deviceContextRef};
+  auto runKernel = [kernelPtr, runtimePtr = runtimePtr](
+                       llvm::SmallVector<void *> &kernelInputs) {
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
-              reinterpret_cast<void *>(runtimePtr.get()),
-              reinterpret_cast<void *>(&callContext));
+              reinterpret_cast<void *>(runtimePtr.get()));
   };
 
   if (eIsAsync.get()) {
