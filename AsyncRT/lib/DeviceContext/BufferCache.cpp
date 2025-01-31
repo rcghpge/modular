@@ -267,8 +267,8 @@ void BufferCache::selfCheck() {
   Chunk *cur_chunk = chunks_;
   while (cur_chunk != nullptr) {
     // First buffer points to base of pre-allocated memory.
-    void *base = cur_chunk->base_;
-    size_t size = cur_chunk->size_;
+    [[maybe_unused]] void *base = cur_chunk->base_;
+    [[maybe_unused]] size_t size = cur_chunk->size_;
     assert(cur_chunk->descs_->ptr_ == base);
 
     Desc *cur_desc = cur_chunk->descs_;
@@ -360,7 +360,7 @@ void BufferCache::clear() {
   // Ensure each free desc is spanning the whole chunk area.
   Desc *desc = freeBuffers_;
   while (desc != nullptr) {
-    Chunk *chunk = desc->chunk_;
+    [[maybe_unused]] Chunk *chunk = desc->chunk_;
     assert(desc->ptr_ == chunk->base_);
     assert(desc->size_ == chunk->size_);
 
@@ -370,8 +370,8 @@ void BufferCache::clear() {
   Chunk *chunk = chunks_;
   while (chunk != nullptr) {
     Chunk *nextChunk = chunk->next_;
-    void *base = chunk->base_;
-    size_t size = chunk->size_;
+    [[maybe_unused]] void *base = chunk->base_;
+    [[maybe_unused]] size_t size = chunk->size_;
 
     // Ensure each chunk only contains one free desc.
     assert(chunk->descs_->ptr_ == base);
