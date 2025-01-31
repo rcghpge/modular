@@ -151,6 +151,19 @@ BufferCache::Desc *BufferCache::Chunk::splitFreeDesc(Desc *freeDesc,
   return result;
 }
 
+llvm::raw_fd_ostream &BufferCache::errOut() {
+  if (deviceDescription_.empty()) {
+    deviceDescription_ =
+        (ctx_.device().api() + "[" + llvm::Twine(ctx_.device().id()) + "]")
+            .str();
+    // Print the intial information about this BufferCache.
+    llvm::errs() << "##(" << deviceDescription_ << ":" << this
+                 << ")##: buffer_cache(chunk_size: " << chunkSize_
+                 << "; max_cache_size: " << maxCacheSize_ << ")\n";
+  }
+  return llvm::errs();
+}
+
 BufferCache::BufferCache(const DeviceContext &ctx, size_t chunkSize,
                          size_t maxCacheSize, size_t alignment)
     : ctx_(ctx), chunkSize_(chunkSize), maxCacheSize_(maxCacheSize),
@@ -159,16 +172,12 @@ BufferCache::BufferCache(const DeviceContext &ctx, size_t chunkSize,
   // chunks_ will be lazily initialized on the first allocation request.
   doLog_ = DeviceContext::configAsBool("buffer_cache_log", false);
   doSelfCheck_ = DeviceContext::configAsBool("buffer_cache_self_check", false);
-  if (doLog_ && (chunkSize_ != 0)) {
-    llvm::errs() << "##(" << this
-                 << ")##: buffer_cache(chunk_size: " << chunkSize_
-                 << "; max_cache_size: " << maxCacheSize_ << ")\n";
-  }
 }
 
 BufferCache::~BufferCache() {
-  if (doLog_ && (chunkSize_ != 0)) {
-    llvm::errs() << "##(" << this << ")##: destructor\n";
+  if (doLog_) {
+    errOut() << "##(" << deviceDescription_ << ":" << this
+             << ")##: destructor\n";
   }
   assert(chunks_ == nullptr);
   assert(freeBuffers_ == nullptr);
@@ -224,8 +233,9 @@ bool BufferCache::allocateChunk() {
   ErrorOrSuccess err = ctx_.memAlloc(&ptr, allocSize, DeviceContext::SYNC);
   if (err.isError()) {
     if (doLog_) {
-      llvm::errs() << "##(" << this << ")## allocate_chunk(" << allocSize
-                   << ") - failed with " << err.getError() << "\n";
+      errOut() << "##(" << deviceDescription_ << ":" << this
+               << ")## allocate_chunk(" << allocSize << ") - failed with "
+               << err.getError() << "\n";
     }
     // Keep chunks_ unmodified.
     return false;
@@ -236,10 +246,15 @@ bool BufferCache::allocateChunk() {
   cacheSize_ += allocSize;
   chunkCount_++;
   if (doLog_) {
-    llvm::errs() << "##(" << this << ")## allocate_chunk(" << ptr << "; "
-                 << allocSize << ") - " << cacheSize_ << ", " << chunkCount_
-                 << ", " << freeSize_ << ", " << freeCount_ << ", " << 0 << ", "
-                 << 0 << "\n";
+    if (deviceDescription_.empty()) {
+      deviceDescription_ =
+          (ctx_.device().api() + "[" + llvm::Twine(ctx_.device().id()) + "]")
+              .str();
+    }
+    errOut() << "##(" << deviceDescription_ << ":" << this
+             << ")## allocate_chunk(" << ptr << "; " << allocSize << ") - "
+             << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_ << ", "
+             << freeCount_ << ", " << 0 << ", " << 0 << "\n";
   }
   return true;
 }
@@ -281,7 +296,8 @@ void BufferCache::selfCheck() {
       if ((ahead_desc != nullptr) && (ahead_desc->next_ != nullptr)) {
         ahead_desc = ahead_desc->next_->next_;
         if (ahead_desc == cur_desc) {
-          llvm::errs() << "##(" << this << ")## selfCheck: cycle - buffers\n";
+          errOut() << "##(" << deviceDescription_ << ":" << this
+                   << ")## selfCheck: cycle - buffers\n";
           abort();
         }
       }
@@ -305,15 +321,16 @@ void BufferCache::selfCheck() {
     if ((ahead_desc != nullptr) && (ahead_desc->next_free_ != nullptr)) {
       ahead_desc = ahead_desc->next_free_->next_free_;
       if (ahead_desc == cur_desc) {
-        llvm::errs() << "##(" << this
-                     << ")## selfCheck: cycle - free buffers\n";
+        errOut() << "##(" << deviceDescription_ << ":" << this
+                 << ")## selfCheck: cycle - free buffers\n";
         abort();
       }
     }
     cur_desc = next;
   }
   if (doLog_) {
-    llvm::errs() << "##(" << this << ")## selfCheck: OK\n";
+    errOut() << "##(" << deviceDescription_ << ":" << this
+             << ")## selfCheck: OK\n";
   }
 }
 
@@ -367,12 +384,13 @@ void BufferCache::clear() {
     delete chunk->descs_;
     // Release the chunk memory.
     if (doLog_) {
-      llvm::errs() << "##(" << this << ")## free_chunk(" << chunk->base_ << ", "
-                   << chunk->size_ << ")\n";
+      errOut() << "##(" << deviceDescription_ << ":" << this
+               << ")## free_chunk(" << chunk->base_ << ", " << chunk->size_
+               << ")\n";
     }
     ErrorOrSuccess err = ctx_.memFree(chunk->base_);
     if (err.isError()) {
-      llvm::errs() << err.getError() << "\n";
+      errOut() << err.getError() << "\n";
       abort();
     }
     assert(!err.isError());
@@ -408,22 +426,24 @@ ErrorOr<void *> BufferCache::allocate(size_t size,
   }
 
   if (buf == nullptr) {
-    // Allocate straight from device driver if cache was not able to fulfill the
-    // request. If the cache is disabled, the we pass on the allocation mode.
+    // Allocate straight from device driver if cache was not able to fulfill
+    // the request. If the cache is disabled, the we pass on the allocation
+    // mode.
     ErrorOrSuccess err = ctx_.memAlloc(
         &buf, size, (chunkSize_ != 0) ? DeviceContext::SYNC : mode);
     if (err.isError()) {
       if (doLog_) {
-        llvm::errs() << "##(" << this << ")## allocate_buffer(" << size
-                     << ") - failed with " << err.getError() << "\n";
+        errOut() << "##(" << deviceDescription_ << ":" << this
+                 << ")## allocate_buffer(" << size << ") - failed with "
+                 << err.getError() << "\n";
       }
       return err.takeError();
     }
     if (doLog_) {
-      llvm::errs() << "##(" << this << ")## allocate_buffer(" << (buf) << "; "
-                   << size << ") - , " << cacheSize_ << ", " << chunkCount_
-                   << ", " << freeSize_ << ", " << freeCount_ << ", " << 0
-                   << ", " << 0 << "\n";
+      errOut() << "##(" << deviceDescription_ << ":" << this
+               << ")## allocate_buffer(" << (buf) << "; " << size << ") - , "
+               << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_ << ", "
+               << freeCount_ << ", " << 0 << ", " << 0 << "\n";
     }
   }
   assert(buf != nullptr);
@@ -442,8 +462,9 @@ void *BufferCache::allocate_locked(size_t size) {
   if (desc == nullptr) {
     if (!allocateChunk()) {
       if (doLog_) {
-        llvm::errs() << "##(" << this << ")## allocate(" << size
-                     << ") - nullptr (" << iterations << ")\n";
+        errOut() << "##(" << deviceDescription_ << ":" << this
+                 << ")## allocate(" << size << ") - nullptr (" << iterations
+                 << ")\n";
       }
       // No success allocating a new Chunk, so we bail from the cache.
       return nullptr;
@@ -474,12 +495,11 @@ void *BufferCache::allocate_locked(size_t size) {
   allocatedMap_.add(desc);
   freeSize_ -= size;
   if (doLog_) {
-    llvm::errs() << "##(" << this << ")## allocate("
-                 << reinterpret_cast<void *>(desc->ptr_) << "; " << size
-                 << ") - "
-                 << " (" << iterations << ") , " << cacheSize_ << ", "
-                 << chunkCount_ << ", " << freeSize_ << ", " << freeCount_
-                 << ", " << iterations << ", -" << size << "\n";
+    errOut() << "##(" << deviceDescription_ << ":" << this << ")## allocate("
+             << reinterpret_cast<void *>(desc->ptr_) << "; " << size << ") - "
+             << " (" << iterations << ") , " << cacheSize_ << ", "
+             << chunkCount_ << ", " << freeSize_ << ", " << freeCount_ << ", "
+             << iterations << ", -" << size << "\n";
   }
   return desc->ptr_;
 }
@@ -497,10 +517,10 @@ ErrorOrSuccess BufferCache::free(void *buf) {
 
   if (!freed) {
     if (doLog_) {
-      llvm::errs() << "##(" << this << ")## free_buffer(" << buf << ") -  ("
-                   << 0 << ") , " << cacheSize_ << ", " << chunkCount_ << ", "
-                   << freeSize_ << ", " << freeCount_ << ", " << 0 << ", " << 0
-                   << "\n";
+      errOut() << "##(" << deviceDescription_ << ":" << this
+               << ")## free_buffer(" << buf << ") -  (" << 0 << ") , "
+               << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_ << ", "
+               << freeCount_ << ", " << 0 << ", " << 0 << "\n";
     }
     return ctx_.memFree(buf);
   }
@@ -514,7 +534,8 @@ bool BufferCache::free_locked(void *buf) {
   Desc *desc = allocatedMap_.remove(buf);
   if (desc == nullptr) {
     if (doLog_) {
-      llvm::errs() << "##(" << this << ")## free(" << buf << ") - not found\n";
+      errOut() << "##(" << deviceDescription_ << ":" << this << ")## free("
+               << buf << ") - not found\n";
     }
     return false;
   }
@@ -595,10 +616,10 @@ bool BufferCache::free_locked(void *buf) {
     codePath = -6;
   }
   if (doLog_) {
-    llvm::errs() << "##(" << this << ")## free(" << buf << "; " << buf_size
-                 << ") -  (" << codePath << ") , " << cacheSize_ << ", "
-                 << chunkCount_ << ", " << freeSize_ << ", " << freeCount_
-                 << ", " << 0 << ", " << buf_size << "\n";
+    errOut() << "##(" << deviceDescription_ << ":" << this << ")## free(" << buf
+             << "; " << buf_size << ") -  (" << codePath << ") , " << cacheSize_
+             << ", " << chunkCount_ << ", " << freeSize_ << ", " << freeCount_
+             << ", " << 0 << ", " << buf_size << "\n";
   }
   return true;
 }

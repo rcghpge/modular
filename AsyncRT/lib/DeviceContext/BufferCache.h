@@ -16,6 +16,10 @@
 #include <cstdint>
 #include <mutex>
 
+namespace llvm {
+class raw_fd_ostream;
+} // namespace llvm
+
 namespace M::AsyncRT {
 
 class BufferCache {
@@ -92,11 +96,13 @@ private:
   DescMap allocatedMap_;
 
   // For logging and debugging.
+  llvm::raw_fd_ostream &errOut();
   bool doSelfCheck_ = false;
   bool doLog_ = false;
   size_t freeSize_ = 0;
   size_t freeCount_ = 0;
   size_t chunkCount_ = 0;
+  std::string deviceDescription_;
 };
 
 } // namespace M::AsyncRT
