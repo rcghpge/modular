@@ -50,15 +50,22 @@ public:
   ErrorOr<DeviceContextRef>
   createContext(size_t bufferCacheSize) const override;
 
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
+
+  static const CpuDevice &cast(const Device &device);
+
   static ErrorOr<const CpuDevice &> get(int id);
 };
 
 class CpuDeviceStream : public DeviceStream {
 public:
-  CpuDeviceStream(const CpuDeviceContext &context);
+  CpuDeviceStream(const CpuDevice &device);
   ~CpuDeviceStream() override = default;
 
-  virtual ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() const override;
+
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 };
 
 class CpuDeviceTimer : public DeviceTimer {

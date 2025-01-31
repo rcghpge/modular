@@ -87,10 +87,19 @@ CpuDevice::createContext(size_t bufferCacheSize) const {
   return CpuDeviceContextRef::create(*this);
 }
 
+ErrorOr<DeviceStreamRef>
+CpuDevice::createExternalStream(void *externalStream) const {
+  return CpuDeviceStreamRef::create(*this);
+}
+
 int CpuDevice::deviceCount() const {
   // Only a single CpuDevice is supported.
   return 1;
 }
+
+const CpuDevice &CpuDevice::cast(const Device &device) {
+  return static_cast<const CpuDevice &>(device);
+};
 
 ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
   if (id != 0) {
@@ -102,10 +111,15 @@ ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
 }
 
 // ===== CpuDeviceStream ===== //
-CpuDeviceStream::CpuDeviceStream(const CpuDeviceContext &context)
-    : DeviceStream(context) {}
+CpuDeviceStream::CpuDeviceStream(const CpuDevice &device)
+    : DeviceStream(device) {}
 
 ErrorOrSuccess CpuDeviceStream::synchronize() const { return success(); }
+
+ErrorOrSuccess
+CpuDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
 
 // ===== CpuDeviceTimer ===== //
 CpuDeviceTimer::CpuDeviceTimer(
@@ -248,7 +262,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
-  return CpuDeviceStreamRef::create(*this);
+  return CpuDeviceStreamRef::create(CpuDevice::cast(this->device()));
 }
 
 ErrorOrSuccess CpuDeviceContext::synchronize() const {

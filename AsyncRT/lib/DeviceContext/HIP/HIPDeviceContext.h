@@ -68,6 +68,11 @@ public:
   ErrorOr<DeviceContextRef>
   createContext(size_t bufferCacheSize) const override;
 
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
+
+  HIPDriver::Result setCurrent() const;
+
   static const HIPDevice &cast(const Device &device);
 
   static ErrorOr<const HIPDevice &> get(int id);
@@ -86,7 +91,7 @@ private:
 
 class HIPDeviceEvent : public DeviceEvent {
 public:
-  HIPDeviceEvent(const HIPDeviceContext &context, hipEvent_t event);
+  HIPDeviceEvent(const HIPDevice &device, hipEvent_t event);
   ~HIPDeviceEvent() override;
 
   ErrorOrSuccess synchronize() const override;
@@ -101,10 +106,12 @@ private:
 
 class HIPDeviceStream : public DeviceStream {
 public:
-  HIPDeviceStream(const HIPDeviceContext &context, hipStream_t stream);
+  HIPDeviceStream(const HIPDevice &device, hipStream_t stream);
   ~HIPDeviceStream() override = default;
 
-  virtual ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() const override;
+
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
   hipStream_t hipStream() const;
 

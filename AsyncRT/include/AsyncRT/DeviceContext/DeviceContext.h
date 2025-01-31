@@ -82,6 +82,9 @@ public:
   virtual ErrorOr<DeviceContextRef>
   createContext(size_t bufferCacheSize) const = 0;
 
+  virtual ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const = 0;
+
   static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);
 
@@ -142,29 +145,32 @@ private:
 class DeviceEvent : public ReferenceCounted<DeviceEvent> {
 public:
   virtual ~DeviceEvent() = default;
-  const DeviceContext &context() const;
+  const Device &device() const;
 
   virtual ErrorOrSuccess synchronize() const = 0;
 
 protected:
-  DeviceEvent(const DeviceContext &context);
+  DeviceEvent(const Device &device);
 
 private:
-  DeviceContextRef context_;
+  DeviceRef device_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
 public:
   virtual ~DeviceStream() = default;
-  const DeviceContext &context() const;
+  const Device &device() const;
 
   virtual ErrorOrSuccess synchronize() const = 0;
 
+  virtual ErrorOrSuccess
+  enqueueWaitForEvent(const DeviceEvent &event) const = 0;
+
 protected:
-  DeviceStream(const DeviceContext &context);
+  DeviceStream(const Device &device);
 
 private:
-  DeviceContextRef context_;
+  DeviceRef device_;
 };
 
 class DeviceFunction : public ReferenceCounted<DeviceFunction> {

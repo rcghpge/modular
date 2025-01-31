@@ -218,18 +218,18 @@ ErrorOr<DeviceBufferRef> DeviceBuffer::createSubBuffer(size_t byteOffset,
 //
 // ===== DeviceEvent ===== //
 //
-DeviceEvent::DeviceEvent(const DeviceContext &context)
-    : context_(DeviceContextRef::copy(&context)) {}
+DeviceEvent::DeviceEvent(const Device &device)
+    : device_(DeviceRef::copy(&device)) {}
 
-const DeviceContext &DeviceEvent::context() const { return *context_; }
+const Device &DeviceEvent::device() const { return *device_; }
 
 //
 // ===== DeviceStream ===== //
 //
-DeviceStream::DeviceStream(const DeviceContext &context)
-    : context_(DeviceContextRef::copy(&context)) {}
+DeviceStream::DeviceStream(const Device &device)
+    : device_(DeviceRef::copy(&device)) {}
 
-const DeviceContext &DeviceStream::context() const { return *context_; }
+const Device &DeviceStream::device() const { return *device_; }
 
 //
 // ===== DeviceFunction ===== //

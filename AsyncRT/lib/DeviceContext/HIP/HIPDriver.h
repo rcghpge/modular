@@ -209,6 +209,7 @@ public:
 
   Result DeviceGetCount(int *count) const { return hipGetDeviceCount_(count); }
 
+  Result SetDevice(hipDevice_t dev) const { return hipSetDevice_(dev); }
   Result DeviceGetName(char *name, int len, hipDevice_t dev) const {
     return hipDeviceGetName_(name, len, dev);
   }
@@ -387,6 +388,9 @@ private:
 
   using thipGetDeviceCount = Result(int *);
   thipGetDeviceCount *hipGetDeviceCount_;
+
+  using thipSetDevice = Result(hipDevice_t);
+  thipSetDevice *hipSetDevice_;
 
   using thipDeviceGetName = Result(char *, int, hipDevice_t);
   thipDeviceGetName *hipDeviceGetName_;

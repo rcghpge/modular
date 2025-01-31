@@ -72,6 +72,9 @@ public:
   ErrorOr<DeviceContextRef>
   createContext(size_t bufferCacheSize) const override;
 
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
+
   static const CUDADevice &cast(const Device &device);
 
   static ErrorOr<const CUDADevice &> get(int id);
@@ -108,7 +111,7 @@ private:
 
 class CUDADeviceEvent : public DeviceEvent {
 public:
-  CUDADeviceEvent(const CUDADeviceContext &context, CUevent event);
+  CUDADeviceEvent(const CUDADevice &device, CUevent event);
   ~CUDADeviceEvent() override;
 
   ErrorOrSuccess synchronize() const override;
@@ -123,10 +126,12 @@ private:
 
 class CUDADeviceStream : public DeviceStream {
 public:
-  CUDADeviceStream(const CUDADeviceContext &context, CUstream stream);
+  CUDADeviceStream(const CUDADevice &device, CUstream stream);
   ~CUDADeviceStream() override = default;
 
-  virtual ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() const override;
+
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
   CUstream cudaStream() const;
 

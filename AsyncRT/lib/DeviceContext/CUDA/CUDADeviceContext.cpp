@@ -126,6 +126,16 @@ private:
   CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
   CUDA_CHECK(__cudaWithContext.status());
 
+#define CUDA_WITH_DEV_ERR(dev)                                                 \
+  CUDAContextScope __cudaWithContext(*(dev).cudaContext(),                     \
+                                     (dev).cudaDriver());                      \
+  CUDA_CHECK_ERR(__cudaWithContext.status());
+
+#define CUDA_WITH_DEV(dev)                                                     \
+  CUDAContextScope __cudaWithContext(*(dev).cudaContext(),                     \
+                                     (dev).cudaDriver());                      \
+  CUDA_CHECK(__cudaWithContext.status());
+
 #define CHECK_IS_CUDA_ERR(dev)                                                 \
   do {                                                                         \
     if ((dev).api() != Device::cudaAPI) {                                      \
@@ -321,6 +331,12 @@ CUDADevice::createContext(size_t bufferCacheSize) const {
                                       maxCacheSize);
 }
 
+ErrorOr<DeviceStreamRef>
+CUDADevice::createExternalStream(void *externalStream) const {
+  return CUDADeviceStreamRef::create(
+      *this, reinterpret_cast<CUstream>(externalStream));
+}
+
 int CUDADevice::deviceCount() const {
   ErrorOr<const DeviceList &> err_or_devices = deviceList();
   if (err_or_devices.isError()) {
@@ -377,20 +393,19 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
 }
 
 // ===== CUDADeviceEvent ===== //
-CUDADeviceEvent::CUDADeviceEvent(const CUDADeviceContext &context,
-                                 CUevent event)
-    : DeviceEvent(context), event_(event) {}
+CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event)
+    : DeviceEvent(device), event_(event) {}
 
 CUDADeviceEvent::~CUDADeviceEvent() {
-  const auto &cudaContext = CUDADeviceContext::cast(context());
-  CUDA_WITH_CTX(cudaContext);
-  CUDA_CHECK(cudaContext.cudaDriver().EventDestroy(event_));
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV(cudaDevice);
+  CUDA_CHECK(cudaDevice.cudaDriver().EventDestroy(event_));
 }
 
 ErrorOrSuccess CUDADeviceEvent::synchronize() const {
-  const auto &cudaContext = CUDADeviceContext::cast(context());
-  CUDA_WITH_CTX_ERR(cudaContext);
-  CUDA_CHECK_ERR(cudaContext.cudaDriver().EventSynchronize(event_));
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().EventSynchronize(event_));
   return success();
 }
 
@@ -401,15 +416,24 @@ const CUDADeviceEvent &CUDADeviceEvent::cast(const DeviceEvent &event) {
 }
 
 // ===== CUDADeviceStream ===== //
-CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &context,
-                                   CUstream stream)
-    : DeviceStream(context), stream_(stream) {}
+CUDADeviceStream::CUDADeviceStream(const CUDADevice &device, CUstream stream)
+    : DeviceStream(device), stream_(stream) {}
 
 ErrorOrSuccess CUDADeviceStream::synchronize() const {
-  const auto &cudaContext = CUDADeviceContext::cast(context());
+  const auto &cudaDevice = CUDADevice::cast(device());
 
-  CUDA_WITH_CTX_ERR(cudaContext);
-  CUDA_CHECK_ERR(cudaContext.cudaDriver().StreamSynchronize(stream_));
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().StreamSynchronize(stream_));
+  return success();
+}
+
+ErrorOrSuccess
+CUDADeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
+  const auto &cudaEvent = CUDADeviceEvent::cast(event);
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().StreamWaitEvent(
+      stream_, cudaEvent.cudaEvent(), 0));
   return success();
 }
 
@@ -417,7 +441,7 @@ CUstream CUDADeviceStream::cudaStream() const { return stream_; }
 
 const CUDADeviceStream *
 CUDADeviceStream::verified_cast(const DeviceStream *stream) {
-  if (stream->context().device().api() != Device::cudaAPI) {
+  if (stream->device().api() != Device::cudaAPI) {
     return nullptr;
   }
   return static_cast<const CUDADeviceStream *>(stream);
@@ -912,7 +936,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
-  return CUDADeviceStreamRef::create(*this, stream_);
+  return CUDADeviceStreamRef::create(CUDADevice::cast(this->device()), stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
@@ -926,7 +950,7 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   CUevent event;
   CUDA_CHECK_ERR(driver_.EventCreate(&event, 0));
   CUDA_CHECK_ERR(driver_.EventRecord(event, stream_));
-  return CUDADeviceEventRef::create(*this, event);
+  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
 }
 
 ErrorOrSuccess
