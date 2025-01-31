@@ -105,6 +105,14 @@ private:
   }                                                                            \
   var = _err_or_var_.takeValue()
 
+#define DEFINE_OR_RAISE(type, var, call)                                       \
+  auto _err_or_##var = call;                                                   \
+  if (_err_or_##var.isError()) {                                               \
+    return formatError(__FILE__, __LINE__, __FUNCTION__,                       \
+                       _err_or_##var.getError());                              \
+  }                                                                            \
+  type var = _err_or_##var.takeValue()
+
 #define ERR_CHECK(err_call)                                                    \
   do {                                                                         \
     auto err_result = (err_call);                                              \
@@ -692,35 +700,44 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
-  const auto &src_ctx = CUDADeviceContext::cast(src.context());
-  const auto &dst_ctx = CUDADeviceContext::cast(dst.context());
+  const auto &srcCtx = CUDADeviceContext::cast(src.context());
+  const auto &dstCtx = CUDADeviceContext::cast(dst.context());
 
-  if (this->context_ != dst_ctx.context_) {
+  if (this->context_ != dstCtx.context_) {
     RAISE_ERROR("device context does not match context of dst");
   }
 
-  CUdeviceptr src_ptr = src.ptr();
-  CUdeviceptr dst_ptr = dst.ptr();
+  CUdeviceptr srcPtr = src.ptr();
+  CUdeviceptr dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   size_t srcByteSize = src.byteSize();
   if (srcByteSize < dstByteSize) {
     RAISE_ERROR("not enough data in src");
   }
-  if (src_ctx.context_ != dst_ctx.context_) {
+  if (srcCtx.context_ != dstCtx.context_) {
     if (mode == ASYNC) {
-      CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dst_ptr, dst_ctx.context_, src_ptr,
-                                             src_ctx.context_, dstByteSize,
+      // Ensure that we are waiting for the source data to be ready.
+      DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
+      ERR_CHECK(dstCtx.enqueueWaitForEvent(*srcEvent));
+
+      CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
+                                             srcCtx.context_, dstByteSize,
                                              stream_));
+
+      // Wait for the copy to complete before proceeding with the source stream
+      // (e.g. freeing or overwriting memory).
+      DEFINE_OR_RAISE(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
+      ERR_CHECK(srcCtx.enqueueWaitForEvent(*dstEvent));
     } else {
-      CUDA_CHECK_ERR(driver_.MemcpyPeer(dst_ptr, dst_ctx.context_, src_ptr,
-                                        src_ctx.context_, dstByteSize));
+      CUDA_CHECK_ERR(driver_.MemcpyPeer(dstPtr, dstCtx.context_, srcPtr,
+                                        srcCtx.context_, dstByteSize));
     }
   } else {
     if (mode == ASYNC) {
       CUDA_CHECK_ERR(
-          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, dstByteSize, stream_));
+          driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
     } else {
-      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, dstByteSize));
+      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dstPtr, srcPtr, dstByteSize));
     }
   }
   return success();
