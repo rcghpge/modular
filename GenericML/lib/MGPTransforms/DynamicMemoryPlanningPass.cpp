@@ -15,6 +15,8 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Matchers.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
 #include <numeric>
 
 #define DEBUG_TYPE "mgp-dynamic-memory-planning"
@@ -79,6 +81,15 @@ class DynamicMemoryPlanningPass
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
+    if (llvm::count_if(modelOp.getDevices(), [](Attribute deviceAttr) {
+          return cast<DeviceRefAttr>(deviceAttr).getLabel() != kCPULabel;
+        }) > 1) {
+      // TODO(GEX-1792): Re-enable after fixing CUDA OOM.
+      LLVM_DEBUG({
+        llvm::dbgs() << "skipping DynamicMemoryPlanningPass for multi-device\n";
+      });
+      return;
+    }
 
     auto getDeviceContext = [&modelOp](DeviceRefAttr dev,
                                        ArrayRef<BlockArgument> devices) {
