@@ -31,6 +31,7 @@ def MOSHDialect : Dialect {
     "KGEN::POP::POPDialect",
     "mlir::index::IndexDialect",
     "mlir::arith::ArithDialect",
+    "mlir::ub::UBDialect",
   ];
   let useDefaultAttributePrinterParser = 1;
 

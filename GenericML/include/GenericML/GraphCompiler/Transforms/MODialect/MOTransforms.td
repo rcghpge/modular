@@ -34,6 +34,7 @@ def AddFallbackShapeFunctions :
     "M::MDialect",
     "mlir::NVVM::NVVMDialect",
     "mlir::ROCDL::ROCDLDialect",
+    "mlir::ub::UBDialect",
   ];
 }
 
@@ -245,6 +246,7 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
     "mlir::NVVM::NVVMDialect",
     "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
+    "mlir::ub::UBDialect",
   ];
   let options = [
     Option<"iterations", "iterations", "int", "2", "Number of times to run constant folding back to back">,
@@ -359,6 +361,7 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
     "M::MDialect",
     "mlir::NVVM::NVVMDialect",
     "mlir::ROCDL::ROCDLDialect",
+    "mlir::ub::UBDialect",
   ];
 }
 
@@ -537,6 +540,7 @@ def VerifyCustomOps : Pass<"verify-custom-ops", "GraphOp"> {
       "mlir::NVVM::NVVMDialect",
       "mlir::ROCDL::ROCDLDialect",
       "mlir::index::IndexDialect",
+      "mlir::ub::UBDialect",
   ];
 }
 

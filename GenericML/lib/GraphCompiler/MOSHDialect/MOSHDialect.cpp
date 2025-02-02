@@ -13,6 +13,7 @@
 #include "Support/MDialect/MDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 
 using namespace M;
 using namespace MOSH;
