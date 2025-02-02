@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <stddef.h>
 #include <string>
 #include <vector>
@@ -392,6 +393,9 @@ private:
 
   std::unique_ptr<BufferCache> bufferCache_;
 
+  // Mutex to protect shared, static data. E.g. config dictionary
+  static std::mutex mu_;
+
   // Explicitly mark copy and assignment as unsupported.
   DeviceContext(const DeviceContext &other) = delete;
   DeviceContext(DeviceContext &&other) = delete;
@@ -408,6 +412,9 @@ private:
                                   SyncMode mode) const = 0;
   virtual ErrorOrSuccess memFree(void *ptr) const = 0;
 
+  // Shared configuration object.
+  // REQUIRES: `DeviceContext::mu_` must be held to get and access the shared
+  // Config object.
   static ErrorOr<Config> &getConfig();
 };
 
