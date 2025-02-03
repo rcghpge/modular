@@ -20,7 +20,11 @@ namespace M::AsyncRT {
 
 // #if defined(__APPLE__) || defined(__MACOSX)
 // /opt/rocm-6.2.3/lib/libamdhip64.so
+#if LLVM_ADDRESS_SANITIZER_BUILD
+const char HIPDriver::lib_name[] = "/opt/rocm/lib/asan/libamdhip64.so";
+#else
 const char HIPDriver::lib_name[] = "/opt/rocm/lib/libamdhip64.so";
+#endif
 // #elif defined(__unix__)
 // const char HIPDriver::lib_name[] = "FIXME";
 // #else
@@ -38,7 +42,8 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   // Attempt to open the shared library of the HIP driver.
   void *dl_lib = dlopen(lib_name, RTLD_NOW);
   if (dl_lib == nullptr) {
-    return Error(llvm::Twine("Failed to open library \"") + lib_name + "\"");
+    return Error(llvm::Twine("Failed to open library \"") + lib_name +
+                 "\": " + dlerror());
   }
 
   // Allocate a driver and register all of the used shared library entry points.
