@@ -21,7 +21,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <mutex>
 #include <stddef.h>
 #include <string>
 #include <vector>
@@ -392,9 +391,6 @@ private:
   DeviceRef device_;
 
   std::unique_ptr<BufferCache> bufferCache_;
-
-  // Mutex to protect shared, static data. E.g. config dictionary
-  static std::mutex mu_;
 
   // Explicitly mark copy and assignment as unsupported.
   DeviceContext(const DeviceContext &other) = delete;

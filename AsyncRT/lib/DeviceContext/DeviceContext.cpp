@@ -342,7 +342,12 @@ const DeviceContext &DeviceTimer::context() const { return *context_; }
 //
 // ===== DeviceContext ===== //
 //
-std::mutex DeviceContext::mu_;
+
+// Mutex to protect shared, static data. E.g. config dictionary
+static std::mutex &getGlobalMutex() {
+  static std::mutex mu;
+  return mu;
+}
 
 DeviceContext::DeviceContext(const Device &device,
                              std::unique_ptr<BufferCache> bufferCache)
@@ -414,7 +419,7 @@ int Device::numberOfDevices(StringRef api) {
 }
 
 bool DeviceContext::configAsBool(StringRef key, bool defaultValue) {
-  std::lock_guard<std::mutex> lock(mu_);
+  std::lock_guard<std::mutex> lock(getGlobalMutex());
   ErrorOr<Config> &config = getConfig();
   if (config.isError())
     return defaultValue;
@@ -427,7 +432,7 @@ bool DeviceContext::configAsBool(StringRef key, bool defaultValue) {
 }
 
 int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue) {
-  std::lock_guard<std::mutex> lock(mu_);
+  std::lock_guard<std::mutex> lock(getGlobalMutex());
   ErrorOr<Config> &config = getConfig();
   if (config.isError())
     return defaultValue;
@@ -440,7 +445,7 @@ int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue) {
 }
 
 StringRef DeviceContext::configAsString(StringRef key, StringRef defaultValue) {
-  std::lock_guard<std::mutex> lock(mu_);
+  std::lock_guard<std::mutex> lock(getGlobalMutex());
   ErrorOr<Config> &config = getConfig();
   if (config.isError())
     return defaultValue;
