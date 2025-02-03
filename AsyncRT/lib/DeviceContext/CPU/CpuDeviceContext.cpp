@@ -175,8 +175,8 @@ ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
                                               const void *src,
                                               SyncMode mode) const {
   CHECK_IS_CPU_ERR(dst.context().device());
-  void *dst_ptr = dst.ptr();
-  memcpy(dst_ptr, src, dst.byteSize());
+  void *dstPtr = dst.ptr();
+  memcpy(dstPtr, src, dst.byteSize());
   return success();
 }
 
@@ -184,8 +184,8 @@ ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
                                                 const DeviceBuffer &src,
                                                 SyncMode mode) const {
   CHECK_IS_CPU_ERR(src.context().device());
-  void *src_ptr = src.ptr();
-  memcpy(dst, src_ptr, src.byteSize());
+  void *srcPtr = src.ptr();
+  memcpy(dst, srcPtr, src.byteSize());
   return success();
 }
 
@@ -194,12 +194,12 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                     SyncMode mode) const {
   CHECK_IS_CPU_ERR(src.context().device());
   CHECK_IS_CPU_ERR(dst.context().device());
-  void *src_ptr = src.ptr();
-  void *dst_ptr = dst.ptr();
+  void *srcPtr = src.ptr();
+  void *dstPtr = dst.ptr();
   if (src.byteSize() < dst.byteSize()) {
     RAISE_ERROR_MESSAGE("not enough data in src");
   }
-  memcpy(dst_ptr, src_ptr, dst.byteSize());
+  memcpy(dstPtr, srcPtr, dst.byteSize());
   return success();
 }
 
@@ -216,9 +216,9 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 1;
-    uint16_t *cur_ptr = static_cast<uint16_t *>(ptr);
+    uint16_t *curPtr = static_cast<uint16_t *>(ptr);
     for (size_t i = 0; i < len; i++) {
-      *cur_ptr++ = static_cast<uint16_t>(val);
+      *curPtr++ = static_cast<uint16_t>(val);
     }
   } else {
     if (valSize != 4) {
@@ -228,9 +228,9 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 2;
-    uint32_t *cur_ptr = static_cast<uint32_t *>(ptr);
+    uint32_t *curPtr = static_cast<uint32_t *>(ptr);
     for (size_t i = 0; i < len; i++) {
-      *cur_ptr++ = val;
+      *curPtr++ = val;
     }
   }
   return success();

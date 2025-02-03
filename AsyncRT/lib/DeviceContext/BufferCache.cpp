@@ -73,14 +73,14 @@ BufferCache::DescMap::~DescMap() { delete[] buckets_; }
 
 uint32_t BufferCache::DescMap::hash(void *ptr) {
   // From https://gist.github.com/badboy/6267743#64-bit-to-32-bit-hash-functions
-  uintptr_t hash_val = reinterpret_cast<uintptr_t>(ptr);
-  hash_val = (~hash_val) + (hash_val << 18); // key = (key << 18) - key - 1;
-  hash_val = hash_val ^ (hash_val >> 31);
-  hash_val = hash_val * 21; // key = (key + (key << 2)) + (key << 4);
-  hash_val = hash_val ^ (hash_val >> 11);
-  hash_val = hash_val + (hash_val << 6);
-  hash_val = hash_val ^ (hash_val >> 22);
-  return static_cast<uint32_t>(hash_val);
+  uintptr_t hashVal = reinterpret_cast<uintptr_t>(ptr);
+  hashVal = (~hashVal) + (hashVal << 18); // key = (key << 18) - key - 1;
+  hashVal = hashVal ^ (hashVal >> 31);
+  hashVal = hashVal * 21; // key = (key + (key << 2)) + (key << 4);
+  hashVal = hashVal ^ (hashVal >> 11);
+  hashVal = hashVal + (hashVal << 6);
+  hashVal = hashVal ^ (hashVal >> 22);
+  return static_cast<uint32_t>(hashVal);
 }
 
 void BufferCache::DescMap::add(Desc *desc) {
@@ -264,69 +264,69 @@ void BufferCache::selfCheck() {
     return;
   }
 
-  Chunk *cur_chunk = chunks_;
-  while (cur_chunk != nullptr) {
+  Chunk *curChunk = chunks_;
+  while (curChunk != nullptr) {
     // First buffer points to base of pre-allocated memory.
-    [[maybe_unused]] void *base = cur_chunk->base_;
-    [[maybe_unused]] size_t size = cur_chunk->size_;
-    assert(cur_chunk->descs_->ptr_ == base);
+    [[maybe_unused]] void *base = curChunk->base_;
+    [[maybe_unused]] size_t size = curChunk->size_;
+    assert(curChunk->descs_->ptr_ == base);
 
-    Desc *cur_desc = cur_chunk->descs_;
-    Desc *ahead_desc = cur_desc;
-    assert(cur_desc != nullptr);
-    assert(cur_desc->prev_ == nullptr);
+    Desc *curDesc = curChunk->descs_;
+    Desc *aheadDesc = curDesc;
+    assert(curDesc != nullptr);
+    assert(curDesc->prev_ == nullptr);
 
     // Check no missing buffers, no cycle
-    while (cur_desc != nullptr) {
-      if (!cur_desc->free_) {
+    while (curDesc != nullptr) {
+      if (!curDesc->free_) {
         // next_free_ is used in map collision resolution, so it is not
         // necessarily nullptr.
-        // assert(cur_desc->next_free_ == nullptr);
-        assert(cur_desc->prev_free_ == nullptr);
+        // assert(curDesc->next_free_ == nullptr);
+        assert(curDesc->prev_free_ == nullptr);
       }
-      Desc *next_desc = cur_desc->next_;
-      if (next_desc != nullptr) {
-        assert((cur_desc->ptr_ + cur_desc->size_) == next_desc->ptr_);
-        assert(next_desc->prev_ == cur_desc);
+      Desc *nextDesc = curDesc->next_;
+      if (nextDesc != nullptr) {
+        assert((curDesc->ptr_ + curDesc->size_) == nextDesc->ptr_);
+        assert(nextDesc->prev_ == curDesc);
       } else {
-        assert((cur_desc->ptr_ + cur_desc->size_) ==
+        assert((curDesc->ptr_ + curDesc->size_) ==
                (static_cast<const char *>(base) + size));
       }
       // Step ahead.
-      if ((ahead_desc != nullptr) && (ahead_desc->next_ != nullptr)) {
-        ahead_desc = ahead_desc->next_->next_;
-        if (ahead_desc == cur_desc) {
+      if ((aheadDesc != nullptr) && (aheadDesc->next_ != nullptr)) {
+        aheadDesc = aheadDesc->next_->next_;
+        if (aheadDesc == curDesc) {
           errOut() << "##(" << deviceDescription_ << ":" << this
                    << ")## selfCheck: cycle - buffers\n";
           abort();
         }
       }
-      cur_desc = next_desc;
+      curDesc = nextDesc;
     }
-    cur_chunk = cur_chunk->next_;
+    curChunk = curChunk->next_;
   }
 
   // Check free markers, no cycle
-  Desc *cur_desc = freeBuffers_;
-  Desc *ahead_desc = cur_desc;
-  if (cur_desc != nullptr) {
-    assert(cur_desc->prev_free_ == nullptr);
+  Desc *curDesc = freeBuffers_;
+  Desc *aheadDesc = curDesc;
+  if (curDesc != nullptr) {
+    assert(curDesc->prev_free_ == nullptr);
   }
-  while (cur_desc != nullptr) {
-    Desc *next = cur_desc->next_free_;
-    assert(cur_desc->free_);
+  while (curDesc != nullptr) {
+    Desc *next = curDesc->next_free_;
+    assert(curDesc->free_);
     if (next != nullptr) {
-      assert(next->prev_free_ == cur_desc);
+      assert(next->prev_free_ == curDesc);
     }
-    if ((ahead_desc != nullptr) && (ahead_desc->next_free_ != nullptr)) {
-      ahead_desc = ahead_desc->next_free_->next_free_;
-      if (ahead_desc == cur_desc) {
+    if ((aheadDesc != nullptr) && (aheadDesc->next_free_ != nullptr)) {
+      aheadDesc = aheadDesc->next_free_->next_free_;
+      if (aheadDesc == curDesc) {
         errOut() << "##(" << deviceDescription_ << ":" << this
                  << ")## selfCheck: cycle - free buffers\n";
         abort();
       }
     }
-    cur_desc = next;
+    curDesc = next;
   }
   if (doLog_) {
     errOut() << "##(" << deviceDescription_ << ":" << this
@@ -540,7 +540,7 @@ bool BufferCache::free_locked(void *buf) {
     return false;
   }
   assert(!desc->free_);
-  size_t buf_size = desc->size_;
+  size_t bufSize = desc->size_;
 
   // The chunk where all the descriptors are situated.
   Chunk *chunk = desc->chunk_;
@@ -553,7 +553,7 @@ bool BufferCache::free_locked(void *buf) {
     // Check if we can also merge with the previous buffer.
     if ((prev != nullptr) && prev->free_) {
       // Merge all three keeping prev on the free list.
-      prev->size_ += buf_size + next->size_;
+      prev->size_ += bufSize + next->size_;
       // Remove next from free list.
       if (prev->next_free_ == next) {
         // next is following previous in free list.
@@ -586,7 +586,7 @@ bool BufferCache::free_locked(void *buf) {
     } else {
       // Merge, keeping next on the free list.
       next->ptr_ = desc->ptr_;
-      next->size_ += buf_size;
+      next->size_ += bufSize;
       // Remove desc from buffers.
       if (chunk->descs_ == desc) {
         chunk->descs_ = next;
@@ -598,10 +598,10 @@ bool BufferCache::free_locked(void *buf) {
       codePath = -4;
       pushDesc(desc);
     }
-    freeSize_ += buf_size;
+    freeSize_ += bufSize;
   } else if ((prev != nullptr) && prev->free_) {
     // Merge, keeping prev on the free list.
-    prev->size_ += buf_size;
+    prev->size_ += bufSize;
     // Remove desc from buffers.
     prev->next_ = desc->next_;
     if (desc->next_ != nullptr) {
@@ -609,7 +609,7 @@ bool BufferCache::free_locked(void *buf) {
     }
     codePath = -5;
     pushDesc(desc);
-    freeSize_ += buf_size;
+    freeSize_ += bufSize;
   } else {
     // Add desc to the free list.
     addToFreeList(desc);
@@ -617,9 +617,9 @@ bool BufferCache::free_locked(void *buf) {
   }
   if (doLog_) {
     errOut() << "##(" << deviceDescription_ << ":" << this << ")## free(" << buf
-             << "; " << buf_size << ") -  (" << codePath << ") , " << cacheSize_
+             << "; " << bufSize << ") -  (" << codePath << ") , " << cacheSize_
              << ", " << chunkCount_ << ", " << freeSize_ << ", " << freeCount_
-             << ", " << 0 << ", " << buf_size << "\n";
+             << ", " << 0 << ", " << bufSize << "\n";
   }
   return true;
 }

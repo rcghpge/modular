@@ -130,12 +130,12 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
 }
 
 ErrorOr<const CUDADriver &> CUDADriver::get() {
-  static const ErrorOr<const CUDADriver &> err_or_driver = allocAndInitDriver();
+  static const ErrorOr<const CUDADriver &> errOrDriver = allocAndInitDriver();
 
-  if (err_or_driver) {
-    return Error(err_or_driver.getError());
+  if (errOrDriver) {
+    return Error(errOrDriver.getError());
   }
-  return err_or_driver.get();
+  return errOrDriver.get();
 }
 
 } // namespace M::AsyncRT

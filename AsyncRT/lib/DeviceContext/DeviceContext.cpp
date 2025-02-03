@@ -190,29 +190,29 @@ size_t DeviceBuffer::byteSize() const { return byteSize_; }
 // Default implementation, which can be specialized by subclasses.
 ErrorOrSuccess DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
   const DeviceBuffer &src = *this;
-  const Device::API src_api = src.context().device().api();
-  const Device::API dst_api = dst.context().device().api();
-  if (src_api == Device::cpuAPI) {
+  const Device::API srcApi = src.context().device().api();
+  const Device::API dstApi = dst.context().device().api();
+  if (srcApi == Device::cpuAPI) {
     return dst.context().enqueueCopyToDevice(dst, src.ptr());
-  } else if (dst_api == Device::cpuAPI) {
+  } else if (dstApi == Device::cpuAPI) {
     return src.context().enqueueCopyFromDevice(dst.ptr(), src);
-  } else if (src_api == dst_api) {
+  } else if (srcApi == dstApi) {
     return dst.context().enqueueCopyDeviceToDevice(dst, src);
   }
-  return Error("Device API mismatch copying from \"" + src_api + "\" to \"" +
-               dst_api + "\"");
+  return Error("Device API mismatch copying from \"" + srcApi + "\" to \"" +
+               dstApi + "\"");
 }
 
 ErrorOr<DeviceBufferRef> DeviceBuffer::createSubBuffer(size_t byteOffset,
                                                        size_t byteSize) const {
-  char *orig_ptr = static_cast<char *>(this->ptr());
+  char *origPtr = static_cast<char *>(this->ptr());
   size_t origByteSize = this->byteSize();
 
   if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
     RAISE_ERROR_MESSAGE("offset, len and elem_size are out of range");
   }
   return DeviceBufferRef::take(
-      new DeviceBuffer(context(), *this, orig_ptr + byteOffset, byteSize));
+      new DeviceBuffer(context(), *this, origPtr + byteOffset, byteSize));
 }
 
 //
@@ -377,11 +377,11 @@ DeviceBufferRef DeviceContext::createBufferOwning(void *ptr, size_t byteSize,
 ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
                                                     SyncMode mode) const {
   assert(byteSize != 0);
-  ErrorOr<void *> err_ptr = bufferCache().allocate(byteSize, mode);
-  if (err_ptr.isError()) {
-    return err_ptr.takeError();
+  ErrorOr<void *> errPtr = bufferCache().allocate(byteSize, mode);
+  if (errPtr.isError()) {
+    return errPtr.takeError();
   }
-  return DeviceBufferRef::take(new DeviceBuffer(*this, *err_ptr, byteSize));
+  return DeviceBufferRef::take(new DeviceBuffer(*this, *errPtr, byteSize));
 }
 
 ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,

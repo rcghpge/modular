@@ -24,18 +24,17 @@
 
 #define HIP_CHECK_ERR(hip_call)                                                \
   do {                                                                         \
-    HIPDriver::Result hip_result = hip_call;                                   \
-    if (hip_result != HIPDriver::SUCCESS) {                                    \
-      return formatError(__FILE__, __LINE__, __FUNCTION__, hip_result);        \
+    HIPDriver::Result hipResult = hip_call;                                    \
+    if (hipResult != HIPDriver::SUCCESS) {                                     \
+      return formatError(__FILE__, __LINE__, __FUNCTION__, hipResult);         \
     }                                                                          \
   } while (0)
 
 #define HIP_CHECK(hip_call)                                                    \
   do {                                                                         \
-    HIPDriver::Result hip_result = hip_call;                                   \
-    if (hip_result != HIPDriver::SUCCESS) {                                    \
-      M::Error err =                                                           \
-          formatError(__FILE__, __LINE__, __FUNCTION__, hip_result);           \
+    HIPDriver::Result hipResult = hip_call;                                    \
+    if (hipResult != HIPDriver::SUCCESS) {                                     \
+      M::Error err = formatError(__FILE__, __LINE__, __FUNCTION__, hipResult); \
       /* We are not in a context where we can return an Error here. So we   */ \
       /* print the message and abort().                                     */ \
       std::cerr << err << "\n";                                                \
@@ -74,24 +73,24 @@ static Error formatError(const char *file, int line, const char *func,
 
 static Error formatError(const char *file, int line, const char *func,
                          HIPDriver::Result result) {
-  ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
-  const char *err_name = nullptr;
-  const char *err_str = nullptr;
+  ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
+  const char *errName = nullptr;
+  const char *errStr = nullptr;
 
-  if (!err_driver) {
+  if (!errDriver) {
     // Ignore errors and use nullptr of char* instead.
-    err_driver->GetErrorName(result, &err_name);
-    err_driver->GetErrorString(result, &err_str);
+    errDriver->GetErrorName(result, &errName);
+    errDriver->GetErrorString(result, &errStr);
   }
 
-  if ((err_name != nullptr) && (err_str != nullptr)) {
+  if ((errName != nullptr) && (errStr != nullptr)) {
     return formatError(file, line, func,
-                       llvm::Twine("HIP call failed: ") + err_name + " (" +
-                           err_str + ")");
-  } else if ((err_name != nullptr) || (err_str != nullptr)) {
+                       llvm::Twine("HIP call failed: ") + errName + " (" +
+                           errStr + ")");
+  } else if ((errName != nullptr) || (errStr != nullptr)) {
     return formatError(file, line, func,
                        llvm::Twine("HIP call failed: ") +
-                           (err_name != nullptr ? err_name : err_str));
+                           (errName != nullptr ? errName : errStr));
   } else {
     return formatError(file, line, func,
                        llvm::Twine("HIP call failed: ") + llvm::Twine(result));
@@ -141,9 +140,9 @@ const HIPDriver &HIPDevice::hipDriver() const { return driver_; }
 hipDevice_t HIPDevice::hipDevice() const { return device_; }
 
 ErrorOr<int> HIPDevice::getDriverVersion() const {
-  int driver_version = 0;
-  HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
-  return driver_version;
+  int driverVersion = 0;
+  HIP_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
+  return driverVersion;
 }
 
 ErrorOrSuccess HIPDevice::isCompatible() const {
@@ -158,9 +157,9 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
     RAISE_ERROR("MAX only supports HIP Ampere architectures or higher");
   }
 
-  int driver_version = 0;
-  HIP_CHECK_ERR(driver_.DriverGetVersion(&driver_version));
-  if (driver_version < MIN_DRIVER_VERSION) {
+  int driverVersion = 0;
+  HIP_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
+  if (driverVersion < MIN_DRIVER_VERSION) {
     RAISE_ERROR("MAX not supported using current GPU driver");
   }
 
@@ -168,16 +167,16 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
 }
 
 ErrorOr<int> HIPDevice::computeCapability() const {
-  int compute_major = 0, compute_minor = 0;
+  int computeMajor = 0, computeMinor = 0;
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_major,
+      &computeMajor,
       hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMajor,
       hipDevice()));
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &compute_minor,
+      &computeMinor,
       hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMinor,
       hipDevice()));
-  return 10 * compute_major + compute_minor;
+  return 10 * computeMajor + computeMinor;
 }
 
 ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const { return false; }
@@ -202,23 +201,22 @@ HIPDevice::createContext(size_t bufferCacheSize) const {
   size_t cacheChunkSize = 0;
   size_t maxCacheSize = 0;
   if (bufferCacheSize != 0) {
-    constexpr size_t KB = 1024;
-    DeviceContext::MemInfo mem_info;
-    HIP_CHECK_ERR(
-        this->hipDriver().GetMemInfo(&mem_info.free, &mem_info.total));
+    constexpr size_t KB = 1024; // NOLINT
+    DeviceContext::MemInfo memInfo;
+    HIP_CHECK_ERR(this->hipDriver().GetMemInfo(&memInfo.free, &memInfo.total));
     // Make the buffer cache disabled by setting percentages to zero.
     // Limit to 90% (default) of available memory.
-    int64_t cache_percent =
+    int64_t cachePercent =
         DeviceContext::configAsInt("buffer_cache_size_percent", 0);
     maxCacheSize = std::min(
         bufferCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
-                             (mem_info.free * cache_percent) / 100, 256 * KB)));
+                             (memInfo.free * cachePercent) / 100, 256 * KB)));
     // Allocate chunks of 2% (default) of available memory.
-    int64_t chunk_percent =
+    int64_t chunkPercent =
         DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
     cacheChunkSize = std::min(
         maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
-                          (maxCacheSize * chunk_percent) / 100, 256 * KB)));
+                          (maxCacheSize * chunkPercent) / 100, 256 * KB)));
   }
 
   return HIPDeviceContextRef::create(*this, context, stream, cacheChunkSize,
@@ -232,14 +230,14 @@ HIPDevice::createExternalStream(void *externalStream) const {
 }
 
 int HIPDevice::deviceCount() const {
-  ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
-  if (err_driver) {
+  ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
+  if (errDriver) {
     return 0;
   }
 
   int count = 0;
-  HIPDriver::Result hip_result = err_driver.get().DeviceGetCount(&count);
-  if (hip_result != HIPDriver::SUCCESS) {
+  HIPDriver::Result hipResult = errDriver.get().DeviceGetCount(&count);
+  if (hipResult != HIPDriver::SUCCESS) {
     return 0;
   }
   return count;
@@ -254,36 +252,35 @@ const HIPDevice &HIPDevice::cast(const Device &device) {
 };
 
 ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
-  ErrorOr<const DeviceList &> err_or_devices = deviceList();
-  if (err_or_devices) {
-    return err_or_devices.takeError();
+  ErrorOr<const DeviceList &> errOrDevices = deviceList();
+  if (errOrDevices) {
+    return errOrDevices.takeError();
   }
-  return *err_or_devices.get()[id];
+  return *errOrDevices.get()[id];
 }
 
 ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
   static DeviceList devices; // Filled in by the initialization lambda below.
   static ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
-    ErrorOr<const HIPDriver &> err_driver = HIPDriver::get();
-    if (err_driver) {
+    ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
+    if (errDriver) {
       RAISE_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
-                  err_driver.getError());
+                  errDriver.getError());
     }
     int count = 0;
-    HIP_CHECK_ERR(err_driver.get().DeviceGetCount(&count));
+    HIP_CHECK_ERR(errDriver.get().DeviceGetCount(&count));
 
-    char tmp_name[256];
-    int tmp_alignment;
+    char tmpName[256];
+    int tmpAlignment;
 
     for (int i = 0; i < count; i++) {
       // TODO(iposva): Create correct hipDevice_t from ordinal.
-      HIP_CHECK_ERR(
-          err_driver.get().DeviceGetName(tmp_name, sizeof(tmp_name), i));
-      HIP_CHECK_ERR(err_driver.get().DeviceGetAttribute(
-          &tmp_alignment,
+      HIP_CHECK_ERR(errDriver.get().DeviceGetName(tmpName, sizeof(tmpName), i));
+      HIP_CHECK_ERR(errDriver.get().DeviceGetAttribute(
+          &tmpAlignment,
           hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment, i));
-      devices.emplace_back(HIPDeviceRef::create(err_driver.get(), i, i,
-                                                tmp_name, tmp_alignment));
+      devices.emplace_back(
+          HIPDeviceRef::create(errDriver.get(), i, i, tmpName, tmpAlignment));
     }
     return success();
   }();
@@ -330,9 +327,9 @@ ErrorOrSuccess HIPDeviceStream::synchronize() const {
 ErrorOrSuccess
 HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
-  const auto &hip_device = HIPDevice::cast(device());
+  const auto &hipDevice = HIPDevice::cast(device());
   HIP_CHECK_ERR(
-      hip_device.hipDriver().StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
+      hipDevice.hipDriver().StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
   return success();
 }
 
@@ -364,12 +361,12 @@ void HIPDeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
 }
 
 std::vector<void *> HIPDeviceFunctionArguments::hipArgs() const {
-  std::vector<void *> launch_args;
-  launch_args.reserve(argValues_.size());
+  std::vector<void *> launchArgs;
+  launchArgs.reserve(argValues_.size());
   for (size_t i = 0; i < argValues_.size(); i++) {
-    launch_args.push_back(const_cast<void **>(&argValues_[i]));
+    launchArgs.push_back(const_cast<void **>(&argValues_[i]));
   }
-  return launch_args;
+  return launchArgs;
 }
 
 const HIPDeviceFunctionArguments &
@@ -411,9 +408,9 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernel(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const HIPDeviceFunctionArguments &args, hipStream_t stream) const {
-  const auto &hip_context = HIPDeviceContext::cast(context());
+  const auto &hipContext = HIPDeviceContext::cast(context());
 
-  HIP_CHECK_ERR(hip_context.hipDriver().ModuleLaunchKernel(
+  HIP_CHECK_ERR(hipContext.hipDriver().ModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args.hipArgs().data(), nullptr));
   return success();
@@ -423,9 +420,9 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes, void **args,
     hipStream_t stream) const {
-  const auto &hip_context = HIPDeviceContext::cast(context());
+  const auto &hipContext = HIPDeviceContext::cast(context());
 
-  HIP_CHECK_ERR(hip_context.hipDriver().ModuleLaunchKernel(
+  HIP_CHECK_ERR(hipContext.hipDriver().ModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args, nullptr));
   return success();
@@ -438,26 +435,26 @@ const std::string &HIPDeviceFunction::name() const {
 ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
                                                       const void *data,
                                                       size_t byteSize) const {
-  hipDeviceptr_t device_ptr;
-  size_t device_size;
-  const auto &hip_context = HIPDeviceContext::cast(context());
-  HIP_CHECK_ERR(hip_context.hipDriver().ModuleGetGlobal(
-      &device_ptr, &device_size, moduleFunction_->hipModule(), name));
+  hipDeviceptr_t devicePtr;
+  size_t deviceSize;
+  const auto &hipContext = HIPDeviceContext::cast(context());
+  HIP_CHECK_ERR(hipContext.hipDriver().ModuleGetGlobal(
+      &devicePtr, &deviceSize, moduleFunction_->hipModule(), name));
 
-  if (device_size < byteSize) {
+  if (deviceSize < byteSize) {
     RAISE_ERROR("byteSize too big");
   }
 
-  HIP_CHECK_ERR(hip_context.hipDriver().MemcpyHtoDAsync(
-      device_ptr, data, byteSize, hip_context.hipStream()));
+  HIP_CHECK_ERR(hipContext.hipDriver().MemcpyHtoDAsync(
+      devicePtr, data, byteSize, hipContext.hipStream()));
   return success();
 }
 
 ErrorOr<int32_t> HIPDeviceFunction::getAttribute(int32_t code) const {
   int32_t result;
-  const auto &hip_context = HIPDeviceContext::cast(context());
+  const auto &hipContext = HIPDeviceContext::cast(context());
 
-  HIP_CHECK_ERR(hip_context.hipDriver().FuncGetAttribute(
+  HIP_CHECK_ERR(hipContext.hipDriver().FuncGetAttribute(
       &result, static_cast<hipFunction_attribute>(code),
       moduleFunction_->hipFunction()));
   return result;
@@ -473,10 +470,10 @@ HIPDeviceTimer::HIPDeviceTimer(const HIPDeviceContext &context,
     : DeviceTimer(context), start_(start), stop_(stop) {}
 
 HIPDeviceTimer::~HIPDeviceTimer() {
-  const auto &hip_context = HIPDeviceContext::cast(context());
+  const auto &hipContext = HIPDeviceContext::cast(context());
 
-  HIP_CHECK(hip_context.hipDriver().EventDestroy(start_));
-  HIP_CHECK(hip_context.hipDriver().EventDestroy(stop_));
+  HIP_CHECK(hipContext.hipDriver().EventDestroy(start_));
+  HIP_CHECK(hipContext.hipDriver().EventDestroy(stop_));
 }
 
 hipEvent_t HIPDeviceTimer::hipStartEvent() const { return start_; }
@@ -542,12 +539,12 @@ ErrorOrSuccess HIPDeviceContext::copyToDevice(const DeviceBuffer &dst,
   CHECK_IS_HIP_ERR(dst.context().device());
   HIP_CHECK_ERR(setCurrent());
 
-  hipDeviceptr_t dst_ptr = dst.ptr();
+  hipDeviceptr_t dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (mode == ASYNC) {
-    HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dst_ptr, src, byteSize, stream_));
+    HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
   } else {
-    HIP_CHECK_ERR(driver_.MemcpyHtoD(dst_ptr, src, byteSize));
+    HIP_CHECK_ERR(driver_.MemcpyHtoD(dstPtr, src, byteSize));
   }
   return success();
 }
@@ -558,12 +555,12 @@ ErrorOrSuccess HIPDeviceContext::copyFromDevice(void *dst,
   CHECK_IS_HIP_ERR(src.context().device());
   HIP_CHECK_ERR(setCurrent());
 
-  hipDeviceptr_t src_ptr = src.ptr();
+  hipDeviceptr_t srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
   if (mode == ASYNC) {
-    HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src_ptr, byteSize, stream_));
+    HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
   } else {
-    HIP_CHECK_ERR(driver_.MemcpyDtoH(dst, src_ptr, byteSize));
+    HIP_CHECK_ERR(driver_.MemcpyDtoH(dst, srcPtr, byteSize));
   }
   return success();
 }
@@ -573,17 +570,17 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
                                                     SyncMode mode) const {
   CHECK_IS_HIP_ERR(src.context().device());
   CHECK_IS_HIP_ERR(dst.context().device());
-  const auto &src_ctx = HIPDeviceContext::cast(src.context());
-  const auto &dst_ctx = HIPDeviceContext::cast(dst.context());
+  const auto &srcCtx = HIPDeviceContext::cast(src.context());
+  const auto &dstCtx = HIPDeviceContext::cast(dst.context());
 
-  auto src_ptr = src.ptr();
-  auto dst_ptr = dst.ptr();
+  auto srcPtr = src.ptr();
+  auto dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   size_t srcByteSize = src.byteSize();
   if (srcByteSize < dstByteSize) {
     RAISE_ERROR("not enough data in src");
   }
-  if (src_ctx.context_ != dst_ctx.context_) {
+  if (srcCtx.context_ != dstCtx.context_) {
     // See
     // https://github.com/ROCm/HIPIFY/blob/amd-staging/docs/tables/CUDA_Driver_API_functions_supported_by_HIP.md
     // Missing cuMemcpyPeer
@@ -591,9 +588,9 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
   } else {
     if (mode == ASYNC) {
       HIP_CHECK_ERR(
-          driver_.MemcpyDtoDAsync(dst_ptr, src_ptr, dstByteSize, stream_));
+          driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
     } else {
-      HIP_CHECK_ERR(driver_.MemcpyDtoD(dst_ptr, src_ptr, dstByteSize));
+      HIP_CHECK_ERR(driver_.MemcpyDtoD(dstPtr, srcPtr, dstByteSize));
     }
   }
   return success();
@@ -649,9 +646,9 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     std::lock_guard<std::mutex> lock(mu_);
     auto iter = funcMap_.find(moduleName);
     if (iter != funcMap_.end()) {
-      HIPModuleFunctionRef module_func = iter->second;
+      HIPModuleFunctionRef moduleFunc = iter->second;
       return HIPDeviceFunctionRef::create(*this, signature,
-                                          std::move(module_func));
+                                          std::move(moduleFunc));
     }
   }
 
@@ -672,7 +669,7 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   // Allocate func outside of the lock region to reduce the time spent under
   // lock. If this functionName has been registered concurrently, then we will
   // release this ref outside of the lock region before returning.
-  auto module_func = HIPModuleFunctionRef::create(
+  auto moduleFunc = HIPModuleFunctionRef::create(
       std::string(functionName), this->hipDriver(), module, function);
   HIPDeviceFunctionRef result;
   {
@@ -683,9 +680,9 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
           *this, signature,
           HIPModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      funcMap_.insert({moduleName, module_func});
-      result = HIPDeviceFunctionRef::create(*this, signature,
-                                            std::move(module_func));
+      funcMap_.insert({moduleName, moduleFunc});
+      result =
+          HIPDeviceFunctionRef::create(*this, signature, std::move(moduleFunc));
     }
   }
   return result;
@@ -699,11 +696,11 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExec(
     RAISE_ERROR(args.getError().getError());
   }
 
-  const auto &hip_func = HIPDeviceFunction::cast(func);
+  const auto &hipFunc = HIPDeviceFunction::cast(func);
 
-  return hip_func.hipCallKernel(
-      gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      HIPDeviceFunctionArguments::cast(args), stream_);
+  return hipFunc.hipCallKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,
+                               sharedMemBytes,
+                               HIPDeviceFunctionArguments::cast(args), stream_);
 }
 
 ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
@@ -756,17 +753,17 @@ ErrorOr<DeviceTimerRef> HIPDeviceContext::startTimer() const {
 
 ErrorOr<std::chrono::nanoseconds>
 HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
-  const auto &hip_timer = HIPDeviceTimer::cast(timer);
+  const auto &hipTimer = HIPDeviceTimer::cast(timer);
 
-  HIP_CHECK_ERR(driver_.EventRecord(hip_timer.hipStopEvent(), stream_));
-  HIP_CHECK_ERR(driver_.EventSynchronize(hip_timer.hipStopEvent()));
+  HIP_CHECK_ERR(driver_.EventRecord(hipTimer.hipStopEvent(), stream_));
+  HIP_CHECK_ERR(driver_.EventSynchronize(hipTimer.hipStopEvent()));
 
   float millis;
-  HIP_CHECK_ERR(driver_.EventElapsedTime(&millis, hip_timer.hipStartEvent(),
-                                         hip_timer.hipStopEvent()));
+  HIP_CHECK_ERR(driver_.EventElapsedTime(&millis, hipTimer.hipStartEvent(),
+                                         hipTimer.hipStopEvent()));
 
-  constexpr double nanos_per_millisecond = 1000.0 * 1000.0;
-  double nanos = static_cast<double>(millis) * nanos_per_millisecond;
+  constexpr double nanosPerMillisecond = 1000.0 * 1000.0;
+  double nanos = static_cast<double>(millis) * nanosPerMillisecond;
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
@@ -776,9 +773,9 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
 }
 
 ErrorOr<DeviceContext::MemInfo> HIPDeviceContext::getMemoryInfo() const {
-  MemInfo mem_info;
-  HIP_CHECK_ERR(driver_.GetMemInfo(&mem_info.free, &mem_info.total));
-  return mem_info;
+  MemInfo memInfo;
+  HIP_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
+  return memInfo;
 }
 
 const HIPDriver &HIPDeviceContext::hipDriver() const { return driver_; }

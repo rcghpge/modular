@@ -303,10 +303,10 @@ AsyncRT_DeviceContext_startTimer(const DeviceTimer **result,
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_stopTimer(int64_t *result, const DeviceContext *ctx,
                                 const DeviceTimer *timer) {
-  std::chrono::nanoseconds elapsed_nanos;
-  const char *errMsg = checkVal(&elapsed_nanos, std::chrono::nanoseconds{0},
+  std::chrono::nanoseconds elapsedNanos;
+  const char *errMsg = checkVal(&elapsedNanos, std::chrono::nanoseconds{0},
                                 ctx->stopTimer(*timer));
-  *result = elapsed_nanos.count();
+  *result = elapsedNanos.count();
   return errMsg;
 }
 

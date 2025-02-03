@@ -105,27 +105,26 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
   if (err != SUCCESS) {
-    const char *err_name = nullptr;
-    const char *err_str = nullptr;
-    driver->GetErrorName(err, &err_name);
-    driver->GetErrorString(err, &err_str);
+    const char *errName = nullptr;
+    const char *errStr = nullptr;
+    driver->GetErrorName(err, &errName);
+    driver->GetErrorString(err, &errStr);
 
     delete driver;
     return Error(llvm::Twine("Call to hipInit failed with ") +
-                 llvm::Twine(err) + llvm::Twine(err_name) +
-                 llvm::Twine(err_str));
+                 llvm::Twine(err) + llvm::Twine(errName) + llvm::Twine(errStr));
   }
 
   return *driver;
 }
 
 ErrorOr<const HIPDriver &> HIPDriver::get() {
-  static ErrorOr<const HIPDriver &> err_or_driver = allocAndInitDriver();
+  static ErrorOr<const HIPDriver &> errOrDriver = allocAndInitDriver();
 
-  if (err_or_driver) {
-    return Error(err_or_driver.getError());
+  if (errOrDriver) {
+    return Error(errOrDriver.getError());
   }
-  return err_or_driver.get();
+  return errOrDriver.get();
 }
 
 } // namespace M::AsyncRT
