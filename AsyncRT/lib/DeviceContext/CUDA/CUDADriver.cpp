@@ -49,6 +49,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuDriverGetVersion);
 
   GET_FUNC(cuDeviceGet);
+  GET_FUNC(cuDeviceGetMemPool);
   GET_FUNC(cuDeviceGetAttribute);
   GET_FUNC(cuDeviceGetCount);
   GET_FUNC(cuDeviceGetName);
@@ -74,6 +75,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemFreeHost);
   GET_FUNC(cuMemAllocAsync);
   GET_FUNC(cuMemFreeAsync);
+  GET_FUNC(cuMemPoolSetAccess);
   GET_FUNC(cuMemAlloc_v2);
   GET_FUNC(cuMemFree_v2);
 

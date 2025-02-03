@@ -24,6 +24,7 @@ using CUcontext = struct CUctx_st *;
 using CUdevice = int;
 using CUdeviceptr = void *;
 using CUfunction = struct CUfunc_st *;
+using CUmemoryPool = struct CUmemPoolHandle_st *;
 using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
@@ -113,6 +114,22 @@ enum class CUjitInputType {
   CU_JIT_NUM_INPUT_TYPES = 6
 };
 
+enum class CUmemAccess_flags {
+  CU_MEM_ACCESS_FLAGS_PROT_NONE = 0x0,
+  CU_MEM_ACCESS_FLAGS_PROT_READ = 0x1,
+  CU_MEM_ACCESS_FLAGS_PROT_READWRITE = 0x3,
+  CU_MEM_ACCESS_FLAGS_PROT_MAX = 0x7FFFFFFF
+};
+
+enum class CUmemLocationType {
+  CU_MEM_LOCATION_TYPE_INVALID = 0x0,
+  CU_MEM_LOCATION_TYPE_DEVICE = 0x1,
+  CU_MEM_LOCATION_TYPE_HOST = 0x2,
+  CU_MEM_LOCATION_TYPE_HOST_NUMA = 0x3,
+  CU_MEM_LOCATION_TYPE_HOST_NUMA_CURRENT = 0x4,
+  CU_MEM_LOCATION_TYPE_MAX = 0x7FFFFFFF
+};
+
 using CUlaunchAttribute = struct CUlaunchAttribute_st {
   CUlaunchAttributeID id;
   char pad[8 - sizeof(CUlaunchAttributeID)];
@@ -130,6 +147,16 @@ using CUlaunchConfig = struct CUlaunchConfig_st {
   CUstream hStream;
   CUlaunchAttribute *attrs;
   unsigned int numAttrs;
+};
+
+using CUmemLocation = struct CUmemLocation_st {
+  CUmemLocationType type;
+  int id;
+};
+
+using CUmemAccessDesc = struct CUmemAccessDesc_st {
+  CUmemLocation location;
+  CUmemAccess_flags flags;
 };
 
 #define CUDA_DRIVER_CALL_LOG()                                                 \
@@ -451,6 +478,17 @@ public:
     return cuEventElapsedTime_(pMilliseconds, hStart, hEnd);
   }
 
+  Result DeviceGetMemPool(CUmemoryPool *pool, CUdevice device) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuDeviceGetMemPool_(pool, device);
+  }
+
+  Result MemPoolSetAccess(CUmemoryPool pool, const CUmemAccessDesc *desc,
+                          int count) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuMemPoolSetAccess_(pool, desc, count);
+  }
+
   Result GetMemInfo(size_t *free, size_t *total) const {
     CUDA_DRIVER_CALL_LOG();
     return cuMemGetInfo_v2_(free, total);
@@ -499,6 +537,9 @@ private:
 
   using tcuDeviceGet = Result(CUdevice *, int);
   tcuDeviceGet *cuDeviceGet_;
+
+  using tcuDeviceGetMemPool = Result(CUmemoryPool *, CUdevice);
+  tcuDeviceGetMemPool *cuDeviceGetMemPool_;
 
   using tcuDeviceGetAttribute = Result(int *, CUdevice_attribute, CUdevice);
   tcuDeviceGetAttribute *cuDeviceGetAttribute_;
@@ -562,6 +603,10 @@ private:
 
   using tcuMemFreeAsync = Result(CUdeviceptr, CUstream);
   tcuMemFreeAsync *cuMemFreeAsync_;
+
+  using tcuMemPoolSetAccess = Result(CUmemoryPool, const CUmemAccessDesc *,
+                                     size_t);
+  tcuMemPoolSetAccess *cuMemPoolSetAccess_;
 
   using tcuMemAlloc_v2 = Result(CUdeviceptr *, size_t);
   tcuMemAlloc_v2 *cuMemAlloc_v2_;
