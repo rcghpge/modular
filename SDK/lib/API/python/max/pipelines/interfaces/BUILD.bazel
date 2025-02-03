@@ -1,0 +1,21 @@
+# load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("//bazel:api.bzl", "modular_py_library")
+
+modular_py_library(
+    name = "interfaces",
+    srcs = glob(["**/*.py"]),
+    imports = ["../../.."],
+)
+
+# TODO(zheng): Reenable this once we finish the major refactor.
+# pkg_files(
+#     name = "python_files",
+#     srcs = glob(
+#         [
+#             "**/*.py",
+#         ],
+#     ),
+#     prefix = "interfaces",
+#     strip_prefix = strip_prefix.from_pkg(""),
+#     visibility = ["//visibility:public"],
+# )

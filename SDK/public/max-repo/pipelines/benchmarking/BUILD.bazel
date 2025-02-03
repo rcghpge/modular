@@ -1,0 +1,36 @@
+# load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("//bazel:api.bzl", "modular_py_library", "requirement")
+
+modular_py_library(
+    name = "benchmarking",
+    srcs = glob(["**/*.py"]),
+    imports = ["."],
+    deps = [
+        requirement("aiohttp"),
+        requirement("gguf"),
+        requirement("numpy"),
+        requirement("sentencepiece"),
+        requirement("transformers"),
+        requirement("pillow"),
+        requirement("huggingface-hub"),
+        requirement("tqdm"),
+        requirement("nvitop"),
+        "//SDK/lib/API/python/max/driver",
+        "//SDK/lib/API/python/max/dtype",
+        "//SDK/lib/API/python/max/engine",
+        "//SDK/lib/API/python/max/profiler",
+    ],
+)
+
+# TODO(zheng): Reenable this once we finish the major refactor.
+# pkg_files(
+#     name = "python_files",
+#     srcs = glob(
+#         [
+#             "**/*.py",
+#         ],
+#     ),
+#     prefix = "benchmarking",
+#     strip_prefix = strip_prefix.from_pkg(""),
+#     visibility = ["//visibility:public"],
+# )
