@@ -842,18 +842,30 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   CUDA_WITH_CTX_ERR(*this);
 
   CUlinkState linkState;
+  // Creates a pending JIT linker invocation.
   CUDA_CHECK_ERR(driver_.LinkCreate(optionKind.size(), optionKind.data(),
                                     (void **)optionValues.data(), &linkState));
 
+  // Add an input to a pending linker invocation.
   CUDA_CHECK_ERR(driver_.LinkAddData(
       linkState, CUjitInputType::CU_JIT_INPUT_PTX, (void *)ptx.data(),
       ptx.size(), "", 0, nullptr, nullptr));
 
   void *cubin;
   size_t cubinSize;
+  // Completes the pending linker action and returns the cubin image
+  // for the linked device code. The cubin is owned by state, so it
+  // should be used before state is destroyed.
+  // This call does not destroy state.
   CUDA_CHECK_ERR(driver_.LinkComplete(linkState, &cubin, &cubinSize));
 
-  return M::BufferRef::create(StringRef((char *)cubin, cubinSize));
+  // Copy cubin to a BufferRef so that the original one can be destoried
+  // with the link state to avoid leaking memory.
+  auto result = M::Buffer::get(StringRef((char *)cubin, cubinSize));
+
+  // Destroys state for a JIT linker invocation.
+  CUDA_CHECK_ERR(driver_.LinkDestroy(linkState));
+  return result;
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
