@@ -1,4 +1,3 @@
-load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files")
 load("//bazel:api.bzl", "modular_py_binary", "requirement")
 
 package(default_visibility = ["//visibility:public"])
@@ -31,31 +30,5 @@ modular_py_binary(
         requirement("pillow"),
         requirement("transformers"),
         requirement("uvicorn"),
-    ],
-)
-
-pkg_files(
-    name = "python_files",
-    srcs = glob(
-        [
-            "*.py",
-        ],
-    ) + [
-        ":requirements.txt",
-    ],
-)
-
-pkg_filegroup(
-    name = "pipelines_python",
-    srcs = [
-        ":python_files",
-        "//SDK/public/max-repo/pipelines/python/architectures:python_files",
-        "//SDK/public/max-repo/pipelines/python/cli:python_files",
-        "//SDK/public/max-repo/pipelines/python/dataprocessing:python_files",
-        "//SDK/public/max-repo/pipelines/python/llama3:python_files",
-        "//SDK/public/max-repo/pipelines/python/llama_vision:python_files",
-        "//SDK/public/max-repo/pipelines/python/mistral:python_files",
-        "//SDK/public/max-repo/pipelines/python/nn:python_files",
-        "//SDK/public/max-repo/pipelines/python/pixtral:python_files",
     ],
 )

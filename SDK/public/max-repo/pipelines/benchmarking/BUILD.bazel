@@ -1,4 +1,4 @@
-# load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 load("//bazel:api.bzl", "modular_py_library", "requirement")
 
 modular_py_library(
@@ -22,15 +22,14 @@ modular_py_library(
     ],
 )
 
-# TODO(zheng): Reenable this once we finish the major refactor.
-# pkg_files(
-#     name = "python_files",
-#     srcs = glob(
-#         [
-#             "**/*.py",
-#         ],
-#     ),
-#     prefix = "benchmarking",
-#     strip_prefix = strip_prefix.from_pkg(""),
-#     visibility = ["//visibility:public"],
-# )
+pkg_files(
+    name = "python_files",
+    srcs = glob(
+        [
+            "**/*.py",
+        ],
+    ),
+    prefix = "benchmarking",
+    strip_prefix = strip_prefix.from_pkg(""),
+    visibility = ["//visibility:public"],
+)
