@@ -15,8 +15,8 @@ modular_py_binary(
     },
     imports = ["."],
     deps = [
+        "//SDK/lib/API/python/max/pipelines/architectures",
         "//SDK/lib/API/python/max/serve",
-        "//SDK/public/max-repo/pipelines/python/architectures",
         "//SDK/public/max-repo/pipelines/python/cli",
         "//SDK/public/max-repo/pipelines/python/dataprocessing",
         "//SDK/public/max-repo/pipelines/python/llama3",
