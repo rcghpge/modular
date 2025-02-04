@@ -4,7 +4,7 @@ load("//bazel:api.bzl", "modular_py_library", "requirement")
 modular_py_library(
     name = "llama3",
     srcs = glob(["**/*.py"]),
-    imports = [".."],
+    imports = ["../../.."],
     tags = ["no-mypy"],  # TODO: Fix and remove
     deps = [
         requirement("numpy"),
