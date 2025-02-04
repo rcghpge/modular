@@ -367,6 +367,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MGP::FuseGenericCompiledRegionsOptions fuseOpts;
   fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
   pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
+  pm.addPass(MGP::createSimplifyChainsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createRemoveRedundantOperands());
   pm.addPass(mlir::createCanonicalizerPass());
 
