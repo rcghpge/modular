@@ -20,7 +20,7 @@ modular_py_library(
         "//SDK/lib/API/python/max/profiler",
         "//SDK/lib/API/python/max/serve",
         "//SDK/lib/API/python/max/pipelines/dataprocessing",
-        "//SDK/public/max-repo/pipelines/python/nn",
+        "//SDK/lib/API/python/max/pipelines/nn",
     ],
 )
 

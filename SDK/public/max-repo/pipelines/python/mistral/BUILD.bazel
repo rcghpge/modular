@@ -11,7 +11,7 @@ modular_py_library(
         "//SDK/lib/API/python/max/graph",
         "//SDK/lib/API/python/max/pipelines",
         "//SDK/lib/API/python/max/pipelines/dataprocessing",
-        "//SDK/public/max-repo/pipelines/python/nn",
+        "//SDK/lib/API/python/max/pipelines/nn",
         requirement("gguf"),
         requirement("numpy"),
         requirement("sentencepiece"),
