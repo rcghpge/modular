@@ -402,9 +402,10 @@ canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
 
   OpBuilder builder(op);
   builder.setInsertionPoint(op);
-  int64_t new_axis = axis + inputTy.getRank();
-  auto newAxis = builder.create<ConstantOp>(op.getLoc(), new_axis);
-  rewriter.modifyOpInPlace(op, [&] { op->setOperand(operandIndex, newAxis); });
+  int64_t newAxis = axis + inputTy.getRank();
+  auto newAxisOp = builder.create<ConstantOp>(op.getLoc(), newAxis);
+  rewriter.modifyOpInPlace(op,
+                           [&] { op->setOperand(operandIndex, newAxisOp); });
   return success();
 }
 
@@ -851,9 +852,9 @@ LogicalResult OutputOp::verify() {
   // Build a mapping from result param references to their binding attribute,
   // example:
   //  { (D1, 42), (Sh0, [D0, 10]) }
-  DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> ResParamRefToBindingAttr;
+  DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> resParamRefToBindingAttr;
   for (auto [resParamDecl, bindingParam] : llvm::zip(decls, defs)) {
-    ResParamRefToBindingAttr.insert(
+    resParamRefToBindingAttr.insert(
         {KGEN::ParamDeclRefAttr::get(resParamDecl), bindingParam});
   }
 
@@ -863,8 +864,8 @@ LogicalResult OutputOp::verify() {
   for (Type ty : graph.getResultTypes()) {
     if (auto tensorTy = dyn_cast<TensorType>(ty)) {
       TypedAttr newShapeAttr = cast<TypedAttr>(tensorTy.getShapeAttr().replace(
-          [&ResParamRefToBindingAttr](KGEN::ParamDeclRefAttr paramRef) {
-            TypedAttr resolvedAttr = ResParamRefToBindingAttr.lookup(paramRef);
+          [&resParamRefToBindingAttr](KGEN::ParamDeclRefAttr paramRef) {
+            TypedAttr resolvedAttr = resParamRefToBindingAttr.lookup(paramRef);
             return resolvedAttr ? resolvedAttr : paramRef;
           }));
       expectedOutputOperandTypes.emplace_back(tensorTy.cloneWith(newShapeAttr));
@@ -1273,9 +1274,9 @@ void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
       MO::TensorType::get({(int64_t)values.size()}, odsBuilder.getI1Type());
   auto rankedAttrTy =
       RankedTensorType::get(values.size(), odsBuilder.getI8Type());
-  SmallVector<APInt> APIntVals =
+  SmallVector<APInt> apIntVals =
       llvm::map_to_vector(values, [&](bool val) { return APInt(8, val); });
-  auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, APIntVals);
+  auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, apIntVals);
   build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
 }
 

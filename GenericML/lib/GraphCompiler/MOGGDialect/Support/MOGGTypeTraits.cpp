@@ -223,8 +223,8 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
   } else if (type.isInteger(1)) {
     return b();
   } else {
-    std::string type_str;
-    llvm::raw_string_ostream rso(type_str);
+    std::string typeStr;
+    llvm::raw_string_ostream rso(typeStr);
     type.print(rso);
     return Error("No MOGGTypeTraits implementation for " + rso.str() +
                  ". This is not a supported MOGG DType.");

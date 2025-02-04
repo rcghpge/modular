@@ -269,22 +269,22 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
   int64_t filterRank = filterType.getRank();
 
   int64_t simdSize = target.simdWidthOf(filterElementType);
-  int64_t F = filterType.getIntDims()[filterRank - 1];
+  int64_t f = filterType.getIntDims()[filterRank - 1];
 
-  if (ShapedType::isDynamic(F))
+  if (ShapedType::isDynamic(f))
     return {};
 
   PackConvFilterShapeKgenAttrs &attrs = *maybeAttrs;
 
   int64_t numGroups = attrs.numGroups.getInt();
 
-  if (F % numGroups != 0) {
+  if (f % numGroups != 0) {
     invoke.emitError(
         "number of filtes F must be divisible by number of groups");
     return {};
   }
 
-  int64_t FPerGroup = F / numGroups;
+  int64_t fPerGroup = f / numGroups;
 
   auto convAttr =
       PadConvInfoStatic{/*pad=*/reorderPadding(filterRank - 2, attrs.paddings),
@@ -292,17 +292,17 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
                         /*dilation=*/attrs.dilations,
                         /*numGroups=*/numGroups};
 
-  int64_t WO = filterRank == 4 ? attrs.outputShape[2] : ShapedType::kDynamic;
+  int64_t wo = filterRank == 4 ? attrs.outputShape[2] : ShapedType::kDynamic;
 
   SmallVector<int64_t> microKernelShape = getMicroKernelShape(
-      target, filterRank - 2, WO, attrs.outputShape[filterRank - 1], convAttr,
+      target, filterRank - 2, wo, attrs.outputShape[filterRank - 1], convAttr,
       simdSize);
 
   int64_t microKernelWidth = microKernelShape[1];
   int64_t microKernelFSize = microKernelWidth * simdSize;
 
   SmallVector<int64_t> packedShape(filterRank + 1, 0);
-  packedShape[0] = numGroups * ceilDiv(FPerGroup, microKernelFSize);
+  packedShape[0] = numGroups * ceilDiv(fPerGroup, microKernelFSize);
   packedShape[filterRank] = microKernelFSize;
 
   for (int64_t i : llvm::seq<int64_t>(filterRank - 1))
@@ -350,17 +350,17 @@ M::MO::materializePackConvTransposeFilterShape(InvokeShapeFuncOp invoke,
   int64_t microKernelWidth = getDirectConvMicroKernelWidth(target);
   int64_t microKernelFSize = microKernelWidth * simdSize;
 
-  int64_t F = filterDims[filterRank - 2];
+  int64_t f = filterDims[filterRank - 2];
 
   constexpr int64_t numGroups = 1;
 
-  int64_t FPerGroup = F / numGroups;
+  int64_t fPerGroup = f / numGroups;
 
   // FRSCf layout.
   SmallVector<int64_t> packedShape(filterRank + 1, 0);
   packedShape.resize(filterRank + 1, 0);
 
-  packedShape[0] = numGroups * ceilDiv(FPerGroup, microKernelFSize);
+  packedShape[0] = numGroups * ceilDiv(fPerGroup, microKernelFSize);
   packedShape[filterRank] = microKernelFSize;
 
   // Input channel
@@ -482,7 +482,8 @@ static KernelConfig getKernelConfig(const TargetQueries &target, Type aType,
 }
 
 static int64_t getPackDataSize(const TargetQueries &target, Type type) {
-  constexpr int64_t KB = 1024;
+  // The name KB is a known acronym, so avoid the normal variable casing rules.
+  constexpr int64_t KB = 1024; // NOLINT
 
   int64_t sizeOfType = type.getIntOrFloatBitWidth() / CHAR_BIT;
 

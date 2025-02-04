@@ -121,12 +121,12 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
   M::BufferRef bufferRef = M::Buffer::getAlias(
       alignedBufferRef, offsetBytes - alignedOffset, sizeBytes);
 
-  auto buff_size = static_cast<int64_t>(bufferRef->getBufferSize());
+  auto buffSize = static_cast<int64_t>(bufferRef->getBufferSize());
 
-  if (buff_size != sizeBytes) {
+  if (buffSize != sizeBytes) {
     status->status =
         M::Error(Twine("Size mismatch, want ") + std::to_string(sizeBytes) +
-                 " got " + std::to_string(buff_size) + "\n");
+                 " got " + std::to_string(buffSize) + "\n");
     return {{nullptr}, {nullptr}};
   }
 
@@ -163,12 +163,12 @@ MAXG_attrNewTensorBorrowed(llvm::StringRef name, void *data, MlirType type) {
   auto moTensorType = cast<M::MO::TensorType>(unwrap(type));
   size_t size = moTensorType.getDtype().getSizeInBytes() *
                 moTensorType.getNumElements().value();
-  ArrayRef<uint8_t> bytes_array(llvm::bit_cast<uint8_t *>(data), size);
+  ArrayRef<uint8_t> bytesArray(llvm::bit_cast<uint8_t *>(data), size);
 
   auto shapedType = RankedTensorType::get(moTensorType.getIntDims(),
                                           moTensorType.getElementType());
 
-  auto attr = ArrayElementsAttr::get({bytes_array.data(), bytes_array.size()},
+  auto attr = ArrayElementsAttr::get({bytesArray.data(), bytesArray.size()},
                                      shapedType);
 
   StringAttr nameAttr = StringAttr::get(moTensorType.getContext(), name);
@@ -200,10 +200,10 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
   assert(!bufferOr.isError());
   M::BufferRef buffer = bufferOr.takeValue();
 
-  auto buff_size = static_cast<int64_t>(buffer->getBufferSize());
-  if (buff_size != size)
-    errs() << "Size mismatch, want " << size << " got " << buff_size << "\n";
-  assert(buff_size == size);
+  auto buffSize = static_cast<int64_t>(buffer->getBufferSize());
+  if (buffSize != size)
+    errs() << "Size mismatch, want " << size << " got " << buffSize << "\n";
+  assert(buffSize == size);
 
   auto data = buffer->getBufferStart();
   return wrap(
@@ -221,21 +221,21 @@ MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDimParamDecl(MlirContext ctx,
 
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewParamDeclArray(
     MlirContext ctx, MlirAttribute *attrs, int32_t size) {
-  SmallVector<KGEN::ParamDeclAttr> param_attrs;
+  SmallVector<KGEN::ParamDeclAttr> paramAttrs;
   for (int i = 0; i < size; ++i)
-    param_attrs.push_back(cast<KGEN::ParamDeclAttr>(unwrap(attrs[i])));
-  return wrap(KGEN::ParamDeclArrayAttr::get(unwrap(ctx), param_attrs));
+    paramAttrs.push_back(cast<KGEN::ParamDeclAttr>(unwrap(attrs[i])));
+  return wrap(KGEN::ParamDeclArrayAttr::get(unwrap(ctx), paramAttrs));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewShape(MlirContext ctx,
                                                    MlirAttribute *dims,
                                                    int32_t rank) {
-  SmallVector<TypedAttr> dim_attrs;
+  SmallVector<TypedAttr> dimAttrs;
   for (int i = 0; i < rank; ++i)
-    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+    dimAttrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
 
   auto shapeType = MOSH::ShapeType::get(unwrap(ctx));
-  return wrap(MOSH::ShapeAttr::get(unwrap(ctx), dim_attrs, shapeType));
+  return wrap(MOSH::ShapeAttr::get(unwrap(ctx), dimAttrs, shapeType));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDeviceRef(MlirContext ctx,
@@ -296,12 +296,12 @@ MODULAR_API_EXPORT int64_t MAXG_dimTypeNewDynamic() {
 MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
                                                bool ranked, MlirAttribute *dims,
                                                int32_t rank) {
-  SmallVector<TypedAttr> dim_attrs;
+  SmallVector<TypedAttr> dimAttrs;
   for (int i = 0; i < rank; ++i)
-    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+    dimAttrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
 
   if (ranked)
-    return wrap(MO::TensorType::get(dim_attrs, unwrap(dtype)));
+    return wrap(MO::TensorType::get(dimAttrs, unwrap(dtype)));
 
   return wrap(MO::TensorType::get(
       KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))),
@@ -311,13 +311,13 @@ MODULAR_API_EXPORT MlirType MAXG_tensorTypeNew(MlirContext ctx, MlirType dtype,
 MODULAR_API_EXPORT MlirType MAXG_tensorTypeWithDeviceNew(
     MlirContext ctx, MlirType dtype, bool ranked, MlirAttribute *dims,
     int32_t rank, MlirAttribute device) {
-  SmallVector<TypedAttr> dim_attrs;
+  SmallVector<TypedAttr> dimAttrs;
   for (int i = 0; i < rank; ++i)
-    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+    dimAttrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
   DeviceRefAttr deviceRef = cast<M::DeviceRefAttr>(unwrap(device));
 
   if (ranked)
-    return wrap(MO::TensorType::get(dim_attrs, unwrap(dtype), deviceRef));
+    return wrap(MO::TensorType::get(dimAttrs, unwrap(dtype), deviceRef));
   return wrap(MO::TensorType::get(
       KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))), unwrap(dtype),
       deviceRef));
@@ -358,12 +358,12 @@ MODULAR_API_EXPORT MlirAttribute MAXG_tensorTypeGetDevice(MlirType t) {
 MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,
                                                bool ranked, MlirAttribute *dims,
                                                int32_t rank) {
-  SmallVector<TypedAttr> dim_attrs;
+  SmallVector<TypedAttr> dimAttrs;
   for (int i = 0; i < rank; ++i)
-    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+    dimAttrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
 
   if (ranked)
-    return wrap(MO::BufferType::get(dim_attrs, unwrap(dtype)));
+    return wrap(MO::BufferType::get(dimAttrs, unwrap(dtype)));
   return wrap(MO::BufferType::get(
       KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))),
       unwrap(dtype)));
@@ -372,13 +372,13 @@ MODULAR_API_EXPORT MlirType MAXG_bufferTypeNew(MlirContext ctx, MlirType dtype,
 MODULAR_API_EXPORT MlirType MAXG_bufferTypeWithDeviceNew(
     MlirContext ctx, MlirType dtype, bool ranked, MlirAttribute *dims,
     int32_t rank, MlirAttribute device) {
-  SmallVector<TypedAttr> dim_attrs;
+  SmallVector<TypedAttr> dimAttrs;
   for (int i = 0; i < rank; ++i)
-    dim_attrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
+    dimAttrs.push_back(cast<TypedAttr>(unwrap(dims[i])));
   DeviceRefAttr deviceRef = cast<M::DeviceRefAttr>(unwrap(device));
 
   if (ranked)
-    return wrap(MO::BufferType::get(dim_attrs, unwrap(dtype), deviceRef));
+    return wrap(MO::BufferType::get(dimAttrs, unwrap(dtype), deviceRef));
   return wrap(MO::BufferType::get(
       KGEN::UnknownAttr::get(MOSH::ShapeType::get(unwrap(ctx))), unwrap(dtype),
       deviceRef));
@@ -436,9 +436,9 @@ MODULAR_API_EXPORT MlirAttribute MAXG_dimNewAlgebraic(MlirContext context,
                                                       uint32_t opcode,
                                                       MlirAttribute lhs,
                                                       MlirAttribute rhs) {
-  auto lhs_attr = cast<TypedAttr>(unwrap(lhs));
-  auto rhs_attr = cast<TypedAttr>(unwrap(rhs));
-  SmallVector<TypedAttr, 2> args = {lhs_attr, rhs_attr};
+  auto lhsAttr = cast<TypedAttr>(unwrap(lhs));
+  auto rhsAttr = cast<TypedAttr>(unwrap(rhs));
+  SmallVector<TypedAttr, 2> args = {lhsAttr, rhsAttr};
 
   return wrap(KGEN::ParamOperatorAttr::get(
       static_cast<KGEN::POC>(opcode), args,
@@ -547,10 +547,10 @@ MODULAR_API_EXPORT MlirType MAXG_chainTypeNew(MlirContext context) {
 MODULAR_API_EXPORT MlirLocation
 MAXG_opaqueFrameLocNew(MlirContext context, void *frame_ptr,
                        char *(*to_str_fn)(void *), void (*decref_fn)(void *)) {
-  auto frame_attr = RMO::PythonFrameAttr::get(
-      unwrap(context), {frame_ptr, to_str_fn, decref_fn});
+  auto frameAttr = RMO::PythonFrameAttr::get(unwrap(context),
+                                             {frame_ptr, to_str_fn, decref_fn});
   mlir::Location loc =
-      mlir::OpaqueLoc::get(frame_attr.getImpl(), unwrap(context));
+      mlir::OpaqueLoc::get(frameAttr.getImpl(), unwrap(context));
   return wrap(loc);
 }
 
@@ -558,11 +558,11 @@ MODULAR_API_EXPORT void *MAXG_opaqueFrameLocGetFrame(MlirLocation loc) {
   if (!mlir::isa<OpaqueLoc>(unwrap(loc)))
     return nullptr;
 
-  void *attr_ptr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
+  void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
       RMO::PythonFrameAttr::ImplType *>(unwrap(loc));
-  if (!attr_ptr)
+  if (!attrPtr)
     return nullptr;
 
-  auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attr_ptr);
+  auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
   return attr.frame();
 }

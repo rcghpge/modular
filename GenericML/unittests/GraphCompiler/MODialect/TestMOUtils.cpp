@@ -21,19 +21,19 @@ inline double
 constructAndGetFloatArrayAttrData(double num, Type &eleType,
                                   const llvm::fltSemantics &semantic,
                                   bool *losesInfo) {
-  APFloat converted_float = APFloat(num);
-  converted_float.convert(semantic, llvm::RoundingMode::TowardZero, losesInfo);
+  APFloat convertedFloat = APFloat(num);
+  convertedFloat.convert(semantic, llvm::RoundingMode::TowardZero, losesInfo);
 
-  auto attr = FloatArrayElementsAttr::get({converted_float}, eleType);
+  auto attr = FloatArrayElementsAttr::get({convertedFloat}, eleType);
   return (*attr.getValues().begin()).convertToDouble();
 }
 
 inline int64_t constructAndGetIntArrayAttrData(int64_t num, Type &eleType,
                                                DType dtype) {
-  APInt converted_int = APInt(dtype.getWidthInBits(), num, true);
+  APInt convertedInt = APInt(dtype.getWidthInBits(), num, true);
 
   auto attr =
-      IntArrayElementsAttr::get(ArrayType::get(1, eleType), {converted_int});
+      IntArrayElementsAttr::get(ArrayType::get(1, eleType), {convertedInt});
 
   return (*attr.getValues().begin()).getSExtValue();
 }
@@ -53,7 +53,7 @@ constructAndGetDenseAttrData(SmallVector<inT> originalData,
 }
 
 TEST(testGetConstantBlobFloatArrayAttr, allDtypes) {
-  SmallVector<double> test_cases = {-453, -32, -0.02, 0, 0.58, 3.14, 121.24};
+  SmallVector<double> testCases = {-453, -32, -0.02, 0, 0.58, 3.14, 121.24};
 
   SmallVector<std::pair<const llvm::fltSemantics &(*)(), DType>>
       semanticGenAndDtype = {{&APFloat::BFloat, DType::bf16},
@@ -66,7 +66,7 @@ TEST(testGetConstantBlobFloatArrayAttr, allDtypes) {
   for (auto &[semanticGen, dtype] : semanticGenAndDtype) {
     mlir::FloatType fltType = getEquivalentFloatType(&ctx, dtype);
     bool losesInfo; // will always be true for DType < f64
-    for (double expected : test_cases) {
+    for (double expected : testCases) {
       const llvm::fltSemantics &semantic = semanticGen();
       double actual = constructAndGetFloatArrayAttrData(expected, fltType,
                                                         semantic, &losesInfo);
@@ -76,14 +76,14 @@ TEST(testGetConstantBlobFloatArrayAttr, allDtypes) {
 }
 
 TEST(testGetConstantBlobIntArrayAttr, allDtypes) {
-  SmallVector<int64_t> test_cases = {-50, -8, 1, 0, 5, 80};
+  SmallVector<int64_t> testCases = {-50, -8, 1, 0, 5, 80};
   SmallVector<DType> dtypes = {DType::si8, DType::si16, DType::si32};
 
   mlir::MLIRContext ctx{mlir::MLIRContext::Threading::DISABLED};
   ctx.loadDialect<MDialect>();
   for (const DType &dtype : dtypes) {
     mlir::IntegerType intType = getEquivalentIntegerType(&ctx, dtype);
-    for (int64_t expected : test_cases) {
+    for (int64_t expected : testCases) {
       int64_t actual =
           constructAndGetIntArrayAttrData(expected, intType, dtype);
       EXPECT_EQ(expected, actual);

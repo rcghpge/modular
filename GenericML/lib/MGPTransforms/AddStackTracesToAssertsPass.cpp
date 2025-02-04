@@ -39,28 +39,27 @@ struct AddStackTracesToAssertsPass
 
     WalkResult result = getOperation()->walk([&ctx](AssertOp op) {
       Location loc = op.getLoc();
-      auto opaque_loc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
-      if (!opaque_loc)
+      auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
+      if (!opaqueLoc)
         return WalkResult::advance();
 
       // Grab the python frame from location.
-      void *attr_ptr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
-          RMO::PythonFrameAttr::ImplType *>(opaque_loc);
-      if (!attr_ptr)
+      void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
+          RMO::PythonFrameAttr::ImplType *>(opaqueLoc);
+      if (!attrPtr)
         return WalkResult::advance();
 
-      auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attr_ptr);
+      auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
 
-      std::string full_msg =
-          "\nBuild Time Traceback (most recent call last):\n";
-      llvm::raw_string_ostream ss(full_msg);
+      std::string fullMsg = "\nBuild Time Traceback (most recent call last):\n";
+      llvm::raw_string_ostream ss(fullMsg);
 
       ss << attr.stack_trace();
 
       StringAttr msg = mlir::cast<StringAttr>(op.getMessageAttr());
       ss << "\nMAX Runtime Error: " << msg.str() << '\n';
 
-      op.setMessageAttr(StringAttr::get(ctx, full_msg));
+      op.setMessageAttr(StringAttr::get(ctx, fullMsg));
 
       return WalkResult::advance();
     });
@@ -74,11 +73,11 @@ struct AddStackTracesToAssertsPass
     // for more details.
     result = getOperation()->walk([](Operation *op) {
       Location loc = op->getLoc();
-      auto opaque_loc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
-      if (!opaque_loc)
+      auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
+      if (!opaqueLoc)
         return WalkResult::advance();
 
-      op->setLoc(opaque_loc.getFallbackLocation());
+      op->setLoc(opaqueLoc.getFallbackLocation());
       return WalkResult::advance();
     });
 

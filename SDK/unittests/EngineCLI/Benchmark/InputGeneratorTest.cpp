@@ -103,23 +103,23 @@ TEST(UniformInputRandomDistribution, f32Default) {
   std::fill(samples.begin(), samples.end(),
             std::numeric_limits<float>::quiet_NaN());
   dist->fill(samples.data(), 500);
-  int lt_neg_1 = 0;
-  int lt_0 = 0;
-  int gt_1 = 0;
+  int ltNeg1 = 0;
+  int lt0 = 0;
+  int gt1 = 0;
   for (float sample : samples) {
     if (sample < -1.0f)
-      ++lt_neg_1;
+      ++ltNeg1;
     if (sample < 0.0f)
-      ++lt_0;
+      ++lt0;
     if (sample > 1.0f)
-      ++gt_1;
+      ++gt1;
   }
-  EXPECT_EQ(0, lt_neg_1) << "Unexpectedly generated values less than -1";
-  EXPECT_EQ(0, gt_1) << "Unexpectedly generated values greater than 1";
+  EXPECT_EQ(0, ltNeg1) << "Unexpectedly generated values less than -1";
+  EXPECT_EQ(0, gt1) << "Unexpectedly generated values greater than 1";
   // This one is technically non-deterministic, but it should only fail with a
   // probability of 2^-500, which is almost never going to occur if the code is
   // correct.
-  EXPECT_GT(lt_0, 0)
+  EXPECT_GT(lt0, 0)
       << "Should have generated at least a few values less than 0";
 }
 
@@ -136,28 +136,28 @@ TEST(UniformInputRandomDistribution, f32Explicit) {
   std::fill(samples.begin(), samples.end(),
             std::numeric_limits<float>::quiet_NaN());
   dist->fill(samples.data(), 500);
-  int lt_3p5 = 0;
-  int lt_11p75 = 0;
-  int gt_11p75 = 0;
-  int gt_20 = 0;
+  int lt3p5 = 0;
+  int lt11p75 = 0;
+  int gt11p75 = 0;
+  int gt20 = 0;
   for (float sample : samples) {
     if (sample < -3.5f)
-      ++lt_3p5;
+      ++lt3p5;
     if (sample < 11.75f)
-      ++lt_11p75;
+      ++lt11p75;
     if (sample > 11.75f)
-      ++gt_11p75;
+      ++gt11p75;
     if (sample > 20.0f)
-      ++gt_20;
+      ++gt20;
   }
-  EXPECT_EQ(0, lt_3p5) << "Unexpectedly generated values less than 3.5";
-  EXPECT_EQ(0, gt_20) << "Unexpectedly generated values greater than 20";
+  EXPECT_EQ(0, lt3p5) << "Unexpectedly generated values less than 3.5";
+  EXPECT_EQ(0, gt20) << "Unexpectedly generated values greater than 20";
   // This one is technically non-deterministic, but it should only fail with a
   // probability of 2^-500, which is almost never going to occur if the code is
   // correct.
-  EXPECT_GT(lt_11p75, 0)
+  EXPECT_GT(lt11p75, 0)
       << "Should have generated at least a few values less than 11.75";
-  EXPECT_GT(gt_11p75, 0)
+  EXPECT_GT(gt11p75, 0)
       << "Should have generated at least a few values greater than 11.75";
 }
 
@@ -196,23 +196,23 @@ TEST(UniformInputRandomDistribution, f64Default) {
   std::fill(samples.begin(), samples.end(),
             std::numeric_limits<double>::quiet_NaN());
   dist->fill(samples.data(), 500);
-  int lt_neg_1 = 0;
-  int lt_0 = 0;
-  int gt_1 = 0;
+  int ltNeg1 = 0;
+  int lt0 = 0;
+  int gt1 = 0;
   for (double sample : samples) {
     if (sample < -1.0)
-      ++lt_neg_1;
+      ++ltNeg1;
     if (sample < 0.0)
-      ++lt_0;
+      ++lt0;
     if (sample > 1.0)
-      ++gt_1;
+      ++gt1;
   }
-  EXPECT_EQ(0, lt_neg_1) << "Unexpectedly generated values less than -1";
-  EXPECT_EQ(0, gt_1) << "Unexpectedly generated values greater than 1";
+  EXPECT_EQ(0, ltNeg1) << "Unexpectedly generated values less than -1";
+  EXPECT_EQ(0, gt1) << "Unexpectedly generated values greater than 1";
   // This one is technically non-deterministic, but it should only fail with a
   // probability of 2^-500, which is almost never going to occur if the code is
   // correct.
-  EXPECT_GT(lt_0, 0)
+  EXPECT_GT(lt0, 0)
       << "Should have generated at least a few values less than 0";
 }
 
@@ -226,25 +226,25 @@ TEST(UniformInputRandomDistribution, f16Default) {
   std::array<uint16_t, 500> samples;
   std::fill(samples.begin(), samples.end(), 0xFFFFU);
   dist->fill(samples.data(), 500);
-  int lt_neg_1 = 0;
-  int lt_0 = 0;
-  int gt_1 = 0;
+  int ltNeg1 = 0;
+  int lt0 = 0;
+  int gt1 = 0;
   for (uint16_t sampleAsUInt : samples) {
     double sample =
         APFloat(APFloat::IEEEhalf(), APInt(16, sampleAsUInt)).convertToDouble();
     if (sample < -1.0)
-      ++lt_neg_1;
+      ++ltNeg1;
     if (sample < 0.0)
-      ++lt_0;
+      ++lt0;
     if (sample > 1.0)
-      ++gt_1;
+      ++gt1;
   }
-  EXPECT_EQ(0, lt_neg_1) << "Unexpectedly generated values less than -1";
-  EXPECT_EQ(0, gt_1) << "Unexpectedly generated values greater than 1";
+  EXPECT_EQ(0, ltNeg1) << "Unexpectedly generated values less than -1";
+  EXPECT_EQ(0, gt1) << "Unexpectedly generated values greater than 1";
   // This one is technically non-deterministic, but it should only fail with a
   // probability of 2^-500, which is almost never going to occur if the code is
   // correct.
-  EXPECT_GT(lt_0, 0)
+  EXPECT_GT(lt0, 0)
       << "Should have generated at least a few values less than 0";
 }
 
@@ -258,17 +258,17 @@ TEST(UniformInputRandomDistribution, si32Default) {
   std::array<int32_t, 500> samples;
   std::fill(samples.begin(), samples.end(), 12345);
   dist->fill(samples.data(), 500);
-  int lt_0 = 0;
-  int gt_0 = 0;
+  int lt0 = 0;
+  int gt0 = 0;
   for (int32_t sample : samples) {
     if (sample < 0)
-      ++lt_0;
+      ++lt0;
     if (sample > 0)
-      ++gt_0;
+      ++gt0;
   }
-  EXPECT_GT(lt_0, 0)
+  EXPECT_GT(lt0, 0)
       << "Should have generated at least a few values less than 0";
-  EXPECT_GT(gt_0, 0)
+  EXPECT_GT(gt0, 0)
       << "Should have generated at least a few values greater than 0";
 }
 
@@ -284,25 +284,25 @@ TEST(UniformInputRandomDistribution, si32Explicit) {
   std::array<int32_t, 500> samples;
   std::fill(samples.begin(), samples.end(), 12345);
   dist->fill(samples.data(), 500);
-  int lt_3 = 0;
-  int lt_12 = 0;
-  int ge_12 = 0;
-  int gt_20 = 0;
+  int lt3 = 0;
+  int lt12 = 0;
+  int ge12 = 0;
+  int gt20 = 0;
   for (int32_t sample : samples) {
     if (sample < -3)
-      ++lt_3;
+      ++lt3;
     if (sample < 12)
-      ++lt_12;
+      ++lt12;
     if (sample >= 12)
-      ++ge_12;
+      ++ge12;
     if (sample > 20)
-      ++gt_20;
+      ++gt20;
   }
-  EXPECT_EQ(0, lt_3) << "Unexpectedly generated values less than 3";
-  EXPECT_EQ(0, gt_20) << "Unexpectedly generated values greater than 20";
-  EXPECT_GT(lt_12, 0)
+  EXPECT_EQ(0, lt3) << "Unexpectedly generated values less than 3";
+  EXPECT_EQ(0, gt20) << "Unexpectedly generated values greater than 20";
+  EXPECT_GT(lt12, 0)
       << "Should have generated at least a few values less than 12";
-  EXPECT_GT(ge_12, 0) << "Should have generated at least a few values >= 12";
+  EXPECT_GT(ge12, 0) << "Should have generated at least a few values >= 12";
 }
 
 TEST(UniformInputRandomDistribution, si32ExplicitInclusive) {
@@ -317,16 +317,16 @@ TEST(UniformInputRandomDistribution, si32ExplicitInclusive) {
   std::array<int32_t, 500> samples;
   std::fill(samples.begin(), samples.end(), 12345);
   dist->fill(samples.data(), 500);
-  int eq_3 = 0;
-  int eq_4 = 0;
+  int eq3 = 0;
+  int eq4 = 0;
   for (int32_t sample : samples) {
     if (sample == 3)
-      ++eq_3;
+      ++eq3;
     if (sample == 4)
-      ++eq_4;
+      ++eq4;
   }
-  EXPECT_GT(eq_3, 0) << "Should have generated at least a few '3' values";
-  EXPECT_GT(eq_4, 0) << "Should have generated at least a few '4' values";
+  EXPECT_GT(eq3, 0) << "Should have generated at least a few '3' values";
+  EXPECT_GT(eq4, 0) << "Should have generated at least a few '4' values";
 }
 
 TEST(UniformInputRandomDistribution, si32ParseError) {

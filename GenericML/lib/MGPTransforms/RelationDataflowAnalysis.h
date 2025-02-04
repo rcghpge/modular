@@ -368,7 +368,7 @@ public:
     for (const auto &[lhs, set] : relation)
       inputTable[index->getIndex(lhs)] = &set;
 
-    auto N = index->size();
+    auto n = index->size();
 
     // Similar to the input, the result is accumulated into a flat table for
     // processing and then is converted back to the hash-table based
@@ -378,7 +378,7 @@ public:
       if (set == nullptr)
         continue;
 
-      for (auto i : llvm::seq(N))
+      for (auto i : llvm::seq(n))
         if (set->test(i))
           resultTable[i].set(lhsIndex);
     }

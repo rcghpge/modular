@@ -194,10 +194,10 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
     // to avoid linking to it directly.
     // TODO: run linker programmatically
     std::string cmd;
-    llvm::raw_string_ostream cmd_s(cmd);
-    cmd_s << std::string(GENERICML_LINKER_CMD) << " -shared ";
-    cmd_s << objectFile;
-    cmd_s << " -o " << outPath;
+    llvm::raw_string_ostream cmdS(cmd);
+    cmdS << std::string(GENERICML_LINKER_CMD) << " -shared ";
+    cmdS << objectFile;
+    cmdS << " -o " << outPath;
     LLVM_DEBUG(llvm::dbgs() << "Linked shared library: " << cmd << "\n");
     int r = system(cmd.c_str());
     if (r != 0)

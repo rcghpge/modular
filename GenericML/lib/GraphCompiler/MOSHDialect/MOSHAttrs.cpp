@@ -371,11 +371,11 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
   // as bcasting rules follow from the innermost dimensions
   SmallVector<int64_t> answer;
   for (size_t iter = 0; iter < beforeDims.size(); iter++) {
-    int before_i = beforeDims.size() - iter - 1;
-    int bcasted_i = bcastedDims.size() - iter - 1;
+    int beforeI = beforeDims.size() - iter - 1;
+    int bcastedI = bcastedDims.size() - iter - 1;
 
-    const TypedAttr &beforeDim = beforeDims[before_i];
-    const TypedAttr &bcastedDim = bcastedDims[bcasted_i];
+    const TypedAttr &beforeDim = beforeDims[beforeI];
+    const TypedAttr &bcastedDim = bcastedDims[bcastedI];
 
     // We cannot necessarily prove things are broadcast in all scenarios.
     // For example A --> B. A and B are runtime parameters so in some cases
@@ -388,7 +388,7 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
     const auto &bcastedDimInt = llvm::dyn_cast<IntegerAttr>(bcastedDim);
     if (beforeDimInt && bcastedDimInt && beforeDimInt.getSInt() == 1 &&
         bcastedDimInt.getSInt() != 1) {
-      answer.push_back(bcasted_i);
+      answer.push_back(bcastedI);
     } else if (beforeDim != bcastedDim) {
       return Error("Cannot statically prove which dimension broadcast.");
     }

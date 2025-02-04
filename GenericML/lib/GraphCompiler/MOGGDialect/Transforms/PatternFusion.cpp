@@ -43,11 +43,11 @@ static bool isMatmulSmall(MO::MatmulOp matmul) {
   if (!aType.hasStaticShape() || !bType.hasStaticShape())
     return false;
 
-  SmallVector<int64_t> ADims = aType.getIntDims();
-  SmallVector<int64_t> BDims = bType.getIntDims();
+  SmallVector<int64_t> aDims = aType.getIntDims();
+  SmallVector<int64_t> bDims = bType.getIntDims();
 
   // M * K * N
-  int64_t approxFlops = ADims[0] * ADims[1] * BDims[1];
+  int64_t approxFlops = aDims[0] * aDims[1] * bDims[1];
   return approxFlops < kTinyMatmulFlops;
 }
 
@@ -58,17 +58,17 @@ static bool isBMMSmall(MO::BatchMatmulOp matmul) {
   if (!aType.hasStaticShape() || !bType.hasStaticShape())
     return false;
 
-  SmallVector<int64_t> ADims = aType.getIntDims();
-  SmallVector<int64_t> BDims = bType.getIntDims();
+  SmallVector<int64_t> aDims = aType.getIntDims();
+  SmallVector<int64_t> bDims = bType.getIntDims();
 
   size_t rank = aType.getRank();
-  int64_t batch_size = 1;
-  for (size_t i = 0; i < ADims.size() - 2; ++i)
-    batch_size *= ADims[i];
+  int64_t batchSize = 1;
+  for (size_t i = 0; i < aDims.size() - 2; ++i)
+    batchSize *= aDims[i];
 
   // M * K * N
   int64_t approxFlops =
-      batch_size * (ADims[rank - 2] * ADims[rank - 1] * BDims[rank - 1]);
+      batchSize * (aDims[rank - 2] * aDims[rank - 1] * bDims[rank - 1]);
   return approxFlops < kTinyBMMatmulFlops;
 }
 
@@ -835,13 +835,13 @@ struct LayerNormPattern
     auto bet = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&beta));
     auto ep = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&eps));
 
-    auto last_axis = m_Optional(m_ScalarConstant(2), m_ScalarConstant(-1));
+    auto lastAxis = m_Optional(m_ScalarConstant(2), m_ScalarConstant(-1));
     // TODO: Current capture system can't distinguish multiple uses of the same
     // value in the pattern, need to fix, this might be slightly risky
     Value input;
     auto x = m_Ranked(3, m_Any(&input));
     auto mean = m_Op<MO::Static::BroadcastToOp>(
-        po(), m_Op<MO::MeanOp>(po(), x, last_axis));
+        po(), m_Op<MO::MeanOp>(po(), x, lastAxis));
     auto diff = m_Op<MO::SubOp>(po(), x, mean);
     auto square = m_Optional(
         m_Op<MO::MulOp>(po(), diff, diff),
@@ -849,29 +849,28 @@ struct LayerNormPattern
             po(), diff,
             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
                 2)));
-    auto var = m_Op<MO::MeanOp>(po(), square, last_axis);
+    auto var = m_Op<MO::MeanOp>(po(), square, lastAxis);
     // pytorch specific pattern
-    auto p_ratio = m_Op<MO::DivOp>(
+    auto pRatio = m_Op<MO::DivOp>(
         po(), diff,
         m_Op<MO::Static::BroadcastToOp>(
             po(), m_Op<MO::SqrtOp>(
                       po(), m_BinaryCommutativeOp<MO::AddOp>(po(), var, ep))));
-    auto p_layernorm = m_BinaryCommutativeOp<MO::AddOp>(
-        po(), m_BinaryCommutativeOp<MO::MulOp>(po(), gam, p_ratio), bet);
+    auto pLayernorm = m_BinaryCommutativeOp<MO::AddOp>(
+        po(), m_BinaryCommutativeOp<MO::MulOp>(po(), gam, pRatio), bet);
 
     // TF specific Pattern
-    auto t_rDenom = m_BinaryCommutativeOp<MO::MulOp>(
+    auto tRDenom = m_BinaryCommutativeOp<MO::MulOp>(
         po(), gam,
         m_Op<MO::Static::BroadcastToOp>(
             po(), m_Op<MO::IsqrtOp>(
                       po(), m_BinaryCommutativeOp<MO::AddOp>(po(), var, ep))));
-    auto t_term1 = m_BinaryCommutativeOp<MO::MulOp>(po(), x, t_rDenom);
-    auto t_term2 = m_BinaryCommutativeOp<MO::MulOp>(po(), mean, t_rDenom);
-    auto t_term3 = m_Op<MO::SubOp>(po(), bet, t_term2);
-    auto t_layernorm = m_BinaryCommutativeOp<MO::AddOp>(po(), t_term1, t_term3);
+    auto tTerm1 = m_BinaryCommutativeOp<MO::MulOp>(po(), x, tRDenom);
+    auto tTerm2 = m_BinaryCommutativeOp<MO::MulOp>(po(), mean, tRDenom);
+    auto tTerm3 = m_Op<MO::SubOp>(po(), bet, tTerm2);
+    auto tLayernorm = m_BinaryCommutativeOp<MO::AddOp>(po(), tTerm1, tTerm3);
 
-    if (!t_layernorm.match(op.getResult()) &&
-        !p_layernorm.match(op.getResult()))
+    if (!tLayernorm.match(op.getResult()) && !pLayernorm.match(op.getResult()))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     if (!input || !beta || !gamma || !eps)

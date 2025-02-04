@@ -565,17 +565,16 @@ bool EntityTable::collect(ModuleOp module, bool enableMEFMetadata) {
 
           // Keep track of invokable references specially so we can diagnose
           // them.
-          if (auto fn_attr = dyn_cast<SymbolRefAttr>(attr))
-            symbolRefAttrs.emplace_back(fn_attr, op->getLoc());
+          if (auto fnAttr = dyn_cast<SymbolRefAttr>(attr))
+            symbolRefAttrs.emplace_back(fnAttr, op->getLoc());
 
           // Delay inserting resource attributes if we can (i.e. if they aren't
           // nested). We could do more complex organization, but big resources
           // generally only appear at the top level, so delay that until we
           // actually know we need it.
           if (!insideDict) {
-            if (auto resource_attr =
-                    dyn_cast<DenseResourceElementsAttr>(attr)) {
-              resourceAttrs.emplace_back(resource_attr, op->getLoc());
+            if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(attr)) {
+              resourceAttrs.emplace_back(resourceAttr, op->getLoc());
               return;
             }
           }

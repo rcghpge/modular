@@ -689,17 +689,17 @@ struct PadConvPattern
     }
 
     auto loc = op.getLoc();
-    Value new_pads = rewriter.create<ConstantOp>(
+    Value newPads = rewriter.create<ConstantOp>(
         loc, SmallVector<int64_t>{constPads.begin() + 2, constPads.end() - 2});
     // Cast, sometimes this comes in as si32
     pads2 = rewriter.create<CastOp>(
         loc, cast<TensorType>(pads2.getType()).cloneWith(M::DType::si64),
         pads2);
 
-    new_pads = rewriter.create<AddOp>(loc, new_pads, pads2);
+    newPads = rewriter.create<AddOp>(loc, newPads, pads2);
 
     op.getInputMutable().assign(input);
-    op.getPaddingsMutable().assign(new_pads);
+    op.getPaddingsMutable().assign(newPads);
     return mlir::success();
   }
 };
@@ -835,17 +835,17 @@ struct GeluPattern : public DeviceAwareRewritePattern<OpRewritePattern, MulOp> {
     // Abbreviate the helper to try to keep things readable.
     auto po = [&rewriter]() { return rewriter.pushOp(); };
 
-    Value input, input_erf;
+    Value input, inputErf;
     // gelu = x * 1/2 * (1 + erf(x/sqrt(2)))
     auto sq2 = m_Op<Static::BroadcastToOp>(
         po(), m_ScalarConstant(llvm::numbers::sqrt2f));
     auto divsq2 = m_Op<Static::BroadcastToOp>(
         po(), m_ScalarConstant(llvm::numbers::inv_sqrt2f));
 
-    auto x_erf = m_Any(&input_erf);
+    auto xErf = m_Any(&inputErf);
     auto erf = m_Op<ErfOp>(
-        po(), m_Optional(m_Op<DivOp>(po(), x_erf, sq2),
-                         m_BinaryCommutativeOp<MulOp>(po(), x_erf, divsq2)));
+        po(), m_Optional(m_Op<DivOp>(po(), xErf, sq2),
+                         m_BinaryCommutativeOp<MulOp>(po(), xErf, divsq2)));
     auto one = m_Op<Static::BroadcastToOp>(po(), m_ScalarConstant(1.0f));
     auto add = m_BinaryCommutativeOp<AddOp>(po(), one, erf);
 
@@ -861,9 +861,9 @@ struct GeluPattern : public DeviceAwareRewritePattern<OpRewritePattern, MulOp> {
     if (!gelu.match(op->getResult(0)))
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
-    if (!input || !input_erf)
+    if (!input || !inputErf)
       return rewriter.notifyMatchFailure(op, "null input value");
-    if (!(input == input_erf))
+    if (!(input == inputErf))
       return rewriter.notifyMatchFailure(op, "inputs don't match");
 
     if (!rewriter.addOps()) {

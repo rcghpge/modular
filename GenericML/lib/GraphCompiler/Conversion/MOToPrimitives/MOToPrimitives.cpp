@@ -1537,8 +1537,8 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   // Create grt.if op
   auto outputIf = opLoweringState.create<GRT::IfOp>(resultTypes, operands);
 
-  auto lower_block = [&](Region &inputRegion,
-                         Region &outputRegion) -> LogicalResult {
+  auto enterLowerBlock = [&](Region &inputRegion,
+                             Region &outputRegion) -> LogicalResult {
     // Enter the lowered region's unique block.
     Block &newBlock = outputRegion.emplaceBlock();
     opLoweringState.builder.setInsertionPointToEnd(&newBlock);
@@ -1549,14 +1549,14 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   };
 
   // Lower Then Block
-  if (failed(lower_block(ifOp.getThenRegion(), outputIf.getThenRegion())))
+  if (failed(enterLowerBlock(ifOp.getThenRegion(), outputIf.getThenRegion())))
     return failure();
 
   // Reset the main chain between blocks
   loweringState.setCurrentExecuteChain(currentChain);
 
   // Lower Else Block
-  if (failed(lower_block(ifOp.getElseRegion(), outputIf.getElseRegion())))
+  if (failed(enterLowerBlock(ifOp.getElseRegion(), outputIf.getElseRegion())))
     return failure();
 
   Value outChain = outputIf.getResult(0);
@@ -1614,8 +1614,8 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   auto loweredWhileOp =
       opLoweringState.create<GRT::WhileOp>(resultTypes, operands);
 
-  auto lower_block = [&](Region &inputRegion,
-                         Region &outputRegion) -> LogicalResult {
+  auto enterLowerBlock = [&](Region &inputRegion,
+                             Region &outputRegion) -> LogicalResult {
     // Enter the lowered region's unique block.
     Block &newBlock = outputRegion.emplaceBlock();
     opLoweringState.builder.setInsertionPointToEnd(&newBlock);
@@ -1662,13 +1662,13 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   //    condition, so we'll need to include those.
   // 2) The lowered condition will be a mgp.tensor<bool>, which we need to
   //    convert to an i1.
-  if (failed(
-          lower_block(whileOp.getCondRegion(), loweredWhileOp.getCondRegion())))
+  if (failed(enterLowerBlock(whileOp.getCondRegion(),
+                             loweredWhileOp.getCondRegion())))
     return failure();
 
   // Lower the 'body' block.
-  if (failed(
-          lower_block(whileOp.getBodyRegion(), loweredWhileOp.getBodyRegion())))
+  if (failed(enterLowerBlock(whileOp.getBodyRegion(),
+                             loweredWhileOp.getBodyRegion())))
     return failure();
 
   // Now repair the lowered 'cond' block's mef.output to include all the

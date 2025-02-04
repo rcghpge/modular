@@ -87,9 +87,9 @@ void RebindTensorShapeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                                 TensorValue input, ShapeAttr newShape,
                                 StringRef message,
                                 ArrayRef<ParamDeclAttr> outputParamDecls) {
-  auto message_attr = odsBuilder.getStringAttr(message);
+  auto messageAttr = odsBuilder.getStringAttr(message);
   return build(odsBuilder, odsState, input.getType().cloneWith(newShape), input,
-               outputParamDecls, message_attr);
+               outputParamDecls, messageAttr);
 }
 
 void BroadcastLikeOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -254,7 +254,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
   DType result = calcDtype(category, bitWidth, inputBF16);
 
   auto isSafeToCast = [&](DType dtype) -> ErrorOrSuccess {
-    auto build_error = [&]() {
+    auto buildError = [&]() {
       return Error(Twine("Unsafe cast from ")
                        .concat(dtype.getAsString())
                        .concat(" to ")
@@ -267,7 +267,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
     // such that all values are exactly representable.
     if (dtype.isUInt() && result.isSInt() &&
         dtype.getWidthInBits() == result.getWidthInBits())
-      return build_error();
+      return buildError();
 
     // Any int to float is only safe if the significand precision can hold the
     // full integer ignoring the sign bit. This means the conversion is exactly
@@ -281,10 +281,10 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
                          .concat(" is not supported by the modular stack."));
 
       if (dtype.isSInt() && dtype.getWidthInBits() - 1 > *resultPrecision)
-        return build_error();
+        return buildError();
 
       if (dtype.isUInt() && dtype.getWidthInBits() > *resultPrecision)
-        return build_error();
+        return buildError();
     }
 
     // Float is unsafe if formats differ for same virtual bitwidth (tf32 with
@@ -293,7 +293,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
     if ((dtype == DType::f16 && result == DType::bf16) ||
         (dtype == DType::bf16 && result == DType::f16) ||
         (dtype == DType::tf32 && result == DType::f32))
-      return build_error();
+      return buildError();
 
     return success();
   };

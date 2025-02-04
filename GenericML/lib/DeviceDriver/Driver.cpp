@@ -116,11 +116,11 @@ MODULAR_API_EXPORT ErrorOr<std::string> Device::getStats() {
   // Crafting JSON string
   std::string s;
   llvm::raw_string_ostream os(s);
-  llvm::json::OStream J(os);
+  llvm::json::OStream j(os);
 
-  J.object([&] {
-    J.attribute("free_memory", info.free);
-    J.attribute("total_memory", info.total);
+  j.object([&] {
+    j.attribute("free_memory", info.free);
+    j.attribute("total_memory", info.total);
   });
 
   os.flush();

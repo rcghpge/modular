@@ -155,7 +155,7 @@ SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
   SmallVector<Value> valuesNoUnknowns = inputValues;
 
   // Replace values with those rebound expressions
-  for (int64_t i = 0, bound_i = inputValues.size(); i < bound_i; i++) {
+  for (int64_t i = 0, boundI = inputValues.size(); i < boundI; i++) {
     auto curTensor = dyn_cast<TensorValue>(inputValues[i]);
 
     // not a tensor, no need to modify as no `?`
@@ -175,7 +175,7 @@ SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
           loc, outTy, curTensor, newParamDecls);
     } else {
       SmallVector<TypedAttr> dims(curTensor.getType().getDims());
-      for (int64_t j = 0, bound_j = dims.size(); j < bound_j; j++) {
+      for (int64_t j = 0, boundJ = dims.size(); j < boundJ; j++) {
         TypedAttr curDim = dims[j];
         if (TensorType::isUnknownDimParam(curDim)) {
           curDim = createDynamicDimensionType(graphOp, newParamDecls);

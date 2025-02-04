@@ -1515,20 +1515,20 @@ struct BaseMEFAttrCast
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
   static bool isPossible(const From &f) {
-    const From &f_const = const_cast<From &>(f);
-    auto f_unwrapped = detail::unwrapValue(f_const);
+    const From &fConst = const_cast<From &>(f);
+    auto fUnwrapped = detail::unwrapValue(fConst);
 
     return To::matchesAttrKind(
-        reinterpret_cast<const uint8_t *>(f_unwrapped.get()),
-        f_unwrapped.getAttrSection().end());
+        reinterpret_cast<const uint8_t *>(fUnwrapped.get()),
+        fUnwrapped.getAttrSection().end());
   }
 
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
   static std::optional<To> doCast(const From &f) {
-    const From &f_const = const_cast<From &>(f);
-    auto f_unwrapped = detail::unwrapValue(f_const);
-    return To(f_unwrapped.get(), f_unwrapped.getAttrSection());
+    const From &fConst = const_cast<From &>(f);
+    auto fUnwrapped = detail::unwrapValue(fConst);
+    return To(fUnwrapped.get(), fUnwrapped.getAttrSection());
   }
 
   static std::optional<To> castFailed() { return std::nullopt; }
@@ -1542,20 +1542,20 @@ struct BaseMEFAttrCastOptional
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
   static bool isPossible(const From &f) {
-    const From &f_const = const_cast<From &>(f);
-    auto f_unwrapped = detail::unwrapValue(f_const);
+    const From &fConst = const_cast<From &>(f);
+    auto fUnwrapped = detail::unwrapValue(fConst);
 
     return To::matchesAttrKind(
-        reinterpret_cast<const uint8_t *>((*f_unwrapped).get()),
-        (*f_unwrapped).getAttrSection().end());
+        reinterpret_cast<const uint8_t *>((*fUnwrapped).get()),
+        (*fUnwrapped).getAttrSection().end());
   }
 
   // Accept a const reference in the case of temporaries being casted which get
   // lifetime extension when binding to a const reference.
   static std::optional<To> doCast(const From &f) {
-    const From &f_const = const_cast<From &>(f);
-    auto f_unwrapped = detail::unwrapValue(f_const);
-    return To((*f_unwrapped).get(), (*f_unwrapped).getAttrSection());
+    const From &fConst = const_cast<From &>(f);
+    auto fUnwrapped = detail::unwrapValue(fConst);
+    return To((*fUnwrapped).get(), (*fUnwrapped).getAttrSection());
   }
 
   static std::optional<To> castFailed() { return std::nullopt; }

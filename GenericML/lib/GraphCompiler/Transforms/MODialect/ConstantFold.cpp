@@ -503,8 +503,8 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
   // Run for a fixed amount of iterations. This avoids unexpected infinite
   // recursion within a graphop.
   size_t iter = 0;
-  size_t bound_for_maximum_iterations = 100000;
-  for (; iter < bound_for_maximum_iterations; iter++) {
+  size_t boundForMaximumIterations = 100000;
+  for (; iter < boundForMaximumIterations; iter++) {
     if (workQueue.empty())
       break;
 
@@ -564,7 +564,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
         workQueue.push_back(user);
   }
   ASSERT_STREAM(
-      iter < bound_for_maximum_iterations,
+      iter < boundForMaximumIterations,
       << "Hit bound on maximum number of iterations for detecting constant "
          "subgraphs. Either this graph op is VERY large (in which case this "
          "bound should be increased), or else somehow there is infinite "
@@ -952,7 +952,7 @@ void ConstantFoldPass::runOnOperation() {
       // An alternative approach could be to combine each subgraph into one
       // large constant graph so we only have one thing to execute.
       SmallVector<SubgraphsInfo> subgraphReplacements;
-      int64_t name_counter = 0;
+      int64_t nameCounter = 0;
       getOperation().walk([&](GraphOp graph) {
         auto subgraphs = M::MO::constantSubgraphs(
             graph, getAnalysis<KGEN::ParameterCollector::Analysis>());
@@ -964,7 +964,7 @@ void ConstantFoldPass::runOnOperation() {
         builder.setInsertionPointToEnd(module.getBody());
 
         subgraphReplacements.push_back(
-            cloneSubgraphs(builder, graph, module, subgraphs, name_counter));
+            cloneSubgraphs(builder, graph, module, subgraphs, nameCounter));
         return WalkResult::advance();
       });
 

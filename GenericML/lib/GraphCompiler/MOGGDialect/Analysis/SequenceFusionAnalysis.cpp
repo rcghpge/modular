@@ -507,13 +507,13 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
       // are part of the subgraph or not already.
       DenseSet<Operation *> visited;
       while (!workQueue.empty() && curSubgraph.size() < maximumFusionSetSize) {
-        auto parent_child = workQueue.top();
+        auto parentChild = workQueue.top();
         workQueue.pop();
 
         // Can't use structured bindings because a lambda captures parent which
         // is possible only in >C++20
-        auto parent = std::get<0>(parent_child);
-        auto child = std::get<1>(parent_child);
+        auto parent = std::get<0>(parentChild);
+        auto child = std::get<1>(parentChild);
 
         if (visited.contains(parent))
           continue;

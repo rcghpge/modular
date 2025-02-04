@@ -50,12 +50,12 @@ struct RewriteParamExprTypes : public RewritePattern {
     auto graphOp = op->getParentOfType<GraphOp>();
 
     bool found = false;
-    auto tensor_ty = dyn_cast<MO::TensorType>(ty);
-    if (!tensor_ty)
+    auto tensorTy = dyn_cast<MO::TensorType>(ty);
+    if (!tensorTy)
       return false;
-    if (tensor_ty.hasUnknownShape())
+    if (tensorTy.hasUnknownShape())
       return false;
-    auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(tensor_ty.getShapeAttr());
+    auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(tensorTy.getShapeAttr());
     if (!shapeAttr)
       return false;
     for (TypedAttr dimValue : shapeAttr.getValues()) {
@@ -71,13 +71,12 @@ struct RewriteParamExprTypes : public RewritePattern {
       }
       if (!regionToExprToParam[parentRegion].contains(paramOp)) {
         // If not, add substitution with a new unique name.
-        std::string expr_name = graphOp.getNewParamName("param_expr_");
-        regionToExprToParam[parentRegion][paramOp] = expr_name;
+        std::string exprName = graphOp.getNewParamName("param_expr_");
+        regionToExprToParam[parentRegion][paramOp] = exprName;
         // Declare the new parameters with values of complex expression.
         auto dimType = ShapeAttr::getDimType(op->getContext());
         rewriter.create<KGEN::ParamDeclareOp>(
-            op->getLoc(), KGEN::ParamDeclAttr::get(expr_name, dimType),
-            paramOp);
+            op->getLoc(), KGEN::ParamDeclAttr::get(exprName, dimType), paramOp);
       }
     }
     return found;
