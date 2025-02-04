@@ -2279,6 +2279,7 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [Pure]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_MergeDimOp : MO_TensorOp<"merge_dim", [Pure]> {

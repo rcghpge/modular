@@ -2854,9 +2854,29 @@ LogicalResult AddSingletonDimOp::verify() {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// MO_SplitDimOp support
-//===----------------------------------------------------------------------===//
+LogicalResult SplitDimOp::canonicalize(SplitDimOp op,
+                                       PatternRewriter &rewriter) {
+  int64_t axis = op.getAxis().getValue().getLimitedValue();
+  TensorType resultTy = op.getResult().getType();
+
+  if (!resultTy.hasRank())
+    return rewriter.notifyMatchFailure(op->getLoc(),
+                                       "Result has dynamic rank.");
+
+  if (resultTy.getIntDim(axis) == 1) {
+    rewriter.replaceOpWithNewOp<AddSingletonDimOp>(
+        op, resultTy, op.getInput(),
+        IntegerAttr::get(op.getAxis().getType(), axis));
+    return success();
+  }
+  if (resultTy.getIntDim(axis + 1) == 1) {
+    rewriter.replaceOpWithNewOp<AddSingletonDimOp>(
+        op, resultTy, op.getInput(),
+        IntegerAttr::get(op.getAxis().getType(), axis + 1));
+    return success();
+  }
+  return failure();
+}
 
 LogicalResult SplitDimOp::verify() {
   TensorType inputTy = getInput().getType();
