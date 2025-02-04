@@ -763,16 +763,14 @@ def MOGG_GetResourcePtrOp : MOGG_Op<"get_resource_ptr", [Pure,
   let hasVerifier = 1;
 }
 
-def MOGG_GetInputAsyncPtrOp : MOGG_Op<"get_input_async_ref_ptr", [Pure,
-  HasParent<"MOGG::GenericCompiledRegionOp">
-]> {
+def MOGG_MGPToAsyncRefOp : MOGG_Op<"mgp_to_async_ref", [Pure]> {
   let arguments = (ins AnyType:$input);
   let results = (outs PointerOf<KGEN_NoneType>:$result);
-  let summary = "Returns pointer to the async value of the corresponding input";
+  let summary = "A nop just to reconcile type conflict after lower-abi";
 
   let description = [{
-    Each input and output are represented by an async value. This returns a
-    pointer to async value of the input.
+    A no-op just to reconcile type conflict after lower-abi, the operation will
+    be removed after generic region models async value correctly.
   }];
 
   let assemblyFormat = [{
@@ -781,9 +779,24 @@ def MOGG_GetInputAsyncPtrOp : MOGG_Op<"get_input_async_ref_ptr", [Pure,
   }];
 }
 
-def MOGG_AllocateAsyncRefOp : MOGG_Op<"allocate_async_ref_for", [Pure,
-  HasParent<"MOGG::GenericCompiledRegionOp">
-]> {
+def MOGG_AsyncRefToMGPOp : MOGG_Op<"async_ref_to_mgp", [Pure]> {
+  let arguments = (ins PointerOf<KGEN_NoneType>:$async);
+  let results = (outs AnyType:$mgpResult);
+  let summary = "A nop just to reconcile type conflict after lower-abi";
+
+  let description = [{
+    A no-op just to reconcile type conflict after lower-abi, the operation will
+    be removed after generic region models async value correctly.
+
+    The inverse operation of mogg.mgp_to_async_ref
+  }];
+
+  let assemblyFormat = [{
+    `(` $async `)` attr-dict `:` functional-type($async, $mgpResult)
+  }];
+}
+
+def MOGG_AllocateAsyncRefOp : MOGG_Op<"allocate_async_ref_for", [Pure]> {
   let arguments = (ins AnyType:$input);
   let results = (outs PointerOf<KGEN_NoneType>:$result);
   let summary = "Returns pointer to the async value of the corresponding output";
