@@ -882,6 +882,9 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   moOpts.enableCompiledRegionsFusion = false;
   // Use MOF executor so we don't depend on a framework.
   moOpts.compiledFrameworkLabel = "mof";
+  // This will fold sequence of trivial kernels not on host, leading to huge
+  // kernels (in terms of code size).
+  moOpts.performTrivialKernelOpt = false;
   // Set default device label.
   moOpts.defaultDeviceLabel =
       defaultDeviceLabel.empty() ? defaultDeviceLabel : kCPULabel;
