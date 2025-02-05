@@ -83,11 +83,6 @@ def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
     contains the code to unpack from and to async values.
   }];
 
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-  ];
-
   let dependentDialects = ["MEF::MEFDialect",
                           "MGP::MGPDialect",
                           "GRT::GRTDialect",
@@ -142,14 +137,17 @@ def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def RemoveRedundantMOGGCalls: Pass<"remove-redundant-mogg-calls", "ModuleOp"> {
-  let summary = "Removes redundant mogg.calls";
+def LowerAsyncRefs: Pass<"lower-async-refs", "ModuleOp"> {
+  let summary = "Lower mogg.pack/unpack to mogg.calls";
   let description = [{
-    Removes redundant `mogg.call`s to the same target using the same arguments.
-    Those targets are not pure or side-effect free (e.g., "assert",
-    "builtin.create_async_xxx"), thus can not be handled correctly by a common
-    cse pass.
+    Lower mogg.pack/upack calls to/from async refs to the corresponding
+    mogg.calls.
   }];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+  ];
 
   let dependentDialects = ["MOGG::MOGGDialect"];
 }

@@ -21,7 +21,8 @@ module {
       %6 = mogg.to_mgp_from_opaque(%4) : (!kgen.pointer<struct<(index) memoryOnly>>) -> !mgp.opaque<"">
       %7 = mogg.allocate_async_ref_for(%6) : (!mgp.opaque<"">) -> !kgen.pointer<none>
       mogg.create_async_mojo_value(%6, %7, %2) : (!mgp.opaque<"">, !kgen.pointer<none>, !kgen.pointer<none>) -> ()
-      mogg.output %6 : !mgp.opaque<"">
+      %8 = mogg.async_ref_to_mgp(%7) : (!kgen.pointer<none>) -> !mgp.opaque<"">
+      mogg.output %8 : !mgp.opaque<"">
     } {device = #M.device_ref<"cpu", 0>, canFuseIntoOther = false, inOutSignature = #M.inout_sig<"i">, isAsync = false, summary = "custom__test_make_custom_int:5"}
     mef.output %arg0, %0#1 : !mef.chain, !mgp.opaque<"">
   }

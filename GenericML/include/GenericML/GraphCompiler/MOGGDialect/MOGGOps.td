@@ -886,6 +886,50 @@ def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
   }];
 }
 
+def MOGG_PackToAsyncRef : MOGG_Op<"pack_to_async_ref", [Pure]> {
+  let arguments = (ins AnyType:$inputVal,
+                       PointerOf<KGEN_NoneType>:$runtime,
+                       Optional<MGP_DeviceContextType>:$deviceCtx);
+  let results = (outs PointerOf<KGEN_NoneType>:$resultAsync);
+  let summary = "Pack a KGEN value to a async ref";
+
+  let description = [{
+    Pack a KGEN value to a async ref. I.e,
+
+    ```mlir
+      %async = mogg.pack_to_async_ref(%kgen)
+      // is equivalent to
+      %async = allocate_async_value()
+      mogg.call "builtin.create_xxx_async(%kgen, %async)"
+    ```
+  }];
+
+  let assemblyFormat = [{
+    `(` $inputVal `,` $runtime  (`,` $deviceCtx^)? `)` attr-dict
+    `:` qualified(type($inputVal)) (`,` qualified(type($deviceCtx))^)?
+  }];
+}
+
+def MOGG_UnpackFromAsyncRef : MOGG_Op<"unpack_from_async_ref", [Pure]> {
+  let arguments = (ins PointerOf<KGEN_NoneType>:$inputAsync);
+  let results = (outs AnyType:$resultVal);
+  let summary = "Unpack a KGEN value from a async ref";
+
+  let description = [{
+    Unpack a KGEN value from a async ref. I.e,
+
+    ```mlir
+      %kgen = mogg.unpack_from_async_ref(%async)
+      // is equivalent to
+      %kgen = mogg.call "builtin.unpack_xxx_async(%async)"
+    ```
+  }];
+
+  let assemblyFormat = [{
+    `(` $inputAsync `)` attr-dict `:` qualified(type($resultVal))
+  }];
+}
+
 def MOGG_ReleaseMojoValueOp : MOGG_Op<"release_mojo_value"> {
   let arguments = (ins
       AnyType:$mojoValue

@@ -131,16 +131,12 @@ struct RemoveRedundantOperands
         // when the pass runs after post-abi fusion).
         for (Operation *user :
              llvm::make_early_inc_range(toRemove.getUsers())) {
-          if (auto asyncAlloc = dyn_cast<MOGG::AllocateAsyncRefOp>(user)) {
+          if (auto asyncAlloc = dyn_cast<MOGG::PackToAsyncRef>(user)) {
             for (Operation *op :
                  llvm::make_early_inc_range(asyncAlloc->getUsers())) {
-              // Either a deallocation or calls to create the async ref for
-              // the chain. Since we no longer need the chain, they can be
-              // erased too.
-              assert(isa<MOGG::DeallocateAsyncRefOp>(op) ||
-                     (isa<MOGG::CallOp>(op) &&
-                      cast<MOGG::CallOp>(op).getMojoKernelTargetAttr().str() ==
-                          "builtin.create_chain_async"));
+              // Must be a deallocation, since we no longer need the chain, they
+              // can be erased too.
+              assert(isa<MOGG::DeallocateAsyncRefOp>(op));
               op->erase();
             }
             asyncAlloc.erase();

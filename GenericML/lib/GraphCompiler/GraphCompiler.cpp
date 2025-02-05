@@ -79,13 +79,13 @@ void M::MO::registerPasses() {
   MO::registerNameInputDimsPass();
   MGP::registerCoalesceAsyncRefsPass();
   MGP::registerMOToPrimitives();
+  MGP::registerLowerAsyncRefs();
   MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
   MGP::registerPostABIFuseGenericRegions();
   MGP::registerRemoveRedundantOperands();
-  MGP::registerRemoveRedundantMOGGCalls();
   MGP::registerLegalizeAsyncRefDeallocations();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
@@ -374,9 +374,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 
-  MGP::LowerMOGGABIOptions abiOpts;
-  abiOpts.kernelLibraryPaths = kernelLibraryPaths;
-  pm.addPass(MGP::createLowerMOGGABI(abiOpts));
+  pm.addPass(MGP::createLowerMOGGABI());
 
   if (opts.enablePostABIRegionFusion && opts.fuseJitKernels) {
     pm.addPass(MGP::createPostABIFuseGenericRegions());
@@ -389,10 +387,12 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     // region might be enclosed inside a grt.if/while/... operations, making the
     // pass nest harder to find. We should re-exam all passes, many of them can
     // be triggered more locally.
-    pm.addPass(MGP::createRemoveRedundantMOGGCalls());
     pm.addPass(MGP::createLegalizeAsyncRefDeallocations());
   }
-
+  // Lower async pack/unpack intrinsic.
+  MGP::LowerAsyncRefsOptions lowerAsyncopt;
+  lowerAsyncopt.kernelLibraryPaths = kernelLibraryPaths;
+  pm.addPass(MGP::createLowerAsyncRefs(lowerAsyncopt));
   pm.addPass(MGP::createCoalesceAsyncRefs());
 
   // If we are jitting then we need to compile the jit kernels as well.
