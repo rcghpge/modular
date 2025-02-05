@@ -359,12 +359,6 @@ bool MEFToMLIRConverter::parseAttribute(size_t offset,
     case MEF::TypeKind::f64:
       resultType = Float64Type::get(getContext());
       break;
-    case MEF::TypeKind::f80:
-      resultType = Float80Type::get(getContext());
-      break;
-    case MEF::TypeKind::f128:
-      resultType = Float128Type::get(getContext());
-      break;
     case MEF::TypeKind::kBool:
       resultType = IntegerType::get(getContext(), 1);
       break;

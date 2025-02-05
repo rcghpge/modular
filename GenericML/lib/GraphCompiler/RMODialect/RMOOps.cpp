@@ -210,16 +210,10 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
       return DType::f16;
     case 19:
       return DType::tf32;
-    case 24:
-      return DType::f24;
     case 32:
       return DType::f32;
     case 64:
       return DType::f64;
-    case 80:
-      return DType::f80;
-    case 128:
-      return DType::f128;
     }
     break;
   }

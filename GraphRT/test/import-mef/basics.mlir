@@ -84,10 +84,6 @@ mef.invokable @attributes() {
   // MD:  "type.f32"() {t = f32}
   "type.f32"() {t = f32} : () -> ()
 
-  // CHECK-NEXT: mef.opaque "type.f128" [f128]()
-  // MD: "type.f128"() {t = f128}
-  "type.f128"() {t = f128} : () -> ()
-
   // CHECK-NEXT: mef.opaque "type.tensor" [tensor<4x1xf32>]()
   // MD: "type.tensor"() {t = tensor<4x1xf32>}
   "type.tensor"() {t = tensor<4x1xf32>} : () -> ()

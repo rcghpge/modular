@@ -24,8 +24,6 @@ size_t MEFType::getEncodedSizeInBytes() const {
   case MEF::TypeKind::bf16:
   case MEF::TypeKind::f32:
   case MEF::TypeKind::f64:
-  case MEF::TypeKind::f80:
-  case MEF::TypeKind::f128:
   case MEF::TypeKind::kBool:
     // Primitive types all have a single-byte encoding.
     return 1;

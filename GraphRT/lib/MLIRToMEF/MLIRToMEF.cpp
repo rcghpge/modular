@@ -1070,10 +1070,6 @@ ErrorOr<MEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
     return MEF::TypeKind::f32;
   case 64:
     return MEF::TypeKind::f64;
-  case 80:
-    return MEF::TypeKind::f80;
-  case 128:
-    return MEF::TypeKind::f128;
   default:
     return Error("unknown float type");
   }
