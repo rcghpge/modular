@@ -14,6 +14,7 @@
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
+#include "Support/LLVMForwardDecls.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
@@ -44,17 +45,15 @@ using DeviceFunctionRef = RCRef<const DeviceFunction>;
 using DeviceStreamRef = RCRef<const DeviceStream>;
 using DeviceTimerRef = RCRef<const DeviceTimer>;
 
-using llvm::StringRef;
-
 size_t getPreferredAlignment(std::string label);
 
 class Device : public ReferenceCounted<Device> {
 public:
   enum class Attribute;
 
-  // API is a constexpr StringRef for fast comparison, while being
+  // API is a constexpr StringLiteral for fast comparison, while being
   // human-readable at the same time.
-  using API = StringRef;
+  using API = StringLiteral;
   static constexpr API cpuAPI = "cpu";   // Generic CPU device
   static constexpr API gpuAPI = "gpu";   // Generic GPU device
   static constexpr API cudaAPI = "cuda"; // NVIDIA CUDA device
