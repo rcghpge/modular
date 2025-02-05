@@ -4968,9 +4968,7 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
 }
 
 class MO_AllReduceSumBase<string opName> : MO_DistributedOp<opName, [
-  Pure,
   MO_HasDeviceInterface,
-  MO_SameOperandsAndResultShape,
   MO_StaticTupleInputs,
   MO_StaticTupleOutputs
 ]> {
@@ -4998,6 +4996,11 @@ def MO_AllReduce2GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.2gpu.sum"
   let extraClassDeclaration = [{
     static constexpr std::optional<int> numDevices{2};
   }];
+  let arguments = (ins
+    MO_Rank1Buffer:$signalBuffer0,
+    MO_Rank1Buffer:$signalBuffer1,
+    Variadic<MO_Tensor>:$inputs
+  );
 }
 
 def MO_AllReduce4GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.4gpu.sum"> {
@@ -5005,6 +5008,13 @@ def MO_AllReduce4GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.4gpu.sum"
   let extraClassDeclaration = [{
     static constexpr std::optional<int> numDevices{4};
   }];
+  let arguments = (ins
+    MO_Rank1Buffer:$signalBuffer0,
+    MO_Rank1Buffer:$signalBuffer1,
+    MO_Rank1Buffer:$signalBuffer2,
+    MO_Rank1Buffer:$signalBuffer3,
+    Variadic<MO_Tensor>:$inputs
+  );
 }
 
 //===----------------------------------------------------------------------===//
