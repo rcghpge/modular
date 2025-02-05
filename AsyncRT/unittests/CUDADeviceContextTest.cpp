@@ -416,6 +416,7 @@ $L__BB0_2:
 
     EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
 
+    delete[] checkData;
     free(dstPtr);
     err = srcCtx->freeHost(srcPtr);
     EXPECT_FALSE(err) << err.getError() << "\n";
