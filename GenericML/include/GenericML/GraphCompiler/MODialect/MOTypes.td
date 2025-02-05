@@ -366,11 +366,19 @@ def MO_Opaque : MO_Type<"Opaque", "opaque"> {
 /// Checks if a MO_TensorType has static rank.
 def MO_HasRankPred : CPred<"cast<MO::TensorType>($_self).hasRank()">;
 
+def MO_BufferHasRankPred : CPred<"cast<MO::BufferType>($_self).toTensorType().hasRank()">;
+
 // Checks if a MO_TensorType has one of the specified ranks.
 class MO_HasAnyRankOfPred<list<int> ranks> : And<[
   MO_HasRankPred,
   Or<!foreach(rank, ranks,
     CPred<[{cast<MO::TensorType>($_self).getRank() == }] # rank>)>]>;
+
+// Checks if a MO_BufferType has one of the specified ranks.
+class MO_BufferHasAnyRankOfPred<list<int> ranks> : And<[
+  MO_BufferHasRankPred,
+  Or<!foreach(rank, ranks,
+    CPred<[{cast<MO::BufferType>($_self).toTensorType().getRank() == }] # rank>)>]>;
 
 /// Checks if a type has rank N if statically ranked.
 class HasRankIfRankedPred<int N> :
@@ -400,6 +408,14 @@ def HasSI32ElementTypePred : SubstLeaves<
 /// Checks if a MO_TensorType has I1 elements.
 def HasBoolElementTypePred : SubstLeaves<
   "$_self", "cast<M::MO::TensorType>($_self).getElementType()", I1.predicate>;
+
+/// Base class for defining constraints on MO_BufferType.
+class MO_ConfinedBuffer<list<Pred> predicates, string summary = ""> :
+  ConfinedType<MO_Buffer, predicates, summary, "::M::MO::BufferType">;
+
+/// Confines the MO_BufferType so it is rank 1.
+def MO_Rank1Buffer: MO_ConfinedBuffer<
+  [MO_BufferHasAnyRankOfPred<[1]>], "rank-1 buffer">;
 
 /// Base class for defining constraints on MO_TensorType.
 class MO_ConfinedTensor<list<Pred> predicates, string summary = ""> :
@@ -467,6 +483,10 @@ def MO_Rank1IndexTensor: MO_ConfinedTensor<
 /// Confines the MO_TensorType so it is rank 2 and has index dtype.
 def MO_Rank2IndexTensor: MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[2]>, IntOrIndexElementTypePred], "rank-2 index tensor">;
+
+/// Confines the MO_TensorType so it is rank 1.
+def MO_Rank1Tensor: MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[1]>], "rank-1 tensor">;
 
 /// Confines the MO_TensorType so it is rank 2.
 def MO_Rank2Tensor: MO_ConfinedTensor<
