@@ -35,6 +35,7 @@ convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
   static_assert(numBits <= 64, "Only up to 64 bit floats supported right now.");
 
   llvm::SmallVector<mlir::TypedAttr> values;
+  values.reserve(numElems);
   const T *raw = reinterpret_cast<const T *>(data);
   for (int64_t i = 0; i < numElems; ++i) {
     uint64_t upcast = raw[i];
@@ -57,6 +58,7 @@ convertIntsToSIMD(DType moggType, KGEN::KGENDType kgenType,
   // Creating simd attributes
   auto asT = reinterpret_cast<const T *>(data);
   llvm::SmallVector<mlir::TypedAttr> values;
+  values.reserve(numElems);
   for (int64_t i = 0; i < numElems; ++i) {
     // Convert the type for the APInt constructor.
     int64_t upcast = asT[i];
@@ -79,6 +81,7 @@ convertBoolsToSIMD(DType moggType, KGEN::KGENDType kgenType,
   // Creating simd attributes
   auto asT = reinterpret_cast<const bool *>(data);
   llvm::SmallVector<mlir::TypedAttr> values;
+  values.reserve(numElems);
   for (int64_t i = 0; i < numElems; ++i) {
     // Convert the type for the APInt constructor.
     int64_t upcast = asT[i];
@@ -91,55 +94,55 @@ convertBoolsToSIMD(DType moggType, KGEN::KGENDType kgenType,
   return values;
 }
 
-MOGGTypeTraits bf16() {
+static MOGGTypeTraits bf16() {
   return MOGGTypeTraits("bfloat16", KGEN::KGENDType::bf16, DType::bf16);
 }
 
-MOGGTypeTraits f16() {
+static MOGGTypeTraits f16() {
   return MOGGTypeTraits("float16", KGEN::KGENDType::f16, DType::f16);
 }
 
-MOGGTypeTraits f32() {
+static MOGGTypeTraits f32() {
   return MOGGTypeTraits("float32", KGEN::KGENDType::f32, DType::f32);
 }
 
-MOGGTypeTraits f64() {
+static MOGGTypeTraits f64() {
   return MOGGTypeTraits("float64", KGEN::KGENDType::f64, DType::f64);
 }
 
-MOGGTypeTraits ui8() {
+static MOGGTypeTraits ui8() {
   return MOGGTypeTraits("uint8", KGEN::KGENDType::ui8, DType::ui8);
 }
 
-MOGGTypeTraits ui16() {
+static MOGGTypeTraits ui16() {
   return MOGGTypeTraits("uint16", KGEN::KGENDType::ui16, DType::ui16);
 }
 
-MOGGTypeTraits ui32() {
+static MOGGTypeTraits ui32() {
   return MOGGTypeTraits("uint32", KGEN::KGENDType::ui32, DType::ui32);
 }
 
-MOGGTypeTraits ui64() {
+static MOGGTypeTraits ui64() {
   return MOGGTypeTraits("uint64", KGEN::KGENDType::ui64, DType::ui64);
 }
 
-MOGGTypeTraits si8() {
+static MOGGTypeTraits si8() {
   return MOGGTypeTraits("int8", KGEN::KGENDType::si8, DType::si8);
 }
 
-MOGGTypeTraits si16() {
+static MOGGTypeTraits si16() {
   return MOGGTypeTraits("int16", KGEN::KGENDType::si16, DType::si16);
 }
 
-MOGGTypeTraits si32() {
+static MOGGTypeTraits si32() {
   return MOGGTypeTraits("int32", KGEN::KGENDType::si32, DType::si32);
 }
 
-MOGGTypeTraits si64() {
+static MOGGTypeTraits si64() {
   return MOGGTypeTraits("int64", KGEN::KGENDType::si64, DType::si64);
 }
 
-MOGGTypeTraits b() {
+static MOGGTypeTraits b() {
   return MOGGTypeTraits("bool", KGEN::KGENDType::kBool, DType::kBool);
 }
 
@@ -148,46 +151,49 @@ MOGGTypeTraits b() {
 llvm::SmallVector<mlir::TypedAttr>
 MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
                               int64_t numElems) const {
-  if (moggType == DType::f16)
+  switch (moggType.getValue()) {
+  case DType::f16:
     return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
                                          numElems, APFloat::IEEEhalf());
-  else if (moggType == DType::bf16)
+  case DType::bf16:
     return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
                                          numElems, APFloat::BFloat());
-  else if (moggType == DType::f32)
+  case DType::f32:
     return convertFloatsToSIMD<uint32_t>(moggType, kgenType, context, data,
                                          numElems, APFloat::IEEEsingle());
-  else if (moggType == DType::f64)
+  case DType::f64:
     return convertFloatsToSIMD<uint64_t>(moggType, kgenType, context, data,
                                          numElems, APFloat::IEEEdouble());
-  else if (moggType == DType::ui8)
+  case DType::ui8:
     return convertIntsToSIMD<uint8_t>(moggType, kgenType, context, data,
                                       numElems);
-  else if (moggType == DType::ui16)
+  case DType::ui16:
     return convertIntsToSIMD<uint16_t>(moggType, kgenType, context, data,
                                        numElems);
-  else if (moggType == DType::ui32)
+  case DType::ui32:
     return convertIntsToSIMD<uint32_t>(moggType, kgenType, context, data,
                                        numElems);
-  else if (moggType == DType::ui64)
+  case DType::ui64:
     return convertIntsToSIMD<uint64_t>(moggType, kgenType, context, data,
                                        numElems);
-  else if (moggType == DType::si8)
+  case DType::si8:
     return convertIntsToSIMD<int8_t>(moggType, kgenType, context, data,
                                      numElems);
-  else if (moggType == DType::si16)
+  case DType::si16:
     return convertIntsToSIMD<int16_t>(moggType, kgenType, context, data,
                                       numElems);
-  else if (moggType == DType::si32)
+  case DType::si32:
     return convertIntsToSIMD<int32_t>(moggType, kgenType, context, data,
                                       numElems);
-  else if (moggType == DType::si64)
+  case DType::si64:
     return convertIntsToSIMD<int64_t>(moggType, kgenType, context, data,
                                       numElems);
-  else if (moggType == DType::kBool)
+  case DType::kBool:
     return convertBoolsToSIMD(moggType, kgenType, context, data, numElems);
-  ASSERT_STREAM(false, << "Unimplemented DType " << moggType);
-  llvm_unreachable("Unimplemented DType");
+  default:
+    ASSERT_STREAM(false, << "Unimplemented DType " << moggType);
+    llvm_unreachable("Unimplemented DType");
+  }
 }
 
 llvm::SmallVector<MOGGTypeTraits> allTypeTraits() {
@@ -196,71 +202,72 @@ llvm::SmallVector<MOGGTypeTraits> allTypeTraits() {
 }
 
 ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
-  if (type.isF16()) {
+  if (type.isF16())
     return f16();
-  } else if (type.isBF16()) {
+  if (type.isBF16())
     return bf16();
-  } else if (type.isF32()) {
+  if (type.isF32())
     return f32();
-  } else if (type.isF64()) {
+  if (type.isF64())
     return f64();
-  } else if (type.isUnsignedInteger(8)) {
+  if (type.isUnsignedInteger(8))
     return ui8();
-  } else if (type.isUnsignedInteger(16)) {
+  if (type.isUnsignedInteger(16))
     return ui16();
-  } else if (type.isUnsignedInteger(32)) {
+  if (type.isUnsignedInteger(32))
     return ui32();
-  } else if (type.isUnsignedInteger(64)) {
+  if (type.isUnsignedInteger(64))
     return ui64();
-  } else if (type.isSignedInteger(8)) {
+  if (type.isSignedInteger(8))
     return si8();
-  } else if (type.isSignedInteger(16)) {
+  if (type.isSignedInteger(16))
     return si16();
-  } else if (type.isSignedInteger(32)) {
+  if (type.isSignedInteger(32))
     return si32();
-  } else if (type.isSignedInteger(64)) {
+  if (type.isSignedInteger(64))
     return si64();
-  } else if (type.isInteger(1)) {
+  if (type.isInteger(1))
     return b();
-  } else {
-    std::string typeStr;
-    llvm::raw_string_ostream rso(typeStr);
-    type.print(rso);
-    return Error("No MOGGTypeTraits implementation for " + rso.str() +
-                 ". This is not a supported MOGG DType.");
-  }
+
+  std::string typeStr;
+  llvm::raw_string_ostream rso(typeStr);
+  type.print(rso);
+  return Error("No MOGGTypeTraits implementation for " + rso.str() +
+               ". This is not a supported MOGG DType.");
 }
 
 ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupDType(DType dtype) {
-  if (dtype == DType::f16)
+  switch (dtype.getValue()) {
+  case DType::f16:
     return f16();
-  else if (dtype == DType::bf16)
+  case DType::bf16:
     return bf16();
-  else if (dtype == DType::f32)
+  case DType::f32:
     return f32();
-  else if (dtype == DType::f64)
+  case DType::f64:
     return f64();
-  else if (dtype == DType::ui8)
+  case DType::ui8:
     return ui8();
-  else if (dtype == DType::ui16)
+  case DType::ui16:
     return ui16();
-  else if (dtype == DType::ui32)
+  case DType::ui32:
     return ui32();
-  else if (dtype == DType::ui64)
+  case DType::ui64:
     return ui64();
-  else if (dtype == DType::si8)
+  case DType::si8:
     return si8();
-  else if (dtype == DType::si16)
+  case DType::si16:
     return si16();
-  else if (dtype == DType::si32)
+  case DType::si32:
     return si32();
-  else if (dtype == DType::si64)
+  case DType::si64:
     return si64();
-  else if (dtype == DType::kBool)
+  case DType::kBool:
     return b();
-  else
+  default:
     return Error("No MOGGTypeTraits implementation for " + dtype.getAsString() +
                  ". This is not a supported MOGG DType.");
+  }
 }
 
 bool MOGGTypeTraits::isSupportedMOGGType(Type type) {
