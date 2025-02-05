@@ -195,9 +195,9 @@ py_repl(
     tags = ["manual"],
     deps = [
         "//SDK/lib/API/python/max/engine",
+        "//SDK/lib/API/python/max/entrypoints:pipelines",
         "//SDK/lib/API/python/max/graph",
         "//SDK/lib/API/python/max/pipelines",
-        "//SDK/lib/API/python/max/pipelines:max_pipelines",
         "//SDK/lib/API/python/max/serve",
         requirement("hypothesis"),
         requirement("notebook"),
