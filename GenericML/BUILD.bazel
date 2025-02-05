@@ -95,7 +95,7 @@ modular_cc_library(
         ":RMODialect",
         ":RMOTransforms",
         ":Support",
-        "//AsyncRT:MojoBindings",
+        "//AsyncRT:DeviceContext",
         "//AsyncRT:RuntimeGlobals",
         "//GraphRT:MLIRToMEF",
         "//KGEN:CompilerRT",
@@ -1428,7 +1428,7 @@ modular_shared_library(
     output_name = "MGPRT",
     deps = [
         ":Support",
-        "//AsyncRT:MojoBindings",
+        "//AsyncRT:DeviceContext",
         "//AsyncRT:Runtime",
         "//AsyncRT:RuntimeGlobals",
         "//AsyncRT:Support",

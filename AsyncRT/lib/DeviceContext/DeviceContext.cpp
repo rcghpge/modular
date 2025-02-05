@@ -15,6 +15,7 @@
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
 #include "Support/AlignedAlloc.h"
+#include "Support/SymbolExport.h"
 #include "llvm/ADT/Twine.h"
 
 #include <string.h>
@@ -64,7 +65,7 @@ static Error formatError(const char *file, int line, const char *func,
 
 // TODO: Remove once users have been updated to use
 // `Device::preferredAlignment`.
-size_t getPreferredAlignment(std::string label) {
+MODULAR_CXX_EXPORT size_t getPreferredAlignment(std::string label) {
   return Device::preferredAlignment(label);
 }
 
@@ -75,13 +76,13 @@ Device::Device(API api, std::string name, int id, size_t allocAligment)
     : name_(std::move(name)), id_(id), api_(api),
       allocAlignment_(allocAligment) {}
 
-const std::string &Device::name() const { return name_; }
+MODULAR_CXX_EXPORT const std::string &Device::name() const { return name_; }
 
-int Device::id() const { return id_; }
+MODULAR_CXX_EXPORT int Device::id() const { return id_; }
 
-Device::API Device::api() const { return api_; }
+MODULAR_CXX_EXPORT Device::API Device::api() const { return api_; }
 
-StringRef Device::vendor() const {
+MODULAR_CXX_EXPORT StringRef Device::vendor() const {
   if (api() == cudaAPI)
     return "nvidia";
   if (api() == hipAPI)
@@ -91,9 +92,11 @@ StringRef Device::vendor() const {
   return "";
 }
 
-size_t Device::allocationAlignment() const { return allocAlignment_; }
+MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
+  return allocAlignment_;
+}
 
-size_t Device::preferredAlignment(StringRef api) {
+MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
   if (api == gpuAPI) {
     // TODO(GEX-1416): Remove special hard-coded value to pass tests.
     return 256;
@@ -105,7 +108,7 @@ size_t Device::preferredAlignment(StringRef api) {
   return device.get()->allocationAlignment();
 }
 
-ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
+MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
   if (api == gpuAPI) {
     ErrorOr<const Device &> device = CUDADevice::get(id);
@@ -155,7 +158,7 @@ DeviceBuffer::DeviceBuffer(const DeviceContext &context, void *ptr,
     : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
       byteSize_(byteSize), owning_(owning) {}
 
-DeviceBuffer::~DeviceBuffer() {
+MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   if (!owning_) {
     // TODO: Remove the V1 compatibility.
     // This is a device buffer created by pointer in Mojo while ownership is
@@ -169,26 +172,30 @@ DeviceBuffer::~DeviceBuffer() {
   // Release the memory (either to buffer cache or using memFree).
   ERR_CHECK(context().bufferCache().free(ptr_));
 }
-const DeviceContext &DeviceBuffer::context() const { return *context_; }
+
+MODULAR_CXX_EXPORT const DeviceContext &DeviceBuffer::context() const {
+  return *context_;
+}
 
 const DeviceBuffer *DeviceBuffer::parent() const {
   return parent_.getPointer();
 }
 
-void *DeviceBuffer::ptr() const { return ptr_; }
+MODULAR_CXX_EXPORT void *DeviceBuffer::ptr() const { return ptr_; }
 
 // TODO: Remove the V1 compatibility.
-void *DeviceBuffer::releasePtr() const {
+MODULAR_CXX_EXPORT void *DeviceBuffer::releasePtr() const {
   auto tmp = ptr_;
   ptr_ = nullptr;
   owning_ = false;
   return tmp;
 }
 
-size_t DeviceBuffer::byteSize() const { return byteSize_; }
+MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
 // Default implementation, which can be specialized by subclasses.
-ErrorOrSuccess DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
+MODULAR_CXX_EXPORT ErrorOrSuccess
+DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
   const DeviceBuffer &src = *this;
   const Device::API srcApi = src.context().device().api();
   const Device::API dstApi = dst.context().device().api();
@@ -203,8 +210,8 @@ ErrorOrSuccess DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
                dstApi + "\"");
 }
 
-ErrorOr<DeviceBufferRef> DeviceBuffer::createSubBuffer(size_t byteOffset,
-                                                       size_t byteSize) const {
+MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
+DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   char *origPtr = static_cast<char *>(this->ptr());
   size_t origByteSize = this->byteSize();
 
@@ -221,7 +228,9 @@ ErrorOr<DeviceBufferRef> DeviceBuffer::createSubBuffer(size_t byteOffset,
 DeviceEvent::DeviceEvent(const Device &device)
     : device_(DeviceRef::copy(&device)) {}
 
-const Device &DeviceEvent::device() const { return *device_; }
+MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
+  return *device_;
+}
 
 //
 // ===== DeviceStream ===== //
@@ -293,13 +302,13 @@ ErrorOrSuccess DeviceFunction::checkSignatureAt(int index,
 //
 // ===== DeviceFunction::SignatureBuilder ===== //
 //
-DeviceFunction::SignatureBuilder &
+MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
 DeviceFunction::SignatureBuilder::addUInt64() {
   types_.push_back(UINT64);
   return *this;
 }
 
-DeviceFunction::SignatureBuilder &
+MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
 DeviceFunction::SignatureBuilder::addBuffer() {
   types_.push_back(BUFFER);
   return *this;
@@ -317,14 +326,16 @@ const ErrorOrSuccess &DeviceFunction::Arguments::getError() const {
   return err_;
 }
 
-void DeviceFunction::Arguments::checkArg(int index, const uint64_t &val) {
+MODULAR_CXX_EXPORT void
+DeviceFunction::Arguments::checkArg(int index, const uint64_t &val) {
   if (err_)
     return;
   err_ = fn_->checkSignatureAt(index, UINT64);
   pushArg(index, val);
 }
 
-void DeviceFunction::Arguments::checkArg(int index, const DeviceBuffer &val) {
+MODULAR_CXX_EXPORT void
+DeviceFunction::Arguments::checkArg(int index, const DeviceBuffer &val) {
   if (err_)
     return;
   err_ = fn_->checkSignatureAt(index, BUFFER);
@@ -359,16 +370,19 @@ DeviceContext::~DeviceContext() {
   // Key function for vtable generation.
 }
 
-const Device &DeviceContext::device() const { return *device_; }
+MODULAR_CXX_EXPORT const Device &DeviceContext::device() const {
+  return *device_;
+}
 
-ErrorOr<DeviceBufferRef>
+MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
   return allocBuffer(byteSize, ASYNC);
 }
 
-ErrorOr<DeviceBufferRef> DeviceContext::createBuffer(size_t byteSize) const {
+MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
+DeviceContext::createBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
   return allocBuffer(byteSize, SYNC);
@@ -389,8 +403,8 @@ ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
   return DeviceBufferRef::take(new DeviceBuffer(*this, *errPtr, byteSize));
 }
 
-ErrorOr<DeviceContextRef> DeviceContext::create(StringRef api, int id,
-                                                size_t bufferCacheSize) {
+MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
+DeviceContext::create(StringRef api, int id, size_t bufferCacheSize) {
   ErrorOr<DeviceRef> device = Device::create(api, id);
   if (device.isError()) {
     return device.takeError();
@@ -410,7 +424,7 @@ DeviceContext::compileFunction(StringRef ir, StringRef debugLevel,
 //
 // ===== Device ===== //
 //
-int Device::numberOfDevices(StringRef api) {
+MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
   ErrorOr<DeviceRef> device = Device::create(api);
   if (device.isError()) {
     return 0;
@@ -459,7 +473,7 @@ ErrorOr<Config> &DeviceContext::getConfig() {
   return configuration;
 }
 
-const std::string &Device::getAcceleratorArchOrEmpty() {
+MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
     ErrorOr<DeviceRef> device = Device::create(gpuAPI);
     if (device.isError()) {
