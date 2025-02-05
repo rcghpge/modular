@@ -5,11 +5,11 @@
 ### Llama3
 
 ```sh
-bazel run //SDK/lib/API/python/max/pipelines:max_pipelines -- llama3
+bazel run //SDK/lib/API/python/max/pipelines:max_pipelines -- generate --huggingface-repo-id modularai/llama-3.1
 ```
 
 ### Replit
 
 ```sh
-bazel run //SDK/lib/API/python/max/pipelines:max_pipelines -- replit
+bazel run //SDK/lib/API/python/max/pipelines:max_pipelines -- generate --huggingface-repo-id modularai/replit-code-1.5
 ```
