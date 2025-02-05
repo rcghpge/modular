@@ -5,11 +5,11 @@
 ### Llama3
 
 ```sh
-bazel run //SDK/public/max-repo/pipelines/python:pipelines -- llama3
+bazel run //SDK/lib/API/python/max/pipelines:max_pipelines -- llama3
 ```
 
 ### Replit
 
 ```sh
-bazel run //SDK/public/max-repo/pipelines/python:pipelines -- replit
+bazel run //SDK/lib/API/python/max/pipelines:max_pipelines -- replit
 ```
