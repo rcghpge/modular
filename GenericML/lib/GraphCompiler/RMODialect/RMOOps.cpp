@@ -242,6 +242,11 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
 /// bitwidth
 ///    but different representations.
 ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
+
+  // The common case where the two types are the same.
+  if (x == y)
+    return x;
+
   // Bool is lowest class and always promotes to the other type.
   if (x.isBool())
     return y;
