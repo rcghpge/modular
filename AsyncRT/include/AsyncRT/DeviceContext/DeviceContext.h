@@ -375,6 +375,11 @@ public:
          // By default allow upto 1TB of bufferCacheSize.
          size_t bufferCacheSize = 1024ULL * 1024ULL * 1024ULL * 1024ULL);
 
+  static ErrorOr<DeviceContextRef>
+  getOrCreate(StringRef api, int id = 0,
+              // By default allow upto 1TB of bufferCacheSize.
+              size_t bufferCacheSize = 1024ULL * 1024ULL * 1024ULL * 1024ULL);
+
   // Access configuration flags from the "device-context" section.
   static bool configAsBool(StringRef key, bool defaultValue);
   static int64_t configAsInt(StringRef key, int64_t defaultValue);

@@ -1047,6 +1047,10 @@ CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
 ErrorOr<DeviceContext::MemInfo> CUDADeviceContext::getMemoryInfo() const {
   MemInfo memInfo;
   CUDA_WITH_CTX(*this);
+  // To get more accurate memory stats, ensure that at least all pending memory
+  // allocations and frees have completed for this context's stream.
+  CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
+
   CUDA_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
   return memInfo;
 }

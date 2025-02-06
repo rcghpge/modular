@@ -488,6 +488,10 @@ public:
     CUDA_DRIVER_CALL_LOG();
     return cuMemPoolSetAccess_(pool, desc, count);
   }
+  Result MemPoolTrimTo(CUmemoryPool pool, size_t minBytesToKeep) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuMemPoolTrimTo_(pool, minBytesToKeep);
+  }
 
   Result GetMemInfo(size_t *free, size_t *total) const {
     CUDA_DRIVER_CALL_LOG();
@@ -607,6 +611,9 @@ private:
   using tcuMemPoolSetAccess = Result(CUmemoryPool, const CUmemAccessDesc *,
                                      size_t);
   tcuMemPoolSetAccess *cuMemPoolSetAccess_;
+
+  using tcuMemPoolTrimTo = Result(CUmemoryPool, size_t);
+  tcuMemPoolTrimTo *cuMemPoolTrimTo_;
 
   using tcuMemAlloc_v2 = Result(CUdeviceptr *, size_t);
   tcuMemAlloc_v2 *cuMemAlloc_v2_;

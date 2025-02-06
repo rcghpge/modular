@@ -264,8 +264,8 @@ M::Driver::makeCPUDevice() {
 static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
   size_t id = gpuID >= 0 ? gpuID : 0;
 
-  ASSIGN_OR_RETURN(ctx,
-                   AsyncRT::DeviceContext::create(AsyncRT::Device::gpuAPI, id));
+  ASSIGN_OR_RETURN(
+      ctx, AsyncRT::DeviceContext::getOrCreate(AsyncRT::Device::gpuAPI, id));
   DeviceSpec spec;
   spec.ref.label = kGPULabel;
   spec.ref.id = gpuID;

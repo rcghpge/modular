@@ -412,6 +412,36 @@ DeviceContext::create(StringRef api, int id, size_t bufferCacheSize) {
   return (*device)->createContext(bufferCacheSize);
 }
 
+MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
+DeviceContext::getOrCreate(StringRef api, int id, size_t bufferCacheSize) {
+  static std::mutex mu;
+  static llvm::StringMap<const DeviceContext *> contextMap;
+
+  ErrorOr<DeviceRef> errDev = Device::create(api, id);
+  if (errDev.isError())
+    return errDev.takeError();
+
+  // Create the cache key in such a way that for example an `api` of "gpu" and
+  // "cuda" are equivalent on an CUDA based system.
+  std::string cacheKey = ((*errDev)->api() + "[" + llvm::Twine(id) + "]").str();
+  {
+    std::lock_guard<std::mutex> lock(mu);
+    auto iter = contextMap.find(cacheKey);
+    if (iter != contextMap.end()) {
+      const DeviceContext *cachedCtx = iter->second;
+      return DeviceContextRef::copy(cachedCtx);
+    }
+    ErrorOr<DeviceContextRef> errCtx =
+        (*errDev)->createContext(bufferCacheSize);
+    if (errCtx.isError())
+      return errCtx.takeError();
+
+    const DeviceContext *ctx = errCtx.takeValue().release();
+    contextMap.insert({cacheKey, ctx});
+    return DeviceContextRef::copy(ctx);
+  }
+}
+
 BufferCache &DeviceContext::bufferCache() const { return *bufferCache_; }
 
 // DeviceFunction compiling, loading, and execution.

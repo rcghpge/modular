@@ -37,6 +37,32 @@ TEST(GPUDeviceContextTest, NumDevices) {
   std::cerr << "Number of GPU devices: " << num << "\n";
 }
 
+TEST(GPUDeviceContextTest, DefaultContext) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx0, DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::getOrCreate(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, ctx2,
+                DeviceContext::getOrCreate(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, ctx3, DeviceContext::create(Device::gpuAPI));
+  EXPECT_NE(ctx0.getPointer(), ctx1.getPointer());
+  EXPECT_NE(ctx0.getPointer(), ctx2.getPointer());
+  EXPECT_NE(ctx0.getPointer(), ctx3.getPointer());
+  EXPECT_EQ(ctx1.getPointer(), ctx2.getPointer());
+  EXPECT_NE(ctx1.getPointer(), ctx3.getPointer());
+
+  int num = Device::numberOfDevices(Device::gpuAPI);
+  if (num > 1) {
+    ASSIGN_NO_ERR(DeviceContextRef, ctx4,
+                  DeviceContext::getOrCreate(Device::gpuAPI, 1));
+    ASSIGN_NO_ERR(DeviceContextRef, ctx5,
+                  DeviceContext::getOrCreate(Device::gpuAPI, 1));
+    EXPECT_EQ(ctx4.getPointer(), ctx5.getPointer());
+    EXPECT_NE(ctx1.getPointer(), ctx4.getPointer());
+    EXPECT_NE(ctx0.getPointer(), ctx4.getPointer());
+    EXPECT_NE(ctx3.getPointer(), ctx4.getPointer());
+  }
+}
+
 static void initWithData(void *dst, size_t dstLen, const void *checkData,
                          size_t checkDataLen) {
   char *cur = static_cast<char *>(dst);
