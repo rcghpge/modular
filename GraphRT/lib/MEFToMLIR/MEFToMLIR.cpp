@@ -335,30 +335,13 @@ bool MEFToMLIRConverter::parseAttribute(size_t offset,
 
     Type resultType;
     switch (typeKind.getValue()) {
-    case MEF::TypeKind::f16:
-      resultType = Float16Type::get(getContext());
-      break;
-    case MEF::TypeKind::bf16:
-      resultType = BFloat16Type::get(getContext());
-      break;
-    case MEF::TypeKind::f8e4m3:
-      resultType = Float8E4M3Type::get(getContext());
-      break;
-    case MEF::TypeKind::f8e4m3fnuz:
-      resultType = Float8E4M3FNUZType::get(getContext());
-      break;
-    case MEF::TypeKind::f8e5m2:
-      resultType = Float8E5M2Type::get(getContext());
-      break;
-    case MEF::TypeKind::f8e5m2fnuz:
-      resultType = Float8E5M2FNUZType::get(getContext());
-      break;
-    case MEF::TypeKind::f32:
-      resultType = Float32Type::get(getContext());
-      break;
-    case MEF::TypeKind::f64:
-      resultType = Float64Type::get(getContext());
-      break;
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, MLIR_TYPE, ...)           \
+  case MEF::TypeKind::SHORT_NAME:                                              \
+    resultType = MLIR_TYPE::get(getContext());                                 \
+    break;
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+
     case MEF::TypeKind::kBool:
       resultType = IntegerType::get(getContext(), 1);
       break;

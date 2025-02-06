@@ -15,15 +15,15 @@ size_t MEFType::getEncodedSizeInBytes() const {
   auto typeID = getKind().stripComplex();
 
   switch (typeID.getValue()) {
+    // Floating point types are primitive and have a single-byte encoding.
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
+  case MEF::TypeKind::SHORT_NAME:                                              \
+    return 1;
+
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+
   case MEF::TypeKind::invalid:
-  case MEF::TypeKind::f8e4m3:
-  case MEF::TypeKind::f8e5m2:
-  case MEF::TypeKind::f8e4m3fnuz:
-  case MEF::TypeKind::f8e5m2fnuz:
-  case MEF::TypeKind::f16:
-  case MEF::TypeKind::bf16:
-  case MEF::TypeKind::f32:
-  case MEF::TypeKind::f64:
   case MEF::TypeKind::kBool:
     // Primitive types all have a single-byte encoding.
     return 1;

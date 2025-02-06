@@ -1050,29 +1050,12 @@ private:
 } // namespace
 
 ErrorOr<MEF::TypeKind> TypeEmitter::getFloatTypeEncoding(FloatType type) {
-  unsigned bitWidth = type.getWidth();
-  switch (bitWidth) {
-  case 8:
-    if (auto float8Type = dyn_cast<Float8E4M3Type>(type))
-      return MEF::TypeKind::f8e4m3;
-    if (auto float8Type = dyn_cast<Float8E4M3FNUZType>(type))
-      return MEF::TypeKind::f8e4m3fnuz;
-    if (auto float8Type = dyn_cast<Float8E5M2FNUZType>(type))
-      return MEF::TypeKind::f8e5m2fnuz;
-    if (auto float8Type = dyn_cast<Float8E5M2Type>(type))
-      return MEF::TypeKind::f8e5m2;
-    return Error("unknown float8 type");
-  case 16:
-    if (auto bFloatType = dyn_cast<BFloat16Type>(type))
-      return MEF::TypeKind::bf16; // TODO: test when we have cpp type
-    return MEF::TypeKind::f16;
-  case 32:
-    return MEF::TypeKind::f32;
-  case 64:
-    return MEF::TypeKind::f64;
-  default:
-    return Error("unknown float type");
-  }
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, MLIR_TYPE, ...)           \
+  if (isa<MLIR_TYPE>(type))                                                    \
+    return MEF::TypeKind::SHORT_NAME;
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+  return Error("unknown float type");
 }
 
 /// Emit an integer type we know how to encode into a MEF file.
