@@ -1,5 +1,4 @@
 // RUN: mo-opt %s --mo-pattern-fusion  | FileCheck %s
-// TODO: Under TensorFlow only because that's the default framework label for the graph compiler.
 
 // CHECK: mo.graph @split_zero_axis(%[[INPUT:.*]]:
 // CHECK: %[[RES:.*]]:2 = mogg.split(%[[INPUT]])
