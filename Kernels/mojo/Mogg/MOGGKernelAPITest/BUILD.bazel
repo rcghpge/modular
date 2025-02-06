@@ -1,0 +1,16 @@
+load("//bazel:api.bzl", "mojo_kgen_lib")
+
+package(default_visibility = ["//visibility:public"])
+
+mojo_kgen_lib(
+    name = "MOGGKernelAPITestLib",
+    srcs = glob(["**/*.mojo"]),
+    deps = [
+        "//Kernels/mojo/algorithm",
+        "//Kernels/mojo/buffer",
+        "//Kernels/mojo/extensibility/compiler_internal",
+        "//Kernels/mojo/nn",
+        "//SDK/lib/API/mojo/max/tensor",
+        "//open-source/mojo/stdlib/stdlib",
+    ],
+)

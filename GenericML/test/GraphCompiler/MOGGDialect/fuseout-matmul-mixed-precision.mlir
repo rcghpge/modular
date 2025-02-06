@@ -7,7 +7,7 @@
 // CHECK: kgen.param.declare.region MOGG_{{.*}}_output_0_fn =
 // Ensure we get rid of the original store
 // CHECK-NOT: kgen.call @"tensor_internal::managed_tensor_slice::simd_store_into_managed_tensor_slice
-// CHECK: kgen.call @"MOGGKernelAPI::Cast::execute
+// CHECK: kgen.call @"{{.*}}MOGGKernelAPI::Cast::execute
 // CHECK-NEXT: kgen.call @"tensor_internal::managed_tensor_slice::simd_store_into_managed_tensor_slice
 // CHECK-NEXT: kgen.return
 // CHECK-NEXT: } {sym_name = "MOGG_{{.*}}_output_0_fn"}
