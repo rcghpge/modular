@@ -8,7 +8,6 @@
 
 #include "GenericML/API/max/c/types.h"
 #include "PyTorch/API/max/cpp/pytorch/aliases.h"
-#include <Python.h>
 #include <optional>
 #include <string>
 #include <variant>
