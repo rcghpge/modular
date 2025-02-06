@@ -11,6 +11,7 @@
 #include "HIPDriver.h"
 
 #include "Support/ErrorOr.h"
+#include "Support/PlatformUtils.h"
 #include "llvm/ADT/Twine.h"
 
 #include <dlfcn.h>
@@ -18,18 +19,11 @@
 
 namespace M::AsyncRT {
 
-// #if defined(__APPLE__) || defined(__MACOSX)
-// /opt/rocm-6.2.3/lib/libamdhip64.so
-#if LLVM_ADDRESS_SANITIZER_BUILD
-const char HIPDriver::lib_name[] = "/opt/rocm/lib/asan/libamdhip64.so";
+#ifdef MODULAR_LINUX
+const char HIPDriver::lib_name[] = "libamdhip64.so";
 #else
-const char HIPDriver::lib_name[] = "/opt/rocm/lib/libamdhip64.so";
+const char HIPDriver::lib_name[] = "";
 #endif
-// #elif defined(__unix__)
-// const char HIPDriver::lib_name[] = "FIXME";
-// #else
-// #error Unsupported platform
-// #endif
 
 #define GET_FUNC(name)                                                         \
   driver->name##_ = reinterpret_cast<t##name *>(dlsym(dl_lib, #name));         \
