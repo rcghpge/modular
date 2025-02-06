@@ -69,6 +69,8 @@ static DType convertToDType(M_Dtype ty) {
     return DType::f8e5m2fnuz;
   case M_BOOL:
     return DType::kBool;
+  default:
+    llvm_unreachable("invalid data type");
   }
   llvm_unreachable("invalid data type");
 }
