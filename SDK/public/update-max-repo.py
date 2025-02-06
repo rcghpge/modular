@@ -46,10 +46,10 @@ def sanity_check_max_repo(repo_path):
 
     if "origin" not in result.stdout.decode(
         "utf-8"
-    ) or "modularml/max" not in result.stdout.decode("utf-8"):
+    ) or "modular/max" not in result.stdout.decode("utf-8"):
         print(
             f"{_invalid_repo_msg_prefix}. Repo must have upstream named origin"
-            " that points to modularml/max."
+            " that points to modular/max."
         )
         return False
 

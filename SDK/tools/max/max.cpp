@@ -52,7 +52,7 @@ static int handleUnknownSubcommand(int argc, char **argv) {
 int main(int argc, char **argv) {
   llvm::InitLLVM initLLVM(argc, argv);
   llvm::setBugReportMsg(
-      "Please submit a bug report to https://github.com/modularml/max/issues "
+      "Please submit a bug report to https://github.com/modular/max/issues "
       "and include the crash backtrace along with your command line "
       "invocation.\n");
 
