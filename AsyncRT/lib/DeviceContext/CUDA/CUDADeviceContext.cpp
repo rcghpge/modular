@@ -963,13 +963,36 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
       reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args, stream_);
 }
 
+void CUDADeviceContext::clearReadyEvents() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  clearReadyEventsLocked();
+}
+
+void CUDADeviceContext::clearReadyEventsLocked() const {
+  for (auto it = pendingEvents_.begin(); it != pendingEvents_.end();) {
+    CUDADriver::Result ready = cudaDriver().EventQuery((*it)->cudaEvent());
+    if (ready == CUDADriver::SUCCESS) {
+      it = pendingEvents_.erase(it);
+    } else {
+      // Events were enqueued in order. We can stop at the first non-ready
+      // event.
+      break;
+    }
+  }
+}
+
 ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
   return CUDADeviceStreamRef::create(CUDADevice::cast(this->device()), stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
   CUDA_WITH_CTX_ERR(*this);
+  // Attempt to clear the pending events before possibly blocking on the
+  // stream synchronization.
+  clearReadyEvents();
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
+  // Cleanup the remainder of the pending events.
+  clearReadyEvents();
   return success();
 }
 
@@ -978,7 +1001,15 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   CUevent event;
   CUDA_CHECK_ERR(driver_.EventCreate(&event, 0));
   CUDA_CHECK_ERR(driver_.EventRecord(event, stream_));
-  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
+  auto result =
+      CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    // First remove any outstanding ready events.
+    clearReadyEventsLocked();
+    pendingEvents_.push_back(result);
+  }
+  return result;
 }
 
 ErrorOrSuccess

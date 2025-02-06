@@ -299,6 +299,9 @@ public:
   CUcontext cudaContext() const;
   CUstream cudaStream() const;
 
+  void clearReadyEvents() const;
+  void clearReadyEventsLocked() const;
+
   ErrorOrSuccess cudaTensorMapEncodeTiled(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
       const DeviceBuffer &globalAddress, const uint64_t *globalDim,
@@ -315,11 +318,15 @@ private:
   const CUcontext context_;
   const CUstream stream_;
 
-  // The function cache holds the lower-level CUDAModuleFunction references
-  // which do not keep contain a device context reference to avoid reference
-  // counting cycles.
+  // Mutex to protect mutable data.
   mutable std::mutex mu_;
+  // The function cache holds the lower-level CUDAModuleFunction references
+  // which do not contain a device context reference to avoid reference
+  // counting cycles.
   mutable llvm::StringMap<CUDAModuleFunctionRef> funcMap_;
+  // Events enqueued on the stream are kept alive until they are marked ready to
+  // avoid blocking on their destructor.
+  mutable std::vector<CUDADeviceEventRef> pendingEvents_;
 
   bool logLoadFunction_ = false;
   bool logVerbose_ = false;
