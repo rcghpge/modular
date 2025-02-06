@@ -520,9 +520,11 @@ LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
 }
 
 Operation *MojoLibraryAnalysis::lookup(StringRef name) {
-  if (rawMojoKernel.contains(name))
-    return rawMojoKernel.at(name);
-  return nullptr;
+  auto it = rawMojoKernel.find(name);
+  if (it == rawMojoKernel.end())
+    return nullptr;
+
+  return it->second;
 }
 
 KGEN::GeneratorOp
@@ -539,10 +541,4 @@ KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) {
   return getRegisteredMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
-}
-
-bool MojoLibraryAnalysis::kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel) {
-  return kernel->hasAttr(KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel) ||
-         kernel->hasAttr(KGEN::MOGGPreElab::kMOGGShapeFunctionLabel) ||
-         kernel->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
 }

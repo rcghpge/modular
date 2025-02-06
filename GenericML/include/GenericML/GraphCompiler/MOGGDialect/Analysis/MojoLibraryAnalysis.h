@@ -80,12 +80,12 @@ public:
   KGEN::GeneratorOp getRegisteredMojoKernelFor(StringRef name);
 
   /// Returns true if a registered Mojo symbol using the name exists.
-  inline bool hasRegisteredMojoKernelFor(StringRef name) {
+  inline bool hasRegisteredMojoKernelFor(StringRef name) const {
     return registeredMojoKernelSymbol.contains(name);
   }
 
   /// Return the mapping.
-  const llvm::StringMap<std::string> &getRegisteredMojoKernelSymbol() {
+  const llvm::StringMap<std::string> &getRegisteredMojoKernelSymbol() const {
     return registeredMojoKernelSymbol;
   }
 
@@ -109,9 +109,6 @@ public:
   /// parameter named `parameterName`.
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
                                StringRef parameterName);
-
-  /// Returns true if the kernel implementation is in the Extensibility API.
-  bool kernelUsesExtensibilityAPI(KGEN::GeneratorOp kernel);
 
 private:
   /// Load the user libraries lazily.

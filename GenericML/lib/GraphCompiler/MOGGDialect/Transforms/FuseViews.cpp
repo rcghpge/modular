@@ -422,14 +422,6 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                   MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
     auto ctx = graph.getContext();
     DenseMap<KernelOp, MO::Static::ReshapeOp> reshapeKernels;
-    // If the lowering for the reshape op is not the extensibility API, do not
-    // lower it.
-    if (!mojoLibraryAnalysis.kernelUsesExtensibilityAPI(
-            mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-                MO::Static::ReshapeOp::getOperationName()))) {
-      return reshapeKernels;
-    }
-
     mlir::OpBuilder builder{ctx};
     graph.walk([&](MO::Static::ReshapeOp reshapeOp) {
       MO::MOGGKernelBuilder lowerer(reshapeOp, builder, false,
