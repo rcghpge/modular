@@ -54,6 +54,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuDeviceGetCount);
   GET_FUNC(cuDeviceGetName);
   GET_FUNC(cuDeviceCanAccessPeer);
+  GET_FUNC(cuDeviceGetP2PAttribute);
 
   GET_FUNC(cuDevicePrimaryCtxRetain);
   GET_FUNC(cuDevicePrimaryCtxRelease_v2);

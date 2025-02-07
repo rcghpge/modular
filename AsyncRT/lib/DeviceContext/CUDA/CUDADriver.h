@@ -38,6 +38,14 @@ enum class CUdevice_attribute {
   COMPUTE_CAPABILITY_MINOR = 76,
 };
 
+enum class CUdevice_P2PAttribute {
+  CU_DEVICE_P2P_ATTRIBUTE_PERFORMANCE_RANK = 0x01,
+  CU_DEVICE_P2P_ATTRIBUTE_ACCESS_SUPPORTED = 0x02,
+  CU_DEVICE_P2P_ATTRIBUTE_NATIVE_ATOMIC_SUPPORTED = 0x03,
+  CU_DEVICE_P2P_ATTRIBUTE_ACCESS_ACCESS_SUPPORTED = 0x04,
+  CU_DEVICE_P2P_ATTRIBUTE_CUDA_ARRAY_ACCESS_SUPPORTED = 0x04
+};
+
 enum class CUjit_option {
   JIT_MAX_REGISTERS = 0,
   JIT_THREADS_PER_BLOCK = 1,
@@ -213,6 +221,12 @@ public:
                              CUdevice peerDev) const {
     CUDA_DRIVER_CALL_LOG();
     return cuDeviceCanAccessPeer_(canAccessPeer, dev, peerDev);
+  }
+
+  Result DeviceGetP2PAttribute(int *value, CUdevice_P2PAttribute attrib,
+                               CUdevice srcDevice, CUdevice dstDevice) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuDeviceGetP2PAttribute_(value, attrib, srcDevice, dstDevice);
   }
 
   Result DevicePrimaryCtxRetain(CUcontext *pctx, CUdevice dev) const {
@@ -556,6 +570,10 @@ private:
 
   using tcuDeviceCanAccessPeer = Result(int *, CUdevice, CUdevice);
   tcuDeviceCanAccessPeer *cuDeviceCanAccessPeer_;
+
+  using tcuDeviceGetP2PAttribute = Result(int *, CUdevice_P2PAttribute,
+                                          CUdevice, CUdevice);
+  tcuDeviceGetP2PAttribute *cuDeviceGetP2PAttribute_;
 
   using tcuDevicePrimaryCtxRetain = Result(CUcontext *, CUdevice);
   tcuDevicePrimaryCtxRetain *cuDevicePrimaryCtxRetain_;
