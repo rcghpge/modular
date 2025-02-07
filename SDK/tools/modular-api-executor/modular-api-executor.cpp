@@ -51,24 +51,13 @@ static DType convertToDType(M_Dtype ty) {
     return DType::ui32;
   case M_UINT64:
     return DType::ui64;
-  case M_FLOAT16:
-    return DType::f16;
-  case M_FLOAT32:
-    return DType::f32;
-  case M_FLOAT64:
-    return DType::f64;
-  case M_BFLOAT16:
-    return DType::bf16;
-  case M_FLOAT8_E4M3:
-    return DType::f8e4m3;
-  case M_FLOAT8_E4M3FNUZ:
-    return DType::f8e4m3fnuz;
-  case M_FLOAT8_E5M2:
-    return DType::f8e5m2;
-  case M_FLOAT8_E5M2FNUZ:
-    return DType::f8e5m2fnuz;
   case M_BOOL:
     return DType::kBool;
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
+  case M_TYPE:                                                                 \
+    return DType::SHORT_NAME;
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
   default:
     llvm_unreachable("invalid data type");
   }
@@ -78,8 +67,6 @@ static DType convertToDType(M_Dtype ty) {
 /// TODO
 static M_Dtype convertToCDataType(DType ty) {
   switch (ty.getValue()) {
-  case DType::f32:
-    return M_FLOAT32;
   case DType::ui8:
     return M_UINT8;
   case DType::si8:
@@ -98,18 +85,13 @@ static M_Dtype convertToCDataType(DType ty) {
     return M_INT64;
   case DType::kBool:
     return M_BOOL;
-  case DType::f64:
-    return M_FLOAT64;
-  case DType::bf16:
-    return M_BFLOAT16;
-  case DType::f8e4m3:
-    return M_FLOAT8_E4M3;
-  case DType::f8e4m3fnuz:
-    return M_FLOAT8_E4M3FNUZ;
-  case DType::f8e5m2:
-    return M_FLOAT8_E5M2;
-  case DType::f8e5m2fnuz:
-    return M_FLOAT8_E5M2FNUZ;
+
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
+  case DType::SHORT_NAME:                                                      \
+    return M_TYPE;
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+
   case DType::invalid:
     [[fallthrough]];
   default:

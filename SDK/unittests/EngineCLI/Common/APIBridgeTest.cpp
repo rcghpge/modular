@@ -30,15 +30,10 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 } // namespace
 
 static const DTypeMapping kDTypeMapping[] = {
-    {DType::invalid, M_UNKNOWN},    {DType::si8, M_INT8},
-    {DType::si16, M_INT16},         {DType::si32, M_INT32},
-    {DType::si64, M_INT64},         {DType::ui8, M_UINT8},
-    {DType::ui16, M_UINT16},        {DType::ui32, M_UINT32},
-    {DType::ui64, M_UINT64},        {DType::f16, M_FLOAT16},
-    {DType::f32, M_FLOAT32},        {DType::f64, M_FLOAT64},
-    {DType::kBool, M_BOOL},         {DType::bf16, M_BFLOAT16},
-    {DType::f8e4m3, M_FLOAT8_E4M3}, {DType::f8e4m3fnuz, M_FLOAT8_E4M3FNUZ},
-    {DType::f8e5m2, M_FLOAT8_E5M2}, {DType::f8e5m2fnuz, M_FLOAT8_E5M2FNUZ},
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
+  {DType::SHORT_NAME, M_TYPE},
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
 
 };
 
