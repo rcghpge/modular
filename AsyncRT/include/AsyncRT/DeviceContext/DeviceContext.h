@@ -385,6 +385,10 @@ public:
   static int64_t configAsInt(StringRef key, int64_t defaultValue);
   static StringRef configAsString(StringRef key, StringRef defaultValue);
 
+  // Error helpers.
+  static Error formatError(const char *file, int line, const char *func,
+                           const llvm::Twine &msg);
+
 protected:
   DeviceContext(const Device &device, std::unique_ptr<BufferCache> bufferCache);
 

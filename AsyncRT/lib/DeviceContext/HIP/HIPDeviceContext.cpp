@@ -26,7 +26,7 @@
   do {                                                                         \
     HIPDriver::Result hipResult = hip_call;                                    \
     if (hipResult != HIPDriver::SUCCESS) {                                     \
-      return formatError(__FILE__, __LINE__, __FUNCTION__, hipResult);         \
+      return formatHipError(__FILE__, __LINE__, __FUNCTION__, hipResult);      \
     }                                                                          \
   } while (0)
 
@@ -34,7 +34,8 @@
   do {                                                                         \
     HIPDriver::Result hipResult = hip_call;                                    \
     if (hipResult != HIPDriver::SUCCESS) {                                     \
-      M::Error err = formatError(__FILE__, __LINE__, __FUNCTION__, hipResult); \
+      M::Error err =                                                           \
+          formatHipError(__FILE__, __LINE__, __FUNCTION__, hipResult);         \
       /* We are not in a context where we can return an Error here. So we   */ \
       /* print the message and abort().                                     */ \
       std::cerr << err << "\n";                                                \
@@ -44,7 +45,7 @@
 
 #define RAISE_ERROR(msg)                                                       \
   do {                                                                         \
-    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
   } while (0)
 
 #define CHECK_IS_HIP_ERR(dev)                                                  \
@@ -56,23 +57,8 @@
 
 namespace M::AsyncRT {
 
-// Allow printing of detailed error messages with C++ source information when
-// debugging low-level implementation.
-static constexpr bool detailed_err_msg = false;
-
-// TODO(iposva) : Switch error handling to using `std::source_location` once
-// we are using C++ 20.
-static Error formatError(const char *file, int line, const char *func,
-                         const llvm::Twine &msg) {
-  if (detailed_err_msg) {
-    return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-                 " - " + msg);
-  }
-  return Error(msg);
-}
-
-static Error formatError(const char *file, int line, const char *func,
-                         HIPDriver::Result result) {
+static Error formatHipError(const char *file, int line, const char *func,
+                            HIPDriver::Result result) {
   ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
   const char *errName = nullptr;
   const char *errStr = nullptr;
@@ -84,16 +70,18 @@ static Error formatError(const char *file, int line, const char *func,
   }
 
   if ((errName != nullptr) && (errStr != nullptr)) {
-    return formatError(file, line, func,
-                       llvm::Twine("HIP call failed: ") + errName + " (" +
-                           errStr + ")");
+    return DeviceContext::formatError(file, line, func,
+                                      llvm::Twine("HIP call failed: ") +
+                                          errName + " (" + errStr + ")");
   } else if ((errName != nullptr) || (errStr != nullptr)) {
-    return formatError(file, line, func,
-                       llvm::Twine("HIP call failed: ") +
-                           (errName != nullptr ? errName : errStr));
+    return DeviceContext::formatError(
+        file, line, func,
+        llvm::Twine("HIP call failed: ") +
+            (errName != nullptr ? errName : errStr));
   } else {
-    return formatError(file, line, func,
-                       llvm::Twine("HIP call failed: ") + llvm::Twine(result));
+    return DeviceContext::formatError(file, line, func,
+                                      llvm::Twine("HIP call failed: ") +
+                                          llvm::Twine(result));
   }
 }
 

@@ -67,7 +67,7 @@ private:
   do {                                                                         \
     CUDADriver::Result cuda_result = cuda_call;                                \
     if (cuda_result != CUDADriver::SUCCESS) {                                  \
-      return formatError(__FILE__, __LINE__, __FUNCTION__, cuda_result);       \
+      return formatCUDAError(__FILE__, __LINE__, __FUNCTION__, cuda_result);   \
     }                                                                          \
   } while (0)
 
@@ -75,7 +75,8 @@ private:
   do {                                                                         \
     CUDADriver::Result cuda_result = cuda_call;                                \
     if (cuda_result != CUDADriver::SUCCESS) {                                  \
-      return formatError(__FILE__, __LINE__, __FUNCTION__, cuda_result, msg);  \
+      return formatCUDAError(__FILE__, __LINE__, __FUNCTION__, cuda_result,    \
+                             msg);                                             \
     }                                                                          \
   } while (0)
 
@@ -84,7 +85,7 @@ private:
     CUDADriver::Result cuda_result = cuda_call;                                \
     if (cuda_result != CUDADriver::SUCCESS) {                                  \
       M::Error err =                                                           \
-          formatError(__FILE__, __LINE__, __FUNCTION__, cuda_result);          \
+          formatCUDAError(__FILE__, __LINE__, __FUNCTION__, cuda_result);      \
       /* We are not in a context where we can return an Error here. So we   */ \
       /* print the message and abort().                                     */ \
       llvm::errs() << err << "\n";                                             \
@@ -94,22 +95,22 @@ private:
 
 #define RAISE_ERROR(msg)                                                       \
   do {                                                                         \
-    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
   } while (0)
 
 #define ASSIGN_OR_RAISE(var, call)                                             \
   auto _err_or_var_ = call;                                                    \
   if (_err_or_var_.isError()) {                                                \
-    return formatError(__FILE__, __LINE__, __FUNCTION__,                       \
-                       _err_or_var_.getError());                               \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,        \
+                                      _err_or_var_.getError());                \
   }                                                                            \
   var = _err_or_var_.takeValue()
 
 #define DEFINE_OR_RAISE(type, var, call)                                       \
   auto _err_or_##var = call;                                                   \
   if (_err_or_##var.isError()) {                                               \
-    return formatError(__FILE__, __LINE__, __FUNCTION__,                       \
-                       _err_or_##var.getError());                              \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,        \
+                                      _err_or_##var.getError());               \
   }                                                                            \
   type var = _err_or_##var.takeValue()
 
@@ -117,8 +118,8 @@ private:
   do {                                                                         \
     auto err_result = (err_call);                                              \
     if (err_result.isError()) {                                                \
-      M::Error err = formatError(__FILE__, __LINE__, __FUNCTION__,             \
-                                 err_result.getError());                       \
+      M::Error err = DeviceContext::formatError(                               \
+          __FILE__, __LINE__, __FUNCTION__, err_result.getError());            \
       /* We are not in a context where we can return an Error here. So we   */ \
       /* print the message and abort().                                     */ \
       llvm::errs() << err << "\n";                                             \
@@ -153,24 +154,9 @@ private:
 
 namespace M::AsyncRT {
 
-// Allow printing of detailed error messages with C++ source information when
-// debugging low-level implementation.
-static constexpr bool detailed_err_msg = false;
-
-// TODO(iposva) : Switch error handling to using `std::source_location` once we
-// are using C++ 20.
-static Error formatError(const char *file, int line, const char *func,
-                         const llvm::Twine &msg) {
-  if (detailed_err_msg) {
-    return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-                 " - " + msg);
-  }
-  return Error(msg);
-}
-
-static Error formatError(const char *file, int line, const char *func,
-                         CUDADriver::Result result,
-                         std::string extra_msg = "") {
+static Error formatCUDAError(const char *file, int line, const char *func,
+                             CUDADriver::Result result,
+                             std::string extra_msg = "") {
   ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
   const char *errName = nullptr;
   const char *errStr = nullptr;
@@ -186,17 +172,19 @@ static Error formatError(const char *file, int line, const char *func,
   }
 
   if ((errName != nullptr) && (errStr != nullptr)) {
-    return formatError(file, line, func,
-                       llvm::Twine("CUDA call failed: ") + errName + " (" +
-                           errStr + ")" + extra_msg);
+    return DeviceContext::formatError(file, line, func,
+                                      llvm::Twine("CUDA call failed: ") +
+                                          errName + " (" + errStr + ")" +
+                                          extra_msg);
   } else if ((errName != nullptr) || (errStr != nullptr)) {
-    return formatError(file, line, func,
-                       llvm::Twine("CUDA call failed: ") +
-                           (errName != nullptr ? errName : errStr) + extra_msg);
+    return DeviceContext::formatError(
+        file, line, func,
+        llvm::Twine("CUDA call failed: ") +
+            (errName != nullptr ? errName : errStr) + extra_msg);
   } else {
-    return formatError(file, line, func,
-                       llvm::Twine("CUDA call failed: ") + llvm::Twine(result) +
-                           extra_msg);
+    return DeviceContext::formatError(file, line, func,
+                                      llvm::Twine("CUDA call failed: ") +
+                                          llvm::Twine(result) + extra_msg);
   }
 }
 

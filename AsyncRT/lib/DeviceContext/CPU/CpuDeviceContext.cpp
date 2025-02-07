@@ -27,12 +27,12 @@
 
 #define RAISE_ERROR()                                                          \
   do {                                                                         \
-    return formatError(__FILE__, __LINE__, __FUNCTION__);                      \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, "");   \
   } while (0)
 
 #define RAISE_ERROR_MESSAGE(msg)                                               \
   do {                                                                         \
-    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
   } while (0)
 
 #define CHECK_IS_CPU_ERR(dev)                                                  \
@@ -41,25 +41,6 @@
       RAISE_ERROR_MESSAGE("Not a CPU device.");                                \
     }                                                                          \
   } while (0)
-
-namespace M::AsyncRT {
-namespace {
-
-// Allow printing of detailed error messages with C++ source information when
-// debugging low-level implementation.
-static constexpr bool detailed_err_msg = false;
-
-Error formatError(const char *file, int line, const char *func,
-                  const char *msg = nullptr) {
-  if (detailed_err_msg || (msg == nullptr)) {
-    return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-                 " failed" + ((msg == nullptr) ? "." : ": ") +
-                 ((msg == nullptr) ? "" : msg));
-  }
-  return Error(msg);
-}
-} // namespace
-} // namespace M::AsyncRT
 
 namespace M::AsyncRT {
 

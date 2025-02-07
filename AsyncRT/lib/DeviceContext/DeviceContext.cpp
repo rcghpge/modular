@@ -33,8 +33,8 @@
   do {                                                                         \
     auto err_result = (err_call);                                              \
     if (err_result.isError()) {                                                \
-      M::Error err = formatError(__FILE__, __LINE__, __FUNCTION__,             \
-                                 err_result.getError());                       \
+      M::Error err = DeviceContext::formatError(                               \
+          __FILE__, __LINE__, __FUNCTION__, err_result.getError());            \
       /* We are not in a context where we can return an Error here. So we   */ \
       /* print the message and abort().                                     */ \
       llvm::errs() << err << "\n";                                             \
@@ -44,21 +44,17 @@
 
 #define RAISE_ERROR_MESSAGE(msg)                                               \
   do {                                                                         \
-    return formatError(__FILE__, __LINE__, __FUNCTION__, msg);                 \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
   } while (0)
 
 namespace M::AsyncRT {
 
-// Allow printing of detailed error messages with C++ source information when
-// debugging low-level implementation.
-static constexpr bool detailed_err_msg = false;
-
-static Error formatError(const char *file, int line, const char *func,
-                         const char *msg = nullptr) {
-  if (detailed_err_msg || (msg == nullptr)) {
+Error DeviceContext::formatError(const char *file, int line, const char *func,
+                                 const llvm::Twine &msg) {
+  static bool logVerbose = DeviceContext::configAsBool("log_verbose", false);
+  if (logVerbose) {
     return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-                 " failed" + ((msg == nullptr) ? "." : ": ") +
-                 ((msg == nullptr) ? "" : msg));
+                 " failed: " + msg);
   }
   return Error(msg);
 }
