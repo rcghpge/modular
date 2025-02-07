@@ -56,10 +56,6 @@ MODULAR_API_EXPORT int MAXG_isError(const MAXG_Status *status) {
 
 MODULAR_API_EXPORT void MAXG_freeStatus(MAXG_Status *status) { delete status; }
 
-static AsyncRT::Runtime &unwrap(AsyncRTRuntimeRef ref) {
-  return *reinterpret_cast<AsyncRT::Runtime *>(ref.ptr);
-}
-
 static MlirNamedAttribute wrap(mlir::NamedAttribute attr) {
   return MlirNamedAttribute{
       wrap(attr.getName()),
@@ -175,19 +171,21 @@ MAXG_attrNewTensorBorrowed(llvm::StringRef name, void *data, MlirType type) {
   return wrap(NamedAttribute(nameAttr, attr));
 }
 
-MODULAR_API_EXPORT MlirNamedAttribute
-MAXG_attrNewTensor(StringRef name, void *data, MlirType t, bool owned,
-                   AsyncRTRuntimeRef runtime) {
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensor(StringRef name,
+                                                         void *data, MlirType t,
+                                                         bool owned) {
+  auto runtime = Runtime::getCurrentRuntimeOrNull();
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   size_t size =
       moType.getDtype().getSizeInBytes() * moType.getNumElements().value();
   return wrap(tensorAttr(
       name, ArrayRef<uint8_t>(reinterpret_cast<uint8_t *>(data), size),
-      unwrap(t), owned, unwrap(runtime)));
+      unwrap(t), owned, *runtime));
 }
 
-MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
-    StringRef name, StringRef fileName, MlirType t, AsyncRTRuntimeRef runtime) {
+MODULAR_API_EXPORT MlirNamedAttribute
+MAXG_attrNewTensorFromFile(StringRef name, StringRef fileName, MlirType t) {
+  auto runtime = Runtime::getCurrentRuntimeOrNull();
   auto moType = cast<M::MO::TensorType>(unwrap(t));
   assert(moType.getNumElements().has_value() &&
          "tensor attrs should always be statically sized");
@@ -210,7 +208,7 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensorFromFile(
       tensorAttr(name,
                  ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(data),
                                    static_cast<size_t>(size)),
-                 unwrap(t), /*owned=*/false, unwrap(runtime)));
+                 unwrap(t), /*owned=*/false, *runtime));
 }
 
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDimParamDecl(MlirContext ctx,

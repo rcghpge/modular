@@ -871,8 +871,7 @@ def MOGG_DeallocateAsyncRefOp : MOGG_Op<"deallocate_async_ref", [
 def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
   let arguments = (ins
       AnyType:$mojoPointer,
-      AnyType:$asyncVal,
-      AnyType:$runtime
+      AnyType:$asyncVal
   );
   let summary = "Create an AsyncValue from a mojo pointer";
   let description = [{
@@ -888,7 +887,6 @@ def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
 
 def MOGG_PackToAsyncRef : MOGG_Op<"pack_to_async_ref", [Pure]> {
   let arguments = (ins AnyType:$inputVal,
-                       PointerOf<KGEN_NoneType>:$runtime,
                        Optional<MGP_DeviceContextType>:$deviceCtx);
   let results = (outs PointerOf<KGEN_NoneType>:$resultAsync);
   let summary = "Pack a KGEN value to a async ref";
@@ -905,7 +903,7 @@ def MOGG_PackToAsyncRef : MOGG_Op<"pack_to_async_ref", [Pure]> {
   }];
 
   let assemblyFormat = [{
-    `(` $inputVal `,` $runtime  (`,` $deviceCtx^)? `)` attr-dict
+    `(` $inputVal (`,` $deviceCtx^)? `)` attr-dict
     `:` qualified(type($inputVal)) (`,` qualified(type($deviceCtx))^)?
   }];
 }
@@ -988,19 +986,6 @@ def MOGG_AnyAsyncRefPlaceholderOp : MOGG_Op<"any_async_ref_placeholder"> {
   }];
 
   let assemblyFormat = [{attr-dict}];
-}
-
-
-def MOGG_RuntimePlaceholderOp : MOGG_Op<"rt_placeholder", [Pure]> {
-  let results = (outs AnyType:$result);
-  let summary = "Returns a placeholder for the asyncrt runtime pointer";
-  let description = [{
-    This is resolved to an ABI argument during lowering.
-  }];
-
-  let assemblyFormat = [{
-   attr-dict `:` type($result)
-  }];
 }
 
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders", [Pure]> {

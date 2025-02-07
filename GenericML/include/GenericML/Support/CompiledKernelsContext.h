@@ -121,13 +121,12 @@ struct CompiledKernelCall {
 //
 // If the called kernel is asynchronous then the C++ runtime will keep all
 // operands alive until the kernel's coroutine completes.
-using CompiledKernelFn = void(void **, ssize_t *, void *);
+using CompiledKernelFn = void(void **, ssize_t *);
 
 // A function pointer representing an alternate ABI which takes in a list of
-// async value pointers as the first value and a runtime, and callContext as
-// third. The async values will be unpacked and manipulated directly within the
-// kernel.
-using CompiledKernelAsyncABIFn = void(void **, void *);
+// async value pointers as the first value. The async values will be unpacked
+// and manipulated directly within the kernel.
+using CompiledKernelAsyncABIFn = void(void **);
 //===----------------------------------------------------------------------===//
 // CompiledKernelsContext
 //===----------------------------------------------------------------------===//

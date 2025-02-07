@@ -12,11 +12,6 @@
 #include "Support/LLVMForwardDecls.h"
 #include "mlir-c/IR.h"
 
-/// An opaque wrapper around a pointer to an AsyncRT::Runtime.
-struct AsyncRTRuntimeRef {
-  void *ptr;
-};
-
 /// Contains the success or failure of an API call.
 ///
 /// In general, any API that may fail accepts a `MAXG_Status` argument
@@ -69,9 +64,9 @@ MODULAR_API_EXPORT MlirNamedAttribute
 MAXG_attrNewTensorBorrowed(llvm::StringRef name, void *data, MlirType type);
 
 /// Creates a named ArrayElementsAttr (dense_array) backed by a builtin tensor.
-MODULAR_API_EXPORT MlirNamedAttribute
-MAXG_attrNewTensor(llvm::StringRef name, void *data, MlirType t, bool owned,
-                   AsyncRTRuntimeRef runtime);
+MODULAR_API_EXPORT MlirNamedAttribute MAXG_attrNewTensor(llvm::StringRef name,
+                                                         void *data, MlirType t,
+                                                         bool owned);
 
 /// Creates a ParamDeclAttr (param.decl) with the given name and index type.
 MODULAR_API_EXPORT MlirAttribute MAXG_attrNewDimParamDecl(MlirContext ctx,

@@ -91,13 +91,9 @@ static void mgp_generic_execute(
   CompiledKernelAsyncABIFn *kernelPtr = kernelExecutionState.getKernelAsyncABI(
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
-  AsyncRT::CompactRuntimePtr runtimePtr(runtime);
-
   // Wrapper to run a kernel without extending any lifetimes.
-  auto runKernel = [kernelPtr, runtimePtr = runtimePtr](
-                       llvm::SmallVector<void *> &kernelInputs) {
-    kernelPtr(reinterpret_cast<void **>(kernelInputs.data()),
-              reinterpret_cast<void *>(runtimePtr.get()));
+  auto runKernel = [kernelPtr](llvm::SmallVector<void *> &kernelInputs) {
+    kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
   };
 
   if (eIsAsync.get()) {

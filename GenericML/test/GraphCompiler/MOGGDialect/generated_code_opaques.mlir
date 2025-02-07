@@ -13,14 +13,13 @@ module {
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.opaque<"">) {
     %0:2 = mogg.generic.compiled.region (%arg0) : (%arg2: !mef.chain) -> (!mef.chain, !mgp.opaque<"">){
       // %1 = mogg.mgp_to_async_ref(%arg2) : (!mef.chain) -> !kgen.pointer<none>
-      %2 = mogg.rt_placeholder : !kgen.pointer<none>
       %3 = mogg.stack_allocate_opaques : !mgp.opaque<"">
       %4 = "mogg.to_kgen"(%3) {typeMethodsDict = {__del__ = #kgen.symbol.constant<@"MOGGTests::MyCustomInt::__del__(MOGGTests::MyCustomInt)"> : !kgen.generator<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>, __moveinit__ = #kgen.symbol.constant<@"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"> : !kgen.generator<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem, !kgen.pointer<struct<(index) memoryOnly>> byref_result) -> !kgen.none>}} : (!mgp.opaque<"">) -> !kgen.pointer<struct<(index) memoryOnly>>
       %index42 = kgen.param.constant = <42>
       %5 = kgen.call @"MOGGTests::MyCustomInt::__init__(MOGGTests::MyCustomInt=&,::Int)"(%index42, %4) : (index, !kgen.pointer<struct<(index) memoryOnly>> byref_result) -> !kgen.none
       %6 = mogg.to_mgp_from_opaque(%4) : (!kgen.pointer<struct<(index) memoryOnly>>) -> !mgp.opaque<"">
       %7 = mogg.allocate_async_ref_for(%6) : (!mgp.opaque<"">) -> !kgen.pointer<none>
-      mogg.create_async_mojo_value(%6, %7, %2) : (!mgp.opaque<"">, !kgen.pointer<none>, !kgen.pointer<none>) -> ()
+      mogg.create_async_mojo_value(%6, %7) : (!mgp.opaque<"">, !kgen.pointer<none>) -> ()
       %8 = mogg.async_ref_to_mgp(%7) : (!kgen.pointer<none>) -> !mgp.opaque<"">
       mogg.output %8 : !mgp.opaque<"">
     } {device = #M.device_ref<"cpu", 0>, canFuseIntoOther = false, inOutSignature = #M.inout_sig<"i">, isAsync = false, summary = "custom__test_make_custom_int:5"}
@@ -61,5 +60,5 @@ module {
 // CHECK: [[V8:%.*]] = pop.pointer.bitcast [[V6]] : !kgen.generator<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.generator<(!kgen.pointer<none>) -> !kgen.none>
 
 // COM: call create_mojo_value_async
-// CHECK: [[V12:%.*]] = kgen.call @"{{.*}}MOGGPrimitives::create_mojo_value_async({{.*}}, {{.*}}, {{.*}}, [[INDEX]], [[INDEX_0]], [[V8]], [[V7]]) : (!kgen.pointer<none>, !kgen.pointer<none>, !kgen.pointer<none>, index, index, !kgen.generator<(!kgen.pointer<none>) -> !kgen.none>, !kgen.generator<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>) -> !kgen.none
+// CHECK: [[V12:%.*]] = kgen.call @"{{.*}}MOGGPrimitives::create_mojo_value_async({{.*}}, {{.*}}, [[INDEX]], [[INDEX_0]], [[V8]], [[V7]]) : (!kgen.pointer<none>, !kgen.pointer<none>, index, index, !kgen.generator<(!kgen.pointer<none>) -> !kgen.none>, !kgen.generator<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>) -> !kgen.none
 // CHECK: kgen.return
