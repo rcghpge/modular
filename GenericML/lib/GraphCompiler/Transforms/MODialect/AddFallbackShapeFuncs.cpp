@@ -742,12 +742,17 @@ ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
 
 ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SplitOp op) {
+  Location loc = op->getLoc();
+  SmallVector<Value> operands(op->getOperands());
+  operands.push_back(nullptr); // placeholder for output_idx
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
+    operands.back() =
+        builder.create<mlir::index::ConstantOp>(loc, builder.getIndexAttr(idx));
     // This uses some special handling
     buildForOpResult(graph, builder, cast<TensorValue>(res),
-                     "split_ith_output_shape", op.getOperands(),
+                     "split_ith_output_shape", operands,
                      op.getOutputParamDecls(),
-                     /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
+                     /*kgenParams=*/{},
                      /*dataDepInputIdxs=*/{1, 2});
   }
   return success();

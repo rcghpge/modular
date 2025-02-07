@@ -106,6 +106,10 @@ public:
   /// Lowers a MO::ListType to a MGP::ListType.
   MGP::ListType lowerListType(MO::ListType listTy);
 
+  /// Clones a trivial operations that does not need transformation. E.g.,
+  /// `index.constant`
+  LogicalResult cloneTrivialOp(Operation *trivialOp);
+
   /// Lowers the mo.output op to the mef.output for the final results.
   LogicalResult lowerOutput(MO::OutputOp output);
 
@@ -451,6 +455,15 @@ MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
   MGP::TypeBuilder *typeBuilder = loweringState.getTypeBuilder(tensorDeviceRef);
   auto mgpOutputTensorTy = typeBuilder->tensorType(ctx, outputTensorSpecTy);
   return MGP::ListType::get(ctx, mgpOutputTensorTy);
+}
+
+LogicalResult MOGraphLowering::cloneTrivialOp(Operation *trivialOp) {
+  Operation *cloned = loweringState.getExecuteOpBuilder().clone(*trivialOp);
+  for (auto [from, to] :
+       llvm::zip_equal(trivialOp->getResults(), cloned->getResults()))
+    loweringState.emplaceExecuteLoweredValue(from, to);
+
+  return success();
 }
 
 LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
@@ -1753,6 +1766,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   mlir::sortTopologically(block);
 
   for (Operation &op : *block) {
+    if (llvm::isa_and_nonnull<mlir::index::IndexDialect>(op.getDialect())) {
+      if (failed(cloneTrivialOp(&op)))
+        return failure();
+      continue;
+    }
+
     if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
       if (failed(lowerParamDeclare(block->getParent(), declOp)))
         return failure();

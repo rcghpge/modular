@@ -231,7 +231,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     Kernels preserve the device of their original MO op.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain]>>:$operands,
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
     MO_ParamDecls:$outputParamDecls,
     OptionalAttr<ArrayAttr>:$inputFusionInterface,
     OptionalAttr<ArrayAttr>:$outputFusionInterface,

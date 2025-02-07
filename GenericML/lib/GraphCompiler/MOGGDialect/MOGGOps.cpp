@@ -549,17 +549,9 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
   builder.setInsertionPoint(&kernelBody, kernelBody.begin());
-  kernelBody.addArgument(chain.getType(), chain.getLoc());
-  for (auto val : loweredOutputsStorage)
-    kernelBody.addArgument(val.buffer.getType(), val.buffer.getLoc());
-  for (auto val : loweredInputOperands)
-    kernelBody.addArgument(val.getType(), val.getLoc());
-  for (Value operand : newKernel.getOperands()) {
-    if (!isa<MGP::DeviceBufferType, MGP::OpaqueType, MGP::ListType>(
-            operand.getType()) &&
-        operand != chain)
-      kernelBody.addArgument(operand.getType(), operand.getLoc());
-  }
+  SmallVector<Location> locs =
+      llvm::map_to_vector(operands, [](Value v) { return v.getLoc(); });
+  kernelBody.addArguments(ValueRange(operands).getTypes(), locs);
 
   DenseMap<TypedAttr, Value> loweredParams;
   auto addParams = [&](Location loc, Type t) -> CompileDiagnosticOrSuccess {
@@ -624,7 +616,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto convertMGPInputToTensorOrOpaque = [&](Value input, Type oldTy) -> Value {
     // Opaque types are already pointer to objects, they don't need any
     // transformation to be passed to the kernel.
-    if (isa<MGP::OpaqueType, MGP::DeviceContextType>(input.getType())) {
+    if (isa<MGP::OpaqueType, MGP::DeviceContextType, mlir::IndexType>(
+            input.getType())) {
       return input;
     } else if (isa<MO::TensorType, MO::BufferType>(oldTy)) {
       MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
