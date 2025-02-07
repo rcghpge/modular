@@ -81,15 +81,6 @@ class DynamicMemoryPlanningPass
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
-    if (llvm::count_if(modelOp.getDevices(), [](Attribute deviceAttr) {
-          return cast<DeviceRefAttr>(deviceAttr).getLabel() != kCPULabel;
-        }) > 1) {
-      // TODO(GEX-1792): Re-enable after fixing CUDA OOM.
-      LLVM_DEBUG({
-        llvm::dbgs() << "skipping DynamicMemoryPlanningPass for multi-device\n";
-      });
-      return;
-    }
 
     auto getDeviceContext = [&modelOp](DeviceRefAttr dev,
                                        ArrayRef<BlockArgument> devices) {
