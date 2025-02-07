@@ -40,3 +40,42 @@ mo.graph @multi_device_context_dedup(
   ) -> !mo.tensor<[4], f32, gpu:0>
   mo.output %0 : !mo.tensor<[4], f32, gpu:0>
 }
+
+// -----
+
+// CHECK-LABEL: mo.graph @single_variadic_device_context
+// CHECK: %[[CTX:.*]] = mogg.device_context_placeholder {device = #M.device_ref<"gpu", 0>}
+// CHECK: %[[ARR:.*]] = pop.array.create [%[[CTX]]
+// CHECK: kgen.call @"{{.*}}MOGGKernelAPITest::VariadicDeviceContext::execute{{.*}}%[[ARR]]
+// CHECK-NOT: mogg.device_context_placeholder
+
+mo.graph @single_variadic_device_context(
+    %arg0: !mo.tensor<[4], f32, gpu:0>
+) -> !mo.tensor<[4], f32, gpu:0> {
+  %0 = mo.custom {symbol = "variadic_device_context"}(%arg0) : (
+    !mo.tensor<[4], f32, gpu:0>
+  ) -> !mo.tensor<[4], f32, gpu:0>
+  mo.output %0 : !mo.tensor<[4], f32, gpu:0>
+}
+
+// -----
+
+// CHECK-LABEL: mo.graph @multi_variadic_device_context
+// CHECK: %[[CTX0:.*]] = mogg.device_context_placeholder {device = #M.device_ref<"gpu", 0>}
+// CHECK: %[[CTX1:.*]] = mogg.device_context_placeholder {device = #M.device_ref<"gpu", 1>}
+// CHECK: %[[ARR:.*]] = pop.array.create [%[[CTX0]], %[[CTX1]]
+// CHECK: kgen.call @"{{.*}}MOGGKernelAPITest::VariadicDeviceContext::execute{{.*}}%[[ARR]]
+// CHECK-NOT: mogg.device_context_placeholder
+
+mo.graph @multi_variadic_device_context(
+    %arg0: !mo.tensor<[4], f32, gpu:0>,
+    %arg1: !mo.tensor<[4], f32, gpu:1>
+) -> !mo.tensor<[4], f32, gpu:0> {
+  %0 = mo.custom {symbol = "variadic_device_context"}(
+    %arg0, %arg1
+  ) : (
+    !mo.tensor<[4], f32, gpu:0>,
+    !mo.tensor<[4], f32, gpu:1>
+  ) -> !mo.tensor<[4], f32, gpu:0>
+  mo.output %0 : !mo.tensor<[4], f32, gpu:0>
+}
