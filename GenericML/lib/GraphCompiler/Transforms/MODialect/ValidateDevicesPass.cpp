@@ -37,39 +37,21 @@ struct ValidateDevicesPass
     : public impl::ValidateDevicesPassBase<ValidateDevicesPass> {
   using ValidateDevicesPassBase::ValidateDevicesPassBase;
 
-  // Add any new combinations of architecture and data type that are not
-  // supported to this map. The existing logic in this pass should correctly
-  // check for them and report errors.
-  const llvm::DenseMap<llvm::Triple::ArchType, llvm::SmallVector<DType>>
-      unsupportedArchDTypeCombinations{
-          {llvm::Triple::ArchType::aarch64,
-           {DType::f8e5m2, DType::f8e4m3, DType::f8e3m4, DType::f16,
-            DType::bf16}},
-          {llvm::Triple::ArchType::x86_64,
-           {DType::f8e5m2, DType::f8e4m3, DType::f8e3m4, DType::f16}},
-      };
-
-  bool isUnsupportedArchDTypeCombination(llvm::Triple::ArchType arch,
-                                         DType dtype) {
-    // Does this architecture have any unsupported data types?
-    auto unsupportedArchDTypeCombination =
-        unsupportedArchDTypeCombinations.find(arch);
-    if (unsupportedArchDTypeCombination ==
-        unsupportedArchDTypeCombinations.end())
-      return false;
-
-    // We found some, now let's see if the data type we are checking is in that
-    // list.
-    auto unsupportedDTypes = unsupportedArchDTypeCombination->getSecond();
-    if (llvm::is_contained(unsupportedDTypes, dtype))
+  bool isSupportedArchDTypeCombination(llvm::Triple::ArchType arch,
+                                       DType dtype) {
+    // Return True if the architecture does not support the data type.
+    // On CPUs, we currently do not support float16 or the float8*
+    // types. On ARM systems, we do not support bfloat16.
+    if (arch == llvm::Triple::ArchType::x86_64 && dtype == DType::bf16)
       return true;
+    if (llvm::is_contained(
+            {llvm::Triple::ArchType::x86_64, llvm::Triple::ArchType::aarch64},
+            arch) &&
+        dtype.isFloat() && dtype.getWidthInBits() < 32) {
+      return false;
+    }
 
-    return false;
-  }
-
-  bool archHasAnyUnsupportedDTypes(llvm::Triple::ArchType arch) {
-    return unsupportedArchDTypeCombinations.find(arch) !=
-           unsupportedArchDTypeCombinations.end();
+    return true;
   }
 
   static std::string formatDeviceForUser(DeviceRefAttr device) {
@@ -92,8 +74,8 @@ struct ValidateDevicesPass
       if (isa<MO::TensorType>(arg.getType())) {
         TensorType tensorType = dynCastFromTensorLike(arg.getType());
         LLVM_DEBUG(llvm::dbgs() << "Checking input '" << arg << "'\n");
-        if (isUnsupportedArchDTypeCombination(targetArch,
-                                              tensorType.getDtype())) {
+        if (!isSupportedArchDTypeCombination(targetArch,
+                                             tensorType.getDtype())) {
           emitErrorOnOp(block->getParentOp(), tensorType.getDeviceRef(),
                         tensorType.getDtype().getAsString());
           return failure();
@@ -107,8 +89,8 @@ struct ValidateDevicesPass
         if (isa<MO::TensorType>(res.getType())) {
           TensorType tensorType = dynCastFromTensorLike(res.getType());
           LLVM_DEBUG(llvm::dbgs() << "Checking result '" << res << "'\n");
-          if (isUnsupportedArchDTypeCombination(targetArch,
-                                                tensorType.getDtype())) {
+          if (!isSupportedArchDTypeCombination(targetArch,
+                                               tensorType.getDtype())) {
             emitErrorOnOp(op, tensorType.getDeviceRef(),
                           tensorType.getDtype().getAsString());
             return WalkResult::interrupt();
@@ -140,21 +122,12 @@ struct ValidateDevicesPass
       return;
     }
 
-    llvm::Triple::ArchType targetArch = targetInfo.getTriple().getArch();
-    if (!archHasAnyUnsupportedDTypes(targetArch)) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "There are no unsupported dtypes for: '"
-                     << targetInfo.getTriple().getTriple()
-                     << "' ValidateDevicesPass has no work to do.\n";
-      });
-      return;
-    }
-
     LLVM_DEBUG({
       llvm::dbgs() << "Running ValidateDevicesPass for target '"
                    << targetInfo.getTriple().getTriple() << "'\n";
     });
 
+    llvm::Triple::ArchType targetArch = targetInfo.getTriple().getArch();
     if (failed(process(targetArch, graphOp.getBodyBlock()))) {
       return signalPassFailure();
     }
