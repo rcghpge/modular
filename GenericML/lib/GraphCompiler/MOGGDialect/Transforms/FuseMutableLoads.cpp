@@ -122,6 +122,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
       /*isViewOp=*/kernelOp.getIsViewOpAttr(),
       /*summary=*/kernelOp.getSummaryAttr(),
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
+      /*computationallyTrivial=*/kernelOp.getComputationallyTrivialAttr(),
       /*allocIndices=*/kernelOp.getAllocIndicesAttr(),
       /*hasReadEffect*/ true, // from load
       /*hasWriteEffects*/ kernelOp.getHasWriteEffect(),

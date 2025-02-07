@@ -239,6 +239,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     OptionalAttr<BoolAttr>:$isViewOp,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$computationallyTrivial,
     OptionalAttr<ArrayAttr>:$allocIndices,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
@@ -360,6 +361,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
       "BoolAttr":$isViewOp,
       "StringAttr":$summary,
       "BoolAttr":$isAsync,
+      "BoolAttr":$computationallyTrivial,
       "ArrayAttr":$allocIndices,
       "bool":$hasReadEffect,
       "bool":$hasWriteEffect,

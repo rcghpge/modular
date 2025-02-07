@@ -344,6 +344,10 @@ Operation *sequenceFuseKernelsAndReplaceUses(
   bool isAsync = llvm::any_of(kernelOpsToFuseTogether, [&](auto kernelOp) {
     return cast<KernelOp>(kernelOp).getIsAsync().value_or(false);
   });
+  bool isComputationallyTrivial =
+      llvm::all_of(kernelOpsToFuseTogether, [&](auto kernelOp) {
+        return cast<KernelOp>(kernelOp).getComputationallyTrivial();
+      });
   // All kernels should have the same device.
   auto deviceRef =
       cast<KernelOp>(kernelOpsToFuseTogether.front()).getDeviceRef();
@@ -367,6 +371,7 @@ Operation *sequenceFuseKernelsAndReplaceUses(
       /*isViewOp=*/BoolAttr{},
       /*summary=*/getSummaryString(kernelOpsToFuseTogether, FusionType::SOFT),
       /*isAsync=*/BoolAttr::get(ctx, isAsync),
+      /*computationallyTrivial=*/BoolAttr::get(ctx, isComputationallyTrivial),
       /*allocIndices=*/ArrayAttr{},
       /*hasReadEffect*/ hasReadEffect,
       /*hasWriteEffect*/ hasWriteEffect,

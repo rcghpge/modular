@@ -804,6 +804,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           /*summary=*/
           getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD),
           /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
+          /*computationallyTrivial=*/
+          kernelToFuseInto.getComputationallyTrivialAttr(),
           /*allocIndices=*/ArrayAttr{},
           /*hasReadEffects*/ kernelToFuseInto.getHasReadEffect() ||
               userToFuseIn.getHasReadEffect(),

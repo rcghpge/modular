@@ -333,15 +333,13 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
 // MOGG KernelOp
 //===----------------------------------------------------------------------===//
 
-void KernelOp::build(OpBuilder &builder, OperationState &state,
-                     TypeRange results, ValueRange operands,
-                     ArrayRef<ParamDeclAttr> outputParamDecls,
-                     ArrayAttr inputFusionInterface,
-                     ArrayAttr outputFusionInterface,
-                     StringAttr fusionBodyLambda, BoolAttr isViewOp,
-                     StringAttr summary, BoolAttr isAsync,
-                     ArrayAttr allocIndices, bool hasReadEffect,
-                     bool hasWriteEffect, DeviceRefAttr device) {
+void KernelOp::build(
+    OpBuilder &builder, OperationState &state, TypeRange results,
+    ValueRange operands, ArrayRef<ParamDeclAttr> outputParamDecls,
+    ArrayAttr inputFusionInterface, ArrayAttr outputFusionInterface,
+    StringAttr fusionBodyLambda, BoolAttr isViewOp, StringAttr summary,
+    BoolAttr isAsync, BoolAttr computationallyTrivial, ArrayAttr allocIndices,
+    bool hasReadEffect, bool hasWriteEffect, DeviceRefAttr device) {
   state.addOperands(operands);
 
   if (!outputParamDecls.empty())
@@ -368,6 +366,10 @@ void KernelOp::build(OpBuilder &builder, OperationState &state,
 
   if (isAsync)
     state.addAttribute(getIsAsyncAttrName(state.name), isAsync);
+
+  if (computationallyTrivial)
+    state.addAttribute(getComputationallyTrivialAttrName(state.name),
+                       computationallyTrivial);
 
   if (allocIndices)
     state.addAttribute(getAllocIndicesAttrName(state.name), allocIndices);
