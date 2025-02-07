@@ -285,10 +285,30 @@ ErrorOr<int> CUDADevice::computeCapability() const {
 }
 
 ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
+  if (id() == peer.id()) {
+    // Always disable self access (same behaviour as cuDeviceCanAccessPeer).
+    return false;
+  }
+
   int canAccessPeer = 0;
   CUDA_CHECK_ERR(driver_.DeviceCanAccessPeer(
       &canAccessPeer, cudaDevice(), CUDADevice::cast(peer).cudaDevice()));
-  return canAccessPeer;
+
+  // Use support for native atomics as a proxy for NVLink here.
+  // On a PCIe-link A10G system connected through a PCIe host bridge, we
+  // observed that direct P2P access with stream-ordered allocations returns
+  // zeros.
+  // Furthermore, the very act of calling cuMemPoolSetAccess causes
+  // `cuMemcpyPeerAsync` to return zeroes.
+  // So force the cuMemcpyPeerAsync path and skipping MemPoolSetAccess by
+  // returning cannot access here.
+  int isNativeAtomicSupported = 0;
+  CUDA_CHECK_ERR(driver_.DeviceGetP2PAttribute(
+      &isNativeAtomicSupported,
+      CUdevice_P2PAttribute::CU_DEVICE_P2P_ATTRIBUTE_NATIVE_ATOMIC_SUPPORTED,
+      cudaDevice(), CUDADevice::cast(peer).cudaDevice()));
+
+  return canAccessPeer && isNativeAtomicSupported;
 }
 
 ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
