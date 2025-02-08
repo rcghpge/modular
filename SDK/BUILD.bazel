@@ -152,6 +152,7 @@ modular_nanobind_library(
         "//:MLIRBindingsPythonHeaders",
     ],
     deps = [
+        "//GenericML:modular-framework-common",
         "//ModularFramework/tools/mof",
     ],
 )
