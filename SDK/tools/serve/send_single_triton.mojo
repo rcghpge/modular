@@ -6,12 +6,11 @@
 
 import sys
 
-from memory import memcpy, UnsafePointer
-from python import Python, PythonObject
-
-from max.tensor import Tensor, TensorShape
 from max.engine.tensor import EngineNumpyView
 from max.graph import _testing
+from max.tensor import Tensor, TensorShape
+from memory import UnsafePointer, memcpy
+from python import Python, PythonObject
 
 
 fn to_tensor[dtype: DType](mut np_array: PythonObject) raises -> Tensor[dtype]:
