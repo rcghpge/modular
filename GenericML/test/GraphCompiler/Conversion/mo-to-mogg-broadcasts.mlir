@@ -1,5 +1,3 @@
-// REQUIRES: disabled
-// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s
 
 mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.tensor<[N, M, K], f32>) {
@@ -8,29 +6,17 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 }
 
 // CHECK-LABEL: mo.graph @bcast_basic
-// CHECK-NEXT: %[[KERNEL:.*]] = mogg.kernel (%[[NULL:.*]]) : (%[[IN1:.*]]: !mo.tensor<[N, M, L], f32>) -> !mo.tensor<[N, M, K], f32>{
-// CHECK-NEXT: %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[N, M, K], f32>
+// CHECK: %[[KERNEL:.*]] = mogg.kernel (%[[NULL:.*]]) : (%[[IN1:.*]]: !mo.tensor<[N, M, L], f32>) -> !mo.tensor<[N, M, K], f32>
+// CHECK: %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[N, M, K], f32>
 
-// We broadcast the tensor.
-// CHECK-NEXT: %[[N:.*]] = mogg.get_dim <N> -> !pop.scalar<si64>
-// CHECK-NEXT: %[[M:.*]] = mogg.get_dim <M> -> !pop.scalar<si64>
-// CHECK-NEXT: %[[K:.*]] = mogg.get_dim <K> -> !pop.scalar<si64>
-// CHECK-NEXT: %[[ARR:.*]] = pop.array.create [%[[N]], %[[M]], %[[K]]]
-// CHECK-NEXT: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]]) : (!pop.array<3, scalar<si64>>) -> !mogg.shape<[N, M, K]>
+// CHECK-DAG: %[[N:.*]] = mogg.get_dim <N>
+// CHECK-DAG: %[[M:.*]] = mogg.get_dim <M>
+// CHECK-DAG: %[[K:.*]] = mogg.get_dim <K>
+// CHECK-DAG: %[[ARR:.*]] = pop.array.create [%[[N]], %[[M]], %[[K]]]
 
-// CHECK-NEXT: %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, L], f32>, !mogg.shape<[N, M, K]> -> !mo.tensor<[N, M, K], f32>
+// CHECK: kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::StaticBroadcastTo::build_view
+// CHECK-NEXT: kgen.call @"tensor_internal::managed_tensor_slice::view_copy_impl
 
-// The copy is implemented with the elementwise kernel as before.
-// CHECK-NEXT:  mogg.lambda @[[COPY_VIEW:.*]] = (%[[INDICES:.*]]: !mogg.indices){
-// CHECK-NEXT:    %[[LOAD:.*]] = mogg.call "simd_load"(%[[BCAST]], %[[INDICES]]) : !mo.tensor<[N, M, K], f32>, !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:    mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[LOAD]]) : !mo.tensor<[N, M, K], f32>, !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:    mogg.output
-// CHECK-NEXT:  }
-
-// Invoke the elementwise copy.
-// CHECK-NEXT:  mogg.call "elementwise" [@[[COPY_VIEW]]](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M, K], f32>
-// CHECK-NEXT:  mogg.output %[[OUT]] : !mo.tensor<[N, M, K], f32>
-
-// No fusion interfaces but it does have the indcies of the inputs which are broadcast and the isView marking.
-// CHECK-NEXT: } {device = #M.device_ref<"cpu", 0>, isAsync = true, isViewOp = true, summary = "mo.static.broadcast_to{{.*}}"}
-// CHECK-NEXT: mo.output %[[KERNEL]] : !mo.tensor<[N, M, K], f32>
+// CHECK: mogg.output %[[OUT]] : !mo.tensor<[N, M, K], f32>
+// CHECK: device = #M.device_ref<"cpu", 0>, inputFusionInterface = [""], isAsync = true, isViewOp = true
+// CHECK: mo.output %[[KERNEL]] : !mo.tensor<[N, M, K], f32>

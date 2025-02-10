@@ -1,26 +1,16 @@
-// REQUIRES: disabled
-// TODO(GEX-1573): Delete or convert to the new API
-// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%extra_test_lib" --fuse-in-out-lambdas=kernel-library-paths="%extra_test_lib" --cse | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-in-out-lambdas=kernel-library-paths="%kernel_api_test_lib" --cse | FileCheck %s
 
-// CHECK: mo.graph @input_output_fusion(%[[ARG0:.*]]: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
-// CHECK-NEXT: %0 = mogg.kernel (%[[ARG0]]) : (%[[ARG1:.*]]: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>{
-// CHECK:      mogg.lambda @[[INPUT_0_FN:.*]] =
-// CHECK:        mogg.call "mo.ceil"
-// CHECK:      mogg.lambda @[[OUTPUT_0_FN:.*]] = (%arg2: !mogg.indices, %arg3: !mogg.simd<f32>){
-// CHECK-NEXT:   mogg.call "mo.relu"
-// CHECK:      mogg.call "test_custom_op" [@[[INPUT_0_FN]], @[[OUTPUT_0_FN]]]
+// CHECK: module {
+// CHECK:   kgen.extern.generator @"MOGGKernelAPITestLib::MOGGKernelAPITest::TestCustomOp::execute
+
+// CHECK:       kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::Ceil::execute
+// CHECK:       kgen.call @"MOGGKernelAPITestLib::MOGGKernelAPITest::TestCustomOp::execute
+// CHECK:       kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::ReLU::execute
+// CHECK:       mogg.output %{{.*}} : !mo.tensor<[2], f32>
+
 mo.graph @input_output_fusion(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mo.ceil(%arg0) : !mo.tensor<[2], f32>
   %1 = mo.custom {symbol = "test_custom_op"}(%0) : (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>
   %2 = mo.relu(%1) : !mo.tensor<[2], f32>
   mo.output %2 : !mo.tensor<[2], f32>
 }
-
-mo.graph @custom_with_params(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
-  %1 = mo.custom {symbol = "test_custom_op_params", extra_param = 42, extra_param2 = "My String Param"}(%arg0) : (!mo.tensor<[2], f32>) -> !mo.tensor<[2], f32>
-  mo.output %1 : !mo.tensor<[2], f32>
-}
-
-// Check the parameters have survived into MOGG.
-// CHECK-LABEL: mo.graph @custom_with_params
-// CHECK: mogg.call "test_custom_op_params" []({{.*}}) {extra_param = 42 : i64, extra_param2 = "My String Param"}
