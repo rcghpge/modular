@@ -5,13 +5,14 @@ modular_py_library(
     name = "llama3",
     srcs = glob(["**/*.py"]),
     imports = ["../../.."],
-    tags = ["no-mypy"],  # TODO: Fix and remove
     deps = [
         requirement("numpy"),
         # TODO(AIPIPE-287): remove dependency on torch.
         requirement("torch"),
         requirement("gguf"),
         requirement("sentencepiece"),
+        # Safetensors conversion (safetensor_converter.py) uses transformers.
+        requirement("transformers"),
         requirement("scipy"),
         "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/engine",
