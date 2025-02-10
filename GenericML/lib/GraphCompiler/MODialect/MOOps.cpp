@@ -3642,7 +3642,8 @@ bool isOne(Value val) {
     return false;
 
   // Look through views.
-  if (isa<RebindOp, Static::BroadcastToOp, SliceOp, TransposeOp>(definingOp))
+  if (isa<RebindOp, Static::BroadcastToOp, SliceOp, SliceDimOp, TransposeOp>(
+          definingOp))
     return isOne(definingOp->getOperand(0));
 
   if (auto asCst = dyn_cast<ConstantOp>(definingOp)) {
