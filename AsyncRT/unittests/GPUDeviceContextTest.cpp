@@ -127,9 +127,7 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     std::cerr << "DeviceContext copies(len: " << allocLen
               << ", sync: " << doSyncCopies << ")\n";
 
-    ASSIGN_NO_ERR(void *, aPtr, ctx->mallocHost(allocLen));
-    EXPECT_TRUE((aPtr != nullptr) || (allocLen == 0));
-
+    ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->createHostBuffer(allocLen));
     ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->createBuffer(allocLen));
     ASSIGN_NO_ERR(DeviceBufferRef, cBuf, ctx->enqueueCreateBuffer(allocLen));
 
@@ -137,7 +135,7 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     EXPECT_NE(dPtr, nullptr);
 
     // Initialize with known good and bad values.
-    initWithData(aPtr, allocLen, checkData, sizeof(checkData));
+    initWithData(aBuf->ptr(), allocLen, checkData, sizeof(checkData));
 
     for (int i = 0; i < allocLen; i++) {
       dPtr[i] = -static_cast<char>((7 + i) & 127);
@@ -148,12 +146,12 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
       EXPECT_NO_ERR(ctx->synchronize());
 
       // Copy between different buffers.
-      EXPECT_NO_ERR(ctx->copyToDevice(*bBuf, aPtr));
+      EXPECT_NO_ERR(ctx->copyToDevice(*bBuf, aBuf->ptr()));
       EXPECT_NO_ERR(ctx->copyDeviceToDevice(*cBuf, *bBuf));
       EXPECT_NO_ERR(ctx->copyFromDevice(dPtr, *cBuf));
     } else {
       // Copy between different buffers.
-      EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*bBuf, aPtr));
+      EXPECT_NO_ERR(aBuf->copyTo(*bBuf));
       EXPECT_NO_ERR(ctx->enqueueCopyDeviceToDevice(*cBuf, *bBuf));
       EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(dPtr, *cBuf));
 
@@ -163,7 +161,6 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     compareWithData(dPtr, allocLen, checkData, sizeof(checkData));
 
     free(dPtr);
-    EXPECT_NO_ERR(ctx->freeHost(aPtr));
   }
 }
 
@@ -280,14 +277,13 @@ TEST(GPUDeviceContextTest, Timers) {
   { // Run some memory copies within the timer.
     const size_t allocLen = 1024 * 1024;
 
-    ASSIGN_NO_ERR(void *, aPtr, ctx->mallocHost(allocLen));
+    ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->createHostBuffer(allocLen));
     ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(256));
 
     for (int i = 0; i < 20; i++) {
-      EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*bBuf, aPtr));
+      EXPECT_NO_ERR(aBuf->copyTo(*bBuf));
     }
     EXPECT_NO_ERR(ctx->synchronize());
-    EXPECT_NO_ERR(ctx->freeHost(aPtr));
   }
   ASSIGN_NO_ERR(std::chrono::nanoseconds, nanos, ctx->stopTimer(*timer));
   int64_t elapsedNanos = nanos.count();
@@ -336,7 +332,8 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
         checkData[i] = (srcDeviceId * 8) + dstDeviceId + i;
       }
 
-      ASSIGN_NO_ERR(void *, srcPtr, srcCtx->mallocHost(allocLen));
+      ASSIGN_NO_ERR(DeviceBufferRef, srcPtr,
+                    srcCtx->createHostBuffer(allocLen));
       ASSIGN_NO_ERR(DeviceBufferRef, srcBuf,
                     srcCtx->enqueueCreateBuffer(allocLen));
       ASSIGN_NO_ERR(DeviceBufferRef, dstBuf,
@@ -352,8 +349,8 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
       }
 
       // Copy between different buffers.
-      memcpy(srcPtr, checkData, allocLen);
-      EXPECT_NO_ERR(srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr));
+      memcpy(srcPtr->ptr(), checkData, allocLen);
+      EXPECT_NO_ERR(srcPtr->copyTo(*srcBuf));
       EXPECT_NO_ERR(srcBuf->copyTo(*dstBuf));
       EXPECT_NO_ERR(dstCtx->enqueueCopyFromDevice(dstPtr, *dstBuf));
 
@@ -364,7 +361,6 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
       EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
 
       free(dstPtr);
-      EXPECT_NO_ERR(srcCtx->freeHost(srcPtr));
     }
   }
 }
@@ -382,33 +378,27 @@ TEST(GPUDeviceContextTest, CrossContextEvent) {
     checkData[i] = i;
   }
 
-  ASSIGN_NO_ERR(void *, srcPtr, srcCtx->mallocHost(allocLen));
-  EXPECT_NE(srcPtr, nullptr);
+  ASSIGN_NO_ERR(DeviceBufferRef, srcPtr, srcCtx->createHostBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstPtr, dstCtx->createHostBuffer(allocLen));
 
-  ASSIGN_NO_ERR(void *, dstPtr, dstCtx->mallocHost(allocLen));
-  EXPECT_NE(dstPtr, nullptr);
-
-  memcpy(srcPtr, checkData, allocLen);
+  memcpy(srcPtr->ptr(), checkData, allocLen);
 
   ASSIGN_NO_ERR(DeviceBufferRef, srcBuf, srcCtx->enqueueCreateBuffer(allocLen));
   ASSIGN_NO_ERR(DeviceBufferRef, dstBuf, dstCtx->enqueueCreateBuffer(allocLen));
 
-  EXPECT_NO_ERR(srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr));
+  EXPECT_NO_ERR(srcPtr->copyTo(*srcBuf));
 
   ASSIGN_NO_ERR(DeviceEventRef, copyDoneEvent, srcCtx->enqueueEvent());
 
   EXPECT_NO_ERR(dstCtx->enqueueWaitForEvent(*copyDoneEvent));
   EXPECT_NO_ERR(dstCtx->enqueueCopyDeviceToDevice(*dstBuf, *srcBuf));
-  EXPECT_NO_ERR(dstCtx->enqueueCopyFromDevice(dstPtr, *dstBuf));
+  EXPECT_NO_ERR(dstBuf->copyTo(*dstPtr));
 
   // An event based sequence equivalent to: err = dstCtx->synchronize();
   ASSIGN_NO_ERR(DeviceEventRef, syncEvent, dstCtx->enqueueEvent());
   EXPECT_NO_ERR(syncEvent->synchronize());
 
-  EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
-
-  EXPECT_NO_ERR(srcCtx->freeHost(srcPtr));
-  EXPECT_NO_ERR(dstCtx->freeHost(dstPtr));
+  EXPECT_EQ(memcmp(dstPtr->ptr(), checkData, allocLen), 0);
 }
 
 } // namespace

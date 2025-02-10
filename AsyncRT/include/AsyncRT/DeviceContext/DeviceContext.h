@@ -118,6 +118,8 @@ public:
 
   size_t byteSize() const;
 
+  bool isHost() const;
+
   ErrorOrSuccess copyTo(const DeviceBuffer &dst) const;
 
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
@@ -130,15 +132,17 @@ private:
   DeviceBufferRef parent_;
   mutable void *ptr_;
   size_t byteSize_;
+  bool isHost_;
   // TODO: Remove the V1 compatibility.
   mutable bool owning_ = true;
 
-  DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize);
+  DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize,
+               bool isHost);
   DeviceBuffer(const DeviceContext &context, const DeviceBuffer &parent,
-               void *ptr, size_t byteSize);
+               void *ptr, size_t byteSize, bool isHost);
   // TODO: Remove the V1 compatibility.
   DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize,
-               bool owning);
+               bool isHost, bool owning);
 };
 
 class DeviceEvent : public ReferenceCounted<DeviceEvent> {
@@ -280,7 +284,7 @@ public:
     size_t free;
   };
 
-  enum class SyncMode {
+  enum class SyncMode : uint8_t {
     SYNC = 1,
     ASYNC = 2,
   };
@@ -293,15 +297,21 @@ public:
   const Device &device() const;
 
   // Host memory allocation.
-  virtual ErrorOr<void *> mallocHost(size_t size) const = 0;
-  virtual ErrorOrSuccess freeHost(void *ptr) const = 0;
+  // * DEPRECATED, use `createHostBuffer()` *
+  ErrorOr<void *> mallocHost(size_t size) const;
+  ErrorOrSuccess freeHost(void *ptr) const;
 
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
   ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize) const;
+
+  ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize) const;
+
   // TODO: Remove the V1 compatibility.
-  virtual DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
-                                             bool owning) const;
+  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
+                                     bool owning) const;
+  DeviceBufferRef createHostBufferOwning(void *ptr, size_t byteSize,
+                                         bool owning) const;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
@@ -407,14 +417,14 @@ private:
   DeviceContext &operator=(DeviceContext &&other) = delete;
 
   // DeviceBuffer allocation.
-  virtual ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
+  virtual ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize, bool isHost,
                                                SyncMode mode) const;
 
-  // Low-level uncached allocation of device memory.
+  // Low-level uncached allocation of memory.
   // REQUIRES: byteSize > 0
-  virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+  virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize, bool isHost,
                                   SyncMode mode) const = 0;
-  virtual ErrorOrSuccess memFree(void *ptr) const = 0;
+  virtual ErrorOrSuccess memFree(void *ptr, bool isHost) const = 0;
 
   // Shared configuration object.
   // REQUIRES: `DeviceContext::mu_` must be held to get and access the shared

@@ -87,10 +87,6 @@ public:
   CpuDeviceContext(const CpuDevice &device);
   ~CpuDeviceContext() override = default;
 
-  // Host memory allocation.
-  ErrorOr<void *> mallocHost(size_t size) const override;
-  ErrorOrSuccess freeHost(void *ptr) const override;
-
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
                               SyncMode mode) const override;
@@ -141,9 +137,9 @@ public:
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
 private:
-  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize, bool isHost,
                           SyncMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr) const override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
 };
 
 } // namespace M::AsyncRT

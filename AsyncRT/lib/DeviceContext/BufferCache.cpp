@@ -230,7 +230,8 @@ bool BufferCache::allocateChunk() {
     return false;
   }
   void *ptr = nullptr;
-  ErrorOrSuccess err = ctx_.memAlloc(&ptr, allocSize, DeviceContext::SYNC);
+  ErrorOrSuccess err =
+      ctx_.memAlloc(&ptr, allocSize, false, DeviceContext::SYNC);
   if (err.isError()) {
     if (doLog_) {
       errOut() << "##(" << deviceDescription_ << ":" << this
@@ -388,7 +389,7 @@ void BufferCache::clear() {
                << ")## free_chunk(" << chunk->base_ << ", " << chunk->size_
                << ")\n";
     }
-    ErrorOrSuccess err = ctx_.memFree(chunk->base_);
+    ErrorOrSuccess err = ctx_.memFree(chunk->base_, false);
     if (err.isError()) {
       errOut() << err.getError() << "\n";
       abort();
@@ -410,11 +411,13 @@ void BufferCache::clear() {
   unusedDescs_ = nullptr;
 }
 
-ErrorOr<void *> BufferCache::allocate(size_t size,
+ErrorOr<void *> BufferCache::allocate(size_t size, bool isHost,
                                       DeviceContext::SyncMode mode) {
   assert(size != 0);
   void *buf = nullptr;
-  if (chunkSize_ != 0) {
+  // Only attempt to allocate from the buffer cache if this is an on-device
+  // allocation.
+  if ((chunkSize_ != 0) && !isHost) {
     size = (size + alignmentOffset_) & alignmentMask_;
 
     if (size <= chunkSize_) {
@@ -430,7 +433,7 @@ ErrorOr<void *> BufferCache::allocate(size_t size,
     // the request. If the cache is disabled, the we pass on the allocation
     // mode.
     ErrorOrSuccess err = ctx_.memAlloc(
-        &buf, size, (chunkSize_ != 0) ? DeviceContext::SYNC : mode);
+        &buf, size, isHost, (chunkSize_ != 0) ? DeviceContext::SYNC : mode);
     if (err.isError()) {
       if (doLog_) {
         errOut() << "##(" << deviceDescription_ << ":" << this
@@ -504,12 +507,12 @@ void *BufferCache::allocate_locked(size_t size) {
   return desc->ptr_;
 }
 
-ErrorOrSuccess BufferCache::free(void *buf) {
+ErrorOrSuccess BufferCache::free(void *buf, bool isHost) {
   if (buf == nullptr)
     return success();
 
   bool freed = false;
-  if (chunks_ != nullptr) {
+  if ((chunks_ != nullptr) && !isHost) {
     std::lock_guard<std::mutex> lock(mu_);
     selfCheck();
     freed = free_locked(buf);
@@ -522,7 +525,7 @@ ErrorOrSuccess BufferCache::free(void *buf) {
                << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_ << ", "
                << freeCount_ << ", " << 0 << ", " << 0 << "\n";
     }
-    return ctx_.memFree(buf);
+    return ctx_.memFree(buf, isHost);
   }
   return success();
 }

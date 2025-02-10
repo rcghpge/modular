@@ -238,10 +238,6 @@ public:
                     size_t maxCacheSize);
   ~CUDADeviceContext() override;
 
-  // Host memory allocation.
-  ErrorOr<void *> mallocHost(size_t size) const override;
-  ErrorOrSuccess freeHost(void *ptr) const override;
-
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
                               SyncMode mode) const override;
@@ -331,9 +327,9 @@ private:
   bool logLoadFunction_ = false;
   bool logVerbose_ = false;
 
-  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize, bool isHost,
                           SyncMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr) const override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
 };
 
 } // namespace M::AsyncRT

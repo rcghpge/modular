@@ -492,32 +492,28 @@ HIPDeviceContext::~HIPDeviceContext() {
 }
 
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                          SyncMode mode) const {
+                                          bool isHost, SyncMode mode) const {
   assert(byteSize != 0);
   HIP_CHECK_ERR(setCurrent());
-  if (mode == ASYNC) {
-    HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+  if (isHost) {
+    HIP_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
   } else {
-    HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+    if (mode == ASYNC) {
+      HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+    } else {
+      HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+    }
   }
   return success();
 }
 
-ErrorOrSuccess HIPDeviceContext::memFree(void *ptr) const {
+ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) const {
   HIP_CHECK_ERR(setCurrent());
-
-  HIP_CHECK_ERR(driver_.MemFreeAsync(ptr, stream_));
-  return success();
-}
-
-ErrorOr<void *> HIPDeviceContext::mallocHost(size_t size) const {
-  void *ptr;
-  HIP_CHECK_ERR(driver_.MemAllocHost(&ptr, size));
-  return ptr;
-}
-
-ErrorOrSuccess HIPDeviceContext::freeHost(void *ptr) const {
-  HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
+  if (isHost) {
+    HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
+  } else {
+    HIP_CHECK_ERR(driver_.MemFreeAsync(ptr, stream_));
+  }
   return success();
 }
 

@@ -219,10 +219,6 @@ public:
                    size_t maxCacheSize);
   ~HIPDeviceContext() override;
 
-  // Host memory allocation.
-  ErrorOr<void *> mallocHost(size_t size) const override;
-  ErrorOrSuccess freeHost(void *ptr) const override;
-
   // DeviceBuffer copies.
   ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
                               SyncMode mode) const override;
@@ -281,6 +277,8 @@ public:
   static const HIPDeviceContext *verified_cast(const DeviceContext *ctx);
 
 private:
+  friend class HIPDeviceBuffer;
+
   const HIPDriver &driver_;
   hipCtx_t context_;
   hipStream_t stream_;
@@ -288,9 +286,9 @@ private:
   mutable std::mutex mu_;
   mutable llvm::StringMap<HIPModuleFunctionRef> funcMap_;
 
-  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize, bool isHost,
                           SyncMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr) const override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
 };
 
 } // namespace M::AsyncRT

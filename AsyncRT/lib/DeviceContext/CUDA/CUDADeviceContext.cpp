@@ -638,33 +638,28 @@ CUDADeviceContext::~CUDADeviceContext() {
 }
 
 ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                           SyncMode mode) const {
+                                           bool isHost, SyncMode mode) const {
   assert(byteSize != 0);
   CUDA_WITH_CTX_ERR(*this);
-  if (mode == ASYNC) {
-    CUDA_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+  if (isHost) {
+    CUDA_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
   } else {
-    CUDA_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+    if (mode == ASYNC) {
+      CUDA_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+    } else {
+      CUDA_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+    }
   }
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::memFree(void *ptr) const {
+ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
   CUDA_WITH_CTX(*this);
-  CUDA_CHECK_ERR(driver_.MemFreeAsync(ptr, cudaStream()));
-  return success();
-}
-
-ErrorOr<void *> CUDADeviceContext::mallocHost(size_t size) const {
-  void *ptr;
-  CUDA_WITH_CTX_ERR(*this);
-  CUDA_CHECK_ERR(driver_.MemAllocHost(&ptr, size));
-  return ptr;
-}
-
-ErrorOrSuccess CUDADeviceContext::freeHost(void *ptr) const {
-  CUDA_WITH_CTX_ERR(*this);
-  CUDA_CHECK_ERR(driver_.MemFreeHost(ptr));
+  if (isHost) {
+    CUDA_CHECK_ERR(driver_.MemFreeHost(ptr));
+  } else {
+    CUDA_CHECK_ERR(driver_.MemFreeAsync(ptr, cudaStream()));
+  }
   return success();
 }
 

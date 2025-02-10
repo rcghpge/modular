@@ -140,19 +140,20 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
 // ===== DeviceBuffer ===== //
 //
 DeviceBuffer::DeviceBuffer(const DeviceContext &context, void *ptr,
-                           size_t byteSize)
+                           size_t byteSize, bool isHost)
     : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
-      byteSize_(byteSize) {}
+      byteSize_(byteSize), isHost_(isHost) {}
 DeviceBuffer::DeviceBuffer(const DeviceContext &context,
                            const DeviceBuffer &parent, void *ptr,
-                           size_t byteSize)
+                           size_t byteSize, bool isHost)
     : context_(DeviceContextRef::copy(&context)),
-      parent_(DeviceBufferRef::copy(&parent)), ptr_(ptr), byteSize_(byteSize) {}
+      parent_(DeviceBufferRef::copy(&parent)), ptr_(ptr), byteSize_(byteSize),
+      isHost_(isHost) {}
 // TODO: Remove the V1 compatibility.
 DeviceBuffer::DeviceBuffer(const DeviceContext &context, void *ptr,
-                           size_t byteSize, bool owning)
+                           size_t byteSize, bool isHost, bool owning)
     : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
-      byteSize_(byteSize), owning_(owning) {}
+      byteSize_(byteSize), isHost_(isHost), owning_(owning) {}
 
 MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   if (!owning_) {
@@ -166,7 +167,7 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
     return;
   }
   // Release the memory (either to buffer cache or using memFree).
-  ERR_CHECK(context().bufferCache().free(ptr_));
+  ERR_CHECK(context().bufferCache().free(ptr_, isHost()));
 }
 
 MODULAR_CXX_EXPORT const DeviceContext &DeviceBuffer::context() const {
@@ -188,6 +189,8 @@ MODULAR_CXX_EXPORT void *DeviceBuffer::releasePtr() const {
 }
 
 MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
+
+MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const { return isHost_; }
 
 // Default implementation, which can be specialized by subclasses.
 MODULAR_CXX_EXPORT ErrorOrSuccess
@@ -214,8 +217,8 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
     RAISE_ERROR_MESSAGE("offset, len and elem_size are out of range");
   }
-  return DeviceBufferRef::take(
-      new DeviceBuffer(context(), *this, origPtr + byteOffset, byteSize));
+  return DeviceBufferRef::take(new DeviceBuffer(
+      context(), *this, origPtr + byteOffset, byteSize, isHost()));
 }
 
 //
@@ -370,33 +373,61 @@ MODULAR_CXX_EXPORT const Device &DeviceContext::device() const {
   return *device_;
 }
 
+MODULAR_CXX_EXPORT ErrorOr<void *>
+DeviceContext::mallocHost(size_t size) const {
+  ErrorOr<DeviceBufferRef> buf = createHostBuffer(size);
+  if (buf.isError())
+    return buf.takeError();
+  return (*buf)->releasePtr();
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::freeHost(void *ptr) const {
+  DeviceBufferRef buf = createHostBufferOwning(ptr, 1, true);
+  return success();
+}
+
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
-  return allocBuffer(byteSize, ASYNC);
+  return allocBuffer(byteSize, /* isHost = */ false, ASYNC);
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::createBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
-  return allocBuffer(byteSize, SYNC);
+  return allocBuffer(byteSize, /* isHost = */ false, SYNC);
 }
 
-DeviceBufferRef DeviceContext::createBufferOwning(void *ptr, size_t byteSize,
-                                                  bool owning) const {
-  return DeviceBufferRef::take(new DeviceBuffer(*this, ptr, byteSize, owning));
+MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
+DeviceContext::createHostBuffer(size_t byteSize) const {
+  if (byteSize == 0)
+    return this->createBufferOwning(nullptr, 0, true);
+  return allocBuffer(byteSize, /* isHost = */ true, SYNC);
 }
 
-ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
-                                                    SyncMode mode) const {
+MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createBufferOwning(
+    void *ptr, size_t byteSize, bool owning) const {
+  return DeviceBufferRef::take(
+      new DeviceBuffer(*this, ptr, byteSize, /* isHost = */ false, owning));
+}
+
+MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createHostBufferOwning(
+    void *ptr, size_t byteSize, bool owning) const {
+  return DeviceBufferRef::take(
+      new DeviceBuffer(*this, ptr, byteSize, /* isHost = */ true, owning));
+}
+
+ErrorOr<DeviceBufferRef>
+DeviceContext::allocBuffer(size_t byteSize, bool isHost, SyncMode mode) const {
   assert(byteSize != 0);
-  ErrorOr<void *> errPtr = bufferCache().allocate(byteSize, mode);
+  ErrorOr<void *> errPtr = bufferCache().allocate(byteSize, isHost, mode);
   if (errPtr.isError()) {
     return errPtr.takeError();
   }
-  return DeviceBufferRef::take(new DeviceBuffer(*this, *errPtr, byteSize));
+  return DeviceBufferRef::take(
+      new DeviceBuffer(*this, *errPtr, byteSize, isHost));
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>

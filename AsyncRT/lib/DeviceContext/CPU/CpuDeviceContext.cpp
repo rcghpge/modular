@@ -124,16 +124,8 @@ CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
     : DeviceContext(device, std::make_unique<BufferCache>(
                                 *this, 0, 0, device.allocationAlignment())) {}
 
-ErrorOr<void *> CpuDeviceContext::mallocHost(size_t size) const {
-  void *ptr = TCMallocGlobals::tc_new(size, 1);
-  if (ptr == nullptr) {
-    RAISE_ERROR();
-  }
-  return ptr;
-}
-
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                          SyncMode mode) const {
+                                          bool isHost, SyncMode mode) const {
   assert(byteSize != 0);
   *ptr = TCMallocGlobals::tc_new(byteSize, 1);
   if (*ptr == nullptr) {
@@ -142,12 +134,7 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::memFree(void *ptr) const {
-  TCMallocGlobals::tc_delete(ptr);
-  return success();
-}
-
-ErrorOrSuccess CpuDeviceContext::freeHost(void *ptr) const {
+ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) const {
   TCMallocGlobals::tc_delete(ptr);
   return success();
 }

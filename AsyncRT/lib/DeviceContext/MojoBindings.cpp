@@ -122,6 +122,16 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
   return errMsg;
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_createHostBuffer(
+    const DeviceBuffer **result, void **devicePtr, const DeviceContext *ctx,
+    size_t len, size_t elemSize) {
+  const char *errMsg = checkRef(result, ctx->createHostBuffer(len * elemSize));
+  if (errMsg == nullptr) {
+    *devicePtr = (*result)->ptr();
+  }
+  return errMsg;
+}
+
 // TODO: Remove the V1 compatibility.
 MODULAR_EXPORT void AsyncRT_DeviceContext_createBuffer_owning(
     const DeviceBuffer **result, const DeviceContext *ctx, void *devicePtr,
