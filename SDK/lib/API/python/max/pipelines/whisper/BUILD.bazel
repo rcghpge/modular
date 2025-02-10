@@ -1,16 +1,12 @@
-load("//bazel:api.bzl", "modular_py_library", "requirement")
+load("//bazel:api.bzl", "modular_py_library")
 
 modular_py_library(
     name = "whisper",
     srcs = glob([
         "**/*.py",
-        "*.py",
     ]),
-    imports = [".."],
+    imports = ["../../.."],
     deps = [
-        requirement("numpy"),
-        requirement("sentencepiece"),
-        requirement("transformers"),
         "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/engine",
         "//SDK/lib/API/python/max/graph",

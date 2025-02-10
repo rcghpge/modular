@@ -10,10 +10,10 @@ modular_py_library(
         # TODO(AIPIPE-287): remove dependency on torch.
         requirement("torch"),
         requirement("gguf"),
+        requirement("scipy"),
         requirement("sentencepiece"),
         # Safetensors conversion (safetensor_converter.py) uses transformers.
         requirement("transformers"),
-        requirement("scipy"),
         "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/engine",
         "//SDK/lib/API/python/max/graph",
