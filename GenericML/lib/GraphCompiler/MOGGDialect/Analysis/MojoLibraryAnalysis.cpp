@@ -11,11 +11,10 @@
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "AsyncRT/Runtime/Runtime.h"
-#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/LITDialect/LITUtils.h"
+#include "KGEN/MOGGPreElab/MOGGDecorators.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
@@ -160,7 +159,7 @@ MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
     return generator->emitError("couldn't not retrieve specialized signature");
   };
 
-  FuncTypeGeneratorType signature =
+  KGEN::FuncTypeGeneratorType signature =
       generator.getFuncTypeGenerator().getSpecializedGenerator(params,
                                                                emitError);
   if (!signature)

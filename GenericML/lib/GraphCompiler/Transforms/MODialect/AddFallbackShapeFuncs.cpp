@@ -4,12 +4,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Index/IR/IndexOps.h"
+
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/MOGGPreElab/MOGGDecorators.h"
 
 #include <numeric>
 

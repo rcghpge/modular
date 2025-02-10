@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/MOGGPreElab/MOGGDecorators.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/BuiltinOps.h"
