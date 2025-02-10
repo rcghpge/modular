@@ -1366,10 +1366,9 @@ def MO_SelectOp : MO_TensorOp<"select", [
 
 def MO_SliceOp : MO_TensorOp<"slice", [
   MO_DefaultParameterization,
-  DeclareOpInterfaceMethods<MO_DeviceInput>,
-  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
-  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Slice operation";
   let description = [{
@@ -1428,7 +1427,6 @@ def MO_SliceOp : MO_TensorOp<"slice", [
 
 def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
   MO_DefaultParameterization,
-  DeclareOpInterfaceMethods<MO_DeviceInput>,
   DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Slice dim operation";
