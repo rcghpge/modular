@@ -4,6 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifdef __clang__
+// Silence warnings of the form 'no argument for the '...' parameter of a
+// variadic macro is a C++20 extension.' This comes from TYPED_TEST_SUITE which
+// uses variadic macros.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++20-extensions"
+#endif
+
 #include "SDK/EngineCLI/Benchmark/InputGenerator.h"
 #include "SDK/EngineCLI/Benchmark/Tensor.h"
 #include "SDK/EngineCLI/Common/InputGenerationSchema.h"
@@ -1209,3 +1217,6 @@ TEST(QueryGeneratorIntegration, unspecifiedInputs) {
 }
 
 // TODO: Test for duplicate input names or indices in schema
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
