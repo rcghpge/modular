@@ -16,10 +16,6 @@ lit_tests(
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
-    target_compatible_with = select({
-        "//:asan": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
     tools = [
         "//KGEN/tools/mojo",
     ],
