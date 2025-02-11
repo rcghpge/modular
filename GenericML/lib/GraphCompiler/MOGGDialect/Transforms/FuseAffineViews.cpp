@@ -22,6 +22,7 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/CSE.h"
+#include <KGEN/MOGGPreElab/MOGGUtils.h>
 
 using namespace M;
 
@@ -311,6 +312,10 @@ struct FuseAffineViewsPass
         oldStoreOpParameters[4],                           // address_space
         stridesOrError.takeValue(),                        // static_strides
         KGEN::ParamDeclRefAttr::get(elementAlignmentAttr), // element_alignment
+        builder.getBoolAttr(
+            KGEN::MOGGPreElab::kIOUnknownMut), // mut (of IOSpec)
+        builder.getIndexAttr(
+            KGEN::MOGGPreElab::kIOUnknownInput) // input (of IOSpec)
     };
 
     auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
