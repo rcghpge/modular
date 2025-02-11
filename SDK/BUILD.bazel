@@ -206,3 +206,9 @@ py_repl(
         requirement("pytest"),
     ],
 )
+
+alias(
+    name = "pipelines",
+    actual = "//SDK/lib/API/python/max/entrypoints:pipelines",
+    tags = ["maybe-unused"],
+)
