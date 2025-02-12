@@ -61,30 +61,6 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
   ];
 }
 
-def TestRunningMogg: Pass<"test-run-mogg", "ModuleOp"> {
-  let summary = "A pass which executes and prints the given graph";
-  let description = [{
-    A pass to test we can execute a kernel directly without MGP.
-
-    This has no other purpose than a test target.
-  }];
-
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::HLCF::HLCFDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::ROCDL::ROCDLDialect",
-    "mlir::index::IndexDialect",
-  ];
-}
-
-
 def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let summary = "Fuse kernels based on patterns.";
   let description = [{
