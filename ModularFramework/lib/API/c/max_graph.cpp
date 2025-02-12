@@ -101,7 +101,7 @@ MODULAR_API_EXPORT MlirNamedAttribute MAXG_weightsAttr(const char *filepath,
 
   // Ensure that offset is aligned. mmap saves pages of data.
   int alignment = llvm::sys::fs::mapped_file_region::alignment();
-  size_t alignedOffset = (offsetBytes / alignment) * alignment;
+  size_t alignedOffset = llvm::divideCeil(offsetBytes, alignment);
   int64_t alignedSize = sizeBytes + (offsetBytes - alignedOffset);
 
   // mmap the provided filepath as read-only.
