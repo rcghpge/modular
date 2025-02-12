@@ -5,6 +5,7 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//GenericML:CompileDriver",
+        "//GenericML:GraphCompiler",
         "//Support:Base",
         "//Support:Globals",
         "@llvm-project//mlir:BytecodeReader",
