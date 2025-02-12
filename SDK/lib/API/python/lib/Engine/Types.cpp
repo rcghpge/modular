@@ -122,6 +122,8 @@ std::string M::core::printDType(M_Dtype dtype) {
     return "DType.bfloat16";
   case M_FLOAT8_E4M3:
     return "DType.float8_e4m3";
+  case M_FLOAT8_E4M3FN:
+    return "DType.float8_e4m3fn";
   case M_FLOAT8_E4M3FNUZ:
     return "DType.float8_e4m3fnuz";
   case M_FLOAT8_E5M2:
