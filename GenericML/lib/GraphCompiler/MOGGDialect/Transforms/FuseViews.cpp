@@ -330,25 +330,23 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
         SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
 
-        // Load the function to build StaticTensorSpec parameter.
-        ErrorOr<KGEN::SymbolConstantAttr> buildSpecSymbol =
-            mojoLibraryAnalysis.getSpecializedKernel(
-                Utils::DPSRebuildTensorSpecsWithStrides, buildSpecParams);
-
-        if (failed(buildSpecSymbol))
-          return buildSpecSymbol.takeError();
+        SmallVector<mlir::TypedAttr> lambdaArgs{oldTensorSpecttr,
+                                                viewStridesAttr};
 
         // Create parametric call which produces the static spec
-        SmallVector<mlir::TypedAttr> lambdaArgs{
-            *buildSpecSymbol, oldTensorSpecttr, viewStridesAttr};
+        auto maybeNewLambda = mojoLibraryAnalysis.buildParameterCall(
+            Utils::DPSRebuildTensorSpecsWithStrides, buildSpecParams,
+            lambdaArgs);
 
-        auto resultTy = buildSpecSymbol->getType().getBody().getResults()[0];
-        auto newLambda = KGEN::ParamOperatorAttr::get(KGEN::POC::Apply,
-                                                      lambdaArgs, resultTy);
+        if (failed(maybeNewLambda))
+          return maybeNewLambda.takeError();
+
+        auto newLambda = maybeNewLambda.takeValue();
 
         auto newParamName = mlir::StringAttr::get(
             newLambda.getContext(), oldAttrName + "_MOGG_FUSE_VIEWS");
-        auto newParam = KGEN::ParamDeclAttr::get(newParamName, resultTy);
+        auto newParam =
+            KGEN::ParamDeclAttr::get(newParamName, newLambda.getType());
         auto paramDeclarationOp = builder.create<KGEN::ParamDeclareOp>(
             operand.getLoc(), newParam, newLambda);
 

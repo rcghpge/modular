@@ -87,7 +87,7 @@ struct FuseAffineViewsPass
   //
   // Returns the new kgen tensor value.
   static Value reshapeKGENManagedTensorSlice(
-      Value kgenTensor, MO::TensorType fromType, MO::TensorType toType,
+      MOGG::ToKGENOp kgenTensor, MO::TensorType fromType, MO::TensorType toType,
       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, OpBuilder &builder,
       TypeManager &typeManager, Location loc) {
 
@@ -240,8 +240,9 @@ struct FuseAffineViewsPass
   template <typename ViewOp>
   void rewriteOutputLambdaInplaceKGEN(
       KGEN::ParamDeclareRegionOp outputLambdaToRewrite,
-      Value kgenNewOutputTensor, ViewOp viewOpUser, OpBuilder &builder,
-      MojoLibraryAnalysis &mojoLibraryAnalysis, TypeManager &typeManager) {
+      Value kgenNewOutputTensor, ParamDeclAttr newTensorSpec, ViewOp viewOpUser,
+      OpBuilder &builder, MojoLibraryAnalysis &mojoLibraryAnalysis,
+      TypeManager &typeManager) {
 
     MO::TensorType newOutputTensorTy = viewOpUser.getResult().getType();
 
@@ -315,7 +316,8 @@ struct FuseAffineViewsPass
         builder.getBoolAttr(
             KGEN::MOGGPreElab::kIOUnknownMut), // mut (of IOSpec)
         builder.getIndexAttr(
-            KGEN::MOGGPreElab::kIOUnknownInput) // input (of IOSpec)
+            KGEN::MOGGPreElab::kIOUnknownInput), // input (of IOSpec)
+        KGEN::ParamDeclRefAttr::get(newTensorSpec),
     };
 
     auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
@@ -372,7 +374,7 @@ struct FuseAffineViewsPass
     // the expected type of the signature (as now we might have lambdas whose
     // index list length does not match rank).
     ErrorOr<KGEN::ParamDeclAttr> maybeNewOutputTensorSpec =
-        M::MO::bindStaticTensorSpecAttrWithoutLambdas(
+        M::MO::bindStaticTensorSpecAttr(
             kernel, newOutputPlaceholder->getResult(0), mojoLibraryAnalysis,
             typeManager, builder, "affine_view_fusion_tensor_spec");
     ASSERT_STREAM(!maybeNewOutputTensorSpec.isError(),
@@ -429,9 +431,9 @@ struct FuseAffineViewsPass
                      "lambda for the kernel!");
 
     // Finally rewrite the output lambda.
-    rewriteOutputLambdaInplaceKGEN(outputLambdaToRewrite,
-                                   newResultToKGEN.getResult(), viewOpUser,
-                                   builder, mojoLibraryAnalysis, typeManager);
+    rewriteOutputLambdaInplaceKGEN(
+        outputLambdaToRewrite, newResultToKGEN.getResult(), newOutputTensorSpec,
+        viewOpUser, builder, mojoLibraryAnalysis, typeManager);
 
     // Change graph level type of the mogg kernel op and replace the
     // old view.

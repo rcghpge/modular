@@ -36,9 +36,14 @@ constexpr llvm::StringLiteral DPSTensorGetTensorSpecWithoutLambdas =
     "lambdas";
 
 constexpr llvm::StringLiteral DPSBuildTensorSpecs = "build_static_tensor_specs";
+constexpr llvm::StringLiteral DPSBuildTensorSpecsTuple =
+    "build_static_tensor_specs_tuple";
 
-constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithLambdas =
-    "rebuild_static_tensor_specs_with_lambdas";
+constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithInputLambda =
+    "rebuild_static_tensor_specs_with_input_lambda";
+
+constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithOutputLambda =
+    "rebuild_static_tensor_specs_with_output_lambda";
 
 constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithStrides =
     "rebuild_static_tensor_specs_with_strides";

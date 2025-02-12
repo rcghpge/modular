@@ -239,26 +239,43 @@ void fuseConstant(MOGG::KernelOp kernel) {
 
 void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
   static const std::string prefix = "_";
-  llvm::StringSet<> parameters;
+  llvm::DenseSet<StringAttr> parameters;
+
   for (Operation *kernelOp : kernelOps) {
+    auto ctx = kernelOp->getContext();
+
     llvm::StringMap<TypedAttr> nameToDecl;
     mlir::AttrTypeReplacer walker;
     walker.addReplacement([&](KGEN::ParamDeclAttr oldDecl) {
       std::string oldName =
           KGEN::LIT::demangleIfNeeded(oldDecl).getName().str();
-      std::string newName = oldName;
+
+      StringAttr newName = StringAttr::get(ctx, oldName);
       while (parameters.contains(newName))
-        newName = prefix + newName;
+        newName = StringAttr::get(ctx, prefix + newName.strref());
 
       auto newDeclRef = KGEN::ParamDeclRefAttr::get(newName, oldDecl.getType());
-      nameToDecl.insert({oldDecl.getName(), cast<TypedAttr>(newDeclRef)});
-      parameters.insert(newName);
+      nameToDecl.insert({oldDecl.getName(), newDeclRef});
+      parameters.insert(newDeclRef.getName());
 
       return KGEN::ParamDeclAttr::get(newDeclRef);
     });
     walker.recursivelyReplaceElementsIn(kernelOp, /*replaceAttrs=*/true,
                                         /*replaceLocs=*/false,
                                         /*replaceTypes=*/true);
+
+    // mogg.to_kgen operations hold StringAttrs rather than ParamDeclRefAttr,
+    // so those must be explicitly renamed to ensure consistency.
+    kernelOp->walk([&](MOGG::ToKGENOp toKGEN) {
+      if (std::optional<StringAttr> specName =
+              toKGEN.getStaticTensorSpecName()) {
+        if (auto it = nameToDecl.find(*specName); it != nameToDecl.end()) {
+          StringAttr name = cast<KGEN::ParamDeclRefAttr>(it->second).getName();
+          toKGEN.setStaticTensorSpecNameAttr(name);
+        }
+      }
+    });
+
     MOGG::remapTypesAndAttrs(kernelOp, nameToDecl);
 
     if (auto asKernelOp = dyn_cast<KernelOp>(kernelOp)) {

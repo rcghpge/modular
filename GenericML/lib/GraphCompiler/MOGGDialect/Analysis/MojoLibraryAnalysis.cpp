@@ -168,6 +168,24 @@ MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
   return KGEN::SymbolConstantAttr::get(generator, signature, params);
 }
 
+ErrorOr<TypedAttr>
+MojoLibraryAnalysis::buildParameterCall(llvm::StringLiteral callee,
+                                        ArrayRef<TypedAttr> parameters,
+                                        ArrayRef<TypedAttr> operands) {
+  ErrorOr<KGEN::SymbolConstantAttr> maybeSymbol =
+      getSpecializedKernel(callee, parameters);
+
+  if (failed(maybeSymbol))
+    return maybeSymbol.takeError();
+
+  SmallVector<TypedAttr> allOperands;
+  allOperands.push_back(*maybeSymbol);
+  allOperands.append(operands.begin(), operands.end());
+
+  auto resultTy = maybeSymbol->getType().getBody().getResults()[0];
+  return KGEN::ParamOperatorAttr::get(KGEN::POC::Apply, allOperands, resultTy);
+}
+
 llvm::MemoryBufferRef MojoLibraryAnalysis::internMLIRFile(
     std::unique_ptr<llvm::MemoryBuffer> buffer) {
   unsigned bufferId =

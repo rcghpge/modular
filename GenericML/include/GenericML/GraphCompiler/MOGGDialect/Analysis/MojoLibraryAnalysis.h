@@ -99,6 +99,13 @@ public:
   ErrorOr<KGEN::SymbolConstantAttr>
   getSpecializedKernel(StringRef name, ArrayRef<TypedAttr> params);
 
+  /// Build the KGEN::ParamOperatorAttr which calls the specified callee with
+  /// the given parameters and operands. The callee is resolved using the
+  /// library analysis.
+  ErrorOr<TypedAttr> buildParameterCall(llvm::StringLiteral callee,
+                                        ArrayRef<TypedAttr> parameters,
+                                        ArrayRef<TypedAttr> operands);
+
   /// Return true if the provided kernel or shape function has the input
   /// parameter named `parameterName`.
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
