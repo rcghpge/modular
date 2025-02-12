@@ -273,7 +273,6 @@ static ErrorOr<size_t> getSystemValue(int name) {
 }
 
 ErrorOr<DeviceContext::MemInfo> CpuDeviceContext::getMemoryInfo() const {
-  // TODO support platforms besides UNIX.
   MemInfo info;
   auto numPages = getSystemValue(_SC_PHYS_PAGES);
   if (numPages.isError())
@@ -285,9 +284,18 @@ ErrorOr<DeviceContext::MemInfo> CpuDeviceContext::getMemoryInfo() const {
   rusage usage;
   if (-1 == getrusage(RUSAGE_SELF, &usage))
     RAISE_ERROR_MESSAGE("Failed to get current memory usage via rusage");
-  // This is the maximum resident set size used (in kilobytes).
+
+// The unit for the _SC_PAGE_SIZE is bytes. The unit for the ru_maxrss is
+// kilobytes on Linux and bytes on MacOS.
+#ifdef MODULAR_LINUX
+  const size_t maxrssMultiple = 1024;
+#else // macOS
+  const size_t maxrssMultiple = 1;
+#endif
+
+  // This is the maximum resident set size used.
   // Current memory use may be lower, this is the "high water mark".
-  size_t used = usage.ru_maxrss * 1024;
+  size_t used = usage.ru_maxrss * maxrssMultiple;
   // Total memory = number of pages times the page size.
   info.total = numPages.takeValue() * pageSize.takeValue();
   // Free memory = total memory minus memory in use.
