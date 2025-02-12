@@ -854,9 +854,7 @@ def MOGG_AllocateAsyncRefOp : MOGG_Op<"allocate_async_ref_for", [Pure]> {
   }];
 }
 
-def MOGG_DeallocateAsyncRefOp : MOGG_Op<"deallocate_async_ref", [
-  HasParent<"MOGG::GenericCompiledRegionOp">
-]> {
+def MOGG_DeallocateAsyncRefOp : MOGG_Op<"deallocate_async_ref"> {
   let arguments = (ins Variadic<PointerOf<AnyType>>:$asyncRefs);
   let summary = "Deallocate the async value ref";
 
@@ -927,6 +925,27 @@ def MOGG_UnpackFromAsyncRef : MOGG_Op<"unpack_from_async_ref", [Pure]> {
 
   let assemblyFormat = [{
     `(` $inputAsync `)` attr-dict `:` qualified(type($resultVal))
+  }];
+}
+
+def MOGG_TransferAsyncRef : MOGG_Op<"transfer_async_ref", [Pure]> {
+  let arguments = (ins PointerOf<KGEN_NoneType>:$asyncSrc);
+  let results = (outs PointerOf<KGEN_NoneType>:$asyncDst);
+  let summary = "Transfer the ownership of an async ref to a new one.";
+
+  let description = [{
+    Transfer the ownership of an async ref to a new one. I.e,
+
+    ```mlir
+      %dst = mogg.transfer_async_ref(%src)
+      // is equivalent to
+      %async = allocate_async_value()
+      mogg.call "builtin.transfer_async_ref"(%kgen, %async)
+    ```
+  }];
+
+  let assemblyFormat = [{
+    `(` $asyncSrc `)` attr-dict
   }];
 }
 
