@@ -242,7 +242,6 @@ We can set `num_dps_outputs=0` if needed:
 ```python
 @compiler.register("blah", **num_dps_outputs=0**)
 struct Blah:
-    @uses_opaque
     @always_inline
     @staticmethod
     fn execute[
@@ -269,7 +268,6 @@ and things should work as you expect:
     "continuous_batching_kv_cache_collection_h8_d128_bshd", num_dps_outputs=0
 )
 struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
-    @uses_opaque
     @always_inline
     @staticmethod
     fn execute[
