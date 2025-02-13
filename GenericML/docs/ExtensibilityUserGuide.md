@@ -174,10 +174,12 @@ simpler implementation of the kernel (e.g. not parallelized).
 
 Any additional parameters are specially handled by the graph compiler.
 
-### **Autospecialization**
+### **Compile-Time Tensor Information**
 
 In order to access static information about tensors (e.g. shape) from the graph
-compiler we use syntax like:
+compiler we use the `static_spec` parameter of the `ManagedTensorSlice`.
+The `ManagedTensorSlice` provides aliases for the commonly accessed compile-time
+information of each tensor.
 
 ```python
 fn execute[
@@ -187,33 +189,23 @@ fn execute[
     input: ManagedTensorSlice[output.type, output.rank],
     ctx: MojoCallContextPtr,
 ) raises:
-  alias output_static_shape = compiler.specsof[output.type, output.rank](
-      "output" # must correspond to the name of the argument!
-  ).shape
+    alias static_shape = input._static_shape
+    alias static_strides = input._static_strides
+    alias alignment = input.alignment
+    alias exclusive = input.exclusive
 ```
 
-Right now there are limitations with the current implementation:
+The `static_spec` parameter has the type `StaticTensorSpec[type, rank]`. In
+addition to the information above, the `StaticTensorSpec` also contains the
+fusion lambdas for input/output fusion, which should not be used directly.
 
-- We can only grab the static information of input **ManagedTensorSlices**
+In general, the methods on `ManagedTensorSlice` should be preferred when
+possible. For shape and strides, `ManagedTensorSlice::shape` and
+`ManagedTensorSlice::strides` will do the correct thing. The `_static_shape` and
+`_static_strides` aliases should only be used when in a parameter context.
 
-```python
-fn foo(x: ManagedTensorSlice, y: ManagedTensorSlice):
-   new_slice = copy(x)
-
-   # will fail at the moment
-   compiler.specsof[new_slice.type, new_slice.rank]("new_slice")
-```
-
-- We do not support `specsof` in the list of output parameters
-
-```python
-fn foo(x: ManagedTensorSlice, y: ManagedTensorSlice)
-   # In the list of output parameters! Will fail
- -> MyType[compiler.specsof[x.type, x.rank]("x").shape]()
-   ...
-```
-
-Error messages should stop this if these footguns are detected.
+The `_fused_load` and `_fused_store` methods should be preferred over directly
+accessing the fusion lambdas when loading or storing to a tensor.
 
 ### DPS Operands
 
