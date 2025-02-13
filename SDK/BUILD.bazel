@@ -2,16 +2,10 @@ load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "modular
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_nanobind")
 
-modular_cc_library(
-    name = "DLPack",
-    hdrs = glob(["include/SDK/DLPack/*.h"]),
-)
-
 modular_nanobind_library(
-    name = "DLPackPython",
+    name = "DLPack",
     srcs = glob(["lib/API/python/lib/DLPack/*.cpp"]),
-    hdrs = glob(["include/SDK/DLPack/python/*.h"]),
-    deps = [":DLPack"],
+    hdrs = glob(["include/SDK/DLPack/**/*.h"]),
 )
 
 modular_nanobind_library(
@@ -23,7 +17,7 @@ modular_nanobind_library(
         "//:MLIRBindingsPythonHeaders",
         "//Support:CPythonNanobind",
         "//SDK:DriverPython",
-        "//SDK:DLPackPython",
+        "//SDK:DLPack",
     ],
     tags = ["no-clang-tidy-headers"],
     deps = [
@@ -139,7 +133,7 @@ modular_nanobind_library(
     srcs = glob(["lib/API/python/lib/Driver/*.cpp"]),
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
     nanobind_deps = [
-        "//SDK:DLPackPython",
+        "//SDK:DLPack",
     ],
     deps = [
         "//AsyncRT:DeviceContext",
