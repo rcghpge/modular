@@ -268,6 +268,9 @@ TEST(GPUDeviceContextTest, SubBuffer) {
     }
     EXPECT_EQ(val, i & 127);
   }
+  free(ePtr);
+  free(dPtr);
+  free(aPtr);
 }
 
 TEST(GPUDeviceContextTest, Timers) {
@@ -361,6 +364,7 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
       EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
 
       free(dstPtr);
+      delete[] checkData;
     }
   }
 }
@@ -399,6 +403,7 @@ TEST(GPUDeviceContextTest, CrossContextEvent) {
   EXPECT_NO_ERR(syncEvent->synchronize());
 
   EXPECT_EQ(memcmp(dstPtr->ptr(), checkData, allocLen), 0);
+  delete[] checkData;
 }
 
 } // namespace
