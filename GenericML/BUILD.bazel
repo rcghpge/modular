@@ -791,8 +791,8 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
     copts = ["-iquoteexternal/"],
     local_defines = select({
-        "//:kernel_e2e_gpu_profiling_setting": ["KERNEL_E2E_GPU_PROFILING"],
-        "//:kernel_e2e_gpu_profiling_detailed_setting": ["KERNEL_E2E_GPU_PROFILING_DETAILED"],
+        "//:kernel_e2e_gpu_profiling_setting": ["MODULAR_ENABLE_GPU_PROFILING"],
+        "//:kernel_e2e_gpu_profiling_detailed_setting": ["MODULAR_ENABLE_GPU_PROFILING_DETAILED"],
         "//conditions:default": [],
     }),
     deps = [
