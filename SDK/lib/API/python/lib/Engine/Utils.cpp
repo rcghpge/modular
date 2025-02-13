@@ -57,14 +57,6 @@ std::vector<std::optional<std::string>> core::convertToDimNames(
   return dimNames;
 }
 
-void *core::getUnderlyingPtr(const pybind11::object &obj) {
-  auto *wrapper = reinterpret_cast<pybind11::detail::instance *>(obj.ptr());
-  wrapper->owned = false;
-  void *&valueptr =
-      pybind11::detail::values_and_holders(wrapper).begin()->value_ptr();
-  return valueptr;
-}
-
 void *core::getUnderlyingCapsulePtr(const nb::handle &obj, const char *name) {
   nb::object capsule = nb::detail::mlirApiObjectToCapsule(obj);
   return PyCapsule_GetPointer(capsule.ptr(), name);
