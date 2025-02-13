@@ -1,5 +1,3 @@
-// REQUIRES: disabled
-// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --infer-layouts --mo-to-mogg | FileCheck %s
 
 mo.graph @conv_const_params(
@@ -20,7 +18,9 @@ mo.graph @conv_const_params(
 }
 
 // CHECK-LABEL: mo.graph @conv_const_params
-// CHECK: mogg.call "mo.conv" {{.*}} static_dilations = dense<[-24141, 4352]> : vector<2xi64>, static_padding = dense<[1, 2, 3, -16]> : vector<4xi64>, static_strides = dense<[42, 23]> : vector<2xi64>
+// CHECK: kgen.param.declare MOGG_2_static_strides: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<42>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<23>)]>
+// CHECK: kgen.param.declare MOGG_3_static_dilations: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<-24141>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<4352>)]>
+// CHECK: kgen.param.declare MOGG_4_static_padding: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<1>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<2>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<3>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<-16>)]>
 
 mo.graph @conv_unknown_params(
   %input: !mo.tensor<[4, 3, 3, 1], f32>,
@@ -40,5 +40,4 @@ mo.graph @conv_unknown_params(
 }
 
 // CHECK-LABEL: mo.graph @conv_unknown_params
-
-// CHECK: mogg.call "mo.conv" {{.*}} static_dilations = dense<-9223372036854775808> : vector<2xi64>, static_padding = dense<-9223372036854775808> : vector<4xi64>, static_strides = dense<-9223372036854775808> : vector<2xi64>
+// CHECK: kgen.param.declare MOGG_18_static_padding: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()"), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()"), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()"), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()")]>
