@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/CompiledKernelsContext.h"
-#include "GenericML/Support/Definitions.h"
 #include "GenericML/Support/List.h"
 #include "KGEN/ExecutionEngine/JIT/StaticArchiveLayer.h"
 #include "Runtime/Tensor/Tensor.h"
@@ -145,10 +144,6 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
   // linked to create a shared library. This makes the symbols visible to
   // profilers after this program has run.
   if (loadDebuginfo) {
-#ifndef GENERICML_LINKER_CMD
-    return M::Error("Cannot load debug libraries if no compiler command is "
-                    "given. You are on an unsupported platform.");
-#else
     auto dylibOr = engine->getExecutionSession().createJITDylib(dylibName);
     if (!dylibOr)
       return Error("Could not create JIT dylib");
@@ -210,7 +205,6 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
     dylib.addGenerator(std::move(gen.get()));
     if (auto err = engine->addToSearchOrder(dylibName, &dylib))
       return err.takeError();
-#endif
   } else {
     if (auto err = engine->addIfAbsent<KGEN::StaticArchiveLayer>(
             dylibName, std::move(buf)))

@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES")
@@ -432,7 +431,6 @@ modular_cc_library(
     name = "MODialect",
     srcs = glob(["lib/GraphCompiler/MODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MODialect/*.h"]),
-    local_defines = [],
     deps = [
         ":GraphCompilerMatchers",
         ":Interfaces",
@@ -1077,24 +1075,14 @@ modular_cc_library(
     ],
 )
 
-expand_template(
-    name = "gen_definitions_h",
-    out = "include/GenericML/Support/Definitions.h",
-    substitutions = select({
-        "@platforms//os:macos": {
-            '#cmakedefine GENERICML_LINKER_CMD "@GENERICML_LINKER_CMD@"': '#define GENERICML_LINKER_CMD "clang -Wl,-undefined,dynamic_lookup"',
-        },
-        "@platforms//os:linux": {
-            '#cmakedefine GENERICML_LINKER_CMD "@GENERICML_LINKER_CMD@"': '#define GENERICML_LINKER_CMD "clang"',
-        },
-    }),
-    template = "include/GenericML/Support/Definitions.h.in",
-)
-
 modular_cc_library(
     name = "Support",
     srcs = glob(["lib/Support/*.cpp"]),
-    hdrs = glob(["include/GenericML/Support/*.h"]) + [":gen_definitions_h"],
+    hdrs = glob(["include/GenericML/Support/*.h"]),
+    local_defines = select({
+        "@platforms//os:macos": ["GENERICML_LINKER_CMD=\\\"clang -Wl,-undefined,dynamic_lookup\\\""],
+        "@platforms//os:linux": ["GENERICML_LINKER_CMD=\\\"clang\\\""],
+    }),
     deps = [
         ":API.headers",
         ":DeviceDriver.headers",
