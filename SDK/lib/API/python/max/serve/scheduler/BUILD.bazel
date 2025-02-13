@@ -4,6 +4,7 @@ modular_py_library(
     name = "scheduler",
     srcs = glob(["*.py"]),
     deps = [
+        "//SDK/lib/API/python/max/loggers",
         "//SDK/lib/API/python/max/serve/telemetry",
         requirement("psutil"),
         requirement("sentinel"),
