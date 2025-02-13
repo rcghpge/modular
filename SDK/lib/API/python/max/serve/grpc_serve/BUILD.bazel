@@ -17,7 +17,6 @@ modular_py_library(
         ":grpc_proto",
         "//SDK/lib/API/python/max/engine",
         "//SDK/lib/API/python/max/entrypoints",
-        "//SDK/lib/API/python/max/loggers",
         "//SDK/lib/API/python/max/serve/pipelines",
         "//SDK/lib/API/python/max/serve/router",
         "//SDK/lib/API/python/max/serve/scheduler",
