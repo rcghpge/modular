@@ -47,7 +47,11 @@ public:
   /// `init()`. In general, eager mode has faster bulk materialization API than
   /// the lazy mode. Therefore, if you know you are going to have a full
   /// materialization, use eager mode. Otherwise, lazy mode is more efficient.
-  ErrorOrSuccess init(ArrayRef<std::string> kernelLibraryPaths);
+  ErrorOrSuccess init(ArrayRef<std::string> kernelLibraryPaths = {});
+
+  /// Load an extra kernel library.
+  /// Update in place the bindings and registered kernels.
+  ErrorOrSuccess addKernelLibraryPath(const std::string &kernelLibraryPath);
 
   /// Get the fully materialized module which contains all exported generators
   /// from mojo libraries.
@@ -78,8 +82,16 @@ public:
     return registeredMojoKernelSymbol.contains(name);
   }
 
+  struct KernelCandidate {
+    KernelCandidate(KGEN::GeneratorOp gen, int64_t priority)
+        : generator(gen), priority(priority) {}
+    KGEN::GeneratorOp generator;
+    int64_t priority;
+  };
+
   /// Return the mapping.
-  const llvm::StringMap<std::string> &getRegisteredMojoKernelSymbol() const {
+  const llvm::StringMap<KernelCandidate> &
+  getRegisteredMojoKernelSymbol() const {
     return registeredMojoKernelSymbol;
   }
 
@@ -112,15 +124,15 @@ public:
                                StringRef parameterName);
 
 private:
-  /// Load the user libraries lazily.
-  ErrorOrSuccess
-  loadUserProvidedKernels(ArrayRef<std::string> kernelLibraryPaths);
-
   /// Helper function to update the module and state data but account for
   /// collisions
-  void updateLoadedKernelsForCollisions(
+  ErrorOrSuccess updateLoadedKernelsForCollisions(
       Operation *userModule,
       llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel);
+
+  /// Helper functionn to add `generator` to the maps of registered kernels if
+  /// needed.
+  ErrorOrSuccess updateRegisteredKernelsMap(KGEN::GeneratorOp generator);
 
   /// Internalize an MLIR bytecode buffer into the source manager and return a
   /// buffer reference.
@@ -155,14 +167,16 @@ private:
 
   /// Hold the symbol name mapping for registered mojo kernels. With
   /// struct-based mojo kernels, this will map to the `execute` method.
-  llvm::StringMap<std::string> registeredMojoKernelSymbol;
+  /// The value holds the kernel as well as its priority.
+  llvm::StringMap<KernelCandidate> registeredMojoKernelSymbol;
 
   /// Hold the registered, labeled functions that can be attached to a kernel.
   /// For struct-based mojo kernels, this will map to labeled struct member
   /// methods.
   /// The outer map key is the kernel name. The inner map key is the
   /// function label (example: `mogg.shape` will map to the `shape` method).
-  llvm::StringMap<llvm::StringMap<std::string>> registeredKernelFunctionSymbols;
+  llvm::StringMap<llvm::StringMap<KGEN::GeneratorOp>>
+      registeredKernelFunctionSymbols;
 
   /// MLIR bytecode readers for lazy loading the mojo libraries. Each library
   /// has a dedicated reader.

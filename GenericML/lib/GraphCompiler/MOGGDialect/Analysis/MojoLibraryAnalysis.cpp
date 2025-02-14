@@ -138,8 +138,7 @@ MojoLibraryAnalysis::getRegisteredMojoFunctionFor(StringRef name,
   if (registeredFunction == registeredFunctions->second.end())
     return {};
 
-  auto symbolName = registeredFunction->getValue();
-  return getMojoFunctionNamed(symbolName);
+  return registeredFunction->getValue();
 }
 
 KGEN::GeneratorOp MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) {
@@ -226,53 +225,54 @@ ErrorOr<Operation *> MojoLibraryAnalysis::loadMLIRKernels(
 }
 
 // Load a list of kernels from the provided user libraries.
-ErrorOrSuccess MojoLibraryAnalysis::loadUserProvidedKernels(
-    ArrayRef<std::string> kernelLibraryPaths) {
+ErrorOrSuccess MojoLibraryAnalysis::addKernelLibraryPath(
+    const std::string &kernelLibraryPath) {
 
-  // Load each of the extra user libraries and update the book-keepings.
-  for (StringRef pathRef : kernelLibraryPaths) {
-    std::string path = pathRef.str();
-    llvm::StringMap<KGEN::GeneratorOp> userRawMojoKernel;
-    Operation *userModule;
+  // Load the extra user library and update the book-keepings.
+  llvm::StringMap<KGEN::GeneratorOp> userRawMojoKernel;
+  Operation *userModule;
 
-    if (Filesystem::isMojoBinaryPackagePath(path)) {
-      // Load user library that is a mojo package file.
-      auto userModuleOr = parseMojoPackage(context, path, sourceMgr);
-      if (userModuleOr.isError())
-        return userModuleOr.takeError();
+  if (Filesystem::isMojoBinaryPackagePath(kernelLibraryPath)) {
+    // Load user library that is a mojo package file.
+    auto userModuleOr = parseMojoPackage(context, kernelLibraryPath, sourceMgr);
+    if (userModuleOr.isError())
+      return userModuleOr.takeError();
 
-      userModule = userModuleOr.takeValue().release().getOperation();
+    userModule = userModuleOr.takeValue().release().getOperation();
 
-      if (!userModule)
-        return Error("[MojoLibraryAnalysis] Could not load MOGG Mojo "
-                     "auxiliary binding library");
+    if (!userModule)
+      return Error("[MojoLibraryAnalysis] Could not load MOGG Mojo "
+                   "auxiliary binding library");
 
-      populateMetadata(userModule, userRawMojoKernel);
-      // We read the library from `mojopkg` which means we don't need a lazy
-      // reader for that. We insert this module op into the block because the
-      // block is our centralized container for all module ops (some modules are
-      // fully loaded from `mojopkg` files and some are partially loaded from
-      // `mlirbc` files).
-      block.push_back(userModule);
-    } else {
-      // Load user library that is a mojo mlibrc file.
-      ErrorOr<llvm::MemoryBufferRef> bufOr = readAndInternMLIRFile(path);
-      if (failed(bufOr))
-        return bufOr.takeError();
-      ErrorOr<Operation *> moduleOr =
-          loadMLIRKernels(bufOr.takeValue(), userRawMojoKernel, path);
-      if (failed(moduleOr))
-        return moduleOr.takeError();
-      userModule = moduleOr.takeValue();
-    }
-    updateLoadedKernelsForCollisions(userModule, userRawMojoKernel);
+    populateMetadata(userModule, userRawMojoKernel);
+    // We read the library from `mojopkg` which means we don't need a lazy
+    // reader for that. We insert this module op into the block because the
+    // block is our centralized container for all module ops (some modules are
+    // fully loaded from `mojopkg` files and some are partially loaded from
+    // `mlirbc` files).
+    block.push_back(userModule);
+  } else {
+    // Load user library that is a mojo mlibrc file.
+    ErrorOr<llvm::MemoryBufferRef> bufOr =
+        readAndInternMLIRFile(kernelLibraryPath);
+    if (failed(bufOr))
+      return bufOr.takeError();
+    ErrorOr<Operation *> moduleOr = loadMLIRKernels(
+        bufOr.takeValue(), userRawMojoKernel, kernelLibraryPath);
+    if (failed(moduleOr))
+      return moduleOr.takeError();
+    userModule = moduleOr.takeValue();
   }
+  if (auto updateErr =
+          updateLoadedKernelsForCollisions(userModule, userRawMojoKernel))
+    return Error(Twine("failed to load kernel library ") + kernelLibraryPath +
+                 ":" + updateErr.getError());
 
   return success();
 }
 
 // Update the state in MJA for collisions etc.
-void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
+ErrorOrSuccess MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     Operation *userModule,
     llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel) {
 
@@ -345,18 +345,100 @@ void MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
       continue;
     Operation *duplicate = op.clone();
     module.getBody()->push_back(duplicate);
-    if (auto gen = dyn_cast<KGEN::GeneratorOp>(duplicate))
+    if (auto gen = dyn_cast<KGEN::GeneratorOp>(duplicate)) {
       rawMojoKernel[gen.getSymName()] = gen;
+      if (auto updateErr = updateRegisteredKernelsMap(gen))
+        return updateErr;
+    }
   }
+
+  return success();
 }
 
-// We scan the IR to collect all the candidates and then we evaluate them
-// based on the metadata collected from the generator.
-struct Candidate {
-  Candidate(KGEN::GeneratorOp gen) : generator(gen) {}
-  KGEN::GeneratorOp generator;
-  int64_t priority = -1;
-};
+ErrorOrSuccess
+MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
+  auto registerKernelFunction = [&](StringRef name, StringRef label,
+                                    bool override = true) {
+    if (!registeredKernelFunctionSymbols.contains(name.str()))
+      registeredKernelFunctionSymbols[name.str()] = {};
+
+    if (override ||
+        !registeredKernelFunctionSymbols[name.str()].contains(label.str()))
+      registeredKernelFunctionSymbols[name.str()][label.str()] = generator;
+  };
+
+  auto registerKernelCandidate = [&](StringRef name,
+                                     int64_t priority) -> ErrorOrSuccess {
+    auto it = registeredMojoKernelSymbol.find(name);
+    if (it == registeredMojoKernelSymbol.end()) {
+      // First time we find the kernel, just register it.
+      registeredMojoKernelSymbol.insert(
+          std::make_pair(name, KernelCandidate(generator, priority)));
+      return success();
+    }
+
+    // Returns an error if two kernels have the same priority.
+    int64_t oldPriority = it->getValue().priority;
+    if (oldPriority == priority) {
+      auto diag = mlir::emitError(generator.getLoc(),
+                                  "override of operation has multiple "
+                                  "candidates with the same priority.");
+      diag.attachNote(it->getValue().generator.getLoc())
+          << "override with priority " << priority;
+      return Error("Operation overriding error");
+    }
+
+    // Replace it if the new kernel has an higher priority.
+    if (priority > oldPriority)
+      it->getValue().priority = priority;
+    return success();
+  };
+
+  // Skipping functions that aren't exported.
+  if (!generator.isExported())
+    return success();
+
+  // Check if the generator has a the registration attribute directly
+  // attached.
+  if (auto regs = generator->getAttrOfType<ArrayAttr>(
+          KGEN::MOGGPreElab::kernelRegistrationAttr)) {
+    ArrayRef<Attribute> kernels = regs.getValue();
+    // Each kernel is stored as a pair of name / priority.
+    for (size_t i = 0; i < kernels.size(); i += 2) {
+      auto asString = cast<StringAttr>(kernels[i]).strref();
+      auto intPriority = cast<IntegerAttr>(kernels[i + 1]);
+      if (auto registerErr =
+              registerKernelCandidate(asString, intPriority.getInt()))
+        return registerErr;
+    }
+  }
+  if (auto kernelName = generator->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel)) {
+    if (auto registerErr = registerKernelCandidate(kernelName, /*priority=*/0))
+      return registerErr;
+    registerKernelFunction(kernelName,
+                           KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
+  }
+  if (auto regs = generator->getAttrOfType<ArrayAttr>(
+          KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
+    for (StringRef name : regs.getAsValueRange<StringAttr>())
+      // Don't override NDBuffer shape functions, to ensure new KernelAPI
+      // functions are used when available.
+      registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel,
+                             /*override=*/false);
+  }
+  if (auto name = generator->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
+    registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
+  }
+  if (auto name = generator->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
+    registerKernelFunction(
+        name, KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
+  }
+
+  return success();
+}
 
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
@@ -372,6 +454,9 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   if (failed(moduleOr))
     return moduleOr.takeError();
   module = cast<ModuleOp>(moduleOr.takeValue());
+  for (auto generator : getRawMojoKernels())
+    if (auto updateErr = updateRegisteredKernelsMap(generator))
+      return updateErr;
 
   // Load MOGGPrimitives.mojo
   bufferOr = getEmbeddingsPrimitiveSourceBuffer();
@@ -385,112 +470,15 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   if (failed(moduleOr))
     return moduleOr.takeError();
   Operation *primitiveModule = moduleOr.takeValue();
-  updateLoadedKernelsForCollisions(primitiveModule, primitiveRawMojoKernel);
+  if (auto updateErr = updateLoadedKernelsForCollisions(primitiveModule,
+                                                        primitiveRawMojoKernel))
+    return Error(Twine("failed to load compiled MOGGPrimitives.mojo: ") +
+                 updateErr.getError());
 
-  if (auto loadError = loadUserProvidedKernels(kernelLibraryPaths))
-    return Error(Twine("failed to load user-provided kernels: ") +
-                 loadError.getError());
-
-  auto registerKernelFunction = [&](StringRef name, StringRef label,
-                                    StringRef symName, bool override = true) {
-    if (!registeredKernelFunctionSymbols.contains(name.str()))
-      registeredKernelFunctionSymbols[name.str()] = {};
-
-    if (override ||
-        !registeredKernelFunctionSymbols[name.str()].contains(label.str()))
-      registeredKernelFunctionSymbols[name.str()][label.str()] = symName.str();
-  };
-
-  // Iterate over the available generators and check if each matches a mo
-  // operation.
-  DenseMap<StringRef, SmallVector<Candidate>> candidates;
-  for (auto generator : getRawMojoKernels()) {
-    // Skipping functions that aren't exported.
-    if (!generator.isExported())
-      continue;
-
-    // Check if the generator has a the registration attribute directly
-    // attached.
-    if (auto regs = generator->getAttrOfType<ArrayAttr>(
-            KGEN::MOGGPreElab::kernelRegistrationAttr)) {
-      ArrayRef<Attribute> kernels = regs.getValue();
-      // Each kernel is stored as a pair of name / priority.
-      for (size_t i = 0; i < kernels.size(); i += 2) {
-        Candidate candidate = {generator};
-        auto asString = cast<StringAttr>(kernels[i]).strref();
-        auto intPriority = cast<IntegerAttr>(kernels[i + 1]);
-        candidate.priority = intPriority.getInt();
-        candidates[asString].push_back(candidate);
-      }
-    }
-    if (auto kernelName = generator->getAttrOfType<StringAttr>(
-            KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel)) {
-      Candidate candidate = {generator};
-      candidate.priority = 0;
-      candidates[kernelName.strref()].push_back(candidate);
-      registerKernelFunction(kernelName,
-                             KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel,
-                             generator.getSymName());
-    }
-    if (auto regs = generator->getAttrOfType<ArrayAttr>(
-            KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
-      for (StringRef name : regs.getAsValueRange<StringAttr>())
-        // Don't override NDBuffer shape functions, to ensure new KernelAPI
-        // functions are used when available.
-        registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel,
-                               generator.getSymName(), /*override=*/false);
-    }
-    if (auto name = generator->getAttrOfType<StringAttr>(
-            KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
-      registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel,
-                             generator.getSymName());
-    }
-    if (auto name = generator->getAttrOfType<StringAttr>(
-            KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
-      registerKernelFunction(
-          name, KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel,
-          generator.getSymName());
-    }
-  }
-
-  // Look at all kernel implementation candidates and pick the implementation
-  // with the highest priority.
-  for (auto key : candidates) {
-    StringRef moOpName = key.first;
-    SmallVector<Candidate> &candidateFuncs = key.second;
-
-    size_t indexOfHighestPriority = 0;
-    int64_t priority = candidateFuncs[0].priority;
-
-    DenseMap<int64_t, size_t> seenPriorites;
-    seenPriorites[priority] = 0;
-
-    // Pick the kernel with the highest priority.
-    for (size_t i = 1; i < candidateFuncs.size(); ++i) {
-      Candidate c = candidateFuncs[i];
-
-      auto itr = seenPriorites.find(c.priority);
-      if (itr != seenPriorites.end()) {
-        auto diag = mlir::emitError(c.generator.getLoc(),
-                                    "override of operation has multiple "
-                                    "candidates with the same priority.");
-        diag.attachNote(candidateFuncs[itr->second].generator.getLoc())
-            << "override with priority " << c.priority;
-        return Error("Operation overriding error");
-      }
-
-      seenPriorites[c.priority] = i;
-      if (c.priority > priority) {
-        indexOfHighestPriority = i;
-        priority = c.priority;
-      }
-    }
-
-    // The generator we should select.
-    StringRef selection =
-        candidateFuncs[indexOfHighestPriority].generator.getSymName();
-    registeredMojoKernelSymbol[moOpName.str()] = selection.str();
-  }
+  // Load the extra user kernel libraries.
+  for (const std::string &libraryPath : kernelLibraryPaths)
+    if (auto loadErr = addKernelLibraryPath(libraryPath))
+      return loadErr;
 
   return success();
 }
@@ -550,8 +538,7 @@ MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) {
   if (registeredFunction == registeredMojoKernelSymbol.end())
     return nullptr;
 
-  auto symbolName = registeredFunction->getValue();
-  return getMojoFunctionNamed(symbolName);
+  return registeredFunction->getValue().generator;
 }
 
 KGEN::GeneratorOp
