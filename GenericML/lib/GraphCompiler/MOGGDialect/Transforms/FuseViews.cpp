@@ -249,7 +249,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                                  Value operand) {
       stageKernelsForFusion({producerKernel, leaf});
       Value target = leafBlock.getArgument(idx);
-      llvm::StringMap<TypedAttr> paramMapping;
+      llvm::DenseMap<StringAttr, TypedAttr> paramMapping;
 
       MOGG::ToKGENOp producerKernelToKGEN = nullptr;
 

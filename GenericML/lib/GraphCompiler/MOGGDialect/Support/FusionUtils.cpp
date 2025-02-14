@@ -244,7 +244,7 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
   for (Operation *kernelOp : kernelOps) {
     auto ctx = kernelOp->getContext();
 
-    llvm::StringMap<TypedAttr> nameToDecl;
+    llvm::DenseMap<StringAttr, TypedAttr> nameToDecl;
     mlir::AttrTypeReplacer walker;
     walker.addReplacement([&](KGEN::ParamDeclAttr oldDecl) {
       std::string oldName =

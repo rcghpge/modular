@@ -95,7 +95,7 @@ struct MergeDuplicateShapeMaterializationsPass
     KGEN::ParameterUseDefGraph useDefGraph(graph.getRegion());
     useDefGraph.calculate(paramCache);
 
-    llvm::StringMap<TypedAttr> paramMappings;
+    llvm::DenseMap<StringAttr, TypedAttr> paramMappings;
     llvm::SmallVector<Operation *> toErase;
     for (const auto &opUse : useDefGraph.opUses) {
       Operation *op = opUse.first;
