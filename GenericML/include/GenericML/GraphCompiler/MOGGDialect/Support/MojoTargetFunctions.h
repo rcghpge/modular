@@ -45,9 +45,6 @@ constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithInputLambda =
 constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithOutputLambda =
     "rebuild_static_tensor_specs_with_output_lambda";
 
-constexpr llvm::StringLiteral DPSRebuildTensorSpecsWithStrides =
-    "rebuild_static_tensor_specs_with_strides";
-
 constexpr llvm::StringLiteral DPSManagedTensorSliceStoreSIMD =
     "simd_store_into_managed_tensor_slice";
 constexpr llvm::StringLiteral DPSManagedTensorSliceLoadSIMD =

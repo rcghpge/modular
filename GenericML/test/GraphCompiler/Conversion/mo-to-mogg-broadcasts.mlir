@@ -15,7 +15,7 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-DAG: %[[ARR:.*]] = pop.array.create [%[[N]], %[[M]], %[[K]]]
 
 // CHECK: kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::StaticBroadcastTo::build_view
-// CHECK-NEXT: kgen.call @"tensor_internal::managed_tensor_slice::view_copy_impl
+// CHECK: kgen.call @"tensor_internal::managed_tensor_slice::view_copy_impl
 
 // CHECK: mogg.output %[[OUT]] : !mo.tensor<[N, M, K], f32>
 // CHECK: device = #M.device_ref<"cpu", 0>, inputFusionInterface = [""], isAsync = true, isViewOp = true

@@ -318,37 +318,17 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       auto buildTensorSpecWithViewStrides =
           [&](TypedAttr oldTensorSpecttr,
               StringRef oldAttrName) -> ErrorOr<KGEN::ParamDeclRefAttr> {
-        auto tensorType = cast<MO::TensorType>(target.getType());
-
         // Get The view strides from the viewcopy call.
-        const unsigned viewStridesParameterIdx = 4;
-        TypedAttr viewStridesAttr =
-            viewCopyCallOp.getParamValues()[viewStridesParameterIdx];
-
-        // Build the function params
-        TypedAttr dtypeParam = typeManager.lookupDType(tensorType.getDtype());
-        TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
-        SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
-
-        SmallVector<mlir::TypedAttr> lambdaArgs{oldTensorSpecttr,
-                                                viewStridesAttr};
-
-        // Create parametric call which produces the static spec
-        auto maybeNewLambda = mojoLibraryAnalysis.buildParameterCall(
-            Utils::DPSRebuildTensorSpecsWithStrides, buildSpecParams,
-            lambdaArgs);
-
-        if (failed(maybeNewLambda))
-          return maybeNewLambda.takeError();
-
-        auto newLambda = maybeNewLambda.takeValue();
+        constexpr unsigned kViewCopyTensorSpecIndex = 2;
+        TypedAttr viewTensorSpecAttr =
+            viewCopyCallOp.getParamValues()[kViewCopyTensorSpecIndex];
 
         auto newParamName = mlir::StringAttr::get(
-            newLambda.getContext(), oldAttrName + "_MOGG_FUSE_VIEWS");
-        auto newParam =
-            KGEN::ParamDeclAttr::get(newParamName, newLambda.getType());
+            viewCopyCallOp.getContext(), oldAttrName + "_MOGG_FUSE_VIEWS");
+        auto newParam = KGEN::ParamDeclAttr::get(newParamName,
+                                                 viewTensorSpecAttr.getType());
         auto paramDeclarationOp = builder.create<KGEN::ParamDeclareOp>(
-            operand.getLoc(), newParam, newLambda);
+            operand.getLoc(), newParam, viewTensorSpecAttr);
 
         return KGEN::ParamDeclRefAttr::get(
             paramDeclarationOp.getParamDeclAttr());
