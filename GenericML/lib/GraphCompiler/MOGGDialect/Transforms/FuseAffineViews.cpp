@@ -300,7 +300,6 @@ struct FuseAffineViewsPass
 
     // construct fully specialized kgen tensor signature
     // (managed_tensor_slice)
-    ArrayRef<TypedAttr> oldStoreOpParameters = oldStoreOp.getParamValues();
 
     auto strideVals = MOGG::getStridesForTensor(newOutputTensorTy, false);
     auto stridesOrError = typeManager.lowerStaticDims(builder, strideVals);
@@ -308,16 +307,13 @@ struct FuseAffineViewsPass
     SmallVector<TypedAttr> simdStoreInternalParameterValues = {
         typeManager.lookupTypeBinding(newOutputTensorTy.getDtype()), // type
         builder.getIndexAttr(newOutputTensorTy.getRank()),           // rank
-        KGEN::ParamDeclRefAttr::get(simdWidthAttr),        // simd_width
-        oldStoreOpParameters[3],                           // alignment
-        oldStoreOpParameters[4],                           // address_space
-        stridesOrError.takeValue(),                        // static_strides
+        KGEN::ParamDeclRefAttr::get(simdWidthAttr), // simd_width
+        KGEN::ParamDeclRefAttr::get(newTensorSpec),
         KGEN::ParamDeclRefAttr::get(elementAlignmentAttr), // element_alignment
         builder.getBoolAttr(
             KGEN::MOGGPreElab::kIOUnknownMut), // mut (of IOSpec)
         builder.getIndexAttr(
             KGEN::MOGGPreElab::kIOUnknownInput), // input (of IOSpec)
-        KGEN::ParamDeclRefAttr::get(newTensorSpec),
     };
 
     auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
