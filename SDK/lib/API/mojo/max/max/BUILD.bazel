@@ -19,18 +19,9 @@ mojo_library(
     ],
 )
 
-filegroup(
-    name = "max.doc_group",
-    srcs = [
-        ":max",
-    ],
-    output_group = "docs",
-    visibility = ["//visibility:public"],
-)
-
 pkg_files(
     name = "docs",
-    srcs = [":max.doc_group"],
+    srcs = [":max.docs"],
     strip_prefix = strip_prefix.from_pkg("max.docs"),
     visibility = ["//visibility:public"],
 )
