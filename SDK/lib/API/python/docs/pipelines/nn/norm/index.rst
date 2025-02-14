@@ -9,12 +9,12 @@ transformer
 Modules
 =======
 
-* :code_link:`/max/api/python/pipelines/nn/norm/lp_norm|lp_norm`
+* :code_link:`/max/api/python/pipelines/nn/norm/layer_norm|layer_norm`
 * :code_link:`/max/api/python/pipelines/nn/norm/rms_norm|rms_norm`
 
 
 .. toctree::
    :hidden:
 
-   lp_norm
+   layer_norm
    rms_norm
