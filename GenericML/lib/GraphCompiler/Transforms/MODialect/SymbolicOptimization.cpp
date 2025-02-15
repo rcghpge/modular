@@ -2555,7 +2555,7 @@ struct SplitToSlicePattern
     if (axis == 0)
       return rewriter.notifyMatchFailure(
           op, "Avoid clashing with MGP optimization when axis == 0");
-    axis = normalizeAxis(axis, inTy.getRank());
+    axis = normalizeAxis(axis, rank);
 
     // We must have constant split sizes.
     std::optional<SmallVector<int64_t>> maybeSplits =
@@ -2566,7 +2566,8 @@ struct SplitToSlicePattern
 
     // Step is the same for each slice.
     SmallVector<int64_t> step(rank, 1);
-    Value stepVal = rewriter.create<MO::ConstantOp>(loc, step);
+    DeviceRefAttr device = inTy.getDeviceRef();
+    Value stepVal = rewriter.create<MO::ConstantOp>(loc, step, device);
 
     int64_t startVal = 0, splitIndex = 0;
 
@@ -2586,8 +2587,8 @@ struct SplitToSlicePattern
           stop.push_back(std::numeric_limits<int64_t>::max());
         }
       }
-      Value startVal = rewriter.create<MO::ConstantOp>(loc, start);
-      Value stopVal = rewriter.create<MO::ConstantOp>(loc, stop);
+      Value startVal = rewriter.create<MO::ConstantOp>(loc, start, device);
+      Value stopVal = rewriter.create<MO::ConstantOp>(loc, stop, device);
 
       Value split = rewriter.create<MO::SliceOp>(loc, result.getType(), in,
                                                  startVal, stopVal, stepVal);
