@@ -434,12 +434,6 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
           newOutBufferTy.getDeviceRef(), newOutBufferTy.getMetadata());
     }
 
-    if (auto funcOutListTy = dyn_cast<ListType>(funcOutTy)) {
-      auto newOutListTy = cast<ListType>(newOutTy);
-      newResTy = ListType::get(funcOutListTy.getContext(),
-                               newOutListTy.getElementType());
-    }
-
     newResTypes.push_back(newResTy);
   }
 
