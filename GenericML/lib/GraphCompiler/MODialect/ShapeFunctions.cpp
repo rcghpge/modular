@@ -1767,8 +1767,7 @@ propagateShape(ArrayRef<ParamBinding> bindings,
   KGEN::ParameterEvaluator evaluator;
   mlir::AttrTypeReplacer replacer;
   replacer.addReplacement([&](KGEN::ParamDeclRefAttr declRef) -> Attribute {
-    Attribute resolvedAttr = evaluator.getReboundAttribute(declRef);
-    return resolvedAttr;
+    return evaluator.getReboundAttribute(declRef);
   });
 
   // Process individual ops and propagate by simple substitution.

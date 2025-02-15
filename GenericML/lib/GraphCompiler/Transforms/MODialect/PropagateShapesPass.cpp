@@ -929,8 +929,7 @@ struct PropagateShapes {
     // replacer and 1 in evaluator.
     mlir::AttrTypeReplacer replacer;
     replacer.addReplacement([&](KGEN::ParamDeclRefAttr declRef) -> Attribute {
-      Attribute resolvedAttr = evaluator.getReboundAttribute(declRef);
-      return resolvedAttr;
+      return evaluator.getReboundAttribute(declRef);
     });
 
     // A stack of ops to be "evaluated", i.e., the op in the back is the one to
@@ -998,8 +997,7 @@ struct PropagateShapes {
       // Then handle existing `kgen.param.declare`.
       if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
-        auto foldedRhsAttr =
-            cast<TypedAttr>(evaluator.getReboundAttribute(declOp.getValue()));
+        auto foldedRhsAttr = evaluator.getReboundAttribute(declOp.getValue());
 
         // Apply shape-inference specific folding
         foldedRhsAttr = tryFoldExprAttr(foldedRhsAttr);
