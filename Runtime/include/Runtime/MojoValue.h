@@ -105,9 +105,9 @@ private:
   DestructorFn destructor = nullptr;
   /// Does the mojo value own this value. Data not freed and destructor not run
   /// if not owned.
-  bool owning;
+  bool owning = false;
   /// Should the mojovalue free its pointer.
-  bool shouldFree;
+  bool shouldFree = false;
   /// Type tag.
   Tag tag;
 };
