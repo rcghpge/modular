@@ -75,14 +75,11 @@ struct JitCompileKernels
     KGEN::CompilerTimeTraceScope traceScope("jit-compile-kernels-run-on-pass",
                                             graph->getName().getStringRef());
 
-    // We can optionally override
-    DenseMap<Operation *, std::string> unusedOverrideMap;
-
     KernelBuildType bt = KernelBuildType::kRelease;
 
     // For each (virtual) device used by the graph...
     auto err = compileToBinary(
-        graph, mojoLibraryAnalysis, unusedOverrideMap, dumpStub.getValue(),
+        graph, mojoLibraryAnalysis, dumpStub.getValue(),
         createMOGGReproducers.getValue(), saveTempPrefix.getValue(),
         minimumCpuAlignment.getValue(), splitBinaryCompile.getValue(),
         timeMOGGCompile.getValue(), dryRun.getValue(),
