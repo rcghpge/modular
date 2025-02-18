@@ -231,7 +231,7 @@ bool BufferCache::allocateChunk() {
   }
   void *ptr = nullptr;
   ErrorOrSuccess err =
-      ctx_.memAlloc(&ptr, allocSize, false, DeviceContext::SYNC);
+      ctx_.memAlloc(&ptr, allocSize, DeviceContext::AllocMode::SYNC);
   if (err.isError()) {
     if (doLog_) {
       errOut() << "##(" << deviceDescription_ << ":" << this
@@ -411,13 +411,24 @@ void BufferCache::clear() {
   unusedDescs_ = nullptr;
 }
 
-ErrorOr<void *> BufferCache::allocate(size_t size, bool isHost,
-                                      DeviceContext::SyncMode mode) {
+ErrorOr<void *> BufferCache::allocate(size_t size,
+                                      DeviceContext::AllocMode mode) {
   assert(size != 0);
   void *buf = nullptr;
   // Only attempt to allocate from the buffer cache if this is an on-device
   // allocation.
-  if ((chunkSize_ != 0) && !isHost) {
+  if (mode == DeviceContext::AllocMode::HOST) {
+    ErrorOrSuccess err =
+        ctx_.memAlloc(&buf, size, DeviceContext::AllocMode::HOST);
+    if (err.isError()) {
+      return err.takeError();
+    }
+    return buf;
+  }
+
+  assert((mode == DeviceContext::AllocMode::ASYNC) ||
+         (mode == DeviceContext::AllocMode::SYNC));
+  if (chunkSize_ != 0) {
     size = (size + alignmentOffset_) & alignmentMask_;
 
     if (size <= chunkSize_) {
@@ -433,7 +444,7 @@ ErrorOr<void *> BufferCache::allocate(size_t size, bool isHost,
     // the request. If the cache is disabled, the we pass on the allocation
     // mode.
     ErrorOrSuccess err = ctx_.memAlloc(
-        &buf, size, isHost, (chunkSize_ != 0) ? DeviceContext::SYNC : mode);
+        &buf, size, (chunkSize_ != 0) ? DeviceContext::AllocMode::SYNC : mode);
     if (err.isError()) {
       if (doLog_) {
         errOut() << "##(" << deviceDescription_ << ":" << this

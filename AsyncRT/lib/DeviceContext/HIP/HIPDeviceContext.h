@@ -286,8 +286,8 @@ private:
   mutable std::mutex mu_;
   mutable llvm::StringMap<HIPModuleFunctionRef> funcMap_;
 
-  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize, bool isHost,
-                          SyncMode mode) const override;
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                          AllocMode mode) const override;
   ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
 };
 

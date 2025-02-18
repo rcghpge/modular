@@ -335,13 +335,16 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
         checkData[i] = (srcDeviceId * 8) + dstDeviceId + i;
       }
 
-      ASSIGN_NO_ERR(DeviceBufferRef, srcPtr,
+      ASSIGN_NO_ERR(DeviceBufferRef, srcHostBuf,
                     srcCtx->createHostBuffer(allocLen));
-      ASSIGN_NO_ERR(DeviceBufferRef, srcBuf,
+      ASSIGN_NO_ERR(DeviceBufferRef, srcDevBuf,
                     srcCtx->enqueueCreateBuffer(allocLen));
-      ASSIGN_NO_ERR(DeviceBufferRef, dstBuf,
+      ASSIGN_NO_ERR(DeviceBufferRef, dstDevBuf,
                     dstCtx->enqueueCreateBuffer(allocLen));
+      ASSIGN_NO_ERR(DeviceBufferRef, dstHostBuf,
+                    dstCtx->createHostBuffer(allocLen));
 
+      char *dstHostPtr = static_cast<char *>(dstHostBuf->ptr());
       char *dstPtr = static_cast<char *>(malloc(allocLen));
       EXPECT_NE(dstPtr, nullptr);
       // Initialize with known bad values.
@@ -349,19 +352,22 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
         // Use a different factor for i than the checkData, so that we can't
         // ever overlap.
         dstPtr[i] = -static_cast<char>((7 + 2 * i) & 127);
+        dstHostPtr[i] = -static_cast<char>((7 + 2 * i) & 127);
       }
 
       // Copy between different buffers.
-      memcpy(srcPtr->ptr(), checkData, allocLen);
-      EXPECT_NO_ERR(srcPtr->copyTo(*srcBuf));
-      EXPECT_NO_ERR(srcBuf->copyTo(*dstBuf));
-      EXPECT_NO_ERR(dstCtx->enqueueCopyFromDevice(dstPtr, *dstBuf));
+      memcpy(srcHostBuf->ptr(), checkData, allocLen);
+      EXPECT_NO_ERR(srcHostBuf->copyTo(*srcDevBuf));
+      EXPECT_NO_ERR(srcDevBuf->copyTo(*dstDevBuf));
+      EXPECT_NO_ERR(dstCtx->enqueueCopyFromDevice(dstPtr, *dstDevBuf));
+      EXPECT_NO_ERR(srcHostBuf->copyTo(*dstHostBuf));
 
       // Ensure that all copy operations have finished.
       EXPECT_NO_ERR(dstCtx->synchronize());
       EXPECT_NO_ERR(srcCtx->synchronize());
 
       EXPECT_EQ(memcmp(dstPtr, checkData, allocLen), 0);
+      EXPECT_EQ(memcmp(dstHostPtr, checkData, allocLen), 0);
 
       free(dstPtr);
       delete[] checkData;
@@ -382,27 +388,31 @@ TEST(GPUDeviceContextTest, CrossContextEvent) {
     checkData[i] = i;
   }
 
-  ASSIGN_NO_ERR(DeviceBufferRef, srcPtr, srcCtx->createHostBuffer(allocLen));
-  ASSIGN_NO_ERR(DeviceBufferRef, dstPtr, dstCtx->createHostBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, srcHostBuf,
+                srcCtx->createHostBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstHostBuf,
+                dstCtx->createHostBuffer(allocLen));
 
-  memcpy(srcPtr->ptr(), checkData, allocLen);
+  memcpy(srcHostBuf->ptr(), checkData, allocLen);
 
-  ASSIGN_NO_ERR(DeviceBufferRef, srcBuf, srcCtx->enqueueCreateBuffer(allocLen));
-  ASSIGN_NO_ERR(DeviceBufferRef, dstBuf, dstCtx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, srcDevBuf,
+                srcCtx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstDevBuf,
+                dstCtx->enqueueCreateBuffer(allocLen));
 
-  EXPECT_NO_ERR(srcPtr->copyTo(*srcBuf));
+  EXPECT_NO_ERR(srcHostBuf->copyTo(*srcDevBuf));
 
   ASSIGN_NO_ERR(DeviceEventRef, copyDoneEvent, srcCtx->enqueueEvent());
 
   EXPECT_NO_ERR(dstCtx->enqueueWaitForEvent(*copyDoneEvent));
-  EXPECT_NO_ERR(dstCtx->enqueueCopyDeviceToDevice(*dstBuf, *srcBuf));
-  EXPECT_NO_ERR(dstBuf->copyTo(*dstPtr));
+  EXPECT_NO_ERR(dstCtx->enqueueCopyDeviceToDevice(*dstDevBuf, *srcDevBuf));
+  EXPECT_NO_ERR(dstDevBuf->copyTo(*dstHostBuf));
 
   // An event based sequence equivalent to: err = dstCtx->synchronize();
   ASSIGN_NO_ERR(DeviceEventRef, syncEvent, dstCtx->enqueueEvent());
   EXPECT_NO_ERR(syncEvent->synchronize());
 
-  EXPECT_EQ(memcmp(dstPtr->ptr(), checkData, allocLen), 0);
+  EXPECT_EQ(memcmp(dstHostBuf->ptr(), checkData, allocLen), 0);
   delete[] checkData;
 }
 

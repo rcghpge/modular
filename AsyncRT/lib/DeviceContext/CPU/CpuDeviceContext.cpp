@@ -125,7 +125,7 @@ CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
                                 *this, 0, 0, device.allocationAlignment())) {}
 
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                          bool isHost, SyncMode mode) const {
+                                          AllocMode mode) const {
   assert(byteSize != 0);
   *ptr = TCMallocGlobals::tc_new(byteSize, 1);
   if (*ptr == nullptr) {

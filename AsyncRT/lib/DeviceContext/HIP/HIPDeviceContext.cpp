@@ -492,17 +492,22 @@ HIPDeviceContext::~HIPDeviceContext() {
 }
 
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                          bool isHost, SyncMode mode) const {
+                                          AllocMode mode) const {
   assert(byteSize != 0);
   HIP_CHECK_ERR(setCurrent());
-  if (isHost) {
+  switch (mode) {
+  case AllocMode::ASYNC: {
+    HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+    break;
+  }
+  case AllocMode::HOST: {
     HIP_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
-  } else {
-    if (mode == ASYNC) {
-      HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
-    } else {
-      HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
-    }
+    break;
+  }
+  case AllocMode::SYNC: {
+    HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+    break;
+  }
   }
   return success();
 }

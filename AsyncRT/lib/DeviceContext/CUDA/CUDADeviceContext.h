@@ -327,8 +327,8 @@ private:
   bool logLoadFunction_ = false;
   bool logVerbose_ = false;
 
-  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize, bool isHost,
-                          SyncMode mode) const override;
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                          AllocMode mode) const override;
   ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
 };
 

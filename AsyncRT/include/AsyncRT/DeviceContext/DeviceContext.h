@@ -289,6 +289,12 @@ public:
     ASYNC = 2,
   };
 
+  enum class AllocMode : uint8_t {
+    HOST = 1,
+    SYNC = 2,
+    ASYNC = 3,
+  };
+
   static constexpr SyncMode SYNC = SyncMode::SYNC;
   static constexpr SyncMode ASYNC = SyncMode::ASYNC;
 
@@ -417,13 +423,13 @@ private:
   DeviceContext &operator=(DeviceContext &&other) = delete;
 
   // DeviceBuffer allocation.
-  virtual ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize, bool isHost,
-                                               SyncMode mode) const;
+  virtual ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
+                                               AllocMode mode) const;
 
   // Low-level uncached allocation of memory.
   // REQUIRES: byteSize > 0
-  virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize, bool isHost,
-                                  SyncMode mode) const = 0;
+  virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                                  AllocMode mode) const = 0;
   virtual ErrorOrSuccess memFree(void *ptr, bool isHost) const = 0;
 
   // Shared configuration object.

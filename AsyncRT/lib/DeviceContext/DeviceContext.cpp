@@ -390,21 +390,21 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
-  return allocBuffer(byteSize, /* isHost = */ false, ASYNC);
+  return allocBuffer(byteSize, AllocMode::ASYNC);
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::createBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
-  return allocBuffer(byteSize, /* isHost = */ false, SYNC);
+  return allocBuffer(byteSize, AllocMode::SYNC);
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::createHostBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
-  return allocBuffer(byteSize, /* isHost = */ true, SYNC);
+  return allocBuffer(byteSize, AllocMode::HOST);
 }
 
 MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createBufferOwning(
@@ -419,15 +419,15 @@ MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createHostBufferOwning(
       new DeviceBuffer(*this, ptr, byteSize, /* isHost = */ true, owning));
 }
 
-ErrorOr<DeviceBufferRef>
-DeviceContext::allocBuffer(size_t byteSize, bool isHost, SyncMode mode) const {
+ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
+                                                    AllocMode mode) const {
   assert(byteSize != 0);
-  ErrorOr<void *> errPtr = bufferCache().allocate(byteSize, isHost, mode);
+  ErrorOr<void *> errPtr = bufferCache().allocate(byteSize, mode);
   if (errPtr.isError()) {
     return errPtr.takeError();
   }
   return DeviceBufferRef::take(
-      new DeviceBuffer(*this, *errPtr, byteSize, isHost));
+      new DeviceBuffer(*this, *errPtr, byteSize, mode == AllocMode::HOST));
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
