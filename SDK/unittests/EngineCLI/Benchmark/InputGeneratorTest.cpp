@@ -4,14 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef __clang__
-// Silence warnings of the form 'no argument for the '...' parameter of a
-// variadic macro is a C++20 extension.' This comes from TYPED_TEST_SUITE which
-// uses variadic macros.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++20-extensions"
-#endif
-
 #include "SDK/EngineCLI/Benchmark/InputGenerator.h"
 #include "SDK/EngineCLI/Benchmark/Tensor.h"
 #include "SDK/EngineCLI/Common/InputGenerationSchema.h"
@@ -367,7 +359,7 @@ using IntegerTypes = testing::Types<int8_t, uint8_t, int16_t, uint16_t, int32_t,
 }
 template <typename T>
 class UniformInputRandomDistributionInteger : public testing::Test {};
-TYPED_TEST_SUITE(UniformInputRandomDistributionInteger, IntegerTypes);
+TYPED_TEST_SUITE(UniformInputRandomDistributionInteger, IntegerTypes, );
 
 TYPED_TEST(UniformInputRandomDistributionInteger, Default) {
   constexpr DType dtype = DTypeForCXXType<TypeParam>::kind;
@@ -536,10 +528,10 @@ using NativeFloatTypes = testing::Types<float, double>;
 }
 template <typename T>
 class ConstantInputDataGeneratorInteger : public testing::Test {};
-TYPED_TEST_SUITE(ConstantInputDataGeneratorInteger, IntegerTypes);
+TYPED_TEST_SUITE(ConstantInputDataGeneratorInteger, IntegerTypes, );
 template <typename T>
 class ConstantInputDataGeneratorNativeFloat : public testing::Test {};
-TYPED_TEST_SUITE(ConstantInputDataGeneratorNativeFloat, NativeFloatTypes);
+TYPED_TEST_SUITE(ConstantInputDataGeneratorNativeFloat, NativeFloatTypes, );
 class ConstantInputDataGeneratorError : public testing::TestWithParam<DType> {};
 INSTANTIATE_TEST_SUITE_P(ConstantInputDataGeneratorError,
                          ConstantInputDataGeneratorError,
@@ -1215,8 +1207,3 @@ TEST(QueryGeneratorIntegration, unspecifiedInputs) {
       (std::vector<ReportedError>{{{"inputs"}, "Inputs must be specified"}}),
       errorReporter.errors);
 }
-
-// TODO: Test for duplicate input names or indices in schema
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
