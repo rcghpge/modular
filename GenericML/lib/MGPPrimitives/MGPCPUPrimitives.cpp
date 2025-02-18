@@ -112,29 +112,6 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.cache.cpu
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_cache_cpu(Chain inChain, StateContext &theContext,
-                                 AsyncValueRef<TensorBufferRef> buffer,
-                                 Result<Chain> outChain,
-                                 MEFAttr<uint64_t> bBufferSlot,
-                                 MEFAttr<uint64_t> cDeviceId,
-                                 Runtime &runtime) {
-  theContext.emplaceStateSlot<DefaultStateSlot>(
-      static_cast<size_t>(*bBufferSlot), /*numBuffers=*/1);
-  auto &defaultStateSlot = theContext.getStateSlot(*bBufferSlot);
-
-  // Always borrow the buffer.
-  ErrorOrSuccess errOr = defaultStateSlot.setBuffer(
-      /*bufferIndex=*/0, buffer.get().borrow());
-
-  if (errOr.isError())
-    return std::move(outChain).setToError(errOr.takeError());
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // mgp.tensor.buffer.print.cpu
 //===----------------------------------------------------------------------===//
 
@@ -166,7 +143,6 @@ mgp_debug_tensor_print_cpu(Chain inChain, const TensorBufferRef &buffer,
 
 void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
-  ADD_PRIMITIVE(registry, "mgp.buffer.cache.cpu", mgp_buffer_cache_cpu);
   ADD_PRIMITIVE(registry, "mgp.debug.tensor.print.cpu",
                 mgp_debug_tensor_print_cpu);
 }

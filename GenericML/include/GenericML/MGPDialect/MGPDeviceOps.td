@@ -362,7 +362,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
 // BufferCacheOp
 //===----------------------------------------------------------------------===//
 
-def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
+def BufferCacheOp : MGP_Op<"buffer.cache"> {
   let summary = "Moves an `!mgp.buffer` into a dedicated state slot.";
   let description = [{
     Stores the given `!mgp.buffer` into the state slot at the given index.
@@ -394,19 +394,13 @@ def BufferCacheOp : MGP_DeviceOp<"buffer.cache"> {
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
-                       UI64Attr:$bBufferSlot,          // 1
-                       MGP_OptDeviceRefAttr:$cDevice); // 2
+                       UI64Attr:$bBufferSlot); 
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` `,`
     $buffer attr-dict
-    `:` custom<BufferTypeToDevice>(type($buffer), $cDevice)
+    `:` custom<BufferTypeToDevice>(type($buffer))
   }];
-  let hasVerifier = 1;
-
-  let extraClassDefinition = [{
-    M::DeviceRefAttr BufferCacheOp::getDevice() { return getCDevice(); }
-}];
 }
 
 //===----------------------------------------------------------------------===//

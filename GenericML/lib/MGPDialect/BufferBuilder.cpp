@@ -328,7 +328,7 @@ MGPBufferBuilder::cache(OpBuilder &initBuilder, Location loc,
   auto cacheOp = initBuilder.create<BufferCacheOp>(
       loc, /*inChain=*/inChain, /*theContext=*/contextCreateOp,
       /*buffer=*/cast<TypedValue<DeviceBufferType>>(buffer),
-      /*bBufferSlot=*/bufferSlot, /*cDevice=*/device);
+      /*bBufferSlot=*/bufferSlot);
   return {cacheOp.getOutChain(), bufferSlot};
 }
 

@@ -309,7 +309,7 @@ class DynamicMemoryPlanningPass
       auto recache = ifBuilder.create<BufferCacheOp>(
           ifOp->getLoc(), /*inChain=*/thenChain, /*theContext=*/thenContext,
           /*buffer=*/cast<TypedValue<DeviceBufferType>>(thenAlloc),
-          /*bBufferSlot=*/cachedSlot, /*cDevice=*/device);
+          /*bBufferSlot=*/cachedSlot);
       ifBuilder.create<MEF::OutputOp>(
           ifOp->getLoc(), SmallVector<Value>{recache.getOutChain(), thenAlloc});
 

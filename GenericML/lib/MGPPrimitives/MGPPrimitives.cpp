@@ -521,11 +521,33 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.buffer.cache
+//===----------------------------------------------------------------------===//
+
+static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
+                             AsyncValueRef<TensorBufferRef> buffer,
+                             Result<Chain> outChain,
+                             MEFAttr<uint64_t> bBufferSlot, Runtime &runtime) {
+  theContext.emplaceStateSlot<DefaultStateSlot>(
+      static_cast<size_t>(*bBufferSlot), /*numBuffers=*/1);
+  auto &defaultStateSlot = theContext.getStateSlot(*bBufferSlot);
+
+  // Always borrow the buffer.
+  ErrorOrSuccess errOr = defaultStateSlot.setBuffer(
+      /*bufferIndex=*/0, buffer.get().borrow());
+
+  if (errOr.isError())
+    return std::move(outChain).setToError(errOr.takeError());
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // registerMGPPrimitives
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.runtime.create", mgp_runtime_create);
+  ADD_PRIMITIVE(registry, "mgp.buffer.cache", mgp_buffer_cache);
   ADD_PRIMITIVE(registry, "mgp.buffer.plan", mgp_buffer_plan);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
