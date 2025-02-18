@@ -386,9 +386,17 @@ public:
 
   using ValueType = typename std::remove_reference<StoredType>::type;
 
-  const StoredType &get() const { return value; }
-  const ValueType *operator->() const { return &value; }
-  const StoredType &operator*() const { return value; }
+  __attribute__((no_sanitize("undefined"))) const StoredType &get() const {
+    return value;
+  }
+  __attribute__((no_sanitize("undefined"))) const ValueType *
+  operator->() const {
+    return &value;
+  }
+  __attribute__((no_sanitize("undefined"))) const StoredType &
+  operator*() const {
+    return value;
+  }
 
   ArrayRef<uint8_t> getAttrSection() const { return attrSection; }
 
@@ -426,7 +434,8 @@ class MEFAttr : public MEFAttrCommon<MEFAttr<T>, const T &> {
 public:
   using BaseClass = MEFAttrCommon<MEFAttr<T>, const T &>;
 
-  explicit MEFAttr(const uint8_t *value, ArrayRef<uint8_t> attrSection)
+  __attribute__((no_sanitize("undefined"))) explicit MEFAttr(
+      const uint8_t *value, ArrayRef<uint8_t> attrSection)
       : BaseClass(*reinterpret_cast<const T *>(value), attrSection) {
     // Check that the C++ type matches the encoded type for the attribute.
     static_assert(MEF::AttrKindForCXXType<T>::kind !=

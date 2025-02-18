@@ -181,7 +181,7 @@ public:
   }
 
   // Parse a single float value and put it into result.
-  bool parseFloat(float &result) {
+  __attribute__((no_sanitize("undefined"))) bool parseFloat(float &result) {
     ArrayRef<uint8_t> scale;
     if (parseBytes(sizeof(float), scale))
       return emitError("couldn't parse float");
