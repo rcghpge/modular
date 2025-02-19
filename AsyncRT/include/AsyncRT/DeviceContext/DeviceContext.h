@@ -167,6 +167,7 @@ public:
   virtual ErrorOrSuccess synchronize() const = 0;
 
   virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
+
   virtual ErrorOrSuccess
   enqueueWaitForEvent(const DeviceEvent &event) const = 0;
 
