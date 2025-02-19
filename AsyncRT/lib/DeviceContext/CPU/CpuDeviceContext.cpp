@@ -97,10 +97,16 @@ CpuDeviceStream::CpuDeviceStream(const CpuDevice &device)
 
 ErrorOrSuccess CpuDeviceStream::synchronize() const { return success(); }
 
+ErrorOr<DeviceEventRef> CpuDeviceStream::enqueueEvent() const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
 ErrorOrSuccess
 CpuDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
+
+void *CpuDeviceStream::ptr() const { return nullptr; }
 
 // ===== CpuDeviceTimer ===== //
 CpuDeviceTimer::CpuDeviceTimer(

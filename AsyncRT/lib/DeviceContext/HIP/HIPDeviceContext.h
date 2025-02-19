@@ -111,7 +111,10 @@ public:
 
   ErrorOrSuccess synchronize() const override;
 
+  ErrorOr<DeviceEventRef> enqueueEvent() const override;
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
+
+  void *ptr() const override;
 
   hipStream_t hipStream() const;
 

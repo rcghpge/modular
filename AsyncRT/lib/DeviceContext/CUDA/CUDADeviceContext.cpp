@@ -442,6 +442,14 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
   return success();
 }
 
+ErrorOr<DeviceEventRef> CUDADeviceStream::enqueueEvent() const {
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUevent event;
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().EventCreate(&event, 0));
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().EventRecord(event, stream_));
+  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
+}
+
 ErrorOrSuccess
 CUDADeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
@@ -451,6 +459,8 @@ CUDADeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
       stream_, cudaEvent.cudaEvent(), 0));
   return success();
 }
+
+void *CUDADeviceStream::ptr() const { return cudaStream(); }
 
 CUstream CUDADeviceStream::cudaStream() const { return stream_; }
 

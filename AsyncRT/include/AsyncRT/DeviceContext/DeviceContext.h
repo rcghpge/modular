@@ -166,8 +166,12 @@ public:
 
   virtual ErrorOrSuccess synchronize() const = 0;
 
+  virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
   virtual ErrorOrSuccess
   enqueueWaitForEvent(const DeviceEvent &event) const = 0;
+
+  // Raw device driver pointer to enable passing to PyTorch and similar APIs.
+  virtual void *ptr() const = 0;
 
 protected:
   DeviceStream(const Device &device);

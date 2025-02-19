@@ -312,6 +312,14 @@ ErrorOrSuccess HIPDeviceStream::synchronize() const {
   return success();
 }
 
+ErrorOr<DeviceEventRef> HIPDeviceStream::enqueueEvent() const {
+  const auto &hipDevice = HIPDevice::cast(device());
+  hipEvent_t event;
+  HIP_CHECK_ERR(hipDevice.hipDriver().EventCreate(&event, 0));
+  HIP_CHECK_ERR(hipDevice.hipDriver().EventRecord(event, stream_));
+  return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
+}
+
 ErrorOrSuccess
 HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
@@ -320,6 +328,8 @@ HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
       hipDevice.hipDriver().StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
   return success();
 }
+
+void *HIPDeviceStream::ptr() const { return hipStream(); }
 
 hipStream_t HIPDeviceStream::hipStream() const { return stream_; }
 
