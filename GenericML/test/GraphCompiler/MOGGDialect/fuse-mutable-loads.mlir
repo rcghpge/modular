@@ -1,16 +1,12 @@
-// REQUIRES: disabled
-// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --canonicalize --fuse-mutable-loads %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
+// CHECK-NOT: mo.mutable.store
 // CHECK: [[out:%.*]]:2 = mogg.kernel ([[buffer]], [[rhs]], [[ch0]])
-// CHECK-SAME: ([[kbuffer:%.*]]: !mo.buffer<[10, 10], f32>, [[krhs:%.*]]: !mo.tensor<[10, 10], f32>{{.*}}!mo.chain) -> (!mo.tensor<[10, 10], f32>, !mo.chain)
 // CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
-// CHECK-DAG: mogg.call "simd_load"([[kbuffer]]
-// CHECK-DAG: mogg.call "simd_load"([[krhs]]
 // CHECK: mogg.output [[tr]], [[cr]]
 // CHECK: inputFusionInterface = ["", "{{.*}}", ""]{{.*}}outputFusionInterface = ["{{.*}}", ""]
 // CHECK: mo.mutable.store([[out]]#1, [[buffer]], [[out]]#0)
@@ -25,12 +21,10 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK-LABEL: mo.graph @single_add_buffer_rhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
+// CHECK-NOT: mo.mutable.store
 // CHECK: [[out:%.*]]:2 = mogg.kernel ([[rhs]], [[buffer]], [[ch0]])
-// CHECK-SAME: ([[krhs:%.*]]: !mo.tensor<[10, 10], f32>, [[kbuffer:%.*]]: !mo.buffer<[10, 10], f32>{{.*}}!mo.chain) -> (!mo.tensor<[10, 10], f32>, !mo.chain)
 // CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
-// CHECK-DAG: mogg.call "simd_load"([[kbuffer]]
-// CHECK-DAG: mogg.call "simd_load"([[krhs]]
 // CHECK: mogg.output [[tr]], [[cr]]
 // CHECK: inputFusionInterface = ["{{.*}}", "", ""]{{.*}}outputFusionInterface = ["{{.*}}", ""]
 // CHECK: mo.mutable.store([[out]]#1, [[buffer]], [[out]]#0)

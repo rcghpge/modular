@@ -132,6 +132,10 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
   if (auto deviceRef = kernelOp.getDeviceRef())
     newKernelOp.setDeviceRef(deviceRef);
 
+  // Copy over any discardable attributes from the original kernel
+  for (auto attr : kernelOp->getDiscardableAttrs())
+    newKernelOp->setDiscardableAttr(attr.getName(), attr.getValue());
+
   Block &oldBody = kernelOp.getBody().front();
 
   mlir::Block &newBody = newKernelOp.getBody().emplaceBlock();
