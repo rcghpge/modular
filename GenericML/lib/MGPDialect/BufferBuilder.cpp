@@ -269,8 +269,7 @@ Value MGPBufferBuilder::debugTensorPrint(OpBuilder &builder, Location loc,
       /*inChain=*/inChain,
       /*buffer=*/cast<TypedValue<DeviceBufferType>>(buffer),
       /*spec=*/spec,
-      /*bLabel=*/label,
-      /*cDevice=*/device);
+      /*bLabel=*/label);
 }
 
 /// Returns arrayAttr, which should be an array of StringAttrs, encoded as

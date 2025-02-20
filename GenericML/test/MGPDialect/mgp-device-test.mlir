@@ -239,8 +239,8 @@ func.func @tensor_extract_tensor_spec(%ctx : !mgp.context, %tensor : !mgp.tensor
 
 // CHECK-LABEL: @debug_tensor_print
 func.func @debug_tensor_print(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mgp.buffer<<"gpu", 3>>, %spec : !mgp.tensor_spec<3x5xf32>) {
-  // CHECK: %{{.*}} = mgp.debug.tensor.print %{{.*}}, %{{.*}}, %{{.*}} : !mgp.tensor<3x5xf32, <"gpu", 3>>
-  %ch1 = mgp.debug.tensor.print %ch0, %buf, %spec : !mgp.tensor<3x5xf32, <"gpu", 3>>
+  // CHECK: %{{.*}} = mgp.debug.tensor.print %{{.*}}, %{{.*}}, %{{.*}} : (!mef.chain, !mgp.buffer<<"gpu", 3>>, !mgp.tensor_spec<3x5xf32>) -> !mef.chain
+  %ch1 = mgp.debug.tensor.print %ch0, %buf, %spec : (!mef.chain, !mgp.buffer<<"gpu", 3>>, !mgp.tensor_spec<3x5xf32>) -> !mef.chain
   mef.output %ch1 : !mef.chain
 }
 
