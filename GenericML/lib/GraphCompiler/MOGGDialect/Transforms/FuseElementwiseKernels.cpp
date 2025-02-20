@@ -83,84 +83,112 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   return true;
 }
 
-static void
+// Check if applyExpr is of the form `apply(get_kernel_simd_width, ...)`.
+static bool isCallToGetKernelSimdWidth(KGEN::ParamOperatorAttr applyExpr) {
+  if (!applyExpr || applyExpr.getOpcode() != KGEN::POC::Apply)
+    return false;
+
+  auto applyCallee =
+      dyn_cast<KGEN::SymbolConstantAttr>(applyExpr.getOperand(0));
+  if (!applyCallee)
+    return false;
+  StringRef applySymName =
+      cast<mlir::FlatSymbolRefAttr>(applyCallee.getSymbol()).getValue();
+  return applySymName.starts_with(Utils::DPSTensorGetKernelSimdWidth);
+}
+
+static LogicalResult
 fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
                            const llvm::SmallSetVector<DType, 4> &allDtypes) {
+
+  KGEN::CallOp forEachCall = nullptr;
+
   kernelOp.walk([&](KGEN::CallOp callOp) {
     // Find the foreach call.
     StringRef funcName =
         cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
-    if (!funcName.starts_with(Utils::DPSTensorForEach))
-      return;
-
-    // It has a parameter which is the simd_width of the output type.
-    // Replace it with the minimum simd_width of all kernel dtypes.
-    constexpr unsigned simdWidthParamIndex = 5;
-
-    TypedAttr oldSimdWithAttr = callOp.getParamValues()[simdWidthParamIndex];
-    TypedAttr newSimdWithAttr = nullptr;
-
-    // The simdwidth is of the form apply(get_kernel_simd_width[dtype, ...]).
-    // Just replace the old dtype with the dtypes in allDtypes.
-    // And aggregate all with a min operation.
-    auto applyExpr = dyn_cast<KGEN::ParamOperatorAttr>(oldSimdWithAttr);
-    if (!applyExpr || applyExpr.getOpcode() != KGEN::POC::Apply)
-      return;
-
-    auto applyCallee =
-        dyn_cast<KGEN::SymbolConstantAttr>(applyExpr.getOperand(0));
-    if (!applyCallee)
-      return;
-    StringRef applySymName =
-        cast<mlir::FlatSymbolRefAttr>(applyCallee.getSymbol()).getValue();
-    if (!applySymName.starts_with(Utils::DPSTensorGetKernelSimdWidth))
-      return;
-    SmallVector<TypedAttr> newCalleeParams(applyCallee.getParamValues());
-
-    for (DType dtype : allDtypes) {
-      // The first parameter is the dtype.
-      newCalleeParams[0] = typeManager.lookupTypeBinding(dtype);
-      auto newCallee = KGEN::SymbolConstantAttr::get(
-          applyCallee.getSymbol(), applyCallee.getType(), newCalleeParams);
-
-      TypedAttr simdWidthOfDtype = KGEN::ParamOperatorAttr::get(
-          KGEN::POC::Apply, {newCallee}, applyExpr.getType());
-
-      if (newSimdWithAttr == nullptr)
-        newSimdWithAttr = simdWidthOfDtype;
-      else
-        newSimdWithAttr = KGEN::ParamOperatorAttr::get(
-            KGEN::POC::Max, {newSimdWithAttr, simdWidthOfDtype});
+    if (funcName.starts_with(Utils::DPSTensorForEach)) {
+      forEachCall = callOp;
+      return WalkResult::interrupt();
     }
 
-    // Now change the parameter of the foreach call.
-    SmallVector<TypedAttr> newForEachParams(callOp.getParamValues());
-    newForEachParams[simdWidthParamIndex] = newSimdWithAttr;
-    auto newForEachCallee = KGEN::SymbolConstantAttr::get(
-        callOp.getCalleeSymbol(), callOp.getCalleeSignature(),
-        newForEachParams);
-    callOp.setCalleeAttr(newForEachCallee);
+    return WalkResult::advance();
   });
+
+  // If there is no forEachCall then this isn't an elementwise kernel.
+  // Just skip it.
+  if (!forEachCall)
+    return success();
+
+  // It has a parameter which is the simd_width of the output type.
+  // Replace it with the minimum simd_width of all kernel dtypes.
+  constexpr unsigned simdWidthParamIndex = 4;
+
+  TypedAttr oldSimdWithAttr = forEachCall.getParamValues()[simdWidthParamIndex];
+  TypedAttr newSimdWithAttr = nullptr;
+
+  // By default the simdwidth is of the form apply(get_kernel_simd_width[dtype,
+  // ...]). Just replace the old dtype with the dtypes in allDtypes. And
+  // aggregate all with a min operation.
+  auto applyExpr = dyn_cast<KGEN::ParamOperatorAttr>(oldSimdWithAttr);
+  // If we can't find the call, just emit a warning and move on without any
+  // error. The user might have called foreach with its own special simd_width
+  // for some reason.
+  if (!isCallToGetKernelSimdWidth(applyExpr)) {
+    kernelOp.emitWarning(
+        "Failed to find the call to get_kernel_simd_width for the simd_width "
+        "parameter");
+    return success();
+  }
+
+  auto applyCallee = cast<KGEN::SymbolConstantAttr>(applyExpr.getOperand(0));
+  SmallVector<TypedAttr> newCalleeParams(applyCallee.getParamValues());
+
+  for (DType dtype : allDtypes) {
+    // The first parameter is the dtype.
+    newCalleeParams[0] = typeManager.lookupTypeBinding(dtype);
+    auto newCallee = KGEN::SymbolConstantAttr::get(
+        applyCallee.getSymbol(), applyCallee.getType(), newCalleeParams);
+
+    TypedAttr simdWidthOfDtype = KGEN::ParamOperatorAttr::get(
+        KGEN::POC::Apply, {newCallee}, applyExpr.getType());
+
+    if (newSimdWithAttr == nullptr)
+      newSimdWithAttr = simdWidthOfDtype;
+    else
+      newSimdWithAttr = KGEN::ParamOperatorAttr::get(
+          KGEN::POC::Max, {newSimdWithAttr, simdWidthOfDtype});
+  }
+
+  // Now change the parameter of the foreach call.
+  SmallVector<TypedAttr> newForEachParams(forEachCall.getParamValues());
+  newForEachParams[simdWidthParamIndex] = newSimdWithAttr;
+  auto newForEachCallee = KGEN::SymbolConstantAttr::get(
+      forEachCall.getCalleeSymbol(), forEachCall.getCalleeSignature(),
+      newForEachParams);
+  forEachCall.setCalleeAttr(newForEachCallee);
+
+  return success();
 }
 
 struct FuseElementwisePass
     : public impl::FuseElementwiseBase<FuseElementwisePass> {
   using FuseElementwiseBase::FuseElementwiseBase;
 
-  void fixupKGENKernelsSimdWidth(MO::GraphOp graphOp) {
+  LogicalResult fixupKGENKernelsSimdWidth(MO::GraphOp graphOp) {
     // Fixup simd_width for fused kernels when needed.
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
         analysis.initIfNeeded(graphOp->getContext(), kernelLibraryPaths);
     if (errOr.isError())
-      return signalPassFailure();
+      return failure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
     auto typeManager =
         TypeManager::get(graphOp->getContext(), mojoLibraryAnalysis);
     if (typeManager.isError())
-      return signalPassFailure();
+      return failure();
 
-    graphOp.walk([&](MOGG::KernelOp kernelOp) {
+    auto walkResult = graphOp.walk([&](MOGG::KernelOp kernelOp) -> WalkResult {
       llvm::SmallSetVector<DType, 4> allDtypes;
       auto findDType = [&allDtypes](Type ty) {
         if (auto tensorTy = dyn_cast<MO::TensorType>(ty))
@@ -175,10 +203,14 @@ struct FuseElementwisePass
 
       // Only fix kernels with multiple dtypes
       if (allDtypes.size() <= 1)
-        return;
+        return WalkResult::advance();
 
-      fixElemwiseKernelSimdWidth(*typeManager, kernelOp, allDtypes);
+      if (failed(fixElemwiseKernelSimdWidth(*typeManager, kernelOp, allDtypes)))
+        return WalkResult::interrupt();
+      return WalkResult::advance();
     });
+
+    return success(!walkResult.wasInterrupted());
   }
 
   void runOnOperation() override {
@@ -210,7 +242,8 @@ struct FuseElementwisePass
       dstKernelOp.walk([](Block *block) { mlir::sortTopologically(block); });
     }
 
-    fixupKGENKernelsSimdWidth(graphOp);
+    if (failed(fixupKGENKernelsSimdWidth(graphOp)))
+      signalPassFailure();
   }
 
   // Replace all loads from `dstKernelInputLambdaName` in `dstElemwiseLambda`
