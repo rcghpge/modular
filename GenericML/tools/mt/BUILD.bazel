@@ -5,6 +5,7 @@ modular_cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
     data = [
+        "//GenericML:MGPRT",
         "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",

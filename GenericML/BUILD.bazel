@@ -1057,6 +1057,9 @@ modular_cc_library(
     name = "MGPPrimitives",
     srcs = glob(["lib/MGPPrimitives/*.cpp"]),
     hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
+    data = [
+        ":MGPRT",
+    ],
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     deps = [
         ":MGPDialect",

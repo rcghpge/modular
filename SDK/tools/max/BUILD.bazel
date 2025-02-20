@@ -4,6 +4,10 @@ modular_cc_binary(
     name = "max",
     srcs = glob(["*.cpp"]),
     copts = ["-I$(GENDIR)/SDK/tools/max/"],
+    data = [
+        "//GenericML:MGPRT",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
     deps = [
         ":DriverOptions.help_gen",
         ":DriverOptions.inc_gen",

@@ -7,11 +7,6 @@ lit_tests(
         ["**/*.mojo"],
         exclude = ["mojo/cuda/*.mojo"],
     ),
-    data = [
-        "//GenericML:DeviceDriver",
-        "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
-    ],
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
@@ -25,11 +20,6 @@ lit_tests(
     name = "gpu-test",
     size = "large",
     srcs = glob(["mojo/cuda/*.mojo"]),
-    data = [
-        "//GenericML:DeviceDriver",
-        "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
-    ],
     gpu_constraints = ["//:has_gpu"],
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",

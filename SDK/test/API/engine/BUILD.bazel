@@ -3,15 +3,6 @@ load("//bazel:api.bzl", "lit_tests")
 lit_tests(
     name = "test",
     srcs = glob(["**/*.mojo"]),
-    data = [
-        "//GenericML:DeviceDriver",
-        "//GenericML:MGPRT",
-        "//GenericML:modular-framework-common",
-        "//KGEN:CompilerRT",
-        "//ModularFramework/tools/mof",
-        "//PyTorch:modular-framework-torch-ext",
-        "@llvm-project//compiler-rt:orc_rt",
-    ],
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",

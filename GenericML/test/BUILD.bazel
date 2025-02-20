@@ -14,12 +14,7 @@ lit_tests(
     custom_substitutions = {
         "%kernel_api_test_lib": "$(rlocationpath //Kernels/mojo/Mogg/MOGGKernelAPITest:MOGGKernelAPITestLib)",
     },
-    data = [
-        "//GenericML:MGPRT",
-        "//KGEN:CompilerRT",
-        "//Kernels/mojo/Mogg/MOGGKernelAPITest:MOGGKernelAPITestLib",
-        "@llvm-project//compiler-rt:orc_rt",
-    ],
+    data = ["//Kernels/mojo/Mogg/MOGGKernelAPITest:MOGGKernelAPITestLib"],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
         "//conditions:default": [],
