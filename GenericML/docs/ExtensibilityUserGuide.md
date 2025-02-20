@@ -22,7 +22,7 @@ struct BottomK:
         input: ManagedTensorSlice[type=type, rank=rank],
         k: Int,
         axis: Int,
-        sorted: Scalar[type = DType.bool],
+        sorted: Bool,
     ):
         top_k(
             managed_tensor_slice_to_ndbuffer(input),
@@ -39,7 +39,7 @@ struct BottomK:
         input: ManagedTensorSlice,
         k: Int,
         axis: Int,
-        sorted: ScalarTensor[type = DType.bool],
+        sorted: Bool,
     ) raises -> IndexList[input.rank]:
         return top_k_shape_impl[single_thread_blocking_override=True](
             managed_tensor_slice_to_ndbuffer(input),
@@ -224,7 +224,7 @@ struct BottomK:
         input: ManagedTensorSlice[type=type, rank=rank],
         k: Scalar,
         axis: Scalar,
-        sorted: Scalar[type = DType.bool],
+        sorted: Bool,
     ):
 ```
 
