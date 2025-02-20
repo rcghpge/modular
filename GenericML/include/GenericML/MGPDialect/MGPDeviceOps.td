@@ -398,8 +398,7 @@ def BufferCacheOp : MGP_Op<"buffer.cache"> {
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` `,`
-    $buffer attr-dict
-    `:` custom<BufferTypeToDevice>(type($buffer))
+    $buffer attr-dict `:` functional-type(operands, results)
   }];
 }
 

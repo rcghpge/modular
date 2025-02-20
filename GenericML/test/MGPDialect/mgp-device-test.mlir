@@ -68,8 +68,8 @@ func.func @buffer_alloc(%ctx : !mgp.context, %ch : !mef.chain, %size : index, %g
 
 // CHECK-LABEL: @buffer_cache
 func.func @buffer_cache(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mgp.buffer<<"gpu", 3>>) {
-  // CHECK: %{{.*}} = mgp.buffer.cache %{{.*}}, %{{.*}}[5], %{{.*}} : !mgp.buffer<<"gpu", 3>>
-  %ch1 = mgp.buffer.cache %ch0, %ctx[5], %buf : !mgp.buffer<<"gpu", 3>>
+  // CHECK: %{{.*}} = mgp.buffer.cache %{{.*}}, %{{.*}}[5], %{{.*}} : (!mef.chain, !mgp.context, !mgp.buffer<<"gpu", 3>>) -> !mef.chain
+  %ch1 = mgp.buffer.cache %ch0, %ctx[5], %buf : (!mef.chain, !mgp.context, !mgp.buffer<<"gpu", 3>>) -> !mef.chain
   mef.output %ch1 : !mef.chain
 }
 

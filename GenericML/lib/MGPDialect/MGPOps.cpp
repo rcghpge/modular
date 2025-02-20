@@ -132,19 +132,9 @@ static ParseResult parseBufferTypeToDeviceImpl(OpAsmParser &p, Type &buffer,
   return success();
 }
 
-static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer) {
-  DeviceRefAttr device;
-  return parseBufferTypeToDeviceImpl(p, buffer, device, {});
-}
-
 static ParseResult parseBufferTypeToDevice(OpAsmParser &p, Type &buffer,
                                            DeviceRefAttr &device) {
   return parseBufferTypeToDeviceImpl(p, buffer, device, {});
-}
-
-static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
-                                    DeviceBufferType buffer) {
-  p << buffer;
 }
 
 static void printBufferTypeToDevice(OpAsmPrinter &p, Operation *op,
