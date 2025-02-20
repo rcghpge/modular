@@ -536,3 +536,11 @@ func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weight
   %buf = mgp.buffer.constant.external %ch, %weights["foo", 16384, align 10] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
   mef.output %buf : !mgp.buffer
 }
+
+// -----
+
+func.func @buffer_constant_external_mutable(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">) {
+  // expected-error@+1 {{integer constant out of range for attribute}}
+  %buf = mgp.buffer.constant.external %ch, %weights["bar", 16384, align 4, isMutable=4] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  mef.output %buf : !mgp.buffer
+}

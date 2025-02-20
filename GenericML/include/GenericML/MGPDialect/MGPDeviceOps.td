@@ -274,15 +274,16 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
   let arguments = (ins ChainType:$inChain,
-                       MGP_OpaqueType:$weightsRegistry,                  // 1
-                       StrAttr:$bName,                                   // 3
-                       UI64Attr:$cSize,                                  // 4
-                       UI64Attr:$dAlign,                                 // 5
-                       MGP_OptDeviceRefAttr:$eDevice);                   // 6
+                       MGP_OpaqueType:$weightsRegistry,
+                       StrAttr:$bName,                                   // 0
+                       UI64Attr:$cSize,                                  // 1
+                       UI64Attr:$dAlign,                                 // 2
+                       MGP_OptDeviceRefAttr:$eDevice,                    // 3
+                       DefaultValuedAttr<BoolAttr, "false">:$gMutable);  // 4
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $weightsRegistry
-    `[` $bName `,`$cSize `,` `align` $dAlign `]`
+    `[` $bName `,` $cSize `,` `align` $dAlign ( `,` `isMutable` `=` $gMutable^ )? `]`
     ( `device` $eDevice^ )? attr-dict `:` qualified(type($weightsRegistry))
     `->` qualified(type($outBuffer))
   }];
@@ -394,7 +395,7 @@ def BufferCacheOp : MGP_Op<"buffer.cache"> {
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        MGP_DeviceBufferType:$buffer,
-                       UI64Attr:$bBufferSlot); 
+                       UI64Attr:$bBufferSlot);
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` `,`

@@ -35,7 +35,16 @@ func.func @module_load_multiline(%ctx : !mgp.context, %ch0 : !mef.chain) {
 // CHECK-LABEL: @buffer_constant_external
 func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">) {
   // CHECK: %{{.*}} = mgp.buffer.constant.external %{{.*}},  %{{.*}}["foo", 16384, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
-  %buf = mgp.buffer.constant.external %ch, %weights["foo", 16384, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  %buf1 = mgp.buffer.constant.external %ch, %weights["foo", 16384, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  // CHECK: %{{.*}} = mgp.buffer.constant.external %{{.*}},  %{{.*}}["bar", 16384, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  %buf2 = mgp.buffer.constant.external %ch, %weights["bar", 16384, align 16, isMutable = false] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  mef.output %buf1, %buf2 : !mgp.buffer, !mgp.buffer
+}
+
+// CHECK-LABEL: @buffer_constant_mutable
+func.func @buffer_constant_mutable(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">) {
+  // CHECK: %{{.*}} = mgp.buffer.constant.external %{{.*}},  %{{.*}}["foo", 16384, align 16, isMutable = true] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  %buf = mgp.buffer.constant.external %ch, %weights["foo", 16384, align 16, isMutable = true] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
   mef.output %buf : !mgp.buffer
 }
 
