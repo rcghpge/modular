@@ -231,7 +231,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   assignDevicesPassOpt.defaultDeviceTargetTriple =
       opts.defaultDeviceTargetTriple;
   assignDevicesPassOpt.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
-  pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
+
+  if (opts.enableAssignDevices)
+    pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
+
   pm.addPass(MO::createValidateDevicesPass());
 
   pm.addPass(MO::createDecomposeViewOps());

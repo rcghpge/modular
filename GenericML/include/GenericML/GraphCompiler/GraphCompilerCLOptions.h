@@ -26,6 +26,8 @@ public:
 
   size_t defaultDeviceId{0};
 
+  bool enableAssignDevices{true};
+
   bool enableCompiledRegionsFusion{true};
 
   bool genVizSpec{false};
@@ -89,6 +91,13 @@ private:
       cl::desc("If default-device-label is specified, this field specifies the"
                "default device id to target. Defaults to zero."),
       llvm::cl::location(options.defaultDeviceId),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> enableAssignDevices{
+      "enable-assign-devices",
+      cl::desc("If true, enables the AssignDevicesPass which assigns ops to "
+               "devices."),
+      llvm::cl::location(options.enableAssignDevices),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> enableCompiledRegionsFusion{
