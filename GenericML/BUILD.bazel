@@ -1350,10 +1350,17 @@ modular_cc_library(
     ],
 )
 
+modular_cc_library(
+    name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
+    srcs = glob(["include/GenericML/API/max/c/*.h"]),
+    includes = ["include/GenericML/API"],
+    tags = ["clang-tidy-is-c-tu"],
+    visibility = ["//visibility:private"],
+)
+
 pkg_files(
     name = "API.c.headers",
     srcs = glob(["include/GenericML/API/max/c/*.h"]),
-    tags = ["no-clang-tidy-headers"],
     visibility = ["//visibility:public"],
 )
 
