@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/Support/raw_os_ostream.h"
 

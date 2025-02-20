@@ -122,7 +122,6 @@ modular_cc_library(
     srcs = glob(["lib/Driver/CommonDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
     deps = [
-        ":API.headers",
         ":MojoLLDBPublic.headers",
         ":Support",
         "//Support:Base",
@@ -148,21 +147,11 @@ modular_cc_library(
     name = "ExecutionDriver",
     srcs = glob(["lib/Driver/ExecutionDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
-    tags = ["no-clang-tidy-headers"],
     deps = [
+        ":GraphCompiler",
         ":Support",
         "//Support:Base",
         "//third-party/mlperf-loadgen",
-    ],
-)
-
-# TODO: Can we move this deeper?
-modular_cc_library(
-    name = "GraphCompilerMatchers",
-    hdrs = ["include/GenericML/GraphCompiler/Matchers.h"],
-    tags = ["no-clang-tidy-headers"],
-    deps = [
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -430,9 +419,10 @@ gentbl_cc_library(
 modular_cc_library(
     name = "MODialect",
     srcs = glob(["lib/GraphCompiler/MODialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/MODialect/*.h"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MODialect/*.h"]) + [
+        "include/GenericML/GraphCompiler/Matchers.h",
+    ],
     deps = [
-        ":GraphCompilerMatchers",
         ":Interfaces",
         ":MODialectEnumsIncGen",
         ":MODialectIncGen",
@@ -478,7 +468,6 @@ modular_cc_library(
         "lib/GraphCompiler/Transforms/MODialect/*.h",
     ]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
-    tags = ["no-clang-tidy-headers"],
     deps = [
         ":CommonDriver",
         ":DeviceDriver",
@@ -1084,7 +1073,6 @@ modular_cc_library(
         "@platforms//os:linux": ["GENERICML_LINKER_CMD=\\\"clang\\\""],
     }),
     deps = [
-        ":API.headers",
         ":DeviceDriver.headers",
         ":SupportGlobals",
         "//AsyncRT:RuntimeGlobals",
@@ -1342,14 +1330,24 @@ modular_cc_library(
 modular_cc_library(
     name = "MaxAPI",
     hdrs = glob(["include/GenericML/API/max/**/*.h"]),
-    strip_include_prefix = "include/GenericML/API",
-    tags = ["no-clang-tidy-headers"],
+    includes = ["include/GenericML/API"],
+    deps = [
+        ":API.headers",
+        ":DeviceDriver.headers",
+    ],
 )
 
 modular_cc_library(
     name = "API.headers",
     hdrs = glob(["include/GenericML/API/**/*.h"]),
-    tags = ["no-clang-tidy-headers"],
+    includes = ["include/GenericML/API"],
+    deps = [
+        ":CommonDriver",
+        ":DeviceDriver.headers",
+        "//AsyncRT:DeviceContext",
+        "//Support:Telemetry",
+        "//Support:Threading",
+    ],
 )
 
 pkg_files(
@@ -1391,6 +1389,10 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
     tags = ["no-clang-tidy-headers"],
     visibility = ["//visibility:private"],
+    deps = [
+        "//Support:DeviceSpecs",
+        "//Support:ML",
+    ],
 )
 
 modular_shared_library(
@@ -1399,6 +1401,7 @@ modular_shared_library(
     hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
     deps = [
         ":CommonDriver",
+        ":MaxAPI",
         ":Support",
         ":rpaths",
         "//AsyncRT:DeviceContext",

@@ -10,7 +10,6 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "GenericML/API/max/c/symbol_export.h"
 #include "GenericML/DeviceDriver/Utils.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/ErrorOr.h"
@@ -168,20 +167,22 @@ mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 } // namespace Driver
 } // namespace M
 
-MODULAR_API_EXPORT M::Driver::Device *
+MODULAR_DRIVER_EXPORT M::Driver::Device *
 M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status);
 
-MODULAR_API_EXPORT M::Driver::Device *
+MODULAR_DRIVER_EXPORT M::Driver::Device *
 M_createCPUDevice(ssize_t numaId, M::Driver::Status *status);
 
-MODULAR_API_EXPORT M::Driver::Device *M_copyDevice(M::Driver::Device *devPtr);
+MODULAR_DRIVER_EXPORT M::Driver::Device *
+M_copyDevice(M::Driver::Device *devPtr);
 
-MODULAR_API_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data,
-                                         M::Driver::Status *status);
+MODULAR_DRIVER_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data,
+                                            M::Driver::Status *status);
 
-MODULAR_API_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
+MODULAR_DRIVER_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
 
-MODULAR_API_EXPORT const char *M_getDeviceDesc(const M::Driver::Device *devPtr);
+MODULAR_DRIVER_EXPORT const char *
+M_getDeviceDesc(const M::Driver::Device *devPtr);
 
 namespace M::Driver {
 

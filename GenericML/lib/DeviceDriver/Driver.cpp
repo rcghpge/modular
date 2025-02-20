@@ -21,43 +21,43 @@ using namespace M;
     return VAR##OrErr.takeError();                                             \
   auto VAR = VAR##OrErr.takeValue()
 
-MODULAR_API_EXPORT DeviceMemory::~DeviceMemory() {
+MODULAR_DRIVER_EXPORT DeviceMemory::~DeviceMemory() {
   if (buf->ptr() != nullptr && destructorFn) {
     (*destructorFn)(buf->ptr(), getSpec());
     buf->releasePtr();
   }
 }
 
-MODULAR_API_EXPORT ErrorOrSuccess
+MODULAR_DRIVER_EXPORT ErrorOrSuccess
 DeviceMemory::copyTo(DeviceMemory &dst) const {
   return this->buf->copyTo(*dst.buf);
 }
 
-MODULAR_API_EXPORT ErrorOrSuccess DeviceMemory::memset(int value) {
+MODULAR_DRIVER_EXPORT ErrorOrSuccess DeviceMemory::memset(int value) {
   return buf->context().setMemory(*buf, value, 1,
                                   AsyncRT::DeviceContext::SyncMode::ASYNC);
 }
 
-MODULAR_API_EXPORT Device *M_copyDevice(Device *devPtr) {
+MODULAR_DRIVER_EXPORT Device *M_copyDevice(Device *devPtr) {
   auto newRef = M::copyRCRef(devPtr);
   return newRef.release();
 }
 
-MODULAR_API_EXPORT void M_freeDeviceData(Device *ptr, void *data,
-                                         M::Driver::Status *status) {
+MODULAR_DRIVER_EXPORT void M_freeDeviceData(Device *ptr, void *data,
+                                            M::Driver::Status *status) {
   if (auto err = ptr->freeData(data))
     status->errorOr = err.takeError();
 }
 
-MODULAR_API_EXPORT void M_destroyDevice(Device *devPtr) {
+MODULAR_DRIVER_EXPORT void M_destroyDevice(Device *devPtr) {
   (void)M::takeRCRef(devPtr);
 }
 
-MODULAR_API_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
+MODULAR_DRIVER_EXPORT const char *M_getDeviceDesc(const Device *devPtr) {
   return devPtr->getString().data();
 }
 
-MODULAR_API_EXPORT DeviceMemory *
+MODULAR_DRIVER_EXPORT DeviceMemory *
 M_createDeviceMemory(const M::TensorSpec *spec, Device *devPtr,
                      M::Driver::Status *status) {
   // CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
@@ -69,38 +69,39 @@ M_createDeviceMemory(const M::TensorSpec *spec, Device *devPtr,
   return *deviceMemoryOr;
 }
 
-MODULAR_API_EXPORT DeviceMemory *
+MODULAR_DRIVER_EXPORT DeviceMemory *
 M_createDeviceMemoryFrom(void *data, const M::TensorSpec *spec,
                          Device *devPtr) {
   // CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
   return devPtr->createDeviceMemory(data, *spec);
 }
 
-MODULAR_API_EXPORT Device *
+MODULAR_DRIVER_EXPORT Device *
 M_getDeviceFromDeviceMemory(DeviceMemory *tensorPtr) {
   return tensorPtr->getDevice().getPointer();
 }
 
-MODULAR_API_EXPORT void *M_takeDataFromDeviceMemory(DeviceMemory *tensorPtr) {
+MODULAR_DRIVER_EXPORT void *
+M_takeDataFromDeviceMemory(DeviceMemory *tensorPtr) {
   return tensorPtr->release();
 }
 
-MODULAR_API_EXPORT void M_destroyDeviceMemory(DeviceMemory *tensorPtr) {
+MODULAR_DRIVER_EXPORT void M_destroyDeviceMemory(DeviceMemory *tensorPtr) {
   delete tensorPtr;
 }
 
-MODULAR_API_EXPORT void M_copyDeviceMemory(DeviceMemory *dst,
-                                           const DeviceMemory *src,
-                                           M::Driver::Status *status) {
+MODULAR_DRIVER_EXPORT void M_copyDeviceMemory(DeviceMemory *dst,
+                                              const DeviceMemory *src,
+                                              M::Driver::Status *status) {
   if (auto err = src->copyTo(*dst))
     status->errorOr = err.takeError();
 }
 
-MODULAR_API_EXPORT void *M_getData(DeviceMemory *deviceMem) {
+MODULAR_DRIVER_EXPORT void *M_getData(DeviceMemory *deviceMem) {
   return deviceMem->data();
 }
 
-MODULAR_API_EXPORT std::string Device::toString() const {
+MODULAR_DRIVER_EXPORT std::string Device::toString() const {
   std::string str;
   llvm::raw_string_ostream oss(str);
   oss << "Device(type=" << deviceSpecification.ref.label << ",";
@@ -110,7 +111,7 @@ MODULAR_API_EXPORT std::string Device::toString() const {
   return str;
 }
 
-MODULAR_API_EXPORT ErrorOr<std::string> Device::getStats() {
+MODULAR_DRIVER_EXPORT ErrorOr<std::string> Device::getStats() {
   ASSIGN_OR_RETURN(info, ctx->getMemoryInfo());
 
   // Crafting JSON string
@@ -127,22 +128,22 @@ MODULAR_API_EXPORT ErrorOr<std::string> Device::getStats() {
   return s;
 }
 
-MODULAR_API_EXPORT ErrorOr<std::string> Device::getApi() {
+MODULAR_DRIVER_EXPORT ErrorOr<std::string> Device::getApi() {
   return ctx->device().api().str();
 }
 
-MODULAR_API_EXPORT ErrorOrSuccess Device::isCompatible() const {
+MODULAR_DRIVER_EXPORT ErrorOrSuccess Device::isCompatible() const {
   return ctx->device().isCompatible();
 }
 
-MODULAR_API_EXPORT ErrorOr<void *> Device::allocateData(size_t bytes) {
+MODULAR_DRIVER_EXPORT ErrorOr<void *> Device::allocateData(size_t bytes) {
   ASSIGN_OR_RETURN(buf, ctx->enqueueCreateBuffer(bytes));
   // TODO change return type to DeviceBufferRef instead of returning naked void
   // pointer.
   return buf->releasePtr();
 }
 
-MODULAR_API_EXPORT ErrorOrSuccess Device::freeData(void *ptr) {
+MODULAR_DRIVER_EXPORT ErrorOrSuccess Device::freeData(void *ptr) {
   // TODO change argument type to DeviceBufferRef.
   // Since we return a released pointer in allocateData(), we need to
   // re-create the DeviceBuffer to free it here. We have lost the size info,
@@ -151,21 +152,21 @@ MODULAR_API_EXPORT ErrorOrSuccess Device::freeData(void *ptr) {
   return success();
 }
 
-MODULAR_API_EXPORT ErrorOr<DeviceMemory *>
+MODULAR_DRIVER_EXPORT ErrorOr<DeviceMemory *>
 Device::createDeviceMemory(const TensorSpec &spec) {
   auto byteSize = spec.getNumElements() * spec.getEltType().getSizeInBytes();
   ASSIGN_OR_RETURN(buf, ctx->enqueueCreateBuffer(byteSize));
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
-MODULAR_API_EXPORT DeviceMemory *
+MODULAR_DRIVER_EXPORT DeviceMemory *
 Device::createDeviceMemory(void *data, const TensorSpec &spec) {
   auto byteSize = spec.getNumElements() * spec.getEltType().getSizeInBytes();
   auto buf = ctx->createBufferOwning(data, byteSize, /*owning=*/true);
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
-MODULAR_API_EXPORT DeviceMemory *Device::createDeviceMemory(
+MODULAR_DRIVER_EXPORT DeviceMemory *Device::createDeviceMemory(
     void *data, const TensorSpec &spec,
     llvm::unique_function<void(void *, const TensorSpec &)> destructor) {
   auto deviceMemory = createDeviceMemory(data, spec);
@@ -241,8 +242,8 @@ static ErrorOr<Device *> createCPUDevice(ssize_t numaId) {
   return device.release();
 }
 
-MODULAR_API_EXPORT Device *M_createCPUDevice(ssize_t numaId,
-                                             M::Driver::Status *status) {
+MODULAR_DRIVER_EXPORT Device *M_createCPUDevice(ssize_t numaId,
+                                                M::Driver::Status *status) {
   auto deviceOrError = createCPUDevice(numaId);
   if (deviceOrError.isError()) {
     status->errorOr = deviceOrError.takeError();
@@ -278,7 +279,7 @@ static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
   return device.release();
 }
 
-MODULAR_API_EXPORT Device *
+MODULAR_DRIVER_EXPORT Device *
 M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status) {
   auto deviceOrError = createAccelerator(gpuID);
   if (deviceOrError.isError()) {
@@ -288,6 +289,6 @@ M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status) {
   return deviceOrError.takeValue();
 }
 
-MODULAR_API_EXPORT void *M_getDeviceContext(Device *device) {
+MODULAR_DRIVER_EXPORT void *M_getDeviceContext(Device *device) {
   return (void *)device->tmpGetDeviceContext().getPointer();
 }

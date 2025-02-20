@@ -5,22 +5,21 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/DeviceDriver/Utils.h"
-
-#include "GenericML/API/max/c/symbol_export.h"
+#include "Support/SymbolExport.h"
 
 using namespace M;
 using namespace Driver;
 
-MODULAR_API_EXPORT Status *M_newStatus() { return new Status(); }
+MODULAR_DRIVER_EXPORT Status *M_newStatus() { return new Status(); }
 
-MODULAR_API_EXPORT bool M_isError(Status *status) {
+MODULAR_DRIVER_EXPORT bool M_isError(Status *status) {
   return status->errorOr.isError();
 }
 
-MODULAR_API_EXPORT const char *M_getError(Status *status) {
+MODULAR_DRIVER_EXPORT const char *M_getError(Status *status) {
   if (!M_isError(status))
     return nullptr;
   return status->errorOr.getError();
 }
 
-MODULAR_API_EXPORT void M_deleteStatus(Status *status) { delete status; }
+MODULAR_DRIVER_EXPORT void M_deleteStatus(Status *status) { delete status; }
