@@ -20,14 +20,14 @@ struct BottomK:
         values: ManagedTensorSlice[type=type, rank=rank],
         indices: ManagedTensorSlice[type = DType.int64, rank=rank],
         input: ManagedTensorSlice[type=type, rank=rank],
-        k: Scalar,
-        axis: Scalar,
+        k: Int,
+        axis: Int,
         sorted: Scalar[type = DType.bool],
     ):
         top_k(
             managed_tensor_slice_to_ndbuffer(input),
-            Int(k),
-            Int(axis),
+            k,
+            axis,
             False,
             managed_tensor_slice_to_ndbuffer(values),
             managed_tensor_slice_to_ndbuffer(indices),
@@ -35,18 +35,16 @@ struct BottomK:
         )
 
     @staticmethod
-    fn shape[
-        axis_type: DType
-    ](
+    fn shape(
         input: ManagedTensorSlice,
-        k: ScalarTensor[axis_type],
-        axis: ScalarTensor[axis_type],
+        k: Int,
+        axis: Int,
         sorted: ScalarTensor[type = DType.bool],
     ) raises -> IndexList[input.rank]:
         return top_k_shape_impl[single_thread_blocking_override=True](
             managed_tensor_slice_to_ndbuffer(input),
-            managed_tensor_slice_to_ndbuffer(k),
-            managed_tensor_slice_to_ndbuffer(axis),
+            k,
+            axis,
         )
 ```
 
