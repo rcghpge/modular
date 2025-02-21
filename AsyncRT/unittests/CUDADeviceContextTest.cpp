@@ -341,7 +341,11 @@ $L__BB0_2:
     if (srcCtx->device().id() != dstCtx->device().id()) {
       ErrorOr<bool> errBool = srcCtx->device().canAccess(dstCtx->device());
       ASSERT_FALSE(errBool) << errBool.getError() << "\n";
-      ASSERT_TRUE(errBool.get());
+      if (!errBool.get()) {
+        // TODO(SDLC-1831): Remove this once drivers are updated.
+        GTEST_SKIP() << "Skipping MultiGPU kernel test because GPU["
+                     << curDeviceId << "] is not accessible from GPU[0].";
+      }
 
       ErrorOrSuccess err = srcCtx->enablePeerAccess(*dstCtx);
       ASSERT_FALSE(err) << err.getError() << "\n";
