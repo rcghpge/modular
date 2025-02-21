@@ -1,3 +1,5 @@
+// UNSUPPORTED: ubsan
+
 // Note: due to the size of the file, we want to filecheck with --enable-var-scope
 // which prevents variables from being reused across CHECK-LABEL boundaries.
 //

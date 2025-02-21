@@ -1,3 +1,5 @@
+// UNSUPPORTED: ubsan
+
 // RUN: mo-opt %s --add-fallback-shape-funcs | FileCheck %s
 
 mo.graph @arg_max_fallback_shape_func<D0, D1 -> D2, D3>(
