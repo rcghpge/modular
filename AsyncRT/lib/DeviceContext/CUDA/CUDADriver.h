@@ -178,7 +178,7 @@ using CUmemAccessDesc = struct CUmemAccessDesc_st {
 
 class CUDADriver {
 public:
-  enum Result {
+  enum Result : unsigned int {
     SUCCESS = 0,
   };
 
