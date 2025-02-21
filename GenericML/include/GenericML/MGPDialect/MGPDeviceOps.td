@@ -855,15 +855,15 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
 
-def DebugTensorPrintOp : MGP_Op<"debug.tensor.print"> {
+def DebugTensorPrintOp : MGP_DeviceOp<"debug.tensor.print"> {
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";
   let description = [{
     Prints a debug representation of an tensor, given as a pair of an
     `!mgp.buffer` and a `!mgp.tensor_spec`. If a label attribute is supplied
-    the tensor contents are printed with that labelm and tensor contents. Otherwise
-    just the tensor metadata is printed. Printing the tensor contents may requires
-    an explicit device-to-host copy. Only CPU buffers can be printed with contents.
+    the tensor contents are printed with that label. Otherwise just the tensor
+    metadata is printed. Printing the tensor contents may require an implicit
+    device-to-host copy.
 
     For debugging and testing only.
 
@@ -887,11 +887,19 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print"> {
   let arguments = (ins ChainType:$inChain,
                        MGP_DeviceBufferType:$buffer,
                        MGP_TensorSpecType:$spec,
-                       DefaultValuedAttr<StrAttr, "\"\"">: $bLabel);
+                       DefaultValuedAttr<StrAttr, "\"\"">: $bLabel,  // 1
+                       MGP_OptDeviceRefAttr:$cDevice);               // 2
   let results = (outs ChainType: $outChain);
   let assemblyFormat = [{
     $inChain `,` $buffer `,` $spec
-    ( `,` $bLabel^ )? attr-dict `:` functional-type(operands, results)
+    ( `,` $bLabel^ )? attr-dict
+    `:` custom<TensorTypeToDeviceBufferSpec>(
+          $cDevice, type($buffer), type($spec))
+  }];
+  let hasVerifier = 1;
+
+  let extraClassDefinition = [{
+    M::DeviceRefAttr DebugTensorPrintOp::getDevice() { return getCDevice(); }
   }];
 }
 

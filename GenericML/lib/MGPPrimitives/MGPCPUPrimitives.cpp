@@ -112,9 +112,37 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.tensor.buffer.print.cpu
+//===----------------------------------------------------------------------===//
+
+static void
+mgp_debug_tensor_print_cpu(Chain inChain, const TensorBufferRef &buffer,
+                           const TensorSpec &spec, Result<Chain> outChain,
+                           MEFAttr<StringRef> bLabel,
+                           MEFAttr<uint64_t> cDeviceId, Runtime &runtime) {
+  if (bLabel->empty()) {
+    // Metadata only.
+    llvm::outs() << "Tensor(" << spec << ", " << buffer << ")\n";
+    llvm::outs().flush();
+  } else {
+    // Buffer contents, using tensor spec for shape.
+    DebugTensorPrintOptions defaultOptions;
+    DebugTensorPrintOptions *options =
+        runtime.context->get<DebugTensorPrintOptions>();
+    if (!options)
+      options = &defaultOptions;
+    if (auto errOr = options->printTensor(buffer.getBuffer(), spec, *bLabel))
+      return std::move(outChain).setToError(errOr.takeError());
+  }
+  std::move(outChain).emplace();
+}
+
+//===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
+  ADD_PRIMITIVE(registry, "mgp.debug.tensor.print.cpu",
+                mgp_debug_tensor_print_cpu);
 }

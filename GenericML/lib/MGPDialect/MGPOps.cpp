@@ -189,6 +189,23 @@ static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
 }
 
 static ParseResult parseTensorTypeToDeviceBufferSpec(OpAsmParser &p,
+                                                     DeviceRefAttr &device,
+                                                     Type &buffer,
+                                                     Type &tensorSpec) {
+  Type tensor;
+  return parseTensorTypeToDeviceBufferSpecImpl(p, tensor, device, buffer,
+                                               tensorSpec, {});
+}
+
+static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
+                                              DeviceRefAttr device,
+                                              DeviceBufferType buffer,
+                                              TensorSpecType tensorSpec) {
+  auto tensorType = DeviceTensorType::get(device, tensorSpec);
+  p << tensorType;
+}
+
+static ParseResult parseTensorTypeToDeviceBufferSpec(OpAsmParser &p,
                                                      Type &tensor, Type &buffer,
                                                      Type &tensorSpec,
                                                      Type &chain) {
