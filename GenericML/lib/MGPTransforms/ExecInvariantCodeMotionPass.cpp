@@ -47,7 +47,7 @@ namespace {
 /// Returns the buffer returned by op, which must be the only op result, and
 /// the op must be safely liftable into the 'init' block. Otherwise returns
 /// null.
-Value getLiftableBufferOp(Operation *op) {
+static Value getLiftableBufferOp(Operation *op) {
   if (auto liftableOp = dyn_cast<MGPLiftableBufferCreateOpInterface>(op))
     return liftableOp.getOutBuffer();
   return nullptr;
@@ -60,7 +60,7 @@ Value getLiftableBufferOp(Operation *op) {
 /// 'init' block op requires its results, since the cost of caching and
 /// retrieving the buffer would outweigh the cost of simply executing the
 /// op in the 'execute' phase on every call.
-bool isLiftableTrivialOp(Operation *op) {
+static bool isLiftableTrivialOp(Operation *op) {
   // Consider all pure ops to be trivial.
   if (isPure(op))
     return true;
@@ -79,7 +79,7 @@ bool isLiftableTrivialOp(Operation *op) {
 /// These ops can be lifted to the 'init' block provided the chain finds its way
 /// into the 'init' block output chain, which in turn is used by the 'execute'
 /// block input chain.
-Value getLiftableChainOp(Operation *op) {
+static Value getLiftableChainOp(Operation *op) {
   if (auto createChainOp = dyn_cast<GRT::ChainCreateOp>(op))
     return createChainOp.getResult();
   if (auto createChainOp = dyn_cast<MGPLiftableChainCreateOpInterface>(op))
@@ -90,18 +90,24 @@ Value getLiftableChainOp(Operation *op) {
 /// Return true if the result of op can be conveyed from the 'init' block
 /// to the 'execute' block via the !mgp.context cache or 'execute' block
 /// arguments.
-bool canBeConveyed(Operation *op) {
+static bool canBeConveyed(Operation *op) {
   return getLiftableBufferOp(op) || getLiftableChainOp(op);
 }
 
 /// Returns true if the result of op cannot be cached, but it is ok for the
 /// op to be executed in both the 'init' and 'execute' blocks. Doing so will
 /// allow downstream ops to also be lifted to the 'init' block.
-bool isRecomputableOp(Operation *op) { return isPure(op); }
+static bool isRecomputableOp(Operation *op) { return isPure(op); }
 
 /// Returns true if the execution of op could be safely lifted or copied to
 /// the 'init' block without causing unintended side effects.
-bool canBeLifted(Operation *op) {
+static bool canBeLifted(Operation *op) {
+  // NOTE(MAXPLAT-70): some external constants are externally mutable (e.g.
+  // torch tensors might be mutated by someone outside our stack), so we cannot
+  // lift them to the init phase.
+  if (auto externalConstOp = dyn_cast<BufferConstantExternalOp>(op))
+    if (externalConstOp.getGMutable())
+      return false;
   return canBeConveyed(op) || isRecomputableOp(op);
 }
 
