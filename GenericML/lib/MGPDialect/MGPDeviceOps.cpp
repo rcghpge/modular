@@ -409,11 +409,3 @@ LogicalResult TensorCreateOp::inferReturnTypes(
 bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getBufferMutable().getOperandNumber();
 }
-
-//===----------------------------------------------------------------------===//
-// DebugTensorPrintOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult DebugTensorPrintOp::verify() {
-  return verifyConsistentDevices(getOperation(), {getCDevice()});
-}
