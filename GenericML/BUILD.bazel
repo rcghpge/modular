@@ -1166,15 +1166,6 @@ modular_cc_library(
     ],
 )
 
-modular_cc_library(
-    name = "GPUPrimitives",
-    srcs = glob(["lib/GPUPrimitives/*.cpp"]),
-    hdrs = glob(["include/GenericML/GPUPrimitives/*.h"]),
-    deps = [
-        ":MGPPrimitives",
-    ],
-)
-
 ##
 # CONVERSIONS
 ##
