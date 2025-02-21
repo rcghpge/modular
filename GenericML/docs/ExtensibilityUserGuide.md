@@ -110,8 +110,8 @@ limited at this time.
 Some special operand structs exist which should go at the end of the operand
 list:
 
-- `MojoCallContextPtr`
-  - If specified, the graph compiler will give you access to the Mojo
+- `DeviceContextPtr`
+  - If specified, the graph compiler will give you access to the device
     context, which is needed for GPU support at the moment
   - If you don’t need this, you don’t have to include this
 - `Scalar`
@@ -146,7 +146,7 @@ struct MyOp:
 
         # Transparently added by runtime to the call as needed
         # (Optional if you don't need it)
-        ctx: MojoCallContextPtr,
+        ctx: DeviceContextPtr,
     ) raises:
      ...
 ```
@@ -185,7 +185,7 @@ fn execute[
 ](
     output: ManagedTensorSlice,
     input: ManagedTensorSlice[output.type, output.rank],
-    ctx: MojoCallContextPtr,
+    ctx: DeviceContextPtr,
 ) raises:
     alias static_shape = input._static_shape
     alias static_strides = input._static_strides
