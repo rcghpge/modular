@@ -1031,10 +1031,17 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
 }
 
 ErrorOrSuccess
-CUDADeviceContext::enqueueWaitForEvent(const DeviceEvent &event) const {
+CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.StreamWaitEvent(stream_, cudaEvent.cudaEvent(), 0));
+  return success();
+}
+
+ErrorOrSuccess
+CUDADeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+  DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
+  ERR_CHECK(enqueueWaitFor(*event));
   return success();
 }
 

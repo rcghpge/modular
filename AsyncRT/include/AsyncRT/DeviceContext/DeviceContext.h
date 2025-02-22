@@ -122,13 +122,15 @@ public:
 
   ErrorOrSuccess copyTo(const DeviceBuffer &dst) const;
 
+  ErrorOrSuccess reassignOwnershipTo(const DeviceContext &ctx) const;
+
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
                                            size_t byteSize) const;
 
 private:
   friend class DeviceContext;
 
-  DeviceContextRef context_;
+  mutable DeviceContextRef context_;
   DeviceBufferRef parent_;
   mutable void *ptr_;
   size_t byteSize_;
@@ -378,8 +380,11 @@ public:
   virtual ErrorOrSuccess synchronize() const = 0;
 
   virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
-  virtual ErrorOrSuccess
-  enqueueWaitForEvent(const DeviceEvent &event) const = 0;
+  virtual ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const = 0;
+  virtual ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const = 0;
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const {
+    return enqueueWaitFor(event);
+  }
 
   virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
   virtual ErrorOr<std::chrono::nanoseconds>

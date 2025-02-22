@@ -18,6 +18,7 @@
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/Twine.h"
 
+#include <Support/ErrorOr.h>
 #include <string.h>
 
 #define ERR_CHECK_ERR(err_call)                                                \
@@ -46,6 +47,14 @@
   do {                                                                         \
     return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
   } while (0)
+
+#define DEFINE_OR_RAISE(type, var, call)                                       \
+  auto _err_or_##var = call;                                                   \
+  if (_err_or_##var.isError()) {                                               \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,        \
+                                      _err_or_##var.getError());               \
+  }                                                                            \
+  type var = _err_or_##var.takeValue()
 
 namespace M::AsyncRT {
 
@@ -207,6 +216,18 @@ DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
   }
   return Error("Device API mismatch copying from \"" + srcApi + "\" to \"" +
                dstApi + "\"");
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess
+DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
+  if (parent() != nullptr) {
+    RAISE_ERROR_MESSAGE("cannot reassign a sub buffer");
+  }
+  DEFINE_OR_RAISE(DeviceEventRef, srcEvent, context().enqueueEvent());
+  ERR_CHECK(ctx.enqueueWaitForEvent(*srcEvent));
+
+  context_ = DeviceContextRef::copy(&ctx);
+  return success();
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>

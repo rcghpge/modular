@@ -55,6 +55,27 @@
     }                                                                          \
   } while (0)
 
+#define DEFINE_OR_RAISE(type, var, call)                                       \
+  auto _err_or_##var = call;                                                   \
+  if (_err_or_##var.isError()) {                                               \
+    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,        \
+                                      _err_or_##var.getError());               \
+  }                                                                            \
+  type var = _err_or_##var.takeValue()
+
+#define ERR_CHECK(err_call)                                                    \
+  do {                                                                         \
+    auto err_result = (err_call);                                              \
+    if (err_result.isError()) {                                                \
+      M::Error err = DeviceContext::formatError(                               \
+          __FILE__, __LINE__, __FUNCTION__, err_result.getError());            \
+      /* We are not in a context where we can return an Error here. So we   */ \
+      /* print the message and abort().                                     */ \
+      llvm::errs() << err << "\n";                                             \
+      abort();                                                                 \
+    }                                                                          \
+  } while (0)
+
 namespace M::AsyncRT {
 
 static Error formatHipError(const char *file, int line, const char *func,
@@ -730,9 +751,16 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
 }
 
 ErrorOrSuccess
-HIPDeviceContext::enqueueWaitForEvent(const DeviceEvent &event) const {
+HIPDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
   HIP_CHECK_ERR(driver_.StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
+  return success();
+}
+
+ErrorOrSuccess
+HIPDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+  DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
+  ERR_CHECK(enqueueWaitFor(*event));
   return success();
 }
 

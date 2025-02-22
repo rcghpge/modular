@@ -284,7 +284,8 @@ public:
   ErrorOrSuccess synchronize() const override;
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
-  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
+  ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
+  ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
 
   ErrorOr<DeviceTimerRef> startTimer() const override;
   ErrorOr<std::chrono::nanoseconds>

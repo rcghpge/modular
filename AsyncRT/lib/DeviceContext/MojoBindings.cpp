@@ -165,6 +165,12 @@ AsyncRT_DeviceBuffer_copyTo(const DeviceBuffer *src, const DeviceBuffer *dst) {
   return checkSuccess(src->copyTo(*dst));
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceBuffer_reassignOwnershipTo(const DeviceBuffer *buf,
+                                         const DeviceContext *ctx) {
+  return checkSuccess(buf->reassignOwnershipTo(*ctx));
+}
+
 // TODO: Remove the V1 compatibility.
 MODULAR_EXPORT void
 AsyncRT_DeviceBuffer_release_ptr(const DeviceBuffer *buffer) {
@@ -200,6 +206,12 @@ MODULAR_EXPORT void AsyncRT_DeviceStream_release(const DeviceStream *stream) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_synchronize(const DeviceContext *ctx) {
   return checkSuccess(ctx->synchronize());
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_enqueue_wait_for_context(const DeviceContext *ctx,
+                                               const DeviceContext *other) {
+  return checkSuccess(ctx->enqueueWaitFor(*other));
 }
 
 MODULAR_EXPORT const char *

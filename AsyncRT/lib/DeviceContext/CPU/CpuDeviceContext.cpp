@@ -249,7 +249,12 @@ ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() const {
 }
 
 ErrorOrSuccess
-CpuDeviceContext::enqueueWaitForEvent(const DeviceEvent &event) const {
+CpuDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOrSuccess
+CpuDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 

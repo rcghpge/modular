@@ -404,7 +404,7 @@ TEST(GPUDeviceContextTest, CrossContextEvent) {
 
   ASSIGN_NO_ERR(DeviceEventRef, copyDoneEvent, srcCtx->enqueueEvent());
 
-  EXPECT_NO_ERR(dstCtx->enqueueWaitForEvent(*copyDoneEvent));
+  EXPECT_NO_ERR(dstCtx->enqueueWaitFor(*copyDoneEvent));
   EXPECT_NO_ERR(dstCtx->enqueueCopyDeviceToDevice(*dstDevBuf, *srcDevBuf));
   EXPECT_NO_ERR(dstDevBuf->copyTo(*dstHostBuf));
 
