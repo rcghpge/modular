@@ -55,7 +55,7 @@ module {
 // CHECK-NEXT: [[INDEX:%.*]] = kgen.param.constant = <get_sizeof(struct<(index) memoryOnly>, current_target())>
 // CHECK-NEXT: [[INDEX_0:%.*]] = kgen.param.constant = <get_alignof(struct<(index) memoryOnly>, current_target())>
 
-// COM: bitcast mov / del the expeced type for create_mojo_value_async.
+// COM: bitcast mov / del the expected type for create_mojo_value_async.
 // CHECK: [[V7:%.*]] = pop.pointer.bitcast [[V5]] : !kgen.generator<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem, !kgen.pointer<struct<(index) memoryOnly>> byref_result) -> !kgen.none> to !kgen.generator<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>
 // CHECK: [[V8:%.*]] = pop.pointer.bitcast [[V6]] : !kgen.generator<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none> to !kgen.generator<(!kgen.pointer<none>) -> !kgen.none>
 
