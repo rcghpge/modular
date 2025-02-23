@@ -234,6 +234,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   if (opts.enableAssignDevices)
     pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
+  if (opts.enableVerifyDeviceAssignment)
+    pm.addPass(MO::createVerifyDeviceAssignmentPass());
 
   pm.addPass(MO::createValidateDevicesPass());
 

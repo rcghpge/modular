@@ -28,6 +28,8 @@ public:
 
   bool enableAssignDevices{true};
 
+  bool enableVerifyDeviceAssignment{false};
+
   bool enableCompiledRegionsFusion{true};
 
   bool genVizSpec{false};
@@ -98,6 +100,13 @@ private:
       cl::desc("If true, enables the AssignDevicesPass which assigns ops to "
                "devices."),
       llvm::cl::location(options.enableAssignDevices),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> enableVerifyDeviceAssignment{
+      "enable-verify-device-assignment",
+      cl::desc("If true, enables the VerifyDeviceAssignmentPass which verifies "
+               "that all ops have been assigned to the correct device."),
+      llvm::cl::location(options.enableVerifyDeviceAssignment),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> enableCompiledRegionsFusion{

@@ -298,10 +298,10 @@ def SupportConversionsTest : Pass<"support-conversions-test", "ModuleOp"> {
 }
 
 def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
-  let summary = "Assigns an `#M.device_spec` annotation to every operation "
+  let summary = "Assigns an `#M.device_ref` annotation to every operation "
                 "and tensor.";
   let description = [{
-    This pass assigns a `#M.device_spec` annotation to every operation and
+    This pass assigns a `#M.device_ref` annotation to every operation and
     tensor in the graph, respecting any existing annotations. New `mo.transfer`
     ops are inserted where required for consistency. The pass uses a simple
     eager assignment algorithm and does not attempt any form of global
@@ -347,6 +347,35 @@ def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
       "String representing the architecture of the "
                      "defaultDevice. For example, for NVIDIA GPUs this is the "
                      "compute capability (i.e. sm_X)">,
+  ];
+
+  // We need to include all the dialects as we access the mojo library.
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::index::IndexDialect",
+    "M::DebugInfo::DebugInfoDialect",
+    "M::HLCF::HLCFDialect",
+    "M::KGEN::KGENDialect",
+    "M::KGEN::LIT::LITDialect",
+    "M::KGEN::POP::POPDialect",
+    "M::MDialect",
+    "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
+    "mlir::ub::UBDialect",
+  ];
+}
+
+def VerifyDeviceAssignmentPass : Pass<"verify-device-assignment", "GraphOp"> {
+  let summary = "Ensure that every operation and tensor has a legal "
+                "`#M.device_ref` annotation";
+  let description = [{
+    This pass ensures that every operation and tensor has a legal
+    `#M.device_ref` annotation.
+  }];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+          "Paths to mojo packages containing mojo shape functions to be loaded. ">,
   ];
 
   // We need to include all the dialects as we access the mojo library.

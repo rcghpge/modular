@@ -117,6 +117,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("If true, enables the AssignDevicesPass which assigns ops "
                      "to devices."),
       llvm::cl::init(true)};
+  Option<bool> enableVerifyDeviceAssignment{
+      *this, "enable-verify-device-assignment",
+      llvm::cl::desc("If true, enables the VerifyDeviceAssignmentPass which "
+                     "verifies that all ops have been assigned to the correct "
+                     "device."),
+      llvm::cl::init(false)};
   Option<bool> enableCompiledRegionsFusion{
       *this, "enable-compiled-regions-fusion",
       llvm::cl::desc("If false, will disable compiled region fusion"),
