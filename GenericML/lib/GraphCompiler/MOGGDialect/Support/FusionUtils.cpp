@@ -5,21 +5,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilderHelpers.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/IRMapping.h"
-#include "llvm/ADT/SmallVectorExtras.h"
-#include "llvm/ADT/StringSet.h"
 
 namespace M::MOGG {
 
@@ -793,6 +789,65 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
                  fusedCompiledRegionOp.getResults())) {
     oldValue.replaceAllUsesWith(newValue);
   }
+}
+
+static bool isExclusive(MOGG::KernelOp kernelOp, Value moValue) {
+  bool isInAViewKernel = kernelOp.getIsViewOp().value_or(false);
+  bool hasUnknownProvenance = moValue.getDefiningOp<MOGG::CallOp>();
+  return !isInAViewKernel && !hasUnknownProvenance;
+}
+
+// Build the static tensor spec used as a parameter for autospecialized
+// kernels. Note, this returns a parametric result which isn't bound to a name.
+ErrorOr<TypedAttr>
+buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
+                    MOGG::MojoLibraryAnalysis &libraryAnalysis,
+                    MOGG::TypeManager &typeManager, OpBuilder &builder) {
+  MO::TensorType tensorType = MO::dynCastFromTensorLike(moValue.getType());
+  if (!tensorType)
+    return Error("unsupported value type");
+
+  DeviceRefAttr targetDevice =
+      kernelOp ? MO::getDeviceOrDefaultAny(kernelOp)
+               : DeviceRefAttr::getDefault(tensorType.getContext());
+
+  // Build the proper output type
+  TypedAttr dtypeParam = typeManager.lookupDType(tensorType.getDtype());
+  TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
+  TypedAttr alignmentParam = builder.getIndexAttr(
+      AsyncRT::getPreferredAlignment(targetDevice.getLabel().str()));
+
+  // Lower address space
+  CompileDiagnosticOr<TypedAttr> maybeAddressSpace =
+      typeManager.lowerAddressSpace(builder);
+  if (maybeAddressSpace.isError())
+    return Error("could not lower address space");
+
+  TypedAttr exclusive = builder.getBoolAttr(isExclusive(kernelOp, moValue));
+
+  SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
+
+  // Populate static shape information
+  SmallVector<int64_t> shapeVals = tensorType.getIntDims();
+  if (shapeVals.empty())
+    shapeVals.push_back(1);
+  auto shapeOrError = typeManager.lowerStaticDims(builder, shapeVals);
+  if (shapeOrError.isError())
+    return Error("failed to populate static shape.");
+
+  // Populate static stride information
+  auto strideVals = MOGG::getStridesForTensor(tensorType, /*unknown=*/false);
+  auto stridesOrError = typeManager.lowerStaticDims(builder, strideVals);
+  if (stridesOrError.isError())
+    return Error("failed to populate static strides.");
+
+  // Create parametric call which produces the static spec
+  SmallVector<mlir::TypedAttr> lambdaArgs{
+      shapeOrError.takeValue(), stridesOrError.takeValue(), alignmentParam,
+      maybeAddressSpace.takeValue(), exclusive};
+
+  return libraryAnalysis.buildParameterCall(MOGG::Utils::DPSBuildTensorSpecs,
+                                            buildSpecParams, lambdaArgs);
 }
 
 } // namespace M::MOGG

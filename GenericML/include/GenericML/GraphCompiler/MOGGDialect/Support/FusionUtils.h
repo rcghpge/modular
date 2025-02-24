@@ -7,6 +7,7 @@
 #define GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 
 using namespace M;
 
@@ -136,6 +137,13 @@ static void mergeAllocationOfType(MOGG::KernelOp kernelOp) {
     alloc.erase();
   }
 }
+
+/// Build the static tensor spec used as a parameter for kernels.
+/// The tensor spec value does not include fusion lambdas.
+ErrorOr<TypedAttr>
+buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
+                    MOGG::MojoLibraryAnalysis &libraryAnalysis,
+                    M::MOGG::TypeManager &typeManager, OpBuilder &builder);
 
 } // namespace M::MOGG
 
