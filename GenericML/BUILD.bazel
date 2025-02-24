@@ -69,7 +69,7 @@ modular_cc_library(
 # MOTransforms relies on these, but the GraphCompiler relies
 # on MOTransforms.
 modular_cc_library(
-    name = "MojoLLDBPublic.headers",
+    name = "GraphCompilerPublic.headers",
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
     tags = ["no-clang-tidy-headers"],
     visibility = ["//visibility:private"],
@@ -122,7 +122,7 @@ modular_cc_library(
     srcs = glob(["lib/Driver/CommonDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/Driver/*.h"]),
     deps = [
-        ":MojoLLDBPublic.headers",
+        ":GraphCompilerPublic.headers",
         ":Support",
         "//Support:Base",
         "//third-party/mlperf-loadgen",
@@ -471,13 +471,13 @@ modular_cc_library(
     deps = [
         ":CommonDriver",
         ":DeviceDriver",
+        ":GraphCompilerPublic.headers",
         ":MGPPrimitives",
         ":MOAnalysis",
         ":MODialect",
         ":MOGGDialect",
         ":MOTarget",
         ":MOTransformsIncGen",
-        ":MojoLLDBPublic.headers",
         ":RMODialect",
         ":RMOSupport",
     ],
