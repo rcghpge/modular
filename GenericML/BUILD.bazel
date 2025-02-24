@@ -756,6 +756,7 @@ modular_cc_library(
         ":Support",
         "//AsyncRT:DeviceContext",
         "//KGEN:ObjectCompiler",
+        "//Support:HashUtils",
     ],
 )
 
@@ -770,6 +771,7 @@ modular_cc_library(
         ":Support",
         "//KGEN:MojoParser",
         "//Kernels/mojo/Mogg:MOGGLoader",
+        "//Support:HashUtils",
     ],
 )
 
@@ -1049,6 +1051,7 @@ modular_cc_library(
         ":Support",
         "//AsyncRT:DeviceContext",
         "//GraphRT:MEFDialect",
+        "//Support:HashUtils",
         "@llvm-project//llvm:Support",
     ],
 )
