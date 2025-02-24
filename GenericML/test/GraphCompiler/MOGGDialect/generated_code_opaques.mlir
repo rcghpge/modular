@@ -28,7 +28,7 @@ module {
 }
 
 
-// CHECK-LABEL: kgen.generator export @"__stub_
+// CHECK-LABEL: kgen.generator export @__stub_
 //  CHECK-SAME: ([[ARG0:%.*]]: !kgen.pointer<pointer<none>>, [[ARG1:%.*]]: !kgen.pointer<none>) {
 
 // COM: Load the async value pointer.
