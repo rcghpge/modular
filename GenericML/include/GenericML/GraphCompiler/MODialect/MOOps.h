@@ -168,6 +168,13 @@ TypedAttr tryGetDimAttr(Value val);
 /// GraphOp's function type and signature to reflect those changes as well.
 void synchronizeMetadataUpdates(GraphOp op);
 
+/// Return the set of MO ops which are expected to only run on host.
+///
+/// TODO: This is a temporary deny-list for ops which have not had CUDA
+/// kernels implemented and the corresponding MOGG entry point extended.
+/// Will diminish to zero as ops are implemented and/or augmented with the
+/// MODeviceConstraintsInterface to constrain their device assignment.
+const llvm::DenseSet<mlir::TypeID> &getHostOnlyMOOps();
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_H

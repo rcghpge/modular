@@ -44,6 +44,54 @@ using namespace MO;
 
 namespace M::MO {
 
+// Host only operations.
+#define OP(T) mlir::TypeID::get<T>()
+const llvm::DenseSet<mlir::TypeID> &getHostOnlyMOOps() {
+  static const llvm::DenseSet<mlir::TypeID> data({
+      // Lowering supports these ops being on any device, however
+      // the Mojo implementations do not (yet).
+      OP(ArgNonzeroOp),
+      OP(BroadcastShapeOp),
+      OP(ConvTransposeOp),
+      OP(CumSumOp),
+      OP(GatherSumOp),
+      OP(LayoutTransformOp),
+      OP(LinAlg::SolveOp),
+      OP(LogSoftmaxOp),
+      OP(NonMaximumSuppressionOp),
+      OP(PadConstantOp),
+      OP(PadReflectOp),
+      OP(PadRepeatOp),
+      OP(ResizeLinearOp),
+      OP(ResizeNearestOp),
+      OP(RoiAlignOp),
+      OP(ScatterAddOp),
+      OP(ScatterMaxOp),
+      OP(ScatterMinOp),
+      OP(ScatterMulOp),
+      OP(ScatterOp),
+      OP(SplitOp),
+      OP(SqueezeShapeOp),
+      OP(TileOp),
+      OP(UnsqueezeShapeOp),
+
+      // TODO implement GPU impl
+      OP(ConcatFromListOp),
+
+      // These ops assert to be on host during lowering
+      OP(ListAppendOp),
+      OP(ListConcatOp),
+      OP(ListCreateOp),
+      OP(ListGetOp),
+      OP(ListSliceOp),
+      OP(ListInsertOp),
+      OP(IfOp),
+      OP(WhileOp),
+  });
+#undef OP
+  return data;
+}
+
 static ParseResult
 parseParamDeclElement(OpAsmParser &parser,
                       SmallVectorImpl<ParamDeclAttr> &decls) {
