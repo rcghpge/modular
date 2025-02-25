@@ -6,7 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/MOGGPreElab/MOGGDecorators.h"
+#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
