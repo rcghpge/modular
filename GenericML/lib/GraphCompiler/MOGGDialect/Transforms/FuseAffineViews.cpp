@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/MOGGPreElab/MOGGDecorators.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
@@ -311,9 +312,9 @@ struct FuseAffineViewsPass
         KGEN::ParamDeclRefAttr::get(newTensorSpec),
         KGEN::ParamDeclRefAttr::get(elementAlignmentAttr), // element_alignment
         builder.getBoolAttr(
-            KGEN::MOGGPreElab::kIOUnknownMut), // mut (of IOSpec)
+            KGEN::MOGGPreElab::kIOSpecImmutable), // mut (of IOSpec)
         builder.getIndexAttr(
-            KGEN::MOGGPreElab::kIOUnknownInput), // input (of IOSpec)
+            KGEN::MOGGPreElab::kIOSpecIOUnknown), // input (of IOSpec)
     };
 
     auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
