@@ -852,7 +852,7 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   uint64_t sizeInBytes = opResult.getType().getDtype().getSizeInBytes() *
                          (*opResult.getType().getNumElements());
   uint64_t alignment = constExternalOp.getAlign();
-  bool isMutable = constExternalOp.getIsMutable();
+  bool hasAlias = constExternalOp.getHasAlias();
   StringRef name = constExternalOp.getName();
 
   // Lower mo.constant.external depending on its device attribute.
@@ -865,7 +865,7 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
 
     // Create the mgp.buffer.constant.external op.
     Value hostBuffer = opLoweringState.hostBufferConstantExternal(
-        chain, name, sizeInBytes, alignment, isMutable);
+        chain, name, sizeInBytes, alignment, hasAlias);
 
     return constHostBufferToTarget(opLoweringState, loweringState, hostBuffer,
                                    chain, opResult, alignment);
@@ -881,7 +881,7 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
 
   // Create the MGP device buffer without copying or allocations.
   Value deviceBuffer = opLoweringState.deviceBufferConstantExternal(
-      opDevice, chain, name, sizeInBytes, alignment, isMutable);
+      opDevice, chain, name, sizeInBytes, alignment, hasAlias);
 
   MO::TensorType moTensorType = opResult.getType();
   FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =

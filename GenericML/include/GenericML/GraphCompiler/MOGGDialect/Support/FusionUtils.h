@@ -145,6 +145,11 @@ buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
                     MOGG::MojoLibraryAnalysis &libraryAnalysis,
                     M::MOGG::TypeManager &typeManager, OpBuilder &builder);
 
+// Aliased constant (introduced in MAXPLAT-70) will not be lifted to init, which
+// might reduce the performance gains from certain optimization. We probably
+// need to revisit it when the aliased constant is handled correctly.
+bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H

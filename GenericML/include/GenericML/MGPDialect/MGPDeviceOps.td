@@ -279,11 +279,11 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
                        UI64Attr:$cSize,                                  // 1
                        UI64Attr:$dAlign,                                 // 2
                        MGP_OptDeviceRefAttr:$eDevice,                    // 3
-                       DefaultValuedAttr<BoolAttr, "false">:$gMutable);  // 4
+                       DefaultValuedAttr<BoolAttr, "false">:$gHasAlias);  // 4
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $weightsRegistry
-    `[` $bName `,` $cSize `,` `align` $dAlign ( `,` `isMutable` `=` $gMutable^ )? `]`
+    `[` $bName `,` $cSize `,` `align` $dAlign ( `,` `hasAlias` `=` $gHasAlias^ )? `]`
     ( `device` $eDevice^ )? attr-dict `:` qualified(type($weightsRegistry))
     `->` qualified(type($outBuffer))
   }];
