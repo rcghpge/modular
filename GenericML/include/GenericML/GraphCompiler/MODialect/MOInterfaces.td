@@ -110,18 +110,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         $_op->setAttr(kOperationDeviceRefAttrName, device);
       }]
     >,
-  ];
-}
 
-def MO_DeviceConstraintsInterface : OpInterface<"MODeviceConstraintsInterface"> {
-  let description = [{
-    Interface for ops which don't follow the default device assignment rule
-    that the op operands and results are stored on device which executes the
-    op. Only sensible on ops which also have a MOHasDeviceInterface.
-  }];
-  let cppNamespace = "::M::MO";
-
-  let methods = [
     InterfaceMethod<
       [{
         Returns the `#M.device_ref` on which the op must execute. Returns null
