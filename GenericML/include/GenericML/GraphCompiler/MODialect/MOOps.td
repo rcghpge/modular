@@ -2861,7 +2861,10 @@ def MO_TileOp : MO_TensorOp<"tile", [
   let hasVerifier = 1;
 }
 
-def MO_PadConstantOp : MO_TensorOp<"pad.constant", [MO_PadLikeTraits]> {
+def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
+  MO_PadLikeTraits,
+  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>
+]> {
   let summary = "Constant-mode padding operation";
   let description = [{
     Pads the `input` tensor with a scalar tensor `constant` according to the

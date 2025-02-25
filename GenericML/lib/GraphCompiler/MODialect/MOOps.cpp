@@ -59,7 +59,6 @@ const llvm::DenseSet<mlir::TypeID> &getHostOnlyMOOps() {
       OP(LinAlg::SolveOp),
       OP(LogSoftmaxOp),
       OP(NonMaximumSuppressionOp),
-      OP(PadConstantOp),
       OP(PadReflectOp),
       OP(PadRepeatOp),
       OP(ResizeLinearOp),
@@ -2252,6 +2251,12 @@ LogicalResult canonicalizePadLikeOp(PadLike op, PatternRewriter &rewriter) {
 LogicalResult PadConstantOp::canonicalize(PadConstantOp op,
                                           PatternRewriter &rewriter) {
   return canonicalizePadLikeOp(op, rewriter);
+}
+
+DeviceRefAttr PadConstantOp::getOperandDevice(size_t index) {
+  bool isCPUIndex = index == getPaddingsMutable().getOperandNumber() ||
+                    index == getConstantMutable().getOperandNumber();
+  return isCPUIndex ? MO::getHostDevice(getOperation()) : nullptr;
 }
 
 LogicalResult PadReflectOp::canonicalize(PadReflectOp op,
