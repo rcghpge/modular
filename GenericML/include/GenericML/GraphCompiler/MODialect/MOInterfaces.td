@@ -428,20 +428,6 @@ def MO_DeviceInputs : MO_TensorOpInterfaceBase<"DeviceInputs"> {
   ];
 }
 
-def MO_StaticTupleInputs : MO_TensorOpInterfaceBase<"StaticTupleInputs", [MO_DeviceInputs]> {
-  let description = [{
-    Trait to indicate the inputs would be lowered to a `mogg.tuple` at the
-    call site from `mogg.call`
-  }];
-}
-
-def MO_StaticTupleOutputs : MO_TensorOpInterfaceBase<"StaticTupleOutputs"> {
-  let description = [{
-    Trait to indicate the outputs would be lowered to a `mogg.tuple` at the
-    call site from `mogg.call`
-  }];
-}
-
 def MO_Distributed : MO_TensorOpInterfaceBase<"Distributed"> {
   let description = [{
     Interface for modeling distributed operations which have

@@ -494,8 +494,8 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
     inserting an HtoD copy in converting mo.constant.external to
     mgp.buffer.constant.external.
 
-    If the `hasAlias` attribute is set to true, the external constant might be 
-    updated through external alias between graph invocation, and it will not 
+    If the `hasAlias` attribute is set to true, the external constant might be
+    updated through external alias between graph invocation, and it will not
     be lifted to the init phase.
 
     Example:
@@ -2677,8 +2677,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
-  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_StaticTupleInputs>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>
 ]> {
   let summary = "Concatenation operation";
   let description = [{
@@ -4976,9 +4975,7 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
 }
 
 class MO_AllReduceSumBase<string opName> : MO_DistributedOp<opName, [
-  MO_HasDeviceInterface,
-  MO_StaticTupleInputs,
-  MO_StaticTupleOutputs
+  MO_HasDeviceInterface
 ]> {
   let hasVerifier = 1;
   let description = [{
