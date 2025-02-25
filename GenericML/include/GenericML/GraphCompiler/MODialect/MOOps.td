@@ -2863,7 +2863,7 @@ def MO_TileOp : MO_TensorOp<"tile", [
 
 def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
   MO_PadLikeTraits,
-  DeclareOpInterfaceMethods<MO_DeviceConstraintsInterface, ["getOperandDevice"]>
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>
 ]> {
   let summary = "Constant-mode padding operation";
   let description = [{
