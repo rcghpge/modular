@@ -9,7 +9,6 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/Matchers.h"
@@ -20,7 +19,6 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
-#include <Support/DeviceSpecs.h>
 #include <numeric>
 
 using namespace M;
@@ -261,8 +259,6 @@ struct MatmulConstBPattern
     if (weightsType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
 
-    // TODO(KERN-1160): This can change back to MO::ConstantLike after the
-    // kernel crash described in this ticket has been resolved.
     if (!input ||
         !dependsOnConstantsOnly<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
@@ -386,55 +382,48 @@ struct MatmulTranspBPattern
 // matmuls operate on transposed pre-packed weights, which are faster on GPU
 // type architectures.
 struct ForceMatmulTransposeBForGPU
-    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MatmulOp> {
+    : public MO::DeviceAwareRewritePattern<OpInterfaceRewritePattern,
+                                           MO::ConstantLike> {
   DeviceRefAttr targetDevice;
   ForceMatmulTransposeBForGPU(MLIRContext *ctx, DeviceRefAttr targetDevice)
       : DeviceAwareRewritePattern(ctx, 2), targetDevice(targetDevice) {}
 
   LogicalResult
-  deviceAwareMatchAndRewrite(MO::MatmulOp matmul,
+  deviceAwareMatchAndRewrite(MO::ConstantLike weights,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    TensorValue weights = matmul.getInputB();
-    Operation *weightProducer = weights.getDefiningOp();
-
     DeviceRefAttr defaultDevice =
-        getGraphDevice(matmul->getParentOfType<MO::GraphOp>(), targetDevice);
+        getGraphDevice(weights->getParentOfType<MO::GraphOp>(), targetDevice);
     bool defaultDeviceIsCuda =
         defaultDevice && defaultDevice.getLabel() == M::kGPULabel;
 
-    if (weights.getType().getLayoutAttr().getFormat() != "KN")
-      return rewriter.notifyMatchFailure(
-          matmul, "Matmul use of weights is not annotated with the "
-                  "expected default layout.");
-
-    if (!dependsOnNoAliasConstantLikesOnly(weightProducer))
-      return rewriter.notifyMatchFailure(
-          matmul, "Weights do not only depend on constants");
-
-    // Check all uses are as weights in the matmuls
-    for (Operation *user : weights.getUsers()) {
-      auto matmulUser = dyn_cast<MatmulOp>(user);
-      if (!matmulUser)
+    // Ensure all usages of constant hit a matmul (allow chains of rebinds to
+    // the matmul) which is meant to run on cuda.
+    for (Operation *user : weights->getUsers()) {
+      auto asMatmul = dyn_cast<MO::MatmulOp>(user);
+      if (!asMatmul)
         return rewriter.notifyMatchFailure(
-            matmul, "Not all users of the weight are matmuls!");
+            weights, "Not all users of constant are matmuls.");
 
-      if (matmulUser.getInputB() != weights ||
-          matmulUser.getInputA() == weights)
+      if (asMatmul.getInputB().getDefiningOp() != weights.getOperation())
         return rewriter.notifyMatchFailure(
-            matmulUser,
-            "Matmul user does not exclusively use weight as `B` tensor.");
+            asMatmul, "Not all matmul users use constant as weights");
 
-      bool matmulIsUnset = !matmulUser.getDeviceRef();
-      bool matmulIsSetToCuda =
-          matmulIsUnset ? false
-                        : matmulUser.getDeviceRef().getLabel() == M::kGPULabel;
-      if (!matmulIsSetToCuda && !(matmulIsUnset && defaultDeviceIsCuda))
+      if (asMatmul.getInputB().getType().getLayoutAttr().getFormat() != "KN")
         return rewriter.notifyMatchFailure(
-            matmulUser, "Found matmul user with incorrect devices");
+            asMatmul, "Matmul use of weights is not annotated with the "
+                      "expected default layout.");
+
+      if (!defaultDeviceIsCuda && !asMatmul.getDeviceRef())
+        return rewriter.notifyMatchFailure(
+            asMatmul,
+            "Matmul use does not have device and default device is not cuda.");
+
+      if (asMatmul.getDeviceRef() &&
+          asMatmul.getDeviceRef().getLabel() != M::kGPULabel)
+        return rewriter.notifyMatchFailure(
+            asMatmul, "Matmul is explicitly not run on cuda");
     }
 
-    // Rewrite the weights
-    rewriter.setInsertionPointAfter(weightProducer);
     LayoutAttr matmulWeightsLayout = LayoutAttr::get(getContext(), "NK");
 
     // Transpose weights (assume to be folded by constant-folding)
@@ -442,12 +431,12 @@ struct ForceMatmulTransposeBForGPU
     SmallVector<TypedAttr> newShape = {oldShape[1], oldShape[0]};
     auto newTransposeTy =
         weights.getType().cloneWith(newShape).cloneWith(matmulWeightsLayout);
-    auto perm = rewriter.create<ConstantOp>(weights.getLoc(),
+    auto perm = rewriter.create<ConstantOp>(weights->getLoc(),
                                             SmallVector<int64_t>{1, 0});
     auto transposedWeights = rewriter.create<MO::TransposeOp>(
-        weights.getLoc(), newTransposeTy, weights, perm);
+        weights->getLoc(), newTransposeTy, weights.getResult(), perm);
 
-    rewriter.replaceAllUsesExcept(weights, transposedWeights,
+    rewriter.replaceAllUsesExcept(weights.getResult(), transposedWeights,
                                   transposedWeights);
     return success();
   }
@@ -539,24 +528,7 @@ struct ConcatZeroAxisPattern
 
     Block *concatBlock = concat.getResult().getParentBlock();
     DenseSet<Value> uniqueInputs;
-
-    auto graphOp = concat->getParentOfType<GraphOp>();
-    DeviceRefAttr defaultDevice =
-        getGraphDevice(graphOp, getHostDevice(graphOp));
-    auto getDevice = [&](TensorType ty) {
-      auto maybeDev = ty.getDeviceRef();
-      return maybeDev ? maybeDev : defaultDevice;
-    };
-
-    // We need all devices to be the same.
-    DeviceRefAttr targetDevice =
-        getDevice(cast<TensorType>(concat.getInputs()[0].getType()));
     for (Value input : concat.getInputs()) {
-      TensorType tensorTy = cast<TensorType>(input.getType());
-      if (getDevice(tensorTy) != targetDevice) {
-        return rewriter.notifyMatchFailure(
-            concat, "Not all inputs are on same device.");
-      }
       Location inputLoc = input.getLoc();
       // This ensures we don't generate a slow `MGP::BufferConcatOp` that won't
       // be optimized away by `MGP::ConcatInPlacePass`.
@@ -616,7 +588,7 @@ struct ConvConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!dependsOnNoAliasConstantLikesOnly(filter.getDefiningOp()))
+    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
     auto maybeNumGroups = MO::tryGetConstantInt(op.getNumGroups());
@@ -754,7 +726,7 @@ struct ConvTransposeConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!dependsOnNoAliasConstantLikesOnly(filter.getDefiningOp()))
+    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
     if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {

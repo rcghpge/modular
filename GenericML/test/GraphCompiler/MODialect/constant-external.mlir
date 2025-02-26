@@ -7,9 +7,9 @@ mo.graph @constant_external() -> (!mo.tensor<[128, 128], bf16>, !mo.tensor<[256,
     align = 16 : ui64, device = #M.device_ref<"gpu", 0>, name = "foo"
   } : !mo.tensor<[128, 128], bf16>
 
-  // CHECK: %{{.*}} = mo.constant.external {{.*}} hasAlias = true, name = "bar"
+  // CHECK: %{{.*}} = mo.constant.external {{.*}} isMutable = true, name = "bar"
   %weight_mutable = mo.constant.external {
-    align = 16 : ui64, device = #M.device_ref<"gpu", 0>, name = "bar", hasAlias = true
+    align = 16 : ui64, device = #M.device_ref<"gpu", 0>, name = "bar", isMutable = true
   } : !mo.tensor<[256, 256], bf16>
 
   mo.output %weight, %weight_mutable : !mo.tensor<[128, 128], bf16>, !mo.tensor<[256, 256], bf16>

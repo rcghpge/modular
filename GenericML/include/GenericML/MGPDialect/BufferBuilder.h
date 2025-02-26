@@ -214,7 +214,7 @@ public:
       OpBuilder &builder, Location loc, TypedValue<MEF::ChainType> inChain,
       TypedValue<ContextType> context,
       TypedValue<MGP::OpaqueType> weightsRegistry, StringRef name,
-      uint64_t size, uint64_t align, bool hasAlias) = 0;
+      uint64_t size, uint64_t align, bool isMutable) = 0;
 
   /// Returns the buffer held by tensor.
   virtual Value tensorExtractBuffer(OpBuilder &builder, Location loc,
@@ -383,7 +383,7 @@ public:
                                TypedValue<ContextType> context,
                                TypedValue<MGP::OpaqueType> weightsRegistry,
                                StringRef name, uint64_t size, uint64_t align,
-                               bool hasAlias) override;
+                               bool isMutable) override;
 
   Value tensorExtractBuffer(OpBuilder &builder, Location loc,
                             Value tensor) override;

@@ -108,7 +108,7 @@ Value MGPBufferBuilder::bufferConstantExternal(
     OpBuilder &builder, Location loc, TypedValue<MEF::ChainType> inChain,
     TypedValue<ContextType> context,
     TypedValue<MGP::OpaqueType> weightsRegistry, StringRef name, uint64_t size,
-    uint64_t align, bool hasAlias) {
+    uint64_t align, bool isMutable) {
   return builder.create<BufferConstantExternalOp>(
       loc,
       /*inChain=*/inChain,
@@ -117,7 +117,7 @@ Value MGPBufferBuilder::bufferConstantExternal(
       /*cSize=*/size,
       /*dAlign=*/align,
       /*eDevice=*/device,
-      /*gHasAlias=*/hasAlias);
+      /*gMutable=*/isMutable);
 }
 
 Value MGPBufferBuilder::tensorExtractBuffer(OpBuilder &builder, Location loc,

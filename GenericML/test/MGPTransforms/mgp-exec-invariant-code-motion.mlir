@@ -41,7 +41,7 @@ mgp.model @constant_external_mutable : mof devices [#M.device_ref<"cpu", 0>] ini
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.buffer) {
-  %out_buf = mgp.buffer.constant.external %ch0, %weights["foo", 4096, align 4, hasAlias = true] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  %out_buf = mgp.buffer.constant.external %ch0, %weights["foo", 4096, align 4, isMutable = true] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
   mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer
 }
 

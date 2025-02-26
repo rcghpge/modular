@@ -1,4 +1,4 @@
-// RUN: mo-opt --resolve-unknown-parameters --shape-inference --add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" %s | FileCheck %s
+// RUN: mo-opt --resolve-unknown-parameters --shape-inference="kernel-library-paths=%kernel_api_test_lib" --add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" %s | FileCheck %s
 
 
 // CHECK-LABEL: mo.graph @custom_op

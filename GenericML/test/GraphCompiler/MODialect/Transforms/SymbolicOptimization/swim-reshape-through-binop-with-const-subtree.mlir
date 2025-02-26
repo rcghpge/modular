@@ -25,30 +25,6 @@ mo.graph @success_const_rhs(
 // -----
 
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @success_const_rhs_external([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant.external {align = 1 : ui64, name = "blob"} : !mo.tensor<[], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[16, 64, 128, 128], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = mo.sub([[VARG0]], [[V1]]) : !mo.tensor<[16, 64, 128, 128], f32>
-// CHECK-NEXT: [[V3:[^ ]*]] = mo.static.reshape([[V2]]) : !mo.tensor<[16, 64, 128, 128], f32> -> !mo.tensor<[1, 1024, 128, 128], f32>
-// CHECK-NEXT: mo.output [[V3]] : !mo.tensor<[1, 1024, 128, 128], f32>
-mo.graph @success_const_rhs_external(
-  %sri: !mo.tensor<[16, 64, 128, 128], f32>
-) -> !mo.tensor<[1, 1024, 128, 128], f32> {
-  %pc = mo.constant.external {align = 1 : ui64, name = "blob"} : !mo.tensor<[], f32>
-
-  %b0 = mo.static.broadcast_to(%pc) : !mo.tensor<[], f32> -> !mo.tensor<[1024], f32>
-  %b1 = mo.static.reshape(%b0) : !mo.tensor<[1024], f32> -> !mo.tensor<[1, 1024, 1, 1], f32>
-
-  %lhs = mo.static.reshape(%sri) : !mo.tensor<[16, 64, 128, 128], f32> -> !mo.tensor<[1, 1024, 128, 128], f32>
-  %rhs = mo.static.broadcast_to(%b1) : !mo.tensor<[1, 1024, 1, 1], f32> -> !mo.tensor<[1, 1024, 128, 128], f32>
-  %out = mo.sub(%lhs, %rhs) : !mo.tensor<[1, 1024, 128, 128], f32>
-
-  mo.output %out : !mo.tensor<[1, 1024, 128, 128], f32>
-}
-
-// -----
-
-// CHECK-LABEL: mo.graph
 // CHECK-SAME: @success_const_lhs([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[16, 64, 128, 128], f32>

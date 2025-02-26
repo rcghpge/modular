@@ -13,10 +13,8 @@
 namespace M {
 
 // Checks if an operation depends on constants only.
-inline bool dependsOnlyOnProperty(
-    mlir::Operation *operation,
-    llvm::function_ref<bool(mlir::Operation *)> propertyCheck =
-        [](mlir::Operation *) { return true; }) {
+template <typename... ConstantTypes>
+bool dependsOnConstantsOnly(mlir::Operation *operation) {
   llvm::SmallVector<mlir::Operation *> next = {operation};
   mlir::DenseSet<mlir::Operation *> visited;
   while (!next.empty()) {
@@ -32,7 +30,7 @@ inline bool dependsOnlyOnProperty(
 
     auto operands = op->getOperands();
     if (!llvm::range_size(operands)) {
-      if (!propertyCheck(op))
+      if (!llvm::isa<ConstantTypes...>(op))
         return false;
 
       continue;
@@ -44,15 +42,6 @@ inline bool dependsOnlyOnProperty(
   }
 
   return true;
-}
-
-template <typename... ConstantTypes>
-bool dependsOnConstantsOnly(mlir::Operation *operation) {
-  auto propertyCheck = [](mlir::Operation *op) {
-    return llvm::isa<ConstantTypes...>(op);
-  };
-
-  return dependsOnlyOnProperty(operation, propertyCheck);
 }
 
 } // namespace M
