@@ -50,8 +50,7 @@ WriteableBufferRef makeCacheKey(BufferRef buffer, Options &...options) {
   (insertOptionToKey(options), ...);
 
   /// Add source buffer.
-  std::string bufferKey =
-      Cache::Keys::TypeKey<BufferRef>::hashKey(std::move(buffer));
+  std::string bufferKey = Cache::Keys::BufferKey::hashKey(std::move(buffer));
   keyBuffer->write(bufferKey.data(), bufferKey.size());
   return keyBuffer;
 }
