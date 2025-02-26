@@ -280,8 +280,12 @@ def MO_OutputOp : MO_ControlOp<"output", [
 // IfOp
 //===----------------------------------------------------------------------===//
 
-def IfOp : MO_ControlOp<"if",
-          [SingleBlockImplicitTerminator<"MO::YieldOp">, HasOnlyGraphRegion, RegionKindInterface]> {
+def IfOp : MO_ControlOp<"if", [
+  SingleBlockImplicitTerminator<"MO::YieldOp">,
+  HasOnlyGraphRegion,
+  RegionKindInterface,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+]> {
   let summary = "`if` control flow operation";
   let description = [{
     The `mo.if` op takes an `i1` condition, a 'then' block and an 'else'
@@ -325,9 +329,12 @@ def IfOp : MO_ControlOp<"if",
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-def WhileOp : MO_ControlOp<"while",
-          [SingleBlockImplicitTerminator<"MO::YieldOp">,
-          HasOnlyGraphRegion, RegionKindInterface]> {
+def WhileOp : MO_ControlOp<"while", [
+  SingleBlockImplicitTerminator<"MO::YieldOp">,
+  HasOnlyGraphRegion,
+  RegionKindInterface,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+]> {
   let summary = "`while` control flow operation";
   let description = [{
     The `mo.while` operation takes "cond" and "body" blocks. While the "cond"
@@ -978,7 +985,9 @@ def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos"> {
 
 def MO_CumSumOp : MO_TensorOp<"cumsum", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "Cumulative summation operation";
   let description = [{
     Returns the cumulative summation of input tensors along an axis. By default,
@@ -1564,7 +1573,9 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax", [
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "Logarighmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -2097,6 +2108,7 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]>{
   let summary = "Transposed convolution operation";
   let description = [{
@@ -2353,6 +2365,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]> {
   let summary = "Squeeze-shape operation";
   let description = [{
@@ -2398,6 +2411,7 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
 def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
@@ -2478,6 +2492,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]> {
   let summary = "Broadcast-shape operation";
   let description = [{
@@ -2730,6 +2745,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceInput>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]> {
   let summary = "Splitting operation";
   let description = [{
@@ -2826,6 +2842,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 def MO_TileOp : MO_TensorOp<"tile", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]> {
   let summary = "Tiling operation";
   let description = [{
@@ -2861,7 +2878,7 @@ def MO_TileOp : MO_TensorOp<"tile", [
 
 def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
   MO_PadLikeTraits,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Constant-mode padding operation";
   let description = [{
@@ -2901,7 +2918,10 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
+def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
+  MO_PadLikeTraits,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
     Pads the `input` tensor by reflecting it according to the `paddings`.
@@ -2939,7 +2959,10 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [MO_PadLikeTraits]> {
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [MO_PadLikeTraits]> {
+def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
+  MO_PadLikeTraits,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
     Pads the `input` tensor by repeating border values according to `paddings`.
@@ -3031,7 +3054,9 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 }
 
 // TODO(#20442): Remove with generic gather fusion.
-def MO_GatherSumOp : MO_TensorOp<"gather_sum"> {
+def MO_GatherSumOp : MO_TensorOp<"gather_sum", [
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "`gather-sum` operation";
   let description = [{
     A temporary composite op that composes a gather with sum reduction.
@@ -3096,7 +3121,9 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 // ScatterOp
 //===----------------------------------------------------------------------===//
 
-def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits]> {
+def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "`scatter` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3157,7 +3184,9 @@ class MO_ScatterReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
   }];
 }
 
-def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
+def MO_ScatterAddOp : MO_ScatterReductionOp<"add", [
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "`scatter-add` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3193,7 +3222,9 @@ def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
   }];
 }
 
-def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
+def MO_ScatterMaxOp : MO_ScatterReductionOp<"max", [
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "scatter-max operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3229,7 +3260,9 @@ def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
   }];
 }
 
-def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
+def MO_ScatterMinOp : MO_ScatterReductionOp<"min", [
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "`scatter-min` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3265,7 +3298,9 @@ def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
   }];
 }
 
-def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
+def MO_ScatterMulOp : MO_ScatterReductionOp<"mul", [
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "scatter-mul operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3474,7 +3509,8 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
 //===----------------------------------------------------------------------===//
 
 def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
-    [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
+    [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+    DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
   let summary = "Non-max suppression operation";
   let description = [{
    Filters out boxes that have high intersection-over-union (IOU).
@@ -3512,7 +3548,8 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
 //===----------------------------------------------------------------------===//
 
 def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]> {
   let summary = "Nonzero-value indices operation";
   let description = [{
@@ -3732,7 +3769,9 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
 def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
   [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-   DeclareOpInterfaceMethods<MO_ShapeMaterialization>]> {
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "Linear resize operation";
   let description = [{
     Resizes a tensor to a new shape using the linear algorithm.
@@ -3759,7 +3798,9 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
 
 def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-   DeclareOpInterfaceMethods<MO_ShapeMaterialization>]> {
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "Nearest-neighbor resize operation";
   let description = [{
     Resizes a tensor to a new shape using the nearest-neighbor algorithm.
@@ -3807,7 +3848,9 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
 def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_ShapeMaterialization>]> {
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
     let summary = "ROI alignment operation";
     let description = [{
       ROI align consumes an input tensor and regions of interest in which to apply pooling.
@@ -4011,6 +4054,7 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
     MO_SameOperandsAndResultElementType,
     DeclareOpInterfaceMethods<MO_DefaultParameterization>,
     DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+    DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
 ]> {
   let summary = "Linear solve operation";
   let description = [{
@@ -4100,7 +4144,10 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 // Layout Transform
 //===----------------------------------------------------------------------===//
 
-def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [Pure]> {
+def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [
+  Pure,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+]> {
   let summary = "Layout transformation operation";
   let description = [{
     This op transforms the layout of input tensor to the layout specified in
@@ -4322,7 +4369,8 @@ def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
 // List ops
 //===----------------------------------------------------------------------===//
 
-def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure]> {
+def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
   let summary = "List appending operation";
   let description = [{
     Creates a new list that's the result of appending an element to the end of a
@@ -4352,7 +4400,8 @@ def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure]> {
+def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
   let summary = "List creation operation";
   let description = [{
     Creates a new list which contains the given inputs (currently limited to
@@ -4380,7 +4429,8 @@ def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_ListGetOp : MO_TensorOp<"list.get", [Pure]> {
+def MO_ListGetOp : MO_TensorOp<"list.get", [Pure,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
   let summary = "List access operation";
   let description = [{
     Retrives the element at given (base zero) index of the list. The index can be
@@ -4409,7 +4459,8 @@ def MO_ListGetOp : MO_TensorOp<"list.get", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
+def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
   let summary = "List insertion operation";
   let description = [{
     Creates a new list that's the result of inserting an element at given (base
@@ -4448,7 +4499,8 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_ListConcatOp : MO_TensorOp<"list.concat", [Pure]> {
+def MO_ListConcatOp : MO_TensorOp<"list.concat", [Pure,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
   let summary = "List concatenation operation";
   let description = [{
     Creates a new list that's the result of concatenating the two input lists
@@ -4477,7 +4529,8 @@ def MO_ListConcatOp : MO_TensorOp<"list.concat", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure]> {
+def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
   let summary = "List slice operation";
   let description = [{
     Creates a new list that's the result of applying the equivalent of Python's
@@ -4613,7 +4666,9 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 }
 
 def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>, Pure
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+  Pure
 ]> {
   let summary = "List concatenation operation";
   let description = [{

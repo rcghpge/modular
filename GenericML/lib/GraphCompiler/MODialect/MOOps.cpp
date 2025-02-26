@@ -45,51 +45,46 @@ using namespace MO;
 namespace M::MO {
 
 // Host only operations.
-#define OP(T) mlir::TypeID::get<T>()
-const llvm::DenseSet<mlir::TypeID> &getHostOnlyMOOps() {
-  static const llvm::DenseSet<mlir::TypeID> data({
-      // Lowering supports these ops being on any device, however
-      // the Mojo implementations do not (yet).
-      OP(ArgNonzeroOp),
-      OP(BroadcastShapeOp),
-      OP(ConvTransposeOp),
-      OP(CumSumOp),
-      OP(GatherSumOp),
-      OP(LayoutTransformOp),
-      OP(LinAlg::SolveOp),
-      OP(LogSoftmaxOp),
-      OP(NonMaximumSuppressionOp),
-      OP(PadReflectOp),
-      OP(PadRepeatOp),
-      OP(ResizeLinearOp),
-      OP(ResizeNearestOp),
-      OP(RoiAlignOp),
-      OP(ScatterAddOp),
-      OP(ScatterMaxOp),
-      OP(ScatterMinOp),
-      OP(ScatterMulOp),
-      OP(ScatterOp),
-      OP(SplitOp),
-      OP(SqueezeShapeOp),
-      OP(TileOp),
-      OP(UnsqueezeShapeOp),
+#define HOST_ONLY_OP(T)                                                        \
+  DeviceRefAttr T::getExecutionDevice() {                                      \
+    return getHostDevice(getOperation());                                      \
+  }
 
-      // TODO implement GPU impl
-      OP(ConcatFromListOp),
-
-      // These ops assert to be on host during lowering
-      OP(ListAppendOp),
-      OP(ListConcatOp),
-      OP(ListCreateOp),
-      OP(ListGetOp),
-      OP(ListSliceOp),
-      OP(ListInsertOp),
-      OP(IfOp),
-      OP(WhileOp),
-  });
-#undef OP
-  return data;
-}
+// Lowering supports these ops being on any device, however
+// the Mojo implementations do not (yet).
+HOST_ONLY_OP(ArgNonzeroOp)
+HOST_ONLY_OP(BroadcastShapeOp)
+HOST_ONLY_OP(ConvTransposeOp)
+HOST_ONLY_OP(CumSumOp)
+HOST_ONLY_OP(GatherSumOp)
+HOST_ONLY_OP(LayoutTransformOp)
+HOST_ONLY_OP(LinAlg::SolveOp)
+HOST_ONLY_OP(LogSoftmaxOp)
+HOST_ONLY_OP(NonMaximumSuppressionOp)
+HOST_ONLY_OP(PadReflectOp)
+HOST_ONLY_OP(PadRepeatOp)
+HOST_ONLY_OP(ResizeLinearOp)
+HOST_ONLY_OP(ResizeNearestOp)
+HOST_ONLY_OP(RoiAlignOp)
+HOST_ONLY_OP(ScatterAddOp)
+HOST_ONLY_OP(ScatterMaxOp)
+HOST_ONLY_OP(ScatterMinOp)
+HOST_ONLY_OP(ScatterMulOp)
+HOST_ONLY_OP(ScatterOp)
+HOST_ONLY_OP(SplitOp)
+HOST_ONLY_OP(SqueezeShapeOp)
+HOST_ONLY_OP(TileOp)
+HOST_ONLY_OP(UnsqueezeShapeOp)
+HOST_ONLY_OP(ConcatFromListOp)
+HOST_ONLY_OP(ListAppendOp)
+HOST_ONLY_OP(ListConcatOp)
+HOST_ONLY_OP(ListCreateOp)
+HOST_ONLY_OP(ListGetOp)
+HOST_ONLY_OP(ListSliceOp)
+HOST_ONLY_OP(ListInsertOp)
+HOST_ONLY_OP(IfOp)
+HOST_ONLY_OP(WhileOp)
+#undef HOST_ONLY_OP
 
 static ParseResult
 parseParamDeclElement(OpAsmParser &parser,
