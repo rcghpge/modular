@@ -916,12 +916,12 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, const void *data,
+    const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName);
+    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
     if (iter != funcMap_.end()) {
       CUDAModuleFunctionRef moduleFunc = iter->second;
       return CUDADeviceFunctionRef::create(*this, signature,
@@ -931,8 +931,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
 
   if (logLoadFunction_) {
     llvm::errs() << "CUDADeviceContext::loadFunction(" << functionName
-                 << (logVerbose_ ? "):\n" : ")")
-                 << (logVerbose_ ? reinterpret_cast<const char *>(data) : "")
+                 << (logVerbose_ ? "):\n" : ")") << (logVerbose_ ? code : "")
                  << "\n";
   }
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
@@ -944,7 +943,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   CUDA_WITH_CTX_ERR(*this);
 
   CUDA_CHECK_ERR(driver_.ModuleLoadDataEx(
-      &module, data, optionKind.size(), optionKind.data(),
+      &module, code.data(), optionKind.size(), optionKind.data(),
       reinterpret_cast<void **>(optionValues.data())));
 
   CUfunction function;
@@ -967,13 +966,13 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   CUDADeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName);
+    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
     if (iter != funcMap_.end()) {
       result = CUDADeviceFunctionRef::create(
           *this, signature,
           CUDAModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      funcMap_.insert({moduleName, moduleFunc});
+      funcMap_.insert({moduleName.empty() ? code : moduleName, moduleFunc});
       result = CUDADeviceFunctionRef::create(*this, signature,
                                              std::move(moduleFunc));
     }

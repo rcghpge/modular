@@ -221,7 +221,7 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
 
 ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
     StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, const void *data,
+    const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   // Currently not implemented. Maybe never to be implemented.

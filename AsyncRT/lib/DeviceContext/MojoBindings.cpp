@@ -273,11 +273,12 @@ AsyncRT_DeviceContext_setMemory_sync(const DeviceContext *ctx,
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunction(
     const DeviceFunction **result, const DeviceContext *ctx,
-    const char *moduleName, const char *functionName, const void *data,
-    int32_t maxDynamicSharedBytes, const char *debugLevel,
+    const char *moduleName, const char *functionName, const char *data,
+    size_t dataLen, int32_t maxDynamicSharedBytes, const char *debugLevel,
     int32_t optimizationLevel) {
   DeviceFunction::SignatureBuilder sig;
-  return checkRef(result, ctx->loadFunction(moduleName, functionName, sig, data,
+  return checkRef(result, ctx->loadFunction(moduleName, functionName, sig,
+                                            StringRef(data, dataLen),
                                             maxDynamicSharedBytes, debugLevel,
                                             optimizationLevel));
 }

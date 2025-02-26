@@ -689,12 +689,12 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
 
 ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, const void *data,
+    const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName);
+    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
     if (iter != funcMap_.end()) {
       HIPModuleFunctionRef moduleFunc = iter->second;
       return HIPDeviceFunctionRef::create(*this, signature,
@@ -706,11 +706,11 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   if (false) {
     std::cerr << "HIPDeviceContext::loadFunction(" << functionName.str()
               << "):\n"
-              << reinterpret_cast<const char *>(data) << "\n";
+              << code.data() << "\n";
   }
   hipModule_t module;
 
-  HIP_CHECK_ERR(driver_.ModuleLoadData(&module, data));
+  HIP_CHECK_ERR(driver_.ModuleLoadData(&module, code.data()));
 
   hipFunction_t function;
   HIP_CHECK_ERR(
@@ -724,13 +724,13 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   HIPDeviceFunctionRef result;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName);
+    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
     if (iter != funcMap_.end()) {
       result = HIPDeviceFunctionRef::create(
           *this, signature,
           HIPModuleFunctionRef::copy(iter->second.getPointer()));
     } else {
-      funcMap_.insert({moduleName, moduleFunc});
+      funcMap_.insert({moduleName.empty() ? code : moduleName, moduleFunc});
       result =
           HIPDeviceFunctionRef::create(*this, signature, std::move(moduleFunc));
     }

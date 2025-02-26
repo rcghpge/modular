@@ -239,7 +239,7 @@ public:
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName,
                const DeviceFunction::SignatureBuilder &signature,
-               const void *data, int32_t maxDynamicSharedBytes,
+               StringRef code, int32_t maxDynamicSharedBytes,
                StringRef debugLevel, int32_t optimizationLevel) const override;
   ErrorOrSuccess
   enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,

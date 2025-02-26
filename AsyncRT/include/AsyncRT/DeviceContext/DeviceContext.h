@@ -359,7 +359,7 @@ public:
   virtual ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName,
                const DeviceFunction::SignatureBuilder &signature,
-               const void *data, int32_t maxDynamicSharedBytes = -1,
+               StringRef code, int32_t maxDynamicSharedBytes = -1,
                StringRef debugLevel = "",
                int32_t optimizationLevel = -1) const = 0;
   virtual ErrorOrSuccess
