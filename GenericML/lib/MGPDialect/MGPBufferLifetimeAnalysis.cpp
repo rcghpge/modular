@@ -16,7 +16,14 @@ using namespace MGP;
 DependencyTree::DependencyTree() = default;
 
 DependencyTree::DependencyTree(const DependencyTree &other) {
+  // First create the root and all nodes
   root = cloneNode(other.root, nullptr);
+
+  // Copy the remaining members
+  runsAfter = other.runsAfter;
+  runsAfterCounts = other.runsAfterCounts;
+  operationToIndex = other.operationToIndex;
+  indexToOperation = other.indexToOperation;
 }
 
 DependencyTree &DependencyTree::operator=(const DependencyTree &other) {
@@ -24,12 +31,20 @@ DependencyTree &DependencyTree::operator=(const DependencyTree &other) {
     DependencyTree temp(other);
     std::swap(root, temp.root);
     std::swap(nodes, temp.nodes);
+    std::swap(runsAfter, temp.runsAfter);
+    std::swap(runsAfterCounts, temp.runsAfterCounts);
+    std::swap(operationToIndex, temp.operationToIndex);
+    std::swap(indexToOperation, temp.indexToOperation);
   }
   return *this;
 }
 
 DependencyTree::DependencyTree(DependencyTree &&other) noexcept
-    : root(other.root), nodes(std::move(other.nodes)) {
+    : root(other.root), nodes(std::move(other.nodes)),
+      runsAfter(std::move(other.runsAfter)),
+      runsAfterCounts(std::move(other.runsAfterCounts)),
+      operationToIndex(std::move(other.operationToIndex)),
+      indexToOperation(std::move(other.indexToOperation)) {
   other.root = nullptr;
 }
 
@@ -37,6 +52,10 @@ DependencyTree &DependencyTree::operator=(DependencyTree &&other) noexcept {
   if (this != &other) {
     root = other.root;
     nodes = std::move(other.nodes);
+    runsAfter = std::move(other.runsAfter);
+    runsAfterCounts = std::move(other.runsAfterCounts);
+    operationToIndex = std::move(other.operationToIndex);
+    indexToOperation = std::move(other.indexToOperation);
     other.root = nullptr;
   }
   return *this;
@@ -70,26 +89,23 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
 
   Operation *terminator = block->getTerminator();
 
-  llvm::DenseMap<Operation *, unsigned> operationToIndex;
-  SmallVector<Operation *> indexToOperation;
   unsigned bindex = 0;
   for (Operation &op : block->getOperations()) {
-    operationToIndex[&op] = bindex;
-    indexToOperation.push_back(&op);
+    tree.operationToIndex[&op] = bindex;
+    tree.indexToOperation.push_back(&op);
     bindex++;
   }
 
-  unsigned numOperations = operationToIndex.size();
+  unsigned numOperations = tree.operationToIndex.size();
 
   // Initialize runsAfter sets
-  SmallVector<llvm::BitVector> runsAfter(numOperations,
-                                         llvm::BitVector(numOperations, false));
+  tree.runsAfter.resize(numOperations, llvm::BitVector(numOperations, false));
 
   llvm::BitVector noUserRunsAfter(numOperations);
-  noUserRunsAfter.set(operationToIndex[terminator]);
+  noUserRunsAfter.set(tree.operationToIndex[terminator]);
 
   // Initialize terminator runsAfter set with only itself
-  runsAfter[operationToIndex[terminator]] = noUserRunsAfter;
+  tree.runsAfter[tree.operationToIndex[terminator]] = noUserRunsAfter;
 
   // Allocate outside loop to prevent re-allocation
   llvm::SetVector<Operation *> worklist;
@@ -101,9 +117,9 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
 
   while (!worklist.empty()) {
     Operation *op = worklist.pop_back_val();
-    unsigned opIndex = operationToIndex[op];
+    unsigned opIndex = tree.operationToIndex[op];
 
-    auto &oldRunsAfter = runsAfter[opIndex];
+    auto &oldRunsAfter = tree.runsAfter[opIndex];
     newRunsAfter = oldRunsAfter;
 
     // Find all operations in this block that use this op's results
@@ -122,7 +138,7 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
       // Otherwise, this op's runsAfter set is the union of all of its uses'
       // sets
       for (Operation *user : users)
-        newRunsAfter |= runsAfter[operationToIndex[user]];
+        newRunsAfter |= tree.runsAfter[tree.operationToIndex[user]];
 
       newRunsAfter.set(opIndex); // Ensure op is in its own runsAfter set
     }
@@ -148,8 +164,8 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
 
   // Pre-compute the counts for all bitsets as the count operation is
   // O(n) and the consumer is an O(n^2) loop nest.
-  SmallVector<uint32_t> runsAfterCounts =
-      llvm::map_to_vector(runsAfter, [](const llvm::BitVector &set) {
+  tree.runsAfterCounts =
+      llvm::map_to_vector(tree.runsAfter, [](const llvm::BitVector &set) {
         return static_cast<uint32_t>(set.count());
       });
 
@@ -157,12 +173,12 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
     if (&n == terminator)
       continue;
 
-    const auto &nRunsAfter = runsAfter[operationToIndex[&n]];
+    const auto &nRunsAfter = tree.runsAfter[tree.operationToIndex[&n]];
     Operation *immediateRunsAfter = nullptr;
     unsigned ipdomIndex = numOperations;
 
     for (unsigned i = 0; i < numOperations; ++i) {
-      Operation *op = indexToOperation[i];
+      Operation *op = tree.indexToOperation[i];
 
       // Skip all operations that aren't in the runsAfter set
       if (op == &n || !nRunsAfter.test(i))
@@ -170,7 +186,7 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
 
       // The immediate runsAfter is the one with the largest runsAfter set
       if (immediateRunsAfter == nullptr ||
-          runsAfterCounts[i] > runsAfterCounts[ipdomIndex]) {
+          tree.runsAfterCounts[i] > tree.runsAfterCounts[ipdomIndex]) {
         immediateRunsAfter = op;
         ipdomIndex = i;
       }
@@ -212,21 +228,20 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
     if (isFirstVisit) {
       // preorder
       if (!visited.contains(top)) {
-        top->preIndex = index++;
-        top->depth = depth;
-
-        // Schedule to visit again for post-order
-        stack.push_back({top, false, depth});
-
-        for (auto child : llvm::reverse(top->children)) {
-          stack.push_back({child, true, depth + 1});
-        }
-
         visited.insert(top);
+        top->depth = depth;
+        top->preIndex = index++;
+      }
+
+      // Schedule to visit again for post-order
+      stack.push_back({top, false, depth});
+
+      for (auto child : llvm::reverse(top->children)) {
+        stack.push_back({child, true, depth + 1});
       }
     } else {
       // postorder
-      if (visited.contains(top) && top->postIndex == -1)
+      if (top->postIndex == -1)
         top->postIndex = index++;
     }
   }
@@ -311,10 +326,24 @@ bool DependencyTree::contains(Operation *op) const {
   return nodes.contains(op);
 }
 
-bool DependencyTree::executesAfter(DependencyTreeNode *a,
-                                   DependencyTreeNode *b) const {
-  assert(a && b);
-  return a->preIndex <= b->preIndex && a->postIndex >= b->postIndex;
+bool DependencyTree::executesAfter(Operation *a, Operation *b) const {
+  assert(a && b && "Invalid operations provided");
+
+  // Use operationToIndex directly for faster lookup
+  auto itA = operationToIndex.find(a);
+  auto itB = operationToIndex.find(b);
+
+  if (itA == operationToIndex.end() || itB == operationToIndex.end()) {
+    // If either operation is not in the map, we can't determine execution order
+    return false;
+  }
+
+  unsigned int indexA = itA->second;
+  unsigned int indexB = itB->second;
+
+  // The 'runsAfter' set for an operation (node 'b') contains all operations
+  // that execute after it.
+  return runsAfter[indexB].test(indexA);
 }
 
 DependencyTreeNode *DependencyTree::findLCA(DependencyTreeNode *a,

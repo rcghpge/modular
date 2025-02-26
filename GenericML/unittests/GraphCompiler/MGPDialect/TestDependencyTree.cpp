@@ -60,8 +60,17 @@ module {
   ASSERT_EQ(op1Node->parent, op2Node);
   ASSERT_TRUE(op1Node->children.empty());
 
-  ASSERT_TRUE(tree.executesAfter(op2Node, op0Node));
-  ASSERT_TRUE(tree.executesAfter(op2Node, op1Node));
+  // Test the executesAfter method with Operation* parameters
+  // ops[0] is %op2, ops[1] is %op0, ops[2] is %op1, ops[3] is %op3
+
+  // %op2 executes after %op0 and %op1
+  ASSERT_TRUE(tree.executesAfter(ops[0], ops[1]));
+  ASSERT_TRUE(tree.executesAfter(ops[0], ops[2]));
+
+  // %op3 executes after all other ops
+  ASSERT_TRUE(tree.executesAfter(ops[3], ops[0]));
+  ASSERT_TRUE(tree.executesAfter(ops[3], ops[1]));
+  ASSERT_TRUE(tree.executesAfter(ops[3], ops[2]));
 }
 
 TEST_F(DependencyTreeTest, CopyConstructorAndAssignment) {
@@ -133,15 +142,13 @@ module {
   auto ops = parseIR(irString);
   auto tree = DependencyTree::getDependencyTree(ops[0]->getBlock());
 
-  auto op0 = tree.get(ops[0]);
-  auto op1 = tree.get(ops[1]);
-  auto op2 = tree.get(ops[2]);
-
-  ASSERT_TRUE(tree.executesAfter(op1, op0));
-  ASSERT_TRUE(tree.executesAfter(op2, op1));
-  ASSERT_TRUE(tree.executesAfter(op2, op0));
-  ASSERT_FALSE(tree.executesAfter(op0, op1));
-  ASSERT_FALSE(tree.executesAfter(op1, op2));
+  ASSERT_TRUE(tree.executesAfter(ops[1], ops[0])); // %op1 executes after %op0
+  ASSERT_TRUE(tree.executesAfter(ops[2], ops[1])); // %op2 executes after %op1
+  ASSERT_TRUE(tree.executesAfter(ops[2], ops[0])); // %op2 executes after %op0
+  ASSERT_FALSE(
+      tree.executesAfter(ops[0], ops[1])); // %op0 does not execute after %op1
+  ASSERT_FALSE(
+      tree.executesAfter(ops[1], ops[2])); // %op1 does not execute after %op2
 }
 
 TEST_F(DependencyTreeTest, FindLCA) {

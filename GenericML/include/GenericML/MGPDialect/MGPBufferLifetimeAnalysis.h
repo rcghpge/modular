@@ -76,7 +76,7 @@ public:
   bool contains(Operation *) const;
 
   // Returns true if a is guaranteed to execute after b
-  bool executesAfter(DependencyTreeNode *a, DependencyTreeNode *b) const;
+  bool executesAfter(Operation *a, Operation *b) const;
 
   // Find the least common ancestor of two nodes in the tree.
   DependencyTreeNode *findLCA(DependencyTreeNode *a,
@@ -89,6 +89,17 @@ public:
 private:
   DependencyTreeNode *root{nullptr};
   DenseMap<Operation *, std::unique_ptr<DependencyTreeNode>> nodes;
+
+  // Set of operations that must execute after each operation
+  SmallVector<llvm::BitVector> runsAfter;
+
+  // Number of operations that execute after each operation. Stored here to
+  // avoid recomputing
+  SmallVector<uint32_t> runsAfterCounts;
+
+  // Map from operations to indices in the runsAfter sets
+  DenseMap<Operation *, unsigned> operationToIndex;
+  SmallVector<Operation *> indexToOperation;
 
   // Clones a node including its children
   DependencyTreeNode *cloneNode(DependencyTreeNode *node,
