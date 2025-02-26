@@ -259,14 +259,14 @@ AsyncRT_DeviceContext_DtoD_sync(const DeviceContext *ctx,
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_async(const DeviceContext *ctx,
-                                      const DeviceBuffer *dst, uint32_t val,
+                                      const DeviceBuffer *dst, uint64_t val,
                                       size_t valSize) {
   return checkSuccess(ctx->setMemory(*dst, val, valSize, DeviceContext::ASYNC));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_sync(const DeviceContext *ctx,
-                                     const DeviceBuffer *dst, uint32_t val,
+                                     const DeviceBuffer *dst, uint64_t val,
                                      size_t valSize) {
   return checkSuccess(ctx->setMemory(*dst, val, valSize, DeviceContext::SYNC));
 }

@@ -761,7 +761,7 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
-                                            uint32_t val, size_t valSize,
+                                            uint64_t val, size_t valSize,
                                             SyncMode mode) const {
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
@@ -786,18 +786,46 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
     } else {
       CUDA_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
     }
-  } else {
-    if (valSize != 4) {
-      return Error("unsupported valSize");
-    }
+  } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 2;
     if (mode == ASYNC) {
-      CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, val, len, stream_));
+      CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, static_cast<uint32_t>(val),
+                                            len, stream_));
     } else {
-      CUDA_CHECK_ERR(driver_.MemsetD32(ptr, val, len));
+      CUDA_CHECK_ERR(driver_.MemsetD32(ptr, static_cast<uint32_t>(val), len));
+    }
+  } else {
+    if (valSize != 8) {
+      return Error("unsupported valSize");
+    }
+    if ((byteSize & 7) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    uint32_t hiBits = static_cast<uint32_t>(val >> 32);
+    uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
+    if (hiBits == loBits) {
+      size_t len = byteSize >> 2; // Divide by 4 as we are using 32-bit memset.
+      if (mode == ASYNC) {
+        CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, loBits, len, stream_));
+      } else {
+        CUDA_CHECK_ERR(driver_.MemsetD32(ptr, loBits, len));
+      }
+    } else {
+      size_t len = byteSize >> 3;
+      void *hiPtr = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) +
+                                             sizeof(uint32_t));
+      if (mode == ASYNC) {
+        CUDA_CHECK_ERR(
+            driver_.MemsetD2D32Async(ptr, 8, loBits, 1, len, stream_));
+        CUDA_CHECK_ERR(
+            driver_.MemsetD2D32Async(hiPtr, 8, hiBits, 1, len, stream_));
+      } else {
+        CUDA_CHECK_ERR(driver_.MemsetD2D32(ptr, 8, loBits, 1, len));
+        CUDA_CHECK_ERR(driver_.MemsetD2D32(hiPtr, 8, hiBits, 1, len));
+      }
     }
   }
   return success();

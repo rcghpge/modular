@@ -80,9 +80,11 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   GET_FUNC(hipMemsetD8Async);
   GET_FUNC(hipMemsetD16Async);
   GET_FUNC(hipMemsetD32Async);
+  GET_FUNC(hipMemset2DAsync);
   GET_FUNC(hipMemsetD8);
   GET_FUNC(hipMemsetD16);
   GET_FUNC(hipMemsetD32);
+  GET_FUNC(hipMemset2D);
 
   GET_FUNC(hipModuleLoadData);
   GET_FUNC(hipModuleLoadDataEx);

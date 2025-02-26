@@ -273,6 +273,66 @@ TEST(GPUDeviceContextTest, SubBuffer) {
   free(aPtr);
 }
 
+TEST(DeviceContextTest, SetMemory) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  int allocLen = 256;
+  ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, hostBuf, ctx->createHostBuffer(allocLen));
+
+  EXPECT_NO_ERR(ctx->setMemory(*buf, 123, 1, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(buf->copyTo(*hostBuf));
+  EXPECT_NO_ERR(ctx->synchronize());
+  {
+    uint8_t *ptr = static_cast<uint8_t *>(hostBuf->ptr());
+    for (int i = 0; i < allocLen; i++) {
+      EXPECT_EQ(ptr[i], 123);
+    }
+  }
+
+  EXPECT_NO_ERR(ctx->setMemory(*buf, 12345, 2, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(buf->copyTo(*hostBuf));
+  EXPECT_NO_ERR(ctx->synchronize());
+  {
+    uint16_t *ptr = static_cast<uint16_t *>(hostBuf->ptr());
+    for (int i = 0; i < (allocLen / 2); i++) {
+      EXPECT_EQ(ptr[i], 12345);
+    }
+  }
+
+  EXPECT_NO_ERR(ctx->setMemory(*buf, 1234567890, 4, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(buf->copyTo(*hostBuf));
+  EXPECT_NO_ERR(ctx->synchronize());
+  {
+    uint32_t *ptr = static_cast<uint32_t *>(hostBuf->ptr());
+    for (int i = 0; i < (allocLen / 4); i++) {
+      EXPECT_EQ(ptr[i], 1234567890);
+    }
+  }
+
+  EXPECT_NO_ERR(
+      ctx->setMemory(*buf, 0x0101010101010101ul, 8, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(buf->copyTo(*hostBuf));
+  EXPECT_NO_ERR(ctx->synchronize());
+  {
+    uint64_t *ptr = static_cast<uint64_t *>(hostBuf->ptr());
+    for (int i = 0; i < (allocLen / 8); i++) {
+      EXPECT_EQ(ptr[i], 0x0101010101010101ul);
+    }
+  }
+
+  EXPECT_NO_ERR(
+      ctx->setMemory(*buf, 1234567890123456789, 8, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(buf->copyTo(*hostBuf));
+  EXPECT_NO_ERR(ctx->synchronize());
+  {
+    uint64_t *ptr = static_cast<uint64_t *>(hostBuf->ptr());
+    for (int i = 0; i < (allocLen / 8); i++) {
+      EXPECT_EQ(ptr[i], 1234567890123456789);
+    }
+  }
+}
+
 TEST(GPUDeviceContextTest, Timers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 

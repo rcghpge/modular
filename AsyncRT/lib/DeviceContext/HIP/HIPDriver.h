@@ -290,6 +290,10 @@ public:
                         hipStream_t hStream) const {
     return hipMemsetD32Async_(dstDevice, ui, N, hStream);
   }
+  Result Memset2DAsync(void *dst, size_t pitch, int value, size_t width,
+                       size_t height, hipStream_t stream) const {
+    return hipMemset2DAsync_(dst, pitch, value, width, height, stream);
+  }
 
   Result MemsetD8(hipDeviceptr_t dstDevice, unsigned char uc, size_t N) const {
     return hipMemsetD8_(dstDevice, uc, N);
@@ -300,6 +304,10 @@ public:
   }
   Result MemsetD32(hipDeviceptr_t dstDevice, unsigned int ui, size_t N) const {
     return hipMemsetD32_(dstDevice, ui, N);
+  }
+  Result Memset2D(void *dst, size_t pitch, int value, size_t width,
+                  size_t height) const {
+    return hipMemset2D_(dst, pitch, value, width, height);
   }
 
   Result ModuleLoadData(hipModule_t *module, const void *image) const {
@@ -466,6 +474,11 @@ private:
                                     hipStream_t);
   thipMemsetD32Async *hipMemsetD32Async_;
 
+  using thipMemset2DAsync = Result(void *dst, size_t pitch, int value,
+                                   size_t width, size_t height,
+                                   hipStream_t stream);
+  thipMemset2DAsync *hipMemset2DAsync_;
+
   using thipMemsetD8 = Result(hipDeviceptr_t, unsigned char, size_t);
   thipMemsetD8 *hipMemsetD8_;
 
@@ -474,6 +487,10 @@ private:
 
   using thipMemsetD32 = Result(hipDeviceptr_t, unsigned int, size_t);
   thipMemsetD32 *hipMemsetD32_;
+
+  using thipMemset2D = Result(void *dst, size_t pitch, int value, size_t width,
+                              size_t height);
+  thipMemset2D *hipMemset2D_;
 
   using thipModuleLoadData = Result(hipModule_t *, const void *);
   thipModuleLoadData *hipModuleLoadData_;

@@ -617,7 +617,7 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
-                                           uint32_t val, size_t valSize,
+                                           uint64_t val, size_t valSize,
                                            SyncMode mode) const {
   CHECK_IS_HIP_ERR(dst.context().device());
   void *ptr = dst.ptr();
@@ -640,18 +640,48 @@ ErrorOrSuccess HIPDeviceContext::setMemory(const DeviceBuffer &dst,
     } else {
       HIP_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
     }
-  } else {
-    if (valSize != 4) {
-      return Error("unsupported valSize");
-    }
+  } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 2;
     if (mode == ASYNC) {
-      HIP_CHECK_ERR(driver_.MemsetD32Async(ptr, val, len, stream_));
+      HIP_CHECK_ERR(driver_.MemsetD32Async(ptr, static_cast<uint32_t>(val), len,
+                                           stream_));
     } else {
-      HIP_CHECK_ERR(driver_.MemsetD32(ptr, val, len));
+      HIP_CHECK_ERR(driver_.MemsetD32(ptr, static_cast<uint32_t>(val), len));
+    }
+  } else {
+    if (valSize != 8) {
+      return Error("unsupported valSize");
+    }
+    if ((byteSize & 7) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    uint32_t hiBits = static_cast<uint32_t>(val >> 32);
+    uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
+    if (hiBits == loBits) {
+      size_t len = byteSize >> 2; // Divide by 4 as we are using 32-bit memset.
+      if (mode == ASYNC) {
+        HIP_CHECK_ERR(driver_.MemsetD32Async(ptr, loBits, len, stream_));
+      } else {
+        HIP_CHECK_ERR(driver_.MemsetD32(ptr, loBits, len));
+      }
+    } else {
+      size_t len = byteSize >> 3;
+      char *curPtr = reinterpret_cast<char *>(ptr);
+      uint64_t curVal = val;
+      for (int i = 0; i < 8; i++) {
+        if (mode == ASYNC) {
+          HIP_CHECK_ERR(driver_.Memset2DAsync(
+              curPtr, 8, static_cast<int>(curVal & 0xff), 1, len, stream_));
+        } else {
+          HIP_CHECK_ERR(driver_.Memset2D(
+              curPtr, 8, static_cast<int>(curVal & 0xff), 1, len));
+        }
+        curPtr += 1;
+        curVal >>= 8;
+      }
     }
   }
   return success();

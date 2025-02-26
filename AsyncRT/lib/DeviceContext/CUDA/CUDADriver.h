@@ -374,6 +374,12 @@ public:
     CUDA_DRIVER_CALL_LOG();
     return cuMemsetD32Async_(dstDevice, ui, N, hStream);
   }
+  Result MemsetD2D32Async(CUdeviceptr dstDevice, size_t dstPitch,
+                          unsigned int ui, size_t Width, size_t Height,
+                          CUstream hStream) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuMemsetD2D32Async_(dstDevice, dstPitch, ui, Width, Height, hStream);
+  }
 
   Result MemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N) const {
     CUDA_DRIVER_CALL_LOG();
@@ -386,6 +392,11 @@ public:
   Result MemsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N) const {
     CUDA_DRIVER_CALL_LOG();
     return cuMemsetD32_v2_(dstDevice, ui, N);
+  }
+  Result MemsetD2D32(CUdeviceptr dstDevice, unsigned int dstPitch,
+                     unsigned int ui, size_t Width, size_t Height) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuMemsetD2D32_v2_(dstDevice, dstPitch, ui, Width, Height);
   }
 
   Result LinkCreate(unsigned int numOptions, CUjit_option *options,
@@ -677,6 +688,10 @@ private:
   using tcuMemsetD32Async = Result(CUdeviceptr, unsigned int, size_t, CUstream);
   tcuMemsetD32Async *cuMemsetD32Async_;
 
+  using tcuMemsetD2D32Async = Result(CUdeviceptr, size_t, unsigned int, size_t,
+                                     size_t, CUstream);
+  tcuMemsetD2D32Async *cuMemsetD2D32Async_;
+
   using tcuMemsetD8_v2 = Result(CUdeviceptr, unsigned char, size_t);
   tcuMemsetD8_v2 *cuMemsetD8_v2_;
 
@@ -685,6 +700,10 @@ private:
 
   using tcuMemsetD32_v2 = Result(CUdeviceptr, unsigned int, size_t);
   tcuMemsetD32_v2 *cuMemsetD32_v2_;
+
+  using tcuMemsetD2D32_v2 = Result(CUdeviceptr, unsigned int, unsigned int,
+                                   size_t, size_t);
+  tcuMemsetD2D32_v2 *cuMemsetD2D32_v2_;
 
   using tcuLinkCreate_v2 = Result(unsigned int numOptions,
                                   CUjit_option *options, void **optionValues,

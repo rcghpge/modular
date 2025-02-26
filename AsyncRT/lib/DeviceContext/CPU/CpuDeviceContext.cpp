@@ -178,7 +178,7 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
-                                           uint32_t val, size_t valSize,
+                                           uint64_t val, size_t valSize,
                                            SyncMode mode) const {
   CHECK_IS_CPU_ERR(dst.context().device());
   void *ptr = dst.ptr();
@@ -194,15 +194,24 @@ ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
     for (size_t i = 0; i < len; i++) {
       *curPtr++ = static_cast<uint16_t>(val);
     }
-  } else {
-    if (valSize != 4) {
-      return Error("unsupported valSize");
-    }
+  } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 2;
     uint32_t *curPtr = static_cast<uint32_t *>(ptr);
+    for (size_t i = 0; i < len; i++) {
+      *curPtr++ = static_cast<uint32_t>(val);
+    }
+  } else {
+    if (valSize != 8) {
+      return Error("unsupported valSize");
+    }
+    if ((byteSize & 7) != 0) {
+      return Error("byteSize of buffer is misaliged");
+    }
+    size_t len = byteSize >> 3;
+    uint64_t *curPtr = static_cast<uint64_t *>(ptr);
     for (size_t i = 0; i < len; i++) {
       *curPtr++ = val;
     }
