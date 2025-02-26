@@ -382,48 +382,55 @@ struct MatmulTranspBPattern
 // matmuls operate on transposed pre-packed weights, which are faster on GPU
 // type architectures.
 struct ForceMatmulTransposeBForGPU
-    : public MO::DeviceAwareRewritePattern<OpInterfaceRewritePattern,
-                                           MO::ConstantLike> {
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MatmulOp> {
   DeviceRefAttr targetDevice;
   ForceMatmulTransposeBForGPU(MLIRContext *ctx, DeviceRefAttr targetDevice)
       : DeviceAwareRewritePattern(ctx, 2), targetDevice(targetDevice) {}
 
   LogicalResult
-  deviceAwareMatchAndRewrite(MO::ConstantLike weights,
+  deviceAwareMatchAndRewrite(MO::MatmulOp matmul,
                              MO::DeviceAwareRewriter &rewriter) const override {
+    TensorValue weights = matmul.getInputB();
+    Operation *weightProducer = weights.getDefiningOp();
+
     DeviceRefAttr defaultDevice =
-        getGraphDevice(weights->getParentOfType<MO::GraphOp>(), targetDevice);
+        getGraphDevice(matmul->getParentOfType<MO::GraphOp>(), targetDevice);
     bool defaultDeviceIsCuda =
         defaultDevice && defaultDevice.getLabel() == M::kGPULabel;
 
-    // Ensure all usages of constant hit a matmul (allow chains of rebinds to
-    // the matmul) which is meant to run on cuda.
-    for (Operation *user : weights->getUsers()) {
-      auto asMatmul = dyn_cast<MO::MatmulOp>(user);
-      if (!asMatmul)
-        return rewriter.notifyMatchFailure(
-            weights, "Not all users of constant are matmuls.");
+    if (weights.getType().getLayoutAttr().getFormat() != "KN")
+      return rewriter.notifyMatchFailure(
+          matmul, "Matmul use of weights is not annotated with the "
+                  "expected default layout.");
 
-      if (asMatmul.getInputB().getDefiningOp() != weights.getOperation())
-        return rewriter.notifyMatchFailure(
-            asMatmul, "Not all matmul users use constant as weights");
+    if (!dependsOnConstantsOnly<MO::ConstantLike>(weightProducer))
+      return rewriter.notifyMatchFailure(
+          matmul, "Weights do not only depend on constants");
 
-      if (asMatmul.getInputB().getType().getLayoutAttr().getFormat() != "KN")
+    // Check all uses are as weights in the matmuls
+    for (Operation *user : weights.getUsers()) {
+      auto matmulUser = dyn_cast<MatmulOp>(user);
+      if (!matmulUser)
         return rewriter.notifyMatchFailure(
-            asMatmul, "Matmul use of weights is not annotated with the "
-                      "expected default layout.");
+            matmul, "Not all users of the weight are matmuls!");
 
-      if (!defaultDeviceIsCuda && !asMatmul.getDeviceRef())
+      if (matmulUser.getInputB() != weights ||
+          matmulUser.getInputA() == weights)
         return rewriter.notifyMatchFailure(
-            asMatmul,
-            "Matmul use does not have device and default device is not cuda.");
+            matmulUser,
+            "Matmul user does not exclusively use weight as `B` tensor.");
 
-      if (asMatmul.getDeviceRef() &&
-          asMatmul.getDeviceRef().getLabel() != M::kGPULabel)
+      bool matmulIsUnset = !matmulUser.getDeviceRef();
+      bool matmulIsSetToCuda =
+          matmulIsUnset ? false
+                        : matmulUser.getDeviceRef().getLabel() == M::kGPULabel;
+      if (!matmulIsSetToCuda && !(matmulIsUnset && defaultDeviceIsCuda))
         return rewriter.notifyMatchFailure(
-            asMatmul, "Matmul is explicitly not run on cuda");
+            matmulUser, "Found matmul user with incorrect devices");
     }
 
+    // Rewrite the weights
+    rewriter.setInsertionPointAfter(weightProducer);
     LayoutAttr matmulWeightsLayout = LayoutAttr::get(getContext(), "NK");
 
     // Transpose weights (assume to be folded by constant-folding)
@@ -431,12 +438,12 @@ struct ForceMatmulTransposeBForGPU
     SmallVector<TypedAttr> newShape = {oldShape[1], oldShape[0]};
     auto newTransposeTy =
         weights.getType().cloneWith(newShape).cloneWith(matmulWeightsLayout);
-    auto perm = rewriter.create<ConstantOp>(weights->getLoc(),
+    auto perm = rewriter.create<ConstantOp>(weights.getLoc(),
                                             SmallVector<int64_t>{1, 0});
     auto transposedWeights = rewriter.create<MO::TransposeOp>(
-        weights->getLoc(), newTransposeTy, weights.getResult(), perm);
+        weights.getLoc(), newTransposeTy, weights, perm);
 
-    rewriter.replaceAllUsesExcept(weights.getResult(), transposedWeights,
+    rewriter.replaceAllUsesExcept(weights, transposedWeights,
                                   transposedWeights);
     return success();
   }
