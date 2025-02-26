@@ -1,10 +1,11 @@
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
-load("//bazel:api.bzl", "modular_py_library")
+load("//bazel:api.bzl", "modular_py_library", "requirement")
 
 modular_py_library(
     name = "interfaces",
     srcs = glob(["**/*.py"]),
     imports = ["../../.."],
+    deps = [requirement("numpy")],
 )
 
 pkg_files(
