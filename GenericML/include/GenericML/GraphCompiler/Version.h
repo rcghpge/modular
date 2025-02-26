@@ -15,6 +15,11 @@ namespace M::MO {
 /// implementation.
 std::string getGraphCompilerVersionString();
 
+/// Get a unique string that embeds the binary version of the MOGG compiler
+/// implementation. The string is a hex representation of the hash of the
+/// version string.
+std::string getMOGGCompilerVersionString();
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_VERSION_H

@@ -14,6 +14,9 @@
 #include "PyTorch/ATenRT/BinaryID.h"
 #include "Support/BinaryID.h"
 
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/xxhash.h"
+
 std::string M::MO::getGraphCompilerVersionString() {
   // TODO(GEX-1565): The binary ID for graph compiler library is not sufficient
   // to solely determine whether a cache invalidation is needed. Updates on
@@ -26,4 +29,23 @@ std::string M::MO::getGraphCompilerVersionString() {
          M::AsyncRT::getRuntimeGlobalsBinaryID() + "-" +
          M::KGEN::getCompilerRTBinaryID() + "-" +
          M::getModularVersion().buildType;
+}
+
+std::string M::MO::getMOGGCompilerVersionString() {
+  // Compute version hash once using static initialization. This combines:
+  // - Modular framework version
+  // - Binary ID for current build
+  // - MOGG embeddings ID
+  // - KGEN compiler runtime ID
+  // - Build type
+  // Uses lambda initialization to ensure thread-safe single computation
+  static std::string version = []() {
+    std::string versionString = M::getModularVersionString() +
+                                M::getBinaryID() + "-" +
+                                M::MOGG::Embeddings::getMOGGEmbeddingID() +
+                                "-" + M::KGEN::getCompilerRTBinaryID() + "-" +
+                                M::getModularVersion().buildType;
+    return llvm::toHex(llvm::xxHash64(versionString), /*LowerCase=*/true);
+  }();
+  return version;
 }
