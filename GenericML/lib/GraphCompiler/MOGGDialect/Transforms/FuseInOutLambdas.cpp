@@ -320,76 +320,82 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   ///
   /// This ensures the fusion is legal. Many of the checks can be moved into the
   /// canonicalizer / verifier.
-  bool canDoOutputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterface) {
+  llvm::BitVector canDoOutputFusion(MOGG::KernelOp kernel,
+                                    ArrayAttr fusionInterface) {
     // Unreachable: Ambigious what we should actually fuse. Previous passes
     // should have maintained 1:1 relationship of output to output interfaces.
     if (fusionInterface.size() != kernel.getNumResults())
-      return false;
-
-    // Restrictive guard for now.
-    if (kernel.getNumResults() != 1)
-      return false;
+      return llvm::BitVector();
 
     // For in-place allocated kernel, we disable for now.
     if (kernel.isInPlaceAlloc())
-      return false;
+      return llvm::BitVector();
 
     // Should be unreachable sanity check. Ensure this is not an elementwise
     // kernel (as if it where after fusion we would trigger more fusions).
     auto isElemwise = kernel.getFusionBodyLambda();
-    if (isElemwise)
-      return false;
+    if (isElemwise.has_value())
+      return llvm::BitVector();
 
-    // Output can only have one user and that user must be a fusable elementwise
-    // kernel.
-    Value result = kernel.getResult(0);
-    if (llvm::range_size(result.getUsers()) > 1)
-      return false;
+    llvm::BitVector fusableOutput(kernel.getNumResults(), true);
+    for (auto [idx, result] : llvm::enumerate(kernel->getResults())) {
+      // Output can only have one user and that user must be a fusable
+      // elementwise kernel.
+      if (llvm::range_size(result.getUsers()) > 1)
+        return fusableOutput.reset(idx);
 
-    // Check it's a kernel.
-    MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
-    if (!user)
-      return false;
+      // Check it's a kernel.
+      MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
+      if (!user)
+        return fusableOutput.reset(idx);
 
-    // Only fuse within the same block and not across, i.e, control flow.
-    if (kernel->getBlock() != user->getBlock())
-      return false;
+      // Only fuse within the same block and not across, i.e, control flow.
+      if (kernel->getBlock() != user->getBlock())
+        return fusableOutput.reset(idx);
 
-    // Check that it has a single output.
-    if (user->getNumResults() != 1)
-      return false;
+      // Check that it has a single output.
+      if (user->getNumResults() != 1)
+        return fusableOutput.reset(idx);
 
-    // Check the kernel is a fusable elementwise.
-    if (!user.getFusionBodyLambda())
-      return false;
+      // Check the kernel is a fusable elementwise.
+      if (!user.getFusionBodyLambda())
+        return fusableOutput.reset(idx);
 
-    // Kernel must expose input fusion contract.
-    std::optional<ArrayAttr> inputInterfaces = user.getInputFusionInterface();
-    if (!inputInterfaces.has_value())
-      return false;
+      // Kernel must expose input fusion contract.
+      std::optional<ArrayAttr> inputInterfaces = user.getInputFusionInterface();
+      if (!inputInterfaces.has_value())
+        return fusableOutput.reset(idx);
 
-    // It must expose a valid input lambda attribute for every operand which
-    // uses this.
-    for (auto [operand, attr] : llvm::zip(
-             user.getOperands(), inputInterfaces->getAsRange<StringAttr>())) {
-      if (operand == result && attr.strref().empty())
-        return false;
+      // It must expose a valid input lambda attribute for every operand which
+      // uses this.
+      for (auto [operand, attr] : llvm::zip(
+               user.getOperands(), inputInterfaces->getAsRange<StringAttr>())) {
+        if (operand == result && attr.strref().empty())
+          return fusableOutput.reset(idx);
+      }
+
+      // Check the output lambda fusion hook.
+      if (cast<StringAttr>(fusionInterface[idx]).strref().empty())
+        return fusableOutput.reset(idx);
+
+      // Must have the same device.
+      if (kernel.getResults().size() == 1) {
+        if (kernel.getDeviceRef() != user.getDeviceRef())
+          return fusableOutput.reset(idx);
+      } else if (cast<MO::TensorType>(result.getType()).getDeviceRef() !=
+                 user.getDeviceRef()) {
+        // AllReduce is a distributed ops, compare the device ref on a
+        // particular tensor result individually.
+        return fusableOutput.reset(idx);
+      }
     }
-
-    // Check the output lambda fusion hook.
-    if (cast<StringAttr>(fusionInterface[0]).strref().empty())
-      return false;
-
-    // Must have the same device
-    if (kernel.getDeviceRef() != user.getDeviceRef())
-      return false;
-
-    return true;
+    return fusableOutput;
   }
 
   // Fuse the user of `kernelToFuseInto` into the src kernel with KGEN.
   KernelOp fuseIntoOutputLambdaKGEN(KernelOp kernelToFuseInto,
                                     StringAttr outputLambdaName,
+                                    unsigned outputIdx,
                                     SmallVector<KernelOp> &opsToErase,
                                     MojoLibraryAnalysis &analysis) {
 
@@ -418,7 +424,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     IRMapping oldToNew;
 
     // Guarded to only fuse 1 output kernels.
-    Value originalResult = kernelToFuseInto.getResult(0);
+    Value originalResult = kernelToFuseInto.getResult(outputIdx);
 
     // We've already guarded that we only have one user.
     MOGG::KernelOp userToFuseIn =
@@ -432,8 +438,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     const bool isMatmulOrConvOrConcat =
         containsMatmulOrConvOrConcat(kernelToFuseInto);
 
-    const bool isMixedPrecision =
-        originalOuts.getResult(0).getType() != userOuts.getResult(0).getType();
+    const bool isMixedPrecision = originalOuts.getResult(outputIdx).getType() !=
+                                  userOuts.getResult(0).getType();
 
     // Step 1: We unique the user kernel operands and fuse them into the src
     // kernel. The way we fuse these by operands is simply append them in the
@@ -507,7 +513,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
         auto newToKgen = cast<MOGG::ToKGENOp>(builder.clone(op, oldToNew));
         // When we visit ToKGENOp, newOuts placeholder has been assigned.
-        if (newToKgen.getInput() == newOuts.getResult(0))
+        if (newToKgen.getInput() == newOuts.getResult(outputIdx))
           newOutsToKgenOp = newToKgen;
 
         oldToNew.map(toKgen.getResults(), newToKgen.getResults());
@@ -520,8 +526,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       } else if (isa<MOGG::OutputPlaceholdersOp>(op)) {
         // OutputPlaceholdersOp is the first operator in the user kernel to
         // clone.
-        newOuts = cast<OutputPlaceholdersOp>(builder.clone(op));
-        oldToNew.map(op.getResult(0), newOuts.getResult(0));
+        SmallVector<Type> results(originalOuts->getResultTypes());
+        results[outputIdx] = op.getResultTypes().front();
+        newOuts = builder.create<OutputPlaceholdersOp>(op.getLoc(), results);
+        oldToNew.map(op.getResult(0), newOuts.getResult(outputIdx));
       } else if (isa<KGEN::ParamDeclareOp>(op)) {
         auto newOp = cast<KGEN::ParamDeclareOp>(builder.clone(op));
         if (tensorSpecAttrNames.contains(newOp.getParamDecl().getName()))
@@ -769,20 +777,22 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // in the kernel op having two return values to trigger allocations in
     // later passes.
     if (isMatmulOrConvOrConcat && isMixedPrecision) {
+      ASSERT_STREAM(outputIdx == 0,
+                    "matmul or conv should only have one result.");
       auto loc = kernelToFuseInto.getLoc();
 
       builder.setInsertionPoint(originalOuts);
       auto combinedPlaceholders = builder.create<MOGG::OutputPlaceholdersOp>(
           loc, ArrayRef<Type>{userOuts->getResult(0).getType(),
-                              originalOuts->getResult(0).getType()});
+                              originalOuts->getResult(outputIdx).getType()});
 
       MOGG::OutputOp originOutputOp = kernelToFuseInto.getOutputOp();
       builder.setInsertionPoint(originOutputOp);
       builder.create<MOGG::OutputOp>(loc, combinedPlaceholders->getResults());
 
-      newOuts.getResult(0).replaceAllUsesWith(
+      newOuts.getResult(outputIdx).replaceAllUsesWith(
           combinedPlaceholders.getResult(0));
-      originalOuts.getResult(0).replaceAllUsesWith(
+      originalOuts.getResult(outputIdx).replaceAllUsesWith(
           combinedPlaceholders.getResult(1));
 
       originOutputOp.erase();
@@ -825,11 +835,12 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     kernelToFuseInto.setSummaryAttr(
         getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD));
 
-    originalOuts->replaceAllUsesWith(newOuts);
+    originalOuts.replaceAllUsesWith(newOuts);
     srcSimdStoreOp.erase();
     originalOuts.erase();
 
-    userToFuseIn.replaceAllUsesWith(kernelToFuseInto);
+    userToFuseIn->getResult(0).replaceAllUsesWith(
+        kernelToFuseInto->getResult(outputIdx));
     opsToErase.push_back(userToFuseIn);
 
     return kernelToFuseInto;
@@ -858,12 +869,14 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       // output.
       if (outputLambdas.has_value()) {
         ArrayAttr lambdas = *outputLambdas;
-
+        llvm::BitVector fusableOuts =
+            canDoOutputFusion(kernelToFuseInto, lambdas);
         // Fuse into the output lambdas if possible.
-        if (canDoOutputFusion(kernelToFuseInto, lambdas)) {
-          StringAttr outputLambdaName = cast<StringAttr>(lambdas[0]);
-          kernelToFuseInto = fuseIntoOutputLambdaKGEN(
-              kernelToFuseInto, outputLambdaName, kernelOpsToErase, *analysis);
+        for (unsigned idx : fusableOuts.set_bits()) {
+          StringAttr outputLambdaName = cast<StringAttr>(lambdas[idx]);
+          kernelToFuseInto =
+              fuseIntoOutputLambdaKGEN(kernelToFuseInto, outputLambdaName, idx,
+                                       kernelOpsToErase, *analysis);
         }
       }
       ASSERT_STREAM(beforeDevice == MO::getDeviceOrDefault(kernelToFuseInto),
