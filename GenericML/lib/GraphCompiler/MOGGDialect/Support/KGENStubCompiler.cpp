@@ -150,6 +150,38 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
   return res;
 }
 
+static ErrorOr<DenseResourceElementsAttr>
+emitArchiveAttr(std::unique_ptr<KGEN::ObjectCompiler> compiler,
+                OwningOpRef<ModuleOp> module) {
+  MLIRContext *moduleCtx = module->getContext();
+
+  std::string outKeyHash;
+  ErrorOr<BufferRef> bufferOr = compiler->emitArchive(
+      std::move(module), /*emitAssembly=*/false, &outKeyHash);
+  if (bufferOr.isError())
+    return bufferOr.takeError();
+  BufferRef buffer = bufferOr.takeValue();
+
+  // Produce a DenseResourceElementsAttr from the file.
+  auto resourceManager =
+      DenseResourceElementsHandle::getManagerInterface(moduleCtx);
+
+  // Pretend this is a "tensor" of data.
+  auto attrType = RankedTensorType::get(
+      {(int64_t)buffer->getBufferSize()},
+      IntegerType::get(moduleCtx, 8, IntegerType::Unsigned));
+  std::string attrName = "archive_" + outKeyHash;
+  mlir::AsmResourceBlob blob(
+      {buffer->getBufferStart(), buffer->getBufferSize()}, /*dataAlignment=*/8,
+      /*deleter=*/
+      [buffer = std::move(buffer)](void *, size_t, size_t) mutable {
+        buffer.reset(); // Shouldn't need to do this, but just to be explicit.
+      },
+      /*isMutable=*/false);
+  return DenseResourceElementsAttr::get(
+      attrType, resourceManager.insert(attrName, std::move(blob)));
+}
+
 ErrorOr<MOGG::LoadCompiledKernelOp>
 StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
                             bool enableTiming, bool debugKGENStubs) {
@@ -187,10 +219,11 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  auto standaloneOr = compiler->emitArchiveAttr(std::move(kgenModule));
-  if (standaloneOr.isError())
-    return standaloneOr.takeError();
-  ElementsAttr archiveAttr = *standaloneOr;
+  ErrorOr<DenseResourceElementsAttr> archiveAttrOr =
+      emitArchiveAttr(std::move(compiler), std::move(kgenModule));
+  if (archiveAttrOr.isError())
+    return archiveAttrOr.takeError();
+  DenseResourceElementsAttr archiveAttr = *archiveAttrOr;
 
   auto end = std::chrono::high_resolution_clock::now();
   if (enableTiming) {
