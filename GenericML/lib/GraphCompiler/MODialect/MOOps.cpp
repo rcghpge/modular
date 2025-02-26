@@ -3993,10 +3993,37 @@ LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
 
   // If the input is a mo.list.create, we can simplify to a mo.concat.
   if (auto listCreateOp = inputList.getDefiningOp<MO::ListCreateOp>()) {
+    auto listElementTy =
+        cast<TensorType>(listCreateOp.getResult().getType().getElementType());
+    if (!listElementTy.hasRank())
+      return failure();
+
+    // If the list is rank-0, we can simplify.
+    if (listElementTy.getRank() == 0) {
+      // If the result type is not rank-1, we won't simplify.
+      if (!resultType.hasRank() || resultType.getRank() != 1)
+        return failure();
+
+      auto rankOneTy = listElementTy.cloneWith(SmallVector<int64_t>{1},
+                                               listElementTy.getElementType());
+      size_t numInputs = listCreateOp->getNumOperands();
+      SmallVector<Value> rankOneInputs;
+      rankOneInputs.reserve(numInputs);
+      for (size_t i = 0; i < numInputs; ++i) {
+        rankOneInputs.push_back(rewriter.create<Static::ReshapeOp>(
+            op->getLoc(), rankOneTy, listCreateOp.getInputTensor(i)));
+      }
+
+      rewriter.replaceOpWithNewOp<MO::ConcatOp>(op, resultType, op.getAxis(),
+                                                rankOneInputs,
+                                                op.getOutputParamDeclsAttr());
+      return success();
+    }
+
     // Simplify by not dealing with dynamic shapes or rank-0 scalars.
     for (Value input : listCreateOp.getInputs()) {
       auto inputTy = cast<MO::TensorType>(input.getType());
-      if (!inputTy.hasStaticShape() || inputTy.getRank() == 0)
+      if (!inputTy.hasStaticShape())
         return failure();
     }
 
