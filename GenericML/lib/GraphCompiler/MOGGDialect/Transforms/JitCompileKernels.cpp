@@ -81,9 +81,8 @@ struct JitCompileKernels
     auto err = compileToBinary(
         graph, mojoLibraryAnalysis, dumpStub.getValue(),
         createMOGGReproducers.getValue(), saveTempPrefix.getValue(),
-        minimumCpuAlignment.getValue(), splitBinaryCompile.getValue(),
-        timeMOGGCompile.getValue(), dryRun.getValue(),
-        debugKGENStubs.getValue(), bt);
+        minimumCpuAlignment.getValue(), timeMOGGCompile.getValue(),
+        dryRun.getValue(), debugKGENStubs.getValue(), bt);
 
     if (err.isError())
       return err.takeError();
