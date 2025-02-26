@@ -350,7 +350,7 @@ struct MatmulTranspBPattern
     // a `mo.mul`. Once we have layout inference across transpose op, we can
     // remove the check.
     if (auto weightDefOp = weight.getDefiningOp();
-        weightDefOp && !isa<MO::ConstantLike>(weightDefOp)) {
+        weightDefOp && !dependsOnConstantsOnly<MO::ConstantLike>(weightDefOp)) {
       return rewriter.notifyMatchFailure(
           op, "can't update layout for non-constant");
     }
