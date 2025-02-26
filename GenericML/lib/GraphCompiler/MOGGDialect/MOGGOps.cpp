@@ -18,6 +18,7 @@
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Support/AssertStream.h"
@@ -1757,6 +1758,24 @@ LogicalResult GetResourcePtrOp::verify() {
 //===----------------------------------------------------------------------===//
 // ToKGENOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult ToKGENOp::verify() {
+  if (auto attr = getTensorIOTypeAttr()) {
+    auto ref = attr.strref();
+
+    bool valid = KGEN::MOGGPreElab::toIOSpec(ref).has_value();
+
+    if (!valid) {
+      return emitError() << "Invalid tensorIOType string attr: " << ref
+                         << " -- expected one of: { "
+                         << KGEN::MOGGPreElab::kInputTensor << ", "
+                         << KGEN::MOGGPreElab::kOutputTensor << ", "
+                         << KGEN::MOGGPreElab::kMutableInputTensor << " }";
+    }
+  }
+
+  return success();
+}
 
 KGEN::ParamDeclRefAttr ToKGENOp::getStaticTensorRefAttr() {
   StringAttr name = getStaticTensorSpecNameAttr();

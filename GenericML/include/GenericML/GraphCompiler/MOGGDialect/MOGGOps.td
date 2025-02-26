@@ -1080,7 +1080,13 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
   let arguments = (ins AnyType:$input,
     OptionalAttr<Builtin_StringAttr>:$staticTensorSpecName,
     OptionalAttr<DictionaryAttr>:$typeMethodsDict,
-    UnitAttr:$isRegisterType
+    UnitAttr:$isRegisterType,
+    // Whether something was a pure input, mutable input, or output tensor
+    // Denotes the underlying tensor type for our supported collection types as
+    // well (that is VariadicTensors and lists of tensors)
+    // Value must be one of {"InputTensor", "OutputTensor", "MutableInputTensor"}
+    // TODO: Might want to look into making this a proper enum
+    OptionalAttr<Builtin_StringAttr>:$tensorIOType
   );
   let results = (outs AnyType:$results);
 
@@ -1092,6 +1098,8 @@ def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
     /// Or asserts if staticTensorSpecName is null or the definition is not found
     KGEN::ParamDeclRefAttr getStaticTensorRefAttr();
   }];
+
+  let hasVerifier = 1;
 }
 
 def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
