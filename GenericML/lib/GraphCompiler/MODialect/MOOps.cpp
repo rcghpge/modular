@@ -4615,13 +4615,13 @@ LogicalResult MutableStoreSliceOp::verify() {
 template <typename ConcreteOp>
 static LogicalResult verifyAllReduceSum(ConcreteOp op) {
   auto allReduceOp = cast<ConcreteOp>(op);
-  if (allReduceOp.getInputs().size() != allReduceOp.getOutputs().size())
+  auto outputs = allReduceOp.getOutputs();
+  if (allReduceOp.getInputs().size() != outputs.size())
     return op->emitError(
         "number of inputs and outputs should match for all-reduce");
 
   // Check that the devices for inputs and outputs match 1:1.
-  for (auto [input, output] :
-       llvm::zip(allReduceOp.getInputs(), allReduceOp.getOutputs())) {
+  for (auto [input, output] : llvm::zip(allReduceOp.getInputs(), outputs)) {
     auto inputTy = dyn_cast<TensorType>(input.getType());
     auto outputTy = dyn_cast<TensorType>(output.getType());
     if (!inputTy || !outputTy || inputTy != outputTy)
@@ -4650,9 +4650,13 @@ LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
   return failure();
 }
 
+LogicalResult AllReduce1GPUSumOp::verify() { return verifyAllReduceSum(*this); }
+
 LogicalResult AllReduce2GPUSumOp::verify() { return verifyAllReduceSum(*this); }
 
 LogicalResult AllReduce4GPUSumOp::verify() { return verifyAllReduceSum(*this); }
+
+LogicalResult AllReduce8GPUSumOp::verify() { return verifyAllReduceSum(*this); }
 
 //===----------------------------------------------------------------------===//
 // MO_LayerNormOp
