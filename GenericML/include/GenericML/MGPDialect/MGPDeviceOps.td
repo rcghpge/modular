@@ -308,6 +308,7 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 
 def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
+    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
 ]> {
@@ -354,6 +355,10 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
 
   let extraClassDefinition = [{
     uint64_t BufferAllocOp::getRawAlign() { return getBRawAlign(); }
+
+    SmallVector<mlir::Attribute> BufferAllocOp::getIgnorableAttributes() {
+      return {getBRawAlignAttr(), getCDeviceAttr()};
+    }
 
     M::DeviceRefAttr BufferAllocOp::getDevice() { return getCDevice(); }
   }];
@@ -901,6 +906,7 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print"> {
 
 def MGP_SyncOp : MGP_DeviceOp<"sync", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
     Pure
 ]> {
   let summary = "Schedules a device specific sync";
@@ -921,6 +927,9 @@ def MGP_SyncOp : MGP_DeviceOp<"sync", [
   }];
 
   let extraClassDefinition = [{
+    SmallVector<mlir::Attribute> SyncOp::getIgnorableAttributes() {
+      return {getBDeviceAttr()};
+    }
 
     M::DeviceRefAttr SyncOp::getDevice() { return getBDevice(); }
   }];

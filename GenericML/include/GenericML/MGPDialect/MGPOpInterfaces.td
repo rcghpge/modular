@@ -100,20 +100,54 @@ def MGP_LiftableChainCreateOpInterface : OpInterface<"MGPLiftableChainCreateOpIn
   ];
 }
 
-def MGP_LiftAttrToRTValuesOpInterface : OpInterface<"MGPLiftAttrToRTValuesOpInterface"> {
+def MGP_SelectiveLowerAttrOpInterface : OpInterface<"MGPSelectiveLowerAttrOpInterface"> {
   let description = [{
-    Interface for ops that require converting a static attribute into runtime
-    values during lowering. This is useful as the use of different static
-    attributes could cause cache missing when checking operation equivalence,
-    leading to more kernel to be compiled. Or it can simply due to that the
-    attribute is too expensive to be used for paramterization
-    (e.g., a `M.array<[...]> : tensor<1000x1000xf32>`).
+    Interface for ops that require selectively converting a static attribute into
+    runtime values when lowering to mogg.call.
+
+    The interface categorize attributes into 3 categories:
+    1. the "liftable" attributes, which need to be lifted to runtime value to avoid
+       unnecessary elaboration.
+    2. the "ignorable" attribute, which will simply be dropped during lowering.
+    3. the "parameterizable" attribute, which need to be lowered into static parameters.
   }];
   let cppNamespace = "::M::MGP";
   let methods = [
     InterfaceMethod<
       "Returns the vector of attributes that need to be lifted.",
-      "mlir::SmallVector<mlir::Attribute>", "getLiftAttributes", (ins)
+      "mlir::SmallVector<mlir::Attribute>", "getLiftableAttributes", (ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return {};
+      }]
+    >,
+    InterfaceMethod<
+      "Returns the vector of attributes that need to be ignored.",
+      "mlir::SmallVector<mlir::Attribute>", "getIgnorableAttributes", (ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return {};
+      }]
+    >,
+    InterfaceMethod<
+      "Returns the vector of attributes that need to be parameterized.",
+      "mlir::SmallVector<mlir::NamedAttribute>", "getParameterizableAttributes", (ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        mlir::SmallVector<mlir::NamedAttribute> ret;
+        // Use cast to force dynamic dispatch
+        auto liftables = cast<MGP::MGPSelectiveLowerAttrOpInterface>(*$_op).getLiftableAttributes();
+        auto ignorables = cast<MGP::MGPSelectiveLowerAttrOpInterface>(*$_op).getIgnorableAttributes();
+        for (auto attr : $_op->getAttrs()) {
+          // Skip liftable/ignorable attrs.
+          if (llvm::find(liftables, attr.getValue()) != liftables.end())
+             continue;
+          if (llvm::find(ignorables, attr.getValue()) != ignorables.end())
+             continue;
+          ret.push_back(attr);
+        }
+        return ret;
+      }]
     >
   ];
 }

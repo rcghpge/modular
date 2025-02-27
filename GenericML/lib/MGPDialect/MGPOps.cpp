@@ -274,13 +274,6 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
   p << value;
 }
 
-SmallVector<Attribute> BufferConstantOp::getLiftAttributes() {
-  // TODO: maybe alignment too, it would be overkill to recompile a generic
-  // region due to different alignment. Besides, alignment is not currently used
-  // in the mojo implementation.
-  return {getAValueAttr()};
-}
-
 //===----------------------------------------------------------------------===//
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
@@ -369,7 +362,7 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<Attribute> BufferGetCachedOp::getLiftAttributes() {
+SmallVector<Attribute> BufferGetCachedOp::getLiftableAttributes() {
   return {getBBufferSlotAttr()};
 }
 
@@ -377,7 +370,7 @@ SmallVector<Attribute> BufferGetCachedOp::getLiftAttributes() {
 // BufferRemoveCachedOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<Attribute> BufferRemoveCachedOp::getLiftAttributes() {
+SmallVector<Attribute> BufferRemoveCachedOp::getLiftableAttributes() {
   return {getBufferSlotAttr()};
 }
 
@@ -436,7 +429,7 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 // AssertOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<Attribute> AssertOp::getLiftAttributes() {
+SmallVector<Attribute> AssertOp::getLiftableAttributes() {
   return {getMessageAttr()};
 }
 

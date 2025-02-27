@@ -39,7 +39,10 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 
 def BufferConstantOp : MGP_Op<"buffer.constant", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>,
+    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
+      "getLiftableAttributes",
+      "getIgnorableAttributes"
+    ]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
   let summary = "Allocates and initializes a buffer from a host attribute.";
@@ -76,6 +79,17 @@ def BufferConstantOp : MGP_Op<"buffer.constant", [
 
   let extraClassDefinition = [{
     bool BufferConstantOp::isTrivial() { return true; }
+
+    // Lift the value
+    SmallVector<Attribute> BufferConstantOp::getLiftableAttributes() {
+      return {getAValueAttr()};
+    }
+
+    // Ignore the alignment.
+    SmallVector<Attribute> BufferConstantOp::getIgnorableAttributes() {
+      return {getBRawAlignAttr()};
+    }
+
   }];
 
 }
@@ -292,7 +306,7 @@ def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
 //===----------------------------------------------------------------------===//
 
 def AssertOp : MGP_Op<"assert", [
-    DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>,
+    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
   ]> {
   let summary = "Assert that a boolean condition is true.";
@@ -819,7 +833,7 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 //===----------------------------------------------------------------------===//
 
 def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
-    Pure, DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>]> {
+    Pure, DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
   let description = [{
     Returns (a borrow of) the `!mgp.buffer` in the state slot with the given
@@ -858,7 +872,7 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
 //===----------------------------------------------------------------------===//
 
 def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
-  DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>]> {
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>]> {
   let summary = "Removes the buffer stored at the specified state slot.";
   let description = [{
     Removes the buffer stored at the specified state slot.

@@ -101,18 +101,19 @@ isLowerableToMOGGCall(MLIRContext *ctx,
 static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
   SmallVector<NamedAttribute> attrs;
 
-  SmallVector<Attribute> liftAttrs{};
-  if (auto attrToValOp = dyn_cast<MGP::MGPLiftAttrToRTValuesOpInterface>(op)) {
-    liftAttrs = attrToValOp.getLiftAttributes();
-    attrs.push_back(
-        builder.getNamedAttr("resources", builder.getArrayAttr(liftAttrs)));
+  SmallVector<NamedAttribute> needToParameterize{};
+  if (auto attrToValOp = dyn_cast<MGP::MGPSelectiveLowerAttrOpInterface>(op)) {
+    SmallVector<Attribute> liftAttrs = attrToValOp.getLiftableAttributes();
+    if (!liftAttrs.empty())
+      attrs.push_back(
+          builder.getNamedAttr("resources", builder.getArrayAttr(liftAttrs)));
+
+    needToParameterize = attrToValOp.getParameterizableAttributes();
+  } else {
+    needToParameterize.assign(op->getAttrs().begin(), op->getAttrs().end());
   }
 
-  for (auto &attr : op->getAttrs()) {
-    // Attrs that need to be lifted are handled above
-    if (llvm::find(liftAttrs, attr.getValue()) != liftAttrs.end())
-      continue;
-
+  for (auto &attr : needToParameterize) {
     if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
       // Prune device attributes to string ref of label
       attrs.push_back(builder.getNamedAttr(
@@ -278,8 +279,8 @@ static ErrorOr<MOGG::GenericCompiledRegionOp>
 wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
                         CompiledRegionBodyBuilder bodyBuilder) {
   auto constResources = builder.getArrayAttr({});
-  if (auto attrToValOp = dyn_cast<MGP::MGPLiftAttrToRTValuesOpInterface>(op))
-    constResources = builder.getArrayAttr(attrToValOp.getLiftAttributes());
+  if (auto attrToValOp = dyn_cast<MGP::MGPSelectiveLowerAttrOpInterface>(op))
+    constResources = builder.getArrayAttr(attrToValOp.getLiftableAttributes());
 
   // Build compile region operation.
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
