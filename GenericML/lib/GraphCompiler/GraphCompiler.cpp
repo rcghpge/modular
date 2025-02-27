@@ -284,6 +284,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // After all lambda fusions we can inline the lambdas.
   pm.addPass(MOGG::createInlineLambdas({kernelLibraryPaths}));
 
+  // Set the _trace_name parameter after lambda fusion and before sequence
+  // fusion.
+  pm.addPass(MOGG::createSetKernelsTraceName());
+
   if (opts.performTrivialKernelOpt) {
     // Mark trivial kernels as being synchronous.
     pm.addPass(MOGG::createMarkTrivialKernels({kernelLibraryPaths}));

@@ -256,6 +256,18 @@ def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
   ];
 }
 
+def SetKernelsTraceName: Pass<"set-kernels-trace-name", "MO::GraphOp"> {
+  let summary = "Set the trace name parameter for every kernel.";
+  let description = [{
+    The Mojo kernels can take a `_trace_name` parameter used to get better trace name.
+    We set it in the graph compiler to have all the fusion informations.
+    Eg _trace_name = "mo.matmul+mo.add".
+    This need to live in its own pass, because the trace name of the kernel must be updated
+    after all lambda fusion passes but before any sequence / soft fusion pass.
+  }];
+  let dependentDialects = ["M::MOGG::MOGGDialect"];
+}
+
 def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
   let summary = "Inline lambda invokes and remove unused lambdas";
   let description = [{
