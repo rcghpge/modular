@@ -8,14 +8,60 @@
 
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "GenericML/MGPTransforms/Utils.h"
-#include "Support/AssertStream.h"
+#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
 
 #define DEBUG_TYPE "mgp-simple-buffer-reuse"
 
 using namespace mlir;
 
-namespace M::MGP {
+namespace M {
+namespace MGP {
+
+struct ReuseKey {
+  mlir::TypedValue<mlir::IndexType> size;
+  Attribute device;
+  uint64_t alignment;
+
+  bool operator==(const ReuseKey &other) const {
+    return size == other.size && device == other.device &&
+           alignment == other.alignment;
+  }
+};
+
+} // namespace MGP
+} // namespace M
+
+namespace llvm {
+template <>
+struct DenseMapInfo<M::MGP::ReuseKey> {
+  using KeyTy = M::MGP::ReuseKey;
+
+  static inline KeyTy getEmptyKey() {
+    return {mlir::TypedValue<mlir::IndexType>(),
+            DenseMapInfo<Attribute>::getEmptyKey(),
+            DenseMapInfo<uint64_t>::getEmptyKey()};
+  }
+
+  static inline KeyTy getTombstoneKey() {
+    return {mlir::TypedValue<mlir::IndexType>(),
+            DenseMapInfo<Attribute>::getTombstoneKey(),
+            DenseMapInfo<uint64_t>::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const KeyTy &k) {
+    return hash_combine(DenseMapInfo<mlir::Value>::getHashValue(k.size),
+                        DenseMapInfo<Attribute>::getHashValue(k.device),
+                        DenseMapInfo<uint64_t>::getHashValue(k.alignment));
+  }
+
+  static bool isEqual(const KeyTy &a, const KeyTy &b) { return a == b; }
+};
+} // namespace llvm
+
+namespace M {
+namespace MGP {
 
 // Generate support code for SimpleBufferReusePass
 #define GEN_PASS_DEF_SIMPLEBUFFERREUSEPASS
@@ -26,109 +72,142 @@ class SimpleBufferReusePass
   using SimpleBufferReusePassBase::SimpleBufferReusePassBase;
   using LifetimeRange = std::pair<int, int>;
 
+  struct AllocInfo {
+    MGP::BufferAllocOp alloc;
+    int firstUseIndex;
+    int lastUseIndex;
+    SmallVector<Operation *> uses;
+  };
+
+  // Check if buffer uses are compatible for reuse using existing runsAfter
+  // bitsets.
+  // This leverages the precomputed dependency information in
+  // DependencyTree
+  bool canSafelyReuseBuffer(ArrayRef<Operation *> currentUses,
+                            ArrayRef<Operation *> candidateUses,
+                            const DependencyTree &depTree) {
+    // Early termination for empty sets
+    if (currentUses.empty() || candidateUses.empty())
+      return true;
+
+    // For each use in current allocation, verify it executes after all
+    // candidate uses
+    for (Operation *currentUse : currentUses) {
+      for (Operation *candidateUse : candidateUses) {
+        // Check if current executes after candidate using the executesAfter
+        // method
+        if (!depTree.executesAfter(currentUse, candidateUse)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+public:
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
-
     auto analysis = getAnalysis<BufferLifetimeAnalysisPass>();
+    int reuseCount = 0;
+
+    // Mark the analysis as preserved so subsequent passes can reuse it
+    // Note: since the IR is modified (by reusing and erasing allocs), the
+    // reused analysis is not valid. However, since the next pass to run (which
+    // will reuse this analysis) checks the uses of the allocs and not the
+    // allocs themselves, this is safe to do.
+    markAnalysesPreserved<BufferLifetimeAnalysisPass>();
 
     modelOp->walk([&](Block *block) {
-      // Get dependency tree for the current block
-      auto &tree = analysis.getDepTree(block);
+      auto &depTree = analysis.getDepTree(block);
+      DenseMap<ReuseKey, SmallVector<MGP::BufferAllocOp>> allocGroups;
 
-      // Map from alloc to its uses' lifetime range in the tree
-      // narrow represents max(x.pre for x in uses), min(x.post for x in uses)
-      // wide represents min(x.pre for x in uses), max(x.post for x in uses)
-      DenseMap<MGP::BufferAllocOp, LifetimeRange> narrowAllocRanges;
-      DenseMap<MGP::BufferAllocOp, LifetimeRange> wideAllocRanges;
-
-      // Populate alloc ranges with information from BufferLifetimeAnalysisPass
+      // First pass: Group allocs by reuse key
       for (auto allocOp : block->getOps<MGP::BufferAllocOp>()) {
-        auto allocUses = getAllocUses(allocOp);
+        ReuseKey key = {allocOp.getRuntimeSize(), allocOp.getDevice(),
+                        allocOp.getRawAlign()};
+        allocGroups[key].push_back(allocOp);
+      }
 
-        if (allocUses.isError() || allocUses->empty())
+      // Second pass: Try to reuse buffers
+      for (auto &[key, allocs] : allocGroups) {
+        // Skip any groups with no reuse potential
+        if (allocs.size() < 2)
           continue;
 
-        int maxPre = std::numeric_limits<int>::min();
-        int minPre = std::numeric_limits<int>::max();
-        int minPost = std::numeric_limits<int>::max();
-        int maxPost = std::numeric_limits<int>::min();
+        // Collect all valid allocs with their use information first
+        SmallVector<std::pair<MGP::BufferAllocOp, SmallVector<Operation *>>>
+            validAllocs;
+        validAllocs.reserve(allocs.size());
 
-        bool ineligibleAlloc = false;
-        for (auto use : allocUses.get()) {
-          if (!tree.contains(use)) {
-            ineligibleAlloc = true;
-            break;
+        for (auto alloc : allocs) {
+          ErrorOr<SmallVector<Operation *>> uses = getAllocUses(alloc);
+          if (!uses.isError())
+            validAllocs.emplace_back(alloc, std::move(*uses));
+        }
+
+        // Sort allocations to prioritize those with more uses
+        llvm::stable_sort(validAllocs, [](const auto &a, const auto &b) {
+          return a.second.size() > b.second.size();
+        });
+
+        // Check all pairs of current and candidate allocations for reuse
+        // opportunities
+        for (unsigned i = 0; i < validAllocs.size(); ++i) {
+          auto &pair = validAllocs[i];
+          MGP::BufferAllocOp currentAlloc = pair.first;
+          auto &currentUses = pair.second;
+          if (!currentAlloc)
+            continue; // Skip already erased allocs
+
+          for (unsigned j = 0; j < validAllocs.size(); ++j) {
+            if (i == j)
+              continue;
+            auto &candidatePair = validAllocs[j];
+            MGP::BufferAllocOp candidateAlloc = candidatePair.first;
+            auto &candidateUses = candidatePair.second;
+            if (!candidateAlloc)
+              continue;
+
+            // Skip if there are any shared operations between uses.
+            // This is for the case where two buffers are used in the same
+            // operation, which we can't do anything about since reusing would
+            // create a conflicting read/write scenario
+            bool sharesOperation = false;
+            for (Operation *op : currentUses) {
+              if (llvm::is_contained(candidateUses, op)) {
+                sharesOperation = true;
+                break;
+              }
+            }
+            if (sharesOperation)
+              continue;
+
+            // Check if the candidate can be reused (if all uses of the current
+            // buffer execute after all uses of the candidate buffer)
+            if (canSafelyReuseBuffer(currentUses, candidateUses, depTree)) {
+              currentAlloc->replaceAllUsesWith(candidateAlloc);
+              currentAlloc->erase();
+              validAllocs[i].first = nullptr; // Mark as erased
+
+              // Update uses of candidateAlloc
+              SmallVector<Operation *> newUses;
+              newUses.reserve(candidateUses.size() + currentUses.size());
+              newUses.append(candidateUses.begin(), candidateUses.end());
+              newUses.append(currentUses.begin(), currentUses.end());
+              validAllocs[j].second = std::move(newUses);
+
+              reuseCount++;
+              break; // Move to next alloc after successful reuse
+            }
           }
-          maxPre = std::max(maxPre, tree.get(use)->preIndex);
-          minPost = std::min(minPost, tree.get(use)->postIndex);
-          minPre = std::min(minPre, tree.get(use)->preIndex);
-          maxPost = std::max(maxPost, tree.get(use)->postIndex);
-        }
-
-        // If the tree didn't have information on every use of this alloc, skip
-        // it to be safe
-        if (ineligibleAlloc)
-          continue;
-
-        narrowAllocRanges[allocOp] = {maxPre, minPost};
-        wideAllocRanges[allocOp] = {minPre, maxPost};
-      }
-
-      SmallVector<MGP::BufferAllocOp> liveAllocs;
-      SmallVector<MGP::BufferAllocOp> replaced;
-
-      // In dataflow order, go through every alloc A in the block while
-      // maintaining a set of live allocations
-
-      // For each alloc A in the block, go through each alloc B in the set of
-      // live allocations and try to find a candidate C for reuse. If such a
-      // candidate C exists, use alloc C as a replacement for alloc A
-      for (auto op : getDataflowOrder(block)) {
-        auto curAlloc = dyn_cast<MGP::BufferAllocOp>(*op);
-        if (!curAlloc || !narrowAllocRanges.contains(curAlloc))
-          continue;
-
-        auto &curRange = narrowAllocRanges[curAlloc];
-
-        auto hasBeenFreed = [&](auto alloc) -> bool {
-          // An alloc can be considered freed if all the uses of the current
-          // alloc are ancestors of all of its uses in the dependency tree
-          const auto &usedRange = wideAllocRanges[alloc];
-          return curRange.first < usedRange.first &&
-                 curRange.second > usedRange.second;
-        };
-
-        // Go through all live allocations to see if there are any that the
-        // current allocation can reuse
-        auto toReuse =
-            llvm::find_if(liveAllocs, [&](MGP::BufferAllocOp candidate) {
-              return candidate.getRuntimeSize() == curAlloc.getRuntimeSize() &&
-                     candidate.getDevice() == curAlloc.getDevice() &&
-                     candidate.getRawAlign() == curAlloc.getRawAlign() &&
-                     hasBeenFreed(candidate);
-            });
-
-        if (toReuse != liveAllocs.end()) {
-          // If we found a valid reuse candidate update the map for the current
-          // alloc to point to the reused alloc's range
-          narrowAllocRanges[*toReuse] = narrowAllocRanges[curAlloc];
-          wideAllocRanges[*toReuse] = wideAllocRanges[curAlloc];
-
-          // Replace curAlloc and add to vector for future deletion
-          replaced.push_back(curAlloc);
-          curAlloc->replaceAllUsesWith(*toReuse);
-        } else {
-          // Otherwise, just add the current allocation to liveAllocs
-          liveAllocs.push_back(curAlloc);
         }
       }
-
-      // Erase all the replaced allocs
-      for (auto &toErase : replaced)
-        toErase.erase();
-
-      LLVM_DEBUG(llvm::dbgs() << "reused " << replaced.size() << " allocs\n");
     });
+
+    LLVM_DEBUG(llvm::dbgs()
+               << "Reused " << reuseCount << " buffer allocations\n");
   }
 };
-} // namespace M::MGP
+
+} // namespace MGP
+} // namespace M
