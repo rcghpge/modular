@@ -359,12 +359,11 @@ ErrorOrSuccess
 MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
   auto registerKernelFunction = [&](StringRef name, StringRef label,
                                     bool override = true) {
-    if (!registeredKernelFunctionSymbols.contains(name.str()))
-      registeredKernelFunctionSymbols[name.str()] = {};
+    if (!registeredKernelFunctionSymbols.contains(name))
+      registeredKernelFunctionSymbols[name] = {};
 
-    if (override ||
-        !registeredKernelFunctionSymbols[name.str()].contains(label.str()))
-      registeredKernelFunctionSymbols[name.str()][label.str()] = generator;
+    if (override || !registeredKernelFunctionSymbols[name].contains(label))
+      registeredKernelFunctionSymbols[name][label] = generator;
   };
 
   auto registerKernelCandidate = [&](StringRef name,
@@ -534,7 +533,7 @@ Operation *MojoLibraryAnalysis::lookup(StringRef name) {
 
 KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) {
-  auto registeredFunction = registeredMojoKernelSymbol.find(name.str());
+  auto registeredFunction = registeredMojoKernelSymbol.find(name);
   if (registeredFunction == registeredMojoKernelSymbol.end())
     return nullptr;
 
