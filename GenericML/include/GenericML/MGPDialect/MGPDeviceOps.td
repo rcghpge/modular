@@ -247,6 +247,10 @@ def ModuleLoadPlaceholderOp : MGP_Op<"module.load.placeholder"> {
 
 def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
+      "getLiftableAttributes",
+      "getIgnorableAttributes"
+    ]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
 ]> {
   let summary = "Initializes a buffer from an external constant.";
@@ -295,6 +299,14 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
   }];
 
   let extraClassDefinition = [{
+    SmallVector<Attribute> BufferConstantExternalOp::getLiftableAttributes() {
+      return {getBNameAttr(), getCSizeAttr(), getDAlignAttr()};
+    }
+
+    // Ignore the devices.
+    SmallVector<Attribute> BufferConstantExternalOp::getIgnorableAttributes() {
+      return {getEDeviceAttr(), getGMutableAttr()};
+    }
 
     M::DeviceRefAttr BufferConstantExternalOp::getDevice() { return getEDevice(); }
 
