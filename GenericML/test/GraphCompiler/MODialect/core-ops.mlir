@@ -23,7 +23,7 @@ mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> {
 }
 
 //===----------------------------------------------------------------------===//
-// GraphOP and TensorType tests
+// GraphOp and TensorType
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @empty_parametric_graph(
@@ -273,13 +273,11 @@ mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.
 // CHECK-NEXT: %[[CAST:.*]] = mo.cast(%[[ARG0]]) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[4096], f32, cpu:0>) -> !mo.tensor<[4096], bf16, cpu:0>
 // CHECK-NEXT: %[[GPU:.*]] = mo.transfer %[[CAST]] : !mo.tensor<[4096], bf16, cpu:0> to <"gpu", 0>
 // CHECK-NEXT: mo.output %[[GPU]]
-  
 mo.graph @transfer_cast_rotate(%arg0 : !mo.tensor<[4096], f32, cpu:0>) -> !mo.tensor<[4096], bf16, gpu:0> {
   %0 = mo.transfer %arg0 : !mo.tensor<[4096], f32, cpu:0> to <"gpu", 0>
   %1 = mo.cast(%0) {device = #M.device_ref<"gpu", 0>} : (!mo.tensor<[4096], f32, gpu:0>) -> !mo.tensor<[4096], bf16, gpu:0>
   mo.output %1 : !mo.tensor<[4096], bf16, gpu:0>
 }
-
 
 // CHECK-LABEL: mo.graph @transfer_cast_no_rotate1
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], bf16, cpu:0>) ->
@@ -291,7 +289,6 @@ mo.graph @transfer_cast_no_rotate1(%arg0 : !mo.tensor<[4096], bf16, cpu:0>) -> !
   %1 = mo.cast(%0) {device = #M.device_ref<"gpu", 0>} : (!mo.tensor<[4096], bf16, gpu:0>) -> !mo.tensor<[4096], f32, gpu:0>
   mo.output %1 : !mo.tensor<[4096], f32, gpu:0>
 }
-
 
 // CHECK-LABEL: mo.graph @transfer_cast_no_rotate_2
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], f32, gpu:0>) ->
