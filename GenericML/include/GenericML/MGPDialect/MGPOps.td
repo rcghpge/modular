@@ -292,6 +292,7 @@ def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
 //===----------------------------------------------------------------------===//
 
 def AssertOp : MGP_Op<"assert", [
+    DeclareOpInterfaceMethods<MGP_LiftAttrToRTValuesOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
   ]> {
   let summary = "Assert that a boolean condition is true.";

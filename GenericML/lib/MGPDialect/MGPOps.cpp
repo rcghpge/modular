@@ -436,6 +436,10 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 // AssertOp
 //===----------------------------------------------------------------------===//
 
+SmallVector<Attribute> AssertOp::getLiftAttributes() {
+  return {getMessageAttr()};
+}
+
 LogicalResult AssertOp::canonicalize(AssertOp op, PatternRewriter &rewriter) {
   // remove assert(true)
   BoolAttr condAttr;

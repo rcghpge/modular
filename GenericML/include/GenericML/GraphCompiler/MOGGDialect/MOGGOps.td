@@ -754,7 +754,7 @@ def MOGG_GetResourcePtrOp : MOGG_Op<"get_resource_ptr", [Pure,
   HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let arguments = (ins IndexAttr:$resourceSlot);
-  let results = (outs PointerOf<KGEN_NoneType>:$result);
+  let results = (outs Index: $byteCount, PointerOf<KGEN_NoneType>:$resPtr);
 
   let summary = "Retrieves a pointer to the corresponding constant resources";
   let description = [{
