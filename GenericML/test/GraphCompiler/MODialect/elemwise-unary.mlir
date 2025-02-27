@@ -167,13 +167,6 @@ mo.graph @round(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
-// CHECK: mo.graph @roundeven(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
-mo.graph @roundeven(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
-  // CHECK-NEXT: mo.roundeven(%[[ARG0]]) : !mo.tensor<[2, 3], f32>
-  %0 = mo.roundeven(%arg0) : !mo.tensor<[2, 3], f32>
-  mo.output %0 : !mo.tensor<[2, 3], f32>
-}
-
 // CHECK: mo.graph @isnan(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool> {
 mo.graph @isnan(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], bool>) {
   // CHECK-NEXT: mo.is_nan(%[[ARG0]]) :  (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], bool>

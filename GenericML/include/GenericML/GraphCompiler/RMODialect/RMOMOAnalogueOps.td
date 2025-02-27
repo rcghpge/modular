@@ -372,19 +372,6 @@ def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"round"> {
   }];
 }
 
-def RMO_MORoundEvenOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"roundeven"> {
-  let summary = "Round even operation";
-  let description = [{
-    Returns the elementwise neareset integer, with ties going toward the
-    nearest even number.
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
-
 def RMO_MOIsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"isqrt"> {
   let summary = "Inverse square root operation";
   let description = [{

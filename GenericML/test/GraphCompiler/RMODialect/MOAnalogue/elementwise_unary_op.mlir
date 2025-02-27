@@ -154,17 +154,6 @@ mo.graph @round_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 
 // -----
 
-mo.graph @roundeven_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.roundeven(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @roundeven_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.roundeven([[VARG0]]) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-// CHECK-NEXT: mo.output [[V0]] : !mo.tensor<?, f32>
-
-// -----
-
 mo.graph @isqrt_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
   %1 = rmo.mo.isqrt(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>

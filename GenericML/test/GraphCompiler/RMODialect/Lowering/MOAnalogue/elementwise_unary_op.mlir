@@ -181,19 +181,6 @@ mo.graph @round_static_dyn(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<?, f3
 
 // -----
 
-mo.graph @roundeven_static_params(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, ?], f32> {
-  %1 = rmo.mo.roundeven(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %1 : !mo.tensor<[?, ?], f32>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @roundeven_static_params<() -> [[D1:[^ ]*]], [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D1]], [[D2]]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.roundeven([[VARG0]]) : !mo.tensor<[20, 30], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D3:[^ ]*]], [[D4:[^ ]*]]>([[V0]]) {{.*}} : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D3]], [[D4]]], f32>
-// CHECK-NEXT: mo.output<[[D3]], [[D4]]> [[V1]] : !mo.tensor<[[[D3]], [[D4]]], f32>
-// CHECK-NEXT: }
-
-// -----
-
 mo.graph @isqrt_static_mixed(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32> {
   %1 = rmo.mo.isqrt(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32>
   mo.output %1 : !mo.tensor<[?, 10], f32>

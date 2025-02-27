@@ -1081,24 +1081,12 @@ def MO_TruncOp : MO_ElementWiseUnaryFloatMonoTypeOp<"trunc", [Idempotent]> {
 def MO_RoundOp : MO_ElementWiseUnaryFloatMonoTypeOp<"round", [Idempotent]> {
   let summary = "Rounding operation";
   let description = [{
-    Returns the elementwise nearest integer, with ties going away from zero.
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.round(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
-
-def MO_RoundEvenOp : MO_ElementWiseUnaryFloatMonoTypeOp<"roundeven", [Idempotent]> {
-  let summary = "Round even operation";
-  let description = [{
-    Returns the elementwise neareset integer, with ties going toward the
+    Returns the elementwise nearest integer, with ties going towards the
     nearest even number.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.roundeven(%arg) : !mo.tensor<[2, 3], f32>
+      %res = mo.round(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
