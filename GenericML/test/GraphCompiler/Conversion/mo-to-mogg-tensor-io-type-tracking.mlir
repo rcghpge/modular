@@ -63,3 +63,18 @@ mo.graph @multiple_outputs_and_opaque(%op: !mo.opaque<"MyCustomScalarSI32">, %t2
     (!mo.opaque<"MyCustomScalarSI32">, !mo.tensor<[3], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.tensor<[5], f32>, !mo.chain)
   mo.output
 }
+
+// CHECK-LABEL: @shape_func
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[2, 3, 4], f32>)
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[2, 4, 5], f32>)
+mo.graph @shape_func(
+  %lhs: !mo.tensor<[2, 3, 4], f32>,
+  %rhs: !mo.tensor<[2, 4, 5], f32>
+) {
+
+  mo.invoke_shape_func["mo.batch_matmul"]<() -> D3, D4, D5>(%lhs, %rhs)
+    {dataDeptTensors = []} :
+    (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[2, 4, 5], f32>)
+
+  mo.output
+}

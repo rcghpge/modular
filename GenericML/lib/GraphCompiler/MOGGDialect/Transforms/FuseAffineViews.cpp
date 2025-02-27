@@ -103,6 +103,8 @@ struct FuseAffineViewsPass
     // construct fully specialized kgen tensor signature (managed_tensor_slice)
     SmallVector<TypedAttr> reshapeParameterValues = {typeBinding, fromRankAttr,
                                                      toRankAttr};
+    reshapeParameterValues.push_back(builder.getBoolAttr(1));
+    reshapeParameterValues.push_back(builder.getIndexAttr(0));
 
     ErrorOr<KGEN::SymbolConstantAttr> reshapeKGENSymbol =
         mojoLibraryAnalysis.getSpecializedKernel(
@@ -136,6 +138,16 @@ struct FuseAffineViewsPass
 
     // construct fully specialized kgen tensor signature (managed_tensor_slice)
     SmallVector<TypedAttr> parameterValues = {typeBinding, newRankAttr};
+
+    // Normally we would've found to the mogg.to_kgen op corresponding to the
+    // tensor and read the tensor_io_type attr off of that to perform the
+    // paramterization, but currently this function is only ever called with
+    // output tensors so we just hard-code that in.
+    //
+    // TODO: have a publicly accesible helper function to provide these
+    // constants
+    parameterValues.push_back(builder.getBoolAttr(1));
+    parameterValues.push_back(builder.getIndexAttr(0));
 
     auto toManagedTensorSlice = mojoLibraryAnalysis.getSpecializedKernel(
         MOJO_INTRINSIC_TO_MANAGED_TENSOR_SLICE, parameterValues);
@@ -383,7 +395,8 @@ struct FuseAffineViewsPass
     // Create proper lowering to kgen with annotation
     auto newResultToKGEN = builder.create<MOGG::ToKGENOp>(
         newOutputPlaceholder->getLoc(), newKGENTensorType,
-        newOutputPlaceholder->getResult(0));
+        newOutputPlaceholder->getResult(0), nullptr, nullptr, nullptr,
+        builder.getStringAttr("OutputTensor"));
     newResultToKGEN.setStaticTensorSpecNameAttr(newOutputTensorSpec.getName());
 
     // Replace the kernel output with the new tensor output
