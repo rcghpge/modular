@@ -165,6 +165,11 @@ AsyncRT_DeviceBuffer_copyTo(const DeviceBuffer *src, const DeviceBuffer *dst) {
   return checkSuccess(src->copyTo(*dst));
 }
 
+MODULAR_EXPORT const DeviceContext *
+AsyncRT_DeviceBuffer_context(const DeviceBuffer *buffer) {
+  return &buffer->context();
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceBuffer_reassignOwnershipTo(const DeviceBuffer *buf,
                                          const DeviceContext *ctx) {
