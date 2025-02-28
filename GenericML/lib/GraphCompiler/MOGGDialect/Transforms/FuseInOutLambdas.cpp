@@ -341,52 +341,77 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     for (auto [idx, result] : llvm::enumerate(kernel->getResults())) {
       // Output can only have one user and that user must be a fusable
       // elementwise kernel.
-      if (llvm::range_size(result.getUsers()) > 1)
-        return fusableOutput.reset(idx);
+      if (result.getUsers().empty()) {
+        // The last all_reduce only used one of its results?
+        fusableOutput.reset(idx);
+        continue;
+      }
+
+      if (llvm::range_size(result.getUsers()) > 1) {
+        fusableOutput.reset(idx);
+        continue;
+      }
 
       // Check it's a kernel.
       MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
-      if (!user)
-        return fusableOutput.reset(idx);
+      if (!user) {
+        fusableOutput.reset(idx);
+        continue;
+      }
 
       // Only fuse within the same block and not across, i.e, control flow.
-      if (kernel->getBlock() != user->getBlock())
-        return fusableOutput.reset(idx);
+      if (kernel->getBlock() != user->getBlock()) {
+        fusableOutput.reset(idx);
+        continue;
+      }
 
       // Check that it has a single output.
-      if (user->getNumResults() != 1)
-        return fusableOutput.reset(idx);
+      if (user->getNumResults() != 1) {
+        fusableOutput.reset(idx);
+        continue;
+      }
 
       // Check the kernel is a fusable elementwise.
-      if (!user.getFusionBodyLambda())
-        return fusableOutput.reset(idx);
+      if (!user.getFusionBodyLambda()) {
+        fusableOutput.reset(idx);
+        continue;
+      }
 
       // Kernel must expose input fusion contract.
       std::optional<ArrayAttr> inputInterfaces = user.getInputFusionInterface();
-      if (!inputInterfaces.has_value())
-        return fusableOutput.reset(idx);
+      if (!inputInterfaces.has_value()) {
+        fusableOutput.reset(idx);
+        continue;
+      }
 
       // It must expose a valid input lambda attribute for every operand which
       // uses this.
       for (auto [operand, attr] : llvm::zip(
                user.getOperands(), inputInterfaces->getAsRange<StringAttr>())) {
-        if (operand == result && attr.strref().empty())
-          return fusableOutput.reset(idx);
+        if (operand == result && attr.strref().empty()) {
+          fusableOutput.reset(idx);
+          continue;
+        }
       }
 
       // Check the output lambda fusion hook.
-      if (cast<StringAttr>(fusionInterface[idx]).strref().empty())
-        return fusableOutput.reset(idx);
+      if (cast<StringAttr>(fusionInterface[idx]).strref().empty()) {
+        fusableOutput.reset(idx);
+        continue;
+      }
 
       // Must have the same device.
       if (kernel.getResults().size() == 1) {
-        if (kernel.getDeviceRef() != user.getDeviceRef())
-          return fusableOutput.reset(idx);
+        if (kernel.getDeviceRef() != user.getDeviceRef()) {
+          fusableOutput.reset(idx);
+          continue;
+        }
       } else if (cast<MO::TensorType>(result.getType()).getDeviceRef() !=
                  user.getDeviceRef()) {
         // AllReduce is a distributed ops, compare the device ref on a
         // particular tensor result individually.
-        return fusableOutput.reset(idx);
+        fusableOutput.reset(idx);
+        continue;
       }
     }
     return fusableOutput;
