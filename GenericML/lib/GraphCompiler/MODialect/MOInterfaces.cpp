@@ -146,11 +146,86 @@ LogicalResult Impl::verifyReduction(Reduction op) {
   return success();
 }
 
-/// Common input and output shape verification logic for ScatterLike and
-/// ScatterNdLike ops.
-static LogicalResult verifyGenericScatterInputOutputShapes(Operation *op,
-                                                           TensorType inputTy,
-                                                           TensorType resTy) {
+ShapeMaterializeResult
+Impl::materializeReductionShapeDefs(Reduction op,
+                                    ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr axis = inputAttrs[1];
+  return materializeReduceShape(graphOp, loc, inputShape, axis);
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterLike
+//===----------------------------------------------------------------------===//
+
+LogicalResult Impl::verifyScatterLike(ScatterLike op) {
+  // Basic static shape checks
+  TensorType inputTy = op.getInput().getType();
+  TensorType resTy = op.getInput().getType();
+  if (!inputTy.hasStaticShape() || !resTy.hasStaticShape())
+    return success();
+  TypedAttr inputShapeAttr = inputTy.getShapeAttr();
+  TypedAttr resShapeAttr = resTy.getShapeAttr();
+  if (inputShapeAttr != resShapeAttr) {
+    return op->emitError()
+           << "input and result shapes must match if both static: "
+           << "input shape = " << MOSH::shapeTypedAttrToStr(inputShapeAttr)
+           << ", result shape = " << MOSH::shapeTypedAttrToStr(resShapeAttr);
+  }
+
+  uint64_t expectedRank;
+  auto getOptionalRankAndSetExpectedRank =
+      [&](TensorValue tensor) -> std::optional<uint64_t> {
+    TensorType tensorTy = tensor.getType();
+    if (!tensorTy.hasRank()) {
+      return std::nullopt;
+    }
+    expectedRank = tensorTy.getRank();
+
+    return expectedRank;
+  };
+
+  auto rankIsSameAsExpected = [&](std::optional<uint64_t> rank) -> bool {
+    return rank.value_or(expectedRank) == expectedRank;
+  };
+
+  auto inputRank = getOptionalRankAndSetExpectedRank(op.getInput());
+  auto updatesRank = getOptionalRankAndSetExpectedRank(op.getUpdates());
+  auto indicesRank = getOptionalRankAndSetExpectedRank(op.getIndices());
+  auto outputRank = getOptionalRankAndSetExpectedRank(op.getResult());
+
+  if (!rankIsSameAsExpected(inputRank) || !rankIsSameAsExpected(updatesRank) ||
+      !rankIsSameAsExpected(indicesRank) || !rankIsSameAsExpected(outputRank)) {
+    return op->emitError() << "Output and inputs (except axis) of a "
+                              "scatter-like op must have the same rank";
+  }
+
+  return success();
+}
+
+ShapeMaterializeResult
+Impl::materializeScatterLikeShapeDefs(ScatterLike op,
+                                      ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = op->getParentOfType<GraphOp>();
+  Location loc = op->getLoc();
+  TypedAttr inputShape = inputAttrs[0];
+  TypedAttr updatesShape = inputAttrs[1];
+  TypedAttr indicesShape = inputAttrs[2];
+  TypedAttr axis = inputAttrs[3];
+  return materializeScatterShape(graphOp, loc, inputShape, updatesShape,
+                                 indicesShape, axis);
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterNdLike
+//===----------------------------------------------------------------------===//
+
+LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
+  TensorType inputTy = op.getInput().getType();
+  TensorType resTy = op.getResult().getType();
+
   // Basic static rank checks
   if (!inputTy.hasRank() || !resTy.hasRank())
     return success();
@@ -173,51 +248,6 @@ static LogicalResult verifyGenericScatterInputOutputShapes(Operation *op,
            << "input shape = " << MOSH::shapeTypedAttrToStr(inputShapeAttr)
            << ", result shape = " << MOSH::shapeTypedAttrToStr(resShapeAttr);
   }
-
-  return success();
-}
-
-ShapeMaterializeResult
-Impl::materializeReductionShapeDefs(Reduction op,
-                                    ArrayRef<TypedAttr> inputAttrs) {
-  auto graphOp = op->getParentOfType<GraphOp>();
-  Location loc = op->getLoc();
-  TypedAttr inputShape = inputAttrs[0];
-  TypedAttr axis = inputAttrs[1];
-  return materializeReduceShape(graphOp, loc, inputShape, axis);
-}
-
-//===----------------------------------------------------------------------===//
-// ScatterLike
-//===----------------------------------------------------------------------===//
-
-LogicalResult Impl::verifyScatterLike(ScatterLike op) {
-  return verifyGenericScatterInputOutputShapes(op, op.getInput().getType(),
-                                               op.getResult().getType());
-}
-
-ShapeMaterializeResult
-Impl::materializeScatterLikeShapeDefs(ScatterLike op,
-                                      ArrayRef<TypedAttr> inputAttrs) {
-  auto graphOp = op->getParentOfType<GraphOp>();
-  Location loc = op->getLoc();
-  TypedAttr inputShape = inputAttrs[0];
-  TypedAttr updatesShape = inputAttrs[1];
-  TypedAttr indicesShape = inputAttrs[2];
-  TypedAttr axis = inputAttrs[3];
-  return materializeScatterShape(graphOp, loc, inputShape, updatesShape,
-                                 indicesShape, axis);
-}
-
-//===----------------------------------------------------------------------===//
-// ScatterNdLike
-//===----------------------------------------------------------------------===//
-
-LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
-  LogicalResult res = verifyGenericScatterInputOutputShapes(
-      op, op.getInput().getType(), op.getResult().getType());
-  if (res.failed())
-    return res;
 
   // Do non-obvious verification of ranks:
   if (op.getInput().getType().hasRank() &&
