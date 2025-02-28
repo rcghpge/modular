@@ -3,9 +3,9 @@
 // Check mo-to-mogg correctly lowers an elementwise KernelAPI
 
 // CHECK: mogg.kernel
-// CHECK: kgen.param.declare.region {{.+}}_input_{{.+}}_fn =
-// CHECK: kgen.param.declare.region {{.+}}_input_{{.+}}_fn =
 // CHECK: kgen.param.declare.region {{.+}}_output_{{.+}}_fn =
+// CHECK: kgen.param.declare.region {{.+}}_input_{{.+}}_fn =
+// CHECK: kgen.param.declare.region {{.+}}_input_{{.+}}_fn =
 // CHECK: kgen.param.declare.region {{.+}}func
 // CHECK: fusionBodyLambda = "{{.+}}func
 // CHECK-SAME: inputFusionInterface = ["MOGG{{.+}}", "MOGG{{.+}}"]{{.+}} outputFusionInterface = ["MOGG{{.+}}"]
