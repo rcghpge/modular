@@ -107,28 +107,14 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // Mainly used to make sure we target the right module load and device
     // runtime for the executions
     MGP::RuntimeCreateOp lastDeviceRuntimeOp;
-    uint64_t deviceModuleIndex;
     for (auto op : init.getOps<MGP::RuntimeCreateOp>()) {
       moduleLoadChains.push_back(op.getResult());
       lastDeviceRuntimeOp = op;
-      deviceModuleIndex = 0;
     }
 
-    llvm::StringMap<size_t> deviceKernelIndices;
-    SmallVector<StringAttr> deviceKernelNameAttrs;
-    MGP::ModuleLoadOp loadArchive;
-    for (auto loadKernels : llvm::make_early_inc_range(
-             init.getOps<MOGG::LoadCompiledKernelOp>())) {
-      // Determine the kernelIndices and kernelNameAttrs
-      deviceKernelIndices = llvm::StringMap<size_t>();
-      deviceKernelNameAttrs = SmallVector<StringAttr>();
-      for (StringAttr attr :
-           loadKernels.getSymbols().getAsRange<StringAttr>()) {
-        deviceKernelIndices[attr] = deviceKernelIndices.size();
-        deviceKernelNameAttrs.push_back(attr);
-      }
-    }
-
+    // For each kernel name, track the module index and kernel index
+    llvm::StringMap<std::pair<uint64_t, uint64_t>> kernelModuleAndFnIndex;
+    uint64_t deviceModuleIndex = 0;
     // Rewrite the MOGG::LoadCompiledKernelOp in init blocks.
     for (auto loadKernels : llvm::make_early_inc_range(
              init.getOps<MOGG::LoadCompiledKernelOp>())) {
@@ -137,9 +123,18 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       Value opContext = lastDeviceRuntimeOp.getTheContext();
       Value inChain = lastDeviceRuntimeOp.getResult();
 
+      SmallVector<StringAttr> deviceKernelNameAttrs;
+      uint64_t deviceKernelIndex = 0;
+      for (StringAttr attr :
+           loadKernels.getSymbols().getAsRange<StringAttr>()) {
+        kernelModuleAndFnIndex[attr] =
+            std::make_pair(deviceModuleIndex, deviceKernelIndex++);
+        deviceKernelNameAttrs.push_back(attr);
+      }
+
       // Rewrite the MOGG::LoadCompiledKernelOp into a MGP::ModuleLoadOp
       builder.setInsertionPointAfter(insertionOp);
-      loadArchive = builder.create<MGP::ModuleLoadOp>(
+      auto loadArchive = builder.create<MGP::ModuleLoadOp>(
           insertionOp->getLoc(),
           /*inChain=*/inChain,
           /*theContext=*/opContext,
@@ -155,6 +150,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       moduleLoadChains.push_back(loadArchive.getResult());
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
+      deviceModuleIndex++;
     }
 
     // Remove the placeholder chain.
@@ -177,10 +173,11 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // Shunt all the executes for Init stage at the very end of init
     builder.setInsertionPoint(init.getTerminator());
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
+      auto [moduleIndex, kernelIndex] =
+          kernelModuleAndFnIndex[kernel.getKernelName()];
       rewriteExecuteCompiledOp(builder, lastDeviceRuntimeOp.getTheContext(),
-                               lastDeviceRuntimeOp.getSlot(), deviceModuleIndex,
-                               deviceKernelIndices[kernel.getKernelName()],
-                               kernel);
+                               lastDeviceRuntimeOp.getSlot(), moduleIndex,
+                               kernelIndex, kernel);
     });
 
     execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
@@ -200,10 +197,11 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       ASSERT_STREAM(executeContext,
                     << "Cannot find execute context in bounding region of "
                        "generic.execute");
+      auto [moduleIndex, kernelIndex] =
+          kernelModuleAndFnIndex[kernel.getKernelName()];
       rewriteExecuteCompiledOp(builder, executeContext,
-                               lastDeviceRuntimeOp.getSlot(), deviceModuleIndex,
-                               deviceKernelIndices[kernel.getKernelName()],
-                               kernel);
+                               lastDeviceRuntimeOp.getSlot(), moduleIndex,
+                               kernelIndex, kernel);
     });
     // The introduction of generic execute may introduce unbound free-values.
     // Use fixupIsolatedFromAbove to rebind these.
