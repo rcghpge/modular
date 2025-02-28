@@ -179,21 +179,26 @@ static bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
   if (kernel.isInPlaceAlloc())
     return false;
 
+  MO::ConstantOp cst = tryGetConstantOp(kernel.getOperand(index));
+  if (!cst)
+    return false;
+
+  if (!MO::isOnHost(cst))
+    return false;
+
   // Check it is a small constant with a attribute we understand.
-  if (MO::ConstantOp cst = tryGetConstantOp(kernel.getOperand(index))) {
-    ElementsAttr elems = cst.getValueAttr();
-    if (elems.getNumElements() > kMaxConstantSize)
-      return false;
+  ElementsAttr elems = cst.getValueAttr();
+  if (elems.getNumElements() > kMaxConstantSize)
+    return false;
 
-    Type dtype = elems.getElementType();
-    if (!MOGGTypeTraits::isSupportedMOGGType(dtype))
-      return false;
+  Type dtype = elems.getElementType();
+  if (!MOGGTypeTraits::isSupportedMOGGType(dtype))
+    return false;
 
-    if (!isa<M::ArrayElementsAttr, DenseResourceElementsAttr>(elems))
-      return false;
+  if (!isa<M::ArrayElementsAttr, DenseResourceElementsAttr>(elems))
+    return false;
 
-    return true;
-  }
+  return true;
 
   return false;
 }
