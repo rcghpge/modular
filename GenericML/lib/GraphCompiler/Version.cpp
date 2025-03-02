@@ -45,7 +45,8 @@ std::string M::MO::getMOGGCompilerVersionString() {
                                 M::MOGG::Embeddings::getMOGGEmbeddingID() +
                                 "-" + M::KGEN::getCompilerRTBinaryID() + "-" +
                                 M::getModularVersion().buildType;
-    return llvm::toHex(llvm::xxHash64(versionString), /*LowerCase=*/true);
+    return llvm::utohexstr(llvm::xxHash64(versionString), /*LowerCase=*/true,
+                           /*Width=*/16);
   }();
   return version;
 }
