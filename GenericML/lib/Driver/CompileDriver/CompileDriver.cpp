@@ -117,7 +117,8 @@ M::cacheMEFTransform(StringRef frameworkName,
   auto mefCache = MEFCache::create(mefBackendOr.takeValue());
 
   // Check if cache contains compiled model.
-  auto foundOr = mefCache->findSync(key.copy());
+  std::string keyHash;
+  auto foundOr = mefCache->findSync(std::move(key), &keyHash);
   if (!foundOr.isError() && foundOr->has_value())
     return std::move(**foundOr);
 
@@ -129,7 +130,7 @@ M::cacheMEFTransform(StringRef frameworkName,
   BufferRef mefBuffer = mefOr.takeValue();
 
   // Try inserting to cache. If fail to cache, ignore.
-  (void)mefCache->insertSync(std::move(key), mefBuffer.copy());
+  (void)mefCache->insertKeyedSync(std::move(keyHash), mefBuffer.copy());
 
   return mefBuffer;
 }

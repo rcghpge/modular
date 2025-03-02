@@ -444,7 +444,8 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   // Look up the model in the MEF cache.
   auto mefCache = RCRef<Cache::TransformCache>::create(*mefBackendOr);
-  auto maybeMefOr = mefCache->findSync(keyBuf.copy());
+  std::string keyBufHash;
+  auto maybeMefOr = mefCache->findSync(std::move(keyBuf), &keyBufHash);
   if (maybeMefOr.isError())
     return maybeMefOr.takeError();
   std::optional<BufferRef> maybeMef = maybeMefOr.takeValue();
@@ -472,7 +473,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   BufferRef outputBuffer = outBufOr.takeValue();
 
   // Insert MEF buffer to cache, ignoring failure to insert.
-  (void)mefCache->insertSync(std::move(keyBuf), outputBuffer.copy());
+  (void)mefCache->insertKeyedSync(std::move(keyBufHash), outputBuffer.copy());
 
   return outputBuffer.release();
 }
