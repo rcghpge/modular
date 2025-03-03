@@ -231,13 +231,13 @@ TEST(CUDADeviceContextTest, SubBuffer) {
   }
 
   // Copy base pattern into base buffer.
-  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*bBuf, aPtr));
+  EXPECT_NO_ERR(bBuf->copyFrom(aPtr));
 
   // Copy overlay pattern into sub buffer.
-  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*cBuf, ePtr));
+  EXPECT_NO_ERR(cBuf->copyFrom(ePtr));
 
   // Copy base buffer back to host memory.
-  EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(dPtr, *bBuf));
+  EXPECT_NO_ERR(bBuf->copyTo(dPtr));
 
   uint32_t *dIntPtr = reinterpret_cast<uint32_t *>(dPtr);
   uint32_t expectedVals[] = {0x80000000, 0x3f800000, 0xc0000000};

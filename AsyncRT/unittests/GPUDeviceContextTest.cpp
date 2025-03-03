@@ -152,8 +152,8 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
     } else {
       // Copy between different buffers.
       EXPECT_NO_ERR(aBuf->copyTo(*bBuf));
-      EXPECT_NO_ERR(ctx->enqueueCopyDeviceToDevice(*cBuf, *bBuf));
-      EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(dPtr, *cBuf));
+      EXPECT_NO_ERR(bBuf->copyTo(*cBuf));
+      EXPECT_NO_ERR(cBuf->copyTo(dPtr));
 
       // Ensure that all copy operations have finished.
       EXPECT_NO_ERR(ctx->synchronize());
@@ -245,11 +245,11 @@ TEST(GPUDeviceContextTest, SubBuffer) {
   }
 
   // Copy base pattern into base buffer.
-  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*bBuf, aPtr));
+  EXPECT_NO_ERR(bBuf->copyFrom(aPtr));
   // Copy overlay pattern into sub buffer.
-  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*cBuf, ePtr));
+  EXPECT_NO_ERR(cBuf->copyFrom(ePtr));
   // Copy base buffer back to host memory.
-  EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(dPtr, *bBuf));
+  EXPECT_NO_ERR(bBuf->copyTo(dPtr));
 
   EXPECT_NO_ERR(ctx->synchronize());
   uint32_t *dIntPtr = reinterpret_cast<uint32_t *>(dPtr);
@@ -419,7 +419,7 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
       memcpy(srcHostBuf->ptr(), checkData, allocLen);
       EXPECT_NO_ERR(srcHostBuf->copyTo(*srcDevBuf));
       EXPECT_NO_ERR(srcDevBuf->copyTo(*dstDevBuf));
-      EXPECT_NO_ERR(dstCtx->enqueueCopyFromDevice(dstPtr, *dstDevBuf));
+      EXPECT_NO_ERR(dstDevBuf->copyTo(dstPtr));
       EXPECT_NO_ERR(srcHostBuf->copyTo(*dstHostBuf));
 
       // Ensure that all copy operations have finished.
@@ -465,7 +465,7 @@ TEST(GPUDeviceContextTest, CrossContextEvent) {
   ASSIGN_NO_ERR(DeviceEventRef, copyDoneEvent, srcCtx->enqueueEvent());
 
   EXPECT_NO_ERR(dstCtx->enqueueWaitFor(*copyDoneEvent));
-  EXPECT_NO_ERR(dstCtx->enqueueCopyDeviceToDevice(*dstDevBuf, *srcDevBuf));
+  EXPECT_NO_ERR(srcDevBuf->copyTo(*dstDevBuf));
   EXPECT_NO_ERR(dstDevBuf->copyTo(*dstHostBuf));
 
   // An event based sequence equivalent to: err = dstCtx->synchronize();

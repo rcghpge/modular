@@ -218,6 +218,23 @@ DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
                dstApi + "\"");
 }
 
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(void *dst) const {
+  const DeviceBuffer &src = *this;
+  return src.context().enqueueCopyFromDevice(dst, src);
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess
+DeviceBuffer::copyFrom(const DeviceBuffer &src) const {
+  const DeviceBuffer &dst = *this;
+  return src.copyTo(dst);
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess
+DeviceBuffer::copyFrom(const void *src) const {
+  const DeviceBuffer &dst = *this;
+  return dst.context().enqueueCopyToDevice(dst, src);
+}
+
 MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
   if (parent() != nullptr) {
