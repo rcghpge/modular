@@ -21,6 +21,7 @@
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 
+#include "KGEN/HLCFDialect/HLCFOps.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"
 
@@ -313,8 +314,18 @@ struct FuseElementwisePass
 
     StringAttr renamedSrcElementwiseLambda;
     mlir::SymbolTable dstSymTable{dstKernel};
+
+    DenseSet<Operation *> skipUsing;
     for (Operation &srcOp : srcKernel.getBody().getOps()) {
-      if (isa<KGEN::CallOp, MOGG::OutputOp>(srcOp))
+      // Ignore the one foreach call and any users of it.
+      if (isa<KGEN::CallOp, MOGG::OutputOp>(srcOp)) {
+        // For deleting machinery to handle foreach `raising`
+        SmallVector<Operation *> opAndSubgraphs =
+            MO::getRootedComponents(&srcOp);
+        skipUsing.insert(opAndSubgraphs.begin(), opAndSubgraphs.end());
+      }
+
+      if (skipUsing.contains(&srcOp))
         continue;
 
       if (auto srcOutput = dyn_cast<MOGG::OutputPlaceholdersOp>(srcOp)) {

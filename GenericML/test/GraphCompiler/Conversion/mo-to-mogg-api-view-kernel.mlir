@@ -10,7 +10,7 @@
 // CHECK: %[[KSHAPE:.*]] = kgen.rebind %[[SHAPE]]
 // COM: Call to the mojo copy implementation
 // CHECK: kgen.call @"tensor_internal::managed_tensor_slice::view_copy_impl{{.+}}"<{{.+}}>(%[[KOUT]], %{{.+}})
-// CHECK-NEXT: mogg.output %[[OUT]]
+// CHECK: mogg.output %[[OUT]]
 
 mo.graph @broadcast_to(%arg0: !mo.tensor<[1, 8], f32>) -> !mo.tensor<[6, 3, 8], f32> {
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[1, 8], f32> -> !mo.tensor<[6, 3, 8], f32>

@@ -6,6 +6,7 @@
 
 #include "mlir/IR/BuiltinOps.h"
 
+#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
@@ -21,7 +22,6 @@
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"
-
 using namespace M;
 
 namespace M::MOGG {
@@ -272,14 +272,16 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       ASSERT_STREAM(producerKernelToKGEN,
                     << "Could not find ToKGENOp for producer kernel");
 
+      // Operations in this vector should be in topological order.
+      llvm::SmallVector<Operation *> toDeleteTopoOrder;
+
       // We find the mogg.to_kgen that relates to the output of the
       // `producerKernel`.
-      llvm::SmallPtrSet<Operation *, 2> toDelete;
       llvm::DenseSet<Value> kgenOut;
       leaf.walk([&](MOGG::ToKGENOp toKgen) {
         if (toKgen.getInput() == target) {
           kgenOut.insert(toKgen.getResults());
-          toDelete.insert(toKgen);
+          toDeleteTopoOrder.push_back(toKgen);
         }
       });
 
@@ -292,7 +294,10 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         if (funcName.starts_with(Utils::DPSTensorCopy)) {
           viewCopyCallOp = callOp;
           stackAlloc = callOp->getOperand(1);
-          toDelete.insert(callOp);
+
+          // Assumptions, any users of `callOp` can now be safely deleted.
+          toDeleteTopoOrder.append(MO::getRootedComponents(callOp));
+
           // Always remove the first one because in case we fuse a view into a
           // view, we want to maintain the second one.
           return WalkResult::interrupt();
@@ -376,7 +381,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
       // Clean-up un-necessary mogg.to_kgen and mogg.tensor_copy in the
       // leaf that are cloned from the `producerKernel`.
-      for (Operation *op : toDelete)
+      for (Operation *op : llvm::reverse(toDeleteTopoOrder))
         op->erase();
 
       leaf.removeOperandAtIndex(idx);
@@ -447,6 +452,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                        *typeManager);
 
     reshapeKernels = lowerReshapeOps(graph, mojoLibraryAnalysis);
+
     // Do not attempt the next step if there are no reshape kernels (probably
     // because they would not be lowered to the extensibility/kernel API).
     if (!reshapeKernels.empty()) {

@@ -4,12 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
+#include "KGEN/HLCFDialect/HLCFOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/POPDialect/POPOps.h"
@@ -157,7 +159,28 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     }
     Value newFakeFusedArgument = fakeTensors->getResults().back();
 
+    // Do not copy foreach, or any ops which are used to handle the fact it
+    // raises
+    DenseSet<Operation *> skipCopy;
     for (auto &op : inputKernel.getOps()) {
+      auto callOp = dyn_cast<KGEN::CallOp>(op);
+      if (!callOp)
+        continue;
+      StringRef funcName =
+          cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
+
+      if (!funcName.starts_with(Utils::DPSTensorForEach) &&
+          !funcName.starts_with(Utils::DPSTensorCopy))
+        continue;
+
+      auto res = MO::getRootedComponents(&op);
+      skipCopy.insert(res.begin(), res.end());
+    }
+
+    for (auto &op : inputKernel.getOps()) {
+      if (skipCopy.contains(&op))
+        continue;
+
       if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
         // We clone ToKGENOp except for the one related to the output.
         if (toKgen.getInput().getDefiningOp<MOGG::OutputPlaceholdersOp>())
@@ -173,15 +196,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         // ParamDeclareRegionOp will be cloned later.
         // OutputPlaceholdersOp relates to the temporary fused output that
         // doesn't need to be cloned.
-      } else if (auto callop = dyn_cast<KGEN::CallOp>(op)) {
-        StringRef funcName =
-            cast<mlir::FlatSymbolRefAttr>(callop.getCalleeSymbol()).getValue();
-        // Clone every function call except the one has the `elementwise`
-        // decorator.
-        if (!funcName.starts_with(Utils::DPSTensorForEach)) {
-          oldToNew.map(op.getResults(),
-                       builder.clone(op, oldToNew)->getResults());
-        }
       } else {
         oldToNew.map(op.getResults(),
                      builder.clone(op, oldToNew)->getResults());
@@ -528,8 +542,26 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       walker.walk(paramDeclOp.getValue());
     };
 
+    DenseSet<Operation *> skipCopy;
+    for (auto &op : userToFuseIn.getOps()) {
+      auto callOp = dyn_cast<KGEN::CallOp>(op);
+      if (!callOp)
+        continue;
+      StringRef funcName =
+          cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
+
+      if (!funcName.starts_with(Utils::DPSTensorForEach) &&
+          !funcName.starts_with(Utils::DPSTensorCopy))
+        continue;
+
+      auto res = MO::getRootedComponents(&op);
+      skipCopy.insert(res.begin(), res.end());
+    }
+
     kernelToFuseInto.setInsertionPointToTop(builder);
     for (auto &op : userToFuseIn.getOps()) {
+      if (skipCopy.contains(&op))
+        continue;
       if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
         // We clone ToKGENOp except for the one related to the fusion hook.
         if (auto blockArg = dyn_cast<mlir::BlockArgument>(toKgen.getInput()))
@@ -560,19 +592,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         if (tensorSpecAttrNames.contains(newOp.getParamDecl().getName()))
           findParamDeclMapping(newOp);
         newParamDeclOps.push_back(newOp);
-      } else if (isa<MOGG::OutputOp>(op) ||
-                 isa<KGEN::ParamDeclareRegionOp>(op)) {
+      } else if (isa<MOGG::OutputOp, KGEN::ParamDeclareRegionOp>(op)) {
         // Do nothing.
-      } else if (auto callop = dyn_cast<KGEN::CallOp>(op)) {
-        StringRef funcName =
-            cast<mlir::FlatSymbolRefAttr>(callop.getCalleeSymbol()).getValue();
-        // After Tensor APIs becomes the de-factor standard APIs (builtin
-        // library), we will use MojoLibararyAnalysis to check this. Clone every
-        // function call except the one has the `elementwise` decorator.
-        if (!funcName.starts_with(Utils::DPSTensorForEach)) {
-          oldToNew.map(op.getResults(),
-                       builder.clone(op, oldToNew)->getResults());
-        }
       } else {
         oldToNew.map(op.getResults(),
                      builder.clone(op, oldToNew)->getResults());

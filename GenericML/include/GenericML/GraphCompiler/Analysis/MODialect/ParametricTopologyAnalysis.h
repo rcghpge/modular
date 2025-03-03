@@ -114,6 +114,16 @@ private:
   mlir::DenseMap<mlir::Operation *, OperationRankAndDependency> metadata;
 };
 
+// Given an op, define a list of components that are connected to the
+// results of the operation. These components are formed by assuming all edges
+// between mlir nodes are undirected and the root `op` is connected to no values
+// but its results.
+//
+// Return a list of ops in the components in topological order.
+//
+// This is useful for cleaning up machinery around raising functions.
+mlir::SmallVector<mlir::Operation *> getRootedComponents(mlir::Operation *op);
+
 } // namespace M::MO
 
 #endif

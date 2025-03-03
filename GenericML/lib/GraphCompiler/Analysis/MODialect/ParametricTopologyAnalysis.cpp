@@ -249,4 +249,47 @@ void ParametricTopologyAnalysis::topologicallySortAllOpsWithin(Region *region) {
   }
 }
 
+// Return vector of op and any users, users of users, and so forth.
+//
+// It is assumed all operations are rooted on `op` and it is guaranteed we
+// will return the subgraph in a topological order.
+SmallVector<Operation *> getRootedComponents(Operation *op) {
+  SmallVector<Operation *> fringe;
+  fringe.push_back(op);
+
+  DenseSet<Operation *> enqueued;
+  enqueued.insert(op);
+
+  // Strategy is to DFS, and then sort later using built-in util.
+  SmallVector<Operation *> answer;
+  while (!fringe.empty()) {
+    Operation *cur = fringe.back();
+    fringe.pop_back();
+    answer.push_back(cur);
+
+    for (Operation *user : cur->getUsers()) {
+      if (enqueued.contains(user))
+        continue;
+
+      enqueued.insert(user);
+      fringe.push_back(user);
+    }
+
+    if (cur == op)
+      continue;
+    for (auto operand : cur->getOperands()) {
+      Operation *definingOp = operand.getDefiningOp();
+      if (enqueued.contains(definingOp))
+        continue;
+
+      enqueued.insert(definingOp);
+      fringe.push_back(definingOp);
+    }
+  }
+
+  MO::ParametricTopologyAnalysis analysis(op->getParentOp());
+  analysis.computeTopologicalSorting(answer);
+  return answer;
+}
+
 } // namespace M::MO
