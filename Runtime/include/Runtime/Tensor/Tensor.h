@@ -9,6 +9,7 @@
 
 #include "AsyncRT/Runtime/CompactRuntimePtr.h"
 #include "Runtime/Tensor/TensorBufferRef.h"
+#include "Support/ML/DebugPrint.h"
 #include "Support/ML/TensorBase.h"
 #include "Support/ML/TensorSpec.h"
 
@@ -17,19 +18,6 @@ namespace M {
 //===----------------------------------------------------------------------===//
 // Tensor Printing
 //===----------------------------------------------------------------------===//
-
-enum class ResultOutputStyle {
-  kCompact, // Display a few elements at the start and end of each dimension
-  kFull,    // Display all the elements of result
-  kBinary,  // Save results to .bin
-  kNone,    // Do not display any tensor details
-  kBinaryMaxCheckpoint, // Save results to .max (saves tensor shape and dtype).
-};
-
-/// This prints the specified tensor data to stdout.
-ErrorOrSuccess printTensor(raw_ostream &os, const void *srcPtr,
-                           const TensorSpec &spec, ResultOutputStyle style,
-                           unsigned precision = 6);
 
 /// Tensors in CPU memory using a dense, row-major element order.
 ///
