@@ -752,6 +752,7 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Support/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Support/*.h"]),
     deps = [
+        ":GraphCompilerPublic.headers",
         ":MOGGDialect",
         ":Support",
         "//AsyncRT:DeviceContext",
