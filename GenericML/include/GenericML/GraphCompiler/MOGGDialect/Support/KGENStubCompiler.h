@@ -17,52 +17,14 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 
-namespace M::MOGG::Stub {
+namespace M::MOGG {
 
-/// Helpers to compile the KGEN stubs to binary. This splits the compile to
-/// binary stuff from the KGEN stub creation process.
-class StubCompiler {
-public:
-  StubCompiler(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
-               std::string saveTempsPrefix, KernelBuildType kernelBuildType)
-      : ctx(graph->getContext()), kgenModule(std::move(kgenStubs)),
-        loc(graph->getLoc()), saveTempsPrefix(std::move(saveTempsPrefix)),
-        kernelBuildType(kernelBuildType) {}
+CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
+compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
+             std::string saveTempsPrefix, KernelBuildType kernelBuildType,
+             mlir::ArrayAttr combinedSymbolName, bool enableTiming = false,
+             bool debugKGENStubs = false);
 
-  /// Compile to binary object. Tell the jit all of the given symbols as symbols
-  /// within it that can be executed at runtime.
-  ErrorOr<MOGG::LoadCompiledKernelOp>
-  compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false,
-          bool debugKGENStubs = false);
-
-  /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN(bool enableTiming = false, bool superOpt = false,
-                              bool debugKGENStubs = false);
-
-private:
-  /// Lower to an binary object.
-  ErrorOr<MOGG::LoadCompiledKernelOp>
-  compileToLLVM(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
-                bool debugKGENStubs);
-
-  MLIRContext *ctx;
-
-  /// The KGEN module with all the stubs in it.
-  OwningOpRef<ModuleOp> kgenModule;
-
-  /// Location to use.
-  mlir::Location loc;
-
-  /// If set to non empty string emit temporary IR and assembly outputs to the
-  /// given prefix. Currently emits KGEN before and after elaboration, llvm
-  /// before and after optimization, and the final assembly.
-  std::string saveTempsPrefix;
-
-  /// How should kernels be compiled. If debuginfo is included in kernels then
-  /// it will be added to the stubs.
-  KernelBuildType kernelBuildType;
-};
-
-} // namespace M::MOGG::Stub
+} // namespace M::MOGG
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGSUPPORT_KGENSTUBCOMPILER_H
