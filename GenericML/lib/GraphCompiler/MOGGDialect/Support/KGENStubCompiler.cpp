@@ -33,16 +33,10 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
 
-static std::mutex &getMut() {
-  static std::mutex mut;
-  return mut;
-}
+static std::once_flag initLLVMFlag;
 
-static bool hasInit = false;
-
-void initLLVM() {
-  std::lock_guard<std::mutex> guard(getMut());
-  if (!hasInit) {
+static void initLLVM() {
+  std::call_once(initLLVMFlag, []() {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmParser();
     llvm::InitializeNativeTargetAsmPrinter();
@@ -52,8 +46,7 @@ void initLLVM() {
     llvm::InitializeAllTargetMCs();
     llvm::InitializeAllAsmParsers();
     llvm::InitializeAllAsmPrinters();
-    hasInit = true;
-  }
+  });
 }
 
 namespace M::MOGG {
