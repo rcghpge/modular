@@ -872,7 +872,11 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
 
-def DebugTensorPrintOp : MGP_Op<"debug.tensor.print"> {
+def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
+    DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
+      "getLiftableAttributes"
+    ]>
+  ]> {
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";
   let description = [{
@@ -906,6 +910,13 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print"> {
                        MGP_TensorSpecType:$spec,
                        DefaultValuedAttr<StrAttr, "\"\"">: $bLabel);
   let results = (outs ChainType: $outChain);
+
+  let extraClassDefinition = [{
+    SmallVector<Attribute> DebugTensorPrintOp::getLiftableAttributes() {
+      return {getBLabelAttr()};
+    }
+  }];
+
   let assemblyFormat = [{
     $inChain `,` $buffer `,` $spec
     ( `,` $bLabel^ )? attr-dict `:` functional-type(operands, results)

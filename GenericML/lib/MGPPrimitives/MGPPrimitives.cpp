@@ -559,35 +559,6 @@ static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.tensor.buffer.print
-//===----------------------------------------------------------------------===//
-
-static void mgp_debug_tensor_print(Chain inChain, const TensorBufferRef &buffer,
-                                   const TensorSpec &spec,
-                                   Result<Chain> outChain,
-                                   MEFAttr<StringRef> bLabel,
-                                   Runtime &runtime) {
-  if (bLabel->empty()) {
-    // Metadata only.
-    llvm::outs() << "Tensor(" << spec << ", " << buffer << ")\n";
-    llvm::outs().flush();
-  } else {
-    // Buffer contents, using tensor spec for shape. This is only possible for
-    // CPU buffers. The printTensor function will crash for GPU buffers, so this
-    // primitive assumes that the buffer is a CPU buffer. I don't see a good way
-    // to assert on this condition though.
-    DebugTensorPrintOptions defaultOptions;
-    DebugTensorPrintOptions *options =
-        runtime.context->get<DebugTensorPrintOptions>();
-    if (!options)
-      options = &defaultOptions;
-    if (auto errOr = options->printTensor(buffer.getBuffer(), spec, *bLabel))
-      return std::move(outChain).setToError(errOr.takeError());
-  }
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // registerMGPPrimitives
 //===----------------------------------------------------------------------===//
 
@@ -596,7 +567,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.cache", mgp_buffer_cache);
   ADD_PRIMITIVE(registry, "mgp.buffer.plan", mgp_buffer_plan);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
-  ADD_PRIMITIVE(registry, "mgp.debug.tensor.print", mgp_debug_tensor_print);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.guard", mgp_guard);

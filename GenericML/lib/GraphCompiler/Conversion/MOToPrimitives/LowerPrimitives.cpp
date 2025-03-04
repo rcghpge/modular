@@ -139,12 +139,22 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
       attrs.push_back(attr);
     }
   }
+
+  TypeAttr dtype = nullptr;
+  auto checkOrAssignDType = [&](TypeAttr toAssign) {
+    if (!dtype)
+      dtype = toAssign;
+    ASSERT_STREAM(dtype == toAssign, "Conflict DType founded");
+  };
+
   // For anything that takes in a tensor-spec input, we need to parameterize the
   // rank so the mojo calls can use that.
   for (auto operandType : op->getOperands().getTypes()) {
     if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(operandType)) {
       attrs.push_back(builder.getNamedAttr(
           "spec_rank", builder.getIndexAttr(tensorSpec.getShape().size())));
+
+      checkOrAssignDType(TypeAttr::get(tensorSpec.getElementType()));
     } else if (auto tensor = dyn_cast<MGP::DeviceTensorType>(operandType)) {
       // A scalar mgp.tensor is promoted to NDBuffer<[1]>
       size_t rank = tensor.getRank();
@@ -152,8 +162,8 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
           builder.getNamedAttr("tensor_rank", builder.getIndexAttr(rank)));
       attrs.push_back(builder.getNamedAttr(
           "buffer_rank", builder.getIndexAttr(rank == 0 ? 1 : rank)));
-      attrs.push_back(
-          builder.getNamedAttr("type", TypeAttr::get(tensor.getElementType())));
+
+      checkOrAssignDType(TypeAttr::get(tensor.getElementType()));
     }
   }
 
@@ -161,14 +171,16 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
   // dtype.
   for (auto resultType : op->getResultTypes()) {
     if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(resultType)) {
-      attrs.push_back(builder.getNamedAttr(
-          "type", TypeAttr::get(tensorType.getElementType())));
+      checkOrAssignDType(TypeAttr::get(tensorType.getElementType()));
       attrs.push_back(builder.getNamedAttr(
           "buffer_rank", builder.getIndexAttr(tensorType.getRank() == 0
                                                   ? 1
                                                   : tensorType.getRank())));
     }
   }
+
+  if (dtype)
+    attrs.push_back(builder.getNamedAttr("type", dtype));
 
   return builder.getDictionaryAttr(attrs);
 }
