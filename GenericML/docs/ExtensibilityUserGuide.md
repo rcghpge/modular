@@ -103,7 +103,7 @@ defined elsewhere.
 **StaticTuple[ManagedTensorSlice[type, rank], size]**.
   - We don’t support other variadic types besides Tensor
 - Dynamic lists of tensors are supported via
-**InlinedFixedVector[ManagedTensorSlice[type, rank]]** though support is
+**List[ManagedTensorSlice[type, rank]]** though support is
 limited at this time.
   - We don’t support lists of other types besides Tensor
 
