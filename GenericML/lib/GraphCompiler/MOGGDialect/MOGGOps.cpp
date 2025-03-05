@@ -258,34 +258,6 @@ static void printRegionArguments(OpAsmPrinter &p, TypeRange resTypes,
   p.printArrowTypeList(resTypes);
 }
 
-static ParseResult parseLambda(OpAsmParser &p, StringAttr &name, TypeAttr &func,
-                               Region &region) {
-  SmallVector<OpAsmParser::Argument> args;
-  llvm::SMLoc loc;
-  SmallVector<Type> resTypes;
-
-  llvm::SMLoc sigLoc;
-  if (p.parseSymbolName(name) || p.parseEqual() ||
-      p.getCurrentLocation(&sigLoc) ||
-      parseRegionArguments(p, resTypes, args) || p.getCurrentLocation(&loc) ||
-      p.parseRegion(region, args))
-    return failure();
-  func = TypeAttr::get(p.getBuilder().getFunctionType(
-      llvm::map_to_vector(args, [&](auto &arg) { return arg.type; }),
-      resTypes));
-  return success();
-}
-
-static void printLambda(OpAsmPrinter &p, Operation *lambda, StringAttr name,
-                        TypeAttr sig, Region &region) {
-  p.printSymbolName(name.strref());
-  p << " = ";
-
-  auto funcType = cast<FunctionType>(sig.getValue());
-  printRegionArguments(p, funcType.getResults(), region.getArguments());
-  p.printRegion(region, /*printEntryBlockArgs=*/false);
-}
-
 //===----------------------------------------------------------------------===//
 // MOGG CallOp
 //===----------------------------------------------------------------------===//
