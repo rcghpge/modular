@@ -33,9 +33,68 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
 
-static std::once_flag initLLVMFlag;
+namespace M::MOGG {
+namespace {
+/// Helpers to compile the KGEN stubs to binary. This splits the compile to
+/// binary stuff from the KGEN stub creation process.
+class StubCompiler {
+public:
+  static CompileDiagnosticOr<StubCompiler>
+  create(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
+         std::string saveTempsPrefix, KernelBuildType kernelBuildType,
+         bool enableTiming, bool debugKGENStubs);
+
+  /// Compile to binary object. Tell the jit all of the given symbols as symbols
+  /// within it that can be executed at runtime.
+  CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
+  compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false,
+          bool debugKGENStubs = false);
+
+private:
+  StubCompiler(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
+               std::string saveTempsPrefix, KernelBuildType kernelBuildType)
+      : ctx(graph->getContext()), kgenModule(std::move(kgenStubs)),
+        graph(graph), loc(graph->getLoc()),
+        saveTempsPrefix(std::move(saveTempsPrefix)),
+        kernelBuildType(kernelBuildType) {}
+
+  /// Run the KGEN elaboration passes on the module.
+  LogicalResult elaborateKGEN(bool enableTiming = false, bool superOpt = false,
+                              bool debugKGENStubs = false);
+  /// Lower to an binary object.
+  CompileDiagnosticOr<DenseResourceElementsAttr>
+  compileToLLVM(bool enableTiming, bool debugKGENStubs);
+
+  MLIRContext *ctx;
+
+  /// The compiler to use to compile the KGEN stubs to LLVM.
+  std::unique_ptr<KGEN::ObjectCompiler> compiler;
+
+  /// The KGEN module with all the stubs in it.
+  OwningOpRef<ModuleOp> kgenModule;
+
+  Operation *graph;
+
+  /// Location to use.
+  mlir::Location loc;
+
+  /// If set to non empty string emit temporary IR and assembly outputs to the
+  /// given prefix. Currently emits KGEN before and after elaboration, llvm
+  /// before and after optimization, and the final assembly.
+  std::string saveTempsPrefix;
+
+  /// How should kernels be compiled. If debuginfo is included in kernels then
+  /// it will be added to the stubs.
+  KernelBuildType kernelBuildType;
+
+  /// The target info for the module.
+  TargetInfoAttr targetInfo;
+};
+
+} // namespace
 
 static void initLLVM() {
+  static std::once_flag initLLVMFlag;
   std::call_once(initLLVMFlag, []() {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmParser();
@@ -49,89 +108,94 @@ static void initLLVM() {
   });
 }
 
-namespace M::MOGG {
+static KGEN::CompilationOptions
+createCompilationOptions(TargetInfoAttr target, KernelBuildType kernelBuildType,
+                         bool debugKGENStubs, StringRef saveTempsPrefix) {
 
-namespace {
-/// Helpers to compile the KGEN stubs to binary. This splits the compile to
-/// binary stuff from the KGEN stub creation process.
-class StubCompiler {
-public:
-  StubCompiler(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
-               std::string saveTempsPrefix, KernelBuildType kernelBuildType)
-      : ctx(graph->getContext()), kgenModule(std::move(kgenStubs)),
-        loc(graph->getLoc()), saveTempsPrefix(std::move(saveTempsPrefix)),
-        kernelBuildType(kernelBuildType) {}
+  KGEN::CompilationOptions compilationOptions;
+  compilationOptions.targetTriple = target.getTripleStr();
+  compilationOptions.targetCpu = target.getArch();
+  compilationOptions.targetFeatures = target.getFeatures();
+  compilationOptions.targetAccelerator =
+      AsyncRT::Device::getAcceleratorArchOrEmpty();
+  compilationOptions.enableLLVMPerFunctionSplitting = false;
 
-  /// Compile to binary object. Tell the jit all of the given symbols as symbols
-  /// within it that can be executed at runtime.
-  ErrorOr<MOGG::LoadCompiledKernelOp>
-  compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false,
-          bool debugKGENStubs = false);
+  if (kernelBuildType == KernelBuildType::kDebug)
+    compilationOptions.optimizationLevel = 0;
 
-  /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN(bool enableTiming = false, bool superOpt = false,
-                              bool debugKGENStubs = false);
+  if (debugKGENStubs || hasDebuginfo(kernelBuildType))
+    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
 
-private:
-  /// Lower to an binary object.
-  ErrorOr<MOGG::LoadCompiledKernelOp>
-  compileToLLVM(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
-                bool debugKGENStubs);
+  if (!saveTempsPrefix.empty())
+    compilationOptions.setSaveTemps(saveTempsPrefix.str());
 
-  MLIRContext *ctx;
+  return compilationOptions;
+}
 
-  /// The KGEN module with all the stubs in it.
-  OwningOpRef<ModuleOp> kgenModule;
-
-  /// Location to use.
-  mlir::Location loc;
-
-  /// If set to non empty string emit temporary IR and assembly outputs to the
-  /// given prefix. Currently emits KGEN before and after elaboration, llvm
-  /// before and after optimization, and the final assembly.
-  std::string saveTempsPrefix;
-
-  /// How should kernels be compiled. If debuginfo is included in kernels then
-  /// it will be added to the stubs.
-  KernelBuildType kernelBuildType;
-};
-
-} // namespace
-
-LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
-                                          bool debugKGENStubs) {
+static std::unique_ptr<KGEN::ObjectCompiler>
+createObjectCompiler(ModuleOp kgenModule,
+                     KGEN::CompilationOptions compilationOptions,
+                     bool enableTiming) {
   MLIRContext *ctx = kgenModule->getContext();
-  initLLVM();
+  // Compile to LLVM.
+  KGEN::PassManagerConfigOptions pmOptions;
+  if (enableTiming)
+    pmOptions.enableTiming = true;
+  ErrorOr<std::unique_ptr<KGEN::ObjectCompiler>> compilerOr =
+      KGEN::ObjectCompiler::create(".mojo_cache", compilationOptions,
+                                   /*isJit=*/true, *ctx, pmOptions);
 
+  if (compilerOr.isError())
+    kgenModule->emitError(compilerOr.getError());
+
+  return compilerOr.takeValue();
+}
+
+static ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
   ErrorOr<TargetInfoAttr> targetOr = getTargetInfoFor(
-      kgenModule->getContext(), llvm::sys::getDefaultTargetTriple(),
-      llvm::sys::getHostCPUName(), getHostCPUFeatures(), /*tuneCpu=*/"",
+      ctx, llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName(),
+      getHostCPUFeatures(), /*tuneCpu=*/"",
       /*acceleratorArch=*/AsyncRT::Device::getAcceleratorArchOrEmpty());
   if (targetOr.isError())
-    return mlir::emitError(kgenModule->getLoc(), targetOr.getError());
-  TargetInfoAttr target = *targetOr;
+    return targetOr;
 
-  // Set the environment (defines) for the module.
-  auto *compileCtx = loadContext(ctx)->get<KGEN::CompilationContext>();
-  KGEN::extendWithModularEnvAttr(*kgenModule, compileCtx);
+  TargetInfoAttr target = targetOr.takeValue();
 
   // Retrieve the target info from the device spec, however 'complete' it with
   // additional fields derived from the 'core' fields.
   ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
       ctx, target.getTripleStr(), target.getArch(), target.getFeatures(),
       target.getTuneCpu(), AsyncRT::Device::getAcceleratorArchOrEmpty());
-  if (targetInfoOr)
-    return kgenModule->emitError(targetInfoOr.getError());
+  return targetInfoOr;
+}
 
-  KGEN::CompilationOptions compilationOptions;
-  compilationOptions.enableLLVMPerFunctionSplitting = false;
-  compilationOptions.optimizationLevel = superOpt ? 4 : 3;
-  compilationOptions.saveTempsPrefix = saveTempsPrefix;
-  compilationOptions.targetAccelerator = targetInfoOr->getAcceleratorArch();
+/*static*/ CompileDiagnosticOr<StubCompiler>
+StubCompiler::create(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
+                     std::string saveTempsPrefix,
+                     KernelBuildType kernelBuildType, bool enableTiming,
+                     bool debugKGENStubs) {
+  MLIRContext *ctx = graph->getContext();
+  StubCompiler compiler(std::move(kgenStubs), graph, saveTempsPrefix,
+                        kernelBuildType);
+  auto targetInfoOr = getTargetInfo(ctx);
+  if (targetInfoOr.isError())
+    return compiler.graph->emitError(targetInfoOr.getError());
+  compiler.targetInfo = targetInfoOr.takeValue();
+  KGEN::CompilationOptions compilationOptions = createCompilationOptions(
+      compiler.targetInfo, kernelBuildType, debugKGENStubs, saveTempsPrefix);
+  compiler.compiler = createObjectCompiler(*compiler.kgenModule,
+                                           compilationOptions, enableTiming);
+  return compiler;
+}
 
-  if (debugKGENStubs || hasDebuginfo(kernelBuildType))
-    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
+LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
+                                          bool debugKGENStubs) {
+  // Set the environment (defines) for the module.
+  auto *compileCtx = loadContext(ctx)->get<KGEN::CompilationContext>();
+  KGEN::extendWithModularEnvAttr(*kgenModule, compileCtx);
 
+  KGEN::CompilationOptions compilationOptions = createCompilationOptions(
+      targetInfo, kernelBuildType, debugKGENStubs, saveTempsPrefix);
   KGEN::PassManagerConfigOptions pmOptions;
   if (enableTiming)
     pmOptions.enableTiming = true;
@@ -163,9 +227,8 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
 
     auto *runtime = loadContext(ctx)->get<AsyncRT::Runtime>();
 
-    setTargetInfo(*kgenModule, *targetInfoOr);
     ErrorOrSuccess result = compiler.runElaborationPipeline(
-        *kgenModule, *targetInfoOr, *runtime, runtime->getReadyChain().copy(),
+        *kgenModule, targetInfo, *runtime, runtime->getReadyChain().copy(),
         Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
             "StubCompiler::elaborateKGEN",
             "mogg.elaborate.kgen.cache.miss.time",
@@ -174,7 +237,7 @@ LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
             "StubCompiler::elaborateKGEN"));
 
     if (result.isError()) {
-      mlir::emitError(kgenModule->getLoc(), result.getError());
+      kgenModule->emitError(result.getError());
       res = failure();
     }
   }
@@ -212,12 +275,11 @@ createArchiveAttr(MLIRContext *ctx, BufferRef buffer, StringRef name) {
 }
 
 static ErrorOr<DenseResourceElementsAttr>
-emitArchiveAttr(std::unique_ptr<KGEN::ObjectCompiler> compiler,
-                OwningOpRef<ModuleOp> module) {
+emitArchiveAttr(KGEN::ObjectCompiler &compiler, OwningOpRef<ModuleOp> module) {
   MLIRContext *moduleCtx = module->getContext();
 
   std::string outKeyHash;
-  ErrorOr<BufferRef> bufferOr = compiler->emitArchive(
+  ErrorOr<BufferRef> bufferOr = compiler.emitArchive(
       std::move(module), /*emitAssembly=*/false, &outKeyHash);
   if (bufferOr.isError())
     return bufferOr.takeError();
@@ -227,47 +289,14 @@ emitArchiveAttr(std::unique_ptr<KGEN::ObjectCompiler> compiler,
   return createArchiveAttr(moduleCtx, std::move(buffer), outKeyHash);
 }
 
-ErrorOr<MOGG::LoadCompiledKernelOp>
-StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
-                            bool enableTiming, bool debugKGENStubs) {
-  // Compile to LLVM.
-  TargetInfoAttr target = getTargetInfo(*kgenModule);
-  KGEN::CompilationOptions compilationOptions;
-  compilationOptions.targetTriple = target.getTripleStr();
-  compilationOptions.targetCpu = target.getArch();
-  compilationOptions.targetFeatures = target.getFeatures();
-  compilationOptions.targetAccelerator =
-      AsyncRT::Device::getAcceleratorArchOrEmpty();
-  compilationOptions.enableLLVMPerFunctionSplitting = false;
-
-  if (kernelBuildType == KernelBuildType::kDebug)
-    compilationOptions.optimizationLevel = 0;
-
-  if (debugKGENStubs || hasDebuginfo(kernelBuildType))
-    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
-
-  initLLVM();
-  if (!saveTempsPrefix.empty())
-    compilationOptions.setSaveTemps(saveTempsPrefix);
-
-  KGEN::PassManagerConfigOptions pmOptions;
-  if (enableTiming)
-    pmOptions.enableTiming = true;
-  ErrorOr<std::unique_ptr<KGEN::ObjectCompiler>> compilerOr =
-      KGEN::ObjectCompiler::create(".mojo_cache", compilationOptions,
-                                   /*isJit=*/true, *ctx, pmOptions);
-
-  if (compilerOr.isError())
-    return compilerOr.takeError();
-
-  std::unique_ptr<KGEN::ObjectCompiler> compiler = compilerOr.takeValue();
-
+CompileDiagnosticOr<DenseResourceElementsAttr>
+StubCompiler::compileToLLVM(bool enableTiming, bool debugKGENStubs) {
   auto start = std::chrono::high_resolution_clock::now();
 
   ErrorOr<DenseResourceElementsAttr> archiveAttrOr =
-      emitArchiveAttr(std::move(compiler), std::move(kgenModule));
+      emitArchiveAttr(*compiler, std::move(kgenModule));
   if (archiveAttrOr.isError())
-    return archiveAttrOr.takeError();
+    return graph->emitError(archiveAttrOr.getError());
   DenseResourceElementsAttr archiveAttr = *archiveAttrOr;
 
   auto end = std::chrono::high_resolution_clock::now();
@@ -279,28 +308,34 @@ StubCompiler::compileToLLVM(mlir::ArrayAttr combinedSymbolName,
                  << "ms\n";
   }
 
-  // Add the compiled kernels as a constant.
-  OpBuilder builder{ctx};
-  return builder.create<MOGG::LoadCompiledKernelOp>(
-      loc, /*symbols=*/combinedSymbolName, /*value=*/archiveAttr,
-      /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType));
+  return archiveAttr;
 }
 
-ErrorOr<MOGG::LoadCompiledKernelOp>
+CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
 StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
                       bool debugKGENStubs) {
-  initLLVM();
-
 #ifndef MODULAR_PRODUCTION
   if (failed(mlir::verify(*kgenModule)))
-    return Error("generated KGEN IR is invalid");
+    return kgenModule->emitError("generated KGEN IR is invalid");
 #endif
 
-  LogicalResult ok = elaborateKGEN(enableTiming, false, debugKGENStubs);
+  LogicalResult ok = elaborateKGEN(enableTiming, debugKGENStubs);
   if (ok.failed())
-    return Error("KGEN elaboration failed");
+    return graph->emitError("KGEN elaboration failed");
 
-  return compileToLLVM(combinedSymbolName, enableTiming, debugKGENStubs);
+  CompileDiagnosticOr<DenseResourceElementsAttr> result =
+      compileToLLVM(enableTiming, debugKGENStubs);
+  if (result.isError())
+    return result.takeError();
+
+  DenseResourceElementsAttr archiveAttr = result.takeValue();
+
+  OpBuilder builder{ctx};
+  return builder.create<MOGG::LoadCompiledKernelOp>(
+      loc, /*symbols=*/
+      combinedSymbolName,
+      /*value=*/archiveAttr,
+      /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType));
 }
 
 CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
@@ -308,12 +343,13 @@ compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
              std::string saveTempsPrefix, KernelBuildType kernelBuildType,
              mlir::ArrayAttr combinedSymbolName, bool enableTiming /*= false*/,
              bool debugKGENStubs /*= false*/) {
-  StubCompiler compiler(std::move(kgenStubs), graph, std::move(saveTempsPrefix),
-                        kernelBuildType);
-  ErrorOr<MOGG::LoadCompiledKernelOp> errOrLoad =
-      compiler.compile(combinedSymbolName, enableTiming, debugKGENStubs);
-  if (errOrLoad.isError())
-    return graph->emitError(errOrLoad.takeError().get());
-  return errOrLoad.takeValue();
+  initLLVM();
+  CompileDiagnosticOr<StubCompiler> compilerOr =
+      StubCompiler::create(std::move(kgenStubs), graph, saveTempsPrefix,
+                           kernelBuildType, enableTiming, debugKGENStubs);
+  if (compilerOr.isError())
+    return compilerOr.takeError();
+  StubCompiler compiler = compilerOr.takeValue();
+  return compiler.compile(combinedSymbolName, enableTiming, debugKGENStubs);
 }
 } // namespace M::MOGG
