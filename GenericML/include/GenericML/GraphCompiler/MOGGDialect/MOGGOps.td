@@ -559,34 +559,6 @@ def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
   }];
  }
 
-def MOGG_LambdaOp : MOGG_Op<"lambda",
-  [SingleBlockImplicitTerminator<"OutputOp">,
-    Symbol]> {
-  let summary = "Represents non-isolated from above lambda";
-  let description = [{
-    These lambdas can capture tensors from above by reference and apply KGEN
-    function calls to them. Lambdas can take and return indices and SIMD values
-    only. They compose with other lambdas by `LambdaInvokeOp` and can be used by
-    KGEN calls by the CallOp.
-
-    Example:
-    ```mlir
-    mogg.lambda @test_lambda = (%arg4: !mogg.indices, %arg5 : !mogg.simd<f32>) -> !mogg.simd<f32> {
-      ...
-    }
-    ```
-
-    The above exposes a lambda with symbol name `test_lambda` which can then be
-    used in calls to kgen functions or invoked directly.
-  }];
-
-  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<Builtin_Function>:$func);
-  let regions = (region SizedRegion<1>:$body);
-
-  let assemblyFormat = [{
-    custom<Lambda>($sym_name, $func, $body) attr-dict
-  }];
-}
 
 def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors", [Pure]> {
   let results = (outs Variadic<MO_Tensor>:$results);

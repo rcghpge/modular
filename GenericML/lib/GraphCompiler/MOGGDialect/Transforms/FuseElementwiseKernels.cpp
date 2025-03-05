@@ -247,30 +247,6 @@ struct FuseElementwisePass
       signalPassFailure();
   }
 
-  // Replace all loads from `dstKernelInputLambdaName` in `dstElemwiseLambda`
-  // with the existing value `newVal`.
-  void replaceLoadWithExistingUse(MOGG::KernelOp dst,
-                                  StringAttr dstKernelInputLambdaName,
-                                  MOGG::LambdaOp dstElemwiseLambda,
-                                  mlir::OpBuilder &builder, Value newVal) {
-    mlir::SymbolTable dstSymTable{dst};
-
-    // The input lambda we should remove.
-    auto lambdaToRemove =
-        cast<LambdaOp>(dstSymTable.lookup(dstKernelInputLambdaName));
-
-    // Replace all uses inside the body of this lambda with the value we
-    // already fused in.
-    auto uses = *dstSymTable.getSymbolUses(lambdaToRemove, dstElemwiseLambda);
-    for (auto use : llvm::make_early_inc_range(uses)) {
-      auto toReplace = cast<MOGG::LambdaInvokeOp>(use.getUser());
-      toReplace.replaceAllUsesWith(ValueRange{newVal});
-      toReplace.erase();
-    }
-
-    lambdaToRemove.erase();
-  }
-
   // The KGEN equivalent of fusion consists of replacing calls of the old input
   // lambda with calls to the elementwise lambda in the source kernel. This is
   // possible because they have the same signature.

@@ -1170,13 +1170,6 @@ void KernelOp::fuseBodyIntoNewWithSkip(
       continue;
     if (isa<MOGG::OutputOp>(op)) {
       // Skip placeholders & output, already remapped.
-    } else if (auto lambda = dyn_cast<LambdaOp>(op)) {
-      // Add lambdas seperately so we rename them on insertion. (The
-      // symbol table does this for us).
-      auto newLambda = cast<LambdaOp>(builder.clone(op, remapper));
-      symTable.insert(newLambda, builder.getInsertionPoint());
-      builder.setInsertionPointAfter(newLambda);
-      oldLambdaNamesToNew[lambda.getSymName()] = newLambda.getSymName();
     } else if (auto call = dyn_cast<CallOp>(op)) {
       // Helper lambda to translate remap the lambda name.
       auto translateLambdaSym = [&](SymbolRefAttr sym) {
