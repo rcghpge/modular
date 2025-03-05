@@ -51,7 +51,7 @@ public:
   using DeviceList = std::vector<HIPDeviceRef>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
             std::string name, size_t allocAlignment);
-  ~HIPDevice() override = default;
+  ~HIPDevice() override;
 
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;
@@ -143,22 +143,22 @@ private:
   std::vector<DeviceBufferRef> refs_;
 };
 
-class HIPModuleFunction : public ReferenceCounted<HIPModuleFunction> {
+class HIPModuleFunction : public DeviceFunctionCacheEntry {
 public:
   HIPModuleFunction(const std::string name, const HIPDriver &driver,
                     hipModule_t module, hipFunction_t function);
   ~HIPModuleFunction();
 
-  const std::string &name() const;
   const HIPDriver &hipDriver() const;
   hipModule_t hipModule() const;
   hipFunction_t hipFunction() const;
+
+  static const HIPModuleFunction *cast(const DeviceFunctionCacheEntry *entry);
 
 private:
   const HIPDriver &driver_;
   hipModule_t module_;
   hipFunction_t function_;
-  std::string name_;
 };
 
 class HIPDeviceFunction : public DeviceFunction {
@@ -195,8 +195,8 @@ public:
 private:
   // The moduleFunction_ holds the HIP specific implementation. Methods on
   // HIPDeviceFunction forward to moduleFunction_ as needed.
-  // This layout is needed to break the reference cycle between the funcMap_
-  // cache in the HIPDeviceContext and the cached functions.
+  // This layout is needed to break the reference cycle between the function
+  // cache in the Device and the cached functions.
   HIPModuleFunctionRef moduleFunction_;
 };
 
@@ -287,9 +287,6 @@ private:
   const HIPDriver &driver_;
   hipCtx_t context_;
   hipStream_t stream_;
-
-  mutable std::mutex mu_;
-  mutable llvm::StringMap<HIPModuleFunctionRef> funcMap_;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           AllocMode mode) const override;

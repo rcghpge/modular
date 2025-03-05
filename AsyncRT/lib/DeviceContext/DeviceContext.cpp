@@ -16,9 +16,12 @@
 #include "HIP/HIPDeviceContext.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/SymbolExport.h"
+#include <Support/ErrorOr.h>
+#include <Support/ReferenceCounted.h>
+
 #include "llvm/ADT/Twine.h"
 
-#include <Support/ErrorOr.h>
+#include <mutex>
 #include <string.h>
 
 #define ERR_CHECK_ERR(err_call)                                                \
@@ -58,6 +61,11 @@
 
 namespace M::AsyncRT {
 
+DeviceFunctionCacheEntry::DeviceFunctionCacheEntry(const std::string name)
+    : name_(std::move(name)) {}
+
+const std::string &DeviceFunctionCacheEntry::name() const { return name_; }
+
 Error DeviceContext::formatError(const char *file, int line, const char *func,
                                  const llvm::Twine &msg) {
   static bool logVerbose = DeviceContext::configAsBool("log_verbose", false);
@@ -80,6 +88,11 @@ MODULAR_CXX_EXPORT size_t getPreferredAlignment(std::string label) {
 Device::Device(API api, std::string name, int id, size_t allocAligment)
     : name_(std::move(name)), id_(id), api_(api),
       allocAlignment_(allocAligment) {}
+
+Device::~Device() {
+  // Destroy the function map before destroying the context.
+  funcMap_.clear();
+}
 
 MODULAR_CXX_EXPORT const std::string &Device::name() const { return name_; }
 
@@ -143,6 +156,36 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   }
 
   return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
+}
+
+DeviceFunctionCacheEntryRef Device::findInFunctionCache(StringRef key) const {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto iter = funcMap_.find(key);
+    if (iter != funcMap_.end()) {
+      return iter->second;
+    }
+  }
+  return DeviceFunctionCacheEntryRef();
+}
+
+DeviceFunctionCacheEntryRef
+Device::insertInFunctionCache(StringRef key,
+                              const DeviceFunctionCacheEntry &entry) const {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto iter = funcMap_.find(key);
+    if (iter != funcMap_.end()) {
+      return iter->second;
+    }
+    funcMap_.insert({key, DeviceFunctionCacheEntryRef::copy(&entry)});
+    return DeviceFunctionCacheEntryRef::copy(&entry);
+  }
+}
+
+void Device::clearFunctionCache() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  funcMap_.clear();
 }
 
 //

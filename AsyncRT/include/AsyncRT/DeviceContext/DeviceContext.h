@@ -22,6 +22,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <stddef.h>
 #include <string>
 #include <vector>
@@ -34,10 +35,12 @@ class DeviceBuffer;
 class DeviceContext;
 class DeviceEvent;
 class DeviceFunction;
+class DeviceFunctionCacheEntry;
 class DeviceStream;
 class DeviceTimer;
 
 using DeviceRef = RCRef<const Device>;
+using DeviceFunctionCacheEntryRef = RCRef<const DeviceFunctionCacheEntry>;
 using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceEventRef = RCRef<const DeviceEvent>;
@@ -59,7 +62,7 @@ public:
   static constexpr API cudaAPI = "cuda"; // NVIDIA CUDA device
   static constexpr API hipAPI = "hip";   // AMDGPU HIP device
 
-  virtual ~Device() = default;
+  virtual ~Device();
 
   const std::string &name() const;
   int id() const;
@@ -94,6 +97,13 @@ public:
   /// `nvidia:80`.
   static const std::string &getAcceleratorArchOrEmpty();
 
+  // Internal implementation helpers for DeviceContexts.
+  DeviceFunctionCacheEntryRef findInFunctionCache(StringRef key) const;
+  DeviceFunctionCacheEntryRef
+  insertInFunctionCache(StringRef key,
+                        const DeviceFunctionCacheEntry &entry) const;
+  void clearFunctionCache() const;
+
 protected:
   Device(API api, std::string name, int id, size_t allocAligment);
 
@@ -102,6 +112,12 @@ private:
   int id_;
   API api_;
   size_t allocAlignment_;
+
+  // Mutex to protect mutable data.
+  mutable std::mutex mu_;
+  // The function cache holds the lower-level function references which do not
+  // contain a device context reference to avoid reference counting cycles.
+  mutable llvm::StringMap<DeviceFunctionCacheEntryRef> funcMap_;
 };
 
 class DeviceBuffer final : public ReferenceCounted<DeviceBuffer> {
@@ -757,6 +773,18 @@ enum class Device::Attribute : int {
 //
 // Internal implementation details follow.
 //
+
+class DeviceFunctionCacheEntry
+    : public ReferenceCounted<DeviceFunctionCacheEntry> {
+public:
+  DeviceFunctionCacheEntry(const std::string name);
+
+  const std::string &name() const;
+
+private:
+  const std::string name_;
+};
+
 // Inline helpers.
 inline ErrorOrSuccess
 DeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,

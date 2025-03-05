@@ -196,6 +196,8 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
       context_(nullptr) {}
 
 CUDADevice::~CUDADevice() {
+  // Destroy the function map before destroying the context.
+  clearFunctionCache();
   if (context_ != nullptr)
     // We ignore the result here as there is not much we can do if it fails
     // since in most cases the CUDA driver is in the process of shutting down.
@@ -507,17 +509,21 @@ CUDADeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
 CUDAModuleFunction::CUDAModuleFunction(const std::string name,
                                        const CUDADriver &driver,
                                        CUmodule module, CUfunction function)
-    : driver_(driver), module_(module), function_(function),
-      name_(std::move(name)) {}
+    : DeviceFunctionCacheEntry(std::move(name)), driver_(driver),
+      module_(module), function_(function) {}
 
 CUDAModuleFunction::~CUDAModuleFunction() {
   CUDA_CHECK(cudaDriver().ModuleUnload(module_));
 }
 
-const std::string &CUDAModuleFunction::name() const { return name_; }
 const CUDADriver &CUDAModuleFunction::cudaDriver() const { return driver_; }
 CUmodule CUDAModuleFunction::cudaModule() const { return module_; }
 CUfunction CUDAModuleFunction::cudaFunction() const { return function_; }
+
+const CUDAModuleFunction *
+CUDAModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
+  return static_cast<const CUDAModuleFunction *>(entry);
+}
 
 // ===== CUDADeviceFunction ===== //
 CUDADeviceFunction::CUDADeviceFunction(
@@ -635,8 +641,6 @@ CUDADeviceContext::~CUDADeviceContext() {
     // We will exit the CUDAContextScope before we force a push of the context
     // to be destroyed.
     CUDA_WITH_CTX(*this);
-    // Destroy the function map before destroying the context.
-    funcMap_.clear();
     CUDA_CHECK(driver_.StreamSynchronize(stream_));
     bufferCache().clear();
     // Synchronize to ensure that all of the chunks have been freed.
@@ -919,14 +923,13 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
-    if (iter != funcMap_.end()) {
-      CUDAModuleFunctionRef moduleFunc = iter->second;
-      return CUDADeviceFunctionRef::create(*this, signature,
-                                           std::move(moduleFunc));
-    }
+  DeviceFunctionCacheEntryRef entry =
+      device().findInFunctionCache(moduleName.empty() ? code : moduleName);
+  if (entry.getPointer() != nullptr) {
+    CUDAModuleFunctionRef moduleFunc =
+        CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release()));
+    return CUDADeviceFunctionRef::create(*this, signature,
+                                         std::move(moduleFunc));
   }
 
   if (logLoadFunction_) {
@@ -964,19 +967,11 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   auto moduleFunc = CUDAModuleFunctionRef::create(
       std::string(functionName), this->cudaDriver(), module, function);
   CUDADeviceFunctionRef result;
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
-    if (iter != funcMap_.end()) {
-      result = CUDADeviceFunctionRef::create(
-          *this, signature,
-          CUDAModuleFunctionRef::copy(iter->second.getPointer()));
-    } else {
-      funcMap_.insert({moduleName.empty() ? code : moduleName, moduleFunc});
-      result = CUDADeviceFunctionRef::create(*this, signature,
-                                             std::move(moduleFunc));
-    }
-  }
+  entry = device().insertInFunctionCache(moduleName.empty() ? code : moduleName,
+                                         *moduleFunc);
+  result = CUDADeviceFunctionRef::create(
+      *this, signature,
+      CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release())));
   return result;
 }
 

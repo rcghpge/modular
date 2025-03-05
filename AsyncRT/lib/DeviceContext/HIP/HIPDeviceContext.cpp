@@ -144,6 +144,11 @@ HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
                      std::string name, size_t allocAlignment)
     : Device(api, name, id, allocAlignment), driver_(driver), device_(device) {}
 
+HIPDevice::~HIPDevice() {
+  // Destroy the function map before destroying other device structures.
+  clearFunctionCache();
+}
+
 const HIPDriver &HIPDevice::hipDriver() const { return driver_; }
 
 hipDevice_t HIPDevice::hipDevice() const { return device_; }
@@ -397,17 +402,21 @@ HIPDeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
 HIPModuleFunction::HIPModuleFunction(const std::string name,
                                      const HIPDriver &driver,
                                      hipModule_t module, hipFunction_t function)
-    : driver_(driver), module_(module), function_(function),
-      name_(std::move(name)) {}
+    : DeviceFunctionCacheEntry(std::move(name)), driver_(driver),
+      module_(module), function_(function) {}
 
 HIPModuleFunction::~HIPModuleFunction() {
   HIP_CHECK(hipDriver().ModuleUnload(module_));
 }
 
-const std::string &HIPModuleFunction::name() const { return name_; }
 const HIPDriver &HIPModuleFunction::hipDriver() const { return driver_; }
 hipModule_t HIPModuleFunction::hipModule() const { return module_; }
 hipFunction_t HIPModuleFunction::hipFunction() const { return function_; }
+
+const HIPModuleFunction *
+HIPModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
+  return static_cast<const HIPModuleFunction *>(entry);
+}
 
 // ===== HIPDeviceFunction ===== //
 HIPDeviceFunction::HIPDeviceFunction(
@@ -512,8 +521,6 @@ HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
       driver_(device.hipDriver()), context_(context), stream_(stream) {}
 
 HIPDeviceContext::~HIPDeviceContext() {
-  // Destroy the function map before destroying the context.
-  funcMap_.clear();
   HIP_CHECK(driver_.StreamSynchronize(stream_));
   bufferCache().clear();
   HIP_CHECK(driver_.StreamDestroy(stream_));
@@ -692,14 +699,13 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
-    if (iter != funcMap_.end()) {
-      HIPModuleFunctionRef moduleFunc = iter->second;
-      return HIPDeviceFunctionRef::create(*this, signature,
-                                          std::move(moduleFunc));
-    }
+  DeviceFunctionCacheEntryRef entry =
+      device().findInFunctionCache(moduleName.empty() ? code : moduleName);
+  if (entry.getPointer() != nullptr) {
+    HIPModuleFunctionRef moduleFunc =
+        HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release()));
+    return HIPDeviceFunctionRef::create(*this, signature,
+                                        std::move(moduleFunc));
   }
 
   // TODO(iposva): Remove once not needed for debugging.
@@ -722,19 +728,11 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   auto moduleFunc = HIPModuleFunctionRef::create(
       std::string(functionName), this->hipDriver(), module, function);
   HIPDeviceFunctionRef result;
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(moduleName.empty() ? code : moduleName);
-    if (iter != funcMap_.end()) {
-      result = HIPDeviceFunctionRef::create(
-          *this, signature,
-          HIPModuleFunctionRef::copy(iter->second.getPointer()));
-    } else {
-      funcMap_.insert({moduleName.empty() ? code : moduleName, moduleFunc});
-      result =
-          HIPDeviceFunctionRef::create(*this, signature, std::move(moduleFunc));
-    }
-  }
+  entry = device().insertInFunctionCache(moduleName.empty() ? code : moduleName,
+                                         *moduleFunc);
+  result = HIPDeviceFunctionRef::create(
+      *this, signature,
+      HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release())));
   return result;
 }
 

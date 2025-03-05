@@ -163,22 +163,22 @@ private:
   std::vector<DeviceBufferRef> refs_;
 };
 
-class CUDAModuleFunction : public ReferenceCounted<CUDAModuleFunction> {
+class CUDAModuleFunction : public DeviceFunctionCacheEntry {
 public:
   CUDAModuleFunction(const std::string name, const CUDADriver &driver,
                      CUmodule module, CUfunction function);
   ~CUDAModuleFunction();
 
-  const std::string &name() const;
   const CUDADriver &cudaDriver() const;
   CUmodule cudaModule() const;
   CUfunction cudaFunction() const;
 
+  static const CUDAModuleFunction *cast(const DeviceFunctionCacheEntry *entry);
+
 private:
   const CUDADriver &driver_;
-  CUmodule module_;
-  CUfunction function_;
-  std::string name_;
+  const CUmodule module_;
+  const CUfunction function_;
 };
 
 class CUDADeviceFunction : public DeviceFunction {
@@ -214,8 +214,8 @@ public:
 private:
   // The moduleFunction_ holds the CUDA specific implementation. Methods on
   // CUDADeviceFunction forward to moduleFunction_ as needed.
-  // This layout is needed to break the reference cycle between the funcMap_
-  // cache in the CUDADeviceContext and the cached functions.
+  // This layout is needed to break the reference cycle between the function
+  // cache in the Device and the cached functions.
   CUDAModuleFunctionRef moduleFunction_;
 };
 
@@ -321,10 +321,6 @@ private:
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;
-  // The function cache holds the lower-level CUDAModuleFunction references
-  // which do not contain a device context reference to avoid reference
-  // counting cycles.
-  mutable llvm::StringMap<CUDAModuleFunctionRef> funcMap_;
   // Events enqueued on the stream are kept alive until they are marked ready to
   // avoid blocking on their destructor.
   mutable std::vector<CUDADeviceEventRef> pendingEvents_;
