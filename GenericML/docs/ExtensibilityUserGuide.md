@@ -20,8 +20,8 @@ struct BottomK:
         values: ManagedTensorSlice[type=type, rank=rank],
         indices: ManagedTensorSlice[type = DType.int64, rank=rank],
         input: ManagedTensorSlice[type=type, rank=rank],
-        k: Int,
-        axis: Int,
+        k: Scalar,
+        axis: Scalar,
         sorted: Bool,
     ):
         top_k(
@@ -37,8 +37,8 @@ struct BottomK:
     @staticmethod
     fn shape(
         input: ManagedTensorSlice,
-        k: Int,
-        axis: Int,
+        k: Scalar,
+        axis: Scalar,
         sorted: Bool,
     ) raises -> IndexList[input.rank]:
         return top_k_shape_impl[single_thread_blocking_override=True](

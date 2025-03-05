@@ -750,7 +750,7 @@ ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
   operands.push_back(nullptr); // placeholder for output_idx
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     operands.back() =
-        builder.create<mlir::index::ConstantOp>(loc, builder.getIndexAttr(idx));
+        builder.create<MO::ConstantOp>(loc, static_cast<int64_t>(idx));
     // This uses some special handling
     buildForOpResult(graph, builder, cast<TensorValue>(res),
                      "split_ith_output_shape", operands,

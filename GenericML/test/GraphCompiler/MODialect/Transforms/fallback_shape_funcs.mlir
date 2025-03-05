@@ -711,14 +711,16 @@ mo.graph @split_variadic_output<D0 -> D1>(
 //
 // CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
 //
-// CHECK-NEXT: %[[ID0:.*]] = index.constant 0
+// CHECK-NEXT: %[[ID0:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+
 // CHECK-NEXT: mo.invoke_shape_func["split_ith_output_shape"]<() -> [[D2:.*]], {{.*}}>(%[[INPUT]], %[[SPLIT_SIZES]], %[[AXIS]], %[[ID0]])
 // CHECK-SAME:  {dataDeptTensors = [1 : i32, 2 : i32]} :
-// CHECK-SAME:  (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>, index)
-// CHECK-NEXT: %[[ID1:.*]] = index.constant 1
+// CHECK-SAME:  (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>, !mo.tensor<[], si64>)
+// CHECK-NEXT: %[[ID1:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+
 // CHECK-NEXT: mo.invoke_shape_func["split_ith_output_shape"]<() -> {{.*}}, {{.*}}>(%[[INPUT]], %[[SPLIT_SIZES]], %[[AXIS]], %[[ID1]])
 // CHECK-SAME:  {dataDeptTensors = [1 : i32, 2 : i32]} :
-// CHECK-SAME:  (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>, index)
+// CHECK-SAME:  (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>, !mo.tensor<[], si64>)
 
 // CHECK-NEXT: %[[RES:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT]], %[[SPLIT_SIZES]]) :
 // CHECK-SAME:    (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>) ->
