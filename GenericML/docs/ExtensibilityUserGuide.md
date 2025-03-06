@@ -10,19 +10,19 @@ An example can be found
 [here](https://github.com/modularml/modular/blob/adacf509639cd7925f9d702fec652d6844e4ac16/Kernels/mojo/Mogg/MOGGKernelAPI.mojo#L3724).
 
 ```python
-@compiler.register("mo.bottom_k", num_dps_outputs=2)
+@compiler.register("mo.bottom_k")
 struct BottomK:
     @staticmethod
     fn execute[
         type: DType,
         rank: Int,
     ](
-        values: ManagedTensorSlice[type=type, rank=rank],
-        indices: ManagedTensorSlice[type = DType.int64, rank=rank],
-        input: ManagedTensorSlice[type=type, rank=rank],
+        values: OutputTensor[type=type, rank=rank],
+        indices: InputTensor[type = DType.int64, rank=rank],
+        input: InputTensor[type=type, rank=rank],
         k: Scalar,
         axis: Scalar,
-        sorted: Bool,
+        sorted: Scalar[type = DType.bool],
     ):
         top_k(
             managed_tensor_slice_to_ndbuffer(input),
@@ -55,7 +55,7 @@ We go over the most important components and what they mean:
 The key is one operation is organized under a singular struct:
 
 ```python
-@compiler.register("mo.bottom_k", num_dps_outputs=2)
+@compiler.register("mo.bottom_k")
 struct BottomK:
 ```
 
@@ -99,13 +99,24 @@ defined elsewhere.
 ### **Operand Types Supported**
 
 - We support **ManagedTensorSlice** as a first class citizen.
+  - Since both output and input tensors are passed as arguments to the execute function
+    we distinguish which is which with parameters on the ManagedTensorSlice struct
+    - These are encoded with the **IOSpec** parameter
+    - Rather than setting these directly users are encouraged to use three
+      convenient aliases: **OutputTensor**, **InputTensor**, and
+      **MutableInputTensor**
+
 - Variadic tensors can be represented via
-**StaticTuple[ManagedTensorSlice[type, rank], size]**.
+**VariadicTensors[type, rank, size]**.
+  - As with **ManagedTensorSlice** users must provide a specialization of its
+    io_spec parameter, but are encouraged to use the **InputVariadicTensors** and
+    **OutputVariadicTensors** aliases instead
   - We don’t support other variadic types besides Tensor
 - Dynamic lists of tensors are supported via
 **List[ManagedTensorSlice[type, rank]]** though support is
 limited at this time.
   - We don’t support lists of other types besides Tensor
+  - We only support lists of inputs at this time
 
 Some special operand structs exist which should go at the end of the operand
 list:
@@ -133,10 +144,12 @@ struct MyOp:
     fn execute(
       # Varidic output support.
       # It is assumed the size of the tuple can be inferred from the call site
-        output: StaticTuple[ManagedTensorSlice[type, rank]],
+        output: OutputVariadicTensors[type, rank, *_],
 
         # First class citizen
-        input: ManagedTensorSlice[output.type, output.rank],
+        input: InputTensor[type=output.type, rank=output.rank],
+
+        mutable_input: MutableInputTensor[type=output.type, rank=output.rank]
 
         # Handled via opaque type support
         cache: MyCacheStruct,
@@ -183,8 +196,8 @@ information of each tensor.
 fn execute[
     target: StringLiteral
 ](
-    output: ManagedTensorSlice,
-    input: ManagedTensorSlice[output.type, output.rank],
+    output: OutputTensor,
+    input: InputTensor[output.type, output.rank],
     ctx: DeviceContextPtr,
 ) raises:
     alias static_shape = input._static_shape
@@ -208,51 +221,47 @@ accessing the fusion lambdas when loading or storing to a tensor.
 ### DPS Operands
 
 ```python
-@compiler.register("mo.bottom_k", num_dps_outputs=2)
+@compiler.register("mo.bottom_k")
 struct BottomK:
     @staticmethod
     fn execute[
         type: DType,
         rank: Int,
     ](
-      # An "output"
-        values: ManagedTensorSlice[type=type, rank=rank],
         # An "output"
-        indices: ManagedTensorSlice[type = DType.int64, rank=rank],
+        values: OutputTensor[type=type, rank=rank],
+        # Another "output" but specifying io_spec directly
+        indices: ManagedTensorSlice[type = DType.int64, rank=rank, io_spec=Output],
 
         # Inputs below!
-        input: ManagedTensorSlice[type=type, rank=rank],
+        input: InputTensor[type=type, rank=rank],
         k: Scalar,
         axis: Scalar,
         sorted: Bool,
     ):
 ```
 
-The number of
-[destination-passing-style](https://simon.peytonjones.org/assets/pdfs/destination-passing-style.pdf)
-(DPS) outputs are specified by `num_dps_outputs=2` . The first operands of
-`execute` correspond to these DPS outputs.
+All **OutputTensor** arguments must come
+before any **InputTensor** or **MutableInputTensor** arguments
 
-By default `num_dps_outputs=1` if it is not included.
-
-We can set `num_dps_outputs=0` if needed:
+If an operation models side-effects on one of its input tensors then
+the **MutableInputTensor** alias of **ManagedTensorSlice** should be used.
 
 ```python
-@compiler.register("blah", **num_dps_outputs=0**)
-struct Blah:
+@compiler.register("mutating_operation")
+struct TensorMutatingOperation:
     @always_inline
     @staticmethod
     fn execute[
         type: DType, target: StringLiteral
     ](
-      **# These are all "inputs"**
-        blocks: ManagedTensorSlice[type, 6],
-        cache_lengths: ManagedTensorSlice[DType.uint32, 1],
-        lookup_table: ManagedTensorSlice[DType.uint32, 1],
-        max_lengths: ManagedTensorSlice[DType.uint32, 2],
+        #These are all "inputs" to the graph-api operation
+        mutable_input: MutableInputTensor[type=type, rank=6],
+        input: InputTensor[type=type, rank=4]
     ):
-     # If this returns nothing, in the graph api we want chains to
-     # reorder side-effects likely
+     # Since this kernel takes a MutableInputTensor as an input
+     # we want chains on the graph-api side to reason about side-effects
+     # correctly.
      pass
 ```
 
@@ -263,7 +272,7 @@ and things should work as you expect:
 
 ```python
 @compiler.register(
-    "continuous_batching_kv_cache_collection_h8_d128_bshd", num_dps_outputs=0
+    "continuous_batching_kv_cache_collection_h8_d128_bshd"
 )
 struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
     @always_inline
@@ -271,10 +280,10 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
     fn execute[
         type: DType, target: StringLiteral
     ](
-        blocks: ManagedTensorSlice[type, 6],
-        cache_lengths: ManagedTensorSlice[DType.uint32, 1],
-        lookup_table: ManagedTensorSlice[DType.uint32, 1],
-        max_lengths: ManagedTensorSlice[DType.uint32, 2],
+        blocks: InputTensor[type, 6],
+        cache_lengths: InputTensor[DType.uint32, 1],
+        lookup_table: InputTensor[DType.uint32, 1],
+        max_lengths: InputTensor[DType.uint32, 2],
     **) -> ContinuousBatchingKVCacheCollection[
         type,
         kv_params_h8_d128_bshd,
@@ -283,9 +292,9 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
             kv_params=kv_params_h8_d128_bshd
         ](blocks, cache_lengths, lookup_table, max_lengths)
 
-@compiler.register("mo.transpose")
+@compiler.register("returning_transpose")
 @compiler.view_kernel
-struct Transpose:
+struct ReturningTranspose:
     @always_inline
     @staticmethod
     fn transpose_in_place(
@@ -311,10 +320,6 @@ which point to **newly allocated memory**. **You can do it, but it won’t be
 properly freed at this time and leak** (probably, i haven’t tried). Support for
 this will come later if needed.
 
-Note that you usually want `num_dps_outputs=0` for these types of kernels. If
-you want a mixture of DPS and value return outputs, this is supported though is
-not as well tested.
-
 ### Special Decorators
 
 There are some special decorators like `@compiler.view_kernel` and
@@ -324,7 +329,7 @@ these, let us know.
 
 ### Fusion
 
-You can access the input/output lambdas via `specsof`.
+You can access the input/output lambdas via `static_spec` parameter.
 
 ### Converting Between Tensor Types
 
@@ -348,23 +353,25 @@ Can be called via `mo.custom {symbol = "MyOp"}` .
 The remaining useful knowledge is how to properly invoke this custom op to
 match with the registered kernel. Here an example is prudent:
 
-```python
+```llvm
 # 3 SSA outputs, 3 SSA Inputs
-%dps0, %dps1, %out_value = mo.custom {symbol = "MyOp"}(%in1, %in2, %in3) : ... -> ...
+%dps0, %dps1, %out_value = mo.custom {symbol = "MyOp"}(%in1, %in2, %in3)
+ : (!mo.tensor, !mo.tensor, !mo.opaque<"OutputTy">)
+   -> (!mo.tensor, !mo.tensor, !mo.tensor)
 ```
 
 This maps to:
 
 ```python
-@compiler.register("MyOp", num_dps_outputs=2)
+@compiler.register("MyOp")
 struct MyOp:
     @staticmethod
     fn execute(
-     dps0: ...,
-     dps1: ...,
-     in1: ...,
-     in2: ...,
-     in3: ...
+     dps0: OutputTensor,
+     dps1: OutputTensor,
+     in1: InputTensor,
+     in2: InputTensor,
+     in3: InputTensor,
    ) -> OutputTy:
     ...
    var out_value = ...
@@ -378,24 +385,37 @@ ManagedTensorSlice): see “mo.split” and “mo.concat” implementations.
 
 ### Ordering And Side Effects
 
+Say we want to mutate the 2nd input of MyOp the signature would now look like:
+
+```python
+@compiler.register("MyOp")
+struct MyOp:
+    @staticmethod
+    fn execute(
+     dps0: OutputTensor,
+     dps1: OutputTensor,
+     in1: InputTensor,
+     in2: MutableInputTensor,
+     in3: InputTensor,
+   ) -> OutputTy:
+    ...
+   var out_value = ...
+   return out_value
+```
+
 Chains should be used in the graph api level to order side-effects in places
 where existing data dependencies are not sufficient (e.g. an op with no
 “outputs” or it actually mutates something).
 
-These do not correspond to any concept in the registered kernel but should be
-properly respected by the rest of the graph compiler.
-
-In terms of mapping them to the kernel registration, just pretend they don’t
+In terms of mapping chains to the kernel registration, just pretend they don’t
 exist. Chains should go at the end of the operand/result lists in the graph api
 however.
 
-E.g. in our previous example we can just do:
-
-```python
+```llvm
 %chain_in: !mo.chain
 %chain_out: !mo.chain
 %dps0, %dps1, %out_value, **%chain_out** =
- mo.custom {symbol = "MyOp"}(%in1, %in2, %in3, **%chain_in**) : ... -> ...
+ mo.custom {symbol = "MyOp"}(%in1, %in2, %in3, **%chain_in**)
+ : (!mo.tensor, !mo.tensor, !mo.opaque<"OutputTy">, !mo.chain)
+   -> (!mo.tensor, !mo.buffer, !mo.tensor, !mo.chain)
 ```
-
-To enforce an ordering of execution via chains.
