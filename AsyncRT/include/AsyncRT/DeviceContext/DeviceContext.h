@@ -329,6 +329,11 @@ public:
 
   const Device &device() const;
 
+  /// Returns true if this device can access the `peer` device.
+  ErrorOr<bool> canAccess(const DeviceContext &peer) const {
+    return device().canAccess(peer.device());
+  };
+
   // Host memory allocation.
   // * DEPRECATED, use `createHostBuffer()` *
   ErrorOr<void *> mallocHost(size_t size) const;

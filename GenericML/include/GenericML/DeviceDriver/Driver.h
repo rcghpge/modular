@@ -116,6 +116,11 @@ struct Device : M::ReferenceCounted<Device> {
   /// should be removed.
   AsyncRT::DeviceContextRef tmpGetDeviceContext() { return ctx; }
 
+  /// Returns true if this device can access the `peer` device.
+  ErrorOr<bool> canAccess(const Device &peer) const {
+    return ctx->canAccess(*peer.ctx);
+  };
+
   /// Blocks until any pending async work on the device completes.
   ErrorOrSuccess synchronize() { return ctx->synchronize(); };
 
