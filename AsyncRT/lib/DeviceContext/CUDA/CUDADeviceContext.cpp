@@ -409,6 +409,34 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
   return devices;
 }
 
+void CUDADevice::eventCacheClear() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  for (const auto &event : eventCache_) {
+    // Ignore errors during destruction of device object.
+    cudaDriver().EventDestroy(event);
+  }
+}
+
+ErrorOr<CUevent> CUDADevice::eventCachePop() const {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (!eventCache_.empty()) {
+      CUevent result = std::move(eventCache_.back());
+      eventCache_.pop_back();
+      return result;
+    }
+  }
+  CUevent event;
+  CUDA_CHECK_ERR(
+      cudaDriver().EventCreate(&event, CUevent_flags::CU_EVENT_DISABLE_TIMING));
+  return event;
+}
+
+void CUDADevice::eventCachePush(CUevent event) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  eventCache_.emplace_back(event);
+}
+
 // ===== CUDADeviceEvent ===== //
 CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event)
     : DeviceEvent(device), event_(event) {}
@@ -416,7 +444,7 @@ CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event)
 CUDADeviceEvent::~CUDADeviceEvent() {
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV(cudaDevice);
-  CUDA_CHECK(cudaDevice.cudaDriver().EventDestroy(event_));
+  cudaDevice.eventCachePush(event_);
 }
 
 ErrorOrSuccess CUDADeviceEvent::synchronize() const {
@@ -446,8 +474,7 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
 
 ErrorOr<DeviceEventRef> CUDADeviceStream::enqueueEvent() const {
   const auto &cudaDevice = CUDADevice::cast(device());
-  CUevent event;
-  CUDA_CHECK_ERR(cudaDevice.cudaDriver().EventCreate(&event, 0));
+  DEFINE_OR_RAISE(CUevent, event, cudaDevice.eventCachePop());
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().EventRecord(event, stream_));
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
 }
@@ -1003,53 +1030,21 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
       reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args, stream_);
 }
 
-void CUDADeviceContext::clearReadyEvents() const {
-  std::lock_guard<std::mutex> lock(mu_);
-  clearReadyEventsLocked();
-}
-
-void CUDADeviceContext::clearReadyEventsLocked() const {
-  for (auto it = pendingEvents_.begin(); it != pendingEvents_.end();) {
-    CUDADriver::Result ready = cudaDriver().EventQuery((*it)->cudaEvent());
-    if (ready == CUDADriver::SUCCESS) {
-      it = pendingEvents_.erase(it);
-    } else {
-      // Events were enqueued in order. We can stop at the first non-ready
-      // event.
-      break;
-    }
-  }
-}
-
 ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
   return CUDADeviceStreamRef::create(CUDADevice::cast(this->device()), stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
   CUDA_WITH_CTX_ERR(*this);
-  // Attempt to clear the pending events before possibly blocking on the
-  // stream synchronization.
-  clearReadyEvents();
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
-  // Cleanup the remainder of the pending events.
-  clearReadyEvents();
   return success();
 }
 
 ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   CUDA_WITH_CTX_ERR(*this);
-  CUevent event;
-  CUDA_CHECK_ERR(driver_.EventCreate(&event, 0));
+  DEFINE_OR_RAISE(CUevent, event, CUDADevice::cast(device()).eventCachePop());
   CUDA_CHECK_ERR(driver_.EventRecord(event, stream_));
-  auto result =
-      CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    // First remove any outstanding ready events.
-    clearReadyEventsLocked();
-    pendingEvents_.push_back(result);
-  }
-  return result;
+  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
 }
 
 ErrorOrSuccess
@@ -1072,8 +1067,8 @@ ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() const {
   CUevent stop;
 
   CUDA_WITH_CTX_ERR(*this);
-  CUDA_CHECK_ERR(driver_.EventCreate(&start, 0));
-  CUDA_CHECK_ERR(driver_.EventCreate(&stop, 0));
+  CUDA_CHECK_ERR(driver_.EventCreate(&start));
+  CUDA_CHECK_ERR(driver_.EventCreate(&stop));
 
   auto timer = CUDADeviceTimerRef::create(*this, start, stop);
 

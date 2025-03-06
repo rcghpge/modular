@@ -46,6 +46,13 @@ enum class CUdevice_P2PAttribute {
   CU_DEVICE_P2P_ATTRIBUTE_CUDA_ARRAY_ACCESS_SUPPORTED = 0x04
 };
 
+enum class CUevent_flags {
+  CU_EVENT_DEFAULT = 0x0,
+  CU_EVENT_BLOCKING_SYNC = 0x1,
+  CU_EVENT_DISABLE_TIMING = 0x2,
+  CU_EVENT_INTERPROCESS = 0x4,
+};
+
 enum class CUjit_option {
   JIT_MAX_REGISTERS = 0,
   JIT_THREADS_PER_BLOCK = 1,
@@ -477,9 +484,11 @@ public:
     return cuLaunchKernelEx_(config, hfunc, kernelParams, extra);
   }
 
-  Result EventCreate(CUevent *phEvent, unsigned int flags) const {
+  Result
+  EventCreate(CUevent *phEvent,
+              CUevent_flags flags = CUevent_flags::CU_EVENT_DEFAULT) const {
     CUDA_DRIVER_CALL_LOG();
-    return cuEventCreate_(phEvent, flags);
+    return cuEventCreate_(phEvent, static_cast<unsigned int>(flags));
   }
   Result EventDestroy(CUevent hEvent) const {
     CUDA_DRIVER_CALL_LOG();

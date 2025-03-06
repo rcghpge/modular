@@ -79,7 +79,12 @@ public:
 
   static ErrorOr<const CUDADevice &> get(int id);
 
+  ErrorOr<CUevent> eventCachePop() const;
+  void eventCachePush(CUevent event) const;
+
 private:
+  void eventCacheClear() const;
+
   // We only support CUDA architectures sm_80 and above.
   static constexpr int MIN_COMPUTE_CAPABILITY = 80;
 
@@ -102,11 +107,14 @@ private:
   const CUDADriver &driver_;
   const CUdevice device_;
 
+  // Mutex to protect mutable data.
+  mutable std::mutex mu_;
   // Lazily allocated device context to be shared across all `CUDADeviceContext`
   // objects. We initialize this with the primary device context for the device
   // to be able to share resources with libraries using the CUDA Runtime API.
-  mutable std::mutex mu_;
   mutable CUcontext context_;
+  // Non-timing enabled events which can be reused for record/wait pairs.
+  mutable std::vector<CUevent> eventCache_;
 };
 
 class CUDADeviceEvent : public DeviceEvent {
@@ -300,9 +308,6 @@ public:
   CUcontext cudaContext() const;
   CUstream cudaStream() const;
 
-  void clearReadyEvents() const;
-  void clearReadyEventsLocked() const;
-
   ErrorOrSuccess cudaTensorMapEncodeTiled(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
       const DeviceBuffer &globalAddress, const uint64_t *globalDim,
@@ -318,12 +323,6 @@ private:
   const CUDADriver &driver_;
   const CUcontext context_;
   const CUstream stream_;
-
-  // Mutex to protect mutable data.
-  mutable std::mutex mu_;
-  // Events enqueued on the stream are kept alive until they are marked ready to
-  // avoid blocking on their destructor.
-  mutable std::vector<CUDADeviceEventRef> pendingEvents_;
 
   bool logLoadFunction_ = false;
   bool logVerbose_ = false;
