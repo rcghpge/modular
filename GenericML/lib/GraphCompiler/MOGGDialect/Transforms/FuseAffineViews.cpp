@@ -103,8 +103,8 @@ struct FuseAffineViewsPass
     // construct fully specialized kgen tensor signature (managed_tensor_slice)
     SmallVector<TypedAttr> reshapeParameterValues = {typeBinding, fromRankAttr,
                                                      toRankAttr};
-    reshapeParameterValues.push_back(builder.getBoolAttr(1));
-    reshapeParameterValues.push_back(builder.getIndexAttr(0));
+    reshapeParameterValues.push_back(builder.getBoolAttr(false));
+    reshapeParameterValues.push_back(builder.getBoolAttr(true));
 
     ErrorOr<KGEN::SymbolConstantAttr> reshapeKGENSymbol =
         mojoLibraryAnalysis.getSpecializedKernel(
@@ -146,8 +146,9 @@ struct FuseAffineViewsPass
     //
     // TODO: have a publicly accesible helper function to provide these
     // constants
+    // TODO: use public helper
+    parameterValues.push_back(builder.getBoolAttr(0));
     parameterValues.push_back(builder.getBoolAttr(1));
-    parameterValues.push_back(builder.getIndexAttr(0));
 
     auto toManagedTensorSlice = mojoLibraryAnalysis.getSpecializedKernel(
         MOJO_INTRINSIC_TO_MANAGED_TENSOR_SLICE, parameterValues);
@@ -318,15 +319,14 @@ struct FuseAffineViewsPass
     auto stridesOrError = typeManager.lowerStaticDims(builder, strideVals);
     ASSERT_STREAM(!stridesOrError, << "expected stride calculation to work!");
     SmallVector<TypedAttr> simdStoreInternalParameterValues = {
+        // TODO: Proper parameterization
+        builder.getBoolAttr(false), // read (of IOSpec)
+        builder.getBoolAttr(true),  // write (of IOSpec)
         typeManager.lookupTypeBinding(newOutputTensorTy.getDtype()), // type
         builder.getIndexAttr(newOutputTensorTy.getRank()),           // rank
         KGEN::ParamDeclRefAttr::get(simdWidthAttr), // simd_width
         KGEN::ParamDeclRefAttr::get(newTensorSpec),
         KGEN::ParamDeclRefAttr::get(elementAlignmentAttr), // element_alignment
-        builder.getBoolAttr(
-            KGEN::MOGGPreElab::kIOSpecImmutable), // mut (of IOSpec)
-        builder.getIndexAttr(
-            KGEN::MOGGPreElab::kIOSpecIOUnknown), // input (of IOSpec)
     };
 
     auto simdStoreInternalSymbol = mojoLibraryAnalysis.getSpecializedKernel(
