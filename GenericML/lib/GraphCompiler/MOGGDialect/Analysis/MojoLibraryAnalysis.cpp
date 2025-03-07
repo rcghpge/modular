@@ -292,7 +292,6 @@ ErrorOrSuccess MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     // We ignore duplicated functions which are not kernels or shape functions
     // as long as they share the same signature.
     if (!(KGEN::MOGGPreElab::isKernel(op) ||
-          KGEN::MOGGPreElab::isV1ShapeFunc(op) ||
           KGEN::MOGGPreElab::isExecuteFunc(op) ||
           KGEN::MOGGPreElab::isShapeFunc(op)) &&
         areFunctionsTheSame(op, itr->second))
@@ -417,14 +416,6 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
       return registerErr;
     registerKernelFunction(kernelName,
                            KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
-  }
-  if (auto regs = generator->getAttrOfType<ArrayAttr>(
-          KGEN::MOGGPreElab::shapeFuncRegistrationAttr)) {
-    for (StringRef name : regs.getAsValueRange<StringAttr>())
-      // Don't override NDBuffer shape functions, to ensure new KernelAPI
-      // functions are used when available.
-      registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel,
-                             /*override=*/false);
   }
   if (auto name = generator->getAttrOfType<StringAttr>(
           KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
