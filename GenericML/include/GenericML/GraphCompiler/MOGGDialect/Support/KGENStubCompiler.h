@@ -8,22 +8,20 @@
 #define GENERICML_GRAPHCOMPILER_MOGGSUPPORT_KGENSTUBCOMPILER_H
 
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 
-#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "Support/ForwardDecls.h"
-#include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 
 namespace M::MOGG {
 
-CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
+/// Compile to binary object. Tell the jit all of the given symbols as symbols
+/// within it that can be executed at runtime.
+CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
 compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
              std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-             mlir::ArrayAttr combinedSymbolName, bool enableTiming = false,
-             bool debugKGENStubs = false);
+             const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
+             bool enableTiming = false, bool debugKGENStubs = false);
 
 } // namespace M::MOGG
 

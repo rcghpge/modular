@@ -7,30 +7,32 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/Runtime.h"
+
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
+#include "Cache/Support/Keys.h"
+
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
-#include "KGEN/ToolCommon/CLOptions.h"
 #include "KGEN/ToolCommon/PassManagerConfigOptions.h"
+
 #include "Support/Context.h"
-#include "Support/DebugInfoDialect/Transforms/Passes.h"
-#include "Support/MArchTarget/Host.h"
 #include "Support/MDialect/MAttrs.h"
-#include "Support/MDialect/MDialect.h"
-#include "Support/Preprocessor.h"
 #include "Support/Telemetry/Telemetry.h"
+
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
+
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Host.h"
 
 namespace M::MOGG {
@@ -46,24 +48,27 @@ public:
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
-  CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
-  compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming = false,
-          bool debugKGENStubs = false);
+  CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
+  compile(const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded);
 
 private:
   StubCompiler(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
-               std::string saveTempsPrefix, KernelBuildType kernelBuildType)
+               std::string saveTempsPrefix, KernelBuildType kernelBuildType,
+               bool enableTiming, bool debugKGENStubs)
       : ctx(graph->getContext()), kgenModule(std::move(kgenStubs)),
         graph(graph), loc(graph->getLoc()),
         saveTempsPrefix(std::move(saveTempsPrefix)),
-        kernelBuildType(kernelBuildType) {}
+        kernelBuildType(kernelBuildType), enableTiming(enableTiming),
+        debugKGENStubs(debugKGENStubs) {}
 
   /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN(bool enableTiming = false, bool superOpt = false,
-                              bool debugKGENStubs = false);
+  LogicalResult elaborateKGEN();
+
   /// Lower to an binary object.
-  CompileDiagnosticOr<DenseResourceElementsAttr>
-  compileToLLVM(bool enableTiming, bool debugKGENStubs);
+  CompileDiagnosticOr<DenseResourceElementsAttr> compileToLLVM();
+
+  // Sets and returns the environment (defines) for the module.
+  KGEN::EnvAttr setKGENEnvAttr();
 
   MLIRContext *ctx;
 
@@ -89,6 +94,12 @@ private:
 
   /// The target info for the module.
   TargetInfoAttr targetInfo;
+
+  /// Whether to enable timing.
+  bool enableTiming;
+
+  /// Whether to emit debug info.
+  bool debugKGENStubs;
 };
 
 } // namespace
@@ -176,7 +187,7 @@ StubCompiler::create(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
                      bool debugKGENStubs) {
   MLIRContext *ctx = graph->getContext();
   StubCompiler compiler(std::move(kgenStubs), graph, saveTempsPrefix,
-                        kernelBuildType);
+                        kernelBuildType, enableTiming, debugKGENStubs);
   auto targetInfoOr = getTargetInfo(ctx);
   if (targetInfoOr.isError())
     return compiler.graph->emitError(targetInfoOr.getError());
@@ -188,12 +199,15 @@ StubCompiler::create(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
   return compiler;
 }
 
-LogicalResult StubCompiler::elaborateKGEN(bool enableTiming, bool superOpt,
-                                          bool debugKGENStubs) {
-  // Set the environment (defines) for the module.
+KGEN::EnvAttr StubCompiler::setKGENEnvAttr() {
+  // Sets and returns the environment (defines) for the module.
   auto *compileCtx = loadContext(ctx)->get<KGEN::CompilationContext>();
   KGEN::extendWithModularEnvAttr(*kgenModule, compileCtx);
 
+  return KGEN::getModuleEnvAttr(*kgenModule);
+}
+
+LogicalResult StubCompiler::elaborateKGEN() {
   KGEN::CompilationOptions compilationOptions = createCompilationOptions(
       targetInfo, kernelBuildType, debugKGENStubs, saveTempsPrefix);
   KGEN::PassManagerConfigOptions pmOptions;
@@ -289,8 +303,7 @@ emitArchiveAttr(KGEN::ObjectCompiler &compiler, OwningOpRef<ModuleOp> module) {
   return createArchiveAttr(moduleCtx, std::move(buffer), outKeyHash);
 }
 
-CompileDiagnosticOr<DenseResourceElementsAttr>
-StubCompiler::compileToLLVM(bool enableTiming, bool debugKGENStubs) {
+CompileDiagnosticOr<DenseResourceElementsAttr> StubCompiler::compileToLLVM() {
   auto start = std::chrono::high_resolution_clock::now();
 
   ErrorOr<DenseResourceElementsAttr> archiveAttrOr =
@@ -311,38 +324,158 @@ StubCompiler::compileToLLVM(bool enableTiming, bool debugKGENStubs) {
   return archiveAttr;
 }
 
-CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
-StubCompiler::compile(mlir::ArrayAttr combinedSymbolName, bool enableTiming,
-                      bool debugKGENStubs) {
+CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
+StubCompiler::compile(
+    const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsToCompile) {
+
+  // Algorithm:
+  // 1. For the GeneratorOp instances in symbolsAdded, check if the cache has
+  //    a cached version.
+  // 2. If yes, the cached value will be a key into mojo cache, which will need
+  // to be pulled out and returned to the caller
+  // 3. If no, the op will need to be appended to the kgen module
+  // 4. The kgen module will then be compiled to LLVM
+  // 5. The ops that didn't have a cache hit will be cached with the mojo cache
+  // hash
+  // 6. A vector of LoadCompiledKernelOps will be returned to the caller
+
+  KGEN::EnvAttr envAttr = setKGENEnvAttr();
+  WriteableBufferRef keyBufRef = WriteableBuffer::get();
+  envAttr.printStripped(*keyBufRef);
+  createCompilationOptions(targetInfo, kernelBuildType, debugKGENStubs,
+                           saveTempsPrefix)
+      .print(*keyBufRef);
+  std::string envKeyHash =
+      llvm::utohexstr(llvm::xxHash64(llvm::toStringRef(keyBufRef->getBuffer())),
+                      /*LowerCase=*/true,
+                      /*Width=*/16);
+  ErrorOr<RCRef<Cache::BlobCacheBackend>> moggCacheBackendOr =
+      Cache::getLocalDefaultBackendChain(std::filesystem::path(".mogg_cache") /
+                                         envKeyHash);
+  if (moggCacheBackendOr.isError())
+    return kgenModule->emitError(moggCacheBackendOr.getError());
+
+  auto moggCache = RCRef<Cache::BlobCache<Cache::Keys::OperationKey>>::create(
+      moggCacheBackendOr.takeValue());
+  RCRef<Cache::TransformCache> mojoCache = compiler->getTransformCache();
+
+  // this is a list of ops that had a cache hit and the contents of the cache
+  // blob, which is a key into the mojo cache. if we don't find this value in
+  // the mojo cache, this op needs to be considered a cache miss
+  llvm::StringMap<std::pair<llvm::SmallVector<mlir::StringAttr>, BufferRef>>
+      mojoCacheHits;
+
+  SmallVector<mlir::StringAttr> cacheMissSymbols;
+  SmallVector<std::string> cacheMissHashes;
+  for (auto [symbolNameAttr, genOp] : symbolsToCompile) {
+    std::string genOpHash;
+    ErrorOr<std::optional<BufferRef>> moggCacheResult =
+        moggCache->findSync(genOp, &genOpHash);
+    if (moggCacheResult.isError()) {
 #ifndef MODULAR_PRODUCTION
-  if (failed(mlir::verify(*kgenModule)))
-    return kgenModule->emitError("generated KGEN IR is invalid");
+      kgenModule->emitWarning(
+          moggCacheResult.takeError()
+              .get()); // Swallow the error, because it's not critical
+#endif
+    }
+
+    if (moggCacheResult->has_value()) {
+      // we have a potential cache hit!
+      BufferRef buffer = moggCacheResult->value();
+      llvm::StringRef mojoCacheHashKey = buffer->getBuffer();
+
+      // now we need to find the value in the mojo cache
+      ErrorOr<std::optional<BufferRef>> mojoCacheResultOr =
+          mojoCache->findKeyedSync(mojoCacheHashKey);
+      if (mojoCacheResultOr.isError() || !mojoCacheResultOr->has_value()) {
+        // this is a cache miss!
+        cacheMissSymbols.push_back(symbolNameAttr);
+        cacheMissHashes.push_back(genOpHash);
+        if (mojoCacheResultOr.isError()) {
+#ifndef MODULAR_PRODUCTION
+          kgenModule->emitWarning(
+              mojoCacheResultOr.takeError().get()); // Swallow the error,
+                                                    // because it's not critical
+#endif
+        }
+        continue;
+      }
+      std::optional<BufferRef> maybeMojoCachedItemBuffer =
+          mojoCacheResultOr.takeValue();
+
+      // we have a real cache hit!
+      BufferRef mojoCachedItemBuffer = maybeMojoCachedItemBuffer.value();
+
+      genOp.erase();
+      auto [it, inserted] = mojoCacheHits.insert(
+          {mojoCacheHashKey,
+           {llvm::SmallVector<mlir::StringAttr>({symbolNameAttr}),
+            std::move(mojoCachedItemBuffer)}});
+      if (!inserted) {
+        it->second.first.push_back(symbolNameAttr);
+      }
+    } else {
+      cacheMissSymbols.push_back(symbolNameAttr);
+      cacheMissHashes.push_back(genOpHash);
+    }
+  }
+
+  SmallVector<MOGG::LoadCompiledKernelOp> results;
+  results.reserve(mojoCacheHits.size() + !cacheMissSymbols.empty());
+  OpBuilder builder{ctx};
+  if (!cacheMissSymbols.empty()) {
+#ifndef MODULAR_PRODUCTION
+    if (failed(mlir::verify(*kgenModule)))
+      return kgenModule->emitError("generated KGEN IR is invalid");
 #endif
 
-  LogicalResult ok = elaborateKGEN(enableTiming, debugKGENStubs);
-  if (ok.failed())
-    return graph->emitError("KGEN elaboration failed");
+    LogicalResult ok = elaborateKGEN();
+    if (ok.failed())
+      return graph->emitError("KGEN elaboration failed");
 
-  CompileDiagnosticOr<DenseResourceElementsAttr> result =
-      compileToLLVM(enableTiming, debugKGENStubs);
-  if (result.isError())
-    return result.takeError();
+    CompileDiagnosticOr<DenseResourceElementsAttr> result = compileToLLVM();
+    if (result.isError())
+      return result.takeError();
 
-  DenseResourceElementsAttr archiveAttr = result.takeValue();
+    DenseResourceElementsAttr archiveAttr = result.takeValue();
+    DenseResourceElementsHandle binaryBlobHandle = archiveAttr.getRawHandle();
+    StringRef binaryBlobKey = binaryBlobHandle.getKey();
+    binaryBlobKey.consume_front("archive_");
+    for (const std::string &hash : cacheMissHashes) {
+      BufferRef buffer = Buffer::get(binaryBlobKey);
+      if (auto error = moggCache->insertKeyedSync(hash, buffer)) {
+#ifndef MODULAR_PRODUCTION
+        kgenModule->emitWarning(
+            error.takeError()
+                .get()); // Swallow the error, because it's not critical
+#endif
+      }
+    }
 
-  OpBuilder builder{ctx};
-  return builder.create<MOGG::LoadCompiledKernelOp>(
-      loc, /*symbols=*/
-      combinedSymbolName,
-      /*value=*/archiveAttr,
-      /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType));
+    ArrayAttr symbolsAttr = mlir::ArrayAttr::get(
+        ctx, llvm::to_vector_of<mlir::Attribute>(cacheMissSymbols));
+    results.push_back(builder.create<MOGG::LoadCompiledKernelOp>(
+        loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
+        /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType)));
+  }
+
+  for (const auto &[blobHash, symbolsAndBufferPair] : mojoCacheHits) {
+    ArrayAttr symbolsAttr = builder.getArrayAttr(
+        llvm::to_vector_of<Attribute>(symbolsAndBufferPair.first));
+    DenseResourceElementsAttr archiveAttr =
+        createArchiveAttr(ctx, symbolsAndBufferPair.second, blobHash);
+    results.push_back(builder.create<MOGG::LoadCompiledKernelOp>(
+        loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
+        /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType)));
+  }
+  return results;
 }
 
-CompileDiagnosticOr<MOGG::LoadCompiledKernelOp>
+CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
 compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
              std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-             mlir::ArrayAttr combinedSymbolName, bool enableTiming /*= false*/,
-             bool debugKGENStubs /*= false*/) {
+             const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
+             bool enableTiming /*= false*/, bool debugKGENStubs /*= false*/) {
   initLLVM();
   CompileDiagnosticOr<StubCompiler> compilerOr =
       StubCompiler::create(std::move(kgenStubs), graph, saveTempsPrefix,
@@ -350,6 +483,6 @@ compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
   if (compilerOr.isError())
     return compilerOr.takeError();
   StubCompiler compiler = compilerOr.takeValue();
-  return compiler.compile(combinedSymbolName, enableTiming, debugKGENStubs);
+  return compiler.compile(symbolsAdded);
 }
 } // namespace M::MOGG
