@@ -289,19 +289,9 @@ ErrorOrSuccess MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     if (itr == rawMojoKernel.end())
       continue;
 
-    // We ignore duplicated functions which are not kernels or shape functions
-    // as long as they share the same signature.
-    if (!(KGEN::MOGGPreElab::isKernel(op) ||
-          KGEN::MOGGPreElab::isExecuteFunc(op) ||
-          KGEN::MOGGPreElab::isShapeFunc(op)) &&
-        areFunctionsTheSame(op, itr->second))
-      continue;
-
-    bool hasSameSig =
-        op.getFuncTypeGenerator() == itr->second.getFuncTypeGenerator();
-    // Prevent the same kernel from colliding with itself.
-    if (hasSameSig && op.getLoc() == rawMojoKernel[newSymName].getLoc() &&
-        !isa<mlir::UnknownLoc>(op.getLoc()))
+    // We ignore duplicated functions.
+    // TODO (GEX-1925): Correctly check if the functions are identical.
+    if (areFunctionsTheSame(op, itr->second))
       continue;
 
     // Create a new symbol which is unique in both files.
