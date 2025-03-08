@@ -272,17 +272,17 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
     // full integer ignoring the sign bit. This means the conversion is exactly
     // representable.
     if (result.isFloat()) {
-      std::optional<ssize_t> resultPrecision =
-          result.getSignificandPrecisionInBits();
-      if (!resultPrecision)
+      const llvm::fltSemantics *semantics = result.getFPSemantics();
+      if (!semantics)
         return Error(Twine("Calculated result type ")
                          .concat(result.getAsString())
                          .concat(" is not supported by the modular stack."));
 
-      if (dtype.isSInt() && dtype.getWidthInBits() - 1 > *resultPrecision)
+      ssize_t resultPrecision = APFloat::semanticsPrecision(*semantics);
+      if (dtype.isSInt() && dtype.getWidthInBits() - 1 > resultPrecision)
         return buildError();
 
-      if (dtype.isUInt() && dtype.getWidthInBits() > *resultPrecision)
+      if (dtype.isUInt() && dtype.getWidthInBits() > resultPrecision)
         return buildError();
     }
 
