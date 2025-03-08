@@ -15,14 +15,6 @@ size_t MEFType::getEncodedSizeInBytes() const {
   auto typeID = getKind().stripComplex();
 
   switch (typeID.getValue()) {
-    // Floating point types are primitive and have a single-byte encoding.
-#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
-  case MEF::TypeKind::SHORT_NAME:                                              \
-    return 1;
-
-#include "Support/ML/FloatTypes.def"
-#undef DECLARE_FLOAT
-
   case MEF::TypeKind::invalid:
   case MEF::TypeKind::kBool:
     // Primitive types all have a single-byte encoding.
@@ -37,8 +29,10 @@ size_t MEFType::getEncodedSizeInBytes() const {
     return cast<MEFQuantizedPerAxisType>(this)->getEncodedSizeInBytes();
   default:
     // All signed/unsigned integers are single-byte encoding.
-    if (typeID.isInt())
+    // Floating point types are primitive and have a single-byte encoding.
+    if (typeID.isInt() || (typeID.isFloat() && !typeID.isTF32()))
       return 1;
+
     // Unknown types don't have a known length, just don't advance.
     return 0;
   }

@@ -272,7 +272,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
     // full integer ignoring the sign bit. This means the conversion is exactly
     // representable.
     if (result.isFloat()) {
-      const llvm::fltSemantics *semantics = result.getFPSemantics();
+      const llvm::fltSemantics *semantics = result.getFloatSemantics();
       if (!semantics)
         return Error(Twine("Calculated result type ")
                          .concat(result.getAsString())
