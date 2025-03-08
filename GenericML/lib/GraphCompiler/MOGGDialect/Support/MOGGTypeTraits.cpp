@@ -21,8 +21,8 @@
 #include "Support/AssertStream.h"
 #include "llvm/ADT/APFloat.h"
 
-namespace M::MOGG {
-namespace {
+using namespace M;
+using namespace M::MOGG;
 
 template <typename T>
 llvm::SmallVector<mlir::TypedAttr>
@@ -94,21 +94,13 @@ convertBoolsToSIMD(DType moggType, KGEN::KGENDType kgenType,
   return values;
 }
 
-static MOGGTypeTraits bf16() {
-  return MOGGTypeTraits("bfloat16", KGEN::KGENDType::bf16, DType::bf16);
-}
-
-static MOGGTypeTraits f16() {
-  return MOGGTypeTraits("float16", KGEN::KGENDType::f16, DType::f16);
-}
-
-static MOGGTypeTraits f32() {
-  return MOGGTypeTraits("float32", KGEN::KGENDType::f32, DType::f32);
-}
-
-static MOGGTypeTraits f64() {
-  return MOGGTypeTraits("float64", KGEN::KGENDType::f64, DType::f64);
-}
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, ...)                              \
+  static MOGGTypeTraits SHORT_NAME() {                                         \
+    return MOGGTypeTraits(#LONG_NAME, KGEN::KGENDType::SHORT_NAME,             \
+                          DType::SHORT_NAME);                                  \
+  }
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
 
 static MOGGTypeTraits ui8() {
   return MOGGTypeTraits("uint8", KGEN::KGENDType::ui8, DType::ui8);
@@ -146,24 +138,32 @@ static MOGGTypeTraits b() {
   return MOGGTypeTraits("bool", KGEN::KGENDType::kBool, DType::kBool);
 }
 
-} // namespace
-
 llvm::SmallVector<mlir::TypedAttr>
 MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
                               int64_t numElems) const {
+  if (moggType.isFloat()) {
+    switch (moggType.getWidthInBits()) {
+    case 8:
+      return convertFloatsToSIMD<uint8_t>(moggType, kgenType, context, data,
+                                          numElems,
+                                          *moggType.getFloatSemantics());
+    case 16:
+      return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
+                                           numElems,
+                                           *moggType.getFloatSemantics());
+    case 32:
+      return convertFloatsToSIMD<uint32_t>(moggType, kgenType, context, data,
+                                           numElems,
+                                           *moggType.getFloatSemantics());
+    case 64:
+      return convertFloatsToSIMD<uint64_t>(moggType, kgenType, context, data,
+                                           numElems,
+                                           *moggType.getFloatSemantics());
+    default:
+      llvm_unreachable("Only 8, 16, 32, and 64 bit floats supported");
+    }
+  }
   switch (moggType.getValue()) {
-  case DType::f16:
-    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
-                                         numElems, APFloat::IEEEhalf());
-  case DType::bf16:
-    return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
-                                         numElems, APFloat::BFloat());
-  case DType::f32:
-    return convertFloatsToSIMD<uint32_t>(moggType, kgenType, context, data,
-                                         numElems, APFloat::IEEEsingle());
-  case DType::f64:
-    return convertFloatsToSIMD<uint64_t>(moggType, kgenType, context, data,
-                                         numElems, APFloat::IEEEdouble());
   case DType::ui8:
     return convertIntsToSIMD<uint8_t>(moggType, kgenType, context, data,
                                       numElems);
@@ -196,20 +196,22 @@ MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
   }
 }
 
-llvm::SmallVector<MOGGTypeTraits> allTypeTraits() {
-  return {f16(),  bf16(), f32(),  f64(),  ui8(),  ui16(), ui32(),
-          ui64(), si8(),  si16(), si32(), si64(), b()};
+llvm::SmallVector<MOGGTypeTraits> M::MOGG::allTypeTraits() {
+  return {
+#define DECLARE_FLOAT(SHORT_NAME, ...) SHORT_NAME(),
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+
+      ui8(), ui16(), ui32(), ui64(), si8(), si16(), si32(), si64(), b()};
 }
 
 ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
-  if (type.isF16())
-    return f16();
-  if (type.isBF16())
-    return bf16();
-  if (type.isF32())
-    return f32();
-  if (type.isF64())
-    return f64();
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, MLIR_TYPE, ...)           \
+  if (isa<MLIR_TYPE>(type))                                                    \
+    return SHORT_NAME();
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+
   if (type.isUnsignedInteger(8))
     return ui8();
   if (type.isUnsignedInteger(16))
@@ -238,14 +240,13 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupType(Type type) {
 
 ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupDType(DType dtype) {
   switch (dtype.getValue()) {
-  case DType::f16:
-    return f16();
-  case DType::bf16:
-    return bf16();
-  case DType::f32:
-    return f32();
-  case DType::f64:
-    return f64();
+
+#define DECLARE_FLOAT(SHORT_NAME, ...)                                         \
+  case DType::SHORT_NAME:                                                      \
+    return SHORT_NAME();
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+
   case DType::ui8:
     return ui8();
   case DType::ui16:
@@ -282,5 +283,3 @@ ErrorOr<Type> MOGGTypeTraits::simdTypeForTensor(Type type) {
     return traitsOr.takeError();
   return {MOGG::SimdType::get(type.getContext(), traitsOr->moggType)};
 }
-
-} // namespace M::MOGG
