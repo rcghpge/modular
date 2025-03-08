@@ -37,20 +37,6 @@ static const DTypeMapping kDTypeMapping[] = {
 
 };
 
-TEST(APIBridge, dtypeToCAPI) {
-  for (const auto &mapping : kDTypeMapping)
-    EXPECT_EQ(mapping.capi, dtypeToCAPI(mapping.m)) << mapping;
-  // In addition to known mappings, try unknown.
-  EXPECT_EQ(M_UNKNOWN, dtypeToCAPI(DType::getComplex(DType::f32)));
-}
-
-TEST(APIBridge, capiToDType) {
-  for (const auto &mapping : kDTypeMapping)
-    EXPECT_EQ(mapping.m, capiToDType(mapping.capi)) << mapping;
-  // In addition to known mappings, try unknown.
-  EXPECT_EQ(DType(DType::invalid), capiToDType(static_cast<M_Dtype>(99999)));
-}
-
 TEST(APIBridge, tensorSpecToCAPIBasic) {
   TensorSpec spec({1, 2, 3}, DType::f32);
   TensorSpecPtr cSpec = tensorSpecToCAPI("example", spec);

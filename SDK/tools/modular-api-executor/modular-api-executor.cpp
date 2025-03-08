@@ -8,6 +8,7 @@
 #include "AsyncRT/Runtime/Utils.h"
 #include "AsyncRT/Support/FileLocationDecoder.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
+#include "GenericML/API/c/detail/helpers.h"
 #include "GenericML/Driver/DriverCLOptions.h"
 #include "GenericML/Driver/ExecutionDriver.h"
 #include "GenericML/Driver/Utils.h"
@@ -30,81 +31,12 @@
 
 using namespace M;
 
-/// Translates a modular C data type to GenericML DType.
-static DType convertToDType(M_Dtype ty) {
-  switch (ty) {
-  case M_UNKNOWN:
-    return DType::invalid;
-  case M_INT8:
-    return DType::si8;
-  case M_INT16:
-    return DType::si16;
-  case M_INT32:
-    return DType::si32;
-  case M_INT64:
-    return DType::si64;
-  case M_UINT8:
-    return DType::ui8;
-  case M_UINT16:
-    return DType::ui16;
-  case M_UINT32:
-    return DType::ui32;
-  case M_UINT64:
-    return DType::ui64;
-  case M_BOOL:
-    return DType::kBool;
-#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
-  case M_TYPE:                                                                 \
-    return DType::SHORT_NAME;
-#include "Support/ML/FloatTypes.def"
-#undef DECLARE_FLOAT
-  default:
-    llvm_unreachable("invalid data type");
-  }
-  llvm_unreachable("invalid data type");
-}
-/// Translates a GeneralML DType to C data type.
-/// TODO
-static M_Dtype convertToCDataType(DType ty) {
-  switch (ty.getValue()) {
-  case DType::ui8:
-    return M_UINT8;
-  case DType::si8:
-    return M_INT8;
-  case DType::ui16:
-    return M_UINT16;
-  case DType::si16:
-    return M_INT16;
-  case DType::ui32:
-    return M_UINT32;
-  case DType::si32:
-    return M_INT32;
-  case DType::ui64:
-    return M_UINT64;
-  case DType::si64:
-    return M_INT64;
-  case DType::kBool:
-    return M_BOOL;
-
-#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
-  case DType::SHORT_NAME:                                                      \
-    return M_TYPE;
-#include "Support/ML/FloatTypes.def"
-#undef DECLARE_FLOAT
-
-  case DType::invalid:
-    [[fallthrough]];
-  default:
-    return M_UNKNOWN;
-  }
-}
-
 /// Convert TensorSpec from API to GenericML TensorSpec.
 static M::TensorSpec getTensorSpec(M_TensorSpec *spec) {
   M_Dtype dtype = M_getDtype(spec);
   SmallVector<ssize_t> inputShape;
   if (M_isDynamicRanked(spec))
-    return M::TensorSpec(kDynamicallyRanked, convertToDType(dtype));
+    return M::TensorSpec(kDynamicallyRanked, M::Detail::mapDType(dtype));
 
   int64_t numDims = M_getRank(spec);
   assert(numDims >= 0 && "for this usage this should always be positive");
@@ -119,7 +51,7 @@ static M::TensorSpec getTensorSpec(M_TensorSpec *spec) {
       inputShape.push_back(M_getDimAt(spec, i));
     }
   }
-  return {inputShape, convertToDType(dtype)};
+  return {inputShape, M::Detail::mapDType(dtype)};
 }
 
 /// Get TensorSpec from a API Tensor.
@@ -300,16 +232,16 @@ public:
   ~ModularModel() override = default;
 
   /// Return the devices used by the model.
-  ArrayRef<DeviceRef> getDevices() const override {
+  ArrayRef<M::DeviceRef> getDevices() const override {
     llvm_unreachable("unimplemented");
   }
   /// Return an array of devices that map 1:1 to the devices used by each input.
-  ArrayRef<DeviceRef> getInputDevices() const override {
+  ArrayRef<M::DeviceRef> getInputDevices() const override {
     llvm_unreachable("unimplemented");
   }
   /// Return an array of devices that map 1:1 to the devices used by each
   /// output.
-  ArrayRef<DeviceRef> getOutputDevices() const override {
+  ArrayRef<M::DeviceRef> getOutputDevices() const override {
     llvm_unreachable("unimplemented");
   }
 
@@ -515,7 +447,7 @@ public:
               inputShape.emplace_back(dim);
             TensorSpecPtr spec{
                 M_newTensorSpec(inputShape.data(), inputShape.size(),
-                                convertToCDataType(inputTensor.getEltType()),
+                                M::Detail::mapDType(inputTensor.getEltType()),
                                 model->getInputNames()[inputIndex].c_str())};
             M_borrowTensorInto(inputTensors.get(), inputTensor.getBuffer(),
                                spec.get(), status.get());
@@ -773,13 +705,15 @@ int main(int argc, char **argv) {
           }
           dimNames = dimNamesVec.data();
         }
-        spec.reset(M_newTorchInputSpec(
-            inputShape.data(), dimNames, inputShape.size(),
-            convertToCDataType(inputSpec.getEltType()), nullptr, status.get()));
+        spec.reset(
+            M_newTorchInputSpec(inputShape.data(), dimNames, inputShape.size(),
+                                M::Detail::mapDType(inputSpec.getEltType()),
+                                nullptr, status.get()));
       } else {
-        spec.reset(M_newTorchInputSpec(
-            nullptr, nullptr, M_getDynamicRankValue(),
-            convertToCDataType(inputSpec.getEltType()), nullptr, status.get()));
+        spec.reset(
+            M_newTorchInputSpec(nullptr, nullptr, M_getDynamicRankValue(),
+                                M::Detail::mapDType(inputSpec.getEltType()),
+                                nullptr, status.get()));
       }
       if (M_isError(status.get())) {
         llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
