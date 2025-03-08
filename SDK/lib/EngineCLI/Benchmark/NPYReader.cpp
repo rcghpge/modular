@@ -49,8 +49,8 @@ static DType descrToDType(StringRef descr) {
       .Case("<f2", DType::f16)
       .Case("<f4", DType::f32)
       .Case("<f8", DType::f64)
-      .Case("<c8", DType::getComplex(DType::f32))
-      .Case("<c16", DType::getComplex(DType::f64))
+      .Case("<c8", DType::complex_f32)
+      .Case("<c16", DType::complex_f64)
       .Case("|b1", DType::kBool)
       .Default(DType::invalid);
 }
