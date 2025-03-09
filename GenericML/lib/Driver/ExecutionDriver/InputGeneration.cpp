@@ -217,19 +217,21 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
   }
 
   // if tensor spec contains a generation function, override the default
-  if (spec && std::holds_alternative<InputGenerationKind>(spec->inputGen))
-    defaultGen = std::get<InputGenerationKind>(spec->inputGen);
+  InputGenerationKind *inputGenKindPtr = nullptr;
+  if (spec)
+    inputGenKindPtr = std::get_if<InputGenerationKind>(&spec->inputGen);
 
-  if (!spec || std::holds_alternative<InputGenerationKind>(spec->inputGen)) {
+  if (!spec || inputGenKindPtr) {
     auto filledGeneratorOr = FilledTensorGenerator::create(
-        defaultGen, modelSpec, runtime, minimumCpuAlignment);
+        inputGenKindPtr ? *inputGenKindPtr : defaultGen, modelSpec, runtime,
+        minimumCpuAlignment);
     if (filledGeneratorOr.isError())
       return filledGeneratorOr.takeError();
     return std::make_unique<FilledTensorGenerator>(
         std::move(*filledGeneratorOr));
   }
 
-  auto filename = std::get<std::filesystem::path>(spec->inputGen);
+  auto filename = *std::get_if<std::filesystem::path>(&spec->inputGen);
   // pack vector of flags into single int
   auto fileGeneratorOr = FileTensorGenerator::create(
       filename, modelSpec, runtime, minimumCpuAlignment, spec->genFlags);
