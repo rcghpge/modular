@@ -5,8 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/API/max/c/types.h"
+#include "GenericML/API/c/detail/helpers.h"
 #include "SDK/EngineAPI/python/Types.h"
+#include "Support/ML/DType.h"
 #include "nanobind/nanobind.h"
+#include "llvm/ADT/StringExtras.h"
 
 using namespace M::core;
 
@@ -94,43 +97,21 @@ nb::dlpack::dtype M::core::mapDType(M_Dtype dtype) {
   }
 }
 
-std::string M::core::printDType(M_Dtype dtype) {
-  switch (dtype) {
-  case M_INT8:
-    return "DType.int8";
-  case M_INT16:
-    return "DType.int16";
-  case M_INT32:
-    return "DType.int32";
-  case M_INT64:
-    return "DType.int64";
-  case M_UINT8:
-    return "DType.uint8";
-  case M_UINT16:
-    return "DType.uint16";
-  case M_UINT32:
-    return "DType.uint32";
-  case M_UINT64:
-    return "DType.uint64";
-  case M_FLOAT16:
-    return "DType.float16";
-  case M_FLOAT32:
-    return "DType.float32";
-  case M_FLOAT64:
-    return "DType.float64";
-  case M_BFLOAT16:
-    return "DType.bfloat16";
-  case M_FLOAT8_E4M3:
-    return "DType.float8_e4m3";
-  case M_FLOAT8_E4M3FN:
-    return "DType.float8_e4m3fn";
-  case M_FLOAT8_E4M3FNUZ:
-    return "DType.float8_e4m3fnuz";
-  case M_FLOAT8_E5M2:
-    return "DType.float8_e5m2";
-  case M_FLOAT8_E5M2FNUZ:
-    return "DType.float8_e5m2fnuz";
-  case M_BOOL:
+std::string M::core::printDType(M_Dtype type) {
+  M::DType dtype = M::Detail::mapDType(type);
+
+  if (dtype.isUInt())
+    return "DType.uint" + llvm::utostr(dtype.getIntegerWidthInBits());
+  if (dtype.isSInt())
+    return "DType.int" + llvm::utostr(dtype.getIntegerWidthInBits());
+
+  switch (dtype.getValue()) {
+#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, ...)                              \
+  case DType::SHORT_NAME:                                                      \
+    return "DType." #LONG_NAME;
+#include "Support/ML/FloatTypes.def"
+#undef DECLARE_FLOAT
+  case DType::kBool:
     return "DType.bool";
   default:
     throw nb::type_error("Unrecognized DType");
