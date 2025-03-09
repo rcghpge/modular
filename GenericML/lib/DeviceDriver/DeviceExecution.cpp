@@ -154,14 +154,13 @@ ErrorOrSuccess M::Driver::passResultsToMojo(
   // We only count non-opaque or Tensor values as a result.
   size_t resultDeviceIndex = 0;
   for (auto &output : results) {
-    if (std::holds_alternative<Tensor>(output)) {
+    if (M::Tensor *tensor = std::get_if<M::Tensor>(&output)) {
       auto device = resultDevices[resultDeviceIndex];
       // Convert tensor back to device memory and call the callback we got from
       // mojo. Here we take ownership of output.
       ErrorOr<Driver::DeviceMemory *> outputMemoryOr =
           M::Driver::constructDeviceMemoryFromTensor(
-              std::move(maxContext), device,
-              std::move(std::get<M::Tensor>(output)));
+              std::move(maxContext), device, std::move(*tensor));
 
       if (outputMemoryOr.isError())
         return outputMemoryOr.takeError();
