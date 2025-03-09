@@ -22,20 +22,7 @@ struct DTypeMapping {
   M_Dtype capi;
 };
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const DTypeMapping &mapping) {
-  return os << "{" << mapping.m << ", " << mapping.capi << "}";
-}
-
 } // namespace
-
-static const DTypeMapping kDTypeMapping[] = {
-#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, M_TYPE, ...)                      \
-  {DType::SHORT_NAME, M_TYPE},
-#include "Support/ML/FloatTypes.def"
-#undef DECLARE_FLOAT
-
-};
 
 TEST(APIBridge, tensorSpecToCAPIBasic) {
   TensorSpec spec({1, 2, 3}, DType::f32);
