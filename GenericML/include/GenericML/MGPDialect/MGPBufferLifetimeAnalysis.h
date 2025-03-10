@@ -121,9 +121,11 @@ struct BufferLifetimeAnalysisPass {
 
   DenseMap<Block *, DependencyTree> dominatorTrees;
   DependencyTree &getDepTree(Block *b) {
-    if (!dominatorTrees.contains(b))
-      dominatorTrees.try_emplace(b, DependencyTree::getDependencyTree(b));
-    return dominatorTrees[b];
+    if (auto it = dominatorTrees.find(b); it != dominatorTrees.end())
+      return it->second;
+
+    return dominatorTrees.try_emplace(b, DependencyTree::getDependencyTree(b))
+        .first->second;
   }
 };
 
