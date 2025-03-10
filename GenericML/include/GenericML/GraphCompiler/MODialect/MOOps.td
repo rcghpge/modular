@@ -4115,7 +4115,7 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   }];
 
   let arguments = (ins
-    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, Index]>>:$inputs,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer]>>:$inputs,
     StrAttr:$shapeFuncName,
     MO_ParamDecls:$outputParamDecls,
     OptionalAttr<DictionaryAttr>:$kgenParams,
