@@ -17,11 +17,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "KGEN/POPDialect/POPTypes.h"
-#include "Runtime/Tensor/Tensor.h"
-#include "Support/AssertStream.h"
 
-#include "KGEN/HLCFDialect/HLCFOps.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"
 
@@ -98,6 +94,16 @@ static bool isCallToGetKernelSimdWidth(KGEN::ParamOperatorAttr applyExpr) {
   return applySymName.starts_with(Utils::DPSTensorGetKernelSimdWidth);
 }
 
+static bool isCallToForeach(Operation *op) {
+  auto callOp = dyn_cast<KGEN::CallOp>(op);
+  if (!callOp)
+    return false;
+
+  StringRef funcName =
+      cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
+  return funcName.starts_with(Utils::DPSTensorForEach);
+}
+
 static LogicalResult
 fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
                            const llvm::SmallSetVector<DType, 4> &allDtypes) {
@@ -106,9 +112,7 @@ fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
 
   kernelOp.walk([&](KGEN::CallOp callOp) {
     // Find the foreach call.
-    StringRef funcName =
-        cast<mlir::FlatSymbolRefAttr>(callOp.getCalleeSymbol()).getValue();
-    if (funcName.starts_with(Utils::DPSTensorForEach)) {
+    if (isCallToForeach(callOp)) {
       forEachCall = callOp;
       return WalkResult::interrupt();
     }
@@ -217,6 +221,7 @@ struct FuseElementwisePass
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
     MO::ParametricTopologyAnalysis topologyAnalysis(graphOp);
+
     /// TODO: MOCO-1469 Remove this limit.
     static constexpr uint64_t kMaximumFusionSetSize = 64;
     auto subgraphs = sourceDestinationSequenceFusionAnalysis(
@@ -276,7 +281,7 @@ struct FuseElementwisePass
 
     // Add each of the new operands to the kernel body we are fusing into and
     // the corresponding input lambdas.
-    llvm::StringMap<int> srcInputLambdaPositions;
+    llvm::DenseMap<StringAttr, int> srcInputLambdaPositions;
     uint64_t srcOperandIndex = 0;
     for (auto [srcOperand, srcArgument] : llvm::zip(
              srcKernel.getOperands(), srcKernel.getBody().getArguments())) {
@@ -294,7 +299,7 @@ struct FuseElementwisePass
     DenseSet<Operation *> skipUsing;
     for (Operation &srcOp : srcKernel.getBody().getOps()) {
       // Ignore the one foreach call and any users of it.
-      if (isa<KGEN::CallOp, MOGG::OutputOp>(srcOp)) {
+      if (isCallToForeach(&srcOp) || isa<MOGG::OutputOp>(srcOp)) {
         // For deleting machinery to handle foreach `raising`
         SmallVector<Operation *> opAndSubgraphs =
             MO::getRootedComponents(&srcOp);
