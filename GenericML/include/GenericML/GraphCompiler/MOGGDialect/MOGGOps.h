@@ -57,13 +57,12 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
   // attributes.
   mlir::AttrTypeWalker walker;
   walker.addWalk([&](KGEN::ParamDeclRefAttr param) {
-    if (seenParams.contains(param))
+    if (auto [_, inserted] = seenParams.insert(param); !inserted)
       return WalkResult::advance();
 
     if (isInOutputParams(param.getName()))
       return WalkResult::advance();
 
-    seenParams.insert(param);
     usedParameters.push_back(param);
     return WalkResult::advance();
   });
