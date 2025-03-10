@@ -142,8 +142,8 @@ MojoLibraryAnalysis::getRegisteredMojoFunctionFor(StringRef name,
 }
 
 KGEN::GeneratorOp MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) {
-  if (rawMojoKernel.contains(name))
-    return rawMojoKernel.at(name);
+  if (auto it = rawMojoKernel.find(name); it != rawMojoKernel.end())
+    return it->second;
   return nullptr;
 }
 
