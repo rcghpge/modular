@@ -268,22 +268,16 @@ SmallVector<Operation *> getRootedComponents(Operation *op) {
     answer.push_back(cur);
 
     for (Operation *user : cur->getUsers()) {
-      if (enqueued.contains(user))
-        continue;
-
-      enqueued.insert(user);
-      fringe.push_back(user);
+      if (enqueued.insert(user).second)
+        fringe.push_back(user);
     }
 
     if (cur == op)
       continue;
     for (auto operand : cur->getOperands()) {
       Operation *definingOp = operand.getDefiningOp();
-      if (enqueued.contains(definingOp))
-        continue;
-
-      enqueued.insert(definingOp);
-      fringe.push_back(definingOp);
+      if (enqueued.insert(definingOp).second)
+        fringe.push_back(definingOp);
     }
   }
 
