@@ -198,8 +198,9 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
           AnyAsyncValueRef::createReady<AsyncRT::DeviceContextRef>(runtime,
                                                                    ctx));
     } else {
-      if (deviceMap.contains(devRef) && deviceMap.at(devRef)) {
-        const auto &dev = deviceMap.at(devRef);
+      if (auto it = deviceMap.find(devRef);
+          it != deviceMap.end() && it->second) {
+        const RCRef<Device> &dev = it->second;
         deviceContexts.push_back(
             AnyAsyncValueRef::createReady<AsyncRT::DeviceContextRef>(
                 runtime, dev->tmpGetDeviceContext()));
