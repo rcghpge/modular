@@ -3,6 +3,6 @@
 :lang: python
 
 
-.. automodule:: max.pipelines.nn.norm.rms_norm
+.. automodule:: max.nn.norm.rms_norm
    :members:
    :undoc-members:

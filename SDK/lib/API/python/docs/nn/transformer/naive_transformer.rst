@@ -3,6 +3,6 @@
 :lang: python
 
 
-.. automodule:: max.pipelines.nn.transformer.naive_transformer
+.. automodule:: max.nn.transformer.naive_transformer
    :members:
    :undoc-members:

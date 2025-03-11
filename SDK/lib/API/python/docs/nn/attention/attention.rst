@@ -4,6 +4,6 @@
 :slug: attention
 
 
-.. automodule:: max.pipelines.nn.attention.attention
+.. automodule:: max.nn.attention.attention
    :members:
    :undoc-members:

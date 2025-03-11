@@ -3,6 +3,6 @@
 :lang: python
 
 
-.. automodule:: max.pipelines.nn.attention.attention_without_mask
+.. automodule:: max.nn.attention.attention_without_mask
    :members:
    :undoc-members:
