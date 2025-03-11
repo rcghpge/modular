@@ -174,8 +174,7 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpression(Region *parentRegion,
   // If we got a placeholder, we need to remember it, in case we map an SSA
   // value to it.
   if (auto placeholder = newVal.getDefiningOp<ParamPlaceholderOp>())
-    if (!placeholderMap.contains(placeholder))
-      placeholderMap.try_emplace(placeholder, SmallVector<Value>{});
+    placeholderMap.try_emplace(placeholder, SmallVector<Value>{});
   return newVal;
 }
 
@@ -186,12 +185,13 @@ ErrorOrSuccess MOGraphLoweringState::lowerParamDecl(
   if (maybePlaceholder) {
     // If we just resolved a placeholder, we need to make sure no one will
     // ever map to it in the future.
-    if (placeholderMap.contains(maybePlaceholder)) {
-      for (Value key : placeholderMap.at(maybePlaceholder)) {
+    if (auto it = placeholderMap.find(maybePlaceholder);
+        it != placeholderMap.end()) {
+      for (Value key : it->second) {
         execute.loweredValues.erase(key);
         execute.loweredValues.try_emplace(key, value);
       }
-      placeholderMap.erase(maybePlaceholder);
+      placeholderMap.erase(it);
     }
 
     // We also need to replace all its existing uses.
