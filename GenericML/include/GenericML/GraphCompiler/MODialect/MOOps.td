@@ -3697,6 +3697,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
 def MO_RangeOp : MO_TensorOp<"range", [
   MO_SameOperandsAndResultElementType,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {

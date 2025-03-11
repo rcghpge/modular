@@ -2325,6 +2325,14 @@ LogicalResult RangeOp::verify() {
   return success();
 }
 
+DeviceRefAttr RangeOp::getOperandDevice(size_t index) {
+  if (index == getStartMutable().getOperandNumber() ||
+      index == getStepMutable().getOperandNumber() ||
+      index == getLimitMutable().getOperandNumber())
+    return MO::getHostDevice(getOperation());
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // MO_RebindOp support
 //===----------------------------------------------------------------------===//
