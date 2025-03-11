@@ -97,9 +97,7 @@ nb::dlpack::dtype M::core::mapDType(M_Dtype dtype) {
   }
 }
 
-std::string M::core::printDType(M_Dtype type) {
-  M::DType dtype = M::Detail::mapDType(type);
-
+std::string M::core::printDType(M::DType dtype) {
   if (dtype.isUInt())
     return "DType.uint" + llvm::utostr(dtype.getIntegerWidthInBits());
   if (dtype.isSInt())

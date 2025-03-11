@@ -17,11 +17,11 @@ using namespace M;
 using namespace core;
 
 core::TorchInputSpec::TorchInputSpec(
-    const core::TorchInputSpec::InputShapeTy &shapeOr, M_Dtype dtype)
+    const core::TorchInputSpec::InputShapeTy &shapeOr, M::DType dtype)
     : core::TorchInputSpec(shapeOr, dtype, "") {}
 
 core::TorchInputSpec::TorchInputSpec(
-    const core::TorchInputSpec::InputShapeTy &shapeOr, M_Dtype dtype,
+    const core::TorchInputSpec::InputShapeTy &shapeOr, M::DType dtype,
     std::string device)
     : specPtr(nullptr), specShape(shapeOr), specDtype(dtype),
       specDevice(device) {
@@ -38,13 +38,13 @@ core::TorchInputSpec::TorchInputSpec(
       dimNamePtrs.push_back(optionalDimName.has_value()
                                 ? optionalDimName.value().c_str()
                                 : nullptr);
-    specPtr.reset(M_newTorchInputSpec(convertedShape.data(), dimNamePtrs.data(),
-                                      convertedShape.size(), dtype,
-                                      device.c_str(), status.get()));
+    specPtr.reset(M_newTorchInputSpec(
+        convertedShape.data(), dimNamePtrs.data(), convertedShape.size(),
+        static_cast<M_Dtype>(dtype.getValue()), device.c_str(), status.get()));
   } else {
-    specPtr.reset(M_newTorchInputSpec(/*shape=*/nullptr, /*dimNames=*/nullptr,
-                                      M_getDynamicRankValue(), dtype,
-                                      device.c_str(), status.get()));
+    specPtr.reset(M_newTorchInputSpec(
+        /*shape=*/nullptr, /*dimNames=*/nullptr, M_getDynamicRankValue(),
+        static_cast<M_Dtype>(dtype.getValue()), device.c_str(), status.get()));
   }
   if (M_isError(status.get()))
     throw std::invalid_argument(M_getError(status.get()));

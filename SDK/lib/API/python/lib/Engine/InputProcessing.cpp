@@ -24,7 +24,7 @@ void core::verifyTensorInputSpecs(const nb::object &obj,
   TensorData tensor = nb::cast<core::TensorData>(obj);
   // Assert the input tensor has the same tensor specification
   // Assert same dtype.
-  if (M_Dtype expectedDtype = inputTensorSpec.getDtype();
+  if (M::DType expectedDtype = inputTensorSpec.getDtype();
       tensor.dtype != expectedDtype)
     throw std::invalid_argument(
         "Input tensor has incompatible type. Expected type " +
@@ -68,7 +68,8 @@ M_AsyncValue *core::processTensorInput(const nb::object &obj,
                                        M_RuntimeContext *context) {
   TensorData tensor = nb::cast<core::TensorData>(obj);
   TensorSpecPtr tensorSpec{M_newTensorSpec(
-      tensor.shape.data(), tensor.shape.size(), tensor.dtype, name.c_str())};
+      tensor.shape.data(), tensor.shape.size(),
+      static_cast<M_Dtype>(tensor.dtype.getValue()), name.c_str())};
   // tensor points to a buffer owned by the input tensor.
   // Since .execute() is synchronous currently, the tensor will survive at
   // least as long as we need it: we won't use the input tensor anymore
