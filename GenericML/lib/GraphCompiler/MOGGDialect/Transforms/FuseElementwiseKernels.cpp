@@ -180,6 +180,12 @@ struct FuseElementwisePass
     : public impl::FuseElementwiseBase<FuseElementwisePass> {
   using FuseElementwiseBase::FuseElementwiseBase;
 
+  FuseElementwisePass() = default;
+  FuseElementwisePass(const FuseElementwisePass &pass) {}
+
+  Statistic numberOfFusedKernels{this, "numberOfFusedKernels",
+                                 "Number of fused kernels"};
+
   LogicalResult fixupKGENKernelsSimdWidth(MO::GraphOp graphOp) {
     // Fixup simd_width for fused kernels when needed.
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
@@ -232,6 +238,7 @@ struct FuseElementwisePass
       topologyAnalysis.computeTopologicalSorting(subgraph);
 
     for (auto &subgraph : subgraphs) {
+      numberOfFusedKernels += subgraph.size();
       auto dstKernelOp = cast<KernelOp>(subgraph.back());
       for (auto op : llvm::reverse(subgraph)) {
         if (op == dstKernelOp)

@@ -42,6 +42,15 @@ static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
 struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   using FuseInOutLambdasBase::FuseInOutLambdasBase;
 
+  FuseInOutLambdas() = default;
+  FuseInOutLambdas(const FuseInOutLambdas &pass) {}
+
+  Statistic numberOfFusedPrologues{this, "numberOfFusedPrologues",
+                                   "Number of fused input elementwise kernels"};
+  Statistic numberOfFusedEpilogues{
+      this, "numberOfFusedEpilogues",
+      "Number of fused output elementwise kernels"};
+
   bool canDoInputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterfaces,
                         uint64_t inputIdx) {
     // For in-place allocated kernel, we disable for now.
@@ -108,6 +117,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                                ArrayAttr fusionInterfaces, uint64_t inputIdx,
                                SmallVectorImpl<KernelOp> &opsToErase,
                                MojoLibraryAnalysis &analysis) {
+    ++numberOfFusedPrologues;
     MLIRContext *ctx = kernelToFuseInto.getContext();
     OpBuilder builder{ctx};
 
@@ -454,6 +464,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Step 5: Remap all the parameters of the operators we cloned if needed.
 
     // Step 6: Clean up and handle the mixed precision case.
+
+    ++numberOfFusedEpilogues;
 
     MLIRContext *ctx = kernelToFuseInto.getContext();
 

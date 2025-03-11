@@ -40,6 +40,12 @@ struct FuseAffineViewsPass
     : public impl::FuseAffineViewsBase<FuseAffineViewsPass> {
   using FuseAffineViewsBase::FuseAffineViewsBase;
 
+  FuseAffineViewsPass() = default;
+  FuseAffineViewsPass(const FuseAffineViewsPass &pass) {}
+
+  Statistic numberOfFusedViews{this, "numberOfFusedViews",
+                               "Number of fused views"};
+
   static inline bool isFusibleNonElementwise(KernelOp kernel) {
     // Cannot be elementwise kernel, that is fused differently.
     auto isElemwise = kernel.getFusionBodyLambda();
@@ -516,6 +522,7 @@ struct FuseAffineViewsPass
 
       // Check if we did anything
       changed = !opsToErase.empty();
+      numberOfFusedViews += opsToErase.size();
 
       // Delete all fused view ops
       for (Operation *oldViewOp : opsToErase)

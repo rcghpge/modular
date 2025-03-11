@@ -55,6 +55,12 @@ GUARANTEES:
 struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
   using FuseViewsBase::FuseViewsBase;
 
+  FuseViewsPass() = default;
+  FuseViewsPass(const FuseViewsPass &pass) {}
+
+  Statistic numberOfFusedViews{this, "numberOfFusedViews",
+                               "Number of fused views"};
+
   static bool hasCompoundParameters(MO::TensorType t) {
     for (TypedAttr symbolicDim : t.getDims()) {
       if (!(isa<KGEN::ParamDeclRefAttr>(symbolicDim) ||
@@ -192,6 +198,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                         DenseMap<Value, Value> &alreadyFused,
                         MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                         TypeManager &typeManager) {
+    ++numberOfFusedViews;
+
     IRMapping remapper;
     Value operandBeingReplaced = leaf.getOperand(idx);
     KernelOp producerKernel =
