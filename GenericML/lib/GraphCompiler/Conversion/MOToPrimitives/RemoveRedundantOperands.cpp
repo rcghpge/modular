@@ -183,14 +183,13 @@ struct RemoveRedundantOperands
       for (auto &operand : llvm::reverse(regionOp->getOpOperands())) {
         auto arg =
             regionOp.getBody().front().getArgument(operand.getOperandNumber());
-        if (operandToFirstArg.contains(operand.get())) {
+        auto [it, inserted] = operandToFirstArg.try_emplace(operand.get(), arg);
+        if (!inserted) {
           // Replace all uses of argument, then remove it from the body. Store
           // the OpOperand to remove after the fact
-          arg.replaceAllUsesWith(operandToFirstArg[operand.get()]);
+          arg.replaceAllUsesWith(it->second);
           regionOp.getBody().eraseArgument(operand.getOperandNumber());
           operandsToRemove.set(operand.getOperandNumber());
-        } else {
-          operandToFirstArg[operand.get()] = arg;
         }
       }
 
