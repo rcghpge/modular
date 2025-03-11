@@ -2410,8 +2410,7 @@ static LogicalResult materializeShapeInference(RebindOp op,
                   nameToParamDecl.lookup(outputDimParamRef.getName())) {
             if (isa<KGEN::UnknownAttr>(inputDimAttr)) {
               unknownParamDecls.insert(paramDecl);
-            } else if (!declaredParams.contains(paramDecl)) {
-              declaredParams.insert(paramDecl);
+            } else if (declaredParams.insert(paramDecl)) {
               rewriter.create<KGEN::ParamDeclareOp>(loc, paramDecl,
                                                     inputDimAttr);
             }
