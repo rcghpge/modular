@@ -18,81 +18,61 @@
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "KGEN/POPDialect/POPAttrs.h"
-#include "Support/AssertStream.h"
 #include "llvm/ADT/APFloat.h"
 
 using namespace M;
 using namespace M::MOGG;
 
-template <typename T>
+namespace {
+
 llvm::SmallVector<mlir::TypedAttr>
 convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
                     mlir::MLIRContext *context, const void *data,
                     int64_t numElems, const llvm::fltSemantics &semantic) {
-  constexpr int numBits = sizeof(T) * CHAR_BIT;
-  static_assert(std::is_integral_v<T>, "Use uintXX_t types as storage.");
-  static_assert(std::is_unsigned_v<T>, "Use uintXX_t types as storage.");
-  static_assert(numBits <= 64, "Only up to 64 bit floats supported right now.");
+  auto simdType = KGEN::POP::SIMDType::get(context, 1, moggType);
+  auto sizeInBytes = moggType.getSizeInBytes();
 
   llvm::SmallVector<mlir::TypedAttr> values;
-  values.reserve(numElems);
-  const T *raw = reinterpret_cast<const T *>(data);
-  for (int64_t i = 0; i < numElems; ++i) {
-    uint64_t upcast = raw[i];
-    values.push_back(M::KGEN::POP::SIMDAttr::get(
-        {APFloat(semantic, APInt(numBits, upcast)), kgenType},
-        KGEN::POP::SIMDType::get(context, 1, moggType)));
+  values.resize_for_overwrite(numElems);
+
+  APInt loadedValue(sizeInBytes * CHAR_BIT, 0);
+
+  for (auto i : llvm::seq(numElems)) {
+    auto valuePtr = reinterpret_cast<const uint8_t *>(data) + sizeInBytes * i;
+    llvm::LoadIntFromMemory(loadedValue, valuePtr, sizeInBytes);
+
+    KGEN::POP::DTypeValue dtypeValue(APFloat(semantic, loadedValue), kgenType);
+    values[i] = KGEN::POP::SIMDAttr::get(dtypeValue, simdType);
   }
+
   return values;
 }
 
-template <typename T>
-llvm::SmallVector<mlir::TypedAttr>
-convertIntsToSIMD(DType moggType, KGEN::KGENDType kgenType,
-                  mlir::MLIRContext *context, const void *data,
-                  int64_t numElems) {
-  // Retrieving metadata
-  size_t typeBits = sizeof(T) * CHAR_BIT;
-  size_t isTypeSigned = std::is_signed_v<T>;
+llvm::SmallVector<mlir::TypedAttr> convertIntsToSIMD(DType moggType,
+                                                     KGEN::KGENDType kgenType,
+                                                     mlir::MLIRContext *context,
+                                                     const void *data,
+                                                     int64_t numElems) {
+  auto simdType = KGEN::POP::SIMDType::get(context, 1, moggType);
+  auto sizeInBytes = moggType.getSizeInBytes();
 
-  // Creating simd attributes
-  auto asT = reinterpret_cast<const T *>(data);
   llvm::SmallVector<mlir::TypedAttr> values;
-  values.reserve(numElems);
-  for (int64_t i = 0; i < numElems; ++i) {
-    // Convert the type for the APInt constructor.
-    int64_t upcast = asT[i];
-    uint64_t bitcast = *reinterpret_cast<uint64_t *>(&upcast);
-    APInt apInt(typeBits, bitcast, isTypeSigned);
-    auto kgenDtype = KGEN::KGENDType::getInt(typeBits, isTypeSigned).value();
-    KGEN::POP::DTypeValue dtypeVal(apInt, kgenDtype);
-    auto simdType = KGEN::POP::SIMDType::get(context, 1, moggType);
-    values.push_back(KGEN::POP::SIMDAttr::get(dtypeVal, simdType));
+  values.resize_for_overwrite(numElems);
+
+  APInt loadedValue(sizeInBytes * CHAR_BIT, 0);
+
+  for (auto i : llvm::seq(numElems)) {
+    auto valuePtr = reinterpret_cast<const uint8_t *>(data) + sizeInBytes * i;
+    llvm::LoadIntFromMemory(loadedValue, valuePtr, sizeInBytes);
+
+    KGEN::POP::DTypeValue dtypeVal(loadedValue, kgenType);
+    values[i] = KGEN::POP::SIMDAttr::get(dtypeVal, simdType);
   }
+
   return values;
 }
 
-llvm::SmallVector<mlir::TypedAttr>
-convertBoolsToSIMD(DType moggType, KGEN::KGENDType kgenType,
-                   mlir::MLIRContext *context, const void *data,
-                   int64_t numElems) {
-  size_t typeBits = sizeof(bool) * CHAR_BIT;
-
-  // Creating simd attributes
-  auto asT = reinterpret_cast<const bool *>(data);
-  llvm::SmallVector<mlir::TypedAttr> values;
-  values.reserve(numElems);
-  for (int64_t i = 0; i < numElems; ++i) {
-    // Convert the type for the APInt constructor.
-    int64_t upcast = asT[i];
-    uint64_t bitcast = *reinterpret_cast<uint64_t *>(&upcast);
-    APInt apInt(typeBits, bitcast, false);
-    KGEN::POP::DTypeValue dtypeVal(apInt, KGEN::KGENDType::kBool);
-    auto simdType = KGEN::POP::SIMDType::get(context, 1, moggType);
-    values.push_back(KGEN::POP::SIMDAttr::get(dtypeVal, simdType));
-  }
-  return values;
-}
+} // namespace
 
 #define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, ...)                              \
   static MOGGTypeTraits SHORT_NAME() {                                         \
@@ -141,59 +121,14 @@ static MOGGTypeTraits b() {
 llvm::SmallVector<mlir::TypedAttr>
 MOGGTypeTraits::convertToSIMD(mlir::MLIRContext *context, const void *data,
                               int64_t numElems) const {
-  if (moggType.isFloat()) {
-    switch (moggType.getWidthInBits()) {
-    case 8:
-      return convertFloatsToSIMD<uint8_t>(moggType, kgenType, context, data,
-                                          numElems,
-                                          *moggType.getFloatSemantics());
-    case 16:
-      return convertFloatsToSIMD<uint16_t>(moggType, kgenType, context, data,
-                                           numElems,
-                                           *moggType.getFloatSemantics());
-    case 32:
-      return convertFloatsToSIMD<uint32_t>(moggType, kgenType, context, data,
-                                           numElems,
-                                           *moggType.getFloatSemantics());
-    case 64:
-      return convertFloatsToSIMD<uint64_t>(moggType, kgenType, context, data,
-                                           numElems,
-                                           *moggType.getFloatSemantics());
-    default:
-      llvm_unreachable("Only 8, 16, 32, and 64 bit floats supported");
-    }
-  }
-  switch (moggType.getValue()) {
-  case DType::ui8:
-    return convertIntsToSIMD<uint8_t>(moggType, kgenType, context, data,
-                                      numElems);
-  case DType::ui16:
-    return convertIntsToSIMD<uint16_t>(moggType, kgenType, context, data,
-                                       numElems);
-  case DType::ui32:
-    return convertIntsToSIMD<uint32_t>(moggType, kgenType, context, data,
-                                       numElems);
-  case DType::ui64:
-    return convertIntsToSIMD<uint64_t>(moggType, kgenType, context, data,
-                                       numElems);
-  case DType::si8:
-    return convertIntsToSIMD<int8_t>(moggType, kgenType, context, data,
-                                     numElems);
-  case DType::si16:
-    return convertIntsToSIMD<int16_t>(moggType, kgenType, context, data,
-                                      numElems);
-  case DType::si32:
-    return convertIntsToSIMD<int32_t>(moggType, kgenType, context, data,
-                                      numElems);
-  case DType::si64:
-    return convertIntsToSIMD<int64_t>(moggType, kgenType, context, data,
-                                      numElems);
-  case DType::kBool:
-    return convertBoolsToSIMD(moggType, kgenType, context, data, numElems);
-  default:
-    ASSERT_STREAM(false, << "Unimplemented DType " << moggType);
-    llvm_unreachable("Unimplemented DType");
-  }
+  if (auto fltSemantics = moggType.getFloatSemantics())
+    return convertFloatsToSIMD(moggType, kgenType, context, data, numElems,
+                               *fltSemantics);
+
+  if (moggType.isInt() || moggType.isBool())
+    return convertIntsToSIMD(moggType, kgenType, context, data, numElems);
+
+  llvm_unreachable("unimplemented DType");
 }
 
 llvm::SmallVector<MOGGTypeTraits> M::MOGG::allTypeTraits() {
