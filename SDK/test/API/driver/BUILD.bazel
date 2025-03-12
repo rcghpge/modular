@@ -13,6 +13,7 @@ lit_tests(
     ],
     tools = [
         "//KGEN/tools/mojo",
+        "@ptxas-x86_64//:ptxas",
     ],
 )
 
@@ -28,5 +29,6 @@ lit_tests(
     tags = ["gpu"],
     tools = [
         "//KGEN/tools/mojo",
+        "@ptxas-x86_64//:ptxas",
     ],
 )
