@@ -16,6 +16,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabUtils.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
@@ -106,11 +107,16 @@ struct FuseAffineViewsPass
     auto toRankAttr = builder.getIndexAttr(toType.getRankNonZero());
     auto fromRankAttr = builder.getIndexAttr(std::max(1ul, fromType.getRank()));
 
+    auto tensorIOType = kgenTensor.getTensorIOTypeAttr();
+    ASSERT_STREAM(tensorIOType,
+                  "Expected to have the tensorIOType string attr attached");
+
+    auto ioSpec = KGEN::MOGGPreElab::toIOSpec(tensorIOType.strref());
+    auto [mut, input] = KGEN::MOGGPreElab::getParams(*ioSpec, builder);
+
     // construct fully specialized kgen tensor signature (managed_tensor_slice)
     SmallVector<TypedAttr> reshapeParameterValues = {typeBinding, fromRankAttr,
-                                                     toRankAttr};
-    reshapeParameterValues.push_back(builder.getBoolAttr(1));
-    reshapeParameterValues.push_back(builder.getIndexAttr(0));
+                                                     toRankAttr, mut, input};
 
     ErrorOr<KGEN::SymbolConstantAttr> reshapeKGENSymbol =
         mojoLibraryAnalysis.getSpecializedKernel(
