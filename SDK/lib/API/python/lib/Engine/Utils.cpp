@@ -8,7 +8,6 @@
 #include "max/c/common.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "nanobind/nanobind.h"
-#include "pybind11/pybind11.h"
 
 namespace nb = nanobind;
 

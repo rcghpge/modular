@@ -29,7 +29,6 @@ modular_nanobind_library(
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
-        "@pybind11",
     ],
 )
 

@@ -7,7 +7,6 @@
 #define SDK_ENGINEAPI_PYTHON_UTILS_H
 
 #include "nanobind/nanobind.h"
-#include "pybind11/pybind11.h"
 #include <cstdint>
 #include <functional>
 #include <optional>
