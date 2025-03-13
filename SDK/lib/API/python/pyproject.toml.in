@@ -43,7 +43,7 @@ skip = ["cp36-* cp37-*, *-manylinux_i686", "*-musllinux*"]
 before-test = [
   "pip install -r {project}/PyTorch/integration-test/python/pytests/requirements.txt",
   "pip install -r {project}/PyTorch/integration-test/python/pytorch_op_tests/requirements.txt",
-  # `modular.pytorch` is required for testing.
+  # `max.pytorch` is required for testing.
   "pip install {project}/PyTorch/lib/API/python",
   # PyTorch integration tests implicitly depend on `modular.utils`.
   "pip install {project}/Support/python",
