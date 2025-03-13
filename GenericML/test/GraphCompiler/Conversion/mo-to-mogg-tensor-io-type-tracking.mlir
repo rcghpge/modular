@@ -20,11 +20,11 @@ mo.graph @with_a_list_type(%l0: !mo.list<!mo.tensor<[10], si32>>) -> !mo.tensor<
 }
 
 // CHECK-LABEL: @with_variadic_inputs
-// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "OutputTensor"{{.*}}(!mo.tensor<[6], si32>) -> !kgen.struct<{{.*}}>
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedOutputTensor"{{.*}}(!mo.tensor<[6], si32>) -> !kgen.struct<{{.*}}>
 // CHECK: "mogg.to_kgen"{{.*}}{tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[], si32>) -> !kgen.struct<{{.*}}>
-// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[1], si32>) -> !kgen.struct<{{.*}}>
-// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[2], si32>) -> !kgen.struct<{{.*}}>
-// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[3], si32>) -> !kgen.struct<{{.*}}>
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedInputTensor"{{.*}}(!mo.tensor<[1], si32>) -> !kgen.struct<{{.*}}>
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedInputTensor"{{.*}}(!mo.tensor<[2], si32>) -> !kgen.struct<{{.*}}>
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedInputTensor"{{.*}}(!mo.tensor<[3], si32>) -> !kgen.struct<{{.*}}>
 mo.graph @with_variadic_inputs(%arg2: !mo.tensor<[2], si32>) -> (!mo.tensor<[6], si32>) {
   %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %arg1 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>

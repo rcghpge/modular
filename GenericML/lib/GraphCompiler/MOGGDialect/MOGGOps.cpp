@@ -1735,6 +1735,8 @@ LogicalResult ToKGENOp::verify() {
                          << " -- expected one of: { "
                          << KGEN::MOGGPreElab::kInputTensor << ", "
                          << KGEN::MOGGPreElab::kOutputTensor << ", "
+                         << KGEN::MOGGPreElab::kFusedInputTensor << ", "
+                         << KGEN::MOGGPreElab::kFusedOutputTensor << ", "
                          << KGEN::MOGGPreElab::kMutableInputTensor << " }";
     }
   }
