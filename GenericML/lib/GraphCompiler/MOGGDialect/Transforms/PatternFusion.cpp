@@ -92,14 +92,16 @@ struct PackParamCache {
   /// Return the output type associated with `(inputTy, kgenParams)`, or null if
   /// the entry doesn't exist.
   MO::TensorType get(MO::TensorType inputTy, DictionaryAttr kgenParams) {
-    if (!cache.contains(inputTy))
+    auto cacheIt = cache.find(inputTy);
+    if (cacheIt == cache.end())
       return {};
 
-    auto &kgenParamsToOutTy = cache[inputTy];
-    if (!kgenParamsToOutTy.contains(kgenParams))
+    auto &kgenParamsToOutTy = cacheIt->second;
+    auto it = kgenParamsToOutTy.find(kgenParams);
+    if (it == kgenParamsToOutTy.end())
       return {};
 
-    return kgenParamsToOutTy[kgenParams];
+    return it->second;
   }
 
 private:
