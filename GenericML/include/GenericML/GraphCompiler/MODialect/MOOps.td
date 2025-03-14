@@ -5018,6 +5018,8 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
 }
 
 def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_HasDeviceInterface,
   SameVariadicOperandSize
 ]> {
@@ -5031,11 +5033,13 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   // Variadic allreduce has a folder since it can take 1 input.
   let hasFolder = 1;
   let arguments = (ins
+    MO_Chain:$inChain,
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers
   );
   let results = (outs
-    Variadic<MO_Tensor>:$outputs
+    Variadic<MO_Tensor>:$outputs,
+    MO_Chain:$outChain
   );
 }
 
