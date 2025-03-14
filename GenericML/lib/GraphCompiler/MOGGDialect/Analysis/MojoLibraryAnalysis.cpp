@@ -348,20 +348,20 @@ ErrorOrSuccess
 MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
   auto registerKernelFunction = [&](StringRef name, StringRef label,
                                     bool override = true) {
-    if (!registeredKernelFunctionSymbols.contains(name))
-      registeredKernelFunctionSymbols[name] = {};
+    auto [it, _] = registeredKernelFunctionSymbols.try_emplace(
+        name, llvm::StringMap<KGEN::GeneratorOp>{});
 
-    if (override || !registeredKernelFunctionSymbols[name].contains(label))
-      registeredKernelFunctionSymbols[name][label] = generator;
+    auto [it2, inserted] = it->second.try_emplace(label, generator);
+    if (!inserted && override)
+      it2->second = generator;
   };
 
   auto registerKernelCandidate = [&](StringRef name,
                                      int64_t priority) -> ErrorOrSuccess {
-    auto it = registeredMojoKernelSymbol.find(name);
-    if (it == registeredMojoKernelSymbol.end()) {
+    auto [it, inserted] = registeredMojoKernelSymbol.try_emplace(
+        name, KernelCandidate(generator, priority));
+    if (inserted) {
       // First time we find the kernel, just register it.
-      registeredMojoKernelSymbol.insert(
-          std::make_pair(name, KernelCandidate(generator, priority)));
       return success();
     }
 
@@ -478,10 +478,11 @@ LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
   Operation *scope = gen->getParentOp();
 
   // Each module must appear in the remapping.
-  if (!symbolNameRemapping.contains(scope))
+  auto it = symbolNameRemapping.find(scope);
+  if (it == symbolNameRemapping.end())
     return failure();
 
-  ArrayRef<RenameEntry> newNames = symbolNameRemapping[scope];
+  ArrayRef<RenameEntry> newNames = it->second;
 
   if (newNames.empty())
     return success();
