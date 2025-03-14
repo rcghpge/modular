@@ -227,8 +227,7 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
 
     if (isFirstVisit) {
       // preorder
-      if (!visited.contains(top)) {
-        visited.insert(top);
+      if (visited.insert(top).second) {
         top->depth = depth;
         top->preIndex = index++;
       }
