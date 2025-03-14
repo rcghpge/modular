@@ -161,8 +161,7 @@ sortParams(llvm::ArrayRef<Operation *> ops) {
   }
 
   for (auto op : ops)
-    if (!sorted.contains(op))
-      sorted.insert(op);
+    sorted.insert(op);
   return sorted.takeVector();
 }
 
