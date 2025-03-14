@@ -332,9 +332,9 @@ struct FuseElementwisePass
       if (lambda) {
         auto newName = dstSymTable.insert(newOp, builder.getInsertionPoint());
         auto oldName = lambda.getParamDecl().getName();
-        if (srcInputLambdaPositions.contains(oldName)) {
-          dstKernel.setInputFusionInterface(srcInputLambdaPositions[oldName],
-                                            newName);
+        if (auto it = srcInputLambdaPositions.find(oldName);
+            it != srcInputLambdaPositions.end()) {
+          dstKernel.setInputFusionInterface(it->second, newName);
         }
 
         if (lambda == srcElementwiseLambda)
