@@ -515,9 +515,9 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
         auto parent = std::get<0>(parentChild);
         auto child = std::get<1>(parentChild);
 
-        if (visited.contains(parent))
+        if (auto iterAndInserted = visited.insert(parent);
+            !iterAndInserted.second)
           continue;
-        visited.insert(parent);
 
         if (child) {
           bool proceed =
