@@ -195,6 +195,8 @@ ShapeMaterializeResult
 materializeScatterNdLikeShapeDefs(ScatterNdLike op,
                                   ArrayRef<TypedAttr> inputAttrs);
 
+LogicalResult verifyBufferOpConformance(Operation *op);
+
 } // namespace Impl
 
 template <typename ConcreteType>
@@ -223,6 +225,15 @@ class MOSameOperandsElementType
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return Impl::verifyMOSameOperandsElementType(op);
+  }
+};
+
+template <typename ConcreteType>
+class MOBufferOpConformance
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOBufferOpConformance> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return Impl::verifyBufferOpConformance(op);
   }
 };
 

@@ -30,7 +30,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
 class MO_Op<string mnemonic, list<Trait> traits = []>
-  : Op<MODialect, mnemonic, traits>;
+  : Op<MODialect, mnemonic, [MO_BufferOpConformance] # traits>;
 
 // Base class for ops that work with tensors in the MO dialect.
 class MO_TensorOp<string mnemonic, list<Trait> traits = []>

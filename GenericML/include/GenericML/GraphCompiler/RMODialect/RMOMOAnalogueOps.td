@@ -21,6 +21,7 @@ include "mlir/IR/BuiltinAttributes.td"
 
 class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
   : RMO_Op<"mo." # mnemonic, traits # [
+    MO_BufferOpConformance,
     DeclareOpInterfaceMethods<RMO_MOAnalogue, ["inferMOTypes"]>
   ]> {
   let builders = [

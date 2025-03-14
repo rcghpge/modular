@@ -584,6 +584,13 @@ def MO_SameOperandsAndResultType : TraitList<[
   MO_SameInputOutputShapesParameterization
 ]>;
 
+/// Verify invariants we expect about operations working with !mo.buffer.
+/// All MO and RMO (really RMO analogue) ops inherit from this trait.
+///
+/// It enforces that operations consuming buffers correctly consume and produce
+/// !mo.chain values.
+def MO_BufferOpConformance : MO_OpTrait<"MOBufferOpConformance">;
+
 /// Logically similar to the builtin SameOperandsAndResultShape, but uses
 /// MOSH::ShapeAttr which is used to store the MO::Tensor shape.
 def MO_SameOperandsAndResultShapeAttr :

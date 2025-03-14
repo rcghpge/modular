@@ -19,6 +19,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <Support/LogicalResult.h>
 
 using namespace M;
 using namespace MO;
@@ -470,6 +471,75 @@ LogicalResult Impl::verifyPadLike(PadLike op) {
       return op.emitOpError("result must be unranked if input is unranked");
     if (isa<IntegerAttr>(paddingsTy.getDim(0)))
       return op.emitOpError("paddings shape does not match dynamic input rank");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BufferOpConformance
+//===----------------------------------------------------------------------===//
+
+LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
+  auto numBufferOutputs = llvm::count_if(
+      op->getResultTypes(), [](Type t) { return isa<MO::BufferType>(t); });
+
+  auto numBufferInputs = llvm::count_if(
+      op->getOperandTypes(), [](Type t) { return isa<MO::BufferType>(t); });
+
+  if (numBufferInputs == 0 && numBufferOutputs == 0)
+    return success();
+
+  // Non-compute ops are generally ok.
+  // mo.yield is intentionally left off this list as alias analysis for
+  // mo.buffer values is not currently supported.
+  if (isa<MO::ChainCreateOp, MO::OutputOp>(op))
+    return success();
+
+  // These ops already has similar logic in its verifier
+  // TODO(GEX-1947): Unify their logic there with this trait verifier.
+  if (isa<MO::CustomOp, MO::YieldOp, MO::GuardOp>(op))
+    return success();
+
+  // This is very deliberately the only op allowed to create a new buffer.
+  //
+  // If you need to create a new buffer with a particular initialization use
+  // mo.buffer.create and pass the result of that to the op providing the
+  // initialization logic.
+  //
+  // If the extra round-trip to memory becomes a problem in the future we can
+  // implement mo.mutable.store as a kernel and have fusion enabled on the input
+  // tensor.
+  if (isa<MO::BufferCreateOp>(op))
+    return success();
+
+  if (numBufferOutputs != 0)
+    return op->emitError("Ops are not allowed to create new mo.buffer values.");
+
+  auto chainInputCount = llvm::count_if(
+      op->getOperandTypes(), [](Type t) { return isa<MO::ChainType>(t); });
+
+  auto chainOutputCount = llvm::count_if(
+      op->getResultTypes(), [](Type t) { return isa<MO::ChainType>(t); });
+
+  if (chainInputCount != 1) {
+    return op->emitError(
+        "Ops with buffer inputs must have exactly one chain input.");
+  }
+
+  if (chainOutputCount != 1) {
+    return op->emitError(
+        "Ops with buffer inputs must have exactly one chain output.");
+  }
+
+  // The mo.custom op enforces that chains are in the final position.
+  // TODO(GEX-1944): Make chain the last in the operand/result lists for all
+  // operations.
+  if (!isa<MO::CustomOp>(op)) {
+    if (!isa<MO::ChainType>(op->getOperandTypes().front())) {
+      return op->emitError("Chain input must be in the first position for ops "
+                           "with buffer inputs.");
+    }
   }
 
   return success();

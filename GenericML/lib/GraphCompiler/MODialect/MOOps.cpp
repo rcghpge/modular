@@ -4394,34 +4394,9 @@ LogicalResult CustomOp::verify() {
     return chainIter == rng.end() || std::next(chainIter) == rng.end();
   };
 
-  if (!chainIsLastIfPresent(getOperandTypes())) {
-    return emitError(
-        "If an input chain is present it must be the final operand.");
-  }
-
   if (!chainIsLastIfPresent(getResultTypes())) {
     return emitError(
         "If an output chain is present it must be the final result.");
-  }
-
-  // May have to revisit this if we start allowing custom shape functions
-  // operating directly on mo.buffer values.
-  //
-  // Could also be addressed by allow mo.rebind to take mo.buffer
-  // values as input (GEX-1065).
-  if (getBufferOperands().size() >= 1) {
-    auto inChain = maybeGetInChain();
-    auto outChain = maybeGetOutChain();
-
-    if (!inChain) {
-      return emitError(
-          "Any custom op taking buffer inputs must have an input chain");
-    }
-
-    if (!outChain) {
-      return emitError(
-          "Any custom op taking buffer inputs must have an output chain");
-    }
   }
 
   // If mutSpec is present make sure it's valid.
