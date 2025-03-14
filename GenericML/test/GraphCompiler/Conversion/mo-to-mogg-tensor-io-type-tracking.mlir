@@ -1,9 +1,9 @@
 // RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --mo-to-mogg | FileCheck %s
 
 // CHECK-LABEL: @test_simple_add
-// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "OutputTensor"{{.*}}(!mo.tensor<[5], f32>)
-// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[5], f32>)
-// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[5], f32>)
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedOutputTensor"{{.*}}(!mo.tensor<[5], f32>)
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedInputTensor"{{.*}}(!mo.tensor<[5], f32>)
+// CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedInputTensor"{{.*}}(!mo.tensor<[5], f32>)
 mo.graph @test_simple_add(%0: !mo.tensor<[5], f32>, %1: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) {
   %2 = mo.add(%0, %1) : !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
