@@ -4640,12 +4640,6 @@ static LogicalResult verifyAllReduceSum(ConcreteOp op) {
       return op->emitError("each input/output must have the same tensor type");
   }
 
-  if (allReduceOp.numDevices &&
-      (allReduceOp.getInputs().size() != *allReduceOp.numDevices))
-    return op->emitError("expected exactly " + Twine(*allReduceOp.numDevices) +
-                         " inputs for " + Twine(*allReduceOp.numDevices) +
-                         "-GPU allreduce");
-
   return success();
 }
 
@@ -4661,14 +4655,6 @@ LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
   }
   return failure();
 }
-
-LogicalResult AllReduce1GPUSumOp::verify() { return verifyAllReduceSum(*this); }
-
-LogicalResult AllReduce2GPUSumOp::verify() { return verifyAllReduceSum(*this); }
-
-LogicalResult AllReduce4GPUSumOp::verify() { return verifyAllReduceSum(*this); }
-
-LogicalResult AllReduce8GPUSumOp::verify() { return verifyAllReduceSum(*this); }
 
 //===----------------------------------------------------------------------===//
 // MO_LayerNormOp

@@ -5017,129 +5017,25 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
   }];
 }
 
-class MO_AllReduceSumBase<string opName> : MO_DistributedOp<opName, [
-  MO_HasDeviceInterface
+def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
+  MO_HasDeviceInterface,
+  SameVariadicOperandSize
 ]> {
-  let hasVerifier = 1;
+  let summary = "Allreduce sum across N devices (variadic).";
   let description = [{
     Allreduce takes in inputs each coming from a different device with
     the same shape as the final output and performs a sum reduction
     across the devices. The output is replicated across the same devices.
   }];
-}
-
-def MO_AllReduceSumOp : MO_AllReduceSumBase<"distributed.allreduce.sum"> {
-  let summary = "Allreduce sum across N devices (variadic).";
+  let hasVerifier = 1;
   // Variadic allreduce has a folder since it can take 1 input.
   let hasFolder = 1;
-  let extraClassDeclaration = [{
-    // `numDevices` is `std::nullopt` since this allreduce is variadic.
-    static constexpr std::optional<int> numDevices;
-  }];
-}
-
-// TODO(GEX-1755): Remove once we support lowering variadic device contexts.
-def MO_AllReduce1GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.1gpu.sum"> {
-  let summary = "Allreduce sum across 1 device.";
-  let extraClassDeclaration = [{
-    static constexpr std::optional<int> numDevices{1};
-
-    SmallVector<MO::TensorValue> getOutputs() {
-      return {getOutput0()};
-    }
-  }];
   let arguments = (ins
-    MO_Rank1Buffer:$signalBuffer0,
-    Variadic<MO_Tensor>:$inputs
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers
   );
   let results = (outs
-    MO_Tensor:$output0
-  );
-}
-
-def MO_AllReduce2GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.2gpu.sum"> {
-  let summary = "Allreduce sum across 2 devices.";
-  let extraClassDeclaration = [{
-    static constexpr std::optional<int> numDevices{2};
-
-    SmallVector<MO::TensorValue> getOutputs() {
-      return {getOutput0(), getOutput1()};
-    }
-  }];
-  let arguments = (ins
-    MO_Rank1Buffer:$signalBuffer0,
-    MO_Rank1Buffer:$signalBuffer1,
-    Variadic<MO_Tensor>:$inputs
-  );
-  let results = (outs
-    MO_Tensor:$output0,
-    MO_Tensor:$output1
-  );
-}
-
-def MO_AllReduce4GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.4gpu.sum"> {
-  let summary = "Allreduce sum across 4 devices.";
-  let extraClassDeclaration = [{
-    static constexpr std::optional<int> numDevices{4};
-
-    SmallVector<MO::TensorValue> getOutputs() {
-      return {getOutput0(), getOutput1(), getOutput2(), getOutput3()};
-    }
-  }];
-  let arguments = (ins
-    MO_Rank1Buffer:$signalBuffer0,
-    MO_Rank1Buffer:$signalBuffer1,
-    MO_Rank1Buffer:$signalBuffer2,
-    MO_Rank1Buffer:$signalBuffer3,
-    Variadic<MO_Tensor>:$inputs
-  );
-  let results = (outs
-    MO_Tensor:$output0,
-    MO_Tensor:$output1,
-    MO_Tensor:$output2,
-    MO_Tensor:$output3
-  );
-}
-
-
-def MO_AllReduce8GPUSumOp : MO_AllReduceSumBase<"distributed.allreduce.8gpu.sum"> {
-  let summary = "Allreduce sum across 8 devices.";
-  let extraClassDeclaration = [{
-    static constexpr std::optional<int> numDevices{8};
-
-    SmallVector<MO::TensorValue> getOutputs() {
-      return {
-        getOutput0(),
-        getOutput1(),
-        getOutput2(),
-        getOutput3(),
-        getOutput4(),
-        getOutput5(),
-        getOutput6(),
-        getOutput7(),
-      };
-    }
-  }];
-  let arguments = (ins
-    MO_Rank1Buffer:$signalBuffer0,
-    MO_Rank1Buffer:$signalBuffer1,
-    MO_Rank1Buffer:$signalBuffer2,
-    MO_Rank1Buffer:$signalBuffer3,
-    MO_Rank1Buffer:$signalBuffer4,
-    MO_Rank1Buffer:$signalBuffer5,
-    MO_Rank1Buffer:$signalBuffer6,
-    MO_Rank1Buffer:$signalBuffer7,
-    Variadic<MO_Tensor>:$inputs
-  );
-  let results = (outs
-    MO_Tensor:$output0,
-    MO_Tensor:$output1,
-    MO_Tensor:$output2,
-    MO_Tensor:$output3,
-    MO_Tensor:$output4,
-    MO_Tensor:$output5,
-    MO_Tensor:$output6,
-    MO_Tensor:$output7
+    Variadic<MO_Tensor>:$outputs
   );
 }
 
