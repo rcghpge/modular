@@ -316,6 +316,19 @@ gentbl_filegroup(
 )
 
 gentbl_filegroup(
+    name = "mosh_json",
+    tbl_outs = [(
+        ["--dump-json"],
+        "mosh.json",
+    )],
+    tblgen = "@llvm-project//llvm:llvm-tblgen",
+    td_file = "include/GenericML/GraphCompiler/MOSHDialect/MOSH.td",
+    deps = [
+        "//GenericML:MOSHDialectTdFiles",
+    ],
+)
+
+gentbl_filegroup(
     name = "mo_json",
     tbl_outs = [(
         ["--dump-json"],

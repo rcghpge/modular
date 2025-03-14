@@ -190,6 +190,14 @@ tblgen_nanobind(
     visibility = ["//visibility:public"],
 )
 
+tblgen_nanobind(
+    name = "MOSHDialectNanobindInc",
+    src = "//GenericML:mosh_json",
+    dialect = "MOSHDialect",
+    output = "include/SDK/GraphAPI/python/mosh_dialect_nanobind.cpp.inc",
+    visibility = ["//visibility:public"],
+)
+
 py_repl(
     name = "python",
     data = [
