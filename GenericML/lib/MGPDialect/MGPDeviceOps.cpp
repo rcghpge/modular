@@ -34,10 +34,10 @@ static LogicalResult getDeviceAttrOrDefault(Location location,
                                             DictionaryAttr attributes,
                                             StringAttr name,
                                             DeviceRefAttr &device) {
-  if (!attributes.contains(name)) {
+  if (Attribute nameInDictAttr = attributes.get(name); !nameInDictAttr) {
     device = DeviceRefAttr::getDefault(attributes.getContext());
   } else {
-    device = dyn_cast<DeviceRefAttr>(attributes.get(name));
+    device = dyn_cast<DeviceRefAttr>(nameInDictAttr);
     if (!device) {
       return mlir::emitError(location,
                              "expected an #M.device_ref for attribute '")
