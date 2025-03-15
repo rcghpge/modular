@@ -72,8 +72,9 @@ class LowerAlignmentsPass
       // scope we copy that for internal args
       if (block->getParentOp()->getNumOperands() > arg.getArgNumber()) {
         auto operand = block->getParentOp()->getOperand(arg.getArgNumber());
-        if (parentScopeAlignments.contains(operand))
-          innerAlignments[arg] = parentScopeAlignments.at(operand);
+        if (auto it = parentScopeAlignments.find(operand);
+            it != parentScopeAlignments.end())
+          innerAlignments[arg] = it->second;
       }
     }
     return innerAlignments;
@@ -94,13 +95,12 @@ class LowerAlignmentsPass
     // Has to go in dependency order
     for (auto op : getDataflowOrder(block))
       for (auto res : op->getResults()) {
-        results[res] = {};
+        auto resIt = results.insert({res, {}}).first;
         for (auto operand : op->getOperands())
-          if (results.contains(operand))
-            results[res].insert(results[operand].begin(),
-                                results[operand].end());
+          if (auto it = results.find(operand); it != results.end())
+            resIt->second.insert(it->second.begin(), it->second.end());
           else if (args.contains(operand))
-            results[res].insert(operand);
+            resIt->second.insert(operand);
       }
     return results;
   }
@@ -129,10 +129,11 @@ class LowerAlignmentsPass
         // Traverse and replace all placeholders
         op->walk([&](MOGG::AlignmentPlaceholderOp placeholderOp) {
           auto operand = placeholderOp.getOperand();
-          assert(valueArgDep.contains(operand) &&
+          auto it = valueArgDep.find(operand);
+          assert(it != valueArgDep.end() &&
                  "valueArgDep must contain the set of arg it depends on (can "
                  "be empty)");
-          if (valueArgDep[operand].empty()) {
+          if (it->second.empty()) {
             // If there are no argument it depends on, assume it is cpu (comes
             // from kgen input placeholder)
             replacePlaceholder(placeholderOp,
@@ -141,8 +142,8 @@ class LowerAlignmentsPass
             // Placeholder operand depend on arguments - infer from args. Always
             // try to get GCD of alignment from inputs (2, 16, 8 will have GCD
             // of 2)
-            int64_t alignment = argAlignments.at(*valueArgDep[operand].begin());
-            for (auto arg : valueArgDep[operand])
+            int64_t alignment = argAlignments.at(*it->second.begin());
+            for (auto arg : it->second)
               alignment = std::gcd(argAlignments.at(arg), alignment);
             replacePlaceholder(placeholderOp, alignment);
           }
@@ -200,9 +201,9 @@ class LowerAlignmentsPass
                      dyn_cast<MGP::TensorExtractBufferOp>(op)) {
         // Pass-through from Tensor Value if it is something we created.
         // Otherwise, assume it comes from a fallback so default to cpu
-        if (alignmentMap.contains(extractBufferOp.getTensor()))
-          alignmentMap[extractBufferOp.getOutBuffer()] =
-              alignmentMap.at(extractBufferOp.getTensor());
+        if (auto it = alignmentMap.find(extractBufferOp.getTensor());
+            it != alignmentMap.end())
+          alignmentMap[extractBufferOp.getOutBuffer()] = it->second;
         else
           alignmentMap[extractBufferOp.getOutBuffer()] =
               AsyncRT::Device::preferredAlignment("cpu");
