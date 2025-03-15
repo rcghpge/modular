@@ -131,18 +131,15 @@ class DynamicMemoryPlanningPass
 
       bool ineligibleAlloc = false;
       for (auto use : allocUses.get()) {
-        if (!tree.contains(use)) {
+        DependencyTreeNode *node = tree.get(use);
+        if (!node) {
           ineligibleAlloc = true;
           break;
         }
-        maxPre =
-            std::max(maxPre, static_cast<uint64_t>(tree.get(use)->preIndex));
-        minPost =
-            std::min(minPost, static_cast<uint64_t>(tree.get(use)->postIndex));
-        minPre =
-            std::min(minPre, static_cast<uint64_t>(tree.get(use)->preIndex));
-        maxPost =
-            std::max(maxPost, static_cast<uint64_t>(tree.get(use)->postIndex));
+        maxPre = std::max(maxPre, static_cast<uint64_t>(node->preIndex));
+        minPost = std::min(minPost, static_cast<uint64_t>(node->postIndex));
+        minPre = std::min(minPre, static_cast<uint64_t>(node->preIndex));
+        maxPost = std::max(maxPost, static_cast<uint64_t>(node->postIndex));
       }
 
       // If the tree didn't have information on every use of this alloc, skip
