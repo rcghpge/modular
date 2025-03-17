@@ -29,7 +29,6 @@
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 #include <climits>
@@ -52,17 +51,8 @@ struct RegionSignature {
 /// We need to drop these here rather than in a cleanup pass because the
 /// ops which use them will generally fail validation if the attributes
 /// are erased.
-const llvm::StringSet<> &ignoredAttributes() {
-  static const llvm::StringSet<> *set = []() {
-    auto *set = new llvm::StringSet<>();
-    // The 'function_type' for MEF::InvokableOp.
-    set->insert("function_type");
-    // The 'operandSegmentSizes' of AttrSizedOperandSegments, which
-    // is only needed to support generic MLIR parsing.
-    set->insert("operandSegmentSizes");
-    return set;
-  }();
-  return *set;
+static bool isIgnoredAttribute(StringRef name) {
+  return name == "function_type" || name == "operandSegmentSizes";
 }
 
 //===----------------------------------------------------------------------===//
@@ -623,7 +613,7 @@ bool EntityTable::collect(ModuleOp module, bool enableMEFMetadata) {
       // Keep track of any attributes used by this op. If the attr is the
       // function type attr that symbols have, then don't write that.
       for (auto attr : op->getAttrs()) {
-        if (ignoredAttributes().contains(attr.getName().getValue()))
+        if (isIgnoredAttribute(attr.getName().getValue()))
           continue;
         processAttr(attr.getName(), attr.getValue(), false);
       }
@@ -1562,7 +1552,7 @@ void RegionEmitter::emitPrimitive(Operation *op,
       processAttr(StringAttr::get(op->getContext()), attr);
   } else {
     for (auto attrNamePair : op->getAttrs()) {
-      if (ignoredAttributes().contains(attrNamePair.getName()))
+      if (isIgnoredAttribute(attrNamePair.getName()))
         continue;
       processAttr(attrNamePair.getName(), attrNamePair.getValue());
     }
