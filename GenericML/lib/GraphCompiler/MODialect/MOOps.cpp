@@ -1279,127 +1279,133 @@ LogicalResult ConstantOp::verify() {
   return success();
 }
 
+// Create an ElementsAttr from a list of primitive values.
+namespace {
+template <typename T>
+ElementsAttr createElementsAttr(OpBuilder &odsBuilder, ArrayRef<T> values,
+                                Type elementType) {
+  if constexpr (std::is_same_v<T, bool>) {
+    // For bool, we convert to i8 type.
+    auto rankedAttrTy =
+        RankedTensorType::get(values.size(), odsBuilder.getI8Type());
+    auto apIntVals = llvm::map_to_vector(
+        values, [](bool val) { return APInt(8, val, /*isSigned=*/false); });
+    auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, apIntVals);
+    return cast<ElementsAttr>(valueAttr);
+  } else if constexpr (std::is_integral_v<T>) {
+    return cast<ElementsAttr>(odsBuilder.getAttr<IntArrayElementsAttr>(
+        values, mlir::IntegerType::Signed));
+  } else if constexpr (std::is_floating_point_v<T>) {
+    auto apFloatValues =
+        llvm::map_to_vector(values, [](T value) { return APFloat(value); });
+    return cast<ElementsAttr>(
+        FloatArrayElementsAttr::get(apFloatValues, elementType));
+  } else if constexpr (std::is_same_v<T, APInt>) {
+    auto rankedAttrTy = RankedTensorType::get(values.size(), elementType);
+    auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, values);
+    return cast<ElementsAttr>(valueAttr);
+  } else if constexpr (std::is_same_v<T, APFloat>) {
+    return cast<ElementsAttr>(FloatArrayElementsAttr::get(values, elementType));
+  }
+}
+
+template <typename T>
+void buildConstant(OpBuilder &odsBuilder, OperationState &odsState,
+                   ArrayRef<T> values, Type elementType,
+                   DeviceRefAttr deviceRef) {
+  auto type =
+      MO::TensorType::get({(int64_t)values.size()}, elementType, deviceRef);
+  ElementsAttr valueAttr = createElementsAttr(odsBuilder, values, elementType);
+  ConstantOp::build(odsBuilder, odsState, type, valueAttr);
+}
+
+template <typename T>
+void buildConstantScalar(OpBuilder &odsBuilder, OperationState &odsState,
+                         T value, Type elementType, DeviceRefAttr deviceRef) {
+  auto type =
+      MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
+  ElementsAttr valueAttr = createElementsAttr(
+      odsBuilder, ArrayRef<T>(SmallVector<T>{value}), elementType);
+  ConstantOp::build(odsBuilder, odsState, type, valueAttr);
+}
+} // namespace
+
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        ArrayRef<int64_t> values, DeviceRefAttr deviceRef) {
-  auto type = MO::TensorType::get(
-      {(int64_t)values.size()},
-      odsBuilder.getIntegerType(64, /*isSigned=*/true), deviceRef);
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      values, mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstant(odsBuilder, odsState, values,
+                odsBuilder.getIntegerType(64, /*isSigned=*/true), deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       ArrayRef<int32_t> values) {
-  auto type =
-      MO::TensorType::get({(int64_t)values.size()},
-                          odsBuilder.getIntegerType(32, /*isSigned=*/true));
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      values, mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+                       ArrayRef<int32_t> values, DeviceRefAttr deviceRef) {
+  buildConstant(odsBuilder, odsState, values,
+                odsBuilder.getIntegerType(32, /*isSigned=*/true), deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       ArrayRef<APInt> values, Type elementType) {
+                       ArrayRef<APInt> values, Type elementType,
+                       DeviceRefAttr deviceRef) {
   assert(elementType.isInteger());
-  auto rankedAttrTy = RankedTensorType::get(values.size(), elementType);
-  auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
-  auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, values);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstant(odsBuilder, odsState, values, elementType, deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       ArrayRef<APFloat> values, Type elementType) {
+                       ArrayRef<APFloat> values, Type elementType,
+                       DeviceRefAttr deviceRef) {
   assert(elementType.isIntOrFloat() && !elementType.isInteger());
-  auto type = MO::TensorType::get({(int64_t)values.size()}, elementType);
-  auto valueAttr = FloatArrayElementsAttr::get(values, type.getElementType());
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstant(odsBuilder, odsState, values, elementType, deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       ArrayRef<bool> values) {
-  auto type =
-      MO::TensorType::get({(int64_t)values.size()}, odsBuilder.getI1Type());
-  auto rankedAttrTy =
-      RankedTensorType::get(values.size(), odsBuilder.getI8Type());
-  SmallVector<APInt> apIntVals =
-      llvm::map_to_vector(values, [&](bool val) { return APInt(8, val); });
-  auto valueAttr = IntArrayElementsAttr::get(rankedAttrTy, apIntVals);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+                       ArrayRef<bool> values, DeviceRefAttr deviceRef) {
+  buildConstant(odsBuilder, odsState, values, odsBuilder.getI1Type(),
+                deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        int64_t value, DeviceRefAttr deviceRef) {
-  auto type = MO::TensorType::get(
-      SmallVector<int64_t>{}, odsBuilder.getIntegerType(64, /*isSigned=*/true),
-      deviceRef);
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      ArrayRef<int64_t>(SmallVector<int64_t>{value}),
-      mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstantScalar(odsBuilder, odsState, value,
+                      odsBuilder.getIntegerType(64, /*isSigned=*/true),
+                      deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        int32_t value, DeviceRefAttr deviceRef) {
-  auto type = MO::TensorType::get(
-      SmallVector<int64_t>{}, odsBuilder.getIntegerType(32, /*isSigned=*/true),
-      deviceRef);
-  auto valueAttr = odsBuilder.getAttr<IntArrayElementsAttr>(
-      ArrayRef<int32_t>(SmallVector<int32_t>{value}),
-      mlir::IntegerType::Signed);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstantScalar(odsBuilder, odsState, value,
+                      odsBuilder.getIntegerType(32, /*isSigned=*/true),
+                      deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        APFloat value, Type elementType,
                        DeviceRefAttr deviceRef) {
   assert(elementType.isIntOrFloat() && !elementType.isInteger());
-  auto type =
-      MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
-  auto valueAttr =
-      FloatArrayElementsAttr::get({std::move(value)}, type.getElementType());
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstantScalar(odsBuilder, odsState, value, elementType, deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        APInt value, Type elementType, DeviceRefAttr deviceRef) {
   assert(elementType.isInteger());
-  auto type =
-      MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
-  auto rankedAttrTy = RankedTensorType::get(1, elementType);
-  auto valueAttr =
-      IntArrayElementsAttr::get(rankedAttrTy, ArrayRef<APInt>(value));
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstant(odsBuilder, odsState, ArrayRef<APInt>(value), elementType,
+                deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        float value, DeviceRefAttr deviceRef) {
-  Type dtype = odsBuilder.getF32Type();
-  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype, deviceRef);
-  SmallVector<APFloat> data;
-  data.emplace_back(value);
-  auto valueAttr = FloatArrayElementsAttr::get(data, dtype);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstantScalar(odsBuilder, odsState, value, odsBuilder.getF32Type(),
+                      deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        double value, DeviceRefAttr deviceRef) {
-  Type dtype = odsBuilder.getF64Type();
-  auto type = MO::TensorType::get(SmallVector<int64_t>{}, dtype, deviceRef);
-  SmallVector<APFloat> data;
-  data.emplace_back(value);
-  auto valueAttr = FloatArrayElementsAttr::get(data, dtype);
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+  buildConstantScalar(odsBuilder, odsState, value, odsBuilder.getF64Type(),
+                      deviceRef);
 }
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                       bool value) {
-  auto type =
-      MO::TensorType::get(SmallVector<int64_t>{}, odsBuilder.getI1Type());
-  auto rankedAttrTy = RankedTensorType::get(1, odsBuilder.getI8Type());
-  auto valueAttr = IntArrayElementsAttr::get(
-      rankedAttrTy, ArrayRef<APInt>(APInt(8, value, /*isSigned=*/false)));
-  build(odsBuilder, odsState, type, cast<ElementsAttr>(valueAttr));
+                       bool value, DeviceRefAttr deviceRef) {
+  buildConstantScalar(odsBuilder, odsState, value, odsBuilder.getI1Type(),
+                      deviceRef);
 }
 
 bool ConstantOp::preferResultsDevice() { return true; }

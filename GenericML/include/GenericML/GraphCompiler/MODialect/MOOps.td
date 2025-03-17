@@ -562,21 +562,26 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
 
   let builders = [
     /// Create a new rank-1 tensor mo.constant of int32 value.
-    OpBuilder<(ins "ArrayRef<int32_t>":$values)>,
+    OpBuilder<(ins "ArrayRef<int32_t>":$values,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of int32 value.
-    OpBuilder<(ins "int32_t":$value, CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins "int32_t":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-1 tensor mo.constant of int64 value.
     OpBuilder<(ins "ArrayRef<int64_t>":$values,
       CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of int64 value.
-    OpBuilder<(ins "int64_t":$value, CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
+    OpBuilder<(ins "int64_t":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-1 tensor mo.constant of any float type.
-    OpBuilder<(ins "ArrayRef<APFloat>":$values, "Type":$elementType)>,
+    OpBuilder<(ins "ArrayRef<APFloat>":$values, "Type":$elementType,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of given float type.
     OpBuilder<(ins "APFloat":$value, "Type":$elementType,
       CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-1 tensor mo.constant of any int type.
-    OpBuilder<(ins "ArrayRef<APInt>":$values, "Type":$elementType)>,
+    OpBuilder<(ins "ArrayRef<APInt>":$values, "Type":$elementType,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of given int type.
     OpBuilder<(ins "APInt":$value, "Type":$elementType,
       CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
@@ -587,9 +592,11 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
     OpBuilder<(ins "double":$value,
       CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-1 tensor mo.constant of boolean value.
-    OpBuilder<(ins "ArrayRef<bool>":$values)>,
+    OpBuilder<(ins "ArrayRef<bool>":$values,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
     /// Create a new rank-0 (scalar) tensor mo.constant of boolean value.
-    OpBuilder<(ins "bool":$value)>,
+    OpBuilder<(ins "bool":$value,
+      CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
   ];
 }
 
