@@ -501,8 +501,9 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
     inserting an HtoD copy in converting mo.constant.external to
     mgp.buffer.constant.external.
 
-    If the `isMutable` attribute is set to true, the external constant will be
-    treated as if mutable, and it will not be lifted to the init phase.
+    If the `hasAlias` attribute is set to true, the external constant might be
+    updated through external alias between graph invocation, and it will not
+    be lifted to the init phase.
 
     Example:
 
@@ -515,7 +516,7 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
   let arguments = (ins
     StrAttr:$name,
     UI64Attr:$align,
-    DefaultValuedAttr<BoolAttr, "false">:$isMutable
+    DefaultValuedAttr<BoolAttr, "false">:$hasAlias
   );
   let results = (outs MO_Tensor:$result);
 

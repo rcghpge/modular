@@ -13,9 +13,11 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
+#include "GenericML/Support/DataflowUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
+#include <GenericML/GraphCompiler/MODialect/MOInterfaces.h>
 
 namespace M::MOGG {
 
@@ -853,6 +855,16 @@ buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
 
   return libraryAnalysis.buildParameterCall(MOGG::Utils::DPSBuildTensorSpecs,
                                             buildSpecParams, lambdaArgs);
+}
+
+bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
+  return dependsOnlyOnProperty(operation, [](mlir::Operation *op) -> bool {
+    if (!isa<MO::ConstantLike>(op))
+      return false;
+
+    auto extConst = dyn_cast<MO::ConstantExternalOp>(op);
+    return !extConst || !extConst.getHasAlias();
+  });
 }
 
 } // namespace M::MOGG

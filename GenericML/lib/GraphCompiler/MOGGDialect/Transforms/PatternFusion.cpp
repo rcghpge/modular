@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/Matchers.h"
@@ -19,6 +20,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <Support/DeviceSpecs.h>
 #include <numeric>
 
 using namespace M;
@@ -261,6 +263,8 @@ struct MatmulConstBPattern
     if (weightsType.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
 
+    // TODO(KERN-1160): This can change back to MO::ConstantLike after the
+    // kernel crash described in this ticket has been resolved.
     if (!input ||
         !dependsOnConstantsOnly<MO::ConstantOp>(weight.getDefiningOp()))
       return failure();
@@ -405,7 +409,7 @@ struct ForceMatmulTransposeBForGPU
           matmul, "Matmul use of weights is not annotated with the "
                   "expected default layout.");
 
-    if (!dependsOnConstantsOnly<MO::ConstantLike>(weightProducer))
+    if (!dependsOnNoAliasConstantLikesOnly(weightProducer))
       return rewriter.notifyMatchFailure(
           matmul, "Weights do not only depend on constants");
 
@@ -537,7 +541,24 @@ struct ConcatZeroAxisPattern
 
     Block *concatBlock = concat.getResult().getParentBlock();
     DenseSet<Value> uniqueInputs;
+
+    auto graphOp = concat->getParentOfType<GraphOp>();
+    DeviceRefAttr defaultDevice =
+        getGraphDevice(graphOp, getHostDevice(graphOp));
+    auto getDevice = [&](TensorType ty) {
+      auto maybeDev = ty.getDeviceRef();
+      return maybeDev ? maybeDev : defaultDevice;
+    };
+
+    // We need all devices to be the same.
+    DeviceRefAttr targetDevice =
+        getDevice(cast<TensorType>(concat.getInputs()[0].getType()));
     for (Value input : concat.getInputs()) {
+      TensorType tensorTy = cast<TensorType>(input.getType());
+      if (getDevice(tensorTy) != targetDevice) {
+        return rewriter.notifyMatchFailure(
+            concat, "Not all inputs are on same device.");
+      }
       Location inputLoc = input.getLoc();
       // This ensures we don't generate a slow `MGP::BufferConcatOp` that won't
       // be optimized away by `MGP::ConcatInPlacePass`.
@@ -597,7 +618,7 @@ struct ConvConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
+    if (!dependsOnNoAliasConstantLikesOnly(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
     auto maybeNumGroups = MO::tryGetConstantInt(op.getNumGroups());
@@ -735,7 +756,7 @@ struct ConvTransposeConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (!dependsOnConstantsOnly<MO::ConstantOp>(filter.getDefiningOp()))
+    if (!dependsOnNoAliasConstantLikesOnly(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
     if (!rewriter.deviceAnnots.isConsistentWith(MO::getHostDevice(op))) {

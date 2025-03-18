@@ -8,6 +8,7 @@
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/StaticReshapeDimensionsMappingAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
@@ -18,8 +19,6 @@
 #include "Support/AssertStream.h"
 #include "Support/ML/Permutation.h"
 #include "llvm/ADT/TypeSwitch.h"
-
-#include "./Utils.h"
 
 #include <numeric>
 
@@ -2789,7 +2788,7 @@ struct MergeParallelMatmulPattern
           if (mlir::ShapedType::isDynamic(resultType.getIntDim(1)))
             return false;
 
-          if (!dependsOnConstantsOnly<ConstantOp>(
+          if (!MOGG::dependsOnNoAliasConstantLikesOnly(
                   matmulOp.getInputB().getDefiningOp()))
             return false;
 

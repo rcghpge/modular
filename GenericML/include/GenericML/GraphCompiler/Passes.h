@@ -224,24 +224,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   };
 };
 
-struct ShapeInferenceOptions
-    : public mlir::PassPipelineOptions<ShapeInferenceOptions> {
-  ListOption<std::string> kernelLibraryPaths{
-      *this, "kernel-library-paths",
-      llvm::cl::desc(
-          "Paths to mojo packages containing mojo shape function definitions")};
-  Option<bool> constantFold{
-      *this, "constant-fold",
-      llvm::cl::desc("For use with the extended pipeline. Whether to use "
-                     "constant-folding."),
-      llvm::cl::init(true)};
-  Option<std::string> compiledFrameworkLabel{
-      *this, "compiled-framework-label",
-      llvm::cl::desc(
-          "For use with the extended pipeline / constant-folding. Framework "
-          "label to compile to (used in mgp.model framework tag).")};
-};
-
 /// Registers the MO-to-MGP pipeline for use by testing tools.
 /// The passes will use the current runtime, which must be established by the
 /// tool.
@@ -254,11 +236,7 @@ void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts);
 void registerShapeInferencePipeline();
 
 // Create the end-to-end shape inference pipeline.
-void buildShapeInferencePipeline(mlir::OpPassManager &pm,
-                                 const ShapeInferenceOptions &opts,
-                                 const MoToMgpOptions &moToMgpOptions);
-void buildShapeInferencePipelineDefaultOpts(mlir::OpPassManager &pm,
-                                            const ShapeInferenceOptions &opts);
+void buildShapeInferencePipeline(mlir::OpPassManager &pm);
 
 } // namespace M::MO
 
