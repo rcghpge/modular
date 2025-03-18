@@ -123,6 +123,9 @@ public:
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
                                StringRef parameterName);
 
+  /// Verify the call to a MO or custom kernel.
+  ErrorOrSuccess verifyKernelCallOp(Operation *kernelCallOp);
+
 private:
   /// Helper function to update the module and state data but account for
   /// collisions
@@ -237,6 +240,75 @@ struct LoadMojoAnalysisPass {
   }
 
   std::shared_ptr<MojoLibraryAnalysis> analysis;
+};
+
+/// This struct holds lots of information about a Mojo kernel we want to
+/// execute. (Kernel::execute or Kernel::shape method). This is gnerated by
+/// looking at the function signature and the MOGGPreElab attributes attached to
+/// the kgen.generator. We need this struct to check and infer the inputs /
+/// outputs, types, and parameters when calling a Kernel. This is used by both
+/// the Graph API (at graph building time) and MoToKGEN (at compile time).
+struct MojoKernelInfos {
+  /// The Generator of the mojo kernel.
+  KGEN::GeneratorOp mojoCode;
+
+  /// Value of the MOGG_ARG_TYPE_NAMES decorator filled by MOGGAnnotate.
+  ArrayAttr argumentTypesNames;
+
+  /// Value of the MOGG_RESULT_TYPE_NAME decorator filled by MOGGAnnotate.
+  /// or nullptr if there is no return value.
+  StringAttr resultTypeName;
+
+  /// True if the kernel can throw an error.
+  bool canThrow;
+
+  /// Index of the optional DeviceContextPtr argument.
+  /// std::nullopt if the kernel doesn't take one.
+  std::optional<std::size_t> deviceContextArgIndex;
+
+  /// Index of the optional DeviceContextPtrList argument.
+  /// std::nullopt if the kernel doesn't take one.
+  std::optional<std::size_t> deviceContextListArgIndex;
+
+  /// Number of kernel operands that represent destination-passing style
+  /// outputs.
+  size_t numDPSStyleOutputs;
+
+  /// Number of opaque outputs that are DPS in the mojo signature.
+  size_t numOpaqueDPSOutputs;
+
+  /// Number of opaque outputs that are represented with a direct return value.
+  size_t numOpaqueKernelOutputs;
+
+  /// Number of kernel operands that represent actual inputs of the kernel
+  /// (ignoring things like chains / deviceContext).
+  size_t numKernelInputs;
+
+  /// Some of the kernel inputs are VariadicTensor.
+  bool hasVariadicInputs;
+
+  /// Some of the kernel outputs are VariadicTensor.
+  bool hasVariadicOutputs;
+
+  /// Few kernels like reshape / broadcast_to take a special "output_shape"
+  /// argument.
+  bool hasExtraOutputShapeArgument;
+
+  /// Returns the number of actual kernel outputs (ignoring things like chains /
+  /// exceptions).
+  size_t numKernelOutputs() const {
+    return numDPSStyleOutputs + numOpaqueDPSOutputs + numOpaqueKernelOutputs;
+  }
+
+  /// Returns the number of extra kernel results needed to handle exceptions.
+  size_t numErrorHandleResults() const { return canThrow ? 2 : 0; }
+
+  /// Build the infos from the MojoKernel.
+  static ErrorOr<MojoKernelInfos> create(KGEN::GeneratorOp generatorOp,
+                                         bool supportMultiVariadics);
+
+  /// Print the struct content to stderr.
+  void dump();
 };
 
 //===----------------------------------------------------------------------===//
