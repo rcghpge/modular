@@ -673,7 +673,9 @@ private:
   void emitAttributeKind(MEF::AttributeKind kind) { emitByte((uint8_t)kind); }
   FailureOr<MEF::AttributeKind> deriveAttributeKind(Type eltType,
                                                     Location loc) const;
-
+  void moveMetadataImmediatelyBeforeValue(MEFOffset metadataStartOffset,
+                                          MEFOffset metadataEndOffset,
+                                          MEFOffset valueStartOffset);
   MEFOffset emitAttributeInternal(Attribute attr, Location loc);
   MEFOffset emitIntegerValue(const APInt &value, Type eltType, Location loc);
   MEFOffset emitStringAttribute(StringRef value);
@@ -743,6 +745,29 @@ AttributesEmitter::deriveAttributeKind(Type eltType, Location loc) const {
   return getAttributeKind(category, bitwidth);
 }
 
+/// In some cases, we need to emit some metadata immediately before a given
+/// value. That metadata might be an array size or attribute kind. Often, the
+/// size of that metadata is not known until after it is emitted.
+///
+/// We also need to ensure that the data for a given value is properly aligned.
+///
+/// So we first emit the metadata, then align for the value (both in the caller
+/// of this function), then here we move the metadata immediately before the
+/// start of the value, if necessary.
+void AttributesEmitter::moveMetadataImmediatelyBeforeValue(
+    MEFOffset metadataStartOffset, MEFOffset metadataEndOffset,
+    MEFOffset valueStartOffset) {
+  if (metadataEndOffset.value != valueStartOffset.value) {
+    size_t sizeOfArraySizeInBytes =
+        metadataEndOffset.value - metadataStartOffset.value;
+    memmove(getRawPointer(valueStartOffset) - sizeOfArraySizeInBytes,
+            getRawPointer(metadataStartOffset), sizeOfArraySizeInBytes);
+    // Set the unused bytes to the alignment filler.
+    memset(getRawPointer(metadataStartOffset), MEF::kAlignmentByte,
+           valueStartOffset.value - metadataEndOffset.value);
+  }
+}
+
 /// Emit a single integer value of supported type.
 MEFOffset AttributesEmitter::emitIntegerValue(const APInt &value, Type eltType,
                                               Location loc) {
@@ -750,17 +775,23 @@ MEFOffset AttributesEmitter::emitIntegerValue(const APInt &value, Type eltType,
   if (failed(kindOr))
     return {0};
 
-  size_t bytes = llvm::divideCeil(value.getBitWidth(), 8);
-  alignTo(bytes);
+  auto kindStart = getOffset();
 
   // Emit the kind of the data.
   emitAttributeKind(*kindOr);
 
-  auto offset = getOffset();
+  auto kindEnd = getOffset();
+
+  size_t bytes = llvm::divideCeil(value.getBitWidth(), 8);
+  alignTo(bytes);
+
+  auto valueOffset = getOffset();
+
+  moveMetadataImmediatelyBeforeValue(kindStart, kindEnd, valueOffset);
 
   uint64_t v = value.getLimitedValue();
   emitBytes({reinterpret_cast<const uint8_t *>(&v), bytes});
-  return offset;
+  return valueOffset;
 }
 
 MEFOffset AttributesEmitter::emitStringAttribute(StringRef value) {
@@ -817,14 +848,7 @@ AttributesEmitter::emitIntOrFloatRange(MEF::AttributeKind kind,
   // If there is a gap between the size and the first attribute value, we
   // move the size to be immediately before the first attribute value to
   // remove the gap.
-  if (sizeAndKindEnd.value != startOffset.value) {
-    size_t sizeOfArraySizeInBytes = sizeAndKindEnd.value - sizeStart.value;
-    memmove(getRawPointer(startOffset) - sizeOfArraySizeInBytes,
-            getRawPointer(sizeStart), sizeOfArraySizeInBytes);
-    // Set the unused bytes to the alignment filler.
-    memset(getRawPointer(sizeStart), MEF::kAlignmentByte,
-           startOffset.value - sizeAndKindEnd.value);
-  }
+  moveMetadataImmediatelyBeforeValue(sizeStart, sizeAndKindEnd, startOffset);
 
   emitRangeFn();
   return startOffset;
@@ -1156,6 +1180,9 @@ LogicalResult TypeEmitter::emitUniformQuantizedType(UniformQuantizedType type) {
 
   if (failed(emitStorageAndExpressedTypes(type)))
     return failure();
+
+  // Ensure that we emit the float aligned to 4 bytes.
+  emitter->alignTo(4);
 
   // We emit the scale as is.
   emitter->emitFloat((float)type.getScale());

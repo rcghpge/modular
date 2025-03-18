@@ -170,6 +170,9 @@ static size_t decodeQuantizedType(const uint8_t *pointer,
   assert(MEF::TypeKind(dataPtr[0]) == MEF::TypeKind::quantized);
   decodeStorageAndExpressedType(++dataPtr, attrEnd, storageType, expressedType);
 
+  // The float type is aligned to 4 bytes.
+  dataPtr = (uint8_t *)llvm::alignTo((uintptr_t)dataPtr, 4);
+
   scale = MEF::parseFloat(dataPtr);
   zeroPoint = MEF::parseSignedVBR(dataPtr);
 

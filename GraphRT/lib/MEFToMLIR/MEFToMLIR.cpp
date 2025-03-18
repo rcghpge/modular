@@ -388,6 +388,9 @@ bool MEFToMLIRConverter::parseAttribute(size_t offset,
 
       float scale = 0.0;
       ssize_t zeroPoint;
+
+      // The float type is aligned to 4 bytes.
+      attrReader.alignTo(4);
       if (attrReader.parseFloat(scale) || attrReader.parseSignedVBR(zeroPoint))
         return {};
 
