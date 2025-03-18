@@ -34,21 +34,26 @@ public:
   /// Returns the SSA value that the parameter attribute is lowered to, or a
   /// null value if it hasn't been lowered yet.
   Value lookupLowered(Region *parentRegion, Attribute attr) {
-    auto &regionMap = loweredParams[parentRegion];
-    if (auto it = regionMap.find(attr); it != regionMap.end())
-      return it->second;
-    if (auto parent = parentRegion->getParentRegion(); parent)
-      return lookupLowered(parent, attr);
+    while (parentRegion) {
+      auto &regionMap = loweredParams[parentRegion];
+      if (auto it = regionMap.find(attr); it != regionMap.end())
+        return it->second;
+      parentRegion = parentRegion->getParentRegion();
+    }
+
     return {};
   }
 
   void eraseLowered(Region *parentRegion, Attribute attr) {
-    auto &regionMap = loweredParams[parentRegion];
-    if (auto it = regionMap.find(attr); it != regionMap.end())
-      return (void)regionMap.erase(it);
-    if (auto parent = parentRegion->getParentRegion(); parent)
-      return eraseLowered(parent, attr);
-    assert(false);
+    while (parentRegion) {
+      auto &regionMap = loweredParams[parentRegion];
+      if (regionMap.erase(attr))
+        return;
+      parentRegion = parentRegion->getParentRegion();
+    }
+
+    assert(false && "unable to find parent region for attribute");
+    return;
   }
 
   /// Returns a lowered value for the parameter expression attribute. Parameter
