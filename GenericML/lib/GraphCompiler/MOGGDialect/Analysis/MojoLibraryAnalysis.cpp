@@ -13,6 +13,7 @@
 #include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/LITDialect/LITUtils.h"
