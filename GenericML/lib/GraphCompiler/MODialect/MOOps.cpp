@@ -4646,6 +4646,30 @@ void AllReduceSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// MO_AllGatherOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AllGatherOp::verify() {
+  // Checks input/output counts and that corresponding device types match.
+  auto outputs = getOutputs();
+  if (getInputs().size() != outputs.size())
+    return emitError(
+        "number of inputs and outputs should match for all-gather");
+  return success();
+}
+
+LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
+                                SmallVectorImpl<OpFoldResult> &results) {
+  // If the all-gather has 1 input, return the input (identity op).
+  if (getNumResults() == 1 &&
+      getInputs()[0].getType() == getOutputs()[0].getType()) {
+    results.push_back(getInputs()[0]);
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // MO_LayerNormOp
 //===----------------------------------------------------------------------===//
 

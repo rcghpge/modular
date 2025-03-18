@@ -5050,6 +5050,27 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   );
 }
 
+
+def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
+  MO_HasDeviceInterface,
+]> {
+  let summary = "AllGather across N devices (variadic).";
+  let description = [{
+    AllGather takes in inputs each coming from a different device and collects
+    the data into an output tensor along the 0th dimension. The output is
+    replicated across the same devices.
+  }];
+  let hasVerifier = 1;
+  // Variadic allgather has a folder since it can take 1 input.
+  let hasFolder = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputs
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//
