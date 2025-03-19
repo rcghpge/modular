@@ -7,5 +7,6 @@ modular_py_library(
     deps = [
         requirement("psutil"),
         requirement("sentinel"),
+        requirement("pyzmq"),
     ],
 )
