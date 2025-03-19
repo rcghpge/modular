@@ -520,6 +520,7 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
   );
   let results = (outs MO_Tensor:$result);
 
+  let hasCanonicalizeMethod = 1;
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 

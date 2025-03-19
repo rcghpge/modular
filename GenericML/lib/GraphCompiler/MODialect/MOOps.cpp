@@ -1236,6 +1236,43 @@ LogicalResult Static::BroadcastToOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ConstantExternalOp support
+//===----------------------------------------------------------------------===//
+
+/// Find the closes IsolatedFromAbove parent region for moving an operation to.
+/// This logic is taken from `mlir/Transforms/Utils/FoldUtils.cpp`, which drives
+/// the hoisting of ConstantLike values as high in the region tree as possible.
+static Region *getInsertionRegion(Block *insertionBlock) {
+  while (Region *region = insertionBlock->getParent()) {
+    // Insert in this region if the parent is a top-level operation.
+    auto *parentOp = region->getParentOp();
+    if (parentOp->hasTrait<OpTrait::IsIsolatedFromAbove>() ||
+        !parentOp->getBlock())
+      return region;
+
+    // Traverse up the parent looking for an insertion region.
+    insertionBlock = parentOp->getBlock();
+  }
+
+  llvm_unreachable("expected valid insertion region");
+}
+
+LogicalResult ConstantExternalOp::canonicalize(ConstantExternalOp op,
+                                               PatternRewriter &rewriter) {
+  // Special case the hoisting of mo.constant.external operations, since they
+  // cannot be ConstantLike and hoisted by default in the
+  // GreedyPatternRewriteDriver.
+  Region *insertRegion = getInsertionRegion(op->getBlock());
+  Block *insertBlock = &insertRegion->front();
+
+  if (insertBlock == op->getBlock())
+    return failure();
+
+  rewriter.moveOpBefore(op, insertBlock, insertBlock->begin());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantOp support
 //===----------------------------------------------------------------------===//
 

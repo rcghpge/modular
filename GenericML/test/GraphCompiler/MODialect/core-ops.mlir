@@ -213,6 +213,31 @@ mo.graph @constant_unknown_shape_fold() -> !mo.tensor<[2, ?], si32> {
 }
 
 //===----------------------------------------------------------------------===//
+// ConstantExternalOp
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: mo.graph @external_constant_control_flow
+// CHECK:       (%[[ARG0:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[5, 10], si64, cpu:0>
+mo.graph @external_constant_control_flow(%arg0: !mo.tensor<[], bool>) -> !mo.tensor<[5, 10], si64, cpu:0> {
+  // CHECK-NEXT: %[[C1:.*]] = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64, cpu:0>
+  // CHECK-NEXT: %[[C0:.*]] = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64, cpu:0>
+
+  %0 = mo.if(%arg0 : !mo.tensor<[], bool>) -> !mo.tensor<[5, 10], si64, cpu:0> {
+    %4 = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64, cpu:0>
+
+    // CHECK: mo.yield %[[C0]]
+    mo.yield %4 : !mo.tensor<[5, 10], si64, cpu:0>
+  } else {
+    %4 = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64, cpu:0>
+
+    // CHECK: mo.yield %[[C1]]
+    mo.yield %4 : !mo.tensor<[5, 10], si64, cpu:0>
+  }
+  mo.output %0 : !mo.tensor<[5, 10], si64, cpu:0>
+}
+
+
+//===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
 
