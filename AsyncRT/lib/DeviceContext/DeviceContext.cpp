@@ -21,6 +21,7 @@
 
 #include "llvm/ADT/Twine.h"
 
+#include <cstdio>
 #include <mutex>
 #include <string.h>
 
@@ -152,6 +153,11 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
     ErrorOr<const HIPDevice &> device = HIPDevice::get(id);
     if (device.isError())
       return device.takeError();
+    // This disables full buffering when piping to a file if running
+    // on AMD GPU. Without setting this `FileCheck` will have CPU
+    // prints and GPU kernel prints mixed together, causing the tests
+    // to fail.
+    setbuf(stdout, nullptr);
     return DeviceRef::copy(&device.get());
   }
 
