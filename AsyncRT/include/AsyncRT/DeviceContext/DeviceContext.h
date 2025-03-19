@@ -36,6 +36,7 @@ class DeviceContext;
 class DeviceEvent;
 class DeviceFunction;
 class DeviceFunctionCacheEntry;
+class DeviceMulticastBuffer;
 class DeviceStream;
 class DeviceTimer;
 
@@ -45,6 +46,7 @@ using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceEventRef = RCRef<const DeviceEvent>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
+using DeviceMulticastBufferRef = RCRef<const DeviceMulticastBuffer>;
 using DeviceStreamRef = RCRef<const DeviceStream>;
 using DeviceTimerRef = RCRef<const DeviceTimer>;
 
@@ -78,6 +80,8 @@ public:
 
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
+
+  virtual ErrorOr<bool> supportsMulticast() const;
 
   virtual int deviceCount() const = 0;
 
@@ -165,6 +169,29 @@ private:
   // TODO: Remove the V1 compatibility.
   DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize,
                bool isHost, bool owning);
+};
+
+class DeviceMulticastBuffer : public ReferenceCounted<DeviceMulticastBuffer> {
+public:
+  virtual ~DeviceMulticastBuffer();
+
+  virtual ErrorOr<DeviceBufferRef>
+  multicastBuffer(const DeviceContext &ctx) const = 0;
+  virtual ErrorOr<DeviceBufferRef>
+  unicastBufferFor(const DeviceContext &ctx) const = 0;
+
+  size_t byteSize() const;
+
+  virtual size_t numberOfDevices() const = 0;
+
+  static ErrorOr<DeviceMulticastBufferRef>
+  allocate(const std::vector<DeviceContextRef> &contexts, size_t byteSize);
+
+protected:
+  DeviceMulticastBuffer(size_t byteSize);
+
+private:
+  size_t byteSize_;
 };
 
 class DeviceEvent : public ReferenceCounted<DeviceEvent> {

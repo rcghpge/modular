@@ -111,6 +111,8 @@ MODULAR_CXX_EXPORT StringRef Device::vendor() const {
   return "";
 }
 
+ErrorOr<bool> Device::supportsMulticast() const { return false; }
+
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
   return allocAlignment_;
 }
@@ -306,6 +308,48 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   }
   return DeviceBufferRef::take(new DeviceBuffer(
       context(), *this, origPtr + byteOffset, byteSize, isHost()));
+}
+
+//
+// ===== DeviceMulticastBuffer ===== //
+//
+DeviceMulticastBuffer::DeviceMulticastBuffer(size_t byteSize)
+    : byteSize_(byteSize) {}
+
+DeviceMulticastBuffer::~DeviceMulticastBuffer() {}
+
+size_t DeviceMulticastBuffer::byteSize() const { return byteSize_; }
+
+ErrorOr<DeviceMulticastBufferRef>
+DeviceMulticastBuffer::allocate(const std::vector<DeviceContextRef> &contexts,
+                                size_t byteSize) {
+  std::vector<const Device *> devices;
+  for (const auto &ctx : contexts) {
+    if (!devices.empty()) {
+      if (devices[0]->api() != ctx->device().api()) {
+        RAISE_ERROR_MESSAGE("All contexts need to use the same API.");
+      }
+    }
+    // Check for duplicate entries.
+    for (const auto &dev : devices) {
+      if (dev->id() == ctx->device().id()) {
+        RAISE_ERROR_MESSAGE("Duplicate context on a device.");
+      }
+    }
+    // Check that multicast is supported on this particular device.
+    if (!ctx->device().supportsMulticast())
+      RAISE_ERROR_MESSAGE("Multicast buffer not supported.");
+
+    // Add to the set of devices participating in this multicast allocation.
+    devices.emplace_back(&ctx->device());
+  }
+  if (devices.size() < 2) {
+    RAISE_ERROR_MESSAGE("At least two devices necessary.");
+  }
+  if (devices[0]->api() == CUDADevice::api) {
+    return CUDADeviceMulticastBuffer::allocate(devices, byteSize);
+  }
+  RAISE_ERROR_MESSAGE("Multicast only supported on CUDA devices.");
 }
 
 //
