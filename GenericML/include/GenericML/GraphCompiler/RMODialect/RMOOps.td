@@ -477,7 +477,7 @@ def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
 
 def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  DeclareOpInterfaceMethods<InferTypeOpInterface, ["isCompatibleReturnTypes"]>,
 ]> {
   let summary = "Converts a shape to a tensor";
   let description = [{
@@ -488,6 +488,11 @@ def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs);
   }];
 }
 

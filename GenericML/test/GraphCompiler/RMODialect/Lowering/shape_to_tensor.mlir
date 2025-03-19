@@ -33,3 +33,17 @@ mo.graph @shape_to_tensor_symbolic<batch, seqlen>() -> !mo.tensor<[3], si64> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mosh.param.to_value: !mosh.ape = <[batch, seqlen, 22]>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si64>
 // CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[3], si64>
+
+// -----
+
+// Device must be provided by user so we cannot fail type inference if we
+// cannot predict it.
+mo.graph @shape_to_tensor_symbolic_different_device<batch, seqlen>() -> !mo.tensor<[3], si64, cpu:0> {
+  %1 = rmo.shape_to_tensor() { shape = #mosh<ape[batch, seqlen, 22]> : !mosh.ape } : () -> !mo.tensor<[3], si64, cpu:0>
+  mo.output %1 : !mo.tensor<[3], si64, cpu:0>
+}
+// CHECK-LABEL: mo.graph
+// CHECK-SAME: @shape_to_tensor_symbolic_different_device<batch, seqlen>() -> !mo.tensor<[3], si64, cpu:0>  {
+// CHECK-NEXT: [[V0:[^ ]*]] = mosh.param.to_value: !mosh.ape = <[batch, seqlen, 22]>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si64, cpu:0>
+// CHECK-NEXT: mo.output [[V1]] : !mo.tensor<[3], si64, cpu:0>

@@ -908,6 +908,24 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
   return success();
 }
 
+bool ShapeToTensorOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  for (auto [a, b] : llvm::zip(lhs, rhs)) {
+    if (a == b)
+      continue;
+    auto aAsTensor = dyn_cast<MO::TensorType>(a);
+    auto bAsTensor = dyn_cast<MO::TensorType>(b);
+
+    // Device may be provided directly by original creator -- no way to infer
+    if (aAsTensor && bAsTensor &&
+        aAsTensor.cloneWith(DeviceRefAttr{}) ==
+            bAsTensor.cloneWith(DeviceRefAttr{}))
+      continue;
+
+    return false;
+  }
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // Op registration
 //===----------------------------------------------------------------------===//
