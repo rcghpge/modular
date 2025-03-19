@@ -206,6 +206,9 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
 
 ErrorOr<DeviceContextRef>
 HIPDevice::createContext(size_t bufferCacheSize) const {
+  // Make sure that we associate the stream with the correct device.
+  HIP_CHECK_ERR(setCurrent());
+
   hipCtx_t context;
   HIP_CHECK_ERR(this->hipDriver().CtxCreate(&context, 0, this->id()));
 
@@ -608,10 +611,12 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
     RAISE_ERROR("not enough data in src");
   }
   if (srcCtx.context_ != dstCtx.context_) {
-    // See
-    // https://github.com/ROCm/HIPIFY/blob/amd-staging/docs/tables/CUDA_Driver_API_functions_supported_by_HIP.md
-    // Missing cuMemcpyPeer
-    RAISE_ERROR("Peer copy not implemented yet");
+    if (mode == ASYNC) {
+      HIP_CHECK_ERR(
+          driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+    } else {
+      HIP_CHECK_ERR(driver_.MemcpyDtoD(dstPtr, srcPtr, dstByteSize));
+    }
   } else {
     if (mode == ASYNC) {
       HIP_CHECK_ERR(
