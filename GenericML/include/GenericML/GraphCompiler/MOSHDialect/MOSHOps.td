@@ -57,7 +57,7 @@ def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure,
   let hasVerifier = 1;
 }
 
-def MOShape_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
+def MOSH_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
   let summary = "Shape broadcasting operation";
   let description = [{
     Given two tensor shapes, return the shape that both broadcast to under the
@@ -83,7 +83,7 @@ def MOShape_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
   let hasCanonicalizeMethod = 1;
 }
 
-def MOShape_ConcatOp : MOSH_Op<"concat", [Pure]> {
+def MOSH_ConcatOp : MOSH_Op<"concat", [Pure]> {
   let summary = "Concatenate a variadic number of shapes.";
   let description = [{
     Return a new shape by concatenating individual dimensions in the input
@@ -143,7 +143,7 @@ def MOSH_EqualOp : MOSH_Op<"eq", [Pure, Commutative]> {
   }];
 }
 
-def MOShape_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
+def MOSH_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
   let summary = "Operation to extract a dimension from a shape.";
   let description = [{
     Return the size of the specified dimension in the given shape.
