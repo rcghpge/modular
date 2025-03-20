@@ -15,7 +15,6 @@ Modules
 * :code_link:`/max/api/python/pipelines/kv_cache/hf|hf`
 * :code_link:`/max/api/python/pipelines/kv_cache/manager|manager`
 * :code_link:`/max/api/python/pipelines/kv_cache/naive_cache|naive_cache`
-* :code_link:`/max/api/python/pipelines/kv_cache/radix_trie|radix_trie`
 
 
 .. toctree::
@@ -26,4 +25,3 @@ Modules
    hf
    manager
    naive_cache
-   radix_trie
