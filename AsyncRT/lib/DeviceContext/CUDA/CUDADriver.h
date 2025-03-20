@@ -24,7 +24,6 @@ using CUcontext = struct CUctx_st *;
 using CUdevice = int;
 using CUdeviceptr = void *;
 using CUfunction = struct CUfunc_st *;
-using CUmemGenericAllocationHandle = unsigned long long;
 using CUmemoryPool = struct CUmemPoolHandle_st *;
 using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
@@ -37,7 +36,6 @@ enum class CUdevice_attribute {
   UNIFIED_ADDRESSING = 41,
   COMPUTE_CAPABILITY_MAJOR = 75,
   COMPUTE_CAPABILITY_MINOR = 76,
-  MULTICAST_SUPPORTED = 132,
 };
 
 enum class CUdevice_P2PAttribute {
@@ -176,51 +174,6 @@ using CUmemAccessDesc = struct CUmemAccessDesc_st {
   CUmemAccess_flags flags;
 };
 
-enum class CUmemAllocationType {
-  INVALID = 0x0,
-  PINNED = 0x1,
-  MAX = 0x7FFFFFFF,
-};
-
-enum class CUmemAllocationHandleType {
-  NONE = 0x0,
-  POSIX_FILE_DESCRIPTOR = 0x1,
-  WIN32 = 0x2,
-  WIN32_KMT = 0x4,
-  FABRIC = 0x8,
-  MAX = 0x7FFFFFFF,
-};
-
-using CUmemAllocationProp = struct CUmemAllocationProp_st {
-  CUmemAllocationType type;
-  CUmemAllocationHandleType requestedHandleTypes;
-  CUmemLocation location;
-  void *win32HandleMetaData;
-  struct {
-    unsigned char compressionType;
-    unsigned char gpuDirectRDMACapable;
-    unsigned short usage;
-    unsigned char reserved[4];
-  } allocFlags;
-};
-
-enum class CUmemAllocationGranularity_flags {
-  GRANULARITY_MINIMUM = 0x0,
-  GRANULARITY_RECOMMENDED = 0x1,
-};
-
-enum class CUmulticastGranularity_flags {
-  GRANULARITY_MINIMUM = 0x0,
-  GRANULARITY_RECOMMENDED = 0x1,
-};
-
-using CUmulticastObjectProp = struct CUmulticastObjectProp_st {
-  unsigned int numDevices;
-  size_t size;
-  unsigned long long handleTypes;
-  unsigned long long flags;
-};
-
 #define CUDA_DRIVER_CALL_LOG()                                                 \
   if (do_call_log) {                                                           \
     /* Make sure we emit a single entry per log call. */                       \
@@ -231,7 +184,6 @@ using CUmulticastObjectProp = struct CUmulticastObjectProp_st {
   }
 
 class CUDADriver {
-
 public:
   enum Result : unsigned int {
     SUCCESS = 0,
@@ -580,90 +532,6 @@ public:
     return cuMemGetInfo_v2_(free, total);
   }
 
-  Result
-  MemGetAllocationGranularity(size_t *granularity,
-                              const CUmemAllocationProp *prop,
-                              CUmemAllocationGranularity_flags option) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemGetAllocationGranularity_(granularity, prop, option);
-  }
-
-  Result MemCreate(CUmemGenericAllocationHandle *handle, size_t size,
-                   const CUmemAllocationProp *prop,
-                   unsigned long long flags) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemCreate_(handle, size, prop, flags);
-  }
-
-  Result MemRelease(CUmemGenericAllocationHandle handle) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemRelease_(handle);
-  }
-
-  Result MemAddressReserve(CUdeviceptr *ptr, size_t size, size_t alignment,
-                           CUdeviceptr addr, unsigned long long flags) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemAddressReserve_(ptr, size, alignment, addr, flags);
-  }
-
-  Result MemAddressFree(CUdeviceptr ptr, size_t size) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemAddressFree_(ptr, size);
-  }
-
-  Result MemMap(CUdeviceptr ptr, size_t size, size_t offset,
-                CUmemGenericAllocationHandle handle,
-                unsigned long long flags) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemMap_(ptr, size, offset, handle, flags);
-  }
-
-  Result MemUnmap(CUdeviceptr ptr, size_t size) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemUnmap_(ptr, size);
-  }
-
-  Result MemSetAccess(CUdeviceptr ptr, size_t size, const CUmemAccessDesc *desc,
-                      size_t count) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMemSetAccess_(ptr, size, desc, count);
-  }
-
-  Result MulticastCreate(CUmemGenericAllocationHandle *mcHandle,
-                         const CUmulticastObjectProp *prop) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMulticastCreate_(mcHandle, prop);
-  }
-
-  Result MulticastGetGranularity(size_t *granularity,
-                                 const CUmulticastObjectProp *prop,
-                                 CUmulticastGranularity_flags option) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMulticastGetGranularity_(granularity, prop, option);
-  }
-
-  Result MulticastAddDevice(CUmemGenericAllocationHandle mcHandle,
-                            CUdevice dev) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMulticastAddDevice_(mcHandle, dev);
-  }
-
-  Result MulticastBindMem(CUmemGenericAllocationHandle mcHandle,
-                          size_t mcOffset,
-                          CUmemGenericAllocationHandle memHandle,
-                          size_t memOffset, size_t size,
-                          unsigned long long flags) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMulticastBindMem_(mcHandle, mcOffset, memHandle, memOffset, size,
-                               flags);
-  }
-
-  Result MulticastUnbind(CUmemGenericAllocationHandle mcHandle, CUdevice dev,
-                         size_t mcOffset, size_t size) const {
-    CUDA_DRIVER_CALL_LOG();
-    return cuMulticastUnbind_(mcHandle, dev, mcOffset, size);
-  }
-
   Result TensorMapEncodeTiled(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
       void *globalAddress, const uint64_t *globalDim,
@@ -919,61 +787,6 @@ private:
 
   using tcuMemGetInfo_v2 = Result(size_t *, size_t *);
   tcuMemGetInfo_v2 *cuMemGetInfo_v2_;
-
-  using tcuMemGetAllocationGranularity = Result(
-      size_t *, const CUmemAllocationProp *, CUmemAllocationGranularity_flags);
-  tcuMemGetAllocationGranularity *cuMemGetAllocationGranularity_;
-
-  using tcuMemCreate = Result(CUmemGenericAllocationHandle *handle, size_t size,
-                              const CUmemAllocationProp *prop,
-                              unsigned long long flags);
-  tcuMemCreate *cuMemCreate_;
-
-  using tcuMemRelease = Result(CUmemGenericAllocationHandle handle);
-  tcuMemRelease *cuMemRelease_;
-
-  using tcuMemAddressReserve = Result(CUdeviceptr *ptr, size_t size,
-                                      size_t alignment, CUdeviceptr addr,
-                                      unsigned long long flags);
-  tcuMemAddressReserve *cuMemAddressReserve_;
-
-  using tcuMemAddressFree = Result(CUdeviceptr ptr, size_t size);
-  tcuMemAddressFree *cuMemAddressFree_;
-
-  using tcuMemMap = Result(CUdeviceptr ptr, size_t size, size_t offset,
-                           CUmemGenericAllocationHandle handle,
-                           unsigned long long flags);
-  tcuMemMap *cuMemMap_;
-
-  using tcuMemUnmap = Result(CUdeviceptr ptr, size_t size);
-  tcuMemUnmap *cuMemUnmap_;
-
-  using tcuMemSetAccess = Result(CUdeviceptr ptr, size_t size,
-                                 const CUmemAccessDesc *desc, size_t count);
-  tcuMemSetAccess *cuMemSetAccess_;
-
-  using tcuMulticastCreate = Result(CUmemGenericAllocationHandle *,
-                                    const CUmulticastObjectProp *);
-  tcuMulticastCreate *cuMulticastCreate_;
-
-  using tcuMulticastGetGranularity = Result(size_t *,
-                                            const CUmulticastObjectProp *,
-                                            CUmulticastGranularity_flags);
-  tcuMulticastGetGranularity *cuMulticastGetGranularity_;
-
-  using tcuMulticastAddDevice = Result(CUmemGenericAllocationHandle, CUdevice);
-  tcuMulticastAddDevice *cuMulticastAddDevice_;
-
-  using tcuMulticastBindMem = Result(CUmemGenericAllocationHandle mcHandle,
-                                     size_t mcOffset,
-                                     CUmemGenericAllocationHandle memHandle,
-                                     size_t memOffset, size_t size,
-                                     unsigned long long flags);
-  tcuMulticastBindMem *cuMulticastBindMem_;
-
-  using tcuMulticastUnbind = Result(CUmemGenericAllocationHandle mcHandle,
-                                    CUdevice dev, size_t mcOffset, size_t size);
-  tcuMulticastUnbind *cuMulticastUnbind_;
 
   using tcuTensorMapEncodeTiled = Result(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,

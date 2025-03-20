@@ -34,7 +34,6 @@ class CUDADeviceEvent;
 class CUDAModuleFunction;
 class CUDADeviceFunction;
 class CUDADeviceFunctionArguments;
-class CUDADeviceMulticastBuffer;
 class CUDADeviceStream;
 class CUDADeviceTimer;
 
@@ -44,7 +43,6 @@ using CUDADeviceEventRef = RCRef<const CUDADeviceEvent>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
 using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
-using CUDADeviceMulticastBufferRef = RCRef<const CUDADeviceMulticastBuffer>;
 using CUDADeviceStreamRef = RCRef<const CUDADeviceStream>;
 using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
@@ -68,8 +66,6 @@ public:
 
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
-
-  ErrorOr<bool> supportsMulticast() const override;
 
   int deviceCount() const override;
 
@@ -119,38 +115,6 @@ private:
   mutable CUcontext context_;
   // Non-timing enabled events which can be reused for record/wait pairs.
   mutable std::vector<CUevent> eventCache_;
-};
-
-class CUDADeviceMulticastBuffer : public DeviceMulticastBuffer {
-public:
-  struct DeviceToBuffer {
-    const CUdevice device_;
-    const CUmemGenericAllocationHandle handle_;
-    const CUdeviceptr ptr_;
-  };
-
-  CUDADeviceMulticastBuffer(
-      size_t byteSize, const CUDADriver &driver,
-      CUmemGenericAllocationHandle multicastHandle, CUdeviceptr multicastPtr,
-      std::vector<CUDADeviceMulticastBuffer::DeviceToBuffer> unicastBuffers);
-
-  ~CUDADeviceMulticastBuffer() override;
-
-  ErrorOr<DeviceBufferRef>
-  multicastBuffer(const DeviceContext &ctx) const override;
-  ErrorOr<DeviceBufferRef>
-  unicastBufferFor(const DeviceContext &ctx) const override;
-
-  size_t numberOfDevices() const override;
-
-  static ErrorOr<DeviceMulticastBufferRef>
-  allocate(const std::vector<const Device *> &devices, size_t byteSize);
-
-private:
-  const CUDADriver &driver_;
-  CUmemGenericAllocationHandle multicastHandle_;
-  CUdeviceptr multicastPtr_;
-  std::vector<DeviceToBuffer> unicastBuffers_;
 };
 
 class CUDADeviceEvent : public DeviceEvent {
