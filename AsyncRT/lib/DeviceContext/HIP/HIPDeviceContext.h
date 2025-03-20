@@ -72,6 +72,7 @@ public:
   createExternalStream(void *externalStream) const override;
 
   static const HIPDevice &cast(const Device &device);
+  static const HIPDevice *verified_cast(const Device *device);
 
   static ErrorOr<const HIPDevice &> get(int id);
 

@@ -54,6 +54,8 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   GET_FUNC(hipSetDevice);
   GET_FUNC(hipGetDevice);
   GET_FUNC(hipDeviceGetName);
+  GET_FUNC(hipDeviceCanAccessPeer);
+  GET_FUNC(hipDeviceEnablePeerAccess);
 
   GET_FUNC(hipStreamCreate);
   GET_FUNC(hipStreamDestroy);

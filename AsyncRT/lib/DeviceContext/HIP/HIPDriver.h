@@ -215,6 +215,14 @@ public:
     return hipDeviceGetName_(name, len, dev);
   }
 
+  Result DeviceCanAccessPeer(int *canAccessPeer, int deviceId,
+                             int peerDeviceId) const {
+    return hipDeviceCanAccessPeer_(canAccessPeer, deviceId, peerDeviceId);
+  }
+  Result DeviceEnablePeerAccess(int peerDeviceId, unsigned int flags) const {
+    return hipDeviceEnablePeerAccess_(peerDeviceId, flags);
+  }
+
   Result StreamCreate(hipStream_t *phStream, unsigned int flags) const {
     return hipStreamCreate_(phStream, flags);
   }
@@ -230,7 +238,7 @@ public:
   }
 
   Result MemAllocHost(void **pp, size_t bytesize) const {
-    return hipHostMalloc_(pp, bytesize);
+    return hipHostMalloc_(pp, bytesize, 0);
   }
   Result MemFreeHost(void *p) const { return hipHostFree_(p); }
 
@@ -401,6 +409,14 @@ private:
   using thipDeviceGetName = Result(char *, int, hipDevice_t);
   thipDeviceGetName *hipDeviceGetName_;
 
+  using thipDeviceCanAccessPeer = Result(int *canAccessPeer, int deviceId,
+                                         int peerDeviceId);
+  thipDeviceCanAccessPeer *hipDeviceCanAccessPeer_;
+
+  using thipDeviceEnablePeerAccess = Result(int peerDeviceId,
+                                            unsigned int flags);
+  thipDeviceEnablePeerAccess *hipDeviceEnablePeerAccess_;
+
   using thipStreamCreate = Result(hipStream_t *, unsigned int);
   thipStreamCreate *hipStreamCreate_;
 
@@ -412,7 +428,7 @@ private:
   using thipStreamWaitEvent = Result(hipStream_t, hipEvent_t, unsigned int);
   thipStreamWaitEvent *hipStreamWaitEvent_;
 
-  using thipHostMalloc = Result(void **, size_t);
+  using thipHostMalloc = Result(void **, size_t, unsigned int flags);
   thipHostMalloc *hipHostMalloc_;
 
   using thipHostFree = Result(void *);

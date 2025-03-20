@@ -242,7 +242,22 @@ ErrorOr<int> HIPDevice::computeCapability() const {
   return 10 * computeMajor + computeMinor;
 }
 
-ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const { return false; }
+ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const {
+  if (id() == peer.id()) {
+    // Always disable self access (same behaviour as hipDeviceCanAccessPeer).
+    return false;
+  }
+
+  const HIPDevice *peerDevice = HIPDevice::verified_cast(&peer);
+  if (peerDevice == nullptr) {
+    RAISE_ERROR("Peer is not a HIP device");
+  }
+
+  int canAccess = 0;
+  HIP_CHECK_ERR(driver_.DeviceCanAccessPeer(&canAccess, hipDevice(),
+                                            peerDevice->hipDevice()));
+  return canAccess == 1;
+}
 
 ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   HIP_WITH_DEV_ERR(*this);
@@ -310,7 +325,14 @@ int HIPDevice::deviceCount() const {
 
 const HIPDevice &HIPDevice::cast(const Device &device) {
   return static_cast<const HIPDevice &>(device);
-};
+}
+
+const HIPDevice *HIPDevice::verified_cast(const Device *device) {
+  if (device->api() != HIPDevice::api) {
+    return nullptr;
+  }
+  return static_cast<const HIPDevice *>(device);
+}
 
 ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
   ErrorOr<const DeviceList &> errOrDevices = deviceList();
@@ -892,7 +914,19 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
 
 ErrorOrSuccess
 HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
-  RAISE_ERROR("Unimplemented - HIPDeviceContext::enablePeerAccess");
+  if (device().id() == peer.device().id()) {
+    // Enabling peer access to self is not allowed.
+    RAISE_ERROR("Cannot enable peer access to self");
+  }
+
+  const HIPDevice *peerDevice = HIPDevice::verified_cast(&peer.device());
+  if (peerDevice == nullptr) {
+    RAISE_ERROR("Peer is not a HIP device");
+  }
+
+  HIP_WITH_CTX_ERR(*this);
+  HIP_CHECK_ERR(driver_.DeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
+  return success();
 }
 
 ErrorOr<DeviceContext::MemInfo> HIPDeviceContext::getMemoryInfo() const {
