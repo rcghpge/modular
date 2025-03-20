@@ -76,7 +76,56 @@
     }                                                                          \
   } while (0)
 
+#define HIP_WITH_CTX_ERR(ctx)                                                  \
+  HIPDeviceScope __hipWithContext((ctx).hipDevice(), (ctx).hipDriver());       \
+  HIP_CHECK_ERR(__hipWithContext.status());
+
+#define HIP_WITH_CTX(ctx)                                                      \
+  HIPDeviceScope __hipWithContext((ctx).hipDevice(), (ctx).hipDriver());       \
+  HIP_CHECK(__hipWithContext.status());
+
+#define HIP_WITH_DEV_ERR(dev)                                                  \
+  HIPDeviceScope __hipWithContext((dev).hipDevice(), (dev).hipDriver());       \
+  HIP_CHECK_ERR(__hipWithContext.status());
+
+#define HIP_WITH_DEV(dev)                                                      \
+  HIPDeviceScope __hipWithContext((dev).hipDevice(), (dev).hipDriver());       \
+  HIP_CHECK(__hipWithContext.status());
+
 namespace M::AsyncRT {
+
+// The helper class HIPDeviceScope is used to set and restore the hipDevice_t
+// around interactions with the HIP driver.
+class HIPDeviceScope {
+public:
+  HIPDeviceScope(hipDevice_t device, const HIPDriver &driver)
+      : driver_(driver), device_(device), prevDevice_(-1),
+        status_(HIPDriver::SUCCESS) {
+    driver_.GetDevice(&prevDevice_);
+    if (prevDevice_ == device_)
+      return;
+    status_ = driver_.SetDevice(device_);
+  }
+
+  ~HIPDeviceScope() {
+    if ((prevDevice_ == device_) || (status_ != HIPDriver::SUCCESS))
+      return;
+
+    // Only pop the context if push was necessary and successful.
+    hipDevice_t device = -1;
+    driver_.GetDevice(&device);
+    driver_.SetDevice(prevDevice_);
+    assert(device == device_);
+  }
+
+  HIPDriver::Result status() { return status_; }
+
+private:
+  const HIPDriver &driver_;
+  const hipDevice_t device_;
+  hipDevice_t prevDevice_;
+  HIPDriver::Result status_;
+};
 
 static Error formatHipError(const char *file, int line, const char *func,
                             HIPDriver::Result result) {
@@ -196,6 +245,7 @@ ErrorOr<int> HIPDevice::computeCapability() const {
 ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
+  HIP_WITH_DEV_ERR(*this);
   ErrorOr<hipDeviceAttribute_t> errorOrAttr = gethipDeviceAttribute(attr);
   if (errorOrAttr.isError())
     return errorOrAttr.takeError();
@@ -207,10 +257,7 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
 ErrorOr<DeviceContextRef>
 HIPDevice::createContext(size_t bufferCacheSize) const {
   // Make sure that we associate the stream with the correct device.
-  HIP_CHECK_ERR(setCurrent());
-
-  hipCtx_t context;
-  HIP_CHECK_ERR(this->hipDriver().CtxCreate(&context, 0, this->id()));
+  HIP_WITH_DEV_ERR(*this);
 
   hipStream_t stream;
   HIP_CHECK_ERR(this->hipDriver().StreamCreate(&stream, 0));
@@ -236,12 +283,13 @@ HIPDevice::createContext(size_t bufferCacheSize) const {
                           (maxCacheSize * chunkPercent) / 100, 256 * KB)));
   }
 
-  return HIPDeviceContextRef::create(*this, context, stream, cacheChunkSize,
+  return HIPDeviceContextRef::create(*this, stream, cacheChunkSize,
                                      maxCacheSize);
 }
 
 ErrorOr<DeviceStreamRef>
 HIPDevice::createExternalStream(void *externalStream) const {
+  HIP_WITH_DEV_ERR(*this);
   return HIPDeviceStreamRef::create(
       *this, reinterpret_cast<hipStream_t>(externalStream));
 }
@@ -258,10 +306,6 @@ int HIPDevice::deviceCount() const {
     return 0;
   }
   return count;
-}
-
-HIPDriver::Result HIPDevice::setCurrent() const {
-  return driver_.SetDevice(device_);
 }
 
 const HIPDevice &HIPDevice::cast(const Device &device) {
@@ -291,13 +335,14 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
     int tmpAlignment;
 
     for (int i = 0; i < count; i++) {
-      // TODO(iposva): Create correct hipDevice_t from ordinal.
-      HIP_CHECK_ERR(errDriver.get().DeviceGetName(tmpName, sizeof(tmpName), i));
+      hipDevice_t device = static_cast<hipDevice_t>(i);
+      HIP_CHECK_ERR(
+          errDriver.get().DeviceGetName(tmpName, sizeof(tmpName), device));
       HIP_CHECK_ERR(errDriver.get().DeviceGetAttribute(
           &tmpAlignment,
-          hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment, i));
-      devices.emplace_back(
-          HIPDeviceRef::create(errDriver.get(), i, i, tmpName, tmpAlignment));
+          hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment, device));
+      devices.emplace_back(HIPDeviceRef::create(errDriver.get(), i, device,
+                                                tmpName, tmpAlignment));
     }
     return success();
   }();
@@ -314,11 +359,15 @@ HIPDeviceEvent::HIPDeviceEvent(const HIPDevice &device, hipEvent_t event)
 
 HIPDeviceEvent::~HIPDeviceEvent() {
   const auto &hipDevice = HIPDevice::cast(device());
+
+  HIP_WITH_DEV(hipDevice);
   HIP_CHECK(hipDevice.hipDriver().EventDestroy(event_));
 }
 
 ErrorOrSuccess HIPDeviceEvent::synchronize() const {
   const auto &hipDevice = HIPDevice::cast(device());
+
+  HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(hipDevice.hipDriver().EventSynchronize(event_));
   return success();
 }
@@ -336,13 +385,15 @@ HIPDeviceStream::HIPDeviceStream(const HIPDevice &device, hipStream_t stream)
 ErrorOrSuccess HIPDeviceStream::synchronize() const {
   const auto &hipDevice = HIPDevice::cast(device());
 
-  HIP_CHECK_ERR(hipDevice.setCurrent());
+  HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(hipDevice.hipDriver().StreamSynchronize(stream_));
   return success();
 }
 
 ErrorOr<DeviceEventRef> HIPDeviceStream::enqueueEvent() const {
   const auto &hipDevice = HIPDevice::cast(device());
+
+  HIP_WITH_DEV_ERR(hipDevice);
   hipEvent_t event;
   HIP_CHECK_ERR(hipDevice.hipDriver().EventCreate(&event, 0));
   HIP_CHECK_ERR(hipDevice.hipDriver().EventRecord(event, stream_));
@@ -353,6 +404,8 @@ ErrorOrSuccess
 HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
   const auto &hipDevice = HIPDevice::cast(device());
+
+  HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(
       hipDevice.hipDriver().StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
   return success();
@@ -441,6 +494,7 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernel(
     const HIPDeviceFunctionArguments &args, hipStream_t stream) const {
   const auto &hipContext = HIPDeviceContext::cast(context());
 
+  HIP_WITH_CTX_ERR(hipContext);
   HIP_CHECK_ERR(hipContext.hipDriver().ModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args.hipArgs().data(), nullptr));
@@ -453,6 +507,7 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
     hipStream_t stream) const {
   const auto &hipContext = HIPDeviceContext::cast(context());
 
+  HIP_WITH_CTX_ERR(hipContext);
   HIP_CHECK_ERR(hipContext.hipDriver().ModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args, nullptr));
@@ -469,6 +524,8 @@ ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
   hipDeviceptr_t devicePtr;
   size_t deviceSize;
   const auto &hipContext = HIPDeviceContext::cast(context());
+
+  HIP_WITH_CTX_ERR(hipContext);
   HIP_CHECK_ERR(hipContext.hipDriver().ModuleGetGlobal(
       &devicePtr, &deviceSize, moduleFunction_->hipModule(), name));
 
@@ -485,6 +542,7 @@ ErrorOr<int32_t> HIPDeviceFunction::getAttribute(int32_t code) const {
   int32_t result;
   const auto &hipContext = HIPDeviceContext::cast(context());
 
+  HIP_WITH_CTX_ERR(hipContext);
   HIP_CHECK_ERR(hipContext.hipDriver().FuncGetAttribute(
       &result, static_cast<hipFunction_attribute>(code),
       moduleFunction_->hipFunction()));
@@ -503,6 +561,7 @@ HIPDeviceTimer::HIPDeviceTimer(const HIPDeviceContext &context,
 HIPDeviceTimer::~HIPDeviceTimer() {
   const auto &hipContext = HIPDeviceContext::cast(context());
 
+  HIP_WITH_CTX(hipContext);
   HIP_CHECK(hipContext.hipDriver().EventDestroy(start_));
   HIP_CHECK(hipContext.hipDriver().EventDestroy(stop_));
 }
@@ -515,27 +574,25 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 }
 
 // ===== HIPDeviceContext ===== //
-HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                                   hipStream_t stream, size_t cacheChunkSize,
-                                   size_t maxCacheSize)
+HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipStream_t stream,
+                                   size_t cacheChunkSize, size_t maxCacheSize)
     : DeviceContext(device, std::make_unique<BufferCache>(
                                 *this, cacheChunkSize, maxCacheSize,
                                 device.allocationAlignment())),
-      driver_(device.hipDriver()), context_(context), stream_(stream) {}
+      driver_(device.hipDriver()), device_(device.hipDevice()),
+      stream_(stream) {}
 
 HIPDeviceContext::~HIPDeviceContext() {
+  HIP_WITH_CTX(*this);
   HIP_CHECK(driver_.StreamSynchronize(stream_));
   bufferCache().clear();
   HIP_CHECK(driver_.StreamDestroy(stream_));
-  // We do not need to re-synchronize on possible work queued on this stream.
-  // Resources will be released automatically once work has been completed.
-  HIP_CHECK(driver_.CtxDestroy(context_));
 }
 
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           AllocMode mode) const {
   assert(byteSize != 0);
-  HIP_CHECK_ERR(setCurrent());
+  HIP_WITH_CTX_ERR(*this);
   switch (mode) {
   case AllocMode::ASYNC: {
     HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
@@ -554,7 +611,7 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
 }
 
 ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) const {
-  HIP_CHECK_ERR(setCurrent());
+  HIP_WITH_CTX_ERR(*this);
   if (isHost) {
     HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
   } else {
@@ -567,7 +624,7 @@ ErrorOrSuccess HIPDeviceContext::copyToDevice(const DeviceBuffer &dst,
                                               const void *src,
                                               SyncMode mode) const {
   CHECK_IS_HIP_ERR(dst.context().device());
-  HIP_CHECK_ERR(setCurrent());
+  HIP_WITH_CTX_ERR(*this);
 
   hipDeviceptr_t dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
@@ -583,7 +640,7 @@ ErrorOrSuccess HIPDeviceContext::copyFromDevice(void *dst,
                                                 const DeviceBuffer &src,
                                                 SyncMode mode) const {
   CHECK_IS_HIP_ERR(src.context().device());
-  HIP_CHECK_ERR(setCurrent());
+  HIP_WITH_CTX_ERR(*this);
 
   hipDeviceptr_t srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
@@ -610,7 +667,7 @@ ErrorOrSuccess HIPDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
   if (srcByteSize < dstByteSize) {
     RAISE_ERROR("not enough data in src");
   }
-  if (srcCtx.context_ != dstCtx.context_) {
+  if (srcCtx.hipDevice() != dstCtx.hipDevice()) {
     if (mode == ASYNC) {
       HIP_CHECK_ERR(
           driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
@@ -721,6 +778,7 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   }
   hipModule_t module;
 
+  HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.ModuleLoadData(&module, code.data()));
 
   hipFunction_t function;
@@ -772,12 +830,14 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
 }
 
 ErrorOrSuccess HIPDeviceContext::synchronize() const {
+  HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
   return success();
 }
 
 ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
   hipEvent_t event;
+  HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.EventCreate(&event, 0));
   HIP_CHECK_ERR(driver_.EventRecord(event, stream_));
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
@@ -786,6 +846,7 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
 ErrorOrSuccess
 HIPDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
+  HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
   return success();
 }
@@ -801,6 +862,7 @@ ErrorOr<DeviceTimerRef> HIPDeviceContext::startTimer() const {
   hipEvent_t start;
   hipEvent_t stop;
 
+  HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.EventCreate(&start, 0));
   HIP_CHECK_ERR(driver_.EventCreate(&stop, 0));
 
@@ -815,6 +877,7 @@ ErrorOr<std::chrono::nanoseconds>
 HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   const auto &hipTimer = HIPDeviceTimer::cast(timer);
 
+  HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.EventRecord(hipTimer.hipStopEvent(), stream_));
   HIP_CHECK_ERR(driver_.EventSynchronize(hipTimer.hipStopEvent()));
 
@@ -834,19 +897,16 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
 
 ErrorOr<DeviceContext::MemInfo> HIPDeviceContext::getMemoryInfo() const {
   MemInfo memInfo;
+  HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
   return memInfo;
 }
 
 const HIPDriver &HIPDeviceContext::hipDriver() const { return driver_; }
 
-hipCtx_t HIPDeviceContext::hipContext() const { return context_; }
+hipDevice_t HIPDeviceContext::hipDevice() const { return device_; }
 
 hipStream_t HIPDeviceContext::hipStream() const { return stream_; }
-
-HIPDriver::Result HIPDeviceContext::setCurrent() const {
-  return driver_.CtxSetCurrent(context_);
-}
 
 const HIPDeviceContext &HIPDeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const HIPDeviceContext &>(ctx);

@@ -52,11 +52,8 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   GET_FUNC(hipDeviceGetAttribute);
   GET_FUNC(hipGetDeviceCount);
   GET_FUNC(hipSetDevice);
+  GET_FUNC(hipGetDevice);
   GET_FUNC(hipDeviceGetName);
-
-  GET_FUNC(hipCtxCreate);
-  GET_FUNC(hipCtxDestroy);
-  GET_FUNC(hipCtxSetCurrent);
 
   GET_FUNC(hipStreamCreate);
   GET_FUNC(hipStreamDestroy);

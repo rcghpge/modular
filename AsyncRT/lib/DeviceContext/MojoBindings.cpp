@@ -473,12 +473,13 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
 // Raw HIP accessors
 //
 MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_hip_context(hipCtx_t *result, const DeviceContext *ctx) {
+AsyncRT_DeviceContext_hip_device(hipDevice_t *result,
+                                 const DeviceContext *ctx) {
   const HIPDeviceContext *verifiedCtx = HIPDeviceContext::verified_cast(ctx);
   if (verifiedCtx == nullptr) {
     return strdup("Not a HIPContext");
   }
-  *result = verifiedCtx->hipContext();
+  *result = verifiedCtx->hipDevice();
   return nullptr;
 }
 

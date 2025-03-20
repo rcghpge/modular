@@ -71,8 +71,6 @@ public:
   ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const override;
 
-  HIPDriver::Result setCurrent() const;
-
   static const HIPDevice &cast(const Device &device);
 
   static ErrorOr<const HIPDevice &> get(int id);
@@ -218,9 +216,8 @@ private:
 
 class HIPDeviceContext : public DeviceContext {
 public:
-  HIPDeviceContext(const HIPDevice &device, hipCtx_t context,
-                   hipStream_t stream, size_t cacheChunkSize,
-                   size_t maxCacheSize);
+  HIPDeviceContext(const HIPDevice &device, hipStream_t stream,
+                   size_t cacheChunkSize, size_t maxCacheSize);
   ~HIPDeviceContext() override;
 
   // DeviceBuffer copies.
@@ -273,10 +270,8 @@ public:
   ErrorOr<MemInfo> getMemoryInfo() const override;
 
   const HIPDriver &hipDriver() const;
-  hipCtx_t hipContext() const;
+  hipDevice_t hipDevice() const;
   hipStream_t hipStream() const;
-
-  HIPDriver::Result setCurrent() const;
 
   static const HIPDeviceContext &cast(const DeviceContext &ctx);
   static const HIPDeviceContext *verified_cast(const DeviceContext *ctx);
@@ -285,7 +280,7 @@ private:
   friend class HIPDeviceBuffer;
 
   const HIPDriver &driver_;
-  hipCtx_t context_;
+  hipDevice_t device_;
   hipStream_t stream_;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,

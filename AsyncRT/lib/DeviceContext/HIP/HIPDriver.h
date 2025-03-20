@@ -210,15 +210,10 @@ public:
   Result DeviceGetCount(int *count) const { return hipGetDeviceCount_(count); }
 
   Result SetDevice(hipDevice_t dev) const { return hipSetDevice_(dev); }
+  Result GetDevice(int *deviceId) const { return hipGetDevice_(deviceId); }
   Result DeviceGetName(char *name, int len, hipDevice_t dev) const {
     return hipDeviceGetName_(name, len, dev);
   }
-
-  Result CtxCreate(hipCtx_t *pctx, unsigned int flags, hipDevice_t dev) const {
-    return hipCtxCreate_(pctx, flags, dev);
-  }
-  Result CtxDestroy(hipCtx_t ctx) const { return hipCtxDestroy_(ctx); }
-  Result CtxSetCurrent(hipCtx_t ctx) const { return hipCtxSetCurrent_(ctx); }
 
   Result StreamCreate(hipStream_t *phStream, unsigned int flags) const {
     return hipStreamCreate_(phStream, flags);
@@ -400,17 +395,11 @@ private:
   using thipSetDevice = Result(hipDevice_t);
   thipSetDevice *hipSetDevice_;
 
+  using thipGetDevice = Result(int *);
+  thipGetDevice *hipGetDevice_;
+
   using thipDeviceGetName = Result(char *, int, hipDevice_t);
   thipDeviceGetName *hipDeviceGetName_;
-
-  using thipCtxCreate = Result(hipCtx_t *, unsigned int, hipDevice_t);
-  thipCtxCreate *hipCtxCreate_;
-
-  using thipCtxDestroy = Result(hipCtx_t);
-  thipCtxDestroy *hipCtxDestroy_;
-
-  using thipCtxSetCurrent = Result(hipCtx_t);
-  thipCtxSetCurrent *hipCtxSetCurrent_;
 
   using thipStreamCreate = Result(hipStream_t *, unsigned int);
   thipStreamCreate *hipStreamCreate_;
