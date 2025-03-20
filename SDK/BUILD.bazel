@@ -1,6 +1,6 @@
 load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "modular_nanobind_library", "py_repl", "requirement", "td_library")
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
-load("//SDK/lib/API/python/bindings:tblgen.bzl", "tblgen_nanobind")
+load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
 
 modular_cc_library(
     name = "DLPack",
@@ -196,6 +196,25 @@ tblgen_nanobind(
     dialect = "MOSHDialect",
     output = "include/SDK/GraphAPI/python/mosh_dialect_nanobind.cpp.inc",
     visibility = ["//visibility:public"],
+)
+
+mlir_nanobind(
+    name = "BuiltinDialectNanobindInc",
+    srcs = [
+        "@llvm-project//mlir:include/mlir/IR/BuiltinAttributes.td",
+        "@llvm-project//mlir:include/mlir/IR/BuiltinDialect.td",
+        "@llvm-project//mlir:include/mlir/IR/BuiltinLocationAttributes.td",
+        "@llvm-project//mlir:include/mlir/IR/BuiltinOps.td",
+        "@llvm-project//mlir:include/mlir/IR/BuiltinTypes.td",
+    ],
+    exclude = [
+        "Builtin_DenseResourceElementsAttr",  # can't deal with AsmResourceBlob yet
+    ],
+    output_dir = "include/SDK/GraphAPI/python",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
 )
 
 py_repl(
