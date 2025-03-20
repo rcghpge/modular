@@ -11,10 +11,7 @@ lit_tests(
         "//SDK/lib/API/mojo/max/max",
         "//open-source/mojo/stdlib/stdlib",
     ],
-    tools = [
-        "//KGEN:ptxas",
-        "//KGEN/tools/mojo",
-    ],
+    tools = ["//KGEN/tools/mojo"],
 )
 
 lit_tests(
@@ -27,8 +24,5 @@ lit_tests(
         "//open-source/mojo/stdlib/stdlib",
     ],
     tags = ["gpu"],
-    tools = [
-        "//KGEN:ptxas",
-        "//KGEN/tools/mojo",
-    ],
+    tools = ["//KGEN/tools/mojo"],
 )
