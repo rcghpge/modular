@@ -124,6 +124,21 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
 
   GET_FUNC(cuMemGetInfo_v2);
 
+  GET_FUNC(cuMemGetAllocationGranularity);
+  GET_FUNC(cuMemCreate);
+  GET_FUNC(cuMemRelease);
+  GET_FUNC(cuMemAddressReserve);
+  GET_FUNC(cuMemAddressFree);
+  GET_FUNC(cuMemMap);
+  GET_FUNC(cuMemUnmap);
+  GET_FUNC(cuMemSetAccess);
+
+  GET_FUNC(cuMulticastCreate);
+  GET_FUNC(cuMulticastGetGranularity);
+  GET_FUNC(cuMulticastAddDevice);
+  GET_FUNC(cuMulticastBindMem);
+  GET_FUNC(cuMulticastUnbind);
+
   GET_FUNC(cuTensorMapEncodeTiled);
 
   // Initialize the driver and return the newly allocated driver if successful.
