@@ -419,8 +419,45 @@ AsyncRT_DeviceContext_enablePeerAccess(const DeviceContext *ctx,
   return checkSuccess(ctx->enablePeerAccess(*peer));
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_supportsMulticast(bool *result,
+                                        const DeviceContext *ctx) {
+  return checkVal(result, false, ctx->device().supportsMulticast());
+}
+
 MODULAR_EXPORT int32_t AsyncRT_DeviceContext_numberOfDevices(const char *kind) {
   return Device::numberOfDevices(kind);
+}
+
+MODULAR_EXPORT const char *AsyncRT_DeviceMulticastBuffer_allocate(
+    const DeviceMulticastBuffer **result, size_t ctxsLen,
+    const DeviceContext **ctxs, size_t len, size_t elemSize) {
+  std::vector<DeviceContextRef> contexts;
+  for (size_t i = 0; i < ctxsLen; i++) {
+    contexts.push_back(DeviceContextRef::copy(ctxs[i]));
+  }
+  return checkRef(result,
+                  DeviceMulticastBuffer::allocate(contexts, len * elemSize));
+}
+
+MODULAR_EXPORT const char *AsyncRT_DeviceMulticastBuffer_unicastBufferFor(
+    const DeviceBuffer **result, void **devicePtr,
+    const DeviceMulticastBuffer *multiBuffer, const DeviceContext *ctx) {
+  const char *errMsg = checkRef(result, multiBuffer->unicastBufferFor(*ctx));
+  if (errMsg == nullptr) {
+    *devicePtr = (*result)->ptr();
+  }
+  return errMsg;
+}
+
+MODULAR_EXPORT const char *AsyncRT_DeviceMulticastBuffer_multicastBufferFor(
+    const DeviceBuffer **result, void **devicePtr,
+    const DeviceMulticastBuffer *multiBuffer, const DeviceContext *ctx) {
+  const char *errMsg = checkRef(result, multiBuffer->multicastBuffer(*ctx));
+  if (errMsg == nullptr) {
+    *devicePtr = (*result)->ptr();
+  }
+  return errMsg;
 }
 
 //
