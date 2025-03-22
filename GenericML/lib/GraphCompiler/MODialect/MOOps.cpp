@@ -994,18 +994,56 @@ void WhileOp::print(OpAsmPrinter &p) {
   printRegion(p, getInputs(), getBodyRegion(), /*isIsolatedFromAbove=*/false);
 }
 
-/// Returns success if yieldOp's single operand is of the MO scalar boolean
-/// type.
-static LogicalResult outputsOneBool(YieldOp yieldOp) {
-  if (yieldOp->getNumOperands() != 1)
-    return failure();
-  auto tensorType = dyn_cast<TensorType>(yieldOp->getOperand(0).getType());
+static LogicalResult isSingleBool(Value v) {
+  auto tensorType = dyn_cast<TensorType>(v.getType());
   if (!tensorType)
     return failure();
   if (!tensorType.hasRank() || tensorType.getRank() != 0)
     return failure();
-  if (tensorType.getElementType() != IntegerType::get(yieldOp->getContext(), 1))
+  if (!tensorType.getElementType().isSignlessInteger(1))
     return failure();
+  return success();
+}
+
+/// Returns success if yieldOp's single operand is of the MO scalar boolean
+/// type.
+static LogicalResult validateCondTerminator(WhileOp whileOp, YieldOp yieldOp) {
+  // Terminator must have at least one operand.
+  if (yieldOp->getNumOperands() != whileOp.getNumResults() + 1) {
+    auto diag = yieldOp->emitOpError()
+                << "cond block terminator must have "
+                << whileOp.getNumResults() + 1 << " operands but given "
+                << yieldOp.getNumOperands();
+
+    diag.attachNote(whileOp.getLoc()) << "while op here";
+    return failure();
+  }
+
+  // That operand must be a boolean value
+  if (failed(isSingleBool(yieldOp->getOperand(0)))) {
+    auto diag = yieldOp->emitOpError()
+                << "argument #0 of cond block terminator must be type "
+                << "'!mo.tensor<[], bool>'";
+
+    diag.attachNote(whileOp.getLoc()) << "while op here";
+    return failure();
+  }
+
+  auto yieldedValues = yieldOp.getOperands().drop_front();
+
+  for (auto [index, value, expected] :
+       llvm::enumerate(yieldedValues, whileOp.getResultTypes())) {
+    if (value.getType() != expected) {
+      auto diag = yieldOp->emitOpError()
+                  << "cond block terminator operand " << index + 1 << " type ("
+                  << value.getType() << ") must match the type of operand "
+                  << index << " (" << expected << ") of parent while";
+
+      diag.attachNote(whileOp.getLoc()) << "while op here";
+      return failure();
+    }
+  }
+
   return success();
 }
 
@@ -1031,20 +1069,19 @@ LogicalResult WhileOp::verify() {
   // We don't construct a scalar bool type and use checkOperandTypes because
   // it is valid for the type to have additional type attributes (such as
   // for a storage device).
-  auto condTerminator = condBlock->getTerminator();
-  if (!isa<YieldOp>(condTerminator))
+  auto condTerminator = dyn_cast<YieldOp>(condBlock->getTerminator());
+  if (!condTerminator)
     return emitOpError("cond block expected to be terminated by a YieldOp");
-  auto condOutput = cast<YieldOp>(condTerminator);
-  if (failed(outputsOneBool(condOutput)))
-    return condOutput->emitOpError()
-           << "expected single operand of type '!mo.tensor<[], bool>'.";
+
+  if (failed(validateCondTerminator(*this, condTerminator)))
+    return failure();
 
   // The 'body' block returns a result for each mo.while result.
-  auto bodyTerminator = bodyBlock->getTerminator();
-  if (!isa<YieldOp>(bodyTerminator))
+  auto bodyTerminator = dyn_cast<YieldOp>(bodyBlock->getTerminator());
+  if (!bodyTerminator)
     return emitOpError("body block expected to be terminated by a YieldOp");
-  auto bodyOutput = cast<YieldOp>(bodyTerminator);
-  if (failed(checkOperandTypes(bodyOutput, getResultTypes())))
+
+  if (failed(checkOperandTypes(bodyTerminator, getResultTypes())))
     return failure();
 
   // It would be nice to check that no lhs SSA value of an 'as clause
@@ -1054,6 +1091,14 @@ LogicalResult WhileOp::verify() {
   // this rule.
 
   return success();
+}
+
+YieldOp WhileOp::getCondTerminator() {
+  return cast<YieldOp>(getCondRegion().front().getTerminator());
+}
+
+YieldOp WhileOp::getBodyTerminator() {
+  return cast<YieldOp>(getBodyRegion().front().getTerminator());
 }
 
 //===----------------------------------------------------------------------===//

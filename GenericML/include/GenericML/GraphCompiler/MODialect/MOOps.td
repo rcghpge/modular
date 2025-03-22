@@ -341,12 +341,14 @@ def WhileOp : MO_ControlOp<"while", [
     block evaluates to the true condition, the "body" block is executed.
 
     The "cond" and "body" blocks have access to both the values listed in the
-    `mo.while` signature and any other outer values. The "cond" block
-    must return a single `!mo.tensor<[], bool>` result,
-    using a `mo.yield` operation. The "body" block must return results with the
-    same types as the `mo.while` signature, again using a `mo.yield`. The
-    signature must include an "as" clause for every input so as to rename it
-    to a fresh symbol.
+    `mo.while` signature and any other outer values.
+
+    - The "cond" block must return a `!mo.tensor<[], bool>` result
+    followed by values whose types match the inputs of the `mo.while` signature.
+
+    - The "body" block must return results with the same types as the `mo.while`
+    signature, again using a `mo.yield`. The signature must include an "as"
+    clause for every input so as to rename it to a fresh symbol.
 
     The results of the `mo.while` op are the results of the last executed
     "body" block, or the `mo.while` signature arguments if "cond" never
@@ -363,7 +365,7 @@ def WhileOp : MO_ControlOp<"while", [
         %mean0 = mo.mean (%inner_x, %zero) : (!mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1], f32>
         %mean1 = mo.reshape (%mean0, %shape) : (!mo.tensor<[1], f32>, !mo.tensor<[0], si64>) -> !mo.tensor<[], f32>
         %cond = mo.greater (%y, %mean1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
-        mo.yield %cond : !mo.tensor<[], bool>
+        mo.yield %cond, %inner_x : !mo.tensor<[], bool>, !mo.tensor<[2], f32>
       } do {
         %new_x = mo.add(%inner_x, %inner_x) : !mo.tensor<[2], f32>
         mo.yield %new_x : !mo.tensor<[2], f32>
@@ -376,6 +378,11 @@ def WhileOp : MO_ControlOp<"while", [
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$condRegion,
                         SizedRegion<1>:$bodyRegion);
+
+  let extraClassDeclaration = [{
+    YieldOp getCondTerminator();
+    YieldOp getBodyTerminator();
+  }];
 
   // The assemblyFormat is almost:
   //   custom<ParenOperandList>($inputs) attr-dict $condRegion `do` $bodyRegion

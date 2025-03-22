@@ -10,7 +10,7 @@
 mo.graph @while_op(%x: !mo.tensor<[], f32>, %arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
    %res = mo.while (%x as %xi: !mo.tensor<[], f32>) {
      %cond = mo.greater (%x, %arg0) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
-     mo.yield %cond : !mo.tensor<[], bool>
+     mo.yield %cond, %xi : !mo.tensor<[], bool>, !mo.tensor<[], f32>
    } do {
      %new_x = mo.add (%xi, %xi) : !mo.tensor<[], f32>
      mo.yield %new_x : !mo.tensor<[], f32>
@@ -33,7 +33,7 @@ mo.graph @while_op(%x: !mo.tensor<[], f32>, %arg0: !mo.tensor<[], f32>) -> (!mo.
 mo.graph @multi_while_op(%x: !mo.tensor<[], f32>, %arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
    %res = mo.while (%x as %xi: !mo.tensor<[], f32>) {
      %cond = mo.greater (%x, %arg0) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
-     mo.yield %cond : !mo.tensor<[], bool>
+     mo.yield %cond, %xi : !mo.tensor<[], bool>, !mo.tensor<[], f32>
    } do {
      %new_x = mo.add (%xi, %xi) : !mo.tensor<[], f32>
      mo.yield %new_x : !mo.tensor<[], f32>
@@ -41,7 +41,7 @@ mo.graph @multi_while_op(%x: !mo.tensor<[], f32>, %arg0: !mo.tensor<[], f32>) ->
 
    %res2 = mo.while (%x as %xi: !mo.tensor<[], f32>) {
      %cond = mo.greater (%x, %arg0) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
-     mo.yield %cond : !mo.tensor<[], bool>
+     mo.yield %cond, %xi : !mo.tensor<[], bool>, !mo.tensor<[], f32>
    } do {
      %new_x = mo.add (%res, %xi) : !mo.tensor<[], f32>
      mo.yield %new_x : !mo.tensor<[], f32>

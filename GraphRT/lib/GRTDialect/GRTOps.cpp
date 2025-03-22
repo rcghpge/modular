@@ -210,6 +210,14 @@ LogicalResult WhileOp::verify() {
   return success();
 }
 
+MEF::OutputOp WhileOp::getCondTerminator() {
+  return cast<MEF::OutputOp>(getCondRegion().front().getTerminator());
+}
+
+MEF::OutputOp WhileOp::getBodyTerminator() {
+  return cast<MEF::OutputOp>(getBodyRegion().front().getTerminator());
+}
+
 //===----------------------------------------------------------------------===//
 // RepeatI32Op
 //===----------------------------------------------------------------------===//

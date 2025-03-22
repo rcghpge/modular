@@ -1689,29 +1689,30 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   // additional variables between the output chain and the condition,
   // and fix the condition to be an i1.
   {
-    auto origYieldOp =
-        cast<MO::YieldOp>(whileOp.getCondRegion().front().getTerminator());
-    assert(origYieldOp->getNumOperands() == 1); // condition
+    MO::YieldOp origYieldOp = whileOp.getCondTerminator();
 
     Value origTensor = origYieldOp.getOperand(0);
     Type condMoTensorType = origTensor.getType();
 
-    auto loweredCondOutputOp = cast<MEF::OutputOp>(
-        loweredWhileOp.getCondRegion().front().getTerminator());
-    assert(loweredCondOutputOp->getNumOperands() == 2); // chain, condition
+    MEF::OutputOp loweredCondOutputOp = loweredWhileOp.getCondTerminator();
+
+    // At this point, the lowered OutputOp operands are the form:
+    // 1. the execute chain
+    // 2. the lowered condition tensor
+    // 3. the lowered arguments of the mo.yield
     Value loweredOutputChain = loweredCondOutputOp->getOperand(0);
     Value loweredCondTensor = loweredCondOutputOp->getOperand(1);
+    ValueRange loweredArgs = loweredCondOutputOp->getOperands().drop_front(2);
 
     SmallVector<Value> condOutputOpOperands;
     condOutputOpOperands.reserve(loweredWhileOp->getNumResults() + 1);
 
     // chain
-    condOutputOpOperands.emplace_back(loweredOutputChain);
+    condOutputOpOperands.push_back(loweredOutputChain);
 
-    // additional non-chain args
-    llvm::append_range(
-        condOutputOpOperands,
-        llvm::drop_begin(loweredWhileOp.getCondRegion().getArguments()));
+    // Pass along any additional values, substituting out the chain values for
+    // the corresponding chain arguments from the mo.yield.
+    llvm::append_range(condOutputOpOperands, loweredArgs);
 
     // i1 condition
     opLoweringState.builder.setInsertionPoint(loweredCondOutputOp);
@@ -1729,7 +1730,7 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     }
     Value condBool =
         opLoweringState.bufferToBool(chain, condBuffer, condMoTensorType);
-    condOutputOpOperands.emplace_back(condBool);
+    condOutputOpOperands.push_back(condBool);
 
     loweredCondOutputOp.getOperandsMutable().clear();
     loweredCondOutputOp.getOperandsMutable().append(condOutputOpOperands);
@@ -2040,6 +2041,7 @@ LogicalResult MOGraphLowering::run() {
 
   OpBuilder b(graph);
   MGP::ModelOp model = loweringState.getModelOp();
+
   // Bind any free variables in grt.if and grt.while control flow ops.
   // Adds and returns the new model to the module.
   (void)MGP::fixupIsolatedFromAbove(b, model);

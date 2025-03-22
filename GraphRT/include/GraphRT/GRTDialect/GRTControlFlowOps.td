@@ -205,6 +205,11 @@ def WhileOp : GRTOp<"while",
     }
     llvm::SmallVector<llvm::StringRef> WhileOp::getRegionNames() { return {"cond", "body"}; }
   }];
+
+  let extraClassDeclaration = [{
+    MEF::OutputOp getCondTerminator();
+    MEF::OutputOp getBodyTerminator();
+  }];
 }
 
 //===----------------------------------------------------------------------===//
