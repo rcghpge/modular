@@ -564,10 +564,16 @@ def MO_BooleanMask : MO_ConfinedTensor<
     [HasBoolElementTypePred], "boolean element type">;
 
 /// Confines the MO_TensorType so that it has Boolean elements and rank 0
-def MO_CondLike : ConfinedType<MO_Tensor,
+def MO_CondLike :
+  ConfinedType<MO_Tensor,
     [MO_HasAnyRankOfPred<[0]>, HasBoolElementTypePred],
     "rank 0 and boolean element type"> {
   let cppType = "::M::MO::TensorType";
+
+  let builderCall = [{
+    ::MO::TensorType::get(::llvm::ArrayRef<::mlir::TypedAttr>{},
+                          $_builder.getI1Type())
+  }];
 }
 
 /// Confines the MO_TensorType so that it has Boolean elements and rank 0 if

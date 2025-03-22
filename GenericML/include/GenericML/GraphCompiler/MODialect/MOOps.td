@@ -330,7 +330,7 @@ def IfOp : MO_ControlOp<"if", [
 //===----------------------------------------------------------------------===//
 
 def WhileOp : MO_ControlOp<"while", [
-  SingleBlockImplicitTerminator<"MO::YieldOp">,
+  SingleBlock,
   HasOnlyGraphRegion,
   RegionKindInterface,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
@@ -365,7 +365,7 @@ def WhileOp : MO_ControlOp<"while", [
         %mean0 = mo.mean (%inner_x, %zero) : (!mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1], f32>
         %mean1 = mo.reshape (%mean0, %shape) : (!mo.tensor<[1], f32>, !mo.tensor<[0], si64>) -> !mo.tensor<[], f32>
         %cond = mo.greater (%y, %mean1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
-        mo.yield %cond, %inner_x : !mo.tensor<[], bool>, !mo.tensor<[2], f32>
+        mo.while.condition(%cond) %inner_x : !mo.tensor<[2], f32>
       } do {
         %new_x = mo.add(%inner_x, %inner_x) : !mo.tensor<[2], f32>
         mo.yield %new_x : !mo.tensor<[2], f32>
@@ -380,7 +380,7 @@ def WhileOp : MO_ControlOp<"while", [
                         SizedRegion<1>:$bodyRegion);
 
   let extraClassDeclaration = [{
-    YieldOp getCondTerminator();
+    WhileConditionOp getCondTerminator();
     YieldOp getBodyTerminator();
   }];
 
@@ -424,6 +424,32 @@ def MO_YieldOp
   }];
 
   let builders = [OpBuilder<(ins), [{ build($_builder, $_state, {}); }]>];
+}
+
+//===----------------------------------------------------------------------===//
+// WhileConditionOp
+//===----------------------------------------------------------------------===//
+
+def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
+  Terminator, Pure, ParentOneOf<["WhileOp"]>
+]> {
+  let summary = "loop continuation condition";
+  let description = [{
+    This op takes the continuation condition of the parent `mo.while`. The op
+    takes variable number of operands which must match the operands of the
+    parent `mo.while`.
+
+    See the mo.while operation for an example.
+  }];
+
+  let arguments = (ins
+    MO_CondLike:$condition,
+    Variadic<MO_AnyNonBufferType>:$args
+  );
+
+  let assemblyFormat = [{
+    `(` $condition `)` attr-dict ($args^ `:` type($args))?
+  }];
 }
 
 //===----------------------------------------------------------------------===//

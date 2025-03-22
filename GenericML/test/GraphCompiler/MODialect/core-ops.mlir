@@ -151,7 +151,7 @@ mo.graph @empty_if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], 
 }
 
 //===----------------------------------------------------------------------===//
-// WhileOp and YieldOp
+// WhileOp, WhileConditionOp, and YieldOp
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @while_op(
@@ -159,8 +159,8 @@ mo.graph @empty_if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], 
 mo.graph @while_op(%arg0: !mo.tensor<[2], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>) {
   // CHECK: %[[RES:.*]]:2 = mo.while (%[[ARG0]] as %[[ARGI0:.*]]: !mo.tensor<[2], f32>, %[[COND]] as %[[CONDI:.*]]: !mo.tensor<[], bool>) {
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    // CHECK: mo.yield %[[CONDI]], %[[ARGI0]], %[[CONDI]] : !mo.tensor<[], bool>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
-    mo.yield %condi, %argi0, %condi : !mo.tensor<[], bool>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    // CHECK: mo.while.condition(%[[CONDI]]) %[[ARGI0]], %[[CONDI]] : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    mo.while.condition(%condi) %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   // CHECK: } do {
   } do {
     // CHECK: %[[NEW_ARG0:.*]] = mo.add(%[[ARGI0]], %[[ARGI0]]) : !mo.tensor<[2], f32>

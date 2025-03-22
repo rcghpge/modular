@@ -150,10 +150,10 @@ mo.graph @if_op_yield_returning_buffer(%arg0: !mo.buffer<[2, 2], f32>, %cond : !
 
 mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
 
-  // expected-note@+1 {{while op here}}
+  // expected-note@+1 {{prior use here}}
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    // expected-error@+1 {{'mo.yield' op argument #0 of cond block terminator must be type '!mo.tensor<[], bool>'}}
-    mo.yield %argi0, %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    // expected-error@+1 {{use of value '%argi0' expects different type than prior uses: '!mo.tensor<[], bool>' vs '!mo.tensor<[2], f32>'}}
+    mo.while.condition(%argi0) %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   } do {
     mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   }
@@ -166,8 +166,8 @@ mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !
 
   // expected-note@+1 {{while op here}}
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    // expected-error@+1 {{'mo.yield' op cond block terminator must have 3 operands but given 2}}
-    mo.yield %argi0, %argi0 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+    // expected-error@+1 {{'mo.while.condition' op cond block terminator must have 2 arguments but given 1}}
+    mo.while.condition(%condi) %argi0 : !mo.tensor<[2], f32>
   } do {
     mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   }
@@ -180,8 +180,8 @@ mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !
 
   // expected-note@+1 {{while op here}}
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    // expected-error@+1 {{'mo.yield' op cond block terminator operand 1 type ('!mo.tensor<[], bool>') must match the type of operand 0 ('!mo.tensor<[2], f32>') of parent while}}
-    mo.yield %condi, %condi, %argi0 : !mo.tensor<[], bool>, !mo.tensor<[], bool>, !mo.tensor<[2], f32>
+    // expected-error@+1 {{'mo.while.condition' op cond block terminator argument 0 type ('!mo.tensor<[], bool>') must match the type of operand 0 ('!mo.tensor<[2], f32>') of parent while}}
+    mo.while.condition(%condi) %condi, %argi0 : !mo.tensor<[], bool>, !mo.tensor<[2], f32>
   } do {
     mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   }
@@ -192,7 +192,7 @@ mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !
 
 mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
   %0:3 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %arg1 as %argi1: !mo.tensor<[3], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    mo.yield %condi, %argi0, %argi1, %condi : !mo.tensor<[], bool>, !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], bool>
+    mo.while.condition(%condi) %argi0, %argi1, %condi : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], bool>
   } do {
     // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[3], f32>' but expected '!mo.tensor<[2], f32>'}}
     mo.yield %argi1, %argi0, %condi : !mo.tensor<[3], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>

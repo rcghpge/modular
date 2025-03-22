@@ -1007,35 +1007,34 @@ static LogicalResult isSingleBool(Value v) {
 
 /// Returns success if yieldOp's single operand is of the MO scalar boolean
 /// type.
-static LogicalResult validateCondTerminator(WhileOp whileOp, YieldOp yieldOp) {
+static LogicalResult validateCondTerminator(WhileOp whileOp,
+                                            WhileConditionOp yieldOp) {
   // Terminator must have at least one operand.
-  if (yieldOp->getNumOperands() != whileOp.getNumResults() + 1) {
+  if (yieldOp.getArgs().size() != whileOp.getNumResults()) {
     auto diag = yieldOp->emitOpError()
-                << "cond block terminator must have "
-                << whileOp.getNumResults() + 1 << " operands but given "
-                << yieldOp.getNumOperands();
+                << "cond block terminator must have " << whileOp.getNumResults()
+                << " arguments but given " << yieldOp.getArgs().size();
 
     diag.attachNote(whileOp.getLoc()) << "while op here";
     return failure();
   }
 
   // That operand must be a boolean value
-  if (failed(isSingleBool(yieldOp->getOperand(0)))) {
+  if (failed(isSingleBool(yieldOp.getCondition()))) {
     auto diag = yieldOp->emitOpError()
-                << "argument #0 of cond block terminator must be type "
-                << "'!mo.tensor<[], bool>'";
+                << "condition value must have type '!mo.tensor<[], bool>'";
 
     diag.attachNote(whileOp.getLoc()) << "while op here";
     return failure();
   }
 
-  auto yieldedValues = yieldOp.getOperands().drop_front();
+  auto yieldedValues = yieldOp.getArgs();
 
   for (auto [index, value, expected] :
        llvm::enumerate(yieldedValues, whileOp.getResultTypes())) {
     if (value.getType() != expected) {
       auto diag = yieldOp->emitOpError()
-                  << "cond block terminator operand " << index + 1 << " type ("
+                  << "cond block terminator argument " << index << " type ("
                   << value.getType() << ") must match the type of operand "
                   << index << " (" << expected << ") of parent while";
 
@@ -1069,9 +1068,10 @@ LogicalResult WhileOp::verify() {
   // We don't construct a scalar bool type and use checkOperandTypes because
   // it is valid for the type to have additional type attributes (such as
   // for a storage device).
-  auto condTerminator = dyn_cast<YieldOp>(condBlock->getTerminator());
+  auto condTerminator = dyn_cast<WhileConditionOp>(condBlock->getTerminator());
   if (!condTerminator)
-    return emitOpError("cond block expected to be terminated by a YieldOp");
+    return emitOpError("cond block expected to be terminated by a "
+                       "mo.while.condition op");
 
   if (failed(validateCondTerminator(*this, condTerminator)))
     return failure();
@@ -1079,7 +1079,7 @@ LogicalResult WhileOp::verify() {
   // The 'body' block returns a result for each mo.while result.
   auto bodyTerminator = dyn_cast<YieldOp>(bodyBlock->getTerminator());
   if (!bodyTerminator)
-    return emitOpError("body block expected to be terminated by a YieldOp");
+    return emitOpError("body block expected to be terminated by a mo.yield op");
 
   if (failed(checkOperandTypes(bodyTerminator, getResultTypes())))
     return failure();
@@ -1093,8 +1093,8 @@ LogicalResult WhileOp::verify() {
   return success();
 }
 
-YieldOp WhileOp::getCondTerminator() {
-  return cast<YieldOp>(getCondRegion().front().getTerminator());
+WhileConditionOp WhileOp::getCondTerminator() {
+  return cast<WhileConditionOp>(getCondRegion().front().getTerminator());
 }
 
 YieldOp WhileOp::getBodyTerminator() {

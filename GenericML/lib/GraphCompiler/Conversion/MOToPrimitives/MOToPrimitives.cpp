@@ -116,6 +116,9 @@ public:
   /// Lowers the mo.yield to the mef.output for the if block results.
   LogicalResult lowerYield(MO::YieldOp output);
 
+  /// Lowers the mo.while.conddition to the mef.output for the if block results.
+  LogicalResult lowerWhileCondition(MO::WhileConditionOp yield);
+
   /// Returns an attribute to represent elementAttr for the remainder of
   /// compilation:
   ///  - We commit to a specific byte layout, ie from here on the attribute
@@ -508,6 +511,24 @@ LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
 
   // Finally, we can create the mef.output op.
   loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(yield.getLoc(),
+                                                            operands);
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerWhileCondition(MO::WhileConditionOp condition) {
+  // Execute phase lowering.
+
+  // Figure out what values to return. We always implicitly return the current
+  // 'execute' block chain.
+  SmallVector<Value> operands;
+  operands.push_back(loweringState.getCurrentExecuteChain());
+
+  for (Value operand : condition.getOperands())
+    operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
+
+  // Finally, we can create the mef.output op.
+  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(condition.getLoc(),
                                                             operands);
   return success();
 }
@@ -1689,9 +1710,9 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   // additional variables between the output chain and the condition,
   // and fix the condition to be an i1.
   {
-    MO::YieldOp origYieldOp = whileOp.getCondTerminator();
+    MO::WhileConditionOp origYieldOp = whileOp.getCondTerminator();
 
-    Value origTensor = origYieldOp.getOperand(0);
+    Value origTensor = origYieldOp.getCondition();
     Type condMoTensorType = origTensor.getType();
 
     MEF::OutputOp loweredCondOutputOp = loweredWhileOp.getCondTerminator();
@@ -1955,6 +1976,13 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
     // Lower mo.yield to mef.output trivially.
     if (auto output = dyn_cast<MO::YieldOp>(op)) {
       if (failed(lowerYield(output)))
+        return failure();
+      continue;
+    }
+
+    // Lower mo.while.condition to mef.output trivially.
+    if (auto output = dyn_cast<MO::WhileConditionOp>(op)) {
+      if (failed(lowerWhileCondition(output)))
         return failure();
       continue;
     }

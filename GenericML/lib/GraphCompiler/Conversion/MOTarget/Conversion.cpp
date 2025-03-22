@@ -24,7 +24,7 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       // Constants
       MO::ConstantOp, MO::ConstantExternalOp,
       // Control flow
-      MO::IfOp, MO::YieldOp, MO::WhileOp,
+      MO::IfOp, MO::YieldOp, MO::WhileOp, MO::WhileConditionOp,
       // List operations
       MO::ListAppendOp, MO::ListCreateOp, MO::ListInsertOp, MO::ListGetOp,
       MO::ConcatFromListOp, MO::ListConcatOp, MO::ListSliceOp,
