@@ -10,9 +10,14 @@
 
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
+#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "Support/ML/TensorShape.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
@@ -28,6 +33,106 @@ namespace M::MO {
 } // namespace M::MO
 
 namespace {
+
+/// Return whether we support the types for lowering the given op.
+bool opHasCompatibleTypes(Operation *op) {
+  auto isDTypeAllowed = [&](MO::TensorType tensorTy) {
+    Type dtype = tensorTy.getElementType();
+    return MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
+  };
+
+  // Returns true if a type is compatable with jit.
+  auto isShapeAllowed = [&](MO::TensorType tensorTy) {
+    if (!tensorTy || !tensorTy.hasRank() || tensorTy.getRank() > kMaxRank ||
+        tensorTy.hasUnknownShape())
+      return false;
+
+    // The symbolic shape must be trivial and not a compound expression. I.E
+    // N*M.
+    return llvm::all_of(tensorTy.getDims(), MOGG::isDimAttrSupported);
+  };
+
+  bool hasCompatibleTypes = true;
+  for (Type t : op->getOperandTypes()) {
+    if (auto tensorTy = MO::dynCastFromTensorLike(t)) {
+      hasCompatibleTypes &= isDTypeAllowed(tensorTy);
+      hasCompatibleTypes &= isShapeAllowed(tensorTy);
+    } else if (auto listTy = dyn_cast<MO::ListType>(t)) {
+      hasCompatibleTypes &= isa<MO::TensorType>(listTy.getElementType());
+    } else {
+      hasCompatibleTypes &= isa<MO::OpaqueType>(t) || isa<MO::ChainType>(t) ||
+                            isa<mlir::IndexType>(t);
+    }
+  }
+  for (Type t : op->getResultTypes()) {
+    if (auto tensorTy = dyn_cast<MO::TensorType>(t)) {
+      hasCompatibleTypes &= isDTypeAllowed(tensorTy);
+      hasCompatibleTypes &= isShapeAllowed(tensorTy);
+    } else {
+      hasCompatibleTypes &= isa<MO::OpaqueType>(t) || isa<MO::ChainType>(t);
+    }
+  }
+
+  return hasCompatibleTypes;
+}
+
+bool shouldLower(Operation *op) {
+  if (isa<MO::PreservedDuringKernelLowering>(op))
+    return false;
+
+  auto dialect = op->getDialect();
+  if (!dialect)
+    return false;
+
+  if (!isa<MO::MODialect>(dialect))
+    return false;
+
+  return true;
+}
+
+// nullopt --> expected no lowering. Error --> unexpected error. Else lowering
+std::optional<ErrorOr<Operation *>>
+lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
+              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, bool forceTrivial,
+              bool forceSync) {
+  if (!shouldLower(op))
+    return std::nullopt;
+
+  // Custom operations and regular MO operations differ only by the name of
+  // the symbol.
+  auto kernelName = op->getName().getStringRef();
+  StringRef functionLabel = "";
+  if (auto customOp = dyn_cast<MO::CustomOp>(op)) {
+    kernelName = customOp.getSymbol();
+    functionLabel = customOp.getFunction();
+  }
+
+  if (!opHasCompatibleTypes(op)) {
+    std::string errStr;
+    llvm::raw_string_ostream os(errStr);
+    os << "Found at least one incompatible input/output type for a JIT-able "
+          "operation which is not supported"
+       << ". Operand types: " << op->getOperandTypes()
+       << ". Results Types: " << op->getResultTypes();
+    return Error(errStr);
+  }
+
+  // Done to match expected behavior of non-extensibility api
+  forceSync = forceSync || forceTrivial;
+  MO::MOGGKernelBuilder builder(op, insertPoint, forceSync,
+                                mojoLibraryAnalysis);
+  if (isa<MO::InvokeShapeFuncOp>(op))
+    return builder.lowerShapeFuncToKernel();
+
+  auto kernelOrErr = builder.lowerToKernel();
+
+  if (!kernelOrErr.isError() && isa<MO::ElementWiseLike>(op)) {
+    kernelOrErr.get()->setDiscardableAttr("elementwise",
+                                          UnitAttr::get(op->getContext()));
+  }
+
+  return kernelOrErr;
+}
 
 struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
   using MOToMOGGBase::MOToMOGGBase;
@@ -45,7 +150,6 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
                     errOr.getError());
       return false;
     }
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
     auto res = getOperation().walk([&](MO::RebindOp op) {
       // Don't mess any rebind that deals with `?`. When this pass is run
@@ -68,13 +172,7 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
         if (isa<MO::RebindOp>(user))
           continue;
 
-        auto errOrHasLowering =
-            M::MOToMOGGUtils::hasMOGGLowering(user, mojoLibraryAnalysis);
-        if (errOrHasLowering.isError()) {
-          op->emitError(errOrHasLowering.getError());
-          return WalkResult::interrupt();
-        }
-        if (!errOrHasLowering.get())
+        if (!shouldLower(user))
           replacementExceptions.insert(user);
       }
 
@@ -86,7 +184,7 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
     return !res.wasInterrupted();
   }
 
-  bool moToMOGGKernels() {
+  bool lowerMOOpsToMOGG() {
     // Load mojo library analysis
     auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
     ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
@@ -102,9 +200,8 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
     // Run MOGG lowering on any valid operation
     auto result = getOperation().walk([&](Operation *op) {
       OpBuilder insertPoint{op};
-      auto maybeOp =
-          MOToMOGGUtils::lowerOpToMOGG(op, insertPoint, mojoLibraryAnalysis,
-                                       /*forceTrivial=*/false, forceSync);
+      auto maybeOp = lowerOpToMOGG(op, insertPoint, mojoLibraryAnalysis,
+                                   /*forceTrivial=*/false, forceSync);
 
       // Expected no lowering.
       if (!maybeOp.has_value())
@@ -145,7 +242,7 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
       return signalPassFailure();
 
     // Run MOGG lowering on any valid operation
-    bool moggLoweringSuccess = moToMOGGKernels();
+    bool moggLoweringSuccess = lowerMOOpsToMOGG();
     if (!moggLoweringSuccess)
       return signalPassFailure();
   }

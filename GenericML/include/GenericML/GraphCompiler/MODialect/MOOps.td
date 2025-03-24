@@ -38,7 +38,7 @@ class MO_TensorOp<string mnemonic, list<Trait> traits = []>
 
 // Base class for ops working with control flow
 class MO_ControlOp<string mnemonic, list<Trait> traits = []>
-  : MO_TensorOp<mnemonic, [MO_ControlOpInterface] # traits>;
+  : MO_TensorOp<mnemonic, [MO_ControlOpInterface, MO_PreservedDuringKernelLowering] # traits>;
 
 class MO_MutableOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [DeclareOpInterfaceMethods<MO_MutableOpInterface>,
@@ -51,6 +51,7 @@ class MO_MutableOp<string mnemonic, list<Trait> traits = []>
 
 def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
   Pure,
+  MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "`index` to scalar `!mo.tensor` casting operaton";
@@ -74,7 +75,11 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
 //===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
-def MO_TransferOp : MO_TensorOp<"transfer", [Pure, MO_SameOperandsAndResultShape]> {
+def MO_TransferOp : MO_TensorOp<"transfer", [
+  Pure,
+  MO_SameOperandsAndResultShape,
+  MO_PreservedDuringKernelLowering
+]> {
   let summary = "Device transfer operation";
   let description = [{
     This op represents a possible copy or aliasing operation to make the
@@ -132,7 +137,8 @@ def MO_GraphOp : MO_TensorOp<"graph", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   RegionKindInterface, HasOnlyGraphRegion,
   // needed to leverage KGEN parameter infra
-  DeclInterface
+  DeclInterface,
+  MO_PreservedDuringKernelLowering,
 ]> {
   let summary = "Computation graph operation";
   let description = [{
@@ -397,10 +403,12 @@ def WhileOp : MO_ControlOp<"while", [
 // YieldOp
 //===----------------------------------------------------------------------===//
 
-def MO_YieldOp
-    : MO_ControlOp<"yield", [
-        Terminator, ReturnLike, Pure, ParentOneOf<["IfOp", "WhileOp"]>
-      ]> {
+def MO_YieldOp : MO_ControlOp<"yield", [
+  Terminator,
+  ReturnLike,
+  Pure,
+  ParentOneOf<["IfOp", "WhileOp"]>
+]> {
   let summary = "`yield` operation";
   let description = [{
     This op specifies the output values for control flow blocks. The op
@@ -431,7 +439,7 @@ def MO_YieldOp
 //===----------------------------------------------------------------------===//
 
 def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
-  Terminator, Pure, ParentOneOf<["WhileOp"]>
+  Terminator, Pure, MO_PreservedDuringKernelLowering, ParentOneOf<["WhileOp"]>
 ]> {
   let summary = "loop continuation condition";
   let description = [{
@@ -512,6 +520,7 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
     MO_ConstantLike,
     Pure,
+    MO_PreservedDuringKernelLowering
 ]> {
   let summary = "External constant operation";
   let description = [{
@@ -565,6 +574,7 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
     ConstantLike,
     MO_ConstantLike,
     Pure,
+    MO_PreservedDuringKernelLowering,
     DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
 ]> {
   let summary = "Constant operation";
@@ -636,7 +646,11 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
 }
 
 
-def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [ConstantLike, Pure]> {
+def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
+  ConstantLike,
+  Pure,
+  MO_PreservedDuringKernelLowering
+]> {
   let summary = "Scalar constant operation";
   let description = [{
     Same as `mo.constant`, but specialized to scalar types.
@@ -684,7 +698,7 @@ def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [ConstantLike, Pure]> {
 
 // For ops where each output depends only on the corresponding indices in the inputs
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [Pure, MO_SameOperandsAndResultShape]> {
+    : MO_TensorOp<name, traits # [Pure, MO_SameOperandsAndResultShape, MO_ElementWiseLike]> {
   let results = (outs MO_Tensor:$result);
 }
 
@@ -1471,6 +1485,7 @@ def MO_SliceOp : MO_TensorOp<"slice", [
 def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
   MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
+  MO_ViewLike
 ]> {
   let summary = "Slice dim operation";
   let description = [{
@@ -1527,6 +1542,8 @@ def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
 }
 
 def MO_SliceDimOuterOp : MO_TensorOp<"slice_dim_outer", [
+  MO_ViewLike,
+  MO_PreservedDuringKernelLowering,
   MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
 ]> {
@@ -2282,7 +2299,11 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
   ];
 }
 
-def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [Pure]> {
+def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [
+  Pure,
+  MO_ViewLike,
+  MO_PreservedDuringKernelLowering
+]> {
   let summary = "Add a singleton dimension to a tensor shape";
   let description = [{
     Adds a dimension of `1` to a shape at the given axis.
@@ -2302,7 +2323,11 @@ def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MO_SplitDimOp : MO_TensorOp<"split_dim", [Pure]> {
+def MO_SplitDimOp : MO_TensorOp<"split_dim", [
+  Pure,
+  MO_ViewLike,
+  MO_PreservedDuringKernelLowering
+]> {
   let summary = "Splits a single dimensions of a tensor into two";
   let description = [{
     Splits tensor at `axis` into two dimensions. Example:
@@ -2328,7 +2353,11 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [Pure]> {
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_MergeDimOp : MO_TensorOp<"merge_dim", [Pure]> {
+def MO_MergeDimOp : MO_TensorOp<"merge_dim", [
+  Pure,
+  MO_ViewLike,
+  MO_PreservedDuringKernelLowering
+]> {
   let summary = "Merge two dimensions of a tensor into one";
   let description = [{
     Merges two adjacent dimensions of a tensor into one. Example:
@@ -2354,6 +2383,8 @@ def MO_MergeDimOp : MO_TensorOp<"merge_dim", [Pure]> {
 }
 
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
+  MO_ViewLike,
+  MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
@@ -2575,7 +2606,10 @@ class MOShape_Op<string mnemonic, list<Trait> traits = []>
   string cppNamespace = MODialect.cppNamespace # "::Shape";
 }
 
-def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [Pure]> {
+def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+]> {
   let summary = "Casting operation";
   let description = [{
     Casts the input shape value to a shape-like tensor.
@@ -2646,6 +2680,8 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to", [
 }
 
 def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
+  MO_ViewLike,
+  MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
 ]> {
@@ -4241,6 +4277,7 @@ def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
   MemoryEffects<[MemWrite]>,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
+  MO_PreservedDuringKernelLowering
 ]> {
   let summary = "Printing operation";
   let description = [{
@@ -4271,6 +4308,7 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   MemoryEffects<[MemWrite]>,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
+  MO_PreservedDuringKernelLowering
 ]> {
   let summary = "Printing operation";
   let description = [{
@@ -4298,6 +4336,7 @@ def MO_DebugTensorUnsafePrintOp : MO_TensorOp<"debug.tensor.unsafe.print", [
   MemoryEffects<[MemWrite]>,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
+  MO_PreservedDuringKernelLowering
 ]> {
   let summary = "Printing operation";
   let description = [{
@@ -4400,8 +4439,11 @@ def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
 // List ops
 //===----------------------------------------------------------------------===//
 
-def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
+def MO_ListAppendOp : MO_TensorOp<"list.append", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+]> {
   let summary = "List appending operation";
   let description = [{
     Creates a new list that's the result of appending an element to the end of a
@@ -4431,8 +4473,11 @@ def MO_ListAppendOp : MO_TensorOp<"list.append", [Pure,
   let hasVerifier = 1;
 }
 
-def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
+def MO_ListCreateOp : MO_TensorOp<"list.create", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+  ]> {
   let summary = "List creation operation";
   let description = [{
     Creates a new list which contains the given inputs (currently limited to
@@ -4460,8 +4505,11 @@ def MO_ListCreateOp : MO_TensorOp<"list.create", [Pure,
   let hasVerifier = 1;
 }
 
-def MO_ListGetOp : MO_TensorOp<"list.get", [Pure,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
+def MO_ListGetOp : MO_TensorOp<"list.get", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+  ]> {
   let summary = "List access operation";
   let description = [{
     Retrives the element at given (base zero) index of the list. The index can be
@@ -4490,8 +4538,11 @@ def MO_ListGetOp : MO_TensorOp<"list.get", [Pure,
   let hasVerifier = 1;
 }
 
-def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
+def MO_ListInsertOp : MO_TensorOp<"list.insert", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+  ]> {
   let summary = "List insertion operation";
   let description = [{
     Creates a new list that's the result of inserting an element at given (base
@@ -4530,8 +4581,11 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [Pure,
   let hasVerifier = 1;
 }
 
-def MO_ListConcatOp : MO_TensorOp<"list.concat", [Pure,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
+def MO_ListConcatOp : MO_TensorOp<"list.concat", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+]> {
   let summary = "List concatenation operation";
   let description = [{
     Creates a new list that's the result of concatenating the two input lists
@@ -4560,8 +4614,11 @@ def MO_ListConcatOp : MO_TensorOp<"list.concat", [Pure,
   let hasVerifier = 1;
 }
 
-def MO_ListSliceOp : MO_TensorOp<"list.slice", [Pure,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>]> {
+def MO_ListSliceOp : MO_TensorOp<"list.slice", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+]> {
   let summary = "List slice operation";
   let description = [{
     Creates a new list that's the result of applying the equivalent of Python's
@@ -4816,7 +4873,11 @@ def MO_AssertOp : MO_Op<"assert"> {
   }];
 }
 
-def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>, Pure]>
+def MO_GuardOp : MO_Op<"guard", [
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  Pure,
+  MO_PreservedDuringKernelLowering
+]>
 {
   let summary = "SSA-value guard operation";
   let description = [{
@@ -4854,7 +4915,9 @@ def MO_GuardOp : MO_Op<"guard", [DeclareOpInterfaceMethods<InferTypeOpInterface>
   let hasFolder = 1;
 }
 
-def MO_ChainCreateOp : MO_Op<"chain.create", [Pure, MO_HasDeviceInterface]>
+def MO_ChainCreateOp : MO_Op<"chain.create", [
+  Pure, MO_HasDeviceInterface, MO_PreservedDuringKernelLowering
+]>
 {
   let summary = "Create a new chain conditioned on a variadic number of inputs";
   let description = [{
@@ -4883,7 +4946,8 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [Pure, MO_HasDeviceInterface]>
 
 def MO_BufferTransferOp : MO_MutableOp<"buffer.transfer", [
   AllDTypesMatch<["src", "dst"]>,
-  AllShapeAttrsMatch<["src", "dst"]>
+  AllShapeAttrsMatch<["src", "dst"]>,
+  MO_PreservedDuringKernelLowering
 ]> {
   let summary = "Transfer data between two buffers";
   let description = [{
@@ -4914,7 +4978,10 @@ def MO_BufferTransferOp : MO_MutableOp<"buffer.transfer", [
 // Not currently an issue since paramterization for mo.buffer operands that are
 // graph inputs works and this op will only be used in a pass where the shape
 // attr of the results of this op are derived from an existing mo.buffer value.
-def MO_BufferCreateOp : MO_Op<"buffer.create", [Pure]> {
+def MO_BufferCreateOp : MO_Op<"buffer.create", [
+  Pure,
+  MO_PreservedDuringKernelLowering
+]> {
   let summary = "Creates an uninitialized buffer on a specific device.";
   let description = [{
     This operation creates an uninitialized buffer with the specified shape and data type on a given device.
@@ -4934,7 +5001,8 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [Pure]> {
 
 def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   AllDTypesMatch<["inBuffer", "outTensor"]>,
-  AllShapeAttrsMatch<["inBuffer", "outTensor"]>
+  AllShapeAttrsMatch<["inBuffer", "outTensor"]>,
+  MO_PreservedDuringKernelLowering
 ]>
 {
   let summary = "Take a chain and a buffer semantic tensor and returns a chain and a value semantic tensor.";
@@ -4961,7 +5029,8 @@ def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
 
 def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
   AllDTypesMatch<["inBuffer", "inTensor"]>,
-  AllShapeAttrsMatch<["inBuffer", "inTensor"]>
+  AllShapeAttrsMatch<["inBuffer", "inTensor"]>,
+  MO_PreservedDuringKernelLowering
 ]>
 {
   let summary = "Takes a chain, a buffer semantic tensor, and a value semantic tensor and returns a chain";
@@ -4984,7 +5053,9 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
   }];
 }
 
-def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>]>
+def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>
+]>
 {
   let summary = "Stores a tensor to a slice of a buffer semantic tensor.";
   let description = [{

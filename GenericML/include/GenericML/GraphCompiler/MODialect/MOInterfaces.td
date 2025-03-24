@@ -667,4 +667,26 @@ def MO_ConstantLike : MO_TensorOpInterfaceBase<"ConstantLike"> {
   ];
 }
 
+def MO_PreservedDuringKernelLowering : OpInterface<"PreservedDuringKernelLowering"> {
+  let description = [{
+    Represents a MO operation that must have must lowered using a kernel
+    implementation.
+  }];
+  let cppNamespace = "::M::MO";
+}
+
+def MO_ViewLike : OpInterface<"ViewLike"> {
+  let description = [{
+    Represents a view op.
+  }];
+  let cppNamespace = "::M::MO";
+}
+
+def MO_ElementWiseLike : OpInterface<"ElementWiseLike"> {
+  let description = [{
+    Represents an generic element-wise op.
+  }];
+  let cppNamespace = "::M::MO";
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
