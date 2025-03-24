@@ -211,6 +211,46 @@ mo.graph @remove_unused_results(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[
   mo.output %0#1 : !mo.tensor<[2], f32>
 }
 
+// CHECK-LABEL: mo.graph @condition_propagation(
+// CHECK-SAME: %[[COND:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[], bool> {
+mo.graph @condition_propagation(%cond: !mo.tensor<[], bool>) -> (!mo.tensor<[], bool>) {
+
+  // CHECK-DAG: %[[FALSE:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xi8>} : !mo.tensor<[], bool>
+  // CHECK-DAG: %[[TRUE:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
+
+  // CHECK: %[[V0:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[], bool> {
+  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[], bool> {
+    // CHECK: mo.yield %[[TRUE]]
+    mo.yield %cond : !mo.tensor<[], bool>
+  } else {
+    // CHECK: mo.yield %[[FALSE]]
+    mo.yield %cond : !mo.tensor<[], bool>
+  }
+
+  // CHECK: mo.output %[[V0]]
+  mo.output %0 : !mo.tensor<[], bool>
+}
+
+// CHECK-LABEL: mo.graph @condition_propagation_scalars(
+// CHECK-SAME: %[[COND:.*]]: !mo.scalar<bool>) -> !mo.scalar<bool> {
+mo.graph @condition_propagation_scalars(%cond: !mo.scalar<bool>) -> (!mo.scalar<bool>) {
+
+  // CHECK-DAG: %[[FALSE:.*]] = mo.constant.scalar {value = false} : !mo.scalar<bool>
+  // CHECK-DAG: %[[TRUE:.*]] = mo.constant.scalar {value = true} : !mo.scalar<bool>
+
+  // CHECK: %[[V0:.*]] = mo.if(%[[COND]] : !mo.scalar<bool>) -> !mo.scalar<bool> {
+  %0 = mo.if(%cond : !mo.scalar<bool>) -> !mo.scalar<bool> {
+    // CHECK: mo.yield %[[TRUE]]
+    mo.yield %cond : !mo.scalar<bool>
+  } else {
+    // CHECK: mo.yield %[[FALSE]]
+    mo.yield %cond : !mo.scalar<bool>
+  }
+
+  // CHECK: mo.output %[[V0]]
+  mo.output %0 : !mo.scalar<bool>
+}
+
 //===----------------------------------------------------------------------===//
 // WhileOp, WhileConditionOp, and YieldOp
 //===----------------------------------------------------------------------===//

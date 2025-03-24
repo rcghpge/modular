@@ -1053,11 +1053,63 @@ struct RemoveUnusedResults : public OpRewritePattern<IfOp> {
   }
 };
 
+/// Replace uses of the condition value with a true constant in the then branch
+/// and false in the else branch.
+struct ConditionPropagation : public OpRewritePattern<IfOp> {
+  using OpRewritePattern<IfOp>::OpRewritePattern;
+
+  static Value createBoolOfType(PatternRewriter &rewriter, Location loc,
+                                Type type, bool value) {
+    if (isa<ScalarType>(type)) {
+      auto scalarType = rewriter.getType<ScalarType>(DType::kBool);
+      return rewriter.create<ConstantScalarOp>(loc, scalarType,
+                                               rewriter.getBoolAttr(value));
+    }
+    return rewriter.create<ConstantOp>(loc, value);
+  }
+
+  LogicalResult matchAndRewrite(IfOp op,
+                                PatternRewriter &rewriter) const override {
+    bool changed = false;
+
+    // These variables serve to prevent creating duplicate constants
+    // and hold constant true or false values.
+    Value constantTrue = nullptr;
+    Value constantFalse = nullptr;
+
+    for (OpOperand &use : llvm::make_early_inc_range(op.getCond().getUses())) {
+      auto useRegion = use.getOwner()->getParentRegion();
+
+      if (op.getThenRegion().isAncestor(useRegion)) {
+        changed = true;
+
+        if (!constantTrue)
+          constantTrue = createBoolOfType(rewriter, op.getLoc(),
+                                          op.getCond().getType(), true);
+
+        rewriter.modifyOpInPlace(use.getOwner(),
+                                 [&]() { use.set(constantTrue); });
+      } else if (op.getElseRegion().isAncestor(useRegion)) {
+        changed = true;
+
+        if (!constantFalse)
+          constantFalse = createBoolOfType(rewriter, op.getLoc(),
+                                           op.getCond().getType(), false);
+
+        rewriter.modifyOpInPlace(use.getOwner(),
+                                 [&]() { use.set(constantFalse); });
+      }
+    }
+
+    return success(changed);
+  }
+};
+
 } // namespace
 
 void IfOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
                                        MLIRContext *ctx) {
-  patterns.add<ConstantFoldIf, RemoveUnusedResults>(ctx);
+  patterns.add<ConstantFoldIf, ConditionPropagation, RemoveUnusedResults>(ctx);
 }
 
 //===----------------------------------------------------------------------===//
