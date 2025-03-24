@@ -105,9 +105,7 @@ MODULAR_DRIVER_EXPORT std::string Device::toString() const {
   std::string str;
   llvm::raw_string_ostream oss(str);
   oss << "Device(type=" << deviceSpecification.ref.label << ",";
-  if (!isHost())
-    oss << "gpu_id=" << deviceSpecification.ref.id << ",";
-  oss << formatTarget(deviceSpecification);
+  oss << "id=" << deviceSpecification.ref.id << ")";
   return str;
 }
 
