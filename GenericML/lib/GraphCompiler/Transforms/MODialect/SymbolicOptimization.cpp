@@ -8,6 +8,7 @@
 
 #include "GenericML/GraphCompiler/Analysis/MODialect/StaticReshapeDimensionsMappingAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -2790,6 +2791,28 @@ struct MergeParallelMatmulPattern
 
           if (!MOGG::dependsOnNoAliasConstantLikesOnly(
                   matmulOp.getInputB().getDefiningOp()))
+            return false;
+
+          // TODO(GEX-1978): To temporarily unblock GEX-1968, since it might
+          // forbid `ForceMatmulTransposeBForGPU`, we should instead sink the
+          // tranpose after concat to enable both pattern. I.e.,
+          //
+          // mo.transpose
+          // mo.matmul
+          // mo.tranpose
+          // mo.matmul
+          // =>
+          // mo.concat
+          // mo.transpose
+          // mo.matmul
+          //
+          // Instead of what we are generating now (as below).
+          //
+          // mo.transpose
+          // mo.transpose
+          // mo.concat
+          // mo.matmul
+          if (isa<MO::TransposeOp>(matmulOp.getInputB().getDefiningOp()))
             return false;
 
           return true;
