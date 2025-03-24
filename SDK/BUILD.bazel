@@ -219,6 +219,13 @@ mlir_nanobind(
 
 py_repl(
     name = "python",
+    data = [
+        "//GenericML:MGPRT",
+        "//KGEN:CompilerRT",
+        "//KGEN:ptxas",
+        "//ModularFramework/tools/mof",
+        "@llvm-project//compiler-rt:orc_rt",
+    ],
     tags = ["manual"],
     deps = [
         "//SDK/lib/API/python/max",
