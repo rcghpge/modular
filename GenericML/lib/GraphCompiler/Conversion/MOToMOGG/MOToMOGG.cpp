@@ -98,15 +98,6 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
   if (!shouldLower(op))
     return std::nullopt;
 
-  // Custom operations and regular MO operations differ only by the name of
-  // the symbol.
-  auto kernelName = op->getName().getStringRef();
-  StringRef functionLabel = "";
-  if (auto customOp = dyn_cast<MO::CustomOp>(op)) {
-    kernelName = customOp.getSymbol();
-    functionLabel = customOp.getFunction();
-  }
-
   if (!opHasCompatibleTypes(op)) {
     std::string errStr;
     llvm::raw_string_ostream os(errStr);
