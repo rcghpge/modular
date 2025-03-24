@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "driver_option_tablegen", "modular_cc_library", "modular_nanobind_library", "py_repl", "requirement", "td_library")
+load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "py_repl", "requirement")
 load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
 
@@ -29,107 +29,6 @@ modular_nanobind_library(
     deps = [
         "//GenericML:modular-framework-common",
         "//PyTorch:modular-framework-torch-ext",
-    ],
-)
-
-modular_cc_library(
-    name = "EngineCLI-Visualize",
-    srcs = glob(["lib/EngineCLI/Visualize/*.cpp"]),
-    hdrs = glob(["include/SDK/EngineCLI/Visualize/*.h"]),
-    copts = ["-I$(GENDIR)/SDK/lib/EngineCLI/Visualize/"],
-    deps = [
-        ":EngineCLI-Common",
-        ":VisualizeOptions.help_gen",
-        ":VisualizeOptions.inc_gen",
-        "//Config",
-        "//GenericML:modular-framework-common",
-    ],
-)
-
-modular_cc_library(
-    name = "EngineCLI-Benchmark",
-    srcs = glob(["lib/EngineCLI/Benchmark/*.cpp"]),
-    hdrs = glob(["include/SDK/EngineCLI/Benchmark/*.h"]),
-    copts = [
-        "-I$(GENDIR)/SDK/lib/EngineCLI/Benchmark/",
-    ],
-    deps = [
-        ":BenchmarkOptions.help_gen",
-        ":BenchmarkOptions.inc_gen",
-        ":EngineCLI-Common",
-        "//GenericML:MaxAPI",
-        "//GenericML:Support",
-        "//Support:Base",
-        "//Support:ML",
-        "//third-party/mlperf-loadgen",
-    ],
-)
-
-modular_cc_library(
-    name = "EngineCLI-Common",
-    srcs = glob(["lib/EngineCLI/Common/*.cpp"]),
-    hdrs = glob(["include/SDK/EngineCLI/Common/*.h"]),
-    deps = [
-        "//GenericML:MaxAPI",
-        "//PyTorch:modular-framework-torch-ext",
-        "//Support:Base",
-        "//Support:Driver",
-    ],
-)
-
-td_library(
-    name = "BenchmarkTdFiles",
-    srcs = glob(["lib/EngineCLI/Benchmark/*.td"]),
-    includes = ["include"],
-    visibility = [":__subpackages__"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-driver_option_tablegen(
-    name = "BenchmarkOptions",
-    srcs = ["lib/EngineCLI/Benchmark/BenchmarkOptions.td"],
-    manual_name = "max-benchmark",
-    markdown_name = "benchmark",
-    td_file = "lib/EngineCLI/Benchmark/BenchmarkOptions.td",
-    deps = [
-        ":BenchmarkTdFiles",
-        ":CommonTdFiles",
-        "//Support:DriverCommandTdFiles",
-    ],
-)
-
-td_library(
-    name = "CommonTdFiles",
-    srcs = glob(["lib/EngineCLI/Common/*.td"]),
-    includes = ["include"],
-    visibility = [":__subpackages__"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-td_library(
-    name = "VisualizeTdFiles",
-    srcs = glob(["lib/EngineCLI/Visualize/*.td"]),
-    includes = ["include"],
-    visibility = [":__subpackages__"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-driver_option_tablegen(
-    name = "VisualizeOptions",
-    srcs = ["lib/EngineCLI/Visualize/VisualizeOptions.td"],
-    manual_name = "max-visualize",
-    markdown_name = "visualize",
-    td_file = "lib/EngineCLI/Visualize/VisualizeOptions.td",
-    deps = [
-        ":CommonTdFiles",
-        ":VisualizeTdFiles",
-        "//Support:DriverCommandTdFiles",
     ],
 )
 
