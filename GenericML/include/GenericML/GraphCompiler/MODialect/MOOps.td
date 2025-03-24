@@ -682,18 +682,8 @@ def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
   let hasVerifier = true;
 
   let builders = [
-    /// Create a new mo.constant.scalar of int32 value.
-    OpBuilder<(ins "int32_t":$value)>,
-    /// Create a new mo.constant.scalar of int64 value.
-    OpBuilder<(ins "int64_t":$value)>,
-    /// Create a new mo.constant.scalar of boolean value.
-    OpBuilder<(ins "bool":$value)>,
-    /// Create a new mo.constant.scalar of f32 type.
-    OpBuilder<(ins "float":$value)>,
-    /// Create a new mo.constant.scalar of f64 type.
-    OpBuilder<(ins "double":$value)>,
+    OpBuilder<(ins "TypedAttr":$value)>
   ];
-
 }
 
 

@@ -20,6 +20,7 @@
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
+#include "Support/Compiler/MLIRDType.h"
 #include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/MDialect/MAttrs.h"
@@ -1060,12 +1061,11 @@ struct ConditionPropagation : public OpRewritePattern<IfOp> {
 
   static Value createBoolOfType(PatternRewriter &rewriter, Location loc,
                                 Type type, bool value) {
-    if (isa<ScalarType>(type)) {
-      auto scalarType = rewriter.getType<ScalarType>(DType::kBool);
-      return rewriter.create<ConstantScalarOp>(loc, scalarType,
-                                               rewriter.getBoolAttr(value));
-    }
-    return rewriter.create<ConstantOp>(loc, value);
+    if (isa<TensorType>(type))
+      return rewriter.create<ConstantOp>(loc, value);
+
+    assert(isa<ScalarType>(type) && "must be a tensor or scalar type");
+    return rewriter.create<ConstantScalarOp>(loc, rewriter.getBoolAttr(value));
   }
 
   LogicalResult matchAndRewrite(IfOp op,
@@ -1676,6 +1676,21 @@ LogicalResult ConstantScalarOp::verify() {
                        "attribute to match");
   }
   return success();
+}
+
+void ConstantScalarOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                             TypedAttr value) {
+  auto type = value.getType();
+
+  DType dtype;
+
+  if (auto integerType = dyn_cast<IntegerType>(type))
+    dtype = M::getEquivalentDType(integerType);
+  else
+    dtype = M::getEquivalentDType(cast<FloatType>(type));
+
+  auto resultType = odsBuilder.getType<ScalarType>(dtype);
+  build(odsBuilder, odsState, resultType, value);
 }
 
 //===----------------------------------------------------------------------===//
