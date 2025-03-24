@@ -256,38 +256,70 @@ private:
   std::vector<mlir::Diagnostic> diagnostics;
 
   void emitDiagnosticToStream(raw_ostream &os) const {
-    // Note: `std::find_if` does not work with `mlir::Diagnostic` due to deleted
-    // constructor.
-    const Diagnostic *firstErrorDiag;
-    for (auto &diag : diagnostics) {
-      if (diag.getSeverity() == mlir::DiagnosticSeverity::Error) {
-        firstErrorDiag = &diag;
-        break;
+    auto errorDiagnostics =
+        llvm::make_filter_range(diagnostics, [](const Diagnostic &diag) {
+          return diag.getSeverity() == mlir::DiagnosticSeverity::Error;
+        });
+    if (errorDiagnostics.empty()) {
+      // Still use fallback diagnostics when there are no errors.
+      emitFallbackDiagnosticsToStream(os);
+      return;
+    }
+
+    for (const Diagnostic &diag : errorDiagnostics) {
+      // Try to get the Python stack trace if available.
+      //
+      // Python Stack Trace Capture Flow:
+      // 1. When a Graph operation is created in Python (see graph.py:_add_op
+      //    method), the _location() method creates source location info:
+      //    - Uses traceback.extract_stack() to get the current Python call
+      //    stack.
+      //    - Trims the _location() and _add_op() frames to get user code.
+      //    - The remaining stack frames show where the user called the graph
+      //    API.
+      //
+      // 2. These stack frames are passed via _graph.frame_loc() to the C++
+      //    binding (defined in SDK/include/SDK/GraphAPI/python/Bindings.h)
+      //    which:
+      //    - Increments the Python frame object reference count (inc_ref()).
+      //    - Calls MAXG_opaqueFrameLocNew with the frame pointer and callbacks.
+      //    - Registers frame_traceback() to format Python stack frames as
+      //      strings.
+      //    - Registers frame_decref() to release the Python reference when
+      //      done.
+      //
+      // 3. When an error occurs, this diagnostic handler retrieves the stack.
+      if (auto opaqueLoc = dyn_cast<mlir::OpaqueLoc>(diag.getLocation())) {
+        // Extract the PythonFrameAttr from the opaque location.
+        // This contains the Python stack frame pointer and formatting
+        // callbacks.
+        if (void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
+                RMO::PythonFrameAttr::ImplType *>(opaqueLoc)) {
+          auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
+          os << "\nBuild Time Traceback (most recent call last):\n"
+             // attr.stack_trace() calls the frame_traceback() function that
+             // uses Python's traceback.format_list to convert the frames to a
+             // human-readable form.
+             << attr.stack_trace() << "\nMAX Compile Error: " << diag << "\n";
+        }
+      } else {
+        // First emit the formatted diag itself before processing notes.
+        FormatScopedDiagnosticHandler::emitDiagLocSeverity(os, diag);
+      }
+
+      for (const Diagnostic &note : diag.getNotes()) {
+        // Skip printing the operation to avoid dumping lots of IR.
+        // Do so by inspecting the first diagnostic argument: typically the
+        // message.
+        if (note.getArguments().empty() ||
+            note.getArguments().front().getKind() !=
+                mlir::DiagnosticArgument::DiagnosticArgumentKind::String ||
+            !note.getArguments().front().getAsString().starts_with(
+                "see current operation")) {
+          FormatScopedDiagnosticHandler::emitDiagnosticToStream(os, note);
+        }
       }
     }
-    if (firstErrorDiag == nullptr) {
-      emitFallbackDiagnosticsToStream(os);
-      return;
-    }
-
-    Location loc = firstErrorDiag->getLocation();
-    auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
-    if (!opaqueLoc) {
-      emitFallbackDiagnosticsToStream(os);
-      return;
-    }
-
-    void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
-        RMO::PythonFrameAttr::ImplType *>(opaqueLoc);
-    if (!attrPtr) {
-      emitFallbackDiagnosticsToStream(os);
-      return;
-    }
-    auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
-
-    os << "\nBuild Time Traceback (most recent call last):\n"
-       << attr.stack_trace() << "\nMAX Compile Error: " << *firstErrorDiag
-       << '\n';
   }
 
   // If there is no python stacktrace, fallback to the
