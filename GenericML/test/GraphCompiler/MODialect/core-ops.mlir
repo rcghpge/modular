@@ -194,6 +194,23 @@ mo.graph @constant_fold_if_scalar(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor
   mo.output %0, %1: !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
 }
 
+// CHECK-LABEL: mo.graph @remove_unused_results(
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2], f32>, %[[ARG1:.*]]: !mo.tensor<[2], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+mo.graph @remove_unused_results(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>) {
+
+  // CHECK: %[[V0:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+  %0:2 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32>, !mo.tensor<[2], f32> {
+    // CHECK: mo.yield %[[ARG1]]
+    mo.yield %arg0, %arg1 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  } else {
+    // CHECK: mo.yield %[[ARG0]]
+    mo.yield %arg1, %arg0 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  }
+
+  // CHECK: mo.output %[[V0]]
+  mo.output %0#1 : !mo.tensor<[2], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // WhileOp, WhileConditionOp, and YieldOp
 //===----------------------------------------------------------------------===//

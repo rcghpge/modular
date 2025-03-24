@@ -323,6 +323,11 @@ def IfOp : MO_ControlOp<"if", [
   let regions = (region SizedRegion<1>:$thenRegion,
                         SizedRegion<1>:$elseRegion);
 
+  let extraClassDeclaration = [{
+    Block *getThenBlock();
+    Block *getElseBlock();
+  }];
+
   let assemblyFormat = [{
     `(` $cond `:` qualified(type($cond)) `)` (`->` type($results)^)?
     $thenRegion `else` $elseRegion attr-dict

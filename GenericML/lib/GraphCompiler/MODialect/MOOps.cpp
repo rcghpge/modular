@@ -932,11 +932,11 @@ LogicalResult OutputOp::verify() {
 
 LogicalResult IfOp::verify() {
   // The 'then' and 'else' blocks take no arguments.
-  auto *thenBlock = &getThenRegion().front();
+  auto *thenBlock = getThenBlock();
   if (thenBlock->getNumArguments() != 0)
     return emitOpError("expected no arguments to 'then' block");
 
-  auto *elseBlock = &getElseRegion().front();
+  auto *elseBlock = getElseBlock();
   if (elseBlock->getNumArguments() != 0)
     return emitOpError("expected no arguments to 'else' block");
 
@@ -955,6 +955,10 @@ LogicalResult IfOp::verify() {
   auto elseOutput = cast<YieldOp>(elseTerminator);
   return checkOperandTypes(elseOutput, getResultTypes());
 }
+
+Block *IfOp::getThenBlock() { return &getThenRegion().front(); }
+
+Block *IfOp::getElseBlock() { return &getElseRegion().front(); }
 
 namespace {
 
@@ -1001,11 +1005,59 @@ struct ConstantFoldIf : public OpRewritePattern<IfOp> {
   }
 };
 
+struct RemoveUnusedResults : public OpRewritePattern<IfOp> {
+  using OpRewritePattern<IfOp>::OpRewritePattern;
+
+  static void transferBody(Block *source, Block *dest,
+                           ArrayRef<OpResult> usedResults,
+                           PatternRewriter &rewriter) {
+    // Move all operations to the destination block.
+    rewriter.mergeBlocks(source, dest);
+    // Replace the yield op by one that returns only the used values.
+    auto yieldOp = cast<YieldOp>(dest->getTerminator());
+
+    auto usedOperands = llvm::map_to_vector(usedResults, [&](OpResult res) {
+      return yieldOp.getOperand(res.getResultNumber());
+    });
+
+    rewriter.modifyOpInPlace(yieldOp,
+                             [&]() { yieldOp->setOperands(usedOperands); });
+  }
+
+  LogicalResult matchAndRewrite(IfOp op,
+                                PatternRewriter &rewriter) const override {
+    auto usedResults = llvm::filter_to_vector(
+        op.getResults(), [](OpResult res) { return !res.use_empty(); });
+
+    if (usedResults.size() == op.getNumResults())
+      return failure();
+
+    auto newTypes = llvm::map_to_vector(
+        usedResults, [](OpResult res) { return res.getType(); });
+
+    auto newOp = rewriter.create<IfOp>(op.getLoc(), newTypes, op.getCond());
+    rewriter.createBlock(&newOp.getThenRegion());
+    rewriter.createBlock(&newOp.getElseRegion());
+
+    // Move the bodies and replace the terminators (note there is a then and
+    // an else region since the operation returns results).
+    transferBody(op.getBody(0), newOp.getBody(0), usedResults, rewriter);
+    transferBody(op.getBody(1), newOp.getBody(1), usedResults, rewriter);
+
+    // Replace the operation by the new one.
+    SmallVector<Value> repResults(op.getNumResults());
+    for (const auto &en : llvm::enumerate(usedResults))
+      repResults[en.value().getResultNumber()] = newOp.getResult(en.index());
+    rewriter.replaceOp(op, repResults);
+    return success();
+  }
+};
+
 } // namespace
 
 void IfOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
                                        MLIRContext *ctx) {
-  patterns.add<ConstantFoldIf>(ctx);
+  patterns.add<ConstantFoldIf, RemoveUnusedResults>(ctx);
 }
 
 //===----------------------------------------------------------------------===//
