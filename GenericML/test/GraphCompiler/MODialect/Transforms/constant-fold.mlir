@@ -68,29 +68,24 @@ mo.graph @multiple_subgraphs(%r1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si
 
 // -----
 
-// TODO: if should be handled by applying connonicalization
-
 // CHECK-CONST-MO-SUBGRAPH-LABEL: IR Dump After MOToMOGG
 // CHECK-CONST-MO-SUBGRAPH: if_not_handled
 // CHECK-CONST-MO-SUBGRAPH: mo.mul
 
 // CHECK: if_not_handled
-mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>) -> (!mo.tensor<[2], si32>) {
-  // CHECK-DAG: %[[E2:.*]] = mo.constant {value = #M.dense_array<0, 9>
-  %e2 = mo.constant {value = #M.dense_array<0, 3> : tensor<2xsi32>} :
-				!mo.tensor<[2], si32>
-  // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0, 6>
-  // CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1>
-  %e3 = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} :
-				!mo.tensor<[], bool>
+mo.graph @if_not_handled(%e1 : !mo.tensor<[2], si32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[2], si32>) {
+  // CHECK-DAG: %[[E5:.*]] = mo.constant {value = #M.dense_array<0, 9>
+  %e2 = mo.constant {value = #M.dense_array<0, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  // CHECK-DAG: %[[E6:.*]] = mo.constant {value = #M.dense_array<0, 6>
 
   // CHECK-NEXT: mo.if
-  // CHECK-NEXT: mo.yield %[[E2]]
-  %e4 = mo.if(%e3 : !mo.tensor<[], bool>) -> !mo.tensor<[2], si32> {
+  %e4 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], si32> {
     %e5 = mo.mul(%e2, %e2) : !mo.tensor<[2], si32>
+    // CHECK: mo.yield %[[E5]]
     mo.yield %e5 : !mo.tensor<[2], si32>
   } else {
     %e6 = mo.add(%e2, %e2) : !mo.tensor<[2], si32>
+    // CHECK: mo.yield %[[E6]]
     mo.yield %e6 : !mo.tensor<[2], si32>
   }
   mo.output %e4 : !mo.tensor<[2], si32>

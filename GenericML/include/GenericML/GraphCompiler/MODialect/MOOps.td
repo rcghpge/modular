@@ -328,6 +328,7 @@ def IfOp : MO_ControlOp<"if", [
     $thenRegion `else` $elseRegion attr-dict
   }];
 
+  let hasCanonicalizer = 1;
   let hasVerifier = 1;
 }
 

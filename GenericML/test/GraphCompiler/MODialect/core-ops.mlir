@@ -150,6 +150,50 @@ mo.graph @empty_if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], 
   mo.output %arg0 : !mo.tensor<[2, ?, 1], f32>
 }
 
+// CHECK-LABEL: mo.graph @constant_fold_if_tensor(
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2], f32>, %[[ARG1:.*]]: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+mo.graph @constant_fold_if_tensor(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+  %true = mo.constant {value = #M.dense_array<1> : tensor<i1>} : !mo.tensor<[], bool>
+  %false = mo.constant {value = #M.dense_array<0> : tensor<i1>} : !mo.tensor<[], bool>
+
+  %0 = mo.if(%true : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+    mo.yield %arg0 : !mo.tensor<[2], f32>
+  } else {
+    mo.yield %arg1 : !mo.tensor<[2], f32>
+  }
+
+  %1 = mo.if(%false : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+    mo.yield %arg0 : !mo.tensor<[2], f32>
+  } else {
+    mo.yield %arg1 : !mo.tensor<[2], f32>
+  }
+
+  // CHECK-NEXT: mo.output %[[ARG0]], %[[ARG1]]
+  mo.output %0, %1: !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+}
+
+// CHECK-LABEL: mo.graph @constant_fold_if_scalar(
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2], f32>, %[[ARG1:.*]]: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+mo.graph @constant_fold_if_scalar(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+  %true = mo.constant.scalar {value = true} : !mo.scalar<bool>
+  %false = mo.constant.scalar {value = false} : !mo.scalar<bool>
+
+  %0 = mo.if(%true : !mo.scalar<bool>) -> !mo.tensor<[2], f32> {
+    mo.yield %arg0 : !mo.tensor<[2], f32>
+  } else {
+    mo.yield %arg1 : !mo.tensor<[2], f32>
+  }
+
+  %1 = mo.if(%false : !mo.scalar<bool>) -> !mo.tensor<[2], f32> {
+    mo.yield %arg0 : !mo.tensor<[2], f32>
+  } else {
+    mo.yield %arg1 : !mo.tensor<[2], f32>
+  }
+
+  // CHECK-NEXT: mo.output %[[ARG0]], %[[ARG1]]
+  mo.output %0, %1: !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // WhileOp, WhileConditionOp, and YieldOp
 //===----------------------------------------------------------------------===//

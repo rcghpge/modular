@@ -27,6 +27,7 @@
 #include "Support/ML/RangeUtils.h"
 #include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/include/mlir/IR/BuiltinAttributes.h"
@@ -953,6 +954,58 @@ LogicalResult IfOp::verify() {
     return emitOpError("'else' block expected to be terminated by a YieldOp");
   auto elseOutput = cast<YieldOp>(elseTerminator);
   return checkOperandTypes(elseOutput, getResultTypes());
+}
+
+namespace {
+
+/// Replaces the given op with the contents of the given single-block region,
+/// using the operands of the block terminator to replace operation results.
+static void replaceOpWithRegion(PatternRewriter &rewriter, Operation *op,
+                                Region &region, ValueRange blockArgs = {}) {
+  assert(llvm::hasSingleElement(region) && "expected single-region block");
+  Block *block = &region.front();
+  Operation *terminator = block->getTerminator();
+  ValueRange results = terminator->getOperands();
+  rewriter.inlineBlockBefore(block, op, blockArgs);
+  rewriter.replaceOp(op, results);
+  rewriter.eraseOp(terminator);
+}
+
+struct ConstantFoldIf : public OpRewritePattern<IfOp> {
+  using OpRewritePattern<IfOp>::OpRewritePattern;
+
+  static std::optional<bool> getConstantCondition(IfOp op) {
+    if (auto tensor = dyn_cast<TensorValue>(op.getCond()))
+      if (auto value = tryGetConstantBool(tensor))
+        return value;
+
+    BoolAttr attr;
+    if (matchPattern(op.getCond(), m_Constant(&attr)))
+      return attr.getValue();
+
+    return {};
+  }
+
+  LogicalResult matchAndRewrite(IfOp op,
+                                PatternRewriter &rewriter) const override {
+    auto condValue = getConstantCondition(op);
+    if (!condValue)
+      return rewriter.notifyMatchFailure(op, "non-constant condition");
+
+    if (*condValue)
+      replaceOpWithRegion(rewriter, op, op.getThenRegion());
+    else
+      replaceOpWithRegion(rewriter, op, op.getElseRegion());
+
+    return success();
+  }
+};
+
+} // namespace
+
+void IfOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                       MLIRContext *ctx) {
+  patterns.add<ConstantFoldIf>(ctx);
 }
 
 //===----------------------------------------------------------------------===//
