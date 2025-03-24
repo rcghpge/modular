@@ -26,6 +26,7 @@ include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for ops in this dialect.
@@ -343,7 +344,10 @@ def IfOp : MO_ControlOp<"if", [
 //===----------------------------------------------------------------------===//
 
 def WhileOp : MO_ControlOp<"while", [
-  DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorOperands"]>,
+  DeclareOpInterfaceMethods<LoopLikeOpInterface,
+    ["getRegionIterArgs", "getInitsMutable", "getYieldedValuesMutable"]>,
+  DeclareOpInterfaceMethods<RegionBranchOpInterface,
+    ["getEntrySuccessorOperands"]>,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
   HasOnlyGraphRegion,
   RegionKindInterface,
@@ -395,6 +399,9 @@ def WhileOp : MO_ControlOp<"while", [
   let extraClassDeclaration = [{
     WhileConditionOp getCondTerminator();
     YieldOp getBodyTerminator();
+
+    Block *getCondBlock();
+    Block *getBodyBlock();
   }];
 
   // The assemblyFormat is almost:

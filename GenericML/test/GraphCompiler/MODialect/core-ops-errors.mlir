@@ -203,7 +203,7 @@ mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !
 // -----
 
 mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
-  // expected-error@+1 {{'mo.while' op  along control flow edge from Region #1 to Region #0: source type #0 '!mo.tensor<[3], f32>' should match input type #0 '!mo.tensor<[2], f32>'}}
+  // expected-error@+1 {{'mo.while' op 0-th region iter_arg and 0-th yielded value have different type: '!mo.tensor<[2], f32>' != '!mo.tensor<[3], f32>'}}
   %0:3 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %arg1 as %argi1: !mo.tensor<[3], f32>, %cond as %condi: !mo.tensor<[], bool>) {
     mo.while.condition(%condi) %argi0, %argi1, %condi : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], bool>
   } do {

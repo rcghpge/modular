@@ -32,6 +32,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/include/mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -1188,6 +1189,22 @@ void WhileOp::getSuccessorRegions(
 
   regions.emplace_back(getResults());
   regions.emplace_back(&getBodyRegion(), getBodyRegion().getArguments());
+}
+
+MutableArrayRef<OpOperand> WhileOp::getInitsMutable() {
+  return getInputsMutable();
+}
+
+std::optional<MutableArrayRef<OpOperand>> WhileOp::getYieldedValuesMutable() {
+  return getBodyTerminator().getOperandsMutable();
+}
+
+Block::BlockArgListType WhileOp::getRegionIterArgs() {
+  return getCondRegion().getArguments();
+}
+
+SmallVector<Region *> WhileOp::getLoopRegions() {
+  return {&getCondRegion(), &getBodyRegion()};
 }
 
 LogicalResult WhileOp::verify() {
