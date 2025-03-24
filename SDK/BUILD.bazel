@@ -226,7 +226,6 @@ py_repl(
         "//ModularFramework/tools/mof",
         "@llvm-project//compiler-rt:orc_rt",
     ],
-    tags = ["manual"],
     deps = [
         "//SDK/lib/API/python/max",
         requirement("hypothesis"),
