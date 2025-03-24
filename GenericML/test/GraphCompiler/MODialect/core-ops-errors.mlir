@@ -98,7 +98,7 @@ mo.graph @constant_dtype_bool() -> !mo.tensor<[], bool> {
 //===----------------------------------------------------------------------===//
 
 mo.graph @if_op_missing_yield(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
-  // expected-error@+1 {{'mo.yield' op expected 1 operands, but given 0}}
+  // expected-error@+1 {{'mo.if' op  region control flow edge from Region #1 to parent results: source has 0 operands, but target successor needs 1}}
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
     mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
   } else {
@@ -121,10 +121,10 @@ mo.graph @if_op_cond_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tens
 // -----
 
 mo.graph @if_op_type_mismatch(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[3, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
+  // expected-error@+1 {{'mo.if' op  along control flow edge from Region #1 to parent results: source type #0 '!mo.tensor<[3, ?, 1], f32>' should match input type #0 '!mo.tensor<[2, ?, 1], f32>'}}
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
     mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
   } else {
-    // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[3, ?, 1], f32>' but expected '!mo.tensor<[2, ?, 1], f32>'}}
     mo.yield %arg1 : !mo.tensor<[3, ?, 1], f32>
   }
   mo.output %0 : !mo.tensor<[2, ?, 1], f32>
@@ -148,6 +148,20 @@ mo.graph @if_op_yield_returning_buffer(%arg0: !mo.buffer<[2, 2], f32>, %cond : !
 // WhileOp and YieldOp
 //===----------------------------------------------------------------------===//
 
+mo.graph @while_op_wrong_terminator(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+
+  // expected-error@+1 {{'mo.while' op expects the 'before' region to terminate with 'mo.while.condition'}}
+  %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
+    // expected-note@+1 {{terminator here}}
+    mo.yield %condi, %argi0, %condi : !mo.tensor<[], bool>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+  } do {
+    mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+  }
+  mo.output %0#0 : !mo.tensor<[2], f32>
+}
+
+// -----
+
 mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
 
   // expected-note@+1 {{prior use here}}
@@ -164,9 +178,8 @@ mo.graph @while_op_type_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.te
 
 mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
 
-  // expected-note@+1 {{while op here}}
+  // expected-error@+1 {{'mo.while' op  region control flow edge from Region #0 to parent results: source has 1 operands, but target successor needs 2}}
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    // expected-error@+1 {{'mo.while.condition' op cond block terminator must have 2 arguments but given 1}}
     mo.while.condition(%condi) %argi0 : !mo.tensor<[2], f32>
   } do {
     mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
@@ -178,9 +191,8 @@ mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !
 
 mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
 
-  // expected-note@+1 {{while op here}}
+  // expected-error@+1 {{'mo.while' op  along control flow edge from Region #0 to parent results: source type #0 '!mo.tensor<[], bool>' should match input type #0 '!mo.tensor<[2], f32>'}}
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    // expected-error@+1 {{'mo.while.condition' op cond block terminator argument 0 type ('!mo.tensor<[], bool>') must match the type of operand 0 ('!mo.tensor<[2], f32>') of parent while}}
     mo.while.condition(%condi) %condi, %argi0 : !mo.tensor<[], bool>, !mo.tensor<[2], f32>
   } do {
     mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
@@ -191,10 +203,10 @@ mo.graph @while_op_arg_count_mismatch_cond(%arg0: !mo.tensor<[2], f32>, %arg1: !
 // -----
 
 mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[3], f32>, %cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
+  // expected-error@+1 {{'mo.while' op  along control flow edge from Region #1 to Region #0: source type #0 '!mo.tensor<[3], f32>' should match input type #0 '!mo.tensor<[2], f32>'}}
   %0:3 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %arg1 as %argi1: !mo.tensor<[3], f32>, %cond as %condi: !mo.tensor<[], bool>) {
     mo.while.condition(%condi) %argi0, %argi1, %condi : !mo.tensor<[2], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], bool>
   } do {
-    // expected-error@+1 {{'mo.yield' op operand #0 has type '!mo.tensor<[3], f32>' but expected '!mo.tensor<[2], f32>'}}
     mo.yield %argi1, %argi0, %condi : !mo.tensor<[3], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   }
   mo.output %0#0 : !mo.tensor<[2], f32>

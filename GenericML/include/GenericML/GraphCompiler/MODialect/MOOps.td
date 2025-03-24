@@ -287,10 +287,12 @@ def MO_OutputOp : MO_ControlOp<"output", [
 //===----------------------------------------------------------------------===//
 
 def IfOp : MO_ControlOp<"if", [
-  SingleBlockImplicitTerminator<"MO::YieldOp">,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+  DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorRegions"]>,
   HasOnlyGraphRegion,
+  NoRegionArguments,
   RegionKindInterface,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+  SingleBlockImplicitTerminator<"MO::YieldOp">
 ]> {
   let summary = "`if` control flow operation";
   let description = [{
@@ -334,7 +336,6 @@ def IfOp : MO_ControlOp<"if", [
   }];
 
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -342,10 +343,11 @@ def IfOp : MO_ControlOp<"if", [
 //===----------------------------------------------------------------------===//
 
 def WhileOp : MO_ControlOp<"while", [
-  SingleBlock,
+  DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorOperands"]>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
   HasOnlyGraphRegion,
   RegionKindInterface,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>
+  SingleBlock
 ]> {
   let summary = "`while` control flow operation";
   let description = [{
@@ -362,9 +364,8 @@ def WhileOp : MO_ControlOp<"while", [
     signature, again using a `mo.yield`. The signature must include an "as"
     clause for every input so as to rename it to a fresh symbol.
 
-    The results of the `mo.while` op are the results of the last executed
-    "body" block, or the `mo.while` signature arguments if "cond" never
-    evaluated to true.
+    The results of the `mo.while` op are the operands of the
+    `mo.while.condition` op when the condition operand evaluates to false.
 
     Example:
 
@@ -445,7 +446,12 @@ def MO_YieldOp : MO_ControlOp<"yield", [
 //===----------------------------------------------------------------------===//
 
 def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
-  Terminator, Pure, MO_PreservedDuringKernelLowering, ParentOneOf<["WhileOp"]>
+  DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
+    ["getSuccessorRegions"]>,
+  HasParent<"WhileOp">,
+  MO_PreservedDuringKernelLowering,
+  Pure,
+  Terminator,
 ]> {
   let summary = "loop continuation condition";
   let description = [{

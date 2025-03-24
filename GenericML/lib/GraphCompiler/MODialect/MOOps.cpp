@@ -31,6 +31,7 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/include/mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -425,6 +426,23 @@ static OpFoldResult foldSliceHelper(SliceTy slice, AdaptorTy adaptor) {
       return {};
   }
   return input;
+}
+
+/// Verifies that the first block of the given `region` is terminated by a
+/// TerminatorTy. Reports errors on the given operation if it is not the case.
+template <typename TerminatorTy>
+static TerminatorTy verifyAndGetTerminator(Operation *op, Region &region,
+                                           StringRef errorMessage) {
+  Operation *terminatorOperation = nullptr;
+  if (!region.empty() && !region.front().empty()) {
+    terminatorOperation = &region.front().back();
+    if (auto yield = dyn_cast_if_present<TerminatorTy>(terminatorOperation))
+      return yield;
+  }
+  auto diag = op->emitOpError(errorMessage);
+  if (terminatorOperation)
+    diag.attachNote(terminatorOperation->getLoc()) << "terminator here";
+  return nullptr;
 }
 
 /// If `op`'s axis is constant and input rank is known, modify `op`'s `axis` to
@@ -931,35 +949,29 @@ LogicalResult OutputOp::verify() {
 // IfOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult IfOp::verify() {
-  // The 'then' and 'else' blocks take no arguments.
-  auto *thenBlock = getThenBlock();
-  if (thenBlock->getNumArguments() != 0)
-    return emitOpError("expected no arguments to 'then' block");
-
-  auto *elseBlock = getElseBlock();
-  if (elseBlock->getNumArguments() != 0)
-    return emitOpError("expected no arguments to 'else' block");
-
-  // The 'then' block results must match the mo.if results.
-  auto thenTerminator = thenBlock->getTerminator();
-  if (!isa<YieldOp>(thenTerminator))
-    return emitOpError("'then' block expected to be terminated by a YieldOp");
-  auto thenOutput = cast<YieldOp>(thenTerminator);
-  if (failed(checkOperandTypes(thenOutput, getResultTypes())))
-    return failure();
-
-  // The 'else' block results must match the mo.if results.
-  auto elseTerminator = elseBlock->getTerminator();
-  if (!isa<YieldOp>(elseTerminator))
-    return emitOpError("'else' block expected to be terminated by a YieldOp");
-  auto elseOutput = cast<YieldOp>(elseTerminator);
-  return checkOperandTypes(elseOutput, getResultTypes());
-}
-
 Block *IfOp::getThenBlock() { return &getThenRegion().front(); }
 
 Block *IfOp::getElseBlock() { return &getElseRegion().front(); }
+
+void IfOp::getSuccessorRegions(
+    mlir::RegionBranchPoint point,
+    SmallVectorImpl<mlir::RegionSuccessor> &regions) {
+  // The `then` and the `else` region branch back to the parent operation.
+  if (!point.isParent()) {
+    regions.emplace_back(getResults());
+    return;
+  }
+
+  regions.emplace_back(&getThenRegion());
+  regions.emplace_back(&getElseRegion());
+}
+
+void IfOp::getEntrySuccessorRegions(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<mlir::RegionSuccessor> &regions) {
+  regions.emplace_back(&getThenRegion());
+  regions.emplace_back(&getElseRegion());
+}
 
 namespace {
 
@@ -1151,103 +1163,44 @@ void WhileOp::print(OpAsmPrinter &p) {
   printRegion(p, getInputs(), getBodyRegion(), /*isIsolatedFromAbove=*/false);
 }
 
-static LogicalResult isSingleBool(Value v) {
-  auto tensorType = dyn_cast<TensorType>(v.getType());
-  if (!tensorType)
-    return failure();
-  if (!tensorType.hasRank() || tensorType.getRank() != 0)
-    return failure();
-  if (!tensorType.getElementType().isSignlessInteger(1))
-    return failure();
-  return success();
+OperandRange WhileOp::getEntrySuccessorOperands(mlir::RegionBranchPoint point) {
+  assert(point == getCondRegion() &&
+         "WhileOp is expected to branch only to the first region");
+  return getOperands();
 }
 
-/// Returns success if yieldOp's single operand is of the MO scalar boolean
-/// type.
-static LogicalResult validateCondTerminator(WhileOp whileOp,
-                                            WhileConditionOp yieldOp) {
-  // Terminator must have at least one operand.
-  if (yieldOp.getArgs().size() != whileOp.getNumResults()) {
-    auto diag = yieldOp->emitOpError()
-                << "cond block terminator must have " << whileOp.getNumResults()
-                << " arguments but given " << yieldOp.getArgs().size();
-
-    diag.attachNote(whileOp.getLoc()) << "while op here";
-    return failure();
+void WhileOp::getSuccessorRegions(
+    mlir::RegionBranchPoint point,
+    SmallVectorImpl<mlir::RegionSuccessor> &regions) {
+  // The parent op always branches to the condition region.
+  if (point.isParent()) {
+    regions.emplace_back(&getCondRegion(), getCondRegion().getArguments());
+    return;
   }
 
-  // That operand must be a boolean value
-  if (failed(isSingleBool(yieldOp.getCondition()))) {
-    auto diag = yieldOp->emitOpError()
-                << "condition value must have type '!mo.tensor<[], bool>'";
-
-    diag.attachNote(whileOp.getLoc()) << "while op here";
-    return failure();
+  assert(llvm::is_contained({&getCondRegion(), &getBodyRegion()}, point) &&
+         "there are only two regions in a WhileOp");
+  // The body region always branches back to the condition region.
+  if (point == getBodyRegion()) {
+    regions.emplace_back(&getCondRegion(), getCondRegion().getArguments());
+    return;
   }
 
-  auto yieldedValues = yieldOp.getArgs();
-
-  for (auto [index, value, expected] :
-       llvm::enumerate(yieldedValues, whileOp.getResultTypes())) {
-    if (value.getType() != expected) {
-      auto diag = yieldOp->emitOpError()
-                  << "cond block terminator argument " << index << " type ("
-                  << value.getType() << ") must match the type of operand "
-                  << index << " (" << expected << ") of parent while";
-
-      diag.attachNote(whileOp.getLoc()) << "while op here";
-      return failure();
-    }
-  }
-
-  return success();
+  regions.emplace_back(getResults());
+  regions.emplace_back(&getBodyRegion(), getBodyRegion().getArguments());
 }
 
 LogicalResult WhileOp::verify() {
-  // The grt.while results must match the signature types.
-  if (failed(checkMatchingTypes(*this, "result", getResultTypes(),
-                                getInputs().getTypes())))
+  auto beforeTerminator = verifyAndGetTerminator<WhileConditionOp>(
+      *this, getCondRegion(),
+      "expects the 'before' region to terminate with 'mo.while.condition'");
+  if (!beforeTerminator)
     return failure();
 
-  // The 'cond' block should accept arguments matching the grt.while signature.
-  auto *condBlock = &getCondRegion().front();
-  if (failed(
-          checkArgumentTypes(*this, "cond", condBlock, getInputs().getTypes())))
-    return failure();
-
-  // The 'body' block should accept arguments matching the grt.while signature.
-  auto *bodyBlock = &getBodyRegion().front();
-  if (failed(
-          checkArgumentTypes(*this, "body", bodyBlock, getInputs().getTypes())))
-    return failure();
-
-  // The 'cond' block returns a single 'scalar' boolean.
-  // We don't construct a scalar bool type and use checkOperandTypes because
-  // it is valid for the type to have additional type attributes (such as
-  // for a storage device).
-  auto condTerminator = dyn_cast<WhileConditionOp>(condBlock->getTerminator());
-  if (!condTerminator)
-    return emitOpError("cond block expected to be terminated by a "
-                       "mo.while.condition op");
-
-  if (failed(validateCondTerminator(*this, condTerminator)))
-    return failure();
-
-  // The 'body' block returns a result for each mo.while result.
-  auto bodyTerminator = dyn_cast<YieldOp>(bodyBlock->getTerminator());
-  if (!bodyTerminator)
-    return emitOpError("body block expected to be terminated by a mo.yield op");
-
-  if (failed(checkOperandTypes(bodyTerminator, getResultTypes())))
-    return failure();
-
-  // It would be nice to check that no lhs SSA value of an 'as clause
-  // appears free in the body. However, common passes, such as
-  // canonicalization, may replace locally bound SSA values with outer SSA
-  // values which also happen to be passed as inputs, which would violates
-  // this rule.
-
-  return success();
+  auto afterTerminator = verifyAndGetTerminator<YieldOp>(
+      *this, getBodyRegion(),
+      "expects the 'after' region to terminate with 'mo.yield'");
+  return success(afterTerminator != nullptr);
 }
 
 WhileConditionOp WhileOp::getCondTerminator() {
@@ -1256,6 +1209,31 @@ WhileConditionOp WhileOp::getCondTerminator() {
 
 YieldOp WhileOp::getBodyTerminator() {
   return cast<YieldOp>(getBodyRegion().front().getTerminator());
+}
+
+//===----------------------------------------------------------------------===//
+// WhileConditionOp
+//===----------------------------------------------------------------------===//
+
+void WhileConditionOp::getSuccessorRegions(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<mlir::RegionSuccessor> &regions) {
+  WhileOp whileOp = getParentOp();
+
+  // Condition can either lead to the after region or back to the parent op
+  // depending on whether the condition is true or not.
+  regions.emplace_back(&whileOp.getBodyRegion(),
+                       whileOp.getBodyRegion().getArguments());
+  regions.emplace_back(whileOp.getResults());
+}
+
+MutableOperandRange
+WhileConditionOp::getMutableSuccessorOperands(mlir::RegionBranchPoint point) {
+  assert((point.isParent() || point == getParentOp().getBodyRegion()) &&
+         "condition op can only exit the loop or branch to the after"
+         "region");
+  // Pass all operands except the condition to the successor region.
+  return getArgsMutable();
 }
 
 //===----------------------------------------------------------------------===//
