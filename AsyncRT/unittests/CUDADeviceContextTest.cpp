@@ -358,7 +358,7 @@ $L__BB0_2:
 
     // Copy between different buffers.
     memcpy(srcPtr, checkData, allocLen);
-    EXPECT_NO_ERR(srcCtx->copyToDevice(*srcBuf, srcPtr));
+    EXPECT_NO_ERR(srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr));
 
     DeviceFunction::SignatureBuilder sig =
         DeviceFunction::SignatureBuilder().addBuffer().addBuffer().addUInt64();

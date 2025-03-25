@@ -145,27 +145,26 @@ ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) const {
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::copyToDevice(const DeviceBuffer &dst,
-                                              const void *src,
-                                              SyncMode mode) const {
+ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
+                                                     const void *src) const {
   CHECK_IS_CPU_ERR(dst.context().device());
   void *dstPtr = dst.ptr();
   memcpy(dstPtr, src, dst.byteSize());
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::copyFromDevice(void *dst,
-                                                const DeviceBuffer &src,
-                                                SyncMode mode) const {
+ErrorOrSuccess
+CpuDeviceContext::enqueueCopyFromDevice(void *dst,
+                                        const DeviceBuffer &src) const {
   CHECK_IS_CPU_ERR(src.context().device());
   void *srcPtr = src.ptr();
   memcpy(dst, srcPtr, src.byteSize());
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
-                                                    const DeviceBuffer &src,
-                                                    SyncMode mode) const {
+ErrorOrSuccess
+CpuDeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                                            const DeviceBuffer &src) const {
   CHECK_IS_CPU_ERR(src.context().device());
   CHECK_IS_CPU_ERR(dst.context().device());
   void *srcPtr = src.ptr();
@@ -177,9 +176,9 @@ ErrorOrSuccess CpuDeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::setMemory(const DeviceBuffer &dst,
-                                           uint64_t val, size_t valSize,
-                                           SyncMode mode) const {
+ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
+                                                  uint64_t val,
+                                                  size_t valSize) const {
   CHECK_IS_CPU_ERR(dst.context().device());
   void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();

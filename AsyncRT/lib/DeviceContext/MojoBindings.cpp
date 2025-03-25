@@ -240,57 +240,28 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_HtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *dst, const void *src) {
   assert((ctx == &dst->context()) && "ctx not matching dst");
-  return checkSuccess(ctx->copyToDevice(*dst, src, DeviceContext::ASYNC));
+  return checkSuccess(ctx->enqueueCopyToDevice(*dst, src));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoH_async(const DeviceContext *ctx, void *dst,
                                  const DeviceBuffer *src) {
   assert((ctx == &src->context()) && "ctx not matching src");
-  return checkSuccess(ctx->copyFromDevice(dst, *src, DeviceContext::ASYNC));
+  return checkSuccess(ctx->enqueueCopyFromDevice(dst, *src));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoD_async(const DeviceContext *ctx,
                                  const DeviceBuffer *dst,
                                  const DeviceBuffer *src) {
-  return checkSuccess(
-      ctx->copyDeviceToDevice(*dst, *src, DeviceContext::ASYNC));
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_HtoD_sync(const DeviceContext *ctx,
-                                const DeviceBuffer *dst, const void *src) {
-  assert((ctx == &dst->context()) && "ctx not matching dst");
-  return checkSuccess(ctx->copyToDevice(*dst, src, DeviceContext::SYNC));
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_DtoH_sync(const DeviceContext *ctx, void *dst,
-                                const DeviceBuffer *src) {
-  assert((ctx == &src->context()) && "ctx not matching src");
-  return checkSuccess(ctx->copyFromDevice(dst, *src, DeviceContext::SYNC));
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_DtoD_sync(const DeviceContext *ctx,
-                                const DeviceBuffer *dst,
-                                const DeviceBuffer *src) {
-  return checkSuccess(ctx->copyDeviceToDevice(*dst, *src, DeviceContext::SYNC));
+  return checkSuccess(ctx->enqueueCopyDeviceToDevice(*dst, *src));
 }
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_setMemory_async(const DeviceContext *ctx,
                                       const DeviceBuffer *dst, uint64_t val,
                                       size_t valSize) {
-  return checkSuccess(ctx->setMemory(*dst, val, valSize, DeviceContext::ASYNC));
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_setMemory_sync(const DeviceContext *ctx,
-                                     const DeviceBuffer *dst, uint64_t val,
-                                     size_t valSize) {
-  return checkSuccess(ctx->setMemory(*dst, val, valSize, DeviceContext::SYNC));
+  return checkSuccess(ctx->enqueueSetMemory(*dst, val, valSize));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunction(

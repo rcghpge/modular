@@ -338,19 +338,11 @@ public:
     size_t free;
   };
 
-  enum class SyncMode : uint8_t {
-    SYNC = 1,
-    ASYNC = 2,
-  };
-
   enum class AllocMode : uint8_t {
     HOST = 1,
     SYNC = 2,
     ASYNC = 3,
   };
-
-  static constexpr SyncMode SYNC = SyncMode::SYNC;
-  static constexpr SyncMode ASYNC = SyncMode::ASYNC;
 
   virtual ~DeviceContext();
 
@@ -379,28 +371,18 @@ public:
                                          bool owning) const;
 
   // DeviceBuffer copies.
-  ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
-                                     const void *src) const;
-  ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src) const;
-  virtual ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
-                                      SyncMode mode) const = 0;
+  virtual ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
+                                             const void *src) const = 0;
 
-  ErrorOrSuccess enqueueCopyFromDevice(void *dst,
-                                       const DeviceBuffer &src) const;
-  ErrorOrSuccess copyFromDevice(void *dst, const DeviceBuffer &src) const;
-  virtual ErrorOrSuccess copyFromDevice(void *dst, const DeviceBuffer &src,
-                                        SyncMode mode) const = 0;
+  virtual ErrorOrSuccess
+  enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const = 0;
 
-  ErrorOrSuccess enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                           const DeviceBuffer &src) const;
-  ErrorOrSuccess copyDeviceToDevice(const DeviceBuffer &dst,
-                                    const DeviceBuffer &src) const;
-  virtual ErrorOrSuccess copyDeviceToDevice(const DeviceBuffer &dst,
-                                            const DeviceBuffer &src,
-                                            SyncMode mode) const = 0;
+  virtual ErrorOrSuccess
+  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                            const DeviceBuffer &src) const = 0;
 
-  virtual ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint64_t val,
-                                   size_t valSize, SyncMode mode) const = 0;
+  virtual ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
+                                          size_t valSize) const = 0;
 
   // DeviceFunction compiling.
   virtual ErrorOr<M::BufferRef>
@@ -816,35 +798,6 @@ public:
 private:
   const std::string name_;
 };
-
-// Inline helpers.
-inline ErrorOrSuccess
-DeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                   const void *src) const {
-  return copyToDevice(dst, src, ASYNC);
-}
-inline ErrorOrSuccess DeviceContext::copyToDevice(const DeviceBuffer &dst,
-                                                  const void *src) const {
-  return copyToDevice(dst, src, SYNC);
-}
-inline ErrorOrSuccess
-DeviceContext::enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const {
-  return copyFromDevice(dst, src, ASYNC);
-}
-inline ErrorOrSuccess
-DeviceContext::copyFromDevice(void *dst, const DeviceBuffer &src) const {
-  return copyFromDevice(dst, src, SYNC);
-}
-inline ErrorOrSuccess
-DeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                         const DeviceBuffer &src) const {
-  return copyDeviceToDevice(dst, src, ASYNC);
-}
-inline ErrorOrSuccess
-DeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
-                                  const DeviceBuffer &src) const {
-  return copyDeviceToDevice(dst, src, SYNC);
-}
 
 //
 // Private template definitions used by external code.

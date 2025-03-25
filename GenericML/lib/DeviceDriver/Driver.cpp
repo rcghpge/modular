@@ -34,8 +34,7 @@ DeviceMemory::copyTo(DeviceMemory &dst) const {
 }
 
 MODULAR_DRIVER_EXPORT ErrorOrSuccess DeviceMemory::memset(int value) {
-  return buf->context().setMemory(*buf, value, 1,
-                                  AsyncRT::DeviceContext::SyncMode::ASYNC);
+  return buf->context().enqueueSetMemory(*buf, value, 1);
 }
 
 MODULAR_DRIVER_EXPORT Device *M_copyDevice(Device *devPtr) {

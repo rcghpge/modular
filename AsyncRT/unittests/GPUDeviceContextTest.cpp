@@ -113,19 +113,16 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
   };
 
   const int copyLengths[] = {0, 256, 1024 * 1024};
+  const int numCopyLenghts = 3;
 
-  for (int i = 0; i < 4; i++) {
-    bool doSyncCopies = i & 1;
-    int allocLen = copyLengths[(i >> 1) & 1];
+  for (int i = 0; i < numCopyLenghts; i++) {
+    int allocLen = copyLengths[i];
 
-    ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf,
-                  (doSyncCopies) ? ctx->createBuffer(0)
-                                 : ctx->enqueueCreateBuffer(0));
+    ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf, ctx->enqueueCreateBuffer(0));
     EXPECT_EQ(emptyBuf->ptr(), nullptr);
     EXPECT_EQ(emptyBuf->byteSize(), 0);
 
-    std::cerr << "DeviceContext copies(len: " << allocLen
-              << ", sync: " << doSyncCopies << ")\n";
+    std::cerr << "DeviceContext copies(len: " << allocLen << ")\n";
 
     ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->createHostBuffer(allocLen));
     ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->createBuffer(allocLen));
@@ -141,23 +138,13 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
       dPtr[i] = -static_cast<char>((7 + i) & 127);
     }
 
-    if (doSyncCopies) {
-      // Ensure that all setup has finished.
-      EXPECT_NO_ERR(ctx->synchronize());
+    // Copy between different buffers.
+    EXPECT_NO_ERR(aBuf->copyTo(*bBuf));
+    EXPECT_NO_ERR(bBuf->copyTo(*cBuf));
+    EXPECT_NO_ERR(cBuf->copyTo(dPtr));
 
-      // Copy between different buffers.
-      EXPECT_NO_ERR(ctx->copyToDevice(*bBuf, aBuf->ptr()));
-      EXPECT_NO_ERR(ctx->copyDeviceToDevice(*cBuf, *bBuf));
-      EXPECT_NO_ERR(ctx->copyFromDevice(dPtr, *cBuf));
-    } else {
-      // Copy between different buffers.
-      EXPECT_NO_ERR(aBuf->copyTo(*bBuf));
-      EXPECT_NO_ERR(bBuf->copyTo(*cBuf));
-      EXPECT_NO_ERR(cBuf->copyTo(dPtr));
-
-      // Ensure that all copy operations have finished.
-      EXPECT_NO_ERR(ctx->synchronize());
-    }
+    // Ensure that all copy operations have finished.
+    EXPECT_NO_ERR(ctx->synchronize());
     compareWithData(dPtr, allocLen, checkData, sizeof(checkData));
 
     free(dPtr);
@@ -167,48 +154,31 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
 TEST(DeviceContextTest, FailDeviceBuffers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
-  const int copyLengths[] = {256};
+  int allocLen = 256;
 
-  for (int i = 0; i < 2; i++) {
-    DeviceContext::SyncMode syncMode =
-        ((i & 1) == 0) ? DeviceContext::SYNC : DeviceContext::ASYNC;
-    int allocLen = copyLengths[(i >> 1) & 1];
+  std::cerr << "DeviceContext failing copies(len: " << allocLen << ")\n";
 
-    std::cerr << "DeviceContext failing copies(len: " << allocLen
-              << ", syncMode: "
-              << ((syncMode == DeviceContext::SYNC) ? "SYNC" : "ASYNC")
-              << ")\n";
+  char *aPtr = static_cast<char *>(malloc(allocLen));
+  EXPECT_NE(aPtr, nullptr);
 
-    char *aPtr = static_cast<char *>(malloc(allocLen));
-    EXPECT_NE(aPtr, nullptr);
+  // Create a source buffer that is too small.
+  ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(allocLen - 32));
+  ASSIGN_NO_ERR(DeviceBufferRef, cBuf, ctx->enqueueCreateBuffer(allocLen));
 
-    // Create a source buffer that is too small.
-    ASSIGN_NO_ERR(DeviceBufferRef, bBuf,
-                  (syncMode == DeviceContext::SYNC)
-                      ? ctx->createBuffer(allocLen - 32)
-                      : ctx->enqueueCreateBuffer(allocLen - 32));
-    ASSIGN_NO_ERR(DeviceBufferRef, cBuf,
-                  (syncMode == DeviceContext::SYNC)
-                      ? ctx->createBuffer(allocLen)
-                      : ctx->enqueueCreateBuffer(allocLen));
-
-    // Initialize with known good and bad values.
-    for (int i = 0; i < allocLen; i++) {
-      aPtr[i] = static_cast<char>(i & 127);
-    }
-
-    // Copy between different buffers.
-    EXPECT_NO_ERR(ctx->copyToDevice(*bBuf, aPtr, syncMode));
-    EXPECT_ERR_MSG(ctx->copyDeviceToDevice(*cBuf, *bBuf, syncMode),
-                   "not enough data in src");
-
-    if (syncMode == DeviceContext::ASYNC) {
-      // Ensure that all copy operations have finished.
-      EXPECT_NO_ERR(ctx->synchronize());
-    }
-
-    free(aPtr);
+  // Initialize with known good and bad values.
+  for (int i = 0; i < allocLen; i++) {
+    aPtr[i] = static_cast<char>(i & 127);
   }
+
+  // Copy between different buffers.
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(*bBuf, aPtr));
+  EXPECT_ERR_MSG(ctx->enqueueCopyDeviceToDevice(*cBuf, *bBuf),
+                 "not enough data in src");
+
+  // Ensure that all copy operations have finished.
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  free(aPtr);
 }
 
 TEST(GPUDeviceContextTest, SubBuffer) {
@@ -280,7 +250,7 @@ TEST(DeviceContextTest, SetMemory) {
   ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx->enqueueCreateBuffer(allocLen));
   ASSIGN_NO_ERR(DeviceBufferRef, hostBuf, ctx->createHostBuffer(allocLen));
 
-  EXPECT_NO_ERR(ctx->setMemory(*buf, 123, 1, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(*buf, 123, 1));
   EXPECT_NO_ERR(buf->copyTo(*hostBuf));
   EXPECT_NO_ERR(ctx->synchronize());
   {
@@ -290,7 +260,7 @@ TEST(DeviceContextTest, SetMemory) {
     }
   }
 
-  EXPECT_NO_ERR(ctx->setMemory(*buf, 12345, 2, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(*buf, 12345, 2));
   EXPECT_NO_ERR(buf->copyTo(*hostBuf));
   EXPECT_NO_ERR(ctx->synchronize());
   {
@@ -300,7 +270,7 @@ TEST(DeviceContextTest, SetMemory) {
     }
   }
 
-  EXPECT_NO_ERR(ctx->setMemory(*buf, 1234567890, 4, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(*buf, 1234567890, 4));
   EXPECT_NO_ERR(buf->copyTo(*hostBuf));
   EXPECT_NO_ERR(ctx->synchronize());
   {
@@ -310,8 +280,7 @@ TEST(DeviceContextTest, SetMemory) {
     }
   }
 
-  EXPECT_NO_ERR(
-      ctx->setMemory(*buf, 0x0101010101010101ul, 8, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(*buf, 0x0101010101010101ul, 8));
   EXPECT_NO_ERR(buf->copyTo(*hostBuf));
   EXPECT_NO_ERR(ctx->synchronize());
   {
@@ -321,8 +290,7 @@ TEST(DeviceContextTest, SetMemory) {
     }
   }
 
-  EXPECT_NO_ERR(
-      ctx->setMemory(*buf, 1234567890123456789, 8, DeviceContext::ASYNC));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(*buf, 1234567890123456789, 8));
   EXPECT_NO_ERR(buf->copyTo(*hostBuf));
   EXPECT_NO_ERR(ctx->synchronize());
   {

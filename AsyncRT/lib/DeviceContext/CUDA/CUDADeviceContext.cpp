@@ -867,41 +867,32 @@ ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::copyToDevice(const DeviceBuffer &dst,
-                                               const void *src,
-                                               SyncMode mode) const {
+ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
+                                                      const void *src) const {
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
   CUdeviceptr dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
-  if (mode == ASYNC) {
-    CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
-  } else {
-    CUDA_CHECK_ERR(driver_.MemcpyHtoD(dstPtr, src, byteSize));
-  }
+  CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::copyFromDevice(void *dst,
-                                                 const DeviceBuffer &src,
-                                                 SyncMode mode) const {
+ErrorOrSuccess
+CUDADeviceContext::enqueueCopyFromDevice(void *dst,
+                                         const DeviceBuffer &src) const {
   CHECK_IS_CUDA_ERR(src.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
   CUdeviceptr srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
-  if (mode == ASYNC) {
-    CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
-  } else {
-    CUDA_CHECK_ERR(driver_.MemcpyDtoH(dst, srcPtr, byteSize));
-  }
+  CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
-                                                     const DeviceBuffer &src,
-                                                     SyncMode mode) const {
+ErrorOrSuccess
+CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                                             const DeviceBuffer &src) const {
   CHECK_IS_CUDA_ERR(src.context().device());
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
@@ -921,71 +912,49 @@ ErrorOrSuccess CUDADeviceContext::copyDeviceToDevice(const DeviceBuffer &dst,
     RAISE_ERROR("not enough data in src");
   }
   if (srcCtx.context_ != dstCtx.context_) {
-    if (mode == ASYNC) {
-      // Ensure that we are waiting for the source data to be ready.
-      DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
-      ERR_CHECK(dstCtx.enqueueWaitForEvent(*srcEvent));
+    // Ensure that we are waiting for the source data to be ready.
+    DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
+    ERR_CHECK(dstCtx.enqueueWaitForEvent(*srcEvent));
 
-      CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
-                                             srcCtx.context_, dstByteSize,
-                                             stream_));
+    CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
+                                           srcCtx.context_, dstByteSize,
+                                           stream_));
 
-      // Wait for the copy to complete before proceeding with the source stream
-      // (e.g. freeing or overwriting memory).
-      DEFINE_OR_RAISE(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
-      ERR_CHECK(srcCtx.enqueueWaitForEvent(*dstEvent));
-    } else {
-      CUDA_CHECK_ERR(driver_.MemcpyPeer(dstPtr, dstCtx.context_, srcPtr,
-                                        srcCtx.context_, dstByteSize));
-    }
+    // Wait for the copy to complete before proceeding with the source stream
+    // (e.g. freeing or overwriting memory).
+    DEFINE_OR_RAISE(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
+    ERR_CHECK(srcCtx.enqueueWaitForEvent(*dstEvent));
   } else {
-    if (mode == ASYNC) {
-      CUDA_CHECK_ERR(
-          driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
-    } else {
-      CUDA_CHECK_ERR(driver_.MemcpyDtoD(dstPtr, srcPtr, dstByteSize));
-    }
+    CUDA_CHECK_ERR(
+        driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
   }
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
-                                            uint64_t val, size_t valSize,
-                                            SyncMode mode) const {
+ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
+                                                   uint64_t val,
+                                                   size_t valSize) const {
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
   void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
-    if (mode == ASYNC) {
-      CUDA_CHECK_ERR(driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val),
-                                           byteSize, stream_));
-    } else {
-      CUDA_CHECK_ERR(
-          driver_.MemsetD8(ptr, static_cast<uint8_t>(val), byteSize));
-    }
+    CUDA_CHECK_ERR(driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val),
+                                         byteSize, stream_));
   } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 1;
-    if (mode == ASYNC) {
-      CUDA_CHECK_ERR(driver_.MemsetD16Async(ptr, static_cast<uint16_t>(val),
-                                            len, stream_));
-    } else {
-      CUDA_CHECK_ERR(driver_.MemsetD16(ptr, static_cast<uint16_t>(val), len));
-    }
+    CUDA_CHECK_ERR(
+        driver_.MemsetD16Async(ptr, static_cast<uint16_t>(val), len, stream_));
   } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 2;
-    if (mode == ASYNC) {
-      CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, static_cast<uint32_t>(val),
-                                            len, stream_));
-    } else {
-      CUDA_CHECK_ERR(driver_.MemsetD32(ptr, static_cast<uint32_t>(val), len));
-    }
+    CUDA_CHECK_ERR(
+        driver_.MemsetD32Async(ptr, static_cast<uint32_t>(val), len, stream_));
   } else {
     if (valSize != 8) {
       return Error("unsupported valSize");
@@ -997,24 +966,14 @@ ErrorOrSuccess CUDADeviceContext::setMemory(const DeviceBuffer &dst,
     uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
     if (hiBits == loBits) {
       size_t len = byteSize >> 2; // Divide by 4 as we are using 32-bit memset.
-      if (mode == ASYNC) {
-        CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, loBits, len, stream_));
-      } else {
-        CUDA_CHECK_ERR(driver_.MemsetD32(ptr, loBits, len));
-      }
+      CUDA_CHECK_ERR(driver_.MemsetD32Async(ptr, loBits, len, stream_));
     } else {
       size_t len = byteSize >> 3;
       void *hiPtr = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) +
                                              sizeof(uint32_t));
-      if (mode == ASYNC) {
-        CUDA_CHECK_ERR(
-            driver_.MemsetD2D32Async(ptr, 8, loBits, 1, len, stream_));
-        CUDA_CHECK_ERR(
-            driver_.MemsetD2D32Async(hiPtr, 8, hiBits, 1, len, stream_));
-      } else {
-        CUDA_CHECK_ERR(driver_.MemsetD2D32(ptr, 8, loBits, 1, len));
-        CUDA_CHECK_ERR(driver_.MemsetD2D32(hiPtr, 8, hiBits, 1, len));
-      }
+      CUDA_CHECK_ERR(driver_.MemsetD2D32Async(ptr, 8, loBits, 1, len, stream_));
+      CUDA_CHECK_ERR(
+          driver_.MemsetD2D32Async(hiPtr, 8, hiBits, 1, len, stream_));
     }
   }
   return success();

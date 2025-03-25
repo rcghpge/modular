@@ -287,16 +287,16 @@ public:
   ~CUDADeviceContext() override;
 
   // DeviceBuffer copies.
-  ErrorOrSuccess copyToDevice(const DeviceBuffer &dst, const void *src,
-                              SyncMode mode) const override;
-  ErrorOrSuccess copyFromDevice(void *dst, const DeviceBuffer &src,
-                                SyncMode mode) const override;
-  ErrorOrSuccess copyDeviceToDevice(const DeviceBuffer &dst,
-                                    const DeviceBuffer &src,
-                                    SyncMode mode) const override;
+  ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
+                                     const void *src) const override;
+  ErrorOrSuccess enqueueCopyFromDevice(void *dst,
+                                       const DeviceBuffer &src) const override;
+  ErrorOrSuccess
+  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                            const DeviceBuffer &src) const override;
 
-  ErrorOrSuccess setMemory(const DeviceBuffer &dst, uint64_t val,
-                           size_t valSize, SyncMode mode) const override;
+  ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
+                                  size_t valSize) const override;
 
   // DeviceFunction compiling.
   ErrorOr<M::BufferRef>
