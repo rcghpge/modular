@@ -402,6 +402,9 @@ def WhileOp : MO_ControlOp<"while", [
 
     Block *getCondBlock();
     Block *getBodyBlock();
+
+    Block::BlockArgListType getCondArguments();
+    Block::BlockArgListType getBodyArguments();
   }];
 
   // The assemblyFormat is almost:
@@ -411,6 +414,7 @@ def WhileOp : MO_ControlOp<"while", [
   let hasCustomAssemblyFormat = 1;
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//

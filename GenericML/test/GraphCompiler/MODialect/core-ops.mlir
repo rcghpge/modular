@@ -260,8 +260,10 @@ mo.graph @condition_propagation_scalars(%cond: !mo.scalar<bool>) -> (!mo.scalar<
 mo.graph @while_op(%arg0: !mo.tensor<[2], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>) {
   // CHECK: %[[RES:.*]]:2 = mo.while (%[[ARG0]] as %[[ARGI0:.*]]: !mo.tensor<[2], f32>, %[[COND]] as %[[CONDI:.*]]: !mo.tensor<[], bool>) {
   %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
-    // CHECK: mo.while.condition(%[[CONDI]]) %[[ARGI0]], %[[CONDI]] : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
-    mo.while.condition(%condi) %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    // CHECK: %[[NEG:.*]] = mo.not(%[[CONDI]]) : !mo.tensor<[], bool>
+    %neg = mo.not(%condi) : !mo.tensor<[], bool>
+    // CHECK: mo.while.condition(%[[CONDI]]) %[[ARGI0]], %[[NEG]] : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+    mo.while.condition(%condi) %argi0, %neg : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
   // CHECK: } do {
   } do {
     // CHECK: %[[NEW_ARG0:.*]] = mo.add(%[[ARGI0]], %[[ARGI0]]) : !mo.tensor<[2], f32>
@@ -271,6 +273,22 @@ mo.graph @while_op(%arg0: !mo.tensor<[2], f32>, %cond : !mo.tensor<[], bool>) ->
   }
   // CHECK: mo.output %[[RES]]#0 : !mo.tensor<[2], f32>
   mo.output %0#0 : !mo.tensor<[2], f32>
+}
+
+// CHECK-LABEL: mo.graph @while_op_remove_invariant_values
+// CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[2], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[], bool> {
+mo.graph @while_op_remove_invariant_values(%arg0: !mo.tensor<[2], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[], bool>) {
+  // CHECK: mo.while
+  %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %cond as %condi: !mo.tensor<[], bool>) {
+    // CHECK: mo.while.condition
+    mo.while.condition(%condi) %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+  // CHECK: } do {
+  } do {
+    // CHECK: mo.yield
+    mo.yield %argi0, %condi : !mo.tensor<[2], f32>, !mo.tensor<[], bool>
+  }
+  // CHECK: mo.output %[[COND]] : !mo.tensor<[], bool>
+  mo.output %0#1 : !mo.tensor<[], bool>
 }
 
 //===----------------------------------------------------------------------===//

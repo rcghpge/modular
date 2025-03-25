@@ -1228,6 +1228,166 @@ YieldOp WhileOp::getBodyTerminator() {
   return cast<YieldOp>(getBodyRegion().front().getTerminator());
 }
 
+Block *WhileOp::getCondBlock() { return &getCondRegion().front(); }
+
+Block *WhileOp::getBodyBlock() { return &getBodyRegion().front(); }
+
+Block::BlockArgListType WhileOp::getCondArguments() {
+  return getCondRegion().getArguments();
+}
+
+Block::BlockArgListType WhileOp::getBodyArguments() {
+  return getBodyRegion().getArguments();
+}
+
+namespace {
+
+/// Find unused results of the while loop that are also unused in the
+/// body block and remove them.
+///
+/// Results are produced by the `mo.while.condition` operation, which yields
+/// values to the parent `mo.while` operation and to the body region.
+struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
+  using OpRewritePattern<WhileOp>::OpRewritePattern;
+
+  /// Can the given value to the terminator op be simplifed if it appears as
+  /// the index'th operand to the terminator.
+  static bool canSimplifyValue(Value val, Value initVal, Block *block,
+                               unsigned index) {
+    // If the operand correspond to the initial value at the given index,
+    // then the value can be simplified.
+    if (val == initVal)
+      return true;
+
+    // Check if the given value is a trivial forwarding of the index'th block
+    // argument from the parent block.
+    auto blockArg = dyn_cast<BlockArgument>(val);
+    if (blockArg && blockArg.getParentBlock() == block &&
+        index == blockArg.getArgNumber())
+      return true;
+
+    return false;
+  }
+
+  LogicalResult matchAndRewrite(WhileOp op,
+                                PatternRewriter &rewriter) const override {
+    Block::BlockArgListType condBlockArgs = op.getCondArguments();
+    Block::BlockArgListType bodyBlockArgs = op.getBodyArguments();
+    WhileConditionOp condOp = op.getCondTerminator();
+    OperandRange condOpArgs = condOp.getArgs();
+    YieldOp yieldOp = op.getBodyTerminator();
+    ValueRange yieldOpArgs = yieldOp.getOperands();
+
+    // Perform a simplification check before proceeding to avoid allocating
+    // all the extra dstat structures which may be unused.
+    bool canSimplify = false;
+    for (const auto [index, initVal, yieldOpArg, condOpArg] :
+         llvm::enumerate(op.getOperands(), yieldOpArgs, condOpArgs)) {
+
+      // We can simplify the index'th loop carried value if both the YieldOp's
+      // and WhileConditionOp's index'th value can be simplified.
+      canSimplify |=
+          canSimplifyValue(yieldOpArg, initVal, yieldOp->getBlock(), index) &&
+          canSimplifyValue(condOpArg, initVal, condOp->getBlock(), index);
+    }
+
+    if (!canSimplify)
+      return rewriter.notifyMatchFailure(
+          op, "no loop carried values can be simplified");
+
+    SmallVector<Value> newInitArgs, newYieldOpArgs, newCondOpArgs;
+    SmallVector<Location> newCondBlockArgLocs, newBodyBlockArgLocs;
+
+    SmallVector<Value> blockInitValMap(condOpArgs.size());
+    for (const auto [index, initVal, yieldOpArg, condOpArg] :
+         llvm::enumerate(op.getOperands(), yieldOpArgs, condOpArgs)) {
+
+      bool simplifyArg =
+          canSimplifyValue(yieldOpArg, initVal, yieldOp->getBlock(), index) &&
+          canSimplifyValue(condOpArg, initVal, condOp->getBlock(), index);
+
+      // If the index'th loop carried value can be simplified, record the
+      // mapping to the corresponding initVal.
+      if (simplifyArg) {
+        blockInitValMap[index] = initVal;
+        continue;
+      }
+
+      newInitArgs.emplace_back(initVal);
+      newYieldOpArgs.emplace_back(yieldOpArg);
+      newCondOpArgs.emplace_back(condOpArg);
+      newCondBlockArgLocs.emplace_back(condBlockArgs[index].getLoc());
+      newBodyBlockArgLocs.emplace_back(bodyBlockArgs[index].getLoc());
+    }
+
+    { // Update body YieldOp
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPoint(yieldOp);
+      rewriter.replaceOpWithNewOp<YieldOp>(yieldOp, newYieldOpArgs);
+    }
+
+    { // Update cond WhileConditionOp
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPoint(condOp);
+      rewriter.replaceOpWithNewOp<WhileConditionOp>(
+          condOp, condOp.getCondition(), newCondOpArgs);
+    }
+
+    auto newWhile = rewriter.create<WhileOp>(
+        op.getLoc(), TypeRange(newInitArgs), newInitArgs);
+
+    Block &newCondBlock = *rewriter.createBlock(
+        &newWhile.getCondRegion(), /*insertPt*/ {},
+        ValueRange(newYieldOpArgs).getTypes(), newCondBlockArgLocs);
+
+    Block &newBodyBlock = *rewriter.createBlock(
+        &newWhile.getBodyRegion(), /*insertPt*/ {},
+        ValueRange(newYieldOpArgs).getTypes(), newBodyBlockArgLocs);
+
+    Block &condBlock = *op.getCondBlock();
+    Block &bodyBlock = *op.getBodyBlock();
+
+    SmallVector<Value> newCondBlockArgs(condBlock.getNumArguments());
+    SmallVector<Value> newBodyBlockArgs(condBlock.getNumArguments());
+    SmallVector<Value> newResults(condBlock.getNumArguments());
+
+    // For each i-th before block argument we find it's replacement value as :-
+    //   1. If i-th before block argument is a loop invariant, we fetch it's
+    //      initial value from `beforeBlockInitValMap` by querying for key `i`.
+    //   2. Else we fetch j-th new before block argument as the replacement
+    //      value of i-th before block argument.
+    for (unsigned i = 0, j = 0, n = condBlock.getNumArguments(); i < n; i++) {
+      // If the index 'i' argument was a loop invariant we fetch it's initial
+      // value from `beforeBlockInitValMap`.
+      if (blockInitValMap[i] != nullptr) {
+        newCondBlockArgs[i] = blockInitValMap[i];
+        newBodyBlockArgs[i] = blockInitValMap[i];
+        newResults[i] = blockInitValMap[i];
+      } else {
+        newCondBlockArgs[i] = newCondBlock.getArgument(j);
+        newBodyBlockArgs[i] = newBodyBlock.getArgument(j);
+        newResults[i] = newWhile.getResult(j);
+        j++;
+      }
+    }
+
+    // Inline new blocks with updated block arguments
+    rewriter.mergeBlocks(&condBlock, &newCondBlock, newCondBlockArgs);
+    rewriter.mergeBlocks(&bodyBlock, &newBodyBlock, newBodyBlockArgs);
+
+    // Replace old op with the new results
+    rewriter.replaceOp(op, newResults);
+    return success();
+  }
+};
+
+} // namespace
+
+void WhileOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                          MLIRContext *ctx) {
+  patterns.add<RemoveLoopInvariantCarriedValues>(ctx);
+}
+
 //===----------------------------------------------------------------------===//
 // WhileConditionOp
 //===----------------------------------------------------------------------===//
