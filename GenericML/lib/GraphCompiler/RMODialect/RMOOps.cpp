@@ -19,6 +19,7 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/ParserUtils.h"
+#include "mlir/IR/Diagnostics.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <optional>
@@ -804,6 +805,64 @@ LogicalResult SelectOp::inferReturnTypes(
   ShapeAttr resultShape = resultShapesOr.get().front();
   inferredReturnTypes.push_back(
       TensorType::get(resultShape, *promotedDtype, *outputDeviceOr));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TopKOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+                         ValueRange operands, DictionaryAttr attributes,
+                         mlir::OpaqueProperties properties, RegionRange regions,
+                         SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto input = cast<TensorValue>(operands[0]);
+  auto inputShape = cast<ShapeAttr>(input.getType().getShapeAttr());
+  auto kAttr = attributes.getAs<IntegerAttr>("k");
+  const int64_t k = kAttr.getSInt();
+  int64_t axis = attributes.getAs<IntegerAttr>("axis").getSInt();
+
+  // Handle negative axis.
+  const int64_t rank = inputShape.getRank();
+  axis = axis < 0 ? axis + rank : axis;
+  if (axis < 0 || axis >= rank)
+    return emitOptionalError(location,
+                             llvm::formatv("axis ({0}) out of bounds", axis));
+
+  TypedAttr axisDim = inputShape[axis];
+  if (auto intDim = dyn_cast<IntegerAttr>(axisDim)) {
+    // Validate k when axis is statically known.
+    int64_t axisDimInt = intDim.getValue().getSExtValue();
+    if (k > axisDimInt) {
+      return emitOptionalError(
+          location,
+          llvm::formatv(
+              "k ({0}) cannot be larger than dimension size along axis {1}", k,
+              axisDimInt));
+    }
+  }
+
+  SmallVector<TypedAttr> outDims;
+  for (int i = 0; i < rank; ++i) {
+    if (i == axis)
+      outDims.push_back(kAttr);
+    else
+      outDims.push_back(inputShape[i]);
+  }
+
+  auto resultShape = ShapeAttr::get(outDims, inputShape.getType());
+
+  DeviceRefAttr deviceRef = input.getType().getDeviceRef();
+  if (!deviceRef)
+    return emitOptionalError(
+        location, "rmo.top_k requires input tensor to have an assigned device");
+
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, input.getType().getDtype(), deviceRef));
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, DType::si64, deviceRef));
 
   return success();
 }

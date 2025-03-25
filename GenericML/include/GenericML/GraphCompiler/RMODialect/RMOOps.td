@@ -572,6 +572,43 @@ def RMO_SelectOp : RMO_Op<"select", [
   }];
 }
 
+def RMO_TopKOp : RMO_Op<"top_k", [
+  Pure,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
+  let summary = "Top-K operation";
+  let description = [{
+    Computes the largest values and their corresponding indices in a tensor
+    along a specified axis.
+    Returns values sorted along the axis.
+
+    axis: The axis to compute the largest values over.
+      The axis must be in [-rank, rank).
+    k: The number of values to compute.
+
+    Example:
+    ```mlir
+      %input: !mo.tensor<[2, 6], si64>
+      %values, %indices = rmo.top_k(%input) {k = 3, axis = 1} :
+        (!mo.tensor<[2, 6], si64>) ->
+        (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
+    ```
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    SI64Attr:$k,
+    SI64Attr:$axis,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs
+    MO_Tensor:$values,
+    MO_I64Tensor:$indices
+  );
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def RMO_SliceOp : RMO_Op<"slice", [
   Pure,
   DeclareOpInterfaceMethods<InferTypeOpInterface>,

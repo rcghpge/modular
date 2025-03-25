@@ -946,6 +946,71 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
   }
 };
 
+struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
+  LowerTopK(MLIRContext *ctx) : OpRewritePattern<RMO::TopKOp>(ctx, 1) {}
+
+  LogicalResult matchAndRewrite(RMO::TopKOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    MLIRContext *ctx = getContext();
+
+    // Get the device from the input tensor
+    TensorValue input = op.getInput();
+    DeviceRefAttr deviceRef = input.getType().getDeviceRef();
+    if (!deviceRef)
+      return op.emitError() << "rmo.top_k lowering requires input tensor to "
+                               "have an assigned device";
+
+    // Marshal out dimension information for assertion.
+    auto inputType = input.getType();
+    auto inputShape = inputType.getTypedShapeAttr();
+    const int64_t kVal = op.getK();
+    const int64_t rank = inputShape.getRank();
+    // Normalize axis. `inferReturnTypes` checks -rank <= axis < rank already.
+    int64_t axisVal = op.getAxis();
+    axisVal = axisVal < 0 ? axisVal + rank : axisVal;
+
+    // Add parametric check for k <= axis dimension
+    MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
+    SmallVector<ParamBinding> paramBindings;
+    ParamExprBuilder b(graphOp, loc, &paramBindings);
+
+    // Get the dimension along the axis (could be symbolic).
+    TypedAttr axisDimAttr = inputShape[axisVal];
+    Var axisDim = b.createVar(axisDimAttr);
+    Var kVar = b.createVar(
+        IntegerAttr::get(rewriter.getIntegerType(64, /*isSigned=*/true), kVal));
+
+    // Create assertion that k <= dimension size
+    b.createAssert(kVar <= axisDim,
+                   "k value exceeds dimension size along specified axis");
+
+    // Add parameter bindings to the graph.
+    for (const ParamBinding &binding : paramBindings)
+      binding.toOp(loc, rewriter);
+
+    // Convert attributes to tensor constants expected by `mo.top_k`.
+    auto k = rewriter.create<MO::ConstantOp>(
+        loc, op.getK(), DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
+    auto axis = rewriter.create<MO::ConstantOp>(
+        loc, op.getAxis(), DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
+    auto sorted = rewriter.create<MO::ConstantOp>(
+        loc, /*value=*/true, DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
+
+    // Create the MO::TopKOp with proper result types
+    auto topkOp = rewriter.create<MO::TopKOp>(
+        op.getLoc(), op.getValues().getType(), op.getIndices().getType(), input,
+        k, axis, sorted, op.getOutputParamDecls());
+
+    // Set the device reference on the operation itself, needed
+    // in addition to the devices on the operands and results.
+    topkOp.setDeviceRef(deviceRef);
+
+    rewriter.replaceOp(op, topkOp->getResults());
+    return success();
+  }
+};
+
 struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
   LowerSlice(MLIRContext *ctx) : OpRewritePattern<RMO::SliceOp>(ctx, 1) {}
   LogicalResult matchAndRewrite(RMO::SliceOp op,
@@ -1278,7 +1343,7 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::OrOp, RMO::MOOrOp>,
         LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
         LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
-        LowerMatmul, LowerBroadcastTo, LowerSelect, LowerSlice,
+        LowerMatmul, LowerBroadcastTo, LowerSelect, LowerTopK, LowerSlice,
         LowerShapeToTensor>(context);
 
     // Lowering third party specific operations.

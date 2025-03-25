@@ -4403,6 +4403,11 @@ def MO_TopKOp : MO_SelectKLikeOp<"top_k"> {
     along a specified axis. Returned values along the axis are always sorted
     (stable).
 
+    axis: The axis to compute the largest values over.
+      The axis must be in [-rank, rank).
+    k: The number of values to compute.
+    sorted: Whether to return the values and indices sorted or not.
+
     Example:
     ```mlir
       %in = mo.constant {
