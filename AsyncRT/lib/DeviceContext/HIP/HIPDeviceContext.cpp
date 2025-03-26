@@ -675,7 +675,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   auto srcPtr = src.ptr();
   auto dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  size_t srcByteSize = src.byteSize();
+  [[maybe_unused]] size_t srcByteSize = src.byteSize();
   assert(srcByteSize >= dstByteSize);
   if (srcCtx.hipDevice() != dstCtx.hipDevice()) {
     HIP_CHECK_ERR(

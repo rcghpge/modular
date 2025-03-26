@@ -906,7 +906,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   CUdeviceptr srcPtr = src.ptr();
   CUdeviceptr dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  size_t srcByteSize = src.byteSize();
+  [[maybe_unused]] size_t srcByteSize = src.byteSize();
   assert(srcByteSize >= dstByteSize);
   if (srcCtx.context_ != dstCtx.context_) {
     // Ensure that we are waiting for the source data to be ready.
