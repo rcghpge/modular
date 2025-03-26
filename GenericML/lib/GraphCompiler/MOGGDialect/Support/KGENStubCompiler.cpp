@@ -62,7 +62,7 @@ private:
         debugKGENStubs(debugKGENStubs) {}
 
   /// Run the KGEN elaboration passes on the module.
-  LogicalResult elaborateKGEN();
+  CompileDiagnosticOrSuccess elaborateKGEN();
 
   /// Lower to an binary object.
   CompileDiagnosticOr<DenseResourceElementsAttr> compileToLLVM();
@@ -207,7 +207,7 @@ KGEN::EnvAttr StubCompiler::setKGENEnvAttr() {
   return KGEN::getModuleEnvAttr(*kgenModule);
 }
 
-LogicalResult StubCompiler::elaborateKGEN() {
+CompileDiagnosticOrSuccess StubCompiler::elaborateKGEN() {
   KGEN::CompilationOptions compilationOptions = createCompilationOptions(
       targetInfo, kernelBuildType, debugKGENStubs, saveTempsPrefix);
   KGEN::PassManagerConfigOptions pmOptions;
@@ -218,14 +218,16 @@ LogicalResult StubCompiler::elaborateKGEN() {
   if (!saveTempsPrefix.empty()) {
     std::string outPath = saveTempsPrefix + ".kgen.prelaboration.mlir";
     auto outFile = mlir::openOutputFile(outPath);
-    if (!outFile)
-      return failure();
+    if (!outFile) {
+      return kgenModule->emitError()
+             << "Could not open pre-elaboration dump file named " << outPath;
+    }
 
     kgenModule->print(outFile->os());
     outFile->keep();
   }
 
-  LogicalResult res = success();
+  CompileDiagnosticOrSuccess res = success();
   {
     auto fileLine = loc->findInstanceOf<mlir::FileLineColLoc>();
     llvm::StringMap<Telemetry::MetricAttributeValue> attrs;
@@ -251,19 +253,22 @@ LogicalResult StubCompiler::elaborateKGEN() {
             "StubCompiler::elaborateKGEN"));
 
     if (result.isError()) {
-      kgenModule->emitError(result.getError());
-      res = failure();
+      res = kgenModule->emitError()
+            << "Could not elaborate the provided code: " << result.getError();
     }
   }
 
-  if (succeeded(res) && !saveTempsPrefix.empty()) {
-    std::string outPath = saveTempsPrefix + ".kgen.elaborated.mlir";
-    auto outFile = mlir::openOutputFile(outPath);
-    if (!outFile)
-      return failure();
-    kgenModule->print(outFile->os());
-    outFile->keep();
+  if (res.isError() || saveTempsPrefix.empty())
+    return res;
+
+  std::string outPath = saveTempsPrefix + ".kgen.elaborated.mlir";
+  auto outFile = mlir::openOutputFile(outPath);
+  if (!outFile) {
+    return kgenModule->emitError()
+           << "Could not open post-elaboration dump file named " << outPath;
   }
+  kgenModule->print(outFile->os());
+  outFile->keep();
 
   return res;
 }
@@ -426,16 +431,21 @@ StubCompiler::compile(
   if (!cacheMissSymbols.empty()) {
 #ifndef MODULAR_PRODUCTION
     if (failed(mlir::verify(*kgenModule)))
-      return kgenModule->emitError("generated KGEN IR is invalid");
+      return kgenModule->emitError("The generated KGEN IR is invalid");
 #endif
 
-    LogicalResult ok = elaborateKGEN();
-    if (ok.failed())
-      return graph->emitError("KGEN elaboration failed");
+    CompileDiagnosticOrSuccess elaborationResult = elaborateKGEN();
+    if (elaborationResult.isError()) {
+      return graph->emitError("The graph compiler tried to JIT compile the "
+                              "provided kernels but failed during elaboration");
+    }
 
     CompileDiagnosticOr<DenseResourceElementsAttr> result = compileToLLVM();
-    if (result.isError())
-      return result.takeError();
+    if (result.isError()) {
+      return graph->emitError(
+          "The graph compiler tried to JIT compile the "
+          "provided kernels but failed at lowering to LLVM");
+    }
 
     DenseResourceElementsAttr archiveAttr = result.takeValue();
     DenseResourceElementsHandle binaryBlobHandle = archiveAttr.getRawHandle();
