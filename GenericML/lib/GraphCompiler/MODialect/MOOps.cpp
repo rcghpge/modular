@@ -1725,6 +1725,16 @@ void buildConstantScalar(OpBuilder &odsBuilder, OperationState &odsState,
 } // namespace
 
 void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                       Type resultType, ElementsAttr value) {
+  odsState.addAttribute(getValueAttrName(odsState.name), value);
+  odsState.addTypes(resultType);
+  auto moTensorType = dyn_cast<MO::TensorType>(resultType);
+  if (moTensorType && moTensorType.getDeviceRef())
+    odsState.addAttribute(kOperationDeviceRefAttrName,
+                          moTensorType.getDeviceRef());
+}
+
+void ConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                        ArrayRef<int64_t> values, DeviceRefAttr deviceRef) {
   buildConstant(odsBuilder, odsState, values,
                 odsBuilder.getIntegerType(64, /*isSigned=*/true), deviceRef);

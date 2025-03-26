@@ -627,8 +627,13 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
   let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
   let hasFolder = 1;
+  let skipDefaultBuilders = 1;
 
   let builders = [
+    /// Override the default builder to add the device attribute from the
+    /// result type if provided.
+    OpBuilder<(ins "Type":$resultType, "ElementsAttr":$value)>,
+
     /// Create a new rank-1 tensor mo.constant of int32 value.
     OpBuilder<(ins "ArrayRef<int32_t>":$values,
       CArg<"DeviceRefAttr", "{}">:$deviceRef)>,
