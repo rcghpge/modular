@@ -1,229 +1,29 @@
-// REQUIRES: disabled
-// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse --fuse-views --canonicalize --cse %s | FileCheck %s
 
-mo.graph @basicBroadcastFuse<N, M, K>(%arg0: !mo.tensor<[N, M], f32>, %arg1: !mo.tensor<[K, M], f32>) -> (!mo.tensor<[K, M], f32>) {
-  %bcast1 = mo.static.broadcast_to(%arg0) : !mo.tensor<[N, M], f32> -> !mo.tensor<[K, M], f32>
-  %bcast2 = mo.static.broadcast_to(%arg1) : !mo.tensor<[K, M], f32> -> !mo.tensor<[K, M], f32>
-  %1 = mo.add(%bcast1, %bcast2) : !mo.tensor<[K, M], f32>
-  mo.output %1 : !mo.tensor<[K, M], f32>
+// Expect a kernel with 3 bcasts, 2 for index, 1 for updates
+// CHECK-LABEL: mo.graph @advanced_indexing_setitem
+// CHECK: summary = "mo.static.reshape:{{[0-9]+}}+mo.static.broadcast_to:{{[0-9]+}}+mo.static.broadcast_to:{{[0-9]+}}+mo.static.broadcast_to:{{[0-9]+}}+custom__advanced_indexing_setitem:{{[0-9]+}}"
+mo.graph @advanced_indexing_setitem() -> !mo.tensor<[2, 3, 4, 5], si32> {
+  %start = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %stop = mo.constant {value = #M.dense_array<120> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %step = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+
+  // Setup your buffer
+  %input = mo.range(%start, %stop, %step) : (
+    !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>
+  ) -> !mo.tensor<[120], si32>
+  %input_reshape = mo.static.reshape(%input): !mo.tensor<[120], si32> -> !mo.tensor<[2, 3, 4, 5], si32>
+
+  %data = mo.constant {value = #M.dense_array<-1, -2, -3, -4, -5, -6, -7, -8, -9> : tensor<9xsi32>} : !mo.tensor<[3, 3], si32>
+  %data_bcast = mo.static.broadcast_to(%data): !mo.tensor<[3, 3], si32> -> !mo.tensor<[2, 3, 3, 3], si32>
+  %index_tensor1 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1, 1], si32>
+  %index_tensor1_bcast = mo.static.broadcast_to(%index_tensor1): !mo.tensor<[1, 1], si32> -> !mo.tensor<[3, 3], si32>
+  %index_tensor2 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1, 1], si32>
+  %index_tensor2_bcast = mo.static.broadcast_to(%index_tensor2): !mo.tensor<[1, 1], si32> -> !mo.tensor<[3, 3], si32>
+
+  %out = mo.custom {symbol = "advanced_indexing_setitem", start_axis=2} (%input_reshape, %data_bcast, %index_tensor1_bcast, %index_tensor2_bcast) : (
+    !mo.tensor<[2, 3, 4, 5], si32>, !mo.tensor<[2, 3, 3, 3], si32>, !mo.tensor<[3, 3], si32>, !mo.tensor<[3, 3], si32>
+  ) -> !mo.tensor<[2, 3, 4, 5], si32>
+
+  mo.output %out: !mo.tensor<[2, 3, 4, 5], si32>
 }
-
-// CHECK-LABEL: mo.graph @basicBroadcastFuse<N, M, K>
-// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[N, M], f32>, %[[ARG1:.*]]: !mo.tensor<[K, M], f32>) -> !mo.tensor<[K, M], f32> {
-// CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[K, M], f32>, %[[IN2:.*]]: !mo.tensor<[N, M], f32>) -> !mo.tensor<[K, M], f32>{
-// CHECK-NEXT:   %[[OUT:.*]] = mogg.output_placeholders : !mo.tensor<[K, M], f32>
-// CHECK-NEXT: %[[D0:.*]] = mogg.get_dim <K> -> !pop.scalar<si64>
-// CHECK-NEXT: %[[D1:.*]] = mogg.get_dim <M> -> !pop.scalar<si64>
-// CHECK-NEXT: %[[ARR:.*]] = pop.array.create [%[[D0]], %[[D1]]] : !pop.array<2, scalar<si64>>
-// CHECK-NEXT: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]])
-// CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN2]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[N, M], f32>, !mogg.shape<[K, M]> -> !mo.tensor<[K, M], f32>
-// CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[K, M], f32>, !mogg.shape<[K, M]> -> !mo.tensor<[K, M], f32>
-// CHECK-NEXT:   mogg.lambda @[[INPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
-// CHECK-NEXT:      %[[LOAD:.*]] = mogg.call "simd_load"(%[[BCAST_1]], %[[INDICES]]) : !mo.tensor<[K, M], f32>, !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:      mogg.output %[[LOAD]] : !mogg.simd<f32>
-// CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.lambda @[[INPUT_1_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
-// CHECK-NEXT:      %[[LOAD:.*]] = mogg.call "simd_load"(%[[BCAST_2]], %[[INDICES]]) : !mo.tensor<[K, M], f32>, !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:      mogg.output %[[LOAD]] : !mogg.simd<f32>
-// CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.lambda @[[OUTPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices, %[[VALUE:.*]]: !mogg.simd<f32>){
-// CHECK-NEXT:      mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[VALUE]]) : !mo.tensor<[K, M], f32>, !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:      mogg.output
-// CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES]]: !mogg.indices){
-// CHECK-NEXT:      %[[LOAD_IN1:.*]] = mogg.invoke @[[INPUT_0_FN]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @[[INPUT_1_FN]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:      %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD_IN1]], %[[LOAD_IN2]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:      mogg.invoke @[[OUTPUT_0_FN]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:      mogg.output
-// CHECK-NEXT:   }
-// CHECK-NEXT:   mogg.call "elementwise" [@[[ELEMWISE_COMPUTE_LAMBDA]]](%[[OUT]]) {single_thread_blocking_override = false} : !mo.tensor<[K, M], f32>
-// CHECK-NEXT:   mogg.output %[[OUT]] : !mo.tensor<[K, M], f32>
-
-// Check the attributes have been stripped so this can no longer be fused.
-// CHECK-NEXT:   }
-// CHECK-NEXT:   mo.output %[[KERNEL]] : !mo.tensor<[K, M], f32>
-
-mo.graph @basicBroadcastIntoElemwise(%arg0: !mo.tensor<[10, 12, 1, 50], f32>, %arg1: !mo.tensor<[100, 1], f32>) -> (!mo.tensor<[10, 12, 100, 50], f32>) {
-  %bcast1 = mo.static.broadcast_to(%arg0) : !mo.tensor<[10, 12, 1, 50], f32> -> !mo.tensor<[10, 12, 100, 50], f32>
-  %bcast2 = mo.static.broadcast_to(%arg1) : !mo.tensor<[100, 1], f32> -> !mo.tensor<[10, 12, 100, 50], f32>
-  %1 = mo.add(%bcast1, %bcast2) : !mo.tensor<[10, 12, 100, 50], f32>
-  %2 = mo.sqrt(%1) : !mo.tensor<[10, 12, 100, 50], f32>
-  %3 = mo.tanh(%1) : !mo.tensor<[10, 12, 100, 50], f32>
-  %4 = mo.mul(%2, %3) : !mo.tensor<[10, 12, 100, 50], f32>
-  mo.output %4 : !mo.tensor<[10, 12, 100, 50], f32>
-}
-
-// CHECK-LABEL:  mo.graph @basicBroadcastIntoElemwise
-// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[10, 12, 1, 50], f32>, %[[ARG1:.*]]: !mo.tensor<[100, 1], f32>)
-// CHECK-NEXT:   %[[KERNEL:.*]] = mogg.kernel (%[[ARG1]], %[[ARG0]]) : (%[[IN1:.*]]: !mo.tensor<[100, 1], f32>, %[[IN2:.*]]: !mo.tensor<[10, 12, 1, 50], f32>) -> !mo.tensor<[10, 12, 100, 50], f32>
-// CHECK-NEXT:  %[[ARR:.*]] = kgen.param.constant: array<4, scalar<si64>> = <[10, 12, 100, 50]>
-// CHECK-NEXT:   mogg.output_placeholders
-// CHECK-NEXT: %[[SHAPE:.*]] = "mogg.to_mogg"(%[[ARR]])
-// CHECK-NEXT:   %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN2]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[10, 12, 1, 50], f32>, !mogg.shape<[10, 12, 100, 50]> -> !mo.tensor<[10, 12, 100, 50], f32>
-// CHECK-NEXT:   %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"(%[[IN1]], %[[SHAPE]]) {single_thread_blocking_override = false} : !mo.tensor<[100, 1], f32>, !mogg.shape<[10, 12, 100, 50]> -> !mo.tensor<[10, 12, 100, 50], f32>
-
-// Check we load from the bcasts
-// CHECK: mogg.lambda @[[INPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices)
-// CHECK-NEXT:  mogg.call "simd_load"(%[[BCAST_1]], %[[INDICES]]) : !mo.tensor<[10, 12, 100, 50], f32>, !mogg.indices -> !mogg.simd<f32>
-
-// CHECK:mogg.lambda @[[INPUT_1_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices)
-// CHECK-NEXT:      mogg.call "simd_load"(%[[BCAST_2]], %[[INDICES]]) : !mo.tensor<[10, 12, 100, 50], f32>, !mogg.indices -> !mogg.simd<f32>
-
-// Check the elementwise was still fused.
-// CHECK:   mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES]]: !mogg.indices)
-// CHECK-NEXT:      %[[LOAD_IN1:.*]] = mogg.invoke @[[INPUT_0_FN]](%[[INDICES]])
-// CHECK-NEXT:      %[[LOAD_IN2:.*]] = mogg.invoke @[[INPUT_1_FN]](%[[INDICES]])
-// CHECK-NEXT:      %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD_IN1]], %[[LOAD_IN2]])
-// CHECK-NEXT:      %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[ADD]])
-// CHECK-NEXT:      %[[TANH:.*]] = mogg.call "mo.tanh"(%[[ADD]])
-// CHECK-NEXT:      %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT]], %[[TANH]])
-// CHECK-NEXT:      mogg.invoke @[[OUTPUT_0_FN:.*]](%[[INDICES]], %[[MUL]]) : !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:      mogg.output
-
-// Check we produce one kernel. The mo primitive tests check this kernel so we don't
-// need to check that thoroughly just check one kernel is produced.
-mo.graph @many_bcasts() -> !mo.tensor<[2, 2, 3], f32> {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00, 9.000000e+00, 10.000000e+00, 11.000000e+00> : tensor<12xf32>} : !mo.tensor<[2, 2, 3], f32>
-  %1 = mo.constant {value = #M.dense_array<2.000000e+00, 0.000000e+00> : tensor<2xf32>} : !mo.tensor<[2, 1, 1], f32>
-  %2 = mo.constant {value = #M.dense_array<5.000000e-01, 2.500000e-01> : tensor<2xf32>} : !mo.tensor<[2, 1], f32>
-  %3 = mo.constant {value = #M.dense_array<1.000000e+00, 7.000000e+00, 8.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
-
-  %bcast = mo.static.broadcast_to(%1) : !mo.tensor<[2, 1, 1], f32> -> !mo.tensor<[2, 2, 3], f32>
-  %bcast2 = mo.static.broadcast_to(%2) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2, 2, 3], f32>
-  %bcast3 = mo.static.broadcast_to(%3) : !mo.tensor<[3], f32> -> !mo.tensor<[2, 2, 3], f32>
-
-  %out = mo.add(%bcast, %0) : !mo.tensor<[2, 2, 3], f32>
-  %out2 = mo.mul(%bcast2, %out) : !mo.tensor<[2, 2, 3], f32>
-  %out3 = mo.sub(%out2, %bcast3) : !mo.tensor<[2, 2, 3], f32>
-
-  mo.output %out3 : !mo.tensor<[2, 2, 3], f32>
-}
-
-// CHECK-LABEL: mo.graph @many_bcasts
-// CHECK: mogg.kernel
-// CHECK: mogg.output_placeholders
-// CHECK-NEXT: %[[SHAPE:.*]] = "mogg.to_mogg"
-// CHECK-NEXT:  %[[BCAST_1:.*]] = mogg.call "mo.static.broadcast_to"
-// CHECK-NEXT:  %[[BCAST_2:.*]] = mogg.call "mo.static.broadcast_to"
-// CHECK-NEXT:  %[[BCAST_3:.*]] = mogg.call "mo.static.broadcast_to"
-
-// CHECK: mogg.lambda @elemwise_compute_lambda_
-// CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @[[INPUT_0_FN:.*]]
-// CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @[[INPUT_1_FN:.*]]
-// CHECK-NEXT:  %[[LOAD3:.*]] = mogg.invoke @[[INPUT_2_FN:.*]]
-// CHECK-NEXT:  %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD2]], %[[LOAD3]])
-// CHECK-NEXT:  %[[MUL:.*]] = mogg.call "mo.mul"(%[[LOAD1]], %[[ADD]])
-// CHECK-NEXT:  %[[LOAD4:.*]] = mogg.invoke @input_1_fn
-// CHECK-NEXT:  %[[SUB:.*]] = mogg.call "mo.sub"(%[[MUL]], %[[LOAD4]])
-
-
-mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[N, M], f32>) {
-  %bcast1 = mo.static.broadcast_to(%arg0) : !mo.tensor<[], f32> -> !mo.tensor<[N, M], f32>
-
-  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[N, M], f32> {
-    %1 = mo.add(%bcast1, %bcast1) : !mo.tensor<[N, M], f32>
-    mo.yield %1 : !mo.tensor<[N, M], f32>
-  } else {
-    %2 = mo.mul(%bcast1, %bcast1) : !mo.tensor<[N, M], f32>
-    mo.yield %2 : !mo.tensor<[N, M], f32>
-  }
-  mo.output %0 : !mo.tensor<[N, M], f32>
-}
-
-
-// CHECK-LABEL: mo.graph @check_no_fuse_if
-
-// Check the bcasts still become standalone kernels
-// CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
-// CHECK-NEXT: %[[OUT:.*]] = mogg.output_placeholders
-// CHECK: mogg.to_mogg
-// CHECK-NEXT: mogg.call "mo.static.broadcast_to"
-
-// Check that the elementwise kernel is a straight up copy, i.e an unfused broadcast.
-// CHECK:  mogg.lambda @[[COPY_VIEW:.*]] = (%[[INDICES:.*]]: !mogg.indices)
-// CHECK-NEXT:  %[[LOAD:.*]] = mogg.call "simd_load"
-// CHECK-NEXT:  mogg.call "simd_store"(%[[OUT]], %[[INDICES]], %[[LOAD]])
-
-// Check the kernels are compiled unfused.
-// CHECK: mo.if
-// CHECK-NEXT: mogg.kernel
-// CHECK: mogg.call "mo.add"
-// CHECK: mo.yield
-// CHECK-NEXT: } else {
-// CHECK-NEXT: mogg.kernel
-// CHECK: mogg.call "mo.mul"
-// CHECK: mo.yield
-
-// Check everything gets fused together.
-mo.graph @transpose_and_bcast_fused(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<[5, 4], si32>  {
-  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20> : tensor<20xsi32>} : !mo.tensor<[4, 5], si32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %trans = mo.transpose(%0, %perm) : (!mo.tensor<[4, 5], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 4], si32>
-  %bcast = mo.static.broadcast_to(%arg0) : !mo.tensor<[], si32> -> !mo.tensor<[5, 4], si32>
-  %add = mo.add(%bcast, %trans) : !mo.tensor<[5, 4], si32>
-  mo.output %add : !mo.tensor<[5, 4], si32>
-}
-
-// CHECK-LABEL: mo.graph @transpose_and_bcast_fused
-// CHECK: mogg.kernel
-// CHECK: mogg.output_placeholders
-// CHECK-NEXT: mogg.to_mogg
-// CHECK-NEXT:  %[[BCAST:.*]] = mogg.call "mo.static.broadcast_to"
-// CHECK-NEXT:  %[[TRANSPOSE:.*]] = mogg.call "mo.transpose"
-
-// CHECK:   mogg.lambda @[[INPUT_0_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
-// CHECK-NEXT:      mogg.call "simd_load"(%[[BCAST]], %[[INDICES]])
-
-// CHECK:   mogg.lambda @[[INPUT_1_FN:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<si32>{
-// CHECK-NEXT:      mogg.call "simd_load"(%[[TRANSPOSE]], %[[INDICES]])
-
-// CHECK: mogg.lambda @elemwise_compute_lambda_
-// CHECK-NEXT:  %[[LOAD1:.*]] = mogg.invoke @[[INPUT_0_FN]]
-// CHECK-NEXT:  %[[LOAD2:.*]] = mogg.invoke @[[INPUT_1_FN]]
-// CHECK-NEXT:  %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]])
-
-
-mo.graph @transpose_and_gather(%data : !mo.tensor<[3, 4, 2, 1, 2], si32>, %indices :!mo.tensor<[12], ui32>) -> (!mo.tensor<[2, 12, 1, 3, 4], si32>) {
-  %axis = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
-  %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
-  %res = mo.gather(%trans, %indices, %axis) : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[12], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[2, 12, 1, 3, 4], si32>
-  mo.output %res : !mo.tensor<[2, 12, 1, 3, 4], si32>
-}
-
-// CHECK-LABEL: mo.graph @transpose_and_gather
-// CHECK: %[[OUT:.*]] = mogg.kernel
-// CHECK: mogg.call "mo.transpose"
-// CHECK: mogg.call "mo.gather"
-// CHECK: mo.output %[[OUT]]
-
-
-mo.graph @fuse_into_view<D1, D2>(%arg0: !mo.tensor<[D1, D2], f32>, %start: !mo.tensor<[2], si64>, %end: !mo.tensor<[2], si64>, %stride: !mo.tensor<[2], si64>, %perm: !mo.tensor<[2], si64>) -> !mo.tensor<[D2, D1], f32> {
-  %sliced = mo.slice(%arg0, %start, %end, %stride) : (!mo.tensor<[D1, D2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D1, D2], f32>
-  %trans = mo.transpose(%sliced, %perm) : (!mo.tensor<[D1, D2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D2, D1], f32>
-  %10 = mo.relu(%trans): !mo.tensor<[D2, D1], f32>
-  mo.output %10 : !mo.tensor<[D2, D1], f32>
-}
-
-// CHECK-LABEL: mo.graph @fuse_into_view
-// CHECK: %[[OUT:.*]] = mogg.kernel
-// CHECK-NEXT: mogg.output_placeholders
-// CHECK-NEXT: mogg.call "mo.slice"
-// CHECK-NEXT: mogg.call "mo.transpose"
-// CHECK: mo.output %[[OUT]]
-
-
-mo.graph @fuse_view_into_view<D1, D2, D3>(%arg0: !mo.tensor<[D1, D2, D3], f32>, %arg3: !mo.tensor<[3], si32>, %arg2: !mo.tensor<[3], si32>, %arg1: !mo.tensor<[3], si32>, %arg4: !mo.tensor<[3], si32>) -> !mo.tensor<[D2, D1, D3], f32> {
-    %0 = mo.slice(%arg0, %arg3, %arg2, %arg1) : (!mo.tensor<[D1, D2, D3], f32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[D1, D2, D3], f32>
-    %1 = mo.transpose(%0, %arg4) : (!mo.tensor<[D1, D2, D3], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[D2, D1, D3], f32>
-    mo.output %1 : !mo.tensor<[D2, D1, D3], f32>
-}
-
-// CHECK-LABEL: mo.graph @fuse_view_into_view
-// CHECK: %[[OUT:.*]] = mogg.kernel
-// CHECK-NEXT: mogg.output_placeholders
-// CHECK-NEXT: mogg.call "mo.slice"
-// CHECK-NEXT: mogg.call "mo.transpose"
-// CHECK: mo.output %[[OUT]]
