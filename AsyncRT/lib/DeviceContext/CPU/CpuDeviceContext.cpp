@@ -162,16 +162,13 @@ CpuDeviceContext::enqueueCopyFromDevice(void *dst,
   return success();
 }
 
-ErrorOrSuccess
-CpuDeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                            const DeviceBuffer &src) const {
+ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
+                                             const DeviceBuffer &src) const {
   CHECK_IS_CPU_ERR(src.context().device());
   CHECK_IS_CPU_ERR(dst.context().device());
   void *srcPtr = src.ptr();
   void *dstPtr = dst.ptr();
-  if (src.byteSize() < dst.byteSize()) {
-    RAISE_ERROR_MESSAGE("not enough data in src");
-  }
+  assert(src.byteSize() >= dst.byteSize());
   memcpy(dstPtr, srcPtr, dst.byteSize());
   return success();
 }

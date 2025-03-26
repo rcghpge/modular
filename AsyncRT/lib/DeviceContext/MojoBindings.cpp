@@ -161,30 +161,9 @@ MODULAR_EXPORT void AsyncRT_DeviceBuffer_release(const DeviceBuffer *buffer) {
   DeviceBufferRef::lowLevelDropRef(buffer);
 }
 
-MODULAR_EXPORT const char *
-AsyncRT_DeviceBuffer_copyTo(const DeviceBuffer *src, const DeviceBuffer *dst) {
-  return checkSuccess(src->copyTo(*dst));
-}
-
 MODULAR_EXPORT const DeviceContext *
 AsyncRT_DeviceBuffer_context(const DeviceBuffer *buffer) {
   return &buffer->context();
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceBuffer_copyToPtr(const DeviceBuffer *src, void *dst) {
-  return checkSuccess(src->copyTo(dst));
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceBuffer_copyFrom(const DeviceBuffer *dst,
-                              const DeviceBuffer *src) {
-  return checkSuccess(dst->copyFrom(*src));
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceBuffer_copyFromPtr(const DeviceBuffer *dst, const void *src) {
-  return checkSuccess(dst->copyFrom(src));
 }
 
 MODULAR_EXPORT const char *

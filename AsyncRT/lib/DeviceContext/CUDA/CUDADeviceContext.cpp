@@ -890,9 +890,8 @@ CUDADeviceContext::enqueueCopyFromDevice(void *dst,
   return success();
 }
 
-ErrorOrSuccess
-CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                             const DeviceBuffer &src) const {
+ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
+                                              const DeviceBuffer &src) const {
   CHECK_IS_CUDA_ERR(src.context().device());
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
@@ -908,9 +907,7 @@ CUDADeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
   CUdeviceptr dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   size_t srcByteSize = src.byteSize();
-  if (srcByteSize < dstByteSize) {
-    RAISE_ERROR("not enough data in src");
-  }
+  assert(srcByteSize >= dstByteSize);
   if (srcCtx.context_ != dstCtx.context_) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());

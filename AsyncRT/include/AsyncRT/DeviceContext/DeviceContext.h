@@ -362,6 +362,7 @@ public:
   ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
   ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize) const;
 
+  // Host memory allocation.
   ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize) const;
 
   // TODO: Remove the V1 compatibility.
@@ -377,9 +378,8 @@ public:
   virtual ErrorOrSuccess
   enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const = 0;
 
-  virtual ErrorOrSuccess
-  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                            const DeviceBuffer &src) const = 0;
+  ErrorOrSuccess enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                                           const DeviceBuffer &src) const;
 
   virtual ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
                                           size_t valSize) const = 0;
@@ -475,6 +475,10 @@ private:
   virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                                   AllocMode mode) const = 0;
   virtual ErrorOrSuccess memFree(void *ptr, bool isHost) const = 0;
+
+  // Low-level copies.
+  virtual ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
+                                     const DeviceBuffer &src) const = 0;
 
   // Shared configuration object.
   // REQUIRES: `DeviceContext::mu_` must be held to get and access the shared

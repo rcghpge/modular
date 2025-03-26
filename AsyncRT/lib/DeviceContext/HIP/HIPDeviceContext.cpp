@@ -665,9 +665,8 @@ HIPDeviceContext::enqueueCopyFromDevice(void *dst,
   return success();
 }
 
-ErrorOrSuccess
-HIPDeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                            const DeviceBuffer &src) const {
+ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
+                                             const DeviceBuffer &src) const {
   CHECK_IS_HIP_ERR(src.context().device());
   CHECK_IS_HIP_ERR(dst.context().device());
   const auto &srcCtx = HIPDeviceContext::cast(src.context());
@@ -677,9 +676,7 @@ HIPDeviceContext::enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
   auto dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   size_t srcByteSize = src.byteSize();
-  if (srcByteSize < dstByteSize) {
-    RAISE_ERROR("not enough data in src");
-  }
+  assert(srcByteSize >= dstByteSize);
   if (srcCtx.hipDevice() != dstCtx.hipDevice()) {
     HIP_CHECK_ERR(
         driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));

@@ -252,21 +252,10 @@ MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
 MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const { return isHost_; }
 
-// Default implementation, which can be specialized by subclasses.
 MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
   const DeviceBuffer &src = *this;
-  const Device::API srcApi = src.context().device().api();
-  const Device::API dstApi = dst.context().device().api();
-  if (srcApi == Device::cpuAPI) {
-    return dst.context().enqueueCopyToDevice(dst, src.ptr());
-  } else if (dstApi == Device::cpuAPI) {
-    return src.context().enqueueCopyFromDevice(dst.ptr(), src);
-  } else if (srcApi == dstApi) {
-    return dst.context().enqueueCopyDeviceToDevice(dst, src);
-  }
-  return Error("Device API mismatch copying from \"" + srcApi + "\" to \"" +
-               dstApi + "\"");
+  return dst.context().enqueueCopyDeviceToDevice(dst, src);
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(void *dst) const {
@@ -277,7 +266,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(void *dst) const {
 MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::copyFrom(const DeviceBuffer &src) const {
   const DeviceBuffer &dst = *this;
-  return src.copyTo(dst);
+  return dst.context().enqueueCopyDeviceToDevice(dst, src);
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
@@ -561,6 +550,24 @@ ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
   }
   return DeviceBufferRef::take(
       new DeviceBuffer(*this, *errPtr, byteSize, mode == AllocMode::HOST));
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
+    const DeviceBuffer &dst, const DeviceBuffer &src) const {
+  const Device::API srcApi = src.context().device().api();
+  const Device::API dstApi = dst.context().device().api();
+  if (src.byteSize() < dst.byteSize()) {
+    RAISE_ERROR_MESSAGE("not enough data in src");
+  }
+  if (src.isHost() || (srcApi == Device::cpuAPI)) {
+    return dst.context().enqueueCopyToDevice(dst, src.ptr());
+  } else if (dst.isHost() || (dstApi == Device::cpuAPI)) {
+    return src.context().enqueueCopyFromDevice(dst.ptr(), src);
+  } else if (srcApi == dstApi) {
+    return this->memCopyDtoD(dst, src);
+  }
+  return Error("Device API mismatch copying from \"" + srcApi + "\" to \"" +
+               dstApi + "\"");
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
