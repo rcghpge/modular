@@ -13,6 +13,8 @@
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "Support/DeviceSpecs.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/SetOperations.h"
 
@@ -1036,7 +1038,9 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
 
     // Convert start/stop/step to tensors expected by mo.slice.
     auto indicesType = TensorType::getVectorSI64Type(
-        ctx, startsAttr.getRank(), input.getType().getDeviceRef());
+        ctx, startsAttr.getRank(),
+        // Always put indices on CPU, as expected by the `mo.slice` kernel.
+        DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
     auto toTensorOp = [loc = loc, indicesType = indicesType,
                        &rewriter](ShapeAttr attr) -> Value {
       auto constOp = rewriter.create<MOSH::ParamToValueOp>(loc, attr);
