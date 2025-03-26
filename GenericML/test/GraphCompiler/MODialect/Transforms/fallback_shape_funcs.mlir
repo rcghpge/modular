@@ -1,6 +1,6 @@
 // UNSUPPORTED: ubsan
 
-// RUN: mo-opt %s --add-fallback-shape-funcs | FileCheck %s
+// RUN: mo-opt %s --add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
 
 mo.graph @arg_max_fallback_shape_func<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, D1], si64>,
@@ -950,4 +950,13 @@ mo.graph @broadcast_partially_bound_params<A, B, C -> O1, O2, O3, O4, O5, O6>(
     (!mo.tensor<[A, B], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[I1, B, I4], f32>
 
   mo.output<I1, I2, I3, I1, B, I4> %res1, %res2 : !mo.tensor<[I1, I2, I3], f32>, !mo.tensor<[I1, B, I4], f32>
+}
+
+// Notice how the `test_flag` parameter is properly forwarded to the invoke shape func
+// CHECK-LABEL: @custom_shape_func
+// CHECK: mo.invoke_shape_func["custom_op_with_custom_parameter_shape_func"]
+// CHECK-SAME: kgenParams = {output_idx = 0 : index, test_flag = 0 : index}
+mo.graph @custom_shape_func<() -> O1, O2, O3, O4, O5>(%arg0: !mo.tensor<[5, 5, 5, 5, 5], f32>) -> !mo.tensor<[O1, O2, O3, O4, O5], f32> {
+  %0 = mo.custom<() -> A, B, C, D, E>{test_flag = 0 : index, symbol = "custom_op_with_custom_parameter_shape_func"}(%arg0) : (!mo.tensor<[5, 5, 5, 5, 5], f32>) -> !mo.tensor<[A, B, C, D, E], f32>
+  mo.output<A, B, C, D, E> %0 : !mo.tensor<[A, B, C, D, E], f32>
 }

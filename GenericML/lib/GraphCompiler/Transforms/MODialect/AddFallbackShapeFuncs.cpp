@@ -11,9 +11,10 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
-
+#include "llvm/ADT/StringSet.h"
 #include <numeric>
 
 #define DEBUG_TYPE "add-fallback-shape-funcs"
@@ -111,7 +112,8 @@ template <>
 struct Fallback<MO::CustomOp> {
   ErrorOrSuccess build(GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
                        KGEN::GeneratorOp mojoKernel,
-                       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis);
+                       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                       StringSet<> &inputParamsNeeded);
 };
 
 // Eventually all ops must be accounted for here. They either must have a
@@ -252,8 +254,12 @@ struct AddFallbackShapeFunctions
         if (mojoKernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR))
           return mlir::WalkResult::skip();
 
-        auto result = Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
-                                                     mojoKernel, *analysis);
+        StringSet<> inputParams;
+        for (KGEN::ParamDeclAttr inputParam : mojoKernel.getInputParams())
+          inputParams.insert(inputParam.getName());
+
+        auto result = Fallback<MO::CustomOp>{}.build(
+            graph, builder, asOp, mojoKernel, *analysis, inputParams);
         if (result.isError()) {
           asOp.emitError() << "Failed to fallback shape function with error: "
                            << result.takeError();
@@ -507,7 +513,8 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
 ErrorOrSuccess
 Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
                               MO::CustomOp op, KGEN::GeneratorOp mojoKernel,
-                              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+                              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                              StringSet<> &inputParamsNeeded) {
   // Mark all inputs by default.
   SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
 
@@ -515,9 +522,19 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
   std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
 
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
+    SmallVector<std::pair<StringRef, Attribute>> kgenParams;
+    kgenParams.emplace_back("output_idx", builder.getIndexAttr(idx));
+
+    // Add other bespoke kgen params declared by the custom operator if they are
+    // needed
+    mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
+    for (const NamedAttribute &namedAttr : op->getAttrDictionary())
+      if (inputParamsNeeded.contains(namedAttr.getName()))
+        kgenParams.emplace_back(namedAttr.getName(), namedAttr.getValue());
+
     buildForOpResult(graph, builder, cast<TensorValue>(res), op.getSymbol(),
                      operands, op.getOutputParamDecls(),
-                     /*kgenParams=*/{{"output_idx", builder.getIndexAttr(idx)}},
+                     /*kgenParams=*/kgenParams,
                      /*dataDepInputIdxs=*/dataDepInputIdxs);
   }
 
