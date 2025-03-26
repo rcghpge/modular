@@ -20,6 +20,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <Support/Buffer.h>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -86,6 +87,19 @@ private:
     if (cuda_result != CUDADriver::SUCCESS) {                                  \
       M::Error err =                                                           \
           formatCUDAError(__FILE__, __LINE__, __FUNCTION__, cuda_result);      \
+      /* We are not in a context where we can return an Error here. So we   */ \
+      /* print the message and abort().                                     */ \
+      llvm::errs() << err << "\n";                                             \
+      abort();                                                                 \
+    }                                                                          \
+  } while (0)
+
+#define NVPTXCOMPILER_SAFE_CALL(nvptxcompiler_call)                            \
+  do {                                                                         \
+    CUDADriver::Result result = nvptxcompiler_call;                            \
+    if (result != CUDADriver::SUCCESS) {                                       \
+      M::Error err =                                                           \
+          formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result);           \
       /* We are not in a context where we can return an Error here. So we   */ \
       /* print the message and abort().                                     */ \
       llvm::errs() << err << "\n";                                             \
@@ -1057,6 +1071,117 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   // Destroys state for a JIT linker invocation.
   CUDA_CHECK_ERR(driver_.LinkDestroy(linkState));
   return result;
+}
+
+SmallVector<std::string> setupCompilationOptionsV2(StringRef debugLevel,
+                                                   int32_t optimizationLevel,
+                                                   StringRef gpuName) {
+  // TODO: add more options needed.
+  // https://docs.nvidia.com/cuda/ptx-compiler-api/index.html#compilation-options
+
+  static constexpr int kDefaultOptimizationLevel = 4;
+  // The default optimization level for NVIDIA GPUs is 4.
+  if (optimizationLevel < 0)
+    optimizationLevel = kDefaultOptimizationLevel;
+
+  // The Mojo compiler uses optimization level 3 as the highest optimization
+  // level, but 4 is the highest for CUDA.
+  if (optimizationLevel == 3)
+    optimizationLevel = kDefaultOptimizationLevel;
+
+  SmallVector<std::string> options;
+  options.reserve(2);
+  options.push_back("--gpu-name=" + gpuName.str());
+  options.push_back("--opt-level=" + std::to_string(optimizationLevel));
+
+  if (debugLevel == "full") {
+    options.push_back("--device-debug");
+    options.push_back("--verbose");
+  } else if (debugLevel == "line-tables") {
+    options.push_back("--generate-line-info");
+    options.push_back("--verbose");
+  }
+
+  return options;
+}
+
+ErrorOr<M::BufferRef>
+CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
+                                      int32_t optimizationLevel,
+                                      StringRef gpuName) const {
+#ifdef HAS_NVPTX_COMPILER
+  auto options =
+      setupCompilationOptionsV2(debugLevel, optimizationLevel, gpuName);
+
+  CUDA_WITH_CTX_ERR(*this);
+
+  nvPTXCompilerHandle compiler = nullptr;
+
+  size_t elfSize, infoSize, errorSize;
+  char *elf, *infoLog, *errorLog;
+  unsigned int minorVer, majorVer;
+
+  NVPTXCOMPILER_SAFE_CALL(
+      driver_.NVPTXCompilerGetVersion(&majorVer, &minorVer));
+
+  NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerCreate(
+      &compiler, (size_t)ptx.size(), (const char *)ptx.data()));
+
+  // FIXME: resize this if needed
+  constexpr int maxNumOptions = 16;
+  const char *compileOptions[maxNumOptions];
+  for (auto [idx, option] : llvm::enumerate(options)) {
+    compileOptions[idx] = option.c_str();
+  }
+
+  CUDADriver::Result result = driver_.NVPTXCompilerCompile(
+      compiler, options.size(), /* numCompileOptions */
+      compileOptions);          /* compileOptions */
+
+  if (result != CUDADriver::SUCCESS) {
+    NVPTXCOMPILER_SAFE_CALL(
+        driver_.NVPTXCompilerGetErrorLogSize(compiler, &errorSize));
+
+    if (errorSize != 0) {
+      errorLog = (char *)malloc(errorSize + 1);
+      NVPTXCOMPILER_SAFE_CALL(
+          driver_.NVPTXCompilerGetErrorLog(compiler, errorLog));
+      llvm::errs() << "CUDADevice::compileFunction_v2 failed: \n " << errorLog
+                   << "\n";
+      free(errorLog);
+    }
+    return Error("compile to CUBIN failed\n");
+  }
+
+  NVPTXCOMPILER_SAFE_CALL(
+      driver_.NVPTXCompilerGetCompiledProgramSize(compiler, &elfSize));
+
+  elf = (char *)malloc(elfSize);
+  NVPTXCOMPILER_SAFE_CALL(
+      driver_.NVPTXCompilerGetCompiledProgram(compiler, (void *)elf));
+
+  NVPTXCOMPILER_SAFE_CALL(
+      driver_.NVPTXCompilerGetInfoLogSize(compiler, &infoSize));
+
+  if (infoSize != 0) {
+    infoLog = (char *)malloc(infoSize + 1);
+    NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerGetInfoLog(compiler, infoLog));
+    llvm::errs() << "CUDADevice::compileFunction_v2 failed: \n " << infoLog
+                 << "\n";
+    free(infoLog);
+    return Error("compile to CUBIN failed\n");
+  }
+
+  auto resultBuf = M::Buffer::get(StringRef(elf, elfSize));
+
+  NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerDestroy(&compiler));
+
+  free(elf);
+
+  return resultBuf;
+#else  // HAS_NVPTX_COMPILER
+  llvm_unreachable("NVPTX compiler not supported on this platform");
+#endif // HAS_NVPTX_COMPILER
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(

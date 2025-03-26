@@ -302,6 +302,11 @@ public:
   compileFunction(StringRef ir, StringRef debugLevel,
                   int32_t optimizationLevel) const override;
 
+  // DeviceFunction compiling.
+  ErrorOr<M::BufferRef> compileFunction_v2(StringRef ir, StringRef debugLevel,
+                                           int32_t optimizationLevel,
+                                           StringRef gpuName) const override;
+
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName,
                const DeviceFunction::SignatureBuilder &signature,

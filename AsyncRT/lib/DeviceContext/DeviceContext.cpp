@@ -605,6 +605,14 @@ DeviceContext::compileFunction(StringRef ir, StringRef debugLevel,
   return Error("compileFunction for this device is not supported");
 }
 
+// DeviceFunction compiling, loading, and execution.
+ErrorOr<M::BufferRef>
+DeviceContext::compileFunction_v2(StringRef ir, StringRef debugLevel,
+                                  int32_t optimizationLevel,
+                                  StringRef gpuName) const {
+  return Error("compileFunction_v2 for this device is not supported");
+}
+
 //
 // ===== Device ===== //
 //

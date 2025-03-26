@@ -13,6 +13,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Debug.h"
 
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -21,8 +22,10 @@ namespace M::AsyncRT {
 
 #ifdef MODULAR_LINUX
 const char CUDADriver::lib_name[] = "libcuda.so.1";
+const char CUDADriver::lib_nvptx_name[] = "libnvptxcompiler.so";
 #else
 const char CUDADriver::lib_name[] = "";
+const char CUDADriver::lib_nvptx_name[] = "";
 #endif
 
 #define GET_FUNC(name)                                                         \
