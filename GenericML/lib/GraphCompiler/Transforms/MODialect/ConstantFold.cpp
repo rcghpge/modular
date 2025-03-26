@@ -848,7 +848,6 @@ struct ConstantFoldPass
     cacheDir = origOpts.cacheDir;
     kernelLibraryPaths =
         origOpts.kernelLibraryPaths.operator ArrayRef<std::string>();
-    defaultDeviceLabel = origOpts.defaultDeviceLabel;
   }
 
 private:
@@ -861,7 +860,6 @@ private:
   std::shared_ptr<const ConstantFoldPolicy> policy;
   // Label used to load and handle buffers created by the framework.
   std::string compiledFrameworkLabel;
-  std::string defaultDeviceLabel;
   std::optional<std::string> cacheDir;
   std::optional<std::vector<std::string>> kernelLibraryPaths;
 };
@@ -884,9 +882,8 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   // This will fold sequence of trivial kernels not on host, leading to huge
   // kernels (in terms of code size).
   moOpts.performTrivialKernelOpt = false;
-  // Set default device label.
-  moOpts.defaultDeviceLabel =
-      defaultDeviceLabel.empty() ? defaultDeviceLabel : kCPULabel;
+  // Assign ops to CPU so we can constant fold there.
+  moOpts.defaultDeviceLabel = kCPULabel;
   // Force all kernels to be synchronous. This prevents higher memory usage.
   moOpts.forceSync = true;
   // We gain little benefit by enabling post-abi as most constant subgraphs are

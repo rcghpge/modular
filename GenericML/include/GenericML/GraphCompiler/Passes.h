@@ -105,7 +105,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc(
           "If non-empty, assign as many ops as possible to the device "
           "with the given label (and device id zero)."),
-      llvm::cl::init("")};
+      llvm::cl::init("cpu")};
   Option<size_t> defaultDeviceId{
       *this, "default-device-id",
       llvm::cl::desc(

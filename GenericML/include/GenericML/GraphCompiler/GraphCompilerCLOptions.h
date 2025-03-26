@@ -22,7 +22,7 @@ class GraphCompilerOptions {
 public:
   std::string cacheDir{""};
 
-  std::string defaultDeviceLabel{""};
+  std::string defaultDeviceLabel{"cpu"};
 
   size_t defaultDeviceId{0};
 
