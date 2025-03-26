@@ -91,17 +91,6 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_deviceApi(llvm::StringRef *result,
   *result = ctx->device().api();
 }
 
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_mallocHost(void **result, const DeviceContext *ctx,
-                                 size_t size) {
-  return checkVal(result, nullptr, ctx->mallocHost(size));
-}
-
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_freeHost(const DeviceContext *ctx, void *ptr) {
-  return checkSuccess(ctx->freeHost(ptr));
-}
-
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
     const DeviceBuffer **result, void **devicePtr, const DeviceContext *ctx,
     size_t len, size_t elemSize) {

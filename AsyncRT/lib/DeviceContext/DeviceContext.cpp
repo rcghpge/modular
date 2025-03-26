@@ -495,19 +495,6 @@ MODULAR_CXX_EXPORT const Device &DeviceContext::device() const {
   return *device_;
 }
 
-MODULAR_CXX_EXPORT ErrorOr<void *>
-DeviceContext::mallocHost(size_t size) const {
-  ErrorOr<DeviceBufferRef> buf = createHostBuffer(size);
-  if (buf.isError())
-    return buf.takeError();
-  return (*buf)->releasePtr();
-}
-
-MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::freeHost(void *ptr) const {
-  DeviceBufferRef buf = createHostBufferOwning(ptr, 1, true);
-  return success();
-}
-
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
   if (byteSize == 0)

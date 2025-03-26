@@ -338,8 +338,8 @@ $L__BB0_2:
       checkData[i] = curDeviceId + i;
     }
 
-    ASSIGN_NO_ERR(void *, srcPtr, srcCtx->mallocHost(allocLen));
-    EXPECT_NE(srcPtr, nullptr);
+    ASSIGN_NO_ERR(DeviceBufferRef, srcPtr, srcCtx->createHostBuffer(allocLen));
+    EXPECT_TRUE(srcPtr);
 
     ASSIGN_NO_ERR(DeviceBufferRef, srcBuf, srcCtx->createBuffer(allocLen));
     EXPECT_TRUE(srcBuf);
@@ -357,8 +357,8 @@ $L__BB0_2:
     }
 
     // Copy between different buffers.
-    memcpy(srcPtr, checkData, allocLen);
-    EXPECT_NO_ERR(srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr));
+    EXPECT_NO_ERR(srcPtr->copyFrom(checkData));
+    EXPECT_NO_ERR(srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr->ptr()));
 
     DeviceFunction::SignatureBuilder sig =
         DeviceFunction::SignatureBuilder().addBuffer().addBuffer().addUInt64();
@@ -385,7 +385,6 @@ $L__BB0_2:
 
     delete[] checkData;
     free(dstPtr);
-    EXPECT_NO_ERR(srcCtx->freeHost(srcPtr));
   }
 }
 

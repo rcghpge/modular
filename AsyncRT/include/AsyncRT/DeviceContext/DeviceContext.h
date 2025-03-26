@@ -353,11 +353,6 @@ public:
     return device().canAccess(peer.device());
   };
 
-  // Host memory allocation.
-  // * DEPRECATED, use `createHostBuffer()` *
-  ErrorOr<void *> mallocHost(size_t size) const;
-  ErrorOrSuccess freeHost(void *ptr) const;
-
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
   ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize) const;
