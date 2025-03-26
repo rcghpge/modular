@@ -79,12 +79,6 @@ tblgen_nanobind(
     name = "MODialectNanobindInc",
     src = "//GenericML:mo_json",
     dialect = "MODialect",
-    # MO_ConstantScalarOp isn't actually defined.
-    # MO_Chain for some reason lacks a ChainType::get and I don't know why.
-    exclude = [
-        "MO_ConstantScalarOp",
-        "MO_Chain",
-    ],
     output = "include/SDK/GraphAPI/python/mo_dialect_nanobind.cpp.inc",
     visibility = ["//visibility:public"],
 )

@@ -166,7 +166,6 @@ MAXG_dimAlgebraicOperands(MlirAttribute a, MlirAttribute *out, size_t out_size);
 MODULAR_API_EXPORT bool MAXG_typeIsTensor(MlirType t);
 MODULAR_API_EXPORT bool MAXG_typeIsOpaque(MlirType t);
 MODULAR_API_EXPORT bool MAXG_typeIsBuffer(MlirType t);
-MODULAR_API_EXPORT bool MAXG_typeIsChain(MlirType t);
 
 /// Creates a new MO::Opaque type (!mo.opaque).
 MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
@@ -174,9 +173,6 @@ MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
 
 /// Accessors for !mo.opaque.
 MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t);
-
-/// Creates a new MO::Chain type (!mo.chain)
-MODULAR_API_EXPORT MlirType MAXG_chainTypeNew(MlirContext context);
 
 /// Creates an opaque location for a python frame.
 MODULAR_API_EXPORT MlirLocation

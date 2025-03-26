@@ -524,10 +524,6 @@ MODULAR_API_EXPORT bool MAXG_typeIsBuffer(MlirType t) {
   return isa<M::MO::BufferType>(unwrap(t));
 }
 
-MODULAR_API_EXPORT bool MAXG_typeIsChain(MlirType t) {
-  return isa<M::MO::ChainType>(unwrap(t));
-}
-
 MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
                                                StringRef name) {
   StringAttr nameAttr = StringAttr::get(unwrap(context), name);
@@ -536,10 +532,6 @@ MODULAR_API_EXPORT MlirType MAXG_opaqueTypeNew(MlirContext context,
 
 MODULAR_API_EXPORT MlirStringRef MAXG_opaqueTypeName(MlirType t) {
   return wrap(cast<M::MO::OpaqueType>(unwrap(t)).getSymbol().strref());
-}
-
-MODULAR_API_EXPORT MlirType MAXG_chainTypeNew(MlirContext context) {
-  return wrap(MO::ChainType::get(unwrap(context)));
 }
 
 MODULAR_API_EXPORT MlirLocation
