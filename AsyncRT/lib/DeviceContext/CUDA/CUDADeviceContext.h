@@ -55,7 +55,7 @@ public:
   using DeviceList = std::vector<CUDADeviceRef>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-             std::string name, size_t allocAlignment);
+             CUcontext context, std::string name, size_t allocAlignment);
   ~CUDADevice() override;
 
   const CUDADriver &cudaDriver() const;
@@ -110,13 +110,13 @@ private:
 
   const CUDADriver &driver_;
   const CUdevice device_;
+  // Device context to be shared across all `CUDADeviceContext` objects. We
+  // initialize this with the primary device context for the device to be able
+  // to share resources with libraries using the CUDA Runtime API.
+  CUcontext context_;
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;
-  // Lazily allocated device context to be shared across all `CUDADeviceContext`
-  // objects. We initialize this with the primary device context for the device
-  // to be able to share resources with libraries using the CUDA Runtime API.
-  mutable CUcontext context_;
   // Non-timing enabled events which can be reused for record/wait pairs.
   mutable std::vector<CUevent> eventCache_;
 };

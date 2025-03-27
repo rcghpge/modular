@@ -204,10 +204,11 @@ static Error formatCUDAError(const char *file, int line, const char *func,
 
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-                       std::string name, size_t allocAlignment)
+                       CUcontext context, std::string name,
+                       size_t allocAlignment)
     // GEX-1416: Do not expect hardcoded number.
     : Device(api, std::move(name), id, 256), driver_(driver), device_(device),
-      context_(nullptr) {}
+      context_(context) {}
 
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
@@ -222,14 +223,7 @@ const CUDADriver &CUDADevice::cudaDriver() const { return driver_; }
 
 CUdevice CUDADevice::cudaDevice() const { return device_; }
 
-ErrorOr<CUcontext> CUDADevice::cudaContext() const {
-  std::lock_guard<std::mutex> lock(mu_);
-  if (context_ == nullptr) {
-    CUDA_CHECK_ERR(
-        cudaDriver().DevicePrimaryCtxRetain(&context_, cudaDevice()));
-  }
-  return context_;
-}
+ErrorOr<CUcontext> CUDADevice::cudaContext() const { return context_; }
 
 ErrorOr<int> CUDADevice::getDriverVersion() const {
   int driverVersion = 0;
@@ -407,21 +401,27 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
       RAISE_ERROR(llvm::Twine("CUDA Driver initialization failed: ") +
                   errDriver.getError());
     }
+    const CUDADriver &driver = *errDriver;
     int count = 0;
-    CUDA_CHECK_ERR(errDriver.get().DeviceGetCount(&count));
-
-    char tmpName[256];
-    int tmpAlignment;
-    CUdevice tmpDevice;
+    CUDA_CHECK_ERR(driver.DeviceGetCount(&count));
 
     for (int i = 0; i < count; i++) {
-      CUDA_CHECK_ERR(errDriver.get().DeviceGet(&tmpDevice, i));
-      CUDA_CHECK_ERR(
-          errDriver.get().DeviceGetName(tmpName, sizeof(tmpName), tmpDevice));
-      CUDA_CHECK_ERR(errDriver.get().DeviceGetAttribute(
-          &tmpAlignment, CUdevice_attribute::TEXTURE_ALIGNMENT, tmpDevice));
-      devices.emplace_back(CUDADeviceRef::create(errDriver.get(), i, tmpDevice,
-                                                 tmpName, tmpAlignment));
+      char name[256];
+      int alignment;
+      CUdevice device;
+      CUcontext context;
+
+      CUDA_CHECK_ERR(driver.DeviceGet(&device, i));
+      CUDA_CHECK_ERR(driver.DeviceGetName(name, sizeof(name), device));
+      CUDA_CHECK_ERR(driver.DeviceGetAttribute(
+          &alignment, CUdevice_attribute::TEXTURE_ALIGNMENT, device));
+
+      // Use the primary context for this device, with the effect that we share
+      // the same context with other users of the CUDA Runtime API.
+      CUDA_CHECK_ERR(driver.DevicePrimaryCtxRetain(&context, device));
+
+      devices.emplace_back(
+          CUDADeviceRef::create(driver, i, device, context, name, alignment));
     }
     return success();
   }();
