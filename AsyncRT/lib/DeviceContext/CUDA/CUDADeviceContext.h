@@ -103,8 +103,13 @@ private:
   //
   // So following this table, we assume that CUDA 12.5 corresponds to NVIDIA
   // driver 555.
-  static constexpr int MIN_CUDA_DRIVER_VERSION = 12050;
-  static constexpr int MIN_NVIDIA_DRIVER_VERSION = 555;
+  //
+  // On AWS and GCP, the CUDA driver version is 12.4 and the NVIDIA driver
+  // version is 550 by default. Since we want to easily deploy our cluster
+  // product on those cloud providers, we use CUDA 12.4 and NVIDIA driver 550
+  // as the minimum version.
+  static constexpr int MIN_CUDA_DRIVER_VERSION = 12040;
+  static constexpr int MIN_NVIDIA_DRIVER_VERSION = 550;
 
   static ErrorOr<const DeviceList &> deviceList();
 
