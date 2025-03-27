@@ -529,6 +529,23 @@ struct PropagateShapes {
         return true;
     }
 
+    // If *all* operands are non-positive, these operations will preserve the
+    // property.
+    if (llvm::is_contained({KGEN::POC::Max, KGEN::POC::Add},
+                           exprAttr.getOpcode())) {
+      return llvm::all_of(exprAttr.getOperands(), [&](TypedAttr operand) {
+        return isDefinitelyNonPositive(operand);
+      });
+    }
+
+    // If *any* are all non-positive, these operations will preserve the
+    // property.
+    if (llvm::is_contained({KGEN::POC::Min}, exprAttr.getOpcode())) {
+      return llvm::any_of(exprAttr.getOperands(), [&](TypedAttr operand) {
+        return isDefinitelyNonPositive(operand);
+      });
+    }
+
     return false;
   }
 
@@ -545,14 +562,27 @@ struct PropagateShapes {
     if (!exprAttr)
       return false;
 
-    // If operands are all non-negative, these operations will preserve the
+    // If *all* operands are non-negative, these operations will preserve the
     // property.
-    if (llvm::is_contained({KGEN::POC::Max, KGEN::POC::Add},
-                           exprAttr.getOpcode())) {
+    if (llvm::is_contained(
+            {KGEN::POC::Min, KGEN::POC::Add, KGEN::POC::Mul, KGEN::POC::MulNuw},
+            exprAttr.getOpcode())) {
       return llvm::all_of(exprAttr.getOperands(), [&](TypedAttr operand) {
         return isDefinitelyNonNegative(operand);
       });
     }
+
+    // If *any* are all non-negative, these operations will preserve the
+    // property.
+    if (llvm::is_contained({KGEN::POC::Max}, exprAttr.getOpcode())) {
+      return llvm::any_of(exprAttr.getOperands(), [&](TypedAttr operand) {
+        return isDefinitelyNonNegative(operand);
+      });
+    }
+
+    if (exprAttr.getOpcode() == KGEN::POC::Cond)
+      return isDefinitelyNonNegative(exprAttr.getOperand(1)) &&
+             isDefinitelyNonNegative(exprAttr.getOperand(2));
 
     return false;
   }

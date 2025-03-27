@@ -635,3 +635,28 @@ mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
   %res = mo.slice<() -> D3, D4>(%input, %start, %stop, %step) : (!mo.tensor<[D0, 2304], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
   mo.output<D3, D4> %res : !mo.tensor<[D3, D4], f32>
 }
+
+// Ensure shape computations related in a general slice operation are
+// propagated.
+
+// CHECK-LABEL: mo.graph @slice
+// CHECK:       (%[[ARG0:.*]]: !mo.tensor<[1], si32>) -> !mo.tensor<[2, 2], si32>
+// CHECK:       %[[OUT:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
+// CHECK:       mo.output %[[OUT]] : !mo.tensor<[2, 2], si32>
+mo.graph @slice<() -> O0, O1>(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[O0, O1], si32> {
+  %0 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %c2 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %c3 = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %zeros = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  %6 = mo.greater(%zeros, %ones) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], bool>
+  %7 = mo.not(%6) : !mo.tensor<[2], bool>
+  %8 = mo.select(%7, %c2, %c3) : (!mo.tensor<[2], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
+
+  %out = mo.broadcast_to<() -> D0, D1>(%arg0, %8) : (!mo.tensor<[1], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D0, D1], si32>
+  mo.output<D0, D1> %out : !mo.tensor<[D0, D1], si32>
+}
+

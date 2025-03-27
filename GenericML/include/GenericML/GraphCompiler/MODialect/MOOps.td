@@ -1287,7 +1287,9 @@ def MO_EqualOp : MO_ComparisonBinaryOp<"equal", [
   }];
 }
 
-def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
+def MO_GreaterOp : MO_ComparisonBinaryOp<"greater", [
+  DeclareOpInterfaceMethods<MO_Staticization>,
+]> {
   let summary = "Comparison operation";
   let description = [{
     Returns `x > y`, where `x` and `y` are input tensors.
@@ -1304,7 +1306,9 @@ def MO_GreaterOp : MO_ComparisonBinaryOp<"greater"> {
   }];
 }
 
-def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
+def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal", [
+  DeclareOpInterfaceMethods<MO_Staticization>
+]> {
   let summary = "Comparison operation";
   let description = [{
     Returns `x >= y`, where `x` and `y` are input tensors.
@@ -1321,7 +1325,10 @@ def MO_GreaterEqualOp : MO_ComparisonBinaryOp<"greater_equal"> {
   }];
 }
 
-def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [Commutative]> {
+def MO_NotEqualOp : MO_ComparisonBinaryOp<"not_equal", [
+  Commutative,
+  DeclareOpInterfaceMethods<MO_Staticization>
+]> {
   let summary = "Comparison operation";
   let description = [{
     Returns elementwise `x != y`, where `x` and `y` are input tensors.
@@ -1373,7 +1380,8 @@ def MO_OrOp : MO_LogicalBinaryOp<"or"> {
 }
 
 def MO_NotOp : MO_TensorOp<"not", [
-  Pure, MO_SameOperandsAndResultType, MO_ElementWiseUnary
+  Pure, MO_SameOperandsAndResultType, MO_ElementWiseUnary,
+  DeclareOpInterfaceMethods<MO_Staticization>
 ]> {
   let summary = "Logical negation operation";
   let description = [{

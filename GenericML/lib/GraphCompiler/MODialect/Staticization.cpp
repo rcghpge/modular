@@ -324,6 +324,22 @@ ErrorOr<TypedAttr> EqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   });
 }
 
+ErrorOr<TypedAttr> GreaterOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                           ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    auto vals = llvm::to_vector(llvm::reverse(scalarInputs));
+    return b.createKgenExpr(KGEN::POC::LE, vals);
+  });
+}
+
+ErrorOr<TypedAttr> GreaterEqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                                ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    auto vals = llvm::to_vector(llvm::reverse(scalarInputs));
+    return b.createKgenExpr(KGEN::POC::LT, vals);
+  });
+}
+
 ErrorOr<TypedAttr> IndexToTensorOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                  ParamExprBuilder &b) {
   return inputs[0];
@@ -335,6 +351,15 @@ ErrorOr<TypedAttr> NegativeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     Var input = b.createVar(scalarInputs[0]);
     Var res = input * -1;
     return res.getAttr();
+  });
+}
+
+ErrorOr<TypedAttr> NotEqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                            ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    auto eq = b.createKgenExpr(KGEN::POC::EQ, scalarInputs);
+    auto neq = KGEN::ParamOperatorAttr::getNot(eq);
+    return b.wrapNonTrivialAttrWithDecl(neq, "not_equal");
   });
 }
 
@@ -356,6 +381,14 @@ ErrorOr<TypedAttr> MulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
     return b.createKgenExpr(KGEN::POC::MulNuw, scalarInputs);
+  });
+}
+
+ErrorOr<TypedAttr> NotOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                       ParamExprBuilder &b) {
+  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
+    auto attr = KGEN::ParamOperatorAttr::getNot(scalarInputs[0]);
+    return b.wrapNonTrivialAttrWithDecl(attr, "not");
   });
 }
 
