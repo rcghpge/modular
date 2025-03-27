@@ -323,6 +323,19 @@ int HIPDevice::deviceCount() const {
   return count;
 }
 
+ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize) const {
+  assert(byteSize != 0);
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  return success();
+}
+
+ErrorOrSuccess HIPDevice::chunkFree(void *ptr) const {
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.MemFree(ptr));
+  return success();
+}
+
 const HIPDevice &HIPDevice::cast(const Device &device) {
   return static_cast<const HIPDevice &>(device);
 }

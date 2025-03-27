@@ -379,6 +379,19 @@ int CUDADevice::deviceCount() const {
   return errOrDevices.get().size();
 }
 
+ErrorOrSuccess CUDADevice::chunkAlloc(void **ptr, size_t byteSize) const {
+  assert(byteSize != 0);
+  CUDA_WITH_DEV_ERR(*this);
+  CUDA_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  return success();
+}
+
+ErrorOrSuccess CUDADevice::chunkFree(void *ptr) const {
+  CUDA_WITH_DEV_ERR(*this);
+  CUDA_CHECK_ERR(driver_.MemFree(ptr));
+  return success();
+}
+
 const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 };

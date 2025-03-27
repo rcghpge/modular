@@ -85,6 +85,12 @@ public:
 
   virtual int deviceCount() const = 0;
 
+  // Low-level uncached synchronous allocation of memory to support the
+  // BufferCache.
+  // REQUIRES: byteSize > 0
+  virtual ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const = 0;
+  virtual ErrorOrSuccess chunkFree(void *ptr) const = 0;
+
   virtual ErrorOr<DeviceContextRef>
   createContext(size_t bufferCacheSize) const = 0;
 
@@ -453,6 +459,16 @@ public:
 protected:
   DeviceContext(const Device &device, std::unique_ptr<BufferCache> bufferCache);
 
+  // Low-level uncached allocation of memory.
+  // REQUIRES: byteSize > 0
+  virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                                  AllocMode mode) const = 0;
+  virtual ErrorOrSuccess memFree(void *ptr, bool isHost) const = 0;
+
+  // Low-level copies.
+  virtual ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
+                                     const DeviceBuffer &src) const = 0;
+
 private:
   friend class BufferCache;
   friend class DeviceBuffer;
@@ -468,18 +484,7 @@ private:
   DeviceContext &operator=(DeviceContext &&other) = delete;
 
   // DeviceBuffer allocation.
-  virtual ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
-                                               AllocMode mode) const;
-
-  // Low-level uncached allocation of memory.
-  // REQUIRES: byteSize > 0
-  virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                                  AllocMode mode) const = 0;
-  virtual ErrorOrSuccess memFree(void *ptr, bool isHost) const = 0;
-
-  // Low-level copies.
-  virtual ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
-                                     const DeviceBuffer &src) const = 0;
+  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize, AllocMode mode) const;
 
   // Shared configuration object.
   // REQUIRES: `DeviceContext::mu_` must be held to get and access the shared

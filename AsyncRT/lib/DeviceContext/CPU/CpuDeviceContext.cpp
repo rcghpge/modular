@@ -78,6 +78,17 @@ int CpuDevice::deviceCount() const {
   return 1;
 }
 
+ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize) const {
+  assert(byteSize != 0);
+  *ptr = TCMallocGlobals::tc_new(byteSize, 1);
+  return success();
+}
+
+ErrorOrSuccess CpuDevice::chunkFree(void *ptr) const {
+  TCMallocGlobals::tc_delete(ptr);
+  return success();
+}
+
 const CpuDevice &CpuDevice::cast(const Device &device) {
   return static_cast<const CpuDevice &>(device);
 };

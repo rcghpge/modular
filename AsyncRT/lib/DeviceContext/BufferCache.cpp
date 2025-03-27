@@ -230,8 +230,7 @@ bool BufferCache::allocateChunk() {
     return false;
   }
   void *ptr = nullptr;
-  ErrorOrSuccess err =
-      ctx_.memAlloc(&ptr, allocSize, DeviceContext::AllocMode::SYNC);
+  ErrorOrSuccess err = ctx_.device().chunkAlloc(&ptr, allocSize);
   if (err.isError()) {
     if (doLog_) {
       errOut() << "##(" << deviceDescription_ << ":" << this
@@ -389,7 +388,7 @@ void BufferCache::clear() {
                << ")## free_chunk(" << chunk->base_ << ", " << chunk->size_
                << ")\n";
     }
-    ErrorOrSuccess err = ctx_.memFree(chunk->base_, false);
+    ErrorOrSuccess err = ctx_.device().chunkFree(chunk->base_);
     if (err.isError()) {
       errOut() << err.getError() << "\n";
       abort();
