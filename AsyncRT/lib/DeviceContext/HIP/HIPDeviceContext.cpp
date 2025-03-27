@@ -350,21 +350,23 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
       RAISE_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
                   errDriver.getError());
     }
-    int count = 0;
-    HIP_CHECK_ERR(errDriver.get().DeviceGetCount(&count));
 
-    char tmpName[256];
-    int tmpAlignment;
+    const HIPDriver &driver = *errDriver;
+    int count = 0;
+    HIP_CHECK_ERR(driver.DeviceGetCount(&count));
 
     for (int i = 0; i < count; i++) {
+      char name[256];
+      int alignment;
+
       hipDevice_t device = static_cast<hipDevice_t>(i);
-      HIP_CHECK_ERR(
-          errDriver.get().DeviceGetName(tmpName, sizeof(tmpName), device));
-      HIP_CHECK_ERR(errDriver.get().DeviceGetAttribute(
-          &tmpAlignment,
-          hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment, device));
-      devices.emplace_back(HIPDeviceRef::create(errDriver.get(), i, device,
-                                                tmpName, tmpAlignment));
+      HIP_CHECK_ERR(driver.DeviceGetName(name, sizeof(name), device));
+      HIP_CHECK_ERR(driver.DeviceGetAttribute(
+          &alignment, hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment,
+          device));
+
+      devices.emplace_back(
+          HIPDeviceRef::create(driver, i, device, name, alignment));
     }
     return success();
   }();
