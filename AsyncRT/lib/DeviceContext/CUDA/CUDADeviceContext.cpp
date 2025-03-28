@@ -207,8 +207,8 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        CUcontext context, std::string name,
                        size_t allocAlignment)
     // GEX-1416: Do not expect hardcoded number.
-    : Device(api, std::move(name), id, 256), driver_(driver), device_(device),
-      context_(context) {}
+    : Device(api, std::move(name), id, allocAlignment), driver_(driver),
+      device_(device), context_(context) {}
 
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
