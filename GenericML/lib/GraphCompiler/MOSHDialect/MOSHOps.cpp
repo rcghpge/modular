@@ -123,6 +123,8 @@ ErrorOr<TypedAttr> M::MOSH::tryFoldOp(Operation *op) {
   // are concerned, the inputs are either parametric shape/dimension or index
   // constant, and we know what ops they'd come from.
   SmallVector<Attribute> attrs;
+  attrs.reserve(op->getNumOperands());
+
   for (auto input : op->getOperands()) {
     if (auto paramToValueOp = getConstantValue(input)) {
       attrs.push_back(paramToValueOp);
@@ -256,11 +258,11 @@ LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
     }
   }
 
-  auto isEqual = [](auto ins) { return std::get<0>(ins) == std::get<1>(ins); };
-  if (llvm::all_of(llvm::zip(inputs, newInputs), isEqual))
+  if (llvm::equal(inputs, newInputs))
     return failure();
 
-  op.getInputsMutable().assign(newInputs);
+  rewriter.modifyOpInPlace(op,
+                           [&]() { op.getInputsMutable().assign(newInputs); });
   return success();
 }
 
