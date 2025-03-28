@@ -386,13 +386,14 @@ public:
 
   // DeviceFunction compiling.
   virtual ErrorOr<M::BufferRef>
-  compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
-                  StringRef targetAccelerator) const;
+  compileFunction(StringRef ir, StringRef debugLevel,
+                  int32_t optimizationLevel) const;
 
   // DeviceFunction compiling.
-  virtual ErrorOr<M::BufferRef>
-  compileFunction_v2(StringRef ir, StringRef debugLevel,
-                     int32_t optimizationLevel) const;
+  virtual ErrorOr<M::BufferRef> compileFunction_v2(StringRef ir,
+                                                   StringRef debugLevel,
+                                                   int32_t optimizationLevel,
+                                                   StringRef gpuName) const;
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>
