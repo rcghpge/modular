@@ -3,10 +3,6 @@ load("//bazel:api.bzl", "modular_cc_binary")
 modular_cc_binary(
     name = "mo-opt",
     srcs = glob(["*.cpp"]),
-    data = [
-        "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
-    ],
     deps = [
         "//GenericML:GraphCompiler",
         "//Init",

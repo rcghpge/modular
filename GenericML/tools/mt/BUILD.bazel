@@ -6,13 +6,11 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     data = [
         "//GenericML:MGPRT",
-        "//KGEN:CompilerRT",
         "//ModularFramework/tools/mof",
         "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
-        "@llvm-project//compiler-rt:orc_rt",
     ],
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
     deps = [

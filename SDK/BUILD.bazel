@@ -116,10 +116,8 @@ py_repl(
     name = "python",
     data = [
         "//GenericML:MGPRT",
-        "//KGEN:CompilerRT",
         "//KGEN:ptxas",
         "//ModularFramework/tools/mof",
-        "@llvm-project//compiler-rt:orc_rt",
     ],
     deps = [
         "//SDK/lib/API/python/max",
