@@ -55,27 +55,18 @@ public:
 
   /// Get the fully materialized module which contains all exported generators
   /// from mojo libraries.
-  mlir::ModuleOp getMojoBindings() { return module; }
+  inline mlir::ModuleOp getMojoBindings() { return module; }
 
   /// Query the mojo kernel with the specified `name`. Return nullptr if not
   /// existed.
-  Operation *lookup(StringRef name);
+  Operation *lookup(StringRef name) const;
 
   /// Get the MLIR context.
-  inline MLIRContext *getContext() { return context; }
-
-  /// Get the iterator range of the mojo kernels.
-  inline auto getRawMojoKernels() {
-    return llvm::map_range(
-        llvm::iterator_range(rawMojoKernel),
-        [&](const llvm::StringMapEntry<KGEN::GeneratorOp> &entry) {
-          return entry.getValue();
-        });
-  }
+  inline MLIRContext *getContext() { return module->getContext(); }
 
   /// Looks up a registered Mojo symbol using the name that was used for
   /// registration.
-  KGEN::GeneratorOp getRegisteredMojoKernelFor(StringRef name);
+  KGEN::GeneratorOp getRegisteredMojoKernelFor(StringRef name) const;
 
   /// Returns true if a registered Mojo symbol using the name exists.
   inline bool hasRegisteredMojoKernelFor(StringRef name) const {
@@ -97,36 +88,45 @@ public:
 
   /// Looks up a registered Mojo shape function using the name that was used
   /// for registration.
-  KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name);
+  KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name) const;
 
   /// Looks up the Mojo symbol of a registered, labeled kernel function using
   /// the name that was used for registration and the function label.
   KGEN::GeneratorOp getRegisteredMojoFunctionFor(StringRef name,
-                                                 StringRef functionLabel);
+                                                 StringRef functionLabel) const;
 
   /// Looks up and returns a mojo function as is.
-  KGEN::GeneratorOp getMojoFunctionNamed(StringRef name);
+  KGEN::GeneratorOp getMojoFunctionNamed(StringRef name) const;
 
   /// Lookup the kernel and specialize it on the given parameters.
   ErrorOr<KGEN::SymbolConstantAttr>
-  getSpecializedKernel(StringRef name, ArrayRef<TypedAttr> params);
+  getSpecializedKernel(StringRef name, ArrayRef<TypedAttr> params) const;
 
   /// Build the KGEN::ParamOperatorAttr which calls the specified callee with
   /// the given parameters and operands. The callee is resolved using the
   /// library analysis.
   ErrorOr<TypedAttr> buildParameterCall(llvm::StringLiteral callee,
                                         ArrayRef<TypedAttr> parameters,
-                                        ArrayRef<TypedAttr> operands);
+                                        ArrayRef<TypedAttr> operands) const;
 
   /// Return true if the provided kernel or shape function has the input
   /// parameter named `parameterName`.
   bool kernelHasInputParameter(KGEN::GeneratorOp kernel,
-                               StringRef parameterName);
+                               StringRef parameterName) const;
 
   /// Verify the call to a MO or custom kernel.
-  ErrorOrSuccess verifyKernelCallOp(Operation *kernelCallOp);
+  ErrorOrSuccess verifyKernelCallOp(Operation *kernelCallOp) const;
 
 private:
+  /// Get the iterator range of the mojo kernels.
+  inline auto getRawMojoKernels() const {
+    return llvm::map_range(
+        llvm::iterator_range(rawMojoKernel),
+        [&](const llvm::StringMapEntry<KGEN::GeneratorOp> &entry) {
+          return entry.getValue();
+        });
+  }
+
   /// Helper function to update the module and state data but account for
   /// collisions
   ErrorOrSuccess updateLoadedKernelsForCollisions(
@@ -141,9 +141,11 @@ private:
   /// buffer reference.
   llvm::MemoryBufferRef
   internMLIRFile(std::unique_ptr<llvm::MemoryBuffer> buffer);
+
   /// Read and internalize an MLIR bytecode file from a filepath into the source
   /// manager and return a buffer reference.
   ErrorOr<llvm::MemoryBufferRef> readAndInternMLIRFile(StringRef filename);
+
   /// Load and process kernels from an MLIR buffer.
   ErrorOr<Operation *>
   loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
@@ -160,7 +162,7 @@ private:
 
   /// Get the iterator range of the mojo kernels within the given kernel map.
   inline auto toRawMojoKernelRange(
-      const llvm::StringMap<KGEN::GeneratorOp> &userKernelMap) {
+      const llvm::StringMap<KGEN::GeneratorOp> &userKernelMap) const {
     return llvm::map_range(
         llvm::iterator_range(userKernelMap),
         [&](const llvm::StringMapEntry<KGEN::GeneratorOp> &entry) {
@@ -196,8 +198,6 @@ private:
   /// User-provided modules are cloned into this module after the full
   /// materialization (enforced by the `getMojoBindings` call).
   ModuleOp module;
-
-  MLIRContext *context;
 
   mlir::ParserConfig config;
 

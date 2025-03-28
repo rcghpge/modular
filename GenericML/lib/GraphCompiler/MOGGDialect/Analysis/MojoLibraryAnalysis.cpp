@@ -130,9 +130,8 @@ populateMetadata(Operation *module,
     rawMojoKernel[op.getSymName()] = op;
 }
 
-KGEN::GeneratorOp
-MojoLibraryAnalysis::getRegisteredMojoFunctionFor(StringRef name,
-                                                  StringRef functionLabel) {
+KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
+    StringRef name, StringRef functionLabel) const {
   auto registeredFunctions = registeredKernelFunctionSymbols.find(name);
   if (registeredFunctions == registeredKernelFunctionSymbols.end())
     return {};
@@ -144,7 +143,8 @@ MojoLibraryAnalysis::getRegisteredMojoFunctionFor(StringRef name,
   return registeredFunction->getValue();
 }
 
-KGEN::GeneratorOp MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) {
+KGEN::GeneratorOp
+MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) const {
   if (auto it = rawMojoKernel.find(name); it != rawMojoKernel.end())
     return it->second;
   return nullptr;
@@ -152,7 +152,7 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) {
 
 ErrorOr<KGEN::SymbolConstantAttr>
 MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
-                                          ArrayRef<TypedAttr> params) {
+                                          ArrayRef<TypedAttr> params) const {
   KGEN::GeneratorOp generator = getRegisteredMojoKernelFor(name);
   if (!generator)
     return Error("Cannot find mojo kernel for " + name);
@@ -173,7 +173,7 @@ MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
 ErrorOr<TypedAttr>
 MojoLibraryAnalysis::buildParameterCall(llvm::StringLiteral callee,
                                         ArrayRef<TypedAttr> parameters,
-                                        ArrayRef<TypedAttr> operands) {
+                                        ArrayRef<TypedAttr> operands) const {
   ErrorOr<KGEN::SymbolConstantAttr> maybeSymbol =
       getSpecializedKernel(callee, parameters);
 
@@ -203,8 +203,8 @@ MojoLibraryAnalysis::readAndInternMLIRFile(StringRef filename) {
   return internMLIRFile(bufOr.takeValue());
 }
 
-bool MojoLibraryAnalysis::kernelHasInputParameter(KGEN::GeneratorOp kernel,
-                                                  StringRef parameterName) {
+bool MojoLibraryAnalysis::kernelHasInputParameter(
+    KGEN::GeneratorOp kernel, StringRef parameterName) const {
   return llvm::any_of(kernel.getInputParams(), [&](auto param) {
     return KGEN::LIT::demangleIfNeeded(param).getName() == parameterName;
   });
@@ -237,7 +237,8 @@ ErrorOrSuccess MojoLibraryAnalysis::addKernelLibraryPath(
 
   if (Filesystem::isMojoBinaryPackagePath(kernelLibraryPath)) {
     // Load user library that is a mojo package file.
-    auto userModuleOr = parseMojoPackage(context, kernelLibraryPath, sourceMgr);
+    auto userModuleOr =
+        parseMojoPackage(getContext(), kernelLibraryPath, sourceMgr);
     if (userModuleOr.isError())
       return userModuleOr.takeError();
 
@@ -304,7 +305,7 @@ ErrorOrSuccess MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
       newSymName = getMOGGUniqueSymbolName(newSymName, userRawMojoKernel);
     }
 
-    auto oldAttr = FlatSymbolRefAttr::get(context, op.getSymNameAttr());
+    auto oldAttr = FlatSymbolRefAttr::get(getContext(), op.getSymNameAttr());
 
     symbolNameRemapping[userModule].push_back({newSymName, oldAttr});
 
@@ -313,7 +314,7 @@ ErrorOrSuccess MojoLibraryAnalysis::updateLoadedKernelsForCollisions(
     symbolUpdater.addReplacement(
         [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
           if (attr == oldAttr)
-            return FlatSymbolRefAttr::get(context, newSymName);
+            return FlatSymbolRefAttr::get(getContext(), newSymName);
           return std::nullopt;
         });
     symbolUpdater.recursivelyReplaceElementsIn(
@@ -467,7 +468,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 }
 
 MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
-    : context(ctx), config(ctx, false), sourceMgr(new llvm::SourceMgr()) {}
+    : config(ctx, false), sourceMgr(new llvm::SourceMgr()) {}
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() {
   for (auto &rd : readers) {
@@ -496,7 +497,7 @@ LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
     symbolUpdater.addReplacement(
         [&](FlatSymbolRefAttr attr) -> std::optional<FlatSymbolRefAttr> {
           if (attr == entry.second)
-            return FlatSymbolRefAttr::get(context, entry.first);
+            return FlatSymbolRefAttr::get(getContext(), entry.first);
           return std::nullopt;
         });
   }
@@ -508,7 +509,7 @@ LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
   return success();
 }
 
-Operation *MojoLibraryAnalysis::lookup(StringRef name) {
+Operation *MojoLibraryAnalysis::lookup(StringRef name) const {
   auto it = rawMojoKernel.find(name);
   if (it == rawMojoKernel.end())
     return nullptr;
@@ -517,7 +518,7 @@ Operation *MojoLibraryAnalysis::lookup(StringRef name) {
 }
 
 KGEN::GeneratorOp
-MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) {
+MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) const {
   auto registeredFunction = registeredMojoKernelSymbol.find(name);
   if (registeredFunction == registeredMojoKernelSymbol.end())
     return nullptr;
@@ -526,7 +527,7 @@ MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) {
 }
 
 KGEN::GeneratorOp
-MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) {
+MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) const {
   return getRegisteredMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
 }
@@ -728,7 +729,7 @@ static ErrorOr<size_t> getOperandsCountWithoutChains(TypeRange types,
 }
 
 ErrorOrSuccess
-MojoLibraryAnalysis::verifyKernelCallOp(Operation *kernelCallOp) {
+MojoLibraryAnalysis::verifyKernelCallOp(Operation *kernelCallOp) const {
   // Find the kernel from the library.
   auto maybeKernel = getMojoKernelTarget(*this, kernelCallOp);
   if (maybeKernel.isError()) {

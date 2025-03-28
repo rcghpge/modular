@@ -18,7 +18,7 @@ int64_t getNumDPSStyleOutputs(KGEN::GeneratorOp mojoCode);
 
 /// Returns the KGEN Generator associated with the given operation.
 ErrorOr<KGEN::GeneratorOp>
-getMojoKernelTarget(MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     Operation *op);
 
 } // namespace M::MOGG

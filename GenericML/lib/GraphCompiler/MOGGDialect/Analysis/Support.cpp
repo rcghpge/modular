@@ -52,7 +52,7 @@ static MojoOperationInfo getMojoOperationInfo(Operation *op) {
     return {customOp.getSymbol(), KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel};
   }
 
-  // Layout transforms map to a hardcoded op name based on the inferred layotus
+  // Layout transforms map to a hardcoded op name based on the inferred layouts
   if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op)) {
     auto startLayout = layoutTransformOp.getInput().getType().getLayoutAttr();
     auto endLayout = layoutTransformOp.getResult().getType().getLayoutAttr();
@@ -75,7 +75,7 @@ static MojoOperationInfo getMojoOperationInfo(Operation *op) {
 }
 
 ErrorOr<KGEN::GeneratorOp>
-getMojoKernelTarget(MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     Operation *op) {
   MojoOperationInfo info = getMojoOperationInfo(op);
   StringRef mojoOperationName = info.operationName;
