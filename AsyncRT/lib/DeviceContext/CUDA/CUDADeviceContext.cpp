@@ -1050,8 +1050,8 @@ setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
 }
 
 ErrorOr<M::BufferRef>
-CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
-                                   int32_t optimizationLevel) const {
+CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
+                                      int32_t optimizationLevel) const {
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
   if (errorOrOpts)
     return errorOrOpts.takeError();
@@ -1086,9 +1086,8 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   return result;
 }
 
-SmallVector<std::string> setupCompilationOptionsV2(StringRef debugLevel,
-                                                   int32_t optimizationLevel,
-                                                   StringRef gpuName) {
+SmallVector<std::string> setupCompilationOptionsNVPTXCompiler(
+    StringRef debugLevel, int32_t optimizationLevel, StringRef gpuName) {
   // TODO: add more options needed.
   // https://docs.nvidia.com/cuda/ptx-compiler-api/index.html#compilation-options
 
@@ -1105,26 +1104,26 @@ SmallVector<std::string> setupCompilationOptionsV2(StringRef debugLevel,
   SmallVector<std::string> options;
   options.reserve(2);
   options.push_back("--gpu-name=" + gpuName.str());
-  options.push_back("--opt-level=" + std::to_string(optimizationLevel));
 
   if (debugLevel == "full") {
     options.push_back("--device-debug");
-    options.push_back("--verbose");
+    optimizationLevel = 0;
   } else if (debugLevel == "line-tables") {
     options.push_back("--generate-line-info");
-    options.push_back("--verbose");
   }
+
+  options.push_back("--opt-level=" + std::to_string(optimizationLevel));
 
   return options;
 }
 
 ErrorOr<M::BufferRef>
-CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
-                                      int32_t optimizationLevel,
-                                      StringRef gpuName) const {
+CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
+                                   int32_t optimizationLevel,
+                                   StringRef targetAccelerator) const {
 #ifdef HAS_NVPTX_COMPILER
-  auto options =
-      setupCompilationOptionsV2(debugLevel, optimizationLevel, gpuName);
+  auto options = setupCompilationOptionsNVPTXCompiler(
+      debugLevel, optimizationLevel, targetAccelerator);
 
   CUDA_WITH_CTX_ERR(*this);
 
@@ -1159,8 +1158,8 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
       errorLog = (char *)malloc(errorSize + 1);
       NVPTXCOMPILER_SAFE_CALL(
           driver_.NVPTXCompilerGetErrorLog(compiler, errorLog));
-      llvm::errs() << "CUDADevice::compileFunction_v2 failed: \n " << errorLog
-                   << "\n";
+      llvm::errs() << "CUDADevice::compileFunction failed with error: \n "
+                   << errorLog << "\n";
       free(errorLog);
     }
     return Error("compile to CUBIN failed\n");
@@ -1179,8 +1178,8 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
   if (infoSize != 0) {
     infoLog = (char *)malloc(infoSize + 1);
     NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerGetInfoLog(compiler, infoLog));
-    llvm::errs() << "CUDADevice::compileFunction_v2 failed: \n " << infoLog
-                 << "\n";
+    llvm::errs() << "CUDADevice::compileFunction failed with info: \n "
+                 << infoLog << "\n";
     free(infoLog);
     return Error("compile to CUBIN failed\n");
   }
