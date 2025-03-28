@@ -99,13 +99,12 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
   auto configOr = Config::open();
   if (!configOr.isError()) {
     StringRef tempsDir = configOr->getValue("max.temps_dir");
-    ErrorOr<bool> writeFileLocally =
+    bool writeFileLocally =
         configOr->getValueAsBool("max.temps_use_local_scope", false);
-    assert(!writeFileLocally.isError() && "Parsed config is not found.");
     if (!tempsDir.empty()) {
       CommonOptions tempOptions;
       tempOptions.saveTemps = true;
-      tempOptions.printTempsLocalScope = writeFileLocally.takeValue();
+      tempOptions.printTempsLocalScope = writeFileLocally;
       tempOptions.tempsDir = tempsDir.str();
       writeFile(&tempOptions);
     }

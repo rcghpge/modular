@@ -629,11 +629,8 @@ bool DeviceContext::configAsBool(StringRef key, bool defaultValue) {
   if (config.isError())
     return defaultValue;
 
-  ErrorOr<bool> configValue = config->getValueAsBool(
-      (llvm::Twine("device-context.") + key).str(), defaultValue);
-  if (configValue.isError())
-    return defaultValue;
-  return *configValue;
+  return config->getValueAsBool((llvm::Twine("device-context.") + key).str(),
+                                defaultValue);
 }
 
 int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue) {

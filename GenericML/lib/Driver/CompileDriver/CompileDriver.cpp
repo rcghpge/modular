@@ -48,10 +48,12 @@ bool M::isCompileProgressEnabled() {
   if (configOr.isError())
     return false;
 
-  auto compileProgressEnabled =
-      configOr->getValueAsBool(STRINGIFY_MAX_CONFIG(".enable_compile_progress"),
-                               /*defaultValue=*/true);
-  return !compileProgressEnabled.isError() && *compileProgressEnabled;
+  // If this is an error, we now return true instead of false.
+  // We could have a second param to specify default value in case of error, but
+  // this is probably better for consistency.
+  return configOr->getValueAsBool(
+      STRINGIFY_MAX_CONFIG(".enable_compile_progress"),
+      /*defaultValue=*/true);
 }
 
 bool M::isModelIRCacheEnabled() {
@@ -61,10 +63,9 @@ bool M::isModelIRCacheEnabled() {
   if (configOr.isError())
     return false;
 
-  auto cacheEnabled =
-      configOr->getValueAsBool(STRINGIFY_MAX_CONFIG(".enable_model_ir_cache"),
-                               /*defaultValue=*/true);
-  return !cacheEnabled.isError() && *cacheEnabled;
+  return configOr->getValueAsBool(
+      STRINGIFY_MAX_CONFIG(".enable_model_ir_cache"),
+      /*defaultValue=*/true);
 }
 
 std::optional<std::filesystem::path> M::getWeightsCacheDir() {
@@ -72,11 +73,11 @@ std::optional<std::filesystem::path> M::getWeightsCacheDir() {
   if (configOr.isError())
     return std::nullopt;
 
-  auto weightsCacheEnabledOr = configOr->getValueAsBool(
+  auto weightsCacheEnabled = configOr->getValueAsBool(
       /*key=*/STRINGIFY_MAX_CONFIG(".enable_weight_cache"),
       /*defaultValue=*/false);
 
-  if (weightsCacheEnabledOr.isError() || !(*weightsCacheEnabledOr))
+  if (!weightsCacheEnabled)
     return std::nullopt;
 
   auto baseDirOr = getMaxCacheDir();
