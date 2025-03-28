@@ -73,3 +73,18 @@ kgen.generator @param_to_value<D>() -> (si64, !mosh.ape) {
   // CHECK: kgen.return %[[IDX]], %[[SHAPE]] : si64, !mosh.ape
   kgen.return %idx, %shape : si64, !mosh.ape
 }
+
+// CHECK: kgen.generator @value_to_param<[[D:.*]]>(%[[ARG0:.*]]: si64, %[[ARG1:.*]]: f32, %[[ARG2:.*]]: !mosh.ape) {
+kgen.generator @value_to_param<D>(%arg0: si64, %arg1: f32, %arg2: !mosh.ape) -> () {
+  // CHECK: mosh.param.from_value  Q : si64 = %[[ARG0]]
+  mosh.param.from_value Q : si64 = %arg0
+
+  // CHECK: mosh.param.from_value  P : f32 = %[[ARG1]]
+  mosh.param.from_value P : f32 = %arg1
+
+  // CHECK: mosh.param.from_value  Sh : !mosh.ape = %[[ARG2]]
+  mosh.param.from_value Sh : !mosh.ape = %arg2
+
+  // CHECK: kgen.return
+  kgen.return
+}

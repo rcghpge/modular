@@ -57,6 +57,24 @@ def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure,
   let hasVerifier = 1;
 }
 
+def MOSH_ParamFromValueOp : MOSH_Op<"param.from_value", [
+    AllTypesMatch<["paramDecl", "value"]>,
+    DeclareOpInterfaceMethods<ParamOpInterface>,
+]>, OneParamDecl {
+  let summary = "Create a parameter from an SSA value";
+
+  let arguments = (ins
+    KGEN_ParamDeclAttr:$paramDecl,
+    AnyType:$value
+  );
+
+  let assemblyFormat = [{
+    $paramDecl `=` $value attr-dict
+  }];
+
+  let hasCanonicalizeMethod = 1;
+}
+
 def MOSH_BroadcastOp : MOSH_Op<"broadcast", [Commutative, Pure]> {
   let summary = "Shape broadcasting operation";
   let description = [{

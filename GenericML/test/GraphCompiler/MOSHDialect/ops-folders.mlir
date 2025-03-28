@@ -262,3 +262,14 @@ kgen.generator @slice_fold<Sh1: !mosh.ape, D1, D2>(
   %s6 = mosh.slice(%v3)[%idx-99, %idx2]
   kgen.return %s1, %s2, %s3, %s4, %s5, %s6 : !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape, !mosh.ape
 }
+
+// CHECK: kgen.generator @param_from_value_fold<[[D0:.*]]>() -> !mosh.ape {
+kgen.generator @param_from_value_fold<D0>() -> !mosh.ape {
+  // CHECK: kgen.param.declare V: !mosh.ape = <[42, [[D0]], 10]>
+  %sh0 = mosh.param.to_value: !mosh.ape = <[42, D0, 10]>
+  mosh.param.from_value V : !mosh.ape = %sh0
+
+  // CHECK: %[[V0:.*]] = mosh.param.to_value: !mosh.ape = <V>
+  %val = mosh.param.to_value: !mosh.ape = <V>
+  kgen.return %val : !mosh.ape
+}

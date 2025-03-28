@@ -12,8 +12,10 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/Support/Dims.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "llvm/ADT/STLExtras.h"
@@ -22,7 +24,7 @@ using namespace M;
 using namespace MOSH;
 
 //===----------------------------------------------------------------------===//
-// ParamToValueOp support
+// ParamToValueOp
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseParamToValueOpValue(OpAsmParser &p, TypedAttr &value,
@@ -56,6 +58,41 @@ LogicalResult ParamToValueOp::verify() {
 
 void ParamToValueOp::walkDefinitions(
     function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {}
+
+//===----------------------------------------------------------------------===//
+// ParamFromValueOp support
+//===----------------------------------------------------------------------===//
+
+/// Try to turn the given value into a constant. Extra effort is applied to
+/// support mosh.param.to_value, cannot be modeled as an MLIR constant op.
+static TypedAttr getConstantValue(Value value) {
+  TypedAttr constant;
+  if (matchPattern(value, m_Constant(&constant)))
+    return constant;
+
+  if (auto paramToValue = value.getDefiningOp<ParamToValueOp>())
+    return paramToValue.getValue();
+
+  return {};
+}
+
+void M::MOSH::ParamFromValueOp::walkDefinitions(
+    function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {
+  walkDef(getParamDecl(), ParamDefValue());
+}
+
+LogicalResult
+M::MOSH::ParamFromValueOp::canonicalize(ParamFromValueOp op,
+                                        PatternRewriter &rewriter) {
+  // Fold the declaration of a constant to a parameter declaration.
+  if (auto constant = getConstantValue(op.getValue())) {
+    rewriter.replaceOpWithNewOp<KGEN::ParamDeclareOp>(op, op.getParamDeclAttr(),
+                                                      constant);
+    return success();
+  }
+
+  return failure();
+}
 
 //===----------------------------------------------------------------------===//
 // Shape ops
