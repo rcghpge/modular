@@ -1126,7 +1126,7 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
   nvPTXCompilerHandle compiler = nullptr;
 
   size_t elfSize, infoSize, errorSize;
-  char *elf, *infoLog, *errorLog;
+  char *infoLog, *errorLog;
   unsigned int minorVer, majorVer;
 
   NVPTXCOMPILER_SAFE_CALL(
@@ -1164,9 +1164,10 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
   NVPTXCOMPILER_SAFE_CALL(
       driver_.NVPTXCompilerGetCompiledProgramSize(compiler, &elfSize));
 
-  elf = (char *)malloc(elfSize);
-  NVPTXCOMPILER_SAFE_CALL(
-      driver_.NVPTXCompilerGetCompiledProgram(compiler, (void *)elf));
+  auto resultBuf = M::WriteableBuffer::get(elfSize);
+
+  NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerGetCompiledProgram(
+      compiler, (void *)resultBuf->getBufferStart()));
 
   NVPTXCOMPILER_SAFE_CALL(
       driver_.NVPTXCompilerGetInfoLogSize(compiler, &infoSize));
@@ -1180,11 +1181,7 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
     return Error("compile to CUBIN failed\n");
   }
 
-  auto resultBuf = M::Buffer::get(StringRef(elf, elfSize));
-
   NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerDestroy(&compiler));
-
-  free(elf);
 
   return resultBuf;
 #else  // HAS_NVPTX_COMPILER
