@@ -59,8 +59,8 @@ mo.graph @with_variadic_outputs() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si3
 // CHECK: mogg.to_kgen{{.*}}tensorIOType = "InputTensor"
 mo.graph @multiple_outputs_and_opaque(%op: !mo.opaque<"MyCustomScalarSI32">, %t2: !mo.tensor<[3], f32>) {
   %ch0 = mo.chain.create()
-  %out:3 = mo.custom{symbol = "tensor_opaque_tensor_kernel"} (%op, %t2, %ch0) :
-    (!mo.opaque<"MyCustomScalarSI32">, !mo.tensor<[3], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.tensor<[5], f32>, !mo.chain)
+  %out:3 = mo.custom{symbol = "tensor_opaque_tensor_kernel"} (%ch0, %op, %t2) :
+    (!mo.chain, !mo.opaque<"MyCustomScalarSI32">, !mo.tensor<[3], f32>) -> (!mo.chain, !mo.tensor<[4], f32>, !mo.tensor<[5], f32>)
   mo.output
 }
 

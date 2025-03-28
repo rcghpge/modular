@@ -23,11 +23,11 @@ mo.graph @custom_dynamic_with_device_annotations(%arg0 : !mo.tensor<[?], f32>, %
 // CHECK-LABEL: mo.graph @inplace_custom_op
 // CHECK-SAME: [[arg0:%.*]]: !mo.buffer<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: mo.custom {symbol = "inplace"}([[arg0]], [[ch0]])
+// CHECK: mo.custom {symbol = "inplace"}([[ch0]], [[arg0]])
 mo.graph @inplace_custom_op(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom {symbol = "inplace"} (%arg0, %ch0) : (!mo.buffer<[10, 10], f32>, !mo.chain) -> !mo.chain
+  %ch1 = mo.custom {symbol = "inplace"} (%ch0, %arg0) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> !mo.chain
 
   mo.output %ch1 : !mo.chain
 }
@@ -51,8 +51,8 @@ mo.graph @custom_op_mutable_spec(%arg0: !mo.buffer<[2, 2], f32>,
 {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom  {symbol = "foo", mutSpec = #mo<muts[0:R_, 1:_W]>} (%arg0, %arg1, %ch0) :
-   (!mo.buffer<[2, 2], f32>, !mo.opaque<"Foo">, !mo.chain) -> !mo.chain
+  %ch1 = mo.custom  {symbol = "foo", mutSpec = #mo<muts[0:R_, 1:_W]>} (%ch0, %arg0, %arg1) :
+   (!mo.chain, !mo.buffer<[2, 2], f32>, !mo.opaque<"Foo">) -> !mo.chain
 
   mo.output
 }

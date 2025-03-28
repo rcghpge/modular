@@ -498,7 +498,7 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
 
   // These ops already has similar logic in its verifier
   // TODO(GEX-1947): Unify their logic there with this trait verifier.
-  if (isa<MO::CustomOp, MO::YieldOp, MO::GuardOp>(op))
+  if (isa<MO::YieldOp, MO::GuardOp>(op))
     return success();
 
   // This is very deliberately the only op allowed to create a new buffer.
@@ -532,14 +532,14 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
         "Ops with buffer inputs must have exactly one chain output.");
   }
 
-  // The mo.custom op enforces that chains are in the final position.
-  // TODO(GEX-1944): Make chain the last in the operand/result lists for all
-  // operations.
-  if (!isa<MO::CustomOp>(op)) {
-    if (!isa<MO::ChainType>(op->getOperandTypes().front())) {
-      return op->emitError("Chain input must be in the first position for ops "
-                           "with buffer inputs.");
-    }
+  if (!isa<ChainType>(op->getResultTypes().front())) {
+    return op->emitError("A mo.chain must be the first output for ops "
+                         "with buffer inputs.");
+  }
+
+  if (!isa<ChainType>(op->getOperandTypes().front())) {
+    return op->emitError("A mo.chain must be the first input for ops "
+                         "with mo.buffer inputs.");
   }
 
   return success();

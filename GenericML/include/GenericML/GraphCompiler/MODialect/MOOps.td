@@ -5182,8 +5182,8 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
     Variadic<MO_Buffer>:$signalBuffers
   );
   let results = (outs
-    Variadic<MO_Tensor>:$outputs,
-    MO_Chain:$outChain
+    MO_Chain:$outChain,
+    Variadic<MO_Tensor>:$outputs
   );
 }
 

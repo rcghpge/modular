@@ -4779,12 +4779,12 @@ ChainValue CustomOp::getOutChain() {
 }
 
 OpOperand &CustomOp::getInChainMutable() {
-  OpOperand &finalOpOperand = getOperation()->getOpOperands().back();
+  OpOperand &firstOpOperand = getOperation()->getOpOperand(0);
 
-  ASSERT_STREAM(isa<ChainValue>(finalOpOperand.get()),
-                "Expected to find an input chain as the final operand.");
+  ASSERT_STREAM(isa<ChainValue>(firstOpOperand.get()),
+                "Expected to find an input chain as the first operand.");
 
-  return finalOpOperand;
+  return firstOpOperand;
 }
 
 DeviceRefAttr CustomOp::getOperandDevice(size_t index) {
@@ -4812,24 +4812,12 @@ LogicalResult CustomOp::verify() {
     assignedIndex[index] = true;
   }
 
-  auto chainIsLastIfPresent = [](auto &&rng) {
-    auto chainIter =
-        llvm::find_if(rng, [](Type t) { return isa<MO::ChainType>(t); });
-
-    return chainIter == rng.end() || std::next(chainIter) == rng.end();
-  };
-
-  if (!chainIsLastIfPresent(getResultTypes())) {
-    return emitError(
-        "If an output chain is present it must be the final result.");
-  }
-
   // If mutSpec is present make sure it's valid.
   if (getMutSpec().has_value()) {
     llvm::SmallVector<unsigned> mutableOperandIdxs;
     for (auto &opOperand : getOperation()->getOpOperands()) {
       if (isMutableOperand(opOperand.get()))
-        mutableOperandIdxs.push_back(opOperand.getOperandNumber());
+        mutableOperandIdxs.push_back(opOperand.getOperandNumber() - 1);
     }
 
     auto mutSpec = getMutSpec()->getValues();
@@ -4861,10 +4849,8 @@ std::optional<ChainValue> CustomOp::maybeGetInChain() {
   if (getNumOperands() == 0)
     return std::nullopt;
 
-  // Any chain operand must be last in the verifier due to a limitation in the
-  // current kernel lowering (GEX-868).
-  auto finalOperand = getOperand(getNumOperands() - 1);
-  if (auto chain = dyn_cast<ChainValue>(finalOperand))
+  auto firstOperand = getOperand(0);
+  if (auto chain = dyn_cast<ChainValue>(firstOperand))
     return chain;
 
   return std::nullopt;
@@ -4874,9 +4860,7 @@ std::optional<ChainValue> CustomOp::maybeGetOutChain() {
   if (getNumResults() == 0)
     return std::nullopt;
 
-  // Any chain result must be last in the verifier due to a limitation in the
-  // current kernel lowering (GEX-868).
-  auto finalResult = getResult(getNumResults() - 1);
+  auto finalResult = getResult(0);
   if (auto chain = dyn_cast<ChainValue>(finalResult))
     return chain;
 
@@ -4911,12 +4895,14 @@ void CustomOp::getEffects(
   }
   if (isInPlace && hasMutableSpec) {
     for (auto &&[idx, read, write] : getMutSpec()->getValues()) {
+      // mut spec is relative to the first non-chain operand index hence the
+      // offsets below.
       if (read)
         effects.emplace_back(mlir::MemoryEffects::Read::get(),
-                             &getOperation()->getOpOperand(idx));
+                             &getOperation()->getOpOperand(idx + 1));
       if (write)
         effects.emplace_back(mlir::MemoryEffects::Write::get(),
-                             &getOperation()->getOpOperand(idx));
+                             &getOperation()->getOpOperand(idx + 1));
     }
   }
 
