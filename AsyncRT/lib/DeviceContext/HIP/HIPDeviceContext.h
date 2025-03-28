@@ -68,8 +68,7 @@ public:
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const override;
   ErrorOrSuccess chunkFree(void *ptr) const override;
 
-  ErrorOr<DeviceContextRef>
-  createContext(size_t bufferCacheSize) const override;
+  ErrorOr<DeviceContextRef> createContext() const override;
 
   ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const override;

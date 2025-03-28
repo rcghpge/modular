@@ -91,8 +91,7 @@ public:
   virtual ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const = 0;
   virtual ErrorOrSuccess chunkFree(void *ptr) const = 0;
 
-  virtual ErrorOr<DeviceContextRef>
-  createContext(size_t bufferCacheSize) const = 0;
+  virtual ErrorOr<DeviceContextRef> createContext() const = 0;
 
   virtual ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const = 0;
@@ -436,15 +435,9 @@ public:
 
   BufferCache &bufferCache() const;
 
-  static ErrorOr<DeviceContextRef>
-  create(StringRef api, int id = 0,
-         // By default allow upto 1TB of bufferCacheSize.
-         size_t bufferCacheSize = 1024ULL * 1024ULL * 1024ULL * 1024ULL);
+  static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
 
-  static ErrorOr<DeviceContextRef>
-  getOrCreate(StringRef api, int id = 0,
-              // By default allow upto 1TB of bufferCacheSize.
-              size_t bufferCacheSize = 1024ULL * 1024ULL * 1024ULL * 1024ULL);
+  static ErrorOr<DeviceContextRef> getOrCreate(StringRef api, int id = 0);
 
   // Access configuration flags from the "device-context" section.
   static bool configAsBool(StringRef key, bool defaultValue);

@@ -558,16 +558,16 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
-DeviceContext::create(StringRef api, int id, size_t bufferCacheSize) {
+DeviceContext::create(StringRef api, int id) {
   ErrorOr<DeviceRef> device = Device::create(api, id);
   if (device.isError()) {
     return device.takeError();
   }
-  return (*device)->createContext(bufferCacheSize);
+  return (*device)->createContext();
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
-DeviceContext::getOrCreate(StringRef api, int id, size_t bufferCacheSize) {
+DeviceContext::getOrCreate(StringRef api, int id) {
   static std::mutex mu;
   static llvm::StringMap<const DeviceContext *> contextMap;
 
@@ -585,8 +585,7 @@ DeviceContext::getOrCreate(StringRef api, int id, size_t bufferCacheSize) {
       const DeviceContext *cachedCtx = iter->second;
       return DeviceContextRef::copy(cachedCtx);
     }
-    ErrorOr<DeviceContextRef> errCtx =
-        (*errDev)->createContext(bufferCacheSize);
+    ErrorOr<DeviceContextRef> errCtx = (*errDev)->createContext();
     if (errCtx.isError())
       return errCtx.takeError();
 

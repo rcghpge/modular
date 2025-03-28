@@ -112,11 +112,8 @@ protected:
 };
 
 TEST_F(CUDADeviceContextTest, DeviceExec) {
-  // Disable the buffer cache to avoid reference counts from the memory blocks
-  // confusing our accounting here.
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /* id = */ 0,
-                                      /* bufferCacheSize = */ 0));
+                DeviceContext::create(Device::cudaAPI, /* id = */ 0));
   ASSERT_TRUE(ctx);
 
   // Check reference count.

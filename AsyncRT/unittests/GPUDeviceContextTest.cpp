@@ -89,7 +89,7 @@ static void compareWithData(const void *dst, size_t dstLen,
 
 TEST(GPUDeviceContextTest, DeviceBuffers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::gpuAPI, 0, 100ull * 1024 * 1024));
+                DeviceContext::create(Device::gpuAPI, 0));
 
   char checkData[] = {
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',

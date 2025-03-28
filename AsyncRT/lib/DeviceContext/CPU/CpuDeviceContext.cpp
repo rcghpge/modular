@@ -63,8 +63,7 @@ ErrorOr<bool> CpuDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> CpuDevice::getAttribute(Attribute attr) const { return 0; }
 
-ErrorOr<DeviceContextRef>
-CpuDevice::createContext(size_t bufferCacheSize) const {
+ErrorOr<DeviceContextRef> CpuDevice::createContext() const {
   return CpuDeviceContextRef::create(*this);
 }
 

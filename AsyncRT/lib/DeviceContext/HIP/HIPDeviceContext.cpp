@@ -269,8 +269,7 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   return value;
 }
 
-ErrorOr<DeviceContextRef>
-HIPDevice::createContext(size_t bufferCacheSize) const {
+ErrorOr<DeviceContextRef> HIPDevice::createContext() const {
   // Make sure that we associate the stream with the correct device.
   HIP_WITH_DEV_ERR(*this);
 
@@ -279,24 +278,21 @@ HIPDevice::createContext(size_t bufferCacheSize) const {
 
   size_t cacheChunkSize = 0;
   size_t maxCacheSize = 0;
-  if (bufferCacheSize != 0) {
-    constexpr size_t KB = 1024; // NOLINT
-    DeviceContext::MemInfo memInfo;
-    HIP_CHECK_ERR(this->hipDriver().GetMemInfo(&memInfo.free, &memInfo.total));
-    // Make the buffer cache disabled by setting percentages to zero.
-    // Limit to 90% (default) of available memory.
-    int64_t cachePercent =
-        DeviceContext::configAsInt("buffer_cache_size_percent", 0);
-    maxCacheSize = std::min(
-        bufferCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
-                             (memInfo.free * cachePercent) / 100, 256 * KB)));
-    // Allocate chunks of 2% (default) of available memory.
-    int64_t chunkPercent =
-        DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
-    cacheChunkSize = std::min(
-        maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
-                          (maxCacheSize * chunkPercent) / 100, 256 * KB)));
-  }
+  constexpr size_t KB = 1024; // NOLINT
+  DeviceContext::MemInfo memInfo;
+  HIP_CHECK_ERR(this->hipDriver().GetMemInfo(&memInfo.free, &memInfo.total));
+  // Make the buffer cache disabled by setting percentages to zero.
+  // Limit to 90% (default) of available memory.
+  int64_t cachePercent =
+      DeviceContext::configAsInt("buffer_cache_size_percent", 0);
+  maxCacheSize = static_cast<size_t>(
+      llvm::alignToPowerOf2((memInfo.free * cachePercent) / 100, 256 * KB));
+  // Allocate chunks of 2% (default) of available memory.
+  int64_t chunkPercent =
+      DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
+  cacheChunkSize = std::min(
+      maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
+                        (maxCacheSize * chunkPercent) / 100, 256 * KB)));
 
   return HIPDeviceContextRef::create(*this, stream, cacheChunkSize,
                                      maxCacheSize);
