@@ -8,6 +8,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -281,6 +282,10 @@ static ErrorOr<TypedAttr> tryStaticizeImpl(Value val, ParamExprBuilder &b) {
   if (auto shapeOfOp = val.getDefiningOp<ShapeOfOp>())
     return shapeOfOp.getInput().getType().getShapeAttr();
 
+  if (auto paramToValue = val.getDefiningOp<MOSH::ParamToValueOp>())
+    if (isa<IntegerType, MOSH::ShapeType>(paramToValue.getType()))
+      return paramToValue.getValue();
+
   // Only staticize tensor.
   auto tensorVal = dyn_cast<TensorValue>(val);
   if (!tensorVal)
@@ -332,10 +337,27 @@ static ErrorOr<TypedAttr> tryStaticizeImpl(Value val, ParamExprBuilder &b) {
   return TypedAttr{};
 }
 
+static TypedAttr tryFoldMoshOp(Value val) {
+  auto op = val.getDefiningOp();
+  if (!op || !isa<M::MOSH::MOSHDialect>(op->getDialect()))
+    return TypedAttr{};
+
+  auto attr = MOSH::tryFoldOp(op);
+  if (failed(attr))
+    return TypedAttr{};
+
+  return *attr;
+}
+
 /// Try converting `val` to either
 /// - a symbolic int/bool (if `val` is a scalar tensor) or
 /// - a list of the above (if `val` is a 1D tensor)
 static StaticizeResult tryStaticize(Value val) {
+  // First, try folding, which is likely to be cheaper than the staticization
+  // interfaces.
+  if (TypedAttr folded = tryFoldMoshOp(val))
+    return StaticizeResult::success({}, folded);
+
   SmallVector<ParamBinding> bindings;
   auto graphOp = val.getParentRegion()->getParentOfType<GraphOp>();
   ParamExprBuilder b(graphOp, val.getLoc(), &bindings);
@@ -343,11 +365,10 @@ static StaticizeResult tryStaticize(Value val) {
   if (resOr.isError())
     return StaticizeResult::error(resOr.getError());
 
-  TypedAttr res = resOr.get();
-  if (!res)
-    return StaticizeResult::nonStaticizable();
+  if (TypedAttr res = resOr.get())
+    return StaticizeResult::success(std::move(bindings), res);
 
-  return StaticizeResult::success(std::move(bindings), res);
+  return StaticizeResult::nonStaticizable();
 }
 
 /// Try to shape infer the input op if possible, given the input shapes or
@@ -811,6 +832,7 @@ struct PropagateShapes {
                     << "data depedent input index must be in bound");
       dataDepInputIdxs.insert(idx);
     }
+
     SmallVector<TypedAttr> inputAttrs;
     for (auto [idx, input] : llvm::enumerate(op->getOperands())) {
       if (dataDepInputIdxs.contains(idx)) {
@@ -1083,6 +1105,29 @@ struct PropagateShapes {
         if (StringAttr errMsg = tryGetAssertFalseErrMsg(foldedRhsAttr)) {
           op->emitError(errMsg.strref());
           return failure();
+        }
+      }
+
+      if (auto paramFromValue = dyn_cast<MOSH::ParamFromValueOp>(op)) {
+        StaticizeResult input = tryStaticize(paramFromValue.getValue());
+        if (input.isError()) {
+          op->emitError(input.getError().msg);
+          return failure();
+        }
+
+        if (input.isSuccess()) {
+          StaticizeResult::Success &success = input.getSuccess();
+
+          OpBuilder builder(op);
+          Location loc = op->getLoc();
+          SmallVector<Operation *> newOps;
+          for (ParamBinding &binding : success.bindings)
+            newOps.push_back(binding.toOp(loc, builder));
+
+          llvm::append_range(worklist, llvm::reverse(newOps));
+
+          auto result = evaluator.getReboundAttribute(success.resultAttr);
+          evaluator.setParameterValue(paramFromValue.getParamDecl(), result);
         }
       }
 

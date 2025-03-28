@@ -660,3 +660,23 @@ mo.graph @slice<() -> O0, O1>(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[O0, O
   mo.output<D0, D1> %out : !mo.tensor<[D0, D1], si32>
 }
 
+// CHECK-LABEL: mo.graph @test_param_from_value
+// CHECK: <d0, d1>
+// CHECK: (%[[ARG0:.*]]: !mo.tensor<[d0], si64>, %[[ARG1:.*]]: !mo.tensor<[d1], si64>) -> !mo.tensor<[d0, d1, d0, d1], si64> {
+mo.graph @test_param_from_value<d0, d1 -> Sh2: !mosh.ape>(
+    %arg0: !mo.tensor<[d0], si64>,
+    %arg1: !mo.tensor<[d1], si64>
+) -> !mo.tensor<Sh2, si64> {
+  // CHECK: %[[C0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK: kgen.param.declare SH: !mosh.ape = <[d0, d1, d0, d1]>
+  // CHECK: %[[OUT:.*]] = mo.static.broadcast_to(%[[C0]]) : !mo.tensor<[], si64> -> !mo.tensor<[d0, d1, d0, d1], si64>
+  // CHECK: mo.output %[[OUT]] : !mo.tensor<[d0, d1, d0, d1], si64>
+
+  %sh = mosh.param.to_value : !mosh.ape = <[d0, d1]>
+  %sh1 = mosh.concat(%sh, %sh)
+  mosh.param.from_value SH : !mosh.ape = %sh1
+
+  %c0 = mo.constant { value = #M.dense_array<0> : tensor<si64> } : !mo.tensor<[], si64>
+  %result = mo.static.broadcast_to(%c0) : !mo.tensor<[], si64> -> !mo.tensor<SH, si64>
+  mo.output<:!mosh.ape SH> %result : !mo.tensor<SH, si64>
+}

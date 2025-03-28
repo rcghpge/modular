@@ -24,6 +24,9 @@ class RewriterBase;
 
 namespace M::MOSH {
 class ShapeAttr;
+
+/// Try folding MOSH ops.
+ErrorOr<TypedAttr> tryFoldOp(Operation *op);
 } // namespace M::MOSH
 
 namespace M::KGEN {

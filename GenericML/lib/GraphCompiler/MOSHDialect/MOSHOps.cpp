@@ -119,7 +119,7 @@ M::MOSH::ParamFromValueOp::canonicalize(ParamFromValueOp op,
 
 // Try to apply `op`'s folder to its input attributes (if any), and return the
 // result attribute if successful, else return an error.
-static ErrorOr<TypedAttr> tryFoldOp(Operation *op) {
+ErrorOr<TypedAttr> M::MOSH::tryFoldOp(Operation *op) {
   ASSERT_STREAM(isa<MOSHDialect>(op->getDialect()), << "expected MOSH op");
 
   // Turn inputs into attributes, this works because we know as far as mosh ops
@@ -127,11 +127,10 @@ static ErrorOr<TypedAttr> tryFoldOp(Operation *op) {
   // constant, and we know what ops they'd come from.
   SmallVector<Attribute> attrs;
   for (auto input : op->getOperands()) {
-    if (auto paramToValueOp = input.getDefiningOp<ParamToValueOp>()) {
-      attrs.push_back(paramToValueOp.getValue());
-
+    if (auto paramToValueOp = getConstantValue(input)) {
+      attrs.push_back(paramToValueOp);
     } else {
-      return Error("An input isn't from ParamToValueOp");
+      return Error("An input isn't a constant");
     }
   }
 
