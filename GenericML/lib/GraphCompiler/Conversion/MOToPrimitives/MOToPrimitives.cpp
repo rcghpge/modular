@@ -145,6 +145,10 @@ public:
   LogicalResult lowerParamToValue(Region *parentRegion,
                                   MOSH::ParamToValueOp paramToValueOp);
 
+  /// Lower a MOSH::ParamFromValueOp op.
+  LogicalResult lowerParamFromValue(Region *parentRegion,
+                                    MOSH::ParamFromValueOp paramFromValueOp);
+
   /// Lower an index -> scalar-like tensor cast op.
   LogicalResult lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp);
 
@@ -622,6 +626,19 @@ MOGraphLowering::lowerParamToValue(Region *parentRegion,
 }
 
 LogicalResult
+MOGraphLowering::lowerParamFromValue(Region *parentRegion,
+                                     MOSH::ParamFromValueOp paramFromValueOp) {
+  auto input =
+      loweringState.lookupExecuteLoweredValue(paramFromValueOp.getValue());
+
+  if (auto err = loweringState.lowerParamDecl(
+          parentRegion, paramFromValueOp.getParamDecl(), input))
+    return paramFromValueOp->emitOpError(err.getError());
+
+  return success();
+}
+
+LogicalResult
 MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   ASSERT_STREAM(MO::isOnHost(toTensorOp),
                 << "mo.index.to_tensor is for host only");
@@ -674,6 +691,7 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
   // Fill the buffer with the runtime dimensions.
   auto loweredShape =
       loweringState.lookupExecuteLoweredValue(toTensorOp.getInput());
+
   auto loweredTensorSpec = cast<TypedValue<MGP::TensorSpecType>>(loweredShape);
   // Note loweredTensorSpec is the encoding for the shape we are trying to
   // reify as a tensor, whereas outputStorage.tensorSpec just describes
@@ -1803,6 +1821,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto paramToValueOp = dyn_cast<MOSH::ParamToValueOp>(op)) {
       if (failed(lowerParamToValue(block->getParent(), paramToValueOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto paramFromValueOp = dyn_cast<MOSH::ParamFromValueOp>(op)) {
+      if (failed(lowerParamFromValue(block->getParent(), paramFromValueOp)))
         return failure();
       continue;
     }

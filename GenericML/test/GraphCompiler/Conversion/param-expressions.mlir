@@ -335,3 +335,30 @@ mo.graph @shift_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   mo.output
 }
 
+// -----
+
+// CHECK-LABEL: mgp.model @from_param : mof
+// CHECK: } execute
+mo.graph @from_param<X, Y, Z>() -> !mo.tensor<[3], si64> {
+  // CHECK-DAG: %[[X:.*]] = mosh.param.to_value = <X>
+  // CHECK-DAG: %[[IX:.*]] = index.casts %[[X]] : si64 to index
+  // CHECK-DAG: %[[Y:.*]] = mosh.param.to_value = <Y>
+  // CHECK-DAG: %[[IY:.*]] = index.casts %[[Y]] : si64 to index
+  // CHECK-DAG: %[[Z:.*]] = mosh.param.to_value = <Z>
+  // CHECK-DAG: %[[IZ:.*]] = index.casts %[[Z]] : si64 to index
+  // CHECK-DAG: %[[SPEC:.*]] = mgp.tensor_spec.create %[[IX]], %[[IY]], %[[IZ]] : !mgp.tensor_spec<?x?x?xsi64>
+  // CHECK:     %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %[[SPEC]] : <?x?x?xsi64>
+  // CHECK:     %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <?x?x?xsi64>
+  // CHECK:     %[[DIM2:.*]] = mgp.tensor_spec.get_dim[2] %[[SPEC]] : <?x?x?xsi64>
+  // CHECK:     %[[BUF:.*]] = mgp.buffer.set_with_index %{{.*}}, %[[DIM0]], %[[DIM1]], %[[DIM2]] : !mgp.buffer
+  // CHECK:     %[[TENSOR:.*]] = mgp.tensor.create %[[BUF]], %{{.*}}, %{{.*}} : !mgp.tensor<3xsi64>
+  // CHECK:     mef.output %{{.*}}, %[[TENSOR]] : !mef.chain, !mgp.tensor<3xsi64>
+
+  %val = mosh.param.to_value : !mosh.ape = <[X, Y, Z]>
+
+  mosh.param.from_value FROM_VALUE : !mosh.ape = %val
+
+  %Sh = mosh.param.to_value : !mosh.ape = <FROM_VALUE>
+  %res = mo.shape.to_tensor(%Sh) -> !mo.tensor<[3], si64>
+  mo.output %res : !mo.tensor<[3], si64>
+}
