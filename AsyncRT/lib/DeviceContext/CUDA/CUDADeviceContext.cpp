@@ -367,11 +367,18 @@ CUDADevice::createExternalStream(void *externalStream) const {
 }
 
 int CUDADevice::deviceCount() const {
-  ErrorOr<const DeviceList &> errOrDevices = deviceList();
-  if (errOrDevices.isError()) {
-    return 0;
-  }
-  return errOrDevices.get().size();
+  static int count = []() -> int {
+    ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
+    if (errDriver.isError())
+      return 0;
+
+    int result;
+    if ((*errDriver).DeviceGetCount(&result) != CUDADriver::SUCCESS)
+      return 0;
+
+    return result;
+  }();
+  return count;
 }
 
 ErrorOrSuccess CUDADevice::chunkAlloc(void **ptr, size_t byteSize) const {

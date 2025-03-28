@@ -306,16 +306,17 @@ HIPDevice::createExternalStream(void *externalStream) const {
 }
 
 int HIPDevice::deviceCount() const {
-  ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
-  if (errDriver) {
-    return 0;
-  }
+  static int count = []() -> int {
+    ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
+    if (errDriver.isError())
+      return 0;
 
-  int count = 0;
-  HIPDriver::Result hipResult = errDriver.get().DeviceGetCount(&count);
-  if (hipResult != HIPDriver::SUCCESS) {
-    return 0;
-  }
+    int result;
+    if ((*errDriver).DeviceGetCount(&result) != HIPDriver::SUCCESS)
+      return 0;
+
+    return result;
+  }();
   return count;
 }
 
