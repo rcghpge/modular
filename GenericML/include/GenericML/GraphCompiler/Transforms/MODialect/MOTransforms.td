@@ -119,22 +119,6 @@ def ResolveUnknownParameters : Pass<"resolve-unknown-parameters", "ModuleOp"> {
   }];
 }
 
-def StaticizeShapes : Pass<"staticize-shapes", "ModuleOp"> {
-  let summary = "Lower shape-like tensors to `!mosh.ape`.";
-  let description = [{
-    This pass attempts to lower shape-like MO tensors (i.e. rank-1, signed 32 or
-    64 bit integer) to the special `!mosh.ape` type, and lower computations on
-    them to parameter computations or static operations (as opposed to
-    operations that take in dynamic values, like reshape or broadcast). This
-    essentially "lifts" the shape logic encoded as tensor computations into the
-    symbolic shape inference realm.
-
-    The pass currently only resolves shapes that originate from `mo.shape_of`
-    ops or constant shape-like tensors. In particular shape-like (or dim-like)
-    arguments provided to the graph are not supported for now.
-  }];
-}
-
 def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
   let summary = "Optimize the graph using symbolic reasoning.";
   let description = [{

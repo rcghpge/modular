@@ -107,9 +107,6 @@ M::MOSH::ParamFromValueOp::canonicalize(ParamFromValueOp op,
 // need simplification? The answer is `KGEN::MLIROpAttr`, which requires us to
 // define the simplification logic of the shape ops as MLIR folders.
 
-// NOTE Why do we need these canonicalizers? See comments in
-// `StaticizeShapesPass`.
-
 // Below are some abstractions to help us get the same outcome from running
 // `--canonicalize` on some MOSH ops, as if `MOSH::ParamToValueOp` is a
 // ConstantLike, without having to duplicate the folding across `fold` and
