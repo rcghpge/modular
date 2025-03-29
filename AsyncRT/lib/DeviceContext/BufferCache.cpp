@@ -42,8 +42,8 @@ struct BufferCache::Desc {
     chunk_ = nullptr;
     next_ = nullptr;
     prev_ = nullptr;
-    next_free_ = nullptr;
-    prev_free_ = nullptr;
+    nextFree_ = nullptr;
+    prevFree_ = nullptr;
     free_ = false;
   }
 
@@ -55,16 +55,16 @@ struct BufferCache::Desc {
   Desc *next_;
   Desc *prev_;
 
-  Desc *next_free_;
-  Desc *prev_free_;
+  Desc *nextFree_;
+  Desc *prevFree_;
 
   bool free_;
 };
 
-BufferCache::DescMap::DescMap(int map_size_log2)
-    : bucket_count_(1 << map_size_log2), bucket_mask_(bucket_count_ - 1),
-      buckets_(new Desc *[bucket_count_]) {
-  for (size_t i = 0; i < bucket_count_; i++) {
+BufferCache::DescMap::DescMap(int mapSizeLog2)
+    : bucketCount_(1 << mapSizeLog2), bucketMask_(bucketCount_ - 1),
+      buckets_(new Desc *[bucketCount_]) {
+  for (size_t i = 0; i < bucketCount_; i++) {
     buckets_[i] = nullptr;
   }
 }
@@ -85,31 +85,31 @@ uint32_t BufferCache::DescMap::hash(void *ptr) {
 
 void BufferCache::DescMap::add(Desc *desc) {
   assert(!desc->free_);
-  assert(desc->next_free_ == nullptr);
-  assert(desc->prev_free_ == nullptr);
+  assert(desc->nextFree_ == nullptr);
+  assert(desc->prevFree_ == nullptr);
 
   uint32_t h = hash(desc->ptr_);
-  Desc **bucket = &buckets_[h & bucket_mask_];
-  desc->next_free_ = *bucket;
+  Desc **bucket = &buckets_[h & bucketMask_];
+  desc->nextFree_ = *bucket;
   *bucket = desc;
 }
 
 BufferCache::Desc *BufferCache::DescMap::remove(void *ptr) {
   uint32_t h = hash(ptr);
-  Desc **bucket = &buckets_[h & bucket_mask_];
+  Desc **bucket = &buckets_[h & bucketMask_];
   Desc *result = *bucket;
   Desc *prev = nullptr;
   while ((result != nullptr) && (result->ptr_ != ptr)) {
     prev = result;
-    result = result->next_free_;
+    result = result->nextFree_;
   }
   if (result != nullptr) {
     if (prev == nullptr) {
-      *bucket = result->next_free_;
+      *bucket = result->nextFree_;
     } else {
-      prev->next_free_ = result->next_free_;
+      prev->nextFree_ = result->nextFree_;
     }
-    result->next_free_ = nullptr;
+    result->nextFree_ = nullptr;
   }
   return result;
 }
@@ -186,14 +186,14 @@ BufferCache::~BufferCache() {
 
 void BufferCache::addToFreeList(Desc *desc) {
   assert(!desc->free_);
-  assert(desc->next_free_ == nullptr);
-  assert(desc->prev_free_ == nullptr);
+  assert(desc->nextFree_ == nullptr);
+  assert(desc->prevFree_ == nullptr);
   assert(desc->chunk_ != nullptr);
 
   desc->free_ = true;
-  desc->next_free_ = freeBuffers_;
+  desc->nextFree_ = freeBuffers_;
   if (freeBuffers_ != nullptr) {
-    freeBuffers_->prev_free_ = desc;
+    freeBuffers_->prevFree_ = desc;
   }
   freeBuffers_ = desc;
 
@@ -206,20 +206,20 @@ void BufferCache::removeFromFreeList(Desc *desc) {
   assert(desc->chunk_ != nullptr);
 
   if (desc == freeBuffers_) {
-    assert(desc->prev_free_ == nullptr);
-    freeBuffers_ = desc->next_free_;
+    assert(desc->prevFree_ == nullptr);
+    freeBuffers_ = desc->nextFree_;
     if (freeBuffers_ != nullptr) {
-      freeBuffers_->prev_free_ = nullptr;
+      freeBuffers_->prevFree_ = nullptr;
     }
   } else {
-    assert(desc->prev_free_ != nullptr);
-    desc->prev_free_->next_free_ = desc->next_free_;
-    if (desc->next_free_ != nullptr) {
-      desc->next_free_->prev_free_ = desc->prev_free_;
+    assert(desc->prevFree_ != nullptr);
+    desc->prevFree_->nextFree_ = desc->nextFree_;
+    if (desc->nextFree_ != nullptr) {
+      desc->nextFree_->prevFree_ = desc->prevFree_;
     }
   }
-  desc->next_free_ = nullptr;
-  desc->prev_free_ = nullptr;
+  desc->nextFree_ = nullptr;
+  desc->prevFree_ = nullptr;
 }
 
 bool BufferCache::allocateChunk() {
@@ -279,10 +279,10 @@ void BufferCache::selfCheck() {
     // Check no missing buffers, no cycle
     while (curDesc != nullptr) {
       if (!curDesc->free_) {
-        // next_free_ is used in map collision resolution, so it is not
+        // nextFree_ is used in map collision resolution, so it is not
         // necessarily nullptr.
-        // assert(curDesc->next_free_ == nullptr);
-        assert(curDesc->prev_free_ == nullptr);
+        // assert(curDesc->nextFree_ == nullptr);
+        assert(curDesc->prevFree_ == nullptr);
       }
       Desc *nextDesc = curDesc->next_;
       if (nextDesc != nullptr) {
@@ -310,16 +310,16 @@ void BufferCache::selfCheck() {
   Desc *curDesc = freeBuffers_;
   Desc *aheadDesc = curDesc;
   if (curDesc != nullptr) {
-    assert(curDesc->prev_free_ == nullptr);
+    assert(curDesc->prevFree_ == nullptr);
   }
   while (curDesc != nullptr) {
-    Desc *next = curDesc->next_free_;
+    Desc *next = curDesc->nextFree_;
     assert(curDesc->free_);
     if (next != nullptr) {
-      assert(next->prev_free_ == curDesc);
+      assert(next->prevFree_ == curDesc);
     }
-    if ((aheadDesc != nullptr) && (aheadDesc->next_free_ != nullptr)) {
-      aheadDesc = aheadDesc->next_free_->next_free_;
+    if ((aheadDesc != nullptr) && (aheadDesc->nextFree_ != nullptr)) {
+      aheadDesc = aheadDesc->nextFree_->nextFree_;
       if (aheadDesc == curDesc) {
         errOut() << "##(" << deviceDescription_ << ":" << this
                  << ")## selfCheck: cycle - free buffers\n";
@@ -364,7 +364,7 @@ void BufferCache::clear() {
     assert(desc->ptr_ == chunk->base_);
     assert(desc->size_ == chunk->size_);
 
-    desc = desc->next_free_;
+    desc = desc->nextFree_;
   }
 
   Chunk *chunk = chunks_;
@@ -434,7 +434,7 @@ ErrorOr<void *> BufferCache::allocate(size_t size,
       std::lock_guard<std::mutex> lock(mu_);
       selfCheck();
 
-      buf = allocate_locked(size);
+      buf = allocateLocked(size);
     }
   }
 
@@ -463,13 +463,13 @@ ErrorOr<void *> BufferCache::allocate(size_t size,
   return buf;
 }
 
-void *BufferCache::allocate_locked(size_t size) {
+void *BufferCache::allocateLocked(size_t size) {
   assert((size & alignmentMask_) == size);
   // Find a fit in the free list.
   Desc *desc = freeBuffers_;
   int iterations = 0;
   while ((desc != nullptr) && (desc->size_ < size)) {
-    desc = desc->next_free_;
+    desc = desc->nextFree_;
     iterations++;
   }
   if (desc == nullptr) {
@@ -483,27 +483,27 @@ void *BufferCache::allocate_locked(size_t size) {
       return nullptr;
     }
     // Allocated a new chunk, try again.
-    return allocate_locked(size);
+    return allocateLocked(size);
   }
 
   assert(desc->free_);
   if (desc->size_ == size) {
     // Unhook from free list.
-    if (desc->next_free_ != nullptr) {
-      desc->next_free_->prev_free_ = desc->prev_free_;
+    if (desc->nextFree_ != nullptr) {
+      desc->nextFree_->prevFree_ = desc->prevFree_;
     }
-    if (desc->prev_free_ != nullptr) {
-      desc->prev_free_->next_free_ = desc->next_free_;
+    if (desc->prevFree_ != nullptr) {
+      desc->prevFree_->nextFree_ = desc->nextFree_;
     } else {
-      freeBuffers_ = desc->next_free_;
+      freeBuffers_ = desc->nextFree_;
     }
     freeCount_--;
   } else {
     desc = desc->chunk_->splitFreeDesc(desc, size);
   }
 
-  desc->next_free_ = nullptr;
-  desc->prev_free_ = nullptr;
+  desc->nextFree_ = nullptr;
+  desc->prevFree_ = nullptr;
   desc->free_ = false;
   allocatedMap_.add(desc);
   freeSize_ -= size;
@@ -525,7 +525,7 @@ ErrorOrSuccess BufferCache::free(void *buf, bool isHost) {
   if ((chunks_ != nullptr) && !isHost) {
     std::lock_guard<std::mutex> lock(mu_);
     selfCheck();
-    freed = free_locked(buf);
+    freed = freeLocked(buf);
   }
 
   if (!freed) {
@@ -540,7 +540,7 @@ ErrorOrSuccess BufferCache::free(void *buf, bool isHost) {
   return success();
 }
 
-bool BufferCache::free_locked(void *buf) {
+bool BufferCache::freeLocked(void *buf) {
   assert(chunks_ != nullptr);
   assert(buf != nullptr);
 
@@ -568,23 +568,23 @@ bool BufferCache::free_locked(void *buf) {
       // Merge all three keeping prev on the free list.
       prev->size_ += bufSize + next->size_;
       // Remove next from free list.
-      if (prev->next_free_ == next) {
+      if (prev->nextFree_ == next) {
         // next is following previous in free list.
-        prev->next_free_ = next->next_free_;
-        if (next->next_free_ != nullptr) {
-          next->next_free_->prev_free_ = prev;
+        prev->nextFree_ = next->nextFree_;
+        if (next->nextFree_ != nullptr) {
+          next->nextFree_->prevFree_ = prev;
         }
         codePath = -1;
       } else if (freeBuffers_ == next) {
         // next is at head.
-        freeBuffers_ = next->next_free_;
-        next->next_free_->prev_free_ = nullptr;
+        freeBuffers_ = next->nextFree_;
+        next->nextFree_->prevFree_ = nullptr;
         codePath = -2;
       } else {
         // next is not at head.
-        next->prev_free_->next_free_ = next->next_free_;
-        if (next->next_free_ != nullptr) {
-          next->next_free_->prev_free_ = next->prev_free_;
+        next->prevFree_->nextFree_ = next->nextFree_;
+        if (next->nextFree_ != nullptr) {
+          next->nextFree_->prevFree_ = next->prevFree_;
         }
         codePath = -3;
       }

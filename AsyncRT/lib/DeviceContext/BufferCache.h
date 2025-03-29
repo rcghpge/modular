@@ -29,7 +29,7 @@ public:
 
   class DescMap {
   public:
-    DescMap(int map_size_log2);
+    DescMap(int mapSizeLog2);
     ~DescMap();
 
     void add(Desc *desc);
@@ -38,8 +38,8 @@ public:
   private:
     static uint32_t hash(void *ptr);
 
-    size_t bucket_count_;
-    size_t bucket_mask_;
+    size_t bucketCount_;
+    size_t bucketMask_;
     Desc **buckets_;
   };
 
@@ -65,8 +65,8 @@ private:
   void removeFromFreeList(Desc *desc);
 
   bool allocateChunk();
-  void *allocate_locked(size_t size);
-  bool free_locked(void *buf);
+  void *allocateLocked(size_t size);
+  bool freeLocked(void *buf);
 
   // Avoid malloc under lock.
   Desc *popDesc();
