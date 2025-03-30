@@ -1,5 +1,4 @@
 load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "py_repl", "requirement")
-load("//bazel:config.bzl", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
 
 modular_cc_library(
@@ -18,7 +17,6 @@ modular_nanobind_library(
     name = "ModularFrameworkPython",
     srcs = glob(["lib/API/python/lib/Engine/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
-    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     nanobind_deps = [
         "//:MLIRBindingsPythonHeaders",
         "//Support:CPythonNanobind",
