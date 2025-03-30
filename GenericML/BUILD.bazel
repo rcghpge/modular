@@ -1081,7 +1081,6 @@ modular_cc_library(
     data = [
         ":MGPRT",
     ],
-    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     deps = [
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
@@ -1437,7 +1436,6 @@ modular_shared_library(
         "lib/MGPRT/*.cpp",
     ]),
     hdrs = glob(["include/GenericML/MGPRT/*.h"]),
-    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     output_name = "MGPRT",
     deps = [
         ":Support",
