@@ -92,7 +92,7 @@ SafeTensorInfo::get(const llvm::json::Object &tensorInfo) {
 
   SmallVector<size_t> shape;
   shape.reserve(shapeArray->size());
-  for (auto &shapeValue : *shapeArray) {
+  for (const auto &shapeValue : *shapeArray) {
     std::optional<int64_t> shapeValueAsInteger = shapeValue.getAsInteger();
     assert(shapeValueAsInteger && "shape value is not an integer");
     shape.push_back(*shapeValueAsInteger);
@@ -180,13 +180,13 @@ ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
     return Error("failed to deserialize safetensor");
 
   // Get the JSON value as a JSON object.
-  llvm::json::Object *jsonValueAsObject = jsonValue->getAsObject();
+  auto *jsonValueAsObject = jsonValue->getAsObject();
   if (!jsonValueAsObject)
     return Error("failed to convert JSON value to object");
 
   llvm::json::Object metadata;
   llvm::DenseMap<std::string, llvm::json::Object> tensorInfo;
-  for (auto &[key, value] : *jsonValueAsObject) {
+  for (const auto &[key, value] : *jsonValueAsObject) {
     // If the key is "__metadata__", store the value as metadata.
     if (key == "__metadata__") {
       if (!metadata.empty())

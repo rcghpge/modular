@@ -34,7 +34,10 @@ public:
 
   SafeTensorCLOptions(int argc, char **argv, Options &opts,
                       bool skipInitLLVM = true)
-      : CommonCLOptions(argc, argv, opts, skipInitLLVM), options(opts) {}
+      : CommonCLOptions(argc, argv, opts, skipInitLLVM), options(opts),
+        SafeTensorOptionsCategory("SafeTensor command line options") {}
+
+  llvm::cl::OptionCategory SafeTensorOptionsCategory;
 
   llvm::cl::opt<bool> showMetadata{
       "metadata", cl::desc("Display the metadata in the safetensor file"),
@@ -43,10 +46,6 @@ public:
   llvm::cl::opt<std::string> tensorInfo{
       "tensor-info", cl::desc("Display the tensor-info in the safetensor file"),
       llvm::cl::cat(SafeTensorOptionsCategory)};
-
-private:
-  llvm::cl::OptionCategory SafeTensorOptionsCategory{
-      "SafeTensor command line options"};
 };
 } // namespace
 
@@ -61,8 +60,6 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv,
                                     "safetensor command line options\n");
 
-  // Parsing from stdin is not supported right now. A user must specify an input
-  // file.
   if (opts.inputFilename == "-")
     return reportError("stdin not supported, please specify an input file");
 
@@ -70,20 +67,16 @@ int main(int argc, char **argv) {
   if (safeTensorOr.isError())
     return reportError(safeTensorOr.getError());
 
-  auto safeTensor = safeTensorOr.get();
+  const auto &safeTensor = safeTensorOr.get();
 
   if (cli.showMetadata) {
     llvm::outs() << safeTensor.getMetadata() << "\n";
-    return EXIT_SUCCESS;
-  }
-
-  if (!cli.tensorInfo.empty()) {
+  } else if (!cli.tensorInfo.empty()) {
     ErrorOr<SafeTensorInfo> info = safeTensor.getTensorInfo(cli.tensorInfo);
     if (info.isError())
       return reportError(info.getError());
 
     llvm::outs() << info->toJSON() << "\n";
-    return EXIT_SUCCESS;
   }
 
   return EXIT_SUCCESS;
