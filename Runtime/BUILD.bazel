@@ -11,6 +11,18 @@ modular_cc_library(
 )
 
 modular_cc_library(
+    name = "IO",
+    srcs = glob(["lib/IO/*.cpp"]),
+    hdrs = glob(["include/Runtime/IO/*.h"]),
+    deps = [
+        "//AsyncRT:DeviceContext",
+        "//Support:Base",
+        "//Support:Buffer",
+        "//Support:ML",
+    ],
+)
+
+modular_cc_library(
     name = "Tensor",
     srcs = glob(["lib/Tensor/*.cpp"]),
     hdrs = glob(["include/Runtime/Tensor/*.h"]),

@@ -1,0 +1,10 @@
+load("//bazel:api.bzl", "modular_cc_binary")
+
+modular_cc_binary(
+    name = "safetensor",
+    srcs = glob(["*.cpp"]),
+    deps = [
+        "//Runtime:IO",
+        "//Support:CommonCLOptions",
+    ],
+)
