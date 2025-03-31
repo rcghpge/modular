@@ -7,27 +7,11 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
-#include "GenericML/Interfaces/GraphInterfaces.h"
 #include "Support/AssertStream.h"
 #include "mlir/Parser/Parser.h"
 
 using namespace M;
 using namespace MO;
-
-//===----------------------------------------------------------------------===//
-// MOGraphVisualizationInterface
-//===----------------------------------------------------------------------===//
-namespace {
-struct MOGraphVisualizationInterface : public GraphVisualizationInterface {
-
-  using GraphVisualizationInterface::GraphVisualizationInterface;
-
-  VisualizationInfo populateVisualizationInfo(Operation *op) override {
-    return VisualizationInfo{op->getName().getStringRef(),
-                             /* isModularOp = */ true};
-  }
-};
-} // namespace
 
 //===----------------------------------------------------------------------===//
 // MODialect
@@ -37,8 +21,6 @@ void MODialect::initialize() {
   registerAttributes();
   registerTypes();
   registerOperations();
-
-  addInterfaces<MOGraphVisualizationInterface>();
 }
 
 Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,

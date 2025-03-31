@@ -26,46 +26,6 @@ pkg_files(
     visibility = ["//visibility:public"],
 )
 
-td_library(
-    name = "InterfacesTdFiles",
-    srcs = glob(["include/GenericML/Interfaces/*.td"]),
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "InterfacesIncGen",
-    includes = ["include"],
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "include/GenericML/Interfaces/GraphInterfaces.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "include/GenericML/Interfaces/GraphInterfaces.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/Interfaces/GraphInterfaces.td",
-    deps = [
-        ":InterfacesTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "Interfaces",
-    srcs = glob(["lib/Interfaces/*.cpp"]),
-    hdrs = glob(["include/GenericML/Interfaces/*.h"]),
-    deps = [
-        ":InterfacesIncGen",
-        "//Support:Base",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 # MOTransforms relies on these, but the GraphCompiler relies
 # on MOTransforms.
 modular_cc_library(
@@ -440,7 +400,6 @@ modular_cc_library(
         "include/GenericML/GraphCompiler/Matchers.h",
     ],
     deps = [
-        ":Interfaces",
         ":MODialectEnumsIncGen",
         ":MODialectIncGen",
         ":MODialectInterfacesIncGen",

@@ -152,19 +152,6 @@ def InferLayouts : Pass<"infer-layouts", "GraphOp"> {
   }];
 }
 
-def GenVizSpec : Pass<"gen-viz", "GraphOp"> {
-  let summary = "Generates a Modular Visualization Spec.";
-  let description = [{
-    This pass generates a visualization spec which can be used as input to
-    Netron (https://github.com/modularml/netron) to visualize the MO graph.
-  }];
-  let options = [
-    Option<"vizOutputPath", "viz-output-path", "std::string", "",
-           "Specifies the output path for the "
-           "visualization spec.">,
-  ];
-}
-
 def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
   let summary = "Move parameter expressions out of ops and into a preceding alias.";
   let description = [{

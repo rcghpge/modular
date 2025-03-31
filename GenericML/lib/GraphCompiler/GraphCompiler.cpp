@@ -154,12 +154,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MO::createCanonicalizeChainSequences());
 
-  if (opts.genVizSpec)
-    pm.addPass(MO::createGenVizSpec({opts.vizOutputPath}));
-  // TODO(#34452): Add an early return here. When genVizSpec flag is added,
-  // there is no reason to continue compilation after the needed file is
-  // generated.
-
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 

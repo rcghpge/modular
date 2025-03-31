@@ -32,10 +32,6 @@ public:
 
   bool enableCompiledRegionsFusion{true};
 
-  bool genVizSpec{false};
-
-  std::string vizOutputPath{""};
-
   bool debugPrintAllTensors{false};
 
   size_t softFusionNonHostKernelLimit{3};
@@ -52,8 +48,6 @@ public:
     moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
     moToMgpOptions.defaultDeviceId = defaultDeviceId;
     moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
-    moToMgpOptions.genVizSpec = genVizSpec;
-    moToMgpOptions.vizOutputPath = vizOutputPath;
     moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
     moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
     moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
@@ -113,20 +107,6 @@ private:
       "enable-compiled-regions-fusion",
       cl::desc("If false, will disable compiled region fusion"),
       llvm::cl::location(options.enableCompiledRegionsFusion),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> genVizSpec{
-      "gen-viz-spec",
-      cl::desc(
-          "If true, generates a visualization spec compatible with Netron."),
-      llvm::cl::location(options.genVizSpec),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<std::string, true> vizOutputPath{
-      "viz-output-path",
-      cl::desc("If genVizSpec, can be used to specify the output path for "
-               "the visualization spec."),
-      llvm::cl::location(options.vizOutputPath),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> debugPrintAllTensors{

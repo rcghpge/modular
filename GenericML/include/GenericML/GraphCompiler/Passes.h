@@ -131,17 +131,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "enable-post-abi-regions-fusion",
       llvm::cl::desc("If false, will disable post-abi compiled region fusion"),
       llvm::cl::init(false)};
-  Option<bool> genVizSpec{
-      *this, "gen-viz-spec",
-      llvm::cl::desc(
-          "If true, generates a visualization spec compatible with Netron."),
-      llvm::cl::init(false)};
-  Option<std::string> vizOutputPath{
-      *this, "viz-output-path",
-      llvm::cl::desc(
-          "If genVizSpec, can be used to specify the output path for "
-          "the visualization spec."),
-      llvm::cl::init("")};
   Option<bool> debugPrintAllTensors{
       *this, "debug-print-all-tensors",
       llvm::cl::desc("If enabled, print all intermediate tensors. The usual "
