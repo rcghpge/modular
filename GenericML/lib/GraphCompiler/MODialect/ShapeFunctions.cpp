@@ -600,16 +600,25 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
                                          "than or equal to the output rank");
   }
 
-  for (int i = 0; i < inputRank; i++) {
+  for (int i : llvm::seq(inputRank)) {
     int inputAxis = inputRank - i - 1;
     int outputAxis = outputRank - i - 1;
     Var inputDim = b.createVar(inputShape[inputAxis]);
     Var outputDim = b.createVar(targetShape[outputAxis]);
 
+    auto message =
+        llvm::formatv(
+            "[broadcast_to] input dimension at index {0} ({1}) must be either "
+            "1 or equal to "
+            "corresponding output dimension at index {2} ({3})",
+            inputAxis,
+            KGEN::getParamAsString(inputShape[inputAxis], /*forDiag=*/true),
+            outputAxis,
+            KGEN::getParamAsString(outputDim.getAttr(), /*forDiag=*/true))
+            .str();
+
     // Insert assertions
-    b.createAssert(inputDim == 1 || inputDim == outputDim,
-                   "[broadcast_to] input dim must be either 1 or equal to "
-                   "corresponding output dim starting from the rightmost dim");
+    b.createAssert(inputDim == 1 || inputDim == outputDim, message);
   }
   return ShapeMaterializeResult::success(std::move(paramBindings), targetShape);
 }

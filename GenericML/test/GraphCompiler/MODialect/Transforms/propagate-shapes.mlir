@@ -393,7 +393,7 @@ mo.graph @broadcast_to_parametric_shape<D0, D1 -> D2, D3>(
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[2], si32>
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
-  // CHECK-SAME:  {message = "[broadcast_to] input dim must be either 1 or equal to corresponding output dim starting from the rightmost dim" : !kgen.string},
+  // CHECK-SAME:  {message = "[broadcast_to] input dimension at index 0 ([[D0]]) must be either 1 or equal to corresponding output dimension at index 1 ([[D1]])" : !kgen.string},
   // CHECK-SAME:  or(eq(:si64 D0, D1), eq(:si64 D0, 1)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT]])
