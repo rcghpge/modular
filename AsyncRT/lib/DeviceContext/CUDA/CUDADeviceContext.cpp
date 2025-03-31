@@ -1110,11 +1110,9 @@ SmallVector<std::string> setupCompilationOptionsV2(StringRef debugLevel,
   options.push_back("--opt-level=" + std::to_string(optimizationLevel));
 
   if (debugLevel == "full") {
-    options.push_back("--device-debug");
-    options.push_back("--verbose");
+    options.push_back("-g");
   } else if (debugLevel == "line-tables") {
     options.push_back("--generate-line-info");
-    options.push_back("--verbose");
   }
 
   return options;
