@@ -30,26 +30,24 @@ using namespace M;
 
 /// This function must be called before any other cuFile API function.
 /// It initializes the cuFile library and driver resources.
+#ifndef UNSUPPORTED_OS
 static ErrorOrSuccess openDriver() {
-#ifdef UNSUPPORTED_OS
-  RETURN_UNSUPPORTED_OS_ERROR();
-#else
   CUfileError_t status = cuFileDriverOpen();
   if (IS_CUFILE_ERR(status))
     return Error(CUFILE_ERRSTR(status));
 
   return success();
-#endif
 }
+#endif
 
 /// This function releases resources acquired by `openDriver`.
 /// It should be called when the application no longer needs cuFile services.
-static void closeDriver() {
 #ifndef UNSUPPORTED_OS
+static void closeDriver() {
   [[maybe_unused]] CUfileError_t status = cuFileDriverClose();
   assert(!IS_CUFILE_ERR(status) && "Failed to close cuFile driver");
-#endif
 }
+#endif
 
 /// This function initializes the cuFile library and driver resources.
 /// It must be called before any other cuFile API function.
