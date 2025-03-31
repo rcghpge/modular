@@ -23,7 +23,9 @@ include "mlir/IR/OpAsmInterface.td"
 class MOSH_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOSHDialect, mnemonic, traits>;
 
-def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure,
+def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [
+    Pure,
+    AllTypesMatch<["value", "result"]>,
     DeclareOpInterfaceMethods<ParamOpInterface>]>,
     NoParamDecls {
   let summary = "create an SSA value from a parameter value";
@@ -48,13 +50,6 @@ def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [Pure,
   let assemblyFormat = [{
     `` custom<ParamToValueOpValue>($value, type($result)) attr-dict
   }];
-
-  let builders = [
-    OpBuilder<(ins "TypedAttr":$value),
-              [{ build($_builder, $_state, value.getType(), value); }]>
-  ];
-
-  let hasVerifier = 1;
 }
 
 def MOSH_ParamFromValueOp : MOSH_Op<"param.from_value", [

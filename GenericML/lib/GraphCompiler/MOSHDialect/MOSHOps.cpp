@@ -46,16 +46,6 @@ static void printParamToValueOpValue(OpAsmPrinter &p, Operation *,
   p << ">";
 }
 
-LogicalResult ParamToValueOp::verify() {
-  Type paramType = getValue().getType();
-  Type resultType = getType();
-  if (paramType == resultType)
-    return success();
-
-  return emitOpError() << "parameter type " << paramType
-                       << " does not match result type " << resultType;
-}
-
 void ParamToValueOp::walkDefinitions(
     function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {}
 
