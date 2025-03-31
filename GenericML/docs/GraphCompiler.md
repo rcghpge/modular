@@ -134,9 +134,7 @@ bootstrap the development effort while lightning matures for this use case.
 ### Lowering Pipeline
 
 Beginning with a framework model, we will first partially lower the graph
-into MO. For TFlite, this will be a direct lowering from mTFL. For Tensorflow,
-we will first use Tensorflow's built in capability for partially lowering to
-mHLO. Afterward we will further lower the mHLO into MO.
+into MO. Afterward we will further lower the mHLO into MO.
 
 Once a model is defined in MO, we can run a set of device independent passes
 (shape inference, constant folding, simplification, etc). From this point,
