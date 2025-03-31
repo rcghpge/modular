@@ -26,66 +26,77 @@ static int abs(CUfileError_t err) { return abs((int)err.err); }
 using namespace M;
 
 #ifdef MODULAR_LINUX
-#define RETURN_ERROR_IF_INVALID_OS()                                           \
+#define RETURN_UNSUPPORTED_OS_ERROR()                                          \
   do {                                                                         \
   } while (0)
 #else // MODULAR_LINUX
-#define RETURN_ERROR_IF_INVALID_OS()                                           \
+#define UNSUPPORTED_OS 1
+#define RETURN_UNSUPPORTED_OS_ERROR()                                          \
   return Error("CUFile is not supported on this operating system");
 #endif // MODULAR_LINUX
 
 /// This function must be called before any other cuFile API function.
 /// It initializes the cuFile library and driver resources.
 ErrorOrSuccess CUFile::openDriver() {
-  RETURN_ERROR_IF_INVALID_OS();
-
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
   CUfileError_t status = cuFileDriverOpen();
   if (IS_CUFILE_ERR(status))
     return Error(CUFILE_ERRSTR(status));
 
   return success();
+#endif
 }
 
 /// This function releases resources acquired by `openDriver`.
 /// It should be called when the application no longer needs cuFile services.
 ErrorOrSuccess CUFile::closeDriver() {
-  RETURN_ERROR_IF_INVALID_OS();
-
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
   CUfileError_t status = cuFileDriverClose();
   if (IS_CUFILE_ERR(status))
     return Error(CUFILE_ERRSTR(status));
 
   return success();
+#endif
 }
 
 /// Registering memory allows cuFile to perform direct DMA transfers
 /// between the storage and the GPU memory.
 ErrorOrSuccess CUFile::registerMemory(void *devPtr, size_t size) {
-  RETURN_ERROR_IF_INVALID_OS();
-
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
   CUfileError_t status = cuFileBufRegister(devPtr, size, 0);
   if (IS_CUFILE_ERR(status))
     return Error(CUFILE_ERRSTR(status));
 
   return success();
+#endif
 }
 
 /// Deregisters a previously registered device memory buffer.
 ErrorOrSuccess CUFile::deregisterMemory(void *devPtr) {
-  RETURN_ERROR_IF_INVALID_OS();
-
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
   CUfileError_t status = cuFileBufDeregister(devPtr);
   if (IS_CUFILE_ERR(status))
     return Error(CUFILE_ERRSTR(status));
 
   return success();
+#endif
 }
 
 /// Opens the specified file using standard POSIX open, ensuring O_DIRECT
 /// is included in the flags for direct I/O. It then registers the file
 /// descriptor with cuFile.
 ErrorOrSuccess CUFile::open(const std::filesystem::path &path, int flags) {
-  RETURN_ERROR_IF_INVALID_OS();
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
 
   // Ensure O_DIRECT is set for GDS operations.
   fd = ::open(path.c_str(), flags | O_DIRECT);
@@ -105,12 +116,15 @@ ErrorOrSuccess CUFile::open(const std::filesystem::path &path, int flags) {
   }
 
   return success();
+#endif
 }
 
 /// Deregisters the file handle from cuFile and closes the underlying
 /// file descriptor.
 ErrorOrSuccess CUFile::close() {
-  RETURN_ERROR_IF_INVALID_OS();
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
 
   if (handle) {
     cuFileHandleDeregister(handle);
@@ -122,12 +136,15 @@ ErrorOrSuccess CUFile::close() {
   }
 
   return success();
+#endif
 }
 
 /// Reads data directly from the file into a registered device buffer.
 ErrorOr<ssize_t> CUFile::read(void *devPtr, size_t size, off_t fileOffset,
                               off_t devOffset) {
-  RETURN_ERROR_IF_INVALID_OS();
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
 
   if (!handle)
     return Error("cuFile handle is not initialized (file not open?)");
@@ -144,13 +161,15 @@ ErrorOr<ssize_t> CUFile::read(void *devPtr, size_t size, off_t fileOffset,
     return Error(Twine("cuFile read failed: ") + CUFILE_ERRSTR(bytesRead));
 
   return bytesRead;
+#endif
 }
 
 /// Writes data directly from a registered device buffer to the file.
 ErrorOr<ssize_t> CUFile::write(void *devPtr, size_t size, off_t fileOffset,
                                off_t devOffset) {
-  RETURN_ERROR_IF_INVALID_OS();
-
+#ifdef UNSUPPORTED_OS
+  RETURN_UNSUPPORTED_OS_ERROR();
+#else
   if (!handle)
     return Error("cuFile handle is not initialized (file not open?)");
   if (fd < 0)
@@ -168,4 +187,5 @@ ErrorOr<ssize_t> CUFile::write(void *devPtr, size_t size, off_t fileOffset,
     return Error(Twine("cuFile write failed: ") + CUFILE_ERRSTR(bytesWritten));
 
   return bytesWritten;
+#endif
 }
