@@ -21,27 +21,28 @@
 
 namespace M {
 
-/// SafeTensorInfo is a helper class that provides a JSON-serializable
-/// representation of tensor information.
-struct SafeTensorInfo {
-  SafeTensorInfo(DType dtype, ArrayRef<size_t> shape,
-                 std::pair<size_t, size_t> offsets)
-      : dtype(dtype), shape(shape), offsets(offsets) {}
-
-  static ErrorOr<SafeTensorInfo> get(const llvm::json::Object &tensorInfo);
-
-  size_t getSizeInBytes() const;
-
-  llvm::json::Value toJSON() const;
-
-  DType dtype;
-  SmallVector<size_t> shape;
-  std::pair<size_t, size_t> offsets;
-};
-
 /// SafeTensor format reader with GPU-aware data loading capabilities.
 /// Provides safe access to tensor data and metadata with error checking.
 struct SafeTensor {
+
+  /// TensorInfo is a helper class that provides a JSON-serializable
+  /// representation of tensor information.
+  struct TensorInfo {
+    TensorInfo(DType dtype, ArrayRef<size_t> shape,
+               std::pair<size_t, size_t> offsets)
+        : dtype(dtype), shape(shape), offsets(offsets) {}
+
+    static ErrorOr<TensorInfo> get(const llvm::json::Object &tensorInfo);
+
+    size_t getSizeInBytes() const;
+
+    llvm::json::Value toJSON() const;
+
+    DType dtype;
+    SmallVector<size_t> shape;
+    std::pair<size_t, size_t> offsets;
+  };
+
   /// Constructs a SafeTensor from parsed metadata and tensor information.
   SafeTensor(BufferRef buffer, llvm::json::Object &&metadata,
              llvm::DenseMap<std::string, llvm::json::Object> &&tensorInfo)
@@ -52,7 +53,7 @@ struct SafeTensor {
   llvm::json::Object getMetadata() const { return metadata; }
 
   /// Gets metadata for a specific tensor.
-  ErrorOr<SafeTensorInfo> getTensorInfo(StringRef name) const;
+  ErrorOr<SafeTensor::TensorInfo> getTensorInfo(StringRef name) const;
 
   /// Loads and parses a SafeTensor file from the given data.
   static ErrorOr<SafeTensor> get(BufferRef data);

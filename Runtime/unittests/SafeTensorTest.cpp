@@ -24,7 +24,7 @@ static std::string toString(const llvm::json::Value &value) {
   return str;
 }
 
-static std::string toString(const SafeTensorInfo &info) {
+static std::string toString(const SafeTensor::TensorInfo &info) {
   return toString(info.toJSON());
 }
 

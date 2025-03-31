@@ -69,11 +69,11 @@ static ErrorOr<std::string> fromDType(DType dtype) {
 }
 
 //===----------------------------------------------------------------------===//
-// SafeTensorInfo
+// SafeTensor::TensorInfo
 //===----------------------------------------------------------------------===//
 
-ErrorOr<SafeTensorInfo>
-SafeTensorInfo::get(const llvm::json::Object &tensorInfo) {
+ErrorOr<SafeTensor::TensorInfo>
+SafeTensor::TensorInfo::get(const llvm::json::Object &tensorInfo) {
   // Get the dtype.
   auto dtypeData = tensorInfo.find("dtype");
   if (dtypeData == tensorInfo.end())
@@ -115,14 +115,14 @@ SafeTensorInfo::get(const llvm::json::Object &tensorInfo) {
   assert(dataOffsets0 && "data_offsets[0] is not an integer");
   assert(dataOffsets1 && "data_offsets[1] is not an integer");
 
-  return SafeTensorInfo(*dtype, shape, {*dataOffsets0, *dataOffsets1});
+  return SafeTensor::TensorInfo(*dtype, shape, {*dataOffsets0, *dataOffsets1});
 }
 
-size_t SafeTensorInfo::getSizeInBytes() const {
+size_t SafeTensor::TensorInfo::getSizeInBytes() const {
   return offsets.second - offsets.first;
 }
 
-llvm::json::Value SafeTensorInfo::toJSON() const {
+llvm::json::Value SafeTensor::TensorInfo::toJSON() const {
   llvm::json::Object json;
   json["dtype"] = *fromDType(dtype);
   json["shape"] = llvm::json::Array(shape);
@@ -203,9 +203,8 @@ ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
       return Error(Twine("duplicate tensor name: ") + key.str());
   }
 
-  // Construct and return a SafeTensor object with the parsed metadata and
-  // tensor info.
-  return SafeTensor(buffer, std::move(metadata), std::move(tensorInfo));
+  return SafeTensor(std::move(buffer), std::move(metadata),
+                    std::move(tensorInfo));
 }
 
 /// Load and parse a SafeTensor file from the given path.
@@ -224,11 +223,12 @@ ErrorOr<SafeTensor> SafeTensor::get(const std::filesystem::path &path) {
 }
 
 /// Retrieve metadata for a specific tensor by name.
-ErrorOr<SafeTensorInfo> SafeTensor::getTensorInfo(StringRef name) const {
+ErrorOr<SafeTensor::TensorInfo>
+SafeTensor::getTensorInfo(StringRef name) const {
   auto it = tensorInfo.find(name.str());
   if (it == tensorInfo.end()) {
     return Error(Twine("the tensor named '") + name +
                  "' was not found in the safetensor");
   }
-  return SafeTensorInfo::get(it->second);
+  return SafeTensor::TensorInfo::get(it->second);
 }

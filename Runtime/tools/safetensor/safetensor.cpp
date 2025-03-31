@@ -72,7 +72,8 @@ int main(int argc, char **argv) {
   if (cli.showMetadata) {
     llvm::outs() << safeTensor.getMetadata() << "\n";
   } else if (!cli.tensorInfo.empty()) {
-    ErrorOr<SafeTensorInfo> info = safeTensor.getTensorInfo(cli.tensorInfo);
+    ErrorOr<SafeTensor::TensorInfo> info =
+        safeTensor.getTensorInfo(cli.tensorInfo);
     if (info.isError())
       return reportError(info.getError());
 
