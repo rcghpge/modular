@@ -8,6 +8,7 @@
 
 #include "llvm/ADT/Twine.h"
 #include <errno.h>  // For errno
+#include <math.h>   // for abs
 #include <string.h> // For strerror
 
 #ifdef MODULAR_LINUX
@@ -16,27 +17,20 @@
 using CUresult = int;
 using CUstream = void *;
 #include <cufile.h>
-#include <math.h>
 
 /// We need to define abs for CUfileError_t since IS_CUFILE_ERR uses abs in it.
 static int abs(CUfileError_t err) { return abs((int)err.err); }
-#endif // MODULAR_LINUX
-
-using namespace M;
-
-#ifdef MODULAR_LINUX
-#define RETURN_UNSUPPORTED_OS_ERROR()                                          \
-  do {                                                                         \
-  } while (0)
 #else // MODULAR_LINUX
 #define UNSUPPORTED_OS 1
 #define RETURN_UNSUPPORTED_OS_ERROR()                                          \
   return Error("CUFile is not supported on this operating system");
 #endif // MODULAR_LINUX
 
+using namespace M;
+
 /// This function must be called before any other cuFile API function.
 /// It initializes the cuFile library and driver resources.
-ErrorOrSuccess CUFile::openDriver() {
+static ErrorOrSuccess openDriver() {
 #ifdef UNSUPPORTED_OS
   RETURN_UNSUPPORTED_OS_ERROR();
 #else
@@ -50,14 +44,31 @@ ErrorOrSuccess CUFile::openDriver() {
 
 /// This function releases resources acquired by `openDriver`.
 /// It should be called when the application no longer needs cuFile services.
-ErrorOrSuccess CUFile::closeDriver() {
+static void closeDriver() {
+#ifndef UNSUPPORTED_OS
+  [[maybe_unused]] CUfileError_t status = cuFileDriverClose();
+  assert(!IS_CUFILE_ERR(status) && "Failed to close cuFile driver");
+#endif
+}
+
+/// This function initializes the cuFile library and driver resources.
+/// It must be called before any other cuFile API function.
+/// This would also register the uninitializer for you.
+ErrorOrSuccess CUFile::init() {
 #ifdef UNSUPPORTED_OS
   RETURN_UNSUPPORTED_OS_ERROR();
 #else
-  CUfileError_t status = cuFileDriverClose();
-  if (IS_CUFILE_ERR(status))
-    return Error(CUFILE_ERRSTR(status));
+  static bool initialized = false;
+  if (initialized)
+    return success();
 
+  ErrorOrSuccess err = openDriver();
+  if (err)
+    return err.takeError();
+
+  initialized = true;
+
+  atexit(closeDriver);
   return success();
 #endif
 }

@@ -17,13 +17,10 @@ namespace M {
 /// A wrapper around the NVIDIA GPUDirect Storage (GDS) cuFile API
 /// for performing direct I/O between storage and GPU memory.
 struct CUFile {
-  /// Initializes the cuFile library and driver resources.
-  /// Must be called before any other cuFile API function.
-  static ErrorOrSuccess openDriver();
-
-  /// Releases resources acquired by `openDriver`.
-  /// Should be called when the application no longer needs cuFile services.
-  static ErrorOrSuccess closeDriver();
+  /// Initializes the cuFile library and driver resources. Must be called before
+  /// any other cuFile API function. This would also register the uninitializer
+  /// for you.
+  static ErrorOrSuccess init();
 
   /// Registers a device memory buffer with cuFile for direct DMA transfers.
   ErrorOrSuccess registerMemory(void *devPtr, size_t size);
