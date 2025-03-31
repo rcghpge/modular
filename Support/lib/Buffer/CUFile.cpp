@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "./CUFile.h"
-#include "Support/PlatformUtils.h"
 
 #include "llvm/ADT/Twine.h"
 #include <errno.h>  // For errno

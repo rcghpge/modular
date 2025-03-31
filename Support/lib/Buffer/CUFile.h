@@ -8,6 +8,7 @@
 #define SUPPORT_BUFFER_CUFILE_H
 
 #include "Support/ErrorOr.h"
+#include "Support/PlatformUtils.h"
 #include <fcntl.h>
 #include <filesystem>
 #include <unistd.h>
@@ -45,10 +46,12 @@ struct CUFile {
                          off_t devOffset);
 
 private:
+#ifdef MODULAR_LINUX
   /// The underlying file descriptor.
   int fd = -1;
   /// The cuFile handle for the registered file.
   void *handle = nullptr;
+#endif // MODULAR_LINUX
 };
 }; // namespace M
 
