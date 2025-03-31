@@ -256,9 +256,13 @@ MODULAR_EXPORT void AsyncRT_DeviceFunction_release(const DeviceFunction *func) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceFunction_copyToConstantMemory(const DeviceFunction *func,
-                                            const char *name, const void *data,
-                                            size_t byteSize) {
-  return checkSuccess(func->copyToNamedConstant(name, data, byteSize));
+                                            const char *name, size_t nameSize,
+                                            const void *data, size_t dataSize) {
+  assert(name != nullptr && "name is required");
+  assert(nameSize > 0 && "nameSize is required");
+  std::string nameStr(name, nameSize);
+  return checkSuccess(
+      func->copyToNamedConstant(nameStr.c_str(), data, dataSize));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
