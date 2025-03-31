@@ -14,9 +14,9 @@
 #include "Support/ErrorOr.h"
 #include "llvm/Support/raw_ostream.h"
 
-#ifdef HAS_NVPTX_COMPILER
+#ifdef MODULAR_LINUX
 #include "nvPTXCompiler.h"
-#endif // HAS_NVPTX_COMPILER
+#endif // MODULAR_LINUX
 
 #include <sstream>
 #include <stddef.h>
@@ -684,7 +684,7 @@ public:
                                    l2Promotion, oobFill);
   }
 
-#ifdef HAS_NVPTX_COMPILER
+#ifdef MODULAR_LINUX
   Result NVPTXCompilerGetVersion(unsigned int *major,
                                  unsigned int *minor) const {
     CUDA_DRIVER_CALL_LOG();
@@ -756,7 +756,7 @@ public:
     return static_cast<Result>(
         nvPTXCompilerGetInfoLogSize(compiler, infoLogSize));
   }
-#endif // HAS_NVPTX_COMPILER
+#endif // MODULAR_LINUX
 
   static ErrorOr<const CUDADriver &> get();
 

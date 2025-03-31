@@ -1124,7 +1124,7 @@ ErrorOr<M::BufferRef>
 CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
                                       int32_t optimizationLevel,
                                       StringRef gpuName) const {
-#ifdef HAS_NVPTX_COMPILER
+#ifdef MODULAR_LINUX
   auto options =
       setupCompilationOptionsV2(debugLevel, optimizationLevel, gpuName);
 
@@ -1191,9 +1191,9 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
   NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerDestroy(&compiler));
 
   return resultBuf;
-#else  // HAS_NVPTX_COMPILER
+#else  // MODULAR_LINUX
   llvm_unreachable("NVPTX compiler not supported on this platform");
-#endif // HAS_NVPTX_COMPILER
+#endif // MODULAR_LINUX
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
