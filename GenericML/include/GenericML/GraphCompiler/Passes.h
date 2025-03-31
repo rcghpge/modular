@@ -168,12 +168,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
   Option<bool> forceSync{*this, "force-sync",
                          llvm::cl::desc("Make all kernels synchronous."),
                          llvm::cl::init(false)};
-  Option<bool> inputsAndOutputsOnDevice{
-      *this, "inputs-and-outputs-on-device",
-      llvm::cl::desc(
-          "If enabled, the graph compiler assumes that the inputs will be "
-          "located on the device, and will return outputs on the device."),
-      llvm::cl::init(false)};
   Option<int64_t> smallTensorLimit{
       *this, "small-tensor-limit",
       llvm::cl::desc(

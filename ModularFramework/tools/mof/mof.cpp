@@ -86,7 +86,6 @@ struct MOFConfig {
   std::optional<size_t> deviceID;
   std::optional<DeviceSpec> deviceSpec;
   CASConfig commonCasConfig;
-  bool inputsAndOutputsOnDevice;
 
   void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
                                MO::MoToMgpOptions &moToMgpOptions) const {
@@ -101,7 +100,6 @@ struct MOFConfig {
     }
     if (commonCasConfig.getCacheDir())
       moToMgpOptions.cacheDir = commonCasConfig.getCacheDir()->getPath().str();
-    moToMgpOptions.inputsAndOutputsOnDevice = inputsAndOutputsOnDevice;
     moToMgpOptions.defaultDeviceTargetTriple =
         deviceSpec ? deviceSpec.value().target.triple.str() : "";
     moToMgpOptions.defaultDeviceTargetArch =
@@ -167,8 +165,6 @@ public:
                      dyn_cast<DeviceConfig>(driverConfig.get())) {
         mofConfig->defaultDeviceLabel = deviceConfig->getDeviceLabel();
         mofConfig->deviceID = deviceConfig->getDeviceID();
-        mofConfig->inputsAndOutputsOnDevice =
-            deviceConfig->inputsAndOutputsOnDevice;
         mofConfig->deviceSpec = deviceConfig->deviceSpec;
       }
     }

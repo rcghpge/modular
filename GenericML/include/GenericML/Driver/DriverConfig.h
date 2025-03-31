@@ -60,10 +60,8 @@ private:
 class DeviceConfig : public DriverConfig {
 public:
   DeviceConfig(std::string device, size_t deviceID,
-               const std::optional<DeviceSpec> &deviceSpec,
-               bool inputsAndOutputsOnDevice = false)
+               const std::optional<DeviceSpec> &deviceSpec)
       : DriverConfig(OptionKind::kDevice, "device-configuration"),
-        inputsAndOutputsOnDevice(inputsAndOutputsOnDevice),
         deviceSpec(deviceSpec), deviceLabel(std::move(device)),
         deviceID(deviceID) {}
 
@@ -78,7 +76,6 @@ public:
     return std::make_unique<DeviceConfig>(*this);
   }
 
-  bool inputsAndOutputsOnDevice{false};
   std::optional<DeviceSpec> deviceSpec;
 
 private:
