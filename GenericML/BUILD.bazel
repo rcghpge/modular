@@ -1359,7 +1359,6 @@ modular_shared_library(
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",
-        "//Support:Metering",
     ],
 )
 
