@@ -18,6 +18,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <Support/Buffer.h>
@@ -98,12 +99,7 @@ private:
   do {                                                                         \
     CUDADriver::Result result = nvptxcompiler_call;                            \
     if (result != CUDADriver::SUCCESS) {                                       \
-      M::Error err =                                                           \
-          formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result);           \
-      /* We are not in a context where we can return an Error here. So we   */ \
-      /* print the message and abort().                                     */ \
-      llvm::errs() << err << "\n";                                             \
-      abort();                                                                 \
+      return formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result);        \
     }                                                                          \
   } while (0)
 
@@ -1131,7 +1127,6 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
   nvPTXCompilerHandle compiler = nullptr;
 
   size_t elfSize, infoSize, errorSize;
-  char *infoLog, *errorLog;
   unsigned int minorVer, majorVer;
 
   NVPTXCOMPILER_SAFE_CALL(
@@ -1155,15 +1150,16 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
     NVPTXCOMPILER_SAFE_CALL(
         driver_.NVPTXCompilerGetErrorLogSize(compiler, &errorSize));
 
+    std::string errorLog;
     if (errorSize != 0) {
-      errorLog = (char *)malloc(errorSize + 1);
-      NVPTXCOMPILER_SAFE_CALL(
-          driver_.NVPTXCompilerGetErrorLog(compiler, errorLog));
-      llvm::errs() << "CUDADevice::compileFunction_v2 failed: \n " << errorLog
-                   << "\n";
-      free(errorLog);
+      errorLog.resize(errorSize + 1);
+      CUDADriver::Result getErrorResult =
+          driver_.NVPTXCompilerGetErrorLog(compiler, errorLog.data());
+
+      if (getErrorResult != CUDADriver::SUCCESS)
+        return Error("compile to CUBIN failed and can't get error log\n");
     }
-    return Error("compile to CUBIN failed\n");
+    return Error(errorLog + "compile to CUBIN failed\n");
   }
 
   NVPTXCOMPILER_SAFE_CALL(
@@ -1177,13 +1173,24 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
   NVPTXCOMPILER_SAFE_CALL(
       driver_.NVPTXCompilerGetInfoLogSize(compiler, &infoSize));
 
-  if (infoSize != 0) {
-    infoLog = (char *)malloc(infoSize + 1);
-    NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerGetInfoLog(compiler, infoLog));
-    llvm::errs() << "CUDADevice::compileFunction_v2 failed: \n " << infoLog
-                 << "\n";
-    free(infoLog);
-    return Error("compile to CUBIN failed\n");
+  std::optional<std::string> printWarning =
+      llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_WARN");
+  std::optional<std::string> werror =
+      llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_WERROR");
+
+  if (infoSize != 0 && (printWarning || werror)) {
+    std::string infoLog;
+    infoLog.resize(infoSize + 1);
+    CUDADriver::Result getLogResult =
+        driver_.NVPTXCompilerGetInfoLog(compiler, infoLog.data());
+
+    if (getLogResult != CUDADriver::SUCCESS)
+      return Error("compile to CUBIN has log info but can't get it\n");
+
+    if (werror)
+      return Error(infoLog + "compile to CUBIN failed due to warnings\n");
+    else
+      llvm::errs() << infoLog << "\n";
   }
 
   NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerDestroy(&compiler));
