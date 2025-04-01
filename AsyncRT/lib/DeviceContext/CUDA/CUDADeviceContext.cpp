@@ -1048,8 +1048,8 @@ setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
 }
 
 ErrorOr<M::BufferRef>
-CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
-                                   int32_t optimizationLevel) const {
+CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
+                                      int32_t optimizationLevel) const {
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
   if (errorOrOpts)
     return errorOrOpts.takeError();
@@ -1084,9 +1084,8 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   return result;
 }
 
-SmallVector<std::string> setupCompilationOptionsV2(StringRef debugLevel,
-                                                   int32_t optimizationLevel,
-                                                   StringRef gpuName) {
+SmallVector<std::string> setupCompilationOptionsNVPTXCompiler(
+    StringRef debugLevel, int32_t optimizationLevel, StringRef gpuName) {
   // TODO: add more options needed.
   // https://docs.nvidia.com/cuda/ptx-compiler-api/index.html#compilation-options
 
@@ -1117,12 +1116,12 @@ SmallVector<std::string> setupCompilationOptionsV2(StringRef debugLevel,
 }
 
 ErrorOr<M::BufferRef>
-CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
-                                      int32_t optimizationLevel,
-                                      StringRef gpuName) const {
+CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
+                                   int32_t optimizationLevel,
+                                   StringRef targetAccelerator) const {
 #ifdef MODULAR_LINUX
-  auto options =
-      setupCompilationOptionsV2(debugLevel, optimizationLevel, gpuName);
+  auto options = setupCompilationOptionsNVPTXCompiler(
+      debugLevel, optimizationLevel, targetAccelerator);
 
   CUDA_WITH_CTX_ERR(*this);
 
@@ -1161,6 +1160,7 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
       if (getErrorResult != CUDADriver::SUCCESS)
         return Error("compile to CUBIN failed and can't get error log\n");
     }
+
     return Error(errorLog + "compile to CUBIN failed\n");
   }
 
