@@ -250,10 +250,6 @@ struct AddFallbackShapeFunctions
           return mlir::WalkResult::interrupt();
         }
 
-        // Skip inplace kernels.
-        if (mojoKernel->hasAttr(KGEN::MOGGPreElab::ALLOCS_ATTR))
-          return mlir::WalkResult::skip();
-
         StringSet<> inputParams;
         for (KGEN::ParamDeclAttr inputParam : mojoKernel.getInputParams())
           inputParams.insert(inputParam.getName());
@@ -527,7 +523,6 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 
     // Add other bespoke kgen params declared by the custom operator if they are
     // needed
-    mojoLibraryAnalysis.getRegisteredMojoShapeFunctionFor(op.getSymbol());
     for (const NamedAttribute &namedAttr : op->getAttrDictionary())
       if (inputParamsNeeded.contains(namedAttr.getName()))
         kgenParams.emplace_back(namedAttr.getName(), namedAttr.getValue());
