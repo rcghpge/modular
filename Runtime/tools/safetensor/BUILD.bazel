@@ -4,7 +4,7 @@ modular_cc_binary(
     name = "safetensor",
     srcs = glob(["*.cpp"]),
     deps = [
-        "//Runtime:IO",
+        "//Runtime:SafeTensor",
         "//Support:CommonCLOptions",
     ],
 )

@@ -2,8 +2,8 @@ load("//bazel:api.bzl", "modular_cc_library")
 
 modular_cc_library(
     name = "Runtime",
-    srcs = glob(["lib/*.cpp"]),
-    hdrs = glob(["include/Runtime/*.h"]),
+    srcs = ["lib/MojoValue.cpp"],
+    hdrs = ["include/Runtime/MojoValue.h"],
     deps = [
         "//AsyncRT:Runtime",
         "//Support:Base",
@@ -12,8 +12,27 @@ modular_cc_library(
 
 modular_cc_library(
     name = "IO",
-    srcs = glob(["lib/IO/*.cpp"]),
-    hdrs = glob(["include/Runtime/IO/*.h"]),
+    srcs = glob([
+        "lib/IO/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/Runtime/IO/*.h",
+    ]),
+    deps = [
+        "//Support:ADT",
+        "//Support:Base",
+        "//Support:Filesystem",
+    ] + select({
+        "//:linux_x86_64": ["@libcufile_x86_64//:libcufile"],
+        "//:linux_aarch64": ["@libcufile_aarch64//:libcufile"],
+        "//conditions:default": [],
+    }),
+)
+
+modular_cc_library(
+    name = "SafeTensor",
+    srcs = ["lib/SafeTensor/SafeTensor.cpp"],
+    hdrs = ["include/Runtime/SafeTensor.h"],
     deps = [
         "//AsyncRT:DeviceContext",
         "//Support:Base",

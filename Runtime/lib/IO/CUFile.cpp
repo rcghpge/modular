@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./CUFile.h"
+#include "Runtime/IO/CUFile.h"
 
 #include "llvm/ADT/Twine.h"
 #include <errno.h>  // For errno
@@ -27,6 +27,7 @@ static int abs(CUfileError_t err) { return abs((int)err.err); }
 #endif // MODULAR_LINUX
 
 using namespace M;
+using namespace M::IO;
 
 /// This function must be called before any other cuFile API function.
 /// It initializes the cuFile library and driver resources.

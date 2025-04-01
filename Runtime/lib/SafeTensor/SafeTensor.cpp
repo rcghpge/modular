@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/IO/SafeTensor.h"
+#include "Runtime/SafeTensor.h"
 #include "Support/Preprocessor.h"
 
 using namespace M;

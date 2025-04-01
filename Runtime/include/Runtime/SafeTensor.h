@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RUNTIME_IO_SAFETENSOR_H
-#define RUNTIME_IO_SAFETENSOR_H
+#ifndef RUNTIME_SAFETENSOR_H
+#define RUNTIME_SAFETENSOR_H
 
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
@@ -90,4 +90,4 @@ struct DenseMapInfo<std::string> : DenseMapInfo<StringRef> {
 
 } // namespace llvm
 
-#endif // RUNTIME_IO_SAFETENSOR_H
+#endif // RUNTIME_SAFETENSOR_H

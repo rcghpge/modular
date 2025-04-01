@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/IO/SafeTensor.h"
+#include "Runtime/SafeTensor.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/ADT/STLExtras.h"

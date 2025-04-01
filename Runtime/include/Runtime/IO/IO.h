@@ -4,19 +4,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SUPPORT_BUFFER_CUFILE_H
-#define SUPPORT_BUFFER_CUFILE_H
+#ifndef RUNTIME_IO_H
+#define RUNTIME_IO_H
 
 #include "Support/ErrorOr.h"
-#include "Support/PlatformUtils.h"
 #include <fcntl.h>
 #include <filesystem>
-#include <unistd.h>
 
-namespace M {
-/// A wrapper around the NVIDIA GPUDirect Storage (GDS) cuFile API
-/// for performing direct I/O between storage and GPU memory.
-struct CUFile {
+#include "Runtime/IO/CUFile.h"
+#include "Support/ADT/SmartVariant.h"
+
+namespace M::IO {
+struct File {
   /// Initializes the cuFile library and driver resources. Must be called before
   /// any other cuFile API function. This would also register the uninitializer
   /// for you.
@@ -43,13 +42,8 @@ struct CUFile {
                          off_t devOffset);
 
 private:
-#ifdef MODULAR_LINUX
-  /// The underlying file descriptor.
-  int fd = -1;
-  /// The cuFile handle for the registered file.
-  void *handle = nullptr;
-#endif // MODULAR_LINUX
+  SmartVariant<CUFile> impl;
 };
-}; // namespace M
+}; // namespace M::IO
 
-#endif // SUPPORT_CUFILE_H
+#endif // RUNTIME_IO_H

@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/IO/SafeTensor.h"
+#include "Runtime/SafeTensor.h"
 #include "Support/Buffer.h"
 #include "llvm/ADT/StringRef.h"
 
