@@ -1,16 +1,11 @@
-load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "py_repl", "requirement")
+load("//bazel:api.bzl", "modular_nanobind_library", "py_repl", "requirement")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
-
-modular_cc_library(
-    name = "DLPack",
-    hdrs = glob(["include/SDK/DLPack/*.h"]),
-)
 
 modular_nanobind_library(
     name = "DLPackPython",
     srcs = glob(["lib/API/python/lib/DLPack/*.cpp"]),
     hdrs = glob(["include/SDK/DLPack/python/*.h"]),
-    deps = [":DLPack"],
+    deps = ["@dlpack"],
 )
 
 modular_nanobind_library(
