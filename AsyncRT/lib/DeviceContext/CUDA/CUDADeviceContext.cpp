@@ -1103,13 +1103,15 @@ SmallVector<std::string> setupCompilationOptionsV2(StringRef debugLevel,
   SmallVector<std::string> options;
   options.reserve(2);
   options.push_back("--gpu-name=" + gpuName.str());
-  options.push_back("--opt-level=" + std::to_string(optimizationLevel));
 
   if (debugLevel == "full") {
     options.push_back("-g");
+    optimizationLevel = 0;
   } else if (debugLevel == "line-tables") {
     options.push_back("--generate-line-info");
   }
+
+  options.push_back("--opt-level=" + std::to_string(optimizationLevel));
 
   return options;
 }
