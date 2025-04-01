@@ -38,9 +38,8 @@ inline bool dependsOnlyOnProperty(
       continue;
     }
 
-    for (auto operand : operands) {
+    for (auto operand : operands)
       next.push_back(operand.getDefiningOp());
-    }
   }
 
   return true;
