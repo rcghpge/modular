@@ -81,3 +81,36 @@ mo.graph @test_lowered_multiple_outputs_different_ordering(%arg0: !mo.tensor<[2]
   } {device = #M.device_ref<"cpu", 0>, fusionBodyLambda = "elemwise_compute_stub", summary = "mo.add_test", isAsync=true}
   mo.output %0#0, %0#1 : !mo.tensor<[2], si64>, !mo.tensor<[3], si64>
 }
+
+// CHECK-LABEL: mgp.model @to_tensor_from_tensor
+// CHECK: } execute ({{.*}}, %[[ARG:.*]]: !mgp.tensor<4xsi64>)
+// CHECK:   %[[BUFFER:.*]] = mgp.tensor.extract.buffer %[[ARG]] : <4xsi64>
+// CHECK:   %[[SIZE_IN_BYTES:.*]] = index.constant 8
+// CHECK:   %[[C0:.*]] = index.constant 0
+// CHECK:   %[[OFFSET0:.*]] = index.mul %[[C0]], %[[SIZE_IN_BYTES]]
+// CHECK:   %[[SLICE0:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET0]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[DIM0:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE0]] : !mgp.buffer
+
+// CHECK:   %[[C1:.*]] = index.constant 1
+// CHECK:   %[[OFFSET1:.*]] = index.mul %[[C1]], %[[SIZE_IN_BYTES]]
+// CHECK:   %[[SLICE1:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET1]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[DIM1:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE1]] : !mgp.buffer
+
+// CHECK:   %[[C2:.*]] = index.constant 2
+// CHECK:   %[[OFFSET2:.*]] = index.mul %[[C2]], %[[SIZE_IN_BYTES]]
+// CHECK:   %[[SLICE2:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET2]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[DIM2:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE2]] : !mgp.buffer
+
+// CHECK:   %[[C3:.*]] = index.constant 3
+// CHECK:   %[[OFFSET3:.*]] = index.mul %[[C3]], %[[SIZE_IN_BYTES]]
+// CHECK:   %[[SLICE3:.*]] = mgp.buffer.slice %[[BUFFER]], %[[OFFSET3]], %[[SIZE_IN_BYTES]] : !mgp.buffer
+// CHECK:   %[[DIM3:.*]] = mgp.buffer.to_index %{{.*}}, %[[SLICE3]] : !mgp.buffer
+
+// CHECK:   %[[SPEC:.*]] = mgp.tensor_spec.create %[[DIM0]], %[[DIM1]], %[[DIM2]], %[[DIM3]] : !mgp.tensor_spec<?x?x?x?xsi64>
+
+mo.graph @to_tensor_from_tensor(%arg: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si32> {
+  %sh = mo.shape.from_tensor(%arg) : (!mo.tensor<[4], si64>) -> !mosh.ape
+  %tensor = mo.shape.to_tensor(%sh) -> !mo.tensor<[4], si32>
+
+  mo.output %tensor : !mo.tensor<[4], si32>
+}

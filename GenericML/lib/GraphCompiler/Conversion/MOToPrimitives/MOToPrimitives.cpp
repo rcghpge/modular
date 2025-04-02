@@ -155,6 +155,9 @@ public:
   /// Lower a shape -> shape-like tensor cast op.
   LogicalResult lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp);
 
+  /// Lower a shape-like -> shape tensor cast op.
+  LogicalResult lowerShapeFromTensorOp(MO::Shape::FromTensorOp fromTensorOp);
+
   /// Lower a tensor rebind.
   LogicalResult lowerRebind(MO::RebindOp rebindOp);
 
@@ -706,6 +709,56 @@ MOGraphLowering::lowerShapeToTensorOp(MO::Shape::ToTensorOp toTensorOp) {
 
   // Set up output tensor.
   opLoweringState.createOutputs(outChain, *loweredOutputsStorageOr);
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerShapeFromTensorOp(MO::Shape::FromTensorOp fromTensorOp) {
+  ASSERT_STREAM(MO::isOnHost(fromTensorOp),
+                << "mo.shape.to_tensor is for host only");
+  MGP::MOOpLoweringState opLoweringState(loweringState, fromTensorOp);
+
+  MO::TensorType tensorType = fromTensorOp.getInput().getType();
+  std::optional<int64_t> rank = tensorType.getNumElements();
+
+  ASSERT_STREAM(rank, << "unable to determine rank of result shape");
+
+  MGP::BufferizedTensor inputBuffer =
+      opLoweringState.getBufferizedInput(fromTensorOp.getInput());
+
+  Value inChain =
+      opLoweringState.getGuardChain(loweringState.getExecuteChain());
+
+  auto sizeInBytes = opLoweringState.create<mlir::index::ConstantOp>(
+      tensorType.getDtype().getSizeInBytes());
+
+  SmallVector<Value> indices;
+  for (auto dim : llvm::seq(*rank)) {
+    IndexLowering indexLowering{opLoweringState};
+
+    Value offset = indexLowering.constant(dim);
+    Value offsetInBytes = indexLowering.mul(offset, sizeInBytes);
+
+    // Slice the input tensor to the correct size.
+    Value sliced = opLoweringState.bufferSlice(
+        inputBuffer.buffer, offsetInBytes, sizeInBytes, tensorType);
+
+    // Convert the tensor to an index value.
+    Value indexValue =
+        opLoweringState.create<MGP::BufferToIndexOp>(inChain, sliced);
+
+    indices.push_back(indexValue);
+  }
+
+  SmallVector<int64_t> shape(*rank, mlir::ShapedType::kDynamic);
+  auto tensorSpecType =
+      MGP::TensorSpecType::get(shape, tensorType.getElementType());
+
+  auto result = opLoweringState.create<MGP::CpuTensorSpecCreateOp>(
+      tensorSpecType, indices);
+
+  loweringState.emplaceExecuteLoweredValue(fromTensorOp.getResult(), result);
+
   return success();
 }
 
@@ -1839,6 +1892,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto toTensorOp = dyn_cast<MO::Shape::ToTensorOp>(op)) {
       if (failed(lowerShapeToTensorOp(toTensorOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto fromTensorOp = dyn_cast<MO::Shape::FromTensorOp>(op)) {
+      if (failed(lowerShapeFromTensorOp(fromTensorOp)))
         return failure();
       continue;
     }
