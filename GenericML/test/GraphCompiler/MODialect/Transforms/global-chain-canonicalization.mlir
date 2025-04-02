@@ -85,29 +85,6 @@ mo.graph @custom_ops_opaque(%buf: !bt, %opaque: !ot)
   mo.output
 }
 
-// Checks that chain re-writing occurs when there's a shared buffer value
-// between values with no write effect from either op.
-//
-// CHECK-LABEL: mo.graph @shared_buffer_no_shared_write_effect
-// CHECK-SAME: [[ARG0:%.*]]: !mo.buffer<[2, 2], f32>, [[ARG1:%.*]]: !mo.buffer<[2, 2], f32>, [[ARG2:%.*]]: !mo.buffer<[2, 2], f32>
-mo.graph @shared_buffer_no_shared_write_effect(%arg0: !mo.buffer<[2, 2], f32>,
-                                               %arg1: !mo.buffer<[2, 2], f32>,
-                                               %arg2: !mo.buffer<[2, 2], f32>)
-{
-  // CHECK: [[CH0:%.*]] = mo.chain.create()
-  %ch0 = mo.chain.create()
-
-  // CHECK-DAG: [[CH1:%.*]] = mo.custom{{.*}}([[CH0]], [[ARG0]], [[ARG1]])
-  %ch1 = mo.custom  {symbol = "foo", mutSpec = #mo<muts[0:R_, 1:_W]>} (%ch0, %arg0, %arg1) :
-   (!ct, !mo.buffer<[2, 2], f32>, !mo.buffer<[2, 2], f32>) -> !ct
-
-  // CHECK-DAG: [[CH2:%.*]] = mo.custom{{.*}}([[CH0]], [[ARG2]], [[ARG0]])
-   %ch2 = mo.custom {symbol = "bar", mutSpec = #mo<muts[0:_W, 1:R_]>} (%ch1, %arg2, %arg0) :
-   (!ct, !mo.buffer<[2, 2], f32>, !mo.buffer<[2, 2], f32>) -> !ct
-
-  mo.output
-}
-
 // CHECK-LABEL: mo.graph @different_opaque_vals_same_type
 // CHECK-SAME: [[OPAQUE1:%.*]]: !mo.opaque<"T">, [[OPAQUE2:%.*]]: !mo.opaque<"T">
 mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)

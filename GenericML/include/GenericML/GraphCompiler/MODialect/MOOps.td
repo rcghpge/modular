@@ -4749,7 +4749,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
                        // If an operand index is not in this array, it depends
                        // on the default policy of device assignment.
                        DefaultValuedAttr<MO_DeviceIndexArrayAttr, "ArrayRef<DeviceIndexAttr>({})">:$operandDevices,
-                       OptionalAttr<MO_MutableSpecAttr>:$mutSpec,
+
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<AnyType>:$results);
 
@@ -4768,18 +4768,6 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     /// Collects all operands of type !mo.buffer.
     mlir::SmallVector<Value> getBufferOperands();
   }];
-
-  let builders = [
-    OpBuilder<(ins "::mlir::TypeRange":$results,
-                   "::mlir::ValueRange":$operands,
-                   "::mlir::StringRef":$symbol),
-    [{
-      $_state.addOperands(operands);
-      $_state.addAttribute(getSymbolAttrName($_state.name),
-                            $_builder.getStringAttr(symbol));
-      $_state.addTypes(results);
-    }]>,
-  ];
 
   let hasVerifier = 1;
 }

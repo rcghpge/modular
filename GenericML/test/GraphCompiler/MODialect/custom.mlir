@@ -42,17 +42,3 @@ mo.graph @custom_models_memory_effects<()->D>(%arg0: !mo.tensor<[10, 10], f32>, 
   %res = mo.static.broadcast_to(%data): !mo.tensor<[], f32> -> !mo.tensor<[A], f32>
   mo.output<A> %res : !mo.tensor<[A], f32>
 }
-
-// CHECK-LABEL: mo.graph @custom_op_mutable_spec
-// Custom op with a mutable spec with a mix of mo.buffer and mo.opaque
-// CHECK: mo.custom
-mo.graph @custom_op_mutable_spec(%arg0: !mo.buffer<[2, 2], f32>,
-                                 %arg1: !mo.opaque<"Foo">)
-{
-  %ch0 = mo.chain.create()
-
-  %ch1 = mo.custom  {symbol = "foo", mutSpec = #mo<muts[0:R_, 1:_W]>} (%ch0, %arg0, %arg1) :
-   (!mo.chain, !mo.buffer<[2, 2], f32>, !mo.opaque<"Foo">) -> !mo.chain
-
-  mo.output
-}

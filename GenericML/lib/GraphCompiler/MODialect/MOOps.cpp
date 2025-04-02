@@ -4812,36 +4812,6 @@ LogicalResult CustomOp::verify() {
     assignedIndex[index] = true;
   }
 
-  // If mutSpec is present make sure it's valid.
-  if (getMutSpec().has_value()) {
-    llvm::SmallVector<unsigned> mutableOperandIdxs;
-    for (auto &opOperand : getOperation()->getOpOperands()) {
-      if (isMutableOperand(opOperand.get()))
-        mutableOperandIdxs.push_back(opOperand.getOperandNumber() - 1);
-    }
-
-    auto mutSpec = getMutSpec()->getValues();
-    if (mutSpec.size() != mutableOperandIdxs.size()) {
-      return emitError(
-          llvm::formatv("The number of entries in mutSpec (if specified) must "
-                        "match the number of mutable operands. size(mutSpec) = "
-                        "{0} and size(mutableOperands) = {1}",
-                        mutSpec.size(), mutableOperandIdxs.size()));
-    }
-
-    for (auto &&[mutOperandIdx, mutSpec] :
-         llvm::zip(mutableOperandIdxs, getMutSpec()->getValues())) {
-      auto mutSpecIdx = std::get<0>(mutSpec);
-
-      if (mutSpecIdx != mutOperandIdx) {
-        return emitError(
-            llvm::formatv("Encountered a mutable spec entry with idx: {0} but "
-                          "this operand is not a mutable operand",
-                          mutSpecIdx));
-      }
-    }
-  }
-
   return success();
 }
 
@@ -4881,28 +4851,15 @@ mlir::SmallVector<Value> CustomOp::getBufferOperands() {
 void CustomOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
 
-  bool hasMutableSpec = getMutSpec().has_value();
   bool isInPlace = this->isInPlace();
 
   // The mutable spec isn't a required attr at the moment. If it's not set
   // conservatively assume that there's a read and write effect on all mutable
   // operands.
-  if (isInPlace && !hasMutableSpec) {
+  if (isInPlace) {
     for (auto &&opOperand : getOperation()->getOpOperands()) {
       effects.emplace_back(mlir::MemoryEffects::Read::get(), &opOperand);
       effects.emplace_back(mlir::MemoryEffects::Write::get(), &opOperand);
-    }
-  }
-  if (isInPlace && hasMutableSpec) {
-    for (auto &&[idx, read, write] : getMutSpec()->getValues()) {
-      // mut spec is relative to the first non-chain operand index hence the
-      // offsets below.
-      if (read)
-        effects.emplace_back(mlir::MemoryEffects::Read::get(),
-                             &getOperation()->getOpOperand(idx + 1));
-      if (write)
-        effects.emplace_back(mlir::MemoryEffects::Write::get(),
-                             &getOperation()->getOpOperand(idx + 1));
     }
   }
 

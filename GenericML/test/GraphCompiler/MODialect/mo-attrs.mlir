@@ -59,7 +59,3 @@ kgen.func @chain_attr() {
   kgen.param.declare Ch: !mo.chain = <#mo.chain>
   kgen.return
 }
-
-// COM: Check that MutableSpec attr parses properly
-#mutSpecAllFlagCombos = #mo<muts[0:RW, 1:R_, 2:_W]>
-#mutSpecNoEntries = #mo<muts[]>

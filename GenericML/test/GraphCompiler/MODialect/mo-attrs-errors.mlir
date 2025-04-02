@@ -24,18 +24,3 @@ mo.graph @invalid_dtype_attr() {
   %foo1 = "fakedialect.bar_op" () {dtype = #mo.dtype<fakedtype>}: () -> (!mo.tensor<[], f32>)
   mo.output
 }
-
-// -----
-
-// expected-error @below {{Invalid RW flag spec, expected one of 'R_', '_W', or 'RW'}}
-#mutSpecInvalidRWSpec = #mo<muts[0:__]>
-
-// -----
-
-// expected-error @below {{Invalid RW flag spec, expected one of 'R_', '_W', or 'RW'}}
-#mutSpecMissingRWSpec = #mo<muts[0:]>
-
-// -----
-
-// expected-error @below {{expected ':'}}
-#mutSpecNoMissingColon = #mo<muts[0]>

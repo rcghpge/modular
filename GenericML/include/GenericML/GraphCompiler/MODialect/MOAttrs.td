@@ -11,7 +11,6 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD
 
-include "mlir/IR/CommonAttrConstraints.td"
 include "GenericML/GraphCompiler/MODialect/MODialect.td"
 include "KGEN/KGENDialect/KGENAttrs.td"
 
@@ -128,15 +127,6 @@ def MO_DeviceIndexArrayAttr: ArrayOfAttr<MODialect, "DeviceIndexArrayAttr",
     Example:
     #mo<DeviceIndex[(4 : index, <"cpu", 0>), (4 : index, <"cpu", 0>)]>
   }];
-}
-
-def MO_MutableSpecAttr : MOAttr<"MutableSpec", "muts"> {
- let parameters = (ins
-   ArrayRefParameter<"std::tuple<unsigned, bool, bool>">:$values
- );
- let assemblyFormat = "custom<MutableSpec>($values)";
-
- let constBuilderCall = "$_builder.getAttr<MO::MutableSpecAttr>($0)";
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOATTRS_TD
