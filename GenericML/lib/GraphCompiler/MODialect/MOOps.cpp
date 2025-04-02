@@ -4082,36 +4082,74 @@ LogicalResult LinAlg::SolveOp::verify() {
                                           getResult(), getRhs());
 }
 
+//===----------------------------------------------------------------------===//
+// MOShape_ToTensorOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult Shape::ToTensorOp::canonicalize(Shape::ToTensorOp op,
                                               PatternRewriter &rewriter) {
-  auto paramToValueOp = op.getInput().getDefiningOp<MOSH::ParamToValueOp>();
-  if (!paramToValueOp)
-    return failure();
+  auto input = op.getInput();
+  if (auto paramToValueOp = input.getDefiningOp<MOSH::ParamToValueOp>()) {
+    auto inputShapeAttr = dyn_cast<MOSH::ShapeAttr>(paramToValueOp.getValue());
+    if (!inputShapeAttr)
+      return failure();
 
-  auto inputShapeAttr = dyn_cast<MOSH::ShapeAttr>(paramToValueOp.getValue());
-  if (!inputShapeAttr)
-    return failure();
+    TensorType resTy = op.getType();
+    if (!resTy.hasStaticShape()) {
+      TensorType newTy = resTy.cloneWith(ShapeAttr::get(
+          {(int64_t)inputShapeAttr.getRank()}, rewriter.getType<ShapeType>()));
+      Location loc = op.getLoc();
+      auto newOp =
+          rewriter.create<Shape::ToTensorOp>(loc, newTy, paramToValueOp);
+      rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newOp);
+      return success();
+    }
 
-  TensorType resTy = op.getType();
-  if (!resTy.hasStaticShape()) {
-    TensorType newTy = resTy.cloneWith(ShapeAttr::get(
-        {(int64_t)inputShapeAttr.getRank()}, rewriter.getType<ShapeType>()));
-    Location loc = op.getLoc();
-    auto newOp = rewriter.create<Shape::ToTensorOp>(loc, newTy, paramToValueOp);
-    rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newOp);
-    return success();
+    if (inputShapeAttr.isConstant()) {
+      auto outTy =
+          RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
+      SmallVector<APInt> res =
+          llvm::map_to_vector(inputShapeAttr.getIntDims(), [](int64_t dim) {
+            return APInt(64, dim, /*isSigned=*/true);
+          });
+      auto elementsAttr =
+          cast<ElementsAttr>(IntArrayElementsAttr::get(outTy, res));
+      rewriter.replaceOpWithNewOp<ConstantOp>(op, op.getType(), elementsAttr);
+      return success();
+    }
   }
 
-  if (inputShapeAttr.isConstant()) {
-    auto outTy =
-        RankedTensorType::get(resTy.getIntDims(), resTy.getElementType());
-    SmallVector<APInt> res =
-        llvm::map_to_vector(inputShapeAttr.getIntDims(), [](int64_t dim) {
-          return APInt(64, dim, /*isSigned=*/true);
-        });
-    auto elementsAttr =
-        cast<ElementsAttr>(IntArrayElementsAttr::get(outTy, res));
-    rewriter.replaceOpWithNewOp<ConstantOp>(op, op.getType(), elementsAttr);
+  // mo.shape.to_tensor(mo.shape.from_tensor(x)) => x
+  if (auto fromTensor = input.getDefiningOp<Shape::FromTensorOp>()) {
+    if (fromTensor.getInput().getType() == op.getType()) {
+      rewriter.replaceOp(op, fromTensor.getInput());
+      return success();
+    }
+  }
+
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// MOShape_FromTensorOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Shape::FromTensorOp::canonicalize(Shape::FromTensorOp op,
+                                                PatternRewriter &rewriter) {
+  // mo.shape.from_tensor(mo.shape.to_tensor(x)) == x
+  auto input = op.getInput();
+  if (auto toTensor = input.getDefiningOp<Shape::ToTensorOp>()) {
+    if (toTensor.getInput().getType() == op.getType()) {
+      rewriter.replaceOp(op, toTensor.getInput());
+      return success();
+    }
+  }
+
+  // fold mo.shape.from_tensor(<constant>)
+  IntArrayElementsAttr newShape;
+  if (mlir::matchPattern(input, mlir::m_Constant(&newShape))) {
+    auto shape = ShapeAttr::get(newShape, op.getType());
+    rewriter.replaceOpWithNewOp<MOSH::ParamToValueOp>(op, shape);
     return success();
   }
 

@@ -2655,6 +2655,32 @@ def MOShape_ToTensorOp : MOShape_Op<"to_tensor", [
   let hasCanonicalizeMethod = 1;
 }
 
+def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+]> {
+  let summary = "Casting operation";
+  let description = [{
+    Casts the input shape value to a shape-like tensor.
+
+    Example:
+
+    ```mlir
+      %sh: !mosh.ape
+      %sht = mo.shape.to_tensor(%sh) -> !mo.tensor<[2], si64>
+    ```
+  }];
+
+  let arguments = (ins MO_ShapeLike:$input);
+  let results = (outs MOSH_ShapeType:$result);
+
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasCanonicalizeMethod = 1;
+}
+
 class MOStatic_TensorOp<string mnemonic, list<Trait> traits = []>
     : MO_TensorOp<"static." # mnemonic, traits> {
   string cppNamespace = MODialect.cppNamespace # "::Static";

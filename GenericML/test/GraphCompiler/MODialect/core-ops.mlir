@@ -445,7 +445,6 @@ mo.graph @transfer_cast_no_rotate_2(%arg0 : !mo.tensor<[4096], f32, gpu:0>) -> !
   mo.output %1 : !mo.tensor<[4096], bf16, cpu:0>
 }
 
-
 {-#
   dialect_resources: {
     builtin: {

@@ -85,3 +85,51 @@ mo.graph @to_tensor_fold_unknown<K>() -> !mo.tensor<[?], si32> {
   // CHECK: mo.output %[[VAL2]] : !mo.tensor<[?], si32>
   mo.output %1 : !mo.tensor<[?], si32>
 }
+
+// CHECK-LABEL: mo.graph @to_tensor_from_tensor
+// CHECK:       (%[[ARG:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64>
+mo.graph @to_tensor_from_tensor(%arg: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64> {
+  %sh = mo.shape.from_tensor(%arg) : (!mo.tensor<[4], si64>) -> !mosh.ape
+  %tensor = mo.shape.to_tensor(%sh) -> !mo.tensor<[4], si64>
+
+  // CHECK: mo.output %[[ARG]]
+  mo.output %tensor : !mo.tensor<[4], si64>
+}
+
+// CHECK-LABEL: mo.graph @to_tensor_from_tensor_type_mismatch
+// CHECK:       (%[[ARG:.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si32>
+mo.graph @to_tensor_from_tensor_type_mismatch(%arg: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si32> {
+
+  // CHECK-DAG: %[[SH:.*]] = mo.shape.from_tensor
+  // CHECK-DAG: %[[OUT:.*]] = mo.shape.to_tensor(%[[SH]])
+  %sh = mo.shape.from_tensor(%arg) : (!mo.tensor<[4], si64>) -> !mosh.ape
+  %tensor = mo.shape.to_tensor(%sh) -> !mo.tensor<[4], si32>
+
+  // CHECK: mo.output %[[OUT]]
+  mo.output %tensor : !mo.tensor<[4], si32>
+}
+
+//===----------------------------------------------------------------------===//
+// FromTensorOp
+//===----------------------------------------------------------------------===//
+
+mo.graph @from_tensor_to_tensor<Sh: !mosh.ape -> O0: !mosh.ape>(%arg: !mo.tensor<[4], si64>) {
+  %sh = mosh.param.to_value : !mosh.ape = <Sh>
+
+  %tensor = mo.shape.to_tensor(%sh) -> !mo.tensor<[4], si64>
+  %sh2 = mo.shape.from_tensor(%tensor) : (!mo.tensor<[4], si64>) -> !mosh.ape
+
+  mosh.param.from_value Out : !mosh.ape = %sh2
+  mo.output<:!mosh.ape Out>
+}
+
+// CHECK-LABEL: mo.graph @from_tensor_constant
+// CHECK: kgen.param.declare SH: !mosh.ape = <[2]>
+mo.graph @from_tensor_constant<() -> Sh0: !mosh.ape>() {
+  %1 = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[1], si64>
+  %sh = mo.shape.from_tensor(%1) : (!mo.tensor<[1], si64>) -> !mosh.ape
+
+  mosh.param.from_value SH : !mosh.ape = %sh
+  mo.output<:!mosh.ape SH>
+}
+
