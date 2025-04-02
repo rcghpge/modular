@@ -448,6 +448,11 @@ public:
   static Error formatError(const char *file, int line, const char *func,
                            const llvm::Twine &msg);
 
+  // Debugging helpers.
+  bool syncMode() const;
+  void incSyncMode() const;
+  void decSyncMode() const;
+
 protected:
   DeviceContext(const Device &device, std::unique_ptr<BufferCache> bufferCache);
 
@@ -468,6 +473,8 @@ private:
   DeviceRef device_;
 
   std::unique_ptr<BufferCache> bufferCache_;
+
+  mutable std::atomic<int> syncMode_ = {0};
 
   // Explicitly mark copy and assignment as unsupported.
   DeviceContext(const DeviceContext &other) = delete;

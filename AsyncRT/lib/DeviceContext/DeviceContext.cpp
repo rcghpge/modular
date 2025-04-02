@@ -21,6 +21,7 @@
 
 #include "llvm/ADT/Twine.h"
 
+#include <atomic>
 #include <cstdio>
 #include <mutex>
 #include <string.h>
@@ -483,8 +484,12 @@ static std::mutex &getGlobalMutex() {
 
 DeviceContext::DeviceContext(const Device &device,
                              std::unique_ptr<BufferCache> bufferCache)
-    : device_(DeviceRef::copy(&device)), bufferCache_(std::move(bufferCache)) {
+    : device_(DeviceRef::copy(&device)), bufferCache_(std::move(bufferCache)),
+      syncMode_(0) {
   assert(bufferCache_ != nullptr);
+  if (configAsBool("sync-mode", false)) {
+    incSyncMode();
+  }
 }
 
 DeviceContext::~DeviceContext() {
@@ -622,6 +627,16 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
   }
   return (*device)->deviceCount();
 }
+
+bool DeviceContext::syncMode() const {
+  return syncMode_.load(std::memory_order_relaxed) > 0;
+}
+void DeviceContext::incSyncMode() const {
+  syncMode_.fetch_add(1, std::memory_order_relaxed);
+};
+void DeviceContext::decSyncMode() const {
+  syncMode_.fetch_add(-1, std::memory_order_relaxed);
+};
 
 bool DeviceContext::configAsBool(StringRef key, bool defaultValue) {
   std::lock_guard<std::mutex> lock(getGlobalMutex());

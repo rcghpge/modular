@@ -162,6 +162,16 @@ private:
     }                                                                          \
   } while (0)
 
+#define MAYBE_SYNC(ctx)                                                        \
+  do {                                                                         \
+    const CUDADeviceContext &cuda_ctx = (ctx);                                 \
+    if (cuda_ctx.syncMode()) {                                                 \
+      CUDA_CHECK_ERR(                                                          \
+          cuda_ctx.cudaDriver().StreamSynchronize(cuda_ctx.cudaStream()));     \
+      llvm::errs() << "synchronizing\n";                                       \
+    }                                                                          \
+  } while (0)
+
 namespace M::AsyncRT {
 
 static Error formatCUDAError(const char *file, int line, const char *func,
@@ -755,6 +765,7 @@ ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
   CUDA_CHECK_ERR(moduleFunction_->cudaDriver().LaunchKernel(
       moduleFunction_->cudaFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args.cudaArgs().data(), nullptr));
+  MAYBE_SYNC(CUDADeviceContext::cast(context()));
   return success();
 }
 
@@ -777,6 +788,7 @@ ErrorOrSuccess CUDADeviceFunction::cudaCallKernelDirect(
 
   CUDA_CHECK_ERR(moduleFunction_->cudaDriver().LaunchKernelEx(
       &config, moduleFunction_->cudaFunction(), args, nullptr));
+  MAYBE_SYNC(CUDADeviceContext::cast(context()));
   return success();
 }
 
@@ -799,6 +811,7 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
 
   CUDA_CHECK_ERR(cudaContext.cudaDriver().MemcpyHtoDAsync(
       devicePtr, data, byteSize, cudaContext.cudaStream()));
+  MAYBE_SYNC(CUDADeviceContext::cast(context()));
   return success();
 }
 
@@ -868,6 +881,7 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
   switch (mode) {
   case AllocMode::ASYNC: {
     CUDA_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+    MAYBE_SYNC(*this);
     break;
   }
   case AllocMode::HOST: {
@@ -888,6 +902,7 @@ ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
     CUDA_CHECK_ERR(driver_.MemFreeHost(ptr));
   } else {
     CUDA_CHECK_ERR(driver_.MemFreeAsync(ptr, cudaStream()));
+    MAYBE_SYNC(*this);
   }
   return success();
 }
@@ -900,6 +915,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
   CUdeviceptr dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
   CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
+  MAYBE_SYNC(*this);
   return success();
 }
 
@@ -912,6 +928,7 @@ CUDADeviceContext::enqueueCopyFromDevice(void *dst,
   CUdeviceptr srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
   CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
+  MAYBE_SYNC(*this);
   return success();
 }
 
@@ -950,6 +967,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     CUDA_CHECK_ERR(
         driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
   }
+  MAYBE_SYNC(*this);
   return success();
 }
 
@@ -998,6 +1016,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
           driver_.MemsetD2D32Async(hiPtr, 8, hiBits, 1, len, stream_));
     }
   }
+  MAYBE_SYNC(*this);
   return success();
 }
 
@@ -1310,6 +1329,7 @@ CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.StreamWaitEvent(stream_, cudaEvent.cudaEvent(), 0));
+  MAYBE_SYNC(*this);
   return success();
 }
 
