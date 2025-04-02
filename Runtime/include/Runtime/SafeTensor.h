@@ -20,6 +20,10 @@
 #include <utility>
 
 namespace M {
+namespace AsyncRT {
+class DeviceContext;
+using DeviceContextRef = RCRef<const DeviceContext>;
+}; // namespace AsyncRT
 
 /// SafeTensor format reader with GPU-aware data loading capabilities.
 /// Provides safe access to tensor data and metadata with error checking.
@@ -45,15 +49,9 @@ struct SafeTensor {
 
   /// Constructs a SafeTensor from parsed metadata and tensor information.
   SafeTensor(BufferRef buffer, llvm::json::Object &&metadata,
-             llvm::DenseMap<std::string, llvm::json::Object> &&tensorInfo)
+             llvm::DenseMap<std::string, TensorInfo> &&tensorInfo)
       : buffer(buffer), metadata(std::move(metadata)),
         tensorInfo(std::move(tensorInfo)) {}
-
-  /// Retrieves the top-level metadata for the SafeTensor file.
-  llvm::json::Object getMetadata() const { return metadata; }
-
-  /// Gets metadata for a specific tensor.
-  ErrorOr<SafeTensor::TensorInfo> getTensorInfo(StringRef name) const;
 
   /// Loads and parses a SafeTensor file from the given data.
   static ErrorOr<SafeTensor> get(BufferRef data);
@@ -64,10 +62,46 @@ struct SafeTensor {
   /// Serialize the SafeTensor to a JSON object.
   llvm::json::Value toJSON() const;
 
+  /// Gets the buffer for the SafeTensor.
+  BufferRef getBuffer() const { return buffer; }
+
+  /// Gets the metadata for the SafeTensor.
+  llvm::json::Object getMetadata() const { return metadata; }
+
+  /// Gets the tensor info for the SafeTensor.
+  llvm::DenseMap<std::string, TensorInfo> getTensorInfo() const {
+    return tensorInfo;
+  }
+
+  /// Gets metadata for a specific tensor.
+  ErrorOr<SafeTensor::TensorInfo> getTensorInfo(StringRef name) const;
+
 private:
   BufferRef buffer;
   llvm::json::Object metadata;
-  llvm::DenseMap<std::string, llvm::json::Object> tensorInfo;
+  llvm::DenseMap<std::string, TensorInfo> tensorInfo;
+};
+
+struct SafeTensorBundle {
+  SafeTensorBundle(DenseMap<std::string, size_t> tensorNameToIndex,
+                   SmallVector<SafeTensor> files)
+      : tensorNameToIndex(std::move(tensorNameToIndex)),
+        files(std::move(files)) {}
+
+  /// Loads and parses a SafeTensorBundle from the given paths.
+  static ErrorOr<SafeTensorBundle> get(ArrayRef<std::filesystem::path> paths);
+
+  /// Gets metadata for a specific tensor.
+  ErrorOr<SafeTensor::TensorInfo> getTensorInfo(StringRef name) const;
+
+  /// Gets the Tensor data for a specific tensor.
+  /// TODO: Honor the device argument.
+  ErrorOr<BufferRef> getTensorData(StringRef name,
+                                   AsyncRT::DeviceContextRef device) const;
+
+private:
+  DenseMap<std::string, size_t> tensorNameToIndex;
+  SmallVector<SafeTensor> files;
 };
 
 }; // namespace M

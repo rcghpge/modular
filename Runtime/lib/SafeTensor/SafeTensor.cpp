@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Runtime/SafeTensor.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "Support/Preprocessor.h"
 
 using namespace M;
@@ -185,7 +186,7 @@ ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
     return Error("failed to convert JSON value to object");
 
   llvm::json::Object metadata;
-  llvm::DenseMap<std::string, llvm::json::Object> tensorInfo;
+  llvm::DenseMap<std::string, TensorInfo> tensorInfo;
   for (const auto &[key, value] : *jsonValueAsObject) {
     // If the key is "__metadata__", store the value as metadata.
     if (key == "__metadata__") {
@@ -198,7 +199,10 @@ ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
 
     // Otherwise, treat it as tensor info and try to emplace it into
     // tensorInfo map. Check for duplicate tensor names.
-    auto [_, seen] = tensorInfo.try_emplace(key.str(), *value.getAsObject());
+    auto tensorInfoOr = TensorInfo::get(*value.getAsObject());
+    if (tensorInfoOr.isError())
+      return tensorInfoOr.takeError();
+    auto [_, seen] = tensorInfo.try_emplace(key.str(), *tensorInfoOr);
     if (!seen)
       return Error(Twine("duplicate tensor name: ") + key.str());
   }
@@ -230,5 +234,44 @@ SafeTensor::getTensorInfo(StringRef name) const {
     return Error(Twine("the tensor named '") + name +
                  "' was not found in the safetensor");
   }
-  return SafeTensor::TensorInfo::get(it->second);
+  return it->second;
+}
+
+//===----------------------------------------------------------------------===//
+// SafeTensorBundle
+//===----------------------------------------------------------------------===//
+
+ErrorOr<SafeTensorBundle>
+SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths) {
+  DenseMap<std::string, size_t> tensorNameToIndex;
+  SmallVector<SafeTensor> files;
+  files.reserve(files.size());
+
+  for (const auto &[i, path] : llvm::enumerate(paths)) {
+    auto safeTensorOr = SafeTensor::get(path);
+    if (safeTensorOr.isError())
+      return safeTensorOr.takeError();
+    for (const auto &[name, tensorInfo] : safeTensorOr->getTensorInfo())
+      tensorNameToIndex[name] = i;
+    files.push_back(std::move(*safeTensorOr));
+  }
+
+  return SafeTensorBundle(std::move(tensorNameToIndex), std::move(files));
+}
+
+ErrorOr<BufferRef>
+SafeTensorBundle::getTensorData(StringRef name,
+                                AsyncRT::DeviceContextRef device) const {
+  auto it = tensorNameToIndex.find(name.str());
+  if (it == tensorNameToIndex.end())
+    return Error(Twine("the tensor named '") + name +
+                 "' was not found in the safetensor bundle");
+
+  SafeTensor file = files[it->second];
+  ErrorOr<SafeTensor::TensorInfo> tensorInfo = file.getTensorInfo(name);
+  if (tensorInfo.isError())
+    return tensorInfo.takeError();
+
+  return Buffer::getAlias(file.getBuffer(), tensorInfo->offsets.first,
+                          tensorInfo->getSizeInBytes());
 }
