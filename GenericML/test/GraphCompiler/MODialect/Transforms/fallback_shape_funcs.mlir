@@ -466,14 +466,15 @@ mo.graph @pad_constant_fallback_shape_func<() -> D0, D1, D2>(
 // CHECK-LABEL: mo.graph @pad_constant_fallback_shape_func
 // CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]], [[D2:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[1, 2, 3], f32>,
-// CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[6], si32>
+// CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[6], si32>,
+// CHECK-SAME:   %[[SCALAR:.*]]: !mo.tensor<[], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["mo.pad.constant"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.pad.constant"]<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[PADDINGS]], %[[SCALAR]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
-// CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[6], si32>)
+// CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[6], si32>, !mo.tensor<[], f32>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[AXIS]]) :
+// CHECK-NEXT: %[[RES:.*]] = mo.pad.constant(%[[INPUT]], %[[PADDINGS]], %[[SCALAR]]) :
 // CHECK-SAME:   (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[6], si32>, !mo.tensor<[], f32>)
 // CHECK-SAME:   -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
 //

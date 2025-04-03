@@ -602,7 +602,6 @@ ErrorOrSuccess Fallback<MO::MaxPoolCeilOp>::build(GraphOp &graph,
 ErrorOrSuccess
 Fallback<MO::NonMaximumSuppressionOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::NonMaximumSuppressionOp op) {
-  SmallVector<Value> shapeFuncInputs({});
   buildForOpResult(graph, builder, op,
                    MO::NonMaximumSuppressionOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
@@ -613,9 +612,8 @@ Fallback<MO::NonMaximumSuppressionOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::PadConstantOp>::build(GraphOp &graph,
                                                   OpBuilder &builder,
                                                   MO::PadConstantOp op) {
-  SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, MO::PadConstantOp::getOperationName(),
-                   shapeFuncInputs, op.getOutputParamDecls(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -623,9 +621,8 @@ ErrorOrSuccess Fallback<MO::PadConstantOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::PadReflectOp>::build(GraphOp &graph,
                                                  OpBuilder &builder,
                                                  MO::PadReflectOp op) {
-  SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, MO::PadReflectOp::getOperationName(),
-                   shapeFuncInputs, op.getOutputParamDecls(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -633,9 +630,8 @@ ErrorOrSuccess Fallback<MO::PadReflectOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::PadRepeatOp>::build(GraphOp &graph,
                                                 OpBuilder &builder,
                                                 MO::PadRepeatOp op) {
-  SmallVector<Value> shapeFuncInputs({op.getInput(), op.getPaddings()});
   buildForOpResult(graph, builder, op, MO::PadRepeatOp::getOperationName(),
-                   shapeFuncInputs, op.getOutputParamDecls(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
@@ -643,9 +639,8 @@ ErrorOrSuccess Fallback<MO::PadRepeatOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::RandomNormalOp>::build(GraphOp &graph,
                                                    OpBuilder &builder,
                                                    MO::RandomNormalOp op) {
-  SmallVector<Value> shapeFuncInputs({op.getOperand(0)});
   buildForOpResult(graph, builder, op, MO::RandomNormalOp::getOperationName(),
-                   shapeFuncInputs, op.getOutputParamDecls(),
+                   op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
