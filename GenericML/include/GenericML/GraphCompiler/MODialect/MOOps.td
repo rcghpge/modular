@@ -37,6 +37,10 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
 class MO_TensorOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [MO_TensorOpInterface, MO_HasDeviceInterface] # traits>;
 
+// Base class for ops that work with tensors but do not have a notion of device.
+class MO_DeviceAgnosticTensorOp<string mnemonic, list<Trait> traits = []>
+  : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
+
 // Base class for ops working with control flow
 class MO_ControlOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic, [MO_ControlOpInterface, MO_PreservedDuringKernelLowering] # traits>;
@@ -132,7 +136,7 @@ def MO_TransferOp : MO_TensorOp<"transfer", [
 // GraphOp
 //===----------------------------------------------------------------------===//
 
-def MO_GraphOp : MO_TensorOp<"graph", [
+def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
   HasParent<"ModuleOp">,
   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
   DeclareOpInterfaceMethods<MO_Parameterization>,

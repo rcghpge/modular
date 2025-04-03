@@ -1043,19 +1043,21 @@ LogicalResult MOGraphLowering::lowerDebugPrint(MO::DebugPrintOp printOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
 
   OpBuilder b(printOp);
-  MO::GraphOp graphOp = loweringState.getGraph();
-  DeviceRefAttr targetDevice = MO::getDeviceOrDefault(graphOp);
+
+  DeviceRefAttr targetDevice = printOp.getDeviceRef();
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
 
   auto chain = opLoweringState.getGuardChain(
       loweringState.lookupExecuteLoweredValue(printOp.getInChain()));
 
-  if (targetDevice != hostDevice)
-    chain = opLoweringState.sync(chain);
-
   auto outChain =
       cast<TypedValue<MEF::ChainType>>(opLoweringState.hostDebugPrint(
           chain, printOp.getValueAttr(), printOp.getLabelAttr()));
+
+  chain = opLoweringState.sync(chain);
+
+  if (targetDevice != hostDevice)
+    chain = opLoweringState.sync(chain);
 
   loweringState.setCurrentExecuteChain(
       cast<TypedValue<MEF::ChainType>>(outChain));

@@ -74,12 +74,14 @@ static bool isBMMSmall(MO::BatchMatmulOp matmul) {
   return approxFlops < kTinyBMMatmulFlops;
 }
 
-static DeviceRefAttr getGraphDevice(MO::GraphOp graphOp,
-                                    DeviceRefAttr targetDevice) {
-  DeviceRefAttr graphDevice = graphOp.getDeviceRef();
-  if (!graphDevice && targetDevice) {
-    graphDevice = targetDevice;
-  }
+// Return the device attached to the op or the given `defaultTargetDevice` if
+// it does not exist.
+static DeviceRefAttr getTargetDevice(MO::MOHasDeviceInterface op,
+                                     DeviceRefAttr defaultTargetDevice) {
+  DeviceRefAttr graphDevice = op.getDeviceRef();
+  if (!graphDevice && defaultTargetDevice)
+    graphDevice = defaultTargetDevice;
+
   return graphDevice;
 }
 
@@ -231,8 +233,7 @@ struct MatmulConstBPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::MatmulOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    DeviceRefAttr device =
-        getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
+    DeviceRefAttr device = getTargetDevice(op, targetDevice);
     // TODO: CUDA does not support pre-packing yet
     if (device && device.getLabel() == M::kGPULabel)
       return rewriter.notifyMatchFailure(op,
@@ -400,8 +401,7 @@ struct ForceMatmulTransposeBForGPU
     TensorValue weights = matmul.getInputB();
     Operation *weightProducer = weights.getDefiningOp();
 
-    DeviceRefAttr defaultDevice =
-        getGraphDevice(matmul->getParentOfType<MO::GraphOp>(), targetDevice);
+    DeviceRefAttr defaultDevice = getTargetDevice(matmul, targetDevice);
     bool defaultDeviceIsCuda =
         defaultDevice && defaultDevice.getLabel() == M::kGPULabel;
 
@@ -545,7 +545,7 @@ struct ConcatZeroAxisPattern
 
     auto graphOp = concat->getParentOfType<GraphOp>();
     DeviceRefAttr defaultDevice =
-        getGraphDevice(graphOp, getHostDevice(graphOp));
+        getTargetDevice(concat, getHostDevice(graphOp));
     auto getDevice = [&](TensorType ty) {
       auto maybeDev = ty.getDeviceRef();
       return maybeDev ? maybeDev : defaultDevice;
@@ -603,8 +603,7 @@ struct ConvConstFilterPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ConvOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    DeviceRefAttr device =
-        getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
+    DeviceRefAttr device = getTargetDevice(op, targetDevice);
     // TODO: CUDA does not support pre-packing yet
     if (device && device.getLabel() == M::kGPULabel)
       return rewriter.notifyMatchFailure(op,
@@ -2540,8 +2539,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
   LogicalResult matchAndRewrite(BatchMatmulOp op,
                                 PatternRewriter &rewriter) const override {
-    DeviceRefAttr device =
-        getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
+    DeviceRefAttr device = getTargetDevice(op, targetDevice);
 
     // Just assume we want to use the CPU kernel only if the default device
     // is cpu (e.g. if the default was CUDA, run on CUDA).

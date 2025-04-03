@@ -783,7 +783,7 @@ struct MOOpLoweringState {
   }
 
   Value sync(Value chain) {
-    auto device = MO::getDeviceOrDefault(loweringState.getGraph());
+    auto device = loweringState.getHostDevice();
     auto deviceContext = loweringState.getExecuteDevice(device);
     auto bufferBuilder = loweringState.getBufferBuilder(device);
 
