@@ -235,7 +235,8 @@ struct MatmulConstBPattern
         getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
     // TODO: CUDA does not support pre-packing yet
     if (device && device.getLabel() == M::kGPULabel)
-      return failure();
+      return rewriter.notifyMatchFailure(op,
+                                         "CUDA does not support prepacking.");
 
     Value input = op.getInputA();
     Value weight, perm;
@@ -249,7 +250,7 @@ struct MatmulConstBPattern
     auto weightTransP =
         m_Op<MO::TransposeOp>(&transpose, weightP, m_MOVector(m_Any(&perm)));
     if (!m_Optional(weightTransP, weightP).match(op.getInputB()))
-      return failure();
+      return rewriter.notifyMatchFailure(op, "Pattern failed to match.");
 
     MO::TensorType weightsType = cast<MO::TensorType>(weight.getType());
     MO::LayoutAttr weightsLayout = op.getInputB().getType().getLayoutAttr();
@@ -267,7 +268,7 @@ struct MatmulConstBPattern
     // kernel crash described in this ticket has been resolved.
     if (!input ||
         !dependsOnConstantsOnly<MO::ConstantOp>(weight.getDefiningOp()))
-      return failure();
+      return rewriter.notifyMatchFailure(op, "Need to solve KERN-1160.");
 
     if (transpose) {
       if (!perm || validate2DTranspose(perm).failed())
@@ -606,7 +607,8 @@ struct ConvConstFilterPattern
         getGraphDevice(op->getParentOfType<MO::GraphOp>(), targetDevice);
     // TODO: CUDA does not support pre-packing yet
     if (device && device.getLabel() == M::kGPULabel)
-      return failure();
+      return rewriter.notifyMatchFailure(op,
+                                         "CUDA does not support prepacking.");
 
     // Define some meta variables.
     MLIRContext *ctx = op.getContext();
