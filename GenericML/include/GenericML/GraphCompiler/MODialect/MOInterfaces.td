@@ -137,20 +137,6 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
       "DeviceRefAttr", "getResultDevice", (ins "size_t":$index), [{}],
       [{ return nullptr; }]
     >,
-
-    InterfaceMethod<
-      [{
-        Return true if the op should try to follow the device of its results
-        or operands instead of the graph's default device. This is useful for
-        'cheap' ops like mo.constant which can reside on any device irrespective
-        of what the overall default execution device for the graph may request.
-
-        Ops which perform 'significant' computation should generally respect
-        the overall graph device, if given, unless constrained to be on a
-        particular device by a user annotation or the above getExecutionDevice.
-      }],
-      "bool", "preferResultsDevice", (ins), [{}], [{ return false; }]
-    >,
   ];
 }
 
