@@ -66,6 +66,11 @@ ErrorOr<M::DeviceRefAttr> RMO::inferDevice(ValueRange values) {
   }
 }
 
+template <typename Adaptor>
+static ErrorOr<M::DeviceRefAttr> inferDeviceOf(Adaptor adaptor) {
+  return RMO::inferDevice(adaptor.getOperands());
+}
+
 OpFoldResult RebindTensorShapeOp::fold(FoldAdaptor adaptor) {
   // Note `?` != `?` in terms of shapes
   if (getInput().getType().hasUnknownShape())
@@ -106,16 +111,14 @@ LogicalResult BroadcastLikeOp::verify() {
   return success();
 }
 
+static TypedAttr getShapeOf(Value value) {
+  return cast<MO::TensorValue>(value).getType().getShapeAttr();
+}
+
 /// ASSUME `values` are all tensor values, map each input value to the shape
 /// attribute and return the result.
 static SmallVector<TypedAttr> getShapesOf(ValueRange values) {
-  SmallVector<TypedAttr> shapes;
-  for (Value val : values) {
-    auto tensorVal = dyn_cast<MO::TensorValue>(val);
-    ASSERT_STREAM(tensorVal, << "expected tensor value");
-    shapes.push_back(tensorVal.getType().getShapeAttr());
-  }
-  return shapes;
+  return llvm::map_to_vector(values, getShapeOf);
 }
 
 // Creates an error message for when a tensor contains `?`, but that is not
@@ -311,11 +314,10 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
 
 template <typename OpT>
 static LogicalResult inferReturnTypesBinaryElemwiseImpl(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto xType = cast<TensorType>(operands[0].getType());
-  auto yType = cast<TensorType>(operands[1].getType());
+    MLIRContext *context, std::optional<Location> location,
+    typename OpT::Adaptor adaptor, SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto xType = cast<TensorType>(adaptor.getInputX().getType());
+  auto yType = cast<TensorType>(adaptor.getInputY().getType());
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   auto xShape = xType.getTypedShapeAttr();
@@ -335,8 +337,9 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
   }
 
   // Materialize shape function.
-  auto graphOp =
-      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  auto graphOp = adaptor.getInputX()
+                     .getParentRegion()
+                     ->template getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeRmoBinaryElementwiseShape(graphOp, loc, xShape, yShape);
@@ -358,7 +361,7 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
@@ -451,16 +454,16 @@ static LogicalResult inferReturnTypesBinaryLogicalImpl(
 // ConcatOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ConcatOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-
-  auto axisAttr = attributes.getAs<IntegerAttr>("axis");
+LogicalResult
+ConcatOp::inferReturnTypes(MLIRContext *context,
+                           std::optional<Location> location, Adaptor adaptor,
+                           SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto axisAttr =
+      adaptor.getAxisAttr(); // attributes.getAs<IntegerAttr>("axis");
   ASSERT_STREAM(axisAttr, << "rmo.concat must have a constant integer `axis`");
 
   // Retrieve input shapes
-  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
+  SmallVector<TypedAttr> inputShapes = getShapesOf(adaptor.getInputs());
   // TODO(GEX-551) remove once we eliminate `?` in Graph API.
   for (auto [i, inputShapeAttr] : llvm::enumerate(inputShapes)) {
     auto inputShape = mlir::cast<ShapeAttr>(inputShapeAttr);
@@ -471,8 +474,10 @@ LogicalResult ConcatOp::inferReturnTypes(
   }
 
   // Materialize shape function.
-  auto graphOp =
-      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  auto graphOp = adaptor.getOperands()
+                     .front()
+                     .getParentRegion()
+                     ->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeConcatShape(graphOp, loc, axisAttr, inputShapes);
@@ -497,7 +502,8 @@ LogicalResult ConcatOp::inferReturnTypes(
   // If the user set the output dimensions, This is an explicit rebind request
   // from the user. We trust their input here for shape inference. A rebind is
   // inserted in lowering to handle this shape specification at runtime.
-  if (auto outDimAttr = attributes.getAs<TypedAttr>("out_dim")) {
+  if (auto outDimAttr =
+          dyn_cast_if_present<TypedAttr>(adaptor.getOutDimAttr())) {
     size_t rank = resultShape.getRank();
     SmallVector<TypedAttr> resultDims{};
     resultDims.reserve(rank);
@@ -514,8 +520,9 @@ LogicalResult ConcatOp::inferReturnTypes(
     resultShape = ShapeAttr::get(resultDims, resultShape.getType());
   }
 
-  DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
-  for (auto [i, operand] : llvm::enumerate(operands)) {
+  DType inputDtype =
+      cast<TensorType>(adaptor.getInputs()[0].getType()).getDtype();
+  for (auto [i, operand] : llvm::enumerate(adaptor.getInputs())) {
     DType opDtype = cast<TensorType>(operand.getType()).getDtype();
     if (opDtype != inputDtype) {
       std::string errorMsg;
@@ -528,7 +535,7 @@ LogicalResult ConcatOp::inferReturnTypes(
     }
   }
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(adaptor.getInputs());
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
@@ -542,12 +549,12 @@ LogicalResult ConcatOp::inferReturnTypes(
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ReshapeOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+LogicalResult
+ReshapeOp::inferReturnTypes(MLIRContext *context,
+                            std::optional<Location> location, Adaptor adaptor,
+                            SmallVectorImpl<Type> &inferredReturnTypes) {
 
-  auto newShapeAttr = attributes.getAs<ShapeAttr>("newShape");
+  auto newShapeAttr = adaptor.getNewShapeAttr();
   ASSERT_STREAM(newShapeAttr,
                 << "rmo.reshape must have a ShapeAttr `newShape`");
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
@@ -557,10 +564,8 @@ LogicalResult ReshapeOp::inferReturnTypes(
         location, unknownDimError("Reshape", "target", newShapeAttr));
 
   // Retrieve input shape
-  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
-  ASSERT_STREAM(inputShapes.size() == 1,
-                << "rmo.reshape must have exactly one input");
-  auto inputShape = mlir::cast<ShapeAttr>(inputShapes[0]);
+  auto inputShape = cast<ShapeAttr>(getShapeOf(adaptor.getInput()));
+
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (inputShape.hasUnknownDims())
@@ -569,7 +574,7 @@ LogicalResult ReshapeOp::inferReturnTypes(
 
   // Materialize shape function.
   auto graphOp =
-      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+      adaptor.getInput().getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeReshapeShape(graphOp, loc, inputShape, newShapeAttr,
@@ -591,13 +596,13 @@ LogicalResult ReshapeOp::inferReturnTypes(
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(adaptor.getOperands());
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
   // Create output type.
   ShapeAttr resultShape = resultShapesOr.get().front();
-  DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
+  DType inputDtype = cast<TensorType>(adaptor.getInput().getType()).getDtype();
   inferredReturnTypes.push_back(
       TensorType::get(resultShape, inputDtype, *outputDeviceOr));
 
@@ -609,24 +614,22 @@ LogicalResult ReshapeOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult BroadcastToOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
 
-  auto newShapeAttr = attributes.getAs<ShapeAttr>("newShape");
-  ASSERT_STREAM(newShapeAttr,
-                << "rmo.broadcast_to must have a ShapeAttr `newShape`");
+  ShapeAttr newShapeAttr = adaptor.getNewShape();
+
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (newShapeAttr.hasUnknownDims())
     return mlir::emitOptionalError(
         location, unknownDimError("BroadcastTo", "target", newShapeAttr));
 
+  Value input = adaptor.getInput();
+
   // Retrieve input shape
-  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
-  ASSERT_STREAM(inputShapes.size() == 1,
-                << "rmo.broadcast_to must have exactly one input");
-  auto inputShape = mlir::cast<ShapeAttr>(inputShapes[0]);
+  auto inputShape = cast<ShapeAttr>(getShapeOf(input));
+
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (inputShape.hasUnknownDims())
@@ -635,7 +638,7 @@ LogicalResult BroadcastToOp::inferReturnTypes(
 
   // Materialize shape function.
   auto graphOp =
-      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+      adaptor.getInput().getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeBroadcastToShape(graphOp, loc, inputShape, newShapeAttr);
@@ -656,13 +659,13 @@ LogicalResult BroadcastToOp::inferReturnTypes(
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
   // Create output type.
   ShapeAttr resultShape = resultShapesOr->front();
-  DType inputDtype = cast<TensorType>(operands[0].getType()).getDtype();
+  DType inputDtype = cast<TensorType>(input.getType()).getDtype();
   inferredReturnTypes.push_back(
       TensorType::get(resultShape, inputDtype, *outputDeviceOr));
 
@@ -673,18 +676,17 @@ LogicalResult BroadcastToOp::inferReturnTypes(
 // MatmulOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult MatmulOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+LogicalResult
+MatmulOp::inferReturnTypes(MLIRContext *context,
+                           std::optional<Location> location, Adaptor adaptor,
+                           SmallVectorImpl<Type> &inferredReturnTypes) {
 
   // Retrieve input shape
-  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
-  ASSERT_STREAM(inputShapes.size() == 2,
-                << "rmo.matmul must have exactly two inputs");
+  Value lhs = adaptor.getInputX();
+  Value rhs = adaptor.getInputY();
 
-  auto lhsShape = mlir::cast<ShapeAttr>(inputShapes[0]);
-  auto rhsShape = mlir::cast<ShapeAttr>(inputShapes[1]);
+  auto lhsShape = cast<ShapeAttr>(getShapeOf(lhs));
+  auto rhsShape = cast<ShapeAttr>(getShapeOf(rhs));
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (lhsShape.hasUnknownDims())
@@ -697,15 +699,14 @@ LogicalResult MatmulOp::inferReturnTypes(
         unknownDimError("Matrix multiplication", "input rhs", rhsShape));
 
   ErrorOr<DType> promotedDtype =
-      promoteDtype(mlir::cast<TensorType>(operands[0].getType()).getDtype(),
-                   mlir::cast<TensorType>(operands[1].getType()).getDtype());
+      promoteDtype(mlir::cast<TensorType>(lhs.getType()).getDtype(),
+                   mlir::cast<TensorType>(rhs.getType()).getDtype());
   if (promotedDtype.isError()) {
     return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
                                    StringRef{promotedDtype.getError()});
   }
   // Materialize shape function.
-  auto graphOp =
-      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  auto graphOp = lhs.getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeRmoMatmulShape(graphOp, loc, lhsShape, rhsShape);
@@ -726,7 +727,7 @@ LogicalResult MatmulOp::inferReturnTypes(
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
@@ -742,19 +743,16 @@ LogicalResult MatmulOp::inferReturnTypes(
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult SelectOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+LogicalResult
+SelectOp::inferReturnTypes(MLIRContext *context,
+                           std::optional<Location> location, Adaptor adaptor,
+                           SmallVectorImpl<Type> &inferredReturnTypes) {
 
   // Retrieve input shape
-  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
-  ASSERT_STREAM(inputShapes.size() == 3,
-                << "rmo.select must have exactly 3 inputs");
+  auto condShape = cast<ShapeAttr>(getShapeOf(adaptor.getCond()));
+  auto xShape = cast<ShapeAttr>(getShapeOf(adaptor.getInputX()));
+  auto yShape = cast<ShapeAttr>(getShapeOf(adaptor.getInputY()));
 
-  auto condShape = mlir::cast<ShapeAttr>(inputShapes[0]);
-  auto xShape = mlir::cast<ShapeAttr>(inputShapes[1]);
-  auto yShape = mlir::cast<ShapeAttr>(inputShapes[2]);
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
   // check.
   if (condShape.hasUnknownDims())
@@ -767,16 +765,16 @@ LogicalResult SelectOp::inferReturnTypes(
     return mlir::emitOptionalError(
         location, unknownDimError("Select", "input y", yShape));
 
-  ErrorOr<DType> promotedDtype =
-      promoteDtype(mlir::cast<TensorType>(operands[1].getType()).getDtype(),
-                   mlir::cast<TensorType>(operands[2].getType()).getDtype());
+  ErrorOr<DType> promotedDtype = promoteDtype(
+      mlir::cast<TensorType>(adaptor.getInputX().getType()).getDtype(),
+      mlir::cast<TensorType>(adaptor.getInputY().getType()).getDtype());
   if (promotedDtype.isError()) {
     return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
                                    StringRef{promotedDtype.getError()});
   }
   // Materialize shape function.
   auto graphOp =
-      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+      adaptor.getCond().getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeRmoSelectShape(graphOp, loc, condShape, xShape, yShape);
@@ -797,7 +795,7 @@ LogicalResult SelectOp::inferReturnTypes(
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
@@ -815,14 +813,14 @@ LogicalResult SelectOp::inferReturnTypes(
 
 LogicalResult
 TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
-                         ValueRange operands, DictionaryAttr attributes,
-                         mlir::OpaqueProperties properties, RegionRange regions,
+                         Adaptor adaptor,
                          SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto input = cast<TensorValue>(operands[0]);
+  auto input = cast<TensorValue>(adaptor.getInput());
   auto inputShape = cast<ShapeAttr>(input.getType().getShapeAttr());
-  auto kAttr = attributes.getAs<IntegerAttr>("k");
-  const int64_t k = kAttr.getSInt();
-  int64_t axis = attributes.getAs<IntegerAttr>("axis").getSInt();
+
+  auto kAttr = adaptor.getKAttr();
+  int64_t k = adaptor.getK();
+  int64_t axis = adaptor.getAxis();
 
   // Handle negative axis.
   const int64_t rank = inputShape.getRank();
@@ -871,20 +869,17 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult SliceOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+LogicalResult
+SliceOp::inferReturnTypes(MLIRContext *context,
+                          std::optional<Location> location, Adaptor adaptor,
+                          SmallVectorImpl<Type> &inferredReturnTypes) {
   // Retrieve input and start, stop, step shapes.
-  SmallVector<TypedAttr> inputShapes = getShapesOf(operands);
-  ASSERT_STREAM(inputShapes.size() == 1,
-                << "rmo.slice must have exactly 1 input");
+  auto inputShape = cast<ShapeAttr>(getShapeOf(adaptor.getInput()));
 
-  auto inputShape = cast<ShapeAttr>(inputShapes[0]);
-  auto starts = attributes.getAs<ShapeAttr>("starts");
-  auto stops = attributes.getAs<ShapeAttr>("stops");
+  auto starts = adaptor.getStarts();
+  auto stops = adaptor.getStops();
 
-  auto stepsAttr = attributes.getAs<ShapeAttr>("steps");
+  auto stepsAttr = adaptor.getSteps();
   auto maybeSteps = MO::tryGetConstantIntVector(stepsAttr);
   if (!maybeSteps ||
       llvm::any_of(*maybeSteps, [](int64_t step) { return step == 0; }))
@@ -904,7 +899,7 @@ LogicalResult SliceOp::inferReturnTypes(
   }
 
   // Materialize shape function.
-  auto input = cast<MO::TensorValue>(operands.front());
+  auto input = cast<MO::TensorValue>(adaptor.getInput());
   auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result = MO::materializeRmoSliceShape(
@@ -939,10 +934,9 @@ LogicalResult SliceOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShapeToTensorOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto shapeAttr = attributes.getAs<ShapeAttr>("shape");
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto shapeAttr = adaptor.getShapeAttr();
   ASSERT_STREAM(
       shapeAttr, << "rmo.shape_to_tensor must have a ShapeAttr `shape`");
   // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
@@ -954,7 +948,7 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
   auto dimType = ShapeAttr::getDimType(context);
 
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 

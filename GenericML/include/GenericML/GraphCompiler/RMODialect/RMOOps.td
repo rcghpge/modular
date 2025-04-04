@@ -73,7 +73,7 @@ def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDType
 
 
 class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor]> {
   let arguments = (ins
     MO_Tensor:$input_x,
     MO_Tensor:$input_y,
@@ -86,13 +86,12 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
 
   let extraClassDefinition = [{
     LogicalResult
-    $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
-                            ValueRange operands, DictionaryAttr attributes,
-                            mlir::OpaqueProperties properties, RegionRange regions,
-                            SmallVectorImpl<Type> &inferredReturnTypes) {
+    $cppClass::inferReturnTypes(MLIRContext *context,
+                                std::optional<Location> location,
+                                $cppClass::Adaptor adaptor,
+                                SmallVectorImpl<Type> &inferredReturnTypes) {
       return inferReturnTypesBinaryElemwiseImpl<$cppClass>(
-          context, location, operands, attributes, properties, regions,
-          inferredReturnTypes);
+          context, location, adaptor, inferredReturnTypes);
     }
   }];
 }
@@ -385,7 +384,7 @@ def RMO_SigmoidOp : RMO_Op<"sigmoid", [Pure]> {
 
 def RMO_ConcatOp : RMO_Op<"concat", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Concatenation operation";
   let description = [{
@@ -430,7 +429,7 @@ def RMO_ConcatOp : RMO_Op<"concat", [
 
 def RMO_ReshapeOp : RMO_Op<"reshape", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Reshape a tensor";
   let description = [{
@@ -455,7 +454,7 @@ def RMO_ReshapeOp : RMO_Op<"reshape", [
 
 def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Broadcast a tensor";
   let description = [{
@@ -477,7 +476,7 @@ def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
 
 def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface, ["isCompatibleReturnTypes"]>,
+  InferTypeOpAdaptorWithIsCompatible,
 ]> {
   let summary = "Converts a shape to a tensor";
   let description = [{
@@ -489,16 +488,11 @@ def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-
-  let extraClassDeclaration = [{
-    // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs);
-  }];
 }
 
 def RMO_MatmulOp : RMO_Op<"matmul", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Matrix multiplication operation";
   let description = [{
@@ -538,7 +532,7 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
 
 def RMO_SelectOp : RMO_Op<"select", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Select operation with broadcasting and dtype casting";
   let description = [{
@@ -574,7 +568,7 @@ def RMO_SelectOp : RMO_Op<"select", [
 
 def RMO_TopKOp : RMO_Op<"top_k", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Top-K operation";
   let description = [{
@@ -611,7 +605,7 @@ def RMO_TopKOp : RMO_Op<"top_k", [
 
 def RMO_SliceOp : RMO_Op<"slice", [
   Pure,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "Slice operation with type inference.""";
   let description = [{
