@@ -324,6 +324,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
+  pm.addPass(MO::createInlineMOSubgraphs());
+
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;

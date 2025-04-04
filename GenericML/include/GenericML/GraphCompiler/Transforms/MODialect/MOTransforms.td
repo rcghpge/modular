@@ -544,4 +544,11 @@ def VerifyCustomOps : Pass<"verify-custom-ops", "GraphOp"> {
   ];
 }
 
+def InlineMOSubgraphs : Pass<"inline-mo-subgraphs", "ModuleOp"> {
+  let summary = "Inline MO subgraphs into their callers";
+  let description = [{
+    This pass will inline MO subgraphs into their callers.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
