@@ -223,12 +223,15 @@ struct LegalizeRMOMOAnalogue : public OpRewritePattern<RMOOpT> {
               ArrayRef<Type> resultTypes,
               ArrayRef<Value> operands) -> MO::ParamDeclarationInterface {
       auto result = rewriter.create<MOOpT>(loc, resultTypes, operands);
-      // Copy all attributes (except the outputParamDecls).
-      for (auto attr : op->getAttrs())
+
+      NamedAttrList newAttrs(result->getAttrs());
+
+      for (auto attr : op->getAttrs()) {
         if (attr.getName() != op.getOutputParamDeclsAttrName())
-          rewriter.modifyOpInPlace(result, [&] {
-            result->setAttr(attr.getName(), attr.getValue());
-          });
+          newAttrs.set(attr.getName(), attr.getValue());
+      }
+
+      rewriter.modifyOpInPlace(result, [&] { result->setAttrs(newAttrs); });
       return cast<MO::ParamDeclarationInterface>(result.getOperation());
     };
     return lowerMOAnalogue(op, rewriter, generator);
