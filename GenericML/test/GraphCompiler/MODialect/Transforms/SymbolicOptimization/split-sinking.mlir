@@ -308,13 +308,13 @@ mo.graph @no_sinking_dimensions_are_mixed(%in: !mo.tensor<[2, 4], f32>) -> (!mo.
 // COM: 0 element tensors have ambiguous mappings between before and after dims
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @no_sinking_reshape_0ele([[VARG0:[^ ]*]]: !mo.tensor<[0, 8], f32>) -> (!mo.tensor<[0, 2, 2], f32>, !mo.tensor<[0, 2, 2], f32>) {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<9223372036854775807, 8> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<0, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT: [[V2:[^ ]*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT: [[V3:[^ ]*]] = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT: [[V4:[^ ]*]] = mo.constant {value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT: [[V5:[^ ]*]] = mo.slice([[VARG0]], [[V3]], [[V4]], [[V2]]) : (!mo.tensor<[0, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[0, 4], f32>
-// CHECK-NEXT: [[V6:[^ ]*]] = mo.slice([[VARG0]], [[V1]], [[V0]], [[V2]]) : (!mo.tensor<[0, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[0, 4], f32>
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<9223372036854775807, 8> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-NEXT: [[V2:[^ ]*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-NEXT: [[V3:[^ ]*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-NEXT: [[V4:[^ ]*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-NEXT: [[V5:[^ ]*]] = mo.slice([[VARG0]], [[V3]], [[V4]], [[V2]]) : (!mo.tensor<[0, 8], f32>, !mo.tensor<[2], si64, cpu:0>, !mo.tensor<[2], si64, cpu:0>, !mo.tensor<[2], si64, cpu:0>) -> !mo.tensor<[0, 4], f32>
+// CHECK-NEXT: [[V6:[^ ]*]] = mo.slice([[VARG0]], [[V1]], [[V0]], [[V2]]) : (!mo.tensor<[0, 8], f32>, !mo.tensor<[2], si64, cpu:0>, !mo.tensor<[2], si64, cpu:0>, !mo.tensor<[2], si64, cpu:0>) -> !mo.tensor<[0, 4], f32>
 // CHECK-NEXT: [[V7:[^ ]*]] = mo.static.reshape([[V5]]) : !mo.tensor<[0, 4], f32> -> !mo.tensor<[0, 2, 2], f32>
 // CHECK-NEXT: [[V8:[^ ]*]] = mo.static.reshape([[V6]]) : !mo.tensor<[0, 4], f32> -> !mo.tensor<[0, 2, 2], f32>
 // CHECK-NEXT: mo.output [[V7]], [[V8]] : !mo.tensor<[0, 2, 2], f32>, !mo.tensor<[0, 2, 2], f32>
