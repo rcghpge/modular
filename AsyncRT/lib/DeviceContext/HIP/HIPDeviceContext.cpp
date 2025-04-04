@@ -92,6 +92,15 @@
   HIPDeviceScope __hipWithContext((dev).hipDevice(), (dev).hipDriver());       \
   HIP_CHECK(__hipWithContext.status());
 
+#define MAYBE_SYNC(ctx)                                                        \
+  do {                                                                         \
+    const HIPDeviceContext &hip_ctx = (ctx);                                   \
+    if (hip_ctx.syncMode()) {                                                  \
+      HIP_CHECK_ERR(                                                           \
+          hip_ctx.hipDriver().StreamSynchronize(hip_ctx.hipStream()));         \
+    }                                                                          \
+  } while (0)
+
 namespace M::AsyncRT {
 
 // The helper class HIPDeviceScope is used to set and restore the hipDevice_t
@@ -569,6 +578,7 @@ ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
 
   HIP_CHECK_ERR(hipContext.hipDriver().MemcpyHtoDAsync(
       devicePtr, data, byteSize, hipContext.hipStream()));
+  MAYBE_SYNC(HIPDeviceContext::cast(context()));
   return success();
 }
 
@@ -630,6 +640,7 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
   switch (mode) {
   case AllocMode::ASYNC: {
     HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+    MAYBE_SYNC(*this);
     break;
   }
   case AllocMode::HOST: {
@@ -650,6 +661,7 @@ ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) const {
     HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
   } else {
     HIP_CHECK_ERR(driver_.MemFreeAsync(ptr, stream_));
+    MAYBE_SYNC(*this);
   }
   return success();
 }
@@ -662,6 +674,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
   hipDeviceptr_t dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
   HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
+  MAYBE_SYNC(*this);
   return success();
 }
 
@@ -674,6 +687,7 @@ HIPDeviceContext::enqueueCopyFromDevice(void *dst,
   hipDeviceptr_t srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
   HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
+  MAYBE_SYNC(*this);
   return success();
 }
 
@@ -696,6 +710,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     HIP_CHECK_ERR(
         driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
   }
+  MAYBE_SYNC(*this);
   return success();
 }
 
@@ -746,6 +761,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
       }
     }
   }
+  MAYBE_SYNC(*this);
   return success();
 }
 

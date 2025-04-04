@@ -168,7 +168,6 @@ private:
     if (cuda_ctx.syncMode()) {                                                 \
       CUDA_CHECK_ERR(                                                          \
           cuda_ctx.cudaDriver().StreamSynchronize(cuda_ctx.cudaStream()));     \
-      llvm::errs() << "synchronizing\n";                                       \
     }                                                                          \
   } while (0)
 
