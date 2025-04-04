@@ -33,33 +33,32 @@ mo.graph @conv_to_matmul_static_dims(
 
 
 mo.graph @conv_to_matmul_with_device(
-  %input: !mo.tensor<[32, 10, 10, 3], f32>,
-  %filter: !mo.tensor<[1, 1, 3, 9], f32>
-) -> !mo.tensor<[32, 10, 10, 9], f32> {
+  %input: !mo.tensor<[32, 10, 10, 3], f32, dev:0>,
+  %filter: !mo.tensor<[1, 1, 3, 9], f32, dev:0>
+) -> !mo.tensor<[32, 10, 10, 9], f32, dev:0> {
 
-  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64, cpu:0>
+  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64, cpu:0>
 
   %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] { device = #M.device_ref<"dev", 0> } : (
-    !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
-    !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
-  ) -> !mo.tensor<[32, 10, 10, 9], f32>
+    !mo.tensor<[32, 10, 10, 3], f32, dev:0>, !mo.tensor<[1, 1, 3, 9], f32, dev:0>,
+    !mo.tensor<[2], si64, cpu:0>, !mo.tensor<[2], si64, cpu:0>, !mo.tensor<[4], si64, cpu:0>, !mo.tensor<[], si64, cpu:0>
+  ) -> !mo.tensor<[32, 10, 10, 9], f32, dev:0>
 
-  mo.output %res : !mo.tensor<[32, 10, 10, 9], f32>
+  mo.output %res : !mo.tensor<[32, 10, 10, 9], f32, dev:0>
 }
 
 // CHECK:      mo.graph @conv_to_matmul_with_device(
-// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[32, 10, 10, 3], f32>,
-// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[1, 1, 3, 9], f32>
-// CHECK-SAME: ) -> !mo.tensor<[32, 10, 10, 9], f32> {
-// CHECK-NEXT:   %[[MATMUL_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[32, 10, 10, 3], f32> -> !mo.tensor<[3200, 3], f32>
-// CHECK-NEXT:   %[[MATMUL_WEIGHT:.*]] = mo.static.reshape(%[[FILTER]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[1, 1, 3, 9], f32> -> !mo.tensor<[3, 9], f32>
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[32, 10, 10, 3], f32, dev:0>,
+// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[1, 1, 3, 9], f32, dev:0>
+// CHECK-SAME: ) -> !mo.tensor<[32, 10, 10, 9], f32, dev:0> {
+// CHECK-NEXT:   %[[MATMUL_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[32, 10, 10, 3], f32, dev:0> -> !mo.tensor<[3200, 3], f32, dev:0>
+// CHECK-NEXT:   %[[MATMUL_WEIGHT:.*]] = mo.static.reshape(%[[FILTER]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[1, 1, 3, 9], f32, dev:0> -> !mo.tensor<[3, 9], f32, dev:0>
 // CHECK-NEXT:   %[[MATMUL:.*]] = mo.matmul(%[[MATMUL_INPUT]], %[[MATMUL_WEIGHT]]) {device = #M.device_ref<"dev", 0>}
-// CHECK-SAME:     : (!mo.tensor<[3200, 3], f32>, !mo.tensor<[3, 9], f32>) -> !mo.tensor<[3200, 9], f32>
-// CHECK-NEXT:   %[[RES:.*]] = mo.static.reshape(%[[MATMUL]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[3200, 9], f32> -> !mo.tensor<[32, 10, 10, 9], f32>
-// CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 10, 10, 9], f32>
-
+// CHECK-SAME:     : (!mo.tensor<[3200, 3], f32, dev:0>, !mo.tensor<[3, 9], f32, dev:0>) -> !mo.tensor<[3200, 9], f32, dev:0>
+// CHECK-NEXT:   %[[RES:.*]] = mo.static.reshape(%[[MATMUL]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[3200, 9], f32, dev:0> -> !mo.tensor<[32, 10, 10, 9], f32, dev:0>
+// CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 10, 10, 9], f32, dev:0>
 
 mo.graph @conv_to_matmul_dynamic_dims<N, H, W, CI, CO>(
   %input: !mo.tensor<[N, H, W, CI], f32>,

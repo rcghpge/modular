@@ -27,27 +27,27 @@ mo.graph @sink_transpose_through_binary_ops(
 
 // CHECK: mo.graph @sink_transpose_through_binary_ops_with_device(
 mo.graph @sink_transpose_through_binary_ops_with_device(
-  // CHECK-SAME: %[[INPUT1:arg0]]: !mo.tensor<[2, 2, 2], f32>,
-  %input1: !mo.tensor<[2, 2, 2], f32>,
-  // CHECK-SAME: %[[INPUT2:.*]]: !mo.tensor<[2, 2, 2], f32>,
-  %input2: !mo.tensor<[2, 2, 2], f32>,
-  // CHECK-SAME: %[[INPUT3:.*]]: !mo.tensor<[2, 2, 2], f32>
-  %input3: !mo.tensor<[2, 2, 2], f32>
-// CHECK-SAME: ) -> !mo.tensor<[2, 2, 2], f32> {
-) -> !mo.tensor<[2, 2, 2], f32> {
-  // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %perm = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-NEXT: %[[ADD1:.*]] = mo.add(%[[INPUT1]], %[[INPUT2]]) : !mo.tensor<[2, 2, 2], f32>
-  // CHECK-NEXT: %[[ADD2:.*]] = mo.add(%[[ADD1]], %[[INPUT3]]) : !mo.tensor<[2, 2, 2], f32>
+  // CHECK-SAME: %[[INPUT1:arg0]]: !mo.tensor<[2, 2, 2], f32, dev:0>,
+  %input1: !mo.tensor<[2, 2, 2], f32, dev:0>,
+  // CHECK-SAME: %[[INPUT2:.*]]: !mo.tensor<[2, 2, 2], f32, dev:0>,
+  %input2: !mo.tensor<[2, 2, 2], f32, dev:0>,
+  // CHECK-SAME: %[[INPUT3:.*]]: !mo.tensor<[2, 2, 2], f32, dev:0>
+  %input3: !mo.tensor<[2, 2, 2], f32, dev:0>
+// CHECK-SAME: ) -> !mo.tensor<[2, 2, 2], f32, dev:0> {
+) -> !mo.tensor<[2, 2, 2], f32, dev:0> {
+  // CHECK-NEXT: %[[PERM:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64, cpu:0>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64, cpu:0>
+  // CHECK-NEXT: %[[ADD1:.*]] = mo.add(%[[INPUT1]], %[[INPUT2]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[2, 2, 2], f32, dev:0>
+  // CHECK-NEXT: %[[ADD2:.*]] = mo.add(%[[ADD1]], %[[INPUT3]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[2, 2, 2], f32, dev:0>
   // CHECK-NEXT: %[[TRANSPOSE:.*]] = mo.transpose(%[[ADD2]], %[[PERM]]) {device = #M.device_ref<"dev", 0>}
-  // CHECK-SAME: : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
-  %transpose1 = mo.transpose(%input1, %perm) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
-  %transpose2 = mo.transpose(%input2, %perm) { device = #M.device_ref<"dev", 0> } : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
-  %transpose3 = mo.transpose(%input3, %perm) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
-  %add1 = mo.add(%transpose1, %transpose2) : !mo.tensor<[2, 2, 2], f32>
-  %add2 = mo.add(%add1, %transpose3) : !mo.tensor<[2, 2, 2], f32>
-  // CHECK-NEXT: mo.output %[[TRANSPOSE]] : !mo.tensor<[2, 2, 2], f32>
-  mo.output %add2 : !mo.tensor<[2, 2, 2], f32>
+  // CHECK-SAME: : (!mo.tensor<[2, 2, 2], f32, dev:0>, !mo.tensor<[3], si64, cpu:0>) -> !mo.tensor<[2, 2, 2], f32, dev:0>
+  %transpose1 = mo.transpose(%input1, %perm) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[2, 2, 2], f32, dev:0>, !mo.tensor<[3], si64, cpu:0>) -> !mo.tensor<[2, 2, 2], f32, dev:0>
+  %transpose2 = mo.transpose(%input2, %perm) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[2, 2, 2], f32, dev:0>, !mo.tensor<[3], si64, cpu:0>) -> !mo.tensor<[2, 2, 2], f32, dev:0>
+  %transpose3 = mo.transpose(%input3, %perm) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[2, 2, 2], f32, dev:0>, !mo.tensor<[3], si64, cpu:0>) -> !mo.tensor<[2, 2, 2], f32, dev:0>
+  %add1 = mo.add(%transpose1, %transpose2) { device = #M.device_ref<"dev", 0>} : !mo.tensor<[2, 2, 2], f32, dev:0>
+  %add2 = mo.add(%add1, %transpose3) { device = #M.device_ref<"dev", 0>}: !mo.tensor<[2, 2, 2], f32, dev:0>
+  // CHECK-NEXT: mo.output %[[TRANSPOSE]] : !mo.tensor<[2, 2, 2], f32, dev:0>
+  mo.output %add2 : !mo.tensor<[2, 2, 2], f32, dev:0>
 }
 
 

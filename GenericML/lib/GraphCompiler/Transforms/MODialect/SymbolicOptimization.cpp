@@ -116,9 +116,8 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     auto fsAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, trailingDims);
     rewriter.create<KGEN::ParamDeclareOp>(loc, fsDecl, fsAttr);
 
-    auto flattenedTy = TensorType::get(
-        SmallVector<TypedAttr>{KGEN::ParamDeclRefAttr::get(fsDecl)},
-        bcastInputTy.getElementType());
+    auto flattenedTy = bcastInputTy.cloneWith(
+        SmallVector<TypedAttr>{KGEN::ParamDeclRefAttr::get(fsDecl)});
     auto flattened =
         rewriter.create<Static::ReshapeOp>(loc, flattenedTy, bcastInput);
 
@@ -130,14 +129,15 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     auto wRef = KGEN::ParamDeclRefAttr::get(wDecl);
     IntegerType si64Ty = rewriter.getIntegerType(64, /*isSigned=*/true);
     SmallVector<TypedAttr> argNonzeroDims{wRef, rewriter.getDimAttr(1)};
-    auto argNonzeroTy = TensorType::get(argNonzeroDims, si64Ty);
+    DeviceRefAttr deviceRef = bcastInputTy.getDeviceRef();
+    auto argNonzeroTy = TensorType::get(argNonzeroDims, si64Ty, deviceRef);
     auto newArgNonzeroOp = rewriter.create<ArgNonzeroOp>(
         loc, argNonzeroTy, flattened, ParamDeclArrayAttr::get(wDecl));
 
     // Next we create the first auxiliary value, roughly the following range:
     // range = np.arange(0, FS*BS, FS)
     // First, we need a constant zero for the start index.
-    auto start = rewriter.create<ConstantOp>(loc, (int64_t)0);
+    auto start = rewriter.create<ConstantOp>(loc, (int64_t)0, deviceRef);
 
     // Second, we calculate the batch size symbolically (BS/bs).
     ArrayRef<TypedAttr> batchDims = reshapeInputDims.take_front(rankDiff);
@@ -157,13 +157,15 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     KGEN::ParamDeclAttr bsDecl = graphOp.getNewDimParam("BS");
     rewriter.create<KGEN::ParamDeclareOp>(loc, bsDecl, bsAttr);
     auto bsRef = KGEN::ParamDeclRefAttr::get(bsDecl);
-    auto rangeTy = TensorType::get(SmallVector<TypedAttr>{bsRef}, si64Ty);
+    auto rangeTy =
+        TensorType::get(SmallVector<TypedAttr>{bsRef}, si64Ty, deviceRef);
     auto range = rewriter.create<RangeOp>(loc, rangeTy, start, limT, stepT);
 
     // We add a trailing 1-dimension to the range, roughly:
     // rangeExpanded = np.expand_dims(range, axis=1)
-    auto expandedTy = TensorType::get(
-        SmallVector<TypedAttr>{bsRef, rewriter.getDimAttr(1)}, si64Ty);
+    auto expandedTy =
+        TensorType::get(SmallVector<TypedAttr>{bsRef, rewriter.getDimAttr(1)},
+                        si64Ty, deviceRef);
     auto rangeExpanded =
         rewriter.create<Static::ReshapeOp>(loc, expandedTy, range);
 
@@ -175,16 +177,18 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     // Notice that the common shape is always [BS, W].
 
     // We start with transposing the result of argNonzero.
-    auto perm = rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0});
+    auto perm =
+        rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0}, deviceRef);
     auto transposeTy = TensorType::get(
-        SmallVector<TypedAttr>{argNonzeroDims[1], argNonzeroDims[0]}, si64Ty);
+        SmallVector<TypedAttr>{argNonzeroDims[1], argNonzeroDims[0]}, si64Ty,
+        deviceRef);
     auto wTranspose =
         rewriter.create<TransposeOp>(loc, transposeTy, newArgNonzeroOp, perm);
 
     // Then we add the broadcasted transposed indexed and the broadcasted
     // expanded range.
     auto bcastResTy =
-        TensorType::get(SmallVector<TypedAttr>{bsRef, wRef}, si64Ty);
+        TensorType::get(SmallVector<TypedAttr>{bsRef, wRef}, si64Ty, deviceRef);
     auto indexes = rewriter.create<AddOp>(
         loc,
         rewriter.create<Static::BroadcastToOp>(loc, bcastResTy, wTranspose),
@@ -415,17 +419,9 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
       resShapeDims.push_back(resTy.getDim(i));
     }
 
-    auto shapeTy = rewriter.getType<ShapeType>();
-    auto eltATy = aType.getElementType();
-    auto eltBTy = bType.getElementType();
-    auto eltCTy = cType.getElementType();
-
-    auto newAType =
-        TensorType::get(MOSH::ShapeAttr::get(aShapeDims, shapeTy), eltATy);
-    auto newBType =
-        TensorType::get(MOSH::ShapeAttr::get(bShapeDims, shapeTy), eltBTy);
-    auto newResType =
-        TensorType::get(MOSH::ShapeAttr::get(resShapeDims, shapeTy), eltCTy);
+    auto newAType = aType.cloneWith(aShapeDims);
+    auto newBType = bType.cloneWith(bShapeDims);
+    auto newResType = cType.cloneWith(resShapeDims);
 
     auto newATensor = rewriter.create<Static::ReshapeOp>(op.getLoc(), newAType,
                                                          op.getTensorA());
@@ -1379,10 +1375,7 @@ struct SwimConcatThroughReshapeLikeOpsPattern
     newConcatOutputShape[newConcatAxis] = rewriter.getDimAttr(
         cast<IntegerAttr>(newConcatOutputShape[newConcatAxis]).getSInt() *
         reshapeOps.size());
-    auto newConcatOutputType =
-        TensorType::get(ShapeAttr::get(newConcatOutputShape,
-                                       rewriter.getType<MOSH::ShapeType>()),
-                        concatInputType.getDtype());
+    auto newConcatOutputType = concatInputType.cloneWith(newConcatOutputShape);
     SmallVector<Value> newConcatOperands = {
         rewriter.create<ConstantOp>(loc, newConcatAxis)};
     newConcatOperands.append(reshapeOperands.begin(), reshapeOperands.end());
@@ -2046,7 +2039,8 @@ struct SinkSqueezeLikeReshapeThroughTranspose
 
     Location loc = op->getLoc();
 
-    auto constantOp = rewriter.create<MO::ConstantOp>(loc, permVec);
+    auto constantOp =
+        rewriter.create<MO::ConstantOp>(loc, permVec, inputType.getDeviceRef());
     auto permuted = permuteDims(inputType, permVec);
 
     auto newTransposeOp = rewriter.create<MO::TransposeOp>(
@@ -2411,7 +2405,7 @@ struct ElementWiseUnaryVectorPattern
     Value opRes = op.getResult();
 
     TensorType finalOutputType = op.getResult().getType();
-    TensorType newTypeShape = TensorType::get(
+    TensorType newTypeShape = inType.cloneWith(
         SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
     auto reshape = rewriter.create<Static::ReshapeOp>(
         loc, newTypeShape.cloneWith(input.getType().getDtype()), input);
@@ -2447,7 +2441,7 @@ struct ElementWiseBinaryVectorPattern
 
     TensorValue opRes = op.getResult();
     TensorType oldTensorType = opRes.getType();
-    TensorType newTypeShape = TensorType::get(
+    TensorType newTypeShape = inType.cloneWith(
         SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
     auto reshapeA = rewriter.create<Static::ReshapeOp>(
         loc, newTypeShape.cloneWith(a.getType().getDtype()), a);
@@ -2499,7 +2493,7 @@ struct BroadcastReshapePattern
     }
 
     TensorType scalarType =
-        TensorType::get(SmallVector<int64_t>{}, inType.getElementType());
+        inType.cloneWith(SmallVector<int64_t>{}, inType.getElementType());
     auto squash =
         rewriter.create<Static::ReshapeOp>(op.getLoc(), scalarType, input);
 
@@ -3236,9 +3230,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
     newReshapeShape[newSplitAxis] = rewriter.getDimAttr(
         llvm::cast<IntegerAttr>(newReshapeShape[newSplitAxis]).getSInt() *
         op->getNumResults());
-    auto newReshapeType = TensorType::get(
-        ShapeAttr::get(newReshapeShape, rewriter.getType<MOSH::ShapeType>()),
-        firstReshapeType.getDtype());
+    auto newReshapeType = firstReshapeType.cloneWith(newReshapeShape);
     auto newReshape =
         rewriter.create<ReshapeOpType>(loc, newReshapeType, op.getInput())
             .getResult();
@@ -3389,7 +3381,9 @@ struct SinkBroadcastsThroughReduction
                       loc,
                       TensorType::get(
                           ArrayRef<int64_t>({}),
-                          IntegerType::get(ctx, 64, IntegerType::Unsigned)),
+                          IntegerType::get(ctx, 64, IntegerType::Unsigned),
+                          input.getType().getDeviceRef(),
+                          input.getType().getMetadata()),
                       dimIndex);
                   auto dimCast = rewriter.create<CastOp>(
                       loc, dimT, bcastOpInput.getType().getDtype());
@@ -3411,7 +3405,8 @@ struct SinkBroadcastsThroughReduction
                 })
                 .Case<ArgMinOp, ArgMaxOp>([&](auto op) {
                   // For arg_min / arg_max, the output becomes a tensor of 0s.
-                  auto v0 = rewriter.create<MO::ConstantOp>(loc, 0);
+                  auto v0 = rewriter.create<MO::ConstantOp>(
+                      loc, 0, input.getType().getDeviceRef());
                   TensorValue v0Cast = rewriter.create<CastOp>(
                       loc, v0, op.getResult().getType().getDtype());
                   return v0Cast;
@@ -3598,21 +3593,23 @@ struct SinkBroadcastsThroughLinalgBandPartOp
 
 template <typename T>
 static inline ErrorOr<MO::ConstantOp>
-createScalarConstantOpOfType(M::DType dtype, T value,
+createScalarConstantOpOfType(TensorType type, T value,
                              DeviceAwareRewriter &rewriter, Location loc) {
-  return dtype.dispatch<ErrorOr<MO::ConstantOp>>()
-      .template when<M::DType::si32>([&]() {
-        return rewriter.create<MO::ConstantOp>(loc, int32_t(value));
-      })
-      .template when<M::DType::si64>([&]() {
-        return rewriter.create<MO::ConstantOp>(loc, int64_t(value));
-      })
+  auto createConstantOp = [&](auto v) {
+    return rewriter.create<MO::ConstantOp>(loc, v, type.getDeviceRef());
+  };
+  return type.getDtype()
+      .dispatch<ErrorOr<MO::ConstantOp>>()
+      .template when<M::DType::si32>(
+          [&]() { return createConstantOp(int32_t(value)); })
+      .template when<M::DType::si64>(
+          [&]() { return createConstantOp(int64_t(value)); })
       .template when<M::DType::f32>(
-          [&]() { return rewriter.create<MO::ConstantOp>(loc, float(value)); })
+          [&]() { return createConstantOp(float(value)); })
       .template when<M::DType::f64>(
-          [&]() { return rewriter.create<MO::ConstantOp>(loc, double(value)); })
+          [&]() { return createConstantOp(double(value)); })
       .template when<M::DType::kBool>(
-          [&]() { return rewriter.create<MO::ConstantOp>(loc, bool(value)); })
+          [&]() { return createConstantOp(bool(value)); })
       .otherwise([&]() { return Error("Unsupported dtype"); });
 }
 
@@ -3621,8 +3618,7 @@ static inline ErrorOr<Value>
 createBroadcastedScalarConstantOpOfType(TensorType bcastType, T value,
                                         DeviceAwareRewriter &rewriter,
                                         Location loc) {
-  auto cstErrOr =
-      createScalarConstantOpOfType(bcastType.getDtype(), value, rewriter, loc);
+  auto cstErrOr = createScalarConstantOpOfType(bcastType, value, rewriter, loc);
   if (cstErrOr.isError())
     return Error(cstErrOr.getError());
 
@@ -4628,9 +4624,9 @@ struct MathematicalSimplificationPowByFloatToPowByInt
     int bitWidth =
         std::abs(exponent) < std::numeric_limits<int32_t>::max() ? 32 : 64;
 
-    auto bcastIntType =
-        TensorType::get(powOp.getType().getShapeAttr(),
-                        rewriter.getIntegerType(bitWidth, true));
+    auto bcastIntType = TensorType::get(
+        powOp.getType().getShapeAttr(), rewriter.getIntegerType(bitWidth, true),
+        powOp.getType().getDeviceRef(), powOp.getType().getMetadata());
     auto newCst = createBroadcastedScalarConstantOpOfType(
         bcastIntType, int64_t(exponent), rewriter, powOp.getLoc());
     if (newCst.isError())

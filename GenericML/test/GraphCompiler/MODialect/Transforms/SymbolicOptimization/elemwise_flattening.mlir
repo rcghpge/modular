@@ -11,14 +11,14 @@ mo.graph @erf(%arg0 : !mo.tensor<[64, 1], f32>) -> !mo.tensor<[64, 1], f32>{
 // CHECK: }
 }
 
-// CHECK: mo.graph @erf_with_device(%[[ARG0:.*]]: !mo.tensor<[64, 1], f32>) -> !mo.tensor<[64, 1], f32> {
-mo.graph @erf_with_device(%arg0 : !mo.tensor<[64, 1], f32>) -> !mo.tensor<[64, 1], f32>{
-  // CHECK: %[[VAL0:.*]] = mo.static.reshape(%[[ARG0]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[64, 1], f32> -> !mo.tensor<[64], f32>
-  // CHECK: %[[VAL1:.*]] = mo.erf(%[[VAL0]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[64], f32>
-  // CHECK: %[[VAL2:.*]] = mo.static.reshape(%[[VAL1]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[64], f32> -> !mo.tensor<[64, 1], f32>
-  %out = mo.erf(%arg0) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[64, 1], f32>
-  // CHECK: mo.output %[[VAL2]] : !mo.tensor<[64, 1], f32>
-  mo.output %out : !mo.tensor<[64, 1], f32>
+// CHECK: mo.graph @erf_with_device(%[[ARG0:.*]]: !mo.tensor<[64, 1], f32, dev:0>) -> !mo.tensor<[64, 1], f32, dev:0> {
+mo.graph @erf_with_device(%arg0 : !mo.tensor<[64, 1], f32, dev:0>) -> !mo.tensor<[64, 1], f32, dev:0>{
+  // CHECK: %[[VAL0:.*]] = mo.static.reshape(%[[ARG0]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[64, 1], f32, dev:0> -> !mo.tensor<[64], f32, dev:0>
+  // CHECK: %[[VAL1:.*]] = mo.erf(%[[VAL0]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[64], f32, dev:0>
+  // CHECK: %[[VAL2:.*]] = mo.static.reshape(%[[VAL1]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[64], f32, dev:0> -> !mo.tensor<[64, 1], f32, dev:0>
+  %out = mo.erf(%arg0) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[64, 1], f32, dev:0>
+  // CHECK: mo.output %[[VAL2]] : !mo.tensor<[64, 1], f32, dev:0>
+  mo.output %out : !mo.tensor<[64, 1], f32, dev:0>
 // CHECK: }
 }
 
