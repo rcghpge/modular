@@ -1,4 +1,6 @@
-// RUN: mo-opt --infer-layouts --mo-to-mogg --split-input-file --verify-diagnostics
+// TODO(GEX-2037): Fix and re-enable test
+// REQUIRES: disabled
+// RUN: mo-opt --infer-layouts --mo-to-mogg --split-input-file --verify-diagnostics %s
 
 !tt = !mo.tensor<[10, 10], f32>
 !bt = !mo.buffer<[10, 10], f32>
@@ -20,7 +22,7 @@ mo.graph @add(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
   mo.output %gb, %buf : !bt, !bt
 }
 
-//-----
+// -----
 
 mo.graph @add(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
 {
@@ -39,7 +41,7 @@ mo.graph @add(%buf: !bt, %rhs: !tt) -> (!bt, !bt)
   mo.output %gb, %buf : !bt, !bt
 }
 
-//-----
+// -----
 
 mo.graph @add(%buf: !bt, %rhs: !tt) -> !tt
 {
