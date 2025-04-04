@@ -517,6 +517,40 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CallGraphOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CallGraphOp::verify() {
+  // We don't need a symbol table because we can rely on the graph ops are all
+  // top level ops within the module
+  auto moduleOp = getOperation()->getParentOfType<ModuleOp>();
+  if (!moduleOp)
+    return emitError() << "CallGraphOp must be within a ModuleOp";
+  auto allGraphs = moduleOp.getOps<GraphOp>();
+  auto it = llvm::find_if(allGraphs, [&](GraphOp graphOp) {
+    return graphOp.getName() == getSymbol().getLeafReference();
+  });
+
+  if (it == allGraphs.end())
+    return emitError() << "Cannot find graph for symbol " << getSymbol();
+
+  GraphOp graphOp = *it;
+  if (!graphOp.getIsSubgraph())
+    return emitError() << "Only subgraphs can be called";
+
+  for (auto [idx, typePair] : llvm::enumerate(llvm::zip(
+           graphOp.getBody().getArgumentTypes(), getOperandTypes()))) {
+    auto [graphArgType, operandType] = typePair;
+    if (graphArgType != operandType)
+      return emitError() << "Subgraph " << graphOp.getName()
+                         << " has wrong type for argument " << idx << " ("
+                         << graphArgType << " vs " << operandType << ")";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
 
@@ -668,11 +702,15 @@ getParamDeclsFromShapes(TypeRange types) {
 }
 
 void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
-                    TypeRange inputTypes, TypeRange resultTypes) {
+                    TypeRange inputTypes, TypeRange resultTypes,
+                    bool isSubgraph) {
   // Below we basically inline and specialize `buildWithEntryBlock`, which
   // doesn't work because we use `signature` and not `function_type`.
   state.addAttribute(getNameAttrName(state.name), builder.getStringAttr(name));
-
+  if (isSubgraph) {
+    state.addAttribute(getIsSubgraphAttrName(state.name),
+                       builder.getUnitAttr());
+  }
   // Add signature attribute
   FunctionType funcType = builder.getFunctionType(inputTypes, resultTypes);
   auto sig = KGEN::FuncTypeGeneratorType::get(/*inputParamTypes=*/{}, funcType);

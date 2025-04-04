@@ -170,7 +170,8 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$inputParams,
     KGEN_ParamDeclArrayAttr:$resultParams,
-    IntProp<"int64_t">:$counter
+    IntProp<"int64_t">:$counter,
+    UnitAttr:$isSubgraph
   );
   let regions = (region SizedRegion<1>:$body);
 
@@ -233,12 +234,48 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     OpBuilder<(ins
       "StringRef":$name,
       "TypeRange":$inputTypes,
-      "TypeRange":$resultTypes
+      "TypeRange":$resultTypes,
+      CArg<"bool", "false">:$isSubgraph
     )>,
   ];
 
   let hasVerifier = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// CallGraphOp
+//===----------------------------------------------------------------------===//
+
+def MO_CallGraphOp : MO_ControlOp<"call_graph", [
+  HasParent<"MO::GraphOp">,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+]> {
+  let summary = "Call a computation graph";
+  let description = [{
+    This op calls a computation graph.
+
+    Example:
+
+    ```mlir
+      %res = mo.call_graph {symbol = "gelu"}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
+    ```
+  }];
+  
+  let arguments = (ins
+    Variadic<AnyType>:$operands,
+    SymbolRefAttr:$symbol,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs Variadic<AnyType>:$results);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)` `:`
+       functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
 
 //===----------------------------------------------------------------------===//
 // OutputOp
