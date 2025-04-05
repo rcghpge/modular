@@ -39,7 +39,7 @@ class MEFFileReader : public MEFReader {
 public:
   MEFFileReader(ArrayRef<uint8_t> file, MEFFileImpl &mefFile)
       : MEFReader(file,
-                  [=](Error message) { this->error = std::move(message); }),
+                  [this](Error message) { this->error = std::move(message); }),
         mefFile(mefFile) {}
 
   std::optional<Error> &getError() { return error; }
@@ -76,7 +76,7 @@ bool MEFFileReader::readFileContents() {
       return true;
   }
 
-  MEFReader stringReader(mefFile.strings, [=](Error message) {
+  MEFReader stringReader(mefFile.strings, [this](Error message) {
     this->error = std::move(message);
   });
 

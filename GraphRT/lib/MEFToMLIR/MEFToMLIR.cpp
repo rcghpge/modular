@@ -102,7 +102,7 @@ public:
 
   MEFReader getReaderFor(ArrayRef<uint8_t> data) {
     return MEFReader(data,
-                     [=](Error message) { emitError(std::move(message)); });
+                     [this](Error message) { emitError(std::move(message)); });
   }
 
 private:
