@@ -511,7 +511,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     workQueue.pop_back();
 
     // already visited
-    if (constSubgraphs.findValue(op) != constSubgraphs.end())
+    if (constSubgraphs.contains(op))
       continue;
 
     // Value is already non-const, skip to next on work queue.
@@ -533,7 +533,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
         foundNonConst = true;
         break;
       }
-      if (constSubgraphs.findValue(definition) == constSubgraphs.end()) {
+      if (!constSubgraphs.contains(definition)) {
         // Operand has not been visited yet.
         unvisitedOperands.insert(definition);
       }
@@ -573,10 +573,10 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
   SmallVector<Subgraph> subgraphs;
   for (auto it = constSubgraphs.begin(), end = constSubgraphs.end(); it != end;
        ++it) {
-    if (!it->isLeader())
+    if (!(*it)->isLeader())
       continue;
 
-    llvm::SetVector<Operation *> members(constSubgraphs.member_begin(it),
+    llvm::SetVector<Operation *> members(constSubgraphs.member_begin(*(*it)),
                                          constSubgraphs.member_end());
     Subgraph subgraph(members);
     // Remove any mo.list.create that are the output of the op as they will get

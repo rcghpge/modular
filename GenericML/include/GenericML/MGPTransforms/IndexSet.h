@@ -188,11 +188,11 @@ public:
     Set result = emptySet();
     for (auto itr = equivalence.begin(), e = equivalence.end(); itr != e;
          ++itr) {
-      if (itr->getData() == 0)
+      if ((*itr)->getData() == 0)
         // Ignore distinguished value.
         continue;
-      if (itr->isLeader())
-        result.set(itr->getData());
+      if ((*itr)->isLeader())
+        result.set((*itr)->getData());
     }
     return result;
   }

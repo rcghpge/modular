@@ -105,10 +105,11 @@ static SmallVector<Subgraph> getSubgraphComponents(const Subgraph &subgraph) {
   SmallVector<Subgraph> answer;
   for (auto it = newSubgraphs.begin(), end = newSubgraphs.end(); it != end;
        ++it) {
-    if (!it->isLeader())
+    if (!(*it)->isLeader())
       continue;
+
     answer.emplace_back(llvm::SetVector<Operation *>{
-        newSubgraphs.member_begin(it), newSubgraphs.member_end()});
+        newSubgraphs.member_begin(*(*it)), newSubgraphs.member_end()});
   }
   return answer;
 }
