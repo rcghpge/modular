@@ -2904,7 +2904,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceInput>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevice"]>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Splitting operation";
   let description = [{
