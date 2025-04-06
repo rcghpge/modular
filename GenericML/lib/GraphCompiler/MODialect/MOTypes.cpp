@@ -265,7 +265,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
 
   // The device specification used to reside in the metadata dictionary,
   // sanity check that the tensor type is not using the old format.
-  if (metadata.contains("device"))
+  if (metadata && metadata.contains("device"))
     return emitError()
            << "device attribute no longer resides in the metadata dictionary";
 
@@ -330,6 +330,15 @@ TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
   return get(ctx, shapeAttr, dtype, deviceRef, metadata);
 }
 
+TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  TypedAttr shapeAttr, DType dtype,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
+    return {};
+  return TensorType::get(shapeAttr, dtype, deviceRef, metadata);
+}
+
 TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
@@ -339,11 +348,37 @@ TensorType TensorType::get(TypedAttr shapeAttr, Type elementType,
   return get(shapeAttr, *errOrDType, deviceRef, metadata);
 }
 
+TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  TypedAttr shapeAttr, Type elementType,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  ErrorOr<DType> dtype = fromMLIRType(elementType);
+  if (!dtype) {
+    emitError() << dtype.takeError();
+    return {};
+  }
+  if (failed(verify(emitError, shapeAttr, *dtype, deviceRef, metadata)))
+    return {};
+  return TensorType::get(shapeAttr, *dtype, deviceRef, metadata);
+}
+
 TensorType TensorType::get(ArrayRef<int64_t> shape, Type elementType,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
   auto newShape = ShapeAttr::get(shape, ShapeType::get(ctx));
   return get(newShape, elementType, deviceRef, metadata);
+}
+
+TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  ArrayRef<int64_t> shape, Type elementType,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  auto ctx = elementType.getContext();
+  auto shapeAttr = ShapeAttr::getChecked(emitError, shape, ShapeType::get(ctx));
+  if (!shapeAttr)
+    return {};
+  return TensorType::getChecked(emitError, shapeAttr, elementType, deviceRef,
+                                metadata);
 }
 
 TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
@@ -353,6 +388,18 @@ TensorType TensorType::get(ArrayRef<TypedAttr> shape, Type elementType,
   return get(newShape, elementType, deviceRef, metadata);
 }
 
+TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  ArrayRef<TypedAttr> shape, Type elementType,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  auto ctx = elementType.getContext();
+  auto shapeAttr = ShapeAttr::getChecked(emitError, shape, ShapeType::get(ctx));
+  if (!shapeAttr)
+    return {};
+  return TensorType::getChecked(emitError, shapeAttr, elementType, deviceRef,
+                                metadata);
+}
+
 TensorType TensorType::get(MLIRContext *context, ArrayRef<int64_t> shape,
                            DType dtype, DeviceRefAttr deviceRef,
                            DictionaryAttr metadata) {
@@ -360,11 +407,36 @@ TensorType TensorType::get(MLIRContext *context, ArrayRef<int64_t> shape,
   return get(newShape, dtype, deviceRef, metadata);
 }
 
+TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  MLIRContext *context, ArrayRef<int64_t> shape,
+                                  DType dtype, DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  auto shapeAttr =
+      ShapeAttr::getChecked(emitError, shape, ShapeType::get(context));
+  if (!shapeAttr)
+    return {};
+  return TensorType::getChecked(emitError, shapeAttr, dtype, deviceRef,
+                                metadata);
+}
+
 TensorType TensorType::get(MLIRContext *context, ArrayRef<TypedAttr> shape,
                            DType dtype, DeviceRefAttr deviceRef,
                            DictionaryAttr metadata) {
   auto newShape = ShapeAttr::get(shape, ShapeType::get(context));
   return get(newShape, dtype, deviceRef, metadata);
+}
+
+TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  MLIRContext *context,
+                                  ArrayRef<TypedAttr> shape, DType dtype,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  auto shapeAttr =
+      ShapeAttr::getChecked(emitError, shape, ShapeType::get(context));
+  if (!shapeAttr)
+    return {};
+  return TensorType::getChecked(emitError, shapeAttr, dtype, deviceRef,
+                                metadata);
 }
 
 TensorType TensorType::getScalarType(Type elementType, DeviceRefAttr deviceRef,
@@ -688,7 +760,7 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
 
   // The device specification used to reside in the metadata dictionary,
   // sanity check that the buffer type is not using the old format.
-  if (metadata.contains("device"))
+  if (metadata && metadata.contains("device"))
     return emitError()
            << "device attribute no longer resides in the metadata dictionary";
 
@@ -703,6 +775,15 @@ BufferType BufferType::get(TypedAttr shapeAttr, DType dtype,
   return get(ctx, shapeAttr, dtype, deviceRef, metadata);
 }
 
+BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  TypedAttr shapeAttr, DType dtype,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
+    return {};
+  return BufferType::get(shapeAttr, dtype, deviceRef, metadata);
+}
+
 BufferType BufferType::get(TypedAttr shapeAttr, Type elementType,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   ErrorOr<DType> errOrDType = fromMLIRType(elementType);
@@ -712,6 +793,20 @@ BufferType BufferType::get(TypedAttr shapeAttr, Type elementType,
   return get(shapeAttr, *errOrDType, deviceRef, metadata);
 }
 
+BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  TypedAttr shapeAttr, Type elementType,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  ErrorOr<DType> dtype = fromMLIRType(elementType);
+  if (!dtype) {
+    emitError() << dtype.takeError();
+    return {};
+  }
+  if (failed(verify(emitError, shapeAttr, *dtype, deviceRef, metadata)))
+    return {};
+  return BufferType::get(shapeAttr, *dtype, deviceRef, metadata);
+}
+
 BufferType BufferType::get(ArrayRef<TypedAttr> shape, Type elementType,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
   auto ctx = elementType.getContext();
@@ -719,9 +814,29 @@ BufferType BufferType::get(ArrayRef<TypedAttr> shape, Type elementType,
   return get(newShape, elementType, deviceRef, metadata);
 }
 
+BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  ArrayRef<TypedAttr> shape, Type elementType,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  auto ctx = elementType.getContext();
+  auto shapeAttr = ShapeAttr::getChecked(emitError, shape, ShapeType::get(ctx));
+  if (!shapeAttr)
+    return {};
+  return BufferType::getChecked(emitError, shapeAttr, elementType, deviceRef,
+                                metadata);
+}
+
 BufferType BufferType::get(TensorType tensorType) {
   return get(tensorType.getShapeAttr(), tensorType.getElementType(),
              tensorType.getDeviceRef(), tensorType.getMetadata());
+}
+
+BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  TensorType tensorType) {
+  if (failed(verify(emitError, tensorType.getShapeAttr(), tensorType.getDtype(),
+                    tensorType.getDeviceRef(), tensorType.getMetadata())))
+    return {};
+  return BufferType::get(tensorType);
 }
 
 TensorType BufferType::toTensorType(BufferType ty) {

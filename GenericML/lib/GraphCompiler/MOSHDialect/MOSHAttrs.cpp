@@ -166,24 +166,44 @@ IntegerAttr ShapeAttr::getDim(MLIRContext *ctx, int64_t value) {
   return IntegerAttr::get(getDimType(ctx), value);
 }
 
-ShapeAttr ShapeAttr::get(ArrayRef<int64_t> values, ShapeType type) {
-  auto idxTy = getDimType(type.getContext());
-  SmallVector<TypedAttr> newValues;
-  newValues.reserve(values.size());
+SmallVector<TypedAttr> dimAttrs(MLIRContext *context,
+                                ArrayRef<int64_t> values) {
+  auto idxTy = ShapeAttr::getDimType(context);
+  SmallVector<TypedAttr> attrs;
+  attrs.reserve(values.size());
 
   for (auto v : values) {
     if (mlir::ShapedType::isDynamic(v))
-      newValues.push_back(KGEN::UnknownAttr::get(idxTy));
+      attrs.push_back(KGEN::UnknownAttr::get(idxTy));
     else
-      newValues.push_back(IntegerAttr::get(idxTy, v));
+      attrs.push_back(IntegerAttr::get(idxTy, v));
   }
-  return get(type.getContext(), newValues, type);
+  return attrs;
+}
+
+ShapeAttr ShapeAttr::get(ArrayRef<int64_t> values, ShapeType type) {
+  auto ctx = type.getContext();
+  return get(ctx, dimAttrs(ctx, values), type);
+}
+
+ShapeAttr ShapeAttr::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                ArrayRef<int64_t> values, ShapeType type) {
+  auto ctx = type.getContext();
+  auto dims = dimAttrs(ctx, values);
+  return ShapeAttr::getChecked(emitError, dims, type);
 }
 
 ShapeAttr ShapeAttr::get(IntArrayElementsAttr intDims, ShapeType type) {
   SmallVector<int64_t> rawDims = llvm::map_to_vector(
       intDims.getValues(), [](const APInt &dim) { return dim.getSExtValue(); });
   return get(rawDims, type);
+}
+
+ShapeAttr ShapeAttr::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                IntArrayElementsAttr intDims, ShapeType type) {
+  auto ctx = type.getContext();
+  auto dims = dimAttrs(ctx, intDims.asArrayRef<int64_t>());
+  return ShapeAttr::getChecked(emitError, dims, type);
 }
 
 bool ShapeAttr::isConstant() const {

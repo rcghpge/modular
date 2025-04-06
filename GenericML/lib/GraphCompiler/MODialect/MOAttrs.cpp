@@ -40,6 +40,14 @@ LayoutAttr LayoutAttr::get(MLIRContext *ctx, StringRef formatStr) {
   return get(ctx, StringAttr::get(ctx, formatStr));
 }
 
+LayoutAttr LayoutAttr::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  MLIRContext *ctx, StringRef formatStr) {
+  auto format = StringAttr::get(ctx, formatStr);
+  if (failed(verify(emitError, format)))
+    return {};
+  return get(ctx, format);
+}
+
 Attribute LayoutAttr::parse(AsmParser &p, Type t) {
   // parse '<'
   if (p.parseLess())
