@@ -246,7 +246,7 @@ def ModuleLoadPlaceholderOp : MGP_Op<"module.load.placeholder"> {
 //===----------------------------------------------------------------------===//
 
 def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
       "getLiftableAttributes",
       "getIgnorableAttributes"
@@ -322,7 +322,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    InferTypeOpAdaptor
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
                 "given device.";
@@ -673,7 +673,7 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 // BufferPlanOp
 //===----------------------------------------------------------------------===//
 def BufferPlanOp : MGP_Op<"buffer.plan", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    InferTypeOpAdaptor
 ]> {
   let summary = "Runtime memory planning for buffers";
   let description = [{
@@ -711,7 +711,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
 
 def BufferSliceOp : MGP_Op<"buffer.slice", [
     Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
 ]> {
@@ -761,7 +761,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 
 def BufferToIndexOp : MGP_Op<"buffer.to_index", [
     Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
   let summary = "Returns contents of the buffer to an `index`";
   let description = [{
@@ -791,7 +791,9 @@ def BufferToIndexOp : MGP_Op<"buffer.to_index", [
 // BufferToBoolOp
 //===----------------------------------------------------------------------===//
 
-def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool"> {
+def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
   let summary = "Returns contents of a 1-byte buffer as an i1.";
   let description = [{
     Returns contents of a one byte buffer as an i1.

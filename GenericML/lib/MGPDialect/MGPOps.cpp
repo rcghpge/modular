@@ -344,14 +344,10 @@ LogicalResult CpuTensorSpecCreateOp::verify() {
 }
 
 LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  auto rawDimsAttr = dyn_cast_if_present<IntArrayElementsAttr>(
-      attributes.get(getARawDimsAttrName(name)));
-  auto rawDTypeAttr = dyn_cast_if_present<IntegerAttr>(
-      attributes.get(getBRawDTypeAttrName(name)));
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto rawDimsAttr = adaptor.getARawDimsAttr();
+  auto rawDTypeAttr = adaptor.getBRawDTypeAttr();
   ASSERT_STREAM(rawDimsAttr && rawDTypeAttr, << "mismatched operand type");
   inferredReturnTypes.emplace_back(
       TensorSpecType::get(rawDimsAttr, rawDTypeAttr));
@@ -505,13 +501,11 @@ LogicalResult TensorExtractBufferOp::verify() {
 }
 
 LogicalResult TensorExtractBufferOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  auto tensorType = dyn_cast<DeviceTensorType>(operands[0].getType());
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto tensorType = dyn_cast<DeviceTensorType>(adaptor.getTensor().getType());
   if (!tensorType) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
+    return mlir::emitError(location.value_or(adaptor.getTensor().getLoc()),
                            "expected tensor operand.");
   }
   inferredReturnTypes.emplace_back(DeviceBufferType::get(tensorType));
@@ -545,13 +539,11 @@ LogicalResult TensorExtractTensorSpecOp::verify() {
 }
 
 LogicalResult TensorExtractTensorSpecOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  auto tensorType = dyn_cast<DeviceTensorType>(operands[0].getType());
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto tensorType = dyn_cast<DeviceTensorType>(adaptor.getTensor().getType());
   if (!tensorType) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
+    return mlir::emitError(location.value_or(adaptor.getTensor().getLoc()),
                            "expected tensor operand.");
   }
   inferredReturnTypes.emplace_back(tensorType.getTensorSpec());
@@ -651,11 +643,12 @@ bool ListCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 // ListGetOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ListGetOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  Type inputListElemTy = cast<ListType>(operands[0].getType()).getElementType();
+LogicalResult
+ListGetOp::inferReturnTypes(MLIRContext *context,
+                            std::optional<Location> location, Adaptor adaptor,
+                            SmallVectorImpl<Type> &inferredReturnTypes) {
+  Type inputListElemTy =
+      cast<ListType>(adaptor.getInput().getType()).getElementType();
   inferredReturnTypes.emplace_back(inputListElemTy);
   return success();
 }
@@ -809,15 +802,12 @@ LogicalResult GuardOp::verify() {
   return success();
 }
 
-LogicalResult GuardOp::inferReturnTypes(
-    ::mlir::MLIRContext *context, ::std::optional<::mlir::Location> location,
-    ::mlir::ValueRange operands, ::mlir::DictionaryAttr attributes,
-    ::mlir::OpaqueProperties properties, ::mlir::RegionRange regions,
-    ::llvm::SmallVectorImpl<::mlir::Type> &inferredReturnTypes) {
-
-  for (Value val : llvm::drop_begin(operands))
-    inferredReturnTypes.push_back(val.getType());
-
+LogicalResult
+GuardOp::inferReturnTypes(MLIRContext *context,
+                          std::optional<Location> location, Adaptor adaptor,
+                          SmallVectorImpl<Type> &inferredReturnTypes) {
+  TypeRange inputTypes = adaptor.getInputs().getTypes();
+  inferredReturnTypes.append(inputTypes.begin(), inputTypes.end());
   return success();
 }
 

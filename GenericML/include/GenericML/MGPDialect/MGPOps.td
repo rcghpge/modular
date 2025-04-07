@@ -38,7 +38,7 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 def BufferConstantOp : MGP_Op<"buffer.constant", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
       "getLiftableAttributes",
       "getIgnorableAttributes"
@@ -122,7 +122,7 @@ def ContextCreateOp : MGP_Op<"context.create"> {
 
 def TensorCreateOp : MGP_Op<"tensor.create", [
     Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
     DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
@@ -164,7 +164,7 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
 
 def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
     Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
 ]> {
@@ -199,7 +199,7 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
 
 def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
     Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpAdaptor,
 ]> {
   let summary = "Extracts the `!mgp.tensor_spec` from a `!mgp.tensor`.";
   let description = [{
@@ -229,8 +229,9 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 // CpuTensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateOp : MGP_Op<"tensor_spec.create", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def CpuTensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
+  Pure, InferTypeOpAdaptor
+]> {
   let summary = [{
     Creates a CPU tensor spec from a mix of runtime and static dimensions and
     a statically known dtype.
@@ -282,7 +283,9 @@ def CpuTensorSpecCreateOp : MGP_Op<"tensor_spec.create", [Pure,
 //===----------------------------------------------------------------------===//
 
 def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
-    Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+]> {
   let summary = [{
     Return the dimension of the tensor_spec at the specified axis.
   ]};
@@ -464,7 +467,7 @@ def ListCreateOp : MGP_Op<"list.create", [
 def MGP_ListGetOp : MGP_Op<"list.get", [
   // The retrieved element is shallow copied
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
 ]> {
   let summary = "List get Operation.";
   let description = [{
@@ -586,7 +589,7 @@ def MGP_ListSliceOp : MGP_Op<"list.slice", [
 //===----------------------------------------------------------------------===//
 
 def GuardOp : MGP_Op<"guard", [
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
   DeclareOpInterfaceMethods<GRTMayAliasInterface>,
 ]>
 {

@@ -30,21 +30,9 @@ using namespace MGP;
 
 /// Assigns to device from attribute with name in attrs. Assigns <"cpu", 0>
 /// if no such attribute.
-static LogicalResult getDeviceAttrOrDefault(Location location,
-                                            DictionaryAttr attributes,
-                                            StringAttr name,
-                                            DeviceRefAttr &device) {
-  if (Attribute nameInDictAttr = attributes.get(name); !nameInDictAttr) {
-    device = DeviceRefAttr::getDefault(attributes.getContext());
-  } else {
-    device = dyn_cast<DeviceRefAttr>(nameInDictAttr);
-    if (!device) {
-      return mlir::emitError(location,
-                             "expected an #M.device_ref for attribute '")
-             << name << "'";
-    }
-  }
-  return success();
+static void getDeviceAttrOrDefault(MLIRContext *ctx, DeviceRefAttr &device) {
+  if (!device)
+    device = DeviceRefAttr::getDefault(ctx);
 }
 
 /// Returns the raw alignment for an elements attribute.
@@ -98,14 +86,10 @@ LogicalResult BufferConstantExternalOp::verify() {
 }
 
 LogicalResult BufferConstantExternalOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(
-          location.value_or(operands[0].getLoc()), attributes,
-          getEDeviceAttrName(/*name=*/{getOperationName(), context}), device)))
-    return failure();
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  DeviceRefAttr device = adaptor.getEDeviceAttr();
+  getDeviceAttrOrDefault(context, device);
   inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
   return success();
 }
@@ -159,9 +143,8 @@ LogicalResult BufferConstantOp::verify() {
 }
 
 LogicalResult BufferConstantOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
   DeviceRefAttr device = DeviceRefAttr::getDefault(context);
   inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
   return success();
@@ -188,15 +171,10 @@ LogicalResult BufferAllocOp::verify() {
 }
 
 LogicalResult BufferAllocOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  DeviceRefAttr device;
-  if (failed(getDeviceAttrOrDefault(location.value_or(operands[0].getLoc()),
-                                    attributes, getCDeviceAttrName(name),
-                                    device)))
-    return failure();
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  DeviceRefAttr device = adaptor.getCDevice();
+  getDeviceAttrOrDefault(context, device);
   inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
   return success();
 }
@@ -306,10 +284,9 @@ BufferConcatOp::getInOutSemantics(size_t index) {
 LogicalResult BufferSliceOp::verify() { return success(); }
 
 LogicalResult BufferSliceOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto inBufferTy = dyn_cast<DeviceBufferType>(operands[0].getType());
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto inBufferTy = dyn_cast<DeviceBufferType>(adaptor.getInBuffer().getType());
   if (!inBufferTy)
     return failure();
   inferredReturnTypes.emplace_back(
@@ -361,9 +338,9 @@ LogicalResult BufferPlanOp::verify() {
 }
 
 LogicalResult BufferPlanOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  ValueRange operands = adaptor.getOperands();
   // All outputs are index
   inferredReturnTypes.reserve(operands.size() + 1);
   for (size_t i = 0; i < operands.size() + 1; ++i)
@@ -389,18 +366,17 @@ LogicalResult TensorCreateOp::verify() {
 }
 
 LogicalResult TensorCreateOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    mlir::RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  mlir::OperationName name(getOperationName(), context);
-  auto tensorSpecType = dyn_cast<TensorSpecType>(operands[2].getType());
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto tensorSpecType =
+      dyn_cast<TensorSpecType>(adaptor.getTensorSpec().getType());
   if (!tensorSpecType) {
-    return mlir::emitError(location.value_or(operands[0].getLoc()),
+    return mlir::emitError(location.value_or(adaptor.getInChain().getLoc()),
                            "expected tensor spec operand.");
   }
 
   DeviceRefAttr device =
-      cast<DeviceBufferType>(operands[1].getType()).getDevice();
+      cast<DeviceBufferType>(adaptor.getBuffer().getType()).getDevice();
   inferredReturnTypes.emplace_back(
       DeviceTensorType::get(device, tensorSpecType));
   return success();
