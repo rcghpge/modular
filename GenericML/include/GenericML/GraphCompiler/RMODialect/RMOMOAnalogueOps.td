@@ -35,23 +35,26 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
         SmallVector<SmallVector<KGEN::ParamDeclAttr>> moInputParamDecls;
 
         // Rebind values to remove any possible `?`
-        SmallVector<Value> reboundInputs = rebindUnknownShapeInValues(inputValues, graphOp, $_builder);
+        SmallVector<Value> reboundInputs =
+            rebindUnknownShapeInValues(inputValues, graphOp, $_builder);
 
-        inferMOTypesImpl(odsState.getContext(), graphOp, ValueRange{reboundInputs}, std::nullopt, _moOperandTypes,
-                                moResultTypes, moInputParamDecls, moOutputParamDecls);
+        inferMOTypesImpl(odsState.getContext(), graphOp, ValueRange{reboundInputs},
+                         std::nullopt, _moOperandTypes, moResultTypes,
+                         moInputParamDecls, moOutputParamDecls);
 
         // Flatten all decls to be used by the main operation
         SmallVector<KGEN::ParamDeclAttr> moOutputParamDeclsFlattened;
-        for (const auto& resultDecls: moOutputParamDecls) {
+        for (const auto &resultDecls : moOutputParamDecls) {
           moOutputParamDeclsFlattened.append(resultDecls);
         }
 
         // Call normal output type, input value builder
-        build($_builder, $_state, mlir::TypeRange{moResultTypes},
-                            reboundInputs);
+        build($_builder, $_state, mlir::TypeRange{moResultTypes}, reboundInputs);
 
         // Manually set outputParamDecls field
-        $_state.addAttribute(getOutputParamDeclsAttrName($_state.name), $_builder.getAttr<ParamDeclArrayAttr>(moOutputParamDeclsFlattened));
+        $_state.addAttribute(
+            getOutputParamDeclsAttrName($_state.name),
+            $_builder.getAttr<ParamDeclArrayAttr>(moOutputParamDeclsFlattened));
       }]
     >,
   ];
@@ -90,8 +93,8 @@ class RMO_MOAnaloguePureUnaryElementWiseOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
         MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
         std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
         SmallVectorImpl<Type> &moResultTypes,
@@ -111,8 +114,8 @@ class RMO_MOAnaloguePureUnaryExplicitOutputOp<string name, list<Trait> traits = 
     : RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
         MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
         std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
         SmallVectorImpl<Type> &moResultTypes,
@@ -132,8 +135,8 @@ class RMO_MOAnaloguePureBinaryElementWiseOp<string name, list<Trait> traits = []
     : RMO_MOAnaloguePureElementWiseOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
         MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
         std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
         SmallVectorImpl<Type> &moResultTypes,
@@ -332,8 +335,8 @@ def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
   let arguments = (ins MO_BooleanMask:$input, MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_BooleanMask:$result);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
         MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
         std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
         SmallVectorImpl<Type> &moResultTypes,
@@ -742,8 +745,8 @@ let arguments = (ins MO_Tensor:$input,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
       MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
       std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
       SmallVectorImpl<Type> &moResultTypes,
@@ -1321,8 +1324,8 @@ class RMO_MOAnaloguePureBinaryComparisonOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureComparisonOp<name, traits #  [AllDTypesMatch<["input_x", "input_y"]>]> {
   let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y, MO_ParamDecls:$outputParamDecls);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
         MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
         std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
         SmallVectorImpl<Type> &moResultTypes,
@@ -1601,8 +1604,8 @@ class RMO_MOAnaloguePureUnaryComparisonOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureComparisonOp<name, traits> {
   let arguments = (ins MO_Tensor:$input_x, MO_ParamDecls:$outputParamDecls);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
         MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
         std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
         SmallVectorImpl<Type> &moResultTypes,
@@ -1941,8 +1944,8 @@ class RMO_MOAnaloguePureTopKOp<string name> : RMO_MOAnaloguePureTensorOp<
   let results = (outs MO_Tensor:$values,
                       MO_I64Tensor:$indices);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
       MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
       std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
       SmallVectorImpl<Type> &moResultTypes,
@@ -2413,8 +2416,8 @@ let arguments = (ins MO_Tensor:$input,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
-  let extraClassDeclaration = [{
-    static void inferMOTypesImpl(
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
       MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
       std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
       SmallVectorImpl<Type> &moResultTypes,
