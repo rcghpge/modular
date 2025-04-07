@@ -50,7 +50,7 @@ def RMO_MOAnalogue : OpInterface<"MOAnalogue"> {
   }];
   let cppNamespace = "::M::RMO";
   let methods = [
-    StaticInterfaceMethod<"Given an RMO operator with an analogous MO "
+    InterfaceMethod<"Given an RMO operator with an analogous MO "
     "operation, return the input and output types of the analogous MO "
     "operation. These types should always pass the associated MO operation's "
     "verifier. Under the hood, the `rmoOperands` will be rebound to the given "
@@ -69,21 +69,24 @@ def RMO_MOAnalogue : OpInterface<"MOAnalogue"> {
 
       /*retTy=*/"void",
       /*methodName=*/"inferMOTypes",
-      /*args=*/(ins "::mlir::MLIRContext *":$context,
-                    "MO::GraphOp":$graphOp,
-                    "::mlir::ValueRange":$rmoOperands,
-                    "::mlir::DictionaryAttr":$rmoAttrs,
-                    "std::optional<::mlir::ValueRange>":$rmoResults,
+      /*args=*/(ins "MO::GraphOp":$graphOp,
                     "::llvm::SmallVectorImpl<::mlir::Type>&":$moOperandTypes,
                     "::llvm::SmallVectorImpl<::mlir::Type>&":$moResultTypes,
                     "::llvm::SmallVectorImpl<SmallVector<::M::KGEN::ParamDeclAttr>>&":$moInputParamDecls,
                     "::llvm::SmallVectorImpl<SmallVector<::M::KGEN::ParamDeclAttr>>&":$moOutputParamDecls),
       /*methodBody=*/ [{
+        typename ConcreteOp::Adaptor adaptor(
+            $_op->getOperands(),
+            $_op->getAttrDictionary(),
+            $_op->getPropertiesStorage(),
+            $_op->getRegions()
+        );
+
         ConcreteOp::inferMOTypesImpl(
-          context,
+          $_op->getContext(),
           graphOp,
-          typename ConcreteOp::Adaptor(rmoOperands, rmoAttrs),
-          rmoResults,
+          adaptor,
+          $_op->getResults(),
           moOperandTypes,
           moResultTypes,
           moInputParamDecls,

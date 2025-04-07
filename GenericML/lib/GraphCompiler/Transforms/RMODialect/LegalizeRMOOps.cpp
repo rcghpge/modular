@@ -138,9 +138,8 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
   SmallVector<Type> moOperandTypes, moResultTypes;
   SmallVector<SmallVector<KGEN::ParamDeclAttr>> moInputParamDecls;
   SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
-  op.inferMOTypes(op->getContext(), graphOp, op->getOperands(),
-                  op->getAttrDictionary(), op->getResults(), moOperandTypes,
-                  moResultTypes, moInputParamDecls, moOutputParamDecls);
+  op.inferMOTypes(graphOp, moOperandTypes, moResultTypes, moInputParamDecls,
+                  moOutputParamDecls);
 
   // Rebind inputs to what the MO op would expect
   SmallVector<Value> newOperands;
@@ -250,9 +249,8 @@ struct LegalizeMutableLoadOp : public OpRewritePattern<RMO::MOMutableLoadOp> {
     SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
 
     RMO::MOAnalogue rma = op;
-    rma.inferMOTypes(op->getContext(), graphOp, op->getOperands(),
-                     op->getAttrDictionary(), op->getResults(), moOperandTypes,
-                     moResultTypes, moInputParamDecls, moOutputParamDecls);
+    rma.inferMOTypes(graphOp, moOperandTypes, moResultTypes, moInputParamDecls,
+                     moOutputParamDecls);
 
     SmallVector<Value> moOperands;
     moOperands.push_back(op.getInChain());
@@ -286,10 +284,8 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
     SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
 
     RMO::MOAnalogue rmaOp = op;
-    rmaOp.inferMOTypes(op->getContext(), graphOp, op->getOperands(),
-                       op->getAttrDictionary(), op->getResults(),
-                       moOperandTypes, moResultTypes, moInputParamDecls,
-                       moOutputParamDecls);
+    rmaOp.inferMOTypes(graphOp, moOperandTypes, moResultTypes,
+                       moInputParamDecls, moOutputParamDecls);
 
     SmallVector<Value> moOperands;
 
@@ -325,10 +321,8 @@ struct LegalizeMutableStoreSliceOp
     SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
 
     RMO::MOAnalogue rmaOp = op;
-    rmaOp.inferMOTypes(op->getContext(), graphOp, op->getOperands(),
-                       op->getAttrDictionary(), op->getResults(),
-                       moOperandTypes, moResultTypes, moInputParamDecls,
-                       moOutputParamDecls);
+    rmaOp.inferMOTypes(graphOp, moOperandTypes, moResultTypes,
+                       moInputParamDecls, moOutputParamDecls);
 
     SmallVector<Value> moOperands;
 
