@@ -77,9 +77,6 @@ def RMODialect : Dialect {
     /// Register all dialect ops.
     void registerOperations();
   }];
-
-  // TODO: Remove this once dialects have been updated to use properties.
-  let usePropertiesForAttributes = 0;
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MODIALECT_TD

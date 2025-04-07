@@ -188,8 +188,8 @@ TEST_F(MatchersTest, Logging) {
   ASSERT_EQ(
       logMsg,
       "Hit a Dead End at OpPattern mo.sub didn't match MLIR OpType! Rewinding "
-      "Stack.\n %4 = \"mo.broadcast_to\"(%3, %1) {outputParamDecls = "
-      "#kgen<param.decls[]>} : (!mo.tensor<[1, 2], f32>, !mo.tensor<[3], "
+      "Stack.\n %4 = \"mo.broadcast_to\"(%3, %1) <{outputParamDecls = "
+      "#kgen<param.decls[]>}> : (!mo.tensor<[1, 2], f32>, !mo.tensor<[3], "
       "si32>) -> !mo.tensor<[1, 2], f32>\n  %5 = \"mo.sub\"(%4, %arg2) : "
       "(!mo.tensor<[1, 2], f32>, !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, "
       "2], f32>\n");
