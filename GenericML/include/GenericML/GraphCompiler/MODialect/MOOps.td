@@ -4463,7 +4463,8 @@ class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []>
       mnemonic, [
         DeclareOpInterfaceMethods<MO_Parameterization>,
         DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-        DeclareOpInterfaceMethods<MO_ShapeMaterialization>
+        DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+        DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>
       ] # traits> {
   let arguments = (ins MO_Tensor:$input,
                        MO_RankedScalarIndexTensor:$K,

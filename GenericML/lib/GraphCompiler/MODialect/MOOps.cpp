@@ -3178,7 +3178,23 @@ LogicalResult verifyOrderedKOp(OrderKOpT op) {
 
 LogicalResult TopKOp::verify() { return verifyOrderedKOp(*this); }
 
+DeviceRefAttr TopKOp::getOperandDevice(size_t index) {
+  return (index == getKMutable().getOperandNumber() ||
+          index == getAxisMutable().getOperandNumber() ||
+          index == getSortedMutable().getOperandNumber())
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
+}
+
 LogicalResult BottomKOp::verify() { return verifyOrderedKOp(*this); }
+
+DeviceRefAttr BottomKOp::getOperandDevice(size_t index) {
+  return (index == getKMutable().getOperandNumber() ||
+          index == getAxisMutable().getOperandNumber() ||
+          index == getSortedMutable().getOperandNumber())
+             ? MO::getHostDevice(getOperation())
+             : nullptr;
+}
 
 //===----------------------------------------------------------------------===//
 // ReshapeOp
