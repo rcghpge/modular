@@ -20,6 +20,13 @@ namespace M::MO {
 
 namespace {
 
+template <typename OpType>
+struct StaticizeAdaptor
+    : public OpType::template GenericAdaptor<ArrayRef<TypedAttr>> {
+  using Base = typename OpType::template GenericAdaptor<ArrayRef<TypedAttr>>;
+  using Base::Base;
+};
+
 /// Return whether the given attribute is a constant integer 1.
 bool isConstantOne(TypedAttr attr) {
   if (auto intAttr = dyn_cast<IntegerAttr>(attr))
@@ -41,16 +48,13 @@ bool isScalar(TensorType tensorTy) {
 /// Staticization implementation for `mo.reshape` and `mo.static.reshape`.
 static TypedAttr tryStaticizeReshapeLikeOp(TensorType inputTy,
                                            TensorType outputTy,
-                                           ArrayRef<TypedAttr> inputs,
+                                           TypedAttr inputAttr,
                                            ParamExprBuilder &b) {
   // Only handle ranked input and output shapes.
   auto inputShape = dyn_cast<ShapeAttr>(inputTy.getShapeAttr());
   auto outputShape = dyn_cast<ShapeAttr>(outputTy.getShapeAttr());
   if (!inputShape || !outputShape)
     return TypedAttr{};
-
-  // Grab staticized version of input.
-  TypedAttr inputAttr = inputs[0];
 
   // Handle [1] -> [] case.
   if (is1dTensorWithOneElem(inputTy) && isScalar(outputTy)) {
@@ -113,9 +117,10 @@ TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
 ///
 /// The result would be
 ///   ShapeAttr([func({N0, 1}), func({N1, 2}))
+template <typename OpTy>
 static ErrorOr<TypedAttr> tryStaticizeElemWiseOp(
     TensorType outTy, ArrayRef<TypedAttr> inputs, ParamExprBuilder &b,
-    llvm::function_ref<TypedAttr(ArrayRef<TypedAttr> scalarInputs)> func) {
+    llvm::function_ref<TypedAttr(StaticizeAdaptor<OpTy> adaptor)> func) {
   // Give up on dynamically ranked elementwise op.
   if (!outTy.hasRank())
     return TypedAttr{};
@@ -153,7 +158,9 @@ static ErrorOr<TypedAttr> tryStaticizeElemWiseOp(
     SmallVector<TypedAttr> ithIndexScalarInputs;
     for (ShapeAttr inputShapeAttr : inputShapeAttrs)
       ithIndexScalarInputs.push_back(inputShapeAttr[i]);
-    outVals.push_back(func(ithIndexScalarInputs));
+
+    StaticizeAdaptor<OpTy> adaptor(ithIndexScalarInputs);
+    outVals.push_back(func(adaptor));
   }
   return b.getShapeAttr(outVals);
 }
@@ -162,10 +169,11 @@ static ErrorOr<TypedAttr> tryStaticizeElemWiseOp(
 
 ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                   ParamExprBuilder &b) {
+  StaticizeAdaptor<BroadcastShapeOp> adaptor(inputs);
 
   // Requires inputs to be lists of param exprs.
-  auto lhsShapeAttr = dyn_cast<ShapeAttr>(inputs[0]);
-  auto rhsShapeAttr = dyn_cast<ShapeAttr>(inputs[1]);
+  auto lhsShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputX());
+  auto rhsShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputY());
   if (lhsShapeAttr && rhsShapeAttr) {
 
     // Ensure rank(lhsShapeAttr) >= rank(rhsShapeAttr)
@@ -209,22 +217,25 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 ErrorOr<TypedAttr>
 Static::BroadcastToOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                     ParamExprBuilder &b) {
+  StaticizeAdaptor<Static::BroadcastToOp> adaptor(inputs);
   TensorType inputTy = getInput().getType();
   TensorType resultTy = getType();
-  return tryStaticizeBroadcastLikeOp(inputTy, resultTy, inputs[0], b);
+  return tryStaticizeBroadcastLikeOp(inputTy, resultTy, adaptor.getInput(), b);
 }
 
 ErrorOr<TypedAttr> BroadcastToOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                ParamExprBuilder &b) {
+  StaticizeAdaptor<BroadcastToOp> adaptor(inputs);
   TensorType inputTy = getInput().getType();
   TensorType resultTy = getType();
-  return tryStaticizeBroadcastLikeOp(inputTy, resultTy, inputs[0], b);
+  return tryStaticizeBroadcastLikeOp(inputTy, resultTy, adaptor.getInput(), b);
 }
 
 ErrorOr<TypedAttr> AddOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createKgenExpr(KGEN::POC::Add, scalarInputs);
+  return tryStaticizeElemWiseOp<AddOp>(getType(), inputs, b, [&](auto adaptor) {
+    return b.createKgenExpr(KGEN::POC::Add,
+                            {adaptor.getInputX(), adaptor.getInputY()});
   });
 }
 
@@ -312,32 +323,37 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> DivOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createKgenExpr(KGEN::POC::Div, scalarInputs);
+  return tryStaticizeElemWiseOp<DivOp>(getType(), inputs, b, [&](auto adaptor) {
+    return b.createKgenExpr(KGEN::POC::Div, adaptor.getOperands());
   });
 }
 
 ErrorOr<TypedAttr> EqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                          ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createKgenExpr(KGEN::POC::EQ, scalarInputs);
-  });
+  return tryStaticizeElemWiseOp<EqualOp>(
+      getType(), inputs, b, [&](auto adaptor) {
+        return b.createKgenExpr(KGEN::POC::EQ, adaptor.getOperands());
+      });
 }
 
 ErrorOr<TypedAttr> GreaterOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                            ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    auto vals = llvm::to_vector(llvm::reverse(scalarInputs));
-    return b.createKgenExpr(KGEN::POC::LE, vals);
-  });
+  return tryStaticizeElemWiseOp<GreaterOp>(
+      getType(), inputs, b, [&](auto adaptor) {
+        // Reverse inputs
+        return b.createKgenExpr(KGEN::POC::LE,
+                                {adaptor.getInputY(), adaptor.getInputX()});
+      });
 }
 
 ErrorOr<TypedAttr> GreaterEqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                 ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    auto vals = llvm::to_vector(llvm::reverse(scalarInputs));
-    return b.createKgenExpr(KGEN::POC::LT, vals);
-  });
+  return tryStaticizeElemWiseOp<GreaterEqualOp>(
+      getType(), inputs, b, [&](auto adaptor) {
+        // Reverse inputs
+        return b.createKgenExpr(KGEN::POC::LT,
+                                {adaptor.getInputY(), adaptor.getInputX()});
+      });
 }
 
 ErrorOr<TypedAttr> IndexToTensorOp::tryStaticize(ArrayRef<TypedAttr> inputs,
@@ -347,57 +363,61 @@ ErrorOr<TypedAttr> IndexToTensorOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> NegativeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                             ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    Var input = b.createVar(scalarInputs[0]);
-    Var res = input * -1;
-    return res.getAttr();
-  });
+  return tryStaticizeElemWiseOp<NegativeOp>(
+      getType(), inputs, b, [&](auto adaptor) {
+        Var input = b.createVar(adaptor.getInput());
+        Var res = input * -1;
+        return res.getAttr();
+      });
 }
 
 ErrorOr<TypedAttr> NotEqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                             ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    auto eq = b.createKgenExpr(KGEN::POC::EQ, scalarInputs);
-    auto neq = KGEN::ParamOperatorAttr::getNot(eq);
-    return b.wrapNonTrivialAttrWithDecl(neq, "not_equal");
-  });
+  return tryStaticizeElemWiseOp<NotEqualOp>(
+      getType(), inputs, b, [&](auto adaptor) {
+        auto eq = b.createKgenExpr(KGEN::POC::EQ, adaptor.getOperands());
+        auto neq = KGEN::ParamOperatorAttr::getNot(eq);
+        return b.wrapNonTrivialAttrWithDecl(neq, "not_equal");
+      });
 }
 
 ErrorOr<TypedAttr> MaxOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createKgenExpr(KGEN::POC::Max, scalarInputs);
+  return tryStaticizeElemWiseOp<MaxOp>(getType(), inputs, b, [&](auto adaptor) {
+    return b.createKgenExpr(KGEN::POC::Max, adaptor.getOperands());
   });
 }
 
 ErrorOr<TypedAttr> MinOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createKgenExpr(KGEN::POC::Min, scalarInputs);
+  return tryStaticizeElemWiseOp<MinOp>(getType(), inputs, b, [&](auto adaptor) {
+    return b.createKgenExpr(KGEN::POC::Min, adaptor.getOperands());
   });
 }
 
 ErrorOr<TypedAttr> MulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    return b.createKgenExpr(KGEN::POC::MulNuw, scalarInputs);
+  return tryStaticizeElemWiseOp<MulOp>(getType(), inputs, b, [&](auto adaptor) {
+    return b.createKgenExpr(KGEN::POC::MulNuw, adaptor.getOperands());
   });
 }
 
 ErrorOr<TypedAttr> NotOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    auto attr = KGEN::ParamOperatorAttr::getNot(scalarInputs[0]);
+  return tryStaticizeElemWiseOp<NotOp>(getType(), inputs, b, [&](auto adaptor) {
+    auto attr = KGEN::ParamOperatorAttr::getNot(adaptor.getInput());
     return b.wrapNonTrivialAttrWithDecl(attr, "not");
   });
 }
 
 ErrorOr<TypedAttr> RangeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                          ParamExprBuilder &b) {
+  StaticizeAdaptor<RangeOp> adaptor(inputs);
+
   // Make sure inputs are constants.
-  std::optional<int64_t> startOr = tryGetConstantInt(inputs[0]);
-  std::optional<int64_t> limitOr = tryGetConstantInt(inputs[1]);
-  std::optional<int64_t> stepOr = tryGetConstantInt(inputs[2]);
+  std::optional<int64_t> startOr = tryGetConstantInt(adaptor.getStart());
+  std::optional<int64_t> limitOr = tryGetConstantInt(adaptor.getLimit());
+  std::optional<int64_t> stepOr = tryGetConstantInt(adaptor.getStep());
   if (!startOr.has_value() || !limitOr.has_value() || !stepOr.has_value())
     return TypedAttr{};
   int64_t start = startOr.value();
@@ -423,18 +443,20 @@ ErrorOr<TypedAttr> RangeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> RebindOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
-  return inputs[0];
+  return StaticizeAdaptor<RebindOp>(inputs).getInput();
 }
 
 ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                              ParamExprBuilder &b) {
+  StaticizeAdaptor<ReduceMulOp> adaptor(inputs);
+
   // We only staticize over 1D tensors for now, so axis must be 0.
-  if (tryGetConstantInt(inputs[1]) != 0)
+  if (tryGetConstantInt(adaptor.getAxis()) != 0)
     return TypedAttr{};
 
   // The result is just the product of individual symbolic elements from the
   // staticized input.
-  auto inputElems = dyn_cast<ShapeAttr>(inputs[0]);
+  auto inputElems = dyn_cast<ShapeAttr>(adaptor.getInput());
   if (!inputElems)
     return TypedAttr{};
 
@@ -445,34 +467,39 @@ ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                            ParamExprBuilder &b) {
-  return tryStaticizeReshapeLikeOp(getInput().getType(), getType(), inputs, b);
+  StaticizeAdaptor<ReshapeOp> adaptor(inputs);
+  return tryStaticizeReshapeLikeOp(getInput().getType(), getType(),
+                                   adaptor.getInput(), b);
 }
 
 ErrorOr<TypedAttr> SelectOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    Var condVar = b.createVar(scalarInputs[0]);
-    Var thenVar = b.createVar(scalarInputs[1]);
-    Var elseVar = b.createVar(scalarInputs[2]);
-    Var res = b.createCond(condVar, thenVar, elseVar);
-    return res.getAttr();
-  });
+  return tryStaticizeElemWiseOp<SelectOp>(
+      getType(), inputs, b, [&](auto adaptor) {
+        Var condVar = b.createVar(adaptor.getCond());
+        Var thenVar = b.createVar(adaptor.getX());
+        Var elseVar = b.createVar(adaptor.getY());
+        Var res = b.createCond(condVar, thenVar, elseVar);
+        return res.getAttr();
+      });
 }
 
 ErrorOr<TypedAttr> SliceOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                          ParamExprBuilder &b) {
+  StaticizeAdaptor<SliceOp> adaptor(inputs);
+
   // Make sure input is a list of symbolic values.
-  auto inputElems = dyn_cast<ShapeAttr>(inputs[0]);
+  auto inputElems = dyn_cast<ShapeAttr>(adaptor.getInput());
   if (!inputElems)
     return TypedAttr{};
 
   // Make sure each bound is a constant vector of 1 integer.
   std::optional<SmallVector<int64_t>> startOr =
-      tryGetConstantIntVector(inputs[1]);
+      tryGetConstantIntVector(adaptor.getStart());
   std::optional<SmallVector<int64_t>> stopOr =
-      tryGetConstantIntVector(inputs[2]);
+      tryGetConstantIntVector(adaptor.getStop());
   std::optional<SmallVector<int64_t>> stepOr =
-      tryGetConstantIntVector(inputs[3]);
+      tryGetConstantIntVector(adaptor.getStep());
   if (!(startOr.has_value() && startOr->size() == 1 && stopOr.has_value() &&
         stopOr->size() == 1 && stepOr.has_value() && stepOr->size() == 1))
     return TypedAttr{};
@@ -501,9 +528,11 @@ ErrorOr<TypedAttr> SliceOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> SqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                 ParamExprBuilder &b) {
+  StaticizeAdaptor<SqueezeShapeOp> adaptor(inputs);
+
   // Make sure inputs aren't too dynamic.
-  auto inputShapeAttr = dyn_cast<ShapeAttr>(inputs[0]);
-  auto squeezeAxesOr = tryGetConstantIntVector(inputs[1]);
+  auto inputShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputShape());
+  auto squeezeAxesOr = tryGetConstantIntVector(adaptor.getRemoveIndices());
   if (!inputShapeAttr || !squeezeAxesOr.has_value())
     return TypedAttr{};
 
@@ -539,14 +568,16 @@ ErrorOr<TypedAttr> SqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> Static::ReshapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                    ParamExprBuilder &b) {
-  return tryStaticizeReshapeLikeOp(getInput().getType(), getType(), inputs, b);
+  StaticizeAdaptor<Static::ReshapeOp> adaptor(inputs);
+  return tryStaticizeReshapeLikeOp(getInput().getType(), getType(),
+                                   adaptor.getInput(), b);
 }
 
 ErrorOr<TypedAttr> SubOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                        ParamExprBuilder &b) {
-  return tryStaticizeElemWiseOp(getType(), inputs, b, [&](auto scalarInputs) {
-    Var lhs = b.createVar(scalarInputs[0]);
-    Var rhs = b.createVar(scalarInputs[1]);
+  return tryStaticizeElemWiseOp<SubOp>(getType(), inputs, b, [&](auto adaptor) {
+    Var lhs = b.createVar(adaptor.getInputX());
+    Var rhs = b.createVar(adaptor.getInputY());
     Var res = lhs - rhs;
     return res.getAttr();
   });
@@ -554,9 +585,11 @@ ErrorOr<TypedAttr> SubOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> UnsqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                   ParamExprBuilder &b) {
+  StaticizeAdaptor<UnsqueezeShapeOp> adaptor(inputs);
+
   // Make sure inputs aren't too dynamic.
-  auto inputShapeAttr = dyn_cast<ShapeAttr>(inputs[0]);
-  auto unsqueezeAxesOr = tryGetConstantIntVector(inputs[1]);
+  auto inputShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputShape());
+  auto unsqueezeAxesOr = tryGetConstantIntVector(adaptor.getPaddingIndices());
   if (!inputShapeAttr || !unsqueezeAxesOr.has_value())
     return TypedAttr{};
 

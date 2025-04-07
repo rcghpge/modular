@@ -861,8 +861,8 @@ KGEN::ParamDeclAttr GraphOp::getNewParamOfType(const Twine &prefix, Type type) {
 
 std::string GraphOp::getNewParamName(const Twine &prefix) {
   // TODO(#8829) avoid duplication with existing parameters in the input graph
-  int64_t newCounter = getProperties().getCounter() + 1;
-  getProperties().setCounter(newCounter);
+  int64_t newCounter = getCounter() + 1;
+  setCounter(newCounter);
   return (prefix + Twine(newCounter)).str();
 }
 
