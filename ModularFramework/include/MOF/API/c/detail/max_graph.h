@@ -8,9 +8,8 @@
 #define MOF_API_C_DETAIL_MAX_GRAPH_H
 
 #include "MOF/API/c/symbol_export.h"
-#include "Support/ForwardDecls.h"
-#include "Support/LLVMForwardDecls.h"
 #include "mlir-c/IR.h"
+#include "llvm/ADT/StringRef.h"
 
 /// Contains the success or failure of an API call.
 ///
