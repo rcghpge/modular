@@ -90,7 +90,7 @@ func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), name = "badSetupArgs"} : () -> ()
+}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupArgs"} : () -> ()
 
 // -----
 
@@ -103,7 +103,7 @@ func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), name = "badSetupResults"} : () -> ()
+}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badSetupResults"} : () -> ()
 
 // -----
 
@@ -116,7 +116,7 @@ func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
 }, {
   ^bb0(%ch: !mef.chain, %x: tensor<3xf32>, %ctx: !mgp.context):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), name = "badExecuteArgs"} : () -> ()
+}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs"} : () -> ()
 
 // -----
 
@@ -129,7 +129,7 @@ func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
 }, {
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %cpu: !mgp.device_context<<"cpu", 0>>, %x: tensor<3xf32>):
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<4xf32>) -> (tensor<3xf32>), name = "badExecuteArgs2"} : () -> ()
+}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<4xf32>) -> (tensor<3xf32>), sym_name = "badExecuteArgs2"} : () -> ()
 
 // -----
 
@@ -142,7 +142,7 @@ func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
   ^bb0(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %x: tensor<3xf32>):
     // expected-error@+1 {{'mef.output' op expected 1 operands, but given 2}}
     mef.output %ch, %x : !mef.chain, tensor<3xf32>
-}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (), name = "badExecuteResults"} : () -> ()
+}) {frameworkName = "tf", devices = [#M.device_ref<"cpu", 0>], inputOutputTypes = (tensor<3xf32>) -> (), sym_name = "badExecuteResults"} : () -> ()
 
 // -----
 

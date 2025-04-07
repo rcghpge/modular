@@ -657,7 +657,7 @@ def ModelFrameworkAttr : ConfinedAttr<StrAttr, [
 
 def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
                                IsolatedFromAbove, RegionKindInterface,
-                               HasOnlyGraphRegion]> {
+                               HasOnlyGraphRegion, Symbol]> {
   let summary = [{
     Represents an executable model with 'init' and 'execute' entry points.
   }];
@@ -712,7 +712,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
 
   // CAUTION: There are three constraints on these attribute names and their
   // order:
-  //  - 'name' must match the standard symbol name attribute name (as given
+  //  - 'sym_name' must match the standard symbol name attribute name (as given
   //    by mlir::SymbolTable::getSymbolAttrName()). Note however that we could
   //    probably choose a more consistent name and implement
   //    DerivedAttributeOpInterface to recover name if we really wanted
@@ -724,7 +724,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   let arguments = (ins M_DeviceRefArrayAttr:$devices,                   // 0
                        ModelFrameworkAttr:$frameworkName,               // 1
                        TypeAttrOf<FunctionType>:$inputOutputTypes,      // 2
-                       SymbolNameAttr:$name,                            // 3
+                       SymbolNameAttr:$sym_name,                        // 3
                        OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 4
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
@@ -760,6 +760,8 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     BlockArgument getExecuteChain() { return getExecuteBlock()->getArgument(0); }
     BlockArgument getExecuteContext() { return getExecuteBlock()->getArgument(1); }
     BlockArgument getExecuteWeightsRegistry() { return getExecuteBlock()->getArgument(2); }
+
+    StringAttr getName() { return getSymNameAttr(); }
   }];
 
   let builders = [
@@ -768,7 +770,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     /// `inputArgLocs` specifies the location information for the
     /// explicit arguments to the 'execute' entry point, and thus should
     /// have the same length as `inputTypes`.
-    OpBuilder<(ins "StringAttr":$name,
+    OpBuilder<(ins "StringAttr":$sym_name,
                    "StringRef":$frameworkName,
                    "ArrayRef<DeviceRef>":$devices,
                    "ArrayRef<Type>":$inputTypes,
@@ -778,7 +780,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   ];
 
   let assemblyFormat = [{
-    $name `:` custom<ClassName>($frameworkName)
+    $sym_name `:` custom<ClassName>($frameworkName)
       ($theExtraAttrs^)?
       `devices` $devices
       `init` custom<InitRegion>($init)
