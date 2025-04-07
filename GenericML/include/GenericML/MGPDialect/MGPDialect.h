@@ -9,6 +9,7 @@
 
 #include "GraphRT/MEFDialect/MEFTypes.h"
 #include "Support/MDialect/MDialect.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Dialect.h"
 
 //===----------------------------------------------------------------------===//

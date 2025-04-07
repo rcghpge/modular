@@ -5,10 +5,10 @@
 //
 
 // For reference here's the model with vars matching the checks:
-// CHECK-LABEL: "mgp.model"() ({
+// CHECK-LABEL: "mgp.model"() <{{.*}}> ({
 // ### Block 0 ###
 // CHECK:   %[[SSA48:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA49:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA49:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA51:.*]] = "mgp.runtime.create"(%[[SSA48]], %[[SSA49]])
 // CHECK:   "mef.output"(%[[SSA51]], %[[SSA49]]
 // CHECK: }, {

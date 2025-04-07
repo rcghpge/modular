@@ -1,10 +1,10 @@
 // RUN: mo-opt %s --mlir-disable-threading --allow-unregistered-dialect --async-dataflow-dependencies-test | FileCheck %s
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
-// CHECK: "mgp.model"() ({
+// CHECK: "mgp.model"() <{{.*}}> ({
 // ### Block 0 ###
 // CHECK:   %[[SSA94:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA95:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA95:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA97:.*]] = "mgp.runtime.create"(%[[SSA94]], %[[SSA95]])
 // CHECK:   "mef.output"(%[[SSA97]], %[[SSA95]]
 // CHECK: }, {
@@ -47,10 +47,10 @@ mgp.model @repeat1 : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
-// CHECK: "mgp.model"() ({
+// CHECK: "mgp.model"() <{{.*}}> ({
 // ### Block ###
 // CHECK:   %[[SSA85:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA86:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA86:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA88:.*]] = "mgp.runtime.create"(%[[SSA85]], %[[SSA86]])
 // CHECK:   "mef.output"(%[[SSA88]], %[[SSA86]]
 // CHECK: }, {
@@ -88,10 +88,10 @@ mgp.model @repeat2 : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 }
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
-// CHECK: "mgp.model"() ({
+// CHECK: "mgp.model"() <{{.*}}> ({
 // ### Block 0 ###
 // CHECK:   %[[SSA77:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA78:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA78:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA80:.*]] = "mgp.runtime.create"(%[[SSA77]], %[[SSA78]])
 // CHECK:   "mef.output"(%[[SSA80]], %[[SSA78]]
 // CHECK: }, {
@@ -138,9 +138,9 @@ mgp.model @repeat3 : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // ### Block 0 ###
-// CHECK: "mgp.model"() ({
+// CHECK: "mgp.model"() <{{.*}}> ({
 // CHECK:   %[[SSA68:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA69:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA69:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA71:.*]] = "mgp.runtime.create"(%[[SSA68]], %[[SSA69]])
 // CHECK:   "mef.output"(%[[SSA71]], %[[SSA69]]
 // CHECK: }, {
@@ -227,9 +227,9 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // ### Block 0 ###
-// CHECK: "mgp.model"() ({
+// CHECK: "mgp.model"() <{{.*}}> ({
 // CHECK:   %[[SSA56:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA57:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA57:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA59:.*]] = "mgp.runtime.create"(%[[SSA56]], %[[SSA57]])
 // CHECK:   "mef.output"(%[[SSA59]], %[[SSA57]]
 // CHECK: }, {
@@ -285,9 +285,9 @@ mgp.model @crissCross : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // ### Block 0 ###
-// CHECK: "mgp.model"() ({
+// CHECK: "mgp.model"() <{{.*}}> ({
 // CHECK:   %[[SSA47:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA48:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA48:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA50:.*]] = "mgp.runtime.create"(%[[SSA47]], %[[SSA48]])
 // CHECK:   "mef.output"(%[[SSA50]], %[[SSA48]]
 // CHECK: }, {

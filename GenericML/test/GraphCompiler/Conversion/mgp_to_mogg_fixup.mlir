@@ -57,7 +57,7 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%wei
 
 // CHECK: %[[CTX:.*]] = mgp.context.create
 // CHECK: %[[CHAIN:.*]] = mgp.runtime.create
-// CHECK: "mgp.generic.execute"(%[[CTX]], {{.*}}, %[[CHAIN]]) {aRuntimeSlot
+// CHECK: "mgp.generic.execute"(%[[CTX]], {{.*}}, %[[CHAIN]]) <{aRuntimeSlot
 
 mgp.model @basic_init : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %0 = grt.chain.create ()

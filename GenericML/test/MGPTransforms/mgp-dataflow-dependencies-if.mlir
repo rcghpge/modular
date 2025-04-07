@@ -5,10 +5,10 @@
 //
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
-// CHECK-LABEL: "mgp.model"() ({
+// CHECK-LABEL: "mgp.model"() <{{.*}}> ({
 // ### Block 0 ###
 // CHECK:   %[[SSA76:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA77:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA77:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA79:.*]] = "mgp.runtime.create"(%[[SSA76]], %[[SSA77]])
 // CHECK:   "mef.output"(%[[SSA79]], %[[SSA77]]
 // CHECK: }, {
@@ -139,9 +139,9 @@ mgp.model @simple : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
 
 // For reference here's the model with vars matching the checks (modulo the block ids).
 // ### Block 0 ###
-// CHECK-LABEL: "mgp.model"() ({
+// CHECK-LABEL: "mgp.model"() <{{.*}}> ({
 // CHECK:   %[[SSA64:.*]] = "grt.chain.create"() : () -> !mef.chain
-// CHECK:   %[[SSA65:.*]] = "mgp.context.create"() {numSlots = 2 : ui64} : () -> !mgp.context
+// CHECK:   %[[SSA65:.*]] = "mgp.context.create"() <{numSlots = 2 : ui64}> : () -> !mgp.context
 // CHECK:   %[[SSA67:.*]] = "mgp.runtime.create"(%[[SSA64]], %[[SSA65]])
 // CHECK:   "mef.output"(%[[SSA67]], %[[SSA65]]
 // CHECK: }, {

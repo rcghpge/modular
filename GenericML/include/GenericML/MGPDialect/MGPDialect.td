@@ -121,8 +121,6 @@ def MGPDialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
-  // TODO: Remove this once dialects have been updated to use properties.
-  let usePropertiesForAttributes = 0;
   let hasConstantMaterializer = 1;
 }
 
