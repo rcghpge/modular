@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics | FileCheck %s
+// RUN: mo-opt %s | FileCheck %s
 
 mo.graph @cast_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32> {
   %1 = rmo.mo.cast(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32>

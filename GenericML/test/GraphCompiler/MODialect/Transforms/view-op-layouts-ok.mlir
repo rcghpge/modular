@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --split-input-file
 
 mo.graph @split_dim_add_layout_ok(%arg0: !mo.tensor<[4, 9, 16], f32>) -> !mo.tensor<[4, 3, 3, 16], f32, {layout = #mo.layout<NHWC>}> {
     %out = mo.split_dim[1: i64](%arg0): (!mo.tensor<[4, 9, 16], f32>) -> !mo.tensor<[4, 3, 3, 16], f32, {layout = #mo.layout<NHWC>}>

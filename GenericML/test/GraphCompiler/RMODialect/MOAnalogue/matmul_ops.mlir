@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --split-input-file
 
 mo.graph @matmul_ok(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
   %0 = rmo.mo.matmul(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>

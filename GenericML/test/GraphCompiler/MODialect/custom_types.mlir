@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --verify-diagnostics --allow-unregistered-dialect
+// RUN: mo-opt %s --allow-unregistered-dialect
 
 mo.graph @opaque_type() {
   %0 = "my_op"() : () -> !mo.opaque<"q4_0">

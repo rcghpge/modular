@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --verify-diagnostics | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" | FileCheck %s
 
 // CHECK: %[[CTX:.*]] = mogg.device_context_placeholder {device = #M.device_ref<"gpu", 0>}
 // CHECK: %[[TUPLE:.*]] = pop.array.create [%[[CTX]]]

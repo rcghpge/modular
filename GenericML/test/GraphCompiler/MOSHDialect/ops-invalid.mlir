@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -split-input-file -verify-diagnostics
+// RUN: mo-opt %s -verify-diagnostics
 
 // expected-note @below {{prior use here}}
 kgen.func @param_from_value(%sh0: !mosh.ape) {

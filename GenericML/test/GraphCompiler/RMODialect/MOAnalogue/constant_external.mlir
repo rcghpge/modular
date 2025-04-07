@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics
+// RUN: mo-opt %s
 
 mo.graph @constant_fold_external() -> !mo.tensor<[256, 1], si32> {
   %0 = mo.constant.external {align = 1 : ui64, name = "blob"} : !mo.tensor<[256, 1], si32>

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --split-input-file
 
 mo.graph @buffer_type_simple(%arg0: !mo.buffer<[1, 2, 3], f32>) {
   mo.output
