@@ -75,6 +75,7 @@ HOST_ONLY_OP(ScatterMaxOp)
 HOST_ONLY_OP(ScatterMinOp)
 HOST_ONLY_OP(ScatterMulOp)
 HOST_ONLY_OP(ScatterOp)
+HOST_ONLY_OP(SplitOp)
 HOST_ONLY_OP(SqueezeShapeOp)
 HOST_ONLY_OP(TileOp)
 HOST_ONLY_OP(UnsqueezeShapeOp)
@@ -2127,13 +2128,6 @@ LogicalResult SplitOp::fold(FoldAdaptor adaptor,
   }
 
   return failure();
-}
-
-DeviceRefAttr SplitOp::getOperandDevice(size_t index) {
-  return (index == getAxisMutable().getOperandNumber() ||
-          index == getSplitSizesMutable().getOperandNumber())
-             ? MO::getHostDevice(getOperation())
-             : nullptr;
 }
 
 //===----------------------------------------------------------------------===//
