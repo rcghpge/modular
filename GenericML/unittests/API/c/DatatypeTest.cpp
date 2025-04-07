@@ -25,7 +25,6 @@ TEST(ModularEngineTest, DtypeSize) {
   EXPECT_EQ(M_sizeOf(M_FLOAT32), sizeof(float));
   EXPECT_EQ(M_sizeOf(M_FLOAT64), sizeof(double));
   EXPECT_EQ(M_sizeOf(M_BFLOAT16), sizeof(uint16_t));
-  EXPECT_EQ(M_sizeOf(M_FLOAT8_E4M3), sizeof(uint8_t));
   EXPECT_EQ(M_sizeOf(M_FLOAT8_E4M3FN), sizeof(uint8_t));
   EXPECT_EQ(M_sizeOf(M_FLOAT8_E4M3FNUZ), sizeof(uint8_t));
   EXPECT_EQ(M_sizeOf(M_FLOAT8_E5M2), sizeof(uint8_t));
