@@ -205,11 +205,11 @@ mo.graph @split_squeezes_non_squeezing_reshape<D0 -> D1, D2>(
 }
 
 // CHECK-LABEL: rotary_embeddings_2
-// CHECK-DAG: [[VAR0:%.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR1:%.*]] = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR2:%.*]] = mo.constant {value = #M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR3:%.*]] = mo.constant {value = #M.dense_array<0, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR4:%.*]] = mo.constant {value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-DAG: [[VAR0:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-DAG: [[VAR1:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-DAG: [[VAR2:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-DAG: [[VAR3:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+// CHECK-DAG: [[VAR4:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
 // CHECK-DAG: [[VAR5:%.*]] = mo.constant {value = #M.dense_array<2, 0, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
 // CHECK-DAG: [[VAR6:%.*]] = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-DAG: [[VAR7:%.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
