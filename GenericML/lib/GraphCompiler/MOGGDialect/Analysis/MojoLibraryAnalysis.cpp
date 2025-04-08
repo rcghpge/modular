@@ -18,6 +18,7 @@
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
@@ -533,276 +534,259 @@ MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) const {
 }
 
 //===----------------------------------------------------------------------===//
-// MojoKernelInfos
+// MO op to mojo kernel verification
 //===----------------------------------------------------------------------===//
 
-static bool kernelHasExtraOutputShapeArgument(KGEN::GeneratorOp mojoCode) {
-  auto kernelName = mojoCode->getAttrOfType<StringAttr>(
-      KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
-  if (!kernelName)
-    return false;
-
-  // only reshape / broadcast_to requires an extra argument.
-  return kernelName == MO::Static::ReshapeOp::getOperationName() ||
-         kernelName == MO::Static::BroadcastToOp::getOperationName();
+static bool opHasExtraOutputShapeArgument(Operation *op) {
+  return isa<MO::Static::ReshapeOp, MO::Static::BroadcastToOp>(op);
 }
 
-ErrorOr<MojoKernelInfos> MojoKernelInfos::create(KGEN::GeneratorOp mojoCode,
-                                                 bool supportMultiVariadics) {
-  MojoKernelInfos res;
-  res.argumentTypesNames = dyn_cast_or_null<ArrayAttr>(
-      mojoCode->getAttr(KGEN::MOGGPreElab::MOGG_ARG_TYPE_NAMES));
-  if (!res.argumentTypesNames) {
-    return Error("Missing mogg.arg_types_name decorator on the mojo kernel");
+static std::optional<KGEN::MOGGPreElab::MojoKernelOperandVariant>
+MOTypeToMojoKernelOperand(Type type) {
+  using namespace KGEN::MOGGPreElab;
+  if (isa<MO::TensorType>(type))
+    return TensorOperandAdaptor{/* mut */ false, /* fused */ false};
+  if (isa<MO::BufferType>(type))
+    return TensorOperandAdaptor{/* mut */ true, /* fused */ false};
+  if (isa<MO::ListType>(type))
+    return ListOfTensorOperandAdaptor{/* mut */ false, /* fused */ false};
+  if (isa<MO::ScalarType>(type))
+    return ScalarOperandAdaptor{};
+  if (auto opaqueType = dyn_cast<MO::OpaqueType>(type))
+    return OpaqueOperandAdaptor{opaqueType.getSymbol()};
+
+  return std::nullopt;
+}
+
+static bool matchConvertedMOTypeToKernelType(
+    const KGEN::MOGGPreElab::MojoKernelOperandVariant &moType,
+    const KGEN::MOGGPreElab::MojoKernelOperandVariant &kernelType) {
+  using namespace KGEN::MOGGPreElab;
+
+  if (moType == kernelType)
+    return true;
+
+  if (std::holds_alternative<VariadicTensorOperandAdaptor>(kernelType)) {
+    auto tensorType = std::get_if<TensorOperandAdaptor>(&moType);
+    if (!tensorType)
+      return false;
+
+    return *reinterpret_cast<const TensorOperandAdaptor *>(&kernelType) ==
+           *tensorType;
   }
-  res.resultTypeName = dyn_cast_or_null<StringAttr>(
-      mojoCode->getAttr(KGEN::MOGGPreElab::MOGG_RESULT_TYPE_NAME));
 
-  res.mojoCode = mojoCode;
-  res.canThrow = mojoCode.getFuncTypeGenerator().getBody().isThrows();
-  size_t numOperandsWithoutThrowValues =
-      res.argumentTypesNames.size() - res.numErrorHandleResults();
-  res.numDPSStyleOutputs = getNumDPSStyleOutputs(mojoCode);
-  res.hasExtraOutputShapeArgument = kernelHasExtraOutputShapeArgument(mojoCode);
+  if (std::holds_alternative<ScalarOperandAdaptor>(kernelType)) {
+    auto tensorType = std::get_if<TensorOperandAdaptor>(&moType);
+    if (!tensorType)
+      return false;
 
-  // Go through all operands to figure out their I/O kind.
-  res.numKernelInputs = 0;
-  res.numOpaqueDPSOutputs = 0;
-  res.hasVariadicInputs = false;
-  res.hasVariadicOutputs = false;
+    return !tensorType->mut;
+  }
 
-  for (size_t i = 0; i < res.numDPSStyleOutputs; ++i) {
-    auto argTypeName = cast<StringAttr>(res.argumentTypesNames[i]);
-    if (argTypeName == KGEN::MOGGPreElab::MOJO_VARIADIC_TENSORS_NAME) {
-      if (res.hasVariadicOutputs && !supportMultiVariadics)
-        return Error("Kernel can't have multiple VariadicTensor outputs");
-      res.hasVariadicOutputs = true;
+  return false;
+}
+
+// If matchOperands is set to true, this function will not attempt to validate
+// results. Conversely, if set to false, it will do extra checks beyond DPS
+// arguments with result types.
+template <bool matchOperands>
+static ErrorOrSuccess matchOperandsOrResults(
+    Operation *op,
+    KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp> &adaptor) {
+  using namespace KGEN::MOGGPreElab;
+  static const char *argumentKind = matchOperands ? "input" : "output";
+
+  // Iterates through `operands` until it finds a non context type.
+  auto skipContextType =
+      [](const SmallVector<MojoKernelOperandAdaptor> &operands,
+         uint64_t &idx) -> std::optional<MojoKernelOperandAdaptor> {
+    while (idx < operands.size()) {
+      if (!operands[idx].isContextType())
+        return operands[idx];
+      ++idx;
     }
-  }
 
-  for (size_t i = res.numDPSStyleOutputs; i < numOperandsWithoutThrowValues;
-       ++i) {
-    KGEN::ArgConvention argConvention =
-        mojoCode.getFuncTypeGenerator().getBody().getArgConvention(i);
-    auto argTypeName = cast<StringAttr>(res.argumentTypesNames[i]);
-    // Detect MojoCallContextPtr or Tuple[MojoCallContextPtr].
+    return std::nullopt;
+  };
 
-    if (argTypeName ==
-        KGEN::MOGGPreElab::
-            MOJO_EXTENSIBILITY_API_DEVICE_CONTEXT_PTR_TYPE_NAME) {
-      if (res.deviceContextArgIndex.has_value()) {
-        return Error("Kernel can't have multiple DevicesContextPtr arguments");
-      }
-      res.deviceContextArgIndex = i;
+  // Iterates through the range until it finds a non chain type.
+  /// TODO(GEX-2066):
+  auto skipChainType = [](auto range, uint64_t &idx) -> std::optional<Type> {
+    while (idx < range.size()) {
+      if (!isa<MO::ChainType>(range[idx]))
+        return range[idx];
+      ++idx;
+    }
+    return std::nullopt;
+  };
+
+  uint64_t moOpIndex = 0, kernelIndex = 0;
+  bool matchingVariadicTensor = false;
+  SmallVector<MojoKernelOperandAdaptor> &kernelOperands =
+      matchOperands ? adaptor.executeFunction->inputArguments
+                    : adaptor.executeFunction->outputArguments;
+  while (true) {
+    auto moType = matchOperands
+                      ? skipChainType(op->getOperandTypes(), moOpIndex)
+                      : skipChainType(op->getResultTypes(), moOpIndex);
+    auto kernelType = skipContextType(kernelOperands, kernelIndex);
+
+    // If we no longer have types to look at, we get out of the loop.
+    if (!moType.has_value() || !kernelType.has_value())
+      break;
+
+    // Convert the mlir::Type to the equivalent mojo kernel type.
+    auto moTypeToMojoKernelOperand = MOTypeToMojoKernelOperand(*moType);
+    if (!moTypeToMojoKernelOperand.has_value()) {
+      return Error(
+          llvm::formatv("Unsupported op argument type at index {}", moOpIndex));
+    }
+
+    bool matched = matchConvertedMOTypeToKernelType(*moTypeToMojoKernelOperand,
+                                                    kernelType->underlyingType);
+
+    // If there is a mismatch but we were previously matching on a variadic, go
+    // to the next kernel argument and retry.
+    if (!matched && matchingVariadicTensor) {
+      matchingVariadicTensor = false;
+      ++kernelIndex;
       continue;
     }
 
-    if (argTypeName ==
-        KGEN::MOGGPreElab::
-            MOJO_EXTENSIBILITY_API_DEVICE_CONTEXT_PTR_LIST_TYPE_NAME) {
-      if (res.deviceContextListArgIndex.has_value()) {
-        return Error(
-            "Kernel can't have multiple DevicesContextPtrList arguments");
-      }
-      res.deviceContextListArgIndex = i;
-      continue;
+    if (!matched) {
+      return Error(llvm::formatv(
+          "Op {} at position {} does not match registered kernel operand at "
+          "position {}: {} vs {}",
+          argumentKind, moOpIndex, kernelType->sourceDescriptor->position,
+          *moTypeToMojoKernelOperand, *kernelType));
     }
 
-    if (argConvention == KGEN::ArgConvention::ByRefResult) {
-      // We use this for result memory opaque type.
-      // eg: execute(...) -> MyOpaqueType.
-      // Has the follow KGEN signature:
-      // execute(..., !kgen.pointer<struct<...> byref_result) -> !kgen.none>.
-      if (argTypeName == KGEN::MOGGPreElab::MOJO_DPS_TENSOR_TYPE_NAME ||
-          argTypeName == KGEN::MOGGPreElab::MOJO_VARIADIC_TENSORS_NAME) {
-        // Tensor types can't be used by return value.
-        return Error("The output tensor must be DPS argument, and not a "
-                     "function return value");
-      }
-      res.numOpaqueDPSOutputs += 1;
-    } else {
-      res.numKernelInputs += 1;
-      if (argTypeName == KGEN::MOGGPreElab::MOJO_VARIADIC_TENSORS_NAME) {
-        if (res.hasVariadicInputs && !supportMultiVariadics)
-          return Error("Kernel can't have multiple VariadicTensor inputs");
-        res.hasVariadicInputs = true;
-      }
-    }
+    // If the current kernel argument is a variadic tensor type, then we set a
+    // flag such that we don't iterate and stay here until there is a mismatch.
+    if (kernelType->isVariadicTensorType())
+      matchingVariadicTensor = true;
+
+    ++moOpIndex;
+    kernelIndex += !matchingVariadicTensor;
   }
 
-  // Verify the kernel output.
-  res.numOpaqueKernelOutputs = 0;
-  if (res.resultTypeName) {
-    if (res.resultTypeName == KGEN::MOGGPreElab::MOJO_DPS_TENSOR_TYPE_NAME ||
-        res.resultTypeName == KGEN::MOGGPreElab::MOJO_VARIADIC_TENSORS_NAME) {
-      // Tensor types can't be used by return value.
-      return Error("The output tensor must be DPS argument, and not a function "
-                   "return value");
-    }
-    // If it's not a tensor, it must be an opaque result.
-    res.numOpaqueKernelOutputs += 1;
+  // At the end of the iteration, if we were matching a variadic, we must
+  // increment once to ensure we reach the end (assuming a trailing context
+  // type). Note that if we were on a variadic type but we never match (first
+  // attempt was a mismatch), the flag will not be set and thus we will not
+  // mistakenly increment.
+  if (matchingVariadicTensor)
+    skipContextType(kernelOperands, ++kernelIndex);
+
+  bool moOpEnd =
+      moOpIndex == (matchOperands ? op->getNumOperands() : op->getNumResults());
+  bool kernelEnd = kernelIndex == kernelOperands.size();
+
+  // Not attempting to do more error checking on certain ops. External users
+  // don't implement these and they are core MO operations so there is no added
+  // value, really.
+  if (opHasExtraOutputShapeArgument(op))
+    return success();
+
+  // If we have not consumed all kernel types, this is always an error. It means
+  // there are missing operands or results form the MO op.
+  if (!kernelEnd) {
+    return Error(llvm::formatv(
+        "Could not provide all {} arguments to kernel: missing operands "
+        "starting from argument named '{}'",
+        argumentKind,
+        kernelOperands[kernelIndex].sourceDescriptor->sourceName.str()));
   }
 
-  // Verify the position of the device context arguments.
-  if (res.deviceContextArgIndex.has_value()) {
-    // The DeviceContext argument must be last.
-    size_t expectedArgPos = numOperandsWithoutThrowValues - 1;
-    if (expectedArgPos != *res.deviceContextArgIndex) {
-      return Error(Twine("The DeviceContextPtr argument must be last (#") +
-                   Twine(expectedArgPos) + ") but is at position #" +
-                   Twine(*res.deviceContextArgIndex));
+  // If we are matching inputs, we must ensure that we consumed all the MO op's
+  // operands or else, we are missing inputs on the kernel.
+  if constexpr (matchOperands) {
+    if (!moOpEnd) {
+      return Error(llvm::formatv("Op has too many operands: operands starting "
+                                 "at position {} has no equivalent in kernel",
+                                 moOpIndex));
     }
+    return success();
   }
 
-  if (res.deviceContextListArgIndex.has_value()) {
-    // The DeviceContextList argument must be last or before the DeviceContext
-    // arg.
-    size_t expectedArgPos = numOperandsWithoutThrowValues -
-                            (res.deviceContextArgIndex.has_value() ? 2 : 1);
-    if (expectedArgPos != *res.deviceContextListArgIndex) {
-      return Error(Twine("The DeviceContextListPtr argument must be last or "
-                         "before the DeviceContextPtr argument (#") +
-                   Twine(expectedArgPos) + ") but is at position #" +
-                   Twine(*res.deviceContextListArgIndex));
-    }
+  // If there are no more op results and return values from the kernel, we are
+  // done.
+  auto moType = skipChainType(op->getResultTypes(), moOpIndex);
+  if (!moType.has_value() && !adaptor.executeFunction->outputResult.has_value())
+    return success();
+
+  // Otherwise, there are three failure cases:
+  // 1. We have remaining results on the op but not on the kernel.
+  if (moType.has_value() &&
+      !adaptor.executeFunction->outputResult.has_value()) {
+    return Error(llvm::formatv(
+        "Op has too many results: results starting at position {} have no "
+        "equivalent output argument or function result in kernel",
+        moOpIndex));
   }
 
-  return res;
-}
-
-void MojoKernelInfos::dump() {
-  llvm::errs() << "MojoKernelInfos for " << mojoCode.getSymName() << ":\n";
-  llvm::errs() << "canThrow = " << canThrow << "\n";
-  llvm::errs() << "deviceContextArgIndex = " << deviceContextArgIndex << "\n";
-  llvm::errs() << "deviceContextListArgIndex = " << deviceContextListArgIndex
-               << "\n";
-  llvm::errs() << "numDPSStyleOutputs = " << numDPSStyleOutputs << "\n";
-  llvm::errs() << "numOpaqueDPSOutputs = " << numOpaqueDPSOutputs << "\n";
-  llvm::errs() << "numOpaqueKernelOutputs = " << numOpaqueKernelOutputs << "\n";
-  llvm::errs() << "numKernelOutputs = " << numKernelOutputs() << "\n";
-  llvm::errs() << "numKernelInputs = " << numKernelInputs << "\n";
-  llvm::errs() << "hasVariadicInputs = " << hasVariadicInputs << "\n";
-  llvm::errs() << "hasVariadicOutputs = " << hasVariadicOutputs << "\n";
-  llvm::errs() << "hasExtraOutputShapeArgument = "
-               << hasExtraOutputShapeArgument << "\n";
-  llvm::errs() << "numErrorHandleResults = " << numErrorHandleResults() << "\n";
-  llvm::errs() << mojoCode << "\n\n";
-}
-
-//===----------------------------------------------------------------------===//
-// KernelCall Verification
-//===----------------------------------------------------------------------===//
-
-static ErrorOrSuccess verifyKernelArgsConvention(Operation *op,
-                                                 KGEN::GeneratorOp mojoKernel) {
-  // Check the arg conventions.
-  // !mo.opaque isn't supported for owned arguments.
-  for (auto [operandTy, argConv] : llvm::zip(
-           op->getOperandTypes(),
-           mojoKernel.getFuncTypeGenerator().getBody().getArgConventions())) {
-    if (isa<MO::OpaqueType>(operandTy) &&
-        (argConv == KGEN::ArgConvention::OwnedMem ||
-         argConv == KGEN::ArgConvention::OwnedReg)) {
-      return Error(Twine(
-          "Owned arguments not supported for opaque types in the kernel " +
-          mojoKernel.getSymName()));
-    }
+  // 2. We have a remaining result on the kernel but nothing on the op.
+  if (!moType.has_value() &&
+      adaptor.executeFunction->outputResult.has_value()) {
+    return Error(llvm::formatv(
+        "Op is missing a result for kernel function result of type {}",
+        *adaptor.executeFunction->outputResult));
   }
+
+  auto moTypeToMojoKernelOperand = MOTypeToMojoKernelOperand(*moType);
+  if (!moTypeToMojoKernelOperand.has_value()) {
+    return Error(
+        llvm::formatv("Unsupported op result type at position {}", moOpIndex));
+  }
+
+  // 3. We have results for both but they don't match.
+  if (!matchConvertedMOTypeToKernelType(
+          *moTypeToMojoKernelOperand,
+          adaptor.executeFunction->outputResult->underlyingType)) {
+    return Error(llvm::formatv("Op output at position {} does not match kernel "
+                               "function result; op has {} but kernel has {}",
+                               moOpIndex, *moTypeToMojoKernelOperand,
+                               *adaptor.executeFunction->outputResult));
+  }
+
   return success();
 }
 
-static ErrorOr<size_t> getOperandsCountWithoutChains(TypeRange types,
-                                                     bool isInput) {
-  size_t res = 0;
-  bool hasChain = false;
-  for (Type ty : types) {
-    if (isa<MO::ChainType>(ty)) {
-      if (hasChain)
-        return Error(Twine("There can't be more than one ") +
-                     (isInput ? "input" : "output") + " chain");
-      hasChain = true;
-    } else {
-      res += 1;
-    }
-  }
-  return res;
+static ErrorOrSuccess matchOperands(
+    Operation *op,
+    KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp> &adaptor) {
+  return matchOperandsOrResults<true>(op, adaptor);
+}
+
+static ErrorOrSuccess
+matchResults(Operation *op,
+             KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp> &adaptor) {
+  return matchOperandsOrResults<false>(op, adaptor);
 }
 
 ErrorOrSuccess
-MojoLibraryAnalysis::verifyKernelCallOp(Operation *kernelCallOp) const {
+MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
   // Find the kernel from the library.
-  auto maybeKernel = getMojoKernelTarget(*this, kernelCallOp);
-  if (maybeKernel.isError()) {
-    return maybeKernel.takeError();
-  }
-  KGEN::GeneratorOp mojoKernel = maybeKernel.takeValue();
+  auto maybeExecuteFunc = getMojoKernelTarget(*this, op);
+  if (maybeExecuteFunc.isError())
+    return maybeExecuteFunc.takeError();
 
-  // Verify the arguments convention of the kernel.
-  if (auto err = verifyKernelArgsConvention(kernelCallOp, mojoKernel))
-    return err.takeError();
-
-  // Some MO ops (eg AllReduce) supports multi variadic operands.
-  // But for custom ops we don't know how the operands are divided between the
-  // variadics, so we disable it.
-  bool supportMultiVariadics = !isa<MO::CustomOp>(kernelCallOp);
-
-  // Build the kernel informations.
-  auto maybeKernelInfos =
-      MojoKernelInfos::create(mojoKernel, supportMultiVariadics);
-  if (maybeKernelInfos.isError()) {
-    return maybeKernelInfos.takeError();
-  }
-  MojoKernelInfos kernelInfos = maybeKernelInfos.takeValue();
-
-  // Verify the number of inputs.
-  // Ignore input chains.
-  ErrorOr<size_t> opInputsCountOrErr = getOperandsCountWithoutChains(
-      kernelCallOp->getOperandTypes(), /*isInput=*/true);
-  if (opInputsCountOrErr.isError())
-    return opInputsCountOrErr.takeError();
-  size_t opInputsCount = opInputsCountOrErr.takeValue();
-  if (kernelInfos.hasExtraOutputShapeArgument)
-    opInputsCount += 1;
-  if (kernelInfos.hasVariadicInputs) {
-    // The number of inputs is a lower bound (variadic size must be >= 1)
-    if (opInputsCount < kernelInfos.numKernelInputs) {
-      return Error(Twine("Kernel with variadics expects at least ") +
-                   Twine(kernelInfos.numKernelInputs) +
-                   " inputs but MO op has " + Twine(opInputsCount) +
-                   " inputs. You might have some missing inputs and / or an "
-                   "empty varidic");
-    }
-  } else {
-    if (opInputsCount != kernelInfos.numKernelInputs) {
-      return Error(Twine("Kernel expects ") +
-                   Twine(kernelInfos.numKernelInputs) +
-                   " inputs but MO op has " + Twine(opInputsCount) + " inputs");
-    }
+  /// TODO(GEX-2065): PT fallback functions are not yet supported.
+  if ((*maybeExecuteFunc)
+          ->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
+    return success();
   }
 
-  // Verify the number of outputs.
-  // Ignore output chains.
-  ErrorOr<size_t> opOutputsCountOrErr = getOperandsCountWithoutChains(
-      kernelCallOp->getResultTypes(), /*isInput=*/false);
-  if (opOutputsCountOrErr.isError())
-    return opOutputsCountOrErr.takeError();
-  size_t opOutputsCount = opOutputsCountOrErr.takeValue();
-  if (kernelInfos.hasVariadicOutputs) {
-    // The number of outputs is a lower bound (variadic size must be >= 1)
-    if (opOutputsCount < kernelInfos.numKernelOutputs()) {
-      return Error(Twine("Kernel with variadics expects at least ") +
-                   Twine(kernelInfos.numKernelOutputs()) +
-                   " outputs but MO op has " + Twine(opOutputsCount) +
-                   " outputs. You might have some missing outputs and / or an "
-                   "empty varidic");
-    }
-  } else {
-    if (opOutputsCount != kernelInfos.numKernelOutputs()) {
-      return Error(
-          Twine("Kernel expects ") + Twine(kernelInfos.numKernelOutputs()) +
-          " outputs but MO op has " + Twine(opOutputsCount) + " outputs");
-    }
-  }
+  using namespace KGEN::MOGGPreElab;
+  MojoKernelAdaptor<KGEN::GeneratorOp> adaptor("", maybeExecuteFunc.takeValue(),
+                                               nullptr);
+  auto matchedInputsOrError = matchOperands(op, adaptor);
+  if (matchedInputsOrError.isError())
+    return matchedInputsOrError;
+
+  auto matchedOutputsOrError = matchResults(op, adaptor);
+  if (matchedOutputsOrError.isError())
+    return matchedOutputsOrError;
 
   return success();
 }
