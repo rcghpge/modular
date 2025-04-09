@@ -383,6 +383,14 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         continue;
       }
 
+      // TODO(GEX-2026): Early out, fusion for kernels epilogue fusion for
+      // elemntwise kernels that have chains isn't currently supported.
+      if (user.maybeGetInChain().has_value() &&
+          user.maybeGetOutChain().has_value()) {
+        fusableOutput.reset(idx);
+        continue;
+      }
+
       // Only fuse within the same block and not across, i.e, control flow.
       if (kernel->getBlock() != user->getBlock()) {
         fusableOutput.reset(idx);
