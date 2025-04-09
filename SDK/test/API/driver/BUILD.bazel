@@ -5,7 +5,7 @@ lit_tests(
     size = "large",
     srcs = glob(
         ["**/*.mojo"],
-        exclude = ["mojo/cuda/*.mojo"],
+        exclude = ["mojo/gpu/*.mojo"],
     ),
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
@@ -17,7 +17,7 @@ lit_tests(
 lit_tests(
     name = "gpu-test",
     size = "large",
-    srcs = glob(["mojo/cuda/*.mojo"]),
+    srcs = glob(["mojo/gpu/*.mojo"]),
     gpu_constraints = ["//:has_gpu"],
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
