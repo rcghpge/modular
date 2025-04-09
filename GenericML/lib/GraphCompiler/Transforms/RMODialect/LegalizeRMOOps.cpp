@@ -258,7 +258,7 @@ struct LegalizeMutableLoadOp : public OpRewritePattern<RMO::MOMutableLoadOp> {
 
     auto moOp = rewriter.create<MO::MutableLoadOp>(op->getLoc(), moResultTypes,
                                                    moOperands);
-
+    moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
     OpResult outTensorRes = moOp->getOpResult(1);
     auto reboundOutput = rebindToShape(graphOp, outTensorRes,
                                        op.getOutTensor().getType(), rewriter);
@@ -299,6 +299,7 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
 
     auto moOp = rewriter.create<MO::MutableStoreOp>(op->getLoc(), moResultTypes,
                                                     moOperands);
+    moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
     rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
 
     op->erase();
@@ -341,7 +342,7 @@ struct LegalizeMutableStoreSliceOp
 
     auto moOp = rewriter.create<MO::MutableStoreSliceOp>(
         op->getLoc(), moResultTypes, moOperands, op->getAttrs());
-
+    moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
     rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
 
     op->erase();
@@ -1074,9 +1075,10 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
     }
 
     // Create the mo.slice op.
-    rewriter.replaceOpWithNewOp<MO::SliceOp>(op, op.getType(), input, starts,
-                                             stops, steps);
-
+    auto res = rewriter.create<MO::SliceOp>(op->getLoc(), op.getType(), input,
+                                            starts, stops, steps);
+    res->setDiscardableAttrs(op->getRawDictionaryAttrs());
+    rewriter.replaceAllOpUsesWith(op, res);
     return success();
   }
 };

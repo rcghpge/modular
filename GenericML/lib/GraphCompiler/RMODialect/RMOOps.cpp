@@ -34,8 +34,10 @@ using MO::Var;
 using M::MO::parseParamDecls;
 using M::MO::printParamDecls;
 
+#define DEBUG_TYPE "rmo-ops"
+
 ErrorOr<M::DeviceRefAttr> RMO::inferDevice(ValueRange values) {
-  llvm::SmallDenseSet<M::DeviceRefAttr> valueDevices;
+  llvm::SetVector<M::DeviceRefAttr> valueDevices;
   for (const auto &value : values) {
     // Right now only tensors/buffers have devices.
     auto asTensorType = dyn_cast<M::MO::TensorType>(value.getType());
@@ -48,16 +50,22 @@ ErrorOr<M::DeviceRefAttr> RMO::inferDevice(ValueRange values) {
         valueDevices.insert(deviceRef);
   }
 
+  // TODO(MAXPLAT-191): Find a better way to forward device inference.
   if (valueDevices.size() > 1) {
-    // In the case where we have different explicit devices, error.
-    std::string devicesString = "";
-    for (const auto &device : valueDevices) {
-      devicesString.append(device.toString());
-      devicesString.append(",");
-    }
-    return Error(Twine("Differing input devices={")
-                     .concat(devicesString)
-                     .concat("} is not supported."));
+    LLVM_DEBUG(
+        // In the case where we have different explicit devices, make a note of
+        // this.
+        std::string devicesString = "";
+        for (const auto &device
+             : valueDevices) {
+          devicesString.append(device.toString());
+          devicesString.append(",");
+        }
+
+        llvm::dbgs()
+        << "[RMOOps.cpp] Found multiple devices " << devicesString
+        << " defaulting to first";);
+    return valueDevices[0];
   } else if (valueDevices.size() == 1) {
     // There is only 1 explicit device. Use that as the sole device.
     return *valueDevices.begin();
