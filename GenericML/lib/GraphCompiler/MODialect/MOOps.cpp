@@ -516,15 +516,15 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// CallGraphOp
+// CallOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult CallGraphOp::verify() {
+LogicalResult CallOp::verify() {
   // We don't need a symbol table because we can rely on the graph ops are all
   // top level ops within the module
   auto moduleOp = getOperation()->getParentOfType<ModuleOp>();
   if (!moduleOp)
-    return emitError() << "CallGraphOp must be within a ModuleOp";
+    return emitError() << "CallOp must be within a ModuleOp";
   auto allGraphs = moduleOp.getOps<GraphOp>();
   auto it = llvm::find_if(allGraphs, [&](GraphOp graphOp) {
     return graphOp.getName() == getSymbol().getLeafReference();

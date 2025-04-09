@@ -10,7 +10,7 @@ mo.graph @gelu(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) attr
 
 // CHECK: mo.graph @main(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
 mo.graph @main(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
-  // CHECK-NEXT: %0 = mo.call_graph {symbol = @gelu}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
-  %0 = mo.call_graph {symbol = @gelu}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
+  // CHECK-NEXT: %0 = mo.call {symbol = @gelu}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
+  %0 = mo.call {symbol = @gelu}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }

@@ -243,10 +243,10 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 }
 
 //===----------------------------------------------------------------------===//
-// CallGraphOp
+// CallOp
 //===----------------------------------------------------------------------===//
 
-def MO_CallGraphOp : MO_ControlOp<"call_graph", [
+def MO_CallOp : MO_ControlOp<"call", [
   HasParent<"MO::GraphOp">,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
 ]> {
@@ -257,7 +257,7 @@ def MO_CallGraphOp : MO_ControlOp<"call_graph", [
     Example:
 
     ```mlir
-      %res = mo.call_graph {symbol = "gelu"}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
+      %res = mo.call {symbol = "gelu"}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
     ```
   }];
   
