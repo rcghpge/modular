@@ -2,8 +2,8 @@
 :type: module
 :lang: python
 
-.. py:currentmodule:: max.pipelines.kv_cache.naive_cache
+.. py:currentmodule:: max.nn.kv_cache.naive_cache
 
-.. automodule:: max.pipelines.kv_cache.naive_cache
+.. automodule:: max.nn.kv_cache.naive_cache
    :members:
    :undoc-members:
