@@ -278,8 +278,9 @@ DeviceBuffer::copyFrom(const void *src) const {
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
-  if (parent() != nullptr) {
-    RAISE_ERROR_MESSAGE("cannot reassign a sub buffer");
+  if ((context().device().api() != ctx.device().api()) ||
+      (context().device().id() != ctx.device().id())) {
+    RAISE_ERROR_MESSAGE("cannot reassign a buffer between different devices");
   }
   DEFINE_OR_RAISE(DeviceEventRef, srcEvent, context().enqueueEvent());
   ERR_CHECK(ctx.enqueueWaitForEvent(*srcEvent));
@@ -598,6 +599,26 @@ DeviceContext::getOrCreate(StringRef api, int id) {
     contextMap.insert({cacheKey, ctx});
     return DeviceContextRef::copy(ctx);
   }
+}
+
+MODULAR_CXX_EXPORT bool
+DeviceContext::operator==(const DeviceContext &other) const {
+  ErrorOr<DeviceStreamRef> err_stream = stream();
+  if (err_stream.isError())
+    return false;
+  void *stream_this = (*err_stream)->ptr();
+
+  err_stream = other.stream();
+  if (err_stream.isError())
+    return false;
+  void *stream_other = (*err_stream)->ptr();
+
+  return stream_this == stream_other;
+}
+
+MODULAR_CXX_EXPORT bool
+DeviceContext::operator!=(const DeviceContext &other) const {
+  return !(*this == other);
 }
 
 BufferCache &DeviceContext::bufferCache() const { return *bufferCache_; }

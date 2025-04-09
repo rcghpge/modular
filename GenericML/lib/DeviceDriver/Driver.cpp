@@ -33,6 +33,16 @@ DeviceMemory::copyTo(DeviceMemory &dst) const {
   return this->buf->copyTo(*dst.buf);
 }
 
+MODULAR_DRIVER_EXPORT ErrorOr<DeviceMemory *>
+DeviceMemory::createViewOn(Device &device) const {
+  ASSIGN_OR_RETURN(new_buf, buf->createSubBuffer(0, buf->byteSize()));
+  ErrorOrSuccess err =
+      new_buf->reassignOwnershipTo(*device.tmpGetDeviceContext());
+  if (err.isError())
+    return err.takeError();
+  return new DeviceMemory(M::copyRCRef(&device), new_buf, spec);
+}
+
 MODULAR_DRIVER_EXPORT ErrorOrSuccess DeviceMemory::memset(int value) {
   return buf->context().enqueueSetMemory(*buf, value, 1);
 }

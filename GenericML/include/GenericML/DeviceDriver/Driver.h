@@ -65,6 +65,8 @@ struct DeviceMemory {
   /// which may reside on a different device.
   ErrorOrSuccess copyTo(DeviceMemory &dst) const;
 
+  ErrorOr<DeviceMemory *> createViewOn(Device &device) const;
+
   /// Sets the contents of the device memory to the provided value.
   ErrorOrSuccess memset(int value);
 

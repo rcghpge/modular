@@ -439,6 +439,9 @@ public:
 
   static ErrorOr<DeviceContextRef> getOrCreate(StringRef api, int id = 0);
 
+  bool operator==(const DeviceContext &other) const;
+  bool operator!=(const DeviceContext &other) const;
+
   // Access configuration flags from the "device-context" section.
   static bool configAsBool(StringRef key, bool defaultValue);
   static int64_t configAsInt(StringRef key, int64_t defaultValue);
