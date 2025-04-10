@@ -228,6 +228,9 @@ public:
   /// Lowers mo.buffer.transfer op
   LogicalResult lowerBufferTransfer(MO::BufferTransferOp bufferTransferOp);
 
+  /// Lowers mo.call op
+  LogicalResult lowerCallGraph(MO::CallOp callOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -2114,6 +2117,12 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
+    if (auto callOp = dyn_cast<MO::CallOp>(op)) {
+      if (failed(lowerCallGraph(callOp)))
+        return failure();
+      continue;
+    }
+
     // Implementers of the lowering interface define their own logic.
     if (auto lowerable = dyn_cast<MGP::LowerableToMGPInterface>(op)) {
       if (failed(lowerable.lower(loweringState)))
@@ -2163,6 +2172,85 @@ LogicalResult MOGraphLowering::run() {
   model.erase();
   // We're also done with the original mo.graph.
   graph.erase();
+
+  return success();
+}
+
+LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, callOp);
+  OpBuilder b(callOp);
+
+  // Get the target model name
+  StringRef targetModelName = callOp.getSymbol().getRootReference();
+
+  // Use the model being created in the lowering process
+  MGP::ModelOp currentModel = loweringState.getModelOp();
+
+  // Lookup the target model in the module
+  auto moduleOp = callOp->getParentOfType<ModuleOp>();
+  if (!moduleOp)
+    return callOp.emitError() << "Failed to find parent ModuleOp";
+
+  auto targetModel = moduleOp.lookupSymbol<MGP::ModelOp>(targetModelName);
+  if (!targetModel)
+    return callOp.emitError()
+           << "Failed to find target model with name: " << targetModelName;
+
+  // The MGP call needs all the implicit arguments plus the explicit ones
+  // The implicit args are: chain, context, weights registry, and devices
+  SmallVector<Value> callOperands;
+
+  // First, we need the implicit arguments
+  // Get chain, context, weights registry from the current model's execute block
+  callOperands.push_back(loweringState.getExecuteChain());
+  callOperands.push_back(loweringState.getExecuteMgpContext());
+  callOperands.push_back(loweringState.getExecuteWeightsRegistry());
+
+  // Add device contexts
+  for (auto deviceAttr : currentModel.getDevices()) {
+    DeviceRefAttr deviceRef = cast<DeviceRefAttr>(deviceAttr);
+    callOperands.push_back(loweringState.getExecuteDevice(deviceRef));
+  }
+
+  // Now add the explicit operands from the mo.call op
+  // These need to be mapped to their lowered MGP equivalents
+  for (auto operand : callOp.getOperands()) {
+    // Get the lowered value (must have been lowered earlier)
+    Value loweredValue = loweringState.lookupExecuteLoweredValue(operand);
+    if (!loweredValue)
+      return callOp.emitError() << "Operand not lowered yet: " << operand;
+
+    callOperands.push_back(loweredValue);
+  }
+
+  // Determine result types for the call
+  SmallVector<Type> resultTypes;
+
+  // First result is always chain
+  resultTypes.push_back(b.getType<MEF::ChainType>());
+
+  // Add the explicit result types
+  for (auto result : callOp.getResults()) {
+    Type loweredType =
+        loweringState.getTypeConverter().convertType(result.getType());
+    if (!loweredType) {
+      return callOp.emitError()
+             << "Failed to lower result type: " << result.getType();
+    }
+    resultTypes.push_back(loweredType);
+  }
+
+  // Create the mgp.call operation
+  auto targetSymbol = SymbolRefAttr::get(targetModel.getSymNameAttr());
+  auto mgpCallOp = opLoweringState.create<MGP::CallOp>(
+      resultTypes, targetSymbol, callOperands);
+
+  // Map the results back
+  // Skip the first result (chain) for mapping back to original results
+  for (unsigned i = 0; i < callOp.getNumResults(); ++i) {
+    loweringState.emplaceExecuteLoweredValue(callOp.getResult(i),
+                                             mgpCallOp.getResult(i + 1));
+  }
 
   return success();
 }
