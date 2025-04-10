@@ -164,6 +164,32 @@ struct DeviceAwareRewriter {
         rewriter.create<OpTy>(location, std::forward<Args>(args)...));
   }
 
+  /// Create a constant that is stamped with the host device.
+  ///
+  /// Some ops have operands that are constrained to be on the host device.
+  /// We need to provide a way to create these without stamping them with the
+  /// wrong device.
+  template <typename... Args>
+  ConstantOp createHostConstant(Location location, Args &&...args) {
+    // If no device was detected, don't stamp the constant with the host device.
+    auto device = deviceAnnots.device
+                      ? DeviceRefAttr::getDefault(rewriter.getContext())
+                      : nullptr;
+    return rewriter.create<ConstantOp>(location, std::forward<Args>(args)...,
+                                       device);
+  }
+
+  /// Create a constant that is stamped with the current device.
+  ///
+  /// This leverages the ability of DeviceAwareRewriter to create constants
+  /// for the current device. Both the constant op and the tensor type will be
+  /// stamped with the current device.
+  template <typename... Args>
+  ConstantOp createDeviceConstant(Location location, Args &&...args) {
+    return rewriter.create<ConstantOp>(location, std::forward<Args>(args)...,
+                                       deviceAnnots.device);
+  }
+
   template <typename CallableT>
   void modifyOpInPlace(Operation *root, CallableT &&callable) {
     rewriter.modifyOpInPlace(root, std::forward<CallableT>(callable));

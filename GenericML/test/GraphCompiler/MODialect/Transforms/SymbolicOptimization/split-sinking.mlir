@@ -23,17 +23,17 @@ mo.graph @unary_elementwise(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2],
 // CHECK-LABEL: mo.graph @unary_elementwise_with_device
 // CHECK-NEXT:   %[[AXIS:.*]] = mo.constant
 // CHECK-NEXT:   %[[SIZES:.*]] = mo.constant
-// CHECK-NEXT:   %[[EXP:.*]] = mo.exp({{.*}}) : !mo.tensor<[2, 4], f32>
-// CHECK-NEXT:   %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[EXP]], %[[SIZES]]) {device = #M.device_ref<"dev", 0>}
-// CHECK-NEXT:   mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+// CHECK-NEXT:   %[[EXP:.*]] = mo.exp({{.*}}) : !mo.tensor<[2, 4], f32, dev:0>
+// CHECK-NEXT:   %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32, cpu:0>] (%[[EXP]], %[[SIZES]]) {device = #M.device_ref<"dev", 0>}
+// CHECK-NEXT:   mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32, dev:0>, !mo.tensor<[2, 2], f32, dev:0>
 
-mo.graph @unary_elementwise_with_device(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %1 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %2:2 = mo.split[%0 : !mo.tensor<[], si32>] (%in, %1) { device = #M.device_ref<"dev", 0> } : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
-  %3 = mo.exp(%2#0) : !mo.tensor<[2, 2], f32>
-  %4 = mo.exp(%2#1) : !mo.tensor<[2, 2], f32>
-  mo.output %3, %4 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+mo.graph @unary_elementwise_with_device(%in: !mo.tensor<[2, 4], f32, dev:0>) -> (!mo.tensor<[2, 2], f32, dev:0>, !mo.tensor<[2, 2], f32, dev:0>) {
+  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32, cpu:0>
+  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64, cpu:0>
+  %2:2 = mo.split[%0 : !mo.tensor<[], si32, cpu:0>] (%in, %1) { device = #M.device_ref<"dev", 0> } : (!mo.tensor<[2, 4], f32, dev:0>, !mo.tensor<[2], si64, cpu:0>) -> (!mo.tensor<[2, 2], f32, dev:0>, !mo.tensor<[2, 2], f32, dev:0>)
+  %3 = mo.exp(%2#0) : !mo.tensor<[2, 2], f32, dev:0>
+  %4 = mo.exp(%2#1) : !mo.tensor<[2, 2], f32, dev:0>
+  mo.output %3, %4 : !mo.tensor<[2, 2], f32, dev:0>, !mo.tensor<[2, 2], f32, dev:0>
 }
 
 // CHECK-LABEL:  mo.graph @binary_elementwise

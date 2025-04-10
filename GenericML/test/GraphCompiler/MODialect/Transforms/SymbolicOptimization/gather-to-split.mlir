@@ -44,35 +44,35 @@ mo.graph @gather_to_split<D0>(
 
 // CHECK: mo.graph @gather_to_split_with_device<[[D0:.*]]>(
 mo.graph @gather_to_split_with_device<D0>(
-  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[3, [[D0]], 10], f32>,
-  %input: !mo.tensor<[3, D0, 10], f32>,
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[3, [[D0]], 10], f32, dev:0>,
+  %input: !mo.tensor<[3, D0, 10], f32, dev:0>,
   // CHECK-SAME: %[[DYN_IDX:.*]]: !mo.tensor<[1], si64>
   %dyn_idx: !mo.tensor<[1], si64>
-// CHECK-SAME: ) -> !mo.tensor<[1, D0, 10], f32> {
-) -> !mo.tensor<[1, D0, 10], f32> {
-  %axis0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %idx0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+// CHECK-SAME: ) -> !mo.tensor<[1, D0, 10], f32, dev:0> {
+) -> !mo.tensor<[1, D0, 10], f32, dev:0> {
+  %axis0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64, cpu:0>
+  %idx0 = mo.constant {device = #M.device_ref<"dev", 0>, value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64, dev:0>
+  %idx1 = mo.constant {device = #M.device_ref<"dev", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64, dev:0>
+  %idx2 = mo.constant {device = #M.device_ref<"dev", 0>, value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64, dev:0>
 
-  // CHECK-NEXT: %[[SPLIT_SIZES:.*]] = mo.constant {{{.*}}value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-NEXT: %[[SPLIT_AXIS:.*]] = mo.constant {{{.*}}value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  // CHECK-NEXT: %[[SPLIT_RES:.*]]:3 = mo.split[%[[SPLIT_AXIS]] : !mo.tensor<[], si32>] (%[[INPUT]], %[[SPLIT_SIZES]]) {device = #M.device_ref<"dev", 0>}
-  // CHECK-SAME: : (!mo.tensor<[3, [[D0]], 10], f32>, !mo.tensor<[3], si64>) -> (!mo.tensor<[1, [[D0]], 10], f32>, !mo.tensor<[1, [[D0]], 10], f32>, !mo.tensor<[1, [[D0]], 10], f32>)
-  %gather0 = mo.gather(%input, %idx0, %axis0)
-  : (!mo.tensor<[3, D0, 10], f32>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1, D0, 10], f32>
+  // CHECK-NEXT: %[[SPLIT_SIZES:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64, cpu:0>
+  // CHECK-NEXT: %[[SPLIT_AXIS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32, cpu:0>
+  // CHECK-NEXT: %[[SPLIT_RES:.*]]:3 = mo.split[%[[SPLIT_AXIS]] : !mo.tensor<[], si32, cpu:0>] (%[[INPUT]], %[[SPLIT_SIZES]]) {device = #M.device_ref<"dev", 0>}
+  // CHECK-SAME: : (!mo.tensor<[3, [[D0]], 10], f32, dev:0>, !mo.tensor<[3], si64, cpu:0>) -> (!mo.tensor<[1, [[D0]], 10], f32, dev:0>, !mo.tensor<[1, [[D0]], 10], f32, dev:0>, !mo.tensor<[1, [[D0]], 10], f32, dev:0>)
+  %gather0 = mo.gather(%input, %idx0, %axis0) { device = #M.device_ref<"dev", 0> }
+  : (!mo.tensor<[3, D0, 10], f32, dev:0>, !mo.tensor<[1], si64, dev:0>, !mo.tensor<[], si64, cpu:0>) -> !mo.tensor<[1, D0, 10], f32, dev:0>
   %gather1 = mo.gather(%input, %idx1, %axis0) { device = #M.device_ref<"dev", 0> }
-  : (!mo.tensor<[3, D0, 10], f32>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1, D0, 10], f32>
-  %gather2 = mo.gather(%input, %idx2, %axis0)
-  : (!mo.tensor<[3, D0, 10], f32>, !mo.tensor<[1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1, D0, 10], f32>
+  : (!mo.tensor<[3, D0, 10], f32, dev:0>, !mo.tensor<[1], si64, dev:0>, !mo.tensor<[], si64, cpu:0>) -> !mo.tensor<[1, D0, 10], f32, dev:0>
+  %gather2 = mo.gather(%input, %idx2, %axis0) { device = #M.device_ref<"dev", 0> }
+  : (!mo.tensor<[3, D0, 10], f32, dev:0>, !mo.tensor<[1], si64, dev:0>, !mo.tensor<[], si64, cpu:0>) -> !mo.tensor<[1, D0, 10], f32, dev:0>
 
-  // CHECK-NEXT: %[[ADD01:.*]] = mo.add(%[[SPLIT_RES]]#0, %[[SPLIT_RES]]#1) : !mo.tensor<[1, [[D0]], 10], f32>
-  %add01 = mo.add(%gather0, %gather1) : !mo.tensor<[1, D0, 10], f32>
-  // CHECK-NEXT: %[[ADD012:.*]] = mo.add(%[[ADD01]], %[[SPLIT_RES]]#2) : !mo.tensor<[1, [[D0]], 10], f32>
-  %add012 = mo.add(%add01, %gather2) : !mo.tensor<[1, D0, 10], f32>
+  // CHECK-NEXT: %[[ADD01:.*]] = mo.add(%[[SPLIT_RES]]#0, %[[SPLIT_RES]]#1) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[1, [[D0]], 10], f32, dev:0>
+  %add01 = mo.add(%gather0, %gather1) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[1, D0, 10], f32, dev:0>
+  // CHECK-NEXT: %[[ADD012:.*]] = mo.add(%[[ADD01]], %[[SPLIT_RES]]#2) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[1, [[D0]], 10], f32, dev:0>
+  %add012 = mo.add(%add01, %gather2) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[1, D0, 10], f32, dev:0>
 
-  // CHECK-NEXT: mo.output %[[ADD012]] : !mo.tensor<[1, [[D0]], 10], f32>
-  mo.output %add012 : !mo.tensor<[1, D0, 10], f32>
+  // CHECK-NEXT: mo.output %[[ADD012]] : !mo.tensor<[1, [[D0]], 10], f32, dev:0>
+  mo.output %add012 : !mo.tensor<[1, D0, 10], f32, dev:0>
 }
 
 // CHECK: mo.graph @gather_to_split_unranked_input<[[SH0:.*]]: !mosh.ape>(

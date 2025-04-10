@@ -137,7 +137,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     // Next we create the first auxiliary value, roughly the following range:
     // range = np.arange(0, FS*BS, FS)
     // First, we need a constant zero for the start index.
-    auto start = rewriter.create<ConstantOp>(loc, (int64_t)0, deviceRef);
+    auto start = rewriter.createHostConstant(loc, (int64_t)0);
 
     // Second, we calculate the batch size symbolically (BS/bs).
     ArrayRef<TypedAttr> batchDims = reshapeInputDims.take_front(rankDiff);
@@ -177,8 +177,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     // Notice that the common shape is always [BS, W].
 
     // We start with transposing the result of argNonzero.
-    auto perm =
-        rewriter.create<ConstantOp>(loc, SmallVector<int64_t>{1, 0}, deviceRef);
+    auto perm = rewriter.createHostConstant(loc, SmallVector<int64_t>{1, 0});
     auto transposeTy = TensorType::get(
         SmallVector<TypedAttr>{argNonzeroDims[1], argNonzeroDims[0]}, si64Ty,
         deviceRef);
@@ -345,7 +344,7 @@ struct ConvertBatchMatmulToMatmulPattern
     Value matmul;
     if (transposeOp) {
       auto perm =
-          rewriter.create<ConstantOp>(op->getLoc(), SmallVector<int64_t>{1, 0});
+          rewriter.createHostConstant(op->getLoc(), SmallVector<int64_t>{1, 0});
       TensorType bcastedTensorTy = cast<TensorType>(bcastedTensor.getType());
       ArrayRef<TypedAttr> oldbcastedTensorShape = bcastedTensorTy.getDims();
       SmallVector<TypedAttr> newTensorShape = {oldbcastedTensorShape[1],
@@ -685,7 +684,7 @@ struct PadConvPattern
     }
 
     auto loc = op.getLoc();
-    Value newPads = rewriter.create<ConstantOp>(
+    Value newPads = rewriter.createHostConstant(
         loc, SmallVector<int64_t>{constPads.begin() + 2, constPads.end() - 2});
     // Cast, sometimes this comes in as si32
     pads2 = rewriter.create<CastOp>(
@@ -796,9 +795,9 @@ struct GathersToSplitPattern
     // to maintain dominance over input users, the latter is for debuggability.
     Location loc = dominantGatherOp.getLoc();
     rewriter.setInsertionPoint(dominantGatherOp);
-    Value splitSizes = rewriter.create<ConstantOp>(
+    Value splitSizes = rewriter.createHostConstant(
         loc, SmallVector<int64_t>(inputAxis0Dim, 1));
-    Value axis = rewriter.create<ConstantOp>(loc, 0);
+    Value axis = rewriter.createHostConstant(loc, 0);
     auto splitOp =
         rewriter.create<SplitOp>(loc, resultTypes, input, splitSizes, axis);
 
@@ -1100,7 +1099,7 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
       auto paddedAxes =
           llvm::iota_range<int64_t>(0, extraDims, /*Inclusive=*/false);
       permVec.insert(permVec.begin(), paddedAxes.begin(), paddedAxes.end());
-      auto newPerm = rewriter.create<ConstantOp>(op.getLoc(), permVec);
+      auto newPerm = rewriter.createHostConstant(op.getLoc(), permVec);
 
       rewriter.modifyOpInPlace(
           transposeOp, [&]() { transposeOp.getPermMutable().assign(newPerm); });
@@ -1377,7 +1376,7 @@ struct SwimConcatThroughReshapeLikeOpsPattern
         reshapeOps.size());
     auto newConcatOutputType = concatInputType.cloneWith(newConcatOutputShape);
     SmallVector<Value> newConcatOperands = {
-        rewriter.create<ConstantOp>(loc, newConcatAxis)};
+        rewriter.createHostConstant(loc, newConcatAxis)};
     newConcatOperands.append(reshapeOperands.begin(), reshapeOperands.end());
     OperationState concatOpState(loc, concatOp->getName(), newConcatOperands,
                                  newConcatOutputType, concatOp->getAttrs());
@@ -1919,8 +1918,8 @@ struct SplitAndSqueezesPattern
     std::iota(permVec.begin() + 1, permVec.begin() + splitAxis + 1, 0);
     std::iota(permVec.begin() + splitAxis + 1, permVec.end(), splitAxis + 1);
     permVec[0] = splitAxis;
-    Value perm = rewriter.create<ConstantOp>(loc, permVec);
-    Value zeroAxis = rewriter.create<ConstantOp>(loc, 0);
+    Value perm = rewriter.createHostConstant(loc, permVec);
+    Value zeroAxis = rewriter.createHostConstant(loc, 0);
 
     // Construct transpose (before split op)
     TensorType transposedInputTy = permuteDims(inputTy, permVec);
@@ -2337,7 +2336,7 @@ struct SwimTransposeThroughBinaryOpWithConstantSubtree
     }
 
     auto invertedPermProducer =
-        rewriter.create<ConstantOp>(binOp->getLoc(), invertedPerm);
+        rewriter.createHostConstant(binOp->getLoc(), invertedPerm);
 
     auto constantSubtreeTranspose = rewriter.create<TransposeOp>(
         binOp->getLoc(), viewOp.getInput().getType(), constantSubtreeOutput,
@@ -2701,14 +2700,13 @@ struct SliceToSplitPattern
       splitSizes.push_back(getSliceValue(sliceOp.getStop()) -
                            getSliceValue(sliceOp.getStart()));
     }
-    auto splitSizesOp = rewriter.create<ConstantOp>(loc, splitSizes);
+    auto splitSizesOp = rewriter.createDeviceConstant(loc, splitSizes);
 
     SmallVector<Value> originalSliceValues;
     for (SliceOp sliceOp : sliceOps)
       originalSliceValues.push_back(sliceOp.getResult());
 
-    auto splitAxis =
-        rewriter.create<ConstantOp>(loc, sliceDimension).getResult();
+    auto splitAxis = rewriter.createHostConstant(loc, sliceDimension);
 
     auto splitOp = rewriter.create<SplitOp>(
         loc, splitTypes, input, splitSizesOp.getResult(), splitAxis);
@@ -2846,7 +2844,7 @@ struct MergeParallelMatmulPattern
             .cloneWithNewDim(oldMatmulType.getRank() - 1, totalColumns);
 
     int64_t innerDimIndex = oldMatmulType.getRank() - 1;
-    Value concatAxis = rewriter.create<ConstantOp>(loc, innerDimIndex);
+    Value concatAxis = rewriter.createHostConstant(loc, innerDimIndex);
     Value concatenatedWeights =
         rewriter
             .create<ConcatOp>(loc, concatType, concatAxis, weightsToConcatenate)
@@ -2861,7 +2859,7 @@ struct MergeParallelMatmulPattern
                           .getResult();
 
     // Split the output.
-    Value splitSizes = rewriter.create<ConstantOp>(loc, columnsInEachMatmul);
+    Value splitSizes = rewriter.createHostConstant(loc, columnsInEachMatmul);
     auto splitOp = rewriter.create<SplitOp>(loc, matmulTypes, newMatmul,
                                             splitSizes, concatAxis);
 
@@ -3044,7 +3042,7 @@ struct SinkSplitThroughElementwisePattern
       auto concatType =
           constantType.cloneWithNewDim(constantType.getRank() - 1, lastDimSize);
       Value concatAxis =
-          rewriter.create<ConstantOp>(loc, int64_t(constantType.getRank() - 1));
+          rewriter.createHostConstant(loc, int64_t(constantType.getRank() - 1));
       Value concatenatedConstants =
           rewriter
               .create<ConcatOp>(loc, concatType, concatAxis,
@@ -3240,9 +3238,9 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
         op.getNumResults(), firstReshapeType.getIntDim(newSplitAxis));
     SmallVector<Value> newSplitOpOperands = op.getOperands();
     newSplitOpOperands[0] = newReshape;
-    newSplitOpOperands[1] = rewriter.create<ConstantOp>(loc, newSplitSizes);
+    newSplitOpOperands[1] = rewriter.createDeviceConstant(loc, newSplitSizes);
     newSplitOpOperands[2] =
-        rewriter.create<ConstantOp>(loc, int64_t(newSplitAxis)).getResult();
+        rewriter.createDeviceConstant(loc, int64_t(newSplitAxis));
     OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
                                 newSplitTypes, op->getAttrs(),
                                 op->getSuccessors());
@@ -3432,7 +3430,7 @@ struct SinkBroadcastsThroughReduction
     // the broadcast for later.
     int64_t newAxis = reductionAxis - numBeforeAxis;
     TensorValue newAxisTensor =
-        rewriter.create<ConstantOp>(op->getLoc(), newAxis);
+        rewriter.createDeviceConstant(op->getLoc(), newAxis);
     auto clonedReduction = cast<MO::Reduction>(*rewriter.clone(*op));
     clonedReduction.getInputMutable().assign(bcastOpInput);
     clonedReduction.getAxisMutable().assign(newAxisTensor);

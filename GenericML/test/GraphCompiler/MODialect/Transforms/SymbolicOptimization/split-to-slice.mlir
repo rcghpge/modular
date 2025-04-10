@@ -25,28 +25,28 @@ mo.graph @split_to_slice<N>(%input: !mo.tensor<[N], si32>) -> (!mo.tensor<[1], s
 
 // -----
 
-mo.graph @split_to_slice_with_device<N>(%input: !mo.tensor<[N], si32>) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
-  %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) { device = #M.device_ref<"dev", 0> } : (
-    !mo.tensor<[N], si32>, !mo.tensor<[3], si64>
-  ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>)
+mo.graph @split_to_slice_with_device<N>(%input: !mo.tensor<[N], si32, dev:0>) -> (!mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>) {
+  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32, cpu:0>
+  %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64, cpu:0>
+  %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32, cpu:0>](%input, %splitSizes) { device = #M.device_ref<"dev", 0> } : (
+    !mo.tensor<[N], si32, dev:0>, !mo.tensor<[3], si64, cpu:0>
+  ) -> (!mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>)
 
-  %o1 = mo.relu(%out1): !mo.tensor<[1], si32>
-  %o2 = mo.relu(%out2): !mo.tensor<[2], si32>
-  %o3 = mo.relu(%out3): !mo.tensor<[3], si32>
-  mo.output %o1, %o2, %o3 : !mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>
+  %o1 = mo.relu(%out1) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[1], si32, dev:0>
+  %o2 = mo.relu(%out2) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[2], si32, dev:0>
+  %o3 = mo.relu(%out3) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[3], si32, dev:0>
+  mo.output %o1, %o2, %o3 : !mo.tensor<[1], si32, dev:0>, !mo.tensor<[2], si32, dev:0>, !mo.tensor<[3], si32, dev:0>
 }
 
 // CHECK-LABEL: mo.graph @split_to_slice_with_device<N>
-// CHECK: (%[[INPUT:.*]]: !mo.tensor<[N], si32
+// CHECK: (%[[INPUT:.*]]: !mo.tensor<[N], si32, dev:0>
 // CHECK-DAG: %[[ONE:.*]] = mo.constant {{{.*}}value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64, cpu:0>
 // CHECK-DAG: %[[ZERO:.*]] = mo.constant {{{.*}}value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64, cpu:0>
 // CHECK-DAG: %[[THREE:.*]] = mo.constant {{{.*}}value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64, cpu:0>
 // CHECK-DAG: %[[SIX:.*]] = mo.constant {{{.*}}value = #M.dense_array<6> : !M.array<1xsi64>} : !mo.tensor<[1], si64, cpu:0>
-// CHECK-NEXT: %[[O0:.*]] = mo.slice(%[[INPUT]], %[[ZERO]], %[[ONE]], %[[ONE]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[N], si32>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>) -> !mo.tensor<[1], si32>
-// CHECK-NEXT: %[[O1:.*]] = mo.slice(%[[INPUT]], %[[ONE]], %[[THREE]], %[[ONE]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[N], si32>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>) -> !mo.tensor<[2], si32>
-// CHECK-NEXT: %[[O2:.*]] = mo.slice(%[[INPUT]], %[[THREE]], %[[SIX]], %[[ONE]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[N], si32>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>) -> !mo.tensor<[3], si32>
+// CHECK-NEXT: %[[O0:.*]] = mo.slice(%[[INPUT]], %[[ZERO]], %[[ONE]], %[[ONE]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[N], si32, dev:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>) -> !mo.tensor<[1], si32, dev:0>
+// CHECK-NEXT: %[[O1:.*]] = mo.slice(%[[INPUT]], %[[ONE]], %[[THREE]], %[[ONE]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[N], si32, dev:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>) -> !mo.tensor<[2], si32, dev:0>
+// CHECK-NEXT: %[[O2:.*]] = mo.slice(%[[INPUT]], %[[THREE]], %[[SIX]], %[[ONE]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[N], si32, dev:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>, !mo.tensor<[1], si64, cpu:0>) -> !mo.tensor<[3], si32, dev:0>
 
 // -----
 
