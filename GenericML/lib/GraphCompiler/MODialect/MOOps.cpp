@@ -507,8 +507,8 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 
   auto funcType = FunctionType::get(ctx, newArgTypes, newResTypes);
   FuncTypeGeneratorType signature =
-      KGEN::FuncTypeGeneratorType::remapToFuncTypeGenerator(op.getInputParams(),
-                                                            funcType);
+      KGEN::FuncTypeGeneratorType::remapToFuncTypeGenerator(
+          op.getInputParameters(), funcType);
   NamedAttrList attrs = op->getAttrDictionary();
   attrs.set(op.getSignatureAttrName(), TypeAttr::get(signature));
   attrs.set(op.getFunctionTypeAttrName(), TypeAttr::get(funcType));
@@ -723,8 +723,8 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
       ctx, getParamDeclsFromShapes(inputTypes).getArrayRef());
   auto resultDecls = KGEN::ParamDeclArrayAttr::get(
       ctx, getParamDeclsFromShapes(resultTypes).getArrayRef());
-  state.addAttribute(getInputParamsAttrName(state.name), inputDecls);
-  state.addAttribute(getResultParamsAttrName(state.name), resultDecls);
+  state.addAttribute(getInputParametersAttrName(state.name), inputDecls);
+  state.addAttribute(getResultParametersAttrName(state.name), resultDecls);
 
   // Add the function body.
   Region *bodyRegion = state.addRegion();
@@ -801,8 +801,8 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
   auto graph = cast<GraphOp>(op);
   SmallVector<StringRef, 6> elidedAttrs{
       graph.getNameAttrName(), graph.getSignatureAttrName(),
-      graph.getFunctionTypeAttrName(), graph.getInputParamsAttrName(),
-      graph.getResultParamsAttrName()};
+      graph.getFunctionTypeAttrName(), graph.getInputParametersAttrName(),
+      graph.getResultParametersAttrName()};
   p.printOptionalAttrDictWithKeyword(attrs.getValue(), elidedAttrs);
   p << ' ';
   p.printRegion(body, /*printEntryBlockArgs=*/false);
@@ -882,6 +882,17 @@ void GraphOp::setDeviceTargetInfo(TargetInfoAttr targetInfo) {
   getOperation()->setAttr(kGraphTargetInfoAttrName, targetInfo);
 }
 
+ArrayRef<ParamDeclAttr> GraphOp::getInputParams() {
+  return getInputParameters();
+}
+
+SmallVector<ParamDeclAttr> GraphOp::getAllParams() {
+  SmallVector<ParamDeclAttr> params;
+  params.append(getInputParameters().begin(), getInputParameters().end());
+  params.append(getResultParameters().begin(), getResultParameters().end());
+  return params;
+}
+
 //===----------------------------------------------------------------------===//
 // MO_OutputOp support
 //===----------------------------------------------------------------------===//
@@ -931,7 +942,7 @@ void OutputOp::walkDefinitions(
     function_ref<void(KGEN::ParamDeclAttr, const KGEN::ParamDefValue &)>
         walkDef) {
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
-  ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParams();
+  ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParameters();
   ArrayRef<TypedAttr> defs = this->getParameters();
 
   // Doesn't make sense to walk, graph is in a bad state.
@@ -948,7 +959,7 @@ void OutputOp::walkDefinitions(
 LogicalResult OutputOp::verify() {
   // ODS checks the parent is a GraphOp.
   auto graph = cast<GraphOp>(getOperation()->getParentOp());
-  ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParams();
+  ArrayRef<KGEN::ParamDeclAttr> decls = graph.getResultParameters();
   ArrayRef<TypedAttr> defs = this->getParameters();
   if (decls.size() != defs.size()) {
     return emitError(

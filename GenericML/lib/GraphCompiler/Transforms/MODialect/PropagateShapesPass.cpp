@@ -108,10 +108,10 @@ void handleOutputBindings(GraphOp graphOp,
                           KGEN::ParameterEvaluator &evaluator) {
   // First we collect the declared parameter names so we can check for them.
   SmallPtrSet<StringAttr, 4> resDeclNames;
-  for (KGEN::ParamDeclAttr decl : graphOp.getResultParams())
+  for (KGEN::ParamDeclAttr decl : graphOp.getResultParameters())
     resDeclNames.insert(decl.getName());
   SmallPtrSet<StringAttr, 4> argDeclNames;
-  for (KGEN::ParamDeclAttr decl : graphOp.getInputParams())
+  for (KGEN::ParamDeclAttr decl : graphOp.getInputParameters())
     argDeclNames.insert(decl.getName());
 
   // Check if `attr` can appear as a dimension attribute in graph output.
@@ -140,7 +140,7 @@ void handleOutputBindings(GraphOp graphOp,
 
   auto outputOp = graphOp.getOutputOp();
   for (auto [bindingParam, resultParam] :
-       llvm::zip(outputOp.getParameters(), graphOp.getResultParams())) {
+       llvm::zip(outputOp.getParameters(), graphOp.getResultParameters())) {
     // NOTE the binding parameter has already been rebound.
     // Output parameter could be either a shape or dimension, we check to make
     // sure the resolved parameter is valid.
@@ -167,7 +167,7 @@ void updateGraphSignature(GraphOp graphOp) {
   SmallVector<KGEN::ParamDeclAttr> newResultParams{};
   SmallVector<TypedAttr> newBindingParams{};
   for (auto [bindingParam, resParamDecl] :
-       llvm::zip(outputOp.getParameters(), graphOp.getResultParams())) {
+       llvm::zip(outputOp.getParameters(), graphOp.getResultParameters())) {
     if (resParamNames.contains(resParamDecl.getName())) {
       newResultParams.emplace_back(resParamDecl);
       newBindingParams.emplace_back(bindingParam);
@@ -180,11 +180,11 @@ void updateGraphSignature(GraphOp graphOp) {
   auto newResultParamsAttr =
       KGEN::ParamDeclArrayAttr::get(graphOp->getContext(), newResultParams);
   NamedAttrList attrs = graphOp->getAttrDictionary();
-  attrs.set(graphOp.getResultParamsAttrName(), newResultParamsAttr);
+  attrs.set(graphOp.getResultParametersAttrName(), newResultParamsAttr);
 
   FuncTypeGeneratorType signature =
       KGEN::FuncTypeGeneratorType::remapToFuncTypeGenerator(
-          graphOp.getInputParams(), graphOp.getFunctionType());
+          graphOp.getInputParameters(), graphOp.getFunctionType());
   attrs.set(graphOp.getSignatureAttrName(), TypeAttr::get(signature));
   graphOp->setAttrs(attrs.getDictionary(graphOp->getContext()));
 }
@@ -971,7 +971,7 @@ struct PropagateShapes {
     };
     // The integer input parameters to graph are dynamic dimensions, so they
     // must be non-negative.
-    llvm::for_each(graphOp.getInputParams(), markIntParamDeclAsNonNegative);
+    llvm::for_each(graphOp.getInputParameters(), markIntParamDeclAsNonNegative);
 
     // TODO(#9008) inline inputs to `mo.assert`
     // A replacer to help replacing parameters in an op with its evaluated form.

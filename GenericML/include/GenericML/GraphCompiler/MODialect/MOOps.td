@@ -168,16 +168,16 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     StrAttr:$name,
     TypeAttrOf<KGEN_FuncTypeGeneratorType>:$signature,
     TypeAttrOf<FunctionType>:$functionType,
-    KGEN_ParamDeclArrayAttr:$inputParams,
-    KGEN_ParamDeclArrayAttr:$resultParams,
+    KGEN_ParamDeclArrayAttr:$inputParameters,
+    KGEN_ParamDeclArrayAttr:$resultParameters,
     IntProp<"int64_t">:$counter,
     UnitAttr:$isSubgraph
   );
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    custom<GraphOp>($name, $signature, $functionType, $inputParams,
-                    $resultParams, attr-dict, $body, $counter)
+    custom<GraphOp>($name, $signature, $functionType, $inputParameters,
+                    $resultParameters, attr-dict, $body, $counter)
   }];
 
   let extraClassDeclaration = [{
@@ -227,6 +227,11 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     /// Sets the #M.device_spec_collection annotation for this graph op,
     /// overwriting any existing annotation.
     TargetInfoAttr getDeviceTargetInfo();
+    
+    /// Implement the DeclInterface methods with our own parameter
+    /// implementation in MO.
+    ArrayRef<ParamDeclAttr> getInputParams();
+    SmallVector<ParamDeclAttr> getAllParams();
   }];
 
   let builders = [

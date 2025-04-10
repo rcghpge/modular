@@ -323,7 +323,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     /// Returns the KGEN input parameters this depends on. Necessary to
     /// implement the DeclInterface.
     ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
-    ArrayRef<ParamDeclAttr> getResultParams() { return {}; }
 
     /// Finds a lambda in the body of the op.
     KGEN::ParamDeclareRegionOp findLambda(StringAttr name);
@@ -432,7 +431,6 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     /// Returns the KGEN input parameters this depends on. Necessary to
     /// implement the DeclInterface.
     ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
-    ArrayRef<ParamDeclAttr> getResultParams() { return {}; }
   }];
 }
 
