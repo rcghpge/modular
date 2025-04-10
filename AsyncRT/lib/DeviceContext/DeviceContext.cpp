@@ -137,11 +137,17 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
     if (!device.isError()) {
       return DeviceRef::copy(&device.get());
     }
+    std::string cudaError = device.getError();
+
     device = HIPDevice::get(id);
     if (!device.isError()) {
       return DeviceRef::copy(&device.get());
     }
-    return Error("No supported \"gpu\" device available.");
+    std::string hipError = device.getError();
+
+    return Error(llvm::Twine("No supported \"gpu\" device available.\n") +
+                 "  CUDA information: " + cudaError + "\n" +
+                 "  HIP information:  " + hipError);
   } else if (api == cudaAPI) {
     ErrorOr<const CUDADevice &> device = CUDADevice::get(id);
     if (device.isError())
