@@ -986,6 +986,53 @@ def DebugPrintOp : MGP_Op<"debug.print"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// CallOp
+//===----------------------------------------------------------------------===//
+
+def MGP_CallOp : MGP_Op<"call"> {
+  let summary = "Call a subgraph.";
+  let description = [{
+    Placeholder for the execute block of another graph, which will be inlined by
+    `InlineMGPCallsPass`.
+    The graph is referenced via symbol name of the target !mgp.model.
+
+    Operands and results must match the signature of the target model's execute block.
+
+    Example:
+    ```mlir
+    mgp.model @subgraph : mof {
+      init (...) {
+        // ...
+      }
+      execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque, %cpu: mgp.opaque, %arg: tensor<?x4x16xf32>)
+              -> (!mef.chain, tensor<?x10xf32>) {
+        // ...
+      }
+    }
+
+    mgp.model @main : mof {
+      init (...) {
+        // ...
+      }
+      execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque, %cpu: mgp.opaque, %arg: tensor<?x4x16xf32>)
+              -> (!mef.chain, tensor<?x10xf32>) {
+        %sub_res = mgp.call @subgraph(%ch, %ctx, %weights, %cpu, %arg)
+      }
+    }
+    ```
+  }];
+  let arguments = (ins SymbolRefAttr:$model,
+                       Variadic<AnyType>:$operands);
+  let results = (outs Variadic<AnyType>:$results);
+
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $model `(` $operands `)` attr-dict `:` functional-type($operands, results)
+  }];
+}
+
 include "GenericML/MGPDialect/MGPDeviceOps.td"
 
 #endif  // GENERICML_MGPDIALECT_MGPOPS_TD

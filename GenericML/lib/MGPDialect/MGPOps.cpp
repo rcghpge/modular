@@ -24,6 +24,7 @@
 #include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "llvm/Support/Base64.h"
 #include <string>
@@ -828,6 +829,50 @@ bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 bool TensorExtractBufferOp::extendsLifetime(size_t operandIndex,
                                             size_t resultIndex) {
   return operandIndex == getTensorMutable().getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
+// CallOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CallOp::verify() {
+  auto module = (*this)->getParentOfType<ModuleOp>();
+
+  if (!module)
+    return emitOpError("must be nested inside a ModuleOp.");
+
+  auto targetModel = module.lookupSymbol<ModelOp>(getModel());
+  if (!targetModel)
+    return emitOpError() << "failed to find symbol " << getModel();
+
+  // Verify operand types match the execute block argument types.
+  Block *executeBlock = targetModel.getExecuteBlock();
+  auto expectedArgTypes = executeBlock->getArgumentTypes();
+  auto actualArgTypes = getOperandTypes();
+  if (actualArgTypes != expectedArgTypes) {
+    return emitOpError() << "operand types " << actualArgTypes
+                         << " do not match expected argument types "
+                         << expectedArgTypes << " of " << getModel()
+                         << "'s execute block.";
+  }
+
+  // Verify result types match the execute block result types.
+  auto outputOp = dyn_cast<MEF::OutputOp>(executeBlock->getTerminator());
+  if (!outputOp) {
+    return emitOpError() << "execute block of " << getModel()
+                         << " does not end with an mef.output op.";
+  }
+
+  auto expectedResultTypes = outputOp.getOperandTypes();
+  auto actualResultTypes = getResultTypes();
+  if (actualResultTypes != expectedResultTypes) {
+    return emitOpError() << "result types " << actualResultTypes
+                         << " do not match expected result types "
+                         << expectedResultTypes << " of " << getModel()
+                         << "'s execute block.";
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
