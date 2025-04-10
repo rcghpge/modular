@@ -509,10 +509,8 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
   FuncTypeGeneratorType signature =
       KGEN::FuncTypeGeneratorType::remapToFuncTypeGenerator(
           op.getInputParameters(), funcType);
-  NamedAttrList attrs = op->getAttrDictionary();
-  attrs.set(op.getSignatureAttrName(), TypeAttr::get(signature));
-  attrs.set(op.getFunctionTypeAttrName(), TypeAttr::get(funcType));
-  op->setAttrs(attrs.getDictionary(ctx));
+  op.setSignature(signature);
+  op.setFunctionType(funcType);
 }
 
 //===----------------------------------------------------------------------===//
