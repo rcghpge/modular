@@ -215,6 +215,7 @@ struct DeviceAwareRewriter {
   IntegerAttr getIndexAttr(int64_t value) {
     return rewriter.getIndexAttr(value);
   }
+  MLIRContext *getContext() { return rewriter.getContext(); }
   IntegerAttr getDimAttr(int64_t value) {
     return MOSH::ShapeAttr::getDim(rewriter.getContext(), value);
   }
@@ -241,6 +242,12 @@ struct DeviceAwareRewriter {
   }
   void replaceAllUsesWith(ValueRange from, ValueRange to) {
     rewriter.replaceAllUsesWith(from, to);
+  }
+  void replaceAllOpUsesWith(Operation *op, ValueRange to) {
+    rewriter.replaceAllOpUsesWith(op, to);
+  }
+  void replaceAllOpUsesWith(Operation *op, Operation *to) {
+    rewriter.replaceAllOpUsesWith(op, to);
   }
   void setInsertionPointAfter(Operation *op) {
     rewriter.setInsertionPointAfter(op);

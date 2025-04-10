@@ -445,7 +445,7 @@ struct ForceMatmulTransposeBForGPU
     SmallVector<TypedAttr> newShape = {oldShape[1], oldShape[0]};
     auto newTransposeTy =
         weights.getType().cloneWith(newShape).cloneWith(matmulWeightsLayout);
-    auto perm = rewriter.create<ConstantOp>(weights.getLoc(),
+    auto perm = rewriter.createHostConstant(weights.getLoc(),
                                             SmallVector<int64_t>{1, 0});
     auto transposedWeights = rewriter.create<MO::TransposeOp>(
         weights.getLoc(), newTransposeTy, weights, perm);
@@ -1649,9 +1649,10 @@ public:
   TensorValue getScalarValueForMul(OpBuilder &builder) {
     // Get the scalar value which is appropriate to use for normalizing via mul
     Location loc = attentionMatrix.getLoc();
+    DeviceRefAttr device = attentionMatrix.getType().getDeviceRef();
     if (!scalarConstant) {
       // No normalization, return one as an equivalent
-      TensorValue one = builder.create<ConstantOp>(loc, 1.0);
+      TensorValue one = builder.create<ConstantOp>(loc, 1.0, device);
       TensorType targetType =
           one.getType().cloneWith(attentionMatrix.getType().getDtype());
       TensorValue oneCasted = builder.create<CastOp>(loc, targetType, one);
@@ -1659,7 +1660,7 @@ public:
     }
 
     if (isDiv) {
-      TensorValue one = builder.create<ConstantOp>(loc, 1.0);
+      TensorValue one = builder.create<ConstantOp>(loc, 1.0, device);
       TensorType targetType =
           one.getType().cloneWith(scalarConstant.getType().getDtype());
       TensorValue oneCasted = builder.create<CastOp>(loc, targetType, one);
@@ -1841,10 +1842,11 @@ private:
 
 public:
   static ErrorOr<MultiHeadAttentionPatternHelper>
-  match(BatchMatmulOp finalOp, OpBuilder &builder, bool allowUnsafeBCast,
-        bool allowInternalReshape, bool debugMHAPattern) {
+  match(BatchMatmulOp finalOp, DeviceAwareRewriter &rewriter,
+        bool allowUnsafeBCast, bool allowInternalReshape,
+        bool debugMHAPattern) {
     MultiHeadAttentionPatternHelper matcher;
-    matcher.builder = &builder;
+    matcher.builder = &rewriter.rewriter;
 
     // Note we match things in a reverse-ward direction as we are given the
     // very final operation.
@@ -1994,17 +1996,19 @@ public:
   }
 };
 
-struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
+struct MultiHeadAttentionPattern
+    : public DeviceAwareRewritePattern<OpRewritePattern, BatchMatmulOp> {
   bool allowUnsafeBCast, allowInternalReshape, debugMHAPattern;
   DeviceRefAttr targetDevice;
   MultiHeadAttentionPattern(MLIRContext *ctx, bool allowUnsafeBCast,
                             bool allowInternalReshape, bool debugMHAPattern,
                             DeviceRefAttr targetDevice)
-      : OpRewritePattern(ctx, 20), allowUnsafeBCast(allowUnsafeBCast),
+      : DeviceAwareRewritePattern<OpRewritePattern, BatchMatmulOp>(ctx, 20),
+        allowUnsafeBCast(allowUnsafeBCast),
         allowInternalReshape(allowInternalReshape),
         debugMHAPattern(debugMHAPattern), targetDevice(targetDevice) {}
 
-  static void insertShapeGuard(PatternRewriter &rewriter, GraphOp graphOp,
+  static void insertShapeGuard(DeviceAwareRewriter &rewriter, GraphOp graphOp,
                                TypedAttr beforeShape, TypedAttr afterShape,
                                Location loc, const Twine &checkName,
                                const Twine &errorMsg) {
@@ -2013,7 +2017,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       return;
 
     // Inserts a runtime guard checking (beforeShape == afterShape)
-    IntegerType boolTy = rewriter.getI1Type();
+    IntegerType boolTy = rewriter.rewriter.getI1Type();
     TypedAttr cmpAttr =
         KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
                                     {beforeShape, afterShape}, boolTy);
@@ -2030,7 +2034,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
   }
 
   void guardUnsafeBCast(Static::BroadcastToOp unsafeBCast,
-                        PatternRewriter &rewriter) const {
+                        DeviceAwareRewriter &rewriter) const {
     // We expect all bcasts matched in the pattern with `allowUnsafeBCast`
     // to be no-ops (e.g. they don't change shape). This guards against this
     // condition by inserting runtime checks against a potentially unsafe bcast.
@@ -2095,7 +2099,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
         // indices for a tranpose operator to move the layout of `start` to BSHD
         // e.g. {0, 2, 1, 3} implies `start` is BHSD
         ArrayRef<int64_t> transposeToBSHD, TensorValue start,
-        PatternRewriter &rewriter, GraphOp graphOp) {
+        DeviceAwareRewriter &rewriter, GraphOp graphOp) {
       // Stores all tensor types from intermediate reshapes/broadcasts.
       // These all need to be equal
       SmallVector<TensorType> equivalentShapes;
@@ -2146,7 +2150,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     // Returns dimensions of value. If value is rank-3, assume batch dimension
     // was elided and pretends to add it back in as a dim of size `1`.
     static SmallVector<TypedAttr> getRank4Dims(TensorValue value,
-                                               PatternRewriter &rewriter) {
+                                               DeviceAwareRewriter &rewriter) {
       [[maybe_unused]] size_t rank = value.getType().getRank();
       ASSERT_STREAM(rank == 3 || rank == 4, << "Support only rank3/4 inputs.");
 
@@ -2164,7 +2168,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     static TensorValue
     backwardFallbackGetBSHDTensor(ArrayRef<int64_t> transposeToBSHD,
                                   TensorValue start,
-                                  PatternRewriter &rewriter) {
+                                  DeviceAwareRewriter &rewriter) {
       // Pretend everything is rank 4 for simplicity
       SmallVector<TypedAttr> rank4Dim = getRank4Dims(start, rewriter);
       TensorValue startRank4 = rewriter.create<Static::ReshapeOp>(
@@ -2173,9 +2177,8 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
       SmallVector<TypedAttr> expectedBSHDShape =
           permute(rank4Dim, transposeToBSHD);
       ArrayRef<TypedAttr> finalShape = expectedBSHDShape;
-
       auto permConst =
-          rewriter.create<ConstantOp>(start.getLoc(), transposeToBSHD);
+          rewriter.createHostConstant(start.getLoc(), transposeToBSHD);
       TensorValue transposedTensor = rewriter.create<TransposeOp>(
           start.getLoc(), startRank4.getType().cloneWith(finalShape),
           startRank4, permConst);
@@ -2215,8 +2218,10 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     // We want to extract `K_compressed`.
     //
     // Returns std::nullopt if we cannot grab the compressed tensor.
-    static ErrorOr<TensorValue> extractGroupedAttentionTensorBSHD(
-        TensorValue tensorBSHD, PatternRewriter &rewriter, GraphOp graphOp) {
+    static ErrorOr<TensorValue>
+    extractGroupedAttentionTensorBSHD(TensorValue tensorBSHD,
+                                      DeviceAwareRewriter &rewriter,
+                                      GraphOp graphOp) {
       // Go through optional transposes and reshapes which do not matter
       TensorValue startTensor = tensorBSHD;
 
@@ -2277,7 +2282,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     }
   };
 
-  void rewriteRootOp(BatchMatmulOp rootOp, PatternRewriter &rewriter,
+  void rewriteRootOp(BatchMatmulOp rootOp, DeviceAwareRewriter &rewriter,
                      MultiHeadAttentionPatternHelper &matcher,
                      bool isCPUDevice) const {
     // The matcher returns QKV with the following layouts:
@@ -2295,7 +2300,7 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
 
     SmallVector<int64_t> permuteBHDS2BSHD = {0, 3, 1, 2};
     auto permuteBSHD2BHSDValue =
-        rewriter.create<ConstantOp>(rootOp.getLoc(), permuteBSHD2BHSD);
+        rewriter.createHostConstant(rootOp.getLoc(), permuteBSHD2BHSD);
 
     // However the kernel wants the layout `BSHD` which we get below
     // (this also handles elided batch dimensions gracefully).
@@ -2537,8 +2542,9 @@ struct MultiHeadAttentionPattern : public OpRewritePattern<BatchMatmulOp> {
     return success();
   }
 
-  LogicalResult matchAndRewrite(BatchMatmulOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult
+  deviceAwareMatchAndRewrite(BatchMatmulOp op,
+                             DeviceAwareRewriter &rewriter) const override {
     DeviceRefAttr device = getTargetDevice(op, targetDevice);
 
     // Just assume we want to use the CPU kernel only if the default device
