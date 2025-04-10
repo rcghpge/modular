@@ -45,10 +45,16 @@ class MO_DeviceAgnosticTensorOp<string mnemonic, list<Trait> traits = []>
 class MO_ControlOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic, [MO_ControlOpInterface, MO_PreservedDuringKernelLowering] # traits>;
 
+// Base class for ops working with mutable buffers
 class MO_MutableOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [DeclareOpInterfaceMethods<MO_MutableOpInterface>,
                      DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
                      MO_HasDeviceInterface] # traits>;
+
+// Base class for ops working with mutable buffers that do not have a notion of device
+class MO_DeviceAgnosticMutableOp<string mnemonic, list<Trait> traits = []>
+  : MO_Op<mnemonic, [DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+                     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>] # traits>;
 
 //===----------------------------------------------------------------------===//
 // IndexToTensorOp
@@ -80,7 +86,7 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
 //===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
-def MO_TransferOp : MO_TensorOp<"transfer", [
+def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
   Pure,
   MO_SameOperandsAndResultShape,
   MO_PreservedDuringKernelLowering
@@ -5036,7 +5042,7 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [
 // Buffer ops
 //===----------------------------------------------------------------------===//
 
-def MO_BufferTransferOp : MO_MutableOp<"buffer.transfer", [
+def MO_BufferTransferOp : MO_DeviceAgnosticMutableOp<"buffer.transfer", [
   AllDTypesMatch<["src", "dst"]>,
   AllShapeAttrsMatch<["src", "dst"]>,
   MO_PreservedDuringKernelLowering
