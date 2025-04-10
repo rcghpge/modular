@@ -50,7 +50,7 @@ namespace M::AsyncRT {
 // TODO(iposva): Consider using the actual device name.
 CpuDevice::CpuDevice() : Device(api, "cpu", 0, M::kPreferredMemoryAlignment) {}
 
-ErrorOr<int> CpuDevice::getDriverVersion() const { return 0; };
+ErrorOr<int> CpuDevice::getApiVersion() const { return 0; };
 
 ErrorOrSuccess CpuDevice::isCompatible() const { return success(); }
 

@@ -72,7 +72,7 @@ public:
   API api() const;
   StringRef vendor() const;
 
-  virtual ErrorOr<int> getDriverVersion() const = 0;
+  virtual ErrorOr<int> getApiVersion() const = 0;
   virtual ErrorOrSuccess isCompatible() const = 0;
   virtual ErrorOr<int> computeCapability() const = 0;
 

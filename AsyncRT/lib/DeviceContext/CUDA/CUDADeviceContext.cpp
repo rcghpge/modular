@@ -230,19 +230,19 @@ CUdevice CUDADevice::cudaDevice() const { return device_; }
 
 ErrorOr<CUcontext> CUDADevice::cudaContext() const { return context_; }
 
-ErrorOr<int> CUDADevice::getDriverVersion() const {
+ErrorOr<int> CUDADevice::getApiVersion() const {
   int driverVersion = 0;
   CUDA_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
   return driverVersion;
 }
 
 // The value returned by `cuDriverGetVersion_` from the CUDA API is an integer
-// with the driver version embedded. The major version number is in the
+// with the API version embedded. The major version number is in the
 // thousands place and the minor version number is in the hundreds place, scaled
 // up by ten.
-static std::string driverVersionToString(int driver_version) {
-  int majorVersion = driver_version / 1000;
-  int minorVersion = (driver_version % 1000) / 10;
+static std::string apiVersionToString(int apiVersion) {
+  int majorVersion = apiVersion / 1000;
+  int minorVersion = (apiVersion % 1000) / 10;
 
   return (llvm::Twine(majorVersion) + "." + llvm::Twine(minorVersion)).str();
 }
@@ -266,11 +266,11 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
         "MAX is not supported using current GPU driver. MAX "
         "requires a minimum driver version of " +
         llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version " +
-        driverVersionToString(MIN_CUDA_DRIVER_VERSION) +
+        apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
         ". See https://modul.ar/nvidia-driver-version for "
         "details about how to install the proper NVIDIA driver. The current "
         "CUDA version MAX detected is: " +
-        driverVersionToString(driverVersion));
+        apiVersionToString(driverVersion));
   }
 
   return success();

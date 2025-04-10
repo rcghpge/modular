@@ -56,7 +56,7 @@ public:
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;
 
-  ErrorOr<int> getDriverVersion() const override;
+  ErrorOr<int> getApiVersion() const override;
   ErrorOrSuccess isCompatible() const override;
   ErrorOr<int> computeCapability() const override;
 

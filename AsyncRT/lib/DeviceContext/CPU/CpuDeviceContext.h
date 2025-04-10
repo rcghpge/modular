@@ -38,7 +38,7 @@ public:
   CpuDevice();
   ~CpuDevice() override = default;
 
-  ErrorOr<int> getDriverVersion() const override;
+  ErrorOr<int> getApiVersion() const override;
   ErrorOrSuccess isCompatible() const override;
   ErrorOr<int> computeCapability() const override;
 

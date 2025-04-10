@@ -211,7 +211,7 @@ const HIPDriver &HIPDevice::hipDriver() const { return driver_; }
 
 hipDevice_t HIPDevice::hipDevice() const { return device_; }
 
-ErrorOr<int> HIPDevice::getDriverVersion() const {
+ErrorOr<int> HIPDevice::getApiVersion() const {
   int driverVersion = 0;
   HIP_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
   return driverVersion;

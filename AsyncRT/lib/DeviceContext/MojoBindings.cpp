@@ -309,8 +309,8 @@ MODULAR_EXPORT void AsyncRT_DeviceTimer_release(const DeviceTimer *timer) {
 }
 
 MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_getDriverVersion(int *result, const DeviceContext *ctx) {
-  return checkVal(result, 0, ctx->device().getDriverVersion());
+AsyncRT_DeviceContext_getApiVersion(int *result, const DeviceContext *ctx) {
+  return checkVal(result, 0, ctx->device().getApiVersion());
 }
 
 MODULAR_EXPORT const char *
