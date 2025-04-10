@@ -728,7 +728,8 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
                        ModelFrameworkAttr:$frameworkName,               // 1
                        TypeAttrOf<FunctionType>:$inputOutputTypes,      // 2
                        SymbolNameAttr:$sym_name,                        // 3
-                       OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 4
+                       UnitAttr:$isSubgraph,                            // 4
+                       OptionalAttr<DictionaryAttr>:$theExtraAttrs);    // 5
   let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
 
   let extraClassDeclaration = [{
@@ -739,7 +740,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     }
     OperandRange getInitOutputDevices() {
       return getInitBlock()->getTerminator()->getOperands().drop_front(
-        // Fixed implicit exececute args are also fixed implicit init output args.
+        // Fixed implicit execute args are also fixed implicit init output args.
         kMgpModelNumFixedImplicitExecArgs
       ).take_front(getDevices().size());
     }
@@ -779,11 +780,12 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
                    "ArrayRef<Type>":$inputTypes,
                    "ArrayRef<Type>":$outputTypes,
                    "ArrayRef<Location>":$inputArgLocs,
+                   CArg<"bool", "false">:$isSubgraph,
                    CArg<"ArrayRef<NamedAttribute>", "{}">:$extraAttrs)>
   ];
 
   let assemblyFormat = [{
-    $sym_name `:` custom<ClassName>($frameworkName)
+    $sym_name (`subgraph` $isSubgraph^)?`:` custom<ClassName>($frameworkName)
       ($theExtraAttrs^)?
       `devices` $devices
       `init` custom<InitRegion>($init)

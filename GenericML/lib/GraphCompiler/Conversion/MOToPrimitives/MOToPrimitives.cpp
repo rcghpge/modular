@@ -406,6 +406,7 @@ LogicalResult MOGraphLowering::createModelOp() {
       /*inputTypes=*/inputTypes,
       /*outputTypes=*/outputTypes,
       /*inputArgLocs=*/inputLocs,
+      /*isSubgraph=*/graph.getIsSubgraph(),
       /*extraAttrs=*/extraAttrs);
 
   loweringState.setModelOp(modelOp);

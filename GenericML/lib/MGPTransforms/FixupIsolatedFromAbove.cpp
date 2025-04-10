@@ -218,6 +218,7 @@ ModelOp M::MGP::fixupIsolatedFromAbove(mlir::OpBuilder &builder,
       /*frameworkName=*/inModelOp.getFrameworkNameAttr(),
       /*inputOutputTypes=*/inModelOp.getInputOutputTypes(),
       /*sym_name=*/inModelOp.getName(),
+      /*isSubgraph=*/inModelOp.getIsSubgraph(),
       /*theExtraAttrs=*/inModelOp.getTheExtraAttrsAttr());
   LLVM_DEBUG(llvm::dbgs() << "init\n");
   fixup(builder, inModelOp.getInitBlock(),
