@@ -83,7 +83,8 @@ LogicalResult verifyShapeFunctionInputsMatchExecuteFunction(
                  .emitError()
              << "Shape function and execute function input argument types do "
                 "not match. Execute function input at position "
-             << execIndex << " is a " << execArgOpt->underlyingType
+             << execArgOpt->sourceDescriptor->position << " is a "
+             << execArgOpt->underlyingType
              << " but corresponding shape function argument at position "
              << shapeIndex << " is a " << shapeArgOpt->underlyingType;
     }
@@ -102,7 +103,7 @@ LogicalResult verifyShapeFunctionInputsMatchExecuteFunction(
     auto appendUnmatchedInputs =
         [&](const SmallVector<MojoKernelOperandAdaptor> &inputs, uint64_t idx) {
           while (skipContextType(inputs, idx).has_value()) {
-            errorMessage << idx << ",";
+            errorMessage << inputs[idx].sourceDescriptor->position << ",";
             ++idx;
           }
         };
@@ -319,7 +320,6 @@ public:
     ModuleOp moduleOp = getOperation();
 
     // Walk over the IR and grab all execute and shape functions.
-    /// TODO: Fix the map to avoid overwriting kernels.
     llvm::DenseMap<LIT::StructDeclOp, std::pair<LIT::FnOp, LIT::FnOp>> kernels;
     moduleOp.walk([&](LIT::FnOp fnOp) {
       auto structName = fnOp->getAttrOfType<StringAttr>(kMOGGKernelStructName);
