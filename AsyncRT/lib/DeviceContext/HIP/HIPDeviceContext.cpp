@@ -217,6 +217,11 @@ ErrorOr<int> HIPDevice::getApiVersion() const {
   return driverVersion;
 }
 
+ErrorOr<DriverVersion &> HIPDevice::getDriverVersion() const {
+  static DriverVersion version("0.0.0");
+  return version;
+}
+
 ErrorOrSuccess HIPDevice::isCompatible() const {
 #ifndef MODULAR_LINUX
   return Error("MAX with GPUs is only supported on Linux based systems.");

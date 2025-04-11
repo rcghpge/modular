@@ -116,6 +116,12 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
                 DeviceContext::create(Device::cudaAPI, /* id = */ 0));
   ASSERT_TRUE(ctx);
 
+  // Check that the API and driver versions are available.
+  // The versions may vary depending on the machine, so we don't check the
+  // values.
+  EXPECT_NO_ERR(ctx->device().getApiVersion());
+  EXPECT_NO_ERR(ctx->device().getDriverVersion());
+
   // Check reference count.
   EXPECT_EQ(ctx->getNumReferences(), 1);
 

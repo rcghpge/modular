@@ -13,6 +13,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "CUDADriver.h"
+#include "NVML.h"
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
@@ -63,6 +64,7 @@ public:
   ErrorOr<CUcontext> cudaContext() const;
 
   ErrorOr<int> getApiVersion() const override;
+  ErrorOr<DriverVersion &> getDriverVersion() const override;
   ErrorOrSuccess isCompatible() const override;
   ErrorOr<int> computeCapability() const override;
 

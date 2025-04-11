@@ -52,6 +52,21 @@ using DeviceTimerRef = RCRef<const DeviceTimer>;
 
 size_t getPreferredAlignment(std::string label);
 
+class DriverVersion {
+public:
+  explicit DriverVersion(std::string version);
+  int major() const;
+  int minor() const;
+  int patch() const;
+  std::string toString() const;
+
+private:
+  std::string version_;
+  int major_;
+  int minor_;
+  int patch_;
+};
+
 class Device : public ReferenceCounted<Device> {
 public:
   enum class Attribute;
@@ -73,6 +88,7 @@ public:
   StringRef vendor() const;
 
   virtual ErrorOr<int> getApiVersion() const = 0;
+  virtual ErrorOr<DriverVersion &> getDriverVersion() const = 0;
   virtual ErrorOrSuccess isCompatible() const = 0;
   virtual ErrorOr<int> computeCapability() const = 0;
 

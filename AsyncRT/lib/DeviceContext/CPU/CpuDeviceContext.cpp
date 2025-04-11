@@ -52,6 +52,11 @@ CpuDevice::CpuDevice() : Device(api, "cpu", 0, M::kPreferredMemoryAlignment) {}
 
 ErrorOr<int> CpuDevice::getApiVersion() const { return 0; };
 
+ErrorOr<DriverVersion &> CpuDevice::getDriverVersion() const {
+  static DriverVersion version("0.0.0");
+  return version;
+}
+
 ErrorOrSuccess CpuDevice::isCompatible() const { return success(); }
 
 ErrorOr<int> CpuDevice::computeCapability() const {

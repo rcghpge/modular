@@ -236,6 +236,30 @@ ErrorOr<int> CUDADevice::getApiVersion() const {
   return driverVersion;
 }
 
+ErrorOr<DriverVersion &> CUDADevice::getDriverVersion() const {
+  // Initialize the driver version once on first call of this method
+  // or remember the error.
+  static ErrorOr<std::string> errOrVersion = []() -> ErrorOr<std::string> {
+    ErrorOr<const NVML &> errOrNVML = NVML::get();
+    if (errOrNVML.isError()) {
+      return errOrNVML.takeError();
+    }
+    ErrorOr<std::string> errOrVersion = errOrNVML->GetDriverVersion();
+    if (errOrVersion.isError()) {
+      return errOrVersion.takeError();
+    }
+    return *errOrVersion;
+  }();
+
+  // Propagate the error if getting the version produced an error.
+  if (errOrVersion.isError()) {
+    return Error(errOrVersion.getError());
+  }
+  // Return the version string.
+  static DriverVersion version(*errOrVersion);
+  return version;
+}
+
 // The value returned by `cuDriverGetVersion_` from the CUDA API is an integer
 // with the API version embedded. The major version number is in the
 // thousands place and the minor version number is in the hundreds place, scaled
