@@ -24,6 +24,8 @@
 using namespace M;
 using namespace MO;
 
+#define DEBUG_TYPE "mo-interfaces"
+
 //===----------------------------------------------------------------------===//
 // MatMulLike
 //===----------------------------------------------------------------------===//
@@ -542,6 +544,104 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
                          "with mo.buffer inputs.");
   }
 
+  return success();
+}
+
+// HACK
+// Currrently MOHasDeviceInterface doesn't provide enough information to
+// accurately check operand and result device constraints.
+// When getOperandDevice() returns null, this can mean two different things:
+// A: (most ops) apply the default constraint; the operand device should match
+//    the device assigned to the op.
+// B: (ops listed here) There is no constraint, any device is acceptable.
+
+// Eventually we should provide a default implementation for getOperandDevice()
+// that returns the current device, then these ops can specialize it to return
+// null. But this is not possible now, because AssignDevicesPass relies on the
+// return value being null before the device is assigned.
+bool assumeNullConstraintMeansSameDevice(MOHasDeviceInterface op) {
+  return !isa<MOControlOpInterface, MO::CustomOp, MO::InvokeShapeFuncOp,
+              MO::ConstantExternalOp>(op.getOperation());
+}
+
+// Verify the execution device, operand device, and result device constraints
+// for ops that implement MOHasDeviceInterface.
+LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
+  // Skip verification when no device is assigned.
+  if (!op.getDeviceRef())
+    return success();
+  // Ignore ops from other dialects.
+  // In particular, MOtoMOGG assigns a default device even if the operands
+  // have not been labeled.
+  if (op->getDialect() && !isa<MO::MODialect>(op->getDialect()))
+    return success();
+  // Check execution device constraint
+  if (auto constrainedTo = op.getExecutionDevice()) {
+    if (constrainedTo != op.getDeviceRef()) {
+      return op->emitError("Op is constrained to be on device ")
+             << constrainedTo << " but has device " << op.getDeviceRef() << ".";
+    }
+  }
+
+  auto check = [&op](const Twine &name, Type type,
+                     DeviceRefAttr constrainedTo) -> LogicalResult {
+    // Fetch the assigned device for the operand from the type.
+    // Ignore types besides mo.tensor and mo.buffer.
+    auto tensorType = dynCastFromTensorLike(type);
+    if (!tensorType)
+      return success();
+    auto device = tensorType.getDeviceRef();
+    if (!device)
+      return op->emitError(name) << " is missing a device attribute.";
+    // Check the device constraint.
+    if (constrainedTo && device != constrainedTo) {
+      return op->emitError(name)
+             << " is constrained to be on device " << constrainedTo
+             << " but has device " << device << ".";
+    }
+    return success();
+  };
+
+  // Ensure every operand has the same device as the op, unless otherwise
+  // constrained.
+  for (size_t i = 0; i < op->getNumOperands(); ++i) {
+    // Get device constraint for the operand.
+    DeviceRefAttr constrainedTo = op.getOperandDevice(i);
+    // If no constraint is set, assume same as the op's device.
+    if (!constrainedTo && assumeNullConstraintMeansSameDevice(op))
+      constrainedTo = op.getDeviceRef();
+    // Check the operand device constraint.
+    if (failed(check("Operand " + Twine(i), op->getOperand(i).getType(),
+                     constrainedTo)))
+      return failure();
+  }
+
+  // Early exit and special logic for ConstantExternalOp result device.
+  if (auto constantExternal =
+          dyn_cast<MO::ConstantExternalOp>(op.getOperation())) {
+    // FIXME: GEX-2087: result device of mo.constant.external may be unassigned.
+    if (!constantExternal.getResult().getType().getDeviceRef()) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "warning: in MOHasDeviceInterface::verify(): "
+                 << "MO::ConstantExternalOp result tensor is missing a "
+                 << "device attribute.\n");
+      return success();
+    }
+  }
+
+  // Ensure every result has the same device as the op, unless otherwise
+  // constrained.
+  for (size_t i = 0; i < op->getNumResults(); ++i) {
+    // Get device constraint for the result.
+    DeviceRefAttr constrainedTo = op.getResultDevice(i);
+    // If no constraint is set, assume same as the op's device.
+    if (!constrainedTo && assumeNullConstraintMeansSameDevice(op))
+      constrainedTo = op.getDeviceRef();
+    // Check the result device constraint.
+    if (failed(check("Result " + Twine(i), op->getResult(i).getType(),
+                     constrainedTo)))
+      return failure();
+  }
   return success();
 }
 

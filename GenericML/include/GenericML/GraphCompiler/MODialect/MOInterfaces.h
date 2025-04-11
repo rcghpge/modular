@@ -41,6 +41,7 @@ class ScatterNdLike;
 class PadLike;
 class ParamExprBuilder;
 class SlidingWindow;
+class MOHasDeviceInterface;
 
 /// A struct which which contains the ingredients (lhs parameter name and rhs
 /// parameter expr) to create a `KGEN::ParamDeclareOp` .
@@ -177,6 +178,7 @@ LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
 LogicalResult verifyMOSameOperandsElementType(Operation *op);
 LogicalResult verifyMOSameFirstOperandAndResultsElementType(Operation *op);
+LogicalResult verifyHasDevice(MOHasDeviceInterface op);
 
 LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);

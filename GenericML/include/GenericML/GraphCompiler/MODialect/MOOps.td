@@ -4270,7 +4270,7 @@ def MO_SolveOp : MO_LinalgOp<"solve", [
 
 def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
 ]> {
   let summary = "Shape function call operation";
   let description = [{

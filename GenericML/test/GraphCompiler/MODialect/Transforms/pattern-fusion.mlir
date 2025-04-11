@@ -71,8 +71,8 @@ mo.graph @batch_matmul_transpose_b_gpu_disabled(%input: !mo.tensor<[10, 100, 100
 // CHECK:     #mo.layout<NK>
 mo.graph @matmul_transpose_b_indirect_constant_weight(%input: !mo.tensor<[1000, 4096], bf16, gpu:0>) -> !mo.tensor<[1000, 3584], bf16, gpu:0> attributes {device = #M.device_ref<"gpu", 0>} {
   %perm= mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %weight = mo.constant.external {align = 2 : ui64, device = #M.device_ref<"cpu", 0>, name = "blk.31.ffn_up.weight"} : !mo.tensor<[3584, 4096], bf16>
-  %gpu_weight = mo.transfer %weight : !mo.tensor<[3584, 4096], bf16> to <"gpu", 0>
+  %weight = mo.constant.external {align = 2 : ui64, device = #M.device_ref<"cpu", 0>, name = "blk.31.ffn_up.weight"} : !mo.tensor<[3584, 4096], bf16, cpu:0>
+  %gpu_weight = mo.transfer %weight : !mo.tensor<[3584, 4096], bf16, cpu:0> to <"gpu", 0>
   %transpose_weight = mo.transpose(%gpu_weight, %perm) : (!mo.tensor<[3584, 4096], bf16, gpu:0>, !mo.tensor<[2], si64>) -> !mo.tensor<[4096, 3584], bf16, gpu:0, {layout = #mo.layout<KN>}>
   %res = mo.matmul(%input, %transpose_weight) : (!mo.tensor<[1000, 4096], bf16, gpu:0>, !mo.tensor<[4096, 3584], bf16, gpu:0, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1000, 3584], bf16, gpu:0>
   mo.output %res : !mo.tensor<[1000, 3584], bf16, gpu:0>

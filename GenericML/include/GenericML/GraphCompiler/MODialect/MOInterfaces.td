@@ -138,6 +138,8 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
       [{ return nullptr; }]
     >,
   ];
+
+  let verify = [{ return Impl::verifyHasDevice(cast<MOHasDeviceInterface>($_op)); }];
 }
 
 /// MO interfaces should inherit from this to ensure they are in the right

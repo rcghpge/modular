@@ -1129,7 +1129,12 @@ struct LowerThirdPartyPadConstantOp
           loc, "rmo.3p.pad.constant paddings must be si64");
     }
     DeviceRefAttr deviceRef = inputType.getDeviceRef();
-    assert(deviceRef == padType.getDeviceRef() && "devices don't match");
+    if (deviceRef != padType.getDeviceRef()) {
+      op.emitError("Devices don't match: deviceRef: ")
+          << deviceRef << " padType.getDeviceRef(): " << padType.getDeviceRef();
+      assert(false && "devices don't match");
+      return failure();
+    }
 
     // We will split the paddings into negative (pure slice) and positive (pure
     // pad) components.
