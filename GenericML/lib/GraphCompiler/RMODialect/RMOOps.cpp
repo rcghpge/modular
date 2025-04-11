@@ -326,16 +326,9 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
     typename OpT::Adaptor adaptor, SmallVectorImpl<Type> &inferredReturnTypes) {
   auto xType = cast<TensorType>(adaptor.getInputX().getType());
   auto yType = cast<TensorType>(adaptor.getInputY().getType());
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
+
   auto xShape = xType.getTypedShapeAttr();
-  if (xShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError(OpT::getOperationName(), "lhs", xShape));
   auto yShape = yType.getTypedShapeAttr();
-  if (yShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError(OpT::getOperationName(), "rhs", yShape));
 
   ErrorOr<DType> promotedDtype =
       promoteDtype(xType.getDtype(), yType.getDtype());
@@ -386,16 +379,8 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
   auto xType = cast<TensorType>(operands[0].getType());
   auto yType = cast<TensorType>(operands[1].getType());
 
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
   auto xShape = xType.getTypedShapeAttr();
-  if (xShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError(OpT::getOperationName(), "lhs", xShape));
   auto yShape = yType.getTypedShapeAttr();
-  if (yShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError(OpT::getOperationName(), "rhs", yShape));
 
   // Even though it is not used in the result type, still calculate the the
   // promotion is valid here.
@@ -466,20 +451,10 @@ LogicalResult
 ConcatOp::inferReturnTypes(MLIRContext *context,
                            std::optional<Location> location, Adaptor adaptor,
                            SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto axisAttr =
-      adaptor.getAxisAttr(); // attributes.getAs<IntegerAttr>("axis");
-  ASSERT_STREAM(axisAttr, << "rmo.concat must have a constant integer `axis`");
+  auto axisAttr = adaptor.getAxisAttr();
 
   // Retrieve input shapes
   SmallVector<TypedAttr> inputShapes = getShapesOf(adaptor.getInputs());
-  // TODO(GEX-551) remove once we eliminate `?` in Graph API.
-  for (auto [i, inputShapeAttr] : llvm::enumerate(inputShapes)) {
-    auto inputShape = mlir::cast<ShapeAttr>(inputShapeAttr);
-    if (inputShape.hasUnknownDims())
-      return mlir::emitOptionalError(
-          location,
-          unknownDimError("Concat", "input" + std::to_string(i), inputShape));
-  }
 
   // Materialize shape function.
   auto graphOp = adaptor.getOperands()
@@ -561,24 +536,10 @@ LogicalResult
 ReshapeOp::inferReturnTypes(MLIRContext *context,
                             std::optional<Location> location, Adaptor adaptor,
                             SmallVectorImpl<Type> &inferredReturnTypes) {
-
   auto newShapeAttr = adaptor.getNewShapeAttr();
-  ASSERT_STREAM(newShapeAttr,
-                << "rmo.reshape must have a ShapeAttr `newShape`");
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
-  if (newShapeAttr.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("Reshape", "target", newShapeAttr));
 
   // Retrieve input shape
   auto inputShape = cast<ShapeAttr>(getShapeOf(adaptor.getInput()));
-
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
-  if (inputShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("Reshape", "input", inputShape));
 
   // Materialize shape function.
   auto graphOp =
@@ -627,22 +588,10 @@ LogicalResult BroadcastToOp::inferReturnTypes(
 
   ShapeAttr newShapeAttr = adaptor.getNewShape();
 
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
-  if (newShapeAttr.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("BroadcastTo", "target", newShapeAttr));
-
   Value input = adaptor.getInput();
 
   // Retrieve input shape
   auto inputShape = cast<ShapeAttr>(getShapeOf(input));
-
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
-  if (inputShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("BroadcastTo", "input", inputShape));
 
   // Materialize shape function.
   auto graphOp =
@@ -695,16 +644,6 @@ MatmulOp::inferReturnTypes(MLIRContext *context,
 
   auto lhsShape = cast<ShapeAttr>(getShapeOf(lhs));
   auto rhsShape = cast<ShapeAttr>(getShapeOf(rhs));
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
-  if (lhsShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location,
-        unknownDimError("Matrix multiplication", "input lhs", lhsShape));
-  if (rhsShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location,
-        unknownDimError("Matrix multiplication", "input rhs", rhsShape));
 
   ErrorOr<DType> promotedDtype =
       promoteDtype(mlir::cast<TensorType>(lhs.getType()).getDtype(),
@@ -760,18 +699,6 @@ SelectOp::inferReturnTypes(MLIRContext *context,
   auto condShape = cast<ShapeAttr>(getShapeOf(adaptor.getCond()));
   auto xShape = cast<ShapeAttr>(getShapeOf(adaptor.getInputX()));
   auto yShape = cast<ShapeAttr>(getShapeOf(adaptor.getInputY()));
-
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
-  if (condShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("Select", "input cond", condShape));
-  if (xShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("Select", "input x", xShape));
-  if (yShape.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("Select", "input y", yShape));
 
   ErrorOr<DType> promotedDtype = promoteDtype(
       mlir::cast<TensorType>(adaptor.getInputX().getType()).getDtype(),
@@ -945,13 +872,6 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   auto shapeAttr = adaptor.getShapeAttr();
-  ASSERT_STREAM(
-      shapeAttr, << "rmo.shape_to_tensor must have a ShapeAttr `shape`");
-  // TODO(GEX-578): Once the graph api has banned dynamic dims, remove this
-  // check.
-  if (shapeAttr.hasUnknownDims())
-    return mlir::emitOptionalError(
-        location, unknownDimError("ShapeToTensor", "shape", shapeAttr));
 
   auto dimType = ShapeAttr::getDimType(context);
 
