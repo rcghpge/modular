@@ -16,6 +16,7 @@
 #include "llvm/Support/SourceMgr.h"
 
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "Support/SymbolExport.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Pass/AnalysisManager.h"
 
@@ -27,7 +28,7 @@ namespace M::MOGG {
 
 /// This analysis lazily loads the standard and extra Mojo libraries and exposes
 /// an interface to inquire about their content.
-class MojoLibraryAnalysis {
+class MODULAR_CXX_EXPORT MojoLibraryAnalysis {
 public:
   MojoLibraryAnalysis(MLIRContext *ctx);
 

@@ -20,7 +20,7 @@ modular_nanobind_library(
     ],
     tags = ["no-clang-tidy-headers"],
     deps = [
-        "//GenericML:modular-framework-common",
+        "//ModularFramework/tools/mof",
         "//PyTorch:modular-framework-torch-ext",
     ],
 )
@@ -33,10 +33,7 @@ modular_nanobind_library(
         "//SDK:DLPackPython",
     ],
     deps = [
-        "//AsyncRT:DeviceContext",
-        "//GenericML:DeviceDriver",
-        "//GenericML:modular-framework-common",
-        "//Support:ML",
+        "//ModularFramework/tools/mof",
         "@pybind11",
     ],
 )
@@ -49,7 +46,6 @@ modular_nanobind_library(
         "//:MLIRBindingsPythonHeaders",
     ],
     deps = [
-        "//GenericML:modular-framework-common",
         "//ModularFramework/tools/mof",
     ],
 )
