@@ -52,7 +52,8 @@ struct DeviceMemory {
   ~DeviceMemory();
 
   bool isHost() const {
-    return buf->context().device().api() == M::AsyncRT::Device::cpuAPI;
+    return buf->isHost() ||
+           buf->context().device().api() == M::AsyncRT::Device::cpuAPI;
   }
 
   const TensorSpec &getSpec() const { return spec; }
@@ -96,7 +97,8 @@ struct Device : M::ReferenceCounted<Device> {
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
-  ErrorOr<DeviceMemory *> createDeviceMemory(const TensorSpec &spec);
+  ErrorOr<DeviceMemory *> createDeviceMemory(const TensorSpec &spec,
+                                             bool hostAlloc = false);
 
   /// Takes ownership of `data` in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device.
