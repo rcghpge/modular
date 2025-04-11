@@ -43,6 +43,27 @@ bool isCompatibleShape(TensorType a, TensorType b) {
   return true;
 }
 
+template <typename T>
+using ToTensorValueType = TensorValue;
+
+/// Convience function for promoting the dtype of a sequence of tensor values.
+template <typename... Tensors>
+static std::tuple<ToTensorValueType<Tensors>...>
+promoteDTypes(OpBuilder &builder, Location loc, DType targetDType,
+              Tensors... values) {
+  auto promote = [&](auto value) -> TensorValue {
+    auto tensor = cast<TensorValue>(value);
+
+    if (tensor.getType().getDtype() != targetDType) {
+      auto targetType = tensor.getType().cloneWith(targetDType);
+      value = builder.create<RMO::MOCastOp>(loc, targetType, value);
+    }
+    return value;
+  };
+
+  return {cast<TensorValue>(promote(values))...};
+}
+
 /// NOTE: RMO's rebinds are asserting in nature!
 std::pair<TensorValue, bool>
 _rebindToShape(MO::GraphOp graphOp, TensorValue input, TensorType newTy,
@@ -889,6 +910,55 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
   }
 };
 
+struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  static TensorValue shapeToIndicesTensor(OpBuilder &builder, Location loc,
+                                          ShapeAttr shape,
+                                          DeviceRefAttr device) {
+    auto rank = static_cast<int64_t>(shape.getRank());
+
+    auto indicesType =
+        TensorType::getVectorSI64Type(builder.getContext(), rank, device);
+
+    auto shapeConstant = builder.create<MOSH::ParamToValueOp>(loc, shape);
+    return builder.create<Shape::ToTensorOp>(loc, indicesType, shapeConstant);
+  }
+
+  LogicalResult matchAndRewrite(RMO::ConvOp conv,
+                                PatternRewriter &rewriter) const override {
+    Location loc = conv.getLoc();
+
+    ShapeAttr strides = conv.getStrides();
+    ShapeAttr paddings = conv.getPaddings();
+    ShapeAttr dilations = conv.getDilations();
+    int64_t groups = conv.getNumGroups();
+
+    auto resultType = conv.getType();
+
+    // Promote inputs
+    auto [promotedInput, promotedFilter] =
+        promoteDTypes(rewriter, conv.getLoc(), resultType.getDtype(),
+                      conv.getInput(), conv.getFilter());
+
+    auto device = promotedInput.getType().getDeviceRef();
+    auto stridesConstant = shapeToIndicesTensor(rewriter, loc, strides, device);
+
+    auto paddingConstant =
+        shapeToIndicesTensor(rewriter, loc, paddings, device);
+
+    auto dilationsConstant =
+        shapeToIndicesTensor(rewriter, loc, dilations, device);
+
+    auto groupsConstant = rewriter.create<MO::ConstantOp>(loc, groups);
+
+    rewriter.replaceOpWithNewOp<MO::ConvOp>(
+        conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
+        dilationsConstant, paddingConstant, groupsConstant);
+    return success();
+  }
+};
+
 struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -1354,7 +1424,7 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::AndOp, RMO::MOAndOp>,
         LowerCompositeBinaryComparisonOp<RMO::OrOp, RMO::MOOrOp>,
         LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
-        LowerBroadcastLike, LowerSigmoid, LowerConcat, LowerReshape,
+        LowerBroadcastLike, LowerConv, LowerSigmoid, LowerConcat, LowerReshape,
         LowerMatmul, LowerBroadcastTo, LowerSelect, LowerTopK, LowerSlice,
         LowerShapeToTensor>(context);
 
