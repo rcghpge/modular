@@ -93,7 +93,7 @@ static SmallVector<Subgraph> getSubgraphComponents(const Subgraph &subgraph) {
     return {};
 
   // Disjoint set containing connected components.
-  llvm::EquivalenceClasses<Operation *, ValueParamCompare> newSubgraphs;
+  llvm::EquivalenceClasses<Operation *> newSubgraphs;
   for (Operation *curOp : subgraph.ops) {
     newSubgraphs.insert(curOp);
     for (Operation *other : curOp->getUsers())

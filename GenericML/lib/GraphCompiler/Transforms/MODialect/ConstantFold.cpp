@@ -480,7 +480,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
   // either a mo.constant or an operation who has all constant inputs.
   // Each equivalence class is a connected DAG of values which depend on each
   // other.
-  llvm::EquivalenceClasses<Operation *, ValueParamCompare> constSubgraphs;
+  llvm::EquivalenceClasses<Operation *> constSubgraphs;
   // Stack of operations that need to be visited. Values may be popped and then
   // pushed back on the queue if all parent values have not been resolved.
   // New values are added when the parents of an operation are unknown or
