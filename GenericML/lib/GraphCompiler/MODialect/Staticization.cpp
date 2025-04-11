@@ -275,12 +275,14 @@ ErrorOr<TypedAttr> ConcatOp::tryStaticize(ArrayRef<TypedAttr> inputs,
 
 ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
+  StaticizeAdaptor<GatherOp> adaptor(inputs);
+
   // We only staticize over 1D tensors for now, so axis must be 0.
-  if (tryGetConstantInt(inputs[2]) != 0)
+  if (tryGetConstantInt(adaptor.getAxis()) != 0)
     return TypedAttr{};
 
   // We require the input to be staticized to a list of symbolic values.
-  auto inputElems = dyn_cast<ShapeAttr>(inputs[0]);
+  auto inputElems = dyn_cast<ShapeAttr>(adaptor.getInput());
   if (!inputElems)
     return TypedAttr{};
   int64_t numInputElems = inputElems.getSize();
@@ -288,10 +290,10 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   // Collect constant indices.
   SmallVector<int64_t> indices;
   bool isIndicesScalar = false;
-  if (auto indicesOr = tryGetConstantIntVector(inputs[1])) {
+  if (auto indicesOr = tryGetConstantIntVector(adaptor.getIndices())) {
     indices = indicesOr.value();
 
-  } else if (auto idxOr = tryGetConstantInt(inputs[1])) {
+  } else if (auto idxOr = tryGetConstantInt(adaptor.getIndices())) {
     indices.push_back(idxOr.value());
     isIndicesScalar = true;
 

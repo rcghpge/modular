@@ -75,8 +75,8 @@ def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDType
 class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
     : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor]> {
   let arguments = (ins
-    MO_Tensor:$input_x,
-    MO_Tensor:$input_y,
+    MO_KnownTensor:$input_x,
+    MO_KnownTensor:$input_y,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
@@ -157,8 +157,8 @@ def RMO_MaxOp : RMO_PureBinaryElementWiseOp<"max", [Commutative]> {
 class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
     : RMO_Op<name, traits # [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins
-    MO_Tensor:$input_x,
-    MO_Tensor:$input_y,
+    MO_KnownTensor:$input_x,
+    MO_KnownTensor:$input_y,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_BooleanMask:$result);
 
@@ -415,11 +415,11 @@ def RMO_ConcatOp : RMO_Op<"concat", [
   }];
 
   let arguments = (ins
-      Variadic<MO_Tensor>:$inputs,
+      Variadic<MO_KnownTensor>:$inputs,
       Builtin_IntegerAttr:$axis,
       OptionalAttr<AnyAttrOf<[Builtin_IntegerAttr,KGEN_ParamDeclRefAttr]>>:$out_dim,
       MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$result);
+  let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls)
@@ -445,7 +445,7 @@ def RMO_ReshapeOp : RMO_Op<"reshape", [
   let arguments = (ins
     MO_KnownTensor:$input,
     MOSH_ShapeAttr:$newShape);
-  let results = (outs MO_Tensor:$result);
+  let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -467,7 +467,7 @@ def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
   let arguments = (ins
     MO_KnownTensor:$input,
     MOSH_ShapeAttr:$newShape);
-  let results = (outs MO_Tensor:$result);
+  let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -521,9 +521,9 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
     [K] @ [10, 4, K, 7] -> [10, 4, 7]
   }];
   let arguments = (ins
-    MO_Tensor:$input_x,
-    MO_Tensor:$input_y);
-  let results = (outs MO_Tensor:$result);
+    MO_KnownTensor:$input_x,
+    MO_KnownTensor:$input_y);
+  let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -556,10 +556,10 @@ def RMO_SelectOp : RMO_Op<"select", [
   }];
   let arguments = (ins
     MO_BooleanMask:$cond,
-    MO_Tensor:$input_x,
-    MO_Tensor:$input_y
+    MO_KnownTensor:$input_x,
+    MO_KnownTensor:$input_y
   );
-  let results = (outs MO_Tensor:$result);
+  let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -589,13 +589,13 @@ def RMO_TopKOp : RMO_Op<"top_k", [
     ```
   }];
   let arguments = (ins
-    MO_Tensor:$input,
+    MO_KnownTensor:$input,
     SI64Attr:$k,
     SI64Attr:$axis,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs
-    MO_Tensor:$values,
+    MO_KnownTensor:$values,
     MO_I64Tensor:$indices
   );
   let assemblyFormat = [{
