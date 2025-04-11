@@ -90,8 +90,11 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
                                 std::optional<Location> location,
                                 $cppClass::Adaptor adaptor,
                                 SmallVectorImpl<Type> &inferredReturnTypes) {
-      return inferReturnTypesBinaryElemwiseImpl<$cppClass>(
-          context, location, adaptor, inferredReturnTypes);
+      return inferReturnTypesBinaryElemwiseImpl(
+          context, $cppClass::getOperationName(), location,
+          cast<MO::TensorValue>(adaptor.getInputX()),
+          cast<MO::TensorValue>(adaptor.getInputY()),
+          inferredReturnTypes);
     }
   }];
 }
@@ -155,7 +158,7 @@ def RMO_MaxOp : RMO_PureBinaryElementWiseOp<"max", [Commutative]> {
 }
 
 class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor]> {
   let arguments = (ins
     MO_KnownTensor:$input_x,
     MO_KnownTensor:$input_y,
@@ -168,12 +171,14 @@ class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
 
   let extraClassDefinition = [{
     LogicalResult
-    $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
-                            ValueRange operands, DictionaryAttr attributes,
-                            mlir::OpaqueProperties properties, RegionRange regions,
-                            SmallVectorImpl<Type> &inferredReturnTypes) {
-      return inferReturnTypesBinaryComparisonImpl<$cppClass>(
-          context, location, operands, attributes, properties, regions,
+    $cppClass::inferReturnTypes(MLIRContext *context,
+                                std::optional<Location> location,
+                                Adaptor adaptor,
+                                SmallVectorImpl<Type> &inferredReturnTypes) {
+      return inferReturnTypesBinaryComparisonImpl(
+          context, $cppClass::getOperationName(), location,
+          cast<MO::TensorValue>(adaptor.getInputX()),
+          cast<MO::TensorValue>(adaptor.getInputY()),
           inferredReturnTypes);
     }
   }];
@@ -256,7 +261,7 @@ def RMO_NotEqualOp : RMO_PureBinaryComparisonOp<"not_equal", [Commutative]> {
 }
 
 class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor]> {
   let arguments = (ins
     MO_BooleanMask:$input_x,
     MO_BooleanMask:$input_y,
@@ -269,12 +274,14 @@ class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []>
 
   let extraClassDefinition = [{
     LogicalResult
-    $cppClass::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
-                            ValueRange operands, DictionaryAttr attributes,
-                            mlir::OpaqueProperties properties, RegionRange regions,
-                            SmallVectorImpl<Type> &inferredReturnTypes) {
-      return inferReturnTypesBinaryLogicalImpl<$cppClass>(
-          context, location, operands, attributes, properties, regions,
+    $cppClass::inferReturnTypes(MLIRContext *context,
+                                std::optional<Location> location,
+                                Adaptor adaptor,
+                                SmallVectorImpl<Type> &inferredReturnTypes) {
+      return inferReturnTypesBinaryLogicalImpl(
+          context, $cppClass::getOperationName(), location,
+          cast<MO::TensorValue>(adaptor.getInputX()),
+          cast<MO::TensorValue>(adaptor.getInputY()),
           inferredReturnTypes);
     }
   }];

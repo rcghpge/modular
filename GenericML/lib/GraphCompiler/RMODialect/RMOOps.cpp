@@ -354,12 +354,12 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
   return result;
 }
 
-template <typename OpT>
 static LogicalResult inferReturnTypesBinaryElemwiseImpl(
-    MLIRContext *context, std::optional<Location> location,
-    typename OpT::Adaptor adaptor, SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto xType = cast<TensorType>(adaptor.getInputX().getType());
-  auto yType = cast<TensorType>(adaptor.getInputY().getType());
+    MLIRContext *context, llvm::StringLiteral opName,
+    std::optional<Location> location, TensorValue inputX, TensorValue inputY,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto xType = inputX.getType();
+  auto yType = inputY.getType();
 
   auto xShape = xType.getTypedShapeAttr();
   auto yShape = yType.getTypedShapeAttr();
@@ -372,46 +372,22 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
   }
 
   // Materialize shape function.
-  auto graphOp = adaptor.getInputX()
-                     .getParentRegion()
-                     ->template getParentOfType<MO::GraphOp>();
+  auto graphOp =
+      inputX.getParentRegion()->template getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeRmoBinaryElementwiseShape(graphOp, loc, xShape, yShape);
 
-  // Preliminary error checks.
-  if (result.isError())
-    return mlir::emitOptionalError(location, result.getError().msg);
-
-  // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable(),
-                << OpT::getOperationName()
-                << " shape logic must be materializable");
-
-  // Shape propagation over materialized ops and target shape.
-  auto &successRes = result.getSuccess();
-  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShapes);
-  if (resultShapesOr.isError())
-    return mlir::emitOptionalError(location, resultShapesOr.getError());
-
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
-
-  inferredReturnTypes.push_back(TensorType::get(
-      resultShapesOr->front(), *promotedDtype, *outputDeviceOr));
-  return success();
+  return runShapePropagation(ValueRange{inputX, inputY}, location,
+                             *promotedDtype, result, inferredReturnTypes);
 }
 
-template <typename OpT>
 static LogicalResult inferReturnTypesBinaryComparisonImpl(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto xType = cast<TensorType>(operands[0].getType());
-  auto yType = cast<TensorType>(operands[1].getType());
+    MLIRContext *context, llvm::StringLiteral opName,
+    std::optional<Location> location, TensorValue inputX, TensorValue inputY,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto xType = inputX.getType();
+  auto yType = inputY.getType();
 
   auto xShape = xType.getTypedShapeAttr();
   auto yShape = yType.getTypedShapeAttr();
@@ -426,55 +402,29 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
   }
 
   // Materialize shape function.
-  auto graphOp =
-      operands.front().getParentRegion()->getParentOfType<MO::GraphOp>();
+  auto graphOp = inputX.getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeRmoBinaryElementwiseShape(graphOp, loc, xShape, yShape);
 
-  // Preliminary error checks.
-  if (result.isError())
-    return mlir::emitOptionalError(location, result.getError().msg);
-
-  // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable(),
-                << OpT::getOperationName()
-                << " shape logic must be materializable");
-
-  // Shape propagation over materialized ops and target shape.
-  auto &successRes = result.getSuccess();
-  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShapes);
-  if (resultShapesOr.isError())
-    return mlir::emitOptionalError(location, resultShapesOr.getError());
-
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
-
-  inferredReturnTypes.push_back(
-      TensorType::get(resultShapesOr->front(), DType::kBool, *outputDeviceOr));
-  return success();
+  return runShapePropagation(ValueRange{inputX, inputY}, location, DType::kBool,
+                             result, inferredReturnTypes);
 }
 
-template <typename OpT>
 static LogicalResult inferReturnTypesBinaryLogicalImpl(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, mlir::OpaqueProperties properties,
-    RegionRange regions, SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto xType = cast<TensorType>(operands[0].getType());
-  auto yType = cast<TensorType>(operands[1].getType());
+    MLIRContext *context, llvm::StringLiteral opName,
+    std::optional<Location> location, TensorValue inputX, TensorValue inputY,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto xType = inputX.getType();
+  auto yType = inputY.getType();
 
   if (!xType.getDtype().isBool() || !yType.getDtype().isBool())
     return mlir::emitOptionalError(
         location, llvm::formatv("{0}: Inputs must be bools, got {1}, {2}",
-                                OpT::getOperationName(), xType.getDtype(),
-                                yType.getDtype()));
+                                opName, xType.getDtype(), yType.getDtype()));
 
-  return inferReturnTypesBinaryComparisonImpl<OpT>(
-      context, location, operands, attributes, properties, regions,
-      inferredReturnTypes);
+  return inferReturnTypesBinaryComparisonImpl(context, opName, location, inputX,
+                                              inputY, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -573,7 +523,8 @@ ReshapeOp::inferReturnTypes(MLIRContext *context,
   auto newShapeAttr = adaptor.getNewShapeAttr();
 
   // Retrieve input shape
-  auto inputShape = cast<ShapeAttr>(getShapeOf(adaptor.getInput()));
+  auto input = cast<TensorValue>(adaptor.getInput());
+  auto inputShape = cast<ShapeAttr>(getShapeOf(input));
 
   // Materialize shape function.
   auto graphOp =
@@ -583,31 +534,9 @@ ReshapeOp::inferReturnTypes(MLIRContext *context,
       MO::materializeReshapeShape(graphOp, loc, inputShape, newShapeAttr,
                                   /*allowParametricDenominator=*/true);
 
-  // Preliminary error checks.
-  if (result.isError())
-    return mlir::emitOptionalError(location, result.getError().msg);
-
-  // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable(),
-                << "reshape shape logic must be materializable");
-
-  // Shape propagation over materialized ops and target shape.
-  auto &successRes = result.getSuccess();
-  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShapes);
-  if (resultShapesOr.isError())
-    return mlir::emitOptionalError(location, resultShapesOr.getError());
-
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(adaptor.getOperands());
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
-
-  // Create output type.
-  ShapeAttr resultShape = resultShapesOr.get().front();
-  DType inputDtype = cast<TensorType>(adaptor.getInput().getType()).getDtype();
-  inferredReturnTypes.push_back(
-      TensorType::get(resultShape, inputDtype, *outputDeviceOr));
+  DType inputDtype = input.getType().getDtype();
+  return runShapePropagation(adaptor.getOperands(), location, inputDtype,
+                             result, inferredReturnTypes);
 
   return success();
 }
@@ -622,7 +551,7 @@ LogicalResult BroadcastToOp::inferReturnTypes(
 
   ShapeAttr newShapeAttr = adaptor.getNewShape();
 
-  Value input = adaptor.getInput();
+  auto input = cast<TensorValue>(adaptor.getInput());
 
   // Retrieve input shape
   auto inputShape = cast<ShapeAttr>(getShapeOf(input));
@@ -634,31 +563,9 @@ LogicalResult BroadcastToOp::inferReturnTypes(
   MO::ShapeMaterializeResult result =
       MO::materializeBroadcastToShape(graphOp, loc, inputShape, newShapeAttr);
 
-  // Preliminary error checks.
-  if (result.isError())
-    return mlir::emitOptionalError(location, result.getError().msg);
-
-  // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable(),
-                << "broadcast_to shape logic must be materializable");
-
-  // Shape propagation over materialized ops and target shape.
-  auto &successRes = result.getSuccess();
-  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShapes);
-  if (resultShapesOr.isError())
-    return mlir::emitOptionalError(location, resultShapesOr.getError());
-
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
-
-  // Create output type.
-  ShapeAttr resultShape = resultShapesOr->front();
-  DType inputDtype = cast<TensorType>(input.getType()).getDtype();
-  inferredReturnTypes.push_back(
-      TensorType::get(resultShape, inputDtype, *outputDeviceOr));
+  DType inputDtype = input.getType().getDtype();
+  return runShapePropagation(adaptor.getOperands(), location, inputDtype,
+                             result, inferredReturnTypes);
 
   return success();
 }
@@ -691,32 +598,8 @@ MatmulOp::inferReturnTypes(MLIRContext *context,
   MO::ShapeMaterializeResult result =
       MO::materializeRmoMatmulShape(graphOp, loc, lhsShape, rhsShape);
 
-  // Preliminary error checks.
-  if (result.isError())
-    return mlir::emitOptionalError(location, result.getError().msg);
-
-  // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable(),
-                << "matmul shape logic must be materializable");
-
-  // Shape propagation over materialized ops and target shape.
-  auto &successRes = result.getSuccess();
-  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShapes);
-  if (resultShapesOr.isError())
-    return mlir::emitOptionalError(location, resultShapesOr.getError());
-
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
-
-  // Create output type.
-  ShapeAttr resultShape = resultShapesOr.get().front();
-  inferredReturnTypes.push_back(
-      TensorType::get(resultShape, *promotedDtype, *outputDeviceOr));
-
-  return success();
+  return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
+                             result, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -747,32 +630,8 @@ SelectOp::inferReturnTypes(MLIRContext *context,
   MO::ShapeMaterializeResult result =
       MO::materializeRmoSelectShape(graphOp, loc, condShape, xShape, yShape);
 
-  // Preliminary error checks.
-  if (result.isError())
-    return mlir::emitOptionalError(location, result.getError().msg);
-
-  // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable(),
-                << "matmul shape logic must be materializable");
-
-  // Shape propagation over materialized ops and target shape.
-  auto &successRes = result.getSuccess();
-  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
-      MO::propagateShape(successRes.bindings, successRes.resultShapes);
-  if (resultShapesOr.isError())
-    return mlir::emitOptionalError(location, resultShapesOr.getError());
-
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
-
-  // Create output type.
-  ShapeAttr resultShape = resultShapesOr.get().front();
-  inferredReturnTypes.push_back(
-      TensorType::get(resultShape, *promotedDtype, *outputDeviceOr));
-
-  return success();
+  return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
+                             result, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -873,28 +732,9 @@ SliceOp::inferReturnTypes(MLIRContext *context,
   MO::ShapeMaterializeResult result = MO::materializeRmoSliceShape(
       graphOp, loc, inputShape, starts, stops, steps);
 
-  // Preliminary error checks.
-  if (result.isError())
-    return mlir::emitOptionalError(location, result.getError().msg);
-
-  // This depends on GraphAPI having static rank.
-  ASSERT_STREAM(!result.isNonMaterializable(),
-                << "matmul shape logic must be materializable");
-
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(input);
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
-
-  auto &successRes = result.getSuccess();
-  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr = MO::propagateShape(
-      successRes.bindings, /*targetShapes=*/successRes.resultShapes);
-  if (resultShapesOr.isError())
-    return mlir::emitOptionalError(location, resultShapesOr.getError());
-  inferredReturnTypes.push_back(TensorType::get(
-      resultShapesOr->front(), input.getType().getDtype(), *outputDeviceOr));
-
-  return success();
+  return runShapePropagation(adaptor.getOperands(), location,
+                             input.getType().getDtype(), result,
+                             inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
