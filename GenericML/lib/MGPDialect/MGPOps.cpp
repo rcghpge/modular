@@ -1105,6 +1105,16 @@ LogicalResult ModelOp::verifyRegions() {
       }
     }
 
+    // Verify that there is exactly one ContextCreateOp in the init block.
+    int contextCreateOpCount = 0;
+    initBlock->walk([&](ContextCreateOp) { contextCreateOpCount++; });
+    if (contextCreateOpCount != 1) {
+      return emitOpError()
+             << "expected exactly one mgp.context_create op in the "
+                "'init' block, but found "
+             << contextCreateOpCount;
+    }
+
     if (failed(checkOperandTypes(output, implicitInitSig.getResults())))
       return failure();
   }

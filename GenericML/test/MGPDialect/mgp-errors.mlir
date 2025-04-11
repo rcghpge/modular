@@ -149,6 +149,7 @@ func.func @dtype_invalid(%x : !mgp.tensor_spec<5x10xinvalid>) {}
 mgp.model @mismatchedContextType : tf devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %ch = grt.chain.create ()
   %unk = mef.opaque "bogus" [] () : ()->!mef.unknown
+  %ctx = mgp.context.create 1
   // expected-error@+1 {{'mef.output' op operand #1 has type '!mef.unknown' but expected '!mgp.context'}}
   mef.output %ch, %unk, %weights, %cpu : !mef.chain, !mef.unknown, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
@@ -598,4 +599,27 @@ func.func @call_result_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weigh
   %ch_res, %res = mgp.call @call_target_model(%ch, %ctx, %weights, %cpu, %input) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<10xf32>) -> (!mef.chain, !mgp.tensor<5xsi32>)
                                                                                                                                                                                                                   // ^^^^^^^^^^^^^^^^^^^ Type mismatch
   mef.output %ch_res, %res : !mef.chain, !mgp.tensor<5xsi32>
+}
+
+// -----
+
+// expected-error@+1 {{expected exactly one mgp.context_create op in the 'init' block, but found 0}}
+mgp.model @zero_context_create_ops : tf devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch = grt.chain.create ()
+  // Missing mgp.context.create
+  mef.output %ch, %weights, %cpu : !mef.chain, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
+  mef.output %ch, %x : !mef.chain, tensor<2xf32>
+}
+
+// -----
+
+// expected-error@+1 {{expected exactly one mgp.context_create op in the 'init' block, but found 2}}
+mgp.model @multiple_context_create_ops : tf devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch = grt.chain.create ()
+  %ctx1 = mgp.context.create 1
+  %ctx2 = mgp.context.create 1 // Second context create
+  mef.output %ch, %ctx1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %x: tensor<2xf32>) -> (!mef.chain, tensor<2xf32>) {
+  mef.output %ch, %x : !mef.chain, tensor<2xf32>
 }
