@@ -214,7 +214,8 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
 
 template <typename RMOOpT, typename MOOpT>
 struct LegalizeRMOMOAnalogue : public OpRewritePattern<RMOOpT> {
-  LegalizeRMOMOAnalogue(MLIRContext *ctx) : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  using OpRewritePattern<RMOOpT>::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMOOpT op,
                                 PatternRewriter &rewriter) const override {
     auto generator =
@@ -238,8 +239,8 @@ struct LegalizeRMOMOAnalogue : public OpRewritePattern<RMOOpT> {
 };
 
 struct LegalizeMutableLoadOp : public OpRewritePattern<RMO::MOMutableLoadOp> {
-  LegalizeMutableLoadOp(MLIRContext *ctx)
-      : OpRewritePattern<RMO::MOMutableLoadOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::MOMutableLoadOp op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->getParentOfType<MO::GraphOp>();
@@ -272,8 +273,8 @@ struct LegalizeMutableLoadOp : public OpRewritePattern<RMO::MOMutableLoadOp> {
 };
 
 struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
-  LegalizeMutableStoreOp(MLIRContext *ctx)
-      : OpRewritePattern<RMO::MOMutableStoreOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::MOMutableStoreOp op,
                                 PatternRewriter &rewriter) const override {
 
@@ -310,8 +311,8 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
 
 struct LegalizeMutableStoreSliceOp
     : public OpRewritePattern<RMO::MOMutableStoreSliceOp> {
-  LegalizeMutableStoreSliceOp(MLIRContext *ctx)
-      : OpRewritePattern<RMO::MOMutableStoreSliceOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::MOMutableStoreSliceOp op,
                                 PatternRewriter &rewriter) const override {
 
@@ -353,7 +354,8 @@ struct LegalizeMutableStoreSliceOp
 
 struct LowerRebindTensorShapeOp
     : public OpRewritePattern<RMO::RebindTensorShapeOp> {
-  LowerRebindTensorShapeOp(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::RebindTensorShapeOp op,
                                 PatternRewriter &rewriter) const override {
 
@@ -401,8 +403,8 @@ struct LowerRebindTensorShapeOp
 
 template <typename RMOOpT, typename MOAnalogueOpT>
 struct LowerThirdPartyBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
-  LowerThirdPartyBinaryElemwiseOp(MLIRContext *ctx)
-      : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  using OpRewritePattern<RMOOpT>::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMOOpT op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->template getParentOfType<MO::GraphOp>();
@@ -456,8 +458,8 @@ struct LowerThirdPartyBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
 
 template <typename RMOOpT, typename MOAnalogueOpT>
 struct LowerThirdPartyBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
-  LowerThirdPartyBinaryComparisonOp(MLIRContext *ctx)
-      : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  using OpRewritePattern<RMOOpT>::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMOOpT op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->template getParentOfType<MO::GraphOp>();
@@ -498,8 +500,8 @@ struct LowerThirdPartyBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
 
 template <typename RMOOpT, typename MOAnalogueOpT>
 struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
-  LowerCompositeBinaryElemwiseOp(MLIRContext *ctx)
-      : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  using OpRewritePattern<RMOOpT>::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMOOpT op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->template getParentOfType<MO::GraphOp>();
@@ -553,8 +555,8 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
 
 template <typename RMOOpT, typename MOAnalogueOpT>
 struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
-  LowerCompositeBinaryComparisonOp(MLIRContext *ctx)
-      : OpRewritePattern<RMOOpT>(ctx, 1) {}
+  using OpRewritePattern<RMOOpT>::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMOOpT op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->template getParentOfType<MO::GraphOp>();
@@ -614,7 +616,8 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
 };
 
 struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
-  LowerBroadcastLike(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::BroadcastLikeOp op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->getParentOfType<MO::GraphOp>();
@@ -634,7 +637,8 @@ struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
 };
 
 struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
-  LowerConcat(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::ConcatOp op,
                                 PatternRewriter &rewriter) const override {
 
@@ -683,7 +687,8 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
 };
 
 struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
-  LowerReshape(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::ReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     // If the newShape contains `-1`, at runtime, ensure all other dimensions
@@ -735,7 +740,8 @@ struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
 };
 
 struct LowerBroadcastTo : public OpRewritePattern<RMO::BroadcastToOp> {
-  LowerBroadcastTo(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::BroadcastToOp op,
                                 PatternRewriter &rewriter) const override {
     // Since the shape is already resolved and can't contain any unknown dims,
@@ -747,7 +753,8 @@ struct LowerBroadcastTo : public OpRewritePattern<RMO::BroadcastToOp> {
 };
 
 struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
-  LowerSigmoid(MLIRContext *ctx) : OpRewritePattern(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::SigmoidOp op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->getParentOfType<MO::GraphOp>();
@@ -789,7 +796,8 @@ struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
 };
 
 struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
-  LowerMatmul(MLIRContext *ctx) : OpRewritePattern<RMO::MatmulOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
@@ -882,7 +890,8 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
 };
 
 struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
-  LowerSelect(MLIRContext *ctx) : OpRewritePattern<RMO::SelectOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::SelectOp op,
                                 PatternRewriter &rewriter) const override {
     auto graphOp = op->template getParentOfType<MO::GraphOp>();
@@ -945,7 +954,7 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
 };
 
 struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
-  LowerTopK(MLIRContext *ctx) : OpRewritePattern<RMO::TopKOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(RMO::TopKOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1010,7 +1019,8 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
 };
 
 struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
-  LowerSlice(MLIRContext *ctx) : OpRewritePattern<RMO::SliceOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
+
   LogicalResult matchAndRewrite(RMO::SliceOp op,
                                 PatternRewriter &rewriter) const override {
     // Note that rmo.slice has special restrictions compared to mo.slice:
@@ -1084,8 +1094,7 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
 };
 
 struct LowerShapeToTensor : public OpRewritePattern<RMO::ShapeToTensorOp> {
-  LowerShapeToTensor(MLIRContext *ctx)
-      : OpRewritePattern<RMO::ShapeToTensorOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(RMO::ShapeToTensorOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1101,8 +1110,7 @@ struct LowerShapeToTensor : public OpRewritePattern<RMO::ShapeToTensorOp> {
 
 struct LowerThirdPartyPadConstantOp
     : public OpRewritePattern<RMO::ThirdPartyPadConstantOp> {
-  LowerThirdPartyPadConstantOp(MLIRContext *ctx)
-      : OpRewritePattern<RMO::ThirdPartyPadConstantOp>(ctx, 1) {}
+  using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(RMO::ThirdPartyPadConstantOp op,
                                 PatternRewriter &rewriter) const override {
