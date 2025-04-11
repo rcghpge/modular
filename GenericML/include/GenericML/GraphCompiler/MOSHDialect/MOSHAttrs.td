@@ -133,4 +133,10 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   let genVerifyDecl = 1;
 }
 
+/// ShapeAttr confined to have no unknown (?) dimensions.
+def KnownShapeAttr : ConfinedAttr<MOSH_ShapeAttr, [
+  AttrConstraint<CPred<"!cast<::MOSH::ShapeAttr>($_self).hasUnknownDims()">,
+                 "has parametrically known shape">
+]> {}
+
 #endif // GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHATTRS_TD

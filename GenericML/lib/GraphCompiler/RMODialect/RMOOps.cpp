@@ -79,6 +79,40 @@ static ErrorOr<M::DeviceRefAttr> inferDeviceOf(Adaptor adaptor) {
   return RMO::inferDevice(adaptor.getOperands());
 }
 
+static LogicalResult
+runShapePropagation(ValueRange operands, std::optional<Location> location,
+                    DType promotedDType,
+                    MO::ShapeMaterializeResult &materialization,
+                    SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Preliminary error checks.
+  if (materialization.isError())
+    return mlir::emitOptionalError(location, materialization.getError().msg);
+
+  if (materialization.isNonMaterializable())
+    return mlir::emitOptionalError(location,
+                                   "shape computation must be materializable");
+
+  auto &result = materialization.getSuccess();
+
+  // Shape propagation over materialized ops and target shape.
+  ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
+      MO::propagateShape(result.bindings, result.resultShapes);
+  if (resultShapesOr.isError())
+    return mlir::emitOptionalError(location, resultShapesOr.getError());
+
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
+  // Create output type.
+  ShapeAttr resultShape = resultShapesOr.get().front();
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, promotedDType, *outputDeviceOr));
+
+  return success();
+}
+
 OpFoldResult RebindTensorShapeOp::fold(FoldAdaptor adaptor) {
   // Note `?` != `?` in terms of shapes
   if (getInput().getType().hasUnknownShape())
@@ -639,15 +673,14 @@ MatmulOp::inferReturnTypes(MLIRContext *context,
                            SmallVectorImpl<Type> &inferredReturnTypes) {
 
   // Retrieve input shape
-  Value lhs = adaptor.getInputX();
-  Value rhs = adaptor.getInputY();
+  auto lhs = cast<TensorValue>(adaptor.getInputX());
+  auto rhs = cast<TensorValue>(adaptor.getInputY());
 
   auto lhsShape = cast<ShapeAttr>(getShapeOf(lhs));
   auto rhsShape = cast<ShapeAttr>(getShapeOf(rhs));
 
   ErrorOr<DType> promotedDtype =
-      promoteDtype(mlir::cast<TensorType>(lhs.getType()).getDtype(),
-                   mlir::cast<TensorType>(rhs.getType()).getDtype());
+      promoteDtype(lhs.getType().getDtype(), rhs.getType().getDtype());
   if (promotedDtype.isError()) {
     return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
                                    StringRef{promotedDtype.getError()});
@@ -862,6 +895,40 @@ SliceOp::inferReturnTypes(MLIRContext *context,
       resultShapesOr->front(), input.getType().getDtype(), *outputDeviceOr));
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConvOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+ConvOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+                         Adaptor adaptor,
+                         SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto input = cast<TensorValue>(adaptor.getInput());
+  auto filter = cast<TensorValue>(adaptor.getFilter());
+
+  ErrorOr<DType> promotedDtype =
+      promoteDtype(input.getType().getDtype(), filter.getType().getDtype());
+  if (promotedDtype.isError()) {
+    return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
+                                   StringRef{promotedDtype.getError()});
+  }
+
+  TypedAttr inputShape = cast<ShapeAttr>(getShapeOf(input));
+  TypedAttr filterShape = cast<ShapeAttr>(getShapeOf(filter));
+
+  Location loc = location.value_or(input.getLoc());
+
+  // Materialize shape function.
+  auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
+  MO::ShapeMaterializeResult result = MO::materializeConvShape(
+      graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
+      adaptor.getDilations(), adaptor.getPaddings(),
+      adaptor.getNumGroupsAttr());
+
+  return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
+                             result, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//

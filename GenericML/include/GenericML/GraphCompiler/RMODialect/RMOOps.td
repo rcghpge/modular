@@ -78,7 +78,7 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []>
     MO_KnownTensor:$input_x,
     MO_KnownTensor:$input_y,
     MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$result);
+  let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -523,6 +523,87 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
   let arguments = (ins
     MO_KnownTensor:$input_x,
     MO_KnownTensor:$input_y);
+  let results = (outs MO_KnownTensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def RMO_ConvOp : RMO_Op<"conv", [
+  Pure,
+  InferTypeOpAdaptor,
+]> {
+  let summary = "Convolution operation";
+  let description = [{
+    Computes the convolution product of the input with the given filter,
+    strides, dilations, paddings, and groups.
+
+    The op supports 1D-3D convolution, with the following layout assumptions:
+    - input has channel last layout. For 2D, that's NHWC, i.e.,
+      (batch_size, height, width, in_channels)
+    - filter has layout RSCF, i.e.,
+      (height, width, in_channels / num_groups, out_channels)
+
+    `strides`, `dilations`, and `padding` are all shape attributes.
+    If the input has static rank, and must have have sizes of `input_rank - 2`,
+    except padding, which must have size `2 * (input_rank - 2)`. Individual
+    elements in the hyperparameters apply to corresponding dimensions of the
+    input (after ignoring the batch and channel dimensions), with padding
+    representing a before/after pair for each axis.
+
+    The padding values are expected to take the form (pad_dim1_before,
+    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
+    0's before and after the indicated *spatial* dimensions in `input`. In 2D
+    Convolution, dim1 here repesents H and dim2 represents W. In python like
+    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+
+    ```python
+    input = [
+      [1, 2, 3],
+      [4, 5, 6]
+    ]
+    # Shape is 2x3
+
+    padded_input = [
+      [0, 0, 1, 2, 3, 0],
+      [0, 0, 4, 5, 6, 0]
+      [0, 0, 0, 0, 0, 0]
+    ]
+    # Shape is 3x6
+    ```
+
+    The input, output and filter tensors' ranks must match.
+
+    The number of input and output channels must both be divisible by the number
+    of groups `num_groups`.
+
+    Example:
+
+    ```mlir
+    %input: !mo.tensor<[10, 5, 5, 32], f32>,
+    %filter: !mo.tensor<[2, 2, 32, 64], f32>
+
+    %result = rmo.conv(%input, %filter) {
+      strides = #mosh<ape[2, 2]> : !mosh.ape,
+      paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
+      dilations = #mosh<ape[1, 1]> : !mosh.ape,
+      num_groups = 1 : si64
+    } : (
+      !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>
+    ) -> !mo.tensor<[10, 4, 4, 64], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_KnownTensor:$input,
+    MO_KnownTensor:$filter,
+    KnownShapeAttr:$strides,
+    KnownShapeAttr:$dilations,
+    KnownShapeAttr:$paddings,
+    SI64Attr:$num_groups
+  );
+
   let results = (outs MO_KnownTensor:$result);
 
   let assemblyFormat = [{
