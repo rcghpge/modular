@@ -27,6 +27,7 @@ mo.graph @main(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
 
 // -----
 
+// expected-note@+1 {{graph op here}}
 mo.graph @gelu(%arg0: !mo.tensor<[6, 5], f32>) -> (!mo.tensor<[6, 5], f32>) attributes {isSubgraph} {
   %0 = mo.gelu(%arg0) : !mo.tensor<[6, 5], f32>
   mo.output %0 : !mo.tensor<[6, 5], f32>

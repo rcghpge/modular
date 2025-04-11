@@ -268,7 +268,7 @@ def SupportConversionsTest : Pass<"support-conversions-test", "ModuleOp"> {
   ];
 }
 
-def AssignDevicesPass : Pass<"assign-devices", "GraphOp"> {
+def AssignDevicesPass : Pass<"assign-devices", "ModuleOp"> {
   let summary = "Assigns an `#M.device_ref` annotation to every operation "
                 "and tensor.";
   let description = [{

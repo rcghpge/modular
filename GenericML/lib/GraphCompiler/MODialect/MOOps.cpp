@@ -535,13 +535,15 @@ LogicalResult CallOp::verify() {
   if (!graphOp.getIsSubgraph())
     return emitError() << "Only subgraphs can be called";
 
-  for (auto [idx, typePair] : llvm::enumerate(llvm::zip(
-           graphOp.getBody().getArgumentTypes(), getOperandTypes()))) {
-    auto [graphArgType, operandType] = typePair;
-    if (graphArgType != operandType)
-      return emitError() << "Subgraph " << graphOp.getName()
-                         << " has wrong type for argument " << idx << " ("
-                         << graphArgType << " vs " << operandType << ")";
+  for (auto [idx, graphArgType, operandType] : llvm::enumerate(
+           graphOp.getFunctionType().getInputs(), getOperandTypes())) {
+    if (graphArgType != operandType) {
+      auto diag = emitError() << "Subgraph " << graphOp.getName()
+                              << " has wrong type for argument " << idx << " ("
+                              << graphArgType << " vs " << operandType << ")";
+      diag.attachNote(graphOp.getLoc()) << "graph op here";
+      return failure();
+    }
   }
 
   return success();
