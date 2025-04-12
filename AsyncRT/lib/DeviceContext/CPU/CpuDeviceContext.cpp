@@ -15,6 +15,7 @@
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
+#include "Support/ML/Fill.h"
 #include "llvm/ADT/Twine.h"
 
 #include <chrono>
@@ -194,40 +195,44 @@ ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
   CHECK_IS_CPU_ERR(dst.context().device());
   void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
-  if (valSize == 1) {
-    memset(ptr, static_cast<uint8_t>(val), byteSize);
-  } else if (valSize == 2) {
-    if ((byteSize & 1) != 0) {
-      return Error("byteSize of buffer is misaliged");
-    }
-    size_t len = byteSize >> 1;
-    uint16_t *curPtr = static_cast<uint16_t *>(ptr);
-    for (size_t i = 0; i < len; i++) {
-      *curPtr++ = static_cast<uint16_t>(val);
-    }
-  } else if (valSize == 4) {
-    if ((byteSize & 3) != 0) {
-      return Error("byteSize of buffer is misaliged");
-    }
-    size_t len = byteSize >> 2;
-    uint32_t *curPtr = static_cast<uint32_t *>(ptr);
-    for (size_t i = 0; i < len; i++) {
-      *curPtr++ = static_cast<uint32_t>(val);
-    }
-  } else {
-    if (valSize != 8) {
-      return Error("unsupported valSize");
-    }
-    if ((byteSize & 7) != 0) {
-      return Error("byteSize of buffer is misaliged");
-    }
-    size_t len = byteSize >> 3;
-    uint64_t *curPtr = static_cast<uint64_t *>(ptr);
-    for (size_t i = 0; i < len; i++) {
-      *curPtr++ = val;
-    }
+
+  switch (valSize) {
+  case 1: {
+    uint8_t u8Val = static_cast<uint8_t>(val);
+    return M::fillHomogeneous(ptr, byteSize, DType::ui8, &u8Val);
   }
-  return success();
+
+  case 2: {
+    if ((byteSize & 1) != 0)
+      return Error("byteSize of buffer is misaligned");
+
+    size_t len = byteSize >> 1;
+    uint16_t ui16Val = static_cast<uint16_t>(val);
+    return M::fillHomogeneous(ptr, len, DType::ui16, &ui16Val);
+  }
+
+  case 4: {
+    if ((byteSize & 3) != 0)
+      return Error("byteSize of buffer is misaligned");
+
+    size_t len = byteSize >> 2;
+    uint32_t ui32Val = static_cast<uint32_t>(val);
+    return M::fillHomogeneous(ptr, len, DType::ui32, &ui32Val);
+  }
+
+  case 8: {
+    if ((byteSize & 7) != 0)
+      return Error("byteSize of buffer is misaligned");
+
+    size_t len = byteSize >> 3;
+    uint64_t ui64Val = static_cast<uint64_t>(val);
+    return M::fillHomogeneous(ptr, len, DType::ui64, &ui64Val);
+  }
+
+  default:
+    llvm_unreachable("unsupport val size");
+    return Error("unsupport val size");
+  }
 }
 
 ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
