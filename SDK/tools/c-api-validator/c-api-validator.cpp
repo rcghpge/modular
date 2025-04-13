@@ -40,10 +40,6 @@ public:
   size_t numConcurrentRequesters{1};
   size_t numSequentialRequests{1};
   bool useMoOps{true};
-  // TODO(#20024): Until we have a better solution we need to disable oneDNN
-  // optimizations in stock tf since they appear to be incompatible with the
-  // tf eager C API.
-  bool disableTFOneDNN{false};
 };
 
 class APICLOptions : public CLOptionsBase {
@@ -112,14 +108,6 @@ private:
       cl::desc("Whether to lower to MO ops. Default true. Only valid for "
                "models using the tf compiler and runtime."),
       llvm::cl::location(options.useMoOps)};
-
-  // TODO(#20024): Until we have a better solution we need to disable oneDNN
-  // optimizations in stock tf since they appear to be incompatible with the
-  // tf eager C API.
-  M::cl::MOpt<bool, true> disableTFOneDNN{
-      "disable-tf-onednn",
-      cl::desc("Disable the stock TF oneDNN optimizations."),
-      llvm::cl::location(options.disableTFOneDNN)};
 };
 
 /// serializes console output
@@ -544,11 +532,6 @@ int main(int argc, char **argv) {
   APICLOptions parser(argc, argv, options);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "generic C API test driver\n");
-
-  if (options.disableTFOneDNN) {
-    // TODO(#20024): Disable TF's oneDNN replacement kernels. Better solution?
-    (void)setProcessEnv("TF_ENABLE_ONEDNN_OPTS", "0");
-  }
 
   const size_t numPaths = options.paths.size();
   const bool threaded = options.threaded;

@@ -129,11 +129,6 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
-  if (options.disableTFOneDNN) {
-    // TODO(#20024): Disable TF's oneDNN replacement kernels. Better solution?
-    (void)setProcessEnv("TF_ENABLE_ONEDNN_OPTS", "0");
-  }
-
   struct InputInfo {
     M::BufferRef file;
     FileFormat format = FileFormat::kUnknown;
