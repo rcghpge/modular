@@ -577,9 +577,9 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr);
 /// It returns an error when it encounters an assert whose condition doesn't
 /// fold to `true`. The error message will be the same as the assert error
 /// message.
-ErrorOr<SmallVector<ShapeAttr>>
-propagateShape(ArrayRef<ParamBinding> bindings,
-               ArrayRef<ShapeAttr> targetShapes);
+ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
+                                               ArrayRef<ShapeAttr> targetShapes,
+                                               bool validateAsserts = true);
 
 // TODO move the following into a new interface.
 // NOTE some of the input arguments will be removed once we move the

@@ -79,11 +79,10 @@ static ErrorOr<M::DeviceRefAttr> inferDeviceOf(Adaptor adaptor) {
   return RMO::inferDevice(adaptor.getOperands());
 }
 
-static LogicalResult
-runShapePropagation(ValueRange operands, std::optional<Location> location,
-                    DType promotedDType,
-                    MO::ShapeMaterializeResult &materialization,
-                    SmallVectorImpl<Type> &inferredReturnTypes) {
+static LogicalResult runShapePropagation(
+    ValueRange operands, std::optional<Location> location, DType promotedDType,
+    MO::ShapeMaterializeResult &materialization,
+    SmallVectorImpl<Type> &inferredReturnTypes, bool validateAsserts = true) {
   // Preliminary error checks.
   if (materialization.isError())
     return mlir::emitOptionalError(location, materialization.getError().msg);
@@ -96,7 +95,8 @@ runShapePropagation(ValueRange operands, std::optional<Location> location,
 
   // Shape propagation over materialized ops and target shape.
   ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
-      MO::propagateShape(result.bindings, result.resultShapes);
+      MO::propagateShape(result.bindings, result.resultShapes,
+                         /*validateAsserts=*/validateAsserts);
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
@@ -566,8 +566,6 @@ LogicalResult BroadcastToOp::inferReturnTypes(
   DType inputDtype = input.getType().getDtype();
   return runShapePropagation(adaptor.getOperands(), location, inputDtype,
                              result, inferredReturnTypes);
-
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -768,7 +766,8 @@ ConvOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
       adaptor.getNumGroupsAttr());
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
-                             result, inferredReturnTypes);
+                             result, inferredReturnTypes,
+                             /*validateAsserts=*/false);
 }
 
 //===----------------------------------------------------------------------===//

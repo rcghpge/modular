@@ -127,10 +127,11 @@ std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TypedAttr attr) {
 static Var getSlidingWindowOutDim(const Var &inputDim, const Var &filterDim,
                                   const Var &dilation, const Var &stride,
                                   const Var &padding, bool ceilMode = false) {
-  Var numerator = inputDim + padding - (dilation * (filterDim - 1) + 1);
+  Var numerator =
+      inputDim + padding - (dilation * (filterDim - 1) + 1) + stride;
   if (ceilMode)
-    return (numerator + stride - 1) / stride + 1;
-  return numerator / stride + 1;
+    return (numerator + stride - 1) / stride;
+  return numerator / stride;
 }
 
 // Compute the size of a range (assuming validity of input values).
@@ -1768,9 +1769,9 @@ StringAttr tryGetAssertFalseErrMsg(TypedAttr attr) {
 }
 
 /// Implementation of `propagateShape` which doesn't erase `bindings`.
-ErrorOr<SmallVector<ShapeAttr>>
-propagateShape(ArrayRef<ParamBinding> bindings,
-               ArrayRef<ShapeAttr> targetShapes) {
+ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
+                                               ArrayRef<ShapeAttr> targetShapes,
+                                               bool validateAsserts) {
 
   // Setting things up
   KGEN::ParameterEvaluator evaluator;
@@ -1792,10 +1793,17 @@ propagateShape(ArrayRef<ParamBinding> bindings,
       TypedAttr cond = condAndMsg.value().first;
       StringAttr errMsg = condAndMsg.value().second;
 
-      // Error if condition didn't fold to true.
-      if (auto boolAttr = dyn_cast<BoolAttr>(cond);
-          !boolAttr || !boolAttr.getValue()) {
-        return Error(errMsg.str());
+      if (validateAsserts) {
+        if (auto boolAttr = dyn_cast<BoolAttr>(cond);
+            !boolAttr || !boolAttr.getValue()) {
+          return Error(errMsg.str());
+        }
+      } else {
+        // Error if condition didn't fold to true.
+        if (auto boolAttr = dyn_cast<BoolAttr>(cond);
+            boolAttr && !boolAttr.getValue()) {
+          return Error(errMsg.str());
+        }
       }
     }
 

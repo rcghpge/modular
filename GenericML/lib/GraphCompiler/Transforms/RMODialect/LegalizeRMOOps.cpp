@@ -952,7 +952,7 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
 
     auto groupsConstant = rewriter.create<MO::ConstantOp>(loc, groups);
 
-    rewriter.replaceOpWithNewOp<MO::ConvOp>(
+    rewriter.replaceOpWithNewOp<RMO::MOConvOp>(
         conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
         dilationsConstant, paddingConstant, groupsConstant);
     return success();
