@@ -7,7 +7,6 @@
 // This file implements the MO dialect operations.
 //
 //===----------------------------------------------------------------------===//
-
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
@@ -22,6 +21,7 @@
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Support/AssertStream.h"
+#include "Support/Compiler/ParserUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/STLExtras.h"
@@ -300,6 +300,265 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
     setKgenParamsAttr(attributes.getDictionary(getContext()));
 
   return true;
+}
+
+//===----------------------------------------------------------------------===//
+// MOGG BindLambdaOp
+//===----------------------------------------------------------------------===//
+
+BlockArgument BindLambdaOp::getIndicesArg() {
+  return getLambda().getArguments().back();
+}
+
+ArrayRef<BlockArgument> BindLambdaOp::getValueArgs() {
+  return getLambda().getArguments().take_front(getNumOperands());
+}
+
+LogicalResult BindLambdaOp::verify() {
+  if (getFusibleTensors().empty())
+    return emitError("Expecting at least one fusible tensor to bind");
+
+  bool sameShapeOperands =
+      llvm::all_equal(llvm::map_range(getOperandTypes(), [](Type t) {
+        return cast<MO::TensorType>(t).getShapeAttr();
+      }));
+  if (!sameShapeOperands)
+    return emitError("Expecting same shaped operands");
+
+  if (getLambda().getNumArguments() != getFusibleTensors().size() + 1)
+    return emitError("Expecting #operands + 1 arguments for lambda");
+
+  SmallVector<Type> valTps;
+  Type indicesTp;
+
+  if (getBindKind() == BindLambdaKind::OutputLambda) {
+    auto outOp = cast<MOGG::OutputOp>(getBody()->getTerminator());
+    ValueRange outVals = outOp->getOperands();
+    if (outVals.size() != 2)
+      return emitError("Expecting output lambda to yield 2 values");
+
+    // Bind the output value to the output tensor.
+    valTps.push_back(outVals.front().getType());
+    indicesTp = outVals.back().getType();
+  } else {
+    // Bind the input value from input tensors.
+    valTps = llvm::map_to_vector(getValueArgs(),
+                                 [](BlockArgument ba) { return ba.getType(); });
+    indicesTp = getIndicesArg().getType();
+  }
+
+  for (auto [elemTp, tensorTp] :
+       llvm::zip_equal(valTps, getFusibleTensors().getTypes())) {
+    if (elemTp != cast<MO::TensorType>(tensorTp).getElementType())
+      return emitError(
+          "Mismatch between tensor type and fused tensor element type");
+  }
+
+  int64_t rank =
+      cast<MO::TensorType>(getFusibleTensors().front().getType()).getRank();
+  if (auto idxTp = dyn_cast<KGEN::POP::ArrayType>(indicesTp);
+      idxTp == nullptr || idxTp.getResolvedSize().value() != rank)
+    return emitError("Mismatch between tensor rank and and indices array size");
+
+  return success();
+}
+
+ParseResult BindLambdaOp::parse(OpAsmParser &parser, OperationState &result) {
+  Region &lambdaRegion = *result.addRegion();
+
+  SmallVector<OpAsmParser::Argument> argInfo;
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
+  std::string lambdaKind;
+
+  if (parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
+      parser.parseKeywordOrString(&lambdaKind) ||
+      parser.parseArgumentList(argInfo, OpAsmParser::Delimiter::Paren, true) ||
+      parser.parseRegion(lambdaRegion, argInfo, false) || parser.parseColon()) {
+    return failure();
+  }
+  auto bindKind = MOGG::symbolizeBindLambdaKind(lambdaKind);
+  if (!bindKind)
+    return failure();
+
+  result.addAttribute(
+      BindLambdaOp::getBindKindAttrName(mlir::OperationName(
+          BindLambdaOp::getOperationName(), parser.getContext())),
+      BindLambdaKindAttr::get(parser.getContext(), *bindKind));
+
+  SmallVector<Type, 4> operandTps;
+  if (bindKind == BindLambdaKind::OutputLambda) {
+    if (parser.parseTypeList(operandTps))
+      return failure();
+    // Resolve to the same result types.
+    result.types = operandTps;
+  } else {
+    if (parser.parseLParen() || parser.parseTypeList(operandTps) ||
+        parser.parseRParen() || parser.parseArrowTypeList(result.types))
+      return failure();
+  }
+  if (parser.resolveOperands(operands, operandTps, {}, result.operands) ||
+      parser.parseOptionalAttrDict(result.attributes)) {
+    return failure();
+  }
+  return success();
+}
+
+void BindLambdaOp::print(OpAsmPrinter &p) {
+  p << " (";
+  p.printOperands(getOperands());
+  p << ") ";
+  p.printKeywordOrString(stringifyBindLambdaKind(getBindKind()));
+  p << " (";
+  llvm::interleaveComma(getLambda().getArguments(), p,
+                        [&p](BlockArgument ba) { p.printRegionArgument(ba); });
+  p << ") ";
+  p.printRegion(getLambda(), /*printEntryBlockArgs=*/false);
+
+  p << ": ";
+  if (getBindKind() == BindLambdaKind::OutputLambda) {
+    // To bind an output lambda, it has no input tensor (the value coming from a
+    // data stream during kernel execution).
+    p.printType(getResult().getType());
+  } else {
+    p.printFunctionalType(getOperands().getTypes(), (*this)->getResultTypes());
+  }
+
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          getBindKindAttrName().strref());
+}
+
+void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
+                         ValueRange fusibleTensors, BindLambdaKind bindKind) {
+  OpBuilder::InsertionGuard guard(b);
+  build(b, state, outputTp, bindKind, fusibleTensors);
+
+  // Create an identity lambda.
+  Block &block = state.regions.front()->emplaceBlock();
+
+  // For each bounded tensor, we use append a block argument for the
+  // corresponding loaded value.
+  for (Value v : fusibleTensors)
+    block.addArgument(cast<MO::TensorType>(v.getType()).getElementType(),
+                      v.getLoc());
+  // Appends indices
+  //
+  // TODO: Technically, we only need indices for output lambda (maybe also
+  // elementwise lambda) at the moment, but we append it regardless here to
+  // support indices transformation in the future, it also saves us a bunch of
+  // if statements by having a canonical form.
+  Type indicesTp = KGEN::POP::ArrayType::get(
+      cast<MO::TensorType>(outputTp).getRank(), b.getIndexType());
+  block.addArgument(indicesTp, state.location);
+
+  // Caller need to populate the lambda body.
+  if (bindKind == BindLambdaKind::ElemwiseLambda)
+    return;
+
+  b.setInsertionPointToStart(&block);
+  b.create<MOGG::OutputOp>(state.location, block.getArguments());
+}
+
+//===----------------------------------------------------------------------===//
+// MOGG KernelTerminatorOp
+//===----------------------------------------------------------------------===//
+
+ValueRange CallForeachOp::getKernelOutputs() {
+  return getOperands().take_back();
+}
+ValueRange CallExecuteOp::getKernelOutputs() { return getOutputs(); }
+
+//===----------------------------------------------------------------------===//
+// MOGG ExpKernelOp
+//===----------------------------------------------------------------------===//
+
+KernelTerminator ExpKernelOp::getTerminator() {
+  return cast<KernelTerminator>(getExecBody().front().getTerminator());
+}
+
+BindLambdaOp ExpKernelOp::getBoundInputLambda(unsigned operandIdx) {
+  auto executeOp = dyn_cast<CallExecuteOp>(getTerminator());
+  return executeOp
+             ? executeOp.getInputs()[operandIdx].getDefiningOp<BindLambdaOp>()
+             : nullptr;
+}
+
+BindLambdaOp ExpKernelOp::getBoundOutputLambda(unsigned resultIdx) {
+  auto executeOp = dyn_cast<CallExecuteOp>(getTerminator());
+  return executeOp
+             ? executeOp.getOutputs()[resultIdx].getDefiningOp<BindLambdaOp>()
+             : nullptr;
+}
+
+BindLambdaOp ExpKernelOp::getElemwiseBodyLambda() {
+  auto foreachOp = dyn_cast<CallForeachOp>(getTerminator());
+  return foreachOp ? foreachOp.getInput().getDefiningOp<BindLambdaOp>()
+                   : nullptr;
+}
+
+bool ExpKernelOp::isOperandFusible(unsigned operandIdx) {
+  auto users = getExecBody().getArgument(operandIdx).getUsers();
+  // Returns true if the operand is used by a MOGG::BindLambdaOp
+  return llvm::find_if(users, [](Operation *op) {
+           return isa<MOGG::BindLambdaOp>(op);
+         }) != users.end();
+}
+
+LogicalResult M::MOGG::ExpKernelOp::verify() {
+  auto term = dyn_cast<MOGG::KernelTerminator>(getTerminator());
+  if (!term)
+    return emitError("Expect to terminate with a KernelTerminator");
+
+  term.getKernelOutputs().getTypes();
+  if (!llvm::equal(term.getKernelOutputs().getTypes(), getResultTypes()))
+    return emitError("Expect to return the same result types as terminator");
+
+  return success();
+}
+
+void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
+                        TypeRange results, ValueRange operands,
+                        StringAttr summary, BoolAttr isAsync,
+                        DeviceRefAttr device) {
+  state.addOperands(operands);
+
+  if (summary)
+    state.addAttribute(getSummaryAttrName(state.name), summary);
+
+  if (isAsync)
+    state.addAttribute(getIsAsyncAttrName(state.name), isAsync);
+
+  Region *execBodyRegion = state.addRegion();
+  Block &kernelBody = execBodyRegion->emplaceBlock();
+  for (auto [i, operand] : llvm::enumerate(operands))
+    kernelBody.addArgument(operand.getType(), operand.getLoc());
+
+  state.addTypes(results);
+
+  if (device)
+    state.addAttribute(MO::kOperationDeviceRefAttrName, device);
+}
+
+ParseResult ExpKernelOp::parse(OpAsmParser &parser, OperationState &state) {
+  SmallVector<OpAsmParser::Argument> argInfo;
+  if (parseParenOperandListWithShadowing(parser, state, argInfo, true) ||
+      parser.parseArrowTypeList(state.types) ||
+      parseRegion(parser, argInfo, *state.addRegion(), true) ||
+      parser.parseOptionalAttrDict(state.attributes))
+    return failure();
+
+  return success();
+}
+
+void ExpKernelOp::print(OpAsmPrinter &p) {
+  p << ' ';
+  printParenOperandListWithShadowing(p, getOperands(),
+                                     getExecBody().getArguments(),
+                                     /*isIsolatedFromAbove=*/true);
+
+  p.printArrowTypeList(getResultTypes());
+  p << ' ';
+  printRegion(p, getOperands(), getExecBody(), /*isIsolatedFromAbove=*/true);
+  p.printOptionalAttrDict(getOperation()->getAttrs());
 }
 
 //===----------------------------------------------------------------------===//

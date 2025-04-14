@@ -9,6 +9,21 @@
 
 include "mlir/IR/OpBase.td"
 
+def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
+  let description = [{
+    A terminator for `mogg.experimental.kernel` operation.
+  }];
+
+  let cppNamespace = "::M::MOGG";
+
+  let methods = [
+    InterfaceMethod<
+      "Returns the output values of the kernel",
+      "mlir::ValueRange", "getKernelOutputs", (ins)
+    >,
+  ];
+}
+
 def MOGG_CompilableKernel : OpInterface<"CompilableKernel"> {
   let description = [{
     Implemented by operations which represent a compilable kernel so multiple

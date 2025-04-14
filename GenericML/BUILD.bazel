@@ -673,6 +673,26 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "MOGGDialectEnumsIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-enum-decls"],
+            "include/GenericML/GraphCompiler/MOGGDialect/MOGGEnums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "include/GenericML/GraphCompiler/MOGGDialect/MOGGEnums.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/MOGGDialect/MOGGEnums.td",
+    deps = [
+        "MOGGDialectTdFiles",
+    ],
+)
+
 gentbl_modular_passes(
     name = "MOGGDialectPassesIncGen",
     td_file = "include/GenericML/GraphCompiler/MOGGDialect/MOGGPasses.td",
@@ -697,6 +717,7 @@ modular_cc_library(
         ":GraphCompilerConversion",
         ":MGPDialect",
         ":MODialect",
+        ":MOGGDialectEnumsIncGen",
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
@@ -714,6 +735,7 @@ modular_cc_library(
         ":GraphCompilerInterfaces",
         ":MODialect",
         ":MOGGAnalysis",
+        ":MOGGDialectEnumsIncGen",
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",

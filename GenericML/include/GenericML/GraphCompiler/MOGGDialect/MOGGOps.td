@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOOPS_TD
 
 include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.td"
+include "GenericML/GraphCompiler/MOGGDialect/MOGGEnums.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.td"
 include "GenericML/MGPDialect/MGPTypes.td"
@@ -38,6 +39,12 @@ class MOGG_Op<string mnemonic, list<Trait> traits = []>
 
 class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
     : MOGG_Op<mnemonic, traits # [DeclareOpInterfaceMethods<LowerableToMGPInterface, ["lower"]>]>;
+
+class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []>
+    : MOGG_Op<mnemonic, traits # [
+              Terminator,
+              HasParent<"MOGG::ExpKernelOp">,
+              DeclareOpInterfaceMethods<MOGG_KernelTerminator, ["getKernelOutputs"]>]>;
 
 def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!pop.simd<1, si64>">,
     BuildableType<"KGEN::POP::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
@@ -153,6 +160,215 @@ def MOGG_OutputOp
 //===----------------------------------------------------------------------===//
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
+
+def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
+    SameTypeOperands,
+    HasParent<"MOGG::ExpKernelOp">]>  {
+  let summary = "call the registered foreach kernel";
+  let description = [{
+    This represents a call to the mojo implementation of `foreach` function. If
+    a mogg.kernel terminates with the operation, it also implies that the kernel
+    is an element-wise kernel.
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_Tensor:$output);
+
+  let assemblyFormat = [{
+    `input` `(` $input `)` `output` `(` $output `)` `:` qualified(type($input)) attr-dict
+  }];
+}
+
+
+def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
+    AttrSizedOperandSegments,
+    HasParent<"MOGG::ExpKernelOp">]>  {
+  let summary = "Call the registered `execute` function for a particular kernel";
+  let description = [{
+    This represents a call to the mojo implementation of `Kernel::execute`
+    function.
+
+    Example:
+    ```mlir
+    mogg.call.execute["mo.add"] inputs(...) outputs(...)
+
+    // Lowered to
+    kgen.call "Add::execute"(...)
+    ```
+  }];
+
+  let arguments = (ins StrAttr:$kernelName,
+                       Variadic<AnyType>:$inputs,
+                       Variadic<AnyType>:$outputs);
+
+  let assemblyFormat = [{
+    `[` $kernelName `]` `inputs` `(` $inputs `)` `outputs` `(` $outputs `)` `:` functional-type($inputs, $outputs) attr-dict
+  }];
+}
+
+
+def MOGG_CallOutlinedOp : MOGG_Op<"call.outlined", [
+    Pure,
+    HasParent<"MOGG::BindLambdaOp">]> {
+  let summary = "Call the registered `_OUTLINED` function for a particular kernel";
+  let description = [{
+    This represents a call to outlined function (extracted by the graph compiler
+    during pre-elaboration).
+
+    Example:
+    ```mlir
+    mogg.call.outlined["mo.add"](...)
+
+    // Lowered to
+    kgen.call "Add::execute_OUTLINED"(...)
+    ```
+  }];
+  let arguments = (ins StrAttr: $kernelName, Variadic<AnyType>: $inputs);
+  let results = (outs Variadic<AnyType>: $outputs);
+
+  let assemblyFormat = [{
+    `[` $kernelName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` type($outputs)
+  }];
+}
+
+
+def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
+    IsolatedFromAbove,
+    SingleBlock,
+    MO_HasDeviceInterface]> {
+  let summary = "A experimental representation of a kernel which can be fused into and compiled without using kgen.";
+  let description = [{
+    This is mostly a replica of `mogg.kernel` operation, the purposes
+    of the operations are:
+     1. to make the transition to mogg-based code-gen simpler (by making sure
+        unsupported pass wouldn't accidentally pick up a `mogg.kernel` but with
+        a mogg-based representation).
+     2. Provides a set of util functions that are only available under the
+        new representation.
+
+    The operation should be short-lived and will be a drop-in replacement for
+    `mogg.kernel` after the transition is done.
+  }];
+
+  // TODO: add MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index support.
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor/*, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index*/]>>:$operands,
+    OptionalAttr<StrAttr>:$summary,
+    OptionalAttr<BoolAttr>:$isAsync
+  );
+
+  // TODO: add MO_Opaque, MO_Chain support.
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor/*, MO_Opaque, MO_Chain*/]>>:$results);
+  let regions = (region SizedRegion<1>:$execBody);
+  let hasVerifier = 1;
+
+  let hasCustomAssemblyFormat = 1;
+
+  let extraClassDeclaration = [{
+    KernelTerminator getTerminator();
+
+    BindLambdaOp getBoundInputLambda(unsigned operandIdx);
+    BindLambdaOp getBoundOutputLambda(unsigned resultIdx);
+    BindLambdaOp getElemwiseBodyLambda();
+
+    bool isOperandFusible(unsigned operandIdx);
+  }];
+
+  // This should set all attribuets including MO_HasDeviceInterface
+  let builders = [
+    OpBuilder<(ins
+      "TypeRange":$results,
+      "ValueRange":$operands,
+      "StringAttr":$summary,
+      "BoolAttr":$isAsync,
+      "DeviceRefAttr":$device
+    )>,
+  ];
+  let skipDefaultBuilders=1;
+}
+
+// lower to ManageTensorSlice.load
+def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">]> {
+  let summary = "Load a value from mo.tensor at the given indices";
+  let description = [{
+     This operation represent a tensor load at the given indices. It is needed
+     to be able to fuse N-ary elementwise kernels into a output lambda, in which
+     case, only one of the operands get fused.
+
+     For example:
+     ```mlir
+     %a = bind (%out) output_lambda (%out_v, %indices) {
+       // The unfused lhs need a concrete tensor load.
+       %lhs = tensor.load(%add_lhs, %indices);
+       %fused_add = mogg.call.outlined["mo.add"](%lhs, %out_v)
+       mogg.output %fused_add, %indices
+     }
+     ```
+
+     It will lowered to a call to
+     ```mojo
+     fn simd_load_from_managed_tensor_slice(...)
+     ```
+
+  }];
+
+  let arguments = (ins MO_Tensor:$tensor, POP_ArrayType:$indices);
+  let results = (outs AnyType: $outputs);
+}
+
+
+def MOGG_BindLambdaOp : MOGG_Op<"bind", [
+    SingleBlock,
+    HasParent<"MOGG::ExpKernelOp">]> {
+  let summary = "Bind a fusion interface to a tensor";
+  let description = [{
+     This operation exposes a fusion interface to a tensor. It build the connection
+     between in/out_lambda in `StaticTensorSpec` with the tensor.
+
+     For example:
+     ```mlir
+     // To make %in a FusedInputTensor
+     %a = bind (%in) input_lambda (%in_v, %indices) {
+       %fused_v = ... (%in_v) // whatever got fused.
+       mogg.output %in_v
+     }
+
+     // To make %out a FusedOutputTensor
+     %a = bind (%out) output_lambda (%out_v, %indices) {
+       %fused_v = ... (%out_v) // whatever got fused.
+       mogg.output %out_v, %indices
+     }
+
+     // To make %in Elemwise fusible
+     %a = bind (%in) elemwise_lambda (%in_v, %indices) {
+       %fused_v = ... (%in_v) // other elemwise that got fused.
+       mogg.output %in_v
+     }
+     ```
+  }];
+
+  let arguments = (ins MOGG_BindLambdaKind: $bindKind,
+                       Variadic<MO_Tensor>: $fusibleTensors);
+
+  let results = (outs MO_Tensor: $output);
+  let regions = (region SizedRegion<1>:$lambda);
+
+  let extraClassDeclaration = [{
+    BlockArgument getIndicesArg();
+    ArrayRef<BlockArgument> getValueArgs();
+  }];
+
+  let builders = [
+    OpBuilder<(ins
+      "Type":$outputTp,
+      "ValueRange":$fusibleTensors,
+      "BindLambdaKind":$bindKind
+    )>,
+  ];
+
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
+}
+
 
 def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     IsolatedFromAbove,
@@ -472,7 +688,7 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
 def MOGG_CallOp : MOGG_Op<"call", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
   ]> {
-  let summary = "Represents a KGEN function to call";
+  let summary = "Represents  KGEN function to call";
   let description = [{
     This represents a call to a KGEN function. The kernel target will be a
     function we retrieve from the registered ops. The call can also take an
