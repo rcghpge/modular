@@ -562,6 +562,44 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     std::optional<MO::ChainValue> maybeGetOutChain();
 
     void setKGENKernelParamValueIfPresent(MojoLibraryAnalysis& analysis, StringRef paramLabel, TypedAttr value);
+
+    //===------------------------------------------------------------------===//
+    // Helpers for operands/results excluding chains
+    //===------------------------------------------------------------------===//
+
+    /// Returns the number of operands excluding any MO::ChainType operands.
+    auto getNumNonChainOperands() {
+      return getNumOperands() - maybeGetInChain().has_value();
+    }
+
+    /// Returns the number of results excluding any MO::ChainType results.
+    auto getNumNonChainResults() {
+      return getNumResults() - maybeGetOutChain().has_value();
+    }
+
+    /// Returns a range of operands excluding any MO::ChainType operands.
+    auto getNonChainOperands() {
+      return getOperands().drop_back(maybeGetInChain().has_value());
+    }
+
+    /// Returns a range of results excluding any MO::ChainType results.
+    auto getNonChainResults() {
+      return getResults().drop_back(maybeGetOutChain().has_value());
+    }
+
+    /// Returns a range of operand types excluding any MO::ChainType operands.
+    auto getNonChainOperandTypes() {
+      auto types = getOperandTypes();
+      return llvm::make_range(types.begin(),
+                              types.end() - maybeGetInChain().has_value());
+    }
+
+    /// Returns a range of result types excluding any MO::ChainType results.
+    auto getNonChainResultTypes() {
+      auto types = getResultTypes();
+      return llvm::make_range(types.begin(),
+                              types.end() - maybeGetOutChain().has_value());
+    }
   }];
 
   // This should set all attribuets including MO_HasDeviceInterface
