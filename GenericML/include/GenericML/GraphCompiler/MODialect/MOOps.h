@@ -41,7 +41,9 @@ namespace M::MO {
 ///
 /// Forward declared so can be used in MOOps.td, see MODevices.h for rest of
 /// helpers and MODevices.cpp for implementation.
+DeviceRefAttr getHostDevice(MLIRContext *ctx);
 DeviceRefAttr getHostDevice(Operation *op);
+
 } // namespace M::MO
 
 //===----------------------------------------------------------------------===//

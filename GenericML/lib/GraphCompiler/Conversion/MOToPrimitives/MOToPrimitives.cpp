@@ -464,8 +464,7 @@ MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
   MLIRContext *ctx = listTy.getContext();
   MGP::TensorSpecType outputTensorSpecTy =
       MGP::createCpuTensorSpecType(outputTensorTy);
-  DeviceRefAttr tensorDeviceRef =
-      MO::getDeviceOrDefault(loweringState.getGraph(), outputTensorTy);
+  DeviceRefAttr tensorDeviceRef = MO::getDeviceOrDefault(outputTensorTy);
   MGP::TypeBuilder *typeBuilder = loweringState.getTypeBuilder(tensorDeviceRef);
   auto mgpOutputTensorTy = typeBuilder->tensorType(ctx, outputTensorSpecTy);
   return MGP::ListType::get(ctx, mgpOutputTensorTy);
@@ -804,9 +803,8 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
 
     // At this point we are dealing with dynamic input and result dimensions.
     // We extract the dynamic dimensions only once.
-    auto getDimOp = loweringState.getDim(
-        loc, loweredInput, idx,
-        getDeviceOrDefault(loweringState.getGraph(), inputTy));
+    auto getDimOp = loweringState.getDim(loc, loweredInput, idx,
+                                         getDeviceOrDefault(inputTy));
 
     // Forward the appropriate dynamic dimension from the input.
     runtimeDims.emplace_back(getDimOp);
@@ -856,9 +854,8 @@ LogicalResult MOGraphLowering::lowerRebind(MO::RebindOp rebindOp) {
             "rebind declares parameter not appearing in its result");
       }
 
-      auto getDimOp = loweringState.getDim(
-          rebindOp.getLoc(), loweredOutput, idx,
-          getDeviceOrDefault(loweringState.getGraph(), resTy));
+      auto getDimOp = loweringState.getDim(rebindOp.getLoc(), loweredOutput,
+                                           idx, getDeviceOrDefault(resTy));
 
       auto asDimension = loweringState.indexToDimension(
           loweringState.getExecuteOpBuilder(), rebindOp.getLoc(), getDimOp);
@@ -890,8 +887,7 @@ constHostBufferToTarget(MGP::MOOpLoweringState &opLoweringState,
     return failure();
   TypedValue<MGP::TensorSpecType> tensorSpec = *tensorSpecOr;
 
-  DeviceRefAttr device =
-      MO::getDeviceOrDefault(graphLoweringState.getGraph(), moTensorType);
+  DeviceRefAttr device = MO::getDeviceOrDefault(moTensorType);
   DeviceRefAttr hostDevice = graphLoweringState.getHostDevice();
 
   // If targetDevice is on host, then we just create output tensor and return.
@@ -968,8 +964,7 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   }
 
   // If the external constant is already on device, it should stay on device.
-  DeviceRefAttr resultDevice =
-      MO::getDeviceOrDefault(loweringState.getGraph(), opResult.getType());
+  DeviceRefAttr resultDevice = MO::getDeviceOrDefault(opResult.getType());
   if (resultDevice != opDevice)
     return constExternalOp->emitOpError(
         Twine("expected op device ") + opDevice.getLabel() +
@@ -1076,8 +1071,7 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
 
   OpBuilder b(printOp);
   auto moTensorType = printOp.getInput().getType();
-  DeviceRefAttr targetDevice =
-      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
+  DeviceRefAttr targetDevice = MO::getDeviceOrDefault(moTensorType);
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
 
   // Get the bufferized input.
@@ -1131,8 +1125,7 @@ LogicalResult MOGraphLowering::lowerDebugTensorUnsafePrint(
 
   OpBuilder b(unsafePrintOp);
   auto moTensorType = unsafePrintOp.getInput().getType();
-  DeviceRefAttr targetDevice =
-      MO::getDeviceOrDefault(loweringState.getGraph(), moTensorType);
+  DeviceRefAttr targetDevice = MO::getDeviceOrDefault(moTensorType);
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
 
   // Get the bufferized input.

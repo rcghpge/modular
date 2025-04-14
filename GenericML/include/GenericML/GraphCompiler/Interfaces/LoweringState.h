@@ -50,14 +50,14 @@ public:
     // Add converters for MO native types.
     typeConverter.addConversion(
         [this](MO::TensorType type) -> std::optional<Type> {
-          return getTypeBuilder(MO::getDeviceOrDefault(this->graph, type))
+          return getTypeBuilder(MO::getDeviceOrDefault(type))
               ->tensorType(this->graph.getContext(),
                            MGP::createCpuTensorSpecType(type));
         });
     typeConverter.addConversion(
         [this](MO::BufferType bufferType) -> std::optional<Type> {
           auto type = MO::BufferType::toTensorType(bufferType);
-          return getTypeBuilder(MO::getDeviceOrDefault(this->graph, type))
+          return getTypeBuilder(MO::getDeviceOrDefault(type))
               ->tensorType(this->graph.getContext(),
                            MGP::createCpuTensorSpecType(type));
         });
@@ -69,8 +69,7 @@ public:
 
       MLIRContext *ctx = type.getContext();
       MGP::TensorSpecType tensorSpecTy = MGP::createCpuTensorSpecType(tensorTy);
-      DeviceRefAttr tensorDeviceRef =
-          MO::getDeviceOrDefault(this->getGraph(), tensorTy);
+      DeviceRefAttr tensorDeviceRef = MO::getDeviceOrDefault(tensorTy);
       MGP::TypeBuilder *typeBuilder = getTypeBuilder(tensorDeviceRef);
       auto mgpTensorTy = typeBuilder->tensorType(ctx, tensorSpecTy);
       return cast<Type>(MGP::ListType::get(ctx, mgpTensorTy));

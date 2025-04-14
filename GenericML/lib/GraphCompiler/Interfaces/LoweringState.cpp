@@ -106,7 +106,7 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
   bool hasParams = false;
   Location loc = inArg.getLoc();
   if (auto argType = MO::dynCastFromTensorLike(inArg.getType())) {
-    DeviceRefAttr argDevice = MO::getDeviceOrDefault(graph, argType);
+    DeviceRefAttr argDevice = MO::getDeviceOrDefault(argType);
     if (argType.hasStaticShape()) {
       // No parameters to deal with.
       /* no-op */
@@ -818,13 +818,11 @@ void MOOpLoweringState::createOutputTensors(
 BufferBuilder *MOOpLoweringState::getStorageBufferBuilder(Type moTensorType) {
   auto type = MO::dynCastFromTensorLike(moTensorType);
   ASSERT_STREAM(type, << "expecting a !mo.tensor or !mo.buffer type");
-  return loweringState.getBufferBuilder(
-      MO::getDeviceOrDefault(loweringState.getGraph(), type));
+  return loweringState.getBufferBuilder(MO::getDeviceOrDefault(type));
 }
 
 TypeBuilder *MOOpLoweringState::getStorageTypeBuilder(Type moTensorType) {
   auto type = dyn_cast<MO::TensorType>(moTensorType);
   ASSERT_STREAM(type, << "expecting !mo.tensor type");
-  return loweringState.getTypeBuilder(
-      MO::getDeviceOrDefault(loweringState.getGraph(), type));
+  return loweringState.getTypeBuilder(MO::getDeviceOrDefault(type));
 }

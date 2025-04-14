@@ -51,7 +51,7 @@ namespace M::MO {
 // Host only operations.
 #define HOST_ONLY_OP(T)                                                        \
   DeviceRefAttr T::getExecutionDevice() {                                      \
-    return getHostDevice(getOperation());                                      \
+    return getHostDevice(getOperation()->getContext());                        \
   }
 
 // Lowering supports these ops being on any device, however

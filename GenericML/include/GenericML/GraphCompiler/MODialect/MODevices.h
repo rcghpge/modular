@@ -26,10 +26,10 @@ DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
 /// Returns the #M.device_ref annotation for type which appears in the
 /// the given MO graphOp. Returns the 'host' device if there is no such
 /// annotation on the type itself.
-DeviceRefAttr getDeviceOrDefault(GraphOp graphOp, TensorType type);
+DeviceRefAttr getDeviceOrDefault(TensorType type);
 
 /// As above, but for any type.
-DeviceRefAttr getDeviceOrDefaultAny(GraphOp graphOp, Type type);
+DeviceRefAttr getDeviceOrDefaultAny(Type type);
 
 /// Returns all devices used by the inputs or outputs of a given MO op, with
 /// duplicates removed.
@@ -41,7 +41,7 @@ SmallVector<DeviceRefAttr> getUniqueDevicesFromKernel(Operation *op);
 bool isOnHost(Operation *op);
 
 /// Return true if a value of type should be stored on the 'host'.
-bool isOnHost(GraphOp graphOp, Type type);
+bool isOnHost(Type type);
 
 /// Returns the #M.device_spec_collection annotation for graphOp, or a
 /// description of just the current CPU device (ignoring any other device types)

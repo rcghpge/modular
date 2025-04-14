@@ -23,7 +23,7 @@ DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
     return device;
 
   // Fallback to the 'host' device.
-  return getHostDevice(op);
+  return getHostDevice(op.getContext());
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
@@ -31,7 +31,7 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
     return getDeviceOrDefault(hasDeviceOp);
 
   // Fallback to the 'host' device.
-  return getHostDevice(op);
+  return getHostDevice(op->getContext());
 }
 
 SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
@@ -58,34 +58,38 @@ SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
   return devices;
 }
 
-DeviceRefAttr MO::getDeviceOrDefault(GraphOp graphOp, TensorType type) {
+DeviceRefAttr MO::getDeviceOrDefault(TensorType type) {
   // Check the type annotation.
   DeviceRefAttr device = type.getDeviceRef();
   if (device)
     return device;
 
   // Fallback to the 'host' device.
-  return getHostDevice(graphOp);
+  return getHostDevice(type.getContext());
 }
 
-DeviceRefAttr MO::getDeviceOrDefaultAny(GraphOp graphOp, Type type) {
+DeviceRefAttr MO::getDeviceOrDefaultAny(Type type) {
   if (auto tensorType = dyn_cast<TensorType>(type))
-    return getDeviceOrDefault(graphOp, tensorType);
+    return getDeviceOrDefault(tensorType);
 
   // Fallback to the 'host' device.
-  return getHostDevice(graphOp);
+  return getHostDevice(type.getContext());
+}
+
+DeviceRefAttr MO::getHostDevice(MLIRContext *ctx) {
+  return DeviceRefAttr::getDefault(ctx);
 }
 
 DeviceRefAttr MO::getHostDevice(Operation *op) {
-  return DeviceRefAttr::getDefault(op->getContext());
+  return getHostDevice(op->getContext());
 }
 
 bool MO::isOnHost(Operation *op) {
-  return getDeviceOrDefaultAny(op) == getHostDevice(op);
+  return getDeviceOrDefaultAny(op) == getHostDevice(op->getContext());
 }
 
-bool MO::isOnHost(GraphOp graphOp, Type type) {
-  return getDeviceOrDefaultAny(graphOp, type) == getHostDevice(graphOp);
+bool MO::isOnHost(Type type) {
+  return getDeviceOrDefaultAny(type) == getHostDevice(type.getContext());
 }
 
 ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
