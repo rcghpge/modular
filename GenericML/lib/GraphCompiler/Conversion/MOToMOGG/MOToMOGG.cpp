@@ -13,9 +13,11 @@
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/ML/TensorShape.h"
 #include "mlir/Pass/PassManager.h"
@@ -110,19 +112,27 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
 
   // Done to match expected behavior of non-extensibility api
   forceSync = forceSync || forceTrivial;
-  MO::MOGGKernelBuilder builder(op, insertPoint, forceSync,
-                                mojoLibraryAnalysis);
-  if (isa<MO::InvokeShapeFuncOp>(op))
-    return builder.lowerShapeFuncToKernel();
+  if (MOGG::useExperimentalMOGGPath()) {
+    MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
+                                       mojoLibraryAnalysis);
+    if (isa<MO::InvokeShapeFuncOp>(op))
+      return Error("shape function not implemented");
 
-  auto kernelOrErr = builder.lowerToKernel();
+    return builder.lowerToKernel();
+  } else {
+    MO::MOGGKernelBuilder builder(op, insertPoint, forceSync,
+                                  mojoLibraryAnalysis);
+    if (isa<MO::InvokeShapeFuncOp>(op))
+      return builder.lowerShapeFuncToKernel();
 
-  if (!kernelOrErr.isError() && isa<MO::ElementWiseLike>(op)) {
-    kernelOrErr.get()->setDiscardableAttr("elementwise",
-                                          UnitAttr::get(op->getContext()));
+    auto kernelOrErr = builder.lowerToKernel();
+
+    if (!kernelOrErr.isError() && isa<MO::ElementWiseLike>(op)) {
+      kernelOrErr.get()->setDiscardableAttr("elementwise",
+                                            UnitAttr::get(op->getContext()));
+    }
+    return kernelOrErr;
   }
-
-  return kernelOrErr;
 }
 
 struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {

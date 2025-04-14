@@ -13,6 +13,11 @@ using namespace M;
 
 namespace M::MOGG {
 
+inline bool useExperimentalMOGGPath() {
+  // return true;
+  return llvm::sys::Process::GetEnv("MOGG_USE_EXP_KERNELS").has_value();
+}
+
 enum class FusionType {
   SOFT, // e.g. simply combine invocations into a single execution unit
   HARD  // e.g. use lambda fusion interface

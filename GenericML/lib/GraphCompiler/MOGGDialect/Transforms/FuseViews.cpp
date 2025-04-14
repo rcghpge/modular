@@ -421,7 +421,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       auto kernelOp = lowerer.lowerToKernel();
       ASSERT_STREAM(!kernelOp.isError(), << "Could not lower reshape op");
 
-      reshapeKernels[*kernelOp] = reshapeOp;
+      reshapeKernels[cast<KernelOp>(*kernelOp)] = reshapeOp;
       reshapeOp->replaceAllUsesWith(*kernelOp);
     });
 
