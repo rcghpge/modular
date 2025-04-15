@@ -533,8 +533,26 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // Major mapper we use to clone all kinds of the operators in the user
     // kernel.
-    MOGG::ToKGENOp newOutsToKgenOp;
     OutputPlaceholdersOp newOuts;
+    // Track the fusion MOGG ToKGENOp
+    MOGG::ToKGENOp fusionMoggToKgen;
+
+    // Create or extend an empty tensor op for the fusion block argument
+    auto fusionBlockArg = userBlock.getArgument(fusionOperandIdx);
+
+    // Set insertion point at the appropriate location - after
+    // OutputPlaceholdersOp if one exists, otherwise at the top
+    auto outputPlaceholdersOps =
+        kernelToFuseInto.getOps<MOGG::OutputPlaceholdersOp>();
+    if (!outputPlaceholdersOps.empty())
+      builder.setInsertionPointAfter(*outputPlaceholdersOps.begin());
+    else
+      kernelToFuseInto.setInsertionPointToTop(builder);
+
+    // Unconditionally create a new empty tensors op
+    auto emptyTensorsOp = builder.create<MOGG::CreateEmptyTensorsOp>(
+        kernelToFuseInto.getLoc(), fusionBlockArg.getType());
+    Value emptyTensorForFusion = emptyTensorsOp.getResult(0);
 
     SmallVector<KGEN::ParamDeclareOp> newParamDeclOps;
 
@@ -578,20 +596,23 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       skipCopy.insert(res.begin(), res.end());
     }
 
-    kernelToFuseInto.setInsertionPointToTop(builder);
     for (auto &op : userToFuseIn.getOps()) {
       if (skipCopy.contains(&op))
         continue;
       if (auto toKgen = dyn_cast<MOGG::ToKGENOp>(op)) {
-        // We clone ToKGENOp except for the one related to the fusion hook.
-        if (auto blockArg = dyn_cast<mlir::BlockArgument>(toKgen.getInput()))
+        if (auto blockArg = dyn_cast<mlir::BlockArgument>(toKgen.getInput())) {
           if (blockArg.getArgNumber() == fusionOperandIdx)
-            continue;
+            oldToNew.map(blockArg, emptyTensorForFusion);
+        }
 
         auto newToKgen = cast<MOGG::ToKGENOp>(builder.clone(op, oldToNew));
-        // When we visit ToKGENOp, newOuts placeholder has been assigned.
-        if (newToKgen.getInput() == newOuts.getResult(outputIdx))
-          newOutsToKgenOp = newToKgen;
+
+        // Store the newly created ToKGENOp that corresponds to the fusion block
+        // arg
+        if (auto blockArg = dyn_cast<mlir::BlockArgument>(toKgen.getInput())) {
+          if (blockArg.getArgNumber() == fusionOperandIdx)
+            fusionMoggToKgen = newToKgen;
+        }
 
         oldToNew.map(toKgen.getResults(), newToKgen.getResults());
       } else if (isa<KGEN::POP::StackAllocationOp>(op)) {
@@ -619,8 +640,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                      builder.clone(op, oldToNew)->getResults());
       }
     }
-    assert(newOutsToKgenOp);
+
     assert(newOuts);
+    assert(fusionMoggToKgen);
 
     // Step 3: Clone all input lamba functions in the user kernel into the src
     // kernel. For the fusion input lambda, we treat it specially by nesting it
@@ -733,8 +755,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Remap to_kgen to the new one, which is corresponding to the output
     // placeholder in the src kernel.
     for (auto toKgenOp : userToFuseIn.getOps<MOGG::ToKGENOp>()) {
-      if (toKgenOp.getInput() == userBlock.getArgument(fusionOperandIdx))
-        oldToNew.map(toKgenOp->getResult(0), newOutsToKgenOp->getResult(0));
+      if (toKgenOp.getInput() == userBlock.getArgument(fusionOperandIdx)) {
+        oldToNew.map(toKgenOp->getResult(0), fusionMoggToKgen->getResult(0));
+      }
     }
 
     // Remap the SIMD indices of the simd_store_internal in the output lambda.
@@ -775,7 +798,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // mixed precision case.
     SmallVector<Operation *> clonedElementwiseBodyOps;
     for (Operation &elemwOp : elementwiseOp.getBody()->without_terminator()) {
-      clonedElementwiseBodyOps.push_back(builder.clone(elemwOp, oldToNew));
+      auto clonedOp = builder.clone(elemwOp, oldToNew);
+      clonedElementwiseBodyOps.push_back(clonedOp);
     }
 
     Operation *elemwiseBodyReturnOp = elementwiseOp.getBody()->getTerminator();
@@ -908,6 +932,39 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     userToFuseIn->getResult(0).replaceAllUsesWith(
         kernelToFuseInto->getResult(outputIdx));
     opsToErase.push_back(userToFuseIn);
+
+    // Merge any CreateEmptyTensorsOp instances at the end
+    llvm::SmallVector<MOGG::CreateEmptyTensorsOp> emptyTensorOps;
+    for (auto op : kernelToFuseInto.getOps<MOGG::CreateEmptyTensorsOp>())
+      emptyTensorOps.push_back(op);
+
+    if (emptyTensorOps.size() > 1) {
+      // Collect all result types
+      SmallVector<Type> allTypes;
+      for (auto op : emptyTensorOps) {
+        allTypes.append(op->getResultTypes().begin(),
+                        op->getResultTypes().end());
+      }
+
+      // Create a new merged operation
+      auto outputPlaceholdersOps =
+          kernelToFuseInto.getOps<MOGG::OutputPlaceholdersOp>();
+      if (!outputPlaceholdersOps.empty())
+        builder.setInsertionPointAfter(*outputPlaceholdersOps.begin());
+      else
+        kernelToFuseInto.setInsertionPointToTop(builder);
+
+      auto mergedOp = builder.create<MOGG::CreateEmptyTensorsOp>(
+          kernelToFuseInto.getLoc(), allTypes);
+
+      // Replace all uses
+      unsigned resultIndex = 0;
+      for (auto op : emptyTensorOps) {
+        for (auto [i, result] : llvm::enumerate(op.getResults()))
+          result.replaceAllUsesWith(mergedOp.getResult(resultIndex++));
+        op.erase();
+      }
+    }
 
     return kernelToFuseInto;
   }
