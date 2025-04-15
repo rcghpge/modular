@@ -265,8 +265,6 @@ SmallVector<Operation *> getRootedComponents(Operation *op) {
   while (!fringe.empty()) {
     Operation *cur = fringe.back();
     fringe.pop_back();
-    if (cur == nullptr)
-      continue;
     answer.push_back(cur);
 
     for (Operation *user : cur->getUsers()) {

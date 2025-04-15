@@ -109,9 +109,6 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
 
   builder.setInsertionPointAfter(kernelOp);
 
-  auto newSummaryString =
-      MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
-
   auto newKernelOp = builder.create<MOGG::KernelOp>(
       kernelOp.getLoc(),
       /*results=*/newResults,
@@ -123,7 +120,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
       newOutputFusionInterface,
       /*fusionBodyLambda=*/kernelOp.getFusionBodyLambdaAttr(),
       /*isViewOp=*/kernelOp.getIsViewOpAttr(),
-      /*summary=*/newSummaryString,
+      /*summary=*/kernelOp.getSummaryAttr(),
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
       /*computationallyTrivial=*/kernelOp.getComputationallyTrivialAttr(),
       /*allocIndices=*/kernelOp.getAllocIndicesAttr(),
@@ -310,9 +307,8 @@ bool hasBufferOperand(KernelOp kernelOp) {
                       [](Type type) { return isa<MO::BufferType>(type); });
 }
 
-bool kernelHasInOutChains(KernelOp kernelOp) {
-  return kernelOp.maybeGetInChain().has_value() &&
-         kernelOp.maybeGetOutChain().has_value();
+bool kernelWasLoadFused(KernelOp kernelOp) {
+  return kernelOp.getHasReadEffect() && hasBufferOperand(kernelOp);
 }
 
 struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
@@ -348,7 +344,7 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
       // -- rewriting the kernel body to accept and produce a chain and then
       // performing the re-write from mo.tensor -> mo.buffer for the appropriate
       // opereand index.
-      if (!kernelHasInOutChains(kernelOp)) {
+      if (!kernelWasLoadFused(kernelOp)) {
         fuseLoadBufferAndChains(builder, loadOp, kernelOp);
       } else {
         // Transform is much simpler in the case that load fusion has already
