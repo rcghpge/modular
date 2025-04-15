@@ -497,7 +497,7 @@ mo.graph @fold_abs_on_non_negative_dim<D0 -> D1>(
 ) -> !mo.tensor<[D1], f32> {
 
   // CHECK-NEXT: %[[RESULT:.*]] = mo.static.broadcast_to{{.*}} -> !mo.tensor<[D0], f32>
-  kgen.param.declare D2: si64 = <cond(ge(:si64 D0, 1), D0, mul_nuw(D0, -1))>
+  kgen.param.declare D2: si64 = <cond(ge(:si64 D0, 0), D0, mul_nuw(D0, -1))>
   %result = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D2], f32>
 
   // CHECK-NEXT: mo.output %[[RESULT]]

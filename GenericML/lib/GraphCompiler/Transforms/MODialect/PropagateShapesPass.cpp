@@ -16,12 +16,13 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/Interfaces/InferIntRangeInterface.h"
+#include "mlir/Interfaces/Utils/InferIntRangeCommon.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 
 #include <deque>
-#include <sstream>
 
 using namespace M;
 using namespace MO;
@@ -524,47 +525,155 @@ struct PropagateShapes {
 
   /// Track `attr` as definitely non-negative.
   void markDefinitelyNonNegative(TypedAttr attr) {
-    definitelyNonNegativeAttrs.insert(attr);
+    unsigned bitwidth =
+        mlir::ConstantIntRanges::getStorageBitwidth(attr.getType());
+
+    if (isSignedType(attr.getType()))
+      ranges.try_emplace(attr, mlir::ConstantIntRanges::fromSigned(
+                                   APInt::getZero(bitwidth),
+                                   APInt::getSignedMaxValue(bitwidth)));
+    else
+      ranges.try_emplace(
+          attr, mlir::ConstantIntRanges::fromUnsigned(
+                    APInt::getZero(bitwidth), APInt::getMaxValue(bitwidth)));
   }
 
-  /// A conservative predicate that returns true iff `attr` is provable to be
-  /// non-positive, and return false we can't claim anything.
-  bool isDefinitelyNonPositive(TypedAttr attr) {
+  static bool isSignedType(Type type) {
+    if (auto integer = dyn_cast<IntegerType>(type))
+      return integer.getSignedness() !=
+             IntegerType::SignednessSemantics::Unsigned;
+    return isa<IndexType>(type);
+  }
+
+  static mlir::ConstantIntRanges getMaxRange(Type type) {
+    unsigned width = mlir::ConstantIntRanges::getStorageBitwidth(type);
+    APInt umin = APInt::getMinValue(width);
+    APInt umax = APInt::getMaxValue(width);
+    APInt smin = width != 0 ? APInt::getSignedMinValue(width) : umin;
+    APInt smax = width != 0 ? APInt::getSignedMaxValue(width) : umax;
+    return mlir::ConstantIntRanges{umin, umax, smin, smax};
+  }
+
+  mlir::ConstantIntRanges
+  getRange(KGEN::POC opcode, ArrayRef<TypedAttr> operands, Type resultType) {
+    // Get ranges for operands.
+    auto inputs = llvm::map_to_vector(
+        operands, [&](TypedAttr arg) { return getRange(arg); });
+
+    // Evaluate the range of comparison operations.
+    auto evaluateCmp = [&](mlir::intrange::CmpPredicate pred) {
+      const mlir::ConstantIntRanges &lhs = inputs[0], &rhs = inputs[1];
+
+      APInt min = APInt::getZero(1);
+      APInt max = APInt::getAllOnes(1);
+
+      std::optional<bool> truthValue =
+          mlir::intrange::evaluatePred(pred, lhs, rhs);
+      if (truthValue.has_value() && *truthValue)
+        min = max;
+      else if (truthValue.has_value() && !(*truthValue))
+        max = min;
+
+      return mlir::ConstantIntRanges::fromUnsigned(min, max);
+    };
+
+    switch (opcode) {
+    case KGEN::POC::Add:
+      return mlir::intrange::inferAdd(inputs);
+    case KGEN::POC::Mul:
+      return mlir::intrange::inferMul(inputs,
+                                      mlir::intrange::OverflowFlags::None);
+    case KGEN::POC::MulNuw:
+      return mlir::intrange::inferMul(inputs,
+                                      mlir::intrange::OverflowFlags::Nuw);
+    case KGEN::POC::And:
+      return mlir::intrange::inferAnd(inputs);
+    case KGEN::POC::Or:
+      return mlir::intrange::inferOr(inputs);
+    case KGEN::POC::Xor:
+      return mlir::intrange::inferXor(inputs);
+    case KGEN::POC::Max:
+      return isSignedType(resultType) ? mlir::intrange::inferMaxS(inputs)
+                                      : mlir::intrange::inferMaxU(inputs);
+    case KGEN::POC::Min:
+      return isSignedType(resultType) ? mlir::intrange::inferMinS(inputs)
+                                      : mlir::intrange::inferMinU(inputs);
+    case KGEN::POC::Shl:
+      return mlir::intrange::inferShl(inputs);
+    case KGEN::POC::Shr:
+      return isSignedType(resultType) ? mlir::intrange::inferShrS(inputs)
+                                      : mlir::intrange::inferShrU(inputs);
+    case KGEN::POC::Div:
+      return isSignedType(resultType) ? mlir::intrange::inferDivS(inputs)
+                                      : mlir::intrange::inferDivU(inputs);
+    case KGEN::POC::Mod:
+      return isSignedType(resultType) ? mlir::intrange::inferRemS(inputs)
+                                      : mlir::intrange::inferRemU(inputs);
+    case KGEN::POC::EQ:
+      return evaluateCmp(mlir::intrange::CmpPredicate::eq);
+    case KGEN::POC::LT:
+      return isSignedType(operands[0].getType())
+                 ? evaluateCmp(mlir::intrange::CmpPredicate::slt)
+                 : evaluateCmp(mlir::intrange::CmpPredicate::ult);
+    case KGEN::POC::LE:
+      return isSignedType(operands[0].getType())
+                 ? evaluateCmp(mlir::intrange::CmpPredicate::sle)
+                 : evaluateCmp(mlir::intrange::CmpPredicate::ule);
+    case KGEN::POC::Cond: {
+      auto constant = inputs[0].getConstantValue();
+      auto &trueCase = inputs[1];
+      auto &falseCase = inputs[2];
+
+      if (constant)
+        return constant->isZero() ? falseCase : trueCase;
+
+      return falseCase.rangeUnion(trueCase);
+    }
+    default:
+      return getMaxRange(resultType);
+    };
+  }
+
+  mlir::ConstantIntRanges getRange(TypedAttr attr) {
+    if (!isa<IntegerType, IndexType>(attr.getType()))
+      return mlir::ConstantIntRanges::maxRange(1);
+
+    if (auto it = ranges.find(attr); it != ranges.end())
+      return it->second;
+
+    // Constants have trivially inferrable ranges.
     if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-      return intAttr.getValue().isNonPositive();
+      return mlir::ConstantIntRanges::constant(intAttr.getValue());
 
+    // Bail out for attributes we don't recognize.
     auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
-    if (!exprAttr || exprAttr.getNumOperands() != 2)
-      return false;
+    if (!exprAttr)
+      return getMaxRange(attr.getType());
 
-    // If we have an integer operand, it'll be `rhs` because the order is
-    // canonicalized by attribute type.
-    TypedAttr lhs = exprAttr.getOperand(0);
-    TypedAttr rhs = exprAttr.getOperand(1);
+    return getRange(exprAttr.getOpcode(), exprAttr.getOperands(),
+                    exprAttr.getType());
+  }
 
-    // mul(non_negative_expr, -1) must be non-positive
-    if (llvm::is_contained({KGEN::POC::Mul, KGEN::POC::MulNuw},
-                           exprAttr.getOpcode())) {
-      auto intAttr = dyn_cast<IntegerAttr>(rhs);
-      if (intAttr && intAttr.getSInt() == -1 && isDefinitelyNonNegative(lhs))
+  static APInt getZero(Type type) {
+    unsigned bitwidth = mlir::ConstantIntRanges::getStorageBitwidth(type);
+    return APInt::getZero(bitwidth);
+  }
+
+  static mlir::ConstantIntRanges getZeroRange(TypedAttr attr) {
+    return mlir::ConstantIntRanges::constant(getZero(attr.getType()));
+  }
+
+  bool isDefinitelyGreater(TypedAttr lhs, TypedAttr rhs) {
+    auto pred = isSignedType(lhs.getType()) ? mlir::intrange::CmpPredicate::sge
+                                            : mlir::intrange::CmpPredicate::uge;
+
+    mlir::ConstantIntRanges lhsRange = getRange(lhs);
+    mlir::ConstantIntRanges rhsRange = getRange(rhs);
+
+    if (auto cmpResult =
+            mlir::intrange::evaluatePred(pred, lhsRange, rhsRange)) {
+      if (cmpResult.value())
         return true;
-    }
-
-    // If *all* operands are non-positive, these operations will preserve the
-    // property.
-    if (llvm::is_contained({KGEN::POC::Max, KGEN::POC::Add},
-                           exprAttr.getOpcode())) {
-      return llvm::all_of(exprAttr.getOperands(), [&](TypedAttr operand) {
-        return isDefinitelyNonPositive(operand);
-      });
-    }
-
-    // If *any* are all non-positive, these operations will preserve the
-    // property.
-    if (llvm::is_contained({KGEN::POC::Min}, exprAttr.getOpcode())) {
-      return llvm::any_of(exprAttr.getOperands(), [&](TypedAttr operand) {
-        return isDefinitelyNonPositive(operand);
-      });
     }
 
     return false;
@@ -573,55 +682,18 @@ struct PropagateShapes {
   /// A conservative predicate that returns true iff `attr` is provable to be
   /// non-negative, and return false we can't claim anything.
   bool isDefinitelyNonNegative(TypedAttr attr) {
-    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-      return intAttr.getValue().isNonNegative();
+    auto pred = isSignedType(attr.getType())
+                    ? mlir::intrange::CmpPredicate::sge
+                    : mlir::intrange::CmpPredicate::uge;
 
-    if (definitelyNonNegativeAttrs.contains(attr))
-      return true;
+    mlir::ConstantIntRanges range = getRange(attr);
+    mlir::ConstantIntRanges zero = getZeroRange(attr);
 
-    auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
-    if (!exprAttr)
-      return false;
-
-    // If *all* operands are non-negative, these operations will preserve the
-    // property.
-    if (llvm::is_contained(
-            {KGEN::POC::Min, KGEN::POC::Add, KGEN::POC::Mul, KGEN::POC::MulNuw},
-            exprAttr.getOpcode())) {
-      return llvm::all_of(exprAttr.getOperands(), [&](TypedAttr operand) {
-        return isDefinitelyNonNegative(operand);
-      });
+    if (std::optional<bool> cmpResult =
+            mlir::intrange::evaluatePred(pred, range, zero)) {
+      if (cmpResult.value())
+        return true;
     }
-
-    // If *any* are all non-negative, these operations will preserve the
-    // property.
-    if (llvm::is_contained({KGEN::POC::Max}, exprAttr.getOpcode())) {
-      return llvm::any_of(exprAttr.getOperands(), [&](TypedAttr operand) {
-        return isDefinitelyNonNegative(operand);
-      });
-    }
-
-    if (exprAttr.getOpcode() == KGEN::POC::Cond)
-      return isDefinitelyNonNegative(exprAttr.getOperand(1)) &&
-             isDefinitelyNonNegative(exprAttr.getOperand(2));
-
-    return false;
-  }
-
-  /// A conservative predicate that returns true iff `attr` is provable to be
-  /// negative, and return false we can't claim anything.
-  bool isDefinitelyNegative(TypedAttr attr) {
-    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-      return intAttr.getValue().isNegative();
-
-    return false;
-  }
-
-  /// A conservative predicate that returns true iff `attr` is provable to be
-  /// positive, and return false we can't claim anything.
-  bool isDefinitelyPositive(TypedAttr attr) {
-    if (auto intAttr = dyn_cast<IntegerAttr>(attr))
-      return intAttr.getValue().isStrictlyPositive();
 
     return false;
   }
@@ -633,48 +705,8 @@ struct PropagateShapes {
   ///
   /// Return null if we can't apply any special folding.
   TypedAttr tryFoldCond(ArrayRef<TypedAttr> operands) {
-
-    // A helper to check whether `attr` is an IntegerAttr of value `val`.
-    auto isIntAttrOfVal = [](TypedAttr attr, int val) {
-      auto intAttr = dyn_cast<IntegerAttr>(attr);
-      return intAttr && intAttr.getSInt() == val;
-    };
-
-    // Look for patterns that arise from abs(X), which could materialize into
-    //   cond(ge(X, 1), X, mul_nuw(X, -1))
-    //
-    // Which gets canonicalized into
-    //   cond(xor(lt(X, 1), true), X, mul_nuw(X, -1))
-    TypedAttr cond = operands[0];
-    TypedAttr thenVal = operands[1];
-    TypedAttr elseVal = operands[2];
-
-    // Match xor(..., true)
-    auto trueAttr = BoolAttr::get(cond.getContext(), true);
-    auto xorExpr = dyn_cast<KGEN::ParamOperatorAttr>(cond);
-    if (!xorExpr || xorExpr.getOpcode() != KGEN::POC::Xor ||
-        xorExpr.getOperand(1) != trueAttr)
-      return {};
-
-    // Match lt(X, 1)
-    auto ltExpr = dyn_cast<KGEN::ParamOperatorAttr>(xorExpr.getOperand(0));
-    if (!ltExpr || ltExpr.getOpcode() != KGEN::POC::LT ||
-        ltExpr.getOperand(0) != thenVal ||
-        !isIntAttrOfVal(ltExpr.getOperand(1), 1))
-      return {};
-
-    // Match mul_nuw(X, -1)
-    auto mulExpr = dyn_cast<KGEN::ParamOperatorAttr>(elseVal);
-    if (!mulExpr || mulExpr.getOpcode() != KGEN::POC::MulNuw ||
-        mulExpr.getOperand(0) != thenVal ||
-        !isIntAttrOfVal(mulExpr.getOperand(1), -1))
-      return {};
-
-    // Now we know the whole cond is equivalent to `abs(thenVal)`, and
-    // `abs(nonNegative) == nonNegative`
-    if (isDefinitelyNonNegative(thenVal))
-      return thenVal;
-
+    if (auto constant = getRange(operands[0]).getConstantValue())
+      return constant->isZero() ? operands[2] : operands[1];
     return {};
   }
 
@@ -696,7 +728,6 @@ struct PropagateShapes {
     // canonicalized by attribute type.
     TypedAttr lhs = operands[0];
     TypedAttr rhs = operands[1];
-    MLIRContext *ctx = lhs.getContext();
 
     if (opcode == KGEN::POC::Max) {
       // TODO: need a pattern matcher real bad...
@@ -734,67 +765,47 @@ struct PropagateShapes {
       if (auto maybeMaxAddOptimization = maxAddOptimization(rhs, lhs))
         return maybeMaxAddOptimization;
 
-      // max(non_negative_expr, non_positive_expr) = non_negative_expr
-      if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
+      if (isDefinitelyGreater(lhs, rhs))
         return lhs;
 
-      // max(non_positive_expr, non_negative_expr) = non_negative_expr
-      if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
+      if (isDefinitelyGreater(rhs, lhs))
         return rhs;
-
     } else if (opcode == KGEN::POC::Min) {
-      // min(non_negative_expr, non_positive_expr) = non_positive_expr
-      if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
+      if (isDefinitelyGreater(lhs, rhs))
         return rhs;
 
-      // min(non_positive_expr, non_negative_expr) = non_positive_expr
-      if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
+      if (isDefinitelyGreater(rhs, lhs))
         return lhs;
-
-    } else if (opcode == KGEN::POC::LT) {
-      // NOTE we have to put this logic here because for some reason the KGEN
-      // folder doesn't consider it valid to fold things like
-      // `lt(9223372036854775807, 100)`, maybe due to potential overflow? But we
-      // know this is safe as far as shape inference is concerned.
-      auto intLhs = dyn_cast<IntegerAttr>(lhs);
-      auto intRhs = dyn_cast<IntegerAttr>(rhs);
-      if (intLhs && intRhs) {
-        bool isLessThan = intLhs.getValue().slt(intRhs.getValue());
-        return BoolAttr::get(ctx, isLessThan);
-      }
-
-      // lt(non_negative_expr, non_positive_expr) = false
-      if (isDefinitelyNonNegative(lhs) && isDefinitelyNonPositive(rhs))
-        return BoolAttr::get(ctx, false);
-
-      // lt(non_positive_expr, non_negative_expr) = true
-      if (isDefinitelyNonPositive(lhs) && isDefinitelyNonNegative(rhs))
-        return BoolAttr::get(ctx, true);
-
+    } else if (opcode == KGEN::POC::LT || opcode == KGEN::POC::LE) {
       // Try more things, since we get this pattern from slice: lt(add(X, Y), X)
       //     lhs < rhs
       // <=> lhs - rhs < 0
-      auto diff = tryFoldExprAttr(KGEN::ParamOperatorAttr::getSub(lhs, rhs));
-      if (isDefinitelyNonNegative(diff))
-        return BoolAttr::get(ctx, false);
+      //
+      // This works due to the symbolic optimizations which simplify add
+      // opcodes.
+      auto zero = IntegerAttr::get(lhs.getType(), 0);
+      auto diff = KGEN::ParamOperatorAttr::getSub(lhs, rhs);
+      auto i1Type = IntegerType::get(lhs.getContext(), 1);
 
-      if (isDefinitelyNegative(diff))
-        return BoolAttr::get(ctx, true);
+      auto cmp = getRange(opcode, {diff, zero}, i1Type);
 
-    } else if (opcode == KGEN::POC::EQ) {
-      MLIRContext *ctx = lhs.getContext();
-      // eq(non_negative_expr, negative_expr) = false
-      if ((isDefinitelyNonNegative(lhs) && isDefinitelyNegative(rhs)) ||
-          (isDefinitelyNonNegative(rhs) && isDefinitelyNegative(lhs)))
-        return BoolAttr::get(ctx, false);
-
-      // eq(non_positive_expr, positive_expr) = false
-      if ((isDefinitelyNonPositive(lhs) && isDefinitelyPositive(rhs)) ||
-          (isDefinitelyNonPositive(rhs) && isDefinitelyPositive(lhs)))
-        return BoolAttr::get(ctx, false);
+      if (auto truthValue = cmp.getConstantValue())
+        return BoolAttr::get(lhs.getContext(), !truthValue->isZero());
     }
 
     return {};
+  }
+
+  TypedAttr tryRangeBasedFolding(TypedAttr attr) {
+    auto integerType = dyn_cast<IntegerType>(attr.getType());
+    if (!integerType)
+      return {};
+
+    std::optional<APInt> constant = getRange(attr).getConstantValue();
+    if (!constant)
+      return {};
+
+    return IntegerAttr::get(integerType, constant.value());
   }
 
   /// This function serves as shape inference system's extension to KGEN
@@ -805,6 +816,9 @@ struct PropagateShapes {
     auto exprAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
     if (!exprAttr)
       return attr;
+
+    if (auto value = tryRangeBasedFolding(attr))
+      return value;
 
     KGEN::POC opcode = exprAttr.getOpcode();
     SmallVector<TypedAttr> foldedOperands;
@@ -1186,7 +1200,7 @@ struct PropagateShapes {
 
   // State variables used by the pass
   DenseMap<KGEN::ParamOperatorAttr, size_t> paramAttrToDepth{};
-  DenseSet<TypedAttr> definitelyNonNegativeAttrs{};
+  DenseMap<TypedAttr, mlir::ConstantIntRanges> ranges;
   // This maps from
   // - expressions that we have processed, but decided not to inline (i.e.,
   //   we'll keep it as a `kgen.param.declare X = <expr>` and refer to `X`
