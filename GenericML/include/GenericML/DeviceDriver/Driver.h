@@ -193,6 +193,9 @@ MODULAR_DRIVER_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
 MODULAR_DRIVER_EXPORT const char *
 M_getDeviceDesc(const M::Driver::Device *devPtr);
 
+// Returns number of accelerators available.
+MODULAR_DRIVER_EXPORT int M_getAcceleratorCount();
+
 namespace M::Driver {
 
 /// Creates a RAII wrapped Device object.

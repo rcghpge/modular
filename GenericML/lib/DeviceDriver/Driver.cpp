@@ -301,3 +301,7 @@ M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status) {
 MODULAR_DRIVER_EXPORT void *M_getDeviceContext(Device *device) {
   return (void *)device->tmpGetDeviceContext().getPointer();
 }
+
+MODULAR_DRIVER_EXPORT int M_getAcceleratorCount() {
+  return AsyncRT::Device::numberOfDevices(AsyncRT::Device::gpuAPI);
+}
