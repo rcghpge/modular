@@ -6,7 +6,6 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     data = [
         "//ModularFramework/tools/mof",
-        "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
@@ -24,7 +23,6 @@ rpath_shim(
     name = "rpaths",
     packages = [
         "//ModularFramework/tools/mof",
-        "//ONNX/tools/onnx:monnx",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",

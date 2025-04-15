@@ -71,7 +71,6 @@ rpath_shim(
     name = "rpaths",
     packages = [
         "//ModularFramework/tools/mof",
-        "//ONNX/tools/onnx:monnx",
         "//PyTorch/tools/torch:mtorch",
     ],
     visibility = ["//visibility:private"],
