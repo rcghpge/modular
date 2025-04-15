@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/ParameterMapper.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/include/KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
@@ -64,6 +65,11 @@ public:
 private:
   DeviceRefAttr getDevice() const { return MO::getDeviceOrDefaultAny(moOp); }
   DeviceRefAttr getHostDevice() const { return MO::getHostDevice(graphOp); }
+
+  using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
+  void lowerToElementwiseKernel(ExpKernelOp kernelOp,
+                                const KernelAdaptor &adaptor);
+  void lowerToNormalKernel(ExpKernelOp kernelOp, const KernelAdaptor &adaptor);
 
   /// The original MO operation we are lowering.
   Operation *moOp;

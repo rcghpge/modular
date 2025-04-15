@@ -271,6 +271,20 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     BindLambdaOp getElemwiseBodyLambda();
 
     bool isOperandFusible(unsigned operandIdx);
+    /// Returns the OutputPlaceholder for this operation or null if it doesn't
+    /// exist.
+    OutputPlaceholdersOp getOutputPlaceholder();
+
+    // Returns the StackAllocateTensorsOp for this operation or null if it
+    // does not exist.
+    StackAllocateTensorsOp getStackAllocateTensor();
+
+    // Returns the CreateEmptyTensorsOp for this operation or null if it does
+    // not exist.
+    CreateEmptyTensorsOp getCreateEmptyTensor();
+
+    // Returns the OutputOp for this operation or null if it does not exist.
+    OutputOp getOutputOp();
   }];
 
   // This should set all attribuets including MO_HasDeviceInterface

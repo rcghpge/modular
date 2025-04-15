@@ -771,7 +771,7 @@ MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
   if (maybeExecuteFunc.isError())
     return maybeExecuteFunc.takeError();
 
-  /// TODO(GEX-2065): PT fallback functions are not yet supported.
+  /// TODO: Remove this when PT infra is gone.
   if ((*maybeExecuteFunc)
           ->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
     return success();

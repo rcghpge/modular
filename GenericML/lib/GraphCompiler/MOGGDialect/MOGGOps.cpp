@@ -561,6 +561,46 @@ void ExpKernelOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict(getOperation()->getAttrs());
 }
 
+OutputPlaceholdersOp ExpKernelOp::getOutputPlaceholder() {
+  auto placeholder = this->getOps<MOGG::OutputPlaceholdersOp>();
+  if (placeholder.empty())
+    return nullptr;
+
+  assert(llvm::hasSingleElement(placeholder));
+
+  return *placeholder.begin();
+}
+
+StackAllocateTensorsOp ExpKernelOp::getStackAllocateTensor() {
+  auto stackAlloc = this->getOps<MOGG::StackAllocateTensorsOp>();
+  if (stackAlloc.empty())
+    return nullptr;
+
+  assert(llvm::hasSingleElement(stackAlloc));
+
+  return *stackAlloc.begin();
+}
+
+CreateEmptyTensorsOp ExpKernelOp::getCreateEmptyTensor() {
+  auto createEmpty = this->getOps<MOGG::CreateEmptyTensorsOp>();
+  if (createEmpty.empty())
+    return nullptr;
+
+  assert(llvm::hasSingleElement(createEmpty));
+
+  return *createEmpty.begin();
+}
+
+OutputOp ExpKernelOp::getOutputOp() {
+  auto output = this->getOps<MOGG::OutputOp>();
+  if (output.empty())
+    return nullptr;
+
+  assert(llvm::hasSingleElement(output));
+
+  return *output.begin();
+}
+
 //===----------------------------------------------------------------------===//
 // MOGG KernelOp
 //===----------------------------------------------------------------------===//
@@ -1214,7 +1254,7 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   if (placeholder.empty())
     return nullptr;
 
-  assert(llvm::range_size(placeholder) == 1);
+  assert(llvm::hasSingleElement(placeholder));
 
   return *placeholder.begin();
 }
@@ -1224,7 +1264,7 @@ StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
   if (stackAlloc.empty())
     return nullptr;
 
-  assert(llvm::range_size(stackAlloc) == 1);
+  assert(llvm::hasSingleElement(stackAlloc));
 
   return *stackAlloc.begin();
 }
@@ -1234,19 +1274,19 @@ CreateEmptyTensorsOp KernelOp::getCreateEmptyTensor() {
   if (createEmpty.empty())
     return nullptr;
 
-  assert(llvm::range_size(createEmpty) == 1);
+  assert(llvm::hasSingleElement(createEmpty));
 
   return *createEmpty.begin();
 }
 
 OutputOp KernelOp::getOutputOp() {
-  auto createEmpty = this->getOps<MOGG::OutputOp>();
-  if (createEmpty.empty())
+  auto output = this->getOps<MOGG::OutputOp>();
+  if (output.empty())
     return nullptr;
 
-  assert(llvm::range_size(createEmpty) == 1);
+  assert(llvm::hasSingleElement(output));
 
-  return *createEmpty.begin();
+  return *output.begin();
 }
 
 void KernelOp::setInsertionPointToTop(OpBuilder &builder) {
