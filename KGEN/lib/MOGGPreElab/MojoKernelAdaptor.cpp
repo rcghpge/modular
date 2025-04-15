@@ -12,47 +12,41 @@ namespace M::KGEN::MOGGPreElab {
 
 MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
     std::optional<uint64_t> positionInFunction, StringRef typeName,
-    ArrayAttr positionOfMutableTensors, ArrayAttr positionOfFusedTensors,
-    ArrayAttr argumentSourceNames, uint64_t offset) {
+    ArrayAttr argumentSourceNames, ArrayAttr argsIoSpecs, uint64_t offset) {
   if (positionInFunction.has_value()) {
     sourceDescriptor = MojoKernelOperandSourceDescriptor{
         cast<StringAttr>(argumentSourceNames[*positionInFunction]).strref(),
         *positionInFunction};
   }
 
-  auto isMutable = [&]() {
-    if (!positionOfMutableTensors)
-      return false;
-    return llvm::any_of(positionOfMutableTensors, [&](Attribute indexAttr) {
-      return (*positionInFunction - offset) ==
-             uint64_t(cast<IntegerAttr>(indexAttr).getInt());
-    });
-  };
+  auto getIOSpec = [&]() -> KGEN::MOGGPreElab::IOSpec {
+    // Default to InputTensor if no spec info available.
+    auto defaultSpec = KGEN::MOGGPreElab::IOSpec::InputTensor;
+    if (!positionInFunction.has_value() || argsIoSpecs == nullptr ||
+        *positionInFunction >= argsIoSpecs.size())
+      return defaultSpec;
 
-  auto isFused = [&]() {
-    if (!positionOfFusedTensors)
-      return false;
-    return llvm::any_of(positionOfFusedTensors, [&](Attribute indexAttr) {
-      return *positionInFunction ==
-             uint64_t(cast<IntegerAttr>(indexAttr).getInt());
-    });
+    auto specAttr = dyn_cast<StringAttr>(argsIoSpecs[*positionInFunction]);
+    if (!specAttr)
+      return defaultSpec;
+    return *KGEN::MOGGPreElab::toIOSpec(specAttr);
   };
 
   llvm::StringSwitch<std::function<void(void)>>(typeName)
       .Case(TensorOperandAdaptor::typeName,
             [&]() {
               underlyingType.emplace<TensorOperandAdaptor>(
-                  TensorOperandAdaptor{isMutable(), isFused()});
+                  TensorOperandAdaptor{getIOSpec()});
             })
       .Case(VariadicTensorOperandAdaptor::typeName,
             [&]() {
               underlyingType.emplace<VariadicTensorOperandAdaptor>(
-                  VariadicTensorOperandAdaptor{isMutable(), isFused()});
+                  VariadicTensorOperandAdaptor{getIOSpec()});
             })
       .Case(ListOfTensorOperandAdaptor::typeName,
             [&]() {
               underlyingType.emplace<ListOfTensorOperandAdaptor>(
-                  ListOfTensorOperandAdaptor{isMutable(), isFused()});
+                  ListOfTensorOperandAdaptor{getIOSpec()});
             })
       .Case(ScalarOperandAdaptor::typeName,
             [&]() {

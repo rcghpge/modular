@@ -73,4 +73,6 @@ bool isFusableIOSpec(IOSpec spec) {
   return spec == IOSpec::FusedInputTensor || spec == IOSpec::FusedOutputTensor;
 }
 
+bool isMutableIOSpec(IOSpec spec) { return spec == IOSpec::MutableInputTensor; }
+
 } // namespace M::KGEN::MOGGPreElab

@@ -545,11 +545,11 @@ static std::optional<KGEN::MOGGPreElab::MojoKernelOperandVariant>
 MOTypeToMojoKernelOperand(Type type) {
   using namespace KGEN::MOGGPreElab;
   if (isa<MO::TensorType>(type))
-    return TensorOperandAdaptor{/* mut */ false, /* fused */ false};
+    return TensorOperandAdaptor{KGEN::MOGGPreElab::IOSpec::InputTensor};
   if (isa<MO::BufferType>(type))
-    return TensorOperandAdaptor{/* mut */ true, /* fused */ false};
+    return TensorOperandAdaptor{KGEN::MOGGPreElab::IOSpec::MutableInputTensor};
   if (isa<MO::ListType>(type))
-    return ListOfTensorOperandAdaptor{/* mut */ false, /* fused */ false};
+    return ListOfTensorOperandAdaptor{KGEN::MOGGPreElab::IOSpec::InputTensor};
   if (isa<MO::ScalarType>(type))
     return ScalarOperandAdaptor{};
   if (auto opaqueType = dyn_cast<MO::OpaqueType>(type))
