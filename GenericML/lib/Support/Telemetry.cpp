@@ -26,8 +26,6 @@ std::string M::GML::stringifyErrorCode(MaxEngineErrorCode code) {
     return prependStr("tf_import_error");
   case M::GML::MaxEngineErrorCode::TorchImportError:
     return prependStr("torch_import_error");
-  case M::GML::MaxEngineErrorCode::ONNXImportError:
-    return prependStr("onnx_import_error");
   case M::GML::MaxEngineErrorCode::GraphLoweringError:
     return prependStr("graph_lowering_error");
   case M::GML::MaxEngineErrorCode::MissingOpError:

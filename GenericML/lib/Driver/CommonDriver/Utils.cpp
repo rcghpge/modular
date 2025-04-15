@@ -39,12 +39,6 @@ M::ErrorOr<std::string> M::getFileContentIdentity(const BufferRef &file,
   switch (format) {
   default:
     return "input has unknown contents";
-  case FileFormat::kMONNXDialect:
-    return "input is an ONNX model in MLIR form";
-  case FileFormat::kONNXProtobuf:
-    return "input is an ONNX model in binary protobuf form";
-  case FileFormat::kONNXTextProtobuf:
-    return "input is an ONNX model in text protobuf form";
   case FileFormat::kTorchDialect:
     return "input is a PyTorch model in Torch MLIR dialect form";
   case FileFormat::kPTPickle:

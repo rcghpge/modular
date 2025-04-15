@@ -40,15 +40,6 @@ enum class FileFormat : uint8_t {
   /// This is a MLIR file with the mgp dialect and no fallbacks in it.
   kMGPDialect,
 
-  /// This looks like a textual MLIR file with the MONNX graph dialect in it.
-  kMONNXDialect,
-
-  /// This looks like an ONNX binary protobuf.
-  kONNXProtobuf,
-
-  /// This looks like an ONNX textual protobuf.
-  kONNXTextProtobuf,
-
   /// This looks like a textual MLIR file with the Torch graph dialect in it.
   kTorchDialect,
 
@@ -122,14 +113,6 @@ private:
                      "Input is an executable MEF file"),
           clEnumValN(FileFormat::kMGPDialect, "mgp",
                      "Input is an mgp dialect file"),
-
-          // ONNX
-          clEnumValN(FileFormat::kONNXProtobuf, "onnx-proto",
-                     "Input is an ONNX model protobuf file"),
-          clEnumValN(FileFormat::kONNXTextProtobuf, "onnx-text",
-                     "Input is an ONNX model protobuf text file"),
-          clEnumValN(FileFormat::kMONNXDialect, "onnx",
-                     "Input is an ONNX dialect file"),
 
           // PyTorch
           clEnumValN(FileFormat::kPTPickle, "torchscript",

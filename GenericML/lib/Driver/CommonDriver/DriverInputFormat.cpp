@@ -54,13 +54,8 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
                                StringRef fileContents) {
 
   // If the extension identifies the format, use that.
-  if (fileExtension.contains("onnx")) {
-    if (fileContents.contains("ir_version: "))
-      return FileFormat::kONNXTextProtobuf;
-    else
-      return FileFormat::kONNXProtobuf;
-  } else if (fileExtension.contains("pt") || fileExtension.contains("ptc") ||
-             fileExtension.contains("torchscript")) {
+  if (fileExtension.contains("pt") || fileExtension.contains("ptc") ||
+      fileExtension.contains("torchscript")) {
     return FileFormat::kPTPickle;
   }
 
@@ -78,10 +73,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
   if (llvm::isASCII(fileContents)) {
     // TODO(#4866): We need something more sophisticated here, this will pick up
     // comments (e.g. CHECK lines), for example.
-    if (fileContents.contains("monnx.graph"))
-      return FileFormat::kMONNXDialect;
-    if (fileContents.contains("ir_version: "))
-      return FileFormat::kONNXTextProtobuf;
     // Ignore commented out lines for file format sniffing.
     if (containsNonCommentedTagRegex(fileContents, "torch.debug_module_name")) {
       if (containsNonCommentedTagRegex(fileContents, "mo.graph"))
@@ -107,8 +98,6 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
           return FileFormat::kUnknown;
         case CompiledFrameworkLabel::kModularModel:
           return FileFormat::kMGPDialect;
-        case CompiledFrameworkLabel::kONNXModel:
-          return FileFormat::kMONNXDialect;
         case CompiledFrameworkLabel::kPyTorchModel:
           return FileFormat::kTorchPDialect;
         }

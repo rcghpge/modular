@@ -230,7 +230,7 @@ struct CustomMappingTraits<M::ModelSpec::NameSubstitutions> {
 //===----------------------------------------------------------------------===//
 
 static bool isValidModelFormat(StringRef format) {
-  return llvm::is_contained({"mef", "onnx", "torchscript"}, format);
+  return llvm::is_contained({"mef", "torchscript"}, format);
 }
 
 namespace llvm::yaml {

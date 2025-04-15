@@ -29,7 +29,6 @@ enum class MaxEngineErrorCode : uint32_t {
   // level representation
   TFImportError = 100,
   TorchImportError = 101,
-  ONNXImportError = 102,
 
   // Error in lowering imported model to internal representation.
   GraphLoweringError = 1000,
