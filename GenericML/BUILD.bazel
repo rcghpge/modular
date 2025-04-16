@@ -70,7 +70,7 @@ modular_cc_library(
 rpath_shim(
     name = "rpaths",
     packages = [
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
         "//PyTorch/tools/torch:mtorch",
     ],
     visibility = ["//visibility:private"],

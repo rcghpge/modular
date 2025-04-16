@@ -5,7 +5,7 @@ modular_cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
     data = [
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",
@@ -22,7 +22,7 @@ modular_cc_binary(
 rpath_shim(
     name = "rpaths",
     packages = [
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
         "//PyTorch/tools/torch:mtorch",

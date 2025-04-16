@@ -20,7 +20,7 @@ modular_nanobind_library(
     ],
     tags = ["no-clang-tidy-headers"],
     deps = [
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
         "//PyTorch:modular-framework-torch-ext",
     ],
 )
@@ -33,7 +33,7 @@ modular_nanobind_library(
         "//SDK:DLPackPython",
     ],
     deps = [
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
         "@pybind11",
     ],
 )
@@ -46,7 +46,7 @@ modular_nanobind_library(
         "//:MLIRBindingsPythonHeaders",
     ],
     deps = [
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
     ],
 )
 
@@ -106,7 +106,7 @@ py_repl(
     data = [
         "//GenericML:MGPRT",
         "//KGEN:ptxas",
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
     ],
     deps = [
         "//SDK/lib/API/python/max",

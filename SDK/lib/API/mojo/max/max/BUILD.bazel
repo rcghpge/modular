@@ -7,7 +7,7 @@ mojo_library(
     data = [
         "//GenericML:DeviceDriver",
         "//GenericML:modular-framework-common",
-        "//ModularFramework/tools/mof",
+        "//ModularFramework/tools/max",
     ],
     visibility = ["//visibility:public"],
     deps = [
