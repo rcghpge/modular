@@ -101,7 +101,14 @@ def RMO_MOAnalogue : OpInterface<"MOAnalogue"> {
       /*methodName=*/"getMOAnalogueOutputParamDecls",
       /*args=*/(ins),
       [{ return $_op.getOutputParamDecls(); }]
-    >
+    >,
+
+    InterfaceMethod<"Get the name of the output parameters attribute.",
+      /*retTy=*/"::mlir::StringAttr",
+      /*methodName=*/"getMOAnalogueOutputParamDeclsAttrName",
+      /*args=*/(ins),
+      [{ return $_op.getOutputParamDeclsAttrName(); }]
+    >,
   ];
 }
 

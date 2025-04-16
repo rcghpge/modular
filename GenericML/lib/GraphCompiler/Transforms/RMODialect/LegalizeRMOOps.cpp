@@ -233,27 +233,33 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
   return success();
 }
 
-template <typename RMOOpT, typename MOOpT>
-struct LegalizeRMOMOAnalogue : public OpRewritePattern<RMOOpT> {
-  using OpRewritePattern<RMOOpT>::OpRewritePattern;
+struct LegalizeRMOMOAnalogue
+    : public OpInterfaceRewritePattern<RMO::MOAnalogue> {
 
-  LogicalResult matchAndRewrite(RMOOpT op,
+  LegalizeRMOMOAnalogue(MLIRContext *ctx, mlir::PatternBenefit benefit = 0)
+      : OpInterfaceRewritePattern<RMO::MOAnalogue>(ctx, benefit) {}
+
+  LogicalResult matchAndRewrite(RMO::MOAnalogue op,
                                 PatternRewriter &rewriter) const override {
     auto generator =
         [&op](PatternRewriter &rewriter, const Location &loc,
               ArrayRef<Type> resultTypes,
               ArrayRef<Value> operands) -> MO::ParamDeclarationInterface {
-      auto result = rewriter.create<MOOpT>(loc, resultTypes, operands);
+      // All rmo ops have the form "rmo.mo.opname".
+      StringAttr name = rewriter.getStringAttr(op->getName().stripDialect());
+
+      auto result = rewriter.create(loc, name, ValueRange(operands),
+                                    TypeRange(resultTypes));
 
       NamedAttrList newAttrs(result->getAttrs());
 
       for (auto attr : op->getAttrs()) {
-        if (attr.getName() != op.getOutputParamDeclsAttrName())
+        if (attr.getName() != op.getMOAnalogueOutputParamDeclsAttrName())
           newAttrs.set(attr.getName(), attr.getValue());
       }
 
       rewriter.modifyOpInPlace(result, [&] { result->setAttrs(newAttrs); });
-      return cast<MO::ParamDeclarationInterface>(result.getOperation());
+      return cast<MO::ParamDeclarationInterface>(result);
     };
     return lowerMOAnalogue(op, rewriter, generator);
   }
@@ -1295,108 +1301,9 @@ struct LegalizeRMOOps
 
     RewritePatternSet blockPatterns(context);
 
-    // Lowering MOAnalogue Operations
-    blockPatterns.add<
-        // Elementwise unary ops
-        LegalizeRMOMOAnalogue<RMO::MOAbsOp, MO::AbsOp>,
-        LegalizeRMOMOAnalogue<RMO::MOCeilOp, MO::CeilOp>,
-        LegalizeRMOMOAnalogue<RMO::MOCosOp, MO::CosOp>,
-        LegalizeRMOMOAnalogue<RMO::MOErfOp, MO::ErfOp>,
-        LegalizeRMOMOAnalogue<RMO::MOExpOp, MO::ExpOp>,
-        LegalizeRMOMOAnalogue<RMO::MOFloorOp, MO::FloorOp>,
-        LegalizeRMOMOAnalogue<RMO::MOGeluOp, MO::GeluOp>,
-        LegalizeRMOMOAnalogue<RMO::MOLogOp, MO::LogOp>,
-        LegalizeRMOMOAnalogue<RMO::MOLog1pOp, MO::Log1pOp>,
-        LegalizeRMOMOAnalogue<RMO::MOLogSoftmaxOp, MO::LogSoftmaxOp>,
-        LegalizeRMOMOAnalogue<RMO::MONegativeOp, MO::NegativeOp>,
-        LegalizeRMOMOAnalogue<RMO::MONotOp, MO::NotOp>,
-        LegalizeRMOMOAnalogue<RMO::MOReluOp, MO::ReluOp>,
-        LegalizeRMOMOAnalogue<RMO::MORoundOp, MO::RoundOp>,
-        LegalizeRMOMOAnalogue<RMO::MOIsqrtOp, MO::IsqrtOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSinOp, MO::SinOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSqrtOp, MO::SqrtOp>,
-        LegalizeRMOMOAnalogue<RMO::MOTanhOp, MO::TanhOp>,
-        LegalizeRMOMOAnalogue<RMO::MOTruncOp, MO::TruncOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSoftmaxOp, MO::SoftmaxOp>,
-        // Elementwise binary ops
-        LegalizeRMOMOAnalogue<RMO::MOAddOp, MO::AddOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMulOp, MO::MulOp>,
-        LegalizeRMOMOAnalogue<RMO::MOModOp, MO::ModOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMinOp, MO::MinOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMaxOp, MO::MaxOp>,
-        LegalizeRMOMOAnalogue<RMO::MODivOp, MO::DivOp>,
-        LegalizeRMOMOAnalogue<RMO::MOPowOp, MO::PowOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSubOp, MO::SubOp>,
-        LegalizeRMOMOAnalogue<RMO::MOAndOp, MO::AndOp>,
-        LegalizeRMOMOAnalogue<RMO::MOOrOp, MO::OrOp>,
-        LegalizeRMOMOAnalogue<RMO::MOXorOp, MO::XorOp>,
-        // Comparison binary ops
-        LegalizeRMOMOAnalogue<RMO::MOEqualOp, MO::EqualOp>,
-        LegalizeRMOMOAnalogue<RMO::MOGreaterOp, MO::GreaterOp>,
-        LegalizeRMOMOAnalogue<RMO::MOGreaterEqualOp, MO::GreaterEqualOp>,
-        LegalizeRMOMOAnalogue<RMO::MONotEqualOp, MO::NotEqualOp>,
-        // Comparison unary ops
-        LegalizeRMOMOAnalogue<RMO::MOIsNaNOp, MO::IsNaNOp>,
-        LegalizeRMOMOAnalogue<RMO::MOIsInfOp, MO::IsInfOp>,
-        // Other ops
-        LegalizeRMOMOAnalogue<RMO::MOShapeOfOp, MO::ShapeOfOp>,
-        LegalizeRMOMOAnalogue<RMO::MOBroadcastShapeOp, MO::BroadcastShapeOp>,
-        LegalizeRMOMOAnalogue<RMO::MOReshapeOp, MO::ReshapeOp>,
-        LegalizeRMOMOAnalogue<RMO::MOBroadcastToOp, MO::BroadcastToOp>,
-        LegalizeRMOMOAnalogue<RMO::MOCastOp, MO::CastOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMeanOp, MO::MeanOp>,
-        LegalizeRMOMOAnalogue<RMO::MOReduceMulOp, MO::ReduceMulOp>,
-        LegalizeRMOMOAnalogue<RMO::MOReduceAddOp, MO::ReduceAddOp>,
-        LegalizeRMOMOAnalogue<RMO::MOReduceMinOp, MO::ReduceMinOp>,
-        LegalizeRMOMOAnalogue<RMO::MOReduceMaxOp, MO::ReduceMaxOp>,
-        LegalizeRMOMOAnalogue<RMO::MOArgMinOp, MO::ArgMinOp>,
-        LegalizeRMOMOAnalogue<RMO::MOArgMaxOp, MO::ArgMaxOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterOp, MO::ScatterOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterAddOp, MO::ScatterAddOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterMulOp, MO::ScatterMulOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterMinOp, MO::ScatterMinOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterMaxOp, MO::ScatterMaxOp>,
-        LegalizeRMOMOAnalogue<RMO::MOConvOp, MO::ConvOp>,
-        LegalizeRMOMOAnalogue<RMO::MOConvTransposeOp, MO::ConvTransposeOp>,
-        LegalizeRMOMOAnalogue<RMO::MOAvgPoolOp, MO::AvgPoolOp>,
-        LegalizeRMOMOAnalogue<RMO::MOAvgPoolCeilOp, MO::AvgPoolCeilOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMaxPoolOp, MO::MaxPoolOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMaxPoolCeilOp, MO::MaxPoolCeilOp>,
-        LegalizeRMOMOAnalogue<RMO::MORangeOp, MO::RangeOp>,
-        LegalizeRMOMOAnalogue<RMO::MOResizeLinearOp, MO::ResizeLinearOp>,
-        LegalizeRMOMOAnalogue<RMO::MOResizeNearestOp, MO::ResizeNearestOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSelectOp, MO::SelectOp>,
-        LegalizeRMOMOAnalogue<RMO::MOGatherOp, MO::GatherOp>,
-        LegalizeRMOMOAnalogue<RMO::MOGatherNdOp, MO::GatherNdOp>,
-        LegalizeRMOMOAnalogue<RMO::MOMatmulOp, MO::MatmulOp>,
-        LegalizeRMOMOAnalogue<RMO::MOBatchMatmulOp, MO::BatchMatmulOp>,
-        LegalizeRMOMOAnalogue<RMO::MOTileOp, MO::TileOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSqueezeShapeOp, MO::SqueezeShapeOp>,
-        LegalizeRMOMOAnalogue<RMO::MOUnsqueezeShapeOp, MO::UnsqueezeShapeOp>,
-        LegalizeRMOMOAnalogue<RMO::MOTransposeOp, MO::TransposeOp>,
-        LegalizeRMOMOAnalogue<RMO::MOTopKOp, MO::TopKOp>,
-        LegalizeRMOMOAnalogue<RMO::MOBottomKOp, MO::BottomKOp>,
-        LegalizeRMOMOAnalogue<RMO::LinAlg::MOBandPartOp,
-                              MO::LinAlg::BandPartOp>,
-        LegalizeRMOMOAnalogue<RMO::LinAlg::MOSolveOp, MO::LinAlg::SolveOp>,
-        LegalizeRMOMOAnalogue<RMO::MOConcatOp, MO::ConcatOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSplitOp, MO::SplitOp>,
-        LegalizeRMOMOAnalogue<RMO::MOPadConstantOp, MO::PadConstantOp>,
-        LegalizeRMOMOAnalogue<RMO::MOPadReflectOp, MO::PadReflectOp>,
-        LegalizeRMOMOAnalogue<RMO::MOPadRepeatOp, MO::PadRepeatOp>,
-        LegalizeRMOMOAnalogue<RMO::MOSliceOp, MO::SliceOp>,
-        LegalizeRMOMOAnalogue<RMO::MORoiAlignOp, MO::RoiAlignOp>,
-        LegalizeRMOMOAnalogue<RMO::MORandomNormalOp, MO::RandomNormalOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterNdOp, MO::ScatterNdOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterNdAddOp, MO::ScatterNdAddOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterNdMaxOp, MO::ScatterNdMaxOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterNdMinOp, MO::ScatterNdMinOp>,
-        LegalizeRMOMOAnalogue<RMO::MOScatterNdMulOp, MO::ScatterNdMulOp>,
-        LegalizeRMOMOAnalogue<RMO::MONonMaximumSuppressionOp,
-                              MO::NonMaximumSuppressionOp>,
-        LegalizeRMOMOAnalogue<RMO::MOArgNonzeroOp, MO::ArgNonzeroOp>,
-        LegalizeRMOMOAnalogue<RMO::MOCumSumOp, MO::CumSumOp>,
-        LegalizeRMOMOAnalogue<RMO::MOTransferOp, MO::TransferOp>>(context);
+    // Default lowering of MOAnalogue Operations.
+    // Setting benefit to zero so that more specific patterns may override.
+    blockPatterns.add<LegalizeRMOMOAnalogue>(context, /*benefit=*/0);
 
     blockPatterns.add<LegalizeMutableLoadOp, LegalizeMutableStoreOp,
                       LegalizeMutableStoreSliceOp>(context);
