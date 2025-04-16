@@ -3832,6 +3832,7 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min", [
 def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  AllDTypesMatch<["mean", "variance"]>,
 ]> {
   let summary = "Normal distribution operation";
   let description = [{
@@ -3868,7 +3869,6 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 
-  let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 }
 

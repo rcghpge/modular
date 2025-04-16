@@ -3038,15 +3038,6 @@ DeviceRefAttr MeanOp::getOperandDevice(size_t index) {
 // RandomNormalOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult RandomNormalOp::verify() {
-  auto meanTy = getMean().getType();
-  auto varTy = getVariance().getType();
-  if (meanTy.getElementType() != varTy.getElementType())
-    return emitOpError("Expect mean and variance DTypes to be the same");
-
-  return success();
-}
-
 LogicalResult RandomNormalOp::canonicalize(RandomNormalOp op,
                                            PatternRewriter &rewriter) {
   TensorType resTy = op.getType();
