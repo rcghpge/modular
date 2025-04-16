@@ -1,6 +1,7 @@
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "rpath_shim", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES")
+load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -226,6 +227,17 @@ td_library(
     ],
 )
 
+mlir_nanobind(
+    name = "MODialectNanobindInc",
+    srcs = glob(["include/GenericML/GraphCompiler/MODialect/*.td"]),
+    output_dir = "include/GenericML/MODialect/Nanobind",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+    ],
+)
+
 gentbl_mlir_dialect(
     name = "MODialectIncGen",
     dialect = "mo",
@@ -287,23 +299,6 @@ gentbl_filegroup(
     td_file = "include/GenericML/GraphCompiler/MOSHDialect/MOSH.td",
     deps = [
         "//GenericML:MOSHDialectTdFiles",
-    ],
-)
-
-gentbl_filegroup(
-    name = "mo_json",
-    tbl_outs = [(
-        ["--dump-json"],
-        "mo.json",
-    )],
-    tblgen = "@llvm-project//llvm:llvm-tblgen",
-    td_file = "include/GenericML/GraphCompiler/MODialect/MO.td",
-    deps = [
-        "//GenericML:MODialectTdFiles",
-        "//GenericML:MOSHDialectTdFiles",
-        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:FunctionInterfacesTdFiles",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
     ],
 )
 
