@@ -56,6 +56,8 @@ struct DeviceMemory {
            buf->context().device().api() == M::AsyncRT::Device::cpuAPI;
   }
 
+  bool isPinned() const { return buf->isHost(); }
+
   const TensorSpec &getSpec() const { return spec; }
 
   TensorSpec getSpec() { return spec; }
