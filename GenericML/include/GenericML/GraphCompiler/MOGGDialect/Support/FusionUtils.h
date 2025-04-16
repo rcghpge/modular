@@ -155,6 +155,10 @@ buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
 // need to revisit it when the aliased constant is handled correctly.
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation);
 
+void setKGENKernelParamValueIfPresent(MOGG::KernelOp kernelOp,
+                                      MojoLibraryAnalysis &analysis,
+                                      StringRef paramLabel, TypedAttr value);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H

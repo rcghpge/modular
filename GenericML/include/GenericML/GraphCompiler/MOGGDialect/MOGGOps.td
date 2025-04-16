@@ -575,8 +575,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     /// Returns the sole output chain (if present) and std::nullopt otherwise.
     std::optional<MO::ChainValue> maybeGetOutChain();
 
-    void setKGENKernelParamValueIfPresent(MojoLibraryAnalysis& analysis, StringRef paramLabel, TypedAttr value);
-
     //===------------------------------------------------------------------===//
     // Helpers for operands/results excluding chains
     //===------------------------------------------------------------------===//

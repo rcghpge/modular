@@ -17,6 +17,8 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
+#include "llvm/ADT/StringSet.h"
+
 #include <GenericML/GraphCompiler/MODialect/MOInterfaces.h>
 
 namespace M::MOGG {
@@ -864,6 +866,53 @@ bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
 
     auto extConst = dyn_cast<MO::ConstantExternalOp>(op);
     return !extConst || !extConst.getHasAlias();
+  });
+}
+
+void setKGENKernelParamValueIfPresent(MOGG::KernelOp kernelOp,
+                                      MojoLibraryAnalysis &analysis,
+                                      StringRef paramLabel, TypedAttr value) {
+  // Collect name of parameter declarations we need to reset.
+  llvm::StringSet<> paramsToReset;
+  kernelOp->walk([&](KGEN::CallOp call) {
+    auto callee = call.getCallee();
+    auto callName = callee.getSymbol().getLeafReference();
+
+    // For handling calls to custom op symbols.
+    auto funcRef = analysis.getRegisteredMojoKernelFor(callName);
+    // For handling calls to inline kgen.
+    if (!funcRef)
+      funcRef = analysis.getMojoFunctionNamed(callName);
+    ASSERT_STREAM(funcRef, << " could not find "
+                           << callee.getSymbol().getLeafReference()
+                           << " in the mojo libraries given!");
+
+    // Find the index of the parameter
+    if (auto param =
+            cast_or_null<ParamDeclAttr>(funcRef->getAttr(paramLabel))) {
+      auto inputParams = funcRef.getInputParams();
+      size_t callParamIndex =
+          llvm::find(inputParams, param) - inputParams.begin();
+      // Check the the param is found. Unused parameters might be optimized
+      // away, but the function attr is still present.
+      if (callParamIndex < inputParams.size()) {
+
+        auto paramAsRef = dyn_cast<KGEN::ParamDeclRefAttr>(
+            call.getParamValues()[callParamIndex]);
+
+        // It is assumed each KGEN parameter is unique to each call
+        paramsToReset.insert(paramAsRef.getName());
+      }
+    }
+  });
+
+  if (paramsToReset.empty())
+    return;
+
+  // Update the parameter declarations.
+  kernelOp->walk([&](KGEN::ParamDeclareOp decl) {
+    if (paramsToReset.contains(decl.getName()))
+      decl.setValueAttr(value);
   });
 }
 

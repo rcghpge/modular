@@ -322,8 +322,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     mergeAllocationOfType<MOGG::CreateEmptyTensorsOp>(kernelToFuseInto);
 
     // Update the lambdas_have_fusion parameter for the extensibility kernels
-    kernelToFuseInto.setKGENKernelParamValueIfPresent(
-        analysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
+    setKGENKernelParamValueIfPresent(
+        kernelToFuseInto, analysis,
+        KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
         BoolAttr::get(&getContext(), true));
 
     kernelToFuseInto.setSummaryAttr(
@@ -854,8 +855,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     kernelToFuseInto.removeOutputFusionInterfaceAttr();
 
     // Update the lambdas_have_fusion parameter for the extensibility kernels
-    kernelToFuseInto.setKGENKernelParamValueIfPresent(
-        analysis, KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
+    setKGENKernelParamValueIfPresent(
+        kernelToFuseInto, analysis,
+        KGEN::MOGGPreElab::kMOGGLambdasHaveFusionLabel,
         BoolAttr::get(&getContext(), true));
 
     // Get rid of the unused declarations for some of the removed lambdas.

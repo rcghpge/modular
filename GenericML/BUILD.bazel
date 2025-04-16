@@ -733,7 +733,6 @@ modular_cc_library(
     deps = [
         ":GraphCompilerInterfaces",
         ":MODialect",
-        ":MOGGAnalysis",
         ":MOGGDialectEnumsIncGen",
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
@@ -766,6 +765,7 @@ modular_cc_library(
     deps = [
         ":GraphCompilerInterfaces",
         ":MOAnalysis",
+        ":MOGGSupport",
         ":Support",
         "//KGEN:MojoParser",
         "//Kernels/mojo/Mogg:MOGGLoader",
