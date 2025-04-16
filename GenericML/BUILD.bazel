@@ -756,7 +756,6 @@ modular_cc_library(
     name = "MOGGAnalysis",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Analysis/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h"]),
-    copts = ["-iquoteexternal/"],
     deps = [
         ":GraphCompilerInterfaces",
         ":MOAnalysis",
@@ -771,7 +770,6 @@ modular_cc_library(
 modular_cc_library(
     name = "MOGGTransforms",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
-    copts = ["-iquoteexternal/"],
     local_defines = select({
         "//:kernel_e2e_gpu_profiling_setting": ["MODULAR_ENABLE_GPU_PROFILING"],
         "//:kernel_e2e_gpu_profiling_detailed_setting": ["MODULAR_ENABLE_GPU_PROFILING_DETAILED"],
@@ -1032,10 +1030,6 @@ modular_cc_library(
         ],
     ),
     hdrs = glob(["include/GenericML/MGPTransforms/*.h"]),
-    # Some of these files import llvm headers using "llvm-project/llvm..."
-    # This is a workaround for those. In the future we will fix the import
-    # paths directly.
-    copts = ["-iquoteexternal/"],
     deps = [
         ":MGPDialect",
         ":MGPTransformsIncGen",
