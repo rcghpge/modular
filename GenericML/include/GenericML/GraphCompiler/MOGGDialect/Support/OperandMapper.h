@@ -14,9 +14,25 @@
 
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 
+#include "llvm/ADT/DenseSet.h"
+
 namespace M::MOGG {
-/// Verify the call to a MO or custom kernel.
-ErrorOrSuccess mapMOOpToKernelImplementation(
+
+/// Maps an index (operand or result) to a mojo kernel operand.
+using IndexToOperandAdaptorMapping =
+    mlir::DenseMap<uint64_t, KGEN::MOGGPreElab::MojoKernelOperandAdaptor>;
+
+struct OperandMapping {
+  IndexToOperandAdaptorMapping operandMapping;
+  IndexToOperandAdaptorMapping resultMapping;
+};
+
+/// Operand mapping will map an Operation*'s operands and results to the
+/// underlying kernel's operands. This is the mirror of parameter mapping which
+/// is for attributes and kernel parameters. The act of validating an op is
+/// identical to the act of mapping. Therefore, the two are merged. To validate
+/// an op with its kernel, call this function and check that it has not failed.
+ErrorOr<OperandMapping> mapMOOpToKernelImplementation(
     Operation *op,
     const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
         &adaptor);

@@ -553,5 +553,9 @@ MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
   using namespace KGEN::MOGGPreElab;
   MojoKernelAdaptor<KGEN::GeneratorOp> adaptor("", maybeExecuteFunc.takeValue(),
                                                nullptr);
-  return mapMOOpToKernelImplementation(op, *adaptor.executeFunction);
+  auto errOr = mapMOOpToKernelImplementation(op, *adaptor.executeFunction);
+  if (errOr.isError())
+    return errOr.takeError();
+
+  return success();
 }

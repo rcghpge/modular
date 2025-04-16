@@ -62,7 +62,7 @@ static bool matchConvertedMOTypeToKernelType(
 // results. Conversely, if set to false, it will do extra checks beyond DPS
 // arguments with result types.
 template <bool matchOperands>
-static ErrorOrSuccess matchOperandsOrResults(
+static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
     Operation *op,
     const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
         &adaptor) {
@@ -93,6 +93,7 @@ static ErrorOrSuccess matchOperandsOrResults(
     return std::nullopt;
   };
 
+  IndexToOperandAdaptorMapping mapping;
   uint64_t moOpIndex = 0, kernelIndex = 0;
   bool matchingVariadicTensor = false;
   const SmallVector<MojoKernelOperandAdaptor> &kernelOperands =
@@ -133,6 +134,8 @@ static ErrorOrSuccess matchOperandsOrResults(
           *moTypeToMojoKernelOperand, *kernelType));
     }
 
+    mapping[moOpIndex] = *kernelType;
+
     // If the current kernel argument is a variadic tensor type, then we set a
     // flag such that we don't iterate and stay here until there is a mismatch.
     if (kernelType->isVariadicTensorType())
@@ -158,7 +161,7 @@ static ErrorOrSuccess matchOperandsOrResults(
   // don't implement these and they are core MO operations so there is no added
   // value, really.
   if (opHasExtraOutputShapeArgument(op))
-    return success();
+    return mapping;
 
   // If we have not consumed all kernel types, this is always an error. It means
   // there are missing operands or results form the MO op.
@@ -178,14 +181,14 @@ static ErrorOrSuccess matchOperandsOrResults(
                                  "at position {} has no equivalent in kernel",
                                  moOpIndex));
     }
-    return success();
+    return mapping;
   }
 
   // If there are no more op results and return values from the kernel, we are
   // done.
   auto moType = skipChainType(op->getResultTypes(), moOpIndex);
   if (!moType.has_value() && !adaptor.outputResult.has_value())
-    return success();
+    return mapping;
 
   // Otherwise, there are three failure cases:
   // 1. We have remaining results on the op but not on the kernel.
@@ -217,37 +220,25 @@ static ErrorOrSuccess matchOperandsOrResults(
                                moOpIndex, *moTypeToMojoKernelOperand,
                                *adaptor.outputResult));
   }
+  mapping[moOpIndex] = *adaptor.outputResult;
 
-  return success();
+  return mapping;
 }
 
-static ErrorOrSuccess matchOperands(
+ErrorOr<OperandMapping> mapMOOpToKernelImplementation(
     Operation *op,
     const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
         &adaptor) {
-  return matchOperandsOrResults<true>(op, adaptor);
-}
-
-static ErrorOrSuccess matchResults(
-    Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-        &adaptor) {
-  return matchOperandsOrResults<false>(op, adaptor);
-}
-
-ErrorOrSuccess mapMOOpToKernelImplementation(
-    Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-        &adaptor) {
-  auto matchedInputsOrError = matchOperands(op, adaptor);
+  auto matchedInputsOrError = matchOperandsOrResults<true>(op, adaptor);
   if (matchedInputsOrError.isError())
-    return matchedInputsOrError;
+    return matchedInputsOrError.takeError();
 
-  auto matchedOutputsOrError = matchResults(op, adaptor);
+  auto matchedOutputsOrError = matchOperandsOrResults<false>(op, adaptor);
   if (matchedOutputsOrError.isError())
-    return matchedOutputsOrError;
+    return matchedOutputsOrError.takeError();
 
-  return success();
+  return OperandMapping{matchedInputsOrError.takeValue(),
+                        matchedOutputsOrError.takeValue()};
 }
 
 } // namespace M::MOGG
