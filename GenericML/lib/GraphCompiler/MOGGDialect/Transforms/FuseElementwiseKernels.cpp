@@ -13,6 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
@@ -50,6 +51,10 @@ static std::optional<SmallVector<int>> getFusionIndices(KernelOp src,
 }
 
 static inline bool isAnElementwiseKernel(Operation *op) {
+  if (auto kernelOp = dyn_cast<ExpKernelOp>(op)) {
+    return kernelOp.getElemwiseBodyLambda() != nullptr;
+  }
+
   auto kernelOp = dyn_cast<KernelOp>(op);
   if (!kernelOp)
     return false;
@@ -73,7 +78,6 @@ static inline bool isAnElementwiseKernel(Operation *op) {
 static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcKernel = cast<KernelOp>(src);
   auto dstKernel = cast<KernelOp>(dst);
-
   if (!getFusionIndices(srcKernel, dstKernel).has_value())
     return false;
 
@@ -176,6 +180,98 @@ fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
   return success();
 }
 
+//-------------------------------------------------
+// mogg.experimental.kernel fusion utils.
+//-------------------------------------------------
+
+static std::optional<SmallVector<int>> getFusionIndices(ExpKernelOp src,
+                                                        ExpKernelOp dst) {
+  SmallVector<int> indices;
+  for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
+    if (operand.getDefiningOp() != src)
+      continue;
+
+    if (!dst.isOperandFusible(i))
+      return std::nullopt;
+
+    indices.push_back(i);
+  }
+
+  return indices;
+}
+
+static inline bool expKernelsAreCompatible(Operation *src, Operation *dst) {
+  auto srcKernel = cast<ExpKernelOp>(src);
+  auto dstKernel = cast<ExpKernelOp>(dst);
+
+  return getFusionIndices(srcKernel, dstKernel).has_value();
+}
+
+static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
+                                      MOGG::ExpKernelOp src) {
+  // Top-level operands.
+  dst->insertOperands(opIdx, src->getOperands());
+
+  // Block arguments.
+  Value toReplace = dst.getExecBody().getArgument(opIdx);
+  for (auto v : llvm::reverse(src.getExecBody().getArguments()))
+    dst.getExecBody().insertArgument(opIdx, v.getType(), v.getLoc());
+
+  // All uses.
+  unsigned numSrcVal = src->getNumOperands();
+  ValueRange fusedArgs =
+      dst.getExecBody().getArguments().slice(opIdx, numSrcVal);
+  for (auto &use : toReplace.getUses()) {
+    unsigned insertIdx = use.getOperandNumber();
+    use.getOwner()->insertOperands(insertIdx, fusedArgs);
+    use.getOwner()->eraseOperand(insertIdx + numSrcVal);
+  }
+
+  // cleanup
+  dst.getExecBody().eraseArgument(opIdx + numSrcVal);
+  dst->eraseOperands(opIdx + numSrcVal);
+};
+
+static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {
+  auto dst = cast<ExpKernelOp>(subgraph.back());
+  PatternRewriter rewriter(dst.getContext());
+  MOGG::BindLambdaOp dstBindOp = dst.getElemwiseBodyLambda();
+  Block *dstFuseBody = &dstBindOp.getLambda().front();
+  for (auto op : llvm::reverse(subgraph.drop_back())) {
+    auto src = cast<ExpKernelOp>(op);
+
+    SmallVector<int> indices = *getFusionIndices(src, dst);
+    SmallVector<Value> fusedArgs(src->getNumOperands() + 1);
+
+    for (int index : llvm::reverse(indices)) {
+      // Simply fuses the elementwise lambda.
+      Block *srcFuseBody = src.getElemwiseBodyLambda().getBody();
+
+      auto yieldOp = cast<MOGG::OutputOp>(srcFuseBody->getTerminator());
+      Value fusedVal = yieldOp->getOperand(0);
+      yieldOp->erase();
+
+      // Replace to the block argument to fused result.
+      BlockArgument dstArg = dstFuseBody->getArgument(index);
+      dstArg.replaceAllUsesWith(fusedVal);
+      dstFuseBody->eraseArgument(index);
+      for (auto ba : llvm::reverse(srcFuseBody->getArguments().drop_back())) {
+        fusedArgs[ba.getArgNumber()] =
+            dstFuseBody->insertArgument(index, ba.getType(), ba.getLoc());
+      }
+      // Indices are reused.
+      fusedArgs.back() = dstFuseBody->getArguments().back();
+      rewriter.inlineBlockBefore(srcFuseBody, dstFuseBody, dstFuseBody->begin(),
+                                 fusedArgs);
+
+      fuseAndReplaceOperandWith(dst, index, src);
+    }
+
+    dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));
+    src.erase();
+  }
+}
+
 struct FuseElementwisePass
     : public impl::FuseElementwiseBase<FuseElementwisePass> {
   using FuseElementwiseBase::FuseElementwiseBase;
@@ -228,17 +324,27 @@ struct FuseElementwisePass
     MO::GraphOp graphOp = getOperation();
     MO::ParametricTopologyAnalysis topologyAnalysis(graphOp);
 
+    MOGG::CompatibilityFunction compatibilityCheck =
+        MOGG::useExperimentalMOGGPath() ? expKernelsAreCompatible
+                                        : kernelsAreCompatible;
+
     /// TODO: MOCO-1469 Remove this limit.
     static constexpr uint64_t kMaximumFusionSetSize = 64;
     auto subgraphs = sourceDestinationSequenceFusionAnalysis(
         graphOp.getBody(), topologyAnalysis, isAnElementwiseKernel,
-        kernelsAreCompatible, false, kMaximumFusionSetSize);
+        compatibilityCheck, false, kMaximumFusionSetSize);
 
     for (auto &subgraph : subgraphs)
       topologyAnalysis.computeTopologicalSorting(subgraph);
 
-    for (auto &subgraph : subgraphs) {
+    for (ArrayRef subgraph : subgraphs) {
       numberOfFusedKernels += subgraph.size();
+      if (isa<ExpKernelOp>(subgraph.back())) {
+        fuseExpElementwiseKernel(subgraph);
+        continue;
+      }
+
+      // KGEN fusion path.
       auto dstKernelOp = cast<KernelOp>(subgraph.back());
       for (auto op : llvm::reverse(subgraph)) {
         if (op == dstKernelOp)
