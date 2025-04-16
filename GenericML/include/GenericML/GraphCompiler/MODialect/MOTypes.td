@@ -390,7 +390,7 @@ def FloatElementTypePred : CPred<
 
 /// Checks if a MO_TensorType has int or index elements.
 def IntOrIndexElementTypePred : CPred<
-  "cast<::M::MO::TensorType>($_self).getElementType().isIntOrIndex()">;
+  "cast<::M::MO::TensorType>($_self).getElementType().isInteger()">;
 
 // Checks if a MO_TensorType has signed elements.
 def SignedElementTypePred : CPred<
