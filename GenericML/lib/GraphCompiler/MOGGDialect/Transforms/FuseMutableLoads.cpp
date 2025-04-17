@@ -109,6 +109,9 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
 
   builder.setInsertionPointAfter(kernelOp);
 
+  auto newSummaryString =
+      MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
+
   auto newKernelOp = builder.create<MOGG::KernelOp>(
       kernelOp.getLoc(),
       /*results=*/newResults,
@@ -120,7 +123,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
       newOutputFusionInterface,
       /*fusionBodyLambda=*/kernelOp.getFusionBodyLambdaAttr(),
       /*isViewOp=*/kernelOp.getIsViewOpAttr(),
-      /*summary=*/kernelOp.getSummaryAttr(),
+      /*summary=*/newSummaryString,
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
       /*computationallyTrivial=*/kernelOp.getComputationallyTrivialAttr(),
       /*allocIndices=*/kernelOp.getAllocIndicesAttr(),
@@ -201,7 +204,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
 }
 
 void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
-                    KernelOp kernelOp) {
+                    KernelOp kernelOp, bool kernelHasLoadsOutputChain) {
   auto buffer = loadOp.getInBuffer();
   auto tensor = loadOp.getOutTensor();
 
@@ -220,15 +223,22 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   oldBlockArg.replaceAllUsesWith(newBufferArg);
   kernelOp.removeOperandAtIndex(argIdx + 1);
 
-  loadOp.getOutChain().replaceAllUsesWith(kernelOp.maybeGetOutChain().value());
+  if (!kernelHasLoadsOutputChain) {
+    loadOp.getOutChain().replaceAllUsesWith(
+        kernelOp.maybeGetOutChain().value());
 
-  builder.setInsertionPoint(kernelOp);
+    builder.setInsertionPoint(kernelOp);
 
-  auto newChain = builder.createOrFold<MO::ChainCreateOp>(
-      loadOp.getLoc(),
-      ValueRange{kernelOp.maybeGetInChain().value(), loadOp.getInChain()});
+    auto newChain = builder.createOrFold<MO::ChainCreateOp>(
+        loadOp.getLoc(),
+        ValueRange{kernelOp.maybeGetInChain().value(), loadOp.getInChain()});
 
-  kernelOp.setOperand(kernelOp.getNumOperands() - 1, newChain);
+    kernelOp.setOperand(kernelOp.getNumOperands() - 1, newChain);
+  } else {
+    // Simply rewrite the loads input chain when the kernel has the loads output
+    // chain as input.
+    kernelOp.setOperand(kernelOp.getNumOperands() - 1, loadOp.getInChain());
+  }
 
   loadOp.erase();
 }
@@ -244,12 +254,32 @@ struct ParallelizeLoadsWithMultipleUsers
   deviceAwareMatchAndRewrite(MO::MutableLoadOp loadOp,
                              MO::DeviceAwareRewriter &rewriter) const override {
     auto tensor = loadOp.getOutTensor();
+    auto loadBuffer = loadOp.getInBuffer();
 
     if (tensor.use_empty() || tensor.hasOneUse()) {
       return rewriter.notifyMatchFailure(
           loadOp.getLoc(),
           "Output value semantic tensor has <= 1 uses, skipping "
           "parallelization pattern.");
+    }
+
+    // Check if any of the consumer kernels have a write effect and share the
+    // same buffer
+    for (OpOperand &use : tensor.getUses()) {
+      if (auto kernelOp = dyn_cast<MOGG::KernelOp>(use.getOwner())) {
+        if (kernelOp.getHasWriteEffect()) {
+          // Check if this kernel uses the same buffer as the load op
+          for (auto operand : kernelOp.getOperands()) {
+            if (operand == loadBuffer) {
+              return rewriter.notifyMatchFailure(
+                  loadOp.getLoc(),
+                  "Parallelization blocked: a consumer kernel has write effect "
+                  "and "
+                  "shares the same buffer as the load operation.");
+            }
+          }
+        }
+      }
     }
 
     auto *loadBlock = loadOp->getBlock();
@@ -302,13 +332,47 @@ struct ParallelizeLoadsWithMultipleUsers
   }
 };
 
+bool kernelAlreadyHasDirectBufferInput(KernelOp kernelOp,
+                                       MO::MutableLoadOp loadOp) {
+  // Check if kernel is sole consumer of load's chain output
+  if (!loadOp.getOutChain().hasOneUse())
+    return false;
+
+  auto *user = *loadOp.getOutChain().getUsers().begin();
+  if (user != kernelOp)
+    return false;
+
+  // Get the operand index of the tensor output in the kernel
+  OpOperand *tensorOperand = nullptr;
+  for (OpOperand &opOperand : kernelOp->getOpOperands()) {
+    if (opOperand.get() == loadOp.getOutTensor()) {
+      tensorOperand = &opOperand;
+      break;
+    }
+  }
+
+  if (!tensorOperand)
+    return false;
+
+  // Check if the kernel also has a direct input of the buffer at the
+  // appropriate position
+  unsigned tensorIdx = tensorOperand->getOperandNumber();
+  for (unsigned i = 0; i < kernelOp.getNumOperands(); ++i) {
+    if (kernelOp.getOperand(i) == loadOp.getInBuffer() && i != tensorIdx)
+      return true;
+  }
+
+  return false;
+}
+
 bool hasBufferOperand(KernelOp kernelOp) {
   return llvm::any_of(kernelOp.getOperandTypes(),
                       [](Type type) { return isa<MO::BufferType>(type); });
 }
 
-bool kernelWasLoadFused(KernelOp kernelOp) {
-  return kernelOp.getHasReadEffect() && hasBufferOperand(kernelOp);
+bool kernelHasInOutChains(KernelOp kernelOp) {
+  return kernelOp.maybeGetInChain().has_value() &&
+         kernelOp.maybeGetOutChain().has_value();
 }
 
 struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
@@ -336,22 +400,26 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
         continue;
       auto kernelOp = maybeKernelOp.value();
 
-      // Transform logic is a bit more involved if load fusion hasn't already
-      // happened as we need to have the kernel both produce and consume a chain
-      // now.
-      //
-      // TODO(GEX-1031): Break the transforms this operation does into two steps
-      // -- rewriting the kernel body to accept and produce a chain and then
-      // performing the re-write from mo.tensor -> mo.buffer for the appropriate
-      // opereand index.
-      if (!kernelWasLoadFused(kernelOp)) {
+      if (kernelAlreadyHasDirectBufferInput(kernelOp, loadOp)) {
+        // TODO: Unify all these cases
+        fuseLoadBuffer(builder, loadOp, kernelOp, true);
+      } else if (!kernelHasInOutChains(kernelOp)) {
+        // Transform logic is a bit more involved if load fusion hasn't already
+        // happened as we need to have the kernel both produce and consume a
+        // chain now.
+        //
+        // TODO(GEX-1031): Break the transforms this operation does into two
+        // steps
+        // -- rewriting the kernel body to accept and produce a chain and then
+        // performing the re-write from mo.tensor -> mo.buffer for the
+        // appropriate opereand index.
         fuseLoadBufferAndChains(builder, loadOp, kernelOp);
       } else {
         // Transform is much simpler in the case that load fusion has already
         // occured as we just need to re-write the kernel body to use a buffer
         // type (and possibly turn off input fusion for the buffer we're fusing
         // in).
-        fuseLoadBuffer(builder, loadOp, kernelOp);
+        fuseLoadBuffer(builder, loadOp, kernelOp, false);
       }
     }
   }

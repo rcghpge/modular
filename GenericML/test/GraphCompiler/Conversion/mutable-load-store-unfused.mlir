@@ -15,8 +15,8 @@
 // CHECK: summary = "mo.add
 // CHECK: mogg.generic.compiled.region
 // CHECK: summary = "mo.negative
-// CHECK: [[ebuf2:%.*]] = mgp.tensor.extract.buffer [[buf]]
-// CHECK: mgp.buffer.device_to_device{{.*}}[[ebuf2]]
+// CHECK: mogg.generic.compiled.region
+// CHECK: summary = "mo.mutable.store
 mo.graph @unfused_mutable_load_store(%buf: !bt, %rhs: !tt) -> !bt
 {
   %ch0 = mo.chain.create(%buf) : !bt

@@ -9,7 +9,8 @@
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
 // CHECK: mogg.output [[tr]], [[cr]]
 // CHECK: inputFusionInterface = ["", "{{.*}}", ""]{{.*}}outputFusionInterface = ["{{.*}}", ""]
-// CHECK: mo.mutable.store([[out]]#1, [[buffer]], [[out]]#0)
+// CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
+// CHECK: summary = "mo.mutable.store
 mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
   %outChain, %outTensor = mo.mutable.load(%0, %buffer) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> (!mo.chain, !mo.tensor<[10, 10], f32>)
@@ -27,7 +28,8 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
 // CHECK: mogg.output [[tr]], [[cr]]
 // CHECK: inputFusionInterface = ["{{.*}}", "", ""]{{.*}}outputFusionInterface = ["{{.*}}", ""]
-// CHECK: mo.mutable.store([[out]]#1, [[buffer]], [[out]]#0)
+// CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
+// CHECK: summary = "mo.mutable.store
 mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
   %outChain, %outTensor = mo.mutable.load(%0, %buffer) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> (!mo.chain, !mo.tensor<[10, 10], f32>)
@@ -40,7 +42,8 @@ mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK: [[out:%.*]]:2 = mogg.kernel ([[rhs]], [[buffer]], [[ch0]])
-// CHECK-DAG: mo.mutable.store([[out]]#1, [[buffer]], [[out]]#0)
+// CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
+// CHECK: summary = "mo.mutable.store
 mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
   mo.chain.create(%0) : !mo.chain

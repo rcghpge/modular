@@ -41,6 +41,9 @@ static std::optional<SmallVector<int>> getFusionIndices(KernelOp src,
     if (operand.getDefiningOp() != src)
       continue;
 
+    if (isa<MO::ChainType>(operand.getType()))
+      continue;
+
     if (dst.getInputFusionInterfaceAt(i).empty())
       return std::nullopt;
 
@@ -79,6 +82,40 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcKernel = cast<KernelOp>(src);
   auto dstKernel = cast<KernelOp>(dst);
   if (!getFusionIndices(srcKernel, dstKernel).has_value())
+    return false;
+
+  // Check chain compatibility if both kernels have input and output chains
+  auto srcInChain = srcKernel.maybeGetInChain();
+  auto srcOutChain = srcKernel.maybeGetOutChain();
+  auto dstInChain = dstKernel.maybeGetInChain();
+  auto dstOutChain = dstKernel.maybeGetOutChain();
+
+  if (srcInChain.has_value() && srcOutChain.has_value() &&
+      dstInChain.has_value() && dstOutChain.has_value()) {
+    // Get actual chain values
+    Value srcOutChain = srcKernel.getOutChain();
+    Value dstInChain = dstKernel.getInChain();
+
+    // Ensure the input chain to dstKernel is output chain from srcKernel
+    if (dstInChain != srcOutChain)
+      return false;
+
+    // Ensure that dstKernel is the sole consumer of the output chain from
+    // srcKernel.
+    // Strictly speaking srcKernel having more than one consumer of
+    // its output chain would be UB when those consumers perform writes to
+    // mo.buffers -- skip fusion here to make the presence of that situation
+    // clearer.
+    if (!srcOutChain.hasOneUse())
+      return false;
+  }
+
+  // Ensure if the kernel has an input chain, it has only one use
+  // TODO(GEX-2105): This check is slightly stricter than it needs to be, as we
+  // kind of assume that the kernel in question potentially mutates all of its
+  // buffer operands.
+  auto inChain = dstKernel.maybeGetInChain();
+  if (inChain.has_value() && !dstKernel.getInChain().hasOneUse())
     return false;
 
   return true;
@@ -376,7 +413,6 @@ struct FuseElementwisePass
     IRMapping mapper;
     OpBuilder builder{dstKernel.getContext()};
 
-    MOGG::OutputPlaceholdersOp dstOutput = dstKernel.getOutputPlaceholder();
     auto dstConverterOps = dstKernel.getOps<ToKGENOp>();
     if (dstConverterOps.empty()) {
       dstKernel.setInsertionPointToTop(builder);
@@ -398,10 +434,13 @@ struct FuseElementwisePass
     uint64_t srcOperandIndex = 0;
     for (auto [srcOperand, srcArgument] : llvm::zip(
              srcKernel.getOperands(), srcKernel.getBody().getArguments())) {
+      if (isa<MO::ChainType>(srcOperand.getType()))
+        continue;
       Value dstArgument = dstKernel.addOperand(srcOperand);
       mapper.map(srcArgument, dstArgument);
       srcInputLambdaPositions[srcKernel.getInputFusionInterfaceAt(
-          srcOperandIndex++)] = dstKernel.getNumOperands() - 1;
+          srcOperandIndex++)] = dstKernel.getNumOperands() - 1 -
+                                dstKernel.maybeGetInChain().has_value();
     }
 
     llvm::SmallVector<KGEN::ParamDeclareOp> newParamDeclOps;
@@ -412,7 +451,11 @@ struct FuseElementwisePass
     DenseSet<Operation *> skipUsing;
     for (Operation &srcOp : srcKernel.getBody().getOps()) {
       // Ignore the one foreach call and any users of it.
-      if (isCallToForeach(&srcOp) || isa<MOGG::OutputOp>(srcOp)) {
+      if (isCallToForeach(&srcOp) || isa<MOGG::OutputOp>(srcOp) ||
+          // Since this pass currently only expects src kernels w/ one result we
+          // can get away with just pruning everything away connected its
+          // output placeholder.
+          isa<MOGG::OutputPlaceholdersOp>(srcOp)) {
         // For deleting machinery to handle foreach `raising`
         SmallVector<Operation *> opAndSubgraphs =
             MO::getRootedComponents(&srcOp);
@@ -421,12 +464,6 @@ struct FuseElementwisePass
 
       if (skipUsing.contains(&srcOp))
         continue;
-
-      if (auto srcOutput = dyn_cast<MOGG::OutputPlaceholdersOp>(srcOp)) {
-        // The duplicate ToKGEN will be CSE-ed.
-        mapper.map(srcOutput.getResult(0), dstOutput.getResult(0));
-        continue;
-      }
 
       auto lambda = dyn_cast<KGEN::ParamDeclareRegionOp>(srcOp);
       if (lambda == srcOutputLambda)
@@ -455,10 +492,10 @@ struct FuseElementwisePass
     assert(renamedSrcElementwiseLambda);
 
     auto &dstKernelBody = dstKernel.getBody().front();
-    builder.setInsertionPointAfter(dstOutput);
+    dstKernel.setInsertionPointToTop(builder);
 
-    // Creating at most one empty tensors op. This will be used as a replacement
-    // for the old argument from the src op.
+    // Creating at most one empty tensors op. This will be used as a
+    // replacement for the old argument from the src op.
     auto fakeTensors = dstKernel.getCreateEmptyTensor();
     if (!fakeTensors) {
       fakeTensors = builder.create<MOGG::CreateEmptyTensorsOp>(
@@ -516,6 +553,30 @@ struct FuseElementwisePass
 
     // Get rid of the unused declarations for some of the removed lambdas.
     clearUnusedParamDecls(dstKernel, newParamDeclOps);
+
+    // Handle re-wiring chains when both src/dest use them.
+    if (srcKernel.maybeGetInChain().has_value() &&
+        srcKernel.maybeGetOutChain().has_value() &&
+        dstKernel.maybeGetInChain().has_value() &&
+        dstKernel.maybeGetOutChain().has_value()) {
+      Value srcInChain = srcKernel.getInChain();
+      Value dstInChain = dstKernel.getInChain();
+      // TODO(GEX-2060): Replace with call to helper to get an OpOperand
+      for (unsigned i = 0; i < dstKernel->getNumOperands(); ++i) {
+        if (dstKernel->getOperand(i) == dstInChain) {
+          dstKernel->setOperand(i, srcInChain);
+          break;
+        }
+      }
+
+      srcKernel.getOutChain().replaceAllUsesWith(dstKernel.getOutChain());
+    }
+
+    // Set read and write effect attributes on the destination kernel directly
+    dstKernel.setHasReadEffect(srcKernel.getHasReadEffect() ||
+                               dstKernel.getHasReadEffect());
+    dstKernel.setHasWriteEffect(srcKernel.getHasWriteEffect() ||
+                                dstKernel.getHasWriteEffect());
   }
 };
 

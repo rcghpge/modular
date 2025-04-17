@@ -251,6 +251,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
+  // if (opts.fuseMutableLoadStore)
+  //   pm.addPass(MOGG::createFuseMutableLoads());
+
   // Fuse connected elementwise kernels.
   if (opts.fuseJitKernels) {
     pm.addPass(MOGG::createFuseAffineViews());
@@ -315,14 +318,11 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
-  if (opts.fuseMutableLoadStore) {
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(MOGG::createFuseMutableLoads());
-    pm.addPass(MOGG::createFuseMutableStores());
-  }
-
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+
+  if (opts.fuseMutableLoadStore)
+    pm.addPass(MOGG::createFuseMutableLoads());
 
   pm.addPass(MO::createInlineMOSubgraphs());
 

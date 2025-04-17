@@ -5175,7 +5175,6 @@ def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
 def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
   AllDTypesMatch<["inBuffer", "inTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "inTensor"]>,
-  MO_PreservedDuringKernelLowering
 ]>
 {
   let summary = "Takes a chain, a buffer semantic tensor, and a value semantic tensor and returns a chain";
