@@ -341,7 +341,7 @@ struct InlineMGPCallsPass
 
     // Inline functions in the determined reverse topological order.
     for (MGPCallGraphNode *node : inliningOrder.get()) {
-      ModelOp modelOp = node->func;
+      [[maybe_unused]] ModelOp modelOp = node->func;
       // Make a copy of callsites as inlining modifies the operation list.
       SmallVector<KGEN::CallGraphEdgeBase<MGPCallGraphNode, ModelOp, CallOp>>
           callsitesToInline;
