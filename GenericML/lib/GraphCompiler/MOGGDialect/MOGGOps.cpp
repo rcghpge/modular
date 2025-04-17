@@ -316,13 +316,6 @@ LogicalResult BindLambdaOp::verify() {
   if (getFusibleTensors().empty())
     return emitError("Expecting at least one fusible tensor to bind");
 
-  bool sameShapeOperands =
-      llvm::all_equal(llvm::map_range(getOperandTypes(), [](Type t) {
-        return cast<MO::TensorType>(t).getShapeAttr();
-      }));
-  if (!sameShapeOperands)
-    return emitError("Expecting same shaped operands");
-
   if (getLambda().getNumArguments() != getFusibleTensors().size() + 1)
     return emitError("Expecting #operands + 1 arguments for lambda");
 

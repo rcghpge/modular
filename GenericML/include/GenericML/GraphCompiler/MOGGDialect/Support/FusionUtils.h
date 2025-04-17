@@ -15,7 +15,8 @@ namespace M::MOGG {
 
 inline bool useExperimentalMOGGPath() {
   // return true;
-  return llvm::sys::Process::GetEnv("MOGG_USE_EXP_KERNELS").has_value();
+  auto var = llvm::sys::Process::GetEnv("MOGG_USE_EXP_KERNELS");
+  return var.has_value() && var.value() == "1";
 }
 
 enum class FusionType {

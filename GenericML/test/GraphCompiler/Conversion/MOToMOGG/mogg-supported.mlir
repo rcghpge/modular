@@ -1,4 +1,6 @@
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s
+// TODO(GEX-1573): Convert the following sniff test to a complete test.
+// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib"
 
 // A collection of the support floating point dtypes support by mogg for lowering
 // Everything should be jitted to a mo.kernel

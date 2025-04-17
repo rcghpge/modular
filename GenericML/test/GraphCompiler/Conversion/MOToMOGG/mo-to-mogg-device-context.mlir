@@ -1,4 +1,6 @@
 // RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" | FileCheck %s
+// TODO(GEX-1573): Convert the following sniff test to a complete test.
+// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib"
 
 // CHECK: %[[CTX:.*]] = mogg.device_context_placeholder {device = #M.device_ref<"gpu", 0>}
 // CHECK: %[[TUPLE:.*]] = pop.array.create [%[[CTX]]]

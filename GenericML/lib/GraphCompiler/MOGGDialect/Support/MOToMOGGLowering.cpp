@@ -11,21 +11,14 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilder.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KernelSlicing.h"
 
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
-#include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
-#include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
 
-#include "mlir/IR/Verifier.h"
 #include "llvm/ADT/STLExtras.h"
 
-using namespace M;
-using namespace MOGG;
+namespace M::MOGG {
 
 MOGGExpKernelBuilder::MOGGExpKernelBuilder(
     Operation *op, OpBuilder &insertPoint, bool forceSync,
@@ -43,20 +36,9 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
   builder.setInsertionPoint(op);
 }
 
-template <typename Func>
-void forEachFusedArgument(
-    ArrayRef<KGEN::MOGGPreElab::MojoKernelOperandAdaptor> operands,
-    Func &&func) {
-  for (const auto &[i, arg] : llvm::enumerate(operands)) {
-    if (!arg.isFusedTensorType())
-      continue;
-
-    func(i);
-  }
-}
-
 void MOGGExpKernelBuilder::lowerToElementwiseKernel(
-    ExpKernelOp kernelOp, const KernelAdaptor &adaptor) {
+    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    const KernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
@@ -71,9 +53,11 @@ void MOGGExpKernelBuilder::lowerToElementwiseKernel(
   });
 
   SmallVector<Value> fusibleTensors;
-  forEachFusedArgument(
-      adaptor.executeFunction->inputArguments,
-      [&](uint64_t idx) { fusibleTensors.push_back(inputs[idx]); });
+  for (const auto &[idx, arg] : mapping.operandMapping) {
+    if (arg.isFusedTensorType())
+      fusibleTensors.push_back(inputs[idx]);
+  }
+
   auto bindOp = builder.create<BindLambdaOp>(loc, outTensorTp, fusibleTensors,
                                              BindLambdaKind::ElemwiseLambda);
 
@@ -85,7 +69,7 @@ void MOGGExpKernelBuilder::lowerToElementwiseKernel(
   for (auto [idx, v] : llvm::enumerate(inputs)) {
     // If this is a fusible input, use the fused value, otherwise we
     // captured the infusible inputs.
-    if (adaptor.executeFunction->inputArguments[idx].isFusedTensorType())
+    if (mapping.operandMapping.at(idx).isFusedTensorType())
       outlinedArgs.push_back(elemwiseBody->getArgument(fusedArgIdx++));
     else
       outlinedArgs.push_back(v);
@@ -93,7 +77,7 @@ void MOGGExpKernelBuilder::lowerToElementwiseKernel(
 
   builder.setInsertionPointToStart(elemwiseBody);
   auto callOutlined = builder.create<CallOutlinedOp>(
-      loc, resultValTp, this->moOp->getName().getStringRef(), outlinedArgs);
+      loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
   builder.create<OutputOp>(loc, callOutlined->getResults());
   builder.setInsertionPointAfter(bindOp);
   builder.create<CallForeachOp>(loc, bindOp->getResult(0),
@@ -101,6 +85,7 @@ void MOGGExpKernelBuilder::lowerToElementwiseKernel(
 }
 
 void MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
+                                               const OperandMapping &mapping,
                                                const KernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   auto outputPlaceholder = kernelOp.getOutputPlaceholder();
@@ -108,33 +93,41 @@ void MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
 
-  forEachFusedArgument(
-      adaptor.executeFunction->inputArguments, [&](uint64_t idx) {
-        Value concreteInput = inputs[idx];
-        Value bound = builder.create<BindLambdaOp>(loc, concreteInput.getType(),
-                                                   concreteInput,
-                                                   BindLambdaKind::InputLambda);
-        inputs[idx] = bound;
-      });
+  SmallVector<Value> fusibleTensors;
+  for (const auto &[idx, arg] : mapping.operandMapping) {
+    if (!arg.isFusedTensorType())
+      continue;
+    Value concreteInput = inputs[idx];
+    Value bound = builder.create<BindLambdaOp>(loc, concreteInput.getType(),
+                                               concreteInput,
+                                               BindLambdaKind::InputLambda);
+    inputs[idx] = bound;
+  }
 
-  forEachFusedArgument(adaptor.executeFunction->outputArguments,
-                       [&](uint64_t idx) {
-                         Value concreteOutput = outputs[idx];
-                         Value bound = builder.create<BindLambdaOp>(
-                             loc, concreteOutput.getType(), concreteOutput,
-                             BindLambdaKind::OutputLambda);
-                         outputs[idx] = bound;
-                       });
-  builder.create<CallExecuteOp>(loc, moOp->getName().getStringRef(), inputs,
-                                outputs);
+  for (const auto &[idx, arg] : mapping.resultMapping) {
+    if (!arg.isFusedTensorType())
+      continue;
+    Value concreteOutput = outputs[idx];
+    Value bound = builder.create<BindLambdaOp>(loc, concreteOutput.getType(),
+                                               concreteOutput,
+                                               BindLambdaKind::OutputLambda);
+    outputs[idx] = bound;
+  }
+
+  builder.create<CallExecuteOp>(loc, adaptor.registeredOpName, inputs, outputs);
 }
 
 ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
-  // Verify the MO op with the associated kernel to simplify lowering logic (no
-  // errors will be reported, just assertions).
-  auto errorOr = mojoLibraryAnalysis.verifyMOOpMatchesKernel(moOp);
-  if (errorOr.isError())
-    return errorOr.takeError();
+  auto mojoKernelOr = getMojoKernelTarget(mojoLibraryAnalysis, moOp);
+  if (mojoKernelOr.isError())
+    return mojoKernelOr.takeError();
+
+  KernelAdaptor adaptor("", *mojoKernelOr, nullptr);
+  auto operandMappingOr =
+      mapMOOpToKernelImplementation(moOp, *adaptor.executeFunction);
+
+  if (operandMappingOr.isError())
+    return operandMappingOr.takeError();
 
   auto kernelOp =
       builder.create<ExpKernelOp>(loc,
@@ -146,12 +139,11 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
   builder.create<OutputPlaceholdersOp>(loc, kernelOp->getResultTypes());
 
-  auto mojoKernel = *getMojoKernelTarget(mojoLibraryAnalysis, moOp);
-  KernelAdaptor kernelAdaptor("", mojoKernel, nullptr);
-  if (kernelAdaptor.executeFunction->isElementwise())
-    lowerToElementwiseKernel(kernelOp, kernelAdaptor);
+  if (adaptor.executeFunction->isElementwise())
+    lowerToElementwiseKernel(kernelOp, *operandMappingOr, adaptor);
   else
-    lowerToNormalKernel(kernelOp, kernelAdaptor);
+    lowerToNormalKernel(kernelOp, *operandMappingOr, adaptor);
 
   return kernelOp;
 }
+} // namespace M::MOGG

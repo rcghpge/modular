@@ -251,13 +251,13 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
   }];
 
   // TODO: add MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index support.
-  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor/*, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index*/]>>:$operands,
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync
   );
 
   // TODO: add MO_Opaque, MO_Chain support.
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor/*, MO_Opaque, MO_Chain*/]>>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$execBody);
   let hasVerifier = 1;
 

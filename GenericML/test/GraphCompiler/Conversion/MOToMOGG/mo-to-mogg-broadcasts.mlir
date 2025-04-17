@@ -1,4 +1,6 @@
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s
+// TODO(GEX-1573): Convert the following sniff test to a complete test.
+// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg
 
 mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.tensor<[N, M, K], f32>) {
   %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[N, M, L], f32> -> !mo.tensor<[N, M, K], f32>

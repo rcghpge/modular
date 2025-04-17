@@ -10,21 +10,12 @@
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/ParameterMapper.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/include/KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "Support/ErrorOr.h"
-#include "Support/LLVMForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
-
-#include "mlir/IR/Block.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/Value.h"
-#include "llvm/ADT/StringRef.h"
 
 /*
 This file contains helpers to manage the lowering between MO and KGEN. This
@@ -68,8 +59,10 @@ private:
 
   using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
   void lowerToElementwiseKernel(ExpKernelOp kernelOp,
+                                const OperandMapping &mapping,
                                 const KernelAdaptor &adaptor);
-  void lowerToNormalKernel(ExpKernelOp kernelOp, const KernelAdaptor &adaptor);
+  void lowerToNormalKernel(ExpKernelOp kernelOp, const OperandMapping &mapping,
+                           const KernelAdaptor &adaptor);
 
   /// The original MO operation we are lowering.
   Operation *moOp;
