@@ -3051,6 +3051,18 @@ LogicalResult RandomNormalOp::canonicalize(RandomNormalOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// RandomUniformOp
+//===----------------------------------------------------------------------===//
+
+DeviceRefAttr RandomUniformOp::getOperandDevice(size_t index) {
+  if (index == getLowerBoundMutable().getOperandNumber() ||
+      index == getUpperBoundMutable().getOperandNumber() ||
+      index == getSeedMutable().getOperandNumber())
+    return MO::getHostDevice(getOperation());
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceMulOp
 //===----------------------------------------------------------------------===//
 

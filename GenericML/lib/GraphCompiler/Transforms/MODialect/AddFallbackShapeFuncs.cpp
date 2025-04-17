@@ -80,6 +80,7 @@ HAS_FALLBACK(MO::PadConstantOp)
 HAS_FALLBACK(MO::PadReflectOp)
 HAS_FALLBACK(MO::PadRepeatOp)
 HAS_FALLBACK(MO::RandomNormalOp)
+HAS_FALLBACK(MO::RandomUniformOp)
 HAS_FALLBACK(MO::RangeOp)
 HAS_FALLBACK(MO::ReduceAddOp)
 HAS_FALLBACK(MO::ReduceMaxOp)
@@ -203,6 +204,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::PadReflectOp)
       CALL_FALLBACK(MO::PadRepeatOp)
       CALL_FALLBACK(MO::RandomNormalOp)
+      CALL_FALLBACK(MO::RandomUniformOp)
       CALL_FALLBACK(MO::RangeOp)
       CALL_FALLBACK(MO::ReduceAddOp)
       CALL_FALLBACK(MO::ReduceMaxOp)
@@ -640,6 +642,15 @@ ErrorOrSuccess Fallback<MO::RandomNormalOp>::build(GraphOp &graph,
                                                    OpBuilder &builder,
                                                    MO::RandomNormalOp op) {
   buildForOpResult(graph, builder, op, MO::RandomNormalOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
+  return success();
+}
+
+ErrorOrSuccess Fallback<MO::RandomUniformOp>::build(GraphOp &graph,
+                                                    OpBuilder &builder,
+                                                    MO::RandomUniformOp op) {
+  buildForOpResult(graph, builder, op, MO::RandomUniformOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();

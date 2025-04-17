@@ -271,7 +271,7 @@ AvgPoolCeilOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
-// RandomOp
+// RandomNormalOp
 //===----------------------------------------------------------------------===//
 
 SmallVector<int32_t> RandomNormalOp::getDataDependentInputIndices() {
@@ -280,9 +280,26 @@ SmallVector<int32_t> RandomNormalOp::getDataDependentInputIndices() {
 
 ShapeMaterializeResult
 RandomNormalOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  GenericAdaptor<ArrayRef<TypedAttr>> adaptor(inputAttrs);
   auto graphOp = getOperation()->getParentOfType<GraphOp>();
   Location loc = getLoc();
-  return materializeTargetShapeLike(graphOp, loc, inputAttrs[0]);
+  return materializeTargetShapeLike(graphOp, loc, adaptor.getShape());
+}
+
+//===----------------------------------------------------------------------===//
+// RandomUniformOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<int32_t> RandomUniformOp::getDataDependentInputIndices() {
+  return {0};
+}
+
+ShapeMaterializeResult
+RandomUniformOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  GenericAdaptor<ArrayRef<TypedAttr>> adaptor(inputAttrs);
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  return materializeTargetShapeLike(graphOp, loc, adaptor.getShape());
 }
 
 //===----------------------------------------------------------------------===//

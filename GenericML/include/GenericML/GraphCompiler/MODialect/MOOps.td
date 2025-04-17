@@ -233,7 +233,7 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     /// Sets the #M.device_spec_collection annotation for this graph op,
     /// overwriting any existing annotation.
     TargetInfoAttr getDeviceTargetInfo();
-    
+
     /// Implement the DeclInterface methods with our own parameter
     /// implementation in MO.
     ArrayRef<ParamDeclAttr> getInputParams();
@@ -271,7 +271,7 @@ def MO_CallOp : MO_ControlOp<"call", [
       %res = mo.call {symbol = "gelu"}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
     ```
   }];
-  
+
   let arguments = (ins
     Variadic<AnyType>:$operands,
     SymbolRefAttr:$symbol,
@@ -3870,6 +3870,53 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
   }];
 
   let hasCanonicalizeMethod = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// RandomUniformOp
+//===----------------------------------------------------------------------===//
+
+def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
+  Pure,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDevice"]>,
+  DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  AllDTypesMatch<["lowerBound", "upperBound", "result"]>,
+]> {
+  let summary = "Uniform distribution operation";
+  let description = [{
+    Returns a tensor with shape `shape` populated with random values from a
+    uniform distribution on the half-open interval [lowerBound, upperBound).
+
+    Example:
+    ```mlir
+    %size = mo.constant {
+      value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %lowerBound = mo.constant {
+      value = #M.dense_array<2.0> : tensor<1xf32> } : !mo.tensor<[], f32>
+    %upperBound = mo.constant {
+      value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
+    %seed = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+    %res = mo.random.uniform(%size, %lowerBound, %upperBound, %seed) :
+          (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
+          !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_IndicesTensor:$shape,
+    MO_RankedScalarTensor:$lowerBound,
+    MO_RankedScalarTensor:$upperBound,
+    MO_RankedScalarIndexTensor:$seed,
+    MO_ParamDecls:$outputParamDecls
+  );
+
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 //===----------------------------------------------------------------------===//
