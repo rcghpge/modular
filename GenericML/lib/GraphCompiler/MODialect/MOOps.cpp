@@ -3057,7 +3057,8 @@ LogicalResult RandomNormalOp::canonicalize(RandomNormalOp op,
 DeviceRefAttr RandomUniformOp::getOperandDevice(size_t index) {
   if (index == getLowerBoundMutable().getOperandNumber() ||
       index == getUpperBoundMutable().getOperandNumber() ||
-      index == getSeedMutable().getOperandNumber())
+      index == getSeedMutable().getOperandNumber() ||
+      index == getShapeMutable().getOperandNumber())
     return MO::getHostDevice(getOperation());
   return nullptr;
 }
