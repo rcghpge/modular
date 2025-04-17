@@ -539,8 +539,9 @@ LogicalResult CallOp::verify() {
            graphOp.getFunctionType().getInputs(), getOperandTypes())) {
     if (graphArgType != operandType) {
       auto diag = emitError() << "Subgraph " << graphOp.getName()
-                              << " has wrong type for argument " << idx << " ("
-                              << graphArgType << " vs " << operandType << ")";
+                              << " has wrong type for argument " << idx
+                              << " (function type: " << graphArgType
+                              << ", operand type: " << operandType << ")";
       diag.attachNote(graphOp.getLoc()) << "graph op here";
       return failure();
     }
