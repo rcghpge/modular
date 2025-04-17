@@ -543,4 +543,39 @@ def GlobalizeSlotIndicesPass : Pass<"globalize-slot-indices", "mlir::ModuleOp"> 
     }];
 }
 
+//===----------------------------------------------------------------------===//
+// InlineMGPCallsPass
+//===----------------------------------------------------------------------===//
+
+def InlineMGPCallsPass : Pass<"inline-mgp-calls", "mlir::ModuleOp"> {
+  let summary = "Inlines the `execute` block of subgraphs at `mgp.call` sites";
+  let description = [{
+    Inline `mgp.call` operations into their calling `mgp.model` operations.
+
+    This pass constructs a call graph of `mgp.model` operations within a module.
+    It performs a post-order traversal (reverse topological sort) of the call
+    graph to determine a safe inlining order, ensuring that callees are inlined
+    before their callers. Recursion is detected and reported as an error, as it
+    is not supported for inlining.
+
+    For each `mgp.call` operation encountered during the traversal of the calling
+    model's `init` and `execute` regions:
+    1.  **Init Block Inlining (Once per Callee):** If the callee's `init` block
+        has not been inlined into the caller's `init` block yet, its operations
+        (excluding `mgp.context.create` and the terminator) are cloned into the
+        caller's `init` block before the terminator. Arguments (weights registry,
+        devices, context) are mapped appropriately.
+    2.  **Execute Block Inlining:** Operations from the callee's `execute` block
+        (excluding the terminator) are cloned at the call site. Operands of the
+        call are mapped to the callee's block arguments, and results are mapped
+        back.
+    3.  The `mgp.call` operation is replaced with the results of the inlined
+        execute block and then erased.
+
+    After all possible calls have been inlined, the pass attempts to erase any
+    `mgp.model` operations that were targets of inlining and now have no remaining
+    uses.
+  }];
+}
+
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_TD
