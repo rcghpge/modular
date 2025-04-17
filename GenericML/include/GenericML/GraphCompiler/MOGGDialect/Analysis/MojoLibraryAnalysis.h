@@ -91,10 +91,17 @@ public:
   /// for registration.
   KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name) const;
 
-  /// Looks up the Mojo symbol of a registered, labeled kernel function using
-  /// the name that was used for registration and the function label.
+  /// Looks up a registered outlined function using the name that was used
+  /// for registration.
+  KGEN::GeneratorOp getRegisteredMojoOutlinedFunctionFor(StringRef name) const;
+
+  /// Looks up the Mojo symbol of a registered, labeled kernel function
+  /// using the name that was used for registration and the function label.
   KGEN::GeneratorOp getRegisteredMojoFunctionFor(StringRef name,
                                                  StringRef functionLabel) const;
+
+  /// Looks up and returns a mojo function as is.
+  KGEN::GeneratorOp getForeachKernel() const { return foreachKernel; }
 
   /// Looks up and returns a mojo function as is.
   KGEN::GeneratorOp getMojoFunctionNamed(StringRef name) const;
@@ -170,6 +177,8 @@ private:
           return entry.getValue();
         });
   }
+
+  KGEN::GeneratorOp foreachKernel;
 
   /// Hold the symbol name mapping for registered mojo kernels. With
   /// struct-based mojo kernels, this will map to the `execute` method.

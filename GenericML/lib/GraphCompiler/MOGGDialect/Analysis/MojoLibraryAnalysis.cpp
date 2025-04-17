@@ -387,6 +387,14 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
     return success();
   };
 
+  // Detect foreach kernel, treat it specially.
+  if (generator->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_ELEMWISE_FOR_EACH)) {
+    if (foreachKernel)
+      return Error("more than one elemwise_foreach kernels detected");
+
+    foreachKernel = generator;
+  }
+
   // Skipping functions that aren't exported.
   if (!generator.isExported())
     return success();
@@ -416,12 +424,16 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
           KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
     registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
   }
+  if (auto outlinedFrom = generator->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::OUTLINED_ELEMW_ATTR)) {
+    registerKernelFunction(outlinedFrom,
+                           KGEN::MOGGPreElab::OUTLINED_ELEMW_ATTR);
+  }
   if (auto name = generator->getAttrOfType<StringAttr>(
           KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
     registerKernelFunction(
         name, KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
   }
-
   return success();
 }
 
@@ -531,6 +543,12 @@ KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) const {
   return getRegisteredMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
+}
+
+KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoOutlinedFunctionFor(
+    StringRef name) const {
+  return getRegisteredMojoFunctionFor(name,
+                                      KGEN::MOGGPreElab::OUTLINED_ELEMW_ATTR);
 }
 
 //===----------------------------------------------------------------------===//
