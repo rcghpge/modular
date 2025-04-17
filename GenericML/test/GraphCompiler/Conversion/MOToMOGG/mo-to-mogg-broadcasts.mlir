@@ -16,7 +16,7 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 // CHECK-DAG: %[[K:.*]] = mogg.get_dim <K>
 // CHECK-DAG: %[[ARR:.*]] = pop.array.create [%[[N]], %[[M]], %[[K]]]
 
-// CHECK: kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::StaticBroadcastTo::build_view
+// CHECK: kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::StaticBroadcastTo::update_input_view
 // CHECK: kgen.call @"tensor_internal::managed_tensor_slice::view_copy_impl
 
 // CHECK: mogg.output %[[OUT]] : !mo.tensor<[N, M, K], f32>
