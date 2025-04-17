@@ -1686,6 +1686,58 @@ void MORandomNormalOp::inferMOTypesImpl(
   moOutputParamDecls.push_back(std::move(outputDecls));
 }
 
+void MORandomUniformOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  TensorValue shape = cast<TensorValue>(operands.getShape());
+  TensorValue lowerBound = cast<TensorValue>(operands.getLowerBound());
+  TensorValue upperBound = cast<TensorValue>(operands.getUpperBound());
+  TensorValue seed = cast<TensorValue>(operands.getSeed());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
+
+  // Try to infer the output rank
+  TensorType shapeTy = shape.getType();
+  std::optional<int64_t> rank;
+  if (shapeTy.hasStaticShape() && shapeTy.getRank() > 0)
+    rank = shapeTy.getIntDim(0);
+  else if (rmoResults.has_value() &&
+           cast<TensorType>((*rmoResults)[0].getType()).hasRank())
+    rank = cast<TensorType>((*rmoResults)[0].getType()).getRank();
+
+  // `shape` must have shape [rank]
+  SmallVector<KGEN::ParamDeclAttr> shapeParamDecls;
+  moOperandTypes.push_back(
+      rank.has_value()
+          ? shapeTy.cloneWith(SmallVector<TypedAttr>{
+                createStaticDimensionType(graphOp, *rank)})
+          : getRankedParamTensorType(1, shapeTy.getDtype(), graphOp,
+                                     shapeParamDecls, dev));
+  moInputParamDecls.push_back(std::move(shapeParamDecls));
+
+  // `lowerBound` / `upperBound` / `seed` must be scalars.
+  moOperandTypes.push_back(
+      lowerBound.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(
+      upperBound.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(seed.getType().cloneWith(ArrayRef<TypedAttr>{}));
+  moInputParamDecls.push_back({});
+
+  // Output has static or dynamic rank.
+  DType outputDType = getDType(rmoResults, 0, lowerBound.getType().getDtype());
+  SmallVector<KGEN::ParamDeclAttr> outputDecls;
+  moResultTypes.push_back(
+      rank.has_value()
+          ? getRankedParamTensorType(*rank, outputDType, graphOp, outputDecls,
+                                     dev)
+          : getUnrankedTensorType(outputDType, graphOp, outputDecls, dev));
+  moOutputParamDecls.push_back(std::move(outputDecls));
+}
+
 void RMO::inferMOTypesScatterNdImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue updates, TensorValue indices,

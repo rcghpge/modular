@@ -2407,6 +2407,41 @@ def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal",
   let results = (outs MO_Tensor:$result);
 }
 
+def RMO_MORandomUniformOp : RMO_MOAnaloguePureTensorOp<"random.uniform",
+  [AllDTypesMatch<["lowerBound", "upperBound", "result"]>]> {
+  let summary = "Uniform distribution operation";
+  let description = [{
+    Returns a tensor with shape `shape` populated with random
+    values from a normal distribution, with the mean of the distribution equal
+    to `mean` and the standard deviation equal to `variance`.
+
+    Example:
+    ```mlir
+    %size = mo.constant {
+      value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %lowerBound = mo.constant {
+      value = #M.dense_array<2.0> : tensor<1xf32> } : !mo.tensor<[], f32>
+    %upperBound = mo.constant {
+      value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
+    %seed = mo.constant {
+      value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+    %res = rmo.mo.random.uniform(%size, %lowerBound, %upperBound, %seed) :
+          (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
+          !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_IndicesTensor:$shape,
+    MO_ScalarTensorIfRanked:$lowerBound,
+    MO_ScalarTensorIfRanked:$upperBound,
+    MO_IndexScalarIfRanked:$seed,
+    MO_ParamDecls:$outputParamDecls
+  );
+
+  let results = (outs MO_Tensor:$result);
+}
+
 class RMO_MOAnaloguePureScatterNdOp<string name> : RMO_MOAnaloguePureTensorOp<
   name, [AllDTypesMatch<["input", "updates", "result"]>]
 > {
