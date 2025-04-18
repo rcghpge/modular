@@ -268,7 +268,7 @@ def MO_CallOp : MO_ControlOp<"call", [
     Example:
 
     ```mlir
-      %res = mo.call {symbol = "gelu"}(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
+      %res = mo.call @gelu(%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
     ```
   }];
 
@@ -280,7 +280,7 @@ def MO_CallOp : MO_ControlOp<"call", [
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)` `:`
+    `` custom<ParamDecls>($outputParamDecls) $symbol `(` operands `)` attr-dict `:`
        functional-type(operands, results)
   }];
 
