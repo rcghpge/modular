@@ -327,6 +327,11 @@ struct InlineMGPCallsPass
     ModuleOp moduleOp = getOperation();
     SymbolTable symtab(moduleOp);
 
+    // No work to do if there's only one model.
+    auto models = moduleOp.getOps<ModelOp>();
+    if (std::next(models.begin()) == models.end())
+      return;
+
     MGPCallGraph callGraph;
     auto inliningOrder = callGraph.getInliningOrder(moduleOp, symtab);
 

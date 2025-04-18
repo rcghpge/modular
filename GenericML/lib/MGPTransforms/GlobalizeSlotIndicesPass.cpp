@@ -79,6 +79,10 @@ struct GlobalizeSlotIndicesPass
     SmallVector<ModelOp> allModels;
     moduleOp.walk([&](ModelOp modelOp) { allModels.push_back(modelOp); });
 
+    // No work to do if there's only one model.
+    if (allModels.size() <= 1)
+      return;
+
     // Go through every model, offset its slot indices, and update the global
     // max.
     for (auto model : allModels) {
