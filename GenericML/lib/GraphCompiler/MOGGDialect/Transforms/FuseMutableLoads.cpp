@@ -240,6 +240,10 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
     kernelOp.setOperand(kernelOp.getNumOperands() - 1, loadOp.getInChain());
   }
 
+  auto newSummaryString =
+      MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
+  kernelOp.setSummary(newSummaryString);
+
   loadOp.erase();
 }
 
