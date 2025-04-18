@@ -541,7 +541,7 @@ class ElementwiseBoolOps(TestBase):
 
     @staticmethod
     def generate_inputs(shapes):
-        float_vals = [0.0, 1.0, np.inf, np.nan, -np.inf]
+        float_vals = [0.0, 1.0, np.inf, np.nan, np.NINF]
         return [
             np.random.rand(*shapes[0]) > 0.5,
             np.random.choice(float_vals, size=shapes[0]).astype(np.float32),
