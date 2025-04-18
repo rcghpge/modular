@@ -324,8 +324,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.fuseMutableLoadStore)
     pm.addPass(MOGG::createFuseMutableLoads());
 
-  pm.addPass(MO::createInlineMOSubgraphs());
-
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
@@ -363,6 +361,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // Before any sort of fusion, use location information to create better
   // runtime assert messages.
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
+
+  pm.addPass(MGP::createGlobalizeSlotIndicesPass());
 
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
@@ -409,6 +409,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
+  pm.addPass(MGP::createInlineMGPCallsPass());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createSimplifyChainsPass());
