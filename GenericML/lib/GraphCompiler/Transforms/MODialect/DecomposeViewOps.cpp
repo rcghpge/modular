@@ -87,72 +87,8 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
     auto devRef = slice.getDeviceRef();
 
     auto tryCreateSliceDimOuter = [&]() {
-      // In some special cases (for example axis=0, step=1, we can lower to a
-      // simple pointer offset implemented by SliceDimOuter)
-
-      // We don't want to do this if the input is a view, since we don't want to
-      // block view fusion
-      //
-      // We also don't want to do this in the case that the tensor was produced
-      // by a mutable.load op as in the case of a load + slice a full copy of
-      // the tensor will be materialized as only ops that lower to a mogg.kernel
-      // can be fused into.
-      Operation *definingOp = slice.getInput().getDefiningOp();
-      if (definingOp &&
-          isa<BroadcastToOp, TransposeOp, SliceOp, SliceDimOp, MutableLoadOp>(
-              definingOp))
-        return false;
-
-      // This can only lower to an offset if all leading dimensions are 1
-      for (int j = 0; j < asInt; ++j) {
-        if (inputType.getIntDim(j) != 1)
-          return false;
-      }
-
-      // Give up if the step doesn't come from a constant
-      auto constStep = step.getInput().getDefiningOp<ConstantOp>();
-      if (!constStep)
-        return false;
-
-      auto maybeStepValue = tryGetConstantBlob<int64_t>(constStep.getValue(),
-                                                        stepScalar.getDtype());
-      // Give up if we can't get the step values
-      if (!maybeStepValue)
-        return false;
-
-      // Give up if any steps leading up to and including this axis are not 1
-      for (int j = 0; j <= asInt; ++j) {
-        if (maybeStepValue.value()[j] != 1)
-          return false;
-      }
-
-      auto lastTy = cast<TensorType>(lastVal.getType());
-
-      // Remove the leading singleton dimensions
-      auto squeezedInputTy =
-          lastTy.cloneWith(inputType.getDims().drop_front(i));
-      lastVal = builder.createOrFold<Static::ReshapeOp>(
-          slice.getLoc(), squeezedInputTy, lastVal);
-
-      ArrayRef<TypedAttr> shapeRef(shape);
-      auto squeezedSliceTy = slice.getType().cloneWith(shapeRef.drop_front(i));
-
-      // Create SliceDimOuter op now that the sliced dimension is the outermost
-      SliceDimOuterOp newSlice = builder.create<SliceDimOuterOp>(
-          slice.getLoc(), squeezedSliceTy, lastVal, start.getResult(),
-          stop.getResult());
-
-      if (devRef)
-        newSlice.setDeviceRef(devRef);
-
-      lastVal = newSlice.getResult();
-
-      // Restore the leading singleton dimensions
-      auto unsqueezedSliceTy = slice.getType().cloneWith(shape);
-      lastVal = builder.createOrFold<Static::ReshapeOp>(
-          slice.getLoc(), unsqueezedSliceTy, lastVal);
-
-      return true;
+      // TODO(GEX-2138): Re-enable slice dim outer
+      return false;
     };
 
     if (!tryCreateSliceDimOuter()) {
