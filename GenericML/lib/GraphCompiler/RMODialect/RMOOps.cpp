@@ -771,6 +771,40 @@ ConvOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
 }
 
 //===----------------------------------------------------------------------===//
+// ConvTransposeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ConvTransposeOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto input = cast<TensorValue>(adaptor.getInput());
+  auto filter = cast<TensorValue>(adaptor.getFilter());
+
+  ErrorOr<DType> promotedDtype =
+      promoteDtype(input.getType().getDtype(), filter.getType().getDtype());
+  if (promotedDtype.isError()) {
+    return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
+                                   StringRef{promotedDtype.getError()});
+  }
+
+  TypedAttr inputShape = cast<ShapeAttr>(getShapeOf(input));
+  TypedAttr filterShape = cast<ShapeAttr>(getShapeOf(filter));
+
+  Location loc = location.value_or(input.getLoc());
+
+  // Materialize shape function.
+  auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
+  MO::ShapeMaterializeResult result = MO::materializeConvTransposeShape(
+      graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
+      adaptor.getDilations(), adaptor.getPaddings(),
+      adaptor.getOutputPaddings());
+
+  return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
+                             result, inferredReturnTypes,
+                             /*validateAsserts=*/false);
+}
+
+//===----------------------------------------------------------------------===//
 // ShapeToTensor
 //===----------------------------------------------------------------------===//
 

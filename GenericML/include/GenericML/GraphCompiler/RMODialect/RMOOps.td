@@ -618,6 +618,88 @@ def RMO_ConvOp : RMO_Op<"conv", [
   }];
 }
 
+def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
+  Pure,
+  InferTypeOpAdaptor,
+]> {
+  let summary = "Transposed convolution operation";
+  let description = [{
+    This op effectively computes the gradient of a convolution with
+    respect to its input (as if the original convolution operation had the same
+    filter and hyperparameters as this op). A visualization of the computation
+    can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
+
+    The op supports 1D-3D spatial dimensions, with the following layout
+    assumptions (note the `out_channel` is w.r.t. the original convolution):
+    - input has channel last layout.For 2D, that's NHWC, i.e.,
+      (batch_size, height, width, out_channels)
+    - filter has layout RSFC, i.e., (height, width, out_channels, in_channels)
+
+    All hyperparameters (i.e. strides, dilations, padding, output_paddings) must
+    be of rank 1, or unranked. If the input has static rank, all hyperparameters
+    with static shape must have sizes of `input_rank - 2`, except padding, which
+    must have size `2 * (input_rank - 2)`. Individual elements in the
+    hyperparameters applies to corresponding dimensions of the input (after
+    ignoring the batch and channel dimensions), with padding representing a
+    before/after pair for each axis.
+
+    The padding values are expected to take the form (pad_dim1_before,
+    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
+    0's before and after the indicated *spatial* dimensions in `input`. In 2D
+    ConvTranspose, dim1 here repesents H_out and dim2 represents W_out. In
+    python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
+    yield:
+
+    ```python
+    output = [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8]
+    ]
+    # Shape is 2x4
+
+    padded_input = [
+      [3],
+    ]
+    # Shape is 1x1
+    ```
+
+    The `output_paddings` argument is meant to resolve the ambiguity of multiple
+    potential output shapes when any stride is greater than 1. Basically,
+    we'll add `output_paddings[i]` number of zeros at the end of output's ith
+    axis. We only support output_paddings = 0.
+
+    The input, output and filter tensors' ranks must match if statically known.
+
+    Example:
+
+    ```mlir
+    %res = rmo.conv_transpose(%input, %filter) {
+      strides = #mosh<ape<1, 1>> : !mosh.ape
+      dilations = #mosh<ape<1, 1>> : !mosh.ape
+      paddings = #mosh<ape<0, 0, 0, 0>> : !mosh.ape
+      output_paddings = #mosh<ape<0, 0>> : !mosh.ape
+    } : (
+      !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
+    ) -> !mo.tensor<[10, 5, 5, 32], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_KnownTensor:$input,
+    MO_KnownTensor:$filter,
+    KnownShapeAttr:$strides,
+    KnownShapeAttr:$dilations,
+    KnownShapeAttr:$paddings,
+    KnownShapeAttr:$output_paddings
+  );
+
+  let results = (outs MO_KnownTensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def RMO_SelectOp : RMO_Op<"select", [
   Pure,
   InferTypeOpAdaptor,
