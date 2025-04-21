@@ -12,7 +12,7 @@ lit_tests(
     },
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
-        "//open-source/mojo/stdlib/stdlib",
+        "//open-source/max/mojo/stdlib/stdlib",
     ],
     tools = [
         "//KGEN/tools/mojo",

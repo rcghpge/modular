@@ -9,7 +9,7 @@ lit_tests(
     ),
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
-        "//open-source/mojo/stdlib/stdlib",
+        "//open-source/max/mojo/stdlib/stdlib",
     ],
     tools = ["//KGEN/tools/mojo"],
 )
@@ -21,7 +21,7 @@ lit_tests(
     gpu_constraints = ["//:has_gpu"],
     mojo_deps = [
         "//SDK/lib/API/mojo/max/max",
-        "//open-source/mojo/stdlib/stdlib",
+        "//open-source/max/mojo/stdlib/stdlib",
     ],
     tags = ["gpu"],
     tools = ["//KGEN/tools/mojo"],

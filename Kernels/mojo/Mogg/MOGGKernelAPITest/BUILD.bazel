@@ -9,6 +9,6 @@ mojo_kgen_lib(
         "//Kernels/mojo/buffer",
         "//Kernels/mojo/extensibility/compiler_internal",
         "//Kernels/mojo/extensibility/tensor_internal",
-        "//open-source/mojo/stdlib/stdlib",
+        "//open-source/max/mojo/stdlib/stdlib",
     ],
 )

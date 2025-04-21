@@ -20,7 +20,7 @@ mojo_library(
         "//Kernels/mojo/runtime",
         "//SDK/lib/API/mojo/max/compiler",
         "//SDK/lib/API/mojo/max/tensor",
-        "//open-source/mojo/stdlib/stdlib",
+        "//open-source/max/mojo/stdlib/stdlib",
     ],
 )
 
