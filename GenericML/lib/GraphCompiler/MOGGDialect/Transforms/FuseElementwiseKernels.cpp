@@ -21,8 +21,11 @@
 
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"
+#include "llvm/Support/Debug.h"
 
 using namespace M;
+
+#define DEBUG_TYPE "fuse-elementwise"
 
 namespace M::MOGG {
 
@@ -33,19 +36,30 @@ namespace {
 
 static std::optional<SmallVector<int>> getFusionIndices(KernelOp src,
                                                         KernelOp dst) {
-  if (src.getOutputFusionInterfaceAt(0).empty())
+  if (src.getOutputFusionInterfaceAt(0).empty()) {
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "  FAILED: Source kernel has empty output fusion interface\n");
     return std::nullopt;
+  }
 
   SmallVector<int> indices;
   for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
     if (operand.getDefiningOp() != src)
       continue;
 
-    if (isa<MO::ChainType>(operand.getType()))
+    if (isa<MO::ChainType>(operand.getType())) {
+      LLVM_DEBUG(llvm::dbgs() << "  Skipping operand " << i
+                              << " because it is a chain type\n");
       continue;
+    }
 
-    if (dst.getInputFusionInterfaceAt(i).empty())
+    if (dst.getInputFusionInterfaceAt(i).empty()) {
+      LLVM_DEBUG(llvm::dbgs() << "  FAILED: Destination kernel has empty input "
+                                 "fusion interface at index "
+                              << i << "\n");
       return std::nullopt;
+    }
 
     indices.push_back(i);
   }
@@ -62,27 +76,65 @@ static inline bool isAnElementwiseKernel(Operation *op) {
   if (!kernelOp)
     return false;
 
-  if (kernelOp.getIsViewOp().value_or(false))
-    return false;
+  LLVM_DEBUG({
+    llvm::dbgs() << "\n==================================================\n";
+    llvm::dbgs() << "Checking if kernel is elementwise: "
+                 << kernelOp.getSummaryAttr().getValue() << "\n";
+  });
 
-  if (!kernelOp.getFusionBodyLambda())
+  if (kernelOp.getIsViewOp().value_or(false)) {
+    LLVM_DEBUG(llvm::dbgs() << "  FAILED: Kernel is a view op\n");
     return false;
+  }
 
-  if (!kernelOp.getOutputParamDecls().empty())
+  if (!kernelOp.getFusionBodyLambda()) {
+    LLVM_DEBUG(llvm::dbgs() << "  FAILED: Kernel has no fusion body lambda\n");
     return false;
+  }
+
+  if (!kernelOp.getOutputParamDecls().empty()) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "  FAILED: Kernel has output parameter declarations\n");
+    return false;
+  }
 
   // We disable fusion for in-place allocated kernel.
-  if (kernelOp.isInPlaceAlloc())
+  if (kernelOp.isInPlaceAlloc()) {
+    LLVM_DEBUG(llvm::dbgs() << "  FAILED: Kernel has in-place allocation\n");
     return false;
+  }
 
+  LLVM_DEBUG(llvm::dbgs() << "  SUCCESS: Kernel is elementwise\n");
   return true;
 }
 
 static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcKernel = cast<KernelOp>(src);
   auto dstKernel = cast<KernelOp>(dst);
-  if (!getFusionIndices(srcKernel, dstKernel).has_value())
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "\n==================================================\n";
+    llvm::dbgs() << "Checking compatibility for kernels:\n";
+    llvm::dbgs() << "  Source: " << srcKernel.getSummaryAttr().getValue();
+    llvm::dbgs() << "\n  Destination: "
+                 << dstKernel.getSummaryAttr().getValue();
+    llvm::dbgs() << "\n";
+  });
+
+  auto fusionIndices = getFusionIndices(srcKernel, dstKernel);
+  if (!fusionIndices.has_value()) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "  FAILED: No valid fusion indices found. Source kernel may "
+                  "have empty output fusion interface or destination kernel "
+                  "may have empty input fusion interface.\n");
     return false;
+  }
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "  Found fusion indices: [";
+    llvm::interleaveComma(fusionIndices.value(), llvm::dbgs());
+    llvm::dbgs() << "]\n";
+  });
 
   // Check chain compatibility if both kernels have input and output chains
   auto srcInChain = srcKernel.maybeGetInChain();
@@ -90,15 +142,30 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   auto dstInChain = dstKernel.maybeGetInChain();
   auto dstOutChain = dstKernel.maybeGetOutChain();
 
+  LLVM_DEBUG({
+    if (dstInChain.has_value() || dstOutChain.has_value()) {
+      llvm::dbgs() << "  Destination kernel has ";
+      if (dstInChain.has_value() && dstOutChain.has_value())
+        llvm::dbgs() << "input and output chains\n";
+    }
+  });
+
   if (srcInChain.has_value() && srcOutChain.has_value() &&
       dstInChain.has_value() && dstOutChain.has_value()) {
+    LLVM_DEBUG(llvm::dbgs() << "  Both kernels have input and output chains\n");
+
     // Get actual chain values
     Value srcOutChain = srcKernel.getOutChain();
     Value dstInChain = dstKernel.getInChain();
 
     // Ensure the input chain to dstKernel is output chain from srcKernel
-    if (dstInChain != srcOutChain)
+    if (dstInChain != srcOutChain) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "  FAILED: Chain mismatch - source output chain and "
+                        "destination input chain are different values\n";
+      });
       return false;
+    }
 
     // Ensure that dstKernel is the sole consumer of the output chain from
     // srcKernel.
@@ -106,18 +173,35 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
     // its output chain would be UB when those consumers perform writes to
     // mo.buffers -- skip fusion here to make the presence of that situation
     // clearer.
-    if (!srcOutChain.hasOneUse())
+    if (!srcOutChain.hasOneUse()) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "  FAILED: Source output chain has multiple uses: "
+                     << std::distance(srcOutChain.getUses().begin(),
+                                      srcOutChain.getUses().end())
+                     << "\n";
+      });
       return false;
+    }
   }
 
   // Ensure if the kernel has an input chain, it has only one use
   // TODO(GEX-2105): This check is slightly stricter than it needs to be, as we
   // kind of assume that the kernel in question potentially mutates all of its
   // buffer operands.
-  auto inChain = dstKernel.maybeGetInChain();
-  if (inChain.has_value() && !dstKernel.getInChain().hasOneUse())
-    return false;
+  if (dstInChain.has_value()) {
+    Value chainVal = dstKernel.getInChain();
+    if (!chainVal.hasOneUse()) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "  FAILED: Destination input chain has multiple uses: "
+                     << std::distance(chainVal.getUses().begin(),
+                                      chainVal.getUses().end())
+                     << "\n";
+      });
+      return false;
+    }
+  }
 
+  LLVM_DEBUG(llvm::dbgs() << "  Kernels are compatible for fusion\n");
   return true;
 }
 
@@ -223,17 +307,40 @@ fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
 
 static std::optional<SmallVector<int>> getFusionIndices(ExpKernelOp src,
                                                         ExpKernelOp dst) {
+  LLVM_DEBUG({
+    llvm::dbgs() << "Examining fusion indices between experimental kernels:\n";
+    llvm::dbgs() << "  Source: " << src.getSummaryAttr().getValue() << " at ";
+    llvm::dbgs() << "\n  Destination: " << dst.getSummaryAttr().getValue()
+                 << " at ";
+    llvm::dbgs() << "\n";
+  });
+
   SmallVector<int> indices;
   for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
     if (operand.getDefiningOp() != src)
       continue;
 
-    if (!dst.isOperandFusible(i))
+    if (!dst.isOperandFusible(i)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "  FAILED: Operand at index " << i << " is not fusible\n");
       return std::nullopt;
+    }
 
     indices.push_back(i);
   }
 
+  if (indices.empty()) {
+    LLVM_DEBUG(llvm::dbgs() << "  FAILED: No operands of destination kernel "
+                               "come from source kernel\n");
+    return std::nullopt;
+  }
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "  SUCCESS: Found " << indices.size()
+                 << " valid fusion indices: [";
+    llvm::interleaveComma(indices, llvm::dbgs());
+    llvm::dbgs() << "]\n";
+  });
   return indices;
 }
 
@@ -388,6 +495,17 @@ struct FuseElementwisePass
           continue;
 
         auto srcKernelOp = cast<KernelOp>(op);
+
+        LLVM_DEBUG({
+          llvm::dbgs()
+              << "\n==================================================\n";
+          llvm::dbgs() << "Performing KGEN fusion between kernels:\n";
+          llvm::dbgs() << "  Source: "
+                       << srcKernelOp.getSummaryAttr().getValue() << "\n";
+          llvm::dbgs() << "  Destination: "
+                       << dstKernelOp.getSummaryAttr().getValue() << "\n";
+        });
+
         fuseSrcKernelIntoDstKernelKGEN(srcKernelOp, dstKernelOp);
 
         dstKernelOp.setSummaryAttr(
@@ -409,6 +527,12 @@ struct FuseElementwisePass
     stageKernelsForFusion({srcKernel, dstKernel});
 
     auto fusionIndices = *getFusionIndices(srcKernel, dstKernel);
+
+    LLVM_DEBUG({
+      llvm::dbgs() << "  Fusion indices for KGEN fusion: [";
+      llvm::interleaveComma(fusionIndices, llvm::dbgs());
+      llvm::dbgs() << "]\n";
+    });
 
     IRMapping mapper;
     OpBuilder builder{dstKernel.getContext()};
@@ -577,6 +701,9 @@ struct FuseElementwisePass
                                dstKernel.getHasReadEffect());
     dstKernel.setHasWriteEffect(srcKernel.getHasWriteEffect() ||
                                 dstKernel.getHasWriteEffect());
+    LLVM_DEBUG(llvm::dbgs()
+               << "SUCCESS: Fused " << srcKernel.getSummaryAttr().getValue()
+               << " into " << dstKernel.getSummaryAttr().getValue() << "\n");
   }
 };
 
