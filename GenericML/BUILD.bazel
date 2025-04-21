@@ -13,6 +13,7 @@ pkg_files(
         ":MODialect.doc",
         ":MOGGDialect.doc",
         ":MOGGDialectPassesIncGen.doc",
+        ":MOGGToKGENIncGen.doc",
         ":MONameInputDimsPassIncGen.doc",
         ":MOQDialect.doc",
         ":MOQTransformsIncGen.doc",
@@ -45,6 +46,7 @@ modular_cc_library(
         ":MODialect",
         ":MOGGDialect",
         ":MOGGSupport",
+        ":MOGGToKGEN",
         ":MOGGTransforms",
         ":MONameInputDimsPass",
         ":MOQDialect",
@@ -1234,6 +1236,44 @@ modular_cc_library(
         "//KGEN:ToolCommon",
     ],
 )
+
+## MOGGToKGEN
+td_library(
+    name = "MOGGToKGENTdFiles",
+    srcs = ["include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.td"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MOGGToKGENIncGen",
+    output_name = "MOGGToKGEN",
+    td_file = "include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.td",
+    deps = [
+        ":MOGGToKGENTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MOGGToKGEN",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOGGToKGEN/*.cpp"]),
+    hdrs = ["include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.h"],
+    deps = [
+        ":GraphCompilerInterfaces",
+        ":MGPDialect",
+        ":MODialect",
+        ":MOGGAnalysis",
+        ":MOGGDialect",
+        ":MOGGSupport",
+        ":MOGGToKGENIncGen",
+        "//KGEN:ToolCommon",
+    ],
+)
+
 ##
 # MOQDialect
 ##

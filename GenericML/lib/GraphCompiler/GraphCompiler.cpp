@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "AsyncRT/Runtime/Runtime.h"
+#include "GenericML/GraphCompiler/Conversion/MOGGToKGEN.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -90,6 +91,7 @@ void M::MO::registerPasses() {
   MGP::registerLegalizeAsyncRefDeallocations();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
+  MOGG::registerMOGGToKGENPasses();
 
   MOQ::registerFixupMOQOpDTypesPass();
   MOQ::registerLegalizeMOQOpsToRMOPass();
@@ -320,6 +322,10 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   if (opts.fuseMutableLoadStore)
     pm.addPass(MOGG::createFuseMutableLoads());
+
+  pm.addPass(MO::createInlineMOSubgraphs());
+
+  pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
 
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
