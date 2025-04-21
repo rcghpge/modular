@@ -9,15 +9,12 @@
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/ADT/SetOperations.h"
 
 using namespace M;
-using namespace GraphCompiler::Matchers;
 
 namespace M::RMO {
 #define GEN_PASS_DEF_LEGALIZERMOOPS
@@ -25,6 +22,17 @@ namespace M::RMO {
 } // namespace M::RMO
 
 namespace {
+
+TensorValue shapeToIndicesTensor(OpBuilder &builder, Location loc,
+                                 ShapeAttr shape, DeviceRefAttr device) {
+  auto rank = static_cast<int64_t>(shape.getRank());
+
+  auto indicesType =
+      TensorType::getVectorSI64Type(builder.getContext(), rank, device);
+
+  auto shapeConstant = builder.create<MOSH::ParamToValueOp>(loc, shape);
+  return builder.create<Shape::ToTensorOp>(loc, indicesType, shapeConstant);
+}
 
 // Return whether the shapes in `a` and `b` can be rebound to each other.
 bool isCompatibleShape(TensorType a, TensorType b) {
@@ -919,18 +927,6 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
 struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  static TensorValue shapeToIndicesTensor(OpBuilder &builder, Location loc,
-                                          ShapeAttr shape,
-                                          DeviceRefAttr device) {
-    auto rank = static_cast<int64_t>(shape.getRank());
-
-    auto indicesType =
-        TensorType::getVectorSI64Type(builder.getContext(), rank, device);
-
-    auto shapeConstant = builder.create<MOSH::ParamToValueOp>(loc, shape);
-    return builder.create<Shape::ToTensorOp>(loc, indicesType, shapeConstant);
-  }
-
   LogicalResult matchAndRewrite(RMO::ConvOp conv,
                                 PatternRewriter &rewriter) const override {
     Location loc = conv.getLoc();
@@ -961,6 +957,45 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
     rewriter.replaceOpWithNewOp<RMO::MOConvOp>(
         conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
         dilationsConstant, paddingConstant, groupsConstant);
+    return success();
+  }
+};
+
+struct LowerConvTranspose : public OpRewritePattern<RMO::ConvTransposeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RMO::ConvTransposeOp conv,
+                                PatternRewriter &rewriter) const override {
+    Location loc = conv.getLoc();
+
+    ShapeAttr strides = conv.getStrides();
+    ShapeAttr paddings = conv.getPaddings();
+    ShapeAttr dilations = conv.getDilations();
+    ShapeAttr outputPaddings = conv.getOutputPaddings();
+
+    TensorType resultType = conv.getType();
+
+    // Promote inputs
+    auto [promotedInput, promotedFilter] =
+        promoteDTypes(rewriter, conv.getLoc(), resultType.getDtype(),
+                      conv.getInput(), conv.getFilter());
+
+    DeviceRefAttr device = promotedInput.getType().getDeviceRef();
+    TensorValue stridesConstant =
+        shapeToIndicesTensor(rewriter, loc, strides, device);
+
+    TensorValue paddingConstant =
+        shapeToIndicesTensor(rewriter, loc, paddings, device);
+
+    TensorValue outputPaddingConstant =
+        shapeToIndicesTensor(rewriter, loc, outputPaddings, device);
+
+    TensorValue dilationsConstant =
+        shapeToIndicesTensor(rewriter, loc, dilations, device);
+
+    rewriter.replaceOpWithNewOp<RMO::MOConvTransposeOp>(
+        conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
+        dilationsConstant, paddingConstant, outputPaddingConstant);
     return success();
   }
 };
@@ -1331,9 +1366,9 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::AndOp, RMO::MOAndOp>,
         LowerCompositeBinaryComparisonOp<RMO::OrOp, RMO::MOOrOp>,
         LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
-        LowerBroadcastLike, LowerConv, LowerSigmoid, LowerConcat, LowerReshape,
-        LowerMatmul, LowerBroadcastTo, LowerSelect, LowerTopK, LowerSlice,
-        LowerShapeToTensor>(context);
+        LowerBroadcastLike, LowerConv, LowerConvTranspose, LowerSigmoid,
+        LowerConcat, LowerReshape, LowerMatmul, LowerBroadcastTo, LowerSelect,
+        LowerTopK, LowerSlice, LowerShapeToTensor>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo
