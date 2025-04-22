@@ -162,8 +162,7 @@ def MOGG_OutputOp
 //===----------------------------------------------------------------------===//
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
-    SameTypeOperands,
-    HasParent<"MOGG::ExpKernelOp">]>  {
+    SameTypeOperands]>  {
   let summary = "call the registered foreach kernel";
   let description = [{
     This represents a call to the mojo implementation of `foreach` function. If
@@ -181,8 +180,7 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
 
 
 def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
-    AttrSizedOperandSegments,
-    HasParent<"MOGG::ExpKernelOp">]>  {
+    AttrSizedOperandSegments]>  {
   let summary = "Call the registered `execute` function for a particular kernel";
   let description = [{
     This represents a call to the mojo implementation of `Kernel::execute`
@@ -203,6 +201,30 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 
   let assemblyFormat = [{
     `[` $kernelName `]` `inputs` `(` $inputs `)` `outputs` `(` $outputs `)` `:` functional-type($inputs, $outputs) attr-dict
+  }];
+}
+
+
+def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", []>  {
+  let summary = "Call the registered `view_copy_impl` function for materializing a view kernel";
+  let description = [{
+    This represents a call to the mojo implementation of `view_copy_impl`
+    function.
+
+    Example:
+    ```mlir
+    mogg.call.materialize inputs(...) outputs(...)
+
+    // Lowered to
+    kgen.call "view_copy_impl"(...)
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$inputs,
+                       MO_Tensor:$output);
+
+  let assemblyFormat = [{
+    `inputs` `(` $inputs `)` `output` `(` $output `)` `:` functional-type($inputs, $output) attr-dict
   }];
 }
 
@@ -228,6 +250,32 @@ def MOGG_CallOutlinedOp : MOGG_Op<"call.outlined", [
 
   let assemblyFormat = [{
     `[` $kernelName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` type($outputs)
+  }];
+}
+
+
+def MOGG_CallUpdateViewOp : MOGG_Op<"call.update_view", [
+    Pure,
+    HasParent<"MOGG::ExpKernelOp">]> {
+  let summary = "Call the corresponding `update_input_view` function for a particular kernel";
+  let description = [{
+    This represents a call to `update_input_view` functions for a corresponding
+    view kernel.
+
+    Example:
+    ```mlir
+    mogg.call.update_view["mo.add"]<[?, 2, 3]>(...)
+
+    // Lowered to
+    kgen.call "Add::update_input_view"(...)
+    ```
+  }];
+  let arguments = (ins StrAttr: $kernelName,
+                       Variadic<AnyType>: $inputs);
+  let results = (outs MO_Tensor: $output);
+
+  let assemblyFormat = [{
+    `[` $kernelName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` qualified(type($output))
   }];
 }
 

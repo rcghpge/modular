@@ -61,6 +61,10 @@ private:
   void lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                 const OperandMapping &mapping,
                                 const KernelAdaptor &adaptor);
+
+  void lowerToViewKernel(ExpKernelOp kernelOp, const OperandMapping &mapping,
+                         const KernelAdaptor &adaptor);
+
   ErrorOrSuccess lowerToNormalKernel(ExpKernelOp kernelOp,
                                      const OperandMapping &mapping,
                                      const KernelAdaptor &adaptor);

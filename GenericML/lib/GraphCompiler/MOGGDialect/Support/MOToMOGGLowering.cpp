@@ -143,6 +143,28 @@ static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
   return DictionaryAttr::get(op->getContext(), forwardedParameters);
 }
 
+void MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
+                                             const OperandMapping &mapping,
+                                             const KernelAdaptor &adaptor) {
+  auto execBody = &kernelOp.getExecBody().front();
+  Value outputVal = kernelOp.getOutputPlaceholder()->getResult(0);
+  SmallVector<Value> inputs(execBody->getArguments().begin(),
+                            execBody->getArguments().end());
+  // Build the shape
+  auto tensorTp = cast<MO::TensorType>(outputVal.getType());
+  Value shapeInKGEN = MOGG::lowerShapeToKGEN(loc, builder, tensorTp.getDims());
+
+  // TODO(MAXPLAT-212): use kernel adaptor, view kernels does not always take an
+  // output shape.
+  inputs.push_back(shapeInKGEN);
+  Value viewChanged = builder.create<MOGG::CallUpdateViewOp>(
+      loc, outputVal.getType(), adaptor.registeredOpName, inputs);
+  // Relink input tensor ssa
+  inputs[0] = viewChanged;
+
+  builder.create<MOGG::CallMaterializeOp>(loc, inputs, outputVal);
+}
+
 ErrorOrSuccess
 MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                                           const OperandMapping &mapping,
@@ -210,6 +232,8 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   ErrorOrSuccess err = success();
   if (adaptor.executeFunction->isElementwise())
     lowerToElementwiseKernel(kernelOp, *operandMappingOr, adaptor);
+  else if (adaptor.executeFunction->isViewKernel())
+    lowerToViewKernel(kernelOp, *operandMappingOr, adaptor);
   else
     err = lowerToNormalKernel(kernelOp, *operandMappingOr, adaptor);
 

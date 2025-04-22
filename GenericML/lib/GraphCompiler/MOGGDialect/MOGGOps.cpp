@@ -456,6 +456,9 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
 ValueRange CallForeachOp::getKernelOutputs() {
   return getOperands().take_back();
 }
+ValueRange CallMaterializeOp::getKernelOutputs() {
+  return getOperands().take_back();
+}
 ValueRange CallExecuteOp::getKernelOutputs() { return getOutputs(); }
 
 //===----------------------------------------------------------------------===//
