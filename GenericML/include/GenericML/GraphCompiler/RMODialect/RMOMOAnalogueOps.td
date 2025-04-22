@@ -741,7 +741,7 @@ class RMO_MOAnaloguePureScatterOp<string name> : RMO_MOAnaloguePureTensorOp<
 let arguments = (ins MO_Tensor:$input,
                        MO_NonScalarIfRanked:$updates,
                        MO_IndicesTensor:$indices,
-                       MO_IndicesTensor:$axis,
+                       MO_IndexScalarIfRanked:$axis,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 

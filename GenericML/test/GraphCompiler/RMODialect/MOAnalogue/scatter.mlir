@@ -9,7 +9,7 @@ mo.graph @scatter_ok(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f32>, %
 // -----
 mo.graph @scatter_bad_axis(%input: !mo.tensor<?, f32>, %updates: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
   %axis = mo.constant { value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-  // expected-error@+1 {{'rmo.mo.scatter' op operand #3 must be tensor with integer or index elements, but got '!mo.tensor<[], f32>'}}
+  // expected-error@+1 {{'rmo.mo.scatter' op operand #3 must be rank 0 or unranked with integer or index elements, but got '!mo.tensor<[], f32>'}}
   %1 = rmo.mo.scatter(%input, %updates, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
