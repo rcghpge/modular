@@ -323,8 +323,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.fuseMutableLoadStore)
     pm.addPass(MOGG::createFuseMutableLoads());
 
-  pm.addPass(MO::createInlineMOSubgraphs());
-
   pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
 
   // Create the options for MoToPrimitives.
