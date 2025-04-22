@@ -176,26 +176,36 @@ gethipDeviceAttribute(Device::Attribute attr) {
   case Device::Attribute::X:                                                   \
     return hipDeviceAttribute_t::hipDeviceAttribute##Y
 
+#define RAISE_ENTRY(X)                                                         \
+  case Device::Attribute::X:                                                   \
+    RAISE_ERROR("Attribute \"" #X "\" not supported for AMD GPU.")
+
   switch (attr) {
-    ENTRY(COMPUTE_CAPABILITY_MAJOR, ComputeCapabilityMajor);
-    ENTRY(COMPUTE_CAPABILITY_MINOR, ComputeCapabilityMinor);
-    ENTRY(CLOCK_RATE, ClockRate);
-    ENTRY(WARP_SIZE, WarpSize);
     ENTRY(MAX_THREADS_PER_BLOCK, MaxThreadsPerBlock);
-    ENTRY(MAX_SHARED_MEMORY_PER_BLOCK, MaxSharedMemoryPerBlock);
     ENTRY(MAX_BLOCK_DIM_X, MaxBlockDimX);
     ENTRY(MAX_BLOCK_DIM_Y, MaxBlockDimY);
     ENTRY(MAX_BLOCK_DIM_Z, MaxBlockDimZ);
     ENTRY(MAX_GRID_DIM_X, MaxGridDimX);
     ENTRY(MAX_GRID_DIM_Y, MaxGridDimY);
     ENTRY(MAX_GRID_DIM_Z, MaxGridDimZ);
-    ENTRY(MULTIPROCESSOR_COUNT, MultiprocessorCount);
+    ENTRY(MAX_SHARED_MEMORY_PER_BLOCK, MaxSharedMemoryPerBlock);
+    ENTRY(WARP_SIZE, WarpSize);
     ENTRY(MAX_REGISTERS_PER_BLOCK, MaxRegistersPerBlock);
+    ENTRY(CLOCK_RATE, ClockRate);
+    ENTRY(MULTIPROCESSOR_COUNT, MultiprocessorCount);
     ENTRY(MAX_THREADS_PER_MULTIPROCESSOR, MaxThreadsPerMultiProcessor);
-  default:
-    RAISE_ERROR("Attribute not defined for AMD GPU");
+    ENTRY(COMPUTE_CAPABILITY_MAJOR, ComputeCapabilityMajor);
+    ENTRY(COMPUTE_CAPABILITY_MINOR, ComputeCapabilityMinor);
+    ENTRY(MAX_REGISTERS_PER_MULTIPROCESSOR, MaxRegistersPerMultiprocessor);
+    RAISE_ENTRY(MAX_ACCESS_POLICY_WINDOW_SIZE);
+    // No `default:` to ensure that all possible enum values are handled.
   }
+#undef RAISE_ENTRY
 #undef ENTRY
+  // If a unsupported value is passed as a numerical value, fail with a generic
+  // message here. This can happen if for example we create an unsupported value
+  // from within Mojo.
+  RAISE_ERROR("Attribute not defined for AMD GPU");
 }
 
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
