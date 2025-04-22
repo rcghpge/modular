@@ -12,6 +12,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_TD
 
 include "GenericML/GraphCompiler/MODialect/MODialect.td"
+include "GenericML/GraphCompiler/MODialect/MOTypeInterfaces.td"
 include "Support/Compiler/TensorUtils.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/EnumAttr.td"
@@ -26,7 +27,7 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 // MO_Tensor
 //===----------------------------------------------------------------------===//
 
-def MO_Tensor : MO_Type<"Tensor", "tensor"> {
+def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface]> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
     This type represents the shape and element type of a tensor, an optional
@@ -226,7 +227,9 @@ def MO_Tensor : MO_Type<"Tensor", "tensor"> {
 // MO_List
 //===----------------------------------------------------------------------===//
 
-def MO_List : MO_Type<"List", "list"> {
+def MO_List : MO_Type<"List", "list", [MO_HasDeviceTypeInterface,
+  DeclareTypeInterfaceMethods<MO_HasDeviceTypeInterface, ["getDeviceRef", "cloneWithNewDevice"]>]>
+{
   let summary = "Type of immutable list container.";
   let description = [{
     This type represents an immutable list of elements (currently restricted to
@@ -264,7 +267,7 @@ def MO_Scalar : MO_Type<"Scalar", "scalar"> {
 // MO_Buffer
 //===----------------------------------------------------------------------===//
 
-def MO_Buffer : MO_Type<"Buffer", "buffer"> {
+def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface]> {
   let summary = "Mutable tensor type.";
   let description = [{
     This is a close analogue of the existing mo.tensor type but is meant

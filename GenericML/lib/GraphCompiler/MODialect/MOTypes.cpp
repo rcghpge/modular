@@ -688,6 +688,16 @@ LogicalResult ListType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+DeviceRefAttr ListType::getDeviceRef() const {
+  auto tensorType = llvm::cast<TensorType>(getElementType());
+  return tensorType.getDeviceRef();
+}
+
+Type ListType::cloneWithNewDevice(DeviceRefAttr device) const {
+  auto tensorType = llvm::cast<TensorType>(getElementType());
+  return ListType::get(getContext(), tensorType.cloneWithNewDevice(device));
+}
+
 //===----------------------------------------------------------------------===//
 // ScalarType
 //===----------------------------------------------------------------------===//

@@ -28,6 +28,7 @@ class ShapeType;
 
 namespace M::MO {
 class LayoutAttr;
+class MOHasDeviceTypeInterface;
 } // namespace M::MO
 
 namespace mlir {
@@ -43,6 +44,7 @@ struct FieldParser<M::DType> {
 //===----------------------------------------------------------------------===//
 
 #define GET_TYPEDEF_CLASSES
+#include "GenericML/GraphCompiler/MODialect/MOTypeInterfaces.h.inc"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h.inc"
 
 namespace M::MO {
