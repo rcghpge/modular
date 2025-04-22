@@ -99,65 +99,6 @@ StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType) {
   return StringAttr::get(ops.front()->getContext(), str);
 }
 
-MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
-                               Value tensorIn, MO::TensorType newShape,
-                               const char *overrideName) {
-  MLIRContext *ctx = builder.getContext();
-  // Create the new output shape.
-  auto shape = MOGG::ShapeType::get(ctx, newShape.getTypedShapeAttr());
-
-  // Materialize the runtime value of the shape in the MOGG kernel.
-  Value shapeInKGEN = MOGG::lowerShapeToKGEN(loc, builder, newShape.getDims());
-  Value runtimeShape = builder.create<MOGG::ToMOGGOp>(loc, TypeRange{shape},
-                                                      ValueRange{shapeInKGEN});
-
-  // Add the non-blocking flag.
-  SmallVector<NamedAttribute> attrs;
-  attrs.push_back(
-      builder.getNamedAttr(MOGG::PARAMETER_SINGLE_THREAD_BLOCKING_OVERRIDE,
-                           builder.getBoolAttr(true)));
-  mlir::DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
-
-  // Create the call to the new reshape.
-  return builder.create<MOGG::CallOp>(
-      loc,
-      /*outputTypes=*/TypeRange{newShape},
-      /*kernelTarget=*/
-      overrideName ? llvm::StringRef(overrideName)
-                   : MO::Static::ReshapeOp::getOperationName(),
-      /*inputOperands=*/ValueRange{tensorIn, runtimeShape},
-      /*lambdaParams=*/mlir::ArrayAttr{},
-      /*otherParams=*/kgenParams);
-}
-
-// Create a call to the slice kernel directly in MOGG.
-MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,
-                             Value tensorIn, Type outType,
-                             const SmallVector<int64_t> &start,
-                             const SmallVector<int64_t> &stop,
-                             const SmallVector<int64_t> &step) {
-  // Create a constant for the axis and each of the dimensions being sliced.
-  Value startVal = builder.create<MO::ConstantOp>(loc, start);
-  Value stopVal = builder.create<MO::ConstantOp>(loc, stop);
-  Value stepVal = builder.create<MO::ConstantOp>(loc, step);
-
-  // Add the non-blocking flag.
-  SmallVector<NamedAttribute> attrs;
-  attrs.push_back(
-      builder.getNamedAttr(MOGG::PARAMETER_SINGLE_THREAD_BLOCKING_OVERRIDE,
-                           builder.getBoolAttr(true)));
-  mlir::DictionaryAttr kgenParams = builder.getDictionaryAttr(attrs);
-
-  // Create the call to the new reshape.
-  return builder.create<MOGG::CallOp>(
-      loc,
-      /*outputTypes=*/TypeRange{outType},
-      /*kernelTarget=*/MO::SliceOp::getOperationName(),
-      /*inputOperands=*/ValueRange{tensorIn, startVal, stopVal, stepVal},
-      /*lambdaParams=*/mlir::ArrayAttr{},
-      /*otherParams=*/kgenParams);
-}
-
 // The max number of elements in a constant that we will allow to be fused into
 // the body of a kernel.
 constexpr int64_t kMaxConstantSize = 2048;

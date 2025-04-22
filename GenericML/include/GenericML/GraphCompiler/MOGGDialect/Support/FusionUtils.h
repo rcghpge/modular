@@ -33,21 +33,6 @@ StringAttr getSummaryString(Operation *op);
 // hard fusion.
 StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType);
 
-/// Create a call to the reshape kernel directly in MOGG. The overrideName is
-/// used in case call site needs to call a particular implementation of reshape.
-/// This occurs when we have multiple implementations and we would like to
-/// bypass the mojo library analysis.
-MOGG::CallOp createMOGGReshape(mlir::OpBuilder &builder, mlir::Location loc,
-                               Value tensorIn, MO::TensorType newShape,
-                               const char *overrideName = nullptr);
-
-// Create a call to the slice kernel directly in MOGG.
-MOGG::CallOp createMOGGSlice(mlir::OpBuilder &builder, mlir::Location loc,
-                             Value tensorIn, Type outType,
-                             const SmallVector<int64_t> &start,
-                             const SmallVector<int64_t> &stop,
-                             const SmallVector<int64_t> &step);
-
 /// Fuse small constant inputs to `kernel` into the kernel, and erase the
 /// original constant op if it has no remaining users.
 ///
