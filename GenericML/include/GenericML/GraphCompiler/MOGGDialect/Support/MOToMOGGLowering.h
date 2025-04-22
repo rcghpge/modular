@@ -61,8 +61,9 @@ private:
   void lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                 const OperandMapping &mapping,
                                 const KernelAdaptor &adaptor);
-  void lowerToNormalKernel(ExpKernelOp kernelOp, const OperandMapping &mapping,
-                           const KernelAdaptor &adaptor);
+  ErrorOrSuccess lowerToNormalKernel(ExpKernelOp kernelOp,
+                                     const OperandMapping &mapping,
+                                     const KernelAdaptor &adaptor);
 
   /// The original MO operation we are lowering.
   Operation *moOp;

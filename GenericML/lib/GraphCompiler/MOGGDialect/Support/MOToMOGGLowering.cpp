@@ -84,9 +84,69 @@ void MOGGExpKernelBuilder::lowerToElementwiseKernel(
                                 kernelOp.getOutputPlaceholder()->getResult(0));
 }
 
-void MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
-                                               const OperandMapping &mapping,
-                                               const KernelAdaptor &adaptor) {
+static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
+                                                 OpBuilder &builder) {
+  auto customOpOperationName =
+      mlir::OperationName(MO::CustomOp::getOperationName(), op->getContext());
+  SmallVector<NamedAttribute> forwardedParameters;
+  for (auto param : op->getAttrDictionary()) {
+    // Using `CustomOp` for the parameter name but could have use anything.
+    if (param.getName() ==
+        MO::CustomOp::getOutputParamDeclsAttrName(customOpOperationName)) {
+      continue;
+    }
+
+    if (isa<MO::CustomOp>(op)) {
+      if (param.getName() ==
+          MO::CustomOp::getOperandDevicesAttrName(customOpOperationName)) {
+        continue;
+      }
+      if (param.getName() ==
+          MO::CustomOp::getSymbolAttrName(customOpOperationName)) {
+        continue;
+      }
+
+      if (param.getName() ==
+          MO::CustomOp::getFunctionAttrName(customOpOperationName)) {
+        continue;
+      }
+    }
+
+    auto asTypeAttr = dyn_cast<TypeAttr>(param.getValue());
+    if (asTypeAttr) {
+      forwardedParameters.push_back(param);
+      continue;
+    }
+
+    auto asTypedAttr = dyn_cast<TypedAttr>(param.getValue());
+    if (!asTypedAttr) {
+      return Error(llvm::formatv("Unsupported untyped attribute {} : {}",
+                                 param.getName(), param.getValue()));
+    }
+
+    if (isa<IntegerAttr, StringAttr, BoolAttr>(asTypedAttr)) {
+      forwardedParameters.push_back(param);
+      continue;
+    }
+
+    auto coord = dyn_cast<MO::CoordinateTransformModeAttr>(param.getValue());
+    if (!coord) {
+      return Error(llvm::formatv("Unsupported untyped attribute {} : {}",
+                                 param.getName(), param.getValue()));
+    }
+
+    forwardedParameters.push_back(NamedAttribute{
+        param.getName(),
+        builder.getIndexAttr(static_cast<int64_t>(coord.getValue()))});
+  }
+
+  return DictionaryAttr::get(op->getContext(), forwardedParameters);
+}
+
+ErrorOrSuccess
+MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
+                                          const OperandMapping &mapping,
+                                          const KernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   auto outputPlaceholder = kernelOp.getOutputPlaceholder();
   SmallVector<Value> outputs(outputPlaceholder->getResults());
@@ -114,7 +174,15 @@ void MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
     outputs[idx] = bound;
   }
 
-  builder.create<CallExecuteOp>(loc, adaptor.registeredOpName, inputs, outputs);
+  auto forwardedParametersOr = forwardParameters(moOp, builder);
+  if (forwardedParametersOr.isError())
+    return forwardedParametersOr.takeError();
+
+  auto exec = builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,
+                                            inputs, outputs);
+  exec->setAttrs(*forwardedParametersOr);
+
+  return success();
 }
 
 ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
@@ -139,10 +207,14 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
   builder.create<OutputPlaceholdersOp>(loc, kernelOp->getResultTypes());
 
+  ErrorOrSuccess err = success();
   if (adaptor.executeFunction->isElementwise())
     lowerToElementwiseKernel(kernelOp, *operandMappingOr, adaptor);
   else
-    lowerToNormalKernel(kernelOp, *operandMappingOr, adaptor);
+    err = lowerToNormalKernel(kernelOp, *operandMappingOr, adaptor);
+
+  if (err.isError())
+    return err.takeError();
 
   return kernelOp;
 }
