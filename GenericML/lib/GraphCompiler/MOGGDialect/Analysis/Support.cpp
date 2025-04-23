@@ -76,18 +76,22 @@ static MojoOperationInfo getMojoOperationInfo(Operation *op) {
 
 ErrorOr<KGEN::GeneratorOp>
 getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                    Operation *op) {
-  MojoOperationInfo info = getMojoOperationInfo(op);
-  StringRef mojoOperationName = info.operationName;
-  StringRef functionLabel = info.functionLabel;
+                    StringRef mojoOperationName, StringRef functionLabel) {
   auto generatorOp = mojoLibraryAnalysis.getRegisteredMojoFunctionFor(
       mojoOperationName, functionLabel);
 
   if (!generatorOp)
     return Error(Twine("Could not find a mojo kernel registered for ") +
                  mojoOperationName + " with function " + functionLabel);
-
   return generatorOp;
+}
+
+ErrorOr<KGEN::GeneratorOp>
+getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                    Operation *op) {
+  MojoOperationInfo info = getMojoOperationInfo(op);
+  return getMojoKernelTarget(mojoLibraryAnalysis, info.operationName,
+                             info.functionLabel);
 }
 
 } // namespace M::MOGG

@@ -132,9 +132,18 @@ static void mergeAllocationOfType(MOGG::KernelOp kernelOp) {
 /// Build the static tensor spec used as a parameter for kernels.
 /// The tensor spec value does not include fusion lambdas.
 ErrorOr<TypedAttr>
+buildTensorSpecAttr(DeviceRefAttr targetDevice, Value moValue, bool isExclusive,
+                    MOGG::MojoLibraryAnalysis &libraryAnalysis,
+                    MOGG::TypeManager &typeManager, OpBuilder &builder);
+/// Same as above, except extracting `isExclusive`from MOGG::KernelOp.
+ErrorOr<TypedAttr>
 buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
                     MOGG::MojoLibraryAnalysis &libraryAnalysis,
                     M::MOGG::TypeManager &typeManager, OpBuilder &builder);
+
+/// Generate a kgen.param.decl `paramName` `toBind`
+KGEN::ParamDeclAttr bindAttrToParam(Location loc, TypedAttr toBind,
+                                    StringRef paramName, OpBuilder &builder);
 
 // Aliased constant (introduced in MAXPLAT-70) will not be lifted to init, which
 // might reduce the performance gains from certain optimization. We probably

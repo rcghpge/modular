@@ -21,6 +21,11 @@ ErrorOr<KGEN::GeneratorOp>
 getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     Operation *op);
 
+/// Returns the KGEN Generator associated with the given name and label.
+ErrorOr<KGEN::GeneratorOp>
+getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                    StringRef mojoOperationName, StringRef functionLabel);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_ANALYSIS_SUPPORT_H

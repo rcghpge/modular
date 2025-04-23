@@ -27,6 +27,9 @@ StringAttr getSummaryString(Operation *op) {
   if (auto kernelOp = dyn_cast<MOGG::KernelOp>(op)) {
     if (auto summaryAttr = kernelOp.getSummaryAttr())
       return summaryAttr;
+  } else if (auto kernelOp = dyn_cast<MOGG::ExpKernelOp>(op)) {
+    if (auto summaryAttr = kernelOp.getSummaryAttr())
+      return summaryAttr;
   } else if (auto kernelOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
     if (auto summaryAttr = kernelOp.getSummaryAttr())
       return summaryAttr;
@@ -750,16 +753,12 @@ static bool isExclusive(MOGG::KernelOp kernelOp, Value moValue) {
 // Build the static tensor spec used as a parameter for autospecialized
 // kernels. Note, this returns a parametric result which isn't bound to a name.
 ErrorOr<TypedAttr>
-buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
+buildTensorSpecAttr(DeviceRefAttr targetDevice, Value moValue, bool isExclusive,
                     MOGG::MojoLibraryAnalysis &libraryAnalysis,
                     MOGG::TypeManager &typeManager, OpBuilder &builder) {
   MO::TensorType tensorType = MO::dynCastFromTensorLike(moValue.getType());
   if (!tensorType)
     return Error("unsupported value type");
-
-  DeviceRefAttr targetDevice =
-      kernelOp ? MO::getDeviceOrDefaultAny(kernelOp)
-               : DeviceRefAttr::getDefault(tensorType.getContext());
 
   // Build the proper output type
   TypedAttr dtypeParam = typeManager.lookupDType(tensorType.getDtype());
@@ -773,7 +772,7 @@ buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
   if (maybeAddressSpace.isError())
     return Error("could not lower address space");
 
-  TypedAttr exclusive = builder.getBoolAttr(isExclusive(kernelOp, moValue));
+  TypedAttr exclusive = builder.getBoolAttr(isExclusive);
 
   SmallVector<TypedAttr> buildSpecParams{dtypeParam, rankParam};
 
@@ -798,6 +797,42 @@ buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
 
   return libraryAnalysis.buildParameterCall(MOGG::Utils::DPSBuildTensorSpecs,
                                             buildSpecParams, lambdaArgs);
+}
+
+KGEN::ParamDeclAttr bindAttrToParam(Location loc, TypedAttr toBind,
+                                    StringRef paramName, OpBuilder &builder) {
+  // Redefine the spec attr with a new decl attached to the ToKGEN.
+  // We need this during view fusion to update the strides.
+  auto newParameterDecl = KGEN::ParamDeclAttr::get(
+      MOGG::defineNewUniqueParameter(paramName, toBind.getType()));
+
+  // We insert the KGEN::ParamDeclareOp at the beginning of the block.
+  OpBuilder::InsertionGuard guard(builder);
+
+  Block *kernelBody = builder.getInsertionBlock();
+  builder.setInsertionPointToStart(kernelBody);
+  builder.create<KGEN::ParamDeclareOp>(loc, newParameterDecl, toBind);
+
+  return newParameterDecl;
+}
+
+// Build the static tensor spec used as a parameter for autospecialized
+// kernels. Note, this returns a parametric result which isn't bound to a name.
+ErrorOr<TypedAttr>
+buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
+                    MOGG::MojoLibraryAnalysis &libraryAnalysis,
+                    MOGG::TypeManager &typeManager, OpBuilder &builder) {
+  MO::TensorType tensorType = MO::dynCastFromTensorLike(moValue.getType());
+  if (!tensorType)
+    return Error("unsupported value type");
+
+  DeviceRefAttr targetDevice =
+      kernelOp ? MO::getDeviceOrDefaultAny(kernelOp)
+               : DeviceRefAttr::getDefault(tensorType.getContext());
+
+  return buildTensorSpecAttr(targetDevice, moValue,
+                             isExclusive(kernelOp, moValue), libraryAnalysis,
+                             typeManager, builder);
 }
 
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
