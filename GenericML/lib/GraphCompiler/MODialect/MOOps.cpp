@@ -2973,6 +2973,13 @@ LogicalResult RebindOp::canonicalize(RebindOp op,
 LogicalResult RebindOp::verify() {
   TensorType inTy = getInput().getType();
   TensorType outTy = getType();
+  // Disallow rebind to a different device.
+  if (inTy.getDeviceRef() && outTy.getDeviceRef() &&
+      (inTy.getDeviceRef() != outTy.getDeviceRef()))
+    return emitError("input device " + inTy.getDeviceRef().toString() +
+                     " must match result device " +
+                     outTy.getDeviceRef().toString() + " in rebind");
+
   // Nothing to check if either type is dynamically ranked
   if (!inTy.hasRank() || !outTy.hasRank())
     return success();

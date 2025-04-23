@@ -43,3 +43,13 @@ mo.graph @rebind_same_out_param_bind_to_different_ints<D0>(
   %1 = mo.rebind(%arg2) : !mo.tensor<[42, 24], f32> -> !mo.tensor<[D0, D0], f32>
   mo.output %arg3: !mo.tensor<[D0], f32>
 }
+
+// -----
+
+mo.graph @rebind_to_different_devices<D0>(
+  %arg1: !mo.tensor<[42, 42], f32, cpu:0>
+) -> !mo.tensor<[D0, D0], f32, gpu:0> {
+  // expected-error @below {{input device cpu:0 must match result device gpu:0 in rebind}}
+  %0 = mo.rebind(%arg1) : !mo.tensor<[42, 42], f32, cpu:0> -> !mo.tensor<[D0, D0], f32, gpu:0>
+  mo.output %0: !mo.tensor<[D0, D0], f32, gpu:0>
+}
