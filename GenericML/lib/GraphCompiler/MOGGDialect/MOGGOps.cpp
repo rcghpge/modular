@@ -498,7 +498,8 @@ bool ExpKernelOp::isOperandFusible(unsigned operandIdx) {
 }
 
 LogicalResult M::MOGG::ExpKernelOp::verify() {
-  auto term = dyn_cast<MOGG::KernelTerminator>(getTerminator());
+  auto term =
+      dyn_cast<MOGG::KernelTerminator>(getExecBody().front().getTerminator());
   if (!term)
     return emitError("Expect to terminate with a KernelTerminator");
 
