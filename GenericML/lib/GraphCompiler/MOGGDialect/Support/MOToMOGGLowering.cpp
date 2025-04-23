@@ -36,9 +36,10 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
   builder.setInsertionPoint(op);
 }
 
-void MOGGExpKernelBuilder::lowerToElementwiseKernel(
-    ExpKernelOp kernelOp, const OperandMapping &mapping,
-    const KernelAdaptor &adaptor) {
+Operation *
+MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
+                                               const OperandMapping &mapping,
+                                               const KernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
@@ -82,6 +83,8 @@ void MOGGExpKernelBuilder::lowerToElementwiseKernel(
   builder.setInsertionPointAfter(bindOp);
   builder.create<CallForeachOp>(loc, bindOp->getResult(0),
                                 kernelOp.getOutputPlaceholder()->getResult(0));
+
+  return callOutlined;
 }
 
 static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
@@ -146,9 +149,10 @@ static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
   return DictionaryAttr::get(op->getContext(), forwardedParameters);
 }
 
-void MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
-                                             const OperandMapping &mapping,
-                                             const KernelAdaptor &adaptor) {
+Operation *
+MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
+                                        const OperandMapping &mapping,
+                                        const KernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   Value outputVal = kernelOp.getOutputPlaceholder()->getResult(0);
   SmallVector<Value> inputs(execBody->getArguments().begin(),
@@ -160,15 +164,17 @@ void MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   // TODO(MAXPLAT-212): use kernel adaptor, view kernels does not always take an
   // output shape.
   inputs.push_back(shapeInKGEN);
-  Value viewChanged = builder.create<MOGG::CallUpdateViewOp>(
+  Operation *view = builder.create<MOGG::CallUpdateViewOp>(
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // Relink input tensor ssa
-  inputs[0] = viewChanged;
+  inputs[0] = view->getResult(0);
 
   builder.create<MOGG::CallMaterializeOp>(loc, inputs, outputVal);
+
+  return view;
 }
 
-ErrorOrSuccess
+Operation *
 MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                                           const OperandMapping &mapping,
                                           const KernelAdaptor &adaptor) {
@@ -199,15 +205,9 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
     outputs[idx] = bound;
   }
 
-  auto forwardedParametersOr = forwardParameters(moOp, builder);
-  if (forwardedParametersOr.isError())
-    return forwardedParametersOr.takeError();
-
-  auto exec = builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,
-                                            inputs, outputs);
-  exec->setAttrs(*forwardedParametersOr);
-
-  return success();
+  return builder
+      .create<CallExecuteOp>(loc, adaptor.registeredOpName, inputs, outputs)
+      .getOperation();
 }
 
 ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
@@ -232,16 +232,25 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
   builder.create<OutputPlaceholdersOp>(loc, kernelOp->getResultTypes());
 
-  ErrorOrSuccess err = success();
-  if (adaptor.executeFunction->isElementwise())
-    lowerToElementwiseKernel(kernelOp, *operandMappingOr, adaptor);
-  else if (adaptor.executeFunction->isViewKernel())
-    lowerToViewKernel(kernelOp, *operandMappingOr, adaptor);
-  else
-    err = lowerToNormalKernel(kernelOp, *operandMappingOr, adaptor);
+  auto forwardedParametersOr = forwardParameters(moOp, builder);
+  if (forwardedParametersOr.isError())
+    return forwardedParametersOr.takeError();
 
-  if (err.isError())
-    return err.takeError();
+  Operation *kernelCallingOperation;
+  if (adaptor.executeFunction->isElementwise()) {
+    kernelCallingOperation =
+        lowerToElementwiseKernel(kernelOp, *operandMappingOr, adaptor);
+  } else if (adaptor.executeFunction->isViewKernel()) {
+    kernelCallingOperation =
+        lowerToViewKernel(kernelOp, *operandMappingOr, adaptor);
+  } else {
+    kernelCallingOperation =
+        lowerToNormalKernel(kernelOp, *operandMappingOr, adaptor);
+  }
+
+  ASSERT_STREAM(kernelCallingOperation, << "Did not lower the op properly");
+
+  kernelCallingOperation->setAttrs(*forwardedParametersOr);
 
   return kernelOp;
 }

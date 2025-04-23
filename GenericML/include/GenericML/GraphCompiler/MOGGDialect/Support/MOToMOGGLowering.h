@@ -58,16 +58,17 @@ private:
   DeviceRefAttr getHostDevice() const { return MO::getHostDevice(graphOp); }
 
   using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
-  void lowerToElementwiseKernel(ExpKernelOp kernelOp,
-                                const OperandMapping &mapping,
-                                const KernelAdaptor &adaptor);
+  Operation *lowerToElementwiseKernel(ExpKernelOp kernelOp,
+                                      const OperandMapping &mapping,
+                                      const KernelAdaptor &adaptor);
 
-  void lowerToViewKernel(ExpKernelOp kernelOp, const OperandMapping &mapping,
-                         const KernelAdaptor &adaptor);
+  Operation *lowerToViewKernel(ExpKernelOp kernelOp,
+                               const OperandMapping &mapping,
+                               const KernelAdaptor &adaptor);
 
-  ErrorOrSuccess lowerToNormalKernel(ExpKernelOp kernelOp,
-                                     const OperandMapping &mapping,
-                                     const KernelAdaptor &adaptor);
+  Operation *lowerToNormalKernel(ExpKernelOp kernelOp,
+                                 const OperandMapping &mapping,
+                                 const KernelAdaptor &adaptor);
 
   /// The original MO operation we are lowering.
   Operation *moOp;
