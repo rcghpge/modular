@@ -89,7 +89,8 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
 def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
   Pure,
   MO_SameOperandsAndResultShape,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Device transfer operation";
   let description = [{
@@ -5092,7 +5093,7 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [
 def MO_BufferTransferOp : MO_DeviceAgnosticMutableOp<"buffer.transfer", [
   AllDTypesMatch<["src", "dst"]>,
   AllShapeAttrsMatch<["src", "dst"]>,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
 ]> {
   let summary = "Transfer data between two buffers";
   let description = [{

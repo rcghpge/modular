@@ -448,6 +448,11 @@ ErrorOr<TypedAttr> RebindOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   return StaticizeAdaptor<RebindOp>(inputs).getInput();
 }
 
+ErrorOr<TypedAttr> TransferOp::tryStaticize(ArrayRef<TypedAttr> inputs,
+                                            ParamExprBuilder &b) {
+  return StaticizeAdaptor<TransferOp>(inputs).getInput();
+}
+
 ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                              ParamExprBuilder &b) {
   StaticizeAdaptor<ReduceMulOp> adaptor(inputs);
