@@ -556,6 +556,12 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoUpdateViewFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel);
 }
 
+KGEN::GeneratorOp
+MojoLibraryAnalysis::getRegisteredMojoExecuteFunctionFor(StringRef name) const {
+  return getRegisteredMojoFunctionFor(
+      name, KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
+}
+
 KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoOutlinedFunctionFor(
     StringRef name) const {
   return getRegisteredMojoFunctionFor(name,

@@ -91,6 +91,10 @@ public:
   /// for registration.
   KGEN::GeneratorOp getRegisteredMojoShapeFunctionFor(StringRef name) const;
 
+  /// Looks up a registered Mojo execute function using the name that was used
+  /// for registration.
+  KGEN::GeneratorOp getRegisteredMojoExecuteFunctionFor(StringRef name) const;
+
   /// Looks up a registered Mojo update_input_view function using the name that
   /// was used for registration.
   KGEN::GeneratorOp
