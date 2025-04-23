@@ -116,7 +116,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns the `#M.device_ref` on which the op must execute. Returns null
         if there is no such constraint.
       }],
-      "DeviceRefAttr", "getExecutionDevice", (ins), [{}],
+      "DeviceRefAttr", "getExecutionDeviceConstraint", (ins), [{}],
       [{ return nullptr; }]
     >,
 
@@ -125,7 +125,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns the `#M.device_ref` on which the operand with the given index
         must be stored. Returns null if there is no such constraint.
       }],
-      "DeviceRefAttr", "getOperandDevice", (ins "size_t":$index), [{}],
+      "DeviceRefAttr", "getOperandDeviceConstraint", (ins "size_t":$index), [{}],
       [{ return nullptr; }]
     >,
 

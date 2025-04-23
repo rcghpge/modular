@@ -550,15 +550,17 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
 // HACK
 // Currrently MOHasDeviceInterface doesn't provide enough information to
 // accurately check operand and result device constraints.
-// When getOperandDevice() returns null, this can mean two different things:
-// A: (most ops) apply the default constraint; the operand device should match
+// When getOperandDeviceConstraint() returns null, this can mean two different
+// things: A: (most ops) apply the default constraint; the operand device should
+// match
 //    the device assigned to the op.
 // B: (ops listed here) There is no constraint, any device is acceptable.
 
-// Eventually we should provide a default implementation for getOperandDevice()
-// that returns the current device, then these ops can specialize it to return
-// null. But this is not possible now, because AssignDevicesPass relies on the
-// return value being null before the device is assigned.
+// Eventually we should provide a default implementation for
+// getOperandDeviceConstraint() that returns the current device, then these ops
+// can specialize it to return null. But this is not possible now, because
+// AssignDevicesPass relies on the return value being null before the device is
+// assigned.
 bool assumeNullConstraintMeansSameDevice(MOHasDeviceInterface op) {
   return !isa<MOControlOpInterface, MO::CustomOp, MO::InvokeShapeFuncOp,
               MO::ConstantExternalOp>(op.getOperation());
@@ -576,7 +578,7 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
   if (op->getDialect() && !isa<MO::MODialect>(op->getDialect()))
     return success();
   // Check execution device constraint
-  if (auto constrainedTo = op.getExecutionDevice()) {
+  if (auto constrainedTo = op.getExecutionDeviceConstraint()) {
     if (constrainedTo != op.getDeviceRef()) {
       return op->emitError("Op is constrained to be on device ")
              << constrainedTo << " but has device " << op.getDeviceRef() << ".";
@@ -606,7 +608,7 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
   // constrained.
   for (size_t i = 0; i < op->getNumOperands(); ++i) {
     // Get device constraint for the operand.
-    DeviceRefAttr constrainedTo = op.getOperandDevice(i);
+    DeviceRefAttr constrainedTo = op.getOperandDeviceConstraint(i);
     // If no constraint is set, assume same as the op's device.
     if (!constrainedTo && assumeNullConstraintMeansSameDevice(op))
       constrainedTo = op.getDeviceRef();

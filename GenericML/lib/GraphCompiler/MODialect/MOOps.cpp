@@ -50,7 +50,7 @@ namespace M::MO {
 
 // Host only operations.
 #define HOST_ONLY_OP(T)                                                        \
-  DeviceRefAttr T::getExecutionDevice() {                                      \
+  DeviceRefAttr T::getExecutionDeviceConstraint() {                            \
     return getHostDevice(getOperation()->getContext());                        \
   }
 
@@ -631,7 +631,7 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
 //===----------------------------------------------------------------------===//
 // MO_InvokeShapeFuncOp support
 //===----------------------------------------------------------------------===//
-DeviceRefAttr InvokeShapeFuncOp::getOperandDevice(size_t index) {
+DeviceRefAttr InvokeShapeFuncOp::getOperandDeviceConstraint(size_t index) {
   auto dataDeps = getDataDeptTensors();
 
   if (!dataDeps)
@@ -2042,7 +2042,7 @@ LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
   return failure();
 }
 
-DeviceRefAttr ConcatOp::getOperandDevice(size_t index) {
+DeviceRefAttr ConcatOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -2052,7 +2052,7 @@ DeviceRefAttr ConcatOp::getOperandDevice(size_t index) {
 // MO_BandPartOp support
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr LinAlg::BandPartOp::getOperandDevice(size_t index) {
+DeviceRefAttr LinAlg::BandPartOp::getOperandDeviceConstraint(size_t index) {
   return (index == getNumLowerMutable().getOperandNumber() ||
           index == getNumUpperMutable().getOperandNumber() ||
           index == getExcludeMutable().getOperandNumber())
@@ -2141,7 +2141,7 @@ LogicalResult SplitOp::fold(FoldAdaptor adaptor,
   return failure();
 }
 
-DeviceRefAttr SplitOp::getOperandDevice(size_t index) {
+DeviceRefAttr SplitOp::getOperandDeviceConstraint(size_t index) {
   return (index == getAxisMutable().getOperandNumber() ||
           index == getSplitSizesMutable().getOperandNumber())
              ? MO::getHostDevice(getOperation())
@@ -2249,7 +2249,7 @@ LogicalResult GatherOp::verify() {
   return success();
 }
 
-DeviceRefAttr GatherOp::getOperandDevice(size_t index) {
+DeviceRefAttr GatherOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -2528,7 +2528,7 @@ void ArgMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ArgMaxOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-DeviceRefAttr ArgMaxOp::getOperandDevice(size_t index) {
+DeviceRefAttr ArgMaxOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -2553,7 +2553,7 @@ void ArgMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ArgMinOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-DeviceRefAttr ArgMinOp::getOperandDevice(size_t index) {
+DeviceRefAttr ArgMinOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -2640,7 +2640,7 @@ LogicalResult ConvOp::verify() {
   return op.verifyWindowParamSizes({getDilations(), getStrides()});
 }
 
-DeviceRefAttr ConvOp::getOperandDevice(size_t index) {
+DeviceRefAttr ConvOp::getOperandDeviceConstraint(size_t index) {
   return (index == getStridesMutable().getOperandNumber() ||
           index == getDilationsMutable().getOperandNumber() ||
           index == getPaddingsMutable().getOperandNumber() ||
@@ -2733,7 +2733,7 @@ LogicalResult PadConstantOp::canonicalize(PadConstantOp op,
   return canonicalizePadLikeOp(op, rewriter);
 }
 
-DeviceRefAttr PadConstantOp::getOperandDevice(size_t index) {
+DeviceRefAttr PadConstantOp::getOperandDeviceConstraint(size_t index) {
   bool isCPUIndex = index == getPaddingsMutable().getOperandNumber() ||
                     index == getConstantMutable().getOperandNumber();
   return isCPUIndex ? MO::getHostDevice(getOperation()) : nullptr;
@@ -2804,7 +2804,7 @@ LogicalResult RangeOp::verify() {
   return success();
 }
 
-DeviceRefAttr RangeOp::getOperandDevice(size_t index) {
+DeviceRefAttr RangeOp::getOperandDeviceConstraint(size_t index) {
   if (index == getStartMutable().getOperandNumber() ||
       index == getStepMutable().getOperandNumber() ||
       index == getLimitMutable().getOperandNumber())
@@ -3029,7 +3029,7 @@ void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<MeanOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-DeviceRefAttr MeanOp::getOperandDevice(size_t index) {
+DeviceRefAttr MeanOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -3054,7 +3054,7 @@ LogicalResult RandomNormalOp::canonicalize(RandomNormalOp op,
 // RandomUniformOp
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr RandomUniformOp::getOperandDevice(size_t index) {
+DeviceRefAttr RandomUniformOp::getOperandDeviceConstraint(size_t index) {
   if (index == getLowerBoundMutable().getOperandNumber() ||
       index == getUpperBoundMutable().getOperandNumber() ||
       index == getSeedMutable().getOperandNumber() ||
@@ -3082,7 +3082,7 @@ void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceMulOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-DeviceRefAttr ReduceMulOp::getOperandDevice(size_t index) {
+DeviceRefAttr ReduceMulOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -3125,7 +3125,7 @@ void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceAddOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-DeviceRefAttr ReduceAddOp::getOperandDevice(size_t index) {
+DeviceRefAttr ReduceAddOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -3151,7 +3151,7 @@ void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceMinOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-DeviceRefAttr ReduceMinOp::getOperandDevice(size_t index) {
+DeviceRefAttr ReduceMinOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -3176,7 +3176,7 @@ void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceMaxOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-DeviceRefAttr ReduceMaxOp::getOperandDevice(size_t index) {
+DeviceRefAttr ReduceMaxOp::getOperandDeviceConstraint(size_t index) {
   return index == getAxisMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -3200,7 +3200,7 @@ LogicalResult verifyOrderedKOp(OrderKOpT op) {
 
 LogicalResult TopKOp::verify() { return verifyOrderedKOp(*this); }
 
-DeviceRefAttr TopKOp::getOperandDevice(size_t index) {
+DeviceRefAttr TopKOp::getOperandDeviceConstraint(size_t index) {
   return (index == getKMutable().getOperandNumber() ||
           index == getAxisMutable().getOperandNumber() ||
           index == getSortedMutable().getOperandNumber())
@@ -3210,7 +3210,7 @@ DeviceRefAttr TopKOp::getOperandDevice(size_t index) {
 
 LogicalResult BottomKOp::verify() { return verifyOrderedKOp(*this); }
 
-DeviceRefAttr BottomKOp::getOperandDevice(size_t index) {
+DeviceRefAttr BottomKOp::getOperandDeviceConstraint(size_t index) {
   return (index == getKMutable().getOperandNumber() ||
           index == getAxisMutable().getOperandNumber() ||
           index == getSortedMutable().getOperandNumber())
@@ -3894,7 +3894,7 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   return foldSliceHelper(*this, adaptor);
 }
 
-DeviceRefAttr SliceOp::getOperandDevice(size_t index) {
+DeviceRefAttr SliceOp::getOperandDeviceConstraint(size_t index) {
   return (index == getStartMutable().getOperandNumber() ||
           index == getStopMutable().getOperandNumber() ||
           index == getStepMutable().getOperandNumber())
@@ -3906,7 +3906,7 @@ DeviceRefAttr SliceOp::getOperandDevice(size_t index) {
 // SliceDimOp
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr SliceDimOp::getOperandDevice(size_t index) {
+DeviceRefAttr SliceDimOp::getOperandDeviceConstraint(size_t index) {
   return (index == getStartMutable().getOperandNumber() ||
           index == getStopMutable().getOperandNumber() ||
           index == getStepMutable().getOperandNumber())
@@ -3930,7 +3930,7 @@ OpFoldResult SliceDimOp::fold(FoldAdaptor adaptor) {
 // SliceDimOuterOp
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr SliceDimOuterOp::getOperandDevice(size_t index) {
+DeviceRefAttr SliceDimOuterOp::getOperandDeviceConstraint(size_t index) {
   return (index == getStartMutable().getOperandNumber() ||
           index == getStopMutable().getOperandNumber())
              ? MO::getHostDevice(getOperation())
@@ -4061,7 +4061,7 @@ LogicalResult TransposeOp::verify() {
   return success();
 }
 
-DeviceRefAttr TransposeOp::getOperandDevice(size_t index) {
+DeviceRefAttr TransposeOp::getOperandDeviceConstraint(size_t index) {
   return index == getPermMutable().getOperandNumber()
              ? MO::getHostDevice(getOperation())
              : nullptr;
@@ -4880,7 +4880,7 @@ OpOperand &CustomOp::getInChainMutable() {
   return firstOpOperand;
 }
 
-DeviceRefAttr CustomOp::getOperandDevice(size_t index) {
+DeviceRefAttr CustomOp::getOperandDeviceConstraint(size_t index) {
   for (auto deviceIndex : getOperandDevices())
     if (deviceIndex.getIndex().getInt() == static_cast<int64_t>(index))
       return deviceIndex.getDevice();
@@ -5026,7 +5026,7 @@ void MutableStoreSliceOp::getEffects(
                        &getInBufferMutable());
 }
 
-DeviceRefAttr MutableStoreSliceOp::getOperandDevice(size_t index) {
+DeviceRefAttr MutableStoreSliceOp::getOperandDeviceConstraint(size_t index) {
   return (index == getStartMutable().getOperandNumber() ||
           index == getStopMutable().getOperandNumber() ||
           index == getStepMutable().getOperandNumber())
@@ -5128,7 +5128,7 @@ LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
 // MO_LayerNormOp
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr LayerNormOp::getOperandDevice(size_t index) {
+DeviceRefAttr LayerNormOp::getOperandDeviceConstraint(size_t index) {
   return index == getEpsilonMutable().getOperandNumber()
              ? getHostDevice(getOperation())
              : nullptr;
