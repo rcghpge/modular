@@ -691,6 +691,26 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     return failure();
   loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
 
+  // Handle scratch output placeholders if they exist
+  SmallVector<MGP::MOOutputStorage> scratchOutputsStorage;
+  MOGG::ScratchPlaceholdersOp scratchOutputs = getScratchPlaceholder();
+  if (scratchOutputs) {
+    SmallVector<TypedValue<MGP::TensorSpecType>> scratchSpecs;
+    for (Type t : scratchOutputs.getResultTypes()) {
+      auto tensorType = cast<MO::TensorType>(t);
+      auto specResult = opLoweringState.createTensorSpec(tensorType);
+      if (failed(specResult))
+        return failure();
+      scratchSpecs.push_back(*specResult);
+    }
+
+    FailureOr<SmallVector<MGP::MOOutputStorage>> scratchOutputsStorageOr =
+        opLoweringState.createOutputStorage(chain, scratchSpecs);
+    if (failed(scratchOutputsStorageOr))
+      return failure();
+    scratchOutputsStorage = *std::move(scratchOutputsStorageOr);
+  }
+
   DenseSet<int> inplaceAllocIndicesSet;
   SmallVector<int> preAllocIndices;
   SmallVector<int> inplaceAllocIndices;
@@ -718,8 +738,9 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   size_t numInplaceOutputs = inplaceAllocIndicesSet.size();
 
-  size_t numOperands =
-      1 + loweredInputOperands.size() + loweredOutputsStorage.size();
+  size_t numOperands = 1 + loweredInputOperands.size() +
+                       loweredOutputsStorage.size() +
+                       scratchOutputsStorage.size();
 
   // Gather all the input and output operands and their in/out semantics.
   SmallVector<Value> operands;
@@ -743,6 +764,14 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     operands.push_back(loweredInputOperand);
     operandSemantics.emplace_back(sig);
+  }
+
+  // Add scratch output buffers to operands (after input operands)
+  if (scratchOutputs) {
+    for (auto &scratchStorage : scratchOutputsStorage) {
+      operands.push_back(scratchStorage.buffer);
+      operandSemantics.emplace_back(InOutSignatureAttr::kNone);
+    }
   }
 
   SmallVector<KGEN::ParamDeclRefAttr> usedParams =
@@ -960,6 +989,18 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     mapper.map(oldBlockArg, loweredValue);
   }
 
+  // Map scratch outputs if they exist
+  if (scratchOutputs) {
+    int scratchOffset = inputOffset + loweredInputOperands.size();
+    for (auto [idx, result] : llvm::enumerate(scratchOutputs.getResults())) {
+      Value newBlockArg = kernelBody.getArgument(scratchOffset + idx);
+      Value oldOut = result;
+      Value loweredValue =
+          convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
+      mapper.map(oldOut, loweredValue);
+    }
+  }
+
   // Allocate stack for in-place tensors
   SmallVector<Type> internalTensorAllocTypes;
   SmallVector<Type> internalOpaqueAllocTypes;
@@ -1001,7 +1042,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Clone the graph
   for (Operation &op : getBody().front()) {
-    if (isa<MOGG::OutputPlaceholdersOp, MOGG::OutputOp>(op))
+    if (isa<MOGG::OutputPlaceholdersOp, MOGG::OutputOp,
+            MOGG::ScratchPlaceholdersOp>(op))
       continue;
 
     if (auto getDim = dyn_cast<MOGG::GetDimOp>(op)) {
@@ -1251,6 +1293,17 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   assert(llvm::hasSingleElement(placeholder));
 
   return *placeholder.begin();
+}
+
+ScratchPlaceholdersOp KernelOp::getScratchPlaceholder() {
+  auto scratch = this->getOps<MOGG::ScratchPlaceholdersOp>();
+
+  if (scratch.empty())
+    return nullptr;
+
+  assert(llvm::hasSingleElement(scratch));
+
+  return *scratch.begin();
 }
 
 StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
@@ -1620,6 +1673,9 @@ LogicalResult KernelOp::verify() {
   if (llvm::range_size(getOps<MOGG::OutputPlaceholdersOp>()) > 1)
     return emitError("A KernelOp must have at most one output placeholder op");
 
+  if (llvm::range_size(getOps<MOGG::ScratchPlaceholdersOp>()) > 1)
+    return emitError("A KernelOp must have at most one scratch placeholder op");
+
   auto inputInterfaces = getInputFusionInterface();
   auto outputInterfaces = getOutputFusionInterface();
 
@@ -1628,6 +1684,15 @@ LogicalResult KernelOp::verify() {
                      "returns: ")
            << getOutputOp()->getOperandTypes() << " but got "
            << getResultTypes();
+  }
+
+  OutputOp outputOp = getOutputOp();
+
+  for (auto output : outputOp.getOperands()) {
+    if (auto scratchOp = output.getDefiningOp<MOGG::ScratchPlaceholdersOp>()) {
+      return emitError(
+          "Scratch output tensors cannot be used as outputs of the kernel");
+    }
   }
 
   if (inputInterfaces.has_value() &&

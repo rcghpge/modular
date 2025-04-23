@@ -560,6 +560,10 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     // Returns the OutputOp for this operation or null if it does not exist.
     OutputOp getOutputOp();
 
+    // Returns the ScratchPlaceholderOp for this operation or null if it does
+    // not exist.
+    ScratchPlaceholdersOp getScratchPlaceholder();
+
     /// Disables future fusion on this input.
     void disableInputFusionOnInput(size_t index);
 
@@ -1309,6 +1313,28 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders", [Pure]> {
     ```
     This provides a `%out` SSA value which corresponds to the first output which
     we can now pass into the KGEN calls which expect a buffer.
+  }];
+
+  let assemblyFormat = [{
+   attr-dict `:` type($results)
+  }];
+}
+
+def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders", [HasParent<"MOGG::KernelOp">]> {
+  let results = (outs Variadic<MO_Tensor>:$results);
+
+  let summary = "Represents scratch buffer tensors that are not returned from the kernel";
+  let description = [{
+    Similar to `mogg.output_placeholders`, this operation produces tensors for use within a kernel op.
+    However, unlike output placeholders, these scratch tensors will not be returned from the kernel.
+
+    Example:
+    ```mlir
+      %scratch = mogg.scratch_placeholders : !mo.tensor<[2, 3], f32>
+    ```
+
+    This provides a `%scratch` SSA value which corresponds to a temporary buffer
+    that can be used within the kernel but will not be part of the kernel's results.
   }];
 
   let assemblyFormat = [{
