@@ -261,23 +261,6 @@ mo.graph @batch_matmul_reused_rhs<D0, D1 -> Sh0: !mosh.ape>(
 // CHECK-NEXT:   mo.output [[V2]] : !mo.tensor<[3, [[D0]], [[D1]]], f32>
 // CHECK-NEXT: }
 
-mo.graph @linalg_solve_reused_rhs<D0, D1 -> Sh0: !mosh.ape>(
-  %arg0: !mo.tensor<[3, D0, D0], f32>,
-  %arg1: !mo.tensor<[3, D0, D1], f32>
-) -> !mo.tensor<Sh0, f32> {
-  %arg0reb = mo.rebind<() -> Sh1: !mosh.ape>(%arg0) : !mo.tensor<[3, D0, D0], f32> -> !mo.tensor<Sh1, f32>
-  %arg1reb = mo.rebind<() -> Sh2: !mosh.ape>(%arg1) : !mo.tensor<[3, D0, D1], f32> -> !mo.tensor<Sh2, f32>
-  %0 = mo.linalg.solve<() -> Sh3: !mosh.ape>(%arg0reb, %arg1reb) : (!mo.tensor<Sh1, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh3, f32>
-  %1 = mo.linalg.solve<() -> Sh4: !mosh.ape>(%0, %arg1reb) : (!mo.tensor<Sh3, f32>, !mo.tensor<Sh2, f32>) -> !mo.tensor<Sh4, f32>
-  mo.output<:!mosh.ape Sh4> %1 : !mo.tensor<Sh4, f32>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @linalg_solve_reused_rhs<[[D0:.*]], [[D1:.*]]>([[VARG0:%.*]]: !mo.tensor<[3, [[D0]], [[D0]]], f32>, [[VARG1:%.*]]: !mo.tensor<[3, [[D0]], [[D1]]], f32>)
-// CHECK-NEXT:   [[V0:%.*]] = mo.linalg.solve([[VARG0]], [[VARG1]]) : {{.*}} -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
-// CHECK-NEXT:   {{.*}}"mo.assert"{{.*}}"[matrix-solve] first input must be a (batch of) square matrix"{{.*}} eq(:si64 [[D0]], [[D1]]))
-// CHECK-NEXT:   [[V2:%.*]] = mo.linalg.solve([[V0]], [[VARG1]]) : {{.*}} -> !mo.tensor<[3, [[D0]], [[D1]]], f32>
-// CHECK-NEXT:   mo.output [[V2]]
-// CHECK-NEXT: }
 
 mo.graph @slice_neg_stop(
   %input: !mo.tensor<[10], f32>

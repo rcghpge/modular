@@ -863,53 +863,6 @@ ShapeMaterializeResult materializeConvTransposeShape(
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
-/// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
-ShapeMaterializeResult materializeMatrixSolveShape(GraphOp graphOp,
-                                                   Location loc,
-                                                   TypedAttr lhsShapeAttr,
-                                                   TypedAttr rhsShapeAttr) {
-  // Make sure both input and target shapes are ranked symbolic shapes.
-  ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
-  ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
-  if (!lhsShape || !rhsShape)
-    return ShapeMaterializeResult::nonMaterializable();
-
-  // Basic rank check.
-  size_t inputRank = lhsShape.getRank();
-  if (rhsShape.getRank() != inputRank) {
-    return ShapeMaterializeResult::error(
-        "[matrix-solve] requires input ranks to match");
-  }
-  if (inputRank < 2)
-    return ShapeMaterializeResult::error("[matrix-solve] requires (rank >= 2)");
-
-  // Create builder and track generated parameter bindings.
-  SmallVector<ParamBinding> paramBindings;
-  ParamExprBuilder b(graphOp, loc, &paramBindings);
-
-  // lhsShape = [..., lhsOuterDim, lhsInnerDim]
-  Var lhsOuterDim = b.createVar(lhsShape[inputRank - 2]);
-  Var lhsInnerDim = b.createVar(lhsShape[inputRank - 1]);
-  b.createAssert(
-      lhsOuterDim == lhsInnerDim,
-      "[matrix-solve] first input must be a (batch of) square matrix");
-
-  // rhsShape = [..., rhsInnerDim, _]
-  Var rhsInnerDim = b.createVar(rhsShape[inputRank - 2]);
-  b.createAssert(lhsOuterDim == rhsInnerDim,
-                 "[matrix-solve] inputs outter dimensions must match");
-
-  // Check batch dims.
-  for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
-    Var lhsDim = b.createVar(lhsShape[batchDim]);
-    Var rhsDim = b.createVar(rhsShape[batchDim]);
-    b.createAssert(lhsDim == rhsDim,
-                   "[matrix-solve] inputs batch dimensions must match");
-  }
-
-  return ShapeMaterializeResult::success(std::move(paramBindings), rhsShape);
-}
-
 ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
                                            TypedAttr inputShapeAttr,
                                            TypedAttr paddingsAttr) {

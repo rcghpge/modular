@@ -4269,49 +4269,6 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
   let hasVerifier = 1;
 }
 
-def MO_SolveOp : MO_LinalgOp<"solve", [
-    MO_SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-    DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-    DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
-  let summary = "Linear solve operation";
-  let description = [{
-    Solves the system of linear equations described by
-
-      `AX = B`
-
-    Where input A is a batch of square matrices and has shape [I, J, ..., M, M]
-    which are assumed to be full rank/invertible and rhs B is a batch of
-    results of shape [I, J, ..., M, K]. The result, X, will be a tensor of
-    shape [I, J, ..., M, K]
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[3, 3, 3], f32>
-      %rhs: !mo.tensor<[3, 3, 2], f32>
-      %res = mo.linalg.band_part(%arg, %rhs) : (
-        !mo.tensor<[3, 3, 3], f32>, !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[]
-        ) -> !mo.tensor<[3, 3, 2], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input,
-    MO_Tensor:$rhs,
-    MO_ParamDecls:$outputParamDecls);
-
-  let results = (outs MO_Tensor:$result);
-
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
-  }];
-
-  let hasVerifier = 1;
-}
-
 //===----------------------------------------------------------------------===//
 // Shape function invocation
 //===----------------------------------------------------------------------===//

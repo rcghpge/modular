@@ -62,7 +62,6 @@ HOST_ONLY_OP(ConvTransposeOp)
 HOST_ONLY_OP(CumSumOp)
 HOST_ONLY_OP(GatherSumOp)
 HOST_ONLY_OP(LayoutTransformOp)
-HOST_ONLY_OP(LinAlg::SolveOp)
 HOST_ONLY_OP(LogSoftmaxOp)
 HOST_ONLY_OP(NonMaximumSuppressionOp)
 HOST_ONLY_OP(PadReflectOp)
@@ -4146,17 +4145,6 @@ LogicalResult LinAlg::BandPartOp::verify() {
   if (getInput().getType() != getResult().getType())
     return emitError("first operand and the result must have the same type");
   return success();
-}
-
-LogicalResult LinAlg::SolveOp::verify() {
-  TensorType inType = getInput().getType();
-  if (inType.hasStaticShape()) {
-    ArrayRef<TypedAttr> inMatShape = inType.getDims().take_back(2);
-    if (inMatShape[0] != inMatShape[1])
-      return emitOpError("first operand must be a batch of square matrices");
-  }
-  return ::Impl::checkMatmulCompatibility(getOperation(), getInput(),
-                                          getResult(), getRhs());
 }
 
 //===----------------------------------------------------------------------===//

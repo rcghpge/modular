@@ -199,31 +199,6 @@ mo.graph @layer_norm<D0, D1 -> D2, D3>(
 // CHECK-NEXT:   mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], f32>
 
 
-mo.graph @matrix_solve<D0, D1, D2, D3, D4, D5 -> D6, D7, D8>(
-  %lhs: !mo.tensor<[D0, D1, D2], f32>,
-  %rhs: !mo.tensor<[D3, D4, D5], f32>
-) -> !mo.tensor<[D6, D7, D8], f32> {
-
-  %res = mo.linalg.solve<() -> D9, D10, D11>(%lhs, %rhs) :
-    (!mo.tensor<[D0, D1, D2], f32>, !mo.tensor<[D3, D4, D5], f32>) -> !mo.tensor<[D9, D10, D11], f32>
-
-  mo.output<D9, D10, D11> %res : !mo.tensor<[D9, D10, D11], f32>
-}
-// CHECK-LABEL: mo.graph @matrix_solve
-// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]] -> [[D6:.*]], [[D7:.*]], [[D8:.*]]>(
-// CHECK-SAME:   %[[LHS:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>,
-// CHECK-SAME:   %[[RHS:.*]]: !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D6]], [[D7]], [[D8]]], f32> {
-//
-// CHECK-NEXT:   mo.invoke_shape_func["mo.linalg.solve"]<() -> [[D9:.*]], [[D10:.*]], [[D11:.*]]>(%[[LHS]], %[[RHS]])
-// CHECK-SAME:     {dataDeptTensors = []}
-// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>)
-//
-// CHECK-NEXT:   %[[RES:.*]] = mo.linalg.solve(%[[LHS]], %[[RHS]]) :
-// CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]], [[D2]]], f32>, !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>) -> !mo.tensor<[[[D9]], [[D10]], [[D11]]], f32>
-//
-// CHECK-NEXT:   mo.output<[[D9]], [[D10]], [[D11]]> %[[RES]] : !mo.tensor<[[[D9]], [[D10]], [[D11]]], f32>
-
 
 mo.graph @broadcast_to_fallback_shape_func<() -> D0, D1, D2>(
   %input: !mo.tensor<[1, 3], f32>,

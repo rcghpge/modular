@@ -71,7 +71,6 @@ HAS_FALLBACK(MO::ConvTransposeOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::GatherNdOp)
 HAS_FALLBACK(MO::LayerNormOp)
-HAS_FALLBACK(MO::LinAlg::SolveOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MaxPoolCeilOp)
 HAS_FALLBACK(MO::MeanOp)
@@ -195,7 +194,6 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::GatherNdOp)
       CALL_FALLBACK(MO::LayerNormOp)
-      CALL_FALLBACK(MO::LinAlg::SolveOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MaxPoolCeilOp)
       CALL_FALLBACK(MO::MeanOp)
@@ -567,15 +565,6 @@ ErrorOrSuccess Fallback<MO::LayerNormOp>::build(GraphOp &graph,
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{},
                    /*dataDepInputIdxs=*/{});
-  return success();
-}
-
-ErrorOrSuccess Fallback<MO::LinAlg::SolveOp>::build(GraphOp &graph,
-                                                    OpBuilder &builder,
-                                                    MO::LinAlg::SolveOp op) {
-  buildForOpResult(graph, builder, op, MO::LinAlg::SolveOp::getOperationName(),
-                   op.getOperands(), op.getOutputParamDecls(),
-                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
 }
 

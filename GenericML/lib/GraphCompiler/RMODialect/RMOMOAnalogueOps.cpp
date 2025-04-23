@@ -1285,53 +1285,6 @@ void LinAlg::MOBandPartOp::inferMOTypesImpl(
   moOutputParamDecls.push_back({});
 }
 
-void LinAlg::MOSolveOp::inferMOTypesImpl(
-    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
-    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
-    SmallVectorImpl<Type> &moResultTypes,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
-    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  TensorValue input = cast<TensorValue>(operands.getInput());
-  TensorValue rhs = cast<TensorValue>(operands.getRhs());
-  DeviceRefAttr dev = getDeviceFromOperands(operands);
-
-  // All inputs / output have the same rank.
-  // Try to infer the rank.
-  std::optional<int64_t> rank;
-  if (input.getType().hasRank())
-    rank = input.getType().getRank();
-  else if (rhs.getType().hasRank())
-    rank = rhs.getType().getRank();
-
-  // Set all types to unranked or same rank.
-  SmallVector<KGEN::ParamDeclAttr> inputDecls;
-  moOperandTypes.push_back(
-      rank.has_value()
-          ? getRankedParamTensorType(*rank, input.getType().getDtype(), graphOp,
-                                     inputDecls, dev)
-          : getUnrankedTensorType(input.getType().getDtype(), graphOp,
-                                  inputDecls, dev));
-  moInputParamDecls.push_back(inputDecls);
-
-  SmallVector<KGEN::ParamDeclAttr> rhsDecls;
-  moOperandTypes.push_back(
-      rank.has_value()
-          ? getRankedParamTensorType(*rank, rhs.getType().getDtype(), graphOp,
-                                     rhsDecls, dev)
-          : getUnrankedTensorType(rhs.getType().getDtype(), graphOp, rhsDecls,
-                                  dev));
-  moInputParamDecls.push_back(rhsDecls);
-
-  SmallVector<KGEN::ParamDeclAttr> outputDecls;
-  DType outputDType = getDType(rmoResults, 0, input.getType().getDtype());
-  moResultTypes.push_back(
-      rank.has_value()
-          ? getRankedParamTensorType(*rank, outputDType, graphOp, outputDecls,
-                                     dev)
-          : getUnrankedTensorType(outputDType, graphOp, outputDecls, dev));
-  moOutputParamDecls.push_back(outputDecls);
-}
-
 void MOConcatOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,

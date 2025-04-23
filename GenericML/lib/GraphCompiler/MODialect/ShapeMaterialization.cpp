@@ -169,24 +169,6 @@ GatherNdOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
-// Linalg::SolveOp
-//===----------------------------------------------------------------------===//
-
-SmallVector<int32_t> LinAlg::SolveOp::getDataDependentInputIndices() {
-  return {};
-}
-
-ShapeMaterializeResult
-LinAlg::SolveOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
-  auto graphOp = getOperation()->getParentOfType<GraphOp>();
-  Location loc = getLoc();
-  auto lhsShape = inputAttrs[0];
-  auto rhsShape = inputAttrs[1];
-
-  return materializeMatrixSolveShape(graphOp, loc, lhsShape, rhsShape);
-}
-
-//===----------------------------------------------------------------------===//
 // Pad*Op
 //===----------------------------------------------------------------------===//
 

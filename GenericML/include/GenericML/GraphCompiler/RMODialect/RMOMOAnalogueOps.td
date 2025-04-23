@@ -2066,37 +2066,6 @@ def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part",
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOSolveOp : RMO_MOAnaloguePureLinalgOp<"solve"> {
-  let summary = "Linear solve operation";
-  let description = [{
-    Solves the system of linear equations described by
-
-      `AX = B`
-
-    Where input A is a batch of square matrices and has shape [I, J, ..., M, M]
-    which are assumed to be full rank/invertible and rhs B is a batch of
-    results of shape [I, J, ..., M, K]. The result, X, will be a tensor of
-    shape [I, J, ..., M, K]
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[3, 3, 3], f32>
-      %rhs: !mo.tensor<[3, 3, 2], f32>
-      %res = rmo.mo.linalg.solve(%arg, %rhs) : (
-        !mo.tensor<[3, 3, 3], f32>, !mo.tensor<[3, 3, 2], f32>, !mo.tensor<[]
-        ) -> !mo.tensor<[3, 3, 2], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_Tensor:$input,
-    MO_Tensor:$rhs,
-    MO_ParamDecls:$outputParamDecls);
-
-  let results = (outs MO_Tensor:$result);
-}
-
 def RMO_MOConcatOp : RMO_MOAnaloguePureTensorOp<"concat"> {
   let summary = "Concatenation operation";
   let description = [{
