@@ -69,7 +69,7 @@ void MOGGExpKernelBuilder::lowerToElementwiseKernel(
   for (auto [idx, v] : llvm::enumerate(inputs)) {
     // If this is a fusible input, use the fused value, otherwise we
     // captured the infusible inputs.
-    if (mapping.operandMapping.at(idx).isFusedTensorType())
+    if (mapping.operandMapping.lookup(idx).isFusedTensorType())
       outlinedArgs.push_back(elemwiseBody->getArgument(fusedArgIdx++));
     else
       outlinedArgs.push_back(v);
@@ -90,6 +90,9 @@ static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
       mlir::OperationName(MO::CustomOp::getOperationName(), op->getContext());
   SmallVector<NamedAttribute> forwardedParameters;
   for (auto param : op->getAttrDictionary()) {
+    if (isa<M::DeviceRefAttr>(param.getValue()))
+      continue;
+
     // Using `CustomOp` for the parameter name but could have use anything.
     if (param.getName() ==
         MO::CustomOp::getOutputParamDeclsAttrName(customOpOperationName)) {

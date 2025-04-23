@@ -20,7 +20,7 @@ namespace M::MOGG {
 
 /// Maps an index (operand or result) to a mojo kernel operand.
 using IndexToOperandAdaptorMapping =
-    mlir::DenseMap<uint64_t, KGEN::MOGGPreElab::MojoKernelOperandAdaptor>;
+    llvm::MapVector<uint64_t, KGEN::MOGGPreElab::MojoKernelOperandAdaptor>;
 
 struct OperandMapping {
   IndexToOperandAdaptorMapping operandMapping;
