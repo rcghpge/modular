@@ -164,7 +164,7 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   // TODO(MAXPLAT-212): use kernel adaptor, view kernels does not always take an
   // output shape.
   inputs.push_back(shapeInKGEN);
-  Operation *view = builder.create<MOGG::CallUpdateViewOp>(
+  Operation *view = builder.create<MOGG::CallViewOp>(
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // Relink input tensor ssa
   inputs[0] = view->getResult(0);

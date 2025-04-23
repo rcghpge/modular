@@ -254,7 +254,7 @@ def MOGG_CallOutlinedOp : MOGG_Op<"call.outlined", [
 }
 
 
-def MOGG_CallUpdateViewOp : MOGG_Op<"call.update_view", [
+def MOGG_CallViewOp : MOGG_Op<"call.view", [
     Pure,
     HasParent<"MOGG::ExpKernelOp">]> {
   let summary = "Call the corresponding `update_input_view` function for a particular kernel";
@@ -264,7 +264,7 @@ def MOGG_CallUpdateViewOp : MOGG_Op<"call.update_view", [
 
     Example:
     ```mlir
-    mogg.call.update_view["mo.add"]<[?, 2, 3]>(...)
+    mogg.call.view["mo.add"]<[?, 2, 3]>(...)
 
     // Lowered to
     kgen.call "Add::update_input_view"(...)

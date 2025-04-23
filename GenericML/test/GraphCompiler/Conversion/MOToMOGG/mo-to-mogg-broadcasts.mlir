@@ -25,5 +25,5 @@ mo.graph @bcast_basic<N, L, M, K>(%arg0: !mo.tensor<[N, M, L], f32>) -> (!mo.ten
 
 
 // CHECK-MOGG-LABEL: mo.graph @bcast_basic
-// CHECK-MOGG:         mogg.call.update_view["mo.static.broadcast_to"]
+// CHECK-MOGG:         mogg.call.view["mo.static.broadcast_to"]
 // CHECK-MOGG:         mogg.call.materialize
