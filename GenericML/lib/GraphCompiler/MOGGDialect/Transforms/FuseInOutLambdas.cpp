@@ -982,18 +982,21 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       auto loc = kernelToFuseInto.getLoc();
 
       builder.setInsertionPoint(originalOuts);
-      auto combinedPlaceholders = builder.create<MOGG::OutputPlaceholdersOp>(
-          loc, ArrayRef<Type>{userOuts->getResult(0).getType(),
-                              originalOuts->getResult(outputIdx).getType()});
+
+      auto newPlaceholders = builder.create<MOGG::OutputPlaceholdersOp>(
+          loc, ArrayRef<Type>{userOuts->getResult(0).getType()});
+
+      auto scratchPlaceholder = builder.create<MOGG::ScratchPlaceholdersOp>(
+          loc, originalOuts->getResult(outputIdx).getType());
 
       MOGG::OutputOp originOutputOp = kernelToFuseInto.getOutputOp();
       builder.setInsertionPoint(originOutputOp);
-      builder.create<MOGG::OutputOp>(loc, combinedPlaceholders->getResults());
+      builder.create<MOGG::OutputOp>(loc, newPlaceholders->getResults());
 
       newOuts.getResult(outputIdx).replaceAllUsesWith(
-          combinedPlaceholders.getResult(0));
+          newPlaceholders.getResult(0));
       originalOuts.getResult(outputIdx).replaceAllUsesWith(
-          combinedPlaceholders.getResult(1));
+          scratchPlaceholder.getResult(0));
 
       originOutputOp.erase();
       newOuts->erase();
@@ -1003,7 +1006,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       builder.setInsertionPoint(kernelToFuseInto);
       auto newDstKernel = builder.create<MOGG::KernelOp>(
           loc,
-          /*results=*/combinedPlaceholders.getResultTypes(),
+          /*results=*/newPlaceholders.getResultTypes(),
           /*operands=*/kernelToFuseInto.getOperands(),
           /*outputParamDecls=*/kernelToFuseInto.getOutputParamDeclsAttr(),
           /*inputFusionInterface=*/
