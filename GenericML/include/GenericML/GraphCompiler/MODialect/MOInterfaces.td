@@ -128,15 +128,6 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
       "DeviceRefAttr", "getOperandDeviceConstraint", (ins "size_t":$index), [{}],
       [{ return nullptr; }]
     >,
-
-    InterfaceMethod<
-      [{
-        Returns the `#M.device_ref` on which the result with the given index
-        must be stored. Returns null if there is no such constraint.
-      }],
-      "DeviceRefAttr", "getResultDevice", (ins "size_t":$index), [{}],
-      [{ return nullptr; }]
-    >,
   ];
 
   let verify = [{ return Impl::verifyHasDevice(cast<MOHasDeviceInterface>($_op)); }];

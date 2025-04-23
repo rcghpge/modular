@@ -631,13 +631,12 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
     }
   }
 
-  // Ensure every result has the same device as the op, unless otherwise
-  // constrained.
+  // Ensure every result has the same device as the op, unless this is an op
+  // that doesn't require device matching
   for (size_t i = 0; i < op->getNumResults(); ++i) {
-    // Get device constraint for the result.
-    DeviceRefAttr constrainedTo = op.getResultDevice(i);
-    // If no constraint is set, assume same as the op's device.
-    if (!constrainedTo && assumeNullConstraintMeansSameDevice(op))
+    // Only constrain result to op's device if this op type requires it
+    DeviceRefAttr constrainedTo = nullptr;
+    if (assumeNullConstraintMeansSameDevice(op))
       constrainedTo = op.getDeviceRef();
     // Check the result device constraint.
     if (failed(check("Result " + Twine(i), op->getResult(i).getType(),
