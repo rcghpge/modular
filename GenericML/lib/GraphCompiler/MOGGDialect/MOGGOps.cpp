@@ -705,11 +705,14 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       scratchSpecs.push_back(*specResult);
     }
 
-    FailureOr<SmallVector<MGP::MOOutputStorage>> scratchOutputsStorageOr =
-        opLoweringState.createOutputStorage(chain, scratchSpecs);
-    if (failed(scratchOutputsStorageOr))
-      return failure();
-    scratchOutputsStorage = *std::move(scratchOutputsStorageOr);
+    scratchOutputsStorage.reserve(scratchSpecs.size());
+    for (auto [spec, type] :
+         llvm::zip(scratchSpecs, scratchOutputs.getResultTypes())) {
+      auto bufOr = opLoweringState.createBuffer(chain, spec, type);
+      if (failed(bufOr))
+        return failure();
+      scratchOutputsStorage.emplace_back(*bufOr);
+    }
   }
 
   DenseSet<int> inplaceAllocIndicesSet;
