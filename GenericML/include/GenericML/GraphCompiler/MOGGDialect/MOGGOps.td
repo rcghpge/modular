@@ -417,6 +417,9 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
   let extraClassDeclaration = [{
     BlockArgument getIndicesArg();
     ArrayRef<BlockArgument> getValueArgs();
+
+    // Whether the bound lambda is identity or not.
+    bool isIdentityLambda();
   }];
 
   let builders = [

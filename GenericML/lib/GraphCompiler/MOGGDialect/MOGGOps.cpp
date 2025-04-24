@@ -312,6 +312,17 @@ ArrayRef<BlockArgument> BindLambdaOp::getValueArgs() {
   return getLambda().getArguments().take_front(getNumOperands());
 }
 
+bool BindLambdaOp::isIdentityLambda() {
+  auto yields = cast<MOGG::OutputOp>(getBody()->getTerminator());
+
+  // If all the yields value simply forwards block argument, this is an
+  // identity (unfused) lambda.
+  return llvm::all_of(yields->getOperands(), [this](Value operand) {
+    auto ba = dyn_cast<BlockArgument>(operand);
+    return ba && ba.getOwner() == getBody();
+  });
+}
+
 LogicalResult BindLambdaOp::verify() {
   if (getFusibleTensors().empty())
     return success();
