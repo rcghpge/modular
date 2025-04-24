@@ -431,6 +431,20 @@ def RMO_MOTanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"tanh"> {
   }];
 }
 
+def RMO_MOATanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"atanh"> {
+  let summary = "AHyperbolic tangent operation";
+  let description = [{
+    Computes `atanh(x)`, where `x` is input tensor.
+
+    Example:
+
+    ```mlir
+      %arg: !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.tanh(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+}
+
 def RMO_MOTruncOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"trunc"> {
   let summary = "Truncation operation";
   let description = [{

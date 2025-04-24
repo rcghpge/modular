@@ -1110,6 +1110,21 @@ def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos"> {
   let arguments = (ins MO_FloatTensor:$input);
 }
 
+def MO_AtanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"atanh"> {
+  let summary = "Atanh operation";
+  let description = [{
+    Returns `atanh(x)`, where `x` is input tensor.
+
+    Example:
+    ```mlir
+      %arg : !mo.tensor<[2, 3], f32>
+      %res = mo.atanh(%arg) : !mo.tensor<[2, 3], f32>
+    ```
+  }];
+  let arguments = (ins MO_FloatTensor:$input);
+}
+
+
 def MO_CumSumOp : MO_TensorOp<"cumsum", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
