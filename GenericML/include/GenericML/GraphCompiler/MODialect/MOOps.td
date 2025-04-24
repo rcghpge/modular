@@ -2246,6 +2246,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 }
 
 def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
+  MO_ViewLike,
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
@@ -2362,6 +2363,7 @@ class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
 def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_ViewLike,
 ]> {
   let summary = "Broadcast operation";
   let description = [{
@@ -2768,7 +2770,7 @@ class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
 }
 
 def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to", [
-    DeclareOpInterfaceMethods<MO_Staticization>
+    DeclareOpInterfaceMethods<MO_Staticization>, MO_ViewLike
   ]> {
   let summary = "Broadcasting operation";
   let description = [{

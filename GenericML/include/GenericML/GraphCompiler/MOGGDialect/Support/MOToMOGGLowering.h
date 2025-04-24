@@ -62,9 +62,9 @@ private:
                                       const OperandMapping &mapping,
                                       const KernelAdaptor &adaptor);
 
-  Operation *lowerToViewKernel(ExpKernelOp kernelOp,
-                               const OperandMapping &mapping,
-                               const KernelAdaptor &adaptor);
+  ErrorOr<Operation *> lowerToViewKernel(ExpKernelOp kernelOp,
+                                         const OperandMapping &mapping,
+                                         const KernelAdaptor &adaptor);
 
   Operation *lowerToNormalKernel(ExpKernelOp kernelOp,
                                  const OperandMapping &mapping,

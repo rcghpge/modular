@@ -113,10 +113,11 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
   // Done to match expected behavior of non-extensibility api
   forceSync = forceSync || forceTrivial;
   if (MOGG::useExperimentalMOGGPath()) {
-    MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
-                                       mojoLibraryAnalysis);
     if (isa<MO::InvokeShapeFuncOp, MO::LayoutTransformOp>(op))
       return std::nullopt;
+
+    MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
+                                       mojoLibraryAnalysis);
 
     return builder.lowerToKernel();
   } else {
