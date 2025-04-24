@@ -115,8 +115,8 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
   if (MOGG::useExperimentalMOGGPath()) {
     MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
                                        mojoLibraryAnalysis);
-    if (isa<MO::InvokeShapeFuncOp>(op))
-      return Error("shape function not implemented");
+    if (isa<MO::InvokeShapeFuncOp, MO::LayoutTransformOp>(op))
+      return std::nullopt;
 
     return builder.lowerToKernel();
   } else {

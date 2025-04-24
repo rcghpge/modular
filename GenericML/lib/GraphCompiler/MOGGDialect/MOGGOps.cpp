@@ -314,7 +314,7 @@ ArrayRef<BlockArgument> BindLambdaOp::getValueArgs() {
 
 LogicalResult BindLambdaOp::verify() {
   if (getFusibleTensors().empty())
-    return emitError("Expecting at least one fusible tensor to bind");
+    return success();
 
   if (getLambda().getNumArguments() != getFusibleTensors().size() + 1)
     return emitError("Expecting #operands + 1 arguments for lambda");
