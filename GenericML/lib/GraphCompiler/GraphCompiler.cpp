@@ -247,6 +247,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
 
   pm.addPass(MO::createHoistParameterExpressions());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync}));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());

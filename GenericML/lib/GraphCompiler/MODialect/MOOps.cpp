@@ -2702,6 +2702,22 @@ LogicalResult BatchMatmulOp::verify() {
   return success();
 }
 
+LogicalResult MatmulOp::canonicalize(MatmulOp op, PatternRewriter &rewriter) {
+  bool transposeB = false;
+  bool packedB = false;
+
+  LayoutAttr weightsLayout = op.getInputB().getType().getLayoutAttr();
+  if (weightsLayout) {
+    transposeB = weightsLayout.getFormat() == "NK";
+    packedB = weightsLayout.getFormat() == "KNkni";
+  }
+
+  op.setTransposeB(transposeB);
+  op.setPackedB(packedB);
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_Pad.*Op support
 //===----------------------------------------------------------------------===//

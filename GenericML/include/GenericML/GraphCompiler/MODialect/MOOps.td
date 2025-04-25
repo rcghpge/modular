@@ -4162,12 +4162,19 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
     ```
   }];
 
-  let arguments = (ins MO_Rank2Tensor:$input_a, MO_Rank2Tensor:$input_b);
+  let arguments = (
+    ins MO_Rank2Tensor:$input_a,
+    MO_Rank2Tensor:$input_b,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
+    DefaultValuedAttr<BoolAttr, "false">:$packed_b
+  );
   let results = (outs MO_Rank2Tensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
