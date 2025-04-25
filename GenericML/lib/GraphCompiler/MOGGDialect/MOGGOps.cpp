@@ -2063,7 +2063,9 @@ LogicalResult ToKGENOp::verify() {
                          << KGEN::MOGGPreElab::kOutputTensor << ", "
                          << KGEN::MOGGPreElab::kFusedInputTensor << ", "
                          << KGEN::MOGGPreElab::kFusedOutputTensor << ", "
-                         << KGEN::MOGGPreElab::kMutableInputTensor << " }";
+                         << KGEN::MOGGPreElab::kMutableInputTensor << ", "
+                         << KGEN::MOGGPreElab::kFusedComputeOutputTensor
+                         << " }";
     }
   }
 

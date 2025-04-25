@@ -23,6 +23,8 @@ StringRef toString(IOSpec spec) {
     return kFusedInputTensor;
   case IOSpec::FusedOutputTensor:
     return kFusedOutputTensor;
+  case IOSpec::FusedComputeOutputTensor:
+    return kFusedComputeOutputTensor;
   }
 }
 
@@ -37,6 +39,8 @@ std::optional<IOSpec> toIOSpec(StringRef str) {
     return IOSpec::FusedInputTensor;
   if (str == kFusedOutputTensor)
     return IOSpec::FusedOutputTensor;
+  if (str == kFusedComputeOutputTensor)
+    return IOSpec::FusedComputeOutputTensor;
   return std::nullopt;
 }
 
@@ -62,15 +66,23 @@ std::pair<TypedAttr, TypedAttr> getParams(KGEN::MOGGPreElab::IOSpec ioSpec,
   case KGEN::MOGGPreElab::IOSpec::FusedOutputTensor:
     return {builder.getBoolAttr(KGEN::MOGGPreElab::kIOSpecMutable),
             builder.getIndexAttr(KGEN::MOGGPreElab::kIOSpecIOFusedOutput)};
+
+  case KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor:
+    return {
+        builder.getBoolAttr(KGEN::MOGGPreElab::kIOSpecMutable),
+        builder.getIndexAttr(KGEN::MOGGPreElab::kIOSpecIOFusedComputeOutput)};
   }
 }
 
 bool isOutputIOSpec(IOSpec spec) {
-  return spec == IOSpec::OutputTensor || spec == IOSpec::FusedOutputTensor;
+  return spec == IOSpec::OutputTensor || spec == IOSpec::FusedOutputTensor ||
+         spec == IOSpec::FusedComputeOutputTensor;
 }
 
 bool isFusableIOSpec(IOSpec spec) {
-  return spec == IOSpec::FusedInputTensor || spec == IOSpec::FusedOutputTensor;
+  return spec == IOSpec::FusedInputTensor ||
+         spec == IOSpec::FusedOutputTensor ||
+         spec == IOSpec::FusedComputeOutputTensor;
 }
 
 bool isMutableIOSpec(IOSpec spec) { return spec == IOSpec::MutableInputTensor; }
