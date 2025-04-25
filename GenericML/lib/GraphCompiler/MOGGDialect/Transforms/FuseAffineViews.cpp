@@ -403,11 +403,20 @@ struct FuseAffineViewsPass
     KGEN::ParamDeclAttr newOutputTensorSpec =
         maybeNewOutputTensorSpec.takeValue();
 
+    // Get the IOSpec of the output tensor.
+    StringAttr tensorIOTypeAttr = nullptr;
+    for (Operation *user : oldOutputPlaceholder->getUsers()) {
+      if (auto toKgenOp = dyn_cast<MOGG::ToKGENOp>(user))
+        tensorIOTypeAttr = toKgenOp.getTensorIOTypeAttr();
+    }
+    ASSERT_STREAM(tensorIOTypeAttr != nullptr,
+                  << "Failed to get the IOSpec of the output tensor");
+
     // Create proper lowering to kgen with annotation
     auto newResultToKGEN = builder.create<MOGG::ToKGENOp>(
         newOutputPlaceholder->getLoc(), newKGENTensorType,
         newOutputPlaceholder->getResult(0), nullptr, nullptr, nullptr,
-        builder.getStringAttr("OutputTensor"));
+        tensorIOTypeAttr);
     newResultToKGEN.setStaticTensorSpecNameAttr(newOutputTensorSpec.getName());
 
     // Replace the kernel output with the new tensor output
