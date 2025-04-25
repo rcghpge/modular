@@ -12,11 +12,12 @@ namespace M::KGEN::MOGGPreElab {
 
 MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
     std::optional<uint64_t> positionInFunction, StringRef typeName,
-    ArrayAttr argumentSourceNames, ArrayAttr argsIoSpecs, uint64_t offset) {
+    ArrayAttr argumentSourceNames, ArrayAttr argsIoSpecs, uint64_t offset,
+    bool isByRefResult) {
   if (positionInFunction.has_value()) {
     sourceDescriptor = MojoKernelOperandSourceDescriptor{
         cast<StringAttr>(argumentSourceNames[*positionInFunction]).strref(),
-        *positionInFunction};
+        *positionInFunction, isByRefResult};
   }
 
   auto getIOSpec = [&]() -> KGEN::MOGGPreElab::IOSpec {

@@ -37,6 +37,22 @@ ErrorOr<OperandMapping> mapMOOpToKernelImplementation(
     const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
         &adaptor);
 
+// The value is a vector because of variadics capturing multiple MO values.
+using KernelIndexToOpIndex = llvm::MapVector<uint64_t, SmallVector<uint64_t>>;
+
+struct InverseOperandMapping {
+  KernelIndexToOpIndex inputArgumentsMapping;
+  KernelIndexToOpIndex outputArgumentsMapping;
+  std::optional<uint64_t> resultMapping;
+};
+
+InverseOperandMapping invertMapping(const OperandMapping &mapping);
+
+ErrorOr<InverseOperandMapping> mapKernelImplementationToMOOp(
+    Operation *op,
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
+        &adaptor);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGSUPPORT_OPERANDMAPPER_H

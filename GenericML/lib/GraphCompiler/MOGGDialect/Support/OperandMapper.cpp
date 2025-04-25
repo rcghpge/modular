@@ -241,4 +241,38 @@ ErrorOr<OperandMapping> mapMOOpToKernelImplementation(
                         matchedOutputsOrError.takeValue()};
 }
 
+InverseOperandMapping invertMapping(const OperandMapping &mapping) {
+  InverseOperandMapping ret;
+  for (auto &&[idx, operand] : mapping.operandMapping) {
+    ret.inputArgumentsMapping[operand.sourceDescriptor->position].push_back(
+        idx);
+  }
+
+  for (auto &&[idx, operand] : mapping.resultMapping) {
+    if (operand.sourceDescriptor.has_value()) {
+      if (operand.sourceDescriptor->isByRefResult) {
+        ret.resultMapping = idx;
+      } else {
+        ret.outputArgumentsMapping[operand.sourceDescriptor->position]
+            .push_back(idx);
+      }
+    } else {
+      ret.resultMapping = idx;
+    }
+  }
+
+  return ret;
+}
+
+ErrorOr<InverseOperandMapping> mapKernelImplementationToMOOp(
+    Operation *op,
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
+        &adaptor) {
+  auto directMapping = mapMOOpToKernelImplementation(op, adaptor);
+  if (directMapping.isError())
+    return directMapping.takeError();
+
+  return invertMapping(*directMapping);
+}
+
 } // namespace M::MOGG
