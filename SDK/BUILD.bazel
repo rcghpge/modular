@@ -75,10 +75,12 @@ tblgen_nanobind(
 mlir_nanobind(
     name = "BuiltinDialectNanobindInc",
     srcs = [
+        "@llvm-project//mlir:include/mlir/IR/BuiltinAttributeInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/BuiltinAttributes.td",
         "@llvm-project//mlir:include/mlir/IR/BuiltinDialect.td",
         "@llvm-project//mlir:include/mlir/IR/BuiltinLocationAttributes.td",
         "@llvm-project//mlir:include/mlir/IR/BuiltinOps.td",
+        "@llvm-project//mlir:include/mlir/IR/BuiltinTypeInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/BuiltinTypes.td",
     ],
     exclude = [
