@@ -250,26 +250,31 @@ fixElemwiseKernelSimdWidth(TypeManager &typeManager, MOGG::KernelOp kernelOp,
   if (!forEachCall)
     return success();
 
-  // It has a parameter which is the simd_width of the output type.
-  // Replace it with the minimum simd_width of all kernel dtypes.
-  constexpr unsigned simdWidthParamIndex = 4;
+  // Find the parameter that contains a call to get_kernel_simd_width
+  int simdWidthParamIndex = -1;
+  KGEN::ParamOperatorAttr applyExpr = nullptr;
+  auto paramValues = forEachCall.getParamValues();
 
-  TypedAttr oldSimdWithAttr = forEachCall.getParamValues()[simdWidthParamIndex];
-  TypedAttr newSimdWithAttr = nullptr;
+  for (unsigned i = 0; i < paramValues.size(); ++i) {
+    if (auto paramOpAttr = dyn_cast<KGEN::ParamOperatorAttr>(paramValues[i])) {
+      if (isCallToGetKernelSimdWidth(paramOpAttr)) {
+        simdWidthParamIndex = i;
+        applyExpr = paramOpAttr;
+        break;
+      }
+    }
+  }
 
-  // By default the simdwidth is of the form apply(get_kernel_simd_width[dtype,
-  // ...]). Just replace the old dtype with the dtypes in allDtypes. And
-  // aggregate all with a min operation.
-  auto applyExpr = dyn_cast<KGEN::ParamOperatorAttr>(oldSimdWithAttr);
   // If we can't find the call, just emit a warning and move on without any
   // error. The user might have called foreach with its own special simd_width
   // for some reason.
-  if (!isCallToGetKernelSimdWidth(applyExpr)) {
-    kernelOp.emitWarning(
-        "Failed to find the call to get_kernel_simd_width for the simd_width "
-        "parameter");
+  if (!applyExpr) {
+    kernelOp.emitWarning("Failed to find the call to get_kernel_simd_width "
+                         "among foreach parameters");
     return success();
   }
+
+  TypedAttr newSimdWithAttr = nullptr;
 
   auto applyCallee = cast<KGEN::SymbolConstantAttr>(applyExpr.getOperand(0));
   SmallVector<TypedAttr> newCalleeParams(applyCallee.getParamValues());
