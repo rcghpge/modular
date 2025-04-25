@@ -464,13 +464,16 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
 // MOGG KernelTerminatorOp
 //===----------------------------------------------------------------------===//
 
-ValueRange CallForeachOp::getKernelOutputs() {
+ValueRange CallForeachOp::getDpsOutputs() { return getOperands().take_back(); }
+TypeAttr CallForeachOp::getRegOutput() { return nullptr; }
+
+ValueRange CallMaterializeOp::getDpsOutputs() {
   return getOperands().take_back();
 }
-ValueRange CallMaterializeOp::getKernelOutputs() {
-  return getOperands().take_back();
-}
-ValueRange CallExecuteOp::getKernelOutputs() { return getOutputs(); }
+TypeAttr CallMaterializeOp::getRegOutput() { return nullptr; }
+
+ValueRange CallExecuteOp::getDpsOutputs() { return getOutputs(); }
+TypeAttr CallExecuteOp::getRegOutput() { return getRegRetTypeAttr(); }
 
 //===----------------------------------------------------------------------===//
 // MOGG ExpKernelOp
@@ -514,8 +517,19 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
   if (!term)
     return emitError("Expect to terminate with a KernelTerminator");
 
-  term.getKernelOutputs().getTypes();
-  if (!llvm::equal(term.getKernelOutputs().getTypes(), getResultTypes()))
+  ValueRange dpsResult = getResults();
+  // Chain does not occur on kernel (but propagated by graph compiler).
+  if (isa<MO::ChainType>(dpsResult.back().getType()))
+    dpsResult = dpsResult.drop_back();
+
+  if (auto regOutput = term.getRegOutput()) {
+    if (regOutput.getValue() != dpsResult.back().getType())
+      return emitError("Expect to return the same result types as terminator");
+
+    dpsResult = dpsResult.drop_back();
+  }
+
+  if (!llvm::equal(term.getDpsOutputs().getTypes(), dpsResult.getTypes()))
     return emitError("Expect to return the same result types as terminator");
 
   return success();

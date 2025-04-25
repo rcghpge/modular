@@ -44,7 +44,7 @@ class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []>
     : MOGG_Op<mnemonic, traits # [
               Terminator,
               HasParent<"MOGG::ExpKernelOp">,
-              DeclareOpInterfaceMethods<MOGG_KernelTerminator, ["getKernelOutputs"]>]>;
+              DeclareOpInterfaceMethods<MOGG_KernelTerminator, ["getDpsOutputs", "getRegOutputs"]>]>;
 
 def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!pop.simd<1, si64>">,
     BuildableType<"KGEN::POP::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
@@ -196,11 +196,14 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
   }];
 
   let arguments = (ins StrAttr:$kernelName,
+                       OptionalAttr<TypeAttr>:$regRetType,
                        Variadic<AnyType>:$inputs,
                        Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
-    `[` $kernelName `]` `inputs` `(` $inputs `)` `outputs` `(` $outputs `)` `:` functional-type($inputs, $outputs) attr-dict
+    `[` $kernelName `]` `inputs` `(` $inputs `:` qualified(type($inputs)) `)`
+                      (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
+                      (`->` $regRetType^)? attr-dict
   }];
 }
 

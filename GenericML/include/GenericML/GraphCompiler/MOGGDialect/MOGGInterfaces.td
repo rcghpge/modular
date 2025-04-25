@@ -18,8 +18,12 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
 
   let methods = [
     InterfaceMethod<
-      "Returns the output values of the kernel",
-      "mlir::ValueRange", "getKernelOutputs", (ins)
+      "Returns the dps output values of the kernel",
+      "mlir::ValueRange", "getDpsOutputs", (ins)
+    >,
+    InterfaceMethod<
+      "Returns the reg output values of the kernel",
+      "mlir::TypeAttr", "getRegOutput", (ins)
     >,
   ];
 }

@@ -47,7 +47,7 @@ mo.graph @stress_test(%arg2: !mo.tensor<[3, 4], f64>, %arg3: !mo.tensor<[4, 3], 
     %3 = mogg.bind (%2) output_lambda (%arg9: f64, %arg10: !pop.array<2, index>) {
       mogg.output %arg9, %arg10 : f64, !pop.array<2, index>
     }: !mo.tensor<[3, 3], f64>
-    mogg.call.execute["mo.matmul"] inputs(%arg2, %arg3) outputs(%3) : (!mo.tensor<[3, 4], f64>, !mo.tensor<[4, 3], f64>) -> !mo.tensor<[3, 3], f64>
+    mogg.call.execute["mo.matmul"] inputs(%arg2, %arg3 : !mo.tensor<[3, 4], f64>, !mo.tensor<[4, 3], f64>) outputs(%3: !mo.tensor<[3, 3], f64>)
   } {device = #M.device_ref<"cpu", 0>, isAsync = true, summary = "mo.matmul:11"}
 
   // mogg-based element-wise kernel representation

@@ -120,7 +120,10 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                                           const KernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   auto outputPlaceholder = kernelOp.getOutputPlaceholder();
-  SmallVector<Value> outputs(outputPlaceholder->getResults());
+  SmallVector<Value> outputs;
+  if (outputPlaceholder)
+    outputs = outputPlaceholder->getResults();
+
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
 
@@ -145,9 +148,18 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
     outputs[idx] = bound;
   }
 
-  return builder
-      .create<CallExecuteOp>(loc, adaptor.registeredOpName, inputs, outputs)
-      .getOperation();
+  SmallVector<Type, 1> retVal;
+  for (auto [idx, val] : mapping.resultMapping)
+    if (!val.isDpsOutput())
+      retVal.push_back(kernelOp->getResult(idx).getType());
+
+  // Should we relax the constraint?
+  ASSERT_STREAM(retVal.size() <= 1,
+                "[MO-TO-MOGG] Should have at most one return by value result");
+  TypeAttr regRetTypeAttr =
+      retVal.empty() ? nullptr : TypeAttr::get(retVal.front());
+  return builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,
+                                       regRetTypeAttr, inputs, outputs);
 }
 
 static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
@@ -232,7 +244,17 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
                                   /*isAsync=*/builder.getBoolAttr(isAsync),
                                   /*device=*/getDevice());
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
-  builder.create<OutputPlaceholdersOp>(loc, kernelOp->getResultTypes());
+
+  SmallVector<Type> dpsReturns;
+  const OperandMapping &operandMapping = operandMappingOr.get();
+  for (auto [idx, val] : operandMapping.resultMapping)
+    if (val.isDpsOutput())
+      dpsReturns.push_back(kernelOp->getResult(idx).getType());
+
+  // Only need output place holder for dps returned value (they need to be
+  // allocated by caller).
+  if (!dpsReturns.empty())
+    builder.create<OutputPlaceholdersOp>(loc, dpsReturns);
 
   auto forwardedParametersOr = forwardParameters(moOp, builder);
   if (forwardedParametersOr.isError())
@@ -241,13 +263,13 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   ErrorOr<Operation *> kernelCallingOperation = nullptr;
   if (adaptor.executeFunction->isElementwise()) {
     kernelCallingOperation =
-        lowerToElementwiseKernel(kernelOp, *operandMappingOr, adaptor);
+        lowerToElementwiseKernel(kernelOp, operandMapping, adaptor);
   } else if (adaptor.executeFunction->isView()) {
     kernelCallingOperation =
-        lowerToViewKernel(kernelOp, *operandMappingOr, adaptor);
+        lowerToViewKernel(kernelOp, operandMapping, adaptor);
   } else {
     kernelCallingOperation =
-        lowerToNormalKernel(kernelOp, *operandMappingOr, adaptor);
+        lowerToNormalKernel(kernelOp, operandMapping, adaptor);
   }
 
   if (kernelCallingOperation.isError())
