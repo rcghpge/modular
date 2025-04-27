@@ -13,7 +13,6 @@ mojo_library(
     deps = [
         "//Kernels/mojo/_mlir",
         "//Kernels/mojo/algorithm",
-        "//Kernels/mojo/benchmark",
         "//SDK/lib/API/mojo/max/compiler",
         "//SDK/lib/API/mojo/max/tensor",
         "//open-source/max/mojo/stdlib/stdlib",
