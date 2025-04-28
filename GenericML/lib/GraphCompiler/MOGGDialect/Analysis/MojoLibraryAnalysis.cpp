@@ -373,9 +373,8 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
     // Returns an error if two kernels have the same priority.
     int64_t oldPriority = it->getValue().priority;
     if (oldPriority == priority) {
-      auto diag = mlir::emitError(generator.getLoc(),
-                                  "override of operation has multiple "
-                                  "candidates with the same priority.");
+      auto diag = generator->emitError() << "override of operation named "
+                                         << name << " has multiple candidates";
       diag.attachNote(it->getValue().generator.getLoc())
           << "override with priority " << priority;
       return Error("Operation overriding error");
