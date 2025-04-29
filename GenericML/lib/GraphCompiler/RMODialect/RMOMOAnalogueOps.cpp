@@ -28,6 +28,15 @@ using MO::TensorValue;
 // RMODialect op support
 //===----------------------------------------------------------------------===//
 
+/// Ops in RMO-MO analogue and 3p must have operands and results be on the same
+/// device.
+template <typename AdaptorTy>
+DeviceRefAttr getDeviceFromOperands(AdaptorTy &operands) {
+  ErrorOr<M::DeviceRefAttr> deviceOr = inferDevice(operands.getOperands());
+  ASSERT_STREAM(!deviceOr.isError(), << deviceOr.getError());
+  return *deviceOr;
+}
+
 /// Create a new attribute representing a static integer dimension.
 static TypedAttr createStaticDimensionType(MO::GraphOp op, int64_t dimSize) {
   return ShapeAttr::getDim(op.getContext(), dimSize);
@@ -234,7 +243,7 @@ void MOBroadcastShapeOp::inferMOTypesImpl(
   DType outDType =
       getDType(rmoResults, 0,
                cast<TensorType>(operands.getInputX().getType()).getDtype());
-  DeviceRefAttr dev = getDevice(operands.getInputX());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Everything is rank1, use rebinds+checks, shape inference do the right thing
   SmallVector<KGEN::ParamDeclAttr> dimXParamDecls, dimYParamDecls;
@@ -260,7 +269,7 @@ void MOReshapeOp::inferMOTypesImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // If there already is an output value use the rank information below
   TensorValue outputValue;
@@ -323,7 +332,7 @@ void MOBroadcastToOp::inferMOTypesImpl(
 
   // First input is not important, always the same
   DType outDType = cast<TensorType>(operands.getInput().getType()).getDtype();
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
   moOperandTypes.push_back(operands.getInput().getType());
   moInputParamDecls.push_back({});
 
@@ -747,10 +756,10 @@ void MORangeOp::inferMOTypesImpl(
   TensorValue start = cast<TensorValue>(operands.getStart());
   TensorValue step = cast<TensorValue>(operands.getStep());
   TensorValue limit = cast<TensorValue>(operands.getLimit());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
-  auto scalarTensorType = TensorType::get(SmallVector<TypedAttr>{},
-                                          start.getType().getElementType(),
-                                          MO::getHostDevice(context));
+  auto scalarTensorType = TensorType::get(
+      SmallVector<TypedAttr>{}, start.getType().getElementType(), dev);
 
   moOperandTypes.push_back(scalarTensorType);
   moOperandTypes.push_back(scalarTensorType);
@@ -760,11 +769,6 @@ void MORangeOp::inferMOTypesImpl(
   moInputParamDecls.push_back({});
   moInputParamDecls.push_back({});
 
-  DeviceRefAttr outDevice;
-  if (rmoResults.has_value())
-    outDevice = getDevice((*rmoResults)[0]);
-  else
-    outDevice = MO::getHostDevice(context);
   auto result = [&]() -> std::optional<TensorType> {
     auto startInt = tryGetConstantInt(start);
     auto stepInt = tryGetConstantInt(step);
@@ -780,7 +784,7 @@ void MORangeOp::inferMOTypesImpl(
 
     SmallVector<int64_t> arr({maybeNumElements.get()});
 
-    return TensorType::get(arr, start.getType().getElementType(), outDevice);
+    return TensorType::get(arr, start.getType().getElementType(), dev);
   }();
 
   if (result) {
@@ -790,7 +794,7 @@ void MORangeOp::inferMOTypesImpl(
     SmallVector<KGEN::ParamDeclAttr> newDecls;
 
     TensorType outType = getRankedParamTensorType(1, start.getType().getDtype(),
-                                                  graphOp, newDecls, outDevice);
+                                                  graphOp, newDecls, dev);
 
     moOutputParamDecls.push_back(std::move(newDecls));
     moResultTypes.push_back(outType);
@@ -892,7 +896,7 @@ void MOGatherOp::inferMOTypesImpl(
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue indices = cast<TensorValue>(operands.getIndices());
   TensorValue axis = cast<TensorValue>(operands.getAxis());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // `input` type stays the same.
   TensorType inputTy = input.getType();
@@ -929,7 +933,7 @@ void MOGatherNdOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue indices = cast<TensorValue>(operands.getIndices());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // `input` type stays the same.
   TensorType inputTy = input.getType();
@@ -971,7 +975,7 @@ void MOMatmulOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue inputA = cast<TensorValue>(operands.getInputA());
   TensorValue inputB = cast<TensorValue>(operands.getInputB());
-  DeviceRefAttr dev = getDevice(operands.getInputA());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // mo::MatmulOp cannot have any outputParamDecls (asserts).
   // Define the operand params only and construct the output shape.
@@ -1003,7 +1007,7 @@ void MOBatchMatmulOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue inputA = cast<TensorValue>(operands.getInputA());
   TensorValue inputB = cast<TensorValue>(operands.getInputB());
-  DeviceRefAttr dev = getDevice(operands.getInputA());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Input types are unchanged.
   moOperandTypes.push_back(inputA.getType());
@@ -1053,7 +1057,7 @@ void MOTileOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue repeats = cast<TensorValue>(operands.getRepeats());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Try to infer the rank.
   std::optional<int64_t> rank;
@@ -1155,7 +1159,7 @@ void MOTransposeOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue perm = cast<TensorValue>(operands.getPerm());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Try to infer the rank.
   std::optional<int64_t> rank;
@@ -1288,7 +1292,7 @@ void MOConcatOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue axis = cast<TensorValue>(operands.getAxis());
-  DeviceRefAttr dev = getDevice(operands.getInputs()[0]);
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Try to infer the rank.
   std::optional<int64_t> rank;
@@ -1344,7 +1348,7 @@ void MOSplitOp::inferMOTypesImpl(
   TensorValue axis = cast<TensorValue>(operands.getAxis());
   TensorType inputTy = input.getType();
   TensorType splitSizesTy = splitSizes.getType();
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Try to infer the number of outputs for split.
   int64_t outputsCount;
@@ -1486,7 +1490,7 @@ void MOSliceOp::inferMOTypesImpl(
   TensorValue start = cast<TensorValue>(operands.getStart());
   TensorValue stop = cast<TensorValue>(operands.getStop());
   TensorValue step = cast<TensorValue>(operands.getStep());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Infer the input / output rank.
   TensorType inputTy = input.getType();
@@ -1548,7 +1552,7 @@ void MORoiAlignOp::inferMOTypesImpl(
   TensorValue outputWidth = cast<TensorValue>(operands.getOutputWidth());
   TensorValue spatialScale = cast<TensorValue>(operands.getSpatialScale());
   TensorValue samplingRatio = cast<TensorValue>(operands.getSamplingRatio());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // `input` must be 4D.
   SmallVector<KGEN::ParamDeclAttr> inputParamDecls;
@@ -1595,11 +1599,7 @@ void MORandomNormalOp::inferMOTypesImpl(
   TensorValue mean = cast<TensorValue>(operands.getMean());
   TensorValue variance = cast<TensorValue>(operands.getVariance());
   TensorValue seed = cast<TensorValue>(operands.getSeed());
-  DeviceRefAttr dev;
-  if (rmoResults.has_value())
-    dev = getDevice((*rmoResults)[0]);
-  else
-    dev = getDevice(operands.getMean());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Try to infer the output rank
   TensorType shapeTy = shape.getType();
@@ -1649,7 +1649,7 @@ void MORandomUniformOp::inferMOTypesImpl(
   TensorValue lowerBound = cast<TensorValue>(operands.getLowerBound());
   TensorValue upperBound = cast<TensorValue>(operands.getUpperBound());
   TensorValue seed = cast<TensorValue>(operands.getSeed());
-  DeviceRefAttr dev = getDevice(operands.getLowerBound());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Try to infer the output rank
   TensorType shapeTy = shape.getType();
@@ -1751,7 +1751,7 @@ void MONonMaximumSuppressionOp::inferMOTypesImpl(
       cast<TensorValue>(operands.getMaxOutputBoxesPerClass());
   TensorValue iouThreshold = cast<TensorValue>(operands.getIouThreshold());
   TensorValue scoreThreshold = cast<TensorValue>(operands.getScoreThreshold());
-  DeviceRefAttr dev = getDevice(operands.getBoxes());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // `boxes` and `scores` must be rank 3.
   SmallVector<KGEN::ParamDeclAttr> boxesParamDecls;
@@ -1791,7 +1791,7 @@ void MOArgNonzeroOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // Try to infer the input rank.
   // input[rank] => output [non-zero-count, rank].
@@ -1832,7 +1832,7 @@ void MOCumSumOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue axis = cast<TensorValue>(operands.getAxis());
-  DeviceRefAttr dev = getDevice(operands.getInput());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // `input` / `output` types are identical.
   TensorType inOutTy = input.getType();
@@ -1910,7 +1910,7 @@ void MOMutableStoreSliceOp::inferMOTypesImpl(
   TensorValue start = cast<TensorValue>(operands.getStart());
   TensorValue stop = cast<TensorValue>(operands.getStop());
   TensorValue step = cast<TensorValue>(operands.getStep());
-  DeviceRefAttr dev = getDevice(operands.getInBuffer());
+  DeviceRefAttr dev = getDeviceFromOperands(operands);
 
   // As opposed to the standard mo.slice inferMOTypes which does a bunch of
   // shenanigans around trying to infer a rank to use for all inputs the we can

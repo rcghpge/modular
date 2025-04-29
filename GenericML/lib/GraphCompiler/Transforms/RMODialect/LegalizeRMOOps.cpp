@@ -1108,12 +1108,12 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
       binding.toOp(loc, rewriter);
 
     // Convert attributes to tensor constants expected by `mo.top_k`.
-    auto k =
-        rewriter.create<MO::ConstantOp>(loc, op.getK(), MO::getHostDevice(ctx));
-    auto axis = rewriter.create<MO::ConstantOp>(loc, op.getAxis(),
-                                                MO::getHostDevice(ctx));
-    auto sorted = rewriter.create<MO::ConstantOp>(loc, /*value=*/true,
-                                                  MO::getHostDevice(ctx));
+    auto k = rewriter.create<MO::ConstantOp>(
+        loc, op.getK(), DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
+    auto axis = rewriter.create<MO::ConstantOp>(
+        loc, op.getAxis(), DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
+    auto sorted = rewriter.create<MO::ConstantOp>(
+        loc, /*value=*/true, DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
 
     // Create the MO::TopKOp with proper result types
     auto topkOp = rewriter.create<MO::TopKOp>(

@@ -91,13 +91,13 @@ void inferMOTypesScatterNdImpl(
 ///    but different representations.
 ErrorOr<DType> promoteDtype(DType x, DType y);
 
-/// Return the device attached to the type if has a device.
-std::optional<M::DeviceRefAttr> getDeviceIfAvailable(Type t);
-std::optional<M::DeviceRefAttr> getDeviceIfAvailable(Value v);
-
-/// As `getDeviceIfAvailable` but assume device exists, otherwise get exception.
-M::DeviceRefAttr getDevice(Type t);
-M::DeviceRefAttr getDevice(Value v);
+/// Given a ValueRange, returns an optional `DeviceRefAttr` if the
+/// following conditions are met:
+/// 1. Any value explicitly define a device.
+/// 2. All explicitly defined devices are the exact same.
+/// Will error if encountering conflicting value devices.
+/// Will return a nullopt otherwise
+ErrorOr<M::DeviceRefAttr> inferDevice(ValueRange values);
 
 } // namespace M::RMO
 //===----------------------------------------------------------------------===//

@@ -36,75 +36,53 @@ using M::MO::printParamDecls;
 
 #define DEBUG_TYPE "rmo-ops"
 
-std::optional<M::DeviceRefAttr> M::RMO::getDeviceIfAvailable(Type t) {
-  // Right now only tensors/buffers have devices.
-  auto asTensorType = dyn_cast<M::MO::TensorType>(t);
-  if (asTensorType)
-    return asTensorType.getDeviceRef();
-  auto asBufferType = dyn_cast<M::MO::BufferType>(t);
-  if (asBufferType)
-    return asBufferType.getDeviceRef();
-  return MO::getHostDevice(t.getContext());
-}
-
-std::optional<M::DeviceRefAttr> M::RMO::getDeviceIfAvailable(Value v) {
-  return getDeviceIfAvailable(v.getType());
-}
-
-M::DeviceRefAttr M::RMO::getDevice(Type t) {
-  return getDeviceIfAvailable(t).value();
-}
-
-M::DeviceRefAttr M::RMO::getDevice(Value v) {
-  return getDeviceIfAvailable(v).value();
-}
-
-/// Infer that all types have the same device and return such device
-static ErrorOr<M::DeviceRefAttr> inferDeviceAllSameDevices(TypeRange tys) {
-  std::optional<M::DeviceRefAttr> device;
-  for (auto ty : tys) {
-    std::optional<M::DeviceRefAttr> newDevice = getDeviceIfAvailable(ty);
-    if (!newDevice.has_value())
-      continue;
-
-    if (!device.has_value()) {
-      device = std::move(newDevice);
-    } else if (newDevice != device) {
-      return Error("Not all devices are the same!");
-    }
+ErrorOr<M::DeviceRefAttr> RMO::inferDevice(ValueRange values) {
+  llvm::SetVector<M::DeviceRefAttr> valueDevices;
+  for (const auto &value : values) {
+    // Right now only tensors/buffers have devices.
+    auto asTensorType = dyn_cast<M::MO::TensorType>(value.getType());
+    if (asTensorType)
+      if (M::DeviceRefAttr deviceRef = asTensorType.getDeviceRef())
+        valueDevices.insert(deviceRef);
+    auto asBufferType = dyn_cast<M::MO::BufferType>(value.getType());
+    if (asBufferType)
+      if (M::DeviceRefAttr deviceRef = asBufferType.getDeviceRef())
+        valueDevices.insert(deviceRef);
   }
-  if (!device.has_value())
-    return Error("No device found for inference!");
 
-  return *device;
+  // TODO(MAXPLAT-191): Find a better way to forward device inference.
+  if (valueDevices.size() > 1) {
+    LLVM_DEBUG(
+        // In the case where we have different explicit devices, make a note of
+        // this.
+        std::string devicesString = "";
+        for (const auto &device
+             : valueDevices) {
+          devicesString.append(device.toString());
+          devicesString.append(",");
+        }
+
+        llvm::dbgs()
+        << "[RMOOps.cpp] Found multiple devices " << devicesString
+        << " defaulting to first";);
+    return valueDevices[0];
+  } else if (valueDevices.size() == 1) {
+    // There is only 1 explicit device. Use that as the sole device.
+    return *valueDevices.begin();
+  } else {
+    return M::DeviceRefAttr();
+  }
 }
 
-/// Return the first operand's device and check all remaining operands are on
-/// host.
-static ErrorOr<M::DeviceRefAttr>
-inferDeviceAsFirstOperandRestHost(TypeRange tys) {
-  std::optional<M::DeviceRefAttr> device = getDeviceIfAvailable(*tys.begin());
-
-  for (auto it = tys.begin() + 1; it != tys.end(); it++) {
-    std::optional<M::DeviceRefAttr> newDevice = getDeviceIfAvailable(*it);
-    if (!newDevice.has_value())
-      continue;
-
-    auto ctx = (*tys.begin()).getContext();
-    if (*newDevice != MO::getHostDevice(ctx))
-      return Error("Remaining operands are not on host!");
-  }
-  if (!device.has_value())
-    return Error("No device found on first argument! Inference failed.");
-
-  return *device;
+template <typename Adaptor>
+static ErrorOr<M::DeviceRefAttr> inferDeviceOf(Adaptor adaptor) {
+  return RMO::inferDevice(adaptor.getOperands());
 }
 
 static LogicalResult runShapePropagation(
     ValueRange operands, std::optional<Location> location, DType promotedDType,
     MO::ShapeMaterializeResult &materialization,
-    SmallVectorImpl<Type> &inferredReturnTypes, M::DeviceRefAttr outputDevice,
-    bool validateAsserts = true) {
+    SmallVectorImpl<Type> &inferredReturnTypes, bool validateAsserts = true) {
   // Preliminary error checks.
   if (materialization.isError())
     return mlir::emitOptionalError(location, materialization.getError().msg);
@@ -122,10 +100,15 @@ static LogicalResult runShapePropagation(
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(operands);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+
   // Create output type.
   ShapeAttr resultShape = resultShapesOr.get().front();
   inferredReturnTypes.push_back(
-      TensorType::get(resultShape, promotedDType, outputDevice));
+      TensorType::get(resultShape, promotedDType, *outputDeviceOr));
 
   return success();
 }
@@ -194,8 +177,7 @@ std::string unknownDimError(const StringRef opName, const StringRef tensorName,
   return errorMsg;
 }
 
-/// DTypeCategory is the broad classes of dtypes used in calculating
-/// promotions.
+/// DTypeCategory is the broad classes of dtypes used in calculating promotions.
 enum DTypeCategory {
   kBool,
   kUInt,
@@ -333,8 +315,8 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
       return buildError();
 
     // Any int to float is only safe if the significand precision can hold the
-    // full integer ignoring the sign bit. This means the conversion is
-    // exactly representable.
+    // full integer ignoring the sign bit. This means the conversion is exactly
+    // representable.
     if (result.isFloat()) {
       const llvm::fltSemantics *semantics = result.getFloatSemantics();
       if (!semantics)
@@ -351,8 +333,8 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
     }
 
     // Float is unsafe if formats differ for same virtual bitwidth (tf32 with
-    // f32 or bf16 with f16). I say "virtual bitwidth" cause tf32 is
-    // techincally only 19bits.
+    // f32 or bf16 with f16). I say "virtual bitwidth" cause tf32 is techincally
+    // only 19bits.
     if ((dtype == DType::f16 && result == DType::bf16) ||
         (dtype == DType::bf16 && result == DType::f16) ||
         (dtype == DType::tf32 && result == DType::f32))
@@ -397,8 +379,7 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
       MO::materializeRmoBinaryElementwiseShape(graphOp, loc, xShape, yShape);
 
   return runShapePropagation(ValueRange{inputX, inputY}, location,
-                             *promotedDtype, result, inferredReturnTypes,
-                             getDevice(xType));
+                             *promotedDtype, result, inferredReturnTypes);
 }
 
 static LogicalResult inferReturnTypesBinaryComparisonImpl(
@@ -427,7 +408,7 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
       MO::materializeRmoBinaryElementwiseShape(graphOp, loc, xShape, yShape);
 
   return runShapePropagation(ValueRange{inputX, inputY}, location, DType::kBool,
-                             result, inferredReturnTypes, getDevice(xType));
+                             result, inferredReturnTypes);
 }
 
 static LogicalResult inferReturnTypesBinaryLogicalImpl(
@@ -521,8 +502,7 @@ ConcatOp::inferReturnTypes(MLIRContext *context,
     }
   }
   // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr =
-      inferDeviceAllSameDevices(adaptor.getInputs());
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDevice(adaptor.getInputs());
   if (outputDeviceOr.isError())
     return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
@@ -556,7 +536,7 @@ ReshapeOp::inferReturnTypes(MLIRContext *context,
 
   DType inputDtype = input.getType().getDtype();
   return runShapePropagation(adaptor.getOperands(), location, inputDtype,
-                             result, inferredReturnTypes, getDevice(input));
+                             result, inferredReturnTypes);
 
   return success();
 }
@@ -585,7 +565,7 @@ LogicalResult BroadcastToOp::inferReturnTypes(
 
   DType inputDtype = input.getType().getDtype();
   return runShapePropagation(adaptor.getOperands(), location, inputDtype,
-                             result, inferredReturnTypes, getDevice(input));
+                             result, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -617,7 +597,7 @@ MatmulOp::inferReturnTypes(MLIRContext *context,
       MO::materializeRmoMatmulShape(graphOp, loc, lhsShape, rhsShape);
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
-                             result, inferredReturnTypes, getDevice(lhs));
+                             result, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -649,8 +629,7 @@ SelectOp::inferReturnTypes(MLIRContext *context,
       MO::materializeRmoSelectShape(graphOp, loc, condShape, xShape, yShape);
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
-                             result, inferredReturnTypes,
-                             getDevice(adaptor.getInputX()));
+                             result, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -698,16 +677,15 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
 
   auto resultShape = ShapeAttr::get(outDims, inputShape.getType());
 
-  // Propagate devices by inferring it from operands
-  ErrorOr<M::DeviceRefAttr> outputDeviceOr =
-      inferDeviceAsFirstOperandRestHost(adaptor.getOperands());
-  if (outputDeviceOr.isError())
-    return mlir::emitOptionalError(location, outputDeviceOr.getError());
+  DeviceRefAttr deviceRef = input.getType().getDeviceRef();
+  if (!deviceRef)
+    return emitOptionalError(
+        location, "rmo.top_k requires input tensor to have an assigned device");
 
-  inferredReturnTypes.push_back(TensorType::get(
-      resultShape, input.getType().getDtype(), *outputDeviceOr));
   inferredReturnTypes.push_back(
-      TensorType::get(resultShape, DType::si64, *outputDeviceOr));
+      TensorType::get(resultShape, input.getType().getDtype(), deviceRef));
+  inferredReturnTypes.push_back(
+      TensorType::get(resultShape, DType::si64, deviceRef));
 
   return success();
 }
@@ -752,9 +730,9 @@ SliceOp::inferReturnTypes(MLIRContext *context,
   MO::ShapeMaterializeResult result = MO::materializeRmoSliceShape(
       graphOp, loc, inputShape, starts, stops, steps);
 
-  return runShapePropagation(
-      adaptor.getOperands(), location, input.getType().getDtype(), result,
-      inferredReturnTypes, getDevice(adaptor.getInput()));
+  return runShapePropagation(adaptor.getOperands(), location,
+                             input.getType().getDtype(), result,
+                             inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -788,7 +766,7 @@ ConvOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
       adaptor.getNumGroupsAttr());
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
-                             result, inferredReturnTypes, getDevice(input),
+                             result, inferredReturnTypes,
                              /*validateAsserts=*/false);
 }
 
@@ -822,7 +800,7 @@ LogicalResult ConvTransposeOp::inferReturnTypes(
       adaptor.getOutputPaddings());
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
-                             result, inferredReturnTypes, getDevice(input),
+                             result, inferredReturnTypes,
                              /*validateAsserts=*/false);
 }
 
@@ -836,13 +814,17 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
   auto shapeAttr = adaptor.getShapeAttr();
 
   auto dimType = ShapeAttr::getDimType(context);
-  M::DeviceRefAttr host = M::DeviceRefAttr::getDefault(context);
+
+  // Propagate devices by inferring it from operands
+  ErrorOr<M::DeviceRefAttr> outputDeviceOr = inferDeviceOf(adaptor);
+  if (outputDeviceOr.isError())
+    return mlir::emitOptionalError(location, outputDeviceOr.getError());
 
   // The output is simply an i64 tensor with rank 1.
   inferredReturnTypes.push_back(TensorType::get(
       ShapeAttr::get({IntegerAttr::get(dimType, shapeAttr.getRank())},
                      shapeAttr.getType()),
-      DType::si64, host));
+      DType::si64, *outputDeviceOr));
 
   return success();
 }
