@@ -621,6 +621,13 @@ OutputOp ExpKernelOp::getOutputOp() {
   return *output.begin();
 }
 
+LogicalResult AsScalarOp::verify() {
+  if (getInput().getType().getElementType() != getResult().getType().getDType())
+    return emitError("Expected input and result to have the same data type");
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MOGG KernelOp
 //===----------------------------------------------------------------------===//

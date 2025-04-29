@@ -282,6 +282,18 @@ def MOGG_CallViewOp : MOGG_Op<"call.view", [
   }];
 }
 
+def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [Pure]> {
+  let summary = "Converts a tensor that contains one element to a scalar";
+  let description = [{
+    Given a tensor with one element, ie with a shape of [] or [1], etc, convert
+    it to a scalar because the kernel using it expects it as a scalar in Mojo.
+  }];
+
+  let arguments = (ins MO_ScalarOfAnyRank:$input);
+  let results = (outs MO_Scalar:$result);
+  let hasVerifier = 1;
+}
+
 
 def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     IsolatedFromAbove,

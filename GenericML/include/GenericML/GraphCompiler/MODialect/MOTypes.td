@@ -562,6 +562,10 @@ def MO_KnownTensor : MO_ConfinedTensor<
   [CPred<"!cast<MO::TensorType>($_self).hasUnknownShape()">],
   "parametrically known shape">;
 
+def MO_ScalarOfAnyRank : MO_ConfinedTensor<
+  [CPred<"cast<MO::TensorType>($_self).getNumElements().value_or(0) == 1">],
+  "Has exactly one element">;
+
 /// Confines the MO_TensorType so that it has Boolean elements
 def MO_BooleanMask : MO_ConfinedTensor<
     [HasBoolElementTypePred], "boolean element type">;
