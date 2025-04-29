@@ -4740,7 +4740,7 @@ struct SymbolicOptimizationPass
     // TODO(GEX-540): This is done to avoid potential subtle high-iteration
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
+    config.setUseTopDownTraversal(true);
     return applyPatternsGreedily(getOperation(), std::move(patterns), config);
   }
 
@@ -4759,7 +4759,7 @@ struct SymbolicOptimizationPass
     // TODO(GEX-540): This is done to avoid potential subtle high-iteration
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
+    config.setUseTopDownTraversal(true);
     return applyPatternsGreedily(getOperation(), std::move(patterns), config);
   }
 
@@ -4777,7 +4777,7 @@ struct SymbolicOptimizationPass
     // TODO(GEX-540): This is done to avoid potential subtle high-iteration
     // count loops in the pattern.
     mlir::GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
+    config.setUseTopDownTraversal(true);
     return applyPatternsGreedily(getOperation(), std::move(patterns), config);
   }
 
