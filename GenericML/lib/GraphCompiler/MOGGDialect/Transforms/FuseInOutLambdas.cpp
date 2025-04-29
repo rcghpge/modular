@@ -470,8 +470,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (isElemwise.has_value())
       return llvm::BitVector();
 
-    llvm::BitVector fusableOutput(kernel.getNumResults(), true);
-    for (auto [idx, result] : llvm::enumerate(kernel->getResults())) {
+    llvm::BitVector fusableOutput(kernel.getNumNonChainResults(), true);
+    for (auto [idx, result] : llvm::enumerate(kernel.getNonChainResults())) {
       // Output can only have one user and that user must be a fusable
       // elementwise kernel.
       if (result.getUsers().empty()) {
@@ -488,14 +488,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       // Check it's a kernel.
       MOGG::KernelOp user = dyn_cast<MOGG::KernelOp>(*result.user_begin());
       if (!user) {
-        fusableOutput.reset(idx);
-        continue;
-      }
-
-      // TODO(GEX-2026): Early out, fusion for kernels epilogue fusion for
-      // elemntwise kernels that have chains isn't currently supported.
-      if (user.maybeGetInChain().has_value() &&
-          user.maybeGetOutChain().has_value()) {
         fusableOutput.reset(idx);
         continue;
       }
@@ -554,7 +546,39 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         fusableOutput.reset(idx);
         continue;
       }
+
+      // Check chain compatibility if both kernels have input and output chains
+      auto srcInChain = kernel.maybeGetInChain();
+      auto srcOutChain = kernel.maybeGetOutChain();
+      auto dstInChain = user.maybeGetInChain();
+      auto dstOutChain = user.maybeGetOutChain();
+
+      if (srcInChain.has_value() && srcOutChain.has_value() &&
+          dstInChain.has_value() && dstOutChain.has_value()) {
+        // Get actual chain values
+        Value srcOutChain = kernel.getOutChain();
+        Value dstInChain = user.getInChain();
+
+        // Ensure the input chain to user kernel is output chain from source
+        // kernel
+        if (dstInChain != srcOutChain) {
+          fusableOutput.reset(idx);
+          continue;
+        }
+
+        // Ensure that user kernel is the sole consumer of the output chain from
+        // source kernel.
+        // Strictly speaking source kernel having more than one consumer of
+        // its output chain would be UB when those consumers perform writes to
+        // mo.buffers -- skip fusion here to make the presence of that situation
+        // clearer.
+        if (!srcOutChain.hasOneUse()) {
+          fusableOutput.reset(idx);
+          continue;
+        }
+      }
     }
+
     return fusableOutput;
   }
 
@@ -603,11 +627,35 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     OutputPlaceholdersOp originalOuts = kernelToFuseInto.getOutputPlaceholder();
     OutputPlaceholdersOp userOuts = userToFuseIn.getOutputPlaceholder();
 
+    // TODO: in the can do output fusion checks enforce these conditions
+    const bool userIsInPlace = userToFuseIn.maybeGetInChain() &&
+                               userToFuseIn.maybeGetOutChain() &&
+                               userToFuseIn.getNumResults() == 1;
+
+    if (userIsInPlace) {
+      // Just in case passes swap around and canonicalization doesn't run before
+      // this.
+      if (userOuts && userOuts.getNumResults() == 0) {
+        userOuts.erase();
+        userOuts = nullptr;
+      }
+
+      ASSERT_STREAM(
+          userOuts == nullptr,
+          "user kernel is in-place allocated but has output placeholder");
+    }
+
     const bool isMatmulOrConvOrConcat =
         containsMatmulOrConvOrConcat(kernelToFuseInto);
 
-    const bool isMixedPrecision = originalOuts.getResult(outputIdx).getType() !=
-                                  userOuts.getResult(0).getType();
+    bool requiresMixedPrecisionScratchPlaceholder = false;
+    // No need for a placeholder in the in-place case as in 'mixed precision'
+    // cases there the output buffer should have the correct dtype.
+    if (!userIsInPlace) {
+      requiresMixedPrecisionScratchPlaceholder =
+          originalOuts.getResult(outputIdx).getType() !=
+          userOuts.getResult(0).getType();
+    }
 
     // Step 1: We unique the user kernel operands and fuse them into the src
     // kernel. The way we fuse these by operands is simply append them in the
@@ -750,8 +798,17 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       }
     }
 
-    assert(newOuts);
-    assert(fusionMoggToKgen);
+    if (!userIsInPlace) {
+      ASSERT_STREAM(
+          newOuts,
+          "Failed to create output placeholders for non-in-place kernel "
+          "fusion. "
+          "Output placeholders are required for proper tensor allocation.");
+    }
+    ASSERT_STREAM(
+        fusionMoggToKgen,
+        "Failed to create ToKGENOp for fusion block argument. "
+        "This is required for output lambda fusion to work correctly.");
 
     // Step 3: Clone all input lamba functions in the user kernel into the src
     // kernel. For the fusion input lambda, we treat it specially by nesting it
@@ -775,6 +832,26 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     StringAttr userOutputLambdaName =
         userToFuseIn.getOutputFusionInterfaceAt(0);
     lambdaSkipSet.insert(userOutputLambdaName);
+
+    KGEN::ParamDeclareRegionOp userOutputLambdaOp;
+    if (userIsInPlace) {
+      // Get the output lambda using the fusionBodyOutputLambda attribute
+      StringAttr fusionBodyOutputLambdaAttr =
+          cast<StringAttr>(userToFuseIn->getDiscardableAttr(
+              KGEN::MOGGPreElab::kMOGGFusionBodyOutputLambda));
+      ASSERT_STREAM(fusionBodyOutputLambdaAttr,
+                    << KGEN::MOGGPreElab::kMOGGFusionBodyOutputLambda
+                    << " attribute must be present on "
+                       "elementwise kernel");
+
+      userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
+          userSymTable.lookup(fusionBodyOutputLambdaAttr));
+      lambdaSkipSet.insert(fusionBodyOutputLambdaAttr);
+    } else {
+      userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
+          userSymTable.lookup(userOutputLambdaName));
+      lambdaSkipSet.insert(userOutputLambdaName);
+    }
 
     for (auto attr : userToFuseIn.getInputFusionInterfaceAttr()) {
       StringAttr userInputLambdaNameAttr = cast<StringAttr>(attr);
@@ -832,9 +909,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     // It is guaranteed that the user kernel is an elementwise op.
     auto elementwiseOp = userToFuseIn.findLambda(elementwiseLambdaName);
-
-    auto userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
-        userSymTable.lookup(userOutputLambdaName));
 
     // Assume the last call in each lambda is the store op
 
@@ -976,7 +1050,7 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // precision, we need another buffer to do the accumulation. This results
     // in the kernel op having two return values to trigger allocations in
     // later passes.
-    if (isMatmulOrConvOrConcat && isMixedPrecision) {
+    if (isMatmulOrConvOrConcat && requiresMixedPrecisionScratchPlaceholder) {
       ASSERT_STREAM(outputIdx == 0,
                     "matmul or conv should only have one result.");
       auto loc = kernelToFuseInto.getLoc();
@@ -1038,9 +1112,41 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     kernelToFuseInto.setSummaryAttr(
         getSummaryString({kernelToFuseInto, userToFuseIn}, FusionType::HARD));
 
-    originalOuts.replaceAllUsesWith(newOuts);
-    srcSimdStoreOp.erase();
+    // For in place consumer kernels we need to create a scratch buffer for
+    // intermediate results and erase the old output from the output placeholder
+    // op
+    if (userIsInPlace) {
+      // Create the scratch placeholder op.
+      builder.setInsertionPointAfter(originalOuts);
+      auto scratchPlaceholder = builder.create<MOGG::ScratchPlaceholdersOp>(
+          kernelToFuseInto.getLoc(), originalOuts->getResultTypes());
+      originalOuts.replaceAllUsesWith(scratchPlaceholder.getResults());
+
+      // Create the output chain for the kernel
+      auto outChain = builder.create<MOGG::CreateReadyChainOp>(
+          kernelToFuseInto.getLoc(), MO::ChainType::get(ctx));
+
+      auto outputOp = kernelToFuseInto.getOutputOp();
+      builder.setInsertionPoint(outputOp);
+
+      builder.create<MOGG::OutputOp>(kernelToFuseInto.getLoc(),
+                                     outChain.getResult());
+      outputOp.erase();
+
+      kernelToFuseInto.setHasReadEffect(kernelToFuseInto.getHasReadEffect() ||
+                                        userToFuseIn.getHasReadEffect());
+
+      kernelToFuseInto.setHasWriteEffect(kernelToFuseInto.getHasWriteEffect() ||
+                                         userToFuseIn.getHasWriteEffect());
+
+    } else {
+      // If the user is not in place, we just replace the original output op's
+      // inputs with the new outputs.
+      originalOuts.replaceAllUsesWith(newOuts);
+    }
+
     originalOuts.erase();
+    srcSimdStoreOp.erase();
 
     userToFuseIn->getResult(0).replaceAllUsesWith(
         kernelToFuseInto->getResult(outputIdx));
