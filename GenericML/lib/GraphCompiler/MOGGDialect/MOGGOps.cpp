@@ -484,21 +484,27 @@ KernelTerminator ExpKernelOp::getTerminator() {
 }
 
 BindLambdaOp ExpKernelOp::getBoundInputLambda(unsigned operandIdx) {
-  auto executeOp = dyn_cast<CallExecuteOp>(getTerminator());
+  Operation *t = getTerminator();
+  auto executeOp = dyn_cast<CallExecuteOp>(t);
   return executeOp
              ? executeOp.getInputs()[operandIdx].getDefiningOp<BindLambdaOp>()
              : nullptr;
 }
 
 BindLambdaOp ExpKernelOp::getBoundOutputLambda(unsigned resultIdx) {
-  auto executeOp = dyn_cast<CallExecuteOp>(getTerminator());
+  // NOTE: dyn_cast<CallExecuteOp>(getTerminator()) won't work as expected
+  // (it always returns non-nullptr) because the deduced return type would be
+  // `const CallExecuteOp &`.
+  Operation *t = getTerminator();
+  auto executeOp = dyn_cast<CallExecuteOp>(t);
   return executeOp
              ? executeOp.getOutputs()[resultIdx].getDefiningOp<BindLambdaOp>()
              : nullptr;
 }
 
 BindLambdaOp ExpKernelOp::getElemwiseBodyLambda() {
-  auto foreachOp = dyn_cast<CallForeachOp>(getTerminator());
+  Operation *t = getTerminator();
+  auto foreachOp = mlir::dyn_cast<CallForeachOp>(t);
   return foreachOp ? foreachOp.getInput().getDefiningOp<BindLambdaOp>()
                    : nullptr;
 }

@@ -394,6 +394,13 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
     foreachKernel = generator;
   }
 
+  if (generator->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_VIEW_MATERIALIZE)) {
+    if (viewMaterializeKernel)
+      return Error("more than one materialize_view kernels detected");
+
+    viewMaterializeKernel = generator;
+  }
+
   // Skipping functions that aren't exported.
   if (!generator.isExported())
     return success();

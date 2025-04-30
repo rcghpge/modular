@@ -111,6 +111,9 @@ public:
 
   /// Looks up and returns a mojo function as is.
   KGEN::GeneratorOp getForeachKernel() const { return foreachKernel; }
+  KGEN::GeneratorOp getViewMaterializeKernel() const {
+    return viewMaterializeKernel;
+  }
 
   /// Looks up and returns a mojo function as is.
   KGEN::GeneratorOp getMojoFunctionNamed(StringRef name) const;
@@ -188,6 +191,7 @@ private:
   }
 
   KGEN::GeneratorOp foreachKernel;
+  KGEN::GeneratorOp viewMaterializeKernel;
 
   /// Hold the symbol name mapping for registered mojo kernels. With
   /// struct-based mojo kernels, this will map to the `execute` method.
