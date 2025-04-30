@@ -609,17 +609,17 @@ DeviceContext::getOrCreate(StringRef api, int id) {
 
 MODULAR_CXX_EXPORT bool
 DeviceContext::operator==(const DeviceContext &other) const {
-  ErrorOr<DeviceStreamRef> err_stream = stream();
-  if (err_stream.isError())
+  ErrorOr<DeviceStreamRef> errStream = stream();
+  if (errStream.isError())
     return false;
-  void *stream_this = (*err_stream)->ptr();
+  void *streamThis = (*errStream)->ptr();
 
-  err_stream = other.stream();
-  if (err_stream.isError())
+  errStream = other.stream();
+  if (errStream.isError())
     return false;
-  void *stream_other = (*err_stream)->ptr();
+  void *streamOther = (*errStream)->ptr();
 
-  return stream_this == stream_other;
+  return streamThis == streamOther;
 }
 
 MODULAR_CXX_EXPORT bool
