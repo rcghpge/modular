@@ -2,11 +2,11 @@
 
 // CHECK-LABEL: mgp.model @concat_dynamic_output
 // CHECK:  } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
-// CHECK: %[[OUT_CHAIN0:.*]] = mogg.generic.compiled.region
-// CHECK: %[[OUT_CHAIN1:.*]] = mogg.generic.compiled.region
 
-// CHECK: %[[IN_BUF:.*]] = mgp.tensor.extract.buffer
-// CHECK: %[[IN_BUF2:.*]] = mgp.tensor.extract.buffer
+// CHECK: %[[IN_BUF:.*]] = mgp.buffer.alloc
+// CHECK: %[[OUT_CHAIN0:.*]] = mogg.generic.compiled.region
+// CHECK: %[[IN_BUF2:.*]] = mgp.buffer.alloc
+// CHECK: %[[OUT_CHAIN1:.*]] = mogg.generic.compiled.region
 // CHECK: %[[OUT_BUF:.*]] = mgp.buffer.alloc
 
 // CHECK: %[[OUT_CHAIN3:.*]] = grt.chain.create (%[[OUT_CHAIN0]], %[[OUT_CHAIN1]], %[[CH0]]

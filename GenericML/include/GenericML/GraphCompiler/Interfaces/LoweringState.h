@@ -774,9 +774,9 @@ struct MOOpLoweringState {
     Value numBytes = builder.create<mlir::index::ConstantOp>(loc, dtypeSize);
     for (size_t i = 0; i < tensorSpec.getType().getRank(); ++i) {
       Value dimVal =
-          builder.create<MGP::TensorSpecGetDimOp>(loc, tensorSpec, i);
-      numBytes = builder.create<mlir::index::MulOp>(loc, builder.getIndexType(),
-                                                    numBytes, dimVal);
+          builder.createOrFold<MGP::TensorSpecGetDimOp>(loc, tensorSpec, i);
+      numBytes = builder.createOrFold<mlir::index::MulOp>(
+          loc, builder.getIndexType(), numBytes, dimVal);
     }
     return numBytes;
   }

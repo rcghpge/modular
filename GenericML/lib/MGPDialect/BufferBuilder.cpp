@@ -122,7 +122,7 @@ Value MGPBufferBuilder::bufferConstantExternal(
 
 Value MGPBufferBuilder::tensorExtractBuffer(OpBuilder &builder, Location loc,
                                             Value tensor) {
-  return builder.create<TensorExtractBufferOp>(
+  return builder.createOrFold<TensorExtractBufferOp>(
       loc,
       /*tensor=*/cast<TypedValue<DeviceTensorType>>(tensor));
 }
@@ -130,9 +130,10 @@ Value MGPBufferBuilder::tensorExtractBuffer(OpBuilder &builder, Location loc,
 TypedValue<TensorSpecType>
 MGPBufferBuilder::tensorExtractTensorSpec(OpBuilder &builder, Location loc,
                                           Value tensor) {
-  return builder.create<TensorExtractTensorSpecOp>(
-      loc,
-      /*tensor=*/cast<TypedValue<DeviceTensorType>>(tensor));
+  return dyn_cast<TypedValue<TensorSpecType>>(
+      builder.createOrFold<TensorExtractTensorSpecOp>(
+          loc,
+          /*tensor=*/cast<TypedValue<DeviceTensorType>>(tensor)));
 }
 
 Value MGPBufferBuilder::tensorCreate(OpBuilder &builder, Location loc,
@@ -243,7 +244,7 @@ Value MGPBufferBuilder::bufferTransferDevice(
 
 Value MGPBufferBuilder::bufferGetSize(OpBuilder &builder, Location loc,
                                       Value inChain, Value inBuffer) {
-  return builder.create<BufferGetSizeOp>(
+  return builder.createOrFold<BufferGetSizeOp>(
       loc,
       /*inChain=*/cast<TypedValue<MEF::ChainType>>(inChain),
       /*inBuffer=*/cast<TypedValue<DeviceBufferType>>(inBuffer));

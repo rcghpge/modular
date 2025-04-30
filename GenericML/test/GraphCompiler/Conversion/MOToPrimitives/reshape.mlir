@@ -57,12 +57,10 @@ mo.graph @multi_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1:
 // CHECK: %[[SPEC:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1xsi32>
 // CHECK: %[[T:.*]] = mgp.tensor.create %[[CH0]], %[[IN_BUF]], %[[SPEC]] : !mgp.tensor<1xsi32>
 
-// CHECK: %[[BUF_RESHAPED:.*]] = mgp.tensor.extract.buffer %[[T]] : <1xsi32>
-
 // CHECK: %[[SPEC2:.*]] = mgp.tensor_spec.create  : !mgp.tensor_spec<1x1xsi32>
 
 // CHECK: %[[CH:.*]] = grt.chain.create (%[[CH0]], %[[CH0]])
-// CHECK: mgp.tensor.create %[[CH]], %[[BUF_RESHAPED]], %[[SPEC2]] : !mgp.tensor<1x1xsi32>
+// CHECK: mgp.tensor.create %[[CH]], %[[IN_BUF]], %[[SPEC2]] : !mgp.tensor<1x1xsi32>
 
 mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 1], si32>) {
   %1 = mo.add_singleton_dim[0 : si64] (%in1) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>

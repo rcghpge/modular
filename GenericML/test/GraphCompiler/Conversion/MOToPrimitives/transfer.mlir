@@ -12,7 +12,7 @@
 //  CHECK-NEXT:   [[IN_SPEC:%.*]] = mgp.tensor.extract.tensor_spec [[INPUT]] : <?xsi64>
 //  CHECK-NEXT:   [[IDX8:%.*]] = index.constant 8
 //  CHECK-NEXT:   [[DIM0:%.*]] = mgp.tensor_spec.get_dim[0] [[IN_SPEC]] : <?xsi64>
-//  CHECK-NEXT:   [[IN_SIZE:%.*]] = index.mul [[IDX8]], [[DIM0]]
+//  CHECK-NEXT:   [[IN_SIZE:%.*]] = index.mul [[DIM0]], [[IDX8]]
 //  CHECK-NEXT:   [[NEW_BUF:%.*]] = mgp.buffer.alloc [[CH]], [[IN_SIZE]], {{.*}}, align {{.*}} : !mgp.buffer<<"cpu", 1>>
 //  CHECK-NEXT:   [[OUT_CH:%.*]] = mgp.buffer.host_to_device [[CH]], [[IN_BUF]], [[NEW_BUF]], {{.*}} : !mgp.buffer -> !mgp.buffer<<"cpu", 1>>
 //  CHECK-NEXT:   [[SYNC:%.*]] = mgp.sync([[OUT_CH]]
