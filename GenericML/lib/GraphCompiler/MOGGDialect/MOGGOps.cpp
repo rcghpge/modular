@@ -464,16 +464,25 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
 // MOGG KernelTerminatorOp
 //===----------------------------------------------------------------------===//
 
+ValueRange CallForeachOp::getKernelInputs() {
+  // foreach does not have input, tensors are captured and loads are fused into
+  // a static lambda.
+  return {};
+}
 ValueRange CallForeachOp::getDpsOutputs() { return getOperands().take_back(); }
-TypeAttr CallForeachOp::getRegOutput() { return nullptr; }
+Type CallForeachOp::getKernelRet() { return nullptr; }
 
+ValueRange CallMaterializeOp::getKernelInputs() { return getInputs(); }
 ValueRange CallMaterializeOp::getDpsOutputs() {
   return getOperands().take_back();
 }
-TypeAttr CallMaterializeOp::getRegOutput() { return nullptr; }
+Type CallMaterializeOp::getKernelRet() { return nullptr; }
 
+ValueRange CallExecuteOp::getKernelInputs() { return getInputs(); }
 ValueRange CallExecuteOp::getDpsOutputs() { return getOutputs(); }
-TypeAttr CallExecuteOp::getRegOutput() { return getRegRetTypeAttr(); }
+Type CallExecuteOp::getKernelRet() {
+  return getRegRetTypeAttr() ? getRegRetTypeAttr().getValue() : nullptr;
+}
 
 //===----------------------------------------------------------------------===//
 // MOGG ExpKernelOp
@@ -497,9 +506,15 @@ BindLambdaOp ExpKernelOp::getBoundOutputLambda(unsigned resultIdx) {
   // `const CallExecuteOp &`.
   Operation *t = getTerminator();
   auto executeOp = dyn_cast<CallExecuteOp>(t);
-  return executeOp
-             ? executeOp.getOutputs()[resultIdx].getDefiningOp<BindLambdaOp>()
-             : nullptr;
+  if (!executeOp)
+    return nullptr;
+
+  // Only dps tensor have fusible output interface.
+  if (resultIdx < executeOp.getDpsOutputs().size())
+    return executeOp.getDpsOutputs()[resultIdx].getDefiningOp<BindLambdaOp>();
+
+  // Unfusible Kernel Return value.
+  return nullptr;
 }
 
 BindLambdaOp ExpKernelOp::getElemwiseBodyLambda() {
@@ -528,8 +543,8 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
   if (isa<MO::ChainType>(dpsResult.back().getType()))
     dpsResult = dpsResult.drop_back();
 
-  if (auto regOutput = term.getRegOutput()) {
-    if (regOutput.getValue() != dpsResult.back().getType())
+  if (auto regOutput = term.getKernelRet()) {
+    if (regOutput != dpsResult.back().getType())
       return emitError("Expect to return the same result types as terminator");
 
     dpsResult = dpsResult.drop_back();
@@ -997,6 +1012,10 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     // Order of pre-allocated result memory matches that of original outputs.
     Value oldOut = getOutputOp()->getOperand(preAllocIdx);
 
+    // new path will insert a to_mogg to link the ssa, simply strip it.
+    if (auto simpleToMogg = oldOut.getDefiningOp<ToMOGGOp>())
+      oldOut = simpleToMogg->getOperand(0);
+
     // TODO(GEX-1183): Another hack from inconsistency in opaque lowering.
     // Sometimes we return the KGEN type directly, sometimes not depending
     // on whether we are in the old and new pipelines.
@@ -1012,9 +1031,10 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       }
     }
 
-    ASSERT_STREAM(
-        isa<OutputPlaceholdersOp>(oldOut.getDefiningOp()),
-        << "Expect all pre-allocated outputs to be in `OutputPlaceholdersOp`.");
+    ASSERT_STREAM(isa<OutputPlaceholdersOp>(oldOut.getDefiningOp()),
+                  << "Expect all pre-allocated outputs to be in "
+                     "`OutputPlaceholdersOp`. found:\n"
+                  << *oldOut.getDefiningOp());
 
     Value loweredValue =
         convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());

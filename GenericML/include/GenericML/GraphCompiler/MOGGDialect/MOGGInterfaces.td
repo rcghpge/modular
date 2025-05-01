@@ -12,18 +12,38 @@ include "mlir/IR/OpBase.td"
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let description = [{
     A terminator for `mogg.experimental.kernel` operation.
+
+    A kernel terminator represents a call to a particular registered mojo
+    function with the following calling convention:
+
+    ```mojo
+    // mogg.kernel_terminator input(%1, %2) dps_output(%3) -> mo.opaque(...)
+    fn kernel[...]  (
+       out : OutputTensor[...] // <- %3
+
+       in0 : InputTensor[...]  // <- %1
+       in1 : Opaque[...]       // <- %2
+
+    ) -> Opaque[...] {         // <- kernel returns.
+       ...
+    }
+    ```
   }];
 
   let cppNamespace = "::M::MOGG";
 
   let methods = [
     InterfaceMethod<
-      "Returns the dps output values of the kernel",
+      "Returns the dps output values of the kernel (a argument but with dps semantics)",
       "mlir::ValueRange", "getDpsOutputs", (ins)
     >,
     InterfaceMethod<
-      "Returns the reg output values of the kernel",
-      "mlir::TypeAttr", "getRegOutput", (ins)
+      "Returns the inputs values of the kernel",
+      "mlir::ValueRange", "getKernelInputs", (ins)
+    >,
+    InterfaceMethod<
+      "Returns the type of kernel returned value (either a by_val/by_ref return)",
+      "mlir::Type", "getKernelRet", (ins)
     >,
   ];
 }

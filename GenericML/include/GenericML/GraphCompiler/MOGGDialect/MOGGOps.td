@@ -44,7 +44,11 @@ class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []>
     : MOGG_Op<mnemonic, traits # [
               Terminator,
               HasParent<"MOGG::ExpKernelOp">,
-              DeclareOpInterfaceMethods<MOGG_KernelTerminator, ["getDpsOutputs", "getRegOutputs"]>]>;
+              DeclareOpInterfaceMethods<MOGG_KernelTerminator, [
+                "getKernelInputs",
+                "getDpsOutputs",
+                "getKernelRets"]>
+              ]>;
 
 def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!pop.simd<1, si64>">,
     BuildableType<"KGEN::POP::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
@@ -316,7 +320,8 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
   // TODO: add MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index support.
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
     OptionalAttr<StrAttr>:$summary,
-    OptionalAttr<BoolAttr>:$isAsync
+    OptionalAttr<BoolAttr>:$isAsync,
+    OptionalAttr<ArrayAttr>:$allocIndices
   );
 
   // TODO: add MO_Opaque, MO_Chain support.

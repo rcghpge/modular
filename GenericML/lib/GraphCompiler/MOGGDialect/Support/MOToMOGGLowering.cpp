@@ -305,6 +305,18 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
 
   kernelCallingOperation.get()->setAttrs(*forwardedParametersOr);
 
+  // TODO(MAXPLAT-224): I am not sure whether this is correct, no idea why we
+  // need the attribute: it seems that mo-to-primitive can only handle tensor
+  // output anyway, simply skip non-tensor output during mo-to-primitives should
+  // just work?
+  SmallVector<int64_t> moResultIndicesAllocatedInPlace;
+  for (auto [idx, val] : operandMapping.resultMapping)
+    if (!val.isDpsOutput())
+      moResultIndicesAllocatedInPlace.push_back(idx);
+
+  kernelOp.setAllocIndicesAttr(
+      builder.getIndexArrayAttr(moResultIndicesAllocatedInPlace));
+
   return kernelOp;
 }
 } // namespace M::MOGG
