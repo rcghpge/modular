@@ -16,8 +16,8 @@ from max.serve.pipelines.scheduler import (
     TokenGenerationScheduler,
     TokenGenerationSchedulerConfig,
 )
-from max.serve.scheduler.mp_queue import MpQueue
 from max.serve.scheduler.process_control import ProcessControl
+from max.serve.scheduler.zmq_queue import ZmqQueue
 
 
 def test_stream_responses_to_frontend(benchmark):
@@ -38,9 +38,9 @@ def test_stream_responses_to_frontend(benchmark):
     )
 
     queues = {
-        "REQUEST": MpQueue(ctx),
-        "RESPONSE": MpQueue(ctx),
-        "CANCEL": MpQueue(ctx),
+        "REQUEST": ZmqQueue(ctx),
+        "RESPONSE": ZmqQueue(ctx),
+        "CANCEL": ZmqQueue(ctx),
     }
 
     scheduler = TokenGenerationScheduler(
