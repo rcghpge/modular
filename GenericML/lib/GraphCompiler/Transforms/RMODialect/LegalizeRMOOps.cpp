@@ -1154,8 +1154,8 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
                              stepsAttr));
 
     // Convert start/stop/step to tensors expected by mo.slice.
-    auto indicesType = TensorType::getVectorSI64Type(
-        ctx, startsAttr.getRank(), input.getType().getDeviceRef());
+    auto indicesType = TensorType::getVectorSI64Type(ctx, startsAttr.getRank(),
+                                                     MO::getHostDevice(ctx));
     auto toTensorOp = [loc = loc, indicesType = indicesType,
                        &rewriter](ShapeAttr attr) -> Value {
       auto constOp = rewriter.create<MOSH::ParamToValueOp>(loc, attr);
