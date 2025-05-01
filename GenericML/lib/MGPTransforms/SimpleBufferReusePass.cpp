@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MGPTransforms/MGPTransforms.h"
-
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
@@ -107,6 +107,7 @@ class SimpleBufferReusePass
 public:
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
+
     auto analysis = getAnalysis<BufferLifetimeAnalysisPass>();
     int reuseCount = 0;
 
@@ -118,7 +119,11 @@ public:
     markAnalysesPreserved<BufferLifetimeAnalysisPass>();
 
     modelOp->walk([&](Block *block) {
-      auto &depTree = analysis.getDepTree(block);
+      // Skip blocks that are part of MOGG regions
+      if (block->getParent() &&
+          block->getParent()->getParentOfType<MOGG::GenericCompiledRegionOp>())
+        return;
+
       DenseMap<ReuseKey, SmallVector<MGP::BufferAllocOp>> allocGroups;
 
       // First pass: Group allocs by reuse key
@@ -127,6 +132,11 @@ public:
                         allocOp.getRawAlign()};
         allocGroups[key].push_back(allocOp);
       }
+
+      if (allocGroups.empty())
+        return;
+
+      auto &depTree = analysis.getDepTree(block);
 
       // Second pass: Try to reuse buffers
       for (auto &[key, allocs] : allocGroups) {

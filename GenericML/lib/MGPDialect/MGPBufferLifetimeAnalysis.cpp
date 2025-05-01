@@ -435,8 +435,4 @@ BufferLifetimeAnalysisPass::BufferLifetimeAnalysisPass(Operation *op) {
 
   ASSERT_STREAM(modelOp,
                 "BufferLifetimeAnalysisPass can only run on an MGP::ModelOp");
-
-  modelOp.walk([&](Block *block) {
-    dominatorTrees[block] = DependencyTree::getDependencyTree(block);
-  });
 }
