@@ -8,6 +8,6 @@ mojo_kgen_lib(
     deps = [
         "//Kernels/mojo/extensibility/compiler_internal",
         "//Kernels/mojo/extensibility/tensor_internal",
-        "//open-source/max/mojo/stdlib/stdlib",
+        "@mojo//:stdlib",
     ],
 )

@@ -14,7 +14,7 @@ mojo_library(
         "//Kernels/mojo/_mlir",
         "//SDK/lib/API/mojo/max/compiler",
         "//SDK/lib/API/mojo/max/tensor",
-        "//open-source/max/mojo/stdlib/stdlib",
+        "@mojo//:stdlib",
     ],
 )
 
