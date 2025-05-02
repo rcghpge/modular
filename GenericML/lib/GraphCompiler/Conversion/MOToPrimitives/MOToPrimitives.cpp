@@ -2200,7 +2200,7 @@ LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
   callOperands.push_back(loweringState.getExecuteWeightsRegistry());
 
   // Add device contexts
-  for (auto deviceAttr : currentModel.getDevices()) {
+  for (auto deviceAttr : targetModel.getDevices()) {
     DeviceRefAttr deviceRef = cast<DeviceRefAttr>(deviceAttr);
     callOperands.push_back(loweringState.getExecuteDevice(deviceRef));
   }
