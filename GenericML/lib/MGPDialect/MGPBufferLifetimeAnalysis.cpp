@@ -7,8 +7,9 @@
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 
-#include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SparseBitVector.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace M;
 using namespace MGP;
@@ -81,169 +82,185 @@ DependencyTreeNode *DependencyTree::cloneNode(DependencyTreeNode *node,
 
   return newNodePtr;
 }
-DependencyTree DependencyTree::getDependencyTree(Block *block) {
-  // Build the dependency tree starting with block terminator
-  // Does an iterative dataflow analysis for computing `runsAfter` sets.
 
-  DependencyTree tree;
+namespace {
+static void buildRunsAfter(
+    Block *block,
+    llvm::DenseMap<Operation *, llvm::SparseBitVector<64>> &runsAfter,
+    llvm::DenseMap<Operation *, unsigned> &opIndex,
+    llvm::SmallVectorImpl<Operation *> &indexToOp) {
 
-  Operation *terminator = block->getTerminator();
-
-  unsigned bindex = 0;
+  // Collect all operations in block order first
+  llvm::SmallVector<Operation *> blockOrderOps;
   for (Operation &op : block->getOperations()) {
-    tree.operationToIndex[&op] = bindex;
-    tree.indexToOperation.push_back(&op);
-    bindex++;
+    blockOrderOps.push_back(&op);
   }
 
-  unsigned numOperations = tree.operationToIndex.size();
+  const unsigned numOps = blockOrderOps.size();
+  llvm::DenseSet<Operation *> visited;
+  llvm::DenseSet<Operation *> tempMark;
+  llvm::SmallVector<Operation *> topoOrder;
 
-  // Initialize runsAfter sets
-  tree.runsAfter.resize(numOperations, llvm::BitVector(numOperations, false));
+  std::function<void(Operation *)> visit = [&](Operation *op) {
+    if (visited.count(op))
+      return;
+    if (tempMark.count(op)) {
+      llvm::report_fatal_error("Cycle detected in graph region: "
+                               "buffer lifetime analysis assumes a DAG");
+    }
+    tempMark.insert(op);
 
-  llvm::BitVector noUserRunsAfter(numOperations);
-  noUserRunsAfter.set(tree.operationToIndex[terminator]);
-
-  // Initialize terminator runsAfter set with only itself
-  tree.runsAfter[tree.operationToIndex[terminator]] = noUserRunsAfter;
-
-  // Allocate outside loop to prevent re-allocation
-  llvm::SetVector<Operation *> worklist;
-  llvm::BitVector newRunsAfter(numOperations);
-  SmallVector<Operation *, 4> users;
-
-  for (Operation &op : block->getOperations())
-    worklist.insert(&op);
-
-  while (!worklist.empty()) {
-    Operation *op = worklist.pop_back_val();
-    unsigned opIndex = tree.operationToIndex[op];
-
-    auto &oldRunsAfter = tree.runsAfter[opIndex];
-    newRunsAfter = oldRunsAfter;
-
-    // Find all operations in this block that use this op's results
-    users.clear();
-    for (auto result : op->getResults())
-      for (auto &use : result.getUses())
-        if (use.getOwner()->getBlock() == block)
-          users.push_back(use.getOwner());
-
-    // If there are no users in this block, this op's runsAfter set only
-    // consists of the block terminator
-    if (users.empty()) {
-      newRunsAfter = noUserRunsAfter;
-      newRunsAfter.set(opIndex);
-    } else {
-      // Otherwise, this op's runsAfter set is the union of all of its uses'
-      // sets
-      for (Operation *user : users)
-        newRunsAfter |= tree.runsAfter[tree.operationToIndex[user]];
-
-      newRunsAfter.set(opIndex); // Ensure op is in its own runsAfter set
+    // Visit operand defs first
+    for (Value operand : op->getOperands()) {
+      if (Operation *defOp = operand.getDefiningOp()) {
+        if (defOp->getBlock() == block)
+          visit(defOp);
+      }
     }
 
-    // Update the real runsAfter set if modified
-    if (oldRunsAfter != newRunsAfter) {
-      oldRunsAfter = std::move(newRunsAfter);
+    visited.insert(op);
+    tempMark.erase(op);
+    topoOrder.push_back(op);
+  };
 
-      // Add operands to the worklist
-      for (Value operand : op->getOperands()) {
-        if (Operation *definingOp = operand.getDefiningOp()) {
-          if (definingOp->getBlock() == block) {
-            worklist.insert(definingOp);
-          }
+  // Visit operations in reverse order since it's likely that
+  // operations that run later are already toward the end of the block
+  for (Operation *op : llvm::reverse(blockOrderOps)) {
+    if (!visited.count(op))
+      visit(op);
+  }
+
+  // Populate the index maps
+  indexToOp.resize(numOps);
+  for (unsigned i = 0; i < numOps; ++i) {
+    opIndex[topoOrder[i]] = i;
+    indexToOp[i] = topoOrder[i];
+  }
+
+  // 2) Pre‑compute in‑block users for each op.
+  llvm::DenseMap<Operation *, llvm::SmallVector<Operation *, 4>> users;
+  users.reserve(numOps);
+  for (auto *def : topoOrder) {
+    for (Value res : def->getResults()) {
+      for (auto &use : res.getUses()) {
+        Operation *user = use.getOwner();
+        if (user->getBlock() == block)
+          users[def].push_back(user);
+      }
+    }
+  }
+
+  // 3) Initialise each runsAfter bit‑vector with {self, terminator}.
+  Operation *terminator = block->getTerminator();
+  const unsigned termIdx = opIndex[terminator];
+  for (auto *op : topoOrder) {
+    auto &bv = runsAfter[op];
+    bv.set(opIndex[op]);
+    bv.set(termIdx);
+  }
+
+  // 4) Single reverse sweep – topo guarantees users are later in the list.
+  for (int i = static_cast<int>(numOps) - 1; i >= 0; --i) {
+    Operation *def = topoOrder[i];
+    auto &defSet = runsAfter[def];
+    for (Operation *user : users[def])
+      defSet |= runsAfter[user]; // SparseBitVector union (cheap)
+  }
+}
+} // namespace
+
+DependencyTree DependencyTree::getDependencyTree(Block *block) {
+  DependencyTree tree;
+
+  // Build runsAfter sets
+  llvm::DenseMap<Operation *, llvm::SparseBitVector<64>> runsAfterSparse;
+  llvm::DenseMap<Operation *, unsigned> opToIdx;
+  llvm::SmallVector<Operation *> idxToOp;
+  buildRunsAfter(block, runsAfterSparse, opToIdx, idxToOp);
+
+  const unsigned numOps = idxToOp.size();
+
+  tree.runsAfter.resize(numOps);
+  tree.runsAfterCounts.resize(numOps);
+  for (auto &kv : opToIdx) {
+    Operation *op = kv.first;
+    unsigned idx = kv.second;
+    tree.runsAfter[idx] = runsAfterSparse[op];
+    tree.runsAfterCounts[idx] =
+        static_cast<uint32_t>(tree.runsAfter[idx].count());
+  }
+
+  // Immediate runsAfter (closest successor in the set with largest size)
+  llvm::DenseMap<Operation *, Operation *> immediate;
+  Operation *terminator = block->getTerminator();
+  for (auto *op : idxToOp) {
+    if (op == terminator)
+      continue;
+    const auto &mySet = tree.runsAfter[opToIdx[op]];
+    Operation *closest = nullptr;
+    uint32_t maxSz = 0;
+
+    // Iterate over all bits in the SparseBitVector
+    for (unsigned i = 0; i < numOps; ++i) {
+      if (mySet.test(i)) {
+        Operation *cand = idxToOp[i];
+        if (cand == op)
+          continue;
+
+        uint32_t sz = tree.runsAfterCounts[i];
+        if (sz > maxSz) {
+          closest = cand;
+          maxSz = sz;
         }
       }
     }
+
+    assert(closest && "terminator must at least be present");
+    immediate[op] = closest;
   }
 
-  // Find the immediate runsAfter for each op
-  DenseMap<Operation *, Operation *> immediateRunsAfters;
-  immediateRunsAfters.reserve(block->getOperations().size() - 1);
-
-  // Pre-compute the counts for all bitsets as the count operation is
-  // O(n) and the consumer is an O(n^2) loop nest.
-  tree.runsAfterCounts =
-      llvm::map_to_vector(tree.runsAfter, [](const llvm::BitVector &set) {
-        return static_cast<uint32_t>(set.count());
-      });
-
-  for (Operation &n : block->getOperations()) {
-    if (&n == terminator)
-      continue;
-
-    const auto &nRunsAfter = tree.runsAfter[tree.operationToIndex[&n]];
-    Operation *immediateRunsAfter = nullptr;
-    unsigned ipdomIndex = numOperations;
-
-    for (unsigned i = 0; i < numOperations; ++i) {
-      Operation *op = tree.indexToOperation[i];
-
-      // Skip all operations that aren't in the runsAfter set
-      if (op == &n || !nRunsAfter.test(i))
-        continue;
-
-      // The immediate runsAfter is the one with the largest runsAfter set
-      if (immediateRunsAfter == nullptr ||
-          tree.runsAfterCounts[i] > tree.runsAfterCounts[ipdomIndex]) {
-        immediateRunsAfter = op;
-        ipdomIndex = i;
-      }
-    }
-
-    assert(immediateRunsAfter != nullptr);
-    immediateRunsAfters[&n] = immediateRunsAfter;
-  }
-
-  // Create the root node (terminator)
+  // Build tree structure.
   tree.root = tree.getOrCreate(terminator);
-
-  // Build the tree based on immediateRunsAfters
-  for (Operation &n : block->getOperations()) {
-    if (&n == terminator)
+  for (auto *op : idxToOp) {
+    if (op == terminator)
       continue;
-    auto parent = immediateRunsAfters.at(&n);
-    assert(parent);
-    auto parentNode = tree.getOrCreate(parent);
-    auto childNode = tree.getOrCreate(&n);
-    parentNode->addChild(childNode);
-    assert(tree.contains(&n));
+    auto *parent = tree.getOrCreate(immediate[op]);
+    auto *child = tree.getOrCreate(op);
+    parent->addChild(child);
   }
 
-  // Do a pre and postorder traversal and set indices on nodes for constant time
-  // domination lookup
+  // DFS to set pre/post indices + depths for constant‑time queries.
   using VisitState = std::tuple<DependencyTreeNode *, bool, int>;
   SmallVector<VisitState> stack;
-  DenseSet<DependencyTreeNode *> visited;
-
-  stack.push_back({tree.root, true, 0});
   int index = 0;
 
+  stack.push_back({tree.root, true, 0});
+
   while (!stack.empty()) {
-    auto [top, isFirstVisit, depth] = stack.pop_back_val();
-    if (!top)
+    auto [node, isFirstVisit, depth] = stack.pop_back_val();
+    if (!node)
       continue;
 
     if (isFirstVisit) {
       // preorder
-      if (visited.insert(top).second) {
-        top->depth = depth;
-        top->preIndex = index++;
-      }
+      node->depth = depth;
+      node->preIndex = index++;
 
       // Schedule to visit again for post-order
-      stack.push_back({top, false, depth});
+      stack.push_back({node, false, depth});
 
-      for (auto child : llvm::reverse(top->children)) {
+      for (auto child : llvm::reverse(node->children)) {
         stack.push_back({child, true, depth + 1});
       }
     } else {
       // postorder
-      if (top->postIndex == -1)
-        top->postIndex = index++;
+      node->postIndex = index++;
     }
   }
+
+  // Persist mapping for external queries.
+  tree.operationToIndex.swap(opToIdx);
+  tree.indexToOperation.swap(idxToOp);
 
   return tree;
 }

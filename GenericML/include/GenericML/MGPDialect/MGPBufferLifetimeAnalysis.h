@@ -8,6 +8,8 @@
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "Support/AssertStream.h"
 
+#include "llvm/ADT/SparseBitVector.h"
+
 namespace M::MGP {
 
 struct DependencyTreeNode {
@@ -90,11 +92,12 @@ private:
   DependencyTreeNode *root{nullptr};
   DenseMap<Operation *, std::unique_ptr<DependencyTreeNode>> nodes;
 
-  // Set of operations that must execute after each operation
-  SmallVector<llvm::BitVector> runsAfter;
+  /// Bit vector matrix, where runsAfter[i][j] is true if operation j runs after
+  /// operation i. Used for executesAfter queries.
+  SmallVector<llvm::SparseBitVector<64>> runsAfter;
 
-  // Number of operations that execute after each operation. Stored here to
-  // avoid recomputing
+  /// Pre-computed counts of runsAfter sets, for computing immediate
+  /// runsAfters.
   SmallVector<uint32_t> runsAfterCounts;
 
   // Map from operations to indices in the runsAfter sets
