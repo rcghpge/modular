@@ -70,6 +70,8 @@ private:
                                  const OperandMapping &mapping,
                                  const KernelAdaptor &adaptor);
 
+  ErrorOr<DictionaryAttr> forwardParameters();
+
   /// The original MO operation we are lowering.
   Operation *moOp;
 

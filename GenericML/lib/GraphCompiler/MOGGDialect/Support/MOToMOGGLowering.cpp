@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilder.h"
 
@@ -190,12 +191,11 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
       convertScalarsIfNeeded(inputs, mapping, builder), outputs);
 }
 
-static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
-                                                 OpBuilder &builder) {
+ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
   auto customOpOperationName =
-      mlir::OperationName(MO::CustomOp::getOperationName(), op->getContext());
+      mlir::OperationName(MO::CustomOp::getOperationName(), moOp->getContext());
   SmallVector<NamedAttribute> forwardedParameters;
-  for (auto param : op->getAttrDictionary()) {
+  for (auto param : moOp->getAttrDictionary()) {
     if (isa<M::DeviceRefAttr>(param.getValue()))
       continue;
 
@@ -205,7 +205,7 @@ static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
       continue;
     }
 
-    if (isa<MO::CustomOp>(op)) {
+    if (isa<MO::CustomOp>(moOp)) {
       if (param.getName() ==
           MO::CustomOp::getOperandDevicesAttrName(customOpOperationName)) {
         continue;
@@ -249,7 +249,52 @@ static ErrorOr<DictionaryAttr> forwardParameters(Operation *op,
         builder.getIndexAttr(static_cast<int64_t>(coord.getValue()))});
   }
 
-  return DictionaryAttr::get(op->getContext(), forwardedParameters);
+  /// TODO(GEX-2177): Remove this by adding an opt-in in the implementation and
+  /// generically supporting static values in kernels.
+  auto extractConstantValues = [&](Value ssaValue, StringLiteral paramName) {
+    SmallVector<int64_t> values;
+    auto asTensor = cast<MO::TensorValue>(ssaValue);
+    if (auto maybeIntVec = tryGetConstantIntVector(asTensor)) {
+      values = std::move(*maybeIntVec);
+    } else if (auto maybeIntScalar = tryGetConstantInt(asTensor)) {
+      values.push_back(*maybeIntScalar);
+    } else {
+      // Not constant.
+      MO::TensorType t = asTensor.getType();
+      if (t.hasStaticShape()) {
+        int64_t numElems = *t.getNumElements();
+        values.append(numElems, ShapedType::kDynamic);
+      } else {
+        values.push_back(mlir::ShapedType::kDynamic);
+      }
+    }
+
+    SmallVector<Attribute> asAttrs;
+    for (int64_t value : values)
+      asAttrs.push_back(MO::ShapeAttr::getDim(moOp->getContext(), value));
+
+    forwardedParameters.push_back(
+        NamedAttribute(paramName, ArrayAttr::get(moOp->getContext(), asAttrs)));
+  };
+  if (auto convOp = dyn_cast<MO::ConvOp>(moOp)) {
+    extractConstantValues(convOp.getStrides(),
+                          MOGG::PARAMETER_CONV_STATIC_STRIDES);
+    extractConstantValues(convOp.getDilations(),
+                          MOGG::PARAMETER_CONV_STATIC_DILATIONS);
+    extractConstantValues(convOp.getPaddings(),
+                          MOGG::PARAMETER_CONV_STATIC_PADDING);
+  } else if (auto sliceDimOp = dyn_cast<MO::SliceDimOp>(moOp)) {
+    extractConstantValues(sliceDimOp.getStep(),
+                          MOGG::PARAMETER_SLICE_DIM_STATIC_STEP);
+  } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(moOp)) {
+    extractConstantValues(transposeOp.getPerm(),
+                          MOGG::PARAMETER_TRANSPOSE_STATIC_PERM);
+  } else if (auto sliceOp = dyn_cast<MO::SliceOp>(moOp)) {
+    extractConstantValues(sliceOp.getStep(),
+                          MOGG::PARAMETER_SLICE_STATIC_STEPS);
+  }
+
+  return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
 }
 
 ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
@@ -284,7 +329,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   if (!dpsReturns.empty())
     builder.create<OutputPlaceholdersOp>(loc, dpsReturns);
 
-  auto forwardedParametersOr = forwardParameters(moOp, builder);
+  auto forwardedParametersOr = forwardParameters();
   if (forwardedParametersOr.isError())
     return forwardedParametersOr.takeError();
 
