@@ -1690,9 +1690,9 @@ LogicalResult ConstantOp::canonicalize(ConstantOp op,
   if (op.getType().hasUnknownShape()) {
     Location loc = op.getLoc();
     ElementsAttr elements = op.getValue();
-    auto staticTensorType =
-        TensorType::get(cast<ShapedType>(elements.getType()).getShape(),
-                        elements.getElementType());
+    auto staticTensorType = op.getResult().getType().cloneWith(
+        cast<ShapedType>(elements.getType()).getShape(),
+        elements.getElementType());
     auto constantOp =
         rewriter.create<ConstantOp>(loc, staticTensorType, elements);
     rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), constantOp);
@@ -2825,7 +2825,7 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
 
   Location loc = getLoc();
   OpBuilder builder(*this); // insert before this op
-  auto resTy = TensorType::get({numResElements}, outTy.getElementType());
+  auto resTy = outTy.cloneWith({numResElements}, outTy.getElementType());
   auto constantOp =
       builder.create<ConstantOp>(loc, resTy, cast<ElementsAttr>(foldedAttr));
   auto rebindOp =
@@ -3352,7 +3352,7 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
   // [] --> [?]
   if (inputTy.getRank() == 0 && resTy.getRank() == 1) {
     auto inferredResTy =
-        TensorType::get(SmallVector<int64_t>({1}), resTy.getElementType());
+        resTy.cloneWith(SmallVector<int64_t>({1}), resTy.getElementType());
     auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
         op.getLoc(), inferredResTy, inputVal);
     rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp,
@@ -3363,7 +3363,7 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
   // [?] --> []
   if (inputTy.getRank() == 1 && resTy.getRank() == 0) {
     auto inferredResTy =
-        TensorType::get(SmallVector<int64_t>({}), resTy.getElementType());
+        resTy.cloneWith(SmallVector<int64_t>({}), resTy.getElementType());
     auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
         op.getLoc(), inferredResTy, inputVal);
     rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp,
@@ -3877,7 +3877,10 @@ void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
     outputSize = input.getType().getRank();
 
   // TODO(#18749): don't introduce `?` with operations.
-  build(odsBuilder, odsState, MO::TensorType::get({outputSize}, intTy), input);
+  build(odsBuilder, odsState,
+        MO::TensorType::get({outputSize}, intTy,
+                            MO::getHostDevice(odsBuilder.getContext())),
+        input);
 }
 
 void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -4138,8 +4141,8 @@ LogicalResult TileOp::canonicalize(TileOp op, PatternRewriter &rewriter) {
   }
 
   TensorType shapeTy =
-      TensorType::get({(int64_t)inputTy.getRank()},
-                      rewriter.getIntegerType(64, /*isSigned=*/true));
+      inputTy.cloneWith({(int64_t)inputTy.getRank()},
+                        rewriter.getIntegerType(64, /*isSigned=*/true));
   TensorValue inputShape =
       rewriter.create<ShapeOfOp>(op.getLoc(), shapeTy, op.getInput());
   TensorValue bcastShape = rewriter.create<BroadcastShapeOp>(
