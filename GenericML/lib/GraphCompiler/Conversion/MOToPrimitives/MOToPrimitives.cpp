@@ -2176,9 +2176,6 @@ LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
   // Get the target model name
   StringRef targetModelName = callOp.getSymbol().getRootReference();
 
-  // Use the model being created in the lowering process
-  MGP::ModelOp currentModel = loweringState.getModelOp();
-
   // Lookup the target model in the module
   auto moduleOp = callOp->getParentOfType<ModuleOp>();
   if (!moduleOp)
