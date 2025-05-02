@@ -45,6 +45,16 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
       "Returns the type of kernel returned value (either a by_val/by_ref return)",
       "mlir::Type", "getKernelRet", (ins)
     >,
+    InterfaceMethod<
+      "Inject a dictionary attribute for kernel parameters",
+      "void", "setKernelParams", (ins "mlir::DictionaryAttr":$params),
+      "$_op->setAttr(\"kernel_param\", params);"
+    >,
+    InterfaceMethod<
+      "Returns the value that represents the lowered KGEN mojo object",
+      "mlir::DictionaryAttr", "getKernelParams", (ins),
+      "return $_op->template getAttrOfType<DictionaryAttr>(\"kernel_param\");"
+    >,
   ];
 }
 

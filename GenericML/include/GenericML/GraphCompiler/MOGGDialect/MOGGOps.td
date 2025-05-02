@@ -33,6 +33,7 @@ include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "GraphRT/MEFDialect/MEFTypes.td"
 
+
 // Base class for ops in this dialect.
 class MOGG_Op<string mnemonic, list<Trait> traits = []>
     : Op<MOGGDialect, mnemonic, traits>;

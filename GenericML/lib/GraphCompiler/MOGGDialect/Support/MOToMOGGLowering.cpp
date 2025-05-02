@@ -60,7 +60,7 @@ SmallVector<Value> convertScalarsIfNeeded(ArrayRef<Value> originalInputs,
   return ret;
 }
 
-Operation *
+KernelTerminator
 MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                                const OperandMapping &mapping,
                                                const KernelAdaptor &adaptor) {
@@ -107,13 +107,11 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
   builder.create<OutputOp>(loc, callOutlined->getResults());
   builder.setInsertionPointAfter(bindOp);
-  builder.create<CallForeachOp>(loc, bindOp->getResult(0),
-                                kernelOp.getOutputPlaceholder()->getResult(0));
-
-  return callOutlined;
+  return builder.create<CallForeachOp>(
+      loc, bindOp->getResult(0), kernelOp.getOutputPlaceholder()->getResult(0));
 }
 
-ErrorOr<Operation *>
+ErrorOr<KernelTerminator>
 MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
                                         const OperandMapping &mapping,
                                         const KernelAdaptor &adaptor) {
@@ -137,12 +135,10 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   // Relink input tensor ssa
   inputs[0] = view->getResult(0);
 
-  builder.create<MOGG::CallMaterializeOp>(loc, inputs, outputVal);
-
-  return view;
+  return builder.create<MOGG::CallMaterializeOp>(loc, inputs, outputVal);
 }
 
-Operation *
+KernelTerminator
 MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                                           const OperandMapping &mapping,
                                           const KernelAdaptor &adaptor) {
@@ -333,7 +329,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   if (forwardedParametersOr.isError())
     return forwardedParametersOr.takeError();
 
-  ErrorOr<Operation *> kernelCallingOperation = nullptr;
+  ErrorOr<KernelTerminator> kernelCallingOperation = nullptr;
   if (adaptor.executeFunction->isElementwise()) {
     kernelCallingOperation =
         lowerToElementwiseKernel(kernelOp, operandMapping, adaptor);
@@ -348,7 +344,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   if (kernelCallingOperation.isError())
     return kernelCallingOperation.takeError();
 
-  kernelCallingOperation.get()->setAttrs(*forwardedParametersOr);
+  kernelCallingOperation.get().setKernelParams(*forwardedParametersOr);
 
   // TODO(MAXPLAT-224): I am not sure whether this is correct, no idea why we
   // need the attribute: it seems that mo-to-primitive can only handle tensor

@@ -58,17 +58,17 @@ private:
   DeviceRefAttr getHostDevice() const { return MO::getHostDevice(graphOp); }
 
   using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
-  Operation *lowerToElementwiseKernel(ExpKernelOp kernelOp,
-                                      const OperandMapping &mapping,
-                                      const KernelAdaptor &adaptor);
+  KernelTerminator lowerToElementwiseKernel(ExpKernelOp kernelOp,
+                                            const OperandMapping &mapping,
+                                            const KernelAdaptor &adaptor);
 
-  ErrorOr<Operation *> lowerToViewKernel(ExpKernelOp kernelOp,
-                                         const OperandMapping &mapping,
-                                         const KernelAdaptor &adaptor);
+  ErrorOr<KernelTerminator> lowerToViewKernel(ExpKernelOp kernelOp,
+                                              const OperandMapping &mapping,
+                                              const KernelAdaptor &adaptor);
 
-  Operation *lowerToNormalKernel(ExpKernelOp kernelOp,
-                                 const OperandMapping &mapping,
-                                 const KernelAdaptor &adaptor);
+  KernelTerminator lowerToNormalKernel(ExpKernelOp kernelOp,
+                                       const OperandMapping &mapping,
+                                       const KernelAdaptor &adaptor);
 
   ErrorOr<DictionaryAttr> forwardParameters();
 
