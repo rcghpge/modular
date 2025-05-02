@@ -738,8 +738,9 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
 }
 
 // GraphOp contains a property called `counter` that is used to generate
-// unique parameter names. For printing/parsing, we simply place it in the list
-// of misc. attributes attached to the graph and extract/insert it as needed.
+// unique symbolic dimension names. For printing/parsing, we simply place it in
+// the list of misc. attributes attached to the graph and extract/insert it as
+// needed.
 static constexpr StringLiteral GRAPH_OP_COUNTER_NAME = "counter";
 static ParseResult
 parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
