@@ -38,14 +38,15 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
 
 // Convert mo.tensor with 1 element to mo.scalar if the kernel expects a scalar
 // argument.
-SmallVector<Value> convertScalarsIfNeeded(ArrayRef<Value> originalInputs,
-                                          const OperandMapping &mapping,
-                                          OpBuilder &builder) {
+SmallVector<Value>
+convertScalarsIfNeeded(ArrayRef<Value> originalInputs,
+                       const IndexToOperandAdaptorMapping &mapping,
+                       OpBuilder &builder) {
   SmallVector<Value> ret;
   for (auto [idx, v] : llvm::enumerate(originalInputs)) {
     // If this is a fusible input, use the fused value, otherwise we
     // captured the infusible inputs.
-    const auto &mappedArg = mapping.operandMapping.lookup(idx);
+    const auto &mappedArg = mapping.lookup(idx);
     if (mappedArg.isScalarType()) {
       ret.push_back(builder.create<MOGG::AsScalarOp>(
           v.getLoc(),
@@ -55,6 +56,33 @@ SmallVector<Value> convertScalarsIfNeeded(ArrayRef<Value> originalInputs,
     } else {
       ret.push_back(v);
     }
+  }
+
+  return ret;
+}
+
+SmallVector<Value>
+convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
+                      const IndexToOperandAdaptorMapping &mapping,
+                      OpBuilder &builder) {
+  SmallVector<Value> ret;
+  for (uint64_t idx = 0; idx < originalInputs.size(); ++idx) {
+    if (!mapping.lookup(idx).isVariadicTensorType()) {
+      ret.push_back(originalInputs[idx]);
+      continue;
+    }
+
+    SmallVector<Value> valuesThatMatchVariadics;
+    SmallVector<Type> tupleTypes;
+    do {
+      tupleTypes.push_back(originalInputs[idx].getType());
+      valuesThatMatchVariadics.push_back(originalInputs[idx++]);
+    } while (idx < originalInputs.size() &&
+             mapping.lookup(idx).isVariadicTensorType());
+    --idx;
+    ret.push_back(builder.create<MOGG::AsTupleOp>(
+        valuesThatMatchVariadics.front().getLoc(),
+        builder.getTupleType(tupleTypes), valuesThatMatchVariadics));
   }
 
   return ret;
@@ -100,7 +128,9 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
   }
 
   builder.setInsertionPoint(bindOp);
-  outlinedArgs = convertScalarsIfNeeded(outlinedArgs, mapping, builder);
+  outlinedArgs = convertTuplesIfNeeded(
+      convertScalarsIfNeeded(outlinedArgs, mapping.operandMapping, builder),
+      mapping.operandMapping, builder);
 
   builder.setInsertionPointToStart(elemwiseBody);
   auto callOutlined = builder.create<CallOutlinedOp>(
@@ -129,9 +159,11 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   if (isa<MO::Static::ReshapeOp, MO::Static::BroadcastToOp>(moOp))
     inputs.push_back(shapeInKGEN);
 
+  inputs = convertTuplesIfNeeded(
+      convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
+      mapping.operandMapping, builder);
   Operation *view = builder.create<MOGG::CallViewOp>(
-      loc, outputVal.getType(), adaptor.registeredOpName,
-      convertScalarsIfNeeded(inputs, mapping, builder));
+      loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // Relink input tensor ssa
   inputs[0] = view->getResult(0);
 
@@ -182,9 +214,13 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                 "[MO-TO-MOGG] Should have at most one return by value result");
   TypeAttr regRetTypeAttr =
       retVal.empty() ? nullptr : TypeAttr::get(retVal.front());
-  return builder.create<CallExecuteOp>(
-      loc, adaptor.registeredOpName, regRetTypeAttr,
-      convertScalarsIfNeeded(inputs, mapping, builder), outputs);
+  inputs = convertTuplesIfNeeded(
+      convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
+      mapping.operandMapping, builder);
+  outputs = convertTuplesIfNeeded(outputs, mapping.resultMapping, builder);
+
+  return builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,
+                                       regRetTypeAttr, inputs, outputs);
 }
 
 ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {

@@ -118,24 +118,24 @@ def MOGG_SplitOp : MOGG_LowerableOp<"split", [Pure]> {
 }
 
 //===----------------------------------------------------------------------===//
-// TupleCreateOp
+// AsTupleOp
 //===----------------------------------------------------------------------===//
 
-def MOGG_TupleCreateOp
-    : MOGG_Op<"tuple.create", [Pure]> {
+def MOGG_AsTupleOp
+    : MOGG_Op<"as_tuple", [Pure]> {
   let summary = "MOGG tuple creation operation";
   let description = [{
-    The "mogg.tuple.create" operation create tuple of values that will be later
-    been translated to mojo's StaticTuple.
+    This operation creates tuple of values that will be later been translated to
+    mojo's StaticTuple.
 
     ```mlir
-    %r = mogg.create.tuple(%t1, %2: mo.tensor<...>, mo.tensor<...>) : tuple<mo.tensor<...>, mo.tensor<...>>
+    %r = mogg.as_tuple(%t1, %2: mo.tensor<...>, mo.tensor<...>) : tuple<mo.tensor<...>, mo.tensor<...>>
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$tupleElements);
+  let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs AnyTuple:$result);
-  let assemblyFormat = "attr-dict `(`$tupleElements `)` `:` type($tupleElements) `->` type($result)";
+  let assemblyFormat = "attr-dict `(`$inputs `)` `:` type($inputs) `->` type($result)";
 }
 
 //===----------------------------------------------------------------------===//
@@ -299,7 +299,6 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [Pure]> {
   let hasVerifier = 1;
 }
 
-
 def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     IsolatedFromAbove,
     SingleBlock,
@@ -328,7 +327,6 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
   // TODO: add MO_Opaque, MO_Chain support.
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$execBody);
-  let hasVerifier = 1;
 
   let hasCustomAssemblyFormat = 1;
 
@@ -367,6 +365,7 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     )>,
   ];
   let skipDefaultBuilders=1;
+  let hasVerifier = 1;
 }
 
 // lower to ManageTensorSlice.load

@@ -550,7 +550,17 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
     dpsResult = dpsResult.drop_back();
   }
 
-  if (!llvm::equal(term.getDpsOutputs().getTypes(), dpsResult.getTypes()))
+  SmallVector<Type> dpsOutputTypesWithoutTuples;
+  for (Value result : term.getDpsOutputs()) {
+    if (isa<TupleType>(result.getType())) {
+      for (auto element : result.getDefiningOp<MOGG::AsTupleOp>().getInputs())
+        dpsOutputTypesWithoutTuples.push_back(element.getType());
+    } else {
+      dpsOutputTypesWithoutTuples.push_back(result.getType());
+    }
+  }
+
+  if (!llvm::equal(dpsOutputTypesWithoutTuples, dpsResult.getTypes()))
     return emitError("Expect to return the same result types as terminator");
 
   return success();

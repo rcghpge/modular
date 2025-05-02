@@ -365,7 +365,7 @@ void LowerPrimitivesPass::runOnOperation() {
         ins.push_back(inputs[i + 2]);
 
       // Packs the variadic input buffers into tuple.
-      Value tuple = builder.create<MOGG::TupleCreateOp>(
+      Value tuple = builder.create<MOGG::AsTupleOp>(
           op->getLoc(),
           builder.getTupleType(bufferConcat.getInBuffers().getTypes()), ins);
 
