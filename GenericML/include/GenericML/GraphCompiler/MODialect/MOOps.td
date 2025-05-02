@@ -2231,7 +2231,8 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
     MO_RankedScalarIndexTensor:$num_groups,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls,
+    DefaultValuedAttr<BoolAttr, "false">:$filter_packed);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
@@ -2243,6 +2244,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
