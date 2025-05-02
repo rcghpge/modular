@@ -164,10 +164,10 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
       mapping.operandMapping, builder);
   Operation *view = builder.create<MOGG::CallViewOp>(
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
-  // Relink input tensor ssa
-  inputs[0] = view->getResult(0);
-
-  return builder.create<MOGG::CallMaterializeOp>(loc, inputs, outputVal);
+  // MaterializeOp always takes an input tensor (with view updated by the
+  // mog..call.view above).
+  return builder.create<MOGG::CallMaterializeOp>(loc, view->getResult(0),
+                                                 outputVal);
 }
 
 KernelTerminator
