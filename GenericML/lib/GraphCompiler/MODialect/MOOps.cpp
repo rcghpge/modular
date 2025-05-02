@@ -534,6 +534,10 @@ LogicalResult CallOp::verify() {
   if (!graphOp.getIsSubgraph())
     return emitError() << "Only subgraphs can be called";
 
+  if (getOperandTypes().size() != graphOp.getFunctionType().getInputs().size())
+    return emitError() << "Subgraph " << graphOp.getName()
+                       << " has wrong number of arguments";
+
   for (auto [idx, graphArgType, operandType] : llvm::enumerate(
            graphOp.getFunctionType().getInputs(), getOperandTypes())) {
     if (graphArgType != operandType) {
