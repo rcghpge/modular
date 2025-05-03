@@ -448,7 +448,7 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
 }
 
 BufferLifetimeAnalysisPass::BufferLifetimeAnalysisPass(Operation *op) {
-  auto modelOp = llvm::dyn_cast<ModelOp>(*op);
+  [[maybe_unused]] auto modelOp = llvm::dyn_cast<ModelOp>(*op);
 
   ASSERT_STREAM(modelOp,
                 "BufferLifetimeAnalysisPass can only run on an MGP::ModelOp");
