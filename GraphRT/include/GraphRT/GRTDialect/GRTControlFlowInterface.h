@@ -8,6 +8,7 @@
 #define GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/LogicalResult.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"

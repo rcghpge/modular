@@ -8,7 +8,6 @@
 #define GENERICML_GRAPHCOMPILER_TRANSFORMS_MODIALECT_SHAPEINFERENCEPASSES_COMMON_H
 
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace M;
 using namespace MO;
