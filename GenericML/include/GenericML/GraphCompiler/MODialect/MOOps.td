@@ -261,6 +261,8 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 def MO_CallOp : MO_ControlOp<"call", [
   HasParent<"MO::GraphOp">,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
 ]> {
   let summary = "Call a computation graph";
   let description = [{
@@ -283,6 +285,14 @@ def MO_CallOp : MO_ControlOp<"call", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) $symbol `(` operands `)` attr-dict `:`
        functional-type(operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+    /// Returns the sole input chain (if present) and std::nullopt otherwise.
+    std::optional<ChainValue> maybeGetInChain();
+
+    /// Returns the sole output chain (if present) and std::nullopt otherwise.
+    std::optional<ChainValue> maybeGetOutChain();
   }];
 
   let hasVerifier = 1;

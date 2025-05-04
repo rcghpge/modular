@@ -553,6 +553,55 @@ LogicalResult CallOp::verify() {
   return success();
 }
 
+std::optional<ChainValue> CallOp::maybeGetInChain() {
+  if (getNumOperands() == 0)
+    return std::nullopt;
+
+  auto firstOperand = getOperand(0);
+  if (auto chain = dyn_cast<ChainValue>(firstOperand))
+    return chain;
+
+  return std::nullopt;
+}
+
+std::optional<ChainValue> CallOp::maybeGetOutChain() {
+  if (getNumResults() == 0)
+    return std::nullopt;
+
+  auto finalResult = getResult(0);
+  if (auto chain = dyn_cast<ChainValue>(finalResult))
+    return chain;
+
+  return std::nullopt;
+}
+
+bool CallOp::isInPlace() {
+  return maybeGetInChain().has_value() && maybeGetOutChain().has_value();
+}
+
+ChainValue CallOp::getInChain() {
+  auto inChain = maybeGetInChain();
+  ASSERT_STREAM(inChain.has_value(), "Expected to find an input chain.");
+
+  return inChain.value();
+}
+
+ChainValue CallOp::getOutChain() {
+  auto outChain = maybeGetOutChain();
+  ASSERT_STREAM(outChain.has_value(), "Expected to find an output chain.");
+
+  return outChain.value();
+}
+
+OpOperand &CallOp::getInChainMutable() {
+  OpOperand &firstOpOperand = getOperation()->getOpOperand(0);
+
+  ASSERT_STREAM(isa<ChainValue>(firstOpOperand.get()),
+                "Expected to find an input chain as the first operand.");
+
+  return firstOpOperand;
+}
+
 //===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
