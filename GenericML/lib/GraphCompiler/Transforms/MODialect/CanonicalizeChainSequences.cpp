@@ -182,7 +182,13 @@ struct CanonicalizeChainSequencesPass
 
     patterns.add<CanonicalizeBufferOpSequences>(ctx);
 
-    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
+    // Configure the greedy rewrite driver for potentially long chains.
+    mlir::GreedyRewriteConfig config;
+    config.maxIterations = 64;
+    config.useTopDownTraversal = true;
+
+    if (failed(
+            applyPatternsGreedily(getOperation(), std::move(patterns), config)))
       return signalPassFailure();
   }
 };
