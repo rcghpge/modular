@@ -12,11 +12,11 @@ from max.pipelines.core import (
     TextGenerationStatus,
     TextResponse,
 )
-from max.serve.pipelines.scheduler import (
+from max.serve.process_control import ProcessControl
+from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
     TokenGenerationSchedulerConfig,
 )
-from max.serve.scheduler.process_control import ProcessControl
 from max.serve.scheduler.zmq_queue import ZmqQueue
 
 
