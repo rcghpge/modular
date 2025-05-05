@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilderHelpers.h"
@@ -18,8 +19,6 @@
 #include "KGEN/LITDialect/LITUtils.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
-
-#include <GenericML/GraphCompiler/MODialect/MOInterfaces.h>
 
 namespace M::MOGG {
 

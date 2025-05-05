@@ -15,12 +15,12 @@
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/Support/DataflowUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "Support/DeviceSpecs.h"
 #include "Support/ML/Permutation.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/MathExtras.h"
 
-#include <Support/DeviceSpecs.h>
 #include <numeric>
 
 using namespace M;

@@ -15,11 +15,11 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "Support/LogicalResult.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ErrorHandling.h"
-#include <Support/LogicalResult.h>
 
 using namespace M;
 using namespace MO;

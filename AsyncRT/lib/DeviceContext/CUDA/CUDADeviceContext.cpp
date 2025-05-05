@@ -13,15 +13,14 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "CUDADriver.h"
+#include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <Support/Buffer.h>
 #include <cstdint>
 #include <mutex>
 #include <string>

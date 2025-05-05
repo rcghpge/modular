@@ -17,6 +17,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 
 #include "Runtime/Tensor/Tensor.h"
@@ -27,7 +28,6 @@
 #include "KGEN/ToolCommon/KGENPasses.h"
 #include "mlir/IR/IRMapping.h"
 
-#include <GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h>
 using namespace M;
 
 namespace M::MOGG {
