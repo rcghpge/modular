@@ -52,10 +52,6 @@ private:
   M::cl::MListOpt<std::string, SmallVector<std::string>> paths{
       "paths", cl::desc("Paths of models"), llvm::cl::location(options.paths)};
 
-  M::cl::MOpt<std::string, true> cacheDir{
-      "cache-dir", cl::desc("Filesystem path of CAS cache"), llvm::cl::Optional,
-      llvm::cl::location(options.cacheDir)};
-
   M::cl::MOpt<std::string, true> crashDir{
       "crash-dir", cl::desc("Filesystem path of crash dump dir"),
       llvm::cl::Optional, llvm::cl::location(options.crashDir)};
@@ -215,11 +211,6 @@ struct RuntimeContextPhase {
     result.runtimeConfig = M_newRuntimeConfig();
     M_setNumThreads(result.runtimeConfig, options.numThreads);
     StatusPtr status(M_newStatus());
-    if (!options.cacheDir.empty()) {
-      M_setArtifactPath(result.runtimeConfig, options.cacheDir.c_str(),
-                        status.get());
-      RETURN_IF_ERROR(status);
-    }
     if (!options.crashDir.empty()) {
       M_enableCrashLog(result.runtimeConfig, options.crashDir.c_str());
       RETURN_IF_ERROR(status);

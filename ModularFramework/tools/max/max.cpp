@@ -18,7 +18,6 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/GraphCompiler/Version.h"
-#include "GenericML/Support/CASConfig.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
@@ -85,7 +84,6 @@ struct MOFConfig {
   std::optional<std::string> defaultDeviceLabel;
   std::optional<size_t> deviceID;
   std::optional<DeviceSpec> deviceSpec;
-  CASConfig commonCasConfig;
 
   void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
                                MO::MoToMgpOptions &moToMgpOptions) const {
@@ -98,8 +96,6 @@ struct MOFConfig {
       if (deviceID)
         moToMgpOptions.defaultDeviceId = *deviceID;
     }
-    if (commonCasConfig.getCacheDir())
-      moToMgpOptions.cacheDir = commonCasConfig.getCacheDir()->getPath().str();
     moToMgpOptions.defaultDeviceTargetTriple =
         deviceSpec ? deviceSpec.value().target.triple.str() : "";
     moToMgpOptions.defaultDeviceTargetArch =
@@ -150,11 +146,9 @@ public:
     return success();
   }
 
-  ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs,
-                            const CASConfig &casConfig) {
+  ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
     if (!mofConfig)
       mofConfig = std::make_unique<MOFConfig>();
-    mofConfig->commonCasConfig = casConfig;
 
     for (auto &driverConfig : configs) {
       if (auto kernelLibraryConfig =
@@ -216,9 +210,8 @@ ErrorOrSuccess M_setOptions(FrameworkContextHandle ctx,
 }
 
 ErrorOrSuccess M_setConfigs(FrameworkContextHandle ctx,
-                            ArrayRef<std::unique_ptr<DriverConfig>> configs,
-                            const CASConfig &casConfig) {
-  return ctx.unwrap<MOFContext>()->setConfigs(configs, casConfig);
+                            ArrayRef<std::unique_ptr<DriverConfig>> configs) {
+  return ctx.unwrap<MOFContext>()->setConfigs(configs);
 }
 
 bool M_isBinary(FrameworkContextHandle ctx, M::BufferRef file,
