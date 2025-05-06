@@ -544,4 +544,15 @@ def VerifyCustomOps : Pass<"verify-custom-ops", "GraphOp"> {
   ];
 }
 
+def HoistConstantSubgraphsIntoParent : Pass<"hoist-constant-subgraphs-into-parent", "ModuleOp"> {
+  let summary = "Hoist constant and constant-derived subgraphs to the parent graph.";
+  let description = [{
+    This pass hoists constant and constant-derived ops within subgraphs to the
+    parent graph.
+    Our implementation of ExecInvariantCodeMotion doesn't support subgraphs, so
+    this pass is necessary to ensure that constant operations are either
+    correctly constant-folded or hoisted to the init block.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD
