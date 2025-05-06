@@ -533,6 +533,21 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
         continue;
       }
 
+      // For in-place kernels, verify they have the required fusion body output
+      // lambda attribute
+      const bool userIsInPlace = user.maybeGetInChain() &&
+                                 user.maybeGetOutChain() &&
+                                 user.getNumResults() == 1;
+      if (userIsInPlace) {
+        auto fusionBodyOutputLambdaAttr = user->getDiscardableAttr(
+            KGEN::MOGGPreElab::kMOGGFusionBodyOutputLambda);
+        if (!fusionBodyOutputLambdaAttr ||
+            cast<StringAttr>(fusionBodyOutputLambdaAttr).empty()) {
+          fusableOutput.reset(idx);
+          continue;
+        }
+      }
+
       // Must have the same device.
       if (kernel.getResults().size() == 1) {
         if (kernel.getDeviceRef() != user.getDeviceRef()) {
@@ -831,7 +846,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
     StringAttr userOutputLambdaName =
         userToFuseIn.getOutputFusionInterfaceAt(0);
-    lambdaSkipSet.insert(userOutputLambdaName);
 
     KGEN::ParamDeclareRegionOp userOutputLambdaOp;
     if (userIsInPlace) {
@@ -846,7 +860,6 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
       userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
           userSymTable.lookup(fusionBodyOutputLambdaAttr));
-      lambdaSkipSet.insert(fusionBodyOutputLambdaAttr);
     } else {
       userOutputLambdaOp = cast<KGEN::ParamDeclareRegionOp>(
           userSymTable.lookup(userOutputLambdaName));
@@ -905,7 +918,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // directly. For the rest of the compute lambdas, we clone them into the
     // output lambda of the src kernel.
     StringAttr elementwiseLambdaName = userToFuseIn.getFusionBodyLambdaAttr();
-    lambdaSkipSet.insert(elementwiseLambdaName);
+    if (!userIsInPlace)
+      lambdaSkipSet.insert(elementwiseLambdaName);
 
     // It is guaranteed that the user kernel is an elementwise op.
     auto elementwiseOp = userToFuseIn.findLambda(elementwiseLambdaName);
@@ -923,17 +937,20 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     // Assert that the last operator are the store function we expect.
     [[maybe_unused]] auto simdStoreFunc = analysis.getRegisteredMojoKernelFor(
         Utils::DPSManagedTensorSliceStoreSIMD);
-    ASSERT_STREAM(srcSimdStoreOp.getCallee().getSymbol().getLeafReference() ==
-                      simdStoreFunc.getSymNameAttr(),
-                  << "Expected last call of output lambda of src to be "
-                  << simdStoreFunc.getSymNameAttr() << " but got "
-                  << srcSimdStoreOp.getCallee().getSymbol().getLeafReference());
-    ASSERT_STREAM(
-        userSimdStoreOp.getCallee().getSymbol().getLeafReference() ==
-            simdStoreFunc.getSymNameAttr(),
-        << "Expected last call of output lambda of user to be "
-        << simdStoreFunc.getSymNameAttr() << " but got "
-        << userSimdStoreOp.getCallee().getSymbol().getLeafReference());
+    if (!userIsInPlace) {
+      ASSERT_STREAM(
+          srcSimdStoreOp.getCallee().getSymbol().getLeafReference() ==
+              simdStoreFunc.getSymNameAttr(),
+          << "Expected last call of output lambda of src to be "
+          << simdStoreFunc.getSymNameAttr() << " but got "
+          << srcSimdStoreOp.getCallee().getSymbol().getLeafReference());
+      ASSERT_STREAM(
+          userSimdStoreOp.getCallee().getSymbol().getLeafReference() ==
+              simdStoreFunc.getSymNameAttr(),
+          << "Expected last call of output lambda of user to be "
+          << simdStoreFunc.getSymNameAttr() << " but got "
+          << userSimdStoreOp.getCallee().getSymbol().getLeafReference());
+    }
 
     // Remap to_kgen to the new one, which is corresponding to the output
     // placeholder in the src kernel.
@@ -944,14 +961,17 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     }
 
     // Remap the SIMD indices of the simd_store_internal in the output lambda.
-    oldToNew.map(userSimdStoreOp.getOperand(1), srcSimdStoreOp.getOperand(1));
+    if (!userIsInPlace)
+      oldToNew.map(userSimdStoreOp.getOperand(1), srcSimdStoreOp.getOperand(1));
 
     // Remap SIMD indices for the COMPUTE_OUTLINED call.
     // The body should only have a single argument (the SIMD indices).
     assert(elementwiseOp.getBody()->getNumArguments() == 1);
     constexpr unsigned simdStoreIndicesOperandIdx = 1;
-    oldToNew.map(elementwiseOp.getBody()->getArgument(0),
-                 srcSimdStoreOp.getOperand(simdStoreIndicesOperandIdx));
+    if (!userIsInPlace) {
+      oldToNew.map(elementwiseOp.getBody()->getArgument(0),
+                   srcSimdStoreOp.getOperand(simdStoreIndicesOperandIdx));
+    }
 
     // Clone all the elementwise lambdas except the final one.
     builder.setInsertionPointAfter(newInputLambdaOp);
@@ -976,58 +996,87 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     builder.setInsertionPoint(
         builder.getInsertionPoint()->getBlock()->getTerminator());
 
-    // Insert the elementwise body for the final elementwise lambda. We
-    // clone the user kernel's SIMD store into the src kernel to account for the
-    // mixed precision case.
-    SmallVector<Operation *> clonedElementwiseBodyOps;
-    for (Operation &elemwOp : elementwiseOp.getBody()->without_terminator()) {
-      auto clonedOp = builder.clone(elemwOp, oldToNew);
-      clonedElementwiseBodyOps.push_back(clonedOp);
-    }
-
-    Operation *elemwiseBodyReturnOp = elementwiseOp.getBody()->getTerminator();
-    assert(elemwiseBodyReturnOp->getNumOperands() == 1);
-    constexpr unsigned simdStoreValuesOperandIdx = 2;
-    oldToNew.map(userSimdStoreOp.getOperand(simdStoreValuesOperandIdx),
-                 oldToNew.lookup(elemwiseBodyReturnOp->getOperand(0)));
-    clonedElementwiseBodyOps.push_back(
-        builder.clone(*userSimdStoreOp.getOperation(), oldToNew));
-
-    // Step 5: Remap all the template parameters of the two new calls inserted
-    // (COMPUTE_OUTLINED and SIMD store).
-    DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> paramRemaps;
-    auto oldElementwiseParams = elementwiseOp.getInputParams();
-    auto oldStoreParams = userOutputLambdaOp.getInputParams();
-    auto srcOutputLambdaParams = srcOutputLambdaOp.getInputParams();
-
-    auto constructParamRemapFunc = [&](ArrayRef<KGEN::ParamDeclAttr> params) {
-      for (auto [oldParam, newParam] :
-           llvm::zip(params, srcOutputLambdaParams)) {
-        auto oldDeclRef =
-            KGEN::ParamDeclRefAttr::get(oldParam.getName(), oldParam.getType());
-        auto newDeclRef =
-            KGEN::ParamDeclRefAttr::get(newParam.getName(), newParam.getType());
-        paramRemaps[oldDeclRef] = newDeclRef;
+    if (!userIsInPlace) {
+      // Insert the elementwise body for the final elementwise lambda. We
+      // clone the user kernel's SIMD store into the src kernel to account for
+      // the mixed precision case.
+      SmallVector<Operation *> clonedElementwiseBodyOps;
+      for (Operation &elemwOp : elementwiseOp.getBody()->without_terminator()) {
+        auto clonedOp = builder.clone(elemwOp, oldToNew);
+        clonedElementwiseBodyOps.push_back(clonedOp);
       }
-    };
 
-    constructParamRemapFunc(oldElementwiseParams);
-    constructParamRemapFunc(oldStoreParams);
+      Operation *elemwiseBodyReturnOp =
+          elementwiseOp.getBody()->getTerminator();
+      assert(elemwiseBodyReturnOp->getNumOperands() == 1);
+      constexpr unsigned simdStoreValuesOperandIdx = 2;
+      oldToNew.map(userSimdStoreOp.getOperand(simdStoreValuesOperandIdx),
+                   oldToNew.lookup(elemwiseBodyReturnOp->getOperand(0)));
+      clonedElementwiseBodyOps.push_back(
+          builder.clone(*userSimdStoreOp.getOperation(), oldToNew));
 
-    mlir::AttrTypeReplacer walker;
-    walker.addReplacement(
-        [&](KGEN::ParamDeclRefAttr attr) -> std::optional<TypedAttr> {
-          auto itr = paramRemaps.find(attr);
-          if (itr != paramRemaps.end())
-            return itr->second;
-          return std::nullopt;
-        });
+      // Step 5: Remap all the template parameters of the two new calls inserted
+      // (COMPUTE_OUTLINED and SIMD store).
+      DenseMap<KGEN::ParamDeclRefAttr, TypedAttr> paramRemaps;
+      auto oldElementwiseParams = elementwiseOp.getInputParams();
+      auto oldStoreParams = userOutputLambdaOp.getInputParams();
+      auto srcOutputLambdaParams = srcOutputLambdaOp.getInputParams();
 
-    for (Operation *newElemwOp : clonedElementwiseBodyOps) {
-      walker.recursivelyReplaceElementsIn(newElemwOp,
-                                          /*replaceAttrs=*/true,
-                                          /*replaceLocs=*/false,
-                                          /*replaceTypes=*/true);
+      auto constructParamRemapFunc = [&](ArrayRef<KGEN::ParamDeclAttr> params) {
+        for (auto [oldParam, newParam] :
+             llvm::zip(params, srcOutputLambdaParams)) {
+          auto oldDeclRef = KGEN::ParamDeclRefAttr::get(oldParam.getName(),
+                                                        oldParam.getType());
+          auto newDeclRef = KGEN::ParamDeclRefAttr::get(newParam.getName(),
+                                                        newParam.getType());
+          paramRemaps[oldDeclRef] = newDeclRef;
+        }
+      };
+
+      constructParamRemapFunc(oldElementwiseParams);
+      constructParamRemapFunc(oldStoreParams);
+
+      mlir::AttrTypeReplacer walker;
+      walker.addReplacement(
+          [&](KGEN::ParamDeclRefAttr attr) -> std::optional<TypedAttr> {
+            auto itr = paramRemaps.find(attr);
+            if (itr != paramRemaps.end())
+              return itr->second;
+            return std::nullopt;
+          });
+
+      for (Operation *newElemwOp : clonedElementwiseBodyOps) {
+        walker.recursivelyReplaceElementsIn(newElemwOp,
+                                            /*replaceAttrs=*/true,
+                                            /*replaceLocs=*/false,
+                                            /*replaceTypes=*/true);
+      }
+    } else {
+      // If we have an in-place kernel we've cloned ALL the fusion body
+      // elementwise lambdas (including the final one as opposed to the standard
+      // case)
+      // We've also cloned the lambda that's actually responsible for calling
+      // that final elmewise body lambda and writing to the actual outpuut
+      // (userOutputLambdaOp) now we simply have to synthesize a kgen.call_param
+      // to the userOutputLambdaOp with the single index parameter of that bound
+      // to the first parameter of the enclosing region.
+
+      auto simdWidthParam = srcOutputLambdaOp.getInputParams().front();
+
+      auto simdWidthParamRef = KGEN::ParamDeclRefAttr::get(
+          simdWidthParam.getName(), simdWidthParam.getType());
+
+      auto generatorAttrRef =
+          KGEN::ParamDeclRefAttr::get(userOutputLambdaOp.getParamDeclAttr());
+
+      auto bindParamAttr = KGEN::BindParamsAttr::get(
+          generatorAttrRef, ArrayRef<TypedAttr>{simdWidthParamRef});
+
+      auto noneType = KGEN::NoneType::get(builder.getContext());
+
+      builder.create<KGEN::CallParamOp>(
+          userOutputLambdaOp.getLoc(), noneType, bindParamAttr,
+          ArrayRef<Value>{srcOutputLambdaOp.getBodyRegion().getArgument(0)});
     }
 
     // Step 6: Finally, we clean up the kernel metadata, eliminate the user
