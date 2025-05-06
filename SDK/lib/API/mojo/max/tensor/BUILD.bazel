@@ -5,6 +5,6 @@ mojo_library(
     srcs = glob(["**/*.mojo"]),
     visibility = ["//visibility:public"],
     deps = [
-        "//open-source/max/max/kernels/src/extensibility/tensor_internal",
+        "@mojo//:tensor_internal",
     ],
 )
