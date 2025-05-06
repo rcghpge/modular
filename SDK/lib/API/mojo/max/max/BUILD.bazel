@@ -29,7 +29,7 @@ pkg_filegroup(
     name = "max-mojo-doc",
     srcs = [
         ":docs",
-        "//open-source/max/mojo/kernels/src/extensibility/tensor_internal:docs",
+        "//open-source/max/max/kernels/src/extensibility/tensor_internal:docs",
     ],
     visibility = ["//visibility:public"],
 )
