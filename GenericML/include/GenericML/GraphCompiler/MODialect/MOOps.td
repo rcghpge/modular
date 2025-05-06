@@ -37,6 +37,20 @@ class MO_Op<string mnemonic, list<Trait> traits = []>
 class MO_TensorOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [MO_TensorOpInterface, MO_HasDeviceInterface] # traits>;
 
+// Base class for ops that must execute on the host.
+class MO_HostOnlyTensorOp<string mnemonic, list<Trait> traits = []>
+  : MO_TensorOp<mnemonic, [DeclareOpInterfaceMethods<MO_HasDeviceInterface,
+      ["getExecutionDeviceConstraint", "getOperandDeviceConstraint"]>] # traits> {
+    let extraClassDefinition = [{
+      DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
+        return getHostDevice(getContext());
+      }
+      DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
+        return nullptr;
+      }
+    }];
+  }
+
 // Base class for ops that work with tensors but do not have a notion of device.
 class MO_DeviceAgnosticTensorOp<string mnemonic, list<Trait> traits = []>
   : MO_Op<mnemonic, [MO_TensorOpInterface] # traits>;
@@ -1135,10 +1149,9 @@ def MO_AtanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"atanh"> {
 }
 
 
-def MO_CumSumOp : MO_TensorOp<"cumsum", [
+def MO_CumSumOp : MO_HostOnlyTensorOp<"cumsum", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]> {
   let summary = "Cumulative summation operation";
   let description = [{
@@ -1724,9 +1737,7 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
   let summary = "Logarighmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -2257,12 +2268,11 @@ def MO_ConvOp : MO_TensorOp<"conv", [
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
+def MO_ConvTransposeOp : MO_HostOnlyTensorOp<"conv_transpose", [
   MO_ViewLike,
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]>{
   let summary = "Transposed convolution operation";
   let description = [{
@@ -2656,12 +2666,11 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
+def MO_BroadcastShapeOp : MO_HostOnlyTensorOp<"broadcast_shape", [
   Commutative,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]> {
   let summary = "Broadcast-shape operation";
   let description = [{
@@ -3039,10 +3048,9 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   let hasVerifier = 1;
 }
 
-def MO_TileOp : MO_TensorOp<"tile", [
+def MO_TileOp : MO_HostOnlyTensorOp<"tile", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]> {
   let summary = "Tiling operation";
   let description = [{
@@ -3118,10 +3126,7 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
-  MO_PadLikeTraits,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_PadReflectOp : MO_HostOnlyTensorOp<"pad.reflect", [MO_PadLikeTraits]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
     Pads the `input` tensor by reflecting it according to the `paddings`.
@@ -3159,10 +3164,7 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
   let hasCanonicalizeMethod = 1;
 }
 
-def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
-  MO_PadLikeTraits,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_PadRepeatOp : MO_HostOnlyTensorOp<"pad.repeat", [MO_PadLikeTraits]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
     Pads the `input` tensor by repeating border values according to `paddings`.
@@ -3254,9 +3256,7 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 }
 
 // TODO(#20442): Remove with generic gather fusion.
-def MO_GatherSumOp : MO_TensorOp<"gather_sum", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_GatherSumOp : MO_HostOnlyTensorOp<"gather_sum"> {
   let summary = "`gather-sum` operation";
   let description = [{
     A temporary composite op that composes a gather with sum reduction.
@@ -3321,9 +3321,7 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 // ScatterOp
 //===----------------------------------------------------------------------===//
 
-def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_ScatterOp : MO_HostOnlyTensorOp<"scatter", [MO_ScatterLikeTraits]> {
   let summary = "`scatter` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3369,7 +3367,7 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [MO_ScatterLikeTraits,
   }];
 }
 
-class MO_ScatterReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
+class MO_ScatterReductionOp<string name, list<Trait> traits = []> : MO_HostOnlyTensorOp<
   "scatter." # name, traits # [MO_ScatterLikeTraits]
 > {
   let arguments = (ins MO_Tensor:$input,
@@ -3384,9 +3382,7 @@ class MO_ScatterReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
   }];
 }
 
-def MO_ScatterAddOp : MO_ScatterReductionOp<"add", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
   let summary = "`scatter-add` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3422,9 +3418,7 @@ def MO_ScatterAddOp : MO_ScatterReductionOp<"add", [
   }];
 }
 
-def MO_ScatterMaxOp : MO_ScatterReductionOp<"max", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
   let summary = "scatter-max operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3460,9 +3454,7 @@ def MO_ScatterMaxOp : MO_ScatterReductionOp<"max", [
   }];
 }
 
-def MO_ScatterMinOp : MO_ScatterReductionOp<"min", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
   let summary = "`scatter-min` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3498,9 +3490,7 @@ def MO_ScatterMinOp : MO_ScatterReductionOp<"min", [
   }];
 }
 
-def MO_ScatterMulOp : MO_ScatterReductionOp<"mul", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
   let summary = "scatter-mul operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -3708,9 +3698,8 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
 // NonMaximumSuppressionOp
 //===----------------------------------------------------------------------===//
 
-def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
-    [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-    DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>]> {
+def MO_NonMaximumSuppressionOp : MO_HostOnlyTensorOp<"non_maximum_suppression",
+    [DeclareOpInterfaceMethods<MO_DefaultParameterization>]> {
   let summary = "Non-max suppression operation";
   let description = [{
    Filters out boxes that have high intersection-over-union (IOU).
@@ -3747,9 +3736,8 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
 // ArgNonzeroOp
 //===----------------------------------------------------------------------===//
 
-def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
+def MO_ArgNonzeroOp : MO_HostOnlyTensorOp<"arg_nonzero", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]> {
   let summary = "Nonzero-value indices operation";
   let description = [{
@@ -4015,10 +4003,9 @@ def MO_RangeOp : MO_TensorOp<"range", [
 //===----------------------------------------------------------------------===//
 
 
-def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
+def MO_ResizeLinearOp : MO_HostOnlyTensorOp<"resize.linear",
   [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
    DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]> {
   let summary = "Linear resize operation";
   let description = [{
@@ -4044,10 +4031,9 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
 }
 
 
-def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
+def MO_ResizeNearestOp : MO_HostOnlyTensorOp<"resize.nearest",
   [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
    DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-   DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]> {
   let summary = "Nearest-neighbor resize operation";
   let description = [{
@@ -4093,11 +4079,10 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
 // ROI align op
 //===----------------------------------------------------------------------===//
 
-def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
+def MO_RoiAlignOp : MO_HostOnlyTensorOp<"roi_align", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
 ]> {
     let summary = "ROI alignment operation";
     let description = [{
@@ -4356,10 +4341,7 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 // Layout Transform
 //===----------------------------------------------------------------------===//
 
-def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [
-  Pure,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
-]> {
+def MO_LayoutTransformOp : MO_HostOnlyTensorOp<"layout.transform"> {
   let summary = "Layout transformation operation";
   let description = [{
     This op transforms the layout of input tensor to the layout specified in
@@ -4590,10 +4572,9 @@ def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
 // List ops
 //===----------------------------------------------------------------------===//
 
-def MO_ListAppendOp : MO_TensorOp<"list.append", [
+def MO_ListAppendOp : MO_HostOnlyTensorOp<"list.append", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>
 ]> {
   let summary = "List appending operation";
   let description = [{
@@ -4624,11 +4605,10 @@ def MO_ListAppendOp : MO_TensorOp<"list.append", [
   let hasVerifier = 1;
 }
 
-def MO_ListCreateOp : MO_TensorOp<"list.create", [
+def MO_ListCreateOp : MO_HostOnlyTensorOp<"list.create", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>
-  ]> {
+]> {
   let summary = "List creation operation";
   let description = [{
     Creates a new list which contains the given inputs (currently limited to
@@ -4656,11 +4636,10 @@ def MO_ListCreateOp : MO_TensorOp<"list.create", [
   let hasVerifier = 1;
 }
 
-def MO_ListGetOp : MO_TensorOp<"list.get", [
+def MO_ListGetOp : MO_HostOnlyTensorOp<"list.get", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>
-  ]> {
+]> {
   let summary = "List access operation";
   let description = [{
     Retrives the element at given (base zero) index of the list. The index can be
@@ -4689,11 +4668,10 @@ def MO_ListGetOp : MO_TensorOp<"list.get", [
   let hasVerifier = 1;
 }
 
-def MO_ListInsertOp : MO_TensorOp<"list.insert", [
+def MO_ListInsertOp : MO_HostOnlyTensorOp<"list.insert", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>
-  ]> {
+]> {
   let summary = "List insertion operation";
   let description = [{
     Creates a new list that's the result of inserting an element at given (base
@@ -4732,10 +4710,9 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [
   let hasVerifier = 1;
 }
 
-def MO_ListConcatOp : MO_TensorOp<"list.concat", [
+def MO_ListConcatOp : MO_HostOnlyTensorOp<"list.concat", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>
 ]> {
   let summary = "List concatenation operation";
   let description = [{
@@ -4765,10 +4742,9 @@ def MO_ListConcatOp : MO_TensorOp<"list.concat", [
   let hasVerifier = 1;
 }
 
-def MO_ListSliceOp : MO_TensorOp<"list.slice", [
+def MO_ListSliceOp : MO_HostOnlyTensorOp<"list.slice", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>
 ]> {
   let summary = "List slice operation";
   let description = [{
@@ -4892,9 +4868,8 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   let hasVerifier = 1;
 }
 
-def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
+def MO_ConcatFromListOp : MO_HostOnlyTensorOp<"concat_from_list", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
   Pure
 ]> {
   let summary = "List concatenation operation";
