@@ -19,6 +19,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/Compiler/ParserUtils.h"
@@ -880,6 +881,8 @@ OutputOp GraphOp::getOutputOp() {
 LogicalResult GraphOp::verify() {
   mlir::SymbolTableAnalysis symTabAnalysis(getOperation()->getParentOp());
   mlir::LockedSymbolTableCollection symtabs(symTabAnalysis.getSymbolTables());
+  KGEN::SymTabEvaluationContext evaluationContext(getOperation()->getParentOp(),
+                                                  symtabs);
   KGEN::ParameterCollector::Analysis cache;
   KGEN::ParameterUseDefGraph useDefGraph(getRegion());
 
@@ -896,7 +899,7 @@ LogicalResult GraphOp::verify() {
     return emitError(
         "Expressions are not (currently) allowed in function signatures");
   }
-  return useDefGraph.verify(symtabs, cache);
+  return useDefGraph.verify(evaluationContext, cache);
 }
 
 KGEN::ParamDeclAttr GraphOp::getNewDimParam(const Twine &prefix) {
