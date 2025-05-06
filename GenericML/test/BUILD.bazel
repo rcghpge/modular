@@ -12,9 +12,9 @@ lit_tests(
         ],
     ),
     custom_substitutions = {
-        "%kernel_api_test_lib": "$(rlocationpath //Kernels/mojo/Mogg/MOGGKernelAPITest:MOGGKernelAPITestLib)",
+        "%kernel_api_test_lib": "$(rlocationpath //open-source/max/mojo/kernels/src/Mogg/MOGGKernelAPITest:MOGGKernelAPITestLib)",
     },
-    data = ["//Kernels/mojo/Mogg/MOGGKernelAPITest:MOGGKernelAPITestLib"],
+    data = ["//open-source/max/mojo/kernels/src/Mogg/MOGGKernelAPITest:MOGGKernelAPITestLib"],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
         "//conditions:default": [],
