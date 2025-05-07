@@ -17,7 +17,7 @@ from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
     TokenGenerationSchedulerConfig,
 )
-from max.serve.scheduler.zmq_queue import ZmqQueue
+from max.serve.scheduler.zmq_queue import ZmqSocket
 
 
 def test_stream_responses_to_frontend(benchmark):
@@ -38,9 +38,9 @@ def test_stream_responses_to_frontend(benchmark):
     )
 
     queues = {
-        "REQUEST": ZmqQueue(ctx),
-        "RESPONSE": ZmqQueue(ctx),
-        "CANCEL": ZmqQueue(ctx),
+        "REQUEST": ZmqSocket(),
+        "RESPONSE": ZmqSocket(),
+        "CANCEL": ZmqSocket(),
     }
 
     scheduler = TokenGenerationScheduler(
