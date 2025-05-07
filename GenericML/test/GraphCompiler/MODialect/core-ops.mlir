@@ -367,27 +367,12 @@ mo.graph @transfer_to_explicit(%arg0 : !mo.tensor<[3, 2], f32, gpu:3>) -> !mo.te
   mo.output %0 : !mo.tensor<[3, 2], f32, cpu:0>
 }
 
-// CHECK-LABEL: mo.graph @transfer_to_unspecified
-mo.graph @transfer_to_unspecified(%arg0 : !mo.tensor<[3, 2], f32, gpu:3>) -> !mo.tensor<[3, 2], f32> {
-  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, gpu:3> to unspecified
-  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, gpu:3> to unspecified
-  mo.output %0 : !mo.tensor<[3, 2], f32>
-}
-
 // CHECK-LABEL: mo.graph @transfer_fold_explicit
 mo.graph @transfer_fold_explicit(%arg0 : !mo.tensor<[7], f32, gpu:3>) -> !mo.tensor<[7], f32, gpu:3> {
   // CHECK-NEXT: mo.output
   %0 = mo.transfer %arg0 : !mo.tensor<[7], f32, gpu:3> to <"cpu", 0>
   %1 = mo.transfer %0 : !mo.tensor<[7], f32, cpu:0> to <"gpu", 3>
   mo.output %1 : !mo.tensor<[7], f32, gpu:3>
-}
-
-// CHECK-LABEL: mo.graph @transfer_fold_implicit
-mo.graph @transfer_fold_implicit(%arg0 : !mo.tensor<[7], f32>) -> !mo.tensor<[7], f32> {
-  // CHECK-NEXT: mo.output
-  %0 = mo.transfer %arg0 : !mo.tensor<[7], f32> to <"cpu", 0>
-  %1 = mo.transfer %0 : !mo.tensor<[7], f32, cpu:0> to unspecified
-  mo.output %1 : !mo.tensor<[7], f32>
 }
 
 // CHECK-LABEL: mo.graph @transfer_elide_copy

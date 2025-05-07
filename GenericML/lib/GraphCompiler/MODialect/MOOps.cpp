@@ -118,12 +118,10 @@ void printParamDecls(OpAsmPrinter &p, Operation *,
 ParseResult parseTransferResult(AsmParser &p, Type inputType,
                                 Type &resultType) {
   DeviceRefAttr deviceRef;
-  if (failed(p.parseOptionalKeyword("unspecified"))) {
-    if (Attribute parsedDevice = DeviceRefAttr::parse(p, /*odsType=*/{}))
-      deviceRef = cast<DeviceRefAttr>(parsedDevice);
-    else
-      return failure();
-  }
+  Attribute parsedDevice = DeviceRefAttr::parse(p, /*odsType=*/{});
+  if (!parsedDevice)
+    return failure();
+  deviceRef = cast<DeviceRefAttr>(parsedDevice);
   resultType = cast<TensorType>(inputType).cloneWith(deviceRef);
   return success();
 }
@@ -131,10 +129,9 @@ ParseResult parseTransferResult(AsmParser &p, Type inputType,
 /// Print the result tensor device in MO::TransferOp.
 void printTransferResult(AsmPrinter &p, Operation *op, TensorType inputType,
                          TensorType resultType) {
-  if (DeviceRefAttr deviceRef = resultType.getDeviceRef())
-    deviceRef.print(p);
-  else
-    p << "unspecified";
+  DeviceRefAttr deviceRef = resultType.getDeviceRef();
+  ASSERT_STREAM(deviceRef, "DeviceRefAttr should be present.");
+  deviceRef.print(p);
 }
 
 } // namespace M::MO
