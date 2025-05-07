@@ -943,7 +943,7 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
         promoteDTypes(rewriter, conv.getLoc(), resultType.getDtype(),
                       conv.getInput(), conv.getFilter());
 
-    auto device = promotedInput.getType().getDeviceRef();
+    auto device = MO::getHostDevice(conv.getContext());
     auto stridesConstant = shapeToIndicesTensor(rewriter, loc, strides, device);
 
     auto paddingConstant =
@@ -952,7 +952,7 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
     auto dilationsConstant =
         shapeToIndicesTensor(rewriter, loc, dilations, device);
 
-    auto groupsConstant = rewriter.create<MO::ConstantOp>(loc, groups);
+    auto groupsConstant = rewriter.create<MO::ConstantOp>(loc, groups, device);
 
     rewriter.replaceOpWithNewOp<RMO::MOConvOp>(
         conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,

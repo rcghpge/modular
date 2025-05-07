@@ -603,7 +603,9 @@ struct ConvConstFilterPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ConvOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    DeviceRefAttr device = getTargetDevice(op, targetDevice);
+    DeviceRefAttr device = op.getInput().getType().getDeviceRef();
+    if (!device)
+      device = getTargetDevice(op, targetDevice);
     // TODO: CUDA does not support pre-packing yet
     if (device && device.getLabel() == M::kGPULabel)
       return rewriter.notifyMatchFailure(op,
@@ -2545,7 +2547,9 @@ struct MultiHeadAttentionPattern
   LogicalResult
   deviceAwareMatchAndRewrite(BatchMatmulOp op,
                              DeviceAwareRewriter &rewriter) const override {
-    DeviceRefAttr device = getTargetDevice(op, targetDevice);
+    DeviceRefAttr device = op.getInputA().getType().getDeviceRef();
+    if (!device)
+      device = getTargetDevice(op, targetDevice);
 
     // Just assume we want to use the CPU kernel only if the default device
     // is cpu (e.g. if the default was CUDA, run on CUDA).
