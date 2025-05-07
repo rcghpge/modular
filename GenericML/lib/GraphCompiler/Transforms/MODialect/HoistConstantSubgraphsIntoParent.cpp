@@ -99,7 +99,7 @@ struct HoistConstantSubgraphsIntoParentPass
     // STEP 3-7: Process graphs and optimize in topological order
     for (GraphOp graphOp : sortedGraphs) {
       auto &callsites = graphToCallsites[graphOp];
-      StringRef graphName = graphOp.getName();
+      [[maybe_unused]] StringRef graphName = graphOp.getName();
 
       // Skip graphs with no callsites - nothing to optimize
       if (callsites.empty()) {
