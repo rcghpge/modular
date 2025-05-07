@@ -64,6 +64,26 @@ static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
 }
 
 //===----------------------------------------------------------------------===//
+// MOGG ToMOGG
+//===----------------------------------------------------------------------===//
+
+LogicalResult ToMOGGOp::canonicalize(ToMOGGOp toMOGG,
+                                     mlir::PatternRewriter &rewriter) {
+  // simply fold %b = mogg.to_mogg(mogg.to_kgen(%a)) to %a, this ensures that
+  // output_placeholder will be directly returned by mogg.output, which is an
+  // implicit pattern exploits by many passes.
+  //
+  // TODO: we should probably make those passes more robust by analyzing data
+  // flow more carefully.
+  if (auto toKGEN = toMOGG.getInput().getDefiningOp<MOGG::ToKGENOp>()) {
+    rewriter.replaceOp(toMOGG, toKGEN.getInput());
+    return success();
+  }
+
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // MOGG ConcatOp
 //===----------------------------------------------------------------------===//
 
@@ -495,9 +515,26 @@ KernelTerminator ExpKernelOp::getTerminator() {
 BindLambdaOp ExpKernelOp::getBoundInputLambda(unsigned operandIdx) {
   Operation *t = getTerminator();
   auto executeOp = dyn_cast<CallExecuteOp>(t);
-  return executeOp
-             ? executeOp.getInputs()[operandIdx].getDefiningOp<BindLambdaOp>()
-             : nullptr;
+  if (!executeOp)
+    return nullptr;
+
+  unsigned curIdx = 0;
+  for (auto operand : executeOp.getInputs()) {
+    // Look through tuple operands.
+    if (auto tupleOp = operand.getDefiningOp<MOGG::AsTupleOp>()) {
+      for (auto tupleElem : tupleOp.getInputs()) {
+        if (curIdx == operandIdx)
+          return tupleElem.getDefiningOp<BindLambdaOp>();
+        curIdx++;
+      }
+    } else {
+      if (curIdx == operandIdx)
+        return operand.getDefiningOp<BindLambdaOp>();
+      curIdx++;
+    }
+  }
+
+  return nullptr;
 }
 
 BindLambdaOp ExpKernelOp::getBoundOutputLambda(unsigned resultIdx) {
@@ -1036,7 +1073,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         // Only expect ops like "convert_to_ndbuffer" or "mogg.to_kgen"
         // which all have a single operand and just transform types.
         ASSERT_STREAM(definingOp->getNumOperands() == 1,
-                      << "Expect one operand.");
+                      << "Expect one operand." << *definingOp);
         oldOut = definingOp->getOperand(0);
       }
     }

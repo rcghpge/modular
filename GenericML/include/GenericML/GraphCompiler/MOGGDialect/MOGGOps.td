@@ -1453,6 +1453,8 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
     /// Necessary to implement MojoObjectInfosInterface.
     Value getKGENMojoValueImpl() { return getInput(); }
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOGG_AssertOp: MOGG_Op<"assert"> {
