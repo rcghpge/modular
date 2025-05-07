@@ -14,7 +14,7 @@ mo.graph @test_simple_add(%0: !mo.tensor<[5], f32>, %1: !mo.tensor<[5], f32>) ->
 // CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.list<!mo.tensor<[10], si32>>) -> !kgen.pointer<{{.*}}>
 // CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[], si64>) -> !kgen.struct<{{.*}}>
 mo.graph @with_a_list_type(%l0: !mo.list<!mo.tensor<[10], si32>>) -> !mo.tensor<[30], si32> {
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %zero = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %res = mo.concat_from_list[%zero: !mo.tensor<[], si64>](%l0) : !mo.list<!mo.tensor<[10], si32>> -> !mo.tensor<[30], si32>
   mo.output %res : !mo.tensor<[30], si32>
 }
@@ -26,9 +26,9 @@ mo.graph @with_a_list_type(%l0: !mo.list<!mo.tensor<[10], si32>>) -> !mo.tensor<
 // CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedInputTensor"{{.*}}(!mo.tensor<[2], si32>) -> !kgen.struct<{{.*}}>
 // CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "FusedInputTensor"{{.*}}(!mo.tensor<[3], si32>) -> !kgen.struct<{{.*}}>
 mo.graph @with_variadic_inputs(%arg2: !mo.tensor<[2], si32>) -> (!mo.tensor<[6], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
-  %arg1 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %arg3 = mo.constant {value = #M.dense_array<3, 3, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
+  %arg1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %arg3 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 3, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %out = mo.concat[%ax: !mo.tensor<[], si32>](%arg1, %arg2, %arg3) : (
     !mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>
   ) -> !mo.tensor<[6], si32>
@@ -43,9 +43,9 @@ mo.graph @with_variadic_inputs(%arg2: !mo.tensor<[2], si32>) -> (!mo.tensor<[6],
 // CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[3], si64>) -> !kgen.struct<{{.*}}>
 // CHECK: "mogg.to_kgen"{{.*}}tensorIOType = "InputTensor"{{.*}}(!mo.tensor<[], si32>) -> !kgen.struct<{{.*}}>
 mo.graph @with_variadic_outputs() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
-  %input = mo.constant {value = #M.dense_array<0, 1, 1, 2, 3, 5> : tensor<6xsi32>} : !mo.tensor<[6], si32>
-  %splitSizes = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
+  %input = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1, 1, 2, 3, 5> : tensor<6xsi32>} : !mo.tensor<[6], si32>
+  %splitSizes = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %out1, %out2, %out3 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
     !mo.tensor<[6], si32>, !mo.tensor<[3], si64>
   ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>)

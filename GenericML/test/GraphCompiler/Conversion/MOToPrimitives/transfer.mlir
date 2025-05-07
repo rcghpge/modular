@@ -20,14 +20,14 @@
 //  CHECK-NEXT:   [[OUTPUT:%.*]] = mgp.tensor.create [[OUT_CH]], [[NEW_BUF]], [[IN_SPEC]] : !mgp.tensor<?xsi64, <"cpu", 1>>
 //  CHECK-NEXT:   mef.output [[CH]], [[OUTPUT]]
 mo.graph @transfer_with_unknown_dims(
-  %input: !mo.tensor<[?], si64, cpu:0>
+  %input: !mo.tensor<[?], si64>
 ) -> !mo.tensor<[?], si64, cpu:1> attributes {
   // Lowering requires us to supply device spec for each device ref.
   device_specs = #M.device_spec_collection<host = <"cpu", 0>, devices = [
     <ref = <"cpu", 0>, target = <triple = "arm64-apple-darwin22.4.0", arch = "apple-m1", features = "">>,
     <ref = <"cpu", 1>, target = <triple = "arm64-apple-darwin22.4.0", arch = "apple-m1", features = "">>
   ]>} {
-  %output = mo.transfer %input : !mo.tensor<[?], si64, cpu:0> to <"cpu", 1>
+  %output = mo.transfer %input : !mo.tensor<[?], si64> to <"cpu", 1>
   mo.output %output : !mo.tensor<[?], si64, cpu:1>
 }
 
@@ -44,11 +44,11 @@ mo.graph @transfer_with_unknown_dims(
 
 mo.graph @transfer_d2h(
   %input: !mo.tensor<[5], si64, gpu:0>
-) -> !mo.tensor<[5], si64, cpu:0> attributes {
+) -> !mo.tensor<[5], si64> attributes {
   device_specs = #M.device_spec_collection<host = <"cpu", 0>, devices = [
     <ref = <"cpu", 0>, target = <triple = "", arch = "", features = "">>,
     <ref = <"gpu", 0>, target = <triple = "", arch = "", features = "">>
   ]>} {
   %output = mo.transfer %input : !mo.tensor<[5], si64, gpu:0> to <"cpu", 0>
-  mo.output %output : !mo.tensor<[5], si64, cpu:0>
+  mo.output %output : !mo.tensor<[5], si64>
 }

@@ -6,16 +6,16 @@ mo.graph @reshape_number_of_elems(
   %input: !mo.tensor<[10, 10], f32>
 ) -> !mo.tensor<?, f32> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[1], si32>
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[1], si32>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %zero = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[1], si32>
+  %one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[1], si32>
 
   %input_shape = mo.shape_of(%input) : (!mo.tensor<[10, 10], f32>) -> !mo.tensor<[2], si32>
   %d0 = mo.slice(%input_shape, %zero, %one, %one) : (
     !mo.tensor<[2], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>
   ) -> !mo.tensor<[?], si32>
 
-  %dims = mo.constant {value = #M.dense_array<2, 4> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %dims = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 4> : tensor<2xsi32>} : !mo.tensor<[2], si32>
   %target_shape = mo.concat[%axis : !mo.tensor<[], si32>](%d0, %dims) : (
     !mo.tensor<[?], si32>, !mo.tensor<[2], si32>
   ) -> !mo.tensor<[?], si32>
@@ -33,14 +33,14 @@ mo.graph @reshape_number_of_elems(
 // This was adopted from an incorrect lowering of TF slice, which went silent
 // without error. This is a minimized version of the repro test.
 mo.graph @reshape_bad_annotated_rank(%arg0: !mo.tensor<[?, 320], f32>) -> !mo.tensor<[?, ?], f32> {
-  %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %1 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
-  %2 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  %3 = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %4 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %5 = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %7 = mo.constant {value = #M.dense_array<9223372036854775807, 9223372036854775807> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+  %3 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %4 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %5 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %6 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %7 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<9223372036854775807, 9223372036854775807> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
   %8 = mo.slice(%arg0, %6, %7, %5) : (!mo.tensor<[?, 320], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
   %9 = mo.shape_of(%8) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[2], si64>
   %10 = mo.shape_of(%9) : (!mo.tensor<[2], si64>) -> !mo.tensor<[1], si32>
@@ -78,7 +78,7 @@ mo.graph @concat_axis_out_of_bound(
   %input1: !mo.tensor<[?, 1], f32>,
   %input2: !mo.tensor<[?, 2], f32>
 ) -> !mo.tensor<[?, ?], f32> {
-  %axis = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@below {{[concat] normalized axis must be within range [0, input_rank)}}
   %res = mo.concat[%axis : !mo.tensor<[], si64>](%input1, %input2) : (
     !mo.tensor<[?, 1], f32>, !mo.tensor<[?, 2], f32>

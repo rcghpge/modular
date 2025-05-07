@@ -181,8 +181,8 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
     Example:
     ```
     mo.graph @const_program() -> !mo.tensor<[2], si32> {
-      %0 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-      %1 = mo.constant {value = #M.dense_array<6, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+      %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+      %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
       %2 = mo.mul(%0, %1) : !mo.tensor<[2], si32>
       %3 = mo.sub(%2, %1) : !mo.tensor<[2], si32>
       mo.output %3 : !mo.tensor<[2], si32>
@@ -191,7 +191,7 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
     becomes
     ```
     mo.graph @const_program() -> !mo.tensor<[2], si32> {
-      %0 = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+      %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
       mo.output %0 : !mo.tensor<[2], si32>
     }
     ```
@@ -232,8 +232,8 @@ def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {
     looks like this:
     ```
     mo.graph @const_program() -> !mo.tensor<[2], si32> {
-      %0 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-      %1 = mo.constant {value = #M.dense_array<6, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+      %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+      %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
       %2 = mo.mul(%0, %1) : !mo.tensor<[2], si32>
       %3 = mo.sub(%2, %1) : !mo.tensor<[2], si32>
       mo.output %3 : !mo.tensor<[2], si32>

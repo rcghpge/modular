@@ -8,7 +8,7 @@ mo.graph @reduce_mul<N1, N2 -> out>(
   %dummy: !mo.tensor<[N1, 10, N2], f32>
 ) -> !mo.tensor<[out], si64> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, 10, N2], f32>) -> !mo.tensor<[3], si64>
   %shape = mo.reduce.mul(%dummy_shape, %axis) : (
     !mo.tensor<[3], si64>, !mo.tensor<[], si64>

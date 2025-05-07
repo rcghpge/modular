@@ -436,7 +436,8 @@ canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
   OpBuilder builder(op);
   builder.setInsertionPoint(op);
   int64_t newAxis = axis + inputTy.getRank();
-  auto newAxisOp = builder.create<ConstantOp>(op.getLoc(), newAxis);
+  auto newAxisOp = builder.create<ConstantOp>(
+      op.getLoc(), newAxis, MO::getHostDevice(op.getContext()));
   rewriter.modifyOpInPlace(op,
                            [&] { op->setOperand(operandIndex, newAxisOp); });
   return success();
@@ -1150,8 +1151,8 @@ struct ConditionPropagation : public OpRewritePattern<IfOp> {
 
   static Value createBoolOfType(PatternRewriter &rewriter, Location loc,
                                 Type type, bool value) {
-    if (isa<TensorType>(type))
-      return rewriter.create<ConstantOp>(loc, value);
+    if (auto tensorTy = dyn_cast<TensorType>(type))
+      return rewriter.create<ConstantOp>(loc, value, tensorTy.getDeviceRef());
 
     assert(isa<ScalarType>(type) && "must be a tensor or scalar type");
     return rewriter.create<ConstantScalarOp>(loc, rewriter.getBoolAttr(value));
@@ -1783,6 +1784,8 @@ template <typename T>
 void buildConstant(OpBuilder &odsBuilder, OperationState &odsState,
                    ArrayRef<T> values, Type elementType,
                    DeviceRefAttr deviceRef) {
+  if (!deviceRef)
+    deviceRef = MO::getHostDevice(odsBuilder.getContext());
   auto type =
       MO::TensorType::get({(int64_t)values.size()}, elementType, deviceRef);
   ElementsAttr valueAttr = createElementsAttr(odsBuilder, values, elementType);
@@ -1792,6 +1795,8 @@ void buildConstant(OpBuilder &odsBuilder, OperationState &odsState,
 template <typename T>
 void buildConstantScalar(OpBuilder &odsBuilder, OperationState &odsState,
                          T value, Type elementType, DeviceRefAttr deviceRef) {
+  if (!deviceRef)
+    deviceRef = MO::getHostDevice(odsBuilder.getContext());
   auto type =
       MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
   ElementsAttr valueAttr = createElementsAttr(
@@ -2535,9 +2540,11 @@ void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
 template <typename TOp>
 void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, int64_t axis, TensorType outputTy) {
-  buildReductionOp<TOp>(odsBuilder, odsState, input,
-                        odsBuilder.create<ConstantOp>(input.getLoc(), axis),
-                        outputTy);
+  buildReductionOp<TOp>(
+      odsBuilder, odsState, input,
+      odsBuilder.create<ConstantOp>(input.getLoc(), axis,
+                                    MO::getHostDevice(odsBuilder.getContext())),
+      outputTy);
 }
 
 LogicalResult ArgMaxOp::canonicalize(ArgMaxOp op, PatternRewriter &rewriter) {
@@ -3666,7 +3673,8 @@ LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
     return failure();
 
   // Construct new op with same dtypes for indices
-  TensorValue newIndices = rewriter.create<ConstantOp>(op->getLoc(), indices);
+  TensorValue newIndices = rewriter.create<ConstantOp>(
+      op->getLoc(), indices, inputShapeType.getDeviceRef());
   newIndices = rewriter.create<CastOp>(op->getLoc(), newIndices,
                                        indicesValue.getType().getDtype());
   rewriter.replaceOpWithNewOp<UnsqueezeShapeOp>(op, op.getResult().getType(),
@@ -3743,7 +3751,8 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
     return failure();
 
   // Construct new op with same dtypes for indices
-  TensorValue newIndices = rewriter.create<ConstantOp>(op->getLoc(), indices);
+  TensorValue newIndices = rewriter.create<ConstantOp>(
+      op->getLoc(), indices, inputShapeType.getDeviceRef());
   newIndices = rewriter.create<CastOp>(op->getLoc(), newIndices,
                                        indicesValue.getType().getDtype());
   rewriter.replaceOpWithNewOp<SqueezeShapeOp>(op, op.getResult().getType(),
@@ -4050,7 +4059,8 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
     // Compute the merged permutation, and replace the consecutive transpose
     // with a new transpose with the merged permutation.
     SmallVector<int64_t> mergedPerm = permute(inputPermVec, permVec);
-    auto mergedPermVal = rewriter.create<ConstantOp>(op.getLoc(), mergedPerm);
+    auto mergedPermVal = rewriter.create<ConstantOp>(
+        op.getLoc(), mergedPerm, op.getPerm().getType().getDeviceRef());
     rewriter.replaceOpWithNewOp<TransposeOp>(
         op, op.getType(), inputTransposeOp.getInput(), mergedPermVal,
         op.getOutputParamDecls());
@@ -4569,13 +4579,15 @@ LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
   if (resultType.getElementType().isInteger()) {
     if (auto constData = tryGetConstantAPIntVector(inputList)) {
       rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
-                                              resultType.getElementType());
+                                              resultType.getElementType(),
+                                              resultType.getDeviceRef());
       return success();
     }
   } else if (resultType.getElementType().isIntOrFloat()) {
     if (auto constData = tryGetConstantAPFloatVector(inputList)) {
       rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
-                                              resultType.getElementType());
+                                              resultType.getElementType(),
+                                              resultType.getDeviceRef());
       return success();
     }
   }

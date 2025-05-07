@@ -14,9 +14,9 @@
 // CHECK: }
 // CHECK: mef.output %[[OUT]]#0, %[[OUT]]#1 : !mef.chain, !mgp.tensor<2xf32>
 mo.graph @if_op() -> (!mo.tensor<[2], f32>) {
-  %cond = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
-  %val1 = mo.constant {value = #M.dense_array<1.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  %val2 = mo.constant {value = #M.dense_array<3.0, 4.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %cond = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
+  %val1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %val2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3.0, 4.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
     mo.yield %val1 : !mo.tensor<[2], f32>
   } else {
@@ -30,8 +30,8 @@ mo.graph @if_op() -> (!mo.tensor<[2], f32>) {
 // CHECK: grt.if [[BOOL]]
 mo.graph @if_op_scalar_cond() -> (!mo.tensor<[2], f32>) {
   %cond = mo.constant.scalar {value = 1 : i1} : !mo.scalar<bool>
-  %val1 = mo.constant {value = #M.dense_array<1.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  %val2 = mo.constant {value = #M.dense_array<3.0, 4.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %val1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %val2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3.0, 4.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
   %0 = mo.if(%cond : !mo.scalar<bool>) -> !mo.tensor<[2], f32> {
     mo.yield %val1 : !mo.tensor<[2], f32>
   } else {
@@ -61,7 +61,7 @@ mo.graph @if_op_scalar_cond() -> (!mo.tensor<[2], f32>) {
 // CHECK: %[[FALSE_CH1:.*]] = mogg.generic.compiled.region (%[[CH1]]
 
 mo.graph @if_op_multi_if(%arg0: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>) {
-  %cond = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
+  %cond = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
   %if_0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
     %1 = mo.mul(%arg0, %arg0): !mo.tensor<[2], f32>
     mo.yield %1 : !mo.tensor<[2], f32>

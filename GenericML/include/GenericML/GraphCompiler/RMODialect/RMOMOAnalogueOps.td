@@ -1006,13 +1006,13 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
     Example:
 
     ```mlir
-      %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      %st = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>}
         : !mo.tensor<[2], si64>
-      %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>}
         : !mo.tensor<[2], si64>
-      %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+      %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
         : !mo.tensor<[4], si64>
-      %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>}
+      %ng = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>}
         : %!mo.tensor<[], si64>
       %res = rmo.mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
         !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
@@ -1092,13 +1092,13 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
     Example:
 
     ```mlir
-      %st = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      %st = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>}
         : !mo.tensor<[2], si64>
-      %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>}
+      %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>}
         : !mo.tensor<[2], si64>
-      %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
+      %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>}
         : !mo.tensor<[4], si64>
-      %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>}
+      %op = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : tensor<2xsi64>}
         : !mo.tensor<[2], si64>
       %res = rmo.mo.conv_transpose(%input, %filter)
         [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
@@ -1731,10 +1731,10 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd",
     ```
 
     ```mlir
-      %input = mo.constant {value =
+      %input = mo.constant {device = #M.device_ref<"cpu", 0>, value =
         #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> :
         tensor<2x2x4xsi64>} : !mo.tensor<[2, 2, 4], si64>
-      %indices = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} :
+      %indices = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} :
         !mo.tensor<[3], si64>
 
       %result = rmo.mo.gather_nd(%input, %indices) {batchDims = 0} :
@@ -1988,8 +1988,8 @@ def RMO_MOTopKOp : RMO_MOAnaloguePureTopKOp<"top_k"> {
         value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>
       } : !mo.tensor<[2, 6], si64>
       %k = mo.constant() { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
-      %axis = mo.constant { value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
-      %sorted = mo.constant { value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
+      %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
+      %sorted = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
       %values, %indices = rmo.mo.top_k(%in, %k, %axis, %sorted) : (
         !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
       ) -> (
@@ -2011,9 +2011,9 @@ def RMO_MOBottomKOp : RMO_MOAnaloguePureTopKOp<"bottom_k"> {
       %in = mo.constant {
         value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>
       } : !mo.tensor<[2, 6], si64>
-      %k = mo.constant { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
-      %axis = mo.constant { value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
-      %sorted = mo.constant { value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
+      %k = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
+      %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64> } : !mo.tensor<[], si64>
+      %sorted = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xi1> } : !mo.tensor<[], bool>
       %values, %indices = rmo.mo.bottom_k(%in, %k, %axis, %sorted) : (
         !mo.tensor<[2, 6], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
       ) -> (
@@ -2327,9 +2327,9 @@ def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
     ```mlir
       %inp: !mo.tensor<[1, 10, 10, 1], f32>
       %rois: !mo.tensor<[1, 5], f32>
-      %output_height = mo.constant {value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-      %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+      %output_height = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
+      %spatial_scale = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+      %sampling_ratio = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
 
       %res = rmo.mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
         {aligned = false,  mode = "AVG"}

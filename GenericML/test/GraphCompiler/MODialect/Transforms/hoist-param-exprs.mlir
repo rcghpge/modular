@@ -4,7 +4,7 @@
 mo.graph @complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>) -> (!mo.tensor<[add(N, M)], f32>) {
   // CHECK-NEXT: mo.constant
   // CHECK-NEXT: mo.concat
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
   // CHECK-NEXT: kgen.param.declare [[NAME:[a-zA-Z0-9_]+]]: si64 = <add
   // CHECK-NEXT: mo.mul({{.*}}) : !mo.tensor<[[[NAME]]], f32>
@@ -20,7 +20,7 @@ mo.graph @multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: 
   // CHECK-NEXT: mo.concat
   // CHECK-NEXT: mo.static.broadcast_to
   // CHECK-NEXT: mo.static.reshape
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
   %2 = mo.static.broadcast_to(%arg1):!mo.tensor<[M], f32> ->!mo.tensor<[N, M], f32>
   %3 = mo.static.reshape(%2):!mo.tensor<[N, M], f32> ->!mo.tensor<[mul_nuw(N, M)], f32>
@@ -40,7 +40,7 @@ mo.graph @scoped_multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, 
   // CHECK-NEXT: mo.concat
   // CHECK-NEXT: mo.static.broadcast_to
   // CHECK-NEXT: mo.static.reshape
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
   %2 = mo.static.broadcast_to(%arg1):!mo.tensor<[M], f32> ->!mo.tensor<[N, M], f32>
   %3 = mo.static.reshape(%2):!mo.tensor<[N, M], f32> ->!mo.tensor<[mul_nuw(N, M)], f32>
@@ -68,7 +68,7 @@ mo.graph @scoped_multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, 
 mo.graph @no_rewrite_decl<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>) -> (!mo.tensor<[add(N, M)], f32>) {
   // CHECK-NEXT: mo.constant
   // CHECK-NEXT: mo.concat
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
   %2 = mo.static.reshape(%1):!mo.tensor<[add(N, M)], f32>->!mo.tensor<[sum], f32>
   // CHECK-NEXT: kgen.param.declare [[SUM:.*]]: si64 = <add
@@ -133,7 +133,7 @@ mo.graph @dont_outline_unknown_dims<N, M>(%arg0: !mo.tensor<[N, ?], f32>, %arg1:
   // No question marks should dissapear (there are 8 in the current IR)
   // CHECK-COUNT-8: ?
   // COUNT-NOT: ?
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N, ?], f32>, !mo.tensor<[M, ?], f32>) -> !mo.tensor<[add(N, M), ?], f32>
   %2 = mo.mul(%1, %1) :!mo.tensor<[add(N, M), ?], f32>
   mo.output %2 : !mo.tensor<[add(N, M), ?], f32>

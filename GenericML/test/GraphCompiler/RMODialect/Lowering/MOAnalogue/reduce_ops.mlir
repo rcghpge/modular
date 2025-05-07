@@ -42,13 +42,13 @@ mo.graph @mean_params_mix(%arg0: !mo.tensor<[?, 4, ?, ?], f32>, %arg1: !mo.tenso
 // -----
 
 mo.graph @mean_dyn_const_axis(%arg0: !mo.tensor<[?, ?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?, ?], f32> {
-  %0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %1 = rmo.mo.mean(%arg0, %0) : (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[?, ?, ?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?, ?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @mean_dyn_const_axis<[[D9:[A-Z0-9]*]], [[D10:[A-Z0-9]*]], [[D11:[A-Z0-9]*]], [[D12:[A-Z0-9]*]] -> [[D13:[A-Z0-9]*]], [[D14:[A-Z0-9]*]], [[D15:[A-Z0-9]*]], [[D16:[A-Z0-9]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D9]], [[D10]], [[D11]], [[D12]]], f32>) -> !mo.tensor<[[[D13]], [[D14]], [[D15]], [[D16]]], f32> {
-//   CHECK-DAG:   [[V0:%.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
+//   CHECK-DAG:   [[V0:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]], [[D4:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D9]], [[D10]], [[D11]], [[D12]]], f32> -> !mo.tensor<[[[D1]], [[D2]], [[D3]], [[D4]]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = mo.mean([[V1]], [[V0]]) : (!mo.tensor<[[[D1]], [[D2]], [[D3]], [[D4]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D1]], 1, [[D3]], [[D4]]], f32>
 //  CHECK-NEXT:   [[V3:%.*]] = rmo.rebind_tensor_shape<() -> [[D5:[A-Za-z0-9_]*]], [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]], [[D8:[A-Za-z0-9_]*]]>([[V2]]) {{.*}} : (!mo.tensor<[[[D1]], 1, [[D3]], [[D4]]], f32>) -> !mo.tensor<[[[D5]], [[D6]], [[D7]], [[D8]]], f32>
@@ -69,13 +69,13 @@ mo.graph @mean_static(%arg0: !mo.tensor<[5, 4, 8, 6], f32>, %arg1: !mo.tensor<[]
 // -----
 
 mo.graph @mean_params_mix_const_axis(%arg0: !mo.tensor<[?, 4, ?, ?], f32>) -> !mo.tensor<?, f32> {
-  %0 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %1 = rmo.mo.mean(%arg0, %0) : (!mo.tensor<[?, 4, ?, ?], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @mean_params_mix_const_axis<[[D5:[A-Z0-9]*]], [[D6:[A-Z0-9]*]], [[D7:[A-Z0-9]*]] -> Sh8: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D5]], 4, [[D6]], [[D7]]], f32>) -> !mo.tensor<[[SH8:[A-Za-z0-9_]*]], f32> {
-//   CHECK-DAG:   [[V0:%.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
+//   CHECK-DAG:   [[V0:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[D3:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D5]], 4, [[D6]], [[D7]]], f32> -> !mo.tensor<[[[D1]], 4, [[D2]], [[D3]]], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = mo.mean([[V1]], [[V0]]) : (!mo.tensor<[[[D1]], 4, [[D2]], [[D3]]], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[[[D1]], 4, 1, [[D3]]], f32>
 //  CHECK-NEXT:   [[V3:%.*]] = rmo.rebind_tensor_shape<() -> [[SH4:[A-Za-z0-9_]*]]: !mosh.ape>([[V2]]) {{.*}} : (!mo.tensor<[[[D1]], 4, 1, [[D3]]], f32>) -> !mo.tensor<[[SH4]], f32>
@@ -84,13 +84,13 @@ mo.graph @mean_params_mix_const_axis(%arg0: !mo.tensor<[?, 4, ?, ?], f32>) -> !m
 // -----
 
 mo.graph @mean_static_const_axis(%arg0: !mo.tensor<[5, 4, 8, 6], f32>) -> !mo.tensor<?, f32> {
-  %0 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %1 = rmo.mo.mean(%arg0, %0) : (!mo.tensor<[5, 4, 8, 6], f32>, !mo.tensor<[], si32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @mean_static_const_axis<() -> [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[5, 4, 8, 6], f32>) -> !mo.tensor<[[SH2]], f32> {
-//   CHECK-DAG:   [[V0:%.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
+//   CHECK-DAG:   [[V0:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.mean([[ARG0]], [[V0]]) : (!mo.tensor<[5, 4, 8, 6], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[5, 4, 1, 6], f32>
 //  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[V1]]) {{.*}} : (!mo.tensor<[5, 4, 1, 6], f32>) -> !mo.tensor<[[SH1]], f32>
 //  CHECK-NEXT:   mo.output<:!mosh.ape [[SH1]]> [[V2]] : !mo.tensor<[[SH1]], f32>

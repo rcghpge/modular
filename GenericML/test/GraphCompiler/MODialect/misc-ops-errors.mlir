@@ -153,7 +153,7 @@ mo.graph @broadcast_input_res_not_broadcastable(
 //===----------------------------------------------------------------------===//
 
 mo.graph @concat_no_args() -> !mo.tensor<[7], f32> {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{concat must have at least 1 input tensor}}
   %0 = mo.concat[%ax: !mo.tensor<[], si64>]() : () -> !mo.tensor<[7], f32>
   mo.output %0 : !mo.tensor<[7], f32>
@@ -162,7 +162,7 @@ mo.graph @concat_no_args() -> !mo.tensor<[7], f32> {
 // -----
 
 mo.graph @concat_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
-  %ax = mo.constant {value = #M.dense_array<0.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0.0, 2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
   // expected-error @below {{'mo.concat' op operand #0 must be ranked scalar index tensor, but got '!mo.tensor<[2], f32>'}}
   %0 = mo.concat[%ax: !mo.tensor<[2], f32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
@@ -171,7 +171,7 @@ mo.graph @concat_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2]
 // -----
 
 mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32> {
-  %ax = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error @below {{'mo.concat' op operand #0 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
   %0 = mo.concat[%ax: !mo.tensor<[2], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
@@ -180,7 +180,7 @@ mo.graph @concat_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<
 // -----
 
 mo.graph @concat_non_matching_input_ranks(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32> {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
@@ -189,7 +189,7 @@ mo.graph @concat_non_matching_input_ranks(%arg0: !mo.tensor<[7], f32>, %arg1: !m
 // -----
 
 mo.graph @concat_non_matching_output_rank(%arg0: !mo.tensor<[2, 2], f32>, %arg1: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32> {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[9], f32>
   mo.output %0 : !mo.tensor<[9], f32>
@@ -198,7 +198,7 @@ mo.graph @concat_non_matching_output_rank(%arg0: !mo.tensor<[2, 2], f32>, %arg1:
 // -----
 
 mo.graph @concat_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<[2, 8], f32> {
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<?, f32>) -> !mo.tensor<[2, 8], f32>
   mo.output %0 : !mo.tensor<[2, 8], f32>
@@ -207,7 +207,7 @@ mo.graph @concat_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.ten
 // -----
 
 mo.graph @concat_incorrect_element_type(%arg0: !mo.tensor<[1], si64>, %arg1: !mo.tensor<[1], si32>) -> !mo.tensor<[2], si64> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
 
   // expected-error @below {{input and output element types must match}}
   %res = mo.concat[%axis: !mo.tensor<[], si32>](%arg0, %arg1) : (
@@ -236,7 +236,7 @@ mo.graph @cumsum(%arg0 : !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[4], f32>) {
 //===----------------------------------------------------------------------===//
 
 mo.graph @split_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0.0> : tensor<1xf32>} : !mo.tensor<[], f32>
   // expected-error @below {{'mo.split' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[], f32>'}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], f32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
@@ -245,7 +245,7 @@ mo.graph @split_non_int_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2],
 // -----
 
 mo.graph @split_non_shapelike_splits(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   // expected-error @below {{'mo.split' op operand #1 must be rank 1 or unranked with integer or index elements, but got '!mo.tensor<[2], f32>}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
@@ -254,7 +254,7 @@ mo.graph @split_non_shapelike_splits(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.ten
 // -----
 
 mo.graph @split_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error @below {{'mo.split' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
   %0, %1 = mo.split[%ax: !mo.tensor<[2], si64>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
@@ -263,7 +263,7 @@ mo.graph @split_non_scalar_axis(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[
 // -----
 
 mo.graph @split_axis_out_of_range(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
-  %ax = mo.constant {value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[], si32>
   // expected-error @below {{split axis must be in range [-rank, rank)}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
@@ -272,7 +272,7 @@ mo.graph @split_axis_out_of_range(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor
 // -----
 
 mo.graph @split_non_matching_output_rank(%arg0: !mo.tensor<[6, 7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[6, 7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
@@ -281,7 +281,7 @@ mo.graph @split_non_matching_output_rank(%arg0: !mo.tensor<[6, 7], f32>, %arg1: 
 // -----
 
 mo.graph @split_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>) {
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>)
   mo.output %0, %1 : !mo.tensor<?, f32>, !mo.tensor<?, f32>
@@ -290,7 +290,7 @@ mo.graph @split_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tens
 // -----
 
 mo.graph @split_no_matching_elem_types(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   // expected-error @below {{input and output element types must match}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%arg0, %arg1) : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>)
   mo.output %0, %1 : !mo.tensor<[?], si32>, !mo.tensor<[?], si32>
@@ -299,11 +299,11 @@ mo.graph @split_no_matching_elem_types(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.t
 // -----
 
 mo.graph @split_no_matching_static_shapes() -> (!mo.tensor<[1, 1], si32>, !mo.tensor<[3, 3], si32>) {
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
-  %array = mo.constant {value = #M.dense_array<2, 3, 5, 7> : tensor<4xsi32>} : !mo.tensor<[4], si32>
-  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %array = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 3, 5, 7> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %shape = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %input = mo.reshape(%array, %shape) : (!mo.tensor<[4], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], si32>
-  %splitSizes = mo.constant {value = #M.dense_array<1, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %splitSizes = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error @below {{input and output static shapes must match except split axis}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
     !mo.tensor<[2, 2], si32>, !mo.tensor<[2], si64>
@@ -314,9 +314,9 @@ mo.graph @split_no_matching_static_shapes() -> (!mo.tensor<[1, 1], si32>, !mo.te
 // -----
 
 mo.graph @split_wrong_split_dim_sum() -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %input = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %splitSizes = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %ax = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %input = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %splitSizes = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error @below {{sum of output shapes along split axis must match input shape}}
   %0, %1 = mo.split[%ax: !mo.tensor<[], si32>](%input, %splitSizes) : (
     !mo.tensor<[2], si32>, !mo.tensor<[2], si64>
@@ -331,7 +331,7 @@ mo.graph @split_wrong_split_dim_sum() -> (!mo.tensor<[1], si32>, !mo.tensor<[2],
 //===----------------------------------------------------------------------===//
 
 mo.graph @gather_mixed_input_output_types(%input: !mo.tensor<[4], si32>, %indices: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output must have the same element type}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
@@ -340,7 +340,7 @@ mo.graph @gather_mixed_input_output_types(%input: !mo.tensor<[4], si32>, %indice
 // -----
 
 mo.graph @gather_scalar_param(%input: !mo.tensor<[], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{'mo.gather' op operand #0 must be unranked or non-scalar tensor, but got '!mo.tensor<[], f32>'}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
@@ -349,7 +349,7 @@ mo.graph @gather_scalar_param(%input: !mo.tensor<[], f32>, %indices: !mo.tensor<
 // -----
 
 mo.graph @gather_float_indices(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{'mo.gather' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[2], f32>'}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
@@ -358,7 +358,7 @@ mo.graph @gather_float_indices(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.te
 // -----
 
 mo.graph @gather_non_scalar_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
   // expected-error @below {{'mo.gather' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<[2], si64>'}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
@@ -367,7 +367,7 @@ mo.graph @gather_non_scalar_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.
 // -----
 
 mo.graph @gather_non_int_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[2], si64>
   // expected-error @below {{'mo.gather' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[2], f32>'}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
@@ -376,7 +376,7 @@ mo.graph @gather_non_int_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.ten
 // -----
 
 mo.graph @gather_unranked_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<?, si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<?, si64>
   // expected-error @below {{'mo.gather' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<?, si64>'}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<?, si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
@@ -385,7 +385,7 @@ mo.graph @gather_unranked_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.te
 // -----
 
 mo.graph @gather_result_rank_too_big(%input: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?], f32>
@@ -394,7 +394,7 @@ mo.graph @gather_result_rank_too_big(%input: !mo.tensor<[?, ?], f32>, %indices: 
 // -----
 
 mo.graph @gather_result_rank_too_small(%input: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[?], f32>
   mo.output %0 : !mo.tensor<[?], f32>
@@ -403,7 +403,7 @@ mo.graph @gather_result_rank_too_small(%input: !mo.tensor<[?, ?], f32>, %indices
 // -----
 
 mo.graph @gather_unranked_output(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<?, f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{result must be ranked if both param and indices are ranked}}
   %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
@@ -704,7 +704,7 @@ mo.graph @slice_dyn_rank_input_static_step(
 //===----------------------------------------------------------------------===//
 
 mo.graph @transpose_fp32_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<1.0, 0.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 0.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
   // expected-error@+1 {{'mo.transpose' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3, 2], f32>
   mo.output %res : !mo.tensor<[3, 2], f32>
@@ -713,7 +713,7 @@ mo.graph @transpose_fp32_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3,
 // -----
 
 mo.graph @transpose_2d_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si64>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si64>
   // expected-error@+1 {{'mo.transpose' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[1, 2], si64>'}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[1, 2], si64>) -> !mo.tensor<[3, 2], f32>
   mo.output %res : !mo.tensor<[3, 2], f32>
@@ -722,7 +722,7 @@ mo.graph @transpose_2d_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2
 // -----
 
 mo.graph @transpose_perm_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{argument and result must be statically ranked if perm has known shape}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<?, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
   mo.output %res : !mo.tensor<?, f32>
@@ -731,7 +731,7 @@ mo.graph @transpose_perm_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?
 // -----
 
 mo.graph @transpose_invalid_perm_size_static(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{output shape is invalid based on constant permutation}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
   mo.output %res : !mo.tensor<[3, 2], f32>
@@ -748,7 +748,7 @@ mo.graph @transpose_perm_size_dynamic(%input: !mo.tensor<[?, ?], f32>, %perm: !m
 // -----
 
 mo.graph @transpose_arg_res_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{input and result ranks do not match}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
@@ -757,7 +757,7 @@ mo.graph @transpose_arg_res_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) ->
 // -----
 
 mo.graph @transpose_perm_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{input and result ranks do not match perm size}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
@@ -766,7 +766,7 @@ mo.graph @transpose_perm_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !m
 // -----
 
 mo.graph @transpose_duplicated_perm(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   // expected-error@+1 {{invalid permutation}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
@@ -775,7 +775,7 @@ mo.graph @transpose_duplicated_perm(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.t
 // -----
 
 mo.graph @transpose_out_of_bound_perm(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
-  %perm = mo.constant {value = #M.dense_array<-1, 3, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1, 3, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   // expected-error@+1 {{invalid permutation}}
   %res = mo.transpose(%input, %perm) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
@@ -864,7 +864,7 @@ mo.graph @arg_max_bad_dimensions(%arg: !mo.tensor<[7, 7], f32>, %axis: !mo.tenso
 // -----
 
 mo.graph @arg_max_bad_reduction_dim(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 2], si64> {
-  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{output dimensions must be 1 at the reduction axis}}
   %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[7, 2], si64>
   mo.output %res : !mo.tensor<[7, 2], si64>
@@ -873,7 +873,7 @@ mo.graph @arg_max_bad_reduction_dim(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor
 // -----
 
 mo.graph @arg_max_too_many_reductions(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[1, 1], si64> {
-  %axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error@+1 {{output dimensions must match input dimensions}}
   %res = mo.arg_max(%arg, %axis) : (!mo.tensor<[7, 7], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 1], si64>
   mo.output %res : !mo.tensor<[1, 1], si64>
@@ -915,7 +915,7 @@ mo.graph @guard_disallows_buffer(%X: !mo.buffer<[2, 2], f32>)
 //===----------------------------------------------------------------------===//
 
 mo.graph @tile_fp32_repeats(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3], f32> {
-  %repeats = mo.constant {value = #M.dense_array<2.0, 1.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %repeats = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0, 1.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
   // expected-error@+1 {{'mo.tile' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[2], f32>'}}
   %res = mo.tile(%input, %repeats) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[4, 3], f32>
   mo.output %res : !mo.tensor<[4, 3], f32>
@@ -924,7 +924,7 @@ mo.graph @tile_fp32_repeats(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3
 // -----
 
 mo.graph @tile_2d_repeats(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3], f32> {
-  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si64>
+  %repeats = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si64>
   // expected-error@+1 {{'mo.tile' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<[1, 2], si64>'}}
   %res = mo.tile(%input, %repeats) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[1, 2], si64>) -> !mo.tensor<[4, 3], f32>
   mo.output %res : !mo.tensor<[4, 3], f32>
@@ -933,7 +933,7 @@ mo.graph @tile_2d_repeats(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3],
 // -----
 
 mo.graph @tile_repeats_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %repeats = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{argument and result must be statically ranked if repeats has known shape}}
   %res = mo.tile(%input, %repeats) : (!mo.tensor<?, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
   mo.output %res : !mo.tensor<?, f32>
@@ -950,7 +950,7 @@ mo.graph @tile_repeats_size_dynamic(%input: !mo.tensor<[?, ?], f32>, %repeats: !
 // -----
 
 mo.graph @tile_arg_res_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
-  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %repeats = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{input and result ranks do not match}}
   %res = mo.tile(%input, %repeats) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
@@ -959,7 +959,7 @@ mo.graph @tile_arg_res_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.
 // -----
 
 mo.graph @tile_repeats_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?, ?, ?], f32> {
-  %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %repeats = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{input and result ranks do not match repeats size}}
   %res = mo.tile(%input, %repeats) : (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
@@ -973,7 +973,7 @@ mo.graph @tile_repeats_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.
 
 // -----
 mo.graph @reshape_wrong_dtype(%input: !mo.tensor<[6], f32>) -> !mo.tensor<[2, 3], si32> {
-  %shape = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{'mo.reshape' op requires the element type of results match first operand.}}
   %res = mo.reshape(%input, %shape) : (!mo.tensor<[6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], si32>
   mo.output %res : !mo.tensor<[2, 3], si32>
@@ -981,7 +981,7 @@ mo.graph @reshape_wrong_dtype(%input: !mo.tensor<[6], f32>) -> !mo.tensor<[2, 3]
 
 // -----
 mo.graph @reshape_incompatible_shapes(%input: !mo.tensor<[6], f32>) -> !mo.tensor<[2, 3], f32> {
-  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{'mo.reshape' op Expected requested shape and output shape to have the same number of elements requested 4 but expected 6}}
   %res = mo.reshape(%input, %shape) : (!mo.tensor<[6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
   mo.output %res : !mo.tensor<[2, 3], f32>
@@ -1046,7 +1046,7 @@ mo.graph @scatter_nd_min_shape_mismatch(
 // -----
 
 mo.graph @squeeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[7], si64> {
-  %indices = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %indices = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 
   // Input and output dtypes should match
   // expected-error@+1 {{'mo.squeeze_shape' op requires the element type of results match first operand.}}
@@ -1057,7 +1057,7 @@ mo.graph @squeeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) -> !
 // -----
 
 mo.graph @squeeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[2], si32> {
-  %indices = mo.constant {value = #M.dense_array<0, -4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %indices = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, -4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 
   // 0, and -4 map to the same dimension (index 0)
   // expected-error@+1 {{'mo.squeeze_shape' op Padding indices pad the same dimension twice}}
@@ -1073,7 +1073,7 @@ mo.graph @squeeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tenso
 // -----
 
 mo.graph @unsqueeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[7], si64> {
-  %indices = mo.constant {value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %indices = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 6> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 
   // Input and output dtypes should match
   // expected-error@+1 {{'mo.unsqueeze_shape' op requires the element type of results match first operand.}}
@@ -1084,7 +1084,7 @@ mo.graph @unsqueeze_shape_changed_dtypes(%input_shape: !mo.tensor<[4], si32>) ->
 // -----
 
 mo.graph @unsqueeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[7], si32> {
-  %indices = mo.constant {value = #M.dense_array<0, 2, -7> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %indices = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, -7> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 
   // 0, and -7 map to the same dimension (index 0)
   // expected-error@+1 {{'mo.unsqueeze_shape' op Padding indices pad the same dimension twice}}
@@ -1127,9 +1127,9 @@ mo.graph @bottom_k_different_output_shapes<() -> D0, D1, D2, D3, D4, D5, D6, D7>
 // -----
 
 mo.graph @slice_dim_op() -> (!mo.tensor<[], si32>) {
-  %2 = mo.constant {value = #M.dense_array<2, -4, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %4 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  %5 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+  %2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, -4, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %4 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+  %5 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
   // expected-error@+1 {{Slice axis is greater than rank of input}}
   %6 = mo.slice_dim[1 : index] (%2, %4, %5, %5) : (!mo.tensor<[3], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
   mo.output %6 : !mo.tensor<[], si32>

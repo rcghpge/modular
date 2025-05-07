@@ -671,7 +671,7 @@ mo.graph @split_variadic_output<D0 -> D1>(
   %split_sizes: !mo.tensor<[2], si64>
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[5, 10], f32>) {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %axis = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
 
   %res:2 = mo.split<() -> D2>[%axis : !mo.tensor<[], si32>] (%input, %split_sizes) :
     (!mo.tensor<[D0, 10], f32>, !mo.tensor<[2], si64>) ->
@@ -685,14 +685,14 @@ mo.graph @split_variadic_output<D0 -> D1>(
 // CHECK-SAME:   %[[SPLIT_SIZES:.*]]: !mo.tensor<[2], si64>
 // CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[5, 10], f32>) {
 //
-// CHECK-NEXT: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-NEXT: %[[AXIS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
 //
-// CHECK-NEXT: %[[ID0:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT: %[[ID0:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 
 // CHECK-NEXT: mo.invoke_shape_func["split_ith_output_shape"]<() -> [[D2:.*]], {{.*}}>(%[[INPUT]], %[[SPLIT_SIZES]], %[[AXIS]], %[[ID0]])
 // CHECK-SAME:  {dataDeptTensors = [1 : i32, 2 : i32]} :
 // CHECK-SAME:  (!mo.tensor<[[[D0]], 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>, !mo.tensor<[], si64>)
-// CHECK-NEXT: %[[ID1:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT: %[[ID1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 
 // CHECK-NEXT: mo.invoke_shape_func["split_ith_output_shape"]<() -> {{.*}}, {{.*}}>(%[[INPUT]], %[[SPLIT_SIZES]], %[[AXIS]], %[[ID1]])
 // CHECK-SAME:  {dataDeptTensors = [1 : i32, 2 : i32]} :
@@ -823,10 +823,10 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
   %input: !mo.tensor<[D0, D1, D2, D3], f32>
 ) -> !mo.tensor<[D4, D5, D6, D7], f32> {
 
-  %output_height = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-  %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-  %rois = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
+  %output_height = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %spatial_scale = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %sampling_ratio = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %rois = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
 
   %output = mo.roi_align<() -> D8, D9, D10, D11>(%input, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
     {aligned = false,  mode = "AVG"}
@@ -840,10 +840,10 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
 // CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>
 // CHECK-SAME:  ) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
 //
-// CHECK-NEXT:  %[[OUTPUT_HEIGHT:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:  %[[SPATIAL_SCALE:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT:  %[[SAMPLING_RATIO:.*]] = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT:  %[[ROIS:.*]] = mo.constant {value = #M.dense_array<0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
+// CHECK-NEXT:  %[[OUTPUT_HEIGHT:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:  %[[SPATIAL_SCALE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
+// CHECK-NEXT:  %[[SAMPLING_RATIO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
+// CHECK-NEXT:  %[[ROIS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
 //
 // CHECK-NEXT:  mo.invoke_shape_func["mo.roi_align"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(
 // CHECK-SAME:    %[[INPUT]], %[[ROIS]], %[[OUTPUT_HEIGHT]], %[[OUTPUT_HEIGHT]])

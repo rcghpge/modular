@@ -3,8 +3,8 @@
 // CHECK-LABEL: mo.graph @slice
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[3, 11, 5], si32>, %[[START:.*]]: !mo.tensor<[3], si32>, %[[END:.*]]: !mo.tensor<[3], si32>, %[[STEP:.*]]: !mo.tensor<[3], si32>
 
-// CHECK-NEXT: %[[ONE:.*]] = mo.constant {value = #M.dense_array<1>
-// CHECK-NEXT: %[[ZERO:.*]] = mo.constant {value = #M.dense_array<0>
+// CHECK-NEXT: %[[ONE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
+// CHECK-NEXT: %[[ZERO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0>
 
 // Slice the start / stop / step.
 // CHECK-NEXT: %[[S1:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[ZERO]], %[[ONE]], %[[ONE]]
@@ -13,7 +13,7 @@
 
 // CHECK-NEXT: %[[O1:.*]] = mo.slice_dim[0 : index] (%[[INPUT]], %[[S1]], %[[E1]], %[[STEP1]]) : (!mo.tensor<[3, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 11, 5], si32>
 
-// CHECK-NEXT: %[[TWO:.*]] = mo.constant {value = #M.dense_array<2>
+// CHECK-NEXT: %[[TWO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2>
 
 // CHECK-NEXT: %[[S2:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[ONE]], %[[TWO]], %[[ONE]]
 // CHECK-NEXT: %[[E2:.*]] = mo.slice_dim[0 : index] (%[[END]], %[[ONE]], %[[TWO]], %[[ONE]]
@@ -21,7 +21,7 @@
 
 // CHECK-NEXT: %[[O2:.*]] = mo.slice_dim[1 : index] (%[[O1]], %[[S2]], %[[E2]], %[[STEP2]]) : (!mo.tensor<[2, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 7, 5], si32>
 
-// CHECK-NEXT: %[[THREE:.*]] = mo.constant {value = #M.dense_array<3>
+// CHECK-NEXT: %[[THREE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3>
 
 // CHECK-NEXT: %[[S3:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[TWO]], %[[THREE]], %[[ONE]]
 // CHECK-NEXT: %[[E3:.*]] = mo.slice_dim[0 : index] (%[[END]], %[[TWO]], %[[THREE]], %[[ONE]]
@@ -39,11 +39,11 @@ mo.graph @slice(%input: !mo.tensor<[3, 11, 5], si32>, %start: !mo.tensor<[3], si
 // TODO(GEX-2138): Re-enable
 // COM:  CHECK-LABEL: mo.graph @slice_offset_only_inner_dim
 // COM:  CHECK: (%[[INPUT:.*]]: !mo.tensor<[3, 11, 5], si32>
-// COM:  CHECK-NEXT: %[[START:.*]] = mo.constant {value = #M.dense_array<1, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// COM:  CHECK-NEXT: %[[END:.*]] = mo.constant {value = #M.dense_array<3, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// COM:  CHECK-NEXT: %[[STEP:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// COM:  CHECK-NEXT: %[[ONE:.*]] = mo.constant {value = #M.dense_array<1>
-// COM:  CHECK-NEXT: %[[ZERO:.*]] = mo.constant {value = #M.dense_array<0>
+// COM:  CHECK-NEXT: %[[START:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// COM:  CHECK-NEXT: %[[END:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// COM:  CHECK-NEXT: %[[STEP:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// COM:  CHECK-NEXT: %[[ONE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
+// COM:  CHECK-NEXT: %[[ZERO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0>
 
 // COM:  Slice the start / stop / step.
 // COM:  CHECK-NEXT: %[[S1:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[ZERO]], %[[ONE]], %[[ONE]]
@@ -51,7 +51,7 @@ mo.graph @slice(%input: !mo.tensor<[3, 11, 5], si32>, %start: !mo.tensor<[3], si
 
 // COM:  CHECK-NEXT: %[[O1:.*]] = mo.slice_dim_outer(%[[INPUT]], %[[S1]], %[[E1]]) : (!mo.tensor<[3, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 11, 5], si32>
 
-// COM:  CHECK-NEXT: %[[TWO:.*]] = mo.constant {value = #M.dense_array<2>
+// COM:  CHECK-NEXT: %[[TWO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2>
 
 // COM:  CHECK-NEXT: %[[S2:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[ONE]], %[[TWO]], %[[ONE]]
 // COM:  CHECK-NEXT: %[[E2:.*]] = mo.slice_dim[0 : index] (%[[END]], %[[ONE]], %[[TWO]], %[[ONE]]
@@ -59,7 +59,7 @@ mo.graph @slice(%input: !mo.tensor<[3, 11, 5], si32>, %start: !mo.tensor<[3], si
 
 // COM:  CHECK-NEXT: %[[O2:.*]] = mo.slice_dim[1 : index] (%[[O1]], %[[S2]], %[[E2]], %[[STEP2]]) : (!mo.tensor<[2, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 7, 5], si32>
 
-// COM:  CHECK-NEXT: %[[THREE:.*]] = mo.constant {value = #M.dense_array<3>
+// COM:  CHECK-NEXT: %[[THREE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3>
 
 // COM:  CHECK-NEXT: %[[S3:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[TWO]], %[[THREE]], %[[ONE]]
 // COM:  CHECK-NEXT: %[[E3:.*]] = mo.slice_dim[0 : index] (%[[END]], %[[TWO]], %[[THREE]], %[[ONE]]
@@ -70,9 +70,9 @@ mo.graph @slice(%input: !mo.tensor<[3, 11, 5], si32>, %start: !mo.tensor<[3], si
 // COM:  CHECK-NEXT: mo.output %[[O3]]
 
 mo.graph @slice_offset_only_inner_dim(%input: !mo.tensor<[3, 11, 5], si32>) -> (!mo.tensor<[2, 7, 3], si32>) {
-	%start = mo.constant {value = #M.dense_array<1, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-	%stop = mo.constant {value = #M.dense_array<3, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-	%step = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+	%start = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+	%stop = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+	%step = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
 	%res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[3, 11, 5], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[2, 7, 3], si32>
 	mo.output %res : !mo.tensor<[2, 7, 3], si32>
 }
@@ -80,11 +80,11 @@ mo.graph @slice_offset_only_inner_dim(%input: !mo.tensor<[3, 11, 5], si32>) -> (
 // TODO(GEX-2138): Re-enable
 // COM:  CHECK-LABEL: mo.graph @slice_offset_only_outer_dim
 // COM:  CHECK: (%[[INPUT:.*]]: !mo.tensor<[1, 11, 5], si32>
-// COM:  CHECK-NEXT: %[[START:.*]] = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// COM:  CHECK-NEXT: %[[END:.*]] = mo.constant {value = #M.dense_array<1, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// COM:  CHECK-NEXT: %[[STEP:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// COM:  CHECK-NEXT: %[[ONE:.*]] = mo.constant {value = #M.dense_array<1>
-// COM:  CHECK-NEXT: %[[ZERO:.*]] = mo.constant {value = #M.dense_array<0>
+// COM:  CHECK-NEXT: %[[START:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// COM:  CHECK-NEXT: %[[END:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// COM:  CHECK-NEXT: %[[STEP:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// COM:  CHECK-NEXT: %[[ONE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
+// COM:  CHECK-NEXT: %[[ZERO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0>
 
 // COM:  Slice the start / stop / step.
 // COM:  CHECK-NEXT: %[[S1:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[ZERO]], %[[ONE]], %[[ONE]]
@@ -92,7 +92,7 @@ mo.graph @slice_offset_only_inner_dim(%input: !mo.tensor<[3, 11, 5], si32>) -> (
 
 // COM:  CHECK-NEXT: %[[O1:.*]] = mo.slice_dim_outer(%[[INPUT]], %[[S1]], %[[E1]]) : (!mo.tensor<[1, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 11, 5], si32>
 
-// COM:  CHECK-NEXT: %[[TWO:.*]] = mo.constant {value = #M.dense_array<2>
+// COM:  CHECK-NEXT: %[[TWO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2>
 
 // COM:  CHECK-NEXT: %[[S2:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[ONE]], %[[TWO]], %[[ONE]]
 // COM:  CHECK-NEXT: %[[E2:.*]] = mo.slice_dim[0 : index] (%[[END]], %[[ONE]], %[[TWO]], %[[ONE]]
@@ -101,7 +101,7 @@ mo.graph @slice_offset_only_inner_dim(%input: !mo.tensor<[3, 11, 5], si32>) -> (
 // COM:  CHECK-NEXT: %[[O2_SQUEEZED:.*]] = mo.slice_dim_outer(%[[SQUEEZED]], %[[S2]], %[[E2]]) : (!mo.tensor<[11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[7, 5], si32>
 // COM:  CHECK-NEXT: %[[O2:.*]] = mo.static.reshape(%[[O2_SQUEEZED]]) : !mo.tensor<[7, 5], si32> -> !mo.tensor<[1, 7, 5], si32>
 
-// COM:  CHECK-NEXT: %[[THREE:.*]] = mo.constant {value = #M.dense_array<3>
+// COM:  CHECK-NEXT: %[[THREE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3>
 
 // COM:  CHECK-NEXT: %[[S3:.*]] = mo.slice_dim[0 : index] (%[[START]], %[[TWO]], %[[THREE]], %[[ONE]]
 // COM:  CHECK-NEXT: %[[E3:.*]] = mo.slice_dim[0 : index] (%[[END]], %[[TWO]], %[[THREE]], %[[ONE]]
@@ -112,9 +112,9 @@ mo.graph @slice_offset_only_inner_dim(%input: !mo.tensor<[3, 11, 5], si32>) -> (
 // COM:  CHECK-NEXT: mo.output %[[O3]]
 
 // mo.graph @slice_offset_only_outer_dim(%input: !mo.tensor<[1, 11, 5], si32>) -> (!mo.tensor<[1, 7, 3], si32>) {
-// 	%start = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// 	%stop = mo.constant {value = #M.dense_array<1, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-// 	%step = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// 	%start = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// 	%stop = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 8, 4> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+// 	%step = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
 // 	%res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[1, 11, 5], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[1, 7, 3], si32>
 // 	mo.output %res : !mo.tensor<[1, 7, 3], si32>
 // }
@@ -253,7 +253,7 @@ mo.graph @flatten_dim_symbolic_with_rebind<D1,D2,D12>(%input : !mo.tensor<[D1,D2
 // CHECK-NEXT: %[[V4:.*]] = mo.relu(%[[V3]]) : !mo.tensor<[D1, D2, D3, D4], f32>
 // CHECK-NEXT: mo.output %[[V4]] : !mo.tensor<[D1, D2, D3, D4], f32>
 mo.graph @unflatten_dim_symbolic<D1,D2,D3,D4>() -> (!mo.tensor<[D1,D2,D3,D4], f32>) {
-	%0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+	%0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
 	%1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[mul_nuw(D1,D2,D3,D4)], f32>
 	%2 = mo.static.reshape(%1) : !mo.tensor<[mul_nuw(D1,D2,D3,D4)], f32> -> !mo.tensor<[D1,D2,D3,D4], f32>
 	%3 = mo.relu(%2) : !mo.tensor<[D1,D2,D3,D4], f32>
@@ -278,7 +278,7 @@ mo.graph @flatten_dim_partially_symbolic<D1,D2,D3,D4>(%input : !mo.tensor<[D1,D2
 // CHECK-NEXT: %[[V2:.*]] = mo.rebind(%[[V1]]) : !mo.tensor<[D1, D2, cond(eq(:si64 D2, 0), 0, div(cond(eq(:si64 D1, 0), 0, div(D12, cond(eq(:si64 D1, 0), 1, D1))), cond(eq(:si64 D2, 0), 1, D2)))], f32> -> !mo.tensor<[D1, D2, 3], f32>
 // CHECK-NEXT: %[[V3:.*]] = mo.relu(%[[V2]]) : !mo.tensor<[D1, D2, 3], f32>
 mo.graph @unflatten_dim_symbolic_with_rebind<D1,D2,D12>() -> (!mo.tensor<[D1,D2,3], f32>) {
-	%0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+	%0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
 	%1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[D12], f32>
 	%2 = mo.static.reshape(%1) : !mo.tensor<[D12], f32> -> !mo.tensor<[D1,D2,3], f32>
 	%3 = mo.relu(%2) : !mo.tensor<[D1,D2,3], f32>
@@ -290,7 +290,7 @@ mo.graph @unflatten_dim_symbolic_with_rebind<D1,D2,D12>() -> (!mo.tensor<[D1,D2,
 // CHECK: %[[V2:.*]] = mo.split_dim[0 : index] (%[[V1]]) : (!mo.tensor<[div(D1, 2)], f32>) -> !mo.tensor<[1, div(D1, 2)], f32>
 // CHECK: mo.output %[[V2]]
 mo.graph @unflatten_with_div<D1>() -> (!mo.tensor<[1, div(D1, 2)], f32>) {
-    %0 = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
+    %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
     %1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[div(D1, 2)], f32>
     %2 = mo.static.reshape(%1) : !mo.tensor<[div(D1, 2)], f32> -> !mo.tensor<[1, div(D1, 2)], f32>
     mo.output %2 : !mo.tensor<[1, div(D1, 2)], f32>

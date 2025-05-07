@@ -4,8 +4,8 @@
 
 // Original graph:
 // mo.graph @basicMoGraph() -> (!mo.tensor<[8], f32>) {
-//  %const0 = "mo.constant"() {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<8xf32>} : () -> !mo.tensor<[8],f32>
-//  %const1 = "mo.constant"() {value = #M.dense_array<10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0> : tensor<8xf32>} : () -> !mo.tensor<[8], f32>  %1 = mo.mul(%iota, %tens) : !mo.tensor<[8], f32>
+//  %const0 = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<8xf32>} : () -> !mo.tensor<[8],f32>
+//  %const1 = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0> : tensor<8xf32>} : () -> !mo.tensor<[8], f32>  %1 = mo.mul(%iota, %tens) : !mo.tensor<[8], f32>
 //  %x = mo.mul(%const0, %const1) : !mo.tensor<[8], f32>
 //  %y = mo.sub(%x, %const1) : !mo.tensor<[8], f32>
 //  %r = mo.add(%y, %x) : !mo.tensor<[8], f32>

@@ -51,20 +51,27 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface]> {
     !mo.tensor<[1, ?, N], i32>         // partially known and parameterized shape
     !mo.tensor<?, invalid>             // unknown shape of unknown rank
     !mo.tensor<Sh, invalid>            // shape parameter reference
-    !mo.tensor<[4, 16], f32, cpu:0>    // optional device
+    !mo.tensor<[4, 16], f32>    // optional device
     ```
   }];
 
   let parameters = (ins
     "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
-    OptionalParameter<"::M::DeviceRefAttr"> : $deviceRef,
-    "DictionaryAttr" : $metadata);
+    DefaultValuedParameter<"::M::DeviceRefAttr", "::M::DeviceRefAttr::getDefault($_ctxt)"> : $deviceRef,
+    DefaultValuedParameter<"DictionaryAttr", "{}"> : $metadata);
 
   let genVerifyDecl = 1;
   let hasCustomAssemblyFormat = 1;
+  let skipDefaultBuilders = 1;
 
   let builders = [
+    // Base builder which all others call
+    TypeBuilder<(ins
+      "TypedAttr" : $shape,
+      "DType" : $dtype,
+      "DeviceRefAttr" : $deviceRef,
+      "DictionaryAttr" : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "DType" : $dtype,
@@ -292,13 +299,20 @@ def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface]> {
   let parameters = (ins
     "TypedAttr" : $shapeAttr,
     "DType" : $dtype,
-    OptionalParameter<"::M::DeviceRefAttr"> : $deviceRef,
-    "DictionaryAttr" : $metadata);
+    DefaultValuedParameter<"::M::DeviceRefAttr", "::M::DeviceRefAttr::getDefault($_ctxt)"> : $deviceRef,
+    DefaultValuedParameter<"DictionaryAttr", "{}"> : $metadata);
 
   let genVerifyDecl = 1;
   let hasCustomAssemblyFormat = 1;
+  let skipDefaultBuilders = 1;
 
   let builders = [
+    // Base builder which all others call
+    TypeBuilder<(ins
+      "TypedAttr" : $shape,
+      "DType" : $dtype,
+      "DeviceRefAttr" : $deviceRef,
+      "DictionaryAttr" : $metadata)>,
     TypeBuilderWithInferredContext<(ins
       "TypedAttr" : $shapeAttr,
       "DType" : $dtype,

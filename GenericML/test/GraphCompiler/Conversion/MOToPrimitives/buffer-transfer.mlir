@@ -16,11 +16,11 @@
 // CHECK: %[[SYNC:.*]] = mgp.sync(%[[COPY]], %[[CTX]], %[[GPU_CTX]]) {bDevice = #M.device_ref<"gpu", 0>}
 // CHECK: %[[EXTEND:.*]] = mgp.extend.lifetime %[[SYNC]], %[[SRC_BUF]]
 // CHECK: mef.output %[[CHAIN]], %[[TENSOR]]
-mo.graph @buffer_transfer_h2d(%arg0: !mo.buffer<[2, 2], f32, cpu:0>) -> !mo.buffer<[2, 2], f32, gpu:0>  {
+mo.graph @buffer_transfer_h2d(%arg0: !mo.buffer<[2, 2], f32>) -> !mo.buffer<[2, 2], f32, gpu:0>  {
   %ch = mo.chain.create()
   %darg0 = mo.buffer.create : !mo.buffer<[2, 2], f32, gpu:0>
 
-  mo.buffer.transfer(%ch, %arg0, %darg0) : !mo.buffer<[2, 2], f32, cpu:0>, !mo.buffer<[2, 2], f32, gpu:0>
+  mo.buffer.transfer(%ch, %arg0, %darg0) : !mo.buffer<[2, 2], f32>, !mo.buffer<[2, 2], f32, gpu:0>
 
   mo.output %darg0: !mo.buffer<[2, 2], f32, gpu:0>
 }

@@ -111,15 +111,21 @@ ParseResult TensorLikeTypeParser::parseMetadata() {
 
 ParseResult TensorLikeTypeParser::parseOptionalFields() {
   // No optional commas, so we must be at the end.
-  if (parser.parseOptionalComma())
+  if (parser.parseOptionalComma()) {
+    // By default, if the device is not included, assume we are on host.
+    deviceRef = DeviceRefAttr::getDefault(parser.getContext());
     return parseComplete();
+  }
 
   StringRef deviceLabel;
 
   // The device section is expected to start with a keyword, if that fails,
   // check if the current token is for the metadata field.
-  if (parser.parseOptionalKeyword(&deviceLabel))
+  if (parser.parseOptionalKeyword(&deviceLabel)) {
+    // By default, if the device is not included, assume we are on host.
+    deviceRef = DeviceRefAttr::getDefault(parser.getContext());
     return parseMetadata();
+  }
 
   DeviceId deviceId;
 
@@ -168,8 +174,11 @@ void printTensorLikeType(AsmPrinter &printer, TypedAttr shape, DType dtype,
   MOSH::printShapeTypedAttr(printer, shape);
   printer << ", " << dtype.getAsString();
 
-  if (device)
+  // Only print the device if it is not the default/host device.
+  if (device && device != DeviceRefAttr::getDefault(device.getContext()))
     printer << ", " << device.getLabel() << ":" << device.getId();
+  else if (!device)
+    printer << ", INVALID_STATE_NO_DEVICE";
 
   if (!metadata.empty())
     printer << ", " << metadata;
@@ -225,6 +234,9 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  TypedAttr shapeAttr, DType dtype,
                                  DeviceRefAttr deviceRef,
                                  DictionaryAttr metadata) {
+  if (!deviceRef)
+    return emitError() << "no device attribute was defined";
+
   if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
     if (Type ty = unkAttr.getType(); !llvm::isa<ShapeType>(ty)) {
       return emitError() << "unknown shape attribute must have ShapeType, got "
@@ -320,6 +332,29 @@ TypedAttr M::MO::getShape(Type ty) {
 
   llvm_unreachable(
       "M::MO::getShape can only take MO::BufferType or MO::TensorType");
+}
+
+// Base builder which all others call
+TensorType TensorType::get(::mlir::MLIRContext *context, TypedAttr shapeAttr,
+                           DType dtype, DeviceRefAttr deviceRef,
+                           DictionaryAttr metadata) {
+  // Ensure device ref is always populated
+  if (!deviceRef)
+    deviceRef = DeviceRefAttr::getDefault(context);
+
+  return Base::get(context, std::move(shapeAttr), std::move(dtype),
+                   std::move(deviceRef), std::move(metadata));
+}
+
+// Checked base builder
+TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  ::mlir::MLIRContext *context,
+                                  TypedAttr shapeAttr, DType dtype,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
+    return {};
+  return TensorType::get(context, shapeAttr, dtype, deviceRef, metadata);
 }
 
 TensorType TensorType::get(TypedAttr shapeAttr, DType dtype,
@@ -750,6 +785,9 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
                                  TypedAttr shapeAttr, DType dtype,
                                  DeviceRefAttr deviceRef,
                                  DictionaryAttr metadata) {
+  if (!deviceRef)
+    return emitError() << "no device attribute was defined";
+
   auto shape = llvm::dyn_cast<ShapeAttr>(shapeAttr);
   if (!shape)
     return emitError() << "invalid shape attribute, only MOSH::ShapeAttr is "
@@ -775,6 +813,29 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
            << "device attribute no longer resides in the metadata dictionary";
 
   return success();
+}
+
+// Base builder which all others call
+BufferType BufferType::get(::mlir::MLIRContext *context, TypedAttr shapeAttr,
+                           DType dtype, DeviceRefAttr deviceRef,
+                           DictionaryAttr metadata) {
+  // Ensure device ref is always populated
+  if (!deviceRef)
+    deviceRef = DeviceRefAttr::getDefault(context);
+
+  return Base::get(context, std::move(shapeAttr), std::move(dtype),
+                   std::move(deviceRef), std::move(metadata));
+}
+
+// Checked base builder
+BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                  ::mlir::MLIRContext *context,
+                                  TypedAttr shapeAttr, DType dtype,
+                                  DeviceRefAttr deviceRef,
+                                  DictionaryAttr metadata) {
+  if (failed(verify(emitError, shapeAttr, dtype, deviceRef, metadata)))
+    return {};
+  return BufferType::get(context, shapeAttr, dtype, deviceRef, metadata);
 }
 
 BufferType BufferType::get(TypedAttr shapeAttr, DType dtype,
