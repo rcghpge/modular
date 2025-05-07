@@ -553,10 +553,29 @@ def MO_PadLike : MO_TensorOpInterfaceBase<"PadLike", [MO_ParamDeclaration]> {
 
 /// MO traits should inherit from this to ensure they are in the right namespace
 /// and have the right dependencies.
-class MO_OpTrait<string name, list<Trait> traits = []>
-    : NativeOpTrait<name, traits> {
+class MO_OpTrait<string name, list<Trait> traits = [],
+    code extraOpDeclaration = [{}],
+    code extraOpDefinition = [{}]>
+    : NativeOpTrait<name, traits, extraOpDeclaration, extraOpDefinition> {
   let cppNamespace = "::M::MO";
 }
+
+// Implements MO_HasDeviceInterface methods for host-only ops.
+def MO_HostOnlyTrait : MO_OpTrait<"MOHostOnlyTrait", [], [{}], [{
+    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
+      return getHostDevice(getContext());
+    }
+    DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
+      return nullptr;
+    }
+  }]>;
+
+// Marks an op that must execute on the host.
+def MO_HostOnly : TraitList<[
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface,
+      ["getExecutionDeviceConstraint", "getOperandDeviceConstraint"]>,
+  MO_HostOnlyTrait
+]>;
 
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,

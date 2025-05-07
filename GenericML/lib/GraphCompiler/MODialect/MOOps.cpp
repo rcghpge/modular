@@ -49,20 +49,6 @@ using namespace MO;
 
 namespace M::MO {
 
-// Host only operations.
-#define HOST_ONLY_OP(T)                                                        \
-  DeviceRefAttr T::getExecutionDeviceConstraint() {                            \
-    return getHostDevice(getOperation()->getContext());                        \
-  }
-
-// Lowering supports these ops being on any device, however
-// the Mojo implementations do not (yet).
-HOST_ONLY_OP(SqueezeShapeOp)
-HOST_ONLY_OP(UnsqueezeShapeOp)
-HOST_ONLY_OP(IfOp)
-HOST_ONLY_OP(WhileOp)
-#undef HOST_ONLY_OP
-
 static ParseResult
 parseParamDeclElement(OpAsmParser &parser,
                       SmallVectorImpl<ParamDeclAttr> &decls) {

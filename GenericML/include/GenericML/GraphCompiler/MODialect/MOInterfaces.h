@@ -231,6 +231,13 @@ public:
 };
 
 template <typename ConcreteType>
+class MOHostOnlyTrait
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOHostOnlyTrait> {
+public:
+  static LogicalResult verifyTrait(Operation *op) { return success(); }
+};
+
+template <typename ConcreteType>
 class MOBufferOpConformance
     : public mlir::OpTrait::TraitBase<ConcreteType, MOBufferOpConformance> {
 public:
