@@ -370,12 +370,18 @@ static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
   unsigned numSrcVal = src->getNumOperands();
   ValueRange fusedArgs =
       dst.getExecBody().getArguments().slice(opIdx, numSrcVal);
-  for (auto &use : toReplace.getUses()) {
-    unsigned insertIdx = use.getOperandNumber();
-    use.getOwner()->insertOperands(insertIdx, fusedArgs);
-    use.getOwner()->eraseOperand(insertIdx + numSrcVal);
-  }
 
+  // erase below might corrupt use-def list, extract to a vector first.
+  auto uses = llvm::map_to_vector(toReplace.getUses(),
+                                  [](OpOperand &op) { return &op; });
+  for (auto use : uses) {
+    unsigned insertIdx = use->getOperandNumber();
+    // It is actually necessary to have a a tmp *op here to avoid UAF (since
+    // insert below might trigger a resize, making `use` a dangling pointer).
+    Operation *op = use->getOwner();
+    op->insertOperands(insertIdx, fusedArgs);
+    op->eraseOperand(insertIdx + numSrcVal);
+  }
   // cleanup
   dst.getExecBody().eraseArgument(opIdx + numSrcVal);
   dst->eraseOperands(opIdx + numSrcVal);
@@ -391,10 +397,15 @@ static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {
 
     SmallVector<int> indices = *getFusionIndices(src, dst);
     SmallVector<Value> fusedArgs(src->getNumOperands() + 1);
+    Region &srcFuseRegion = src.getElemwiseBodyLambda().getBodyRegion();
 
     for (int index : llvm::reverse(indices)) {
-      // Simply fuses the elementwise lambda.
-      Block *srcFuseBody = src.getElemwiseBodyLambda().getBody();
+      // Make a clone first, since one region might be used multiple time.
+      // Otherwise, the `rewriter.inlineBlockBefore` below would delete the
+      // block.
+      rewriter.cloneRegionBefore(srcFuseRegion, *(dstFuseBody->getParent()),
+                                 dstFuseBody->getParent()->begin());
+      Block *srcFuseBody = &dstFuseBody->getParent()->front();
 
       auto yieldOp = cast<MOGG::OutputOp>(srcFuseBody->getTerminator());
       Value fusedVal = yieldOp->getOperand(0);
