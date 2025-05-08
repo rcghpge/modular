@@ -9,6 +9,27 @@
 
 include "mlir/IR/OpBase.td"
 
+def MOGG_KernelCallInterface : OpInterface<"KernelCallInterface"> {
+  let description = [{
+    An interface that represents ops that call into Mojo kernels directly.
+  }];
+
+  let cppNamespace = "::M::MOGG";
+
+  let methods = [
+    InterfaceMethod<
+      "Inject a dictionary attribute for kernel parameters",
+      "void", "setKernelParams", (ins "mlir::DictionaryAttr":$params),
+      "$_op->setAttr(\"kernel_param\", params);"
+    >,
+    InterfaceMethod<
+      "Returns the value that represents the lowered KGEN mojo object",
+      "mlir::DictionaryAttr", "getKernelParams", (ins),
+      "return $_op->template getAttrOfType<DictionaryAttr>(\"kernel_param\");"
+    >,
+  ];
+}
+
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let description = [{
     A terminator for `mogg.experimental.kernel` operation.
@@ -44,16 +65,6 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
     InterfaceMethod<
       "Returns the type of kernel returned value (either a by_val/by_ref return)",
       "mlir::Type", "getKernelRet", (ins)
-    >,
-    InterfaceMethod<
-      "Inject a dictionary attribute for kernel parameters",
-      "void", "setKernelParams", (ins "mlir::DictionaryAttr":$params),
-      "$_op->setAttr(\"kernel_param\", params);"
-    >,
-    InterfaceMethod<
-      "Returns the value that represents the lowered KGEN mojo object",
-      "mlir::DictionaryAttr", "getKernelParams", (ins),
-      "return $_op->template getAttrOfType<DictionaryAttr>(\"kernel_param\");"
     >,
   ];
 }

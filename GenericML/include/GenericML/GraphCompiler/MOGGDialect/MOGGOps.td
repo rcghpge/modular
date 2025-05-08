@@ -167,7 +167,7 @@ def MOGG_OutputOp
 //===----------------------------------------------------------------------===//
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
-    SameTypeOperands]>  {
+    SameTypeOperands, DeclareOpInterfaceMethods<MOGG_KernelCallInterface>]>  {
   let summary = "call the registered foreach kernel";
   let description = [{
     This represents a call to the mojo implementation of `foreach` function. If
@@ -185,7 +185,7 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
 
 
 def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
-    AttrSizedOperandSegments]>  {
+    AttrSizedOperandSegments, DeclareOpInterfaceMethods<MOGG_KernelCallInterface>]>  {
   let summary = "Call the registered `execute` function for a particular kernel";
   let description = [{
     This represents a call to the mojo implementation of `Kernel::execute`
@@ -238,6 +238,7 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", []>  {
 
 
 def MOGG_CallOutlinedOp : MOGG_Op<"call.outlined", [
+    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
     Pure,
     HasParent<"MOGG::BindLambdaOp">]> {
   let summary = "Call the registered `_OUTLINED` function for a particular kernel";
@@ -263,6 +264,7 @@ def MOGG_CallOutlinedOp : MOGG_Op<"call.outlined", [
 
 
 def MOGG_CallViewOp : MOGG_Op<"call.view", [
+    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
     Pure,
     HasParent<"MOGG::ExpKernelOp">]> {
   let summary = "Call the corresponding `update_input_view` function for a particular kernel";

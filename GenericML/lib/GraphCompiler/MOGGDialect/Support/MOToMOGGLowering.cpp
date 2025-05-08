@@ -88,7 +88,7 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
   return ret;
 }
 
-KernelTerminator
+KernelCallInterface
 MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                                const OperandMapping &mapping,
                                                const KernelAdaptor &adaptor) {
@@ -141,7 +141,7 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       loc, bindOp->getResult(0), kernelOp.getOutputPlaceholder()->getResult(0));
 }
 
-ErrorOr<KernelTerminator>
+ErrorOr<KernelCallInterface>
 MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
                                         const OperandMapping &mapping,
                                         const KernelAdaptor &adaptor) {
@@ -162,15 +162,16 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
-  Operation *view = builder.create<MOGG::CallViewOp>(
+  auto view = builder.create<MOGG::CallViewOp>(
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
   // mog..call.view above).
-  return builder.create<MOGG::CallMaterializeOp>(loc, view->getResult(0),
-                                                 outputVal);
+  builder.create<MOGG::CallMaterializeOp>(loc, view->getResult(0), outputVal);
+
+  return view;
 }
 
-KernelTerminator
+KernelCallInterface
 MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                                           const OperandMapping &mapping,
                                           const KernelAdaptor &adaptor) {
@@ -301,12 +302,9 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
       }
     }
 
-    SmallVector<Attribute> asAttrs;
-    for (int64_t value : values)
-      asAttrs.push_back(MO::ShapeAttr::getDim(moOp->getContext(), value));
-
+    auto attrOrError = typeManager.lowerStaticDims(builder, values);
     forwardedParameters.push_back(
-        NamedAttribute(paramName, ArrayAttr::get(moOp->getContext(), asAttrs)));
+        NamedAttribute(paramName, attrOrError.takeValue()));
   };
   if (auto convOp = dyn_cast<MO::ConvOp>(moOp)) {
     extractConstantValues(convOp.getStrides(),
@@ -365,7 +363,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   if (forwardedParametersOr.isError())
     return forwardedParametersOr.takeError();
 
-  ErrorOr<KernelTerminator> kernelCallingOperation = nullptr;
+  ErrorOr<KernelCallInterface> kernelCallingOperation = nullptr;
   if (adaptor.executeFunction->isElementwise()) {
     kernelCallingOperation =
         lowerToElementwiseKernel(kernelOp, operandMapping, adaptor);
@@ -393,6 +391,9 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
 
   kernelOp.setAllocIndicesAttr(
       builder.getIndexArrayAttr(moResultIndicesAllocatedInPlace));
+
+  MOGG::addForwardDeclsOfReferencedFuncs(
+      kernelOp, kernelOp->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
 
   return kernelOp;
 }
