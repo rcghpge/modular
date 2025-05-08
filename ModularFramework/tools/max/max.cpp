@@ -314,8 +314,44 @@ private:
   // If there is no python stacktrace, fallback to the
   // FormatScopedDiagnosticHandler.
   void emitFallbackDiagnosticsToStream(raw_ostream &os) const {
-    for (auto &diag : diagnostics)
-      FormatScopedDiagnosticHandler::emitDiagnosticToStream(os, diag);
+    int pid = llvm::sys::Process::getProcessId();
+    std::string fileName = "max-full-diagnostics-" + Twine(pid).str();
+
+    auto diagFile = TempFile::create(fileName);
+    if (diagFile.isError()) {
+      os << "Error creating file for full diagnostics (" << fileName
+         << "): " << diagFile.takeError() << "\n"
+         << "All diagnostics will be emitted to the console.\n";
+      for (auto &diag : diagnostics)
+        FormatScopedDiagnosticHandler::emitDiagnosticToStream(os, diag);
+      return;
+    }
+
+    // Emit minimal output to the console, but capture everything (which might
+    // be a lot!) in a file.
+    diagFile->keep();
+    // Assume we can open the file stream because we created the file.
+    std::error_code unused;
+    llvm::raw_fd_ostream fullOutputStream(diagFile->getPath().c_str(), unused);
+
+    std::string previousDiagnostic;
+    for (auto &diag : diagnostics) {
+      std::string currentDiagnostic;
+      llvm::raw_string_ostream currentDiagnosticStream(currentDiagnostic);
+      FormatScopedDiagnosticHandler::emitDiagnosticToStream(
+          currentDiagnosticStream, fullOutputStream, diag);
+
+      // We sometimes see duplicate diagnostics, so skip them.
+      if (currentDiagnostic == previousDiagnostic)
+        continue;
+      previousDiagnostic = currentDiagnostic;
+      os << currentDiagnostic << "\n";
+    }
+
+    os << "================================================\n";
+    os << "Elided diagnostics have been emitted to "
+       << diagFile->getPath().c_str() << "\n";
+    os << "================================================\n";
   }
 };
 
