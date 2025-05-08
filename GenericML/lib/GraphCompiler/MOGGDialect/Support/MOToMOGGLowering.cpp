@@ -261,14 +261,13 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
     }
 
     auto asTypedAttr = dyn_cast<TypedAttr>(param.getValue());
-    if (!asTypedAttr) {
-      return Error(llvm::formatv("Unsupported untyped attribute {} : {}",
+    if (asTypedAttr) {
+      if (isa<IntegerAttr, StringAttr, BoolAttr>(asTypedAttr)) {
+        forwardedParameters.push_back(param);
+        continue;
+      }
+      return Error(llvm::formatv("Unsupported typed attribute {} : {}",
                                  param.getName(), param.getValue()));
-    }
-
-    if (isa<IntegerAttr, StringAttr, BoolAttr>(asTypedAttr)) {
-      forwardedParameters.push_back(param);
-      continue;
     }
 
     auto coord = dyn_cast<MO::CoordinateTransformModeAttr>(param.getValue());
