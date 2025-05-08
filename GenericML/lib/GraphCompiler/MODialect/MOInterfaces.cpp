@@ -566,6 +566,46 @@ bool assumeNullConstraintMeansSameDevice(MOHasDeviceInterface op) {
               MO::ConstantExternalOp>(op.getOperation());
 }
 
+LogicalResult checkDeviceConstraint(Operation *op, const Twine &name, Type type,
+                                    DeviceRefAttr constrainedTo) {
+  // Fetch the assigned device for the operand from the type.
+  auto deviceType = dyn_cast<MOHasDeviceTypeInterface>(type);
+  if (!deviceType)
+    return success();
+  auto device = deviceType.getDeviceRef();
+  if (!device)
+    return op->emitError(name) << " is missing a device attribute.";
+  // Check the device constraint.
+  if (constrainedTo && device != constrainedTo) {
+    return op->emitError(name)
+           << " is constrained to be on device " << constrainedTo
+           << " but has device " << device << ".";
+  }
+  return success();
+}
+
+LogicalResult checkOperandDeviceConstraint(Operation *op, size_t index,
+                                           DeviceRefAttr constrainedTo) {
+  return checkDeviceConstraint(op, "Operand " + Twine(index),
+                               op->getOperand(index).getType(), constrainedTo);
+}
+
+LogicalResult checkResultDeviceConstraint(Operation *op, size_t index,
+                                          DeviceRefAttr constrainedTo) {
+  return checkDeviceConstraint(op, "Result " + Twine(index),
+                               op->getResult(index).getType(), constrainedTo);
+}
+
+LogicalResult checkExecutionDeviceConstraint(MOHasDeviceInterface op,
+                                             DeviceRefAttr constrainedTo) {
+  // Only check the constraint if both the op and the constraint are non-null.
+  if (constrainedTo && op.getDeviceRef() != constrainedTo) {
+    return op->emitError("Op is constrained to be on device ")
+           << constrainedTo << " but has device " << op.getDeviceRef() << ".";
+  }
+  return success();
+}
+
 // Verify the execution device, operand device, and result device constraints
 // for ops that implement MOHasDeviceInterface.
 LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
@@ -578,31 +618,9 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
   if (op->getDialect() && !isa<MO::MODialect>(op->getDialect()))
     return success();
   // Check execution device constraint
-  if (auto constrainedTo = op.getExecutionDeviceConstraint()) {
-    if (constrainedTo != op.getDeviceRef()) {
-      return op->emitError("Op is constrained to be on device ")
-             << constrainedTo << " but has device " << op.getDeviceRef() << ".";
-    }
-  }
-
-  auto check = [&op](const Twine &name, Type type,
-                     DeviceRefAttr constrainedTo) -> LogicalResult {
-    // Fetch the assigned device for the operand from the type.
-    // Ignore types besides mo.tensor and mo.buffer.
-    auto tensorType = dynCastFromTensorLike(type);
-    if (!tensorType)
-      return success();
-    auto device = tensorType.getDeviceRef();
-    if (!device)
-      return op->emitError(name) << " is missing a device attribute.";
-    // Check the device constraint.
-    if (constrainedTo && device != constrainedTo) {
-      return op->emitError(name)
-             << " is constrained to be on device " << constrainedTo
-             << " but has device " << device << ".";
-    }
-    return success();
-  };
+  if (failed(checkExecutionDeviceConstraint(op,
+                                            op.getExecutionDeviceConstraint())))
+    return failure();
 
   // Ensure every operand has the same device as the op, unless otherwise
   // constrained.
@@ -613,8 +631,7 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
     if (!constrainedTo && assumeNullConstraintMeansSameDevice(op))
       constrainedTo = op.getDeviceRef();
     // Check the operand device constraint.
-    if (failed(check("Operand " + Twine(i), op->getOperand(i).getType(),
-                     constrainedTo)))
+    if (failed(checkOperandDeviceConstraint(op, i, constrainedTo)))
       return failure();
   }
 
@@ -639,8 +656,41 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
     if (assumeNullConstraintMeansSameDevice(op))
       constrainedTo = op.getDeviceRef();
     // Check the result device constraint.
-    if (failed(check("Result " + Twine(i), op->getResult(i).getType(),
-                     constrainedTo)))
+    if (failed(checkResultDeviceConstraint(op, i, constrainedTo)))
+      return failure();
+  }
+  return success();
+}
+
+LogicalResult Impl::verifyHostOnly(Operation *op) {
+  auto hostDevice = getHostDevice(op);
+
+  if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
+    // Skip verification when no device is assigned.
+    if (!hasDevice.getDeviceRef())
+      return success();
+    if (failed(checkExecutionDeviceConstraint(hasDevice, hostDevice)))
+      return failure();
+  }
+  for (size_t i = 0; i < op->getNumOperands(); ++i)
+    if (failed(checkOperandDeviceConstraint(op, i, hostDevice)))
+      return failure();
+
+  for (size_t i = 0; i < op->getNumResults(); ++i)
+    if (failed(checkResultDeviceConstraint(op, i, hostDevice)))
+      return failure();
+
+  return success();
+}
+
+LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
+  auto hostDevice = getHostDevice(op);
+
+  if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
+    // Skip verification when no device is assigned.
+    if (!hasDevice.getDeviceRef())
+      return success();
+    if (failed(checkExecutionDeviceConstraint(hasDevice, hostDevice)))
       return failure();
   }
   return success();

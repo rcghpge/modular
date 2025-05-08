@@ -566,15 +566,29 @@ def MO_HostOnlyTrait : MO_OpTrait<"MOHostOnlyTrait", [], [{}], [{
       return getHostDevice(getContext());
     }
     DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
-      return nullptr;
+      return getHostDevice(getContext());
     }
   }]>;
 
-// Marks an op that must execute on the host.
+// Marks an op that must execute on the host, with all operands and results also
+// on the host
 def MO_HostOnly : TraitList<[
   DeclareOpInterfaceMethods<MO_HasDeviceInterface,
       ["getExecutionDeviceConstraint", "getOperandDeviceConstraint"]>,
   MO_HostOnlyTrait
+]>;
+
+// Implements MO_HasDeviceInterface methods for MO_ExecutesOnHost.
+def MO_ExecutesOnHostTrait : MO_OpTrait<"MOExecutesOnHostTrait", [], [{}], [{
+  DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
+    return getHostDevice(getContext());
+  }
+}]>;
+
+// Marks an op that executes on the host using tensors from any device.
+def MO_ExecutesOnHost : TraitList<[
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
+  MO_ExecutesOnHostTrait
 ]>;
 
 def MO_SameOperandsAndResultType : TraitList<[

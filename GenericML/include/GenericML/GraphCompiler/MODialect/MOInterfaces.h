@@ -179,6 +179,8 @@ LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
 LogicalResult verifyMOSameOperandsElementType(Operation *op);
 LogicalResult verifyMOSameFirstOperandAndResultsElementType(Operation *op);
 LogicalResult verifyHasDevice(MOHasDeviceInterface op);
+LogicalResult verifyHostOnly(Operation *op);
+LogicalResult verifyExecutesOnHost(Operation *op);
 
 LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);
@@ -234,7 +236,18 @@ template <typename ConcreteType>
 class MOHostOnlyTrait
     : public mlir::OpTrait::TraitBase<ConcreteType, MOHostOnlyTrait> {
 public:
-  static LogicalResult verifyTrait(Operation *op) { return success(); }
+  static LogicalResult verifyTrait(Operation *op) {
+    return Impl::verifyHostOnly(op);
+  }
+};
+
+template <typename ConcreteType>
+class MOExecutesOnHostTrait
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOExecutesOnHostTrait> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return Impl::verifyExecutesOnHost(op);
+  }
 };
 
 template <typename ConcreteType>

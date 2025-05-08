@@ -350,7 +350,7 @@ def IfOp : MO_ControlOp<"if", [
   NoRegionArguments,
   RegionKindInterface,
   SingleBlockImplicitTerminator<"MO::YieldOp">,
-  MO_HostOnly
+  MO_ExecutesOnHost
 ]> {
   let summary = "`if` control flow operation";
   let description = [{
@@ -409,7 +409,7 @@ def WhileOp : MO_ControlOp<"while", [
   HasOnlyGraphRegion,
   RegionKindInterface,
   SingleBlock,
-  MO_HostOnly
+  MO_ExecutesOnHost
 ]> {
   let summary = "`while` control flow operation";
   let description = [{
@@ -4606,7 +4606,7 @@ def MO_ListAppendOp : MO_TensorOp<"list.append", [
 def MO_ListCreateOp : MO_TensorOp<"list.create", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  MO_HostOnly
+  MO_ExecutesOnHost
 ]> {
   let summary = "List creation operation";
   let description = [{
@@ -4638,7 +4638,7 @@ def MO_ListCreateOp : MO_TensorOp<"list.create", [
 def MO_ListGetOp : MO_TensorOp<"list.get", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  MO_HostOnly
+  MO_ExecutesOnHost
 ]> {
   let summary = "List access operation";
   let description = [{
@@ -4671,7 +4671,7 @@ def MO_ListGetOp : MO_TensorOp<"list.get", [
 def MO_ListInsertOp : MO_TensorOp<"list.insert", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  MO_HostOnly
+  MO_ExecutesOnHost
 ]> {
   let summary = "List insertion operation";
   let description = [{
@@ -4714,7 +4714,7 @@ def MO_ListInsertOp : MO_TensorOp<"list.insert", [
 def MO_ListConcatOp : MO_TensorOp<"list.concat", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  MO_HostOnly
+  MO_ExecutesOnHost
 ]> {
   let summary = "List concatenation operation";
   let description = [{
@@ -4747,7 +4747,7 @@ def MO_ListConcatOp : MO_TensorOp<"list.concat", [
 def MO_ListSliceOp : MO_TensorOp<"list.slice", [
   Pure,
   MO_PreservedDuringKernelLowering,
-  MO_HostOnly
+  MO_ExecutesOnHost
 ]> {
   let summary = "List slice operation";
   let description = [{
