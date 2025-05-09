@@ -18,8 +18,6 @@
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
-#include "llvm/ADT/StringRef.h"
-
 #include <chrono>
 #include <cstdint>
 #include <mutex>
@@ -65,6 +63,19 @@ private:
   int major_;
   int minor_;
   int patch_;
+};
+
+class DeviceContextScope {
+public:
+  DeviceContextScope(const DeviceContext &ctx);
+  ~DeviceContextScope();
+
+  ErrorOrSuccess err() const;
+
+private:
+  DeviceRef device_;
+  void *prevCtx_;
+  ErrorOrSuccess err_;
 };
 
 class Device : public ReferenceCounted<Device> {
@@ -128,6 +139,9 @@ public:
   insertInFunctionCache(StringRef key,
                         const DeviceFunctionCacheEntry &entry) const;
   void clearFunctionCache() const;
+
+  virtual ErrorOr<void *> getCurrentDriverContext() const = 0;
+  virtual ErrorOrSuccess setCurrentDriverContext(void *ctx) const = 0;
 
 protected:
   Device(API api, std::string name, int id, size_t allocAligment);
@@ -485,9 +499,15 @@ protected:
   virtual ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
                                      const DeviceBuffer &src) const = 0;
 
+  virtual void *driverContext() const = 0;
+
 private:
   friend class BufferCache;
   friend class DeviceBuffer;
+  friend class DeviceContextScope;
+  // Following line is equivalent to:
+  // FRIEND_TEST(GPUDeviceContextTest, DeviceContextScope)
+  friend class GPUDeviceContextTest_DeviceContextScope_Test;
 
   DeviceRef device_;
 

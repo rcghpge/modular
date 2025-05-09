@@ -422,6 +422,16 @@ ErrorOrSuccess CUDADevice::chunkFree(void *ptr) const {
   return success();
 }
 
+ErrorOr<void *> CUDADevice::getCurrentDriverContext() const {
+  CUcontext result = nullptr;
+  CUDA_CHECK_ERR(driver_.CtxGetCurrent(&result));
+  return result;
+}
+ErrorOrSuccess CUDADevice::setCurrentDriverContext(void *ctx) const {
+  CUDA_CHECK_ERR(driver_.CtxSetCurrent(reinterpret_cast<CUcontext>(ctx)));
+  return success();
+}
+
 const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 };
@@ -928,6 +938,8 @@ ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
   }
   return success();
 }
+
+void *CUDADeviceContext::driverContext() const { return cudaContext(); }
 
 ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                       const void *src) const {

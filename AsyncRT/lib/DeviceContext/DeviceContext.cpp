@@ -16,7 +16,6 @@
 #include "HIP/HIPDeviceContext.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
-#include "Support/ReferenceCounted.h"
 #include "Support/SymbolExport.h"
 
 #include "llvm/ADT/Twine.h"
@@ -62,6 +61,49 @@
   type var = _err_or_##var.takeValue()
 
 namespace M::AsyncRT {
+
+DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)
+    : prevCtx_(nullptr), err_(success()) {
+  const Device &dev = ctx.device();
+  ErrorOr<void *> errOrCtx = dev.getCurrentDriverContext();
+  if (errOrCtx.isError()) {
+    err_ = errOrCtx.takeError();
+    return;
+  }
+
+  void *prevCtx = errOrCtx.takeValue();
+  void *newCtx = ctx.driverContext();
+
+  if (prevCtx == newCtx) {
+    // Desired context is already current. Nothing to be done on restore, so we
+    // keep prevCtx_ and device_ uninitialized.
+    return;
+  }
+
+  ErrorOrSuccess err = dev.setCurrentDriverContext(newCtx);
+  if (err.isError()) {
+    err_ = err.takeError();
+    return;
+  }
+
+  // Remember values to be restored in destructor.
+  device_ = DeviceRef::copy(&dev);
+  prevCtx_ = prevCtx;
+}
+
+DeviceContextScope::~DeviceContextScope() {
+  if (device_.getPointer() == nullptr) {
+    assert(prevCtx_ == nullptr);
+    return;
+  }
+  ErrorOrSuccess ignore = device_->setCurrentDriverContext(prevCtx_);
+}
+
+ErrorOrSuccess DeviceContextScope::err() const {
+  if (!err_.isError())
+    return success();
+  return err_.copy().takeError();
+}
 
 DeviceFunctionCacheEntry::DeviceFunctionCacheEntry(const std::string name)
     : name_(std::move(name)) {}

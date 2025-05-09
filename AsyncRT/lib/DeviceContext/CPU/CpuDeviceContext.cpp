@@ -94,6 +94,12 @@ ErrorOrSuccess CpuDevice::chunkFree(void *ptr) const {
   return success();
 }
 
+ErrorOr<void *> CpuDevice::getCurrentDriverContext() const { return nullptr; }
+ErrorOrSuccess CpuDevice::setCurrentDriverContext(void *ctx) const {
+  // Not tracking a context for CPU.
+  return success();
+}
+
 const CpuDevice &CpuDevice::cast(const Device &device) {
   return static_cast<const CpuDevice &>(device);
 };
@@ -160,6 +166,8 @@ ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) const {
   TCMallocGlobals::tc_delete(ptr);
   return success();
 }
+
+void *CpuDeviceContext::driverContext() const { return nullptr; }
 
 ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                      const void *src) const {

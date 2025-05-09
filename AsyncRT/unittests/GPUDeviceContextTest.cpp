@@ -13,11 +13,17 @@
 #include <cstring>
 #include <iostream>
 
-using namespace M::AsyncRT;
+namespace M::AsyncRT {
 
-namespace {
+// Test fixture is needed to enable testing of private methods in DeviceContext.
+class GPUDeviceContextTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    // No common setup needed.
+  }
+};
 
-TEST(GPUDeviceContextTest, Smoke) {
+TEST_F(GPUDeviceContextTest, Smoke) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   std::string deviceName = ctx->device().name();
@@ -30,14 +36,14 @@ TEST(GPUDeviceContextTest, Smoke) {
   }
 }
 
-TEST(GPUDeviceContextTest, NumDevices) {
+TEST_F(GPUDeviceContextTest, NumDevices) {
   int num = Device::numberOfDevices(Device::gpuAPI);
   EXPECT_GT(num, 0);
   EXPECT_LT(num, 16);
   std::cerr << "Number of GPU devices: " << num << "\n";
 }
 
-TEST(GPUDeviceContextTest, DefaultContext) {
+TEST_F(GPUDeviceContextTest, DefaultContext) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx0, DeviceContext::create(Device::gpuAPI));
   ASSIGN_NO_ERR(DeviceContextRef, ctx1,
                 DeviceContext::getOrCreate(Device::gpuAPI));
@@ -60,6 +66,87 @@ TEST(GPUDeviceContextTest, DefaultContext) {
     EXPECT_NE(ctx1.getPointer(), ctx4.getPointer());
     EXPECT_NE(ctx0.getPointer(), ctx4.getPointer());
     EXPECT_NE(ctx3.getPointer(), ctx4.getPointer());
+  }
+}
+
+TEST_F(GPUDeviceContextTest, DeviceContextScope) {
+  // Create two different device contexts
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::gpuAPI, 0));
+
+  // Get the initial driver context
+  const Device &dev = ctx1->device();
+  ASSIGN_NO_ERR(void *, initialContext, dev.getCurrentDriverContext());
+
+  {
+    // Create a scope for the first context
+    DeviceContextScope scope(*ctx1);
+    EXPECT_FALSE(scope.err().isError()) << scope.err().getError();
+
+    // Verify the context is now active
+    ASSIGN_NO_ERR(void *, currentContext, dev.getCurrentDriverContext());
+    EXPECT_EQ(currentContext, ctx1->driverContext());
+
+    // Create a buffer to verify the context is working
+    ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx1->createBuffer(256));
+    EXPECT_NE(buf->ptr(), nullptr);
+
+    // Create a nested scope with the same context (should be a no-op)
+    {
+      DeviceContextScope nestedScope(*ctx1);
+      EXPECT_FALSE(nestedScope.err().isError());
+
+      ASSIGN_NO_ERR(void *, nestedContext, dev.getCurrentDriverContext());
+      EXPECT_EQ(nestedContext, currentContext);
+    }
+
+    // Verify the context is still active after nested scope ends
+    ASSIGN_NO_ERR(void *, afterNestedContext, dev.getCurrentDriverContext());
+    EXPECT_EQ(afterNestedContext, currentContext);
+  }
+
+  // After the scope ends, verify the context is restored to initial state
+  ASSIGN_NO_ERR(void *, restoredContext, dev.getCurrentDriverContext());
+  EXPECT_EQ(restoredContext, initialContext);
+
+  // Test with multiple devices if available
+  int numDevices = Device::numberOfDevices(Device::gpuAPI);
+  if (numDevices > 1) {
+    std::cerr << "Testing DeviceContextScope with multiple devices\n";
+
+    ASSIGN_NO_ERR(DeviceContextRef, ctx2,
+                  DeviceContext::create(Device::gpuAPI, 1));
+
+    // Switch to the second context
+    {
+      DeviceContextScope scope2(*ctx2);
+      EXPECT_FALSE(scope2.err().isError()) << scope2.err().getError();
+
+      // The current context should be from the second device
+      ASSIGN_NO_ERR(void *, ctx2Current, dev.getCurrentDriverContext());
+      EXPECT_EQ(ctx2Current, ctx2->driverContext());
+
+      // Create a buffer to verify the second context works
+      ASSIGN_NO_ERR(DeviceBufferRef, buf2, ctx2->createBuffer(256));
+      EXPECT_NE(buf2->ptr(), nullptr);
+    }
+
+    // Verify it switches back to initial context
+    ASSIGN_NO_ERR(void *, afterMultiContext, dev.getCurrentDriverContext());
+    EXPECT_EQ(afterMultiContext, initialContext);
+  }
+
+  // Test error handling by creating an invalid device context scope
+  // This part is tricky because we don't have a reliable way to create an
+  // invalid context in a unit test, but we can check that the error propagation
+  // works
+  {
+    DeviceContextScope invalidScope(*ctx1); // This should succeed
+    EXPECT_FALSE(invalidScope.err().isError());
+
+    // If we wanted to test failure, we'd need a way to create an invalid
+    // context ErrorOrSuccess testErr = invalidScope.err();
+    // EXPECT_TRUE(testErr.isError()); // This would check error propagation
   }
 }
 
@@ -87,7 +174,7 @@ static void compareWithData(const void *dst, size_t dstLen,
   }
 }
 
-TEST(GPUDeviceContextTest, DeviceBuffers) {
+TEST_F(GPUDeviceContextTest, DeviceBuffers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
                 DeviceContext::create(Device::gpuAPI, 0));
 
@@ -151,7 +238,7 @@ TEST(GPUDeviceContextTest, DeviceBuffers) {
   }
 }
 
-TEST(DeviceContextTest, FailDeviceBuffers) {
+TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   int allocLen = 256;
@@ -181,7 +268,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
   free(aPtr);
 }
 
-TEST(GPUDeviceContextTest, SubBuffer) {
+TEST_F(GPUDeviceContextTest, SubBuffer) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen = 256;
@@ -243,7 +330,7 @@ TEST(GPUDeviceContextTest, SubBuffer) {
   free(aPtr);
 }
 
-TEST(DeviceContextTest, SetMemory) {
+TEST_F(GPUDeviceContextTest, SetMemory) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen = 256;
@@ -301,7 +388,7 @@ TEST(DeviceContextTest, SetMemory) {
   }
 }
 
-TEST(GPUDeviceContextTest, Timers) {
+TEST_F(GPUDeviceContextTest, Timers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   ASSIGN_NO_ERR(DeviceTimerRef, timer, ctx->startTimer());
@@ -325,7 +412,7 @@ TEST(GPUDeviceContextTest, Timers) {
   EXPECT_LT(elapsedNanos, 60 * 1000ll * 1000ll * 1000ll); // less than a minute
 }
 
-TEST(GPUDeviceContextTest, MultiContextCopies) {
+TEST_F(GPUDeviceContextTest, MultiContextCopies) {
   int numDevices = Device::numberOfDevices(Device::gpuAPI);
   std::cerr << "Number of GPU devices: " << numDevices << "\n";
 
@@ -403,7 +490,7 @@ TEST(GPUDeviceContextTest, MultiContextCopies) {
   }
 }
 
-TEST(GPUDeviceContextTest, CrossContextEvent) {
+TEST_F(GPUDeviceContextTest, CrossContextEvent) {
   ASSIGN_NO_ERR(DeviceContextRef, srcCtx,
                 DeviceContext::create(Device::gpuAPI));
   ASSIGN_NO_ERR(DeviceContextRef, dstCtx,
@@ -444,4 +531,4 @@ TEST(GPUDeviceContextTest, CrossContextEvent) {
   delete[] checkData;
 }
 
-} // namespace
+} // namespace M::AsyncRT

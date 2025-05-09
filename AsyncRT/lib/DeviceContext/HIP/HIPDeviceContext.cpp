@@ -103,6 +103,20 @@
 
 namespace M::AsyncRT {
 
+// Avoid using nullptr for the "device context pointer". We add/subtract the
+// following constant when handling the hipDevice_t as a pointer.
+constexpr intptr_t devicePtrOffset =
+    0x51413; // First 5 digits of pi in reverse.
+
+static void *hipDeviceToPtr(hipDevice_t id) {
+  return reinterpret_cast<void *>(static_cast<intptr_t>(id) + devicePtrOffset);
+}
+
+static hipDevice_t ptrToHipDevice(void *ptr) {
+  return static_cast<hipDevice_t>(reinterpret_cast<intptr_t>(ptr) -
+                                  devicePtrOffset);
+}
+
 // The helper class HIPDeviceScope is used to set and restore the hipDevice_t
 // around interactions with the HIP driver.
 class HIPDeviceScope {
@@ -354,6 +368,16 @@ ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize) const {
 ErrorOrSuccess HIPDevice::chunkFree(void *ptr) const {
   HIP_WITH_DEV_ERR(*this);
   HIP_CHECK_ERR(driver_.MemFree(ptr));
+  return success();
+}
+
+ErrorOr<void *> HIPDevice::getCurrentDriverContext() const {
+  hipDevice_t curDev = 0;
+  HIP_CHECK_ERR(driver_.GetDevice(&curDev));
+  return hipDeviceToPtr(curDev);
+}
+ErrorOrSuccess HIPDevice::setCurrentDriverContext(void *ctx) const {
+  HIP_CHECK_ERR(driver_.SetDevice(ptrToHipDevice(ctx)));
   return success();
 }
 
@@ -679,6 +703,10 @@ ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) const {
     MAYBE_SYNC(*this);
   }
   return success();
+}
+
+void *HIPDeviceContext::driverContext() const {
+  return hipDeviceToPtr(hipDevice());
 }
 
 ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,

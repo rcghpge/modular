@@ -51,6 +51,9 @@ public:
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const override;
   ErrorOrSuccess chunkFree(void *ptr) const override;
 
+  ErrorOr<void *> getCurrentDriverContext() const override;
+  ErrorOrSuccess setCurrentDriverContext(void *ctx) const override;
+
   ErrorOr<DeviceContextRef> createContext() const override;
 
   ErrorOr<DeviceStreamRef>
@@ -147,6 +150,8 @@ private:
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           AllocMode mode) const override;
   ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
+
+  void *driverContext() const override;
 };
 
 } // namespace M::AsyncRT
