@@ -726,6 +726,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
                                userToFuseIn.maybeGetOutChain() &&
                                userToFuseIn.getNumResults() == 1;
 
+    auto maybeSrcInChain = kernelToFuseInto.maybeGetInChain();
+    auto maybeSrcOutChain = kernelToFuseInto.maybeGetOutChain();
+
     if (userIsInPlace) {
       // Just in case passes swap around and canonicalization doesn't run before
       // this.
@@ -1311,6 +1314,91 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
           result.replaceAllUsesWith(mergedOp.getResult(resultIndex++));
         op.erase();
       }
+    }
+
+    // This is hacky as all hell, but since this particular lowering path will
+    // go away soon I don't feel *too* bad about it.
+    //
+    // The issue is that if the producer kernel has chains earlier will have it
+    // end up with two chain operand and two chain results.
+    // The logic here just re-writes the kernel so that there is just one chain
+    // operand/result and rewires chains as appropriate.
+    if (maybeSrcInChain && maybeSrcOutChain && userIsInPlace) {
+      ASSERT_STREAM(
+          kernelToFuseInto->getNumResults() == 2,
+          << "Expected kernelToFuseInto to have exactly 2 results, but got "
+          << kernelToFuseInto->getNumResults());
+      ASSERT_STREAM(
+          isa<MO::ChainType>(kernelToFuseInto->getResult(0).getType()) &&
+              isa<MO::ChainType>(kernelToFuseInto->getResult(1).getType()),
+          << "Both results of kernelToFuseInto should be of chain type");
+
+      MO::ChainType chainType = MO::ChainType::get(ctx);
+      auto newResults = SmallVector<Type>{chainType};
+
+      auto newOperands =
+          SmallVector<Value>(kernelToFuseInto.getOperands().drop_back());
+
+      builder.setInsertionPoint(kernelToFuseInto);
+      auto newKernelOp = builder.create<MOGG::KernelOp>(
+          kernelToFuseInto.getLoc(),
+          /*results=*/newResults,
+          /*operands=*/newOperands,
+          /*outputParamDecls=*/kernelToFuseInto.getOutputParamDeclsAttr(),
+          /*inputFusionInterface=*/
+          kernelToFuseInto.getInputFusionInterfaceAttr(),
+          /*outputFusionInterface=*/
+          kernelToFuseInto.getOutputFusionInterfaceAttr(),
+          /*fusionBodyLambda=*/kernelToFuseInto.getFusionBodyLambdaAttr(),
+          /*isViewOp=*/kernelToFuseInto.getIsViewOpAttr(),
+          /*summary=*/kernelToFuseInto.getSummaryAttr(),
+          /*isAsync=*/kernelToFuseInto.getIsAsyncAttr(),
+          /*computationallyTrivial=*/
+          kernelToFuseInto.getComputationallyTrivialAttr(),
+          /*allocIndices=*/kernelToFuseInto.getAllocIndicesAttr(),
+          /*hasReadEffects=*/kernelToFuseInto.getHasReadEffect(),
+          /*hasWriteEffects=*/kernelToFuseInto.getHasWriteEffect(),
+          /*device=*/kernelToFuseInto.getDeviceRef());
+
+      auto &oldBody = kernelToFuseInto.getBody();
+      auto &oldBlock = oldBody.front();
+
+      auto lastArg = oldBlock.getArgument(oldBlock.getNumArguments() - 1);
+      ASSERT_STREAM(isa<MO::ChainType>(lastArg.getType()),
+                    << "Last block is expected to be a chain type");
+      ASSERT_STREAM(lastArg.use_empty(),
+                    << "Last block argument (chain) must have no uses before "
+                       "dropping");
+
+      ASSERT_STREAM(oldBlock.getNumArguments() >= 2,
+                    << "Block should have at least 2 arguments");
+      auto secondLastArg = oldBlock.getArgument(oldBlock.getNumArguments() - 2);
+      ASSERT_STREAM(
+          isa<MO::ChainType>(secondLastArg.getType()),
+          << "Second-to-last block argument is expected to be a chain type");
+
+      // Drop the last block argument before moving the body (the extraneous
+      // chain operand)
+      oldBlock.eraseArgument(oldBlock.getNumArguments() - 1);
+      newKernelOp.getBody().takeBody(oldBody);
+
+      // Route the output chain of newKernelOp to all consumers of
+      // userToFuseIn's output chain
+      Value newOutChain = newKernelOp.getResult(0);
+      kernelToFuseInto.getResult(0).replaceAllUsesWith(newOutChain);
+
+      // Replace the in chain of newKernel op with maybeSrcInChain
+      Value inChain = *maybeSrcInChain;
+      newKernelOp->setOperand(newKernelOp->getNumOperands() - 1, inChain);
+
+      // The way the code before this block is written, leaves an output chain
+      // looping back to kernelToFuseInto. Break the cycle so we can erase
+      // kernelToFuseInto later.
+      kernelToFuseInto->setOperand(kernelToFuseInto->getNumOperands() - 2,
+                                   newKernelOp.getInChain());
+      opsToErase.push_back(kernelToFuseInto);
+
+      kernelToFuseInto = newKernelOp;
     }
 
     return kernelToFuseInto;
