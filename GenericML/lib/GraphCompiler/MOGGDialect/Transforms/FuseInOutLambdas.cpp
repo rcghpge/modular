@@ -39,6 +39,11 @@ static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
           summary.contains(MO::ConvTransposeOp::getOperationName()));
 }
 
+static bool containsMutableStore(MOGG::KernelOp kernel) {
+  StringRef summary = kernel.getSummaryAttr().strref();
+  return summary.contains(MO::MutableStoreOp::getOperationName());
+}
+
 struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   using FuseInOutLambdasBase::FuseInOutLambdasBase;
 
@@ -549,6 +554,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
     if (isElemwise.has_value())
       return llvm::BitVector();
 
+    const bool producerIsMatmulConvOrConcat =
+        containsMatmulOrConvOrConcat(kernel);
+
     llvm::BitVector fusableOutput(kernel.getNumNonChainResults(), true);
     for (auto [idx, result] : llvm::enumerate(kernel.getNonChainResults())) {
       // Output can only have one user and that user must be a fusable
@@ -585,6 +593,13 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
       // Check the kernel is a fusable elementwise.
       if (!user.getFusionBodyLambda()) {
+        fusableOutput.reset(idx);
+        continue;
+      }
+
+      // TODO(GEX-2213): Come up with more general mechanisms for when fusion
+      // with kernels handling mutable values is permissible.
+      if (containsMutableStore(user) && !producerIsMatmulConvOrConcat) {
         fusableOutput.reset(idx);
         continue;
       }
