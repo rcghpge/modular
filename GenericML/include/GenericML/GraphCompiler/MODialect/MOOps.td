@@ -1627,7 +1627,7 @@ def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
     ```
   }];
   let arguments = (ins MO_Tensor:$input,
-                       Builtin_IntegerAttr:$axis,
+                       IndexAttr:$axis,
                        MO_RankedScalarIndexTensor:$start,
                        MO_RankedScalarIndexTensor:$stop,
                        MO_RankedScalarIndexTensor:$step);

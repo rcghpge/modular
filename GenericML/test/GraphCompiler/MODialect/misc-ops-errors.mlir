@@ -1131,6 +1131,6 @@ mo.graph @slice_dim_op() -> (!mo.tensor<[], si32>) {
   %4 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
   %5 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
   // expected-error@+1 {{Slice axis is greater than rank of input}}
-  %6 = mo.slice_dim[1 : index] (%2, %4, %5, %5) : (!mo.tensor<[3], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
+  %6 = mo.slice_dim[1] (%2, %4, %5, %5) : (!mo.tensor<[3], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
   mo.output %6 : !mo.tensor<[], si32>
 }

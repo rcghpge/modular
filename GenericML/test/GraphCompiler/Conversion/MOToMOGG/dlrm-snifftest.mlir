@@ -35,56 +35,56 @@ module {
     %27 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
     %28 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
     %29 = mo.static.reshape(%arg0) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[D473, 8, 100], si32> -> !mo.tensor<[D473, 800], si32>
-    %30 = mo.slice_dim[0 : index] (%18, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %31 = mo.slice_dim[0 : index] (%17, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %32 = mo.slice_dim[0 : index] (%19, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %33 = mo.slice_dim[0 : index] (%29, %30, %31, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %34 = mo.slice_dim[0 : index] (%18, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %35 = mo.slice_dim[0 : index] (%17, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %36 = mo.slice_dim[0 : index] (%19, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %37 = mo.slice_dim[1 : index] (%33, %34, %35, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
-    %38 = mo.slice_dim[0 : index] (%16, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %39 = mo.slice_dim[0 : index] (%15, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %40 = mo.slice_dim[0 : index] (%29, %38, %39, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %41 = mo.slice_dim[0 : index] (%16, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %42 = mo.slice_dim[0 : index] (%15, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %43 = mo.slice_dim[1 : index] (%40, %41, %42, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
-    %44 = mo.slice_dim[0 : index] (%14, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %45 = mo.slice_dim[0 : index] (%13, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %46 = mo.slice_dim[0 : index] (%29, %44, %45, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %47 = mo.slice_dim[0 : index] (%14, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %48 = mo.slice_dim[0 : index] (%13, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %49 = mo.slice_dim[1 : index] (%46, %47, %48, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
-    %50 = mo.slice_dim[0 : index] (%12, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %51 = mo.slice_dim[0 : index] (%11, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %52 = mo.slice_dim[0 : index] (%29, %50, %51, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %53 = mo.slice_dim[0 : index] (%12, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %54 = mo.slice_dim[0 : index] (%11, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %55 = mo.slice_dim[1 : index] (%52, %53, %54, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
-    %56 = mo.slice_dim[0 : index] (%10, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %57 = mo.slice_dim[0 : index] (%9, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %58 = mo.slice_dim[0 : index] (%29, %56, %57, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %59 = mo.slice_dim[0 : index] (%10, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %60 = mo.slice_dim[0 : index] (%9, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %61 = mo.slice_dim[1 : index] (%58, %59, %60, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
-    %62 = mo.slice_dim[0 : index] (%8, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %63 = mo.slice_dim[0 : index] (%7, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %64 = mo.slice_dim[0 : index] (%29, %62, %63, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %65 = mo.slice_dim[0 : index] (%8, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %66 = mo.slice_dim[0 : index] (%7, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %67 = mo.slice_dim[1 : index] (%64, %65, %66, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
-    %68 = mo.slice_dim[0 : index] (%6, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %69 = mo.slice_dim[0 : index] (%5, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %70 = mo.slice_dim[0 : index] (%29, %68, %69, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %71 = mo.slice_dim[0 : index] (%6, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %72 = mo.slice_dim[0 : index] (%5, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %73 = mo.slice_dim[1 : index] (%70, %71, %72, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
-    %74 = mo.slice_dim[0 : index] (%4, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %75 = mo.slice_dim[0 : index] (%3, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %76 = mo.slice_dim[0 : index] (%29, %74, %75, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
-    %77 = mo.slice_dim[0 : index] (%4, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %78 = mo.slice_dim[0 : index] (%3, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
-    %79 = mo.slice_dim[1 : index] (%76, %77, %78, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %30 = mo.slice_dim[0] (%18, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %31 = mo.slice_dim[0] (%17, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %32 = mo.slice_dim[0] (%19, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %33 = mo.slice_dim[0] (%29, %30, %31, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %34 = mo.slice_dim[0] (%18, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %35 = mo.slice_dim[0] (%17, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %36 = mo.slice_dim[0] (%19, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %37 = mo.slice_dim[1] (%33, %34, %35, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %38 = mo.slice_dim[0] (%16, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %39 = mo.slice_dim[0] (%15, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %40 = mo.slice_dim[0] (%29, %38, %39, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %41 = mo.slice_dim[0] (%16, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %42 = mo.slice_dim[0] (%15, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %43 = mo.slice_dim[1] (%40, %41, %42, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %44 = mo.slice_dim[0] (%14, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %45 = mo.slice_dim[0] (%13, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %46 = mo.slice_dim[0] (%29, %44, %45, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %47 = mo.slice_dim[0] (%14, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %48 = mo.slice_dim[0] (%13, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %49 = mo.slice_dim[1] (%46, %47, %48, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %50 = mo.slice_dim[0] (%12, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %51 = mo.slice_dim[0] (%11, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %52 = mo.slice_dim[0] (%29, %50, %51, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %53 = mo.slice_dim[0] (%12, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %54 = mo.slice_dim[0] (%11, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %55 = mo.slice_dim[1] (%52, %53, %54, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %56 = mo.slice_dim[0] (%10, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %57 = mo.slice_dim[0] (%9, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %58 = mo.slice_dim[0] (%29, %56, %57, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %59 = mo.slice_dim[0] (%10, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %60 = mo.slice_dim[0] (%9, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %61 = mo.slice_dim[1] (%58, %59, %60, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %62 = mo.slice_dim[0] (%8, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %63 = mo.slice_dim[0] (%7, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %64 = mo.slice_dim[0] (%29, %62, %63, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %65 = mo.slice_dim[0] (%8, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %66 = mo.slice_dim[0] (%7, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %67 = mo.slice_dim[1] (%64, %65, %66, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %68 = mo.slice_dim[0] (%6, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %69 = mo.slice_dim[0] (%5, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %70 = mo.slice_dim[0] (%29, %68, %69, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %71 = mo.slice_dim[0] (%6, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %72 = mo.slice_dim[0] (%5, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %73 = mo.slice_dim[1] (%70, %71, %72, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
+    %74 = mo.slice_dim[0] (%4, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %75 = mo.slice_dim[0] (%3, %1, %2, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %76 = mo.slice_dim[0] (%29, %74, %75, %32) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 800], si32>
+    %77 = mo.slice_dim[0] (%4, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %78 = mo.slice_dim[0] (%3, %2, %0, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], si64>
+    %79 = mo.slice_dim[1] (%76, %77, %78, %36) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D473, 800], si32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D473, 100], si32>
     %80 = "mo.gather_sum"(%arg9, %37) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D473, 100], si32>) -> !mo.tensor<[D473, 1, 32], f32>
     %81 = mo.static.reshape(%80) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[D473, 1, 32], f32> -> !mo.tensor<[D473, 32], f32>
     %82 = "mo.gather_sum"(%arg8, %43) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[200000, 32], f32>, !mo.tensor<[D473, 100], si32>) -> !mo.tensor<[D473, 1, 32], f32>

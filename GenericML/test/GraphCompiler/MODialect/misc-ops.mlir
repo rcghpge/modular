@@ -679,13 +679,13 @@ mo.graph @slice_dyn_rank(%input: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], 
 // CHECK-LABEL: mo.graph @slice_dim
 // CHECK-NEXT: %[[ONE:.*]] = mo.constant
 // CHECK-NEXT: %[[NEG_ONE:.*]] = mo.constant
-// CHECK-NEXT: %[[RES:.*]] = mo.slice_dim[0 : i64] (%{{.*}}, %[[ONE]], %[[NEG_ONE]], %[[ONE]])
+// CHECK-NEXT: %[[RES:.*]] = mo.slice_dim[0] (%{{.*}}, %[[ONE]], %[[NEG_ONE]], %[[ONE]])
 // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[8, 10], f32>
 
 mo.graph @slice_dim(%input: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[8, 10], f32> {
   %one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %neg_one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %res = mo.slice_dim[0 : i64](%input, %one, %neg_one, %one) : (
+  %res = mo.slice_dim[0](%input, %one, %neg_one, %one) : (
     !mo.tensor<[10, 10], f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>
   ) -> !mo.tensor<[8, 10], f32>
   mo.output %res : !mo.tensor<[8, 10], f32>
