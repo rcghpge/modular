@@ -88,6 +88,16 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
   return ret;
 }
 
+static SmallVector<Value> dropChainIfPresent(ArrayRef<Value> inputs) {
+  SmallVector<Value> ret;
+  for (auto input : inputs) {
+    if (!isa<MO::ChainType>(input.getType()))
+      ret.push_back(input);
+  }
+
+  return ret;
+}
+
 KernelCallInterface
 MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                                const OperandMapping &mapping,
@@ -96,14 +106,23 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
 
-  auto outTensorTp = cast<MO::TensorType>(kernelOp->getResultTypes()[0]);
-  auto resultValTp = outTensorTp.getElementType();
+  bool isMutableStore = isa<MO::MutableStoreOp>(moOp);
 
-  // Values
-  auto inputValTps = llvm::map_to_vector(moOp->getOperandTypes(), [](Type t) {
-    // Only handles tensor inputs for now.
-    return cast<MO::TensorType>(t).getElementType();
-  });
+  Value outputValue = nullptr;
+  MO::TensorType tensorType = nullptr;
+  if (isa<MO::MutableStoreOp>(moOp)) {
+    for (auto argument : kernelOp.getExecBody().getArguments()) {
+      if (auto asBufferType = dyn_cast<MO::BufferType>(argument.getType())) {
+        outputValue = argument;
+        tensorType = asBufferType.toTensorType();
+      }
+    }
+    ASSERT_STREAM(outputValue, << "Expected a buffer type operand");
+  } else {
+    outputValue = kernelOp.getOutputPlaceholder().getResult(0);
+    tensorType = cast<MO::TensorType>(outputValue.getType());
+  }
+  Type resultValTp = tensorType.getElementType();
 
   SmallVector<Value> fusibleTensors;
   for (const auto &[idx, arg] : mapping.operandMapping) {
@@ -111,19 +130,19 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       fusibleTensors.push_back(inputs[idx]);
   }
 
-  auto bindOp = builder.create<BindLambdaOp>(loc, outTensorTp, fusibleTensors,
+  auto bindOp = builder.create<BindLambdaOp>(loc, tensorType, fusibleTensors,
                                              BindLambdaKind::ElemwiseLambda);
 
   Block *elemwiseBody = &bindOp.getLambda().front();
   unsigned fusedArgIdx = 0;
   SmallVector<Value> outlinedArgs;
-  for (auto [idx, v] : llvm::enumerate(inputs)) {
+  for (auto [idx, v] : llvm::enumerate(dropChainIfPresent(inputs))) {
     // If this is a fusible input, use the fused value, otherwise we
     // captured the infusible inputs.
     const auto &mappedArg = mapping.operandMapping.lookup(idx);
     if (mappedArg.isFusedTensorType())
       outlinedArgs.push_back(elemwiseBody->getArgument(fusedArgIdx++));
-    else
+    else if (!isMutableStore)
       outlinedArgs.push_back(v);
   }
 
@@ -137,8 +156,11 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
   builder.create<OutputOp>(loc, callOutlined->getResults());
   builder.setInsertionPointAfter(bindOp);
-  return builder.create<CallForeachOp>(
-      loc, bindOp->getResult(0), kernelOp.getOutputPlaceholder()->getResult(0));
+
+  auto ret =
+      builder.create<CallForeachOp>(loc, bindOp.getOutput(), outputValue);
+
+  return ret;
 }
 
 ErrorOr<KernelCallInterface>
@@ -159,9 +181,9 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   if (isa<MO::Static::ReshapeOp, MO::Static::BroadcastToOp>(moOp))
     inputs.push_back(shapeInKGEN);
 
-  inputs = convertTuplesIfNeeded(
+  inputs = dropChainIfPresent(convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
-      mapping.operandMapping, builder);
+      mapping.operandMapping, builder));
   auto view = builder.create<MOGG::CallViewOp>(
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
@@ -215,9 +237,9 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                 "[MO-TO-MOGG] Should have at most one return by value result");
   TypeAttr regRetTypeAttr =
       retVal.empty() ? nullptr : TypeAttr::get(retVal.front());
-  inputs = convertTuplesIfNeeded(
+  inputs = dropChainIfPresent(convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
-      mapping.operandMapping, builder);
+      mapping.operandMapping, builder));
   outputs = convertTuplesIfNeeded(outputs, mapping.resultMapping, builder);
 
   return builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,

@@ -322,6 +322,10 @@ static std::optional<SmallVector<int>> getFusionIndices(ExpKernelOp src,
 
   SmallVector<int> indices;
   for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
+    /// TODO: Support fusion in the presence of chains.
+    if (isa<MO::ChainType>(operand.getType()))
+      return {};
+
     if (operand.getDefiningOp() != src)
       continue;
 

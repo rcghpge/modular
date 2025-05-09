@@ -57,7 +57,7 @@ mo.graph @stress_test(%arg2: !mo.tensor<[3, 4], f64>, %arg3: !mo.tensor<[4, 3], 
       %4 = mogg.call.outlined["mo.cast"] (%arg8) : f64 -> f32
       mogg.output %4 : f32
     }: (!mo.tensor<[3, 3], f64>) -> !mo.tensor<[3, 3], f32>
-    mogg.call.foreach input(%3) output(%2) : !mo.tensor<[3, 3], f32>
+    mogg.call.foreach input(%3) output(%2) : !mo.tensor<[3, 3], f32> -> !mo.tensor<[3, 3], f32>
   } {device = #M.device_ref<"cpu", 0>, elementwise, isAsync = true, summary = "mo.cast:12"}
   mo.output %1 : !mo.tensor<[3, 3], f32>
 }

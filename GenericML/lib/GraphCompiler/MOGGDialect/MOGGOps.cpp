@@ -468,8 +468,14 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
   // elementwise lambda) at the moment, but we append it regardless here to
   // support indices transformation in the future, it also saves us a bunch of
   // if statements by having a canonical form.
-  Type indicesTp = KGEN::POP::ArrayType::get(
-      cast<MO::TensorType>(outputTp).getRank(), b.getIndexType());
+  MO::TensorType outputTpAsTensor = nullptr;
+  if (auto bufferTy = dyn_cast<MO::BufferType>(outputTp))
+    outputTpAsTensor = bufferTy.toTensorType();
+  else
+    outputTpAsTensor = cast<MO::TensorType>(outputTp);
+
+  Type indicesTp =
+      KGEN::POP::ArrayType::get(outputTpAsTensor.getRank(), b.getIndexType());
   block.addArgument(indicesTp, state.location);
 
   // Caller need to populate the lambda body.
@@ -577,8 +583,8 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
 
   ValueRange dpsResult = getResults();
   // Chain does not occur on kernel (but propagated by graph compiler).
-  if (isa<MO::ChainType>(dpsResult.back().getType()))
-    dpsResult = dpsResult.drop_back();
+  if (isa<MO::ChainType>(dpsResult.front().getType()))
+    dpsResult = dpsResult.drop_front();
 
   if (auto regOutput = term.getKernelRet()) {
     if (regOutput != dpsResult.back().getType())
@@ -597,8 +603,10 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
     }
   }
 
-  if (!llvm::equal(dpsOutputTypesWithoutTuples, dpsResult.getTypes()))
+  if (!dpsResult.empty() &&
+      !llvm::equal(dpsOutputTypesWithoutTuples, dpsResult.getTypes())) {
     return emitError("Expect to return the same result types as terminator");
+  }
 
   return success();
 }

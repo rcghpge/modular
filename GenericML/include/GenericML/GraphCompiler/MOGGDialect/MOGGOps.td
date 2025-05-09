@@ -167,7 +167,7 @@ def MOGG_OutputOp
 //===----------------------------------------------------------------------===//
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
-    SameTypeOperands, DeclareOpInterfaceMethods<MOGG_KernelCallInterface>]>  {
+    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>]>  {
   let summary = "call the registered foreach kernel";
   let description = [{
     This represents a call to the mojo implementation of `foreach` function. If
@@ -176,10 +176,10 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
   }];
 
   let arguments = (ins MO_Tensor:$input,
-                       MO_Tensor:$output);
+                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output);
 
   let assemblyFormat = [{
-    `input` `(` $input `)` `output` `(` $output `)` `:` qualified(type($input)) attr-dict
+    `input` `(` $input `)` `output` `(` $output `)` `:` qualified(type($input)) `->` qualified(type($output)) attr-dict
   }];
 }
 
@@ -433,7 +433,7 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
   let arguments = (ins MOGG_BindLambdaKind: $bindKind,
                        Variadic<MO_Tensor>: $fusibleTensors);
 
-  let results = (outs MO_Tensor: $output);
+  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>: $output);
   let regions = (region SizedRegion<1>:$lambda);
 
   let extraClassDeclaration = [{
