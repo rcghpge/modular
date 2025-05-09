@@ -2038,8 +2038,7 @@ struct SinkSqueezeLikeReshapeThroughTranspose
 
     Location loc = op->getLoc();
 
-    auto constantOp =
-        rewriter.create<MO::ConstantOp>(loc, permVec, inputType.getDeviceRef());
+    auto constantOp = rewriter.create<MO::ConstantOp>(loc, permVec);
     auto permuted = permuteDims(inputType, permVec);
 
     auto newTransposeOp = rewriter.create<MO::TransposeOp>(
