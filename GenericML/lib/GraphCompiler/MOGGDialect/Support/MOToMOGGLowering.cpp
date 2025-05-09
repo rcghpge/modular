@@ -262,10 +262,6 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
 
     if (isa<MO::CustomOp>(moOp)) {
       if (param.getName() ==
-          MO::CustomOp::getOperandDevicesAttrName(customOpOperationName)) {
-        continue;
-      }
-      if (param.getName() ==
           MO::CustomOp::getSymbolAttrName(customOpOperationName)) {
         continue;
       }

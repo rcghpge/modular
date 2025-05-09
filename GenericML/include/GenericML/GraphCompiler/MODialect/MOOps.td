@@ -4844,11 +4844,6 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   let arguments = (ins Variadic<AnyType>:$operands,
                        StrAttr:$symbol,
                        DefaultValuedAttr<StrAttr, "\"\"">:$function,
-                       // List of operand indices and the device they belong on.
-                       // If an operand index is not in this array, it depends
-                       // on the default policy of device assignment.
-                       DefaultValuedAttr<MO_DeviceIndexArrayAttr, "ArrayRef<DeviceIndexAttr>({})">:$operandDevices,
-
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<AnyType>:$results);
 
@@ -4867,8 +4862,6 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     /// Collects all operands of type !mo.buffer.
     mlir::SmallVector<Value> getBufferOperands();
   }];
-
-  let hasVerifier = 1;
 }
 
 def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [
