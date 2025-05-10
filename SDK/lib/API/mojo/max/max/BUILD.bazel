@@ -11,8 +11,8 @@ mojo_library(
     visibility = ["//visibility:public"],
     deps = [
         "//SDK/lib/API/mojo/max/tensor",
-        "@mojo//:_mlir",
-        "@mojo//:compiler",
+        "//open-source/max/max/compiler",
+        "//open-source/max/mojo/max/src/_mlir",
         "@mojo//:stdlib",
     ],
 )
