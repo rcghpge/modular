@@ -1,0 +1,193 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+// Adapted by Modular.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
+// SPDX-License-Identifier: Apache-2.0
+
+#include "AsyncRT/NIXL/utils/stream/metadata_stream.h"
+#include <arpa/inet.h>
+#include <cstring>
+#include <iostream>
+#include <netinet/in.h>
+#include <string_view>
+#include <sys/socket.h>
+#include <unistd.h>
+
+using namespace M::AsyncRT::NIXL;
+using namespace std::string_view_literals;
+
+nixlMetadataStream::nixlMetadataStream(int port) : port(port), socketFd(-1) {
+  memset(&listenerAddr, 0, sizeof(listenerAddr));
+}
+
+nixlMetadataStream::~nixlMetadataStream() { closeStream(); }
+
+bool nixlMetadataStream::setupStream() {
+  socketFd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  if (socketFd == -1) {
+    std::cerr << "failed to create stream socket for listener";
+    return false;
+  }
+
+  listenerAddr.sin_family = AF_INET;
+  listenerAddr.sin_addr.s_addr = INADDR_ANY;
+  listenerAddr.sin_port = htons(port);
+
+  return true;
+}
+
+void nixlMetadataStream::closeStream() {
+  if (socketFd != -1) {
+    close(socketFd);
+  }
+}
+
+nixlMDStreamListener::nixlMDStreamListener(int port)
+    : nixlMetadataStream(port) {}
+
+nixlMDStreamListener::~nixlMDStreamListener() {
+  if (listenerThread.joinable()) {
+    listenerThread.join();
+  }
+  if (csock >= 0) {
+    close(csock);
+  }
+}
+
+void nixlMDStreamListener::setupListener() {
+  if (!setupStream()) {
+    // TODO(GENAI-170): Error propagation.
+    return;
+  }
+
+  if (bind(socketFd, (sockaddr *)&listenerAddr, sizeof(listenerAddr)) < 0) {
+    std::cerr << "Socket Bind failed while setting up listener for MD\n";
+    closeStream();
+    return;
+  }
+
+  if (listen(socketFd, 128) < 0) {
+    std::cerr << "Listening failed for stream Socket: " << socketFd << "\n";
+    closeStream();
+    return;
+  }
+  std::cout << "MD listener is listening on port " << port << "...\n";
+}
+
+int nixlMDStreamListener::acceptClient() {
+  csock = accept(socketFd, nullptr, nullptr);
+  if (csock < 0 && errno != EAGAIN) {
+    std::cerr << "Cannot accept client connection\n"
+              << strerror(errno) << std::endl;
+  }
+  return csock;
+}
+
+void nixlMDStreamListener::acceptClientsAsync() {
+  while (true) {
+    int clientSocket = accept(socketFd, nullptr, nullptr);
+    if (clientSocket < 0) {
+      std::cerr << "Cannot accept client connection\n"
+                << strerror(errno) << std::endl;
+      continue;
+    }
+    std::cout << "Client connected.\n";
+    std::thread clientThread(&nixlMDStreamListener::recvFromClients, this,
+                             clientSocket);
+    clientThread.detach();
+  }
+}
+
+std::string nixlMDStreamListener::recvFromClient() {
+  char buffer[RECV_BUFFER_SIZE];
+  int bytes_read;
+  std::string recvData;
+
+  bytes_read = recv(csock, buffer, sizeof(buffer), 0);
+
+  if (bytes_read > 0) {
+    recvData = std::string(buffer, bytes_read);
+  } else if (bytes_read == 0) {
+    std::cout << "Client disconnected" << std::endl;
+  } else {
+    std::cerr << "Error receiving data" << std::endl;
+  }
+  return recvData;
+}
+
+void nixlMDStreamListener::recvFromClients(int clientSocket) {
+  char buffer[RECV_BUFFER_SIZE];
+  int bytes_read;
+
+  while ((bytes_read = recv(clientSocket, buffer, sizeof(buffer), 0)) > 0) {
+    buffer[bytes_read] = '\0';
+    // Return ack
+    std::string_view ack = "Message received"sv;
+    send(clientSocket, ack.data(), ack.size(), 0);
+    std::string recv_message(buffer);
+    std::cout << "Message Received" << recv_message << "\n";
+  }
+  close(clientSocket);
+  std::cout << "Client disconnected\n";
+}
+
+void nixlMDStreamListener::startListenerForClient() {
+  setupListener();
+  acceptClient();
+}
+
+void nixlMDStreamListener::startListenerForClients() {
+  setupListener();
+  listenerThread = std::thread(&nixlMDStreamListener::acceptClientsAsync, this);
+}
+
+nixlMDStreamClient::nixlMDStreamClient(const std::string &listenerAddress,
+                                       int port)
+    : nixlMetadataStream(port), listenerAddress(listenerAddress) {}
+
+nixlMDStreamClient::~nixlMDStreamClient() { closeStream(); }
+
+bool nixlMDStreamClient::setupClient() {
+  setupStream();
+
+  sockaddr_in listenerAddr;
+  listenerAddr.sin_family = AF_INET;
+  listenerAddr.sin_port = htons(port);
+
+  if (inet_pton(AF_INET, listenerAddress.c_str(), &listenerAddr.sin_addr) <=
+      0) {
+    perror("Invalid address/ Address not supported");
+    return false;
+  }
+
+  if (connect(socketFd, (sockaddr *)&listenerAddr, sizeof(listenerAddr)) < 0) {
+    std::cerr << "Connection Failed: " << strerror(errno) << std::endl;
+    closeStream();
+    return false;
+  }
+  std::cout << "Connected to listener at " << listenerAddress << ":" << port
+            << "\n";
+  return true;
+}
+
+bool nixlMDStreamClient::connectListener() { return setupClient(); }
+
+void nixlMDStreamClient::sendData(const std::string &data) {
+  // TODO(GENAI-170): Fix logging and indicate error another way.
+  if (send(socketFd, data.c_str(), data.size(), 0) < 0)
+    std::cerr << "Send failed\n";
+}
+
+std::string nixlMDStreamClient::recvData() {
+  char buffer[RECV_BUFFER_SIZE];
+  int bytes_read = recv(socketFd, buffer, sizeof(buffer), 0);
+  if (bytes_read > 0) {
+    buffer[bytes_read] = '\0';
+    return std::string(buffer);
+  }
+  return "";
+}
