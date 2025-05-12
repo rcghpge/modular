@@ -363,7 +363,12 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
                                   /*isAsync=*/builder.getBoolAttr(isAsync),
                                   /*device=*/getDevice());
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
-
+  if (auto memEffectOp = dyn_cast<mlir::MemoryEffectOpInterface>(moOp)) {
+    kernelOp.setHasWriteEffect(
+        memEffectOp.hasEffect<mlir::MemoryEffects::Write>());
+    kernelOp.setHasReadEffect(
+        memEffectOp.hasEffect<mlir::MemoryEffects::Read>());
+  }
   SmallVector<Type> dpsReturns;
   const OperandMapping &operandMapping = operandMappingOr.get();
   for (auto [idx, val] : operandMapping.resultMapping)

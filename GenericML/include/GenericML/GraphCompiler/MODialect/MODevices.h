@@ -27,6 +27,7 @@ DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
 /// the given MO graphOp. Returns the 'host' device if there is no such
 /// annotation on the type itself.
 DeviceRefAttr getDeviceOrDefault(TensorType type);
+DeviceRefAttr getDeviceOrDefault(BufferType type);
 
 /// As above, but for any type.
 DeviceRefAttr getDeviceOrDefaultAny(Type type);

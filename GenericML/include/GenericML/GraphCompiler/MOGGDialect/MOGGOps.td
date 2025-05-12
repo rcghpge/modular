@@ -319,11 +319,12 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     `mogg.kernel` after the transition is done.
   }];
 
-  // TODO: add MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index support.
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
-    OptionalAttr<ArrayAttr>:$allocIndices
+    OptionalAttr<ArrayAttr>:$allocIndices,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
 
   // TODO: add MO_Opaque, MO_Chain support.

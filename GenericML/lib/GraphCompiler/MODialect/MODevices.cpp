@@ -16,14 +16,29 @@ using namespace MO;
 // Utils
 //===----------------------------------------------------------------------===//
 
-DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
-  // Check the op annotation.
-  DeviceRefAttr device = op.getDeviceRef();
+// A helper function that simply calls `obj.getDeviceRef()`. Just to save us
+// from some boilerplates.
+template <typename DevicedObj>
+static DeviceRefAttr getAttachedDeviceOrDefault(DevicedObj obj) {
+  // Check the type annotation.
+  DeviceRefAttr device = obj.getDeviceRef();
   if (device)
     return device;
 
   // Fallback to the 'host' device.
-  return getHostDevice(op.getContext());
+  return getHostDevice(obj.getContext());
+}
+
+DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
+  return getAttachedDeviceOrDefault(op);
+}
+
+DeviceRefAttr MO::getDeviceOrDefault(BufferType type) {
+  return getAttachedDeviceOrDefault(type);
+}
+
+DeviceRefAttr MO::getDeviceOrDefault(TensorType type) {
+  return getAttachedDeviceOrDefault(type);
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
@@ -58,19 +73,11 @@ SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
   return devices;
 }
 
-DeviceRefAttr MO::getDeviceOrDefault(TensorType type) {
-  // Check the type annotation.
-  DeviceRefAttr device = type.getDeviceRef();
-  if (device)
-    return device;
-
-  // Fallback to the 'host' device.
-  return getHostDevice(type.getContext());
-}
-
 DeviceRefAttr MO::getDeviceOrDefaultAny(Type type) {
   if (auto tensorType = dyn_cast<TensorType>(type))
     return getDeviceOrDefault(tensorType);
+  if (auto bufferType = dyn_cast<BufferType>(type))
+    return getDeviceOrDefault(bufferType);
 
   // Fallback to the 'host' device.
   return getHostDevice(type.getContext());

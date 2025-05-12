@@ -1890,9 +1890,6 @@ LogicalResult KernelOp::verify() {
     return std::next(chainIter) == rng.end();
   };
 
-  if (!chainIsLastIfPresent(getOperands()))
-    return emitError("Found a chain operand that is not in the final position");
-
   if (!chainIsLastIfPresent(getResults()))
     return emitError("Found an output chain that is not in the final position");
 
@@ -1923,7 +1920,7 @@ static inline bool allNullFusionInterface(ArrayAttr arr) {
   });
 }
 
-LogicalResult KernelOp::canonicalize(KernelOp op, PatternRewriter &) {
+LogicalResult KernelOp::canonicalize(KernelOp op, PatternRewriter &rewriter) {
   if (op.getInputFusionInterface().has_value() &&
       allNullFusionInterface(op.getInputFusionInterfaceAttr())) {
     op.removeInputFusionInterfaceAttr();
@@ -1932,6 +1929,16 @@ LogicalResult KernelOp::canonicalize(KernelOp op, PatternRewriter &) {
   if (op.getOutputFusionInterface().has_value() &&
       allNullFusionInterface(op.getOutputFusionInterfaceAttr())) {
     op.removeOutputFusionInterfaceAttr();
+  }
+
+  // Swap chains operands to the end.
+  auto operands = op->getOpOperands();
+  auto bargs = op.getBody().front().getArguments();
+  for (auto [operand, ba] : llvm::zip_equal(operands, bargs)) {
+    if (isa<MO::ChainType>(operand.get().getType())) {
+      std::swap(operand, operands.back());
+      std::swap(ba, bargs.back());
+    }
   }
 
   return success();
