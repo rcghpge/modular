@@ -65,9 +65,8 @@ fn export():
 # ===-----------------------------------------------------------------------===#
 
 
-@value
 @register_passable
-struct MyCustomScalarRegSI32:
+struct MyCustomScalarRegSI32(Copyable, Movable):
     var val: Int32
 
     @implicit
@@ -81,9 +80,8 @@ struct MyCustomScalarRegSI32:
 
 # It is intentional there are no methods which consume this.
 # It is here to support some level of type checking.
-@value
 @register_passable
-struct MyCustomScalarRegF32:
+struct MyCustomScalarRegF32(Copyable, Movable):
     var val: Float32
 
     @implicit
@@ -139,8 +137,7 @@ struct OpaqueAddToTensorF32:
 # ===-----------------------------------------------------------------------===#
 
 
-@value
-struct MyCustomScalarSI32:
+struct MyCustomScalarSI32(Copyable, Movable):
     var val: Int32
 
     @implicit
@@ -833,9 +830,8 @@ struct BasicTarget:
         print("hello from kernel on", target)
 
 
-@value
 @register_passable
-struct MyCustomScalarReg[type: DType]:
+struct MyCustomScalarReg[type: DType](Copyable, Movable):
     var val: Scalar[type]
 
     @implicit
