@@ -25,7 +25,7 @@
 
 mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[1, seq_len, 4096], f32>) ->  !mo.tensor<[1, seq_len, 4096], f32> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
-  %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+  %1 = mo.add_singleton_dim[0] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
   %out = mo.add(%1, %arg2) : !mo.tensor<[1, seq_len, 4096], f32>
   mo.output %out : !mo.tensor<[1, seq_len, 4096], f32>
 }
@@ -52,7 +52,7 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 
 mo.graph @mixed_precision<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) ->  !mo.tensor<[1, seq_len, 4096], si32> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
-  %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+  %1 = mo.add_singleton_dim[0] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
   %out = mo.cast(%1) : (!mo.tensor<[1, seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], si32>
   mo.output %out : !mo.tensor<[1, seq_len, 4096], si32>
 }

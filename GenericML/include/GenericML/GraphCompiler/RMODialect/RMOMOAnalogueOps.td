@@ -1746,7 +1746,7 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd",
   let arguments = (ins MO_Tensor:$input,
                        MO_IndicesTensor:$indices,
                        // TODO(#21324): Support dynamic batchDims
-                       Builtin_IntegerAttr:$batchDims,
+                       IndexAttr:$batchDims,
                        MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
@@ -2676,15 +2676,15 @@ def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %axis: !mo.tensor<[], i64>
-    %res = rmo.mo.cumsum(%arg, %axis) {exclusive = 1 : i64, reverse = 0 : bool} : (
+    %res = rmo.mo.cumsum(%arg, %axis) {exclusive = 1 : index, reverse = 0 : index} : (
       !mo.tensor<[2, 3], f32>., !mo.tensor<[], i64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
   let arguments = (ins MO_Tensor:$input,
                        MO_IndexScalarIfRanked:$axis,
-                       Builtin_IntegerAttr:$exclusive,
-                       Builtin_IntegerAttr:$reverse,
+                       IndexAttr:$exclusive,
+                       IndexAttr:$reverse,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 }

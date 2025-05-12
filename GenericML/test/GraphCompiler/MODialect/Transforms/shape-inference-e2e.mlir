@@ -814,24 +814,24 @@ mo.graph @broadcast_shape_static(%shape1: !mo.tensor<[3], si32>, %shape2: !mo.te
 // CHECK-NEXT: mo.output %[[V0]] : !mo.tensor<[5], si32>
 
 mo.graph @gather_nd(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, si64> {
-  %result = mo.gather_nd(%input, %indices) {batchDims = 1} :
+  %result = mo.gather_nd(%input, %indices) {batchDims = 1 : index} :
     (!mo.tensor<[?, ?, ?], si64>, !mo.tensor<[?, ?], si64>) -> !mo.tensor<?, si64>
   mo.output %result : !mo.tensor<?, si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @gather_nd<[[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]], [[D5:.*]] -> [[Sh6:.*]]: !mosh.ape>([[VARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, [[VARG1:%.*]]: !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<Sh6, si64> {
-// CHECK-NEXT:   [[V0:%.*]] = mo.gather_nd<() -> [[SH12:.*]]: !mosh.ape>([[VARG0]], [[VARG1]]) {batchDims = 1 : i64} : (!mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<[[SH12]], si64>
+// CHECK-NEXT:   [[V0:%.*]] = mo.gather_nd<() -> [[SH12:.*]]: !mosh.ape>([[VARG0]], [[VARG1]]) {batchDims = 1 : index} : (!mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, !mo.tensor<[[[D4]], [[D5]]], si64>) -> !mo.tensor<[[SH12]], si64>
 // CHECK-NEXT:   mo.output<{{.*}}> [[V0]]
 // CHECK-NEXT: }
 
 mo.graph @gather_nd_with_last_dim(%input: !mo.tensor<[?, ?, ?], si64>, %indices: !mo.tensor<[?, 1], si64>) -> !mo.tensor<?, si64> {
-  %result = mo.gather_nd(%input, %indices) {batchDims = 1} :
+  %result = mo.gather_nd(%input, %indices) {batchDims = 1 : index} :
     (!mo.tensor<[?, ?, ?], si64>, !mo.tensor<[?, 1], si64>) -> !mo.tensor<?, si64>
   mo.output %result : !mo.tensor<?, si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @gather_nd_with_last_dim<[[D1:.*]], [[D2:.*]], [[D3:.*]], [[D4:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, [[VARG1:%.*]]: !mo.tensor<[[[D4]], 1], si64>)
-// CHECK-NEXT:   [[V0:%.*]] = mo.gather_nd([[VARG0]], [[VARG1]]) {batchDims = 1 : i64} : (!mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, !mo.tensor<[[[D4]], 1], si64>) -> !mo.tensor<[[[D1]], [[D3]]], si64>
+// CHECK-NEXT:   [[V0:%.*]] = mo.gather_nd([[VARG0]], [[VARG1]]) {batchDims = 1 : index} : (!mo.tensor<[[[D1]], [[D2]], [[D3]]], si64>, !mo.tensor<[[[D4]], 1], si64>) -> !mo.tensor<[[[D1]], [[D3]]], si64>
 // CHECK-NEXT:   mo.output [[V0]]
 // CHECK-NEXT: }
 

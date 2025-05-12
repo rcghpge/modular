@@ -3458,7 +3458,7 @@ LogicalResult AddSingletonDimOp::verify() {
         "More than shape / layout has changed between input and output.");
 
   // Check surrounding dims around axis are the same
-  int64_t axis = getAxis().getValue().getLimitedValue();
+  int64_t axis = getAxis().getLimitedValue();
   for (int64_t i = 0; i < resultRank; i++) {
     if (i < axis) {
       if (resultTy.getDim(i) != inputTy.getDim(i))
@@ -3478,7 +3478,7 @@ LogicalResult AddSingletonDimOp::verify() {
 
 LogicalResult SplitDimOp::canonicalize(SplitDimOp op,
                                        PatternRewriter &rewriter) {
-  int64_t axis = op.getAxis().getValue().getLimitedValue();
+  int64_t axis = op.getAxis().getLimitedValue();
   TensorType resultTy = op.getResult().getType();
 
   if (!resultTy.hasRank())
@@ -3488,13 +3488,13 @@ LogicalResult SplitDimOp::canonicalize(SplitDimOp op,
   if (resultTy.getIntDim(axis) == 1) {
     rewriter.replaceOpWithNewOp<AddSingletonDimOp>(
         op, resultTy, op.getInput(),
-        IntegerAttr::get(op.getAxis().getType(), axis));
+        IntegerAttr::get(op.getAxisAttr().getType(), axis));
     return success();
   }
   if (resultTy.getIntDim(axis + 1) == 1) {
     rewriter.replaceOpWithNewOp<AddSingletonDimOp>(
         op, resultTy, op.getInput(),
-        IntegerAttr::get(op.getAxis().getType(), axis + 1));
+        IntegerAttr::get(op.getAxisAttr().getType(), axis + 1));
     return success();
   }
   return failure();
@@ -3520,7 +3520,7 @@ LogicalResult SplitDimOp::verify() {
         "More than shape / layout has changed between input and output.");
 
   // Check surrounding dims around axis are the same
-  int64_t axis = getAxis().getValue().getLimitedValue();
+  int64_t axis = getAxis().getLimitedValue();
   for (int64_t i = 0; i < resultRank; i++) {
     if (i < axis) {
       if (resultTy.getDim(i) != inputTy.getDim(i))
@@ -3568,7 +3568,7 @@ LogicalResult MergeDimOp::verify() {
         "More than shape / layout has changed between input and output.");
 
   // Check surrounding dims around axis are the same
-  int64_t axis = getAxis().getValue().getLimitedValue();
+  int64_t axis = getAxis().getLimitedValue();
   for (int64_t i = 0; i < resultRank; i++) {
     if (i < axis) {
       if (resultTy.getDim(i) != inputTy.getDim(i))

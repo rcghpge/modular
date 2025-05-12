@@ -225,7 +225,7 @@ mo.graph @concat_incorrect_element_type(%arg0: !mo.tensor<[1], si64>, %arg1: !mo
 
 mo.graph @cumsum(%arg0 : !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[4], f32>) {
   // expected-error@+1 {{'mo.cumsum' op operand #1 must be ranked scalar index tensor, but got '!mo.tensor<[2, 3], f32>'}}
-  %0 = mo.cumsum(%arg0, %arg0) {exclusive = 0 : i64, reverse = 0 : i64}: (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  %0 = mo.cumsum(%arg0, %arg0) {exclusive = 0 : index, reverse = 0 : index}: (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 

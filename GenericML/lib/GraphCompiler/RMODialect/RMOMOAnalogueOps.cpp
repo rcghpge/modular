@@ -954,7 +954,7 @@ void MOGatherNdOp::inferMOTypesImpl(
     // output rank = batch_dims + (indices.rank - batch_dims - 1)
     //                          + (input.rank - batch_dims - K).
     size_t k = kAttr.getSInt();
-    size_t batchDims = operands.getBatchDims().getInt();
+    size_t batchDims = operands.getBatchDims().getSExtValue();
     size_t outputRank =
         (indicesTy.getRank() - 1) + (inputTy.getRank() - batchDims - k);
     moResultTypes.push_back(getRankedParamTensorType(

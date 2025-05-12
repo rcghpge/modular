@@ -18,7 +18,7 @@
 
 mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) ->  !mo.tensor<[1, seq_len, 4096], f32> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
-  %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+  %1 = mo.add_singleton_dim[0] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
   mo.output %1 : !mo.tensor<[1, seq_len, 4096], f32>
 }
 
@@ -44,7 +44,7 @@ mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 409
 mo.graph @fuse_kernel_in_true_block_of_if_statement<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %arg2 : !mo.tensor<[1, seq_len, 4096], f32>, %cond: !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
     %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
-    %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+    %1 = mo.add_singleton_dim[0] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
     mo.yield %1 : !mo.tensor<[1, seq_len, 4096], f32>
   } else {
     mo.yield %arg2 : !mo.tensor<[1, seq_len, 4096], f32>
@@ -76,7 +76,7 @@ mo.graph @fuse_kernel_in_false_block_of_if_statement<seq_len>(%arg0: !mo.tensor<
     mo.yield %arg2 : !mo.tensor<[1, seq_len, 4096], f32>
   } else {
     %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
-    %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+    %1 = mo.add_singleton_dim[0] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
     mo.yield %1 : !mo.tensor<[1, seq_len, 4096], f32>
   }
   mo.output %res : !mo.tensor<[1, seq_len, 4096], f32>
@@ -91,7 +91,7 @@ mo.graph @fuse_kernel_in_false_block_of_if_statement<seq_len>(%arg0: !mo.tensor<
 mo.graph @dont_fuse_kernel_across_blocks<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %arg2 : !mo.tensor<[1, seq_len, 4096], f32>, %cond: !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[1, seq_len, 4096], f32> {
-    %1 = mo.add_singleton_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
+    %1 = mo.add_singleton_dim[0] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[1, seq_len, 4096], f32>
     mo.yield %1 : !mo.tensor<[1, seq_len, 4096], f32>
   } else {
     mo.yield %arg2 : !mo.tensor<[1, seq_len, 4096], f32>
@@ -117,7 +117,7 @@ mo.graph @dont_fuse_kernel_across_blocks<seq_len>(%arg0: !mo.tensor<[seq_len, 40
 
 mo.graph @split_dim<seq_len, N, K>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) ->  !mo.tensor<[N, K, 4096], f32> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[seq_len, 4096], f32>
-  %1 = mo.split_dim[0 : index] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[N, K, 4096], f32>
+  %1 = mo.split_dim[0] (%0) : (!mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[N, K, 4096], f32>
   mo.output %1 : !mo.tensor<[N, K, 4096], f32>
 }
 
@@ -151,6 +151,6 @@ mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>,
 // CHECK-NEXT: mogg.output %[[OUT_PH]] : !mo.tensor<[64], f32>
 mo.graph @merge_dim(%arg0: !mo.tensor<[8, 8], f32>, %arg1: !mo.tensor<[8, 8], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[64], f32> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[8, 8], f32>
-  %1 = mo.merge_dim[0 : index] (%0) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[64], f32>
+  %1 = mo.merge_dim[0] (%0) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[64], f32>
   mo.output %1: !mo.tensor<[64], f32>
 }

@@ -404,7 +404,7 @@ mo.graph @gather_nd_fallback_shape_func<D0, D1 -> D2, D3>(
 ) -> !mo.tensor<[D2, D3], f32> {
 
   %res = mo.gather_nd<() -> D4, D5>(%input, %indices)
-    { batchDims = 1 } :
+    { batchDims = 1 : index } :
     (!mo.tensor<[D0, D1, 20], f32>, !mo.tensor<[D0, 1], si32>) -> !mo.tensor<[D4, D5], f32>
 
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
@@ -416,11 +416,11 @@ mo.graph @gather_nd_fallback_shape_func<D0, D1 -> D2, D3>(
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
 //
 // CHECK-NEXT: mo.invoke_shape_func["mo.gather_nd"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[INDICES]])
-// CHECK-SAME:   {dataDeptTensors = [], kgenParams = {batch_dims = 1 : i64}} :
+// CHECK-SAME:   {dataDeptTensors = [], kgenParams = {batch_dims = 1 : index}} :
 // CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]], 20], f32>, !mo.tensor<[[[D0]], 1], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.gather_nd(%[[INPUT]], %[[INDICES]])
-// CHECK-SAME:   {batchDims = 1 : i64} :
+// CHECK-SAME:   {batchDims = 1 : index} :
 // CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]], 20], f32>, !mo.tensor<[[[D0]], 1], si32>)
 // CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]]], f32>
 //

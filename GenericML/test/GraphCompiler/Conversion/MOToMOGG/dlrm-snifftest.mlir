@@ -116,28 +116,28 @@ module {
     %100 = mo.concat[%28 : !mo.tensor<[], si32>] (%99, %81, %83, %85, %87, %89, %91, %93, %95) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>, !mo.tensor<[D473, 32], f32>) -> !mo.tensor<[D474, 288], f32>
     %101 = mo.static.reshape(%100) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[D474, 288], f32> -> !mo.tensor<[D474, 9, 32], f32>
     %102 = mo.batch_matmul(%101, %101) {device = #M.device_ref<"cpu", 0>, transpose_b = true} : (!mo.tensor<[D474, 9, 32], f32>, !mo.tensor<[D474, 9, 32], f32>) -> !mo.tensor<[D474, 9, 9], f32>
-    %103 = mo.merge_dim[1 : index] (%102) : (!mo.tensor<[D474, 9, 9], f32>) -> !mo.tensor<[D474, 81], f32>
-    %104 = mo.merge_dim[0 : index] (%103) : (!mo.tensor<[D474, 81], f32>) -> !mo.tensor<[param_expr_627], f32>
+    %103 = mo.merge_dim[1] (%102) : (!mo.tensor<[D474, 9, 9], f32>) -> !mo.tensor<[D474, 81], f32>
+    %104 = mo.merge_dim[0] (%103) : (!mo.tensor<[D474, 81], f32>) -> !mo.tensor<[param_expr_627], f32>
     %105 = mo.static.broadcast_to(%24) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[], f32> -> !mo.tensor<[9, 9], f32>
     %106 = mo.linalg.band_part(%105, %27, %23, %26) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[9, 9], f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], bool>) -> !mo.tensor<[9, 9], f32>
-    %107 = mo.merge_dim[0 : index] (%106) : (!mo.tensor<[9, 9], f32>) -> !mo.tensor<[81], f32>
+    %107 = mo.merge_dim[0] (%106) : (!mo.tensor<[9, 9], f32>) -> !mo.tensor<[81], f32>
     mo.invoke_shape_func["mo.arg_nonzero"]<() -> W619, F621>(%107) {dataDeptTensors = [0 : i32], device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[81], f32>)
     %108 = mo.arg_nonzero(%107) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[81], f32>) -> !mo.tensor<[W619, 1], si64>
     %109 = mosh.param.to_value = <mul_nuw(D474, 81)>
     %110 = mo.index.to_tensor(%109) -> !mo.tensor<[], si64>
     %111 = mo.range(%22, %110, %20) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D474], si64>
-    %112 = mo.add_singleton_dim[1 : index] (%111) : (!mo.tensor<[D474], si64>) -> !mo.tensor<[D474, 1], si64>
+    %112 = mo.add_singleton_dim[1] (%111) : (!mo.tensor<[D474], si64>) -> !mo.tensor<[D474, 1], si64>
     %113 = mo.static.broadcast_to(%108) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[W619, 1], si64> -> !mo.tensor<[W619, D474], si64>
     %114 = mo.transpose(%113, %21) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[W619, D474], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D474, W619], si64>
     %115 = mo.static.broadcast_to(%112) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[D474, 1], si64> -> !mo.tensor<[D474, W619], si64>
     %116 = mo.add(%114, %115) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[D474, W619], si64>
-    %117 = mo.merge_dim[0 : index] (%116) : (!mo.tensor<[D474, W619], si64>) -> !mo.tensor<[param_expr_625], si64>
+    %117 = mo.merge_dim[0] (%116) : (!mo.tensor<[D474, W619], si64>) -> !mo.tensor<[param_expr_625], si64>
     kgen.param.declare param_expr_627: si64 = <mul_nuw(D474, 81)>
     %118 = mo.gather(%104, %117, %27) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[param_expr_627], f32>, !mo.tensor<[param_expr_625], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[param_expr_625], f32>
     kgen.param.declare assert599: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D52]> : !mosh.ape != #mosh<ape[var_div596, 45]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_nuw(div(mul_nuw(D474, W619), 45), 45), mul_nuw(D474, W619)))>
     kgen.param.declare param_expr_625: si64 = <mul_nuw(D474, W619)>
     kgen.param.declare param_expr_626: si64 = <cond(eq(:si64 div(mul_nuw(D474, W619), 45), 0), 0, div(mul_nuw(D474, W619), cond(eq(:si64 div(mul_nuw(D474, W619), 45), 0), 1, div(mul_nuw(D474, W619), 45))))>
-    %119 = mo.split_dim[0 : index] (%118) : (!mo.tensor<[param_expr_625], f32>) -> !mo.tensor<[param_expr_624, param_expr_626], f32>
+    %119 = mo.split_dim[0] (%118) : (!mo.tensor<[param_expr_625], f32>) -> !mo.tensor<[param_expr_624, param_expr_626], f32>
     kgen.param.declare assert602: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 div(mul_nuw(D474, W619), 45), D474))>
     kgen.param.declare param_expr_624: si64 = <div(mul_nuw(D474, W619), 45)>
     %120 = mo.rebind(%119) {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[param_expr_624, param_expr_626], f32> -> !mo.tensor<[param_expr_624, 45], f32>

@@ -552,7 +552,7 @@ ErrorOrSuccess Fallback<MO::GatherNdOp>::build(GraphOp &graph,
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/
                    {
-                       {"batch_dims", op.getBatchDims()},
+                       {"batch_dims", op.getBatchDimsAttr()},
                    },
                    op.getDataDependentInputIndices());
   return success();

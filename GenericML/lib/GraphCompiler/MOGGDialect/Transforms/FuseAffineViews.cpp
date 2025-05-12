@@ -182,7 +182,7 @@ struct FuseAffineViewsPass
     SmallVector<TypedAttr> splitOrMergeDimIndicesParameterValues = {
         builder.getIndexAttr(
             splitOrMergeDimOp.getInput().getType().getRankNonZero()),
-        builder.getIndexAttr(splitOrMergeDimOp.getAxis().getInt())};
+        splitOrMergeDimOp.getAxisAttr()};
 
     std::optional<llvm::StringLiteral> funcName;
     if constexpr (std::is_same_v<SplitOrMergeDimOp, MO::SplitDimOp>) {
@@ -199,7 +199,7 @@ struct FuseAffineViewsPass
                   << splitOrMergeDimIndicesFunc.takeError());
 
     // Calculate the split dim size for the function
-    int64_t i = splitOrMergeDimOp.getAxis().getValue().getLimitedValue();
+    int64_t i = splitOrMergeDimOp.getAxis().getLimitedValue();
 
     // Get the dimension we are splitting / merging by.
     // For split ([N] -> [n1, n2]) or merge ([n1, n2] -> [N]), this value
@@ -231,8 +231,7 @@ struct FuseAffineViewsPass
     SmallVector<TypedAttr> insertIndexParameterValues = {
         builder.getIndexAttr(
             addSingleton.getInput().getType().getRankNonZero()),
-        builder.getIndexAttr(addSingleton.getAxis().getInt()),
-        builder.getIndexAttr(0)};
+        addSingleton.getAxisAttr(), builder.getIndexAttr(0)};
 
     // Create call to the indices mapping function
     ErrorOr<KGEN::SymbolConstantAttr> insertIndexSymbol =

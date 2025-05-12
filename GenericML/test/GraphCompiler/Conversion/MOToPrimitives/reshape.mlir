@@ -63,8 +63,8 @@ mo.graph @multi_reshape<D4, D5, D6, D7>(%arg0: !mo.tensor<[D4, D5], f32>, %arg1:
 // CHECK: mgp.tensor.create %[[CH]], %[[IN_BUF]], %[[SPEC2]] : !mgp.tensor<1x1xsi32>
 
 mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 1], si32>) {
-  %1 = mo.add_singleton_dim[0 : si64] (%in1) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
-  %2 = mo.add_singleton_dim[1 : si64] (%1) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1, 1], si32>
+  %1 = mo.add_singleton_dim[0] (%in1) : (!mo.tensor<[], si32>) -> !mo.tensor<[1], si32>
+  %2 = mo.add_singleton_dim[1] (%1) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1, 1], si32>
   mo.output %2 : !mo.tensor<[1, 1], si32>
 }
 
@@ -76,6 +76,6 @@ mo.graph @reshape_singleton_dims(%in1: !mo.tensor<[], si32>) -> (!mo.tensor<[1, 
 // CHECK: mgp.tensor.create %[[CH0]], %[[BUF]], %[[SPEC]] : !mgp.tensor<10x5xsi32>
 
 mo.graph @split_dim_mgp<N>(%arg0: !mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32> {
-  %0 = mo.split_dim[0 : si64] (%arg0) : (!mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32>
+  %0 = mo.split_dim[0] (%arg0) : (!mo.tensor<[N], si32>) -> !mo.tensor<[10, 5], si32>
   mo.output %0 : !mo.tensor<[10, 5], si32>
 }

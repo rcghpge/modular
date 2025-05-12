@@ -1166,15 +1166,15 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
     %axis: !mo.tensor<[], i64>
-    %res = mo.cumsum(%arg, %axis) {exclusive = 1 : i64, reverse = 0 : bool} : (
+    %res = mo.cumsum(%arg, %axis) {exclusive = 1 : index, reverse = 0 : index} : (
       !mo.tensor<[2, 3], f32>., !mo.tensor<[], i64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 
   let arguments = (ins MO_Tensor:$input,
                        MO_RankedScalarIndexTensor:$axis,
-                       Builtin_IntegerAttr:$exclusive,
-                       Builtin_IntegerAttr:$reverse);
+                       IndexAttr:$exclusive,
+                       IndexAttr:$reverse);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` $input `,` $axis `)` attr-dict
@@ -2411,10 +2411,10 @@ def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [
 
     Example:
     ```mlir
-      mo.add_singleton_dim[1: i64](%res): (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+      mo.add_singleton_dim[1](%res): (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
     ```
   }];
-  let arguments = (ins MO_RankedTensor:$input, Builtin_IntegerAttr:$axis);
+  let arguments = (ins MO_RankedTensor:$input, IndexAttr:$axis);
   let results = (outs MO_RankedTensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
@@ -2440,10 +2440,10 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [
 
     Example:
     ```mlir
-      %out = mo.split_dim[0: i64](%res): (!mo.tensor<[4, 9], f32>) -> !mo.tensor<[2, 2, 9], f32>
+      %out = mo.split_dim[0](%res): (!mo.tensor<[4, 9], f32>) -> !mo.tensor<[2, 2, 9], f32>
     ```
   }];
-  let arguments = (ins MO_RankedTensor:$input, Builtin_IntegerAttr:$axis);
+  let arguments = (ins MO_RankedTensor:$input, IndexAttr:$axis);
   let results = (outs MO_RankedTensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
@@ -2470,10 +2470,10 @@ def MO_MergeDimOp : MO_TensorOp<"merge_dim", [
 
     Example:
     ```mlir
-      %out = mo.merge_dim[1: i64](%res): (!mo.tensor<[1, 2, 3, 4], f32>) -> !mo.tensor<[1, 6, 4], f32>
+      %out = mo.merge_dim[1](%res): (!mo.tensor<[1, 2, 3, 4], f32>) -> !mo.tensor<[1, 6, 4], f32>
     ```
   }];
-  let arguments = (ins MO_RankedTensor:$input, Builtin_IntegerAttr:$axis);
+  let arguments = (ins MO_RankedTensor:$input, IndexAttr:$axis);
   let results = (outs MO_RankedTensor:$result);
   let assemblyFormat = [{
     `[` $axis `]``(` operands `)` attr-dict `:`
@@ -3299,7 +3299,7 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
   let arguments = (ins MO_NonScalarIfRanked:$input,
                        MO_IndicesTensor:$indices,
                        // TODO(#21324): Support dynamic batchDims
-                       Builtin_IntegerAttr:$batchDims,
+                       IndexAttr:$batchDims,
                        MO_ParamDecls:$outputParamDecls);
 
   let results = (outs MO_Tensor:$result);
