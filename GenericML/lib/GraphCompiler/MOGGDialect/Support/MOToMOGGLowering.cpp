@@ -106,8 +106,6 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
 
-  bool isMutableStore = isa<MO::MutableStoreOp>(moOp);
-
   Value outputValue = nullptr;
   MO::TensorType tensorType = nullptr;
   if (isa<MO::MutableStoreOp>(moOp)) {
@@ -136,14 +134,15 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
   Block *elemwiseBody = &bindOp.getLambda().front();
   unsigned fusedArgIdx = 0;
   SmallVector<Value> outlinedArgs;
-  for (auto [idx, v] : llvm::enumerate(dropChainIfPresent(inputs))) {
+  for (const auto &[idx, arg] : mapping.operandMapping) {
     // If this is a fusible input, use the fused value, otherwise we
     // captured the infusible inputs.
-    const auto &mappedArg = mapping.operandMapping.lookup(idx);
-    if (mappedArg.isFusedTensorType())
+    if (arg.isFusedTensorType())
       outlinedArgs.push_back(elemwiseBody->getArgument(fusedArgIdx++));
-    else if (!isMutableStore)
-      outlinedArgs.push_back(v);
+    // If this is a mutable store and that this is the mutable input, don't put
+    // it in the list of outlined args. Otherwise, just capture everything.
+    else if (!isa<MO::MutableStoreOp>(moOp) || !arg.isMutableTensorType())
+      outlinedArgs.push_back(inputs[idx]);
   }
 
   builder.setInsertionPoint(bindOp);
