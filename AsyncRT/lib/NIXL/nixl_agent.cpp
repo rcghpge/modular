@@ -41,30 +41,30 @@ std::string_view nixlEnumStrings::xferOpStr(nixl_xfer_op_t op) {
   return nixl_op_str[to_underlying(op)];
 }
 
-std::string_view nixlEnumStrings::statusStr(nixl_status_t status) {
+const char *nixlEnumStrings::statusStr(nixl_status_t status) {
   switch (status) {
   case nixl_status_t::NIXL_IN_PROG:
-    return "NIXL_IN_PROG"sv;
+    return "NIXL_IN_PROG";
   case nixl_status_t::NIXL_SUCCESS:
-    return "NIXL_SUCCESS"sv;
+    return "NIXL_SUCCESS";
   case nixl_status_t::NIXL_ERR_NOT_POSTED:
-    return "NIXL_ERR_NOT_POSTED"sv;
+    return "NIXL_ERR_NOT_POSTED";
   case nixl_status_t::NIXL_ERR_INVALID_PARAM:
-    return "NIXL_ERR_INVALID_PARAM"sv;
+    return "NIXL_ERR_INVALID_PARAM";
   case nixl_status_t::NIXL_ERR_BACKEND:
-    return "NIXL_ERR_BACKEND"sv;
+    return "NIXL_ERR_BACKEND";
   case nixl_status_t::NIXL_ERR_NOT_FOUND:
-    return "NIXL_ERR_NOT_FOUND"sv;
+    return "NIXL_ERR_NOT_FOUND";
   case nixl_status_t::NIXL_ERR_MISMATCH:
-    return "NIXL_ERR_MISMATCH"sv;
+    return "NIXL_ERR_MISMATCH";
   case nixl_status_t::NIXL_ERR_NOT_ALLOWED:
-    return "NIXL_ERR_NOT_ALLOWED"sv;
+    return "NIXL_ERR_NOT_ALLOWED";
   case nixl_status_t::NIXL_ERR_REPOST_ACTIVE:
-    return "NIXL_ERR_REPOST_ACTIVE"sv;
+    return "NIXL_ERR_REPOST_ACTIVE";
   case nixl_status_t::NIXL_ERR_UNKNOWN:
-    return "NIXL_ERR_UNKNOWN"sv;
+    return "NIXL_ERR_UNKNOWN";
   case nixl_status_t::NIXL_ERR_NOT_SUPPORTED:
-    return "NIXL_ERR_NOT_SUPPORTED"sv;
+    return "NIXL_ERR_NOT_SUPPORTED";
   }
 
   llvm_unreachable("bad status");

@@ -11,6 +11,7 @@
 #ifndef ASYNCRT_NIXL_NIXL_TYPES_H
 #define ASYNCRT_NIXL_NIXL_TYPES_H
 
+#include "Support/SymbolExport.h"
 #include "llvm/ADT/STLExtras.h"
 #include <cstdint>
 #include <string>
@@ -88,9 +89,9 @@ enum class nixl_thread_sync_t : std::uint8_t {
  *            of different enums
  */
 namespace nixlEnumStrings {
-std::string_view memTypeStr(nixl_mem_t mem);
+MODULAR_CXX_EXPORT std::string_view memTypeStr(nixl_mem_t mem);
 std::string_view xferOpStr(nixl_xfer_op_t op);
-std::string_view statusStr(nixl_status_t status);
+MODULAR_CXX_EXPORT const char *statusStr(nixl_status_t status);
 } // namespace nixlEnumStrings
 
 /*** NIXL typedefs and defines used in the API ***/

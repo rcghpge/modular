@@ -11,6 +11,7 @@
 #ifndef ASYNCRT_NIXL_UTILS_SERDES_SERDES_H
 #define ASYNCRT_NIXL_UTILS_SERDES_SERDES_H
 
+#include "Support/SymbolExport.h"
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -22,7 +23,7 @@ using namespace std::string_view_literals;
 
 namespace M::AsyncRT::NIXL {
 
-class nixlSerDes {
+class MODULAR_CXX_EXPORT nixlSerDes {
 private:
   enum class ser_mode_t { SERIALIZE, DESERIALIZE };
 

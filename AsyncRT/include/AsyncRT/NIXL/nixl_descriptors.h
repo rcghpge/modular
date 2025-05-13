@@ -12,6 +12,7 @@
 #define ASYNCRT_NIXL_NIXL_DESCRIPTORS_H
 
 #include "Support/LLVMForwardDecls.h"
+#include "Support/SymbolExport.h"
 #include "nixl_types.h"
 #include <cstddef>
 #include <cstdint>
@@ -27,7 +28,7 @@ namespace M::AsyncRT::NIXL {
  * @brief A basic descriptor class, single contiguous memory/storage
  *        element, alongside supporting methods
  */
-class nixlBasicDesc {
+class MODULAR_CXX_EXPORT nixlBasicDesc {
 public:
   /** @var Start of Buffer */
   uintptr_t addr;
@@ -41,7 +42,7 @@ public:
    *      Initializes to invalid values.
    */
   nixlBasicDesc()
-      : addr{0}, len{0}, devId{std::numeric_limits<uint64_t>::max()} {};
+      : addr{0}, len{0}, devId{std::numeric_limits<uint64_t>::max()} {}
   /**
    * @brief Parametrized constructor for nixlBasicDesc
    *
@@ -178,7 +179,7 @@ public:
  *        the nixlDesc type that is used.
  */
 template <class T>
-class nixlDescList {
+class MODULAR_CXX_EXPORT nixlDescList {
 private:
   /** @var NIXL memory type */
   nixl_mem_t type;
@@ -246,6 +247,14 @@ public:
   }
 
   /**
+   * @brief Appends a descriptor to the end of the list
+   */
+  void push_back(T &&obj) {
+    sorted = false;
+    descs.push_back(std::move(obj));
+  }
+
+  /**
    * @brief Vector like iterators for const and non-const elements
    */
   typename std::vector<T>::const_iterator begin() const {
@@ -289,7 +298,7 @@ public:
    * @brief Remove descriptor from list at index
    *        Can throw std::out_of_range exception.
    */
-  void remDesc(const int &index);
+  void remDesc(const int index);
   /**
    * @brief Convert a nixlDescList with metadata by trimming it to a
    *        nixlDescList of nixlBasicDesc elements

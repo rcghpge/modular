@@ -248,7 +248,7 @@ bool nixlDescList<T>::hasOverlaps() const {
 }
 
 template <class T>
-void nixlDescList<T>::remDesc(const int &index) {
+void nixlDescList<T>::remDesc(const int index) {
   if (((size_t)index >= descs.size()) || (index < 0)) {
     // TODO(GENAI-170): raise ErrorOr.
     NIXL_FATAL << "Index is out of range";
@@ -413,16 +413,17 @@ namespace M::AsyncRT::NIXL {
 // necessary
 template class nixlDescList<nixlBasicDesc>;
 template class nixlDescList<nixlMetaDesc>;
-template class nixlDescList<nixlBlobDesc>;
+template class MODULAR_CXX_EXPORT nixlDescList<nixlBlobDesc>;
 template class nixlDescList<nixlSectionDesc>;
 
-template bool operator==
+template bool MODULAR_CXX_EXPORT operator==
     <nixlBasicDesc>(const nixlDescList<nixlBasicDesc> &lhs,
                     const nixlDescList<nixlBasicDesc> &rhs);
 template bool operator== <nixlMetaDesc>(const nixlDescList<nixlMetaDesc> &lhs,
                                         const nixlDescList<nixlMetaDesc> &rhs);
-template bool operator== <nixlBlobDesc>(const nixlDescList<nixlBlobDesc> &lhs,
-                                        const nixlDescList<nixlBlobDesc> &rhs);
+template bool MODULAR_CXX_EXPORT operator==
+    <nixlBlobDesc>(const nixlDescList<nixlBlobDesc> &lhs,
+                   const nixlDescList<nixlBlobDesc> &rhs);
 template bool operator==
     <nixlSectionDesc>(const nixlDescList<nixlSectionDesc> &lhs,
                       const nixlDescList<nixlSectionDesc> &rhs);

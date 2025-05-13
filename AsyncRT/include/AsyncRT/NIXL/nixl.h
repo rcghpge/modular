@@ -27,7 +27,7 @@ namespace M::AsyncRT::NIXL {
  * @class nixlAgent
  * @brief nixlAgent forms the main transfer object class
  */
-class nixlAgent {
+class MODULAR_CXX_EXPORT nixlAgent {
 private:
   /** @var  data  The members in agent class wrapped into single nixlAgentData
    * member. */
