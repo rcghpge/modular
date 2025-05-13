@@ -17,10 +17,14 @@ from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
     TokenGenerationSchedulerConfig,
 )
-from max.serve.scheduler.zmq_queue import ZmqSocket
 
 
-def test_stream_responses_to_frontend(benchmark):
+@pytest.fixture
+def zmq_ctx():
+    return zmq.Context(io_threads=2)
+
+
+def test_stream_responses_to_frontend(benchmark, zmq_ctx):
     """Benchmark stream_responses_to_frontend performance."""
     batch_size_to_test = 512
 
@@ -37,17 +41,10 @@ def test_stream_responses_to_frontend(benchmark):
         batch_timeout=None,
     )
 
-    queues = {
-        "REQUEST": ZmqSocket(),
-        "RESPONSE": ZmqSocket(),
-        "CANCEL": ZmqSocket(),
-    }
-
     scheduler = TokenGenerationScheduler(
         process_control=ProcessControl(ctx=ctx, name="test"),
         scheduler_config=config,
         pipeline=None,  # type: ignore
-        queues=queues,
     )
 
     # Create test data - simulate multiple responses with tokens
