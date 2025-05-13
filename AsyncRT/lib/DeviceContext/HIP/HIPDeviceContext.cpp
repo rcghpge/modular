@@ -673,20 +673,20 @@ HIPDeviceContext::~HIPDeviceContext() {
 }
 
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                          AllocMode mode) const {
+                                          Device::AllocMode mode) const {
   assert(byteSize != 0);
   HIP_WITH_CTX_ERR(*this);
   switch (mode) {
-  case AllocMode::ASYNC: {
+  case Device::AllocMode::ASYNC: {
     HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
     MAYBE_SYNC(*this);
     break;
   }
-  case AllocMode::HOST: {
+  case Device::AllocMode::HOST: {
     HIP_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
     break;
   }
-  case AllocMode::SYNC: {
+  case Device::AllocMode::SYNC: {
     HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
     break;
   }

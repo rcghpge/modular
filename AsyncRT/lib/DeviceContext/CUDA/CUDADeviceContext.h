@@ -380,7 +380,7 @@ private:
   bool logVerbose_ = false;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                          AllocMode mode) const override;
+                          Device::AllocMode mode) const override;
   ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
 
   void *driverContext() const override;

@@ -90,6 +90,14 @@ public:
   static constexpr API cudaAPI = "cuda"; // NVIDIA CUDA device
   static constexpr API hipAPI = "hip";   // AMDGPU HIP device
 
+  // AllocMode specifies the kind of memory requested during allocation and
+  // free and is used to implement internal APIs.
+  enum class AllocMode : uint8_t {
+    HOST = 1,
+    SYNC = 2,
+    ASYNC = 3,
+  };
+
   virtual ~Device();
 
   const std::string &name() const;
@@ -373,12 +381,6 @@ public:
     size_t free;
   };
 
-  enum class AllocMode : uint8_t {
-    HOST = 1,
-    SYNC = 2,
-    ASYNC = 3,
-  };
-
   virtual ~DeviceContext();
 
   const Device &device() const;
@@ -492,7 +494,7 @@ protected:
   // Low-level uncached allocation of memory.
   // REQUIRES: byteSize > 0
   virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                                  AllocMode mode) const = 0;
+                                  Device::AllocMode mode) const = 0;
   virtual ErrorOrSuccess memFree(void *ptr, bool isHost) const = 0;
 
   // Low-level copies.
@@ -522,7 +524,8 @@ private:
   DeviceContext &operator=(DeviceContext &&other) = delete;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize, AllocMode mode) const;
+  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
+                                       Device::AllocMode mode) const;
 
   // Shared configuration object.
   // REQUIRES: `DeviceContext::mu_` must be held to get and access the shared

@@ -53,7 +53,7 @@ public:
   // cannot be serviced by the `BufferCache` due to allocation size or cache
   // capacity, then the allocation request gets transparently forwarded to the
   // `DeviceContext`.
-  ErrorOr<void *> allocate(size_t size, DeviceContext::AllocMode mode);
+  ErrorOr<void *> allocate(size_t size, Device::AllocMode mode);
   ErrorOrSuccess free(void *buf, bool isHost);
 
 private:

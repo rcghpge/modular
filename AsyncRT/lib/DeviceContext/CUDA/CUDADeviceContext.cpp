@@ -907,20 +907,20 @@ CUDADeviceContext::~CUDADeviceContext() {
 }
 
 ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                           AllocMode mode) const {
+                                           Device::AllocMode mode) const {
   assert(byteSize != 0);
   CUDA_WITH_CTX_ERR(*this);
   switch (mode) {
-  case AllocMode::ASYNC: {
+  case Device::AllocMode::ASYNC: {
     CUDA_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
     MAYBE_SYNC(*this);
     break;
   }
-  case AllocMode::HOST: {
+  case Device::AllocMode::HOST: {
     CUDA_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
     break;
   }
-  case AllocMode::SYNC: {
+  case Device::AllocMode::SYNC: {
     CUDA_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
     break;
   }
