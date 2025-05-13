@@ -395,7 +395,7 @@ ParseResult BindLambdaOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
       parser.parseKeywordOrString(&lambdaKind) ||
       parser.parseArgumentList(argInfo, OpAsmParser::Delimiter::Paren, true) ||
-      parser.parseRegion(lambdaRegion, argInfo, false) || parser.parseColon()) {
+      parser.parseRegion(lambdaRegion, argInfo, false)) {
     return failure();
   }
   auto bindKind = MOGG::symbolizeBindLambdaKind(lambdaKind);
@@ -409,14 +409,18 @@ ParseResult BindLambdaOp::parse(OpAsmParser &parser, OperationState &result) {
 
   SmallVector<Type, 4> operandTps;
   if (bindKind == BindLambdaKind::OutputLambda) {
-    if (parser.parseTypeList(operandTps))
+    if (parser.parseColon() || parser.parseTypeList(operandTps))
       return failure();
     // Resolve to the same result types.
     result.types = operandTps;
   } else {
-    if (parser.parseLParen() || parser.parseTypeList(operandTps) ||
-        parser.parseRParen() || parser.parseArrowTypeList(result.types))
+    FunctionType ftp;
+    if (parser.parseColonType(ftp))
       return failure();
+
+    // Inputs type
+    operandTps.assign(ftp.getInputs().begin(), ftp.getInputs().end());
+    result.types.assign(ftp.getResults().begin(), ftp.getResults().end());
   }
   if (parser.resolveOperands(operands, operandTps, {}, result.operands) ||
       parser.parseOptionalAttrDict(result.attributes)) {
