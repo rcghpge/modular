@@ -286,11 +286,14 @@ nixl_status_t nixlAgent::registerMemOnBackends(nixlAgentData &data,
     }
 
     if (backend->supportsLocal()) {
-      auto remoteSectionIter = data.remoteSections.find(data.name);
-      if (remoteSectionIter == data.remoteSections.end())
-        data.remoteSections[data.name] = new nixlRemoteSection(data.name);
+      auto [iter, inserted] = data.remoteSections.emplace(data.name, nullptr);
+      if (inserted) {
+        // If newly inserted, the key didn't exist: create the remote section.
+        iter->second = new nixlRemoteSection(data.name);
+      }
 
-      ret = remoteSectionIter->second->loadLocalData(secDescs, backend);
+      // Load descriptors to the new or existing section.
+      ret = iter->second->loadLocalData(secDescs, backend);
       if (ret != nixl_status_t::NIXL_SUCCESS) {
         data.memorySection->remDescList(descs, *backend);
         continue;
