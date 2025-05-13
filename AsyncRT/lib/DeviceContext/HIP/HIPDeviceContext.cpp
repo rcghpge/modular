@@ -744,8 +744,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   auto srcPtr = src.ptr();
   auto dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  [[maybe_unused]] size_t srcByteSize = src.byteSize();
-  assert(srcByteSize >= dstByteSize);
+  assert(src.byteSize() >= dstByteSize);
   if (srcCtx.hipDevice() != dstCtx.hipDevice()) {
     HIP_CHECK_ERR(
         driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));

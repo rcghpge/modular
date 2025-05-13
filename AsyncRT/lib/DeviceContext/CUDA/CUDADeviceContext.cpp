@@ -982,8 +982,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   CUdeviceptr srcPtr = src.ptr();
   CUdeviceptr dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  [[maybe_unused]] size_t srcByteSize = src.byteSize();
-  assert(srcByteSize >= dstByteSize);
+  assert(src.byteSize() >= dstByteSize);
   if (srcCtx.context_ != dstCtx.context_) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
