@@ -2704,6 +2704,23 @@ LogicalResult ConvTransposeOp::verify() {
       {getDilations(), getStrides(), getOutputPaddings()});
 }
 
+LogicalResult ConvTransposeOp::canonicalize(ConvTransposeOp op,
+                                            PatternRewriter &rewriter) {
+  bool packedFilter = false;
+  LayoutAttr filterLayout = op.getFilter().getType().getLayoutAttr();
+  if (filterLayout) {
+    packedFilter =
+        llvm::is_contained({"FRSCf", "FQRSCf"}, filterLayout.getFormat());
+  }
+
+  if (op.getFilterPacked() == packedFilter)
+    return failure();
+
+  rewriter.modifyOpInPlace(op, [&]() { op.setFilterPacked(packedFilter); });
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Matmul definitions.
 //===----------------------------------------------------------------------===//
