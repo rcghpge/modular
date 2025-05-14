@@ -8,5 +8,6 @@ modular_python_binding_library_test(
     ],
     deps = [
         "//SDK:ModularFrameworkPython",
+        "@pybind11",
     ],
 )

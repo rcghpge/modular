@@ -34,7 +34,6 @@ modular_nanobind_library(
     ],
     deps = [
         "//ModularFramework/tools/max",
-        "@pybind11",
     ],
 )
 
