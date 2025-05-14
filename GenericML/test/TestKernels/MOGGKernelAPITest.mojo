@@ -360,7 +360,7 @@ struct PrintTensorSpecFusedOp:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](out: FusedOutputTensor, x: FusedInputTensor) raises:
+    ](out: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         print("x.shape =", x._static_shape)
         print("x.strides =", x._static_strides)
         print("x.alignment =", x.alignment)
@@ -385,7 +385,9 @@ struct AddElementwise:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](z: FusedOutputTensor, x: FusedInputTensor, y: FusedInputTensor) raises:
+    ](
+        z: FusedOutputTensor, x: FusedInputTensor, y: FusedInputTensor
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.type, width]:
@@ -402,7 +404,7 @@ struct AddFuseLHS:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](z: OutputTensor, x: FusedInputTensor, y: InputTensor) raises:
+    ](z: OutputTensor, x: FusedInputTensor, y: InputTensor) capturing raises:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.type, width]:
@@ -424,7 +426,9 @@ struct AddFuseInputs:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](z: OutputTensor, x: FusedInputTensor, y: FusedInputTensor) raises:
+    ](
+        z: OutputTensor, x: FusedInputTensor, y: FusedInputTensor
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.type, width]:
@@ -453,7 +457,7 @@ struct MatmulFuseOut:
         a: InputTensor,
         b: InputTensor,
         ctx: DeviceContextPtr,
-    ) raises:
+    ) capturing raises:
         alias rank = a.rank
         alias a_dtype = a.type
         alias b_dtype = b.type
@@ -577,7 +581,7 @@ struct VariadicAdd:
     ](
         output: OutputTensor[type=type, rank=rank],
         inputs: FusedInputVariadicTensors[type, rank, *_],
-    ) raises:
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[rank]) -> SIMD[type, width]:
@@ -657,7 +661,7 @@ struct ElementwisePrintShape:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](z: FusedOutputTensor, x: FusedInputTensor) raises:
+    ](z: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.type, width]:
@@ -952,7 +956,9 @@ struct CastElementwise:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr) raises:
+    ](
+        y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.type, width]:
@@ -969,7 +975,9 @@ struct PrintVectorSize:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr) raises:
+    ](
+        y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.type, width]:
@@ -1061,7 +1069,7 @@ struct CustomOpWithCustomParameterShapeFunc:
     @staticmethod
     fn execute[
         test_flag: Int
-    ](y: FusedOutputTensor, x: FusedInputTensor) raises:
+    ](y: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         raise "This should not run!"
 
     @always_inline
@@ -1125,7 +1133,7 @@ struct FusedReadMultiplyFromTensorWrapper:
         output: FusedOutputTensor[type = DType.float32, rank=2],
         tw: TensorWrapper,
         ctx: DeviceContextPtr,
-    ) raises:
+    ) capturing raises:
         @parameter
         @always_inline
         fn output_fn[
@@ -1152,7 +1160,7 @@ struct MutableStore:
         tw: TensorWrapper,
         tensor: FusedInputTensor[type = DType.float32, rank=2],
         ctx: DeviceContextPtr,
-    ) raises:
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[
@@ -1191,7 +1199,7 @@ struct FusedWriteToTensorWrapperWithOffset:
         tensor: FusedInputTensor[type = DType.float32, rank=2],
         column_offset: Scalar,
         ctx: DeviceContextPtr,
-    ) raises:
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[
@@ -1230,7 +1238,7 @@ struct FusedReadFromTensorWrapperWithOffset:
         tw: TensorWrapper,
         column_offset: Scalar,
         ctx: DeviceContextPtr,
-    ) raises:
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[
@@ -1252,7 +1260,7 @@ struct MySquareComputeOutFusion:
     ](
         out: _FusedComputeOutputTensor[type=type, rank=1],
         input: InputTensor[type=type, rank=1],
-    ):
+    ) capturing:
         var res = input[0] * input[0]
         alias has_compute_lambda = out.static_spec.out_compute_lambda is not None
         alias has_store_lambda = out.static_spec.out_lambda is not None
@@ -1277,7 +1285,7 @@ struct InplaceNoOutFunc:
     fn execute(
         output: MutableInputTensor,
         input: FusedInputTensor[type = output.type, rank = output.rank],
-    ) raises:
+    ) capturing raises:
         @parameter
         @always_inline
         fn func[
