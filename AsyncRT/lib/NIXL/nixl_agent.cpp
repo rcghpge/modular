@@ -144,32 +144,33 @@ nixl_status_t nixlAgent::getAvailPlugins(std::vector<nixl_backend_t> &plugins) {
 nixl_status_t nixlAgent::getPluginParams(const nixl_backend_t &type,
                                          nixl_mem_list_t &mems,
                                          nixl_b_params_t &params) const {
-
-  // TODO: unify to uppercase/lowercase and do ltrim/rtrim for type
+  // Normalize plugin key: trim whitespace, lowercase everything.
+  std::string canonicalType = StringRef(type).trim().lower();
 
   // First try to get options from a loaded plugin
-  auto &plugin_manager = nixlPluginManager::getInstance();
-  auto plugin_handle = plugin_manager.getPlugin(type);
+  auto &pluginManager = nixlPluginManager::getInstance();
+  std::shared_ptr<const nixlPluginHandle> pluginHandle =
+      pluginManager.getPlugin(canonicalType);
 
-  if (plugin_handle) {
+  if (pluginHandle) {
     // If the plugin is already loaded, get options directly
-    params = plugin_handle->getBackendOptions();
-    mems = plugin_handle->getBackendMems();
+    params = pluginHandle->getBackendOptions();
+    mems = pluginHandle->getBackendMems();
     return nixl_status_t::NIXL_SUCCESS;
   }
 
   // If plugin isn't loaded yet, try to load it temporarily
-  plugin_handle = plugin_manager.loadPlugin(type);
-  if (plugin_handle) {
-    params = plugin_handle->getBackendOptions();
-    mems = plugin_handle->getBackendMems();
+  pluginHandle = pluginManager.loadPlugin(canonicalType);
+  if (pluginHandle) {
+    params = pluginHandle->getBackendOptions();
+    mems = pluginHandle->getBackendMems();
 
     NIXL_LOCK_GUARD(data->lock);
 
     // We don't keep the plugin loaded if we didn't have it before
-    if (data->backendEngines.count(type) == 0) {
-      plugin_manager.unloadPlugin(type);
-    }
+    if (data->backendEngines.count(canonicalType) == 0)
+      pluginManager.unloadPlugin(canonicalType);
+
     return nixl_status_t::NIXL_SUCCESS;
   }
 
@@ -191,7 +192,6 @@ nixl_status_t nixlAgent::getBackendParams(const nixlBackendH *backend,
 nixl_status_t nixlAgent::createBackend(const nixl_backend_t &type,
                                        const nixl_b_params_t &params,
                                        nixlBackendH *&bknd_hndl) {
-
   nixlBackendEngine *backend = nullptr;
   nixlBackendInitParams init_params;
   nixl_mem_list_t mems;

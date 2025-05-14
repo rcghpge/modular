@@ -171,9 +171,9 @@ nixlPluginManager::nixlPluginManager() {
   // Check for MODULAR_NIXL_PLUGIN_DIR environment variable
   const char *plugin_dir = getenv("MODULAR_NIXL_PLUGIN_DIR");
   if (plugin_dir) {
-    NIXL_DEBUG << "Loading plugins from directory: " << plugin_dir;
-    plugin_dirs_.insert(plugin_dirs_.begin(),
-                        plugin_dir); // Insert at the beginning for priority
+    NIXL_DEBUG << "Loading plugins from directory: " << plugin_dir << "\n";
+    // Insert at the beginning for priority.
+    plugin_dirs_.insert(plugin_dirs_.begin(), plugin_dir);
     discoverPluginsFromDir(plugin_dir);
   }
 
@@ -224,9 +224,12 @@ std::shared_ptr<const nixlPluginHandle>
 nixlPluginManager::loadPlugin(const std::string &plugin_name) {
   lock_guard lg(lock);
 
+  // Look up a canonical plugin name.
+  std::string canonPlugName = StringRef(plugin_name).trim().lower();
+
   // Check if the plugin is already loaded
   // Static Plugins are preloaded so return handle
-  auto it = loaded_plugins_.find(plugin_name);
+  auto it = loaded_plugins_.find(canonPlugName);
   if (it != loaded_plugins_.end()) {
     return it->second;
   }
@@ -239,10 +242,10 @@ nixlPluginManager::loadPlugin(const std::string &plugin_name) {
       continue;
     } else if (dir.back() == '/') {
       plugin_path =
-          (Twine(dir) + kPluginPrefix + plugin_name + kPluginSuffix).str();
+          (Twine(dir) + kPluginPrefix + canonPlugName + kPluginSuffix).str();
     } else {
       plugin_path =
-          (Twine(dir) + "/" + kPluginPrefix + plugin_name + kPluginSuffix)
+          (Twine(dir) + "/" + kPluginPrefix + canonPlugName + kPluginSuffix)
               .str();
     }
 
@@ -255,13 +258,13 @@ nixlPluginManager::loadPlugin(const std::string &plugin_name) {
     std::shared_ptr<const nixlPluginHandle> plugin_handle =
         loadPluginFromPath(plugin_path);
     if (plugin_handle) {
-      loaded_plugins_[plugin_name] = plugin_handle;
+      loaded_plugins_[canonPlugName] = plugin_handle;
       return plugin_handle;
     }
   }
 
   // Failed to load the plugin
-  NIXL_ERROR << "Failed to load plugin '" << plugin_name
+  NIXL_ERROR << "Failed to load plugin '" << canonPlugName
              << "' from any directory\n";
   return nullptr;
 }
@@ -297,15 +300,11 @@ void nixlPluginManager::discoverPluginsFromDir(const std::string &dirpath) {
       continue;
 
     // 2. Check if the filename starts with the required prefix.
-    //    TODO(bduke): `string_view::starts_with` (C++20) for clarity.
-    if (std::string_view(filename).rfind(kPluginPrefix, 0) == 0)
+    if (!StringRef(filename).starts_with(kPluginPrefix))
       continue;
 
     // 3. Check if the filename ends with the required suffix.
-    //    TODO(bduke): string_view::ends_with (C++20) for clarity.
-    if (filename.size() >= kPluginSuffix.size() &&
-        filename.compare(filename.size() - kPluginSuffix.size(),
-                         kPluginSuffix.size(), kPluginSuffix) == 0)
+    if (!StringRef(filename).ends_with(kPluginSuffix))
       continue;
 
     // Extract the plugin name.
@@ -334,9 +333,9 @@ void nixlPluginManager::discoverPluginsFromDir(const std::string &dirpath) {
     if (plugin) {
       // Use NIXL logging for consistency
       NIXL_INFO << "Discovered and loaded plugin '" << pluginName << "' from "
-                << entry.path().string();
+                << entry.path().string() << "\n";
     } else {
-      NIXL_ERROR << "Failed to load discovered plugin: " << pluginName;
+      NIXL_ERROR << "Failed to load discovered plugin: " << pluginName << "\n";
     }
   }
 }
