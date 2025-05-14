@@ -128,9 +128,11 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
 
     if (!matched) {
       return Error(llvm::formatv(
-          "Op {} at position {} does not match registered kernel operand at "
+          "Custom op '{}' {} at position {} does not match registered kernel "
+          "operand at "
           "position {}: {} vs {}",
-          argumentKind, moOpIndex, kernelType->sourceDescriptor->position,
+          op->getAttrOfType<StringAttr>("symbol").getValue(), argumentKind,
+          moOpIndex, kernelType->sourceDescriptor->position,
           *moTypeToMojoKernelOperand, *kernelType));
     }
 
@@ -167,9 +169,10 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   // there are missing operands or results form the MO op.
   if (!kernelEnd) {
     return Error(llvm::formatv(
-        "Could not provide all {} arguments to kernel: missing operands "
+        "Could not provide all {} arguments to custom op '{}': missing "
+        "operands "
         "starting from argument named '{}'",
-        argumentKind,
+        argumentKind, op->getAttrOfType<StringAttr>("symbol").getValue(),
         kernelOperands[kernelIndex].sourceDescriptor->sourceName.str()));
   }
 
@@ -177,9 +180,10 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   // operands or else, we are missing inputs on the kernel.
   if constexpr (matchOperands) {
     if (!moOpEnd) {
-      return Error(llvm::formatv("Op has too many operands: operands starting "
-                                 "at position {} has no equivalent in kernel",
-                                 moOpIndex));
+      return Error(llvm::formatv(
+          "Custom op '{}' has too many operands: operands starting "
+          "at position {} has no equivalent in kernel",
+          op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex));
     }
     return mapping;
   }
@@ -194,31 +198,36 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   // 1. We have remaining results on the op but not on the kernel.
   if (moType.has_value() && !adaptor.outputResult.has_value()) {
     return Error(llvm::formatv(
-        "Op has too many results: results starting at position {} have no "
+        "Custom op '{}' has too many results: results starting at position {} "
+        "have no "
         "equivalent output argument or function result in kernel",
-        moOpIndex));
+        op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex));
   }
 
   // 2. We have a remaining result on the kernel but nothing on the op.
   if (!moType.has_value() && adaptor.outputResult.has_value()) {
-    return Error(llvm::formatv(
-        "Op is missing a result for kernel function result of type {}",
-        *adaptor.outputResult));
+    return Error(
+        llvm::formatv("Custom op '{}' is missing a result for kernel function "
+                      "result of type {}",
+                      op->getAttrOfType<StringAttr>("symbol").getValue(),
+                      *adaptor.outputResult));
   }
 
   auto moTypeToMojoKernelOperand = MOTypeToMojoKernelOperand(*moType);
   if (!moTypeToMojoKernelOperand.has_value()) {
-    return Error(
-        llvm::formatv("Unsupported op result type at position {}", moOpIndex));
+    return Error(llvm::formatv(
+        "Custom op '{}': Unsupported op result type at position {}",
+        op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex));
   }
 
   // 3. We have results for both but they don't match.
   if (!matchConvertedMOTypeToKernelType(*moTypeToMojoKernelOperand,
                                         adaptor.outputResult->underlyingType)) {
-    return Error(llvm::formatv("Op output at position {} does not match kernel "
-                               "function result; op has {} but kernel has {}",
-                               moOpIndex, *moTypeToMojoKernelOperand,
-                               *adaptor.outputResult));
+    return Error(llvm::formatv(
+        "Custom op '{}' output at position {} does not match kernel "
+        "function result; op has {} but kernel has {}",
+        op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex,
+        *moTypeToMojoKernelOperand, *adaptor.outputResult));
   }
   mapping[moOpIndex] = *adaptor.outputResult;
 
