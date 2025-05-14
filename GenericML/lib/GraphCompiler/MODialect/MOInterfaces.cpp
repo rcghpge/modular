@@ -696,6 +696,33 @@ LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
   return success();
 }
 
+LogicalResult Impl::verifySingleDevice(Operation *op,
+                                       ArrayRef<size_t> scalarOperandIndices) {
+
+  auto hasDevice = dyn_cast<MOHasDeviceInterface>(op);
+  // Skip verification when no device is assigned.
+  if (!hasDevice.getDeviceRef())
+    return success();
+
+  auto singleDevice = getFirstResultDevice(op);
+
+  if (failed(checkExecutionDeviceConstraint(hasDevice, singleDevice)))
+    return failure();
+
+  for (size_t i = 0; i < op->getNumOperands(); ++i) {
+    auto isScalar = llvm::is_contained(scalarOperandIndices, i);
+    auto constrainedTo = isScalar ? getHostDevice(op) : singleDevice;
+    if (failed(checkOperandDeviceConstraint(op, i, constrainedTo)))
+      return failure();
+  }
+
+  for (size_t i = 0; i < op->getNumResults(); ++i)
+    if (failed(checkResultDeviceConstraint(op, i, singleDevice)))
+      return failure();
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

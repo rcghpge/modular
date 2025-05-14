@@ -43,7 +43,7 @@ namespace M::MO {
 /// helpers and MODevices.cpp for implementation.
 DeviceRefAttr getHostDevice(MLIRContext *ctx);
 DeviceRefAttr getHostDevice(Operation *op);
-
+DeviceRefAttr getFirstResultDevice(Operation *op);
 } // namespace M::MO
 
 //===----------------------------------------------------------------------===//

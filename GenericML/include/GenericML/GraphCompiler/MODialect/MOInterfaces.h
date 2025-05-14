@@ -181,6 +181,8 @@ LogicalResult verifyMOSameFirstOperandAndResultsElementType(Operation *op);
 LogicalResult verifyHasDevice(MOHasDeviceInterface op);
 LogicalResult verifyHostOnly(Operation *op);
 LogicalResult verifyExecutesOnHost(Operation *op);
+LogicalResult verifySingleDevice(Operation *op,
+                                 ArrayRef<size_t> scalarOperandIndices = {});
 
 LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);
@@ -247,6 +249,17 @@ class MOExecutesOnHostTrait
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return Impl::verifyExecutesOnHost(op);
+  }
+};
+
+template <typename ConcreteType>
+class MOSingleDeviceWithScalarOperandsTrait
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      MOSingleDeviceWithScalarOperandsTrait> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return M::MO::Impl::verifySingleDevice(
+        op, cast<ConcreteType>(op).getScalarOperandIndices());
   }
 };
 

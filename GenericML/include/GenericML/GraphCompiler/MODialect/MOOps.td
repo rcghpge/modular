@@ -774,7 +774,9 @@ def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
 
 // For ops where each output depends only on the corresponding indices in the inputs
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [Pure, MO_SameOperandsAndResultShape, MO_ElementWiseLike]> {
+    : MO_TensorOp<name, traits #
+     [Pure, MO_SameOperandsAndResultShape, MO_ElementWiseLike, MO_SingleDevice]>
+{
   let results = (outs MO_Tensor:$result);
 }
 
@@ -814,7 +816,7 @@ class MO_ElementWiseBinaryMonoTypeOp<string name, list<Trait> traits = []>
 
 class MO_ComparisonOp<string name, list<Trait> traits = []>
     : MO_TensorOp<name, traits # [Pure, MO_SameOperandsElementType,
-                            MO_SameOperandsAndResultShape]> {
+                            MO_SameOperandsAndResultShape, MO_SingleDevice]> {
   let results = (outs MO_BooleanMask:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -833,7 +835,8 @@ class MO_ComparisonBinaryOp<string name, list<Trait> traits = []>
 
 class MO_LogicalBinaryOp<string name, list<Trait> traits = []>
     : MO_TensorOp<name, traits # [
-  Commutative, Pure, MO_SameOperandsAndResultType, MO_ElementWiseBinary
+  Commutative, Pure, MO_SameOperandsAndResultType, MO_ElementWiseBinary,
+  MO_SingleDevice
 ]> {
   let arguments = (ins MO_BooleanMask:$input_x, MO_BooleanMask:$input_y);
   let results = (outs MO_BooleanMask:$result);
@@ -1454,7 +1457,8 @@ def MO_OrOp : MO_LogicalBinaryOp<"or"> {
 
 def MO_NotOp : MO_TensorOp<"not", [
   Pure, MO_SameOperandsAndResultType, MO_ElementWiseUnary,
-  DeclareOpInterfaceMethods<MO_Staticization>
+  DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_SingleDevice
 ]> {
   let summary = "Logical negation operation";
   let description = [{
@@ -1496,6 +1500,7 @@ def MO_SelectOp : MO_TensorOp<"select", [
   Pure,
   MO_SameOperandsAndResultShape,
   DeclareOpInterfaceMethods<MO_Staticization>,
+  MO_SingleDevice
 ]>{
   let summary = "Select operation";
   let description = [{
@@ -1524,7 +1529,7 @@ def MO_SliceOp : MO_TensorOp<"slice", [
   MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["start", "stop", "step"]>
 ]> {
   let summary = "Slice operation";
   let description = [{
@@ -1583,8 +1588,8 @@ def MO_SliceOp : MO_TensorOp<"slice", [
 
 def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
   MO_DefaultParameterization,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
-  MO_ViewLike
+  MO_SingleDeviceWithScalarOperands<["start", "stop", "step"]>,
+  MO_ViewLike,
 ]> {
   let summary = "Slice dim operation";
   let description = [{
@@ -1644,7 +1649,7 @@ def MO_SliceDimOuterOp : MO_TensorOp<"slice_dim_outer", [
   MO_ViewLike,
   MO_PreservedDuringKernelLowering,
   MO_DefaultParameterization,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["start", "stop"]>,
 ]> {
   let summary = "Slice outer dim operation";
   let description = [{
@@ -1756,7 +1761,10 @@ def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
 //===----------------------------------------------------------------------===//
 
 class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
-    name, traits # [MO_ReductionTraits]> {
+    name, traits # [MO_ReductionTraits,
+      MO_SingleDeviceWithScalarOperands<["axis"]>,
+    ]>
+{
   let arguments = (ins
     MO_Tensor:$input,
     MO_RankedScalarIndexTensor:$axis,
@@ -1781,9 +1789,7 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
 class MO_MonotypeReductionOp<string name, list<Trait> traits = []> :
   MO_ReductionOp<name, traits # [AllDTypesMatch<["input", "result"]>]>;
 
-def MO_MeanOp : MO_MonotypeReductionOp<"mean", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
-]> {
+def MO_MeanOp : MO_MonotypeReductionOp<"mean"> {
   let summary = "Mean reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their mean value, changng that
@@ -1806,7 +1812,6 @@ def MO_MeanOp : MO_MonotypeReductionOp<"mean", [
 
 def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
   DeclareOpInterfaceMethods<MO_Staticization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
 ]> {
   let summary = "Product reduction operation";
   let description = [{
@@ -1828,9 +1833,7 @@ def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
   }];
 }
 
-def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
-]> {
+def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add"> {
   let summary = "Sum reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their sum, changing that axis's
@@ -1852,9 +1855,7 @@ def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add", [
   let hasFolder = 1;
 }
 
-def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
-]> {
+def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min"> {
   let summary = "Minimum reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their minimum, changing that
@@ -1875,9 +1876,7 @@ def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min", [
   }];
 }
 
-def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
-]> {
+def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
   let summary = "Maximum reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their maximum, changing that
@@ -2160,7 +2159,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["strides", "dilations", "paddings", "num_groups"]>,
 ]>{
   let summary = "Convolution operation";
   let description = [{
@@ -2887,7 +2886,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["axis"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>
 ]> {
   let summary = "Concatenation operation";
@@ -2942,7 +2941,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceInput>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["splitSizes", "axis"]>,
 ]> {
   let summary = "Splitting operation";
   let description = [{
@@ -2997,7 +2996,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_DeviceInput>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["perm"]>
 ]> {
   let summary = "Transposition operation";
   let description = [{
@@ -3075,7 +3074,7 @@ def MO_TileOp : MO_TensorOp<"tile", [
 
 def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
   MO_PadLikeTraits,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["paddings", "constant"]>
 ]> {
   let summary = "Constant-mode padding operation";
   let description = [{
@@ -3205,7 +3204,7 @@ def MO_GatherOp : MO_TensorOp<"gather", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["axis"]>
 ]> {
   let summary = "`gather` operation";
   let description = [{
@@ -3781,9 +3780,7 @@ class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []>
   let hasVerifier = 1;
 }
 
-def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
-]> {
+def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
   let summary = "Maximum-value indices operation";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -3810,9 +3807,7 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max", [
     }];
 }
 
-def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
-]> {
+def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
   let summary = "Minimum-value indices operation";
   let description = [{
     This op is equivalent to reduce_min, but returns indices instead of values.
@@ -3893,7 +3888,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
 def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
   Pure,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["shape", "lowerBound", "upperBound", "seed"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["lowerBound", "upperBound", "result"]>,
 ]> {
@@ -3940,7 +3935,7 @@ def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
 def MO_RangeOp : MO_TensorOp<"range", [
   MO_SameOperandsAndResultElementType,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["start", "limit", "step"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
@@ -4135,6 +4130,7 @@ class MO_DotBase<string name, list<Trait> traits = []> :
     MO_MatmulLike,
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    MO_SingleDevice
 ]> {
   let description = [{
     Base class for all generic dot products (i.e. tensor contractions with two
@@ -4178,6 +4174,7 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
   MO_MatmulLike,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_SingleDevice,
 ]> {
   let summary = "Batched matrix-matrix multiplication operation";
   let description = [{
@@ -4230,7 +4227,7 @@ class MO_LinalgOp<string mnemonic, list<Trait> traits = []>
 def MO_BandPartOp : MO_LinalgOp<"band_part", [
     DeclareOpInterfaceMethods<MO_Parameterization>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-    DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+    MO_SingleDeviceWithScalarOperands<["num_lower", "num_upper", "exclude"]>
     ]> {
   let summary = "Matrix band part operation";
   let description = [{
@@ -4369,7 +4366,7 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [MO_HostOnly]> {
 
 def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_SingleDeviceWithScalarOperands<["epsilon"]>
 ]> {
   let summary = "Layer normalization operation";
   let description = [{
@@ -4497,7 +4494,7 @@ class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []>
         DeclareOpInterfaceMethods<MO_Parameterization>,
         DeclareOpInterfaceMethods<MO_ParamDeclaration>,
         DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-        DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>
+        MO_SingleDeviceWithScalarOperands<["k", "axis", "sorted"]>
       ] # traits> {
   let arguments = (ins MO_Tensor:$input,
                        MO_RankedScalarIndexTensor:$K,

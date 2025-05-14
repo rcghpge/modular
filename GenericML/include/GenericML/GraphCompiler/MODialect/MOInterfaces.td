@@ -625,6 +625,50 @@ def MO_ExecutesOnHost : TraitList<[
   MO_ExecutesOnHostTrait
 ]>;
 
+// Implements MO_HasDeviceInterface methods for MO_SingleDeviceWithScalarOperands.
+class MO_SingleDeviceWithScalarOperandsTrait<list<string> scalarOperandNames = []>
+  : MO_OpTrait<"MOSingleDeviceWithScalarOperandsTrait">
+{
+  let cppNamespace = "::M::MO";
+  let extraConcreteClassDeclaration = [{
+    llvm::SmallVector<size_t> getScalarOperandIndices() {
+      return { }] # !interleave(!foreach(name, scalarOperandNames,
+        "get" # snakeCaseToCamelCase<name>.ret # "Mutable().getOperandNumber()"), ", ")
+      # [{ };
+    }
+  }];
+
+  let extraConcreteClassDefinition = [{
+    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
+      return nullptr;
+    }
+
+   DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
+      auto isScalar = llvm::is_contained(getScalarOperandIndices(), index);
+      return isScalar ? getHostDevice(getOperation()) : nullptr;
+    }
+
+    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
+      return {getFirstResultDevice(this->getOperation())};
+    }
+  }];
+}
+
+// Marks an op that executes on a single device, with all operands and results
+// also on the same device. scalarOperandNames is a list of operand names
+// that are considered scalars and should be assigned the host device.
+class MO_SingleDeviceWithScalarOperands<list<string> scalarOperandNames = []> : TraitList<[
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
+    "getExecutionDeviceConstraint",
+    "getOperandDeviceConstraint",
+    "getExecutionDevices"]>,
+  MO_SingleDeviceWithScalarOperandsTrait<scalarOperandNames>
+]>;
+
+// Marks an op that executes on a single device, with all operands and results
+// also on the same device.
+def MO_SingleDevice : MO_SingleDeviceWithScalarOperands<[]>;
+
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,
   MO_SameInputOutputShapesParameterization
