@@ -128,6 +128,30 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
       "DeviceRefAttr", "getOperandDeviceConstraint", (ins "size_t":$index), [{}],
       [{ return nullptr; }]
     >,
+
+    InterfaceMethod<
+      [{
+        Returns an array of `#M.device_ref` corresponding to the
+        devices on which this operation executes.
+      }],
+      "llvm::SmallVector<DeviceRefAttr>", "getExecutionDevices", (ins), "",
+      [{
+        return {};
+      }]
+    >,
+
+    InterfaceMethod<
+      [{
+        Returns a `#M.device_ref` to the device where this operation executes.
+        Assumes that this is not a multi-device operation.
+      }],
+      "DeviceRefAttr", "getExecutionDevice", (ins), [{}],
+      [{
+        auto devices = $_op.getExecutionDevices();
+        assert(devices.size() == 1 && "Operation must execute on exactly one device");
+        return devices[0];
+      }]
+    >,
   ];
 
   let verify = [{ return Impl::verifyHasDevice(cast<MOHasDeviceInterface>($_op)); }];
@@ -568,13 +592,18 @@ def MO_HostOnlyTrait : MO_OpTrait<"MOHostOnlyTrait", [], [{}], [{
     DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
       return getHostDevice(getContext());
     }
+    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
+      return {getHostDevice(getContext())};
+    }
   }]>;
 
 // Marks an op that must execute on the host, with all operands and results also
 // on the host
 def MO_HostOnly : TraitList<[
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface,
-      ["getExecutionDeviceConstraint", "getOperandDeviceConstraint"]>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
+    "getExecutionDeviceConstraint",
+    "getOperandDeviceConstraint",
+    "getExecutionDevices"]>,
   MO_HostOnlyTrait
 ]>;
 
@@ -583,11 +612,16 @@ def MO_ExecutesOnHostTrait : MO_OpTrait<"MOExecutesOnHostTrait", [], [{}], [{
   DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
     return getHostDevice(getContext());
   }
+  llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
+    return {getHostDevice(getContext())};
+  }
 }]>;
 
 // Marks an op that executes on the host using tensors from any device.
 def MO_ExecutesOnHost : TraitList<[
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
+    "getExecutionDeviceConstraint",
+    "getExecutionDevices"]>,
   MO_ExecutesOnHostTrait
 ]>;
 
