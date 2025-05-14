@@ -16,29 +16,12 @@ using namespace MO;
 // Utils
 //===----------------------------------------------------------------------===//
 
-// A helper function that simply calls `obj.getDeviceRef()`. Just to save us
-// from some boilerplates.
-template <typename DevicedObj>
-static DeviceRefAttr getAttachedDeviceOrDefault(DevicedObj obj) {
-  // Check the type annotation.
-  DeviceRefAttr device = obj.getDeviceRef();
-  if (device)
-    return device;
-
-  // Fallback to the 'host' device.
-  return getHostDevice(obj.getContext());
+static DeviceRefAttr operator||(DeviceRefAttr lhs, DeviceRefAttr rhs) {
+  return lhs ? lhs : rhs;
 }
 
 DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
-  return getAttachedDeviceOrDefault(op);
-}
-
-DeviceRefAttr MO::getDeviceOrDefault(BufferType type) {
-  return getAttachedDeviceOrDefault(type);
-}
-
-DeviceRefAttr MO::getDeviceOrDefault(TensorType type) {
-  return getAttachedDeviceOrDefault(type);
+  return op.getDeviceRef() || getHostDevice(op.getContext());
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
@@ -47,6 +30,18 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
 
   // Fallback to the 'host' device.
   return getHostDevice(op->getContext());
+}
+
+DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceTypeInterface type) {
+  return type.getDeviceRef() || getHostDevice(type.getContext());
+}
+
+DeviceRefAttr MO::getDeviceOrDefaultAny(Type type) {
+  if (auto hasDeviceType = dyn_cast<MOHasDeviceTypeInterface>(type))
+    return getDeviceOrDefault(hasDeviceType);
+
+  // Fallback to the 'host' device.
+  return getHostDevice(type.getContext());
 }
 
 SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
@@ -71,16 +66,6 @@ SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
       addDeviceIfNew(tensorType);
 
   return devices;
-}
-
-DeviceRefAttr MO::getDeviceOrDefaultAny(Type type) {
-  if (auto tensorType = dyn_cast<TensorType>(type))
-    return getDeviceOrDefault(tensorType);
-  if (auto bufferType = dyn_cast<BufferType>(type))
-    return getDeviceOrDefault(bufferType);
-
-  // Fallback to the 'host' device.
-  return getHostDevice(type.getContext());
 }
 
 DeviceRefAttr MO::getHostDevice(MLIRContext *ctx) {

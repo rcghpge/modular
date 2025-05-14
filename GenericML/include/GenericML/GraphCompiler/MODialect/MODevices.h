@@ -26,8 +26,7 @@ DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
 /// Returns the #M.device_ref annotation for type which appears in the
 /// the given MO graphOp. Returns the 'host' device if there is no such
 /// annotation on the type itself.
-DeviceRefAttr getDeviceOrDefault(TensorType type);
-DeviceRefAttr getDeviceOrDefault(BufferType type);
+DeviceRefAttr getDeviceOrDefault(MOHasDeviceTypeInterface type);
 
 /// As above, but for any type.
 DeviceRefAttr getDeviceOrDefaultAny(Type type);
