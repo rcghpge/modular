@@ -22,6 +22,11 @@
 using namespace M::AsyncRT::NIXL;
 using namespace std::string_view_literals;
 
+// fix SOCK_NONBLOCK for e.g. macOS
+#ifndef SOCK_NONBLOCK
+#define SOCK_NONBLOCK O_NONBLOCK
+#endif
+
 static int connectToIP(const std::string &ip_addr, int port) {
 
   struct sockaddr_in listenerAddr;

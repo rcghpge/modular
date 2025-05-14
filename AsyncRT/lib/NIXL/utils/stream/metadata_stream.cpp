@@ -20,6 +20,12 @@
 using namespace M::AsyncRT::NIXL;
 using namespace std::string_view_literals;
 
+// fix SOCK_NONBLOCK for e.g. macOS
+#ifndef SOCK_NONBLOCK
+#include <fcntl.h>
+#define SOCK_NONBLOCK O_NONBLOCK
+#endif
+
 nixlMetadataStream::nixlMetadataStream(int port) : port(port), socketFd(-1) {
   memset(&listenerAddr, 0, sizeof(listenerAddr));
 }
