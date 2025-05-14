@@ -45,22 +45,24 @@ struct nixlBackendInitParams {
   nixlTime::us_t pthrDelay;
 };
 
-// Pure virtual class to have a common pointer type
+// Base class to have a common pointer type.
 class nixlBackendReqH {
 public:
   nixlBackendReqH() = default;
-  virtual ~nixlBackendReqH() = 0;
+
+protected:
+  virtual ~nixlBackendReqH() = default;
 };
 
-// Pure virtual class to have a common pointer type for different backendMD.
+// Base class to have a common pointer type for different backendMD.
 class nixlBackendMD {
 protected:
-  bool isPrivateMD;
+  const bool isPrivateMD;
 
 public:
-  nixlBackendMD(bool isPrivate) { isPrivateMD = isPrivate; }
+  nixlBackendMD(bool isPrivate) : isPrivateMD{isPrivate} {}
 
-  virtual ~nixlBackendMD() = 0;
+  virtual ~nixlBackendMD() = default;
 };
 
 // Each backend can have different connection requirement

@@ -9,7 +9,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
-#include <AsyncRT/NIXL/nixl_types.h>
+#include "AsyncRT/NIXL/nixl_types.h"
 
 using namespace M::AsyncRT::NIXL;
 

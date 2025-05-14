@@ -15,7 +15,6 @@
 #include "AsyncRT/NIXL/nixl_types.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "Support/STLExtras.h"
-#include <AsyncRT/NIXL/nixl_types.h>
 #include <iostream>
 #include <map>
 

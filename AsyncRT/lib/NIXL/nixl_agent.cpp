@@ -18,7 +18,6 @@
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
-#include <AsyncRT/NIXL/nixl_types.h>
 #include <iostream>
 
 using namespace M::AsyncRT::NIXL;
@@ -1079,7 +1078,7 @@ nixl_status_t nixlAgent::loadRemoteMD(const nixl_blob_t &remote_metadata,
   if (remote_agent == data->name)
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
 
-  NIXL_DEBUG << "Loading remote metadata for agent: " << remote_agent;
+  NIXL_DEBUG << "Loading remote metadata for agent: " << remote_agent << "\n";
 
   ret = sd.getBuf("Conns", &conn_cnt, sizeof(conn_cnt));
   if (ret != nixl_status_t::NIXL_SUCCESS) {

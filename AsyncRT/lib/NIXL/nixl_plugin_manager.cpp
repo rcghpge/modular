@@ -412,9 +412,4 @@ const std::vector<nixlStaticPluginInfo> &nixlPluginManager::getStaticPlugins() {
   return static_plugins_;
 }
 
-void nixlPluginManager::registerBuiltinPlugins() {
-#ifdef STATIC_PLUGIN_UCX
-  extern nixlBackendPlugin *createStaticUcxPlugin();
-  registerStaticPlugin("UCX", createStaticUcxPlugin);
-#endif
-}
+void nixlPluginManager::registerBuiltinPlugins() {}

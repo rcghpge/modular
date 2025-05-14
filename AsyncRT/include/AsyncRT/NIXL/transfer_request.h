@@ -11,6 +11,7 @@
 #ifndef ASYNCRT_NIXL_TRANSFER_REQUEST_H
 #define ASYNCRT_NIXL_TRANSFER_REQUEST_H
 
+#include "AsyncRT/NIXL/backend/backend_engine.h"
 #include <string>
 #include <unordered_map>
 

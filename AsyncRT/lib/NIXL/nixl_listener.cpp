@@ -14,6 +14,7 @@
 #include "AsyncRT/NIXL/utils/common/nixl_log.h"
 #include "AsyncRT/NIXL/utils/common/nixl_time.h"
 #include "AsyncRT/NIXL/utils/common/str_tools.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <fcntl.h>
 #include <iostream>
 #include <string_view>
@@ -189,6 +190,7 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
         break;
       }
       }
+      llvm_unreachable("invalid NIXL request command");
     }
 
     // third, do remote commands
