@@ -56,16 +56,16 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       this, "numberOfFusedEpilogues",
       "Number of fused output elementwise kernels"};
 
-  void fuseExpKernelInLambda(MO::GraphOp moGraph) {
+  void fusePrologues(MO::GraphOp moGraph) {
     IRRewriter rewriter(moGraph->getContext());
-    SmallVector<Operation *> toErase;
     moGraph.walk([&](MOGG::ExpKernelOp dst) {
       if (dst.getElemwiseBodyLambda())
         return;
 
-      uint64_t numOperands = dst->getNumOperands();
-      for (uint64_t fusionIdx = 0; fusionIdx < numOperands; ++fusionIdx) {
-        if (!dst.getBoundInputLambda(fusionIdx))
+      int64_t numOperands = dst->getNumOperands();
+      for (int64_t fusionIdx = numOperands - 1; fusionIdx >= 0; --fusionIdx) {
+        auto inputLambda = dst.getBoundInputLambda(fusionIdx);
+        if (!inputLambda)
           continue;
 
         auto providerOp = dst->getOperand(fusionIdx).getDefiningOp();
@@ -84,56 +84,41 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
         ++numberOfFusedPrologues;
 
-        auto inputLambda = dst.getBoundInputLambda(fusionIdx);
-        auto inputLambdaBody = inputLambda.getBody();
-        Value inVal = inputLambdaBody->getArgument(0);
-        Value indices = inputLambdaBody->getArgument(1);
-
+        // Add the indices in the operand list of the mogg output op.
         auto elementwiseLambda = src.getElemwiseBodyLambda();
         Block *elementwiseLambdaBody = elementwiseLambda.getBody();
-        inVal.replaceAllUsesWith(
-            elementwiseLambdaBody->getTerminator()->getOperand(0));
-        inputLambdaBody->eraseArgument(0);
-        inputLambda->eraseOperand(0);
-        dst->eraseOperand(fusionIdx);
-        dst.getExecBody().eraseArgument(fusionIdx);
-        elementwiseLambdaBody->getTerminator()->erase();
+        auto elementwiseLambdaTerminator =
+            elementwiseLambdaBody->getTerminator();
+        elementwiseLambdaTerminator->insertOperands(
+            1, elementwiseLambdaBody->getArguments().back());
 
-        rewriter.setInsertionPointToStart(elementwiseLambdaBody);
-        for (uint64_t idx = 0; idx < elementwiseLambda->getNumOperands();
-             ++idx) {
-          Value outsideValue = elementwiseLambda.getOperand(idx);
-          Value insideValue = elementwiseLambdaBody->getArgument(idx);
-          Value loadedValue = rewriter.create<MOGG::LoadTensorOp>(
-              outsideValue.getLoc(), insideValue.getType(), outsideValue,
-              indices);
-          insideValue.replaceAllUsesWith(loadedValue);
-        }
-        elementwiseLambdaBody
-            ->getArgument(elementwiseLambda->getNumOperands() - 1)
-            .replaceAllUsesWith(indices);
-
+        // Bring in all the operands of src into dst and do SSA replacement.
         dst->insertOperands(dst->getNumOperands(), src->getOperands());
-        rewriter.setInsertionPoint(inputLambdaBody->getTerminator());
-        for (auto [idx, operand] : llvm::enumerate(src->getOperands())) {
-          auto oldBlockArgument = src.getExecBody().getArgument(idx);
+        for (auto oldBlockArgument : src.getExecBody().getArguments()) {
           auto newBlockArgument = dst.getExecBody().insertArgument(
               dst.getExecBody().getNumArguments(), oldBlockArgument.getType(),
-              operand.getLoc());
+              oldBlockArgument.getLoc());
           oldBlockArgument.replaceAllUsesWith(newBlockArgument);
         }
 
-        rewriter.setInsertionPointToStart(inputLambdaBody);
-        elementwiseLambdaBody->eraseArguments(
-            0, elementwiseLambdaBody->getNumArguments());
-        rewriter.inlineBlockBefore(elementwiseLambdaBody, inputLambdaBody,
-                                   rewriter.getInsertionPoint());
+        // Finally, move in the elementwise lambda and turn it into an input
+        // lambda.
+        elementwiseLambda->moveAfter(inputLambda);
+        elementwiseLambda.setBindKind(M::MOGG::BindLambdaKind::InputLambda);
+        inputLambda->replaceAllUsesWith(elementwiseLambda);
+        inputLambda->erase();
+
+        // Remove the associated input tensor from the kernel signature.
+        dst->eraseOperand(fusionIdx);
+        dst.getExecBody().eraseArgument(fusionIdx);
+
+        // Delete the src because it is no longer needed.
         src->erase();
       }
     });
   }
 
-  void fuseExpKernelOutLambda(MO::GraphOp moGraph) {
+  void fuseEpilogues(MO::GraphOp moGraph) {
     auto getFusibleUser = [](Value v) -> MOGG::ExpKernelOp {
       if (!v.hasOneUse())
         return nullptr;
@@ -1422,10 +1407,10 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
   void runOnOperation() override {
     MO::GraphOp moGraph = getOperation();
 
-    if (MOGG::useExperimentalMOGGPath()) {
-      fuseExpKernelOutLambda(moGraph);
-      fuseExpKernelInLambda(moGraph);
-      return;
+    // New MOGG dialect path.
+    {
+      fuseEpilogues(moGraph);
+      fusePrologues(moGraph);
     }
 
     auto &loadAnalysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();

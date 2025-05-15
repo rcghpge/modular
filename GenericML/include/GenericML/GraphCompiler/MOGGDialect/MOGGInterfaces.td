@@ -56,7 +56,7 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let methods = [
     InterfaceMethod<
       "Returns the dps output values of the kernel (a argument but with dps semantics)",
-      "mlir::ValueRange", "getDpsOutputs", (ins)
+      "mlir::ValueRange", "getKernelDPSOutputs", (ins)
     >,
     InterfaceMethod<
       "Returns the inputs values of the kernel",
@@ -64,7 +64,7 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
     >,
     InterfaceMethod<
       "Returns the type of kernel returned value (either a by_val/by_ref return)",
-      "mlir::Type", "getKernelRet", (ins)
+      "mlir::Type", "getKernelReturnOutput", (ins)
     >,
   ];
 }

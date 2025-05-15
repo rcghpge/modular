@@ -45,11 +45,8 @@ class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []>
     : MOGG_Op<mnemonic, traits # [
               Terminator,
               HasParent<"MOGG::ExpKernelOp">,
-              DeclareOpInterfaceMethods<MOGG_KernelTerminator, [
-                "getKernelInputs",
-                "getDpsOutputs",
-                "getKernelRets"]>
-              ]>;
+              DeclareOpInterfaceMethods<MOGG_KernelTerminator>
+            ]>;
 
 def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!pop.simd<1, si64>">,
     BuildableType<"KGEN::POP::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
@@ -336,11 +333,14 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
   let extraClassDeclaration = [{
     KernelTerminator getTerminator();
 
-    BindLambdaOp getBoundInputLambda(unsigned operandIdx);
-    BindLambdaOp getBoundOutputLambda(unsigned resultIdx);
+    // Get the input lambda associated with the kernel operand at position operandIdx.
+    BindLambdaOp getBoundInputLambda(uint64_t operandIdx);
+    // Get the output lambda associated with the kernel result at position operandIdx.
+    BindLambdaOp getBoundOutputLambda(uint64_t resultIdx);
+    // Get the elementwise lambda of this kernel.
     BindLambdaOp getElemwiseBodyLambda();
 
-    bool isOperandFusible(unsigned operandIdx);
+    bool isOperandFusible(uint64_t operandIdx);
     /// Returns the OutputPlaceholder for this operation or null if it doesn't
     /// exist.
     OutputPlaceholdersOp getOutputPlaceholder();

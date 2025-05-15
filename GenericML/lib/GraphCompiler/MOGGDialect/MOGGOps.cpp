@@ -499,18 +499,20 @@ ValueRange CallForeachOp::getKernelInputs() {
   // a static lambda.
   return {};
 }
-ValueRange CallForeachOp::getDpsOutputs() { return getOperands().take_back(); }
-Type CallForeachOp::getKernelRet() { return nullptr; }
-
-ValueRange CallMaterializeOp::getKernelInputs() { return getInputs(); }
-ValueRange CallMaterializeOp::getDpsOutputs() {
+ValueRange CallForeachOp::getKernelDPSOutputs() {
   return getOperands().take_back();
 }
-Type CallMaterializeOp::getKernelRet() { return nullptr; }
+Type CallForeachOp::getKernelReturnOutput() { return nullptr; }
+
+ValueRange CallMaterializeOp::getKernelInputs() { return getInputs(); }
+ValueRange CallMaterializeOp::getKernelDPSOutputs() {
+  return getOperands().take_back();
+}
+Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 
 ValueRange CallExecuteOp::getKernelInputs() { return getInputs(); }
-ValueRange CallExecuteOp::getDpsOutputs() { return getOutputs(); }
-Type CallExecuteOp::getKernelRet() {
+ValueRange CallExecuteOp::getKernelDPSOutputs() { return getOutputs(); }
+Type CallExecuteOp::getKernelReturnOutput() {
   return getRegRetTypeAttr() ? getRegRetTypeAttr().getValue() : nullptr;
 }
 
@@ -522,45 +524,34 @@ KernelTerminator ExpKernelOp::getTerminator() {
   return cast<KernelTerminator>(getExecBody().front().getTerminator());
 }
 
-BindLambdaOp ExpKernelOp::getBoundInputLambda(unsigned operandIdx) {
-  Operation *t = getTerminator();
-  auto executeOp = dyn_cast<CallExecuteOp>(t);
-  if (!executeOp)
+BindLambdaOp ExpKernelOp::getBoundInputLambda(uint64_t operandIdx) {
+  auto users = getExecBody().getArgument(operandIdx).getUsers();
+  if (llvm::range_size(users) != 1)
     return nullptr;
 
-  unsigned curIdx = 0;
-  for (auto operand : executeOp.getInputs()) {
-    // Look through tuple operands.
-    if (auto tupleOp = operand.getDefiningOp<MOGG::AsTupleOp>()) {
-      for (auto tupleElem : tupleOp.getInputs()) {
-        if (curIdx == operandIdx)
-          return tupleElem.getDefiningOp<BindLambdaOp>();
-        curIdx++;
-      }
-    } else {
-      if (curIdx == operandIdx)
-        return operand.getDefiningOp<BindLambdaOp>();
-      curIdx++;
-    }
-  }
+  auto lambda = dyn_cast<BindLambdaOp>(*users.begin());
+  if (!lambda)
+    return nullptr;
 
-  return nullptr;
+  if (lambda.getBindKind() != BindLambdaKind::InputLambda)
+    return nullptr;
+
+  return lambda;
 }
 
-BindLambdaOp ExpKernelOp::getBoundOutputLambda(unsigned resultIdx) {
+BindLambdaOp ExpKernelOp::getBoundOutputLambda(uint64_t resultIdx) {
   // NOTE: dyn_cast<CallExecuteOp>(getTerminator()) won't work as expected
   // (it always returns non-nullptr) because the deduced return type would be
   // `const CallExecuteOp &`.
-  Operation *t = getTerminator();
-  auto executeOp = dyn_cast<CallExecuteOp>(t);
+  auto executeOp = dyn_cast<CallExecuteOp>(getTerminator().getOperation());
   if (!executeOp)
     return nullptr;
 
   // Only dps tensor have fusible output interface.
-  if (resultIdx < executeOp.getDpsOutputs().size())
-    return executeOp.getDpsOutputs()[resultIdx].getDefiningOp<BindLambdaOp>();
+  if (resultIdx < executeOp.getKernelDPSOutputs().size())
+    return executeOp.getKernelDPSOutputs()[resultIdx]
+        .getDefiningOp<BindLambdaOp>();
 
-  // Unfusible Kernel Return value.
   return nullptr;
 }
 
@@ -571,7 +562,7 @@ BindLambdaOp ExpKernelOp::getElemwiseBodyLambda() {
                    : nullptr;
 }
 
-bool ExpKernelOp::isOperandFusible(unsigned operandIdx) {
+bool ExpKernelOp::isOperandFusible(uint64_t operandIdx) {
   auto users = getExecBody().getArgument(operandIdx).getUsers();
   // Returns true if the operand is used by a MOGG::BindLambdaOp
   return llvm::find_if(users, [](Operation *op) {
@@ -590,7 +581,7 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
   if (isa<MO::ChainType>(dpsResult.front().getType()))
     dpsResult = dpsResult.drop_front();
 
-  if (auto regOutput = term.getKernelRet()) {
+  if (auto regOutput = term.getKernelReturnOutput()) {
     if (regOutput != dpsResult.back().getType())
       return emitError("Expect to return the same result types as terminator");
 
@@ -598,7 +589,7 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
   }
 
   SmallVector<Type> dpsOutputTypesWithoutTuples;
-  for (Value result : term.getDpsOutputs()) {
+  for (Value result : term.getKernelDPSOutputs()) {
     if (isa<TupleType>(result.getType())) {
       for (auto element : result.getDefiningOp<MOGG::AsTupleOp>().getInputs())
         dpsOutputTypesWithoutTuples.push_back(element.getType());
