@@ -20,38 +20,23 @@ FailureOr<DictionaryAttr>
 buildMojoObjectInfosOutputMethodsDict(Operation *mojoKernelOp,
                                       llvm::ArrayRef<StringRef> methods) {
   auto mojoKernel = cast<KGEN::GeneratorOp>(mojoKernelOp);
-  KGEN::ParameterExprArrayAttr conformancesAttr =
-      dyn_cast_or_null<KGEN::ParameterExprArrayAttr>(
-          mojoKernel->getAttr(KGEN::MOGGPreElab::MOGG_RESULT_CONFORMANCES));
-  if (!conformancesAttr) {
+  DictionaryAttr valueWitnessesAttr = dyn_cast_or_null<DictionaryAttr>(
+      mojoKernel->getAttr(KGEN::MOGGPreElab::MOGG_RESULT_VALUE_WITNESSES));
+  if (!valueWitnessesAttr) {
     return mojoKernel.emitError()
-           << "no MOGG type conformance informations found (maybe kernel is "
-              "missing a register decorator like `@register_internal`)";
+           << "no MOGG type value witnesses found (maybe kernel is missing a "
+              "register decorator like `@register_internal`)";
   }
 
-  auto findMethod =
-      [&](StringRef methodName) -> FailureOr<KGEN::VTableEntryAttr> {
-    for (TypedAttr attr : conformancesAttr) {
-      auto typeAttr = cast<KGEN::TypeParamAttr>(attr);
-      for (KGEN::VTableEntryAttr entry : typeAttr.getVTable().getEntries()) {
-        if (entry.getName() == methodName)
-          return entry;
-      }
+  // Ensure all required methods are present.
+  for (StringRef methodName : methods) {
+    if (!valueWitnessesAttr.contains(methodName)) {
+      return mojoKernel.emitError()
+             << "kernel output type doesn't implement the method `"
+             << methodName << "`. Maybe it's missing a trait implementation.";
     }
-    return mojoKernel.emitError()
-           << "kernel output type doesn't implement the method `" << methodName
-           << "`. Maybe it's missing a trait implementation.";
-  };
-
-  // Build the dictionary of methods
-  NamedAttrList methodsDict;
-  for (StringRef methName : methods) {
-    FailureOr<KGEN::VTableEntryAttr> entryOr = findMethod(methName);
-    if (failed(entryOr))
-      return failure();
-    methodsDict.set(methName, entryOr->getMethod());
   }
-  return DictionaryAttr::get(mojoKernel.getContext(), methodsDict);
+  return valueWitnessesAttr;
 }
 
 } // namespace M::MOGG
