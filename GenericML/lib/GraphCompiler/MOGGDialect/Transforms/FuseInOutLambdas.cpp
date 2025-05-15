@@ -202,6 +202,9 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
             elemFuseBody->getArgument(idx).replaceAllUsesWith(loaded);
           }
         }
+        // Relink the indices.
+        elemFuseBody->getArguments().back().replaceAllUsesWith(indices);
+
         // All the uses of the original argument are taken care of above, remove
         // all the arguments and inline.
         elemFuseBody->eraseArguments(0, elemFuseBody->getNumArguments());
