@@ -281,7 +281,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createInlineLambdas({kernelLibraryPaths}));
 
   // Convert output lambdas to compute output lambdas whn possible.
-  pm.addPass(MOGG::createGenerateComputeLambdas({kernelLibraryPaths}));
+  if (opts.enableComputeLambdas) {
+    pm.addPass(MOGG::createGenerateComputeLambdas({kernelLibraryPaths}));
+  }
 
   // Set the _trace_name parameter after lambda fusion and before sequence
   // fusion.

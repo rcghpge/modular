@@ -197,6 +197,11 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc(
           "Insert runtime checks which compare C++ and Mojo shape functions."),
       llvm::cl::init(false)};
+  Option<bool> enableComputeLambdas{
+      *this, "enable-compute-lambdas",
+      llvm::cl::desc("If true, the Graph Compiler will generate compute "
+                     "lambdas when possible"),
+      llvm::cl::init(false)};
   // This is currently only used with the torch backend since lowering models
   // with torch.compile doesn't support passing cl options to MLIR utilities
   Option<std::string> mlirTimingOutDir{
