@@ -11,7 +11,6 @@
 #include "GenericML/MGPRT/BinaryID.h"
 #include "KGEN/CompilerRT/BinaryID.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
-#include "PyTorch/ATenRT/BinaryID.h"
 #include "Support/BinaryID.h"
 
 #include "llvm/ADT/StringExtras.h"
@@ -24,8 +23,8 @@ std::string M::MO::getGraphCompilerVersionString() {
   // MEF file too, include the binary ID for relevant shared libraries too.
   return M::getModularVersionString() + M::getBinaryID() + "-" +
          M::MOGG::Embeddings::getMOGGEmbeddingID() + "-" +
-         M::MGPRT::getMGPRTBinaryID() + "-" + M::Torch::getATenRTBinaryID() +
-         "-" + M::AsyncRT::getMojoBindingsBinaryID() + "-" +
+         M::MGPRT::getMGPRTBinaryID() + "-" +
+         M::AsyncRT::getMojoBindingsBinaryID() + "-" +
          M::AsyncRT::getRuntimeGlobalsBinaryID() + "-" +
          M::KGEN::getCompilerRTBinaryID() + "-" +
          M::getModularVersion().buildType;

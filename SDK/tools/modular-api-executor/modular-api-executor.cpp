@@ -24,7 +24,6 @@
 #include "max/c/custom_ops.h"
 #include "max/c/internal/context.h"
 #include "max/cpp/aliases.h"
-#include "max/cpp/pytorch/aliases.h"
 #include "llvm/ADT/StringExtras.h"
 
 #include "mlir/IR/BuiltinTypes.h"
@@ -75,9 +74,6 @@ public:
   bool frameworkVersion{false};
   SmallVector<std::string> inputNames;
   SmallVector<std::string> outputNames;
-  SmallVector<TensorSpec> compileSpecs;
-  SmallVector<std::string> inputDimNames;
-  SmallVector<std::string> extraTorchLibs;
   bool printMetadata{false};
   SmallVector<std::string> kernelLibraryPaths;
 
@@ -146,32 +142,6 @@ private:
       cl::desc("Specify output names. This is always required "
                "and it must match the model's output names"),
       llvm::cl::location(options.outputNames),
-      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
-
-  M::cl::MListOpt<std::string, llvm::SmallVector<std::string>> extraTorchLibs{
-      "torch-library-paths",
-      cl::desc("Path to a custom library built for PyTorch "
-               "(for example a custom operator library)."),
-      llvm::cl::location(options.extraTorchLibs),
-      llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
-  M::cl::MListOpt<TensorSpec, SmallVector<TensorSpec>, TensorSpecParser>
-      compileSpecs{
-          "compile-specs",
-          cl::desc(
-              "Specify the input shapes to compile model with. "
-              "This is only required for PyTorch models. If both are "
-              "given compile-specs will be preferred over input-specs at model "
-              "compile time and input-specs will used at runtime."),
-          llvm::cl::location(options.compileSpecs),
-          llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
-  M::cl::MListOpt<std::string, SmallVector<std::string>> inputDimNames{
-      "input-dim-names",
-      cl::desc("Specify names of input dimensions to compile model with. "
-               "This is only used with PyTorch models. "
-               "Inputs should be separated by commas. "
-               "Dimensions in each input should be separated by semcolons. "
-               "Unnamed dimensions should be marked with a hyphen."),
-      llvm::cl::location(options.inputDimNames),
       llvm::cl::cat(ModularExecutorDriverCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> printMetadata{
@@ -657,95 +627,6 @@ int main(int argc, char **argv) {
   }
   M_CompileConfig *configPtr = compileConfig.release();
 
-  // We need to set torch input specs on models in case we're actually running
-  // a torch model. For this, we prefer to use `input-specs/compile-specs` over
-  // `input-shapes` as the CLI argument input. This allows for us to directly
-  // get the dtype of the input tensors.
-  if (!clOptions.inputSpecs.empty() || !clOptions.compileSpecs.empty()) {
-    std::vector<TorchInputSpecPtr> specOwners;
-    std::vector<M_TorchInputSpec *> specPointers;
-    SmallVector<TensorSpec> specSource = clOptions.compileSpecs.empty()
-                                             ? clOptions.inputSpecs
-                                             : clOptions.compileSpecs;
-    for (auto &&[inputIndex, inputSpec] : llvm::enumerate(specSource)) {
-      TorchInputSpecPtr spec{nullptr};
-      if (inputSpec.hasRank()) {
-        SmallVector<int64_t> inputShape;
-        for (auto dim : inputSpec) {
-          if (mlir::ShapedType::isDynamic(dim))
-            inputShape.push_back(M_getDynamicDimensionValue());
-          else
-            inputShape.emplace_back((int64_t)dim);
-        }
-        std::vector<std::string> dimNamesStorage;
-        std::vector<const char *> dimNamesVec;
-        const char *const *dimNames = nullptr;
-        if (inputIndex < clOptions.inputDimNames.size()) {
-          StringRef dimNamesStrRef = clOptions.inputDimNames[inputIndex];
-          SmallVector<StringRef> elemRefs;
-          dimNamesStrRef.split(elemRefs, ';');
-          if (elemRefs.size() != inputShape.size()) {
-            llvm::errs() << "Error: Input " << inputIndex << " names setting '"
-                         << dimNamesStrRef
-                         << "' has different number of elements ("
-                         << elemRefs.size() << ") than rank ("
-                         << inputShape.size() << ") of shape (" << inputSpec
-                         << ")\n";
-            exit(EXIT_FAILURE);
-          }
-          dimNamesStorage.reserve(inputShape.size());
-          dimNamesVec.reserve(inputShape.size());
-          for (StringRef elemRef : elemRefs) {
-            if (elemRef == "-") {
-              dimNamesVec.push_back(nullptr);
-            } else {
-              dimNamesStorage.push_back(elemRef.str());
-              dimNamesVec.push_back(dimNamesStorage.back().c_str());
-            }
-          }
-          dimNames = dimNamesVec.data();
-        }
-        spec.reset(
-            M_newTorchInputSpec(inputShape.data(), dimNames, inputShape.size(),
-                                M::Detail::mapDType(inputSpec.getEltType()),
-                                nullptr, status.get()));
-      } else {
-        spec.reset(
-            M_newTorchInputSpec(nullptr, nullptr, M_getDynamicRankValue(),
-                                M::Detail::mapDType(inputSpec.getEltType()),
-                                nullptr, status.get()));
-      }
-      if (M_isError(status.get())) {
-        llvm::errs() << "Error: " << M_getError(status.get()) << "\n";
-        exit(EXIT_FAILURE);
-      }
-
-      assert(spec && "expected spec to have value by now");
-      specPointers.push_back(spec.get());
-      specOwners.push_back(std::move(spec));
-    }
-    M_setTorchInputSpecs(configPtr, specPointers.data(), specPointers.size());
-  }
-  if (!clOptions.extraTorchLibs.empty()) {
-    for (std::string &extraTorchLib : clOptions.extraTorchLibs) {
-      std::filesystem::path path(extraTorchLib);
-      if (!path.empty() && path.has_extension() &&
-          (path.filename().string().find(".so.") != std::string::npos ||
-           path.extension() == ".so" || path.extension() == ".dylib" ||
-           path.extension() == ".dll")) {
-        // PyTorch custom ops library.
-        M_setTorchLibraryPath(configPtr, extraTorchLib.c_str());
-      } else if (!path.empty() && path.has_extension() &&
-                 (path.extension() == ".pt" ||
-                  path.extension() == ".torchscript")) {
-        // PyTorch metadata library.
-        M_setTorchMetadataLibraryPath(configPtr, extraTorchLib.c_str());
-      } else {
-        llvm::errs() << "Error: Unsupported torch library '" << path << "'\n";
-        exit(EXIT_FAILURE);
-      }
-    }
-  }
   CompiledModelPtr compiledModel{
       M_compileModel(context.get(), &configPtr, status.get())};
 

@@ -60,7 +60,6 @@ modular_cc_library(
         "//AsyncRT:RuntimeGlobals",
         "//GraphRT:MLIRToMEF",
         "//KGEN:CompilerRT",
-        "//PyTorch:ATenRT",
         "//Support:Base",
         "//Support:BinaryID",
         "//Support:Diagnostics",
@@ -73,7 +72,6 @@ rpath_shim(
     name = "rpaths",
     packages = [
         "//ModularFramework/tools/max",
-        "//PyTorch/tools/torch:mtorch",
     ],
     visibility = ["//visibility:private"],
 )

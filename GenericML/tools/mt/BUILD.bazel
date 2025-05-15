@@ -8,7 +8,6 @@ modular_cc_binary(
         "//ModularFramework/tools/max",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
-        "//PyTorch/tools/torch:mtorch",
     ],
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
     deps = [
@@ -25,7 +24,6 @@ rpath_shim(
         "//ModularFramework/tools/max",
         "//PyTorch:StockTorchInterface",
         "//PyTorch:TorchRuntimePlugins",
-        "//PyTorch/tools/torch:mtorch",
     ],
     visibility = ["//visibility:private"],
 )

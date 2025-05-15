@@ -8,7 +8,6 @@ modular_cc_binary(
         "//GenericML:MaxAPI",
         "//Init",
         "//ModularFramework/tools/max",
-        "//PyTorch:modular-framework-torch-ext",
         "//Runtime:Tensor",
         "//Support:Globals",
     ],
