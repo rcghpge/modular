@@ -22,10 +22,12 @@ class raw_fd_ostream;
 
 namespace M::AsyncRT {
 
+class BufferCacheFreeList;
+
 class BufferCache {
 public:
   class Chunk;
-  struct Desc;
+  class Desc;
 
   class DescMap {
   public:
@@ -58,14 +60,11 @@ public:
 
 private:
   friend class Chunk;
+  friend class BufferCacheFreeList;
 
-  void selfCheck();
-
-  void addToFreeList(Desc *desc);
-  void removeFromFreeList(Desc *desc);
+  void selfCheck() const;
 
   bool allocateChunk();
-  void *allocateLocked(size_t size);
   bool freeLocked(void *buf);
 
   // Avoid malloc under lock.
@@ -85,7 +84,7 @@ private:
   Chunk *chunks_ = nullptr;
 
   // List of unallocated memory regions.
-  Desc *freeBuffers_ = nullptr;
+  std::unique_ptr<BufferCacheFreeList> freeList_;
 
   // Free list of descriptors to avoid malloc under lock.
   Desc *unusedDescs_ = nullptr;
@@ -96,13 +95,43 @@ private:
   DescMap allocatedMap_;
 
   // For logging and debugging.
-  llvm::raw_fd_ostream &errOut();
+  llvm::raw_fd_ostream &errOut() const;
+
   bool doSelfCheck_ = false;
   bool doLog_ = false;
   size_t freeSize_ = 0;
   size_t freeCount_ = 0;
   size_t chunkCount_ = 0;
-  std::string deviceDescription_;
+  mutable std::string deviceDescription_;
+};
+
+class BufferCacheFreeList {
+public:
+  BufferCacheFreeList(BufferCache &bufferCache, BufferCacheFreeList *parent);
+  ~BufferCacheFreeList();
+
+  void *allocate(size_t size);
+  void free(BufferCache::Desc *desc);
+
+  bool empty();
+
+private:
+  friend class BufferCache;
+  friend class BufferCache::Chunk;
+
+  void selfCheck() const;
+
+  void addToFreeList(BufferCache::Desc *desc);
+  void removeFromFreeList(BufferCache::Desc *desc);
+
+  BufferCache &bufferCache_;
+  BufferCacheFreeList *parent_;
+
+  BufferCache::Desc *freeBuffers_ = nullptr;
+
+  // For logging and debugging.
+  size_t ffreeSize_ = 0;
+  size_t ffreeCount_ = 0;
 };
 
 } // namespace M::AsyncRT
