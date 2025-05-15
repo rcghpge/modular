@@ -150,6 +150,9 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       convertScalarsIfNeeded(outlinedArgs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
 
+  // The outlined function always has an indices at the end.
+  outlinedArgs.push_back(bindOp.getIndicesArg());
+
   builder.setInsertionPointToStart(elemwiseBody);
   auto callOutlined = builder.create<CallOutlinedOp>(
       loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
