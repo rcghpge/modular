@@ -610,7 +610,7 @@ def MO_HostOnly : TraitList<[
 // Implements MO_HasDeviceInterface methods for MO_ExecutesOnHost.
 def MO_ExecutesOnHostTrait : MO_OpTrait<"MOExecutesOnHostTrait", [], [{}], [{
   DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
-    return getHostDevice(getContext());
+    return nullptr;
   }
   llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
     return {getHostDevice(getContext())};

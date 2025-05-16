@@ -43,7 +43,9 @@ class MO_DeviceAgnosticTensorOp<string mnemonic, list<Trait> traits = []>
 
 // Base class for ops working with control flow
 class MO_ControlOp<string mnemonic, list<Trait> traits = []>
-  : MO_TensorOp<mnemonic, [MO_ControlOpInterface, MO_PreservedDuringKernelLowering] # traits>;
+  : MO_TensorOp<mnemonic, [MO_ControlOpInterface,
+                           MO_PreservedDuringKernelLowering,
+                           MO_ExecutesOnHost] # traits>;
 
 // Base class for ops working with mutable buffers
 class MO_MutableOp<string mnemonic, list<Trait> traits = []>
@@ -256,6 +258,7 @@ def MO_CallOp : MO_ControlOp<"call", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Call a computation graph";
   let description = [{
@@ -350,7 +353,6 @@ def IfOp : MO_ControlOp<"if", [
   NoRegionArguments,
   RegionKindInterface,
   SingleBlockImplicitTerminator<"MO::YieldOp">,
-  MO_ExecutesOnHost
 ]> {
   let summary = "`if` control flow operation";
   let description = [{
@@ -409,7 +411,6 @@ def WhileOp : MO_ControlOp<"while", [
   HasOnlyGraphRegion,
   RegionKindInterface,
   SingleBlock,
-  MO_ExecutesOnHost
 ]> {
   let summary = "`while` control flow operation";
   let description = [{
@@ -735,7 +736,8 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
 def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
   ConstantLike,
   Pure,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  MO_HostOnly
 ]> {
   let summary = "Scalar constant operation";
   let description = [{
@@ -1724,7 +1726,7 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax", [MO_HostOnly]> {
   let summary = "Logarighmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -1740,7 +1742,7 @@ def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
   }];
 }
 
-def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
+def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax", [MO_SingleDevice]> {
   let summary = "Softmax operation";
   let description = [{
     Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
@@ -1905,6 +1907,7 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_HostOnly
 ]>{
   let summary = "Average pooling operation";
   let description = [{
@@ -1969,6 +1972,7 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_HostOnly
 ]>{
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
@@ -2033,6 +2037,7 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_HostOnly
 ]>{
   let summary = "Maximum pooling operation";
   let description = [{
@@ -2096,6 +2101,7 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_HostOnly
 ]>{
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
@@ -2370,6 +2376,7 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   MO_ViewLike,
+  MO_SingleDevice
 ]> {
   let summary = "Broadcast operation";
   let description = [{
@@ -2404,7 +2411,8 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
 def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [
   Pure,
   MO_ViewLike,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Add a singleton dimension to a tensor shape";
   let description = [{
@@ -2428,7 +2436,8 @@ def MO_AddSingletonDimOp : MO_TensorOp<"add_singleton_dim", [
 def MO_SplitDimOp : MO_TensorOp<"split_dim", [
   Pure,
   MO_ViewLike,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Splits a single dimensions of a tensor into two";
   let description = [{
@@ -2458,7 +2467,8 @@ def MO_SplitDimOp : MO_TensorOp<"split_dim", [
 def MO_MergeDimOp : MO_TensorOp<"merge_dim", [
   Pure,
   MO_ViewLike,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Merge two dimensions of a tensor into one";
   let description = [{
@@ -2490,7 +2500,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Reshape operation";
   let description = [{
@@ -2616,7 +2626,8 @@ def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
 }
 
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
-  DeclareOpInterfaceMethods<MO_DefaultParameterization>
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Shape operation";
   let description = [{
@@ -2765,7 +2776,7 @@ class MOStatic_TensorOp<string mnemonic, list<Trait> traits = []>
 }
 
 class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
-    : MOStatic_TensorOp<mnemonic, traits # [Pure, MO_SameFirstOperandAndResultsElementType]> {
+    : MOStatic_TensorOp<mnemonic, traits # [Pure, MO_SameFirstOperandAndResultsElementType, MO_SingleDevice]> {
   string cppNamespace = MODialect.cppNamespace # "::Static";
 
   let arguments = (ins MO_KnownTensor:$input);
@@ -2813,7 +2824,6 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
   MO_ViewLike,
   MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
 ]> {
   let summary = "Reshape operation";
   let description = [{
@@ -2842,7 +2852,7 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
 }
 
 def MOStatic_RandomNormalOp : MOStatic_TensorOp<"random.normal", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
+  MO_HostOnly
 ]> {
   let summary = "RandomNormal operation for parametric shapes";
   let description = [{
@@ -3265,6 +3275,7 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum", [MO_HostOnly]> {
 def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  MO_SingleDevice
 ]> {
   let summary = "Multi-dimensional `gather` operation";
   let description = [{
@@ -3524,7 +3535,7 @@ def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
 // ScatterNdOp
 //===----------------------------------------------------------------------===//
 
-def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits]> {
+def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits, MO_SingleDevice]> {
   let summary = "Multi-dimensional `scatter` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
@@ -3563,7 +3574,7 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [MO_ScatterNdLikeTraits]> {
 }
 
 class MO_ScatterNdReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
-  "scatter_nd." # name, traits # [MO_ScatterNdLikeTraits]
+  "scatter_nd." # name, traits # [MO_ScatterNdLikeTraits, MO_SingleDevice]
 > {
   let arguments = (ins MO_Tensor:$input,
                        MO_NonScalarIfRanked:$updates,
@@ -3842,6 +3853,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["mean", "variance"]>,
+  MO_HostOnly
 ]> {
   let summary = "Normal distribution operation";
   let description = [{
@@ -5026,7 +5038,7 @@ def MO_GuardOp : MO_Op<"guard", [
 }
 
 def MO_ChainCreateOp : MO_Op<"chain.create", [
-  Pure, MO_HasDeviceInterface, MO_PreservedDuringKernelLowering
+  Pure, MO_HasDeviceInterface, MO_PreservedDuringKernelLowering, MO_ExecutesOnHost
 ]>
 {
   let summary = "Create a new chain conditioned on a variadic number of inputs";

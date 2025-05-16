@@ -698,6 +698,10 @@ LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
     // Skip verification when no device is assigned.
     if (!hasDevice.getDeviceRef())
       return success();
+    // Control ops are currently assigned to a device even if they don't need
+    // a device context. Ignore these.
+    if (isa<MO::MOControlOpInterface, MO::ChainCreateOp>(op))
+      return success();
     if (failed(checkExecutionDeviceConstraint(hasDevice, hostDevice)))
       return failure();
   }
