@@ -56,7 +56,9 @@ def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGE
 // Internal helper ops
 //===----------------------------------------------------------------------===//
 
-def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [Pure, MO_HasDeviceInterface]> {
+def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [
+  Pure, MO_HasDeviceInterface, MO_ExplicitDevice
+]> {
   let summary = "Concat Operation along axis zero";
   let description = [{
     Concat input tensors along axis zero.
@@ -301,7 +303,9 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [Pure]> {
 def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     IsolatedFromAbove,
     SingleBlock,
-    MO_HasDeviceInterface]> {
+    MO_HasDeviceInterface,
+    MO_ExplicitDevice
+]> {
   let summary = "A experimental representation of a kernel which can be fused into and compiled without using kgen.";
   let description = [{
     This is mostly a replica of `mogg.kernel` operation, the purposes
@@ -467,7 +471,9 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-    MO_HasDeviceInterface]> {
+    MO_HasDeviceInterface,
+    MO_ExplicitDevice
+]> {
   let summary = "A representation of a kernel which can be fused into and compiled";
   let description = [{
     This kernel represents the handover from the MO graph to the KGEN land.
@@ -720,6 +726,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     SymbolTable,
     DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
     MO_HasDeviceInterface,
+    MO_ExplicitDevice,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclInterface
@@ -1496,7 +1503,9 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
 
 def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-   MO_HasDeviceInterface]> {
+   MO_HasDeviceInterface,
+   MO_ExplicitDevice
+]> {
   let summary = "Executes a compiled kernel on a given device.";
   let description = [{
     Executes a compiled kernel with the given name and operands on the given

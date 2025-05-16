@@ -116,8 +116,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns the `#M.device_ref` on which the op must execute. Returns null
         if there is no such constraint.
       }],
-      "DeviceRefAttr", "getExecutionDeviceConstraint", (ins), [{}],
-      [{ return nullptr; }]
+      "DeviceRefAttr", "getExecutionDeviceConstraint", (ins)
     >,
 
     InterfaceMethod<
@@ -125,8 +124,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns the `#M.device_ref` on which the operand with the given index
         must be stored. Returns null if there is no such constraint.
       }],
-      "DeviceRefAttr", "getOperandDeviceConstraint", (ins "size_t":$index), [{}],
-      [{ return nullptr; }]
+      "DeviceRefAttr", "getOperandDeviceConstraint", (ins "size_t":$index)
     >,
 
     InterfaceMethod<
@@ -134,10 +132,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns an array of `#M.device_ref` corresponding to the
         devices on which this operation executes.
       }],
-      "llvm::SmallVector<DeviceRefAttr>", "getExecutionDevices", (ins), "",
-      [{
-        return {};
-      }]
+      "llvm::SmallVector<DeviceRefAttr>", "getExecutionDevices", (ins)
     >,
 
     InterfaceMethod<
@@ -145,7 +140,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns a `#M.device_ref` to the device where this operation executes.
         Assumes that this is not a multi-device operation.
       }],
-      "DeviceRefAttr", "getExecutionDevice", (ins), [{}],
+      "DeviceRefAttr", "getExecutionDevice", (ins), "",
       [{
         auto devices = $_op.getExecutionDevices();
         assert(devices.size() == 1 && "Operation must execute on exactly one device");
@@ -612,6 +607,9 @@ def MO_ExecutesOnHostTrait : MO_OpTrait<"MOExecutesOnHostTrait", [], [{}], [{
   DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
     return nullptr;
   }
+  DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
+    return nullptr;
+  }
   llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
     return {getHostDevice(getContext())};
   }
@@ -621,6 +619,7 @@ def MO_ExecutesOnHostTrait : MO_OpTrait<"MOExecutesOnHostTrait", [], [{}], [{
 def MO_ExecutesOnHost : TraitList<[
   DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
     "getExecutionDeviceConstraint",
+    "getOperandDeviceConstraint",
     "getExecutionDevices"]>,
   MO_ExecutesOnHostTrait
 ]>;
@@ -720,6 +719,39 @@ def MO_MultiDevice : TraitList<[
   MO_MultiDeviceTrait,
 ]>;
 
+
+// Implements MO_HasDeviceInterface methods for MO_ExplicitDevice.
+def MO_ExplicitDeviceTrait : MO_OpTrait<"MOExplicitDeviceTrait"> {
+  let extraConcreteClassDefinition = [{
+    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
+      return nullptr;
+    }
+
+    DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
+      return nullptr;
+    }
+
+    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
+      // TODO: Make the deviceRef attribute part of the op's definition.
+      return {dyn_cast_if_present<DeviceRefAttr>(
+        getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
+    }
+  }];
+}
+
+// Marks an op that stores a deviceRef attribute to indicate where it will
+// execute, in contrast to the other device traits which do not require a
+// deviceRef attribute on the op.
+def MO_ExplicitDevice : TraitList<[
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
+    "getExecutionDeviceConstraint",
+    "getOperandDeviceConstraint",
+    "getExecutionDevices"]>,
+  MO_ExplicitDeviceTrait,
+]>;
+
+// Note: we could add a MO_ExplicitDevices trait if we ever add a multi-device
+// op where we can't just infer the devices from the operands and results.
 
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,

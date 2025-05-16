@@ -273,6 +273,10 @@ public:
 };
 
 template <typename ConcreteType>
+class MOExplicitDeviceTrait
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOExplicitDeviceTrait> {};
+
+template <typename ConcreteType>
 class MOBufferOpConformance
     : public mlir::OpTrait::TraitBase<ConcreteType, MOBufferOpConformance> {
 public:

@@ -658,6 +658,15 @@ DeviceRefAttr InvokeShapeFuncOp::getOperandDeviceConstraint(size_t index) {
   return nullptr;
 }
 
+DeviceRefAttr InvokeShapeFuncOp::getExecutionDeviceConstraint() {
+  return nullptr;
+}
+
+llvm::SmallVector<DeviceRefAttr> InvokeShapeFuncOp::getExecutionDevices() {
+  return {dyn_cast_if_present<DeviceRefAttr>(
+      getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
+}
+
 //===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//
@@ -4797,10 +4806,6 @@ OpOperand &CustomOp::getInChainMutable() {
                 "Expected to find an input chain as the first operand.");
 
   return firstOpOperand;
-}
-
-DeviceRefAttr CustomOp::getOperandDeviceConstraint(size_t index) {
-  return nullptr;
 }
 
 std::optional<ChainValue> CustomOp::maybeGetInChain() {

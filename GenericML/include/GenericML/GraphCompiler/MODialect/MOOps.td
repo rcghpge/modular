@@ -602,7 +602,8 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
     MO_ConstantLike,
     Pure,
-    MO_PreservedDuringKernelLowering
+    MO_PreservedDuringKernelLowering,
+    MO_ExplicitDevice,
 ]> {
   let summary = "External constant operation";
   let description = [{
@@ -657,7 +658,7 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
     MO_ConstantLike,
     Pure,
     MO_PreservedDuringKernelLowering,
-    DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
+    MO_SingleDevice,
 ]> {
   let summary = "Constant operation";
   let description = [{
@@ -4304,7 +4305,10 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 
 def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
+    "getOperandDeviceConstraint",
+    "getExecutionDeviceConstraint",
+    "getExecutionDevices"]>,
 ]> {
   let summary = "Shape function call operation";
   let description = [{
@@ -4411,8 +4415,8 @@ def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
 def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
   MemoryEffects<[MemWrite]>,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Printing operation";
   let description = [{
@@ -4442,7 +4446,7 @@ def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
 def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   MemoryEffects<[MemWrite]>,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
+  MO_SingleDeviceWithHostOperands<[], ["input"]>,
   MO_PreservedDuringKernelLowering
 ]> {
   let summary = "Printing operation";
@@ -4470,7 +4474,7 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
 def MO_DebugTensorUnsafePrintOp : MO_TensorOp<"debug.tensor.unsafe.print", [
   MemoryEffects<[MemWrite]>,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["preferResultsDevice"]>,
+  MO_SingleDeviceWithHostOperands<[], ["input"]>,
   MO_PreservedDuringKernelLowering
 ]> {
   let summary = "Printing operation";
@@ -4801,7 +4805,7 @@ def MO_ListSliceOp : MO_TensorOp<"list.slice", [
 
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getOperandDeviceConstraint"]>,
+  MO_ExplicitDevice,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
