@@ -128,7 +128,7 @@ public:
    * @param meta_info Metadata blob
    */
   nixlBlobDesc(uintptr_t addr, size_t len, uint64_t dev_id,
-               nixl_blob_t meta_info)
+               nixl_blob_t meta_info = "")
       : nixlBasicDesc(addr, len, dev_id), metaInfo(std::move(meta_info)) {}
 
   /**
