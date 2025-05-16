@@ -1366,7 +1366,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
       auto &oldBody = kernelToFuseInto.getBody();
       auto &oldBlock = oldBody.front();
 
-      auto lastArg = oldBlock.getArgument(oldBlock.getNumArguments() - 1);
+      [[maybe_unused]] auto lastArg =
+          oldBlock.getArgument(oldBlock.getNumArguments() - 1);
       ASSERT_STREAM(isa<MO::ChainType>(lastArg.getType()),
                     << "Last block is expected to be a chain type");
       ASSERT_STREAM(lastArg.use_empty(),
@@ -1375,7 +1376,8 @@ struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
 
       ASSERT_STREAM(oldBlock.getNumArguments() >= 2,
                     << "Block should have at least 2 arguments");
-      auto secondLastArg = oldBlock.getArgument(oldBlock.getNumArguments() - 2);
+      [[maybe_unused]] auto secondLastArg =
+          oldBlock.getArgument(oldBlock.getNumArguments() - 2);
       ASSERT_STREAM(
           isa<MO::ChainType>(secondLastArg.getType()),
           << "Second-to-last block argument is expected to be a chain type");
