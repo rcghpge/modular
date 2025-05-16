@@ -4921,14 +4921,6 @@ void MutableStoreSliceOp::getEffects(
                        &getInBufferMutable());
 }
 
-DeviceRefAttr MutableStoreSliceOp::getOperandDeviceConstraint(size_t index) {
-  return (index == getStartMutable().getOperandNumber() ||
-          index == getStopMutable().getOperandNumber() ||
-          index == getStepMutable().getOperandNumber())
-             ? MO::getHostDevice(getOperation())
-             : nullptr;
-}
-
 LogicalResult MutableStoreSliceOp::verify() {
 
   // Copied wholesale from the mo.slice verifier

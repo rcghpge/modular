@@ -182,7 +182,8 @@ LogicalResult verifyHasDevice(MOHasDeviceInterface op);
 LogicalResult verifyHostOnly(Operation *op);
 LogicalResult verifyExecutesOnHost(Operation *op);
 LogicalResult verifySingleDevice(Operation *op,
-                                 ArrayRef<size_t> scalarOperandIndices = {});
+                                 ArrayRef<size_t> hostOperandIndices,
+                                 ArrayRef<size_t> deviceOperandIndices);
 
 LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);
@@ -253,13 +254,14 @@ public:
 };
 
 template <typename ConcreteType>
-class MOSingleDeviceWithScalarOperandsTrait
+class MOSingleDeviceWithHostOperandsTrait
     : public mlir::OpTrait::TraitBase<ConcreteType,
-                                      MOSingleDeviceWithScalarOperandsTrait> {
+                                      MOSingleDeviceWithHostOperandsTrait> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
-    return M::MO::Impl::verifySingleDevice(
-        op, cast<ConcreteType>(op).getScalarOperandIndices());
+    return Impl::verifySingleDevice(
+        op, cast<ConcreteType>(op).getHostOperandIndices(),
+        cast<ConcreteType>(op).getDeviceOperandIndices());
   }
 };
 

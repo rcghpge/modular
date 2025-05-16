@@ -625,16 +625,25 @@ def MO_ExecutesOnHost : TraitList<[
   MO_ExecutesOnHostTrait
 ]>;
 
-// Implements MO_HasDeviceInterface methods for MO_SingleDeviceWithScalarOperands.
-class MO_SingleDeviceWithScalarOperandsTrait<list<string> scalarOperandNames = []>
-  : MO_OpTrait<"MOSingleDeviceWithScalarOperandsTrait">
+// Helper to get the operand numbers for the given operand names.
+class getOperandNumbers<list<string> operandNames> {
+  string ret = !interleave(!foreach(name, operandNames,
+    "get" # snakeCaseToCamelCase<name>.ret
+    # "Mutable().getOperandNumber()"), ", ");
+}
+
+// Implements MO_HasDeviceInterface methods for MO_SingleDeviceWithHostOperands.
+class MO_SingleDeviceWithHostOperandsTrait<list<string> hostOperandNames = [],
+                                            list<string> deviceOperandNames = []>
+  : MO_OpTrait<"MOSingleDeviceWithHostOperandsTrait">
 {
-  let cppNamespace = "::M::MO";
+  // Make operand names from ODS available as operand indices in C++
   let extraConcreteClassDeclaration = [{
-    llvm::SmallVector<size_t> getScalarOperandIndices() {
-      return { }] # !interleave(!foreach(name, scalarOperandNames,
-        "get" # snakeCaseToCamelCase<name>.ret # "Mutable().getOperandNumber()"), ", ")
-      # [{ };
+    llvm::SmallVector<size_t> getHostOperandIndices() {
+      return {}] # getOperandNumbers<hostOperandNames>.ret # [{};
+    }
+    llvm::SmallVector<size_t> getDeviceOperandIndices() {
+      return {}] # getOperandNumbers<deviceOperandNames>.ret # [{};
     }
   }];
 
@@ -644,30 +653,44 @@ class MO_SingleDeviceWithScalarOperandsTrait<list<string> scalarOperandNames = [
     }
 
    DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
-      auto isScalar = llvm::is_contained(getScalarOperandIndices(), index);
+      auto isScalar = llvm::is_contained(getHostOperandIndices(), index);
       return isScalar ? getHostDevice(getOperation()) : nullptr;
     }
 
     llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
-      return {getFirstResultDevice(this->getOperation())};
+      if (getDeviceOperandIndices().empty())
+        return {getFirstResultDevice(this->getOperation())};
+
+      return {getDeviceOrDefaultAny(this->getOperation()->getOperand(
+        getDeviceOperandIndices()[0]).getType())};
     }
   }];
 }
 
-// Marks an op that executes on a single device, with all operands and results
-// also on the same device. scalarOperandNames is a list of operand names
-// that are considered scalars and should be assigned the host device.
-class MO_SingleDeviceWithScalarOperands<list<string> scalarOperandNames = []> : TraitList<[
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
+// Marks an op that executes on a single device.
+// - Operands listed in hostOperandNames are expected to be on the host.
+// - Operands listed in deviceOperandNames are expected to be on the device.
+// - All results are expected to be on the device.
+// - The execution device of this op is inferred from the first device operand
+//   in the list.
+//
+// If deviceOperandNames is empty, the verifier will instead expect all
+// operands not mentioned in hostOperandNames to be on the device. In this case
+// the execution device is inferred from the first result.
+class MO_SingleDeviceWithHostOperands<
+  list<string> hostOperandNames = [],
+  list<string> deviceOperandNames = []>
+  : TraitList<[DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
     "getExecutionDeviceConstraint",
     "getOperandDeviceConstraint",
     "getExecutionDevices"]>,
-  MO_SingleDeviceWithScalarOperandsTrait<scalarOperandNames>
+  MO_SingleDeviceWithHostOperandsTrait<hostOperandNames, deviceOperandNames>,
 ]>;
 
 // Marks an op that executes on a single device, with all operands and results
 // also on the same device.
-def MO_SingleDevice : MO_SingleDeviceWithScalarOperands<[]>;
+// This trait assumes that the op's first result tensor is on the target device.
+def MO_SingleDevice : MO_SingleDeviceWithHostOperands<>;
 
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,

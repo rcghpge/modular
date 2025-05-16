@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
@@ -612,6 +613,13 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
   // Skip verification when no device is assigned.
   if (!op.getDeviceRef())
     return success();
+
+  // Skip verification of ops that already have a device trait.
+  auto operation = op.getOperation();
+  if (operation->hasTrait<MOExecutesOnHostTrait>() ||
+      operation->hasTrait<MOHostOnlyTrait>() ||
+      operation->hasTrait<MOSingleDeviceWithHostOperandsTrait>())
+    return success();
   // Ignore ops from other dialects.
   // In particular, MOtoMOGG assigns a default device even if the operands
   // have not been labeled.
@@ -697,25 +705,38 @@ LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
 }
 
 LogicalResult Impl::verifySingleDevice(Operation *op,
-                                       ArrayRef<size_t> scalarOperandIndices) {
-
+                                       ArrayRef<size_t> hostOperandIndices,
+                                       ArrayRef<size_t> deviceOperandIndices) {
   auto hasDevice = dyn_cast<MOHasDeviceInterface>(op);
   // Skip verification when no device is assigned.
   if (!hasDevice.getDeviceRef())
     return success();
-
-  auto singleDevice = getFirstResultDevice(op);
-
+  // If we are given a list of device operands, use the first one to determine
+  // the device type. Otherwise, use the first result device.
+  DeviceRefAttr singleDevice =
+      deviceOperandIndices.empty()
+          ? getFirstResultDevice(op)
+          : getDeviceOrDefaultAny(
+                op->getOperand(deviceOperandIndices.front()).getType());
+  // Check the execution device constraint.
   if (failed(checkExecutionDeviceConstraint(hasDevice, singleDevice)))
     return failure();
-
-  for (size_t i = 0; i < op->getNumOperands(); ++i) {
-    auto isScalar = llvm::is_contained(scalarOperandIndices, i);
-    auto constrainedTo = isScalar ? getHostDevice(op) : singleDevice;
-    if (failed(checkOperandDeviceConstraint(op, i, constrainedTo)))
+  // Empty device operand list means check all non-scalar operands.
+  llvm::SmallVector<size_t> operandIndices;
+  for (size_t i = 0; i < op->getNumOperands(); ++i)
+    if (!llvm::is_contained(hostOperandIndices, i))
+      operandIndices.push_back(i);
+  if (deviceOperandIndices.empty())
+    deviceOperandIndices = operandIndices;
+  // Ensure all device operands are on the right device.
+  for (size_t i : deviceOperandIndices)
+    if (failed(checkOperandDeviceConstraint(op, i, singleDevice)))
       return failure();
-  }
-
+  // Ensure all host operands are on the host.
+  for (size_t i : hostOperandIndices)
+    if (failed(checkOperandDeviceConstraint(op, i, getHostDevice(op))))
+      return failure();
+  // Ensure all results are on the right device.
   for (size_t i = 0; i < op->getNumResults(); ++i)
     if (failed(checkResultDeviceConstraint(op, i, singleDevice)))
       return failure();
