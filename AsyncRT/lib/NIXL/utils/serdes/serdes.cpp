@@ -10,6 +10,8 @@
 
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "AsyncRT/NIXL/nixl_types.h"
+#include "Support/LLVMForwardDecls.h"
+#include "llvm/ADT/StringRef.h"
 
 using namespace M::AsyncRT::NIXL;
 
@@ -118,6 +120,20 @@ nixl_status_t nixlSerDes::importStr(const std::string &sdbuf) {
   }
 
   workingStr = sdbuf;
+  mode = ser_mode_t::DESERIALIZE;
+  des_offset = kWireMagic.size();
+
+  return nixl_status_t::NIXL_SUCCESS;
+}
+
+nixl_status_t nixlSerDes::importBlob(const blob_ref sdbuf) {
+  // Ensure the blob has the expected starting tag
+  if (!StringRef(reinterpret_cast<const char *>(sdbuf.data), sdbuf.size)
+           .starts_with(kWireMagic))
+    return nixl_status_t::NIXL_ERR_MISMATCH;
+
+  workingStr =
+      std::string(reinterpret_cast<const char *>(sdbuf.data), sdbuf.size);
   mode = ser_mode_t::DESERIALIZE;
   des_offset = kWireMagic.size();
 

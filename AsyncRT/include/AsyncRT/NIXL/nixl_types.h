@@ -15,6 +15,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -108,6 +109,19 @@ using nixl_backend_t = std::string;
  *        preventing users to think it's a string and call c_str().
  */
 using nixl_blob_t = std::string;
+
+/**
+ * @brief Type-safe non-owning reference to a block of memory.
+ */
+struct blob_ref {
+  const void *data;
+  size_t size;
+
+  blob_ref(const void *data, size_t size) : data{data}, size{size} {}
+
+  explicit blob_ref(std::string_view str)
+      : data{reinterpret_cast<const void *>(str.data())}, size{str.size()} {}
+};
 
 /**
  * @brief A typedef for a std::vector<nixl_mem_t> to create nixl_mem_list_t

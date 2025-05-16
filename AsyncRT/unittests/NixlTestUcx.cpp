@@ -181,13 +181,13 @@ TEST_F(NixlUcxIntegrationTest, DramTransfer) {
   ASSERT_FALSE(meta1.empty()) << "Agent 1 metadata is empty";
   ASSERT_FALSE(meta2.empty()) << "Agent 2 metadata is empty";
 
-  status = agent1->loadRemoteMD(meta2, loadedAgentName2);
+  status = agent1->loadRemoteMD(blob_ref{meta2}, loadedAgentName2);
   ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS)
       << "Agent 1 loadRemoteMD(Agent2) failed: "
       << nixlEnumStrings::statusStr(status);
   ASSERT_EQ(loadedAgentName2, agentName2);
 
-  status = agent2->loadRemoteMD(meta1, loadedAgentName1);
+  status = agent2->loadRemoteMD(blob_ref{meta1}, loadedAgentName1);
   ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS)
       << "Agent 2 loadRemoteMD(Agent1) failed: "
       << nixlEnumStrings::statusStr(status);

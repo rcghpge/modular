@@ -377,7 +377,7 @@ public:
    * @param  agent_name [out] Agent name extracted from the loaded metadata blob
    * @return nixl_status_t    Error code if call was not successful
    */
-  nixl_status_t loadRemoteMD(const nixl_blob_t &remote_metadata,
+  nixl_status_t loadRemoteMD(const blob_ref remote_metadata,
                              std::string &agent_name);
 
   /**

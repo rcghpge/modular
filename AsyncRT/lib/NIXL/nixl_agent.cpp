@@ -1056,7 +1056,7 @@ nixlAgent::getLocalPartialMD(const nixl_reg_dlist_t &descs, nixl_blob_t &str,
   return nixl_status_t::NIXL_SUCCESS;
 }
 
-nixl_status_t nixlAgent::loadRemoteMD(const nixl_blob_t &remote_metadata,
+nixl_status_t nixlAgent::loadRemoteMD(const blob_ref remote_metadata,
                                       std::string &agent_name) {
   int count = 0;
   nixlSerDes sd;
@@ -1067,7 +1067,7 @@ nixl_status_t nixlAgent::loadRemoteMD(const nixl_blob_t &remote_metadata,
   nixl_status_t ret;
 
   NIXL_LOCK_GUARD(data->lock);
-  ret = sd.importStr(remote_metadata);
+  ret = sd.importBlob(remote_metadata);
   if (ret != nixl_status_t::NIXL_SUCCESS)
     return ret;
 

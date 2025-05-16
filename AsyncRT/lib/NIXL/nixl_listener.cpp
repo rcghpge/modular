@@ -219,10 +219,11 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
         std::string_view header = command.substr(0, 4);
 
         if (header == "LOAD"sv) {
-          std::string_view remote_md = command.substr(4);
+          // Everything past the header
+          const blob_ref remoteMetaData{command.substr(4)};
           std::string remote_agent;
           nixl_status_t ret =
-              myAgent->loadRemoteMD(std::string(remote_md), remote_agent);
+              myAgent->loadRemoteMD(remoteMetaData, remote_agent);
           if (ret != nixl_status_t::NIXL_SUCCESS) {
             // TODO(GENAI-170): return ErrorOr here.
             NIXL_FATAL << "loadRemoteMD in listener thread failed, critically "

@@ -51,6 +51,10 @@ public:
   std::string exportStr() const;
   nixl_status_t importStr(const std::string &sdbuf);
 
+  /// Imports a blob of data. Prefer this method if dealing
+  /// with non-human readable strings.
+  nixl_status_t importBlob(const blob_ref sdbuf);
+
   static std::string _bytesToString(const void *buf, ssize_t size);
   static void _stringToBytes(void *fill_buf, const std::string &s,
                              ssize_t size);
