@@ -692,6 +692,35 @@ class MO_SingleDeviceWithHostOperands<
 // This trait assumes that the op's first result tensor is on the target device.
 def MO_SingleDevice : MO_SingleDeviceWithHostOperands<>;
 
+// Implements MO_HasDeviceInterface methods for MO_MultiDevice.
+def MO_MultiDeviceTrait : MO_OpTrait<"MOMultiDeviceTrait"> {
+  let extraConcreteClassDefinition = [{
+    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
+      return nullptr;
+    }
+
+    DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
+      return nullptr;
+    }
+
+    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
+      return llvm::to_vector(llvm::map_range(getInputs(), [](Value input) {
+        return getDeviceOrDefaultAny(input.getType());
+      }));
+    }
+  }];
+}
+
+// Marks an op that executes on multiple devices.
+def MO_MultiDevice : TraitList<[
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
+    "getExecutionDeviceConstraint",
+    "getOperandDeviceConstraint",
+    "getExecutionDevices"]>,
+  MO_MultiDeviceTrait,
+]>;
+
+
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,
   MO_SameInputOutputShapesParameterization

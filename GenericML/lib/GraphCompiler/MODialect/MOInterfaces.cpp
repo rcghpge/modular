@@ -618,7 +618,8 @@ LogicalResult Impl::verifyHasDevice(MOHasDeviceInterface op) {
   auto operation = op.getOperation();
   if (operation->hasTrait<MOExecutesOnHostTrait>() ||
       operation->hasTrait<MOHostOnlyTrait>() ||
-      operation->hasTrait<MOSingleDeviceWithHostOperandsTrait>())
+      operation->hasTrait<MOSingleDeviceWithHostOperandsTrait>() ||
+      operation->hasTrait<MOMultiDeviceTrait>())
     return success();
   // Ignore ops from other dialects.
   // In particular, MOtoMOGG assigns a default device even if the operands

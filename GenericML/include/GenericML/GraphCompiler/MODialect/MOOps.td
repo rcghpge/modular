@@ -5251,7 +5251,7 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
 //===----------------------------------------------------------------------===//
 
 class MO_DistributedOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [MO_Distributed]> {
+    : MO_TensorOp<name, traits # [MO_Distributed, MO_MultiDevice]> {
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
   let results   = (outs Variadic<MO_Tensor>:$outputs);
   let assemblyFormat = [{

@@ -266,6 +266,13 @@ public:
 };
 
 template <typename ConcreteType>
+class MOMultiDeviceTrait
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOMultiDeviceTrait> {
+public:
+  // Nothing to verify (yet)
+};
+
+template <typename ConcreteType>
 class MOBufferOpConformance
     : public mlir::OpTrait::TraitBase<ConcreteType, MOBufferOpConformance> {
 public:
