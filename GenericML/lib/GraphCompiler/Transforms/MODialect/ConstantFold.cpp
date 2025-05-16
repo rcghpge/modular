@@ -380,11 +380,8 @@ executeModel(MLIRContext *ctx, const Model *model,
   auto setupErrorOrSuccess = executableModel->waitForModelSetup();
   if (setupErrorOrSuccess.isError()) {
     Error error("Model setup failed, not ready for execution"
-#ifndef MODULAR_PRODUCTION
                 ".  Modular internal detail: " +
-                Twine(setupErrorOrSuccess.getError())
-#endif
-    );
+                Twine(setupErrorOrSuccess.getError()));
     return AsyncRT::EncodedDiagnostic(std::move(error),
                                       model->getLocation().copy());
   }
