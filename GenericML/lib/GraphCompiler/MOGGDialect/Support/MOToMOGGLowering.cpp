@@ -276,7 +276,14 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
 
     auto asTypeAttr = dyn_cast<TypeAttr>(param.getValue());
     if (asTypeAttr) {
-      forwardedParameters.push_back(param);
+      // Try converting TypeAttr to the corresponding DTypeConstantAttr. All
+      // KGEN parameter has to be a TypedAttr.
+      auto typedTypeAttr = KGEN::DTypeConstantAttr::get(
+          asTypeAttr.getContext(),
+          MO::getDTypeOrInvalid(asTypeAttr.getValue()));
+
+      forwardedParameters.push_back(
+          NamedAttribute(param.getName(), typedTypeAttr));
       continue;
     }
 
