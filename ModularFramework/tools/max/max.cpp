@@ -487,7 +487,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   // for caching. Otherwise, python refactors that don't change the module would
   // invalidate the cache.
   // This means that runtime errors may print an old location.
-  // This is prefered to constantly having cache misses.
+  // This is preferred to constantly having cache misses.
   auto stripDebugInfo = mlir::PassManager::on<ModuleOp>(
       mlirCtx, mlir::OpPassManager::Nesting::Implicit);
   stripDebugInfo.addPass(mlir::createStripDebugInfoPass());

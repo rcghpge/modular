@@ -983,7 +983,7 @@ struct PrintVectorSize:
         fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.type, width]:
             if idx[0] == 0:
                 # Only print once
-                # We can't directly print `width` as it's HW-dependant.
+                # We can't directly print `width` as it's HW-dependent.
                 # Instead compare it with the width of i8 / f32.
                 print(
                     "width == simdwidthof[DType.int8]():",

@@ -420,7 +420,7 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
         fuseLoadBufferAndChains(builder, loadOp, kernelOp);
       } else {
         // Transform is much simpler in the case that load fusion has already
-        // occured as we just need to re-write the kernel body to use a buffer
+        // occurred as we just need to re-write the kernel body to use a buffer
         // type (and possibly turn off input fusion for the buffer we're fusing
         // in).
         fuseLoadBuffer(builder, loadOp, kernelOp, false);

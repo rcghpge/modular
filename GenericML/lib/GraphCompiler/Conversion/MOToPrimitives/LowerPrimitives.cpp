@@ -69,7 +69,7 @@ static inline bool canFuseOp(Operation *op) {
 }
 
 static inline bool isAsync(Operation *op) {
-  // Event sync should be launched in a seperate thread.
+  // Event sync should be launched in a separate thread.
   return isa<MGP::SyncOp>(op);
 }
 
