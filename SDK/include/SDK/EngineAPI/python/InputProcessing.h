@@ -14,15 +14,15 @@ namespace nb = nanobind;
 
 namespace M::core {
 
-/// Verifies that `tensor` has the same shape and
+/// Verifies that the array in the nanobind object `obj` has the same shape and
 /// data type as the tensor spec.
-void verifyTensorInputSpecs(const TensorData &obj,
+void verifyTensorInputSpecs(const nb::object &obj,
                             const TensorSpec &inputTensorSpec);
 
-/// Borrows the data from `tensor` into a new
+/// Borrows the data from the array in the nanobind object `obj` into a new
 /// `Tensor` wrapped in an `AsyncValue` and sets its name to
 /// `name`.
-M_AsyncValue *processTensorInput(const TensorData &obj, const std::string &name,
+M_AsyncValue *processTensorInput(const nb::object &obj, const std::string &name,
                                  M_RuntimeContext *context);
 
 /// Recursively converts the nanobind object `pyObj` containing a value composed
