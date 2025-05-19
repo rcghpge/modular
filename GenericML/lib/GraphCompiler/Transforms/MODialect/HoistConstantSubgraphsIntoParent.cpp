@@ -283,10 +283,8 @@ private:
 
     LLVM_DEBUG({
       llvm::dbgs() << "Constant arguments: ";
-      for (unsigned i = 0; i < numArgs; ++i) {
-        if (constantMask[i])
-          llvm::dbgs() << i << " ";
-      }
+      for (unsigned i : constantMask.set_bits())
+        llvm::dbgs() << i << " ";
       llvm::dbgs() << "\n";
     });
 
@@ -372,9 +370,7 @@ private:
     Block *body = graphOp.getBodyBlock();
 
     // Identify operations with all constant results
-    for (Operation &op : *body) {
-      if (op.hasTrait<OpTrait::IsTerminator>())
-        continue;
+    for (Operation &op : body->without_terminator()) {
 
       // Check if all results are constant
       bool allResultsConst = llvm::all_of(op.getResults(), [&](Value result) {
@@ -464,7 +460,7 @@ private:
 
       llvm::dbgs() << "Boundary values: ";
       for (Value boundaryVal : boundaryValues)
-        llvm::dbgs() << boundaryVal << " ";
+        llvm::dbgs() << boundaryVal << "\n";
 
       llvm::dbgs() << "\n";
     });
