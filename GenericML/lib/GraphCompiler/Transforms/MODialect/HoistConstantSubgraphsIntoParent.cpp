@@ -5,14 +5,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "KGEN/KGENDialect/AttrTypeMangler.h"
+#include "KGEN/KGENDialect/KGENOps.h"
+
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/SymbolTable.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include <KGEN/KGENDialect/KGENOps.h>
 
 #define DEBUG_TYPE "hoist-constant-subgraphs-into-parent"
 
@@ -468,64 +472,75 @@ private:
 
   // Hoist constant operations to parent at each callsite
   void hoistConstantOperations(
-      GraphOp graphOp, ArrayRef<CallOp> callsites,
+      GraphOp subgraphGraphOp, ArrayRef<CallOp> callsites,
       const llvm::BitVector &preservedArgs, const llvm::BitVector &constantMask,
       const llvm::SmallSetVector<Operation *, 16> &constantOps,
       const SetVector<Value> &boundaryValues,
       const SmallVector<Operation *> &sortedConstantOps) {
 
-    Block *body = graphOp.getBodyBlock();
-    unsigned numArgs = body->getArguments().size();
+    Block *body = subgraphGraphOp.getBodyBlock();
+    KGEN::ParameterUseDefGraph subgraphParamUseDefGraph(
+        subgraphGraphOp.getBody());
+    KGEN::ParameterCollector::Analysis analysisCache;
+    subgraphParamUseDefGraph.calculate(analysisCache);
+    DenseMap<StringAttr, KGEN::ParamDeclaration> &subgraphDecls =
+        subgraphParamUseDefGraph.decls;
+    llvm::SetVector<StringAttr> subgraphDeclNames;
+    subgraphDeclNames.insert_range(
+        llvm::make_first_range(llvm::make_filter_range(
+            subgraphDecls,
+            [&](const std::pair<StringAttr, KGEN::ParamDeclaration> &decl) {
+              return decl.second.declOp != subgraphGraphOp;
+            })));
 
     for (CallOp callOp : callsites) {
       OpBuilder builder(callOp);
       IRMapping valueMapping;
+      GraphOp parentGraphOp = callOp->getParentOfType<MO::GraphOp>();
+      Region &parentGraphRegion = parentGraphOp.getBody();
+      KGEN::AttrTypeMangler::Cache manglerCache;
+      KGEN::AttrTypeMangler mangler(manglerCache);
+      KGEN::ParameterUseDefGraph paramGraph(parentGraphRegion);
+      paramGraph.calculate(analysisCache);
+      KGEN::NameUniquer uniquer(paramGraph, paramGraph);
+      mangler.populate(builder, uniquer, subgraphDeclNames, paramGraph);
+
+      assert(parentGraphOp && "expected parent graph op");
 
       // Map constant arguments
-      for (unsigned i = 0; i < numArgs; ++i)
-        if (constantMask[i])
-          valueMapping.map(body->getArgument(i), callOp.getOperand(i));
+      for (unsigned i : constantMask.set_bits())
+        valueMapping.map(body->getArgument(i), callOp.getOperand(i));
 
       // Clone constant-derived ops in topological order
       for (Operation *op : sortedConstantOps) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Cloning constant operation: " << *op << "\n");
         Operation *clonedOp = builder.clone(*op, valueMapping);
 
-        // Special case for param decls - we need to unique the name
-        if (auto paramDecl = dyn_cast<KGEN::ParamDeclareOp>(*op)) {
-          // Get the parameter declaration attribute
-          KGEN::ParamDeclAttr decl = paramDecl.getParamDecl();
-          StringRef origName = decl.getName();
-
-          // Find the GraphOp parent to help with name uniquing
-          auto parentGraphOp = builder.getInsertionBlock()
-                                   ->getParentOp()
-                                   ->getParentOfType<MO::GraphOp>();
-
-          assert(parentGraphOp && "expected parent graph op");
-
-          // Create a new unique parameter name
-          std::string uniqueName = parentGraphOp.getNewParamName(origName);
-
-          // Create a new parameter declaration with the unique name and same
-          // type
-          auto newDecl = KGEN::ParamDeclAttr::get(uniqueName, decl.getType());
-
-          // Replace the cloned operation with a new one that uses the unique
-          // name
-          auto newParamOp = builder.create<KGEN::ParamDeclareOp>(
-              clonedOp->getLoc(), newDecl,
-              cast<KGEN::ParamDeclareOp>(clonedOp).getValue());
-
-          // Map the results appropriately
-          for (unsigned i = 0; i < clonedOp->getNumResults(); ++i)
-            valueMapping.map(op->getResult(i), newParamOp->getResult(i));
-
-          // Erase the original cloned operation since we've replaced it
-          clonedOp->erase();
-
-          // Use the new operation for subsequent operations
-          clonedOp = newParamOp;
+        if (auto itf = dyn_cast<KGEN::ParamOpInterface>(*clonedOp)) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Processing ParamOpInterface for operation: "
+                     << *clonedOp << "\n");
+          SmallVector<KGEN::ParamDeclAttr> newDecls;
+          itf.walkDeclarations([&](KGEN::ParamDeclAttr decl) {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "Walking declaration: " << decl.getName() << "\n");
+            newDecls.push_back(
+                mangler.mangleDecl(decl, /*needsMangling=*/true));
+          });
+          cast<KGEN::ParamOpInterface>(clonedOp).renameDeclarations(newDecls);
+          // Populate the new declarations into the call scope graph.
+          for (KGEN::ParamDeclAttr decl : newDecls) {
+            LLVM_DEBUG(llvm::dbgs() << "Adding declaration to param graph: "
+                                    << decl.getName() << "\n");
+            paramGraph.decls.try_emplace(
+                decl.getName(), KGEN::ParamDeclaration{decl.getType(), clonedOp,
+                                                       &parentGraphRegion});
+          }
         }
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Mangling elements in operation: " << *clonedOp << "\n");
+        mangler.mangleElementsIn(clonedOp);
 
         // Map the results for use by subsequent ops
         for (unsigned i = 0; i < op->getNumResults(); ++i)
