@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -605,6 +606,17 @@ LogicalResult checkExecutionDeviceConstraint(MOHasDeviceInterface op,
            << constrainedTo << " but has device " << op.getDeviceRef() << ".";
   }
   return success();
+}
+
+DeviceRefAttr Impl::getFirstResultDevice(Operation *op) {
+  if (op->getNumResults() >= 1) {
+    auto resultType = op->getResult(0).getType();
+    if (auto deviceType = dyn_cast<MOHasDeviceTypeInterface>(resultType))
+      return deviceType.getDeviceRef();
+  }
+  op->emitError(
+      "Expected the first result to have a device type for MO_SingleDevice");
+  return nullptr;
 }
 
 LogicalResult Impl::verifyHostOnly(Operation *op) {

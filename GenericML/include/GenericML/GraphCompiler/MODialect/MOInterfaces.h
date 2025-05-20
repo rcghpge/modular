@@ -183,6 +183,7 @@ LogicalResult verifyExecutesOnHost(Operation *op);
 LogicalResult verifySingleDevice(Operation *op,
                                  ArrayRef<size_t> hostOperandIndices,
                                  ArrayRef<size_t> deviceOperandIndices);
+DeviceRefAttr getFirstResultDevice(Operation *op);
 
 LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);
@@ -235,45 +236,104 @@ public:
 };
 
 template <typename ConcreteType>
-class MOHostOnlyTrait
-    : public mlir::OpTrait::TraitBase<ConcreteType, MOHostOnlyTrait> {
+class MOHostOnly : public mlir::OpTrait::TraitBase<ConcreteType, MOHostOnly> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return Impl::verifyHostOnly(op);
   }
-};
-
-template <typename ConcreteType>
-class MOExecutesOnHostTrait
-    : public mlir::OpTrait::TraitBase<ConcreteType, MOExecutesOnHostTrait> {
-public:
-  static LogicalResult verifyTrait(Operation *op) {
-    return Impl::verifyExecutesOnHost(op);
+  DeviceRefAttr getExecutionDeviceConstraint() {
+    return getHostDevice(this->getOperation()->getContext());
+  }
+  DeviceRefAttr getOperandDeviceConstraint(size_t index) {
+    return getHostDevice(this->getOperation()->getContext());
+  }
+  llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
+    return {getHostDevice(this->getOperation()->getContext())};
   }
 };
 
 template <typename ConcreteType>
-class MOSingleDeviceWithHostOperandsTrait
+class MOExecutesOnHost
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOExecutesOnHost> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return Impl::verifyExecutesOnHost(op);
+  }
+  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
+  DeviceRefAttr getOperandDeviceConstraint(size_t index) { return nullptr; }
+  llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
+    return {getHostDevice(this->getOperation()->getContext())};
+  }
+};
+
+template <typename ConcreteType>
+class MOSingleDeviceWithHostOperands
     : public mlir::OpTrait::TraitBase<ConcreteType,
-                                      MOSingleDeviceWithHostOperandsTrait> {
+                                      MOSingleDeviceWithHostOperands> {
+private:
+  ConcreteType &getConcreteOp() { return static_cast<ConcreteType &>(*this); }
+
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return Impl::verifySingleDevice(
         op, cast<ConcreteType>(op).getHostOperandIndices(),
         cast<ConcreteType>(op).getDeviceOperandIndices());
   }
+  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
+
+  DeviceRefAttr getOperandDeviceConstraint(size_t index) {
+    auto isScalar =
+        llvm::is_contained(getConcreteOp().getHostOperandIndices(), index);
+    return isScalar ? getHostDevice(getConcreteOp().getOperation()) : nullptr;
+  }
+
+  llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
+    // If device operands are not specified in ODS, the first result device is
+    // the execution device.
+    if (getConcreteOp().getDeviceOperandIndices().empty())
+      return {Impl::getFirstResultDevice(getConcreteOp().getOperation())};
+    // Otherwise, the execution device is the device of the first device
+    // operand.
+    auto deviceOperand = getConcreteOp().getOperation()->getOperand(
+        getConcreteOp().getDeviceOperandIndices()[0]);
+    return {
+        cast<MOHasDeviceTypeInterface>(deviceOperand.getType()).getDeviceRef()};
+  }
 };
 
 template <typename ConcreteType>
-class MOMultiDeviceTrait
-    : public mlir::OpTrait::TraitBase<ConcreteType, MOMultiDeviceTrait> {
+class MOMultiDevice
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOMultiDevice> {
+private:
+  ConcreteType &getConcreteOp() { return static_cast<ConcreteType &>(*this); }
+
 public:
-  // Nothing to verify (yet)
+  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
+
+  DeviceRefAttr getOperandDeviceConstraint(size_t index) { return nullptr; }
+
+  llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
+    return llvm::to_vector(
+        llvm::map_range(getConcreteOp().getInputs(), [](Value input) {
+          return cast<MOHasDeviceTypeInterface>(input.getType()).getDeviceRef();
+        }));
+  }
 };
 
 template <typename ConcreteType>
-class MOExplicitDeviceTrait
-    : public mlir::OpTrait::TraitBase<ConcreteType, MOExplicitDeviceTrait> {};
+class MOExplicitDevice
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOExplicitDevice> {
+public:
+  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
+
+  DeviceRefAttr getOperandDeviceConstraint(size_t index) { return nullptr; }
+
+  llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
+    // TODO: Make the deviceRef attribute part of the op's definition.
+    return {dyn_cast_if_present<DeviceRefAttr>(
+        this->getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
+  }
+};
 
 template <typename ConcreteType>
 class MOBufferOpConformance

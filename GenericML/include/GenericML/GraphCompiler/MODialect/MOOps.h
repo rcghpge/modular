@@ -36,14 +36,6 @@ using M::KGEN::ParamDeclArrayAttr;
 using M::KGEN::ParamDeclAttr;
 using M::KGEN::ParameterExprArrayAttr;
 
-namespace M::MO {
-/// Returns the default CPU device.
-///
-/// Forward declared so can be used in MOOps.td, see MODevices.h for rest of
-/// helpers and MODevices.cpp for implementation.
-DeviceRefAttr getFirstResultDevice(Operation *op);
-} // namespace M::MO
-
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//

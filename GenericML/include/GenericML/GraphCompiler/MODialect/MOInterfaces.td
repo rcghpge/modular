@@ -140,7 +140,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns a `#M.device_ref` to the device where this operation executes.
         Assumes that this is not a multi-device operation.
       }],
-      "DeviceRefAttr", "getExecutionDevice", (ins), "",
+      "DeviceRefAttr", "getExecutionDevice", (ins),
       [{
         auto devices = $_op.getExecutionDevices();
         assert(devices.size() == 1 && "Operation must execute on exactly one device");
@@ -577,91 +577,18 @@ class MO_OpTrait<string name, list<Trait> traits = [],
   let cppNamespace = "::M::MO";
 }
 
-// Implements MO_HasDeviceInterface methods for host-only ops.
-def MO_HostOnlyTrait : MO_OpTrait<"MOHostOnlyTrait", [], [{}], [{
-    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
-      return getHostDevice(getContext());
-    }
-    DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
-      return getHostDevice(getContext());
-    }
-    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
-      return {getHostDevice(getContext())};
-    }
-  }]>;
-
 // Marks an op that must execute on the host, with all operands and results also
 // on the host
-def MO_HostOnly : TraitList<[
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
-    "getExecutionDeviceConstraint",
-    "getOperandDeviceConstraint",
-    "getExecutionDevices"]>,
-  MO_HostOnlyTrait
-]>;
-
-// Implements MO_HasDeviceInterface methods for MO_ExecutesOnHost.
-def MO_ExecutesOnHostTrait : MO_OpTrait<"MOExecutesOnHostTrait", [], [{}], [{
-  DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
-    return nullptr;
-  }
-  DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
-    return nullptr;
-  }
-  llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
-    return {getHostDevice(getContext())};
-  }
-}]>;
+def MO_HostOnly : MO_OpTrait<"MOHostOnly">;
 
 // Marks an op that executes on the host using tensors from any device.
-def MO_ExecutesOnHost : TraitList<[
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
-    "getExecutionDeviceConstraint",
-    "getOperandDeviceConstraint",
-    "getExecutionDevices"]>,
-  MO_ExecutesOnHostTrait
-]>;
+def MO_ExecutesOnHost : MO_OpTrait<"MOExecutesOnHost">;
 
 // Helper to get the operand numbers for the given operand names.
 class getOperandNumbers<list<string> operandNames> {
   string ret = !interleave(!foreach(name, operandNames,
     "get" # snakeCaseToCamelCase<name>.ret
     # "Mutable().getOperandNumber()"), ", ");
-}
-
-// Implements MO_HasDeviceInterface methods for MO_SingleDeviceWithHostOperands.
-class MO_SingleDeviceWithHostOperandsTrait<list<string> hostOperandNames = [],
-                                            list<string> deviceOperandNames = []>
-  : MO_OpTrait<"MOSingleDeviceWithHostOperandsTrait">
-{
-  // Make operand names from ODS available as operand indices in C++
-  let extraConcreteClassDeclaration = [{
-    llvm::SmallVector<size_t> getHostOperandIndices() {
-      return {}] # getOperandNumbers<hostOperandNames>.ret # [{};
-    }
-    llvm::SmallVector<size_t> getDeviceOperandIndices() {
-      return {}] # getOperandNumbers<deviceOperandNames>.ret # [{};
-    }
-  }];
-
-  let extraConcreteClassDefinition = [{
-    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
-      return nullptr;
-    }
-
-   DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
-      auto isScalar = llvm::is_contained(getHostOperandIndices(), index);
-      return isScalar ? getHostDevice(getOperation()) : nullptr;
-    }
-
-    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
-      if (getDeviceOperandIndices().empty())
-        return {getFirstResultDevice(this->getOperation())};
-
-      return {getDeviceOrDefaultAny(this->getOperation()->getOperand(
-        getDeviceOperandIndices()[0]).getType())};
-    }
-  }];
 }
 
 // Marks an op that executes on a single device.
@@ -674,79 +601,33 @@ class MO_SingleDeviceWithHostOperandsTrait<list<string> hostOperandNames = [],
 // If deviceOperandNames is empty, the verifier will instead expect all
 // operands not mentioned in hostOperandNames to be on the device. In this case
 // the execution device is inferred from the first result.
-class MO_SingleDeviceWithHostOperands<
-  list<string> hostOperandNames = [],
-  list<string> deviceOperandNames = []>
-  : TraitList<[DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
-    "getExecutionDeviceConstraint",
-    "getOperandDeviceConstraint",
-    "getExecutionDevices"]>,
-  MO_SingleDeviceWithHostOperandsTrait<hostOperandNames, deviceOperandNames>,
-]>;
+class MO_SingleDeviceWithHostOperands<list<string> hostOperandNames = [],
+                                      list<string> deviceOperandNames = []>
+  : MO_OpTrait<"MOSingleDeviceWithHostOperands">
+{
+  // Make operand names from ODS available as operand indices in C++
+  let extraConcreteClassDeclaration = [{
+    llvm::SmallVector<size_t> getHostOperandIndices() {
+      return {}] # getOperandNumbers<hostOperandNames>.ret # [{};
+    }
+    llvm::SmallVector<size_t> getDeviceOperandIndices() {
+      return {}] # getOperandNumbers<deviceOperandNames>.ret # [{};
+    }
+  }];
+}
 
 // Marks an op that executes on a single device, with all operands and results
 // also on the same device.
 // This trait assumes that the op's first result tensor is on the target device.
 def MO_SingleDevice : MO_SingleDeviceWithHostOperands<>;
 
-// Implements MO_HasDeviceInterface methods for MO_MultiDevice.
-def MO_MultiDeviceTrait : MO_OpTrait<"MOMultiDeviceTrait"> {
-  let extraConcreteClassDefinition = [{
-    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
-      return nullptr;
-    }
-
-    DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
-      return nullptr;
-    }
-
-    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
-      return llvm::to_vector(llvm::map_range(getInputs(), [](Value input) {
-        return getDeviceOrDefaultAny(input.getType());
-      }));
-    }
-  }];
-}
-
 // Marks an op that executes on multiple devices.
-def MO_MultiDevice : TraitList<[
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
-    "getExecutionDeviceConstraint",
-    "getOperandDeviceConstraint",
-    "getExecutionDevices"]>,
-  MO_MultiDeviceTrait,
-]>;
-
-
-// Implements MO_HasDeviceInterface methods for MO_ExplicitDevice.
-def MO_ExplicitDeviceTrait : MO_OpTrait<"MOExplicitDeviceTrait"> {
-  let extraConcreteClassDefinition = [{
-    DeviceRefAttr $cppClass::getExecutionDeviceConstraint() {
-      return nullptr;
-    }
-
-    DeviceRefAttr $cppClass::getOperandDeviceConstraint(size_t index) {
-      return nullptr;
-    }
-
-    llvm::SmallVector<DeviceRefAttr> $cppClass::getExecutionDevices() {
-      // TODO: Make the deviceRef attribute part of the op's definition.
-      return {dyn_cast_if_present<DeviceRefAttr>(
-        getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
-    }
-  }];
-}
+def MO_MultiDevice : MO_OpTrait<"MOMultiDevice">;
 
 // Marks an op that stores a deviceRef attribute to indicate where it will
 // execute, in contrast to the other device traits which do not require a
 // deviceRef attribute on the op.
-def MO_ExplicitDevice : TraitList<[
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, [
-    "getExecutionDeviceConstraint",
-    "getOperandDeviceConstraint",
-    "getExecutionDevices"]>,
-  MO_ExplicitDeviceTrait,
-]>;
+def MO_ExplicitDevice : MO_OpTrait<"MOExplicitDevice">;
 
 // Note: we could add a MO_ExplicitDevices trait if we ever add a multi-device
 // op where we can't just infer the devices from the operands and results.

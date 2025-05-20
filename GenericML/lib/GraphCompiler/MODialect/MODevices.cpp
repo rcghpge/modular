@@ -68,17 +68,6 @@ SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
   return devices;
 }
 
-DeviceRefAttr MO::getFirstResultDevice(Operation *op) {
-  if (op->getNumResults() >= 1) {
-    auto resultType = op->getResult(0).getType();
-    if (auto deviceType = dyn_cast<MOHasDeviceTypeInterface>(resultType))
-      return deviceType.getDeviceRef();
-  }
-  op->emitError(
-      "Expected the first result to have a device type for MO_SingleDevice");
-  return nullptr;
-}
-
 bool MO::isOnHost(Operation *op) {
   return getDeviceOrDefaultAny(op) == getHostDevice(op->getContext());
 }

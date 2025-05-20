@@ -347,7 +347,6 @@ def MO_OutputOp : MO_ControlOp<"output", [
 //===----------------------------------------------------------------------===//
 
 def IfOp : MO_ControlOp<"if", [
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
   DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorRegions"]>,
   HasOnlyGraphRegion,
   NoRegionArguments,
@@ -407,7 +406,6 @@ def WhileOp : MO_ControlOp<"while", [
     ["getRegionIterArgs", "getInitsMutable", "getYieldedValuesMutable"]>,
   DeclareOpInterfaceMethods<RegionBranchOpInterface,
     ["getEntrySuccessorOperands"]>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
   HasOnlyGraphRegion,
   RegionKindInterface,
   SingleBlock,
@@ -2539,7 +2537,6 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
   MO_HostOnly
 ]> {
   let summary = "Squeeze-shape operation";
@@ -2586,7 +2583,6 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
 def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDeviceConstraint"]>,
   MO_HostOnly
 ]> {
   let summary = "Unsqueeze-shape operation";
