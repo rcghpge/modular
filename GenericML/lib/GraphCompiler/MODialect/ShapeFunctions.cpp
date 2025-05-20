@@ -512,8 +512,8 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     maybeStartConst = tryGetConstantInt(start.getAttr());
     maybeStopConst = tryGetConstantInt(stop.getAttr());
     if (maybeStartConst && maybeStopConst) {
-      [[maybe_unused]] int64_t startConst = *maybeStartConst;
-      [[maybe_unused]] int64_t stopConst = *maybeStopConst;
+      int64_t startConst = *maybeStartConst;
+      int64_t stopConst = *maybeStopConst;
       if (!((step > 0 && (startConst <= stopConst)) ||
             (step < 0 && (startConst >= stopConst))))
         return ShapeMaterializeResult::error(llvm::formatv(
