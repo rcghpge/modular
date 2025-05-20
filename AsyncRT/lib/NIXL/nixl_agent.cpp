@@ -638,11 +638,21 @@ nixl_status_t nixlAgent::createXferReq(
   }
 
   // Check the correspondence between descriptor lists
-  if (local_descs.descCount() != remote_descs.descCount())
+  if (local_descs.descCount() != remote_descs.descCount()) {
+    NIXL_ERROR << "The local and remote descriptor lists have different sizes ("
+               << local_descs.descCount() << " != " << remote_descs.descCount()
+               << ")\n";
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
-  for (int i = 0; i < local_descs.descCount(); ++i)
-    if (local_descs[i].len != remote_descs[i].len)
+  }
+  for (int i = 0; i < local_descs.descCount(); ++i) {
+    size_t local_len = local_descs[i].len;
+    size_t remote_len = remote_descs[i].len;
+    if (local_len != remote_len) {
+      NIXL_ERROR << "Local and remote descriptor has different lengths ("
+                 << local_len << " != " << remote_len << ")\n";
       return nixl_status_t::NIXL_ERR_INVALID_PARAM;
+    }
+  }
 
   if (!extra_params || extra_params->backends.size() == 0) {
     // Finding backends that support the corresponding memories
@@ -652,8 +662,15 @@ nixl_status_t nixlAgent::createXferReq(
     backend_set_t *remote_set =
         data->remoteSections[remote_agent]->queryBackends(
             remote_descs.getType());
-    if (!local_set || !remote_set) {
+
+    if (local_set->empty()) {
       delete backend_set;
+      NIXL_ERROR << "The local backend set is empty\n";
+      return nixl_status_t::NIXL_ERR_NOT_FOUND;
+    }
+    if (remote_set->empty()) {
+      delete backend_set;
+      NIXL_ERROR << "The remote backend set is empty\n";
       return nixl_status_t::NIXL_ERR_NOT_FOUND;
     }
 
@@ -663,6 +680,8 @@ nixl_status_t nixlAgent::createXferReq(
 
     if (backend_set->empty()) {
       delete backend_set;
+      NIXL_ERROR
+          << "Unable to find a common backend between local and remote\n";
       return nixl_status_t::NIXL_ERR_NOT_FOUND;
     }
   } else {
