@@ -17,11 +17,10 @@ using namespace M;
 
 namespace nb = nanobind;
 
-/// Verifies that the array in the nanobind object `obj` has the same shape and
+/// Verifies that `tensor` has the same shape and
 /// data type as the tensor spec.
-void core::verifyTensorInputSpecs(const nb::object &obj,
+void core::verifyTensorInputSpecs(const TensorData &tensor,
                                   const TensorSpec &inputTensorSpec) {
-  TensorData tensor = nb::cast<core::TensorData>(obj);
   // Assert the input tensor has the same tensor specification
   // Assert same dtype.
   if (M::DType expectedDtype = inputTensorSpec.getDtype();
@@ -60,13 +59,12 @@ void core::verifyTensorInputSpecs(const nb::object &obj,
   }
 }
 
-/// Borrows the data from the array in the nanobind object `obj` into a new
+/// Borrows the data from `tensor` into a new
 /// `Tensor` wrapped in an `AsyncValue` and sets its name to
 /// `name`.
-M_AsyncValue *core::processTensorInput(const nb::object &obj,
+M_AsyncValue *core::processTensorInput(const TensorData &tensor,
                                        const std::string &name,
                                        M_RuntimeContext *context) {
-  TensorData tensor = nb::cast<core::TensorData>(obj);
   TensorSpecPtr tensorSpec{M_newTensorSpec(
       tensor.shape.data(), tensor.shape.size(),
       static_cast<M_Dtype>(tensor.dtype.getValue()), name.c_str())};
@@ -88,8 +86,8 @@ M_AsyncValue *core::processTensorInput(const nb::object &obj,
 M_AsyncValue *core::processValueInput(const nb::object &pyObj,
                                       M_RuntimeContext *context,
                                       M_Status *status) {
-  if (nb::isinstance<core::TensorData>(pyObj))
-    return processTensorInput(pyObj, /*name=*/"", context);
+  if (core::TensorData * tensor; nb::try_cast(pyObj, tensor))
+    return processTensorInput(*tensor, /*name=*/"", context);
 
   if (nb::dict pyDict; nb::try_cast(pyObj, pyDict)) {
     M_AsyncValue *dictValue = M_createDictAsyncValue(context);
