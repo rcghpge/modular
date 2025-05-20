@@ -422,8 +422,8 @@ canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
   OpBuilder builder(op);
   builder.setInsertionPoint(op);
   int64_t newAxis = axis + inputTy.getRank();
-  auto newAxisOp = builder.create<ConstantOp>(
-      op.getLoc(), newAxis, MO::getHostDevice(op.getContext()));
+  auto newAxisOp = builder.create<ConstantOp>(op.getLoc(), newAxis,
+                                              getHostDevice(op.getContext()));
   rewriter.modifyOpInPlace(op,
                            [&] { op->setOperand(operandIndex, newAxisOp); });
   return success();
@@ -651,7 +651,7 @@ DeviceRefAttr InvokeShapeFuncOp::getOperandDeviceConstraint(size_t index) {
   for (Attribute attr : dataDeps->getValue()) {
     auto intAttr = cast<mlir::IntegerAttr>(attr);
     if (static_cast<size_t>(intAttr.getInt()) == index) {
-      return MO::getHostDevice(getOperation());
+      return getHostDevice(getOperation());
     }
   }
 
@@ -1780,7 +1780,7 @@ void buildConstant(OpBuilder &odsBuilder, OperationState &odsState,
                    ArrayRef<T> values, Type elementType,
                    DeviceRefAttr deviceRef) {
   if (!deviceRef)
-    deviceRef = MO::getHostDevice(odsBuilder.getContext());
+    deviceRef = getHostDevice(odsBuilder.getContext());
   auto type =
       MO::TensorType::get({(int64_t)values.size()}, elementType, deviceRef);
   ElementsAttr valueAttr = createElementsAttr(odsBuilder, values, elementType);
@@ -1791,7 +1791,7 @@ template <typename T>
 void buildConstantScalar(OpBuilder &odsBuilder, OperationState &odsState,
                          T value, Type elementType, DeviceRefAttr deviceRef) {
   if (!deviceRef)
-    deviceRef = MO::getHostDevice(odsBuilder.getContext());
+    deviceRef = getHostDevice(odsBuilder.getContext());
   auto type =
       MO::TensorType::get(SmallVector<int64_t>{}, elementType, deviceRef);
   ElementsAttr valueAttr = createElementsAttr(
@@ -2507,7 +2507,7 @@ void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<TOp>(
       odsBuilder, odsState, input,
       odsBuilder.create<ConstantOp>(input.getLoc(), axis,
-                                    MO::getHostDevice(odsBuilder.getContext())),
+                                    getHostDevice(odsBuilder.getContext())),
       outputTy);
 }
 
@@ -3798,7 +3798,7 @@ void ShapeOfOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   // TODO(#18749): don't introduce `?` with operations.
   build(odsBuilder, odsState,
         MO::TensorType::get({outputSize}, intTy,
-                            MO::getHostDevice(odsBuilder.getContext())),
+                            getHostDevice(odsBuilder.getContext())),
         input);
 }
 

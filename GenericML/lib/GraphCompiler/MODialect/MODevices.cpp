@@ -68,14 +68,6 @@ SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
   return devices;
 }
 
-DeviceRefAttr MO::getHostDevice(MLIRContext *ctx) {
-  return DeviceRefAttr::getDefault(ctx);
-}
-
-DeviceRefAttr MO::getHostDevice(Operation *op) {
-  return getHostDevice(op->getContext());
-}
-
 DeviceRefAttr MO::getFirstResultDevice(Operation *op) {
   if (op->getNumResults() >= 1) {
     auto resultType = op->getResult(0).getType();

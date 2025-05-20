@@ -44,7 +44,7 @@ std::optional<M::DeviceRefAttr> M::RMO::getDeviceIfAvailable(Type t) {
   auto asBufferType = dyn_cast<M::MO::BufferType>(t);
   if (asBufferType)
     return asBufferType.getDeviceRef();
-  return MO::getHostDevice(t.getContext());
+  return getHostDevice(t.getContext());
 }
 
 std::optional<M::DeviceRefAttr> M::RMO::getDeviceIfAvailable(Value v) {
@@ -91,7 +91,7 @@ inferDeviceAsFirstOperandRestHost(TypeRange tys) {
       continue;
 
     auto ctx = (*tys.begin()).getContext();
-    if (*newDevice != MO::getHostDevice(ctx))
+    if (*newDevice != getHostDevice(ctx))
       return Error("Remaining operands are not on host!");
   }
   if (!device.has_value())

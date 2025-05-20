@@ -943,7 +943,7 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
         promoteDTypes(rewriter, conv.getLoc(), resultType.getDtype(),
                       conv.getInput(), conv.getFilter());
 
-    auto device = MO::getHostDevice(conv.getContext());
+    auto device = getHostDevice(conv.getContext());
     auto stridesConstant = shapeToIndicesTensor(rewriter, loc, strides, device);
 
     auto paddingConstant =
@@ -1109,11 +1109,11 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
 
     // Convert attributes to tensor constants expected by `mo.top_k`.
     auto k =
-        rewriter.create<MO::ConstantOp>(loc, op.getK(), MO::getHostDevice(ctx));
-    auto axis = rewriter.create<MO::ConstantOp>(loc, op.getAxis(),
-                                                MO::getHostDevice(ctx));
+        rewriter.create<MO::ConstantOp>(loc, op.getK(), getHostDevice(ctx));
+    auto axis =
+        rewriter.create<MO::ConstantOp>(loc, op.getAxis(), getHostDevice(ctx));
     auto sorted = rewriter.create<MO::ConstantOp>(loc, /*value=*/true,
-                                                  MO::getHostDevice(ctx));
+                                                  getHostDevice(ctx));
 
     // Create the MO::TopKOp with proper result types
     auto topkOp = rewriter.create<MO::TopKOp>(
@@ -1155,7 +1155,7 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
 
     // Convert start/stop/step to tensors expected by mo.slice.
     auto indicesType = TensorType::getVectorSI64Type(ctx, startsAttr.getRank(),
-                                                     MO::getHostDevice(ctx));
+                                                     getHostDevice(ctx));
     auto toTensorOp = [loc = loc, indicesType = indicesType,
                        &rewriter](ShapeAttr attr) -> Value {
       auto constOp = rewriter.create<MOSH::ParamToValueOp>(loc, attr);

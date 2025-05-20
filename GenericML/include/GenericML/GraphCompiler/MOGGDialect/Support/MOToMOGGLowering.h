@@ -55,7 +55,7 @@ public:
 
 private:
   DeviceRefAttr getDevice() const { return MO::getDeviceOrDefaultAny(moOp); }
-  DeviceRefAttr getHostDevice() const { return MO::getHostDevice(graphOp); }
+  DeviceRefAttr getHostDevice() const { return M::getHostDevice(graphOp); }
 
   using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
   KernelCallInterface lowerToElementwiseKernel(ExpKernelOp kernelOp,

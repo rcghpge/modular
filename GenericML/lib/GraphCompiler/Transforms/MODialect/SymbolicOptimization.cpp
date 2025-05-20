@@ -2558,7 +2558,7 @@ struct SplitToSlicePattern
 
     // Step is the same for each slice.
     SmallVector<int64_t> step(rank, 1);
-    DeviceRefAttr host = MO::getHostDevice(op);
+    DeviceRefAttr host = getHostDevice(op);
     Value stepVal = rewriter.create<MO::ConstantOp>(loc, step, host);
 
     int64_t startVal = 0, splitIndex = 0;

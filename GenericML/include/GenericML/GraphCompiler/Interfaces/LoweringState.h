@@ -45,7 +45,7 @@ public:
                        size_t minimumCpuAlignment)
       : graph(graph), common(compiledFrameworkLabel, minimumCpuAlignment),
         init(graph.getContext()), execute(graph.getContext()) {
-    builderContext.hostDevice = MO::getHostDevice(graph);
+    builderContext.hostDevice = M::getHostDevice(graph);
 
     // Add converters for MO native types.
     typeConverter.addConversion(

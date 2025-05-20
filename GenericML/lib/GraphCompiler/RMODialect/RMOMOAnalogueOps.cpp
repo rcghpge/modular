@@ -748,9 +748,9 @@ void MORangeOp::inferMOTypesImpl(
   TensorValue step = cast<TensorValue>(operands.getStep());
   TensorValue limit = cast<TensorValue>(operands.getLimit());
 
-  auto scalarTensorType = TensorType::get(SmallVector<TypedAttr>{},
-                                          start.getType().getElementType(),
-                                          MO::getHostDevice(context));
+  auto scalarTensorType =
+      TensorType::get(SmallVector<TypedAttr>{},
+                      start.getType().getElementType(), getHostDevice(context));
 
   moOperandTypes.push_back(scalarTensorType);
   moOperandTypes.push_back(scalarTensorType);
@@ -764,7 +764,7 @@ void MORangeOp::inferMOTypesImpl(
   if (rmoResults.has_value())
     outDevice = getDevice((*rmoResults)[0]);
   else
-    outDevice = MO::getHostDevice(context);
+    outDevice = getHostDevice(context);
   auto result = [&]() -> std::optional<TensorType> {
     auto startInt = tryGetConstantInt(start);
     auto stepInt = tryGetConstantInt(step);
