@@ -178,7 +178,6 @@ LogicalResult verifyMOSameOperandsAndResultShapeAttr(Operation *op);
 LogicalResult verifyMOSameOperandsAndResultShape(Operation *op);
 LogicalResult verifyMOSameOperandsElementType(Operation *op);
 LogicalResult verifyMOSameFirstOperandAndResultsElementType(Operation *op);
-LogicalResult verifyHasDevice(MOHasDeviceInterface op);
 LogicalResult verifyHostOnly(Operation *op);
 LogicalResult verifyExecutesOnHost(Operation *op);
 LogicalResult verifySingleDevice(Operation *op,
