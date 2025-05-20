@@ -58,6 +58,13 @@ static bool matchConvertedMOTypeToKernelType(
   return false;
 }
 
+static StringRef moOperationName(Operation *op) {
+  if (auto customOp = dyn_cast<MO::CustomOp>(op))
+    return customOp.getSymbol();
+
+  return op->getName().getStringRef();
+}
+
 // If matchOperands is set to true, this function will not attempt to validate
 // results. Conversely, if set to false, it will do extra checks beyond DPS
 // arguments with result types.
@@ -128,12 +135,12 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
 
     if (!matched) {
       return Error(llvm::formatv(
-          "Custom op '{}' {} at position {} does not match registered kernel "
+          "Op '{}' {} at position {} does not match registered kernel "
           "operand at "
           "position {}: {} vs {}",
-          op->getAttrOfType<StringAttr>("symbol").getValue(), argumentKind,
-          moOpIndex, kernelType->sourceDescriptor->position,
-          *moTypeToMojoKernelOperand, *kernelType));
+          moOperationName(op), argumentKind, moOpIndex,
+          kernelType->sourceDescriptor->position, *moTypeToMojoKernelOperand,
+          *kernelType));
     }
 
     mapping[moOpIndex] = *kernelType;
@@ -169,10 +176,10 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   // there are missing operands or results form the MO op.
   if (!kernelEnd) {
     return Error(llvm::formatv(
-        "Could not provide all {} arguments to custom op '{}': missing "
+        "Could not provide all {} arguments to op '{}': missing "
         "operands "
         "starting from argument named '{}'",
-        argumentKind, op->getAttrOfType<StringAttr>("symbol").getValue(),
+        argumentKind, moOperationName(op),
         kernelOperands[kernelIndex].sourceDescriptor->sourceName.str()));
   }
 
@@ -180,10 +187,10 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   // operands or else, we are missing inputs on the kernel.
   if constexpr (matchOperands) {
     if (!moOpEnd) {
-      return Error(llvm::formatv(
-          "Custom op '{}' has too many operands: operands starting "
-          "at position {} has no equivalent in kernel",
-          op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex));
+      return Error(
+          llvm::formatv("Op '{}' has too many operands: operands starting "
+                        "at position {} has no equivalent in kernel",
+                        moOperationName(op), moOpIndex));
     }
     return mapping;
   }
@@ -198,36 +205,35 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   // 1. We have remaining results on the op but not on the kernel.
   if (moType.has_value() && !adaptor.outputResult.has_value()) {
     return Error(llvm::formatv(
-        "Custom op '{}' has too many results: results starting at position {} "
+        "Op '{}' has too many results: results starting at position {} "
         "have no "
         "equivalent output argument or function result in kernel",
-        op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex));
+        moOperationName(op), moOpIndex));
   }
 
   // 2. We have a remaining result on the kernel but nothing on the op.
   if (!moType.has_value() && adaptor.outputResult.has_value()) {
     return Error(
-        llvm::formatv("Custom op '{}' is missing a result for kernel function "
+        llvm::formatv("Op '{}' is missing a result for kernel function "
                       "result of type {}",
-                      op->getAttrOfType<StringAttr>("symbol").getValue(),
-                      *adaptor.outputResult));
+                      moOperationName(op), *adaptor.outputResult));
   }
 
   auto moTypeToMojoKernelOperand = MOTypeToMojoKernelOperand(*moType);
   if (!moTypeToMojoKernelOperand.has_value()) {
-    return Error(llvm::formatv(
-        "Custom op '{}': Unsupported op result type at position {}",
-        op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex));
+    return Error(
+        llvm::formatv("Op '{}': Unsupported op result type at position {}",
+                      moOperationName(op), moOpIndex));
   }
 
   // 3. We have results for both but they don't match.
   if (!matchConvertedMOTypeToKernelType(*moTypeToMojoKernelOperand,
                                         adaptor.outputResult->underlyingType)) {
-    return Error(llvm::formatv(
-        "Custom op '{}' output at position {} does not match kernel "
-        "function result; op has {} but kernel has {}",
-        op->getAttrOfType<StringAttr>("symbol").getValue(), moOpIndex,
-        *moTypeToMojoKernelOperand, *adaptor.outputResult));
+    return Error(
+        llvm::formatv("Op '{}' output at position {} does not match kernel "
+                      "function result; op has {} but kernel has {}",
+                      moOperationName(op), moOpIndex,
+                      *moTypeToMojoKernelOperand, *adaptor.outputResult));
   }
   mapping[moOpIndex] = *adaptor.outputResult;
 

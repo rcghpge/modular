@@ -225,7 +225,7 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
       } else {
         // If the first result was a chain type, we need to rotate the results
         // back
-        if (!op->getResultTypes().empty() &&
+        if (!MOGG::useExperimentalMOGGPath() && !op->getResultTypes().empty() &&
             isa<MO::ChainType>(op->getResultTypes()[0])) {
           auto newResults =
               SmallVector<Value>(results.takeValue()->getResults());
