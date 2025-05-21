@@ -497,15 +497,25 @@ LogicalResult CallOp::verify() {
     return emitError() << "Subgraph " << graphOp.getName()
                        << " has wrong number of arguments";
 
+  auto emitErrorFn = [&](size_t idx, Type graphArgType, Type operandType) {
+    auto diag = emitError() << "Subgraph " << graphOp.getName()
+                            << " has wrong type for argument " << idx
+                            << " (function type: " << graphArgType
+                            << ", operand type: " << operandType << ")";
+    diag.attachNote(graphOp.getLoc()) << "graph op here";
+    return failure();
+  };
   for (auto [idx, graphArgType, operandType] : llvm::enumerate(
            graphOp.getFunctionType().getInputs(), getOperandTypes())) {
-    if (graphArgType != operandType) {
-      auto diag = emitError() << "Subgraph " << graphOp.getName()
-                              << " has wrong type for argument " << idx
-                              << " (function type: " << graphArgType
-                              << ", operand type: " << operandType << ")";
-      diag.attachNote(graphOp.getLoc()) << "graph op here";
-      return failure();
+    if (isa<TensorType>(graphArgType) && isa<TensorType>(operandType)) {
+      auto graphArgTensorType = cast<TensorType>(graphArgType);
+      auto operandTensorType = cast<TensorType>(operandType);
+      if (graphArgTensorType.cloneWithoutLayout() !=
+          operandTensorType.cloneWithoutLayout()) {
+        return emitErrorFn(idx, graphArgType, operandType);
+      }
+    } else if (graphArgType != operandType) {
+      return emitErrorFn(idx, graphArgType, operandType);
     }
   }
 
