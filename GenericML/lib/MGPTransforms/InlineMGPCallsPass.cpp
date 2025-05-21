@@ -255,7 +255,7 @@ struct InlineMGPCallsPass
 
       // Clone operations from subgraph's init block, excluding context.create
       // and terminator
-      for (Operation &subOp : subgraphInit->getOperations()) {
+      for (Operation *subOp : getDataflowOrder(subgraphInit)) {
         // Skip the context.create op as parent already has one
         if (isa<ContextCreateOp>(subOp))
           continue;
@@ -263,7 +263,7 @@ struct InlineMGPCallsPass
         // Ensure subgraph init output chain is waited upon by the parent's init
         // terminator, but don't clone the op.
         if (isa<MEF::OutputOp>(subOp)) {
-          Value subgraphOutputChain = initMap.lookup(subOp.getOperand(0));
+          Value subgraphOutputChain = initMap.lookup(subOp->getOperand(0));
           assert(subgraphOutputChain &&
                  "Subgraph init block is missing an output chain");
 
@@ -280,7 +280,7 @@ struct InlineMGPCallsPass
           continue;
         }
 
-        initBuilder.clone(subOp, initMap);
+        initBuilder.clone(*subOp, initMap);
       }
     }
 
@@ -300,14 +300,12 @@ struct InlineMGPCallsPass
 
     // Clone operations from the subgraph's execute block, excluding the
     // terminator
-    for (auto &subOp : llvm::make_range(subgraphExec->begin(),
-                                        std::prev(subgraphExec->end()))) {
-      // Clone the operation with remapped operands
-      Operation *clonedOp = execBuilder.clone(subOp, valueMap);
+    for (Operation *subOp : getDataflowOrder(subgraphExec)) {
+      if (subOp == subgraphExec->getTerminator())
+        continue;
 
-      // Add mappings for the results
-      for (unsigned i = 0; i < subOp.getNumResults(); ++i)
-        valueMap.map(subOp.getResult(i), clonedOp->getResult(i));
+      // Clone the operation with remapped operands
+      execBuilder.clone(*subOp, valueMap);
     }
 
     // Map the return values of the subgraph to the results of the call
