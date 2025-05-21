@@ -533,6 +533,8 @@ private:
                 decl.getName(), KGEN::ParamDeclaration{decl.getType(), clonedOp,
                                                        &parentGraphRegion});
           }
+          parentGraphOp.setCounter(parentGraphOp.getCounter() +
+                                   newDecls.size());
         }
         LLVM_DEBUG(llvm::dbgs()
                    << "Mangling elements in operation: " << *clonedOp << "\n");
