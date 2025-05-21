@@ -2665,7 +2665,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  MO_HostOnly
+  MO_SingleDevice
 ]> {
   let summary = "Broadcast-shape operation";
   let description = [{

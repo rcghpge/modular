@@ -69,7 +69,14 @@ SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
 }
 
 bool MO::isOnHost(Operation *op) {
-  return getDeviceOrDefaultAny(op) == getHostDevice(op->getContext());
+  if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op)) {
+    auto devices = hasDeviceOp.getExecutionDevices();
+    auto hostDevice = getHostDevice(op);
+    return std::all_of(
+        devices.begin(), devices.end(),
+        [&](DeviceRefAttr device) { return device == hostDevice; });
+  }
+  return true;
 }
 
 bool MO::isOnHost(Type type) {
@@ -95,10 +102,15 @@ ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
 // DeviceAnnots
 //===----------------------------------------------------------------------===//
 
+static DeviceRefAttr getDeviceRef(MOHasDeviceInterface op) {
+  return dyn_cast_if_present<DeviceRefAttr>(
+      op->getAttr(kOperationDeviceRefAttrName));
+}
+
 DeviceAnnots DeviceAnnots::forOp(Operation *op) {
   DeviceAnnots metadata;
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op))
-    metadata.device = hasDevice.getDeviceRef();
+    metadata.device = getDeviceRef(hasDevice);
   return metadata;
 }
 
@@ -118,7 +130,8 @@ bool DeviceAnnots::addOp(Operation *op) {
 
 Operation *DeviceAnnots::stampAny(Operation *op) const {
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
-    if (device && !hasDevice.getDeviceRef())
+    auto deviceRefAttr = getDeviceRef(hasDevice);
+    if (device && !deviceRefAttr)
       hasDevice.setDeviceRef(device);
   }
   // If the op does not support device annotations then we'll just ignore

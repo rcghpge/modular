@@ -97,7 +97,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         no such annotation.
       }],
       "DeviceRefAttr", "getDeviceRef", (ins ), [{}],
-      [{ return dyn_cast_if_present<DeviceRefAttr>($_op->getAttr(kOperationDeviceRefAttrName)); }]
+      [{ return getExecutionDevice(); }]
     >,
 
     InterfaceMethod<
