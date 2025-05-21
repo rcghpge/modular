@@ -53,7 +53,7 @@ class CUDADevice : public Device {
 public:
   static constexpr API api = Device::cudaAPI;
 
-  using DeviceList = std::vector<CUDADeviceRef>;
+  using DeviceList = std::vector<CUDADevice *>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
              CUcontext context, std::string name, size_t allocAlignment);

@@ -441,7 +441,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
   if (errOrDevices) {
     return errOrDevices.takeError();
   }
-  return *errOrDevices.get()[id];
+  return *(errOrDevices.get()[id]);
 }
 
 ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
@@ -474,7 +474,7 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
       CUDA_CHECK_ERR(driver.DevicePrimaryCtxRetain(&context, device));
 
       devices.emplace_back(
-          CUDADeviceRef::create(driver, i, device, context, name, alignment));
+          new CUDADevice(driver, i, device, context, name, alignment));
     }
     return success();
   }();

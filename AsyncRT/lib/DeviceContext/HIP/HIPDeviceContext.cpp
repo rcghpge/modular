@@ -397,7 +397,7 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
   if (errOrDevices) {
     return errOrDevices.takeError();
   }
-  return *errOrDevices.get()[id];
+  return *(errOrDevices.get()[id]);
 }
 
 ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
@@ -423,8 +423,7 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
           &alignment, hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment,
           device));
 
-      devices.emplace_back(
-          HIPDeviceRef::create(driver, i, device, name, alignment));
+      devices.emplace_back(new HIPDevice(driver, i, device, name, alignment));
     }
     return success();
   }();

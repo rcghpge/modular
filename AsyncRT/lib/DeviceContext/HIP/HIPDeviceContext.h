@@ -48,7 +48,7 @@ class HIPDevice : public Device {
 public:
   static constexpr API api = Device::hipAPI;
 
-  using DeviceList = std::vector<HIPDeviceRef>;
+  using DeviceList = std::vector<HIPDevice *>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
             std::string name, size_t allocAlignment);
   ~HIPDevice() override;
