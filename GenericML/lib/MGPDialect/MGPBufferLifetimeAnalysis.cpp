@@ -438,6 +438,13 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
       if (isa<GRT::GRTControlFlowInterface>(*use.getOwner()))
         return Error("control flow op may alias");
 
+      if (isa<MGP::CallOp>(*use.getOwner()))
+        return Error("call op may alias");
+
+      if (use.getOwner()->hasTrait<mlir::OpTrait::IsTerminator>() &&
+          use.getOwner()->getParentOfType<MGP::ModelOp>().getIsSubgraph())
+        return Error("terminator op of subgraph may alias");
+
       if (isBufferOperand &&
           isa<GRT::GRTMayAliasInterface, GRT::GRTExtendsLifetimeInterface>(
               *use.getOwner()))
