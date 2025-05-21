@@ -309,8 +309,8 @@ static ErrorOr<size_t> getSystemValue(int name) {
   return static_cast<size_t>(value);
 }
 
-ErrorOr<DeviceContext::MemInfo> CpuDeviceContext::getMemoryInfo() const {
-  MemInfo info;
+ErrorOr<Device::MemInfo> CpuDeviceContext::getMemoryInfo() const {
+  Device::MemInfo info;
   auto numPages = getSystemValue(_SC_PHYS_PAGES);
   if (numPages.isError())
     return numPages.takeError();

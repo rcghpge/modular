@@ -98,6 +98,12 @@ public:
     ASYNC = 3,
   };
 
+  struct MemInfo {
+    MemInfo() : total(0), free(0) {}
+    size_t total;
+    size_t free;
+  };
+
   virtual ~Device();
 
   const std::string &name() const;
@@ -375,12 +381,6 @@ private:
 
 class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
-  struct MemInfo {
-    MemInfo() : total(0), free(0) {}
-    size_t total;
-    size_t free;
-  };
-
   virtual ~DeviceContext();
 
   const Device &device() const;
@@ -463,7 +463,7 @@ public:
 
   virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
 
-  virtual ErrorOr<MemInfo> getMemoryInfo() const = 0;
+  virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
   BufferCache &bufferCache() const;
 

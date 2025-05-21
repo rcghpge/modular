@@ -354,7 +354,7 @@ public:
   /// Makes all allocations on `peer` accessible from this context.
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
-  ErrorOr<MemInfo> getMemoryInfo() const override;
+  ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   const CUDADriver &cudaDriver() const;
   CUcontext cudaContext() const;

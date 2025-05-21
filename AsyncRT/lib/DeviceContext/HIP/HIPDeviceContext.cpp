@@ -317,7 +317,7 @@ ErrorOr<DeviceContextRef> HIPDevice::createContext() const {
   size_t cacheChunkSize = 0;
   size_t maxCacheSize = 0;
   constexpr size_t KB = 1024; // NOLINT
-  DeviceContext::MemInfo memInfo;
+  Device::MemInfo memInfo;
   HIP_CHECK_ERR(this->hipDriver().GetMemInfo(&memInfo.free, &memInfo.total));
   // Make the buffer cache disabled by setting percentages to zero.
   // Limit to 90% (default) of available memory.
@@ -957,8 +957,8 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   return success();
 }
 
-ErrorOr<DeviceContext::MemInfo> HIPDeviceContext::getMemoryInfo() const {
-  MemInfo memInfo;
+ErrorOr<Device::MemInfo> HIPDeviceContext::getMemoryInfo() const {
+  Device::MemInfo memInfo;
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
   return memInfo;

@@ -273,7 +273,7 @@ public:
 
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
-  ErrorOr<MemInfo> getMemoryInfo() const override;
+  ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;

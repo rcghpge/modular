@@ -369,7 +369,7 @@ ErrorOr<DeviceContextRef> CUDADevice::createContext() const {
   size_t cacheChunkSize = 0;
   size_t maxCacheSize = 0;
   constexpr size_t KB = 1024; // NOLINT
-  DeviceContext::MemInfo memInfo;
+  Device::MemInfo memInfo;
   CUDA_CHECK_ERR(this->cudaDriver().GetMemInfo(&memInfo.free, &memInfo.total));
   // Make the buffer cache disabled by setting percentages to zero.
   // Limit to 90% (default) of available memory.
@@ -1428,8 +1428,8 @@ CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   return success();
 }
 
-ErrorOr<DeviceContext::MemInfo> CUDADeviceContext::getMemoryInfo() const {
-  MemInfo memInfo;
+ErrorOr<Device::MemInfo> CUDADeviceContext::getMemoryInfo() const {
+  Device::MemInfo memInfo;
   CUDA_WITH_CTX(*this);
   // To get more accurate memory stats, ensure that at least all pending memory
   // allocations and frees have completed for this context's stream.

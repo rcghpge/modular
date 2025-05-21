@@ -142,7 +142,7 @@ public:
 
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
-  ErrorOr<MemInfo> getMemoryInfo() const override;
+  ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);
 
