@@ -140,7 +140,7 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
         Returns a `#M.device_ref` to the device where this operation executes.
         Assumes that this is not a multi-device operation.
       }],
-      "DeviceRefAttr", "getExecutionDevice", (ins),
+      "DeviceRefAttr", "getExecutionDevice", (ins), "",
       [{
         auto devices = $_op.getExecutionDevices();
         assert(devices.size() == 1 && "Operation must execute on exactly one device");
