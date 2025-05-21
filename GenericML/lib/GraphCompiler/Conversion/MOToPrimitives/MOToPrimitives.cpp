@@ -2192,7 +2192,7 @@ LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
 
   // First, we need the implicit arguments
   // Get chain, context, weights registry from the current model's execute block
-  callOperands.push_back(loweringState.getExecuteChain());
+  callOperands.push_back(loweringState.getCurrentExecuteChain());
   callOperands.push_back(loweringState.getExecuteMgpContext());
   callOperands.push_back(loweringState.getExecuteWeightsRegistry());
 
@@ -2234,13 +2234,19 @@ LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
   auto targetSymbol = SymbolRefAttr::get(targetModel.getSymNameAttr());
   auto mgpCallOp = opLoweringState.create<MGP::CallOp>(
       resultTypes, targetSymbol, callOperands);
+  Value callOutChain = mgpCallOp.getResult(0);
 
   // Map the results back
   // Skip the first result (chain) for mapping back to original results
   for (unsigned i = 0; i < callOp.getNumResults(); ++i) {
     loweringState.emplaceExecuteLoweredValue(callOp.getResult(i),
                                              mgpCallOp.getResult(i + 1));
+
+    // Guard every result with the chain
+    loweringState.guardValueWithChain(mgpCallOp.getResult(i + 1), callOutChain);
   }
+
+  loweringState.setCurrentExecuteChain(callOutChain);
 
   return success();
 }
