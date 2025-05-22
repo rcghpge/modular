@@ -113,6 +113,21 @@ struct ValidateDevicesPass
   void runOnOperation() override {
     graphOp = getOperation();
 
+    LLVM_DEBUG({
+      llvm::dbgs() << "defaultDeviceTargetTriple: '"
+                   << defaultDeviceTargetTriple << "'\n";
+      llvm::dbgs() << "defaultDeviceTargetArch: '" << defaultDeviceTargetArch
+                   << "'\n";
+    });
+
+    if (!defaultDeviceTargetTriple.empty() &&
+        !defaultDeviceTargetArch.empty()) {
+      TargetInfo targetInfo{llvm::Triple(defaultDeviceTargetTriple),
+                            defaultDeviceTargetArch};
+      graphOp.setDeviceTargetInfo(
+          fromRuntimeTargetInfo(graphOp.getContext(), targetInfo));
+    }
+
     TargetInfoAttr targetInfo = graphOp.getDeviceTargetInfo();
     if (!targetInfo) {
       LLVM_DEBUG({

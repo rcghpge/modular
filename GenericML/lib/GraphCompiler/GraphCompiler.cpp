@@ -223,16 +223,17 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   assignDevicesPassOpt.targetDeviceId = opts.defaultDeviceId;
   assignDevicesPassOpt.smallTensorLimit = opts.smallTensorLimit;
   assignDevicesPassOpt.kernelLibraryPaths = kernelLibraryPaths;
-  assignDevicesPassOpt.defaultDeviceTargetTriple =
-      opts.defaultDeviceTargetTriple;
-  assignDevicesPassOpt.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
 
   if (opts.enableAssignDevices)
     pm.addPass(MO::createAssignDevicesPass(assignDevicesPassOpt));
   if (opts.enableVerifyDeviceAssignment)
     pm.addPass(MO::createVerifyDeviceAssignmentPass());
 
-  pm.addPass(MO::createValidateDevicesPass());
+  MO::ValidateDevicesPassOptions validateDevicesPassOpt;
+  validateDevicesPassOpt.defaultDeviceTargetTriple =
+      opts.defaultDeviceTargetTriple;
+  validateDevicesPassOpt.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
+  pm.addPass(MO::createValidateDevicesPass(validateDevicesPassOpt));
 
   pm.addPass(MO::createDecomposeViewOps());
   pm.addPass(mlir::createCanonicalizerPass());

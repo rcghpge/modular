@@ -311,13 +311,6 @@ def AssignDevicesPass : Pass<"assign-devices", "ModuleOp"> {
            "If non-empty, assign devices using this device">,
     Option<"targetDeviceId", "target-device-id",  "size_t", "0",
            "If target-device is provided, this is the default-id to target">,
-    Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string", "\"\"",
-      "llvm::Triple representing the compilation target for the "
-                     "defaultDevice.">,
-    Option<"defaultDeviceTargetArch", "default-device-target-arch", "std::string", "\"\"",
-      "String representing the architecture of the "
-                     "defaultDevice. For example, for NVIDIA GPUs this is the "
-                     "compute capability (i.e. sm_X)">,
   ];
 
   // We need to include all the dialects as we access the mojo library.
@@ -372,6 +365,16 @@ def ValidateDevicesPass : Pass<"validate-devices", "GraphOp"> {
     This pass checks the inputs and outputs of the graph, verifying that the
     data type for each tensor can be implemented on the target device.
   }];
+
+  let options = [
+    Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string", "\"\"",
+      "llvm::Triple representing the compilation target for the "
+                     "defaultDevice.">,
+    Option<"defaultDeviceTargetArch", "default-device-target-arch", "std::string", "\"\"",
+      "String representing the architecture of the "
+                     "defaultDevice. For example, for NVIDIA GPUs this is the "
+                     "compute capability (i.e. sm_X)">,
+  ];
 }
 
 def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
