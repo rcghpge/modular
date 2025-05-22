@@ -495,10 +495,10 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
       // environment.
       // Make the buffer cache disabled by setting percentages to zero.
       // Limit to 95% (default) of available memory.
-      // TODO(GEX-1303): BufferCache is currently disabled to evaluate
+      // TODO(GEX-1303): BufferCache is currently enabled to evaluate
       maxCacheSize_(llvm::alignToPowerOf2(
           (memInfo.free *
-           DeviceContext::configAsInt("buffer_cache_size_percent", 0)) /
+           DeviceContext::configAsInt("buffer_cache_size_percent", 95)) /
               100,
           256 * KB)),
       // Allocate chunks of 2% (default) of maximum cache size.
