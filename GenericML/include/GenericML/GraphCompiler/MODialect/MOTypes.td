@@ -350,7 +350,7 @@ def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface]> {
 def MO_Chain : MO_Type<"Chain", "chain"> {
   let summary = "Controls sequencing of side-effecting operations.";
   let description = [{
-    This type is used to sequence side-efffecting operations. Any operation in
+    This type is used to sequence side-effecting operations. Any operation in
     the MO dialect that has side-effects should both consume and produce a
     chain type.
   }];
