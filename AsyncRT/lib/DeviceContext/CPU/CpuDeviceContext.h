@@ -35,8 +35,8 @@ class CpuDevice : public Device {
 public:
   static constexpr API api = Device::cpuAPI;
 
-  CpuDevice();
-  ~CpuDevice() override = default;
+  CpuDevice(Device::MemInfo memInfo = Device::MemInfo());
+  ~CpuDevice() override;
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;

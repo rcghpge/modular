@@ -129,9 +129,11 @@ MODULAR_CXX_EXPORT size_t getPreferredAlignment(std::string label) {
 //
 // ===== Device ===== //
 //
-Device::Device(API api, std::string name, int id, size_t allocAligment)
+Device::Device(API api, std::string name, int id, MemInfo memInfo,
+               size_t allocAlignment)
     : name_(std::move(name)), id_(id), api_(api),
-      allocAlignment_(allocAligment) {}
+      bufferCache_(
+          std::make_unique<BufferCache>(*this, memInfo, allocAlignment)) {}
 
 Device::~Device() {
   // Destroy the function map before destroying the context.
@@ -157,7 +159,7 @@ MODULAR_CXX_EXPORT StringRef Device::vendor() const {
 ErrorOr<bool> Device::supportsMulticast() const { return false; }
 
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
-  return allocAlignment_;
+  return bufferCache_->allocationAlignment();
 }
 
 MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
@@ -276,7 +278,7 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
     return;
   }
   // Release the memory (either to buffer cache or using memFree).
-  ERR_CHECK(context().bufferCache().free(ptr_, isHost()));
+  ERR_CHECK(context().freeList().free(ptr_, isHost()));
 }
 
 MODULAR_CXX_EXPORT const DeviceContext &DeviceBuffer::context() const {
@@ -531,11 +533,11 @@ static std::mutex &getGlobalMutex() {
   return mu;
 }
 
-DeviceContext::DeviceContext(const Device &device,
-                             std::unique_ptr<BufferCache> bufferCache)
-    : device_(DeviceRef::copy(&device)), bufferCache_(std::move(bufferCache)),
+DeviceContext::DeviceContext(const Device &device)
+    : device_(DeviceRef::copy(&device)),
+      freeList_(std::make_unique<BufferCacheFreeList>(
+          this, device.bufferCache(), device.bufferCache().freeList())),
       syncMode_(0) {
-  assert(bufferCache_ != nullptr);
   if (configAsBool("sync-mode", false)) {
     incSyncMode();
   }
@@ -585,12 +587,23 @@ MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createHostBufferOwning(
 ErrorOr<DeviceBufferRef>
 DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
   assert(byteSize != 0);
-  ErrorOr<void *> errPtr = bufferCache().allocate(byteSize, mode);
-  if (errPtr.isError()) {
-    return errPtr.takeError();
+  void *ptr = nullptr;
+  // Only attempt to allocate from the buffer cache if this is an on-device
+  // allocation.
+  if (mode != Device::AllocMode::HOST) {
+    ErrorOr<void *> errPtr = freeList().allocate(byteSize, mode);
+    if (errPtr.isError()) {
+      return errPtr.takeError();
+    }
+    ptr = errPtr.takeValue();
+  } else {
+    ErrorOrSuccess err = memAlloc(&ptr, byteSize, Device::AllocMode::HOST);
+    if (err.isError()) {
+      return err.takeError();
+    }
   }
-  return DeviceBufferRef::take(new DeviceBuffer(
-      *this, *errPtr, byteSize, mode == Device::AllocMode::HOST));
+  return DeviceBufferRef::take(
+      new DeviceBuffer(*this, ptr, byteSize, mode == Device::AllocMode::HOST));
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
@@ -669,7 +682,7 @@ DeviceContext::operator!=(const DeviceContext &other) const {
   return !(*this == other);
 }
 
-BufferCache &DeviceContext::bufferCache() const { return *bufferCache_; }
+BufferCacheFreeList &DeviceContext::freeList() const { return *freeList_; }
 
 // DeviceFunction compiling, loading, and execution.
 ErrorOr<M::BufferRef>
@@ -695,6 +708,11 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
     return 0;
   }
   return (*device)->deviceCount();
+}
+
+BufferCache &Device::bufferCache() const {
+  assert(bufferCache_ != nullptr);
+  return *bufferCache_;
 }
 
 bool DeviceContext::syncMode() const {

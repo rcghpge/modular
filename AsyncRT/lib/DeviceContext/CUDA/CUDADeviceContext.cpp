@@ -209,14 +209,15 @@ static Error formatCUDAError(const char *file, int line, const char *func,
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        CUcontext context, std::string name,
-                       size_t allocAlignment)
+                       Device::MemInfo memInfo, size_t allocAlignment)
     // GEX-1416: Do not expect hardcoded number.
-    : Device(api, std::move(name), id, allocAlignment), driver_(driver),
-      device_(device), context_(context) {}
+    : Device(api, std::move(name), id, memInfo, allocAlignment),
+      driver_(driver), device_(device), context_(context) {}
 
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
   clearFunctionCache();
+  bufferCache().clear();
   if (context_ != nullptr)
     // We ignore the result here as there is not much we can do if it fails
     // since in most cases the CUDA driver is in the process of shutting down.
@@ -366,26 +367,7 @@ ErrorOr<DeviceContextRef> CUDADevice::createContext() const {
   CUstream stream;
   CUDA_CHECK_ERR(this->cudaDriver().StreamCreate(&stream, 0));
 
-  size_t cacheChunkSize = 0;
-  size_t maxCacheSize = 0;
-  constexpr size_t KB = 1024; // NOLINT
-  Device::MemInfo memInfo;
-  CUDA_CHECK_ERR(this->cudaDriver().GetMemInfo(&memInfo.free, &memInfo.total));
-  // Make the buffer cache disabled by setting percentages to zero.
-  // Limit to 90% (default) of available memory.
-  int64_t cachePercent =
-      DeviceContext::configAsInt("buffer_cache_size_percent", 0);
-  maxCacheSize = static_cast<size_t>(
-      llvm::alignToPowerOf2((memInfo.free * cachePercent) / 100, 256 * KB));
-  // Allocate chunks of 2% (default) of maximum cache size.
-  int64_t chunkPercent =
-      DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
-  cacheChunkSize = std::min(
-      maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
-                        (maxCacheSize * chunkPercent) / 100, 256 * KB)));
-
-  return CUDADeviceContextRef::create(*this, *context, stream, cacheChunkSize,
-                                      maxCacheSize);
+  return CUDADeviceContextRef::create(*this, *context, stream);
 }
 
 ErrorOr<DeviceStreamRef>
@@ -473,8 +455,12 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
       // the same context with other users of the CUDA Runtime API.
       CUDA_CHECK_ERR(driver.DevicePrimaryCtxRetain(&context, device));
 
+      CUDAContextScope withCtx(context, driver);
+      Device::MemInfo memInfo;
+      CUDA_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
+
       devices.emplace_back(
-          new CUDADevice(driver, i, device, context, name, alignment));
+          new CUDADevice(driver, i, device, context, name, memInfo, alignment));
     }
     return success();
   }();
@@ -880,12 +866,9 @@ const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
 
 // ===== CUDADeviceContext ===== //
 CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
-                                     CUcontext context, CUstream stream,
-                                     size_t cacheChunkSize, size_t maxCacheSize)
-    : DeviceContext(device, std::make_unique<BufferCache>(
-                                *this, cacheChunkSize, maxCacheSize,
-                                device.allocationAlignment())),
-      driver_(device.cudaDriver()), context_(context), stream_(stream) {
+                                     CUcontext context, CUstream stream)
+    : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
+      stream_(stream) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
   logVerbose_ = DeviceContext::configAsBool("log_verbose", false);
 }
@@ -897,7 +880,6 @@ CUDADeviceContext::~CUDADeviceContext() {
     // to be destroyed.
     CUDA_WITH_CTX(*this);
     CUDA_CHECK(driver_.StreamSynchronize(stream_));
-    bufferCache().clear();
     // Synchronize to ensure that all of the chunks have been freed.
     CUDA_CHECK(driver_.StreamSynchronize(stream_));
     // We do not need to synchronize on possible work queued on this stream.

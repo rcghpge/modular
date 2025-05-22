@@ -28,6 +28,7 @@
 namespace M::AsyncRT {
 
 class BufferCache;
+class BufferCacheFreeList;
 class Device;
 class DeviceBuffer;
 class DeviceContext;
@@ -126,6 +127,8 @@ public:
 
   virtual int deviceCount() const = 0;
 
+  BufferCache &bufferCache() const;
+
   // Low-level uncached synchronous allocation of memory to support the
   // BufferCache.
   // REQUIRES: byteSize > 0
@@ -158,13 +161,14 @@ public:
   virtual ErrorOrSuccess setCurrentDriverContext(void *ctx) const = 0;
 
 protected:
-  Device(API api, std::string name, int id, size_t allocAligment);
+  Device(API api, std::string name, int id, MemInfo memInfo, size_t alignment);
 
 private:
   std::string name_;
   int id_;
   API api_;
-  size_t allocAlignment_;
+
+  std::unique_ptr<BufferCache> bufferCache_;
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;
@@ -465,7 +469,7 @@ public:
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
-  BufferCache &bufferCache() const;
+  BufferCacheFreeList &freeList() const;
 
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
 
@@ -489,7 +493,7 @@ public:
   void decSyncMode() const;
 
 protected:
-  DeviceContext(const Device &device, std::unique_ptr<BufferCache> bufferCache);
+  DeviceContext(const Device &device);
 
   // Low-level uncached allocation of memory.
   // REQUIRES: byteSize > 0
@@ -504,7 +508,7 @@ protected:
   virtual void *driverContext() const = 0;
 
 private:
-  friend class BufferCache;
+  friend class BufferCacheFreeList;
   friend class DeviceBuffer;
   friend class DeviceContextScope;
   // Following line is equivalent to:
@@ -513,7 +517,7 @@ private:
 
   DeviceRef device_;
 
-  std::unique_ptr<BufferCache> bufferCache_;
+  std::unique_ptr<BufferCacheFreeList> freeList_;
 
   mutable std::atomic<int> syncMode_ = {0};
 

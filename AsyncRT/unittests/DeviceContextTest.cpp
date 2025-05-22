@@ -6,6 +6,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
+#include "AsyncRT/lib/DeviceContext/CPU/CpuDeviceContext.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
@@ -165,7 +166,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
   }
 }
 
-TEST(CUDADeviceContextTest, SubBuffer) {
+TEST(DeviceContextTest, SubBuffer) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   int allocLen = 256;
@@ -400,16 +401,25 @@ TEST(DeviceContextTest, Timers) {
 }
 
 TEST(DeviceContextTest, BufferCache) {
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI);
-  ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
-  DeviceContextRef ctx = std::move(errCtx.get());
-  ASSERT_TRUE(ctx);
+  constexpr size_t chunkSize = 1024;
+  constexpr size_t maxCacheSize = 4 * chunkSize;
 
-  size_t chunkSize = 1024;
-  size_t maxCacheSize = 4 * chunkSize;
-  size_t allocAlignment = 32;
+  Device::MemInfo memInfo;
+  memInfo.free = maxCacheSize;
+  memInfo.total = 4 * maxCacheSize;
 
-  BufferCache bufCache(*ctx, chunkSize, maxCacheSize, allocAlignment);
+  // Ensure that maxCacheSize is all of memInfo.free.
+  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE_PERCENT=100"));
+  // Ensure that chunkSize is a 1/4th of maxCacheSize.
+  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT=25"));
+
+  // Create a CPU device that is associated with a BufferCache by passing in a
+  // non-empty memInfo.
+  CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+  size_t allocAlignment = device->allocationAlignment();
+
+  BufferCacheFreeList &bufCache = *device->bufferCache().freeList();
+
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   ASSIGN_NO_ERR(void *, base, bufCache.allocate(1, mode));
   char *cacheBase = static_cast<char *>(base);
@@ -424,19 +434,19 @@ TEST(DeviceContextTest, BufferCache) {
   ASSIGN_NO_ERR(void *, b, bufCache.allocate(15, mode));
   EXPECT_EQ(b, cacheBase + allocAlignment);
   EXPECT_NO_ERR(bufCache.free(a, false));
-  ASSIGN_NO_ERR(void *, c, bufCache.allocate(32, mode));
+  ASSIGN_NO_ERR(void *, c, bufCache.allocate(allocAlignment, mode));
   EXPECT_EQ(c, cacheBase);
   EXPECT_NO_ERR(bufCache.free(c, false));
-  ASSIGN_NO_ERR(void *, d, bufCache.allocate(33, mode));
+  ASSIGN_NO_ERR(void *, d, bufCache.allocate(allocAlignment + 1, mode));
   EXPECT_EQ(d, cacheBase + 2 * allocAlignment);
   ASSIGN_NO_ERR(void *, e, bufCache.allocate(1, mode));
   EXPECT_EQ(e, cacheBase);
   EXPECT_NO_ERR(bufCache.free(b, false));
-  ASSIGN_NO_ERR(void *, f, bufCache.allocate(32, mode));
+  ASSIGN_NO_ERR(void *, f, bufCache.allocate(allocAlignment, mode));
   EXPECT_EQ(f, cacheBase + allocAlignment);
   EXPECT_NO_ERR(bufCache.free(f, false));
   EXPECT_NO_ERR(bufCache.free(e, false));
-  ASSIGN_NO_ERR(void *, g, bufCache.allocate(64, mode));
+  ASSIGN_NO_ERR(void *, g, bufCache.allocate(2 * allocAlignment, mode));
   EXPECT_EQ(g, cacheBase);
   ASSIGN_NO_ERR(void *, h, bufCache.allocate(1, mode));
   EXPECT_EQ(h, cacheBase + 4 * allocAlignment);
@@ -546,8 +556,6 @@ TEST(DeviceContextTest, BufferCache) {
   EXPECT_NO_ERR(bufCache.free(an, false));
   EXPECT_NO_ERR(bufCache.free(ao, false));
   EXPECT_FALSE(bufCache.free(ap, false));
-
-  bufCache.clear();
 }
 
 } // namespace

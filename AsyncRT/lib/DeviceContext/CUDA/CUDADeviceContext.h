@@ -56,7 +56,8 @@ public:
   using DeviceList = std::vector<CUDADevice *>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-             CUcontext context, std::string name, size_t allocAlignment);
+             CUcontext context, std::string name, Device::MemInfo memInfo,
+             size_t allocAlignment);
   ~CUDADevice() override;
 
   const CUDADriver &cudaDriver() const;
@@ -294,8 +295,7 @@ private:
 class CUDADeviceContext : public DeviceContext {
 public:
   CUDADeviceContext(const CUDADevice &device, CUcontext context,
-                    CUstream stream, size_t cacheChunkSize,
-                    size_t maxCacheSize);
+                    CUstream stream);
   ~CUDADeviceContext() override;
 
   // DeviceBuffer copies.

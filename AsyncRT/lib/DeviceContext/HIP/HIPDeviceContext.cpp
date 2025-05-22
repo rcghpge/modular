@@ -223,12 +223,14 @@ gethipDeviceAttribute(Device::Attribute attr) {
 }
 
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-                     std::string name, size_t allocAlignment)
-    : Device(api, name, id, allocAlignment), driver_(driver), device_(device) {}
+                     std::string name, MemInfo memInfo, size_t allocAlignment)
+    : Device(api, name, id, memInfo, allocAlignment), driver_(driver),
+      device_(device) {}
 
 HIPDevice::~HIPDevice() {
   // Destroy the function map before destroying other device structures.
   clearFunctionCache();
+  bufferCache().clear();
 }
 
 const HIPDriver &HIPDevice::hipDriver() const { return driver_; }
@@ -314,26 +316,7 @@ ErrorOr<DeviceContextRef> HIPDevice::createContext() const {
   hipStream_t stream;
   HIP_CHECK_ERR(this->hipDriver().StreamCreate(&stream, 0));
 
-  size_t cacheChunkSize = 0;
-  size_t maxCacheSize = 0;
-  constexpr size_t KB = 1024; // NOLINT
-  Device::MemInfo memInfo;
-  HIP_CHECK_ERR(this->hipDriver().GetMemInfo(&memInfo.free, &memInfo.total));
-  // Make the buffer cache disabled by setting percentages to zero.
-  // Limit to 90% (default) of available memory.
-  int64_t cachePercent =
-      DeviceContext::configAsInt("buffer_cache_size_percent", 0);
-  maxCacheSize = static_cast<size_t>(
-      llvm::alignToPowerOf2((memInfo.free * cachePercent) / 100, 256 * KB));
-  // Allocate chunks of 2% (default) of available memory.
-  int64_t chunkPercent =
-      DeviceContext::configAsInt("buffer_cache_chunk_percent", 0);
-  cacheChunkSize = std::min(
-      maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
-                        (maxCacheSize * chunkPercent) / 100, 256 * KB)));
-
-  return HIPDeviceContextRef::create(*this, stream, cacheChunkSize,
-                                     maxCacheSize);
+  return HIPDeviceContextRef::create(*this, stream);
 }
 
 ErrorOr<DeviceStreamRef>
@@ -423,7 +406,12 @@ ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
           &alignment, hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment,
           device));
 
-      devices.emplace_back(new HIPDevice(driver, i, device, name, alignment));
+      HIPDeviceScope withDev(device, driver);
+      Device::MemInfo memInfo;
+      HIP_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
+
+      devices.emplace_back(
+          new HIPDevice(driver, i, device, name, memInfo, alignment));
     }
     return success();
   }();
@@ -656,18 +644,13 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 }
 
 // ===== HIPDeviceContext ===== //
-HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipStream_t stream,
-                                   size_t cacheChunkSize, size_t maxCacheSize)
-    : DeviceContext(device, std::make_unique<BufferCache>(
-                                *this, cacheChunkSize, maxCacheSize,
-                                device.allocationAlignment())),
-      driver_(device.hipDriver()), device_(device.hipDevice()),
-      stream_(stream) {}
+HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipStream_t stream)
+    : DeviceContext(device), driver_(device.hipDriver()),
+      device_(device.hipDevice()), stream_(stream) {}
 
 HIPDeviceContext::~HIPDeviceContext() {
   HIP_WITH_CTX(*this);
   HIP_CHECK(driver_.StreamSynchronize(stream_));
-  bufferCache().clear();
   HIP_CHECK(driver_.StreamDestroy(stream_));
 }
 

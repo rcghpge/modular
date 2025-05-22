@@ -50,7 +50,7 @@ public:
 
   using DeviceList = std::vector<HIPDevice *>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-            std::string name, size_t allocAlignment);
+            std::string name, MemInfo memInfo, size_t allocAlignment);
   ~HIPDevice() override;
 
   const HIPDriver &hipDriver() const;
@@ -223,8 +223,7 @@ private:
 
 class HIPDeviceContext : public DeviceContext {
 public:
-  HIPDeviceContext(const HIPDevice &device, hipStream_t stream,
-                   size_t cacheChunkSize, size_t maxCacheSize);
+  HIPDeviceContext(const HIPDevice &device, hipStream_t stream);
   ~HIPDeviceContext() override;
 
   // DeviceBuffer copies.

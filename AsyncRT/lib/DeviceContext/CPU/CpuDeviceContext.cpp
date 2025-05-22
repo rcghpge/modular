@@ -49,7 +49,10 @@ namespace M::AsyncRT {
 // ===== CpuDevice ===== //
 //
 // TODO(iposva): Consider using the actual device name.
-CpuDevice::CpuDevice() : Device(api, "cpu", 0, M::kPreferredMemoryAlignment) {}
+CpuDevice::CpuDevice(Device::MemInfo memInfo)
+    : Device(api, "cpu", 0, memInfo, M::kPreferredMemoryAlignment) {}
+
+CpuDevice::~CpuDevice() { bufferCache().clear(); }
 
 ErrorOr<int> CpuDevice::getApiVersion() const { return 0; };
 
@@ -149,8 +152,7 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 // ===== CpuDeviceContext === //
 //
 CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
-    : DeviceContext(device, std::make_unique<BufferCache>(
-                                *this, 0, 0, device.allocationAlignment())) {}
+    : DeviceContext(device) {}
 
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) const {

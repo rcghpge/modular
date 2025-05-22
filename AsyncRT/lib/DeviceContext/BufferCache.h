@@ -45,22 +45,20 @@ public:
     Desc **buckets_;
   };
 
-  BufferCache(const DeviceContext &ctx, size_t chunkSize, size_t maxCacheSize,
-              size_t alignment);
+  BufferCache(const Device &device_, Device::MemInfo memInfo, size_t alignment);
   ~BufferCache();
+
+  size_t allocationAlignment() const;
 
   void clear();
 
-  // Allocate and free memory by using the `BufferCache`. If the allocation
-  // cannot be serviced by the `BufferCache` due to allocation size or cache
-  // capacity, then the allocation request gets transparently forwarded to the
-  // `DeviceContext`.
-  ErrorOr<void *> allocate(size_t size, Device::AllocMode mode);
-  ErrorOrSuccess free(void *buf, bool isHost);
+  BufferCacheFreeList *freeList() const;
 
 private:
   friend class Chunk;
   friend class BufferCacheFreeList;
+
+  const Device &device() const;
 
   void selfCheck() const;
 
@@ -71,9 +69,9 @@ private:
   Desc *popDesc();
   void pushDesc(Desc *desc);
 
-  const DeviceContext &ctx_;
-  const size_t chunkSize_;
+  const Device &device_;
   const size_t maxCacheSize_;
+  const size_t chunkSize_;
 
   const size_t alignmentOffset_;
   const size_t alignmentMask_;
@@ -107,11 +105,19 @@ private:
 
 class BufferCacheFreeList {
 public:
-  BufferCacheFreeList(BufferCache &bufferCache, BufferCacheFreeList *parent);
+  BufferCacheFreeList(const DeviceContext *context, BufferCache &bufferCache,
+                      BufferCacheFreeList *parent);
   ~BufferCacheFreeList();
 
-  void *allocate(size_t size);
-  void free(BufferCache::Desc *desc);
+  // Release blocks owned by this free list to the parent if available.
+  void flushToParent();
+
+  // Allocate and free memory by using the `BufferCache`. If the allocation
+  // cannot be serviced by the `BufferCache` due to allocation size or cache
+  // capacity, then the allocation request gets transparently forwarded to the
+  // associated `DeviceContext`.
+  ErrorOr<void *> allocate(size_t size, Device::AllocMode mode);
+  ErrorOrSuccess free(void *buf, bool isHost);
 
   bool empty();
 
@@ -120,9 +126,17 @@ private:
   friend class BufferCache::Chunk;
 
   void selfCheck() const;
+  bool contains(BufferCache::Desc *desc) const;
+
+  const DeviceContext *context() const;
+
+  BufferCache::Desc *allocateDesc(size_t size);
+  void freeDesc(BufferCache::Desc *desc);
 
   void addToFreeList(BufferCache::Desc *desc);
   void removeFromFreeList(BufferCache::Desc *desc);
+
+  const DeviceContext *ctx_;
 
   BufferCache &bufferCache_;
   BufferCacheFreeList *parent_;
