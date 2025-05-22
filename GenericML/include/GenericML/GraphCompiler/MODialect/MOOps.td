@@ -4801,7 +4801,10 @@ def MO_ListSliceOp : MO_TensorOp<"list.slice", [
 
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  MO_ExplicitDevice,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface,
+    ["getExecutionDevices",
+     "getOperandDeviceConstraints",
+     "getExecutionDeviceConstraints"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
@@ -4873,6 +4876,8 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     /// Collects all operands of type !mo.buffer.
     mlir::SmallVector<Value> getBufferOperands();
   }];
+
+  let hasVerifier = 1;
 }
 
 def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [

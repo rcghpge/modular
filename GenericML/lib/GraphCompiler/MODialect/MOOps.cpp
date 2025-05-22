@@ -4782,6 +4782,46 @@ void AssertOp::materializeAllAssertLogic(
 //===----------------------------------------------------------------------===//
 //
 
+// Special logic for CustomOp:
+// We can't infer the execution device from the oparand or result tensors,
+// and we can't (currently) assume that the user assigned a device attribute.
+// So we use the existing logic from AssignDevicePass for this op only:
+// 1. If the op has a device attribute, return that.
+// 2. Return the set of unique non-host devices from the operands.
+// 3. Return the host device.
+llvm::SmallVector<DeviceRefAttr> CustomOp::getExecutionDevices() {
+  if (auto deviceRef = dyn_cast_if_present<DeviceRefAttr>(
+          getOperation()->getAttr(kOperationDeviceRefAttrName)))
+    return {deviceRef};
+  auto hostDevice = getHostDevice(this->getContext());
+  auto devices = getUniqueDevicesFromKernel(getOperation());
+  // Remove host devices from the list.
+  devices.erase(std::remove_if(
+                    devices.begin(), devices.end(),
+                    [&](DeviceRefAttr device) { return device == hostDevice; }),
+                devices.end());
+  if (devices.size() == 0)
+    return {hostDevice};
+  return devices;
+}
+
+DeviceRefAttr CustomOp::getOperandDeviceConstraint(size_t index) {
+  return nullptr;
+}
+
+DeviceRefAttr CustomOp::getExecutionDeviceConstraint() { return nullptr; }
+
+LogicalResult CustomOp::verify() {
+  // If the op has a device attribute, verify that it matches the inferred
+  // device in getExecutionDevices().
+  auto deviceAttr = getOperation()->getAttr(kOperationDeviceRefAttrName);
+  if (auto deviceRef = dyn_cast_if_present<DeviceRefAttr>(deviceAttr))
+    if (llvm::SmallVector<DeviceRefAttr>{deviceRef} != getExecutionDevices())
+      return emitError("device attribute must match the inferred device");
+
+  return success();
+}
+
 /// Checks if an op's operands contains any mutable types: opaque or buffer.
 static bool hasMutableOperand(OperandRange operands) {
   return llvm::any_of(operands, [](Value val) {
