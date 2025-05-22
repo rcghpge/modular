@@ -1404,6 +1404,12 @@ modular_cc_library(
     visibility = ["//visibility:private"],
 )
 
+pkg_files(
+    name = "API.c.headers",
+    srcs = glob(["include/GenericML/API/max/c/*.h"]),
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "doxygen-sources",
     srcs = glob([
