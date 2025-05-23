@@ -229,3 +229,8 @@ class AudioGenerator(Generic[AudioGeneratorContext, DecoderOutput], Protocol):
             context (AudioGeneratorContext): Finished context.
         """
         ...
+
+    @property
+    def decoder_sample_rate(self) -> int:
+        """The sample rate of the decoder."""
+        ...
