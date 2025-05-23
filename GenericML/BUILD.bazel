@@ -237,6 +237,29 @@ mlir_nanobind(
     ],
 )
 
+mlir_nanobind(
+    name = "RMODialectNanobindInc",
+    srcs = glob(["include/GenericML/GraphCompiler/RMODialect/*.td"]),
+    exclude = [
+        # rmo.concat uses OptionalAttr, which tblgen generates as a normal
+        # mlir::Attribute that's allowed to be null, while our bindings
+        # generate as std::optional<mlir::Attribute>.
+        "RMO_ConcatOp",
+        # rmo.sigmoind and rmo.mo_transfer both declare builders that
+        # we don't have definitions for, leading to linker errors
+        # at python import time.
+        "RMO_SigmoidOp",
+        "RMO_MOTransferOp",
+    ],
+    output_dir = "include/GenericML/RMODialect/Nanobind",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        ":RMODialectTdFiles",
+    ],
+)
+
 gentbl_mlir_dialect(
     name = "MODialectIncGen",
     dialect = "mo",
