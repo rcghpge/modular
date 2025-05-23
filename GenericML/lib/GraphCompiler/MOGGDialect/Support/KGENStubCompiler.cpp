@@ -30,6 +30,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/xxhash.h"
@@ -242,6 +243,11 @@ CompileDiagnosticOrSuccess StubCompiler::elaborateKGEN() {
                 "mogg.kgen.elaboration.time", M::Telemetry::Level::L2, attrs);
 
     auto *runtime = loadContext(ctx)->get<AsyncRT::Runtime>();
+
+    // These two next lines make it possible to get source code displayed when
+    // an elaboration error occurs.
+    llvm::SourceMgr sourceMgr;
+    mlir::SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, ctx);
 
     ErrorOrSuccess result = compiler.runElaborationPipeline(
         *kgenModule, targetInfo, *runtime, runtime->getReadyChain().copy(),

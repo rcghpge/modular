@@ -118,8 +118,11 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
   KGEN::KGENCompiler compiler(*(ownedModule->getContext()),
                               KGEN::CompilationOptions());
 
+  // Show the mojo code when there is an error.
+  mlir::SourceMgrDiagnosticHandler sourceMgrHandler(*sourceMgr, ctx);
   if (auto err = compiler.runGenerateLibraryPipeline(*ownedModule))
     return err.takeError();
+
   return ownedModule;
 }
 
