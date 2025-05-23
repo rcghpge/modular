@@ -3,7 +3,7 @@
 mo.graph @allNullInputFusionInterface(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[2], f32>, %arg3: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
     mogg.output %arg2 : !mo.tensor<[2], f32>
-  } {inputFusionInterface = ["", ""]}
+  } {inputFusionInterface = ["", ""], device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2], f32>
 }
 
@@ -16,7 +16,7 @@ mo.graph @allNullInputFusionInterface(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.te
 mo.graph @allNullOutputFusionInterface(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mogg.kernel (%arg0) : (%arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
     mogg.output %arg1 : !mo.tensor<[2], f32>
-  } {outputFusionInterface = [""]}
+  } {outputFusionInterface = [""], device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2], f32>
 }
 
@@ -29,7 +29,7 @@ mo.graph @allNullOutputFusionInterface(%arg0: !mo.tensor<[2], f32>) -> !mo.tenso
 mo.graph @allNullFusionInterfaces(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[2], f32>, %arg3: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
     mogg.output %arg2 : !mo.tensor<[2], f32>
-  } {inputFusionInterface = ["", ""], outputFusionInterface = [""]}
+  } {inputFusionInterface = ["", ""], outputFusionInterface = [""], device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2], f32>
 }
 
@@ -43,7 +43,7 @@ mo.graph @allNullFusionInterfaces(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor
 mo.graph @noInterfaces(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mogg.kernel (%arg0) : (%arg1: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
     mogg.output %arg1 : !mo.tensor<[2], f32>
-  } {}
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2], f32>
 }
 

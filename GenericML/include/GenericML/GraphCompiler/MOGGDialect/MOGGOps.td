@@ -57,7 +57,7 @@ def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGE
 //===----------------------------------------------------------------------===//
 
 def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [
-  Pure, MO_HasDeviceInterface, MO_ExplicitDevice
+  Pure, MO_HasDeviceInterface, MO_SingleDevice
 ]> {
   let summary = "Concat Operation along axis zero";
   let description = [{

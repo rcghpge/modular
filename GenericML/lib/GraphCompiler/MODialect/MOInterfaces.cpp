@@ -697,6 +697,13 @@ LogicalResult Impl::verifySingleDevice(Operation *op,
   return success();
 }
 
+LogicalResult Impl::verifyExplicitDevice(Operation *op) {
+  if (op->getAttr(MO::kOperationDeviceRefAttrName))
+    return success();
+  return op->emitOpError(
+      "Missing device attribute for op with explicit device trait");
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

@@ -639,6 +639,7 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
   let arguments = (ins
     StrAttr:$name,
     UI64Attr:$align,
+    M_DeviceRefAttr:$device,
     DefaultValuedAttr<BoolAttr, "false">:$hasAlias
   );
   let results = (outs MO_Tensor:$result);

@@ -92,7 +92,7 @@ mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f
     }
     mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
-  } {outputFusionInterface = ["output_0_fn"]}
+  } {outputFusionInterface = ["output_0_fn"], device = #M.device_ref<"cpu", 0>}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[M, N], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<f32>{
@@ -111,7 +111,7 @@ mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f
   }
     mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = [""], outputFusionInterface = ["output_0_fn"]}
+  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = [""], outputFusionInterface = ["output_0_fn"], device = #M.device_ref<"cpu", 0>}
   mo.output %1 : !mo.tensor<[M, N], f32>
 }
 
@@ -129,7 +129,7 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
     }
     mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
-  }
+  } {device = #M.device_ref<"cpu", 0>}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[M, N], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<f32>{
@@ -148,7 +148,7 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
   }
     mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"], device = #M.device_ref<"cpu", 0>}
   mo.output %1 : !mo.tensor<[M, N], f32>
 }
 
@@ -166,7 +166,7 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
     }
     mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>, !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
-  } {outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"cpu", 0>}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[M, N], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<f32>{
@@ -185,7 +185,7 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
   }
     mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[M, N], f32>
     mogg.output %2 : !mo.tensor<[M, N], f32>
-  } {inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"cpu", 0>}
   mo.output %1 : !mo.tensor<[M, N], f32>
 }
 
@@ -203,7 +203,7 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
     }
     mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
     mogg.output %2 : !mo.tensor<[2, 2], ui32>
-  } {outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"cpu", 0>}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[2, 2], ui32>) -> !mo.tensor<[2, 2], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[2, 2], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
@@ -222,7 +222,7 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
     }
     mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[2, 2], f32>
     mogg.output %2 : !mo.tensor<[2, 2], f32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"cpu", 0>, fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[2, 2], f32>
 }
 
@@ -276,7 +276,7 @@ mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], ui32>, %
     }
     mogg.call "mo.matmul" [@output_0_fn](%arg2, %arg3, %2) {lambdas_have_fusion = false, packed_b = false, single_thread_blocking_override = false, transpose_b = false} : !mo.tensor<[2, 2], ui32>, !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>, !mo.tensor<[2, 2], ui32>
     mogg.output %2 : !mo.tensor<[2, 2], ui32>
-  } {outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"gpu", 0>, outputFusionInterface = ["output_0_fn"]}
   %1 = mogg.kernel (%0) : (%arg2: !mo.tensor<[2, 2], ui32>) -> !mo.tensor<[2, 2], f32>{
     %2 = mogg.output_placeholders : !mo.tensor<[2, 2], f32>
     mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
@@ -295,7 +295,7 @@ mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], ui32>, %
     }
     mogg.call "elementwise" [@elemwise_compute_lambda](%2) {single_thread_blocking_override = false} : !mo.tensor<[2, 2], f32>
     mogg.output %2 : !mo.tensor<[2, 2], f32>
-  } {device = #M.device_ref<"gpu", 0>, fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
+  } {device = #M.device_ref<"cpu", 0>, fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
   mo.output %1 : !mo.tensor<[2, 2], f32>
 }
 

@@ -6,7 +6,7 @@ mo.graph @kernelMinimalTest(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>{
     %1 = mogg.output_placeholders : !mo.tensor<[2, 3], f32>
     mogg.output %1 : !mo.tensor<[2, 3], f32>
-  } { shapeFunc = "test"}
+  } { shapeFunc = "test", device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
@@ -14,7 +14,7 @@ mo.graph @kernelWithHooksTest(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>{
     %1 = mogg.output_placeholders : !mo.tensor<[2, 3], f32>
     mogg.output %1 : !mo.tensor<[2, 3], f32>
-  } { fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["", ""], outputFusionInterface = [""], shapeFunc = "test"}
+  } { fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["", ""], outputFusionInterface = [""], shapeFunc = "test", device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
@@ -22,7 +22,7 @@ mo.graph @kernelsDynamicTest(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?],
   %0 = mogg.kernel (%arg0, %arg1) : (%arg2: !mo.tensor<[?], f32>, %arg3: !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>{
     %1 = mogg.output_placeholders : !mo.tensor<[?], f32>
     mogg.output %1 : !mo.tensor<[?], f32>
-  } { fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["", ""], outputFusionInterface = [""], shapeFunc = "test"}
+  } { fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["", ""], outputFusionInterface = [""], shapeFunc = "test", device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[?], f32>
 }
 
@@ -35,7 +35,7 @@ mo.graph @getDim<N, K, L>(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 
     %2 = mogg.get_dim <L> -> !pop.scalar<si64>
 
     mogg.output %output : !mo.tensor<[2, 3], f32>
-  } { shapeFunc = "test"}
+  } { shapeFunc = "test", device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 

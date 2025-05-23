@@ -185,6 +185,7 @@ LogicalResult verifySingleDevice(Operation *op,
                                  ArrayRef<size_t> deviceOperandIndices);
 DeviceRefAttr getFirstResultDevice(Operation *op);
 
+LogicalResult verifyExplicitDevice(Operation *op);
 LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
                                               mlir::RewriterBase &rewriter);
 LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
@@ -332,6 +333,10 @@ public:
     // TODO: Make the deviceRef attribute part of the op's definition.
     return {dyn_cast_if_present<DeviceRefAttr>(
         this->getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
+  }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return Impl::verifyExplicitDevice(op);
   }
 };
 

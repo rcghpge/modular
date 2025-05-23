@@ -23,10 +23,10 @@ mo.graph @multi_const_args(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f
 // CHECK-LABEL: mo.graph @caller_multi_const
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_multi_const(%arg0: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, name = "cst1"}
-  %cst1 = mo.constant.external {align = 1 : ui64, name = "cst1"} : !mo.tensor<[4], f32>
-  // CHECK: %[[CONST2:.+]] = mo.constant.external {align = 1 : ui64, name = "cst2"}
-  %cst2 = mo.constant.external {align = 1 : ui64, name = "cst2"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"}
+  %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST2:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"}
+  %cst2 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"} : !mo.tensor<[4], f32>
 
   // Hoisted ops
   // CHECK: %[[HOISTED_MUL:.+]] = mo.mul(%[[CONST1]], %[[CONST2]])
@@ -66,8 +66,8 @@ mo.graph @multi_boundary(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32
 // CHECK-LABEL: mo.graph @caller_multi_boundary
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_multi_boundary(%arg0: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, name = "cst1"}
-  %cst1 = mo.constant.external {align = 1 : ui64, name = "cst1"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"}
+  %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[4], f32>
 
   // Hoisted ops
   // CHECK: %[[HOISTED_RELU1:.+]] = mo.relu(%[[CONST1]])
@@ -106,10 +106,10 @@ mo.graph @unused_const_arg(%arg0: !mo.tensor<[4], f32>, %arg1_const_used: !mo.te
 // CHECK-LABEL: mo.graph @caller_unused_const
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_unused_const(%arg0: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, name = "cst1"}
-  %cst1 = mo.constant.external {align = 1 : ui64, name = "cst1"} : !mo.tensor<[4], f32>
-  // CHECK: %[[CONST2:.+]] = mo.constant.external {align = 1 : ui64, name = "cst2"}
-  %cst2 = mo.constant.external {align = 1 : ui64, name = "cst2"} : !mo.tensor<[4], f32> // Unused const
+  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"}
+  %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST2:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"}
+  %cst2 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"} : !mo.tensor<[4], f32> // Unused const
 
   // Hoisted op
   // CHECK: %[[HOISTED_RELU:.+]] = mo.relu(%[[CONST1]])
@@ -145,8 +145,8 @@ mo.graph @called_twice_const(%arg0: !mo.tensor<[4], f32>, %arg1_const: !mo.tenso
 // CHECK-LABEL: mo.graph @caller_twice_const
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_twice_const(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST:.+]] = mo.constant.external {align = 1 : ui64, name = "cst"}
-  %cst = mo.constant.external {align = 1 : ui64, name = "cst"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"}
+  %cst = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"} : !mo.tensor<[4], f32>
 
   // Hoisted op for call 1
   // CHECK: %[[HOISTED_RELU1:.+]] = mo.relu(%[[CONST]])
@@ -188,8 +188,8 @@ mo.graph @mixed_callsites(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f3
 // CHECK-LABEL: mo.graph @caller_mixed_callsites
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_mixed_callsites(%arg0: !mo.tensor<[4], f32>, %arg1_variable: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST:.+]] = mo.constant.external {align = 1 : ui64, name = "cst"}
-  %cst = mo.constant.external {align = 1 : ui64, name = "cst"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"}
+  %cst = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"} : !mo.tensor<[4], f32>
 
   // Call 1: Uses constant
   // CHECK: %[[CALL1_RES:.+]] = mo.call @mixed_callsites(%[[CALLER_ARG0]], %[[CONST]])
