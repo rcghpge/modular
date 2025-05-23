@@ -26,10 +26,6 @@ public:
 
   size_t defaultDeviceId{0};
 
-  bool enableAssignDevices{true};
-
-  bool enableVerifyDeviceAssignment{false};
-
   bool enableCompiledRegionsFusion{true};
 
   bool debugPrintAllTensors{false};
@@ -87,20 +83,6 @@ private:
       cl::desc("If default-device-label is specified, this field specifies the"
                "default device id to target. Defaults to zero."),
       llvm::cl::location(options.defaultDeviceId),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> enableAssignDevices{
-      "enable-assign-devices",
-      cl::desc("If true, enables the AssignDevicesPass which assigns ops to "
-               "devices."),
-      llvm::cl::location(options.enableAssignDevices),
-      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
-
-  M::cl::MOpt<bool, true> enableVerifyDeviceAssignment{
-      "enable-verify-device-assignment",
-      cl::desc("If true, enables the VerifyDeviceAssignmentPass which verifies "
-               "that all ops have been assigned to the correct device."),
-      llvm::cl::location(options.enableVerifyDeviceAssignment),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<bool, true> enableCompiledRegionsFusion{

@@ -549,25 +549,6 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
   return success();
 }
 
-// HACK
-// Currrently MOHasDeviceInterface doesn't provide enough information to
-// accurately check operand and result device constraints.
-// When getOperandDeviceConstraint() returns null, this can mean two different
-// things: A: (most ops) apply the default constraint; the operand device should
-// match
-//    the device assigned to the op.
-// B: (ops listed here) There is no constraint, any device is acceptable.
-
-// Eventually we should provide a default implementation for
-// getOperandDeviceConstraint() that returns the current device, then these ops
-// can specialize it to return null. But this is not possible now, because
-// AssignDevicesPass relies on the return value being null before the device is
-// assigned.
-bool assumeNullConstraintMeansSameDevice(MOHasDeviceInterface op) {
-  return !isa<MOControlOpInterface, MO::CustomOp, MO::InvokeShapeFuncOp,
-              MO::ConstantExternalOp>(op.getOperation());
-}
-
 LogicalResult checkDeviceConstraint(Operation *op, const Twine &name, Type type,
                                     DeviceRefAttr constrainedTo) {
   // Fetch the assigned device for the operand from the type.

@@ -652,26 +652,6 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
 //===----------------------------------------------------------------------===//
 // MO_InvokeShapeFuncOp support
 //===----------------------------------------------------------------------===//
-DeviceRefAttr InvokeShapeFuncOp::getOperandDeviceConstraint(size_t index) {
-  auto dataDeps = getDataDeptTensors();
-
-  if (!dataDeps)
-    return nullptr;
-
-  for (Attribute attr : dataDeps->getValue()) {
-    auto intAttr = cast<mlir::IntegerAttr>(attr);
-    if (static_cast<size_t>(intAttr.getInt()) == index) {
-      return getHostDevice(getOperation());
-    }
-  }
-
-  return nullptr;
-}
-
-DeviceRefAttr InvokeShapeFuncOp::getExecutionDeviceConstraint() {
-  return nullptr;
-}
-
 llvm::SmallVector<DeviceRefAttr> InvokeShapeFuncOp::getExecutionDevices() {
   return {dyn_cast_if_present<DeviceRefAttr>(
       getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
@@ -4804,12 +4784,6 @@ llvm::SmallVector<DeviceRefAttr> CustomOp::getExecutionDevices() {
     return {hostDevice};
   return devices;
 }
-
-DeviceRefAttr CustomOp::getOperandDeviceConstraint(size_t index) {
-  return nullptr;
-}
-
-DeviceRefAttr CustomOp::getExecutionDeviceConstraint() { return nullptr; }
 
 LogicalResult CustomOp::verify() {
   // If the op has a device attribute, verify that it matches the inferred

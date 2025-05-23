@@ -242,12 +242,7 @@ public:
   static LogicalResult verifyTrait(Operation *op) {
     return Impl::verifyHostOnly(op);
   }
-  DeviceRefAttr getExecutionDeviceConstraint() {
-    return getHostDevice(this->getOperation()->getContext());
-  }
-  DeviceRefAttr getOperandDeviceConstraint(size_t index) {
-    return getHostDevice(this->getOperation()->getContext());
-  }
+
   llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
     return {getHostDevice(this->getOperation()->getContext())};
   }
@@ -260,8 +255,7 @@ public:
   static LogicalResult verifyTrait(Operation *op) {
     return Impl::verifyExecutesOnHost(op);
   }
-  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
-  DeviceRefAttr getOperandDeviceConstraint(size_t index) { return nullptr; }
+
   llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
     return {getHostDevice(this->getOperation()->getContext())};
   }
@@ -279,13 +273,6 @@ public:
     return Impl::verifySingleDevice(
         op, cast<ConcreteType>(op).getHostOperandIndices(),
         cast<ConcreteType>(op).getDeviceOperandIndices());
-  }
-  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
-
-  DeviceRefAttr getOperandDeviceConstraint(size_t index) {
-    auto isScalar =
-        llvm::is_contained(getConcreteOp().getHostOperandIndices(), index);
-    return isScalar ? getHostDevice(getConcreteOp().getOperation()) : nullptr;
   }
 
   llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
@@ -309,10 +296,6 @@ private:
   ConcreteType &getConcreteOp() { return static_cast<ConcreteType &>(*this); }
 
 public:
-  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
-
-  DeviceRefAttr getOperandDeviceConstraint(size_t index) { return nullptr; }
-
   llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
     return llvm::to_vector(
         llvm::map_range(getConcreteOp().getInputs(), [](Value input) {
@@ -325,10 +308,6 @@ template <typename ConcreteType>
 class MOExplicitDevice
     : public mlir::OpTrait::TraitBase<ConcreteType, MOExplicitDevice> {
 public:
-  DeviceRefAttr getExecutionDeviceConstraint() { return nullptr; }
-
-  DeviceRefAttr getOperandDeviceConstraint(size_t index) { return nullptr; }
-
   llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
     // TODO: Make the deviceRef attribute part of the op's definition.
     return {dyn_cast_if_present<DeviceRefAttr>(

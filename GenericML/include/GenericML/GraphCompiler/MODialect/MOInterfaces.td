@@ -113,22 +113,6 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
 
     InterfaceMethod<
       [{
-        Returns the `#M.device_ref` on which the op must execute. Returns null
-        if there is no such constraint.
-      }],
-      "DeviceRefAttr", "getExecutionDeviceConstraint", (ins)
-    >,
-
-    InterfaceMethod<
-      [{
-        Returns the `#M.device_ref` on which the operand with the given index
-        must be stored. Returns null if there is no such constraint.
-      }],
-      "DeviceRefAttr", "getOperandDeviceConstraint", (ins "size_t":$index)
-    >,
-
-    InterfaceMethod<
-      [{
         Returns an array of `#M.device_ref` corresponding to the
         devices on which this operation executes.
       }],
