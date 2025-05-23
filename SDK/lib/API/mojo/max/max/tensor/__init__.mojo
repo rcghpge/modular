@@ -26,8 +26,5 @@ from tensor import (
     Output,
     MutableInput,
     RuntimeTensorSpec,
-    Tensor,
-    TensorShape,
-    TensorSpec,
     foreach,
 )
