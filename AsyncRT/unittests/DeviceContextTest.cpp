@@ -412,6 +412,10 @@ TEST(DeviceContextTest, BufferCache) {
   putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE_PERCENT=100"));
   // Ensure that chunkSize is a 1/4th of maxCacheSize.
   putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT=25"));
+  // Ensure that selfCheck() is enabled.
+  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK=True"));
+  // Ensure that logging is enabled.
+  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG=True"));
 
   // Create a CPU device that is associated with a BufferCache by passing in a
   // non-empty memInfo.

@@ -15,6 +15,12 @@
 #include <cstdint>
 #include <mutex>
 
+// Helpers for logging.
+#define TWINE(val) (llvm::Twine(val))
+
+#define TWINE_PTR(ptr)                                                         \
+  (llvm::Twine("0x") + llvm::Twine::utohexstr(reinterpret_cast<uintptr_t>(ptr)))
+
 namespace M::AsyncRT {
 
 class BufferCache::Chunk {
@@ -268,57 +274,63 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
     codePath = "no merge";
   }
   if (bufferCache.doLog_) {
-    bufferCache.errOut() << "mergeFreeBlockDesc(" << ptr << "; " << bufSize
-                         << ") -  (" << codePath << ")\n";
+    bufferCache.logErr("mergeFreeBlockDesc(" + TWINE_PTR(ptr) + "; " +
+                       TWINE(bufSize) + ") -  (" + codePath + ")");
   }
 }
 
 void BufferCache::Chunk::selfCheck() const {
+#define SELF_CHECK(cond)                                                       \
+  if (!(cond)) {                                                               \
+    cache_.logErr("!!! selfCheck !!! - " #cond);                               \
+    abort();                                                                   \
+  }
+
   // First buffer points to base of pre-allocated memory.
-  assert(descs_->ptr_ == base_);
+  SELF_CHECK(descs_->ptr_ == base_);
 
   Desc *curDesc = descs_;
   Desc *aheadDesc = curDesc;
-  assert(curDesc != nullptr);
-  assert(curDesc->prev_ == nullptr);
+  SELF_CHECK(curDesc != nullptr);
+  SELF_CHECK(curDesc->prev_ == nullptr);
 
   // Check no missing buffers, no cycle
   while (curDesc != nullptr) {
     if (curDesc->isFree()) {
       BufferCacheFreeList *owner = curDesc->owner();
       if (!owner->contains(curDesc)) {
-        cache_.errOut() << " !!! selfCheck !!! owner: " << owner
-                        << " does not contain: " << curDesc << "\n";
+        cache_.logErr(" !!! selfCheck !!! owner: " + TWINE_PTR(owner) +
+                      " does not contain: " + TWINE_PTR(curDesc));
         abort();
       }
-      if (curDesc->prevFree_ != nullptr) {
-        assert(curDesc->prevFree_->owner_ == owner);
-      }
-      if (curDesc->nextFree_ != nullptr) {
-        assert(curDesc->nextFree_->owner_ == owner);
-      }
+      SELF_CHECK((curDesc->prevFree_ == nullptr) ||
+                 (curDesc->prevFree_->owner_ == owner));
+      SELF_CHECK((curDesc->nextFree_ == nullptr) ||
+                 (curDesc->nextFree_->owner_ == owner));
     } else {
-      assert(curDesc->nextFree_ == nullptr);
-      assert(curDesc->prevFree_ == nullptr);
+      SELF_CHECK(curDesc->nextFree_ == nullptr);
+      SELF_CHECK(curDesc->prevFree_ == nullptr);
     }
     Desc *nextDesc = curDesc->next_;
     if (nextDesc != nullptr) {
-      assert((curDesc->ptr_ + curDesc->size_) == nextDesc->ptr_);
-      assert(nextDesc->prev_ == curDesc);
+      SELF_CHECK((curDesc->ptr_ + curDesc->size_) == nextDesc->ptr_);
+      SELF_CHECK(nextDesc->prev_ == curDesc);
     } else {
-      assert((curDesc->ptr_ + curDesc->size_) ==
-             (static_cast<const char *>(base_) + size_));
+      SELF_CHECK((curDesc->ptr_ + curDesc->size_) ==
+                 (static_cast<const char *>(base_) + size_));
     }
     // Step ahead.
     if ((aheadDesc != nullptr) && (aheadDesc->next_ != nullptr)) {
       aheadDesc = aheadDesc->next_->next_;
       if (aheadDesc == curDesc) {
-        cache_.errOut() << "!!! selfCheck !!! cycle - buffers\n";
+        cache_.logErr("!!! selfCheck !!! cycle - buffers");
         abort();
       }
     }
     curDesc = nextDesc;
   }
+
+#undef SELF_CHECK
 }
 
 BufferCacheFreeList::BufferCacheFreeList(const DeviceContext *context,
@@ -341,7 +353,7 @@ void BufferCacheFreeList::flushToParent() {
   {
     std::lock_guard<std::mutex> lock(bufferCache_.mu_);
     if (bufferCache_.doLog_) {
-      bufferCache_.errOut() << "flushing " << this << " to parent\n";
+      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent");
     }
     size_t bufSize = 0;
     BufferCache::Desc *curDesc = freeBuffers_;
@@ -367,11 +379,8 @@ void BufferCacheFreeList::flushToParent() {
     freeBuffers_ = nullptr;
 
     if (bufferCache_.doLog_) {
-      bufferCache_.errOut()
-          << "flushing " << this << " to parent: Done , "
-          << bufferCache_.cacheSize_ << ", " << bufferCache_.chunkCount_ << ", "
-          << bufferCache_.freeSize_ << ", " << bufferCache_.freeCount_ << ", "
-          << 0 << ", " << bufSize << "\n";
+      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent: Done", 0,
+                          bufSize);
     }
   }
 }
@@ -417,33 +426,30 @@ void BufferCacheFreeList::removeFromFreeList(BufferCache::Desc *desc) {
 }
 
 void BufferCacheFreeList::selfCheck() const {
+  if (!bufferCache_.doSelfCheck_ || bufferCache_.chunks_ == nullptr)
+    return;
+
+#define SELF_CHECK(cond)                                                       \
+  if (!(cond)) {                                                               \
+    bufferCache_.logErr("!!! selfCheck !!! - " #cond);                         \
+    abort();                                                                   \
+  }
+
   // Check free markers, no cycle
   BufferCache::Desc *curDesc = freeBuffers_;
   BufferCache::Desc *aheadDesc = curDesc;
   if (curDesc != nullptr) {
-    assert(curDesc->prevFree_ == nullptr);
+    SELF_CHECK(curDesc->prevFree_ == nullptr);
   }
   while (curDesc != nullptr) {
     BufferCache::Desc *next = curDesc->nextFree_;
-    if (!curDesc->isFree()) {
-      bufferCache_.errOut() << "!!! selfCheck !!! (!curDesc->isFree())\n";
-      abort();
-    }
-    if (curDesc->owner() != this) {
-      bufferCache_.errOut() << "!!! selfCheck !!! (curDesc->owner() != this)\n";
-      abort();
-    }
-    if (next != nullptr) {
-      if (next->prevFree_ != curDesc) {
-        bufferCache_.errOut()
-            << "!!! selfCheck !!! (next->prevFree_ != curDesc)\n";
-        abort();
-      }
-    }
+    SELF_CHECK(curDesc->isFree());
+    SELF_CHECK(curDesc->owner() == this);
+    SELF_CHECK((next == nullptr) || (next->prevFree_ == curDesc));
     if ((aheadDesc != nullptr) && (aheadDesc->nextFree_ != nullptr)) {
       aheadDesc = aheadDesc->nextFree_->nextFree_;
       if (aheadDesc == curDesc) {
-        bufferCache_.errOut() << "!!! selfCheck !!! cycle - free buffers\n";
+        bufferCache_.logErr("!!! selfCheck !!! cycle - free buffers");
         abort();
       }
     }
@@ -458,6 +464,8 @@ void BufferCacheFreeList::selfCheck() const {
     // associated buffer cache.
     bufferCache_.selfCheck();
   }
+
+#undef SELF_CHECK
 }
 
 bool BufferCacheFreeList::contains(BufferCache::Desc *desc) const {
@@ -470,20 +478,37 @@ bool BufferCacheFreeList::contains(BufferCache::Desc *desc) const {
   return false;
 }
 
-llvm::raw_fd_ostream &BufferCache::errOut() const {
-  // We rely on the fact that the BufferCache is locked to avoid having
-  // overlapping output.
-  if (deviceDescription_.empty()) {
-    deviceDescription_ =
-        (device().api() + "[" + llvm::Twine(device().id()) + "]").str();
-    // Print the intial information about this BufferCache.
-    llvm::errs() << "##(" << deviceDescription_ << ":" << this
-                 << ")##: buffer_cache(chunk_size: " << chunkSize_
-                 << "; max_cache_size: " << maxCacheSize_
-                 << "; free_list: " << freeList_.get() << ")\n";
+void BufferCache::logErr(llvm::Twine msg) const {
+  logErr(msg, 0, 0, /* printInfoSize = */ false);
+}
+
+void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
+                         bool printInfoSize) const {
+  if (chunkSize_ == 0)
+    return;
+
+  // Using a shared mutex to avoid interleaved output.
+  static std::mutex mu;
+  {
+    std::lock_guard<std::mutex> lock(mu);
+    if (deviceDescription_.empty()) {
+      deviceDescription_ =
+          (device().api() + "[" + llvm::Twine(device().id()) + "]").str();
+      // Print the intial information about this BufferCache.
+      llvm::errs() << "##(" << deviceDescription_ << ":" << this
+                   << ")##: buffer_cache(chunk_size: " << chunkSize_
+                   << "; max_cache_size: " << maxCacheSize_
+                   << "; free_list: " << freeList_.get() << ")\n";
+    }
+    if (printInfoSize) {
+      llvm::errs() << "##(" << deviceDescription_ << ")##: " << msg << " - "
+                   << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_
+                   << ", " << freeCount_ << ", " << info << ", " << size
+                   << "\n";
+    } else {
+      llvm::errs() << "##(" << deviceDescription_ << ")##: " << msg << "\n";
+    }
   }
-  llvm::errs() << "##(" << deviceDescription_ << ")##: ";
-  return llvm::errs();
 }
 
 static constexpr size_t KB = 1024; // NOLINT
@@ -528,7 +553,7 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
 
 BufferCache::~BufferCache() {
   if (doLog_) {
-    errOut() << "destructor\n";
+    logErr("destructor");
   }
   assert(chunks_ == nullptr);
   assert(freeList_->empty());
@@ -548,8 +573,8 @@ bool BufferCache::allocateChunk() {
   ErrorOrSuccess err = device().chunkAlloc(&ptr, allocSize);
   if (err.isError()) {
     if (doLog_) {
-      errOut() << "allocate_chunk(" << allocSize << ") - failed with "
-               << err.getError() << "\n";
+      logErr("allocate_chunk(" + TWINE(allocSize) + ") - failed with " +
+             err.getError());
     }
     // Keep chunks_ unmodified.
     return false;
@@ -560,13 +585,8 @@ bool BufferCache::allocateChunk() {
   cacheSize_ += allocSize;
   chunkCount_++;
   if (doLog_) {
-    if (deviceDescription_.empty()) {
-      deviceDescription_ =
-          (device().api() + "[" + llvm::Twine(device().id()) + "]").str();
-    }
-    errOut() << "allocate_chunk(" << ptr << "; " << allocSize << ") - "
-             << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_ << ", "
-             << freeCount_ << ", " << 0 << ", " << 0 << "\n";
+    logErr("allocate_chunk(" + TWINE_PTR(ptr) + "; " + TWINE(allocSize) + ")",
+           0, 0);
   }
   return true;
 }
@@ -585,7 +605,7 @@ void BufferCache::selfCheck() const {
   }
 
   if (doLog_) {
-    errOut() << "selfCheck OK\n";
+    logErr("selfCheck OK");
   }
 }
 
@@ -640,12 +660,12 @@ void BufferCache::clear() {
     delete chunk->descs_;
     // Release the chunk memory.
     if (doLog_) {
-      errOut() << "free_chunk(" << chunk->base_ << ", " << chunk->size_
-               << ")\n";
+      logErr("free_chunk(" + TWINE_PTR(chunk->base_) + ", " +
+             TWINE(chunk->size_) + ")");
     }
     ErrorOrSuccess err = device().chunkFree(chunk->base_);
     if (err.isError()) {
-      errOut() << err.getError() << "\n";
+      logErr(err.getError());
       abort();
     }
     assert(!err.isError());
@@ -697,8 +717,8 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
     // might not have a DeviceContext associated, so we fail the allocation with
     // an error.
     if (bufferCache_.doLog_) {
-      bufferCache_.errOut() << "allocate_buffer(" << size
-                            << ") - failed due to missing context\n";
+      bufferCache_.logErr("allocate_buffer(" + TWINE(size) +
+                          ") - failed due to missing context");
     }
     return Error("memAlloc failed due to missing context");
   }
@@ -707,18 +727,14 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
       (bufferCache_.chunkSize_ != 0) ? Device::AllocMode::SYNC : mode);
   if (err.isError()) {
     if (bufferCache_.doLog_) {
-      bufferCache_.errOut() << "allocate_buffer(" << size << ") - failed with "
-                            << err.getError() << "\n";
+      bufferCache_.logErr("allocate_buffer(" + TWINE(size) +
+                          ") - failed with " + err.getError());
     }
     return err.takeError();
   }
   if (bufferCache_.doLog_) {
-    bufferCache_.errOut() << "allocate_buffer(" << (ptr) << "; " << size
-                          << ") - , " << bufferCache_.cacheSize_ << ", "
-                          << bufferCache_.chunkCount_ << ", "
-                          << bufferCache_.freeSize_ << ", "
-                          << bufferCache_.freeCount_ << ", " << 0 << ", " << 0
-                          << "\n";
+    bufferCache_.logErr(
+        "allocate_buffer(" + TWINE_PTR(ptr) + "; " + TWINE(size) + ")", 0, 0);
   }
   assert(ptr != nullptr);
   return ptr;
@@ -750,13 +766,10 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
       bufferCache_.freeSize_ -= size;
 
       if (bufferCache_.doLog_) {
-        bufferCache_.errOut()
-            << "allocate on " << this << " ("
-            << reinterpret_cast<void *>(desc->ptr_) << "; " << size << ") - "
-            << " (iterations: " << iterations << ") , "
-            << bufferCache_.cacheSize_ << ", " << bufferCache_.chunkCount_
-            << ", " << bufferCache_.freeSize_ << ", " << bufferCache_.freeCount_
-            << ", " << iterations << ", -" << size << "\n";
+        bufferCache_.logErr("allocate on " + TWINE_PTR(this) + " (" +
+                                TWINE_PTR(desc->ptr_) + "; " + TWINE(size) +
+                                ")",
+                            iterations, -size);
       }
 
       return desc;
@@ -773,8 +786,8 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
   assert(parent_ == nullptr);
   if (!bufferCache_.allocateChunk()) {
     if (bufferCache_.doLog_) {
-      bufferCache_.errOut()
-          << "allocate(" << size << ") - nullptr (" << iterations << ")\n";
+      bufferCache_.logErr("allocate(" + TWINE(size) + ") - nullptr (" +
+                          TWINE(iterations) + ")");
     }
     // No success allocating a new Chunk, so we bail from allocating in the
     // cache. Instead we will try to allocate directly from the device and if
@@ -801,12 +814,7 @@ ErrorOrSuccess BufferCacheFreeList::free(void *ptr, bool isHost) {
   }
 
   if (bufferCache_.doLog_ && !isHost) {
-    bufferCache_.errOut() << "free_buffer(" << ptr << ") -  (" << 0 << ") , "
-                          << bufferCache_.cacheSize_ << ", "
-                          << bufferCache_.chunkCount_ << ", "
-                          << bufferCache_.freeSize_ << ", "
-                          << bufferCache_.freeCount_ << ", " << 0 << ", " << 0
-                          << "\n";
+    bufferCache_.logErr("free_buffer(" + TWINE_PTR(ptr) + ")");
   }
   return ctx_->memFree(ptr, isHost);
 }
@@ -816,12 +824,9 @@ void BufferCacheFreeList::freeDesc(BufferCache::Desc *desc) {
   size_t bufSize = desc->size_;
   desc->chunk_->mergeFreeBlockDesc(this, desc);
   if (bufferCache_.doLog_) {
-    bufferCache_.errOut() << "free on " << this << " (" << ptr << "; "
-                          << bufSize << ") , " << bufferCache_.cacheSize_
-                          << ", " << bufferCache_.chunkCount_ << ", "
-                          << bufferCache_.freeSize_ << ", "
-                          << bufferCache_.freeCount_ << ", " << 0 << ", "
-                          << bufSize << "\n";
+    bufferCache_.logErr("free on " + TWINE_PTR(this) + " (" + TWINE_PTR(ptr) +
+                            "; " + TWINE(bufSize) + ")",
+                        0, bufSize);
   }
 }
 

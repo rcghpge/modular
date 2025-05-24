@@ -93,7 +93,9 @@ private:
   DescMap allocatedMap_;
 
   // For logging and debugging.
-  llvm::raw_fd_ostream &errOut() const;
+  void logErr(llvm::Twine msg) const;
+  void logErr(llvm::Twine msg, size_t info, int64_t size,
+              bool printInfoSize = true) const;
 
   bool doSelfCheck_ = false;
   bool doLog_ = false;
