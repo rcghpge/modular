@@ -71,7 +71,7 @@ private:
 
   const Device &device_;
   const size_t maxCacheSize_;
-  const size_t chunkSize_;
+  size_t chunkSize_;
 
   const size_t alignmentOffset_;
   const size_t alignmentMask_;

@@ -519,7 +519,7 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
       // Calculate the sizes for the BufferCache here based on defaults or the
       // environment.
       // Make the buffer cache disabled by setting percentages to zero.
-      // Limit to 95% (default) of available memory.
+      // Limit to 99% (default) of available memory.
       // TODO(GEX-1303): BufferCache is currently disabled to evaluate
       maxCacheSize_(llvm::alignToPowerOf2(
           (memInfo.free *
@@ -527,6 +527,8 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
               100,
           256 * KB)),
       // Allocate chunks of 2% (default) of maximum cache size.
+      // This size can potentially be overriden by heuristics in
+      // `BufferCacheFreeList::allocate`.
       chunkSize_(std::min(
           maxCacheSize_,
           static_cast<size_t>(llvm::alignToPowerOf2(
@@ -697,11 +699,21 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
     size = (size + bufferCache_.alignmentOffset_) & bufferCache_.alignmentMask_;
 
     BufferCache::Desc *desc = nullptr;
-    if (size <= bufferCache_.chunkSize_) {
+    {
       std::lock_guard<std::mutex> lock(bufferCache_.mu_);
-      selfCheck();
-
-      desc = allocateDesc(size);
+      if (size <= bufferCache_.chunkSize_) {
+        selfCheck();
+        desc = allocateDesc(size);
+      } else if (bufferCache_.chunks_ == nullptr) {
+        // Heuristic: If the first allocation does overrun the chunk size, then
+        // we override the "buffer_cache_chunk_percent" setting and adjust chunk
+        // size to max cache size.
+        // We take this situation as an indication that a large amount of memory
+        // will be necessary during the execution of a model.
+        bufferCache_.chunkSize_ = bufferCache_.maxCacheSize_;
+        selfCheck();
+        desc = allocateDesc(size);
+      }
     }
     if (desc != nullptr) {
       return desc->ptr_;
