@@ -634,6 +634,7 @@ nixl_status_t nixlAgent::createXferReq(
 
   NIXL_LOCK_GUARD(data->lock);
   if (data->remoteSections.count(remote_agent) == 0) {
+    NIXL_ERROR << "No remote agents are found\n";
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
   }
 
@@ -722,6 +723,7 @@ nixl_status_t nixlAgent::createXferReq(
 
   if (!handle->engine) {
     delete handle;
+    NIXL_ERROR << "Failed to populate backends\n";
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
   }
 
