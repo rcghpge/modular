@@ -527,7 +527,7 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
               100,
           256 * KB)),
       // Allocate chunks of 2% (default) of maximum cache size.
-      // This size can potentially be overriden by heuristics in
+      // This size can potentially be overridden by heuristics in
       // `BufferCacheFreeList::allocate`.
       chunkSize_(std::min(
           maxCacheSize_,
