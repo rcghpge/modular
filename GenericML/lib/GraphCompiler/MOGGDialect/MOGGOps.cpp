@@ -603,6 +603,20 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
     return emitError("Expect to return the same result types as terminator");
   }
 
+  if (getNumOperands() &&
+      llvm::any_of(getOperands().drop_back(1), [](auto operand) {
+        return isa<MO::ChainType>(operand.getType());
+      })) {
+    return emitError("Chain must be the last operand of a kernel op");
+  }
+
+  if (getNumResults() &&
+      llvm::any_of(getResults().drop_back(1), [](auto result) {
+        return isa<MO::ChainType>(result.getType());
+      })) {
+    return emitError("Chain must be the last result of a kernel op");
+  }
+
   return success();
 }
 
@@ -620,36 +634,15 @@ void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
 
   Region *execBodyRegion = state.addRegion();
   Block &kernelBody = execBodyRegion->emplaceBlock();
-  for (auto [i, operand] : llvm::enumerate(operands))
-    kernelBody.addArgument(operand.getType(), operand.getLoc());
+  for (auto [i, operand] : llvm::enumerate(operands)) {
+    if (!isa<MO::ChainType>(operand.getType()))
+      kernelBody.addArgument(operand.getType(), operand.getLoc());
+  }
 
   state.addTypes(results);
 
   if (device)
     state.addAttribute(MO::kOperationDeviceRefAttrName, device);
-}
-
-ParseResult ExpKernelOp::parse(OpAsmParser &parser, OperationState &state) {
-  SmallVector<OpAsmParser::Argument> argInfo;
-  if (parseParenOperandListWithShadowing(parser, state, argInfo, true) ||
-      parser.parseArrowTypeList(state.types) ||
-      parseRegion(parser, argInfo, *state.addRegion(), true) ||
-      parser.parseOptionalAttrDict(state.attributes))
-    return failure();
-
-  return success();
-}
-
-void ExpKernelOp::print(OpAsmPrinter &p) {
-  p << ' ';
-  printParenOperandListWithShadowing(p, getOperands(),
-                                     getExecBody().getArguments(),
-                                     /*isIsolatedFromAbove=*/true);
-
-  p.printArrowTypeList(getResultTypes());
-  p << ' ';
-  printRegion(p, getOperands(), getExecBody(), /*isIsolatedFromAbove=*/true);
-  p.printOptionalAttrDict(getOperation()->getAttrs());
 }
 
 OutputPlaceholdersOp ExpKernelOp::getOutputPlaceholder() {

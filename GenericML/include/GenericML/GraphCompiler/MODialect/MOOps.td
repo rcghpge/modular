@@ -5084,9 +5084,9 @@ def MO_BufferTransferOp : MO_DeviceAgnosticMutableOp<"buffer.transfer", [
   }];
 
   let arguments = (ins
-    MO_Chain:$inChain,
     MO_Buffer:$src,
-    MO_Buffer:$dst
+    MO_Buffer:$dst,
+    MO_Chain:$inChain
   );
   let results = (outs MO_Chain:$outChain);
 
@@ -5142,8 +5142,8 @@ def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
     operation becomes ineligibile for fusion with compute operations.
   }];
 
-  let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer);
-  let results   = (outs MO_Chain:$outChain, MO_Tensor:$outTensor);
+  let arguments = (ins MO_Buffer:$inBuffer, MO_Chain:$inChain);
+  let results   = (outs MO_Tensor:$outTensor, MO_Chain:$outChain);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -5172,7 +5172,7 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
     the operation becomes ineligibile for fusion with compute operations.
   }];
 
-  let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_Tensor:$inTensor);
+  let arguments = (ins MO_Buffer:$inBuffer, MO_Tensor:$inTensor, MO_Chain:$inChain);
   let results   = (outs MO_Chain:$outChain);
 
   let assemblyFormat = [{
@@ -5231,12 +5231,12 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
     Both consumes and produces a chain. The output chain is allowed to have at
     most one use.
   }];
-  let arguments = (ins MO_Chain:$inChain,
-                       MO_Buffer:$inBuffer,
+  let arguments = (ins MO_Buffer:$inBuffer,
                        MO_Tensor:$slice,
                        MO_IndicesVectorIfRanked:$start,
                        MO_IndicesVectorIfRanked:$stop,
                        MO_IndicesVectorIfRanked:$step,
+                       MO_Chain:$inChain,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Chain:$outChain);
   let assemblyFormat = [{
@@ -5275,13 +5275,13 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   // Variadic allreduce has a folder since it can take 1 input.
   let hasFolder = 1;
   let arguments = (ins
-    MO_Chain:$inChain,
     Variadic<MO_Tensor>:$inputs,
-    Variadic<MO_Buffer>:$signalBuffers
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Chain:$inChain
   );
   let results = (outs
-    MO_Chain:$outChain,
-    Variadic<MO_Tensor>:$outputs
+    Variadic<MO_Tensor>:$outputs,
+    MO_Chain:$outChain
   );
 }
 

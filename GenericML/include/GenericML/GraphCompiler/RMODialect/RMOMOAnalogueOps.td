@@ -2696,8 +2696,8 @@ def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]>
 {
-  let arguments = (ins MO_Chain:$inChain, MO_Buffer:$inBuffer, MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Chain:$outChain, MO_Tensor:$outTensor);
+  let arguments = (ins MO_Buffer:$inBuffer, MO_ParamDecls:$outputParamDecls, MO_Chain:$inChain);
+  let results = (outs MO_Tensor:$outTensor, MO_Chain:$outChain);
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
@@ -2712,10 +2712,10 @@ def RMO_MOMutableStoreOp : RMO_MOAnalogueOp<"mutable.store", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]>
 {
-  let arguments = (ins MO_Chain:$inChain,
-                       MO_Buffer:$inBuffer,
+  let arguments = (ins MO_Buffer:$inBuffer,
                        MO_Tensor:$inTensor,
-                       MO_ParamDecls:$outputParamDecls);
+                       MO_ParamDecls:$outputParamDecls,
+                       MO_Chain:$inChain);
 
   let results = (outs MO_Chain:$outChain);
 
@@ -2730,13 +2730,13 @@ def RMO_MOMutableStoreSliceOp : RMO_MOAnalogueOp<"mutable.store.slice", [
   AllDTypesMatch<["inBuffer", "slice"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
 ]> {
-  let arguments = (ins MO_Chain:$inChain,
-                       MO_Buffer:$inBuffer,
+  let arguments = (ins MO_Buffer:$inBuffer,
                        MO_Tensor:$slice,
                        MO_IndicesVectorIfRanked:$start,
                        MO_IndicesVectorIfRanked:$stop,
                        MO_IndicesVectorIfRanked:$step,
-                       MO_ParamDecls:$outputParamDecls);
+                       MO_ParamDecls:$outputParamDecls,
+                       MO_Chain:$inChain);
   let results = (outs MO_Chain:$outChain);
 
   let assemblyFormat = [{

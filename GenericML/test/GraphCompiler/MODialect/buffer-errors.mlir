@@ -20,9 +20,9 @@ mo.graph @unranked_paramaterized<Sh0: !mosh.ape>(
 
 mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f64>) {
   // expected-error@+1 {{'mo.mutable.load' op failed to verify that all of {inBuffer, outTensor} have same dtype}}
-  %outChain, %tensor = mo.mutable.load(%ch, %buf) :
-    (!mo.chain, !mo.buffer<[10, 20], f64>) ->
-    (!mo.chain, !mo.tensor<[10, 20], f32>)
+  %out:2 = mo.mutable.load(%buf, %ch) :
+    (!mo.buffer<[10, 20], f64>, !mo.chain) ->
+    (!mo.tensor<[10, 20], f32>, !mo.chain)
   mo.output
 }
 
@@ -30,9 +30,9 @@ mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f64>) {
 
 mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
   // expected-error@+1 {{'mo.mutable.load' op failed to verify that all of {inBuffer, outTensor} have same shapeAttr}}
-  %outChain, %tensor = mo.mutable.load(%ch, %buf) :
-    (!mo.chain, !mo.buffer<[10, 20], f32>) ->
-    (!mo.chain, !mo.tensor<[30, 20], f32>)
+  %out:2 = mo.mutable.load(%buf, %ch) :
+    (!mo.buffer<[10, 20], f32>, !mo.chain) ->
+    (!mo.tensor<[30, 20], f32>, !mo.chain)
   mo.output
 }
 
@@ -40,8 +40,8 @@ mo.graph @mutable_load(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>) {
 
 mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor: !mo.tensor<[10, 20], f64>) {
   // expected-error@+1 {{'mo.mutable.store' op failed to verify that all of {inBuffer, inTensor} have same dtype}}
-  %outChain = mo.mutable.store(%ch, %buf, %tensor) :
-    (!mo.chain, !mo.buffer<[10, 20], f32>, !mo.tensor<[10, 20], f64>) -> (!mo.chain)
+  %outChain = mo.mutable.store(%buf, %tensor, %ch) :
+    (!mo.buffer<[10, 20], f32>, !mo.tensor<[10, 20], f64>, !mo.chain) -> (!mo.chain)
   mo.output
 }
 
@@ -49,7 +49,7 @@ mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor
 
 mo.graph @mutable_store(%ch: !mo.chain, %buf: !mo.buffer<[10, 20], f32>, %tensor: !mo.tensor<[10, 30], f32>) {
   // expected-error@+1 {{'mo.mutable.store' op failed to verify that all of {inBuffer, inTensor} have same shapeAttr}}
-  %outChain = mo.mutable.store(%ch, %buf, %tensor) :
-    (!mo.chain, !mo.buffer<[10, 20], f32>, !mo.tensor<[10, 30], f32>) -> (!mo.chain)
+  %outChain = mo.mutable.store(%buf, %tensor, %ch) :
+    (!mo.buffer<[10, 20], f32>, !mo.tensor<[10, 30], f32>, !mo.chain) -> (!mo.chain)
   mo.output
 }

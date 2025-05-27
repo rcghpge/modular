@@ -536,13 +536,13 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
         "Ops with buffer inputs must have exactly one chain output.");
   }
 
-  if (!isa<ChainType>(op->getResultTypes().front())) {
-    return op->emitError("A mo.chain must be the first output for ops "
+  if (!isa<ChainType>(op->getResults().back().getType())) {
+    return op->emitError("A mo.chain must be the last output for ops "
                          "with buffer inputs.");
   }
 
-  if (!isa<ChainType>(op->getOperandTypes().front())) {
-    return op->emitError("A mo.chain must be the first input for ops "
+  if (!isa<ChainType>(op->getOperands().back().getType())) {
+    return op->emitError("A mo.chain must be the last input for ops "
                          "with mo.buffer inputs.");
   }
 

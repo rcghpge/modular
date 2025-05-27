@@ -10,7 +10,7 @@
 // CHECK: grt.chain.create ([[buf]]
 // CHECK: [[ebuf:%.*]] = mgp.tensor.extract.buffer{{.*}} [[buf]]
 // The check below corresponds to the (lowered) mo.mutable.load
-// CHECK: mgp.buffer.device_to_device{{.*}}[[ebuf]] 
+// CHECK: mgp.buffer.device_to_device{{.*}}[[ebuf]]
 // CHECK: mogg.generic.compiled.region
 // CHECK: summary = "mo.add
 // CHECK: mogg.generic.compiled.region
@@ -21,10 +21,10 @@ mo.graph @unfused_mutable_load_store(%buf: !bt, %rhs: !tt) -> !bt
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
-  %ch1, %vbuf = mo.mutable.load(%ch0, %buf) : (!ct, !bt) -> (!ct, !tt)
+  %vbuf, %ch1 = mo.mutable.load(%buf, %ch0) : (!bt, !ct) -> (!tt, !ct)
   %res1 = mo.add(%vbuf, %rhs) : !tt
   %res2 = mo.negative(%res1) : !tt
-  %ch4 = mo.mutable.store(%ch1, %buf, %res2) : (!ct, !bt, !tt) -> (!ct)
+  %ch4 = mo.mutable.store(%buf, %res2, %ch1) : (!bt, !tt, !ct) -> (!ct)
 
   mo.output %buf : !bt
 }

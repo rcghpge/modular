@@ -13,11 +13,11 @@ mo.graph @custom_dynamic(%arg0 : !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32> {
 // CHECK-LABEL: mo.graph @inplace_custom_op
 // CHECK-SAME: [[arg0:%.*]]: !mo.buffer<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: mo.custom {symbol = "inplace"}([[ch0]], [[arg0]])
+// CHECK: mo.custom {symbol = "inplace"}([[arg0]], [[ch0]])
 mo.graph @inplace_custom_op(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom {symbol = "inplace"} (%ch0, %arg0) : (!mo.chain, !mo.buffer<[10, 10], f32>) -> !mo.chain
+  %ch1 = mo.custom {symbol = "inplace"} (%arg0, %ch0) : (!mo.buffer<[10, 10], f32>, !mo.chain) -> !mo.chain
 
   mo.output %ch1 : !mo.chain
 }

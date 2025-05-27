@@ -4823,7 +4823,8 @@ ChainValue CustomOp::getOutChain() {
 }
 
 OpOperand &CustomOp::getInChainMutable() {
-  OpOperand &firstOpOperand = getOperation()->getOpOperand(0);
+  OpOperand &firstOpOperand =
+      getOperation()->getOpOperand(getNumOperands() - 1);
 
   ASSERT_STREAM(isa<ChainValue>(firstOpOperand.get()),
                 "Expected to find an input chain as the first operand.");
@@ -4835,8 +4836,8 @@ std::optional<ChainValue> CustomOp::maybeGetInChain() {
   if (getNumOperands() == 0)
     return std::nullopt;
 
-  auto firstOperand = getOperand(0);
-  if (auto chain = dyn_cast<ChainValue>(firstOperand))
+  auto lastOperand = getOperands().back();
+  if (auto chain = dyn_cast<ChainValue>(lastOperand))
     return chain;
 
   return std::nullopt;
@@ -4846,7 +4847,7 @@ std::optional<ChainValue> CustomOp::maybeGetOutChain() {
   if (getNumResults() == 0)
     return std::nullopt;
 
-  auto finalResult = getResult(0);
+  auto finalResult = getResults().back();
   if (auto chain = dyn_cast<ChainValue>(finalResult))
     return chain;
 

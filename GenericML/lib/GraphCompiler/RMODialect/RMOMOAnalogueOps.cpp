@@ -1866,14 +1866,14 @@ void MOMutableLoadOp::inferMOTypesImpl(
   auto chainTy = operands.getInChain().getType();
 
   moInputParamDecls.push_back({});
-  moOperandTypes.push_back(chainTy);
-  moInputParamDecls.push_back({});
   moOperandTypes.push_back(inBufferTy);
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(chainTy);
 
   moOutputParamDecls.push_back({});
-  moResultTypes.push_back(chainTy);
-  moOutputParamDecls.push_back({});
   moResultTypes.push_back(MO::castFromTensorLike(inBufferTy));
+  moOutputParamDecls.push_back({});
+  moResultTypes.push_back(chainTy);
 }
 
 void MOMutableStoreOp::inferMOTypesImpl(
@@ -1886,11 +1886,11 @@ void MOMutableStoreOp::inferMOTypesImpl(
   auto chainTy = operands.getInChain().getType();
 
   moInputParamDecls.push_back({});
-  moOperandTypes.push_back(chainTy);
-  moInputParamDecls.push_back({});
   moOperandTypes.push_back(inBufferTy);
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(MO::castFromTensorLike(inBufferTy));
+  moInputParamDecls.push_back({});
+  moOperandTypes.push_back(chainTy);
 
   moOutputParamDecls.push_back({});
   moResultTypes.push_back(chainTy);
@@ -1918,9 +1918,6 @@ void MOMutableStoreSliceOp::inferMOTypesImpl(
   // guaranteed to have ranked inputs (at time of writing).
   auto rank = inTensorTy.getRank();
 
-  moOperandTypes.push_back(chainTy);
-  moInputParamDecls.push_back({});
-
   moOperandTypes.push_back(inBufferTy);
   moInputParamDecls.push_back({});
 
@@ -1939,6 +1936,9 @@ void MOMutableStoreSliceOp::inferMOTypesImpl(
   moOperandTypes.push_back(stop.getType().cloneWith(sliceDims));
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(step.getType().cloneWith(sliceDims));
+  moInputParamDecls.push_back({});
+
+  moOperandTypes.push_back(chainTy);
   moInputParamDecls.push_back({});
 
   moResultTypes.push_back(chainTy);

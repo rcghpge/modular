@@ -20,7 +20,7 @@ mo.graph @buffer_transfer_h2d(%arg0: !mo.buffer<[2, 2], f32>) -> !mo.buffer<[2, 
   %ch = mo.chain.create()
   %darg0 = mo.buffer.create : !mo.buffer<[2, 2], f32, gpu:0>
 
-  mo.buffer.transfer(%ch, %arg0, %darg0) : !mo.buffer<[2, 2], f32>, !mo.buffer<[2, 2], f32, gpu:0>
+  mo.buffer.transfer(%arg0, %darg0, %ch) : !mo.buffer<[2, 2], f32>, !mo.buffer<[2, 2], f32, gpu:0>
 
   mo.output %darg0: !mo.buffer<[2, 2], f32, gpu:0>
 }
@@ -43,7 +43,7 @@ mo.graph @buffer_transfer_d2d(%arg0: !mo.buffer<[2, 2], f32, gpu:0>) -> !mo.buff
   %ch = mo.chain.create()
   %darg0 = mo.buffer.create : !mo.buffer<[2, 2], f32, gpu:1>
 
-  mo.buffer.transfer(%ch, %arg0, %darg0) : !mo.buffer<[2, 2], f32, gpu:0>, !mo.buffer<[2, 2], f32, gpu:1>
+  mo.buffer.transfer(%arg0, %darg0, %ch) : !mo.buffer<[2, 2], f32, gpu:0>, !mo.buffer<[2, 2], f32, gpu:1>
 
   mo.output %darg0: !mo.buffer<[2, 2], f32, gpu:1>
 }

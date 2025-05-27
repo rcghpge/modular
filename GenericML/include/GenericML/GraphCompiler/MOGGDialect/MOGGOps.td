@@ -321,6 +321,7 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
   }];
 
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
+    MO_ParamDecls:$outputParamDecls,
     OptionalAttr<StrAttr>:$summary,
     OptionalAttr<BoolAttr>:$isAsync,
     OptionalAttr<ArrayAttr>:$allocIndices,
@@ -332,7 +333,9 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$execBody);
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{
+    custom<Kernel>($operands, type($operands), type($results), $execBody, $outputParamDecls) attr-dict
+  }];
 
   let extraClassDeclaration = [{
     KernelTerminator getTerminator();

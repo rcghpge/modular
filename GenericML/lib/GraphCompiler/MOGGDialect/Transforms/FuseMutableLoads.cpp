@@ -309,8 +309,8 @@ struct ParallelizeLoadsWithMultipleUsers
 
     for (OpOperand *use : opOperands) {
       auto newLoadOp = rewriter.create<MO::MutableLoadOp>(
-          loadOp.getLoc(), chainType, outTensor.getType(), loadOp.getInChain(),
-          loadOp.getInBuffer());
+          loadOp.getLoc(), outTensor.getType(), chainType, loadOp.getInBuffer(),
+          loadOp.getInChain());
 
       rewriter.modifyOpInPlace(use->getOwner(), [&newLoadOp, &use]() {
         use->set(newLoadOp.getOutTensor());

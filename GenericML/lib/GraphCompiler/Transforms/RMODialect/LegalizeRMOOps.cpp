@@ -289,13 +289,13 @@ struct LegalizeMutableLoadOp : public OpRewritePattern<RMO::MOMutableLoadOp> {
                      moOutputParamDecls);
 
     SmallVector<Value> moOperands;
-    moOperands.push_back(op.getInChain());
     moOperands.push_back(op.getInBuffer());
+    moOperands.push_back(op.getInChain());
 
     auto moOp = rewriter.create<MO::MutableLoadOp>(op->getLoc(), moResultTypes,
                                                    moOperands);
     moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
-    OpResult outTensorRes = moOp->getOpResult(1);
+    OpResult outTensorRes = moOp->getOpResult(0);
     auto reboundOutput = rebindToShape(graphOp, outTensorRes,
                                        op.getOutTensor().getType(), rewriter);
     rewriter.replaceAllUsesWith(op.getOutTensor(), reboundOutput);
@@ -327,11 +327,11 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
 
     auto reboundInTensor =
         rebindToShape(graphOp, op.getInTensorMutable(),
-                      cast<TensorType>(moOperandTypes[2]), rewriter);
+                      cast<TensorType>(moOperandTypes[1]), rewriter);
 
-    moOperands.push_back(op.getInChain());
     moOperands.push_back(op.getInBuffer());
     moOperands.push_back(reboundInTensor);
+    moOperands.push_back(op.getInChain());
 
     auto moOp = rewriter.create<MO::MutableStoreOp>(op->getLoc(), moResultTypes,
                                                     moOperands);
@@ -363,10 +363,9 @@ struct LegalizeMutableStoreSliceOp
 
     SmallVector<Value> moOperands;
 
-    moOperands.push_back(op.getInChain());
     moOperands.push_back(op.getInBuffer());
 
-    for (size_t i = moOperands.size(); i < moOperandTypes.size(); i++) {
+    for (size_t i = 1; i < moOperandTypes.size() - 1; i++) {
       SmallVector<KGEN::ParamDeclAttr> &curInputDecls = moInputParamDecls[i];
 
       auto rebound = rebindToShape(graphOp, op->getOpOperand(i),
@@ -375,6 +374,8 @@ struct LegalizeMutableStoreSliceOp
 
       moOperands.push_back(rebound);
     }
+
+    moOperands.push_back(op.getInChain());
 
     auto moOp = rewriter.create<MO::MutableStoreSliceOp>(
         op->getLoc(), moResultTypes, moOperands, op->getAttrs());

@@ -8,7 +8,7 @@ mo.graph @mutable_load_ok<d0, d1, d2, d3>(%buf: !bt) -> !tt
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
-  %ch1, %vbuf = rmo.mo.mutable.load(%ch0, %buf) : (!c, !bt) -> (!c, !tt)
+  %vbuf, %ch1 = rmo.mo.mutable.load(%buf, %ch0) : (!bt, !c) -> (!tt, !c)
 
   mo.output %vbuf : !tt
 }
@@ -23,7 +23,7 @@ mo.graph @mutable_store_ok<d0, d1, d2, d3>(%buf: !bt, %tensor: !tt)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
-  %ch1 = rmo.mo.mutable.store(%ch0, %buf, %tensor) : (!c, !bt, !tt) -> (!c)
+  %ch1 = rmo.mo.mutable.store(%buf, %tensor, %ch0) : (!bt, !tt, !c) -> (!c)
 
   mo.output
 }
@@ -39,7 +39,7 @@ mo.graph @mutable_load_dtype_error<d0, d1, d2, d3, d4, d5>(%buf: !bt) -> !tt
   %ch0 = mo.chain.create(%buf) : !bt
 
   // expected-error @+1{{'rmo.mo.mutable.load' op failed to verify that all of {inBuffer, outTensor} have same dtype}}
-  %ch1, %vbuf = rmo.mo.mutable.load(%ch0, %buf) : (!c, !bt) -> (!c, !tt)
+  %vbuf, %ch1 = rmo.mo.mutable.load(%buf, %ch0) : (!bt, !c) -> (!tt, !c)
 
   mo.output %vbuf : !tt
 }
@@ -55,7 +55,7 @@ mo.graph @mutable_store_dtype_errorok<d0, d1, d2, d3, d4, d5>(%buf: !bt, %tensor
   %ch0 = mo.chain.create(%buf) : !bt
 
   // expected-error @+1{{'rmo.mo.mutable.store' op failed to verify that all of {inBuffer, inTensor} have same dtype}}
-  %ch1 = rmo.mo.mutable.store(%ch0, %buf, %tensor) : (!c, !bt, !tt) -> (!c)
+  %ch1 = rmo.mo.mutable.store(%buf, %tensor, %ch0) : (!bt, !tt, !c) -> (!c)
 
   mo.output
 }

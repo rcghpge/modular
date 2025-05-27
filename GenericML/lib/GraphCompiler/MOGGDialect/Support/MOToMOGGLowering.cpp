@@ -88,16 +88,6 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
   return ret;
 }
 
-static SmallVector<Value> dropChainIfPresent(ArrayRef<Value> inputs) {
-  SmallVector<Value> ret;
-  for (auto input : inputs) {
-    if (!isa<MO::ChainType>(input.getType()))
-      ret.push_back(input);
-  }
-
-  return ret;
-}
-
 KernelCallInterface
 MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                                const OperandMapping &mapping,
@@ -183,9 +173,9 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   if (isa<MO::Static::ReshapeOp, MO::Static::BroadcastToOp>(moOp))
     inputs.push_back(shapeInKGEN);
 
-  inputs = dropChainIfPresent(convertTuplesIfNeeded(
+  inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
-      mapping.operandMapping, builder));
+      mapping.operandMapping, builder);
   auto view = builder.create<MOGG::CallViewOp>(
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
@@ -240,9 +230,9 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                 "[MO-TO-MOGG] Should have at most one return by value result");
   TypeAttr regRetTypeAttr =
       retVal.empty() ? nullptr : TypeAttr::get(retVal.front());
-  inputs = dropChainIfPresent(convertTuplesIfNeeded(
+  inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
-      mapping.operandMapping, builder));
+      mapping.operandMapping, builder);
   outputs = convertTuplesIfNeeded(outputs, mapping.resultMapping, builder);
 
   return builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,
