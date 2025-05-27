@@ -132,7 +132,8 @@ Operation *DeviceAnnots::stampAny(Operation *op) const {
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
     auto deviceRefAttr = getDeviceRef(hasDevice);
     if (device && !deviceRefAttr)
-      hasDevice.setDeviceRef(device);
+      hasDevice.getOperation()->setAttr(MO::kOperationDeviceRefAttrName,
+                                        device);
   }
   // If the op does not support device annotations then we'll just ignore
   // the annotation and trust the AssingDevicesPass will check everything is

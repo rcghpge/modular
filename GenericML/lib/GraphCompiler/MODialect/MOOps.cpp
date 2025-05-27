@@ -630,7 +630,6 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
 
       if (srcTy.isF32() && dstTy.isBF16()) {
         // Switch the cast to run on the cpu and convert the transfer input.
-        cast.setDeviceRef(inputDevice);
         cast->setOperand(0, input);
         castOut.setType(castOut.getType().cloneWith(inputDevice));
 

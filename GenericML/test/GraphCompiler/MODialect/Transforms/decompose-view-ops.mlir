@@ -11,7 +11,7 @@
 // CHECK-NEXT: %[[E1:.*]] = mo.slice_dim[0] (%[[END]], %[[ZERO]], %[[ONE]], %[[ONE]]
 // CHECK-NEXT: %[[STEP1:.*]] = mo.slice_dim[0] (%[[STEP]], %[[ZERO]], %[[ONE]], %[[ONE]]
 
-// CHECK-NEXT: %[[O1:.*]] = mo.slice_dim[0] (%[[INPUT]], %[[S1]], %[[E1]], %[[STEP1]]) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[3, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 11, 5], si32>
+// CHECK-NEXT: %[[O1:.*]] = mo.slice_dim[0] (%[[INPUT]], %[[S1]], %[[E1]], %[[STEP1]]) : (!mo.tensor<[3, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 11, 5], si32>
 
 // CHECK-NEXT: %[[TWO:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2>
 
@@ -19,7 +19,7 @@
 // CHECK-NEXT: %[[E2:.*]] = mo.slice_dim[0] (%[[END]], %[[ONE]], %[[TWO]], %[[ONE]]
 // CHECK-NEXT: %[[STEP2:.*]] = mo.slice_dim[0] (%[[STEP]], %[[ONE]], %[[TWO]], %[[ONE]]
 
-// CHECK-NEXT: %[[O2:.*]] = mo.slice_dim[1] (%[[O1]], %[[S2]], %[[E2]], %[[STEP2]]) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[2, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 7, 5], si32>
+// CHECK-NEXT: %[[O2:.*]] = mo.slice_dim[1] (%[[O1]], %[[S2]], %[[E2]], %[[STEP2]]) : (!mo.tensor<[2, 11, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 7, 5], si32>
 
 // CHECK-NEXT: %[[THREE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3>
 
@@ -27,7 +27,7 @@
 // CHECK-NEXT: %[[E3:.*]] = mo.slice_dim[0] (%[[END]], %[[TWO]], %[[THREE]], %[[ONE]]
 // CHECK-NEXT: %[[STEP3:.*]] = mo.slice_dim[0] (%[[STEP]], %[[TWO]], %[[THREE]], %[[ONE]]
 
-// CHECK-NEXT: %[[O3:.*]] = mo.slice_dim[2] (%[[O2]], %[[S3]], %[[E3]], %[[STEP3]]) {device = #M.device_ref<"cpu", 0>} : (!mo.tensor<[2, 7, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 7, 3], si32>
+// CHECK-NEXT: %[[O3:.*]] = mo.slice_dim[2] (%[[O2]], %[[S3]], %[[E3]], %[[STEP3]]) : (!mo.tensor<[2, 7, 5], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 7, 3], si32>
 
 // CHECK-NEXT: mo.output %[[O3]]
 

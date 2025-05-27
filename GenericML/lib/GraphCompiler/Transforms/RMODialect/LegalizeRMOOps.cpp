@@ -1120,10 +1120,6 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
         op.getLoc(), op.getValues().getType(), op.getIndices().getType(), input,
         k, axis, sorted, op.getOutputParamDecls());
 
-    // Set the device reference on the operation itself, needed
-    // in addition to the devices on the operands and results.
-    topkOp.setDeviceRef(deviceRef);
-
     rewriter.replaceOp(op, topkOp->getResults());
     return success();
   }

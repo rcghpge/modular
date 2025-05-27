@@ -314,6 +314,12 @@ public:
         this->getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
   }
 
+  // Sets the `#M.device_ref` annotation for this operation, overwriting any
+  // existing annotation.
+  void setDeviceRef(DeviceRefAttr device) {
+    this->getOperation()->setAttr(MO::kOperationDeviceRefAttrName, device);
+  }
+
   static LogicalResult verifyTrait(Operation *op) {
     return Impl::verifyExplicitDevice(op);
   }

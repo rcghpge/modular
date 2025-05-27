@@ -84,8 +84,6 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
 
     shape[i] = slice.getType().getDim(i);
 
-    auto devRef = slice.getDeviceRef();
-
     auto tryCreateSliceDimOuter = [&]() {
       // TODO(GEX-2138): Re-enable slice dim outer
       return false;
@@ -96,9 +94,6 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
       SliceDimOp newSlice = builder.create<SliceDimOp>(
           slice.getLoc(), slice.getType().cloneWith(shape), lastVal, axis,
           start.getResult(), stop.getResult(), step.getResult());
-
-      if (devRef)
-        newSlice.setDeviceRef(devRef);
 
       lastVal = newSlice.getResult();
     }

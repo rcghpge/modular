@@ -102,17 +102,6 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
 
     InterfaceMethod<
       [{
-        Sets the `#M.device_ref` annotation for this operation, overwriting any
-        existing annotation.
-      }],
-      "void", "setDeviceRef", (ins "DeviceRefAttr":$device), [{}],
-      [{
-        $_op->setAttr(kOperationDeviceRefAttrName, device);
-      }]
-    >,
-
-    InterfaceMethod<
-      [{
         Returns an array of `#M.device_ref` corresponding to the
         devices on which this operation executes.
       }],
