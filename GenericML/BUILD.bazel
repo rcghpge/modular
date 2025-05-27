@@ -1124,7 +1124,6 @@ modular_cc_library(
         "//Runtime",
         "//Runtime:Tensor",
         "//Support:Base",
-        "//Support:FrameworkSupport",
         "//Support:ML",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Transforms",
