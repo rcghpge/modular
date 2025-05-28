@@ -63,8 +63,8 @@ struct FuseProloguesEpilogues
       if (dst.getElemwiseBodyLambda())
         return;
 
-      int64_t numOperands = dst->getNumOperands();
-      for (int64_t fusionIdx = numOperands - 1; fusionIdx >= 0; --fusionIdx) {
+      for (int64_t fusionIdx = dst->getNumOperands() - 1; fusionIdx >= 0;
+           --fusionIdx) {
         auto inputLambda = dst.getBoundInputLambda(fusionIdx);
         if (!inputLambda)
           continue;
@@ -73,11 +73,17 @@ struct FuseProloguesEpilogues
         if (!providerOp || !providerOp->hasOneUse())
           continue;
 
+        if (providerOp->getBlock() != dst->getBlock())
+          continue;
+
         if (providerOp->getNumResults() != 1)
           continue;
 
         auto src = dyn_cast<MOGG::ExpKernelOp>(providerOp);
         if (!src)
+          continue;
+
+        if (dst.getDeviceRef() != src.getDeviceRef())
           continue;
 
         if (!src.getElemwiseBodyLambda())
