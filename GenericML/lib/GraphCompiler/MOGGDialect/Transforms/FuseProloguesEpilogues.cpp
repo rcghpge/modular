@@ -119,6 +119,13 @@ struct FuseProloguesEpilogues
         dst->eraseOperand(fusionIdx);
         dst.getExecBody().eraseArgument(fusionIdx);
 
+        // Copy views that were previously fused into the elementwise kernel, if
+        // any.
+        for (Operation &op : src.getOps()) {
+          if (isa<MOGG::CallViewOp>(&op))
+            op.moveAfter(inputLambda);
+        }
+
         // Delete the src because it is no longer needed.
         src->erase();
       }
@@ -126,116 +133,104 @@ struct FuseProloguesEpilogues
   }
 
   void fuseEpilogues(MO::GraphOp moGraph) {
-    auto getFusibleUser = [](Value v) -> MOGG::ExpKernelOp {
-      if (!v.hasOneUse())
-        return nullptr;
-
-      auto kernelUser = dyn_cast<MOGG::ExpKernelOp>(*v.getUsers().begin());
-      if (!kernelUser)
-        return nullptr;
-
-      // elementwise kernel user.
-      return kernelUser.getElemwiseBodyLambda() ? kernelUser : nullptr;
-    };
-
     IRRewriter rewriter(moGraph->getContext());
-    SmallVector<Operation *> toErase;
     moGraph.walk([&](MOGG::ExpKernelOp dst) {
-      // Skips elementwise kernel.
       if (dst.getElemwiseBodyLambda())
         return;
 
-      SmallVector<std::pair<OpResult, Block *>> outputLambdas;
-      for (OpResult result : dst->getResults()) {
-        auto outLambda = dst.getBoundOutputLambda(result.getResultNumber());
-
-        if (!outLambda)
+      for (int64_t fusionIdx = dst.getNumResults() - 1; fusionIdx >= 0;
+           --fusionIdx) {
+        auto outputLambda = dst.getBoundOutputLambda(fusionIdx);
+        if (!outputLambda)
           continue;
 
-        Block *lambdaBlock = outLambda.getBody();
-        outputLambdas.push_back({result, lambdaBlock});
-      }
+        Value dstOutput = dst.getResult(fusionIdx);
+        if (!dstOutput.hasOneUse())
+          continue;
 
-      for (auto [output, outputLambda] : outputLambdas) {
-        MOGG::ExpKernelOp src = getFusibleUser(output);
+        auto consumingOp = *dstOutput.getUsers().begin();
+        if (consumingOp->getNumResults() != 1)
+          continue;
+
+        if (consumingOp->getBlock() != dst->getBlock())
+          continue;
+
+        auto src = dyn_cast<MOGG::ExpKernelOp>(consumingOp);
         if (!src)
+          continue;
+
+        if (!src.getElemwiseBodyLambda())
+          continue;
+
+        if (dst.getDeviceRef() != src.getDeviceRef())
           continue;
 
         ++numberOfFusedEpilogues;
 
-        // Update the type after fusion.
-        auto fusedResultTp = cast<MO::TensorType>(src->getResult(0).getType());
-        output.setType(fusedResultTp);
-        auto outOps = dst.getExecBody().getOps<MOGG::OutputPlaceholdersOp>();
-        ASSERT_STREAM(llvm::range_size(outOps) == 1,
-                      "Expect one mogg.output_placeholder per mogg.kernel");
-        MOGG::OutputPlaceholdersOp outHolderOp = *outOps.begin();
-        outHolderOp->getResult(output.getResultNumber()).setType(fusedResultTp);
-
-        // Merge all the operands into the target kernel.
-        auto fusedOperands = src->getOpOperands();
-        SmallVector<Value> fusedArgs(fusedOperands.size(), nullptr);
-        for (auto [idx, operand] : llvm::enumerate(fusedOperands)) {
-          dst->insertOperands(idx, operand.get());
-          fusedArgs[idx] = dst.getExecBody().insertArgument(
-              idx, src.getExecBody().getArgument(idx).getType(),
-              operand.get().getLoc());
-        }
-
-        // Inlining elementwise lambda into output lambda
-        rewriter.setInsertionPoint(outputLambda->getTerminator());
-        Value outVal = outputLambda->getTerminator()->getOperands().front();
-        Value indices = outputLambda->getTerminator()->getOperands().back();
-
-        Block *elemFuseBody = src.getElemwiseBodyLambda().getBody();
-        unsigned fusedIdx = std::distance(
-            src->operand_begin(), llvm::find(src->getOperands(), output));
-        Value yieldVal = elemFuseBody->getTerminator()->getOperand(0);
-        outVal.replaceAllUsesWith(yieldVal);
-        elemFuseBody->getTerminator()->erase();
-
-        for (auto [idx, val] : llvm::enumerate(fusedArgs)) {
-          // Relink SSA;
-          if (fusedIdx == idx) {
-            elemFuseBody->getArgument(idx).replaceAllUsesWith(outVal);
+        // Move in all src's kernel operands and arguments into dst's except for
+        // the one that is being fused.
+        Value srcFusionArgument;
+        for (const auto [argument, operand] : llvm::zip_first(
+                 src.getExecBody().getArguments(), src->getOperands())) {
+          if (operand != dstOutput) {
+            dst->insertOperands(dst->getNumOperands() - 1, operand);
+            auto newArgument = dst.getExecBody().addArgument(argument.getType(),
+                                                             argument.getLoc());
+            argument.replaceAllUsesWith(newArgument);
           } else {
-            // We are fusing a N-ary elementwise kernel, for operands other than
-            // the fused one, we produce the value by capture the tensor and
-            // load.
-            Value loaded = rewriter.create<MOGG::LoadTensorOp>(
-                val.getLoc(),
-                cast<MO::TensorType>(val.getType()).getElementType(), val,
-                indices);
-            elemFuseBody->getArgument(idx).replaceAllUsesWith(loaded);
+            srcFusionArgument = argument;
           }
         }
-        // Relink the indices.
+
+        auto fusedResultTp = cast<MO::TensorType>(src->getResult(0).getType());
+        dstOutput.setType(fusedResultTp);
+        MOGG::OutputPlaceholdersOp outHolderOp = dst.getOutputPlaceholder();
+        outHolderOp->getResult(fusionIdx).setType(fusedResultTp);
+        outputLambda.getResult().setType(fusedResultTp);
+
+        auto outputLambdaBody = outputLambda.getBody(0);
+        auto outputLambdaTerminator = outputLambdaBody->getTerminator();
+        Value outVal = outputLambdaTerminator->getOperand(0);
+        Value indices = outputLambdaTerminator->getOperand(1);
+
+        BindLambdaOp elementwiseLambda = src.getElemwiseBodyLambda();
+        Block *elemFuseBody = elementwiseLambda.getBody();
         elemFuseBody->getArguments().back().replaceAllUsesWith(indices);
+        elemFuseBody->getTerminator()->insertOperands(1, indices);
 
-        // All the uses of the original argument are taken care of above, remove
-        // all the arguments and inline.
+        // Replace all the elementwise's arguments with an explicit load except
+        // for the fusion argument.
+        rewriter.setInsertionPointToStart(elemFuseBody);
+        for (auto [operand, argument] :
+             llvm::zip_first(elementwiseLambda.getOperands(),
+                             elemFuseBody->getArguments())) {
+          if (operand == srcFusionArgument) {
+            argument.replaceAllUsesWith(outVal);
+          } else {
+            Value loadedValue = rewriter.create<MOGG::LoadTensorOp>(
+                argument.getLoc(), argument.getType(), operand, indices);
+            argument.replaceAllUsesWith(loadedValue);
+          }
+        }
+
+        // Move in the elementwise lambda's content into the output lambda.
+        rewriter.setInsertionPoint(outputLambdaTerminator);
         elemFuseBody->eraseArguments(0, elemFuseBody->getNumArguments());
-        rewriter.inlineBlockBefore(elemFuseBody, outputLambda,
+        rewriter.inlineBlockBefore(elemFuseBody, outputLambdaBody,
                                    rewriter.getInsertionPoint());
-        cast<MOGG::BindLambdaOp>(outputLambda->getParentOp())
-            .getResult()
-            .setType(fusedResultTp);
+        outputLambdaTerminator->erase();
 
-        // Remove fused operation.
-        dst->eraseOperand(fusedIdx);
-        dst.getExecBody().eraseArgument(fusedIdx);
+        // Copy views that were previously fused into the elementwise kernel, if
+        // any.
+        for (Operation &op : src.getOps()) {
+          if (isa<MOGG::CallViewOp>(&op))
+            op.moveAfter(outputLambda);
+        }
 
-        // TODO: allocate accumulate buffer for mix-precision matmul.
-        // TODO: we should stop on elementwise kernel and look the producer
-        // to be fused into so that the elementwise kernel can be safely
-        // erased during walking without invalidate tree iterator.
-        src->replaceAllUsesWith(dst->getResults());
-        toErase.push_back(src);
+        src->replaceAllUsesWith(ValueRange{dstOutput});
+        src->erase();
       }
     });
-
-    for (auto op : toErase)
-      op->erase();
   }
 
   bool canDoInputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterfaces,
