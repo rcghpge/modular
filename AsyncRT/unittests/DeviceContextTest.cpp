@@ -560,6 +560,35 @@ TEST(DeviceContextTest, BufferCache) {
   EXPECT_NO_ERR(bufCache.free(an, false));
   EXPECT_NO_ERR(bufCache.free(ao, false));
   EXPECT_FALSE(bufCache.free(ap, false));
+
+  size_t minBlock = allocAlignment;
+  ASSIGN_NO_ERR(void *, ba, bufCache.allocate(minBlock, mode));
+  EXPECT_EQ(ba, cacheBase);
+  ASSIGN_NO_ERR(void *, bb, bufCache.allocate(4 * minBlock, mode));
+  EXPECT_NE(bb, nullptr);
+  ASSIGN_NO_ERR(void *, bc, bufCache.allocate(minBlock, mode));
+  EXPECT_NE(bc, nullptr);
+  ASSIGN_NO_ERR(void *, bd, bufCache.allocate(4 * minBlock, mode));
+  EXPECT_NE(bd, nullptr);
+  ASSIGN_NO_ERR(void *, be, bufCache.allocate(minBlock, mode));
+  EXPECT_NE(be, nullptr);
+
+  EXPECT_NO_ERR(bufCache.free(bd, false));
+  EXPECT_NO_ERR(bufCache.free(bb, false));
+
+  ASSIGN_NO_ERR(void *, bf, bufCache.allocate(2 * minBlock, mode));
+  EXPECT_NE(bf, nullptr);
+  ASSIGN_NO_ERR(void *, bg, bufCache.allocate(3 * minBlock, mode));
+  EXPECT_NE(bg, nullptr);
+  ASSIGN_NO_ERR(void *, bh, bufCache.allocate(4 * minBlock, mode));
+  EXPECT_NE(bh, nullptr);
+
+  EXPECT_NO_ERR(bufCache.free(ba, false));
+  EXPECT_NO_ERR(bufCache.free(bc, false));
+  EXPECT_NO_ERR(bufCache.free(be, false));
+  EXPECT_NO_ERR(bufCache.free(bf, false));
+  EXPECT_NO_ERR(bufCache.free(bg, false));
+  EXPECT_NO_ERR(bufCache.free(bh, false));
 }
 
 } // namespace

@@ -181,6 +181,11 @@ BufferCache::Desc *BufferCache::Chunk::splitFreeDesc(Desc *freeDesc,
   assert(freeDesc->chunk_ == this);
   assert(freeDesc->isFree());
 
+  // Remove the descriptor from the free list so that we can enter it at the
+  // right place below.
+  BufferCacheFreeList *owner = freeDesc->owner();
+  owner->removeFromFreeList(freeDesc);
+
   // Get a new descriptor for the result. And split off the first part of the
   // freeDesc to the result.
   Desc *result = cache_.popDesc();
@@ -202,6 +207,9 @@ BufferCache::Desc *BufferCache::Chunk::splitFreeDesc(Desc *freeDesc,
     freeDesc->prev_->next_ = result;
   }
   freeDesc->prev_ = result;
+
+  // Reenter freeDesc into the free list.
+  owner->addToFreeList(freeDesc);
 
   assert(result->prevFree_ == nullptr);
   assert(result->nextFree_ == nullptr);
@@ -228,20 +236,26 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
   if ((next != nullptr) && (next->owner() == owner)) {
     // Check if we can also merge with the previous buffer.
     if ((prev != nullptr) && (prev->owner() == owner)) {
+      // Remove prev and next from free list before merging.
+      owner->removeFromFreeList(prev);
+      owner->removeFromFreeList(next);
+
       // Merge prev, desc and next, keeping prev on the free list.
       prev->size_ += bufSize + next->size_;
-      // Remove next from free list.
-      owner->removeFromFreeList(next);
       // Remove desc and next from buffers.
       prev->next_ = next->next_;
       if (next->next_ != nullptr) {
         next->next_->prev_ = prev;
       }
-      bufferCache.freeCount_--;
+      // Add the merged block into the free list.
+      owner->addToFreeList(prev);
+      codePath = "merge prev and next";
       bufferCache.pushDesc(desc);
       bufferCache.pushDesc(next);
-      codePath = "merge prev and next";
     } else {
+      // Remove next from free list before merging.
+      owner->removeFromFreeList(next);
+
       // Merge desc and next, keeping next on the free list.
       next->ptr_ = desc->ptr_;
       next->size_ += bufSize;
@@ -253,11 +267,15 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
         desc->prev_->next_ = next;
         next->prev_ = desc->prev_;
       }
+      // Add the merged block into the free list.
+      owner->addToFreeList(next);
       codePath = "merge next";
       bufferCache.pushDesc(desc);
     }
-    bufferCache.freeSize_ += bufSize;
   } else if ((prev != nullptr) && (prev->owner() == owner)) {
+    // Remove prev from free list before merging.
+    owner->removeFromFreeList(prev);
+
     // Merge prev and desc, keeping prev on the free list.
     prev->size_ += bufSize;
     // Remove desc from buffers.
@@ -265,9 +283,10 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
     if (desc->next_ != nullptr) {
       desc->next_->prev_ = prev;
     }
+    // Add the merged block into the free list.
+    owner->addToFreeList(prev);
     codePath = "merge prev";
     bufferCache.pushDesc(desc);
-    bufferCache.freeSize_ += bufSize;
   } else {
     // Add desc to the free list.
     owner->addToFreeList(desc);
@@ -393,12 +412,32 @@ void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
   assert(desc->prevFree_ == nullptr);
   assert(desc->chunk_ != nullptr);
 
+  size_t descSize = desc->size_;
+
   desc->setFree(this);
-  desc->nextFree_ = freeBuffers_;
-  if (freeBuffers_ != nullptr) {
+  if (freeBuffers_ == nullptr) {
+    freeBuffers_ = desc;
+  } else if (freeBuffers_->size_ >= descSize) {
+    // Enter desc at head.
+    assert(freeBuffers_->prevFree_ == nullptr);
     freeBuffers_->prevFree_ = desc;
+    desc->nextFree_ = freeBuffers_;
+    freeBuffers_ = desc;
+  } else {
+    assert(freeBuffers_ != nullptr);
+    BufferCache::Desc *prevDesc = freeBuffers_;
+    BufferCache::Desc *nextDesc = freeBuffers_->nextFree_;
+    while ((nextDesc != nullptr) && (nextDesc->size_ < descSize)) {
+      prevDesc = nextDesc;
+      nextDesc = prevDesc->nextFree_;
+    }
+    prevDesc->nextFree_ = desc;
+    desc->prevFree_ = prevDesc;
+    desc->nextFree_ = nextDesc;
+    if (nextDesc != nullptr) {
+      nextDesc->prevFree_ = desc;
+    }
   }
-  freeBuffers_ = desc;
 
   bufferCache_.freeSize_ += desc->size_.load(std::memory_order_relaxed);
   bufferCache_.freeCount_++;
@@ -406,6 +445,9 @@ void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
 
 void BufferCacheFreeList::removeFromFreeList(BufferCache::Desc *desc) {
   assert(desc->isFree());
+
+  bufferCache_.freeSize_ -= desc->size_.load(std::memory_order_relaxed);
+  bufferCache_.freeCount_--;
 
   if (desc == freeBuffers_) {
     assert(desc->prevFree_ == nullptr);
@@ -435,16 +477,19 @@ void BufferCacheFreeList::selfCheck() const {
     abort();                                                                   \
   }
 
-  // Check free markers, no cycle
+  // Check free markers, no cycle, increasing sizes.
   BufferCache::Desc *curDesc = freeBuffers_;
   BufferCache::Desc *aheadDesc = curDesc;
   if (curDesc != nullptr) {
     SELF_CHECK(curDesc->prevFree_ == nullptr);
   }
+  size_t prevSize = 0;
   while (curDesc != nullptr) {
     BufferCache::Desc *next = curDesc->nextFree_;
     SELF_CHECK(curDesc->isFree());
     SELF_CHECK(curDesc->owner() == this);
+    SELF_CHECK(prevSize <= curDesc->size_);
+    prevSize = curDesc->size_;
     SELF_CHECK((next == nullptr) || (next->prevFree_ == curDesc));
     if ((aheadDesc != nullptr) && (aheadDesc->nextFree_ != nullptr)) {
       aheadDesc = aheadDesc->nextFree_->nextFree_;
@@ -501,7 +546,7 @@ void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
                    << "; free_list: " << freeList_.get() << ")\n";
     }
     if (printInfoSize) {
-      llvm::errs() << "##(" << deviceDescription_ << ")##: " << msg << " - "
+      llvm::errs() << "##(" << deviceDescription_ << ")##: " << msg << " - , "
                    << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_
                    << ", " << freeCount_ << ", " << info << ", " << size
                    << "\n";
@@ -766,7 +811,6 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
       assert(desc->isFree());
       if (desc->size_ == size) {
         removeFromFreeList(desc);
-        bufferCache_.freeCount_--;
       } else {
         desc = desc->chunk_->splitFreeDesc(desc, size);
       }
@@ -775,7 +819,6 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
       assert(desc->isInUse());
 
       bufferCache_.allocatedMap_.add(desc);
-      bufferCache_.freeSize_ -= size;
 
       if (bufferCache_.doLog_) {
         bufferCache_.logErr("allocate on " + TWINE_PTR(this) + " (" +
