@@ -322,9 +322,9 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
 
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
     MO_ParamDecls:$outputParamDecls,
-    OptionalAttr<StrAttr>:$summary,
-    OptionalAttr<BoolAttr>:$isAsync,
-    OptionalAttr<ArrayAttr>:$allocIndices,
+    DefaultValuedOptionalAttr<StrAttr, "">:$summary,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync,
+    DefaultValuedOptionalAttr<ArrayAttr, "{}">:$allocIndices,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
