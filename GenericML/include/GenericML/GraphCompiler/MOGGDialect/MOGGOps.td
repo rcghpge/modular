@@ -329,7 +329,6 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
 
-  // TODO: add MO_Opaque, MO_Chain support.
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$execBody);
 
@@ -364,7 +363,7 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     OutputOp getOutputOp();
   }];
 
-  // This should set all attribuets including MO_HasDeviceInterface
+  // This should set all attributes including MO_HasDeviceInterface
   let builders = [
     OpBuilder<(ins
       "TypeRange":$results,

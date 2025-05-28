@@ -223,18 +223,7 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
         op->emitOpError("[MO_TO_MOGG] ") << llvm::Twine(results.getError());
         return WalkResult::interrupt();
       } else {
-        // If the first result was a chain type, we need to rotate the results
-        // back
-        if (!MOGG::useExperimentalMOGGPath() && !op->getResultTypes().empty() &&
-            isa<MO::ChainType>(op->getResultTypes()[0])) {
-          auto newResults =
-              SmallVector<Value>(results.takeValue()->getResults());
-          std::rotate(newResults.rbegin(), newResults.rbegin() + 1,
-                      newResults.rend());
-          op->replaceAllUsesWith(newResults);
-        } else {
-          op->replaceAllUsesWith(results.takeValue()->getResults());
-        }
+        op->replaceAllUsesWith(results.takeValue()->getResults());
         op->erase();
         return WalkResult::advance();
       }

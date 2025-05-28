@@ -212,12 +212,11 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
   for (const auto &[idx, arg] : mapping.resultMapping) {
     if (!arg.isFusedTensorType())
       continue;
-    bool hasChain = isa<MO::ChainType>(moOp->getResult(0).getType());
-    Value concreteOutput = outputs[idx - hasChain];
+    Value concreteOutput = outputs[idx];
     Value bound = builder.create<BindLambdaOp>(loc, concreteOutput.getType(),
                                                concreteOutput,
                                                BindLambdaKind::OutputLambda);
-    outputs[idx - hasChain] = bound;
+    outputs[idx] = bound;
   }
 
   SmallVector<Type, 1> retVal;

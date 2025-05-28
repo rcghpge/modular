@@ -629,10 +629,8 @@ void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
 
   Region *execBodyRegion = state.addRegion();
   Block &kernelBody = execBodyRegion->emplaceBlock();
-  for (auto [i, operand] : llvm::enumerate(operands)) {
-    if (!isa<MO::ChainType>(operand.getType()))
-      kernelBody.addArgument(operand.getType(), operand.getLoc());
-  }
+  for (auto [i, operand] : llvm::enumerate(operands))
+    kernelBody.addArgument(operand.getType(), operand.getLoc());
 
   state.addTypes(results);
 
