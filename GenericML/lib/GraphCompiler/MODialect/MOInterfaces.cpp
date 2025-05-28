@@ -560,9 +560,9 @@ LogicalResult checkDeviceConstraint(Operation *op, const Twine &name, Type type,
     return op->emitError(name) << " is missing a device attribute.";
   // Check the device constraint.
   if (constrainedTo && device != constrainedTo) {
-    return op->emitError(name)
-           << " is constrained to be on device " << constrainedTo
-           << " but has device " << device << ".";
+    return op->emitError(op->getName().getStringRef())
+           << ": " << name << " is constrained to be on device "
+           << constrainedTo << " but has device " << device << ".";
   }
   return success();
 }
@@ -583,8 +583,9 @@ LogicalResult checkExecutionDeviceConstraint(MOHasDeviceInterface op,
                                              DeviceRefAttr constrainedTo) {
   // Only check the constraint if both the op and the constraint are non-null.
   if (constrainedTo && op.getDeviceRef() != constrainedTo) {
-    return op->emitError("Op is constrained to be on device ")
-           << constrainedTo << " but has device " << op.getDeviceRef() << ".";
+    return op->emitError(op->getName().getStringRef())
+           << ": Op is constrained to be on device " << constrainedTo
+           << " but has device " << op.getDeviceRef() << ".";
   }
   return success();
 }
