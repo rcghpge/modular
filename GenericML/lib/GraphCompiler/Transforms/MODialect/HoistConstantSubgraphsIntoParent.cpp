@@ -558,6 +558,14 @@ private:
         newCallOperands.push_back(mappedVal);
       }
 
+      // Move the chain to the end of the operand list
+      auto chainIt = llvm::find_if(newCallOperands, [&](Value v) {
+        return isa<ChainType>(v.getType());
+      });
+      if (chainIt != newCallOperands.end()) {
+        std::rotate(chainIt, chainIt + 1, newCallOperands.end());
+      }
+
       // Create new call with updated operands
       auto newCallOp =
           builder.create<CallOp>(callOp.getLoc(), callOp.getResultTypes(),
@@ -584,16 +592,25 @@ private:
     Block *body = graphOp.getBodyBlock();
     unsigned numArgs = body->getArguments().size();
 
-    // Get the list of arguments to delete (in reverse order for safe erasure)
+    // Get the list of arguments to delete (in reverse order for safe erasure).
+    // llvm::BitVector doesn't have a reverse iterator, so we can't use
+    // set_bits().
     SmallVector<unsigned> argsToDelete;
     for (int i = numArgs - 1; i >= 0; --i)
       if (!preservedArgs[i])
         argsToDelete.push_back(i);
 
     // Update boundary values to use new block arguments
+    // If the last argument is a chain, we need to insert the new arguments
+    // before it.
+    unsigned insertionIndex = numArgs;
+    if (insertionIndex > 0 &&
+        isa<ChainType>(body->getArgument(insertionIndex - 1).getType()))
+      --insertionIndex;
+
     for (Value boundaryVal : boundaryValues) {
-      BlockArgument newArg =
-          body->addArgument(boundaryVal.getType(), graphOp.getLoc());
+      BlockArgument newArg = body->insertArgument(
+          insertionIndex++, boundaryVal.getType(), graphOp.getLoc());
       boundaryVal.replaceAllUsesWith(newArg);
       LLVM_DEBUG(llvm::dbgs()
                  << "Replaced boundary value with new arg " << newArg << "\n");
