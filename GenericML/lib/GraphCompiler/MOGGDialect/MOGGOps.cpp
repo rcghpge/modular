@@ -598,11 +598,6 @@ LogicalResult M::MOGG::ExpKernelOp::verify() {
     }
   }
 
-  if (!dpsResult.empty() &&
-      !llvm::equal(dpsOutputTypesWithoutTuples, dpsResult.getTypes())) {
-    return emitError("Expect to return the same result types as terminator");
-  }
-
   if (getNumOperands() &&
       llvm::any_of(getOperands().drop_back(1), [](auto operand) {
         return isa<MO::ChainType>(operand.getType());

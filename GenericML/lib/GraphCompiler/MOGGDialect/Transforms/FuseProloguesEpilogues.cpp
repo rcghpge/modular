@@ -30,7 +30,8 @@ namespace {
 
 // TODO(#22349): Remove checks when matmul/conv/concat kernels respect the
 // fusion contract.
-static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
+template <typename KernelTy>
+static bool containsMatmulOrConvOrConcat(KernelTy kernel) {
   StringRef summary = kernel.getSummaryAttr().strref();
   return (summary.contains(MO::ConcatOp::getOperationName()) ||
           summary.contains(MO::MatmulOp::getOperationName()) ||
@@ -134,6 +135,7 @@ struct FuseProloguesEpilogues
 
   void fuseEpilogues(MO::GraphOp moGraph) {
     IRRewriter rewriter(moGraph->getContext());
+    SmallVector<Operation *> toErase;
     moGraph.walk([&](MOGG::ExpKernelOp dst) {
       if (dst.getElemwiseBodyLambda())
         return;
@@ -186,7 +188,11 @@ struct FuseProloguesEpilogues
         dstOutput.setType(fusedResultTp);
         MOGG::OutputPlaceholdersOp outHolderOp = dst.getOutputPlaceholder();
         outHolderOp->getResult(fusionIdx).setType(fusedResultTp);
-        outputLambda.getResult().setType(fusedResultTp);
+
+        if (containsMatmulOrConvOrConcat(dst) &&
+            outputLambda.getResult().getType() != fusedResultTp) {
+          outputLambda.setNeedsScratchTensor(true);
+        }
 
         auto outputLambdaBody = outputLambda.getBody(0);
         auto outputLambdaTerminator = outputLambdaBody->getTerminator();
@@ -228,9 +234,14 @@ struct FuseProloguesEpilogues
         }
 
         src->replaceAllUsesWith(ValueRange{dstOutput});
-        src->erase();
+        // There is no support for reverse walks in walk (mlir::WalkOrder is not
+        // it).
+        toErase.push_back(src);
       }
     });
+
+    for (auto op : toErase)
+      op->erase();
   }
 
   bool canDoInputFusion(MOGG::KernelOp kernel, ArrayAttr fusionInterfaces,

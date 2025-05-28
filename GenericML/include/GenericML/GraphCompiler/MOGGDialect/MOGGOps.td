@@ -439,7 +439,9 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
   }];
 
   let arguments = (ins MOGG_BindLambdaKind: $bindKind,
-                       Variadic<MO_Tensor>: $fusibleTensors);
+                       Variadic<MO_Tensor>: $fusibleTensors,
+                       DefaultValuedOptionalAttr<BoolAttr, "false">:$needsScratchTensor);
+
 
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>: $output);
   let regions = (region SizedRegion<1>:$lambda);
