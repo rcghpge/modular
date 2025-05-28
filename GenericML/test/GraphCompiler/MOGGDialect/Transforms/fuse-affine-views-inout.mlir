@@ -1,6 +1,6 @@
 // REQUIRES: disabled
 // TODO(GEX-1573): Delete or convert to the new API
-// RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize --fuse-in-out-lambdas --canonicalize %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize --fuse-prologues-epilogues --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @inout_fusion<seq_len>
 // CHECK-NEXT: mogg.kernel

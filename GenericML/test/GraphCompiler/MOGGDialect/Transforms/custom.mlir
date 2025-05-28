@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-in-out-lambdas=kernel-library-paths="%kernel_api_test_lib" --cse | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-prologues-epilogues=kernel-library-paths="%kernel_api_test_lib" --cse | FileCheck %s
 
 // CHECK: module {
 // CHECK:   kgen.extern.generator @"MOGGKernelAPITestLib::MOGGKernelAPITest::TestCustomOp::execute

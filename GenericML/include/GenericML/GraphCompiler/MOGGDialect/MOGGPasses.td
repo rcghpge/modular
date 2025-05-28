@@ -164,7 +164,7 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   ];
 }
 
-def FuseInOutLambdas: Pass<"fuse-in-out-lambdas", "MO::GraphOp"> {
+def FuseProloguesEpilogues: Pass<"fuse-prologues-epilogues", "MO::GraphOp"> {
   let summary = "Fuse kernels into the lambda of their users";
   let description = [{
     An elementwise kernel can be directly fused into the lambda body of another

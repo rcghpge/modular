@@ -23,7 +23,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_FUSEINOUTLAMBDAS
+#define GEN_PASS_DEF_FUSEPROLOGUESEPILOGUES
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
@@ -44,11 +44,12 @@ static bool containsMutableStore(MOGG::KernelOp kernel) {
   return summary.contains(MO::MutableStoreOp::getOperationName());
 }
 
-struct FuseInOutLambdas : public impl::FuseInOutLambdasBase<FuseInOutLambdas> {
-  using FuseInOutLambdasBase::FuseInOutLambdasBase;
+struct FuseProloguesEpilogues
+    : public impl::FuseProloguesEpiloguesBase<FuseProloguesEpilogues> {
+  using FuseProloguesEpiloguesBase::FuseProloguesEpiloguesBase;
 
-  FuseInOutLambdas() = default;
-  FuseInOutLambdas(const FuseInOutLambdas &pass) {}
+  FuseProloguesEpilogues() = default;
+  FuseProloguesEpilogues(const FuseProloguesEpilogues &pass) {}
 
   Statistic numberOfFusedPrologues{this, "numberOfFusedPrologues",
                                    "Number of fused input elementwise kernels"};

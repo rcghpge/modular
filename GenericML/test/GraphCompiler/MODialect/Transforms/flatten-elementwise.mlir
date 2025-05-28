@@ -1,5 +1,5 @@
 // RUN: mo-opt --flatten-elementwise --cse --canonicalize %s | FileCheck %s --check-prefix=CHECK-MO
-// RUN: mo-opt --flatten-elementwise --cse --canonicalize --mo-to-mogg --fuse-in-out-lambdas --fuse-elementwise %s | FileCheck %s --check-prefix=CHECK-MOGG
+// RUN: mo-opt --flatten-elementwise --cse --canonicalize --mo-to-mogg --fuse-prologues-epilogues --fuse-elementwise %s | FileCheck %s --check-prefix=CHECK-MOGG
 
 !tt = !mo.tensor<[1,2,3,4,5], f32>
 !tta = !mo.tensor<[6,4,5], f32>
