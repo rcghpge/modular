@@ -16,6 +16,7 @@
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/AssertStream.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 
@@ -135,8 +136,12 @@ struct FuseProloguesEpilogues
 
   void fuseEpilogues(MO::GraphOp moGraph) {
     IRRewriter rewriter(moGraph->getContext());
-    SmallVector<Operation *> toErase;
+    DenseSet<Operation *> toErase;
     moGraph.walk([&](MOGG::ExpKernelOp dst) {
+      // skip fused one
+      if (toErase.find(dst) != toErase.end())
+        return;
+
       if (dst.getElemwiseBodyLambda())
         return;
 
@@ -228,15 +233,31 @@ struct FuseProloguesEpilogues
 
         // Copy views that were previously fused into the elementwise kernel, if
         // any.
-        for (Operation &op : llvm::make_early_inc_range(src.getOps())) {
-          if (isa<MOGG::CallViewOp>(&op))
-            op.moveAfter(outputLambda);
+        mlir::SetVector<Operation *> toMove;
+        for (auto op : llvm::make_early_inc_range(src.getOps<CallViewOp>())) {
+          SmallVector<Operation *> workList;
+          workList.push_back(op);
+          while (!workList.empty()) {
+            auto curOp = workList.back();
+            workList.pop_back();
+            // also move the depending ops.
+            for (auto dep : curOp->getOperands())
+              if (auto depOp = dep.getDefiningOp())
+                workList.push_back(depOp);
+
+            toMove.insert(curOp);
+          }
         }
+
+        // Sort and move.
+        toMove = mlir::topologicalSort(toMove);
+        for (auto op : toMove)
+          op->moveBefore(outputLambda);
 
         src->replaceAllUsesWith(ValueRange{dstOutput});
         // There is no support for reverse walks in walk (mlir::WalkOrder is not
         // it).
-        toErase.push_back(src);
+        toErase.insert(src);
       }
     });
 
