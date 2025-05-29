@@ -64,9 +64,9 @@ struct FuseProloguesEpilogues
     moGraph.walk([&](MOGG::ExpKernelOp dst) {
       if (dst.getElemwiseBodyLambda())
         return;
-
-      for (int64_t fusionIdx = dst->getNumOperands() - 1; fusionIdx >= 0;
-           --fusionIdx) {
+      // Do signed substraction to avoid integer underflow.
+      int64_t numInputs = dst->getNumOperands();
+      for (int64_t fusionIdx = numInputs - 1; fusionIdx >= 0; --fusionIdx) {
         auto inputLambda = dst.getBoundInputLambda(fusionIdx);
         if (!inputLambda)
           continue;
