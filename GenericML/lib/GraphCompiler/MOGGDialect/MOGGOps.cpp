@@ -619,6 +619,12 @@ LogicalResult ExpKernelOp::verify() {
   if (isa<MO::ChainType>(dpsResult.front().getType()))
     dpsResult = dpsResult.drop_front();
 
+  for (auto [outer, inner] :
+       llvm::zip_equal(getOperands(), getExecBody().getArguments())) {
+    if (outer.getType() != inner.getType())
+      return emitError("Except same operands/block argument type");
+  }
+
   if (auto regOutput = term.getKernelReturnOutput()) {
     if (regOutput != dpsResult.back().getType())
       return emitError("Expect to return the same result types as terminator");

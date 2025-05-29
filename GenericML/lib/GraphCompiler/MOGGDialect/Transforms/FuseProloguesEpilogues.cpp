@@ -155,7 +155,8 @@ struct FuseProloguesEpilogues
         if (!dstOutput.hasOneUse())
           continue;
 
-        auto consumingOp = *dstOutput.getUsers().begin();
+        OpOperand &use = *dstOutput.getUses().begin();
+        Operation *consumingOp = use.getOwner();
         if (consumingOp->getNumResults() != 1)
           continue;
 
@@ -169,6 +170,12 @@ struct FuseProloguesEpilogues
         if (!src.getElemwiseBodyLambda())
           continue;
 
+        // We can not fuse if the output's view is updated in the elementwise
+        // kernel.
+        if (!src.isOperandFusible(use.getOperandNumber(),
+                                  /*lookThroughView=*/false))
+          continue;
+
         if (dst.getExecutionDevice() != src.getExecutionDevice())
           continue;
 
@@ -177,12 +184,14 @@ struct FuseProloguesEpilogues
         // Move in all src's kernel operands and arguments into dst's except for
         // the one that is being fused.
         Value srcFusionArgument;
-        for (const auto [argument, operand] : llvm::zip_first(
-                 src.getExecBody().getArguments(), src->getOperands())) {
+        for (const auto [argument, operand] : llvm::reverse(llvm::zip_first(
+                 src.getExecBody().getArguments(), src->getOperands()))) {
           if (operand != dstOutput) {
-            dst->insertOperands(dst->getNumOperands() - 1, operand);
-            auto newArgument = dst.getExecBody().addArgument(argument.getType(),
-                                                             argument.getLoc());
+            // prepend to the front.
+            dst->insertOperands(0, operand);
+            auto newArgument = dst.getExecBody().insertArgument(
+                (unsigned)0, argument.getType(), argument.getLoc());
+
             argument.replaceAllUsesWith(newArgument);
           } else {
             srcFusionArgument = argument;
