@@ -315,13 +315,14 @@ Operation *sequenceFuseKernelsAndReplaceUses(
       });
   // All kernels should have the same device.
   auto deviceRef =
-      cast<KernelOp>(kernelOpsToFuseTogether.front()).getDeviceRef();
-  ASSERT_STREAM(llvm::all_of(kernelOpsToFuseTogether,
-                             [&](auto kernelOp) {
-                               return cast<KernelOp>(kernelOp).getDeviceRef() ==
-                                      deviceRef;
-                             }),
-                << "Not all kernels to sequence fuse have the same device!");
+      cast<KernelOp>(kernelOpsToFuseTogether.front()).getExecutionDevice();
+  ASSERT_STREAM(
+      llvm::all_of(kernelOpsToFuseTogether,
+                   [&](auto kernelOp) {
+                     return cast<KernelOp>(kernelOp).getExecutionDevice() ==
+                            deviceRef;
+                   }),
+      << "Not all kernels to sequence fuse have the same device!");
 
   auto fusedKernelOp = builder.create<KernelOp>(
       loc,
@@ -618,11 +619,11 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
     return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
   });
   DeviceRefAttr device =
-      cast<MOGG::GenericCompiledRegionOp>(toFuse.front()).getDeviceRef();
+      cast<MOGG::GenericCompiledRegionOp>(toFuse.front()).getExecutionDevice();
   // For now we set the device to be a cuda device if one exists.
   for (auto region : toFuse) {
     auto regionDevice =
-        cast<MOGG::GenericCompiledRegionOp>(region).getDeviceRef();
+        cast<MOGG::GenericCompiledRegionOp>(region).getExecutionDevice();
     if (regionDevice.getLabel() == kGPULabel)
       device = regionDevice;
   }

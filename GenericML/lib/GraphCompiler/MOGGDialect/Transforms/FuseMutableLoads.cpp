@@ -129,10 +129,10 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
       /*allocIndices=*/kernelOp.getAllocIndicesAttr(),
       /*hasReadEffect*/ true, // from load
       /*hasWriteEffects*/ kernelOp.getHasWriteEffect(),
-      /*device*/ kernelOp.getDeviceRef());
+      /*device*/ kernelOp.getExecutionDevice());
 
   // respect the old deviceRef if it was present
-  if (auto deviceRef = kernelOp.getDeviceRef())
+  if (auto deviceRef = kernelOp.getExecutionDevice())
     newKernelOp.setDeviceRef(deviceRef);
 
   // Copy over any discardable attributes from the original kernel

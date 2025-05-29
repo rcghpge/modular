@@ -21,7 +21,7 @@ static DeviceRefAttr operator||(DeviceRefAttr lhs, DeviceRefAttr rhs) {
 }
 
 DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
-  return op.getDeviceRef() || getHostDevice(op.getContext());
+  return op.getExecutionDevice() || getHostDevice(op.getContext());
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {

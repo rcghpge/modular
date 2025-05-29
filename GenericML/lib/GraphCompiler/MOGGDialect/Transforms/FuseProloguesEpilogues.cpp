@@ -84,7 +84,7 @@ struct FuseProloguesEpilogues
         if (!src)
           continue;
 
-        if (dst.getDeviceRef() != src.getDeviceRef())
+        if (dst.getExecutionDevice() != src.getExecutionDevice())
           continue;
 
         if (!src.getElemwiseBodyLambda())
@@ -164,7 +164,7 @@ struct FuseProloguesEpilogues
         if (!src.getElemwiseBodyLambda())
           continue;
 
-        if (dst.getDeviceRef() != src.getDeviceRef())
+        if (dst.getExecutionDevice() != src.getExecutionDevice())
           continue;
 
         ++numberOfFusedEpilogues;
@@ -300,7 +300,7 @@ struct FuseProloguesEpilogues
       return false;
 
     // Must have the same device
-    if (kernel.getDeviceRef() != parentKernel.getDeviceRef())
+    if (kernel.getExecutionDevice() != parentKernel.getExecutionDevice())
       return false;
 
     return true;
@@ -645,12 +645,12 @@ struct FuseProloguesEpilogues
 
       // Must have the same device.
       if (kernel.getResults().size() == 1) {
-        if (kernel.getDeviceRef() != user.getDeviceRef()) {
+        if (kernel.getExecutionDevice() != user.getExecutionDevice()) {
           fusableOutput.reset(idx);
           continue;
         }
       } else if (cast<MO::TensorType>(result.getType()).getDeviceRef() !=
-                 user.getDeviceRef()) {
+                 user.getExecutionDevice()) {
         // AllReduce is a distributed ops, compare the device ref on a
         // particular tensor result individually.
         fusableOutput.reset(idx);
@@ -1246,7 +1246,7 @@ struct FuseProloguesEpilogues
               userToFuseIn.getHasReadEffect(),
           /*hasWriteEffects*/ kernelToFuseInto.getHasWriteEffect() ||
               userToFuseIn.getHasWriteEffect(),
-          /*device*/ kernelToFuseInto.getDeviceRef());
+          /*device*/ kernelToFuseInto.getExecutionDevice());
       newDstKernel.getBody().takeBody(kernelToFuseInto.getBody());
 
       userToFuseIn.getResult(0).replaceAllUsesWith(newDstKernel.getResult(0));
@@ -1374,7 +1374,7 @@ struct FuseProloguesEpilogues
           /*allocIndices=*/kernelToFuseInto.getAllocIndicesAttr(),
           /*hasReadEffects=*/kernelToFuseInto.getHasReadEffect(),
           /*hasWriteEffects=*/kernelToFuseInto.getHasWriteEffect(),
-          /*device=*/kernelToFuseInto.getDeviceRef());
+          /*device=*/kernelToFuseInto.getExecutionDevice());
 
       auto &oldBody = kernelToFuseInto.getBody();
       auto &oldBlock = oldBody.front();

@@ -78,7 +78,7 @@ static bool isBMMSmall(MO::BatchMatmulOp matmul) {
 // it does not exist.
 static DeviceRefAttr getTargetDevice(MO::MOHasDeviceInterface op,
                                      DeviceRefAttr defaultTargetDevice) {
-  DeviceRefAttr graphDevice = op.getDeviceRef();
+  DeviceRefAttr graphDevice = op.getExecutionDevice();
   if (!graphDevice && defaultTargetDevice)
     graphDevice = defaultTargetDevice;
 
@@ -427,10 +427,11 @@ struct ForceMatmulTransposeBForGPU
             matmulUser,
             "Matmul user does not exclusively use weight as `B` tensor.");
 
-      bool matmulIsUnset = !matmulUser.getDeviceRef();
+      bool matmulIsUnset = !matmulUser.getExecutionDevice();
       bool matmulIsSetToCuda =
-          matmulIsUnset ? false
-                        : matmulUser.getDeviceRef().getLabel() == M::kGPULabel;
+          matmulIsUnset
+              ? false
+              : matmulUser.getExecutionDevice().getLabel() == M::kGPULabel;
       if (!matmulIsSetToCuda && !(matmulIsUnset && defaultDeviceIsCuda))
         return rewriter.notifyMatchFailure(
             matmulUser, "Found matmul user with incorrect devices");

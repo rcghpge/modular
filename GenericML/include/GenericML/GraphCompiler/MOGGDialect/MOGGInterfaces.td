@@ -94,8 +94,8 @@ def MOGG_CompilableKernel : OpInterface<"CompilableKernel"> {
     >,
     InterfaceMethod<
       "Get the device attr for this kernel",
-      "::M::DeviceRefAttr", "getDeviceRef", (ins),
-      "return $_op.getDeviceRef();"
+      "::M::DeviceRefAttr", "getExecutionDevice", (ins),
+      "return $_op.getExecutionDevice();"
     >,
     InterfaceMethod<
       "Returns true if kernel is to be implemented as a Mojo async function.",

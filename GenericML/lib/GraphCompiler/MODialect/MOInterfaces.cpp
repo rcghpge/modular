@@ -582,10 +582,10 @@ LogicalResult checkResultDeviceConstraint(Operation *op, size_t index,
 LogicalResult checkExecutionDeviceConstraint(MOHasDeviceInterface op,
                                              DeviceRefAttr constrainedTo) {
   // Only check the constraint if both the op and the constraint are non-null.
-  if (constrainedTo && op.getDeviceRef() != constrainedTo) {
+  if (constrainedTo && op.getExecutionDevice() != constrainedTo) {
     return op->emitError(op->getName().getStringRef())
            << ": Op is constrained to be on device " << constrainedTo
-           << " but has device " << op.getDeviceRef() << ".";
+           << " but has device " << op.getExecutionDevice() << ".";
   }
   return success();
 }
@@ -606,7 +606,7 @@ LogicalResult Impl::verifyHostOnly(Operation *op) {
 
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
     // Skip verification when no device is assigned.
-    if (!hasDevice.getDeviceRef())
+    if (!hasDevice.getExecutionDevice())
       return success();
     if (failed(checkExecutionDeviceConstraint(hasDevice, hostDevice)))
       return failure();
@@ -627,7 +627,7 @@ LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
 
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
     // Skip verification when no device is assigned.
-    if (!hasDevice.getDeviceRef())
+    if (!hasDevice.getExecutionDevice())
       return success();
     // Control ops are currently assigned to a device even if they don't need
     // a device context. Ignore these.
@@ -644,7 +644,7 @@ LogicalResult Impl::verifySingleDevice(Operation *op,
                                        ArrayRef<size_t> deviceOperandIndices) {
   auto hasDevice = dyn_cast<MOHasDeviceInterface>(op);
   // Skip verification when no device is assigned.
-  if (!hasDevice.getDeviceRef())
+  if (!hasDevice.getExecutionDevice())
     return success();
   // If we are given a list of device operands, use the first one to determine
   // the device type. Otherwise, use the first result device.

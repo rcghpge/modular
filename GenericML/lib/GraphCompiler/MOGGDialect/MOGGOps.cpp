@@ -2011,7 +2011,7 @@ LogicalResult GenericCompiledRegionOp::verify() {
   if (!llvm::equal(getOperandTypes(), body.getArgumentTypes()))
     return emitError("operand types must match region arguments");
 
-  if (!getDeviceRef())
+  if (!getExecutionDevice())
     return emitError("Compiled regions must have a device");
 
   return success();

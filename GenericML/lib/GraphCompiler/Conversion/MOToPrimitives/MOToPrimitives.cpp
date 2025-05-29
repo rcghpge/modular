@@ -948,7 +948,7 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   StringRef name = constExternalOp.getName();
 
   // Lower mo.constant.external depending on its device attribute.
-  DeviceRefAttr opDevice = constExternalOp.getDeviceRef();
+  DeviceRefAttr opDevice = constExternalOp.getExecutionDevice();
   // If not present, use the default host device.
   opDevice =
       opDevice ? opDevice : DeviceRefAttr::getDefault(chain.getContext());
@@ -1043,7 +1043,7 @@ LogicalResult MOGraphLowering::lowerDebugPrint(MO::DebugPrintOp printOp) {
 
   OpBuilder b(printOp);
 
-  DeviceRefAttr targetDevice = printOp.getDeviceRef();
+  DeviceRefAttr targetDevice = printOp.getExecutionDevice();
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
 
   auto chain = opLoweringState.getGuardChain(

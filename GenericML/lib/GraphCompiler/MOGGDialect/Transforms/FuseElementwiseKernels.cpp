@@ -824,7 +824,7 @@ struct FuseElementwisePass
               srcKernel.getHasReadEffect(),
           /*hasWriteEffects=*/dstKernel.getHasWriteEffect() ||
               srcKernel.getHasWriteEffect(),
-          /*device=*/dstKernel.getDeviceRef());
+          /*device=*/dstKernel.getExecutionDevice());
 
       // Move the body from the old kernel to the new one
       newKernelOp.getBody().takeBody(dstKernel.getBody());

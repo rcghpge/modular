@@ -93,15 +93,6 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
   let methods = [
     InterfaceMethod<
       [{
-        Returns the `#M.device_ref` annotation for this operation, or null if
-        no such annotation.
-      }],
-      "DeviceRefAttr", "getDeviceRef", (ins ), [{}],
-      [{ return getExecutionDevice(); }]
-    >,
-
-    InterfaceMethod<
-      [{
         Returns an array of `#M.device_ref` corresponding to the
         devices on which this operation executes.
       }],

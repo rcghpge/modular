@@ -61,7 +61,7 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
     resultTypes.push_back(resTy);
   }
 
-  auto device = oldKernel.getDeviceRef();
+  auto device = oldKernel.getExecutionDevice();
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
