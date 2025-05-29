@@ -228,7 +228,7 @@ struct FuseProloguesEpilogues
 
         // Copy views that were previously fused into the elementwise kernel, if
         // any.
-        for (Operation &op : src.getOps()) {
+        for (Operation &op : llvm::make_early_inc_range(src.getOps())) {
           if (isa<MOGG::CallViewOp>(&op))
             op.moveAfter(outputLambda);
         }
