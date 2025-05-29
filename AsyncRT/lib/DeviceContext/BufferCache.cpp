@@ -610,8 +610,18 @@ BufferCache::~BufferCache() {
 size_t BufferCache::allocationAlignment() const { return alignmentOffset_ + 1; }
 
 bool BufferCache::allocateChunk() {
-  const size_t allocSize =
-      std::min(chunkSize_, std::max(0UL, maxCacheSize_ - cacheSize_));
+  if (shouldUseMaxSize()) {
+    // Ensure that we have grown chunkSize_ to the maximum.
+    growChunkSizeTo(maxCacheSize_);
+  }
+
+  // Avoid allocating chunks beyond the maxCacheSize_.
+  const size_t allocSize = std::min(
+      chunkSize_, maxCacheSize_ -
+                      // Avoid overflowing the subtraction by guarding
+                      // against cacheSize_ being larger than maxCacheSize_.
+                      std::min(maxCacheSize_, cacheSize_));
+
   const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
   if (allocSize < minChunkSize) {
     return false;
@@ -673,6 +683,41 @@ void BufferCache::pushDesc(Desc *desc) {
   desc->next_ = unusedDescs_;
   unusedDescs_ = desc;
 }
+
+bool BufferCache::shouldUseMaxSize() {
+  // The state whether this process has determined to use the full buffer cache
+  // in as few chunks as possible is kept in an atomic integer. A value of zero
+  // is interpreted as false, while a value greater other than zero is
+  // interpreted as true.
+  // We use a relaxed load since we do not require strong synchronization. If
+  // another thread races to set the value to true we potentially miss
+  // allocating one chunk at maximum size. However even with proper locking this
+  // race would exist.
+  return useMaxSize_.load(std::memory_order_relaxed) != 0;
+}
+
+void BufferCache::enableUseMaxSize() {
+  // We use a relaxed store since we do not require strong synchronization. If
+  // another thread races to set the value to "true" we potentially miss
+  // allocating one chunk at maximum size. However even with proper locking this
+  // race would exist.
+  useMaxSize_.store(1, std::memory_order_relaxed);
+}
+
+void BufferCache::growChunkSizeTo(size_t newChunkSize) {
+  // Limit newChunkSize to available memory to not overflow beyond
+  // maxCacheSize_.
+  newChunkSize = std::min(
+      newChunkSize, maxCacheSize_ -
+                        // Avoid overflowing the subtraction by guarding
+                        // against cacheSize_ being larger than maxCacheSize_.
+                        std::min(maxCacheSize_, cacheSize_));
+
+  // Ensure to not fall below current chunkSize_.
+  chunkSize_ = std::max(newChunkSize, chunkSize_);
+}
+
+std::atomic<int32_t> BufferCache::useMaxSize_ = {0};
 
 void BufferCache::clear() {
   if (chunks_ == nullptr) {
@@ -746,16 +791,33 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
     BufferCache::Desc *desc = nullptr;
     {
       std::lock_guard<std::mutex> lock(bufferCache_.mu_);
+      if (size > bufferCache_.chunkSize_) {
+        // Check heuristics if chunk size should be updated:
+        if (bufferCache_.chunks_ == nullptr) {
+          // Heuristic: If the first allocation does overrun the chunk size,
+          // then we override the "buffer_cache_chunk_percent" setting and
+          // adjust chunk size to max cache size. We take this situation as an
+          // indication that a large amount of memory will be necessary during
+          // the execution of a model.
+          assert(bufferCache_.cacheSize_ == 0);
+          BufferCache::enableUseMaxSize();
+          bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
+          bufferCache_.chunkSize_ = bufferCache_.maxCacheSize_;
+        } else if (BufferCache::shouldUseMaxSize()) {
+          // Heuristic: Another buffer cache has determined that we should grow
+          // to the largest possible chunk size. Update the chunk size to all
+          // remaining memory for future chunk allocations.
+          bufferCache_.chunkSize_ = std::max(
+              bufferCache_.chunkSize_,
+              bufferCache_.maxCacheSize_ -
+                  // Avoid overflowing the subtraction by guarding
+                  // against cacheSize_ being larger than maxCacheSize_.
+                  std::min(bufferCache_.maxCacheSize_,
+                           bufferCache_.cacheSize_));
+        }
+      }
+
       if (size <= bufferCache_.chunkSize_) {
-        selfCheck();
-        desc = allocateDesc(size);
-      } else if (bufferCache_.chunks_ == nullptr) {
-        // Heuristic: If the first allocation does overrun the chunk size, then
-        // we override the "buffer_cache_chunk_percent" setting and adjust chunk
-        // size to max cache size.
-        // We take this situation as an indication that a large amount of memory
-        // will be necessary during the execution of a model.
-        bufferCache_.chunkSize_ = bufferCache_.maxCacheSize_;
         selfCheck();
         desc = allocateDesc(size);
       }

@@ -69,6 +69,24 @@ private:
   Desc *popDesc();
   void pushDesc(Desc *desc);
 
+  // Check if at least one of the devices has determined that chunk sizes should
+  // grow to the maximum cache size based on the heuristics used during
+  // allocation.
+  static bool shouldUseMaxSize();
+  // Change this process' state to use the full buffer cache for future chunk
+  // allocations.
+  static void enableUseMaxSize();
+  // Use a std::atomic to keep track of the state whether or not we use the full
+  // buffer cache for future chunk allocations. Since this is a boolean value
+  // that can only change from 0 (false) to non-zero (true) using a mutex is not
+  // necessary.
+  static std::atomic<int32_t> useMaxSize_;
+
+  // Attempt to grow the chunk size to newChunkSize. The eventual chunk size
+  // will be capped so that future chunk allocations do not overflow
+  // maxCacheSize_.
+  void growChunkSizeTo(size_t newChunkSize);
+
   const Device &device_;
   const size_t maxCacheSize_;
   size_t chunkSize_;
