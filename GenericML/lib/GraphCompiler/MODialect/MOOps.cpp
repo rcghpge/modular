@@ -649,14 +649,6 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
 }
 
 //===----------------------------------------------------------------------===//
-// MO_InvokeShapeFuncOp support
-//===----------------------------------------------------------------------===//
-llvm::SmallVector<DeviceRefAttr> InvokeShapeFuncOp::getExecutionDevices() {
-  return {dyn_cast_if_present<DeviceRefAttr>(
-      getOperation()->getAttr(MO::kOperationDeviceRefAttrName))};
-}
-
-//===----------------------------------------------------------------------===//
 // MO_IndexToTensorOp support
 //===----------------------------------------------------------------------===//
 OpFoldResult IndexToTensorOp::fold(FoldAdaptor adaptor) {

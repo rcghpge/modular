@@ -4302,7 +4302,7 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 
 def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevices"]>,
+  MO_ExecutesOnHost
 ]> {
   let summary = "Shape function call operation";
   let description = [{
