@@ -301,6 +301,7 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [Pure]> {
 }
 
 def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
     IsolatedFromAbove,
     SingleBlock,
     MO_HasDeviceInterface,
@@ -339,6 +340,9 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
   let extraClassDeclaration = [{
     KernelTerminator getTerminator();
 
+    // Whether the kernel is an view kernel.
+    bool isViewOp() { return isa<MOGG::CallMaterializeOp>(getTerminator());}
+
     // Get the input lambda associated with the kernel operand at position operandIdx.
     BindLambdaOp getBoundInputLambda(uint64_t operandIdx);
     // Get the output lambda associated with the kernel result at position operandIdx.
@@ -346,7 +350,14 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     // Get the elementwise lambda of this kernel.
     BindLambdaOp getElemwiseBodyLambda();
 
-    bool isOperandFusible(uint64_t operandIdx);
+    bool isOperandFusible(uint64_t operandIdx, bool lookThroughView = false);
+    bool hasFusibleOperand(bool lookThroughView = false) {
+      for (unsigned i = 0, e = getNumOperands(); i < e; i++)
+        if (isOperandFusible(i, lookThroughView))
+          return true;
+
+      return false;
+    }
     /// Returns the OutputPlaceholder for this operation or null if it doesn't
     /// exist.
     OutputPlaceholdersOp getOutputPlaceholder();

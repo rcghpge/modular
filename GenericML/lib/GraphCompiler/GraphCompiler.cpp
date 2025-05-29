@@ -305,6 +305,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   // Run before fuse constant.
   pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
+  pm.addPass(MOGG::createSimplifyKernelOperands());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Fuse constants last as they don't enable any extra fusions directly and

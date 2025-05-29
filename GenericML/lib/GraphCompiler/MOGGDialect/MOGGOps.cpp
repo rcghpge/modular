@@ -562,15 +562,53 @@ BindLambdaOp ExpKernelOp::getElemwiseBodyLambda() {
                    : nullptr;
 }
 
-bool ExpKernelOp::isOperandFusible(uint64_t operandIdx) {
+bool ExpKernelOp::isOperandFusible(uint64_t operandIdx, bool lookThroughView) {
   auto users = getExecBody().getArgument(operandIdx).getUsers();
-  // Returns true if the operand is used by a MOGG::BindLambdaOp
-  return llvm::find_if(users, [](Operation *op) {
-           return isa<MOGG::BindLambdaOp>(op);
-         }) != users.end();
+  SmallVector<Operation *> workList(users.begin(), users.end());
+  while (!workList.empty()) {
+    auto curUser = workList.back();
+    workList.pop_back();
+
+    if (isa<MOGG::BindLambdaOp>(curUser))
+      return true;
+
+    if (lookThroughView && isa<MOGG::CallViewOp>(curUser))
+      workList.append(curUser->user_begin(), curUser->user_end());
+  }
+
+  return false;
 }
 
-LogicalResult M::MOGG::ExpKernelOp::verify() {
+void ExpKernelOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+
+  bool hasWriteEffect = false;
+  bool hasReadEffect = false;
+
+  if (getHasReadEffect())
+    hasReadEffect |= true;
+
+  if (getHasWriteEffect())
+    hasWriteEffect |= true;
+
+  if (!getOutputParamDecls().empty())
+    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
+
+  // Right now this will apply read/write effects to ALL mutable operands if the
+  // hasReadEffect/hasWriteEffect flag is true.
+  // TODO(GEX-1516): Establish fine-grained tracking of mem-effects for
+  // mogg.kernel operands and maintain it through transforms.
+  for (auto &&opOperand : getOperation()->getOpOperands()) {
+    if (!MO::isMutableOperand(opOperand.get()))
+      continue;
+    if (hasWriteEffect)
+      effects.emplace_back(mlir::MemoryEffects::Write::get(), &opOperand);
+    if (hasReadEffect)
+      effects.emplace_back(mlir::MemoryEffects::Read::get(), &opOperand);
+  }
+}
+
+LogicalResult ExpKernelOp::verify() {
   auto term =
       dyn_cast<MOGG::KernelTerminator>(getExecBody().front().getTerminator());
   if (!term)

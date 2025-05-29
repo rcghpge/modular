@@ -16,6 +16,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Runtime/Tensor/Tensor.h"
@@ -72,35 +73,47 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
   void runOnOperationImpl(
       MO::GraphOp graph, MLIRContext *ctx,
-      const DenseMap<KernelOp, MO::Static::ReshapeOp> &reshapeKernels,
+      const DenseMap<Operation *, MO::Static::ReshapeOp> &reshapeKernels,
       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
       TypeManager &typeManager) {
 
-    graph.walk([&](MOGG::KernelOp kernel) {
-      if (reshapeKernels.contains(kernel))
+    // TODO(GEX-2300): we do not need the helper lambda after fully migration.
+    auto isViewFusible = [](Operation *op) {
+      if (auto k = dyn_cast<MOGG::KernelOp>(op)) {
+        // Only allow fusion if the kernel exposes an input lambda or is a
+        // view. This isn't mechanically necessary. Everything will still
+        // work without this. However the current story is that a kernel
+        // without a lambda will disallow fusion on those inputs. We might
+        // want to make this more fine grained in the future.
+        return k.getInputFusionInterfaceAttr() ||
+               k.getIsViewOp().value_or(false);
+      } else {
+        auto ek = cast<MOGG::ExpKernelOp>(op);
+        return ek.hasFusibleOperand(true) || ek.isViewOp();
+      }
+    };
+
+    graph.walk([&](Operation *op) {
+      if (!isa<MOGG::KernelOp, MOGG::ExpKernelOp>(op))
         return;
 
-      bool isView = kernel.getIsViewOp().value_or(false);
-
-      // Only allow fusion if the kernel exposes an input lambda or is a view.
-      // This isn't mechanically necessary. Everything will still work without
-      // this. However the current story is that a kernel without a lambda will
-      // disallow fusion on those inputs. We might want to make this more fine
-      // grained in the future.
-      if (!kernel.getInputFusionInterfaceAttr() && !isView)
+      if (reshapeKernels.contains(op))
         return;
 
-      // For catching the rare case of a broadcast taking a broadcast as arg AND
-      // this kernel taking both as arg.
+      if (!isViewFusible(op))
+        return;
+
+      // For catching the rare case of a broadcast taking a broadcast as arg
+      // AND this kernel taking both as arg.
       DenseMap<Value, Value> alreadyFused;
 
       // Fuse broadcasts into this block.
-      int32_t index = kernel.getNumOperands() - 1;
+      int32_t index = op->getNumOperands() - 1;
       bool fusionOccurred = false;
 
       // Traverse from the back to simplify removing operands.
       while (index >= 0) {
-        if (!canFuseOperand(index, kernel)) {
+        if (!canFuseOperand(index, op)) {
           index--;
           continue;
         }
@@ -111,26 +124,27 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         //     non-reshape -> reshape+non-reshape (first iteration)
         //       non-reshape+reshape+non-reshape  (second iteration)
         if (!reshapeKernels.empty() &&
-            !reshapeKernels.contains(
-                cast<KernelOp>(kernel.getOperand(index).getDefiningOp()))) {
+            !reshapeKernels.contains(op->getOperand(index).getDefiningOp())) {
           index--;
           continue;
         }
 
         // All legality checking should be performed above so we assume this
         // will perform the fusion or produce a fatal failure.
-        fuseInputAtIndex(kernel, index, alreadyFused, mojoLibraryAnalysis,
+        fuseInputAtIndex(op, index, alreadyFused, mojoLibraryAnalysis,
                          typeManager);
-        index = kernel.getNumOperands() - 1;
+        index = op->getNumOperands() - 1;
         fusionOccurred = true;
       }
 
       // Strip all temporarily added fusion hooks.
-      if (fusionOccurred && !isView)
+
+      if (auto kernel = dyn_cast<MOGG::KernelOp>(op);
+          kernel && fusionOccurred && !kernel.getIsViewOp().value_or(false))
         kernel.removeTemporaryFusionMarks();
 
-      ModuleOp topLevelModule = kernel->getParentOfType<ModuleOp>();
-      MOGG::addForwardDeclsOfReferencedFuncs(kernel, topLevelModule,
+      ModuleOp topLevelModule = op->getParentOfType<ModuleOp>();
+      MOGG::addForwardDeclsOfReferencedFuncs(op, topLevelModule,
                                              mojoLibraryAnalysis);
     });
 
@@ -149,12 +163,40 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
   }
 
   /// Return the index of the input to fuse or -1 if nothing can be fused.
-  bool canFuseOperand(int32_t index, MOGG::KernelOp kernel) {
+  bool canFuseOperand(int32_t index, Operation *op) {
     // Block arguments have no defining op and obviously cant be fused.
-    Operation *edge = kernel.getOperand(index).getDefiningOp();
+    Operation *edge = op->getOperand(index).getDefiningOp();
     if (!edge)
       return false;
 
+    // Only fuse within the same block and not across, i.e, control flow.
+    if (edge->getBlock() != op->getBlock())
+      return false;
+
+    if (auto expKernel = dyn_cast<MOGG::ExpKernelOp>(op)) {
+      if (auto alloc = expKernel.getAllocIndices(); alloc && !alloc.empty())
+        return false;
+
+      auto otherKernel = dyn_cast<MOGG::ExpKernelOp>(edge);
+      if (!otherKernel)
+        return false;
+
+      // Only fuse view operations (when will a view kernel returns more than
+      // one result, probably dead code, or should we instead verify it during
+      // IR construction?)
+      if (!otherKernel.isViewOp() || otherKernel.getNumResults() != 1)
+        return false;
+
+      // if the kernel is not a view kernel nor has a view fusible input at the
+      // given position.
+      if (!expKernel.isViewOp() && !expKernel.isOperandFusible(index, true))
+        return false;
+
+      return true;
+    }
+
+    // TODO(GEX-2300): dead code after fully migration.
+    auto kernel = cast<MOGG::KernelOp>(op);
     if (kernel.isInPlaceAlloc())
       return false;
 
@@ -169,10 +211,6 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       if (cast<StringAttr>(inputFusions[index]).strref().empty())
         return false;
     }
-
-    // Only fuse within the same block and not across, i.e, control flow.
-    if (edge->getBlock() != kernel->getBlock())
-      return false;
 
     auto otherKernel = dyn_cast<KernelOp>(edge);
     if (!otherKernel)
@@ -193,13 +231,51 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     return true;
   }
 
+  void fuseInputAtIndex(MOGG::ExpKernelOp kernel, int32_t idx,
+                        DenseMap<Value, Value> &alreadyFused,
+                        MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                        TypeManager &typeManager) {
+    Value toFuse = kernel.getOperand(idx);
+    auto viewProducer = cast<MOGG::ExpKernelOp>(toFuse.getDefiningOp());
+
+    IRRewriter rewriter(kernel->getContext());
+
+    kernel->insertOperands(idx + 1, viewProducer->getOperands());
+
+    for (auto ba : llvm::reverse(viewProducer.getExecBody().getArguments()))
+      kernel.getExecBody().insertArgument(idx + 1, ba.getType(), ba.getLoc());
+
+    rewriter.cloneRegionBefore(viewProducer.getExecBody(),
+                               &kernel.getExecBody().front());
+
+    Block *src = &kernel.getExecBody().front();
+    Block *dst = &kernel.getExecBody().back();
+    auto srcTerm = cast<MOGG::CallMaterializeOp>(src->getTerminator());
+
+    ValueRange inlinedArgs = dst->getArguments().slice(
+        idx + 1, viewProducer.getExecBody().getNumArguments());
+
+    rewriter.inlineBlockBefore(src, dst, dst->begin(), inlinedArgs);
+
+    // Clean up.
+    dst->getArgument(idx).replaceAllUsesWith(srcTerm.getInputs().front());
+    dst->eraseArgument(idx);
+    kernel->eraseOperand(idx);
+    srcTerm.erase();
+  }
+
   // Fuse at the given index.
-  void fuseInputAtIndex(MOGG::KernelOp leaf, int32_t idx,
+  void fuseInputAtIndex(Operation *op, int32_t idx,
                         DenseMap<Value, Value> &alreadyFused,
                         MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                         TypeManager &typeManager) {
     ++numberOfFusedViews;
+    if (auto expKernel = dyn_cast<MOGG::ExpKernelOp>(op))
+      return fuseInputAtIndex(expKernel, idx, alreadyFused, mojoLibraryAnalysis,
+                              typeManager);
 
+    // TODO(GEX-2300): to remove after fully migrated.
+    auto leaf = cast<MOGG::KernelOp>(op);
     IRMapping remapper;
     Value operandBeingReplaced = leaf.getOperand(idx);
     KernelOp producerKernel =
@@ -239,8 +315,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         // In order to "trick" the fusion algorithm to run on the inputs of the
         // thing we have just fused in we pretend it has a fusion lambda. We
         // will remove this at the end this is just so the fusion runs again.
-        // This is so we can distinguish between views which we know we can
-        // fuse again and ops which have opted out of fusion.
+        // This is so we can distinguish between views which we know we can fuse
+        // again and ops which have opted out of fusion.
         if (!leaf.getIsViewOp().value_or(false)) {
           leaf.setInputFusionInterface(leaf.getNumOperands() - 1,
                                        KernelOp::getTempLambdaName());
@@ -354,8 +430,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
           ASSERT_STREAM(
               producerKernelToKGEN.getStaticTensorSpecNameAttr() != nullptr,
               << "Expected strides to be a parameter declaration reference. "
-                 "Maybe "
-                 "the view kernel was not explicitly parametrized on strides?");
+                 "Maybe the view kernel was not explicitly parametrized on "
+                 "strides?");
           if (newStaticTensorSpec == nullptr) {
             auto specOrErr = buildTensorSpecWithViewStrides(
                 producerKernelToKGEN.getStaticTensorRefAttr(), attr.getName());
@@ -408,31 +484,44 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         getSummaryString({producerKernel, leaf}, FusionType::HARD));
   }
 
-  DenseMap<KernelOp, MO::Static::ReshapeOp>
+  DenseMap<Operation *, MO::Static::ReshapeOp>
   lowerReshapeOps(MO::GraphOp graph,
                   MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
     auto ctx = graph.getContext();
-    DenseMap<KernelOp, MO::Static::ReshapeOp> reshapeKernels;
+    DenseMap<Operation *, MO::Static::ReshapeOp> reshapeKernels;
     mlir::OpBuilder builder{ctx};
     graph.walk([&](MO::Static::ReshapeOp reshapeOp) {
-      MO::MOGGKernelBuilder lowerer(reshapeOp, builder, false,
-                                    mojoLibraryAnalysis);
+      builder.setInsertionPoint(reshapeOp);
+      if (MOGG::useExperimentalMOGGPath()) {
+        // TODO: we should probably lower static.reshape during mo-to-mogg.
+        MOGG::MOGGExpKernelBuilder lowerer(reshapeOp, builder, false,
+                                           mojoLibraryAnalysis);
 
-      auto kernelOp = lowerer.lowerToKernel();
-      ASSERT_STREAM(!kernelOp.isError(), << "Could not lower reshape op");
+        auto expKernelOp = lowerer.lowerToKernel();
+        ASSERT_STREAM(!expKernelOp.isError(), << "Could not lower reshape op");
 
-      reshapeKernels[cast<KernelOp>(*kernelOp)] = reshapeOp;
-      reshapeOp->replaceAllUsesWith(*kernelOp);
+        reshapeKernels[*expKernelOp] = reshapeOp;
+        reshapeOp->replaceAllUsesWith(*expKernelOp);
+      } else {
+        MO::MOGGKernelBuilder lowerer(reshapeOp, builder, false,
+                                      mojoLibraryAnalysis);
+
+        auto kernelOp = lowerer.lowerToKernel();
+        ASSERT_STREAM(!kernelOp.isError(), << "Could not lower reshape op");
+
+        reshapeKernels[*kernelOp] = reshapeOp;
+        reshapeOp->replaceAllUsesWith(*kernelOp);
+      }
     });
 
     return reshapeKernels;
   }
 
   static void raiseBackReshapeKernels(
-      DenseMap<KernelOp, MO::Static::ReshapeOp> &reshapeOps) {
+      DenseMap<Operation *, MO::Static::ReshapeOp> &reshapeOps) {
     for (auto &[kernelOp, reshapeOp] : reshapeOps) {
       kernelOp->replaceAllUsesWith(reshapeOp);
-      kernelOp.erase();
+      kernelOp->erase();
     }
   }
 
@@ -455,7 +544,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     ASSERT_STREAM(!typeManager.isError(), << typeManager.takeError());
 
     // First fuse all kernels that are view ops.
-    DenseMap<KernelOp, MO::Static::ReshapeOp> reshapeKernels;
+    DenseMap<Operation *, MO::Static::ReshapeOp> reshapeKernels;
     runOnOperationImpl(graph, ctx, reshapeKernels, mojoLibraryAnalysis,
                        *typeManager);
 
