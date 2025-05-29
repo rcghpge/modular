@@ -498,8 +498,7 @@ private:
       KGEN::AttrTypeMangler mangler(manglerCache);
       KGEN::ParameterUseDefGraph paramGraph(parentGraphRegion);
       paramGraph.calculate(analysisCache);
-      KGEN::NameUniquer uniquer(paramGraph, paramGraph);
-      mangler.populate(builder, uniquer, subgraphDeclNames, paramGraph);
+      mangler.populate(builder, paramGraph, subgraphDeclNames, paramGraph);
 
       assert(parentGraphOp && "expected parent graph op");
 
