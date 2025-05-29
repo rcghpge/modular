@@ -169,12 +169,15 @@ void nixlPluginManager::loadPluginsFromList(const std::string &filename) {
 // PluginManager implementation
 nixlPluginManager::nixlPluginManager() {
   // Check for MODULAR_NIXL_PLUGIN_DIR environment variable
-  const char *plugin_dir = getenv("MODULAR_NIXL_PLUGIN_DIR");
-  if (plugin_dir) {
-    NIXL_DEBUG << "Loading plugins from directory: " << plugin_dir << "\n";
+  const char *pluginDir = getenv("MODULAR_NIXL_PLUGIN_DIR");
+  if (pluginDir) {
+    NIXL_DEBUG << "Loading plugins from directory: " << pluginDir << "\n";
+    // Clean up `.`s and `..`s
+    const auto normalizedPluginDir =
+        std::filesystem::path(pluginDir).lexically_normal();
     // Insert at the beginning for priority.
-    plugin_dirs_.insert(plugin_dirs_.begin(), plugin_dir);
-    discoverPluginsFromDir(plugin_dir);
+    plugin_dirs_.insert(plugin_dirs_.begin(), normalizedPluginDir.string());
+    discoverPluginsFromDir(normalizedPluginDir);
   }
 
   registerBuiltinPlugins();
@@ -188,7 +191,8 @@ nixlPluginManager &nixlPluginManager::getInstance() {
   return instance;
 }
 
-void nixlPluginManager::addPluginDirectory(const std::string &directory) {
+void nixlPluginManager::addPluginDirectory(
+    const std::filesystem::path &directory) {
   if (directory.empty()) {
     NIXL_ERROR << "Cannot add empty plugin directory";
     return;
@@ -269,19 +273,19 @@ nixlPluginManager::loadPlugin(const std::string &plugin_name) {
   return nullptr;
 }
 
-void nixlPluginManager::discoverPluginsFromDir(const std::string &dirpath) {
+void nixlPluginManager::discoverPluginsFromDir(
+    const std::filesystem::path &dirPath) {
   // Calculate the minimum length a filename must have to potentially match the
   // pattern (length of prefix + length of suffix). A filename shorter than this
   // cannot contain both the required prefix and suffix.
   constexpr size_t kMinPluginFilenameLength =
       kPluginPrefix.length() + kPluginSuffix.length();
 
-  std::filesystem::path dirPath(dirpath);
   std::error_code ec;
   std::filesystem::directory_iterator directoryIter(dirPath, ec);
   if (ec) {
-    NIXL_ERROR << "Error accessing plugin directory '" << dirpath
-               << "': " << ec.message();
+    NIXL_ERROR << "Error accessing plugin directory '" << dirPath
+               << "': " << ec.message() << '\n';
     return;
   }
 

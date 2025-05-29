@@ -12,6 +12,7 @@
 #define ASYNCRT_NIXL_PLUGIN_MANAGER_H
 
 #include "backend/backend_plugin.h"
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -101,7 +102,7 @@ public:
   loadPlugin(const nixl_backend_t &plugin_name);
 
   // Search a directory for plugins
-  void discoverPluginsFromDir(const std::string &dirpath);
+  void discoverPluginsFromDir(const std::filesystem::path &dirpath);
 
   // Unload a plugin
   void unloadPlugin(const nixl_backend_t &plugin_name);
@@ -117,7 +118,7 @@ public:
   nixl_b_params_t getBackendOptions(const nixl_backend_t &type);
 
   // Add a plugin directory
-  void addPluginDirectory(const std::string &directory);
+  void addPluginDirectory(const std::filesystem::path &directory);
 
   // Static Plugin Helpers
   const std::vector<nixlStaticPluginInfo> &getStaticPlugins();
