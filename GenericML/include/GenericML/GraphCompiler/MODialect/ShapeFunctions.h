@@ -422,7 +422,7 @@ ShapeMaterializeResult
 materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr filterShapeAttr, TypedAttr stridesAttr,
                      TypedAttr dilationsAttr, TypedAttr paddingsAttr,
-                     TypedAttr numGroupsAttr);
+                     TypedAttr numGroupsAttr, LayoutAttr filterLayoutAttr);
 
 /// Materialize the shape logic for `MO::ConvTransposeOp`.
 ShapeMaterializeResult materializeConvTransposeShape(

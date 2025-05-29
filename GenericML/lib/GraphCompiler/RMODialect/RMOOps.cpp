@@ -784,8 +784,8 @@ ConvOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
   auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
   MO::ShapeMaterializeResult result = MO::materializeConvShape(
       graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
-      adaptor.getDilations(), adaptor.getPaddings(),
-      adaptor.getNumGroupsAttr());
+      adaptor.getDilations(), adaptor.getPaddings(), adaptor.getNumGroupsAttr(),
+      cast<MO::TensorType>(adaptor.getFilter().getType()).getLayoutAttr());
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
                              result, inferredReturnTypes, getDevice(input),

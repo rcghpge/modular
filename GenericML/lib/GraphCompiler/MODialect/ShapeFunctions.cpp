@@ -688,7 +688,7 @@ ShapeMaterializeResult
 materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr filterShapeAttr, TypedAttr stridesAttr,
                      TypedAttr dilationsAttr, TypedAttr paddingsAttr,
-                     TypedAttr numGroupsAttr) {
+                     TypedAttr numGroupsAttr, LayoutAttr filterLayoutAttr) {
   auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   auto filterShape = dyn_cast<ShapeAttr>(filterShapeAttr);
   auto strides = dyn_cast<ShapeAttr>(stridesAttr);
@@ -729,10 +729,13 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   // - input and output have layout [batch_size, ...spatial_dims...,
   //   input_channels]
   // - filter has layout [...spatial_dims..., filter_channels, output_channels]
+  bool isFCRS = filterLayoutAttr && filterLayoutAttr.getFormat() == "FCRS";
+  size_t filterChannelIdx = isFCRS ? 1 : inputRank - 2;
+  size_t outputChannelIdx = isFCRS ? 0 : inputRank - 1;
   Var batchSize = b.createVar(inputShape[0]);
   Var inputChannels = b.createVar(inputShape[inputRank - 1]);
-  Var filterChannels = b.createVar(filterShape[inputRank - 2]);
-  Var outputChannels = b.createVar(filterShape[inputRank - 1]);
+  Var filterChannels = b.createVar(filterShape[filterChannelIdx]);
+  Var outputChannels = b.createVar(filterShape[outputChannelIdx]);
   Var numGroups = b.createVar(numGroupsAttr);
 
   // More checks on channels and numGroups.

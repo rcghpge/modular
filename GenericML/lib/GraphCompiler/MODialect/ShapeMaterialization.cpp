@@ -90,7 +90,8 @@ ConcatOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 
 //===----------------------------------------------------------------------===//
-// ConvOp
+//
+
 //===----------------------------------------------------------------------===//
 
 SmallVector<int32_t> ConvOp::getDataDependentInputIndices() {
@@ -107,8 +108,9 @@ ConvOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr dilations = inputAttrs[3];
   TypedAttr paddings = inputAttrs[4];
   TypedAttr numGroup = inputAttrs[5];
+  LayoutAttr filterLayout = getFilter().getType().getLayoutAttr();
   return materializeConvShape(graphOp, loc, inputShape, filterShape, strides,
-                              dilations, paddings, numGroup);
+                              dilations, paddings, numGroup, filterLayout);
 }
 
 //===----------------------------------------------------------------------===//

@@ -2607,22 +2607,6 @@ LogicalResult ConvOp::verify() {
   return op.verifyWindowParamSizes({getDilations(), getStrides()});
 }
 
-LogicalResult ConvOp::canonicalize(ConvOp op, PatternRewriter &rewriter) {
-  bool packedFilter = false;
-  LayoutAttr filterLayout = op.getFilter().getType().getLayoutAttr();
-  if (filterLayout) {
-    packedFilter =
-        llvm::is_contained({"FRSCf", "FQRSCf"}, filterLayout.getFormat());
-  }
-
-  if (op.getFilterPacked() == packedFilter)
-    return failure();
-
-  rewriter.modifyOpInPlace(op, [&]() { op.setFilterPacked(packedFilter); });
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // MO_ConvTransposeOp support
 //===----------------------------------------------------------------------===//

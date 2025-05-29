@@ -25,6 +25,8 @@ static constexpr llvm::StringLiteral PARAMETER_MATMUL_PACKED_WEIGHTS =
 /// Conv op
 static constexpr llvm::StringLiteral PARAMETER_CONV_PACKED_FILTER =
     "filter_packed";
+static constexpr llvm::StringLiteral PARAMETER_CONV_FILTER_LAYOUT =
+    "filter_layout";
 static constexpr llvm::StringLiteral PARAMETER_CONV_STATIC_STRIDES =
     "static_strides";
 static constexpr llvm::StringLiteral PARAMETER_CONV_STATIC_DILATIONS =
