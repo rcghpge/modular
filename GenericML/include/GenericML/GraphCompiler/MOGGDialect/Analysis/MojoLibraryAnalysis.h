@@ -56,7 +56,10 @@ public:
 
   /// Get the fully materialized module which contains all exported generators
   /// from mojo libraries.
-  inline mlir::ModuleOp getMojoBindings() { return module; }
+  inline mlir::ModuleOp getMojoBindings() const { return module; }
+
+  /// Get the hash of the backing Mojo bindings.
+  FailureOr<std::string> getMojoBindingsHash() const;
 
   /// Query the mojo kernel with the specified `name`. Return nullptr if not
   /// existed.
@@ -236,6 +239,9 @@ private:
 
   /// Source manager needed for parsing.
   std::shared_ptr<llvm::SourceMgr> sourceMgr;
+
+  /// Cached value that results from hasing the Mojo module.
+  mutable std::string kgenModuleHash;
 };
 
 /// An analysis "pass" for our passes to use to share the loaded library state.

@@ -536,6 +536,19 @@ LogicalResult MojoLibraryAnalysis::replaceSymbols(KGEN::GeneratorOp gen) {
   return success();
 }
 
+FailureOr<std::string> MojoLibraryAnalysis::getMojoBindingsHash() const {
+  if (kgenModuleHash.empty()) {
+    FailureOr<std::string> hash = getBytecodeHash(getMojoBindings());
+
+    if (failed(hash))
+      return failure();
+
+    kgenModuleHash = std::move(*hash);
+  }
+
+  return kgenModuleHash;
+}
+
 Operation *MojoLibraryAnalysis::lookup(StringRef name) const {
   auto it = rawMojoKernel.find(name);
   if (it == rawMojoKernel.end())
