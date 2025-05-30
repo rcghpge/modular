@@ -376,6 +376,15 @@ LogicalResult BindLambdaOp::verify() {
           "Mismatch between tensor type and fused tensor element type");
   }
 
+  for (auto [operandType, argument] :
+       llvm::zip_first(getOperandTypes(), getValueArgs())) {
+    if (cast<MO::TensorType>(operandType).getElementType() !=
+        argument.getType()) {
+      return emitError(
+          "Mismatch between bound tensor type and argument in the body");
+    }
+  }
+
   int64_t rank =
       cast<MO::TensorType>(getFusibleTensors().front().getType()).getRank();
   if (auto idxTp = dyn_cast<KGEN::POP::ArrayType>(indicesTp);

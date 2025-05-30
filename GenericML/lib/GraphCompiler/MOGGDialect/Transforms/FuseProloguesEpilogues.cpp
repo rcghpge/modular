@@ -202,12 +202,24 @@ struct FuseProloguesEpilogues
         auto fusedResultTp = cast<MO::TensorType>(src->getResult(0).getType());
         dstOutput.setType(fusedResultTp);
         MOGG::OutputPlaceholdersOp outHolderOp = dst.getOutputPlaceholder();
-        outHolderOp->getResult(fusionIdx).setType(fusedResultTp);
-
         if (containsMatmulOrConvOrConcat(dst) &&
             outputLambda.getResult().getType() != fusedResultTp) {
-          outputLambda.setNeedsScratchTensor(true);
+          rewriter.setInsertionPointAfter(outHolderOp);
+          auto scratchPlaceholder =
+              rewriter
+                  .create<MOGG::ScratchPlaceholdersOp>(
+                      outputLambda.getLoc(),
+                      outHolderOp->getResult(fusionIdx).getType())
+                  .getResult(0);
+          rewriter.setInsertionPointAfter(outputLambda);
+          auto concretizeOp = rewriter.create<MOGG::ConcretizeTensorOp>(
+              outputLambda.getLoc(), scratchPlaceholder, outputLambda);
+          outputLambda->replaceUsesWithIf(
+              concretizeOp, [&](OpOperand &operand) {
+                return operand.getOwner() != concretizeOp;
+              });
         }
+        outHolderOp->getResult(fusionIdx).setType(fusedResultTp);
 
         auto outputLambdaBody = outputLambda.getBody(0);
         auto outputLambdaTerminator = outputLambdaBody->getTerminator();

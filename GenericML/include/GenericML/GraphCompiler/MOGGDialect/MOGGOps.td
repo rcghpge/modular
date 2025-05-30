@@ -449,8 +449,7 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
   }];
 
   let arguments = (ins MOGG_BindLambdaKind: $bindKind,
-                       Variadic<MO_Tensor>: $fusibleTensors,
-                       DefaultValuedOptionalAttr<BoolAttr, "false">:$needsScratchTensor);
+                       Variadic<MO_Tensor>: $fusibleTensors);
 
 
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>: $output);
@@ -474,6 +473,20 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
 
   let hasVerifier = 1;
   let hasCustomAssemblyFormat = 1;
+}
+
+
+def MOGG_ConcretizeTensorOp: MOGG_Op<"concretize", [Pure, SameOperandsAndResultType]> {
+  let summary = "Concretizes the virtual tensor by assigning to it the pointer of the physical tensor";
+  let description = [{
+    This op is necessary when we want to concretize/materialize a tensor that is
+    the result of a lambda op. It happens with mixed precision output fusion on
+    kernels that still need the virtual tensor to exist.
+  }];
+
+  // Can't use `virtual` because it's a reserved keyword in C++.
+  let arguments = (ins MO_Tensor:$phy, MO_Tensor:$vir);
+  let results = (outs MO_Tensor:$result);
 }
 
 
@@ -1368,7 +1381,7 @@ def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders", [Pure]> {
   }];
 }
 
-def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders", [HasParent<"MOGG::KernelOp">]> {
+def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
   let summary = "Represents scratch buffer tensors that are not returned from the kernel";
