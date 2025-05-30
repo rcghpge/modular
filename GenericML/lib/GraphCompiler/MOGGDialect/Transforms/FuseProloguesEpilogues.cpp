@@ -59,6 +59,15 @@ struct FuseProloguesEpilogues
       this, "numberOfFusedEpilogues",
       "Number of fused output elementwise kernels"};
 
+  template <typename... ExcludedOpTy, typename OperationIter>
+  static void moveBeforeExcept(Operation *dst,
+                               iterator_range<OperationIter> ops) {
+    for (auto &op : llvm::make_early_inc_range(ops)) {
+      if (!isa<ExcludedOpTy...>(&op))
+        op.moveBefore(dst);
+    }
+  }
+
   void fusePrologues(MO::GraphOp moGraph) {
     IRRewriter rewriter(moGraph->getContext());
     moGraph.walk([&](MOGG::ExpKernelOp dst) {
@@ -123,10 +132,9 @@ struct FuseProloguesEpilogues
 
         // Copy views that were previously fused into the elementwise kernel, if
         // any.
-        for (Operation &op : src.getOps()) {
-          if (isa<MOGG::CallViewOp>(&op))
-            op.moveAfter(inputLambda);
-        }
+        moveBeforeExcept<MOGG::OutputPlaceholdersOp, MOGG::BindLambdaOp,
+                         MOGG::KernelTerminator>(elementwiseLambda,
+                                                 src.getOps());
 
         dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));
         // Delete the src because it is no longer needed.
@@ -256,28 +264,8 @@ struct FuseProloguesEpilogues
                                    rewriter.getInsertionPoint());
         outputLambdaTerminator->erase();
 
-        // Copy views that were previously fused into the elementwise kernel, if
-        // any.
-        mlir::SetVector<Operation *> toMove;
-        for (auto op : llvm::make_early_inc_range(src.getOps<CallViewOp>())) {
-          SmallVector<Operation *> workList;
-          workList.push_back(op);
-          while (!workList.empty()) {
-            auto curOp = workList.back();
-            workList.pop_back();
-            // also move the depending ops.
-            for (auto dep : curOp->getOperands())
-              if (auto depOp = dep.getDefiningOp())
-                workList.push_back(depOp);
-
-            toMove.insert(curOp);
-          }
-        }
-
-        // Sort and move.
-        toMove = mlir::topologicalSort(toMove);
-        for (auto op : toMove)
-          op->moveBefore(outputLambda);
+        moveBeforeExcept<MOGG::OutputPlaceholdersOp, MOGG::BindLambdaOp,
+                         MOGG::KernelTerminator>(outputLambda, src.getOps());
 
         src->replaceAllUsesWith(ValueRange{dstOutput});
         dst.setSummaryAttr(getSummaryString({dst, src}, FusionType::HARD));
