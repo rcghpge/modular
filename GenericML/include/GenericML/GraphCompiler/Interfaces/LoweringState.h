@@ -641,19 +641,21 @@ struct MOOpLoweringState {
 
   Value hostBufferConstantExternal(TypedValue<MEF::ChainType> inChain,
                                    StringRef name, uint64_t size,
-                                   uint64_t align, bool hasAlias) {
+                                   uint64_t align, bool hasAlias,
+                                   bool isPlaceholder) {
     return loweringState.getHostBufferBuilder()->bufferConstantExternal(
         builder, loc, inChain, context, weightsRegistry, name, size, align,
-        hasAlias);
+        hasAlias, isPlaceholder);
   }
 
   Value deviceBufferConstantExternal(DeviceRefAttr device,
                                      TypedValue<MEF::ChainType> inChain,
                                      StringRef name, uint64_t size,
-                                     uint64_t align, bool hasAlias) {
+                                     uint64_t align, bool hasAlias,
+                                     bool isPlaceholder) {
     return loweringState.getBufferBuilder(device)->bufferConstantExternal(
         builder, loc, inChain, context, weightsRegistry, name, size, align,
-        hasAlias);
+        hasAlias, isPlaceholder);
   }
 
   Value hostDebugPrint(Value inChain, StringAttr data, StringAttr label) {

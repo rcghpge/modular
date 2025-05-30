@@ -1025,6 +1025,7 @@ def MGP_CallOp : MGP_Op<"call"> {
     ```
   }];
   let arguments = (ins SymbolRefAttr:$model,
+                       DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
                        Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
 

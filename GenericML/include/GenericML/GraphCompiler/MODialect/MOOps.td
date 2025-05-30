@@ -274,6 +274,7 @@ def MO_CallOp : MO_ControlOp<"call", [
   let arguments = (ins
     Variadic<AnyType>:$operands,
     SymbolRefAttr:$symbol,
+    DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs Variadic<AnyType>:$results);
@@ -640,7 +641,8 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
     StrAttr:$name,
     UI64Attr:$align,
     M_DeviceRefAttr:$device,
-    DefaultValuedAttr<BoolAttr, "false">:$hasAlias
+    DefaultValuedAttr<BoolAttr, "false">:$hasAlias,
+    DefaultValuedAttr<BoolAttr, "false">:$isPlaceholder
   );
   let results = (outs MO_Tensor:$result);
 
