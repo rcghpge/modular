@@ -2607,6 +2607,20 @@ LogicalResult ConvOp::verify() {
   return op.verifyWindowParamSizes({getDilations(), getStrides()});
 }
 
+LogicalResult ConvOp::canonicalize(ConvOp op, PatternRewriter &rewriter) {
+  StringRef filterLayoutStr = "";
+  LayoutAttr filterLayout = op.getFilter().getType().getLayoutAttr();
+  if (filterLayout)
+    filterLayoutStr = filterLayout.getFormat();
+
+  if (op.getFilterLayout() == filterLayoutStr)
+    return failure();
+
+  rewriter.modifyOpInPlace(op, [&]() { op.setFilterLayout(filterLayoutStr); });
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MO_ConvTransposeOp support
 //===----------------------------------------------------------------------===//

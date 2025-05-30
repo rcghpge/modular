@@ -21,8 +21,8 @@ mo.graph @conv2d(
   %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %ng = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  // CHECK: mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], num_groups = %[[NG]]]
-  %0 = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  // CHECK: mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], num_groups = %[[NG]]]
+  %0 = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[10, 5, 5, 16], f32>, !mo.tensor<[3, 3, 16, 32], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[10, 2, 2, 32], f32>
@@ -41,8 +41,8 @@ mo.graph @conv_dyn_rank(
   %pa: !mo.tensor<[?], si64>,
   %ng: !mo.tensor<[], si64>
 ) -> !mo.tensor<?, f32> {
-  // CHECK: mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], num_groups = %[[NG]]]
-  %0 = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  // CHECK: mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], num_groups = %[[NG]]]
+  %0 = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<?, f32>, !mo.tensor<?, f32>,
     !mo.tensor<?, si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<?, f32>

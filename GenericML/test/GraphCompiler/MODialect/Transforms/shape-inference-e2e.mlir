@@ -383,7 +383,7 @@ mo.graph @conv2d_static_input_dims(
   %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %ng = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %0 = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %0 = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[10, 5, 5, 16], f32>,
     !mo.tensor<[3, 3, 16, 32], f32>,
     !mo.tensor<[2], si64>,
@@ -399,7 +399,7 @@ mo.graph @conv2d_static_input_dims(
 // CHECK-NEXT:   [[V1:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V2:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 // CHECK-NEXT:   [[V3:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:   [[V4:%.*]] = mo.conv([[VARG0]], [[VARG1]]) [strides = [[V0]], dilations = [[V1]], paddings = [[V2]], num_groups = [[V3]]] : (!mo.tensor<[10, 5, 5, 16], f32>, !mo.tensor<[3, 3, 16, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[10, 2, 2, 32], f32>
+// CHECK-NEXT:   [[V4:%.*]] = mo.conv([[VARG0]], [[VARG1]]) {filter_layout = ""} [strides = [[V0]], dilations = [[V1]], paddings = [[V2]], num_groups = [[V3]]] : (!mo.tensor<[10, 5, 5, 16], f32>, !mo.tensor<[3, 3, 16, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[10, 2, 2, 32], f32>
 // CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[10, 2, 2, 32], f32>
 // CHECK-NEXT: }
 
@@ -411,7 +411,7 @@ mo.graph @conv2d_dyn_input_dims(
   %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %ng = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %0 = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %0 = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[?, 20, 30, 16], f32>,
     !mo.tensor<[3, 3, 16, 32], f32>,
     !mo.tensor<[2], si64>,
@@ -427,7 +427,7 @@ mo.graph @conv2d_dyn_input_dims(
 // CHECK-NEXT:   [[V1:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
 // CHECK-NEXT:   [[V2:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 // CHECK-NEXT:   [[V3:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT:   [[V4:%.*]] = mo.conv([[VARG0]], [[VARG1]]) [strides = [[V3]], dilations = [[V2]], paddings = [[V1]], num_groups = [[V0]]] : (!mo.tensor<[[[D9]], 20, 30, 16], f32>, !mo.tensor<[3, 3, 16, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D9]], 7, 12, 32], f32>
+// CHECK-NEXT:   [[V4:%.*]] = mo.conv([[VARG0]], [[VARG1]]) {filter_layout = ""} [strides = [[V3]], dilations = [[V2]], paddings = [[V1]], num_groups = [[V0]]] : (!mo.tensor<[[[D9]], 20, 30, 16], f32>, !mo.tensor<[3, 3, 16, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D9]], 7, 12, 32], f32>
 // CHECK-NEXT:   mo.output [[V4]]
 // CHECK-NEXT: }
 

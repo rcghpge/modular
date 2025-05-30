@@ -1028,14 +1028,15 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
     MO_IndicesTensor:$dilations,
     MO_IndicesTensor:$paddings,
     MO_IndicesTensor:$num_groups,
+    DefaultValuedAttr<StrAttr, "">:$filter_layout,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
-    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)` attr-dict
+    ` ` `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
                     `paddings` `=` $paddings `,`
-                    `num_groups` `=` $num_groups `]` attr-dict `:`
+                    `num_groups` `=` $num_groups `]` `:`
     functional-type(operands, results)
   }];
 }

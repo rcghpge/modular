@@ -959,7 +959,8 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
 
     rewriter.replaceOpWithNewOp<RMO::MOConvOp>(
         conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
-        dilationsConstant, paddingConstant, groupsConstant);
+        dilationsConstant, paddingConstant, groupsConstant,
+        rewriter.getStringAttr(""));
     return success();
   }
 };

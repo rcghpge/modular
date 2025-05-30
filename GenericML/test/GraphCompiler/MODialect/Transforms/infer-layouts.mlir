@@ -17,14 +17,14 @@ mo.graph @chained_conv2d_with_reused_filter(
   %num_groups: !mo.tensor<[], si64>
 ) -> (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[?, ?, ?, ?], f32>) {
 
-  // CHECK-NEXT: %[[CONV1:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
+  // CHECK-NEXT: %[[CONV1:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[4], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>
-  %conv1 = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
+  %conv1 = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[2], si64>,
@@ -33,14 +33,14 @@ mo.graph @chained_conv2d_with_reused_filter(
     !mo.tensor<[], si64>
   ) -> !mo.tensor<[?, ?, ?, ?], f32>
 
-  // CHECK-NEXT: %[[CONV2:.*]] = mo.conv(%[[CONV1]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
+  // CHECK-NEXT: %[[CONV2:.*]] = mo.conv(%[[CONV1]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[4], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32>
-  %conv2 = mo.conv(%conv1, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
+  %conv2 = mo.conv(%conv1, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[2], si64>,
@@ -69,14 +69,14 @@ mo.graph @chained_conv3d_with_reused_filter(
   %num_groups: !mo.tensor<[], si64>
 ) -> (!mo.tensor<[?, ?, ?, ?, ?], f32>, !mo.tensor<[?, ?, ?, ?, ?], f32>) {
 
-  // CHECK-NEXT: %[[CONV1:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
+  // CHECK-NEXT: %[[CONV1:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<QRSCF>}>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[6], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>
-  %conv1 = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
+  %conv1 = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[3], si64>,
@@ -85,14 +85,14 @@ mo.graph @chained_conv3d_with_reused_filter(
     !mo.tensor<[], si64>
   ) -> !mo.tensor<[?, ?, ?, ?, ?], f32>
 
-  // CHECK-NEXT: %[[CONV2:.*]] = mo.conv(%[[CONV1]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
+  // CHECK-NEXT: %[[CONV2:.*]] = mo.conv(%[[CONV1]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<QRSCF>}>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[6], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?, ?], f32>
-  %conv2 = mo.conv(%conv1, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
+  %conv2 = mo.conv(%conv1, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[3], si64>,
