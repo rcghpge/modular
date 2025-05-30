@@ -352,7 +352,7 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
 
     bool isOperandFusible(uint64_t operandIdx, bool lookThroughView = false);
     bool hasFusibleOperand(bool lookThroughView = false) {
-      for (unsigned i = 0, e = getNumOperands(); i < e; i++)
+      for (unsigned i = 0, e = getExecBody().getNumArguments(); i < e; i++)
         if (isOperandFusible(i, lookThroughView))
           return true;
 

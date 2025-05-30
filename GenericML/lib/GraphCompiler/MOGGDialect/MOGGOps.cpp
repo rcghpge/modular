@@ -628,10 +628,15 @@ LogicalResult ExpKernelOp::verify() {
   if (!dpsResult.empty() && isa<MO::ChainType>(dpsResult.back().getType()))
     dpsResult = dpsResult.drop_back();
 
-  for (auto [outer, inner] :
-       llvm::zip_equal(getOperands(), getExecBody().getArguments())) {
-    if (outer.getType() != inner.getType())
+  for (auto [inner, outer] :
+       llvm::zip_first(getExecBody().getArgumentTypes(), getOperandTypes())) {
+    if (outer != inner)
       return emitError("Except same operands/block argument type");
+  }
+
+  if (llvm::any_of(getExecBody().getArgumentTypes(),
+                   [](auto argType) { return isa<MO::ChainType>(argType); })) {
+    return emitError("Kernel arguments can't be chains");
   }
 
   if (auto regOutput = term.getKernelReturnOutput()) {
@@ -682,8 +687,10 @@ void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
 
   Region *execBodyRegion = state.addRegion();
   Block &kernelBody = execBodyRegion->emplaceBlock();
-  for (auto [i, operand] : llvm::enumerate(operands))
-    kernelBody.addArgument(operand.getType(), operand.getLoc());
+  for (auto [i, operand] : llvm::enumerate(operands)) {
+    if (!isa<MO::ChainType>(operand.getType()))
+      kernelBody.addArgument(operand.getType(), operand.getLoc());
+  }
 
   state.addTypes(results);
 
@@ -1985,8 +1992,14 @@ static ParseResult parseKernel(
       parseRegionArguments(p, resultTypes, args) ||
       p.getCurrentLocation(&loc) || p.parseRegion(region, args))
     return failure();
+
   for (auto &arg : args)
     operandTypes.push_back(arg.type);
+
+  // For MOGG::ExpKernelOp, if the kernel takes in a chain, there will be 1
+  // fewer argument than operands.
+  operandTypes.resize(operands.size(), MO::ChainType::get(p.getContext()));
+
   return success();
 }
 

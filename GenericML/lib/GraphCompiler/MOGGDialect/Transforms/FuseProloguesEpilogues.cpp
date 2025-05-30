@@ -65,7 +65,7 @@ struct FuseProloguesEpilogues
       if (dst.getElemwiseBodyLambda())
         return;
       // Do signed substraction to avoid integer underflow.
-      int64_t numInputs = dst->getNumOperands();
+      int64_t numInputs = dst.getExecBody().getNumArguments();
       for (int64_t fusionIdx = numInputs - 1; fusionIdx >= 0; --fusionIdx) {
         auto inputLambda = dst.getBoundInputLambda(fusionIdx);
         if (!inputLambda)
@@ -148,6 +148,9 @@ struct FuseProloguesEpilogues
 
       for (int64_t fusionIdx = dst.getNumResults() - 1; fusionIdx >= 0;
            --fusionIdx) {
+        if (isa<MO::ChainType>(dst.getResult(fusionIdx).getType()))
+          continue;
+
         auto outputLambda = dst.getBoundOutputLambda(fusionIdx);
         if (!outputLambda)
           continue;

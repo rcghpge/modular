@@ -197,9 +197,6 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
 
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
-  if (!inputs.empty() && isa<MO::ChainType>(inputs.back().getType()))
-    inputs.pop_back();
-
   SmallVector<Value> fusibleTensors;
   for (const auto &[idx, arg] : mapping.operandMapping) {
     if (!arg.isFusedTensorType())
