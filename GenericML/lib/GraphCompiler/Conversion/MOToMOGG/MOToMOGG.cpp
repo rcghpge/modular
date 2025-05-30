@@ -128,7 +128,8 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
 
     auto kernelOrErr = builder.lowerToKernel();
 
-    if (!kernelOrErr.isError() && isa<MO::ElementWiseLike>(op)) {
+    if (!kernelOrErr.isError() &&
+        (isa<MO::ElementWiseLike>(op) || isa<MO::MutableStoreOp>(op))) {
       kernelOrErr.get()->setDiscardableAttr("elementwise",
                                             UnitAttr::get(op->getContext()));
     }

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --canonicalize --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --canonicalize --fuse-mutable-loads %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
@@ -146,4 +146,16 @@ mo.graph @dont_parallelize_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %
     mo.yield %4 : !mo.chain
   }
   mo.output %arg0 : !mo.buffer<[2, 2], f32>
+}
+
+// CHECK-LABEL: mo.graph @block_fusion_non_elementwise_inplace_kernel
+// CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[2, 2], f32>
+// CHECK: [[ch0:%.*]] = mo.chain.create()
+// CHECK: [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load([[buffer]], [[ch0]])
+// CHECK: mogg.kernel ([[buffer]], [[outTensor]], [[outChain]])
+mo.graph @block_fusion_non_elementwise_inplace_kernel(%buffer: !mo.buffer<[2, 2], f32>) {
+  %0 = mo.chain.create()
+  %outTensor, %outChain = mo.mutable.load(%buffer, %0) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)
+  %1 = mo.custom {symbol = "inplace_no_out_func"}(%buffer, %outTensor, %outChain) : (!mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.chain) -> !mo.chain
+  mo.output
 }

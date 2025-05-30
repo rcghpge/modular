@@ -57,6 +57,24 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   if (!kernelOp)
     return std::nullopt;
 
+  // At present the only kernels marked as elmementwise are the standard ones
+  // you would expect (pure compute ops like mul,add,sqrt, etc.) and
+  // mo.mutable.store.
+  //
+  // If we have a kernel that has a buffer operand that is the same as the load
+  // op's input then in general it's unsafe to perform load fusion so block it
+  // here.
+  if (llvm::any_of(kernelOp.getOperands(), [&](Value operand) {
+        return operand == loadOp.getInBuffer();
+      })) {
+    if (!kernelOp->hasAttr("elementwise")) {
+      LLVM_DEBUG(loadOp.emitRemark()
+                 << "Attempting load fusion with an in-place kernel that is "
+                    "not elementwise");
+      return std::nullopt;
+    }
+  }
+
   return kernelOp;
 }
 
