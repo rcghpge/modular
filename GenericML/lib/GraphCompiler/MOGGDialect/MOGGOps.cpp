@@ -616,8 +616,8 @@ LogicalResult ExpKernelOp::verify() {
 
   ValueRange dpsResult = getResults();
   // Chain does not occur on kernel (but propagated by graph compiler).
-  if (isa<MO::ChainType>(dpsResult.front().getType()))
-    dpsResult = dpsResult.drop_front();
+  if (!dpsResult.empty() && isa<MO::ChainType>(dpsResult.back().getType()))
+    dpsResult = dpsResult.drop_back();
 
   for (auto [outer, inner] :
        llvm::zip_equal(getOperands(), getExecBody().getArguments())) {
