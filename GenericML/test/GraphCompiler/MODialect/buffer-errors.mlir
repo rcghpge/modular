@@ -9,7 +9,7 @@ mo.graph @unranked_unk(
 
 // -----
 
-mo.graph @unranked_paramaterized<Sh0: !mosh.ape>(
+mo.graph @unranked_parameterized<Sh0: !mosh.ape>(
   // expected-error@+1 {{invalid shape attribute, only MOSH::ShapeAttr is allowed for buffer types, got: #kgen.param.decl.ref<"Sh0"> : !mosh.ape}}
   %b0: !mo.buffer<Sh0, f32>
 ) {

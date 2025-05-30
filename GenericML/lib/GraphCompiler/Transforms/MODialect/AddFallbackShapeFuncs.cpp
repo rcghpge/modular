@@ -281,7 +281,7 @@ struct AddFallbackShapeFunctions
 // Each fallback needs to produce a parameter for every dimension in the output
 // even if those dimensions are static. This simplifies the lowering as without
 // doing this we would need the lowering to know how many should be produced and
-// to which dimension they should be refering to.
+// to which dimension they should be referring to.
 KGEN::ParamDeclArrayAttr
 getNewParameterMapping(GraphOp &graph, TensorType outTy,
                        ArrayRef<ParamDeclAttr> outputParamDecls) {

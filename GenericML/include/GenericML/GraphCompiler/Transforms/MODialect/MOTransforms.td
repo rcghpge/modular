@@ -168,7 +168,7 @@ def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
     ```
     `rebind`s are inserted around the block to ensure that the input and outputs of the block remain the same type.
 
-    This pass is nessesary for MOGG to jit kernels with parameter expressions in thier arguments.
+    This pass is necessary for MOGG to jit kernels with parameter expressions in their arguments.
   }];
 }
 

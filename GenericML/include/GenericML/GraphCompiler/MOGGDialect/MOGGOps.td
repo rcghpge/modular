@@ -521,7 +521,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
      values. These values are explicit parameter returns of the kernel. They
      cannot be referred to within the kernel other than to set them. When the
      kernel is executed they will be updated in the MGP parameter map. This is
-     completely seperate from the normal kernel tensor returns. Their values
+     completely separate from the normal kernel tensor returns. Their values
      are set within the kernel using `SetParameterOp`.
 
     The attributes at the end.
