@@ -128,6 +128,7 @@ struct FuseProloguesEpilogues
             op.moveAfter(inputLambda);
         }
 
+        dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));
         // Delete the src because it is no longer needed.
         src->erase();
       }
@@ -264,6 +265,7 @@ struct FuseProloguesEpilogues
           op->moveBefore(outputLambda);
 
         src->replaceAllUsesWith(ValueRange{dstOutput});
+        dst.setSummaryAttr(getSummaryString({dst, src}, FusionType::HARD));
         // There is no support for reverse walks in walk (mlir::WalkOrder is not
         // it).
         toErase.insert(src);
