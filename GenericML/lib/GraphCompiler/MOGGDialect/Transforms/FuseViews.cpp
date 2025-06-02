@@ -237,14 +237,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
                         TypeManager &typeManager) {
     Value toFuse = kernel.getOperand(idx);
     auto viewProducer = cast<MOGG::ExpKernelOp>(toFuse.getDefiningOp());
+    kernel.insertInputsAt(idx + 1, viewProducer.getInputs());
 
     IRRewriter rewriter(kernel->getContext());
-
-    kernel->insertOperands(idx + 1, viewProducer->getOperands());
-
-    for (auto ba : llvm::reverse(viewProducer.getExecBody().getArguments()))
-      kernel.getExecBody().insertArgument(idx + 1, ba.getType(), ba.getLoc());
-
     rewriter.cloneRegionBefore(viewProducer.getExecBody(),
                                &kernel.getExecBody().front());
 
@@ -259,8 +254,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
 
     // Clean up.
     dst->getArgument(idx).replaceAllUsesWith(srcTerm.getInputs().front());
-    dst->eraseArgument(idx);
-    kernel->eraseOperand(idx);
+    kernel.eraseInputsAt(idx);
     srcTerm.erase();
   }
 

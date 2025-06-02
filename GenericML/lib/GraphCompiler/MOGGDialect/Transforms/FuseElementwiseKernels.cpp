@@ -362,13 +362,9 @@ static inline bool expKernelsAreCompatible(Operation *src, Operation *dst) {
 
 static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
                                       MOGG::ExpKernelOp src) {
-  // Top-level operands.
-  dst->insertOperands(opIdx, src->getOperands());
-
-  // Block arguments.
   Value toReplace = dst.getExecBody().getArgument(opIdx);
-  for (auto v : llvm::reverse(src.getExecBody().getArguments()))
-    dst.getExecBody().insertArgument(opIdx, v.getType(), v.getLoc());
+
+  dst.insertInputsAt(opIdx, src.getInputs());
 
   // All uses.
   unsigned numSrcVal = src->getNumOperands();
@@ -388,7 +384,7 @@ static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
   }
   // cleanup
   dst.getExecBody().eraseArgument(opIdx + numSrcVal);
-  dst->eraseOperands(opIdx + numSrcVal);
+  dst.getInputsMutable().erase(opIdx + numSrcVal);
 };
 
 static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {

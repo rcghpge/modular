@@ -350,46 +350,59 @@ LogicalResult BindLambdaOp::verify() {
   if (getLambda().getNumArguments() != getFusibleTensors().size() + 1)
     return emitError("Expecting #operands + 1 arguments for lambda");
 
-  SmallVector<Type> valTps;
-  Type indicesTp;
+  auto verifyTensorRank = [this](Value tensorVal,
+                                 Type indicesTp) -> LogicalResult {
+    int64_t rank = cast<MO::TensorType>(tensorVal.getType()).getRank();
+    auto idxTp = dyn_cast<KGEN::POP::ArrayType>(indicesTp);
+    if (idxTp == nullptr || idxTp.getResolvedSize().value() != rank)
+      return emitError(
+          "Mismatch between tensor rank and and indices array size");
 
+    return success();
+  };
+
+  auto verifyTensorDType = [this](Value tensorVal,
+                                  Value elemVal) -> LogicalResult {
+    auto elemType = cast<MO::TensorType>(tensorVal.getType()).getElementType();
+    if (elemType != elemVal.getType())
+      return emitError(
+          "Mismatch between tensor dtype and dtype used by lambda");
+
+    return success();
+  };
+
+  auto outOp = cast<MOGG::OutputOp>(getBody()->getTerminator());
+  ValueRange outVals = outOp->getOperands();
+
+  Value castedVal = outVals.front();
   if (getBindKind() == BindLambdaKind::OutputLambda) {
-    auto outOp = cast<MOGG::OutputOp>(getBody()->getTerminator());
-    ValueRange outVals = outOp->getOperands();
     if (outVals.size() != 2)
       return emitError("Expecting output lambda to yield 2 values");
 
     // Bind the output value to the output tensor.
-    valTps.push_back(outVals.front().getType());
-    indicesTp = outVals.back().getType();
+    Type indicesTp = outVals.back().getType();
+    // lambdaArg <-> virtual tensor (the returned one).
+    // castedVal <-> physical tensor (the bound one).
+    if (failed(verifyTensorRank(getFusibleTensors().front(), indicesTp)) ||
+        failed(verifyTensorDType(getResult(), getValueArgs().front())) ||
+        failed(verifyTensorDType(getFusibleTensors().front(), castedVal)))
+      return failure();
+
   } else {
     // Bind the input value from input tensors.
-    valTps = llvm::map_to_vector(getValueArgs(),
-                                 [](BlockArgument ba) { return ba.getType(); });
-    indicesTp = getIndicesArg().getType();
-  }
+    // Symmetrical to output lambda:
+    // castedVal <-> virtual tensor (the returned one).
+    // lambdaArg <-> physical tensor (the bound one).
+    if (failed(verifyTensorDType(getResult(), castedVal)))
+      return failure();
 
-  for (auto [elemTp, tensorTp] :
-       llvm::zip_equal(valTps, getFusibleTensors().getTypes())) {
-    if (elemTp != cast<MO::TensorType>(tensorTp).getElementType())
-      return emitError(
-          "Mismatch between tensor type and fused tensor element type");
-  }
-
-  for (auto [operandType, argument] :
-       llvm::zip_first(getOperandTypes(), getValueArgs())) {
-    if (cast<MO::TensorType>(operandType).getElementType() !=
-        argument.getType()) {
-      return emitError(
-          "Mismatch between bound tensor type and argument in the body");
+    Type indicesTp = getIndicesArg().getType();
+    for (auto [t, v] : llvm::zip_equal(getFusibleTensors(), getValueArgs())) {
+      if (failed(verifyTensorRank(t, indicesTp)) ||
+          failed(verifyTensorDType(t, v)))
+        return failure();
     }
   }
-
-  int64_t rank =
-      cast<MO::TensorType>(getFusibleTensors().front().getType()).getRank();
-  if (auto idxTp = dyn_cast<KGEN::POP::ArrayType>(indicesTp);
-      idxTp == nullptr || idxTp.getResolvedSize().value() != rank)
-    return emitError("Mismatch between tensor rank and and indices array size");
 
   return success();
 }
@@ -528,6 +541,25 @@ Type CallExecuteOp::getKernelReturnOutput() {
 //===----------------------------------------------------------------------===//
 // MOGG ExpKernelOp
 //===----------------------------------------------------------------------===//
+
+void ExpKernelOp::insertInputsAt(unsigned idx, ValueRange vals) {
+  SmallVector<Value> ops = getInputs();
+  ops.insert(ops.begin() + idx, vals.begin(), vals.end());
+  getInputsMutable().assign(ops);
+
+  for (auto v : llvm::reverse(vals))
+    getExecBody().insertArgument(idx, v.getType(), v.getLoc());
+}
+
+void ExpKernelOp::eraseInputsAt(unsigned idx, size_t len) {
+  getInputsMutable().erase(idx, len);
+
+  for (unsigned i = 0; i < len; i++)
+    getExecBody().eraseArgument(idx);
+}
+
+void ExpKernelOp::setChain(Value chain) { getChainMutable().assign(chain); }
+void ExpKernelOp::eraseChain() { getChainMutable().erase(0); }
 
 KernelTerminator ExpKernelOp::getTerminator() {
   return cast<KernelTerminator>(getExecBody().front().getTerminator());
@@ -673,6 +705,55 @@ LogicalResult ExpKernelOp::verify() {
   return success();
 }
 
+ParseResult ExpKernelOp::parse(OpAsmParser &parser, OperationState &state) {
+  SmallVector<OpAsmParser::Argument> argInfo;
+  OpAsmParser::UnresolvedOperand chain;
+
+  auto parseOptionalChain = [&]() -> ParseResult {
+    if (succeeded(parser.parseOptionalKeyword("chain"))) {
+      if (parser.parseLParen() || parser.parseOperand(chain) ||
+          parser.parseRParen() ||
+          parser.resolveOperand(chain, MO::ChainType::get(parser.getContext()),
+                                state.operands)) {
+        return failure();
+      }
+    }
+    return success();
+  };
+
+  if (parseParenOperandListWithShadowing(parser, state, argInfo, true) ||
+      parseOptionalChain() || parser.parseArrowTypeList(state.types) ||
+      parseRegion(parser, argInfo, *state.addRegion(), true) ||
+      parser.parseOptionalAttrDict(state.attributes))
+    return failure();
+
+  state.addAttribute(
+      "operandSegmentSizes",
+      mlir::DenseI32ArrayAttr::get(
+          parser.getContext(),
+          {static_cast<int32_t>(argInfo.size()),
+           static_cast<int32_t>(state.operands.size() - argInfo.size())}));
+
+  return success();
+}
+
+void ExpKernelOp::print(OpAsmPrinter &p) {
+  printParenOperandListWithShadowing(p, getInputs(),
+                                     getExecBody().getArguments(),
+                                     /*isIsolatedFromAbove=*/true);
+  if (auto chain = getChain()) {
+    p.printKeywordOrString(" chain");
+    p << "(";
+    p.printOperand(chain);
+    p << ")";
+  }
+
+  p.printArrowTypeList(getResultTypes());
+  p << ' ';
+  printRegion(p, getInputs(), getExecBody(), /*isIsolatedFromAbove=*/true);
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+}
+
 void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
                         TypeRange results, ValueRange operands,
                         StringAttr summary, BoolAttr isAsync,
@@ -686,16 +767,23 @@ void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
     state.addAttribute(getIsAsyncAttrName(state.name), isAsync);
 
   Region *execBodyRegion = state.addRegion();
-  Block &kernelBody = execBodyRegion->emplaceBlock();
+  Block &body = execBodyRegion->emplaceBlock();
   for (auto [i, operand] : llvm::enumerate(operands)) {
     if (!isa<MO::ChainType>(operand.getType()))
-      kernelBody.addArgument(operand.getType(), operand.getLoc());
+      body.addArgument(operand.getType(), operand.getLoc());
   }
 
   state.addTypes(results);
 
   if (device)
     state.addAttribute(MO::kOperationDeviceRefAttrName, device);
+
+  state.addAttribute(
+      "operandSegmentSizes",
+      mlir::DenseI32ArrayAttr::get(
+          state.getContext(),
+          {static_cast<int32_t>(body.getNumArguments()),
+           static_cast<int32_t>(operands.size() - body.getNumArguments())}));
 }
 
 OutputPlaceholdersOp ExpKernelOp::getOutputPlaceholder() {

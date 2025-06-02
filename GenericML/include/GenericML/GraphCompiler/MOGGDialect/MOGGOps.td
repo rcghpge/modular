@@ -302,6 +302,7 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [Pure]> {
 
 def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+    AttrSizedOperandSegments,
     IsolatedFromAbove,
     SingleBlock,
     MO_HasDeviceInterface,
@@ -321,7 +322,9 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     `mogg.kernel` after the transition is done.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
+  let arguments = (ins
+    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, Index]>>:$inputs,
+    Optional<MO_Chain>:$chain,
     MO_ParamDecls:$outputParamDecls,
     DefaultValuedOptionalAttr<StrAttr, "">:$summary,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync,
@@ -332,10 +335,6 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
 
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$execBody);
-
-  let assemblyFormat = [{
-    custom<Kernel>($operands, type($operands), type($results), $execBody, $outputParamDecls) attr-dict
-  }];
 
   let extraClassDeclaration = [{
     KernelTerminator getTerminator();
@@ -372,6 +371,23 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
 
     // Returns the OutputOp for this operation or null if it does not exist.
     OutputOp getOutputOp();
+
+    // Use the following methods to update inputs/chains
+    // (instead of op->insertOperand/eraseOperand) to keep the
+    // `operandSegmentSize` up-to-date.
+    //
+    // Insert a range of new inputs at `idx`, this updates both operands and
+    // block arguments.
+    void insertInputsAt(unsigned idx, ValueRange vals);
+    // Remove a range of inputs at `[idx, idx + len)`, this updates both operands and
+    // block arguments.
+    void eraseInputsAt(unsigned idx, size_t len = 1);
+    //
+    // Chain update.
+    //
+    // Set and erase chain.
+    void setChain(Value chain);
+    void eraseChain();
   }];
 
   // This should set all attributes including MO_HasDeviceInterface
@@ -384,6 +400,8 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
       "DeviceRefAttr":$device
     )>,
   ];
+
+  let hasCustomAssemblyFormat = 1;
   let skipDefaultBuilders=1;
   let hasVerifier = 1;
 }

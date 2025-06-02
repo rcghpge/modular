@@ -110,14 +110,15 @@ struct FuseProloguesEpilogues
         elementwiseLambdaTerminator->insertOperands(
             1, elementwiseLambdaBody->getArguments().back());
 
-        // Bring in all the operands of src into dst and do SSA replacement.
-        dst->insertOperands(dst->getNumOperands(), src->getOperands());
-        for (auto oldBlockArgument : src.getExecBody().getArguments()) {
-          auto newBlockArgument = dst.getExecBody().insertArgument(
-              dst.getExecBody().getNumArguments(), oldBlockArgument.getType(),
-              oldBlockArgument.getLoc());
-          oldBlockArgument.replaceAllUsesWith(newBlockArgument);
-        }
+        // Bring in all the operands (except chain) of src into dst and do SSA
+        // replacement.
+        // TODO: we probably need to merge chain here.
+        dst.insertInputsAt(dst.getInputs().size(), src.getInputs());
+        auto newArgs =
+            dst.getExecBody().getArguments().take_back(src.getInputs().size());
+        auto oldArgs = src.getExecBody().getArguments();
+        for (auto [newArg, oldArg] : llvm::zip_equal(newArgs, oldArgs))
+          oldArg.replaceAllUsesWith(newArg);
 
         // Finally, move in the elementwise lambda and turn it into an input
         // lambda.
@@ -127,8 +128,7 @@ struct FuseProloguesEpilogues
         inputLambda->erase();
 
         // Remove the associated input tensor from the kernel signature.
-        dst->eraseOperand(fusionIdx);
-        dst.getExecBody().eraseArgument(fusionIdx);
+        dst.eraseInputsAt(fusionIdx);
 
         // Copy views that were previously fused into the elementwise kernel, if
         // any.
@@ -195,15 +195,14 @@ struct FuseProloguesEpilogues
 
         // Move in all src's kernel operands and arguments into dst's except for
         // the one that is being fused.
+        //
+        // TODO: we probalby need to merge chain here.
         Value srcFusionArgument;
         for (const auto [argument, operand] : llvm::reverse(llvm::zip_first(
-                 src.getExecBody().getArguments(), src->getOperands()))) {
+                 src.getExecBody().getArguments(), src.getInputs()))) {
           if (operand != dstOutput) {
-            // prepend to the front.
-            dst->insertOperands(0, operand);
-            auto newArgument = dst.getExecBody().insertArgument(
-                (unsigned)0, argument.getType(), argument.getLoc());
-
+            dst.insertInputsAt(0, operand);
+            Value newArgument = dst.getExecBody().getArgument(0);
             argument.replaceAllUsesWith(newArgument);
           } else {
             srcFusionArgument = argument;
