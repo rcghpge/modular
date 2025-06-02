@@ -751,7 +751,8 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   resDims.push_back(batchSize.getAttr());
   for (size_t axis = 0; axis < inputRank - 2; axis++) {
     Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
-    Var filterSpatialDim = b.createVar(filterShape[axis]);
+    Var filterSpatialDim = isFCRS ? b.createVar(filterShape[axis + 2])
+                                  : b.createVar(filterShape[axis]);
     Var dilation = b.createVar(dilations[axis]);
     Var stride = b.createVar(strides[axis]);
     Var prePadding = b.createVar(paddings[2 * axis]);
