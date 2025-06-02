@@ -190,6 +190,61 @@ MGPCallGraph::getInliningOrder(ModuleOp module, SymbolTable symTab) {
 namespace {
 
 //===----------------------------------------------------------------------===//
+// Slot offsetting helper functions
+//===----------------------------------------------------------------------===//
+
+/// Offsets the specific slot index attribute of various MGP operations.
+static void offsetRuntimeSlot(Operation *op, uint64_t slotOffset) {
+  if (auto bufferCacheOp = dyn_cast<BufferCacheOp>(op)) {
+    uint64_t oldSlot = bufferCacheOp.getBBufferSlot();
+    bufferCacheOp.setBBufferSlot(oldSlot + slotOffset);
+  }
+  if (auto runtimeCreateOp = dyn_cast<RuntimeCreateOp>(op)) {
+    uint64_t oldSlot = runtimeCreateOp.getARuntimeSlot();
+    runtimeCreateOp.setARuntimeSlot(oldSlot + slotOffset);
+  }
+  if (auto bufferGetCachedOp = dyn_cast<BufferGetCachedOp>(op)) {
+    uint64_t oldSlot = bufferGetCachedOp.getBBufferSlot();
+    bufferGetCachedOp.setBBufferSlot(oldSlot + slotOffset);
+  }
+  if (auto bufferRemoveCachedOp = dyn_cast<BufferRemoveCachedOp>(op)) {
+    uint64_t oldSlot = bufferRemoveCachedOp.getBufferSlot();
+    bufferRemoveCachedOp.setBufferSlot(oldSlot + slotOffset);
+  }
+  if (auto moduleLoadOp = dyn_cast<ModuleLoadOp>(op)) {
+    uint64_t oldSlot = moduleLoadOp.getARuntimeSlot();
+    moduleLoadOp.setARuntimeSlot(oldSlot + slotOffset);
+  }
+  if (auto executeGenericOp = dyn_cast<ExecuteGenericOp>(op)) {
+    uint64_t oldSlot = executeGenericOp.getARuntimeSlot();
+    executeGenericOp.setARuntimeSlot(oldSlot + slotOffset);
+  }
+}
+
+/// Updates the name attribute of mgp.buffer.constant.external operations
+/// that have placeholder=true by prepending the given prefix.
+static void updatePlaceholderNames(Operation *op, StringRef prefix) {
+  if (auto bufferConstExtOp = dyn_cast<BufferConstantExternalOp>(op)) {
+    if (bufferConstExtOp.getHIsPlaceholder() && !prefix.empty()) {
+      bufferConstExtOp.setBNameAttr(StringAttr::get(
+          op->getContext(), Twine(prefix) + bufferConstExtOp.getBName()));
+    }
+  }
+}
+
+/// Finds the ContextCreateOp in the given model's init block with error
+/// reporting. Returns the ContextCreateOp if found, emits an error and returns
+/// nullptr otherwise. MGP::ModelOp::verify ensures there's only one
+/// ContextCreateOp per init block.
+static ContextCreateOp findContextCreateOp(ModelOp model) {
+  ContextCreateOp contextCreateOp;
+  model.getInitBlock()->walk([&](ContextCreateOp op) { contextCreateOp = op; });
+  ASSERT_STREAM(contextCreateOp,
+                "Model does not contain a ContextCreateOp in its init block.");
+  return contextCreateOp;
+}
+
+//===----------------------------------------------------------------------===//
 // InlineMGPCallsPass
 //===----------------------------------------------------------------------===//
 
@@ -197,10 +252,18 @@ struct InlineMGPCallsPass
     : public impl::InlineMGPCallsPassBase<InlineMGPCallsPass> {
   using InlineMGPCallsPassBase::InlineMGPCallsPassBase;
 
-  // Set of models whose inits have been inlined.
-  DenseSet<StringRef> inlinedInits;
+  // Track slot usage per model as we inline into them
+  DenseMap<ModelOp, uint64_t> modelSlotUsage;
 
   LogicalResult inlineSubgraph(CallOp callOp) {
+    // High-level steps for inlining a subgraph:
+    // 1. Prepend call prefix to unique external tensors (placeholder names)
+    // 2. Record initial slot usage in parent model
+    // 3. Offset slots in subgraph so parent mgp.context machinery is correct
+    // 4. Clone init block operations from subgraph into parent init
+    // 5. Clone execute block operations from subgraph into parent at call site
+    // 6. Map return values and clean up the call operation
+
     ModuleOp moduleOp = getOperation();
     ModelOp subgraph = moduleOp.lookupSymbol<ModelOp>(callOp.getModel());
     ModelOp parentModelOp = callOp->getParentOfType<ModelOp>();
@@ -210,82 +273,104 @@ struct InlineMGPCallsPass
       return callOp.emitError()
              << "failed to find symbol @" << callOp.getModel();
 
-    // Check if we need to inline init
-    StringRef modelName = callOp.getModel().getRootReference();
-    if (!inlinedInits.contains(modelName)) {
-      inlinedInits.insert(modelName);
+    // Get the prefix from the call operation
+    StringRef callPrefix = callOp.getPrefix();
 
-      // Get the init blocks
-      Block *parentInit = parentModelOp.getInitBlock();
-      Block *subgraphInit = subgraph.getInitBlock();
+    // Find the parent's context (needed for both slot tracking and mapping)
+    ContextCreateOp parentContextCreateOp = findContextCreateOp(parentModelOp);
+    if (!parentContextCreateOp)
+      return failure();
 
-      // Set up builder for init region
-      OpBuilder initBuilder(
-          &parentInit->back()); // Insert before the terminator
+    // Initialize parent's slot usage if not already tracked
+    if (modelSlotUsage.find(parentModelOp) == modelSlotUsage.end())
+      modelSlotUsage[parentModelOp] = parentContextCreateOp.getNumSlots();
 
-      // Create mapping for init args
-      IRMapping initMap;
+    // Get the current slot usage of the parent (including any previously
+    // inlined subgraphs)
+    uint64_t parentCurrentSlotUsage = modelSlotUsage[parentModelOp];
 
-      // Map context. Assume there is only one mgp.context.create op per model.
-      for (auto op : parentInit->getOps<ContextCreateOp>()) {
-        for (auto subOp : subgraphInit->getOps<ContextCreateOp>()) {
-          initMap.map(subOp.getResult(), op.getResult());
-          break;
+    // Find the number of slots this specific subgraph requires
+    ContextCreateOp subgraphContextCreateOp = findContextCreateOp(subgraph);
+    if (!subgraphContextCreateOp)
+      return failure();
+
+    uint64_t subgraphSlotsUsed = subgraphContextCreateOp.getNumSlots();
+
+    // The offset for this callsite should start after the parent's current
+    // slots
+    uint64_t slotOffset = parentCurrentSlotUsage;
+
+    // First, inline the init block for this specific callsite
+    Block *parentInit = parentModelOp.getInitBlock();
+
+    // Set up builder for init region
+    OpBuilder initBuilder(&parentInit->back()); // Insert before the terminator
+
+    // Create mapping for init args
+    IRMapping initMap;
+
+    // Map context. Assume there is only one mgp.context.create op per model.
+    if (parentContextCreateOp && subgraphContextCreateOp)
+      initMap.map(subgraphContextCreateOp.getResult(),
+                  parentContextCreateOp.getResult());
+
+    // Map weights registry
+    initMap.map(subgraph.getInitBlock()->getArgument(0),
+                parentInit->getArgument(0));
+
+    // Map devices
+    for (auto subgraphArg : subgraph.getInitBlock()->getArguments())
+      if (isa<DeviceContextType>(subgraphArg.getType()))
+        for (auto parentArg : parentInit->getArguments())
+          if (subgraphArg.getType() == parentArg.getType())
+            initMap.map(subgraphArg, parentArg);
+
+    // Check if any devices were left unmapped and emit an error if so.
+    for (auto subgraphArg : subgraph.getInitBlock()->getArguments())
+      if (isa<DeviceContextType>(subgraphArg.getType()))
+        if (!initMap.contains(subgraphArg))
+          return subgraph.emitError()
+                 << "failed to map device context for argument "
+                 << subgraphArg.getArgNumber();
+
+    // Clone operations from subgraph's init block, excluding context.create
+    // and terminator, and apply slot offsetting and prefix handling
+    for (Operation *subOp : getDataflowOrder(subgraph.getInitBlock())) {
+      // Skip the context.create op as parent already has one
+      if (isa<ContextCreateOp>(subOp))
+        continue;
+
+      // Ensure subgraph init output chain is waited upon by the parent's init
+      // terminator, but don't clone the op.
+      if (isa<MEF::OutputOp>(subOp)) {
+        Value subgraphOutputChain = initMap.lookup(subOp->getOperand(0));
+        assert(subgraphOutputChain &&
+               "Subgraph init block is missing an output chain");
+
+        BufferBuilderContext builderCtx =
+            TensorBufferDialectInterface::getAllBufferBuilders(parentModelOp);
+
+        if (failed(alsoWaitForChains(initBuilder, builderCtx,
+                                     parentInit->getTerminator(),
+                                     {subgraphOutputChain}))) {
+          return subgraph.emitError()
+                 << "failed to wait for inlined init chain";
         }
-        break;
+
+        continue;
       }
 
-      // Map weights registry
-      initMap.map(subgraphInit->getArgument(0), parentInit->getArgument(0));
+      // Clone the operation
+      Operation *clonedOp = initBuilder.clone(*subOp, initMap);
 
-      // Map devices
-      for (auto subgraphArg : subgraphInit->getArguments())
-        if (isa<DeviceContextType>(subgraphArg.getType()))
-          for (auto parentArg : parentInit->getArguments())
-            if (subgraphArg.getType() == parentArg.getType())
-              initMap.map(subgraphArg, parentArg);
+      // Apply slot offsetting to the cloned operation
+      offsetRuntimeSlot(clonedOp, slotOffset);
 
-      // Check if any devices were left unmapped and emit an error if so.
-      for (auto subgraphArg : subgraphInit->getArguments())
-        if (isa<DeviceContextType>(subgraphArg.getType()))
-          if (!initMap.contains(subgraphArg))
-            return subgraph.emitError()
-                   << "failed to map device context for argument "
-                   << subgraphArg.getArgNumber();
-
-      // Clone operations from subgraph's init block, excluding context.create
-      // and terminator
-      for (Operation *subOp : getDataflowOrder(subgraphInit)) {
-        // Skip the context.create op as parent already has one
-        if (isa<ContextCreateOp>(subOp))
-          continue;
-
-        // Ensure subgraph init output chain is waited upon by the parent's init
-        // terminator, but don't clone the op.
-        if (isa<MEF::OutputOp>(subOp)) {
-          Value subgraphOutputChain = initMap.lookup(subOp->getOperand(0));
-          assert(subgraphOutputChain &&
-                 "Subgraph init block is missing an output chain");
-
-          BufferBuilderContext builderCtx =
-              TensorBufferDialectInterface::getAllBufferBuilders(parentModelOp);
-
-          if (failed(alsoWaitForChains(initBuilder, builderCtx,
-                                       parentInit->getTerminator(),
-                                       {subgraphOutputChain}))) {
-            return subgraph.emitError()
-                   << "failed to wait for inlined init chain";
-          }
-
-          continue;
-        }
-
-        initBuilder.clone(*subOp, initMap);
-      }
+      // Update placeholder names with prefix
+      updatePlaceholderNames(clonedOp, callPrefix);
     }
 
     // Now inline the execute region at the call site
-    // Get the execute blocks
     Block *subgraphExec = subgraph.getExecuteBlock();
 
     // Create builder for execute region
@@ -299,13 +384,19 @@ struct InlineMGPCallsPass
       valueMap.map(subgraphExec->getArgument(i), callOp.getOperand(i));
 
     // Clone operations from the subgraph's execute block, excluding the
-    // terminator
+    // terminator, and apply slot offsetting and prefix handling
     for (Operation *subOp : getDataflowOrder(subgraphExec)) {
       if (subOp == subgraphExec->getTerminator())
         continue;
 
       // Clone the operation with remapped operands
-      execBuilder.clone(*subOp, valueMap);
+      Operation *clonedOp = execBuilder.clone(*subOp, valueMap);
+
+      // Apply slot offsetting to the cloned operation
+      offsetRuntimeSlot(clonedOp, slotOffset);
+
+      // Update placeholder names with prefix
+      updatePlaceholderNames(clonedOp, callPrefix);
     }
 
     // Map the return values of the subgraph to the results of the call
@@ -315,6 +406,9 @@ struct InlineMGPCallsPass
       Value mappedValue = valueMap.lookup(subgraphTerminator.getOperand(i));
       callOp.getResult(i).replaceAllUsesWith(mappedValue);
     }
+
+    // Update the parent's slot usage to include this inlined subgraph
+    modelSlotUsage[parentModelOp] += subgraphSlotsUsed;
 
     // Erase the call operation
     callOp.erase();
@@ -327,7 +421,7 @@ struct InlineMGPCallsPass
 
     // No work to do if there's only one model.
     auto models = moduleOp.getOps<ModelOp>();
-    if (std::next(models.begin()) == models.end())
+    if (models.empty() || std::next(models.begin()) == models.end())
       return;
 
     MGPCallGraph callGraph;
@@ -369,6 +463,16 @@ struct InlineMGPCallsPass
         // Mark the callee as potentially removable.
         inlinedSubgraphs.insert(calleeName);
       }
+    }
+
+    // After inlining everything, update each model's ContextCreateOp to use
+    // the correct slot count based on what was actually inlined into it.
+    for (const auto &entry : modelSlotUsage) {
+      ModelOp model = entry.first;
+      uint64_t slotUsage = entry.second;
+      ContextCreateOp contextCreateOp = findContextCreateOp(model);
+      if (contextCreateOp)
+        contextCreateOp.setNumSlots(slotUsage);
     }
 
     // After inlining everything, delete subgraphs that are no longer used.

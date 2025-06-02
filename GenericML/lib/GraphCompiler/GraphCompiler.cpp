@@ -363,7 +363,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // runtime assert messages.
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
 
-  pm.addPass(MGP::createGlobalizeSlotIndicesPass());
+  // pm.addPass(MGP::createGlobalizeSlotIndicesPass());
+  pm.addPass(MGP::createInlineMGPCallsPass());
 
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
@@ -410,7 +411,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MOGG::createJitCompileKernels(jitOpts));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
-  pm.addPass(MGP::createInlineMGPCallsPass());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createSimplifyChainsPass());
