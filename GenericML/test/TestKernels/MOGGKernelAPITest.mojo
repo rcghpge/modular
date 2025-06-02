@@ -328,7 +328,16 @@ struct PrintTensor:
 @compiler.view_kernel
 struct PrintTensorSpecViewOp:
     @staticmethod
+    fn print_spec(x: InputTensor):
+        print("x.shape =", x._static_shape)
+        print("x.strides =", x._static_strides)
+        print("x.alignment =", x.alignment)
+        print("x.address_space =", x.address_space)
+        print("x.exclusive =", x.exclusive)
+
+    @staticmethod
     fn update_input_view(input: InputTensor) -> __type_of(input):
+        Self.print_spec(input)
         return input
 
     @staticmethod
@@ -336,11 +345,7 @@ struct PrintTensorSpecViewOp:
         target: StaticString,
         _synchronous: Bool,
     ](out: OutputTensor, x: InputTensor) raises:
-        print("x.shape =", x._static_shape)
-        print("x.strides =", x._static_strides)
-        print("x.alignment =", x.alignment)
-        print("x.address_space =", x.address_space)
-        print("x.exclusive =", x.exclusive)
+        Self.print_spec(x)
 
         @parameter
         @always_inline
