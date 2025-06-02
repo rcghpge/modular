@@ -82,9 +82,14 @@ class DynamicMemoryPlanningPass
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
 
-    // TODO (GEX-2310): Fix memory planning for subgraphs
-    if (modelOp.getIsSubgraph())
-      return;
+    {
+      // TODO (GEX-2310): Fix memory planning for subgraphs
+      if (modelOp.getIsSubgraph())
+        return;
+      if (modelOp.walk([](MGP::CallOp) { return WalkResult::interrupt(); })
+              .wasInterrupted())
+        return;
+    }
 
     auto getDeviceContext = [&modelOp](DeviceRefAttr dev,
                                        ArrayRef<BlockArgument> devices) {
