@@ -569,8 +569,17 @@ LogicalResult checkDeviceConstraint(Operation *op, const Twine &name, Type type,
 
 LogicalResult checkOperandDeviceConstraint(Operation *op, size_t index,
                                            DeviceRefAttr constrainedTo) {
-  return checkDeviceConstraint(op, "Operand " + Twine(index),
-                               op->getOperand(index).getType(), constrainedTo);
+  Value operand = op->getOperand(index);
+  std::string operandDesc = "Operand " + Twine(index).str();
+
+  if (Operation *defOp = operand.getDefiningOp()) {
+    operandDesc += " - " + defOp->getName().getStringRef().str();
+  }
+
+  operandDesc += " (using zero-based indexing)";
+
+  return checkDeviceConstraint(op, operandDesc, operand.getType(),
+                               constrainedTo);
 }
 
 LogicalResult checkResultDeviceConstraint(Operation *op, size_t index,
