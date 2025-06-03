@@ -103,13 +103,13 @@ ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
 //===----------------------------------------------------------------------===//
 
 static DeviceRefAttr getDeviceRef(MOHasDeviceInterface op) {
-  return dyn_cast_if_present<DeviceRefAttr>(
-      op->getAttr(kOperationDeviceRefAttrName));
+  return getDeviceOrDefault(op);
 }
 
 DeviceAnnots DeviceAnnots::forOp(Operation *op) {
   DeviceAnnots metadata;
-  if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op))
+  auto hasDevice = dyn_cast<MOHasDeviceInterface>(op);
+  if (hasDevice && !op->hasTrait<MOMultiDevice>())
     metadata.device = getDeviceRef(hasDevice);
   return metadata;
 }
@@ -130,8 +130,7 @@ bool DeviceAnnots::addOp(Operation *op) {
 
 Operation *DeviceAnnots::stampAny(Operation *op) const {
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
-    auto deviceRefAttr = getDeviceRef(hasDevice);
-    if (device && !deviceRefAttr)
+    if (device)
       hasDevice.getOperation()->setAttr(MO::kOperationDeviceRefAttrName,
                                         device);
   }

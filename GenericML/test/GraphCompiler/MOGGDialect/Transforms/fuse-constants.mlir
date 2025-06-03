@@ -3,9 +3,9 @@
 // RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse --fuse-views --canonicalize --cse --fuse-consts %s | FileCheck %s
 
 mo.graph @basic_constant_fuse(%arg0: !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<[2, 2, 4], f32>) {
-  %cst1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01, 1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
-  %cst2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
-  %cst3 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<15.000000e+00, 14.000000e+00, 13.000000e+00, 12.000000e+00, 11.000000e+00, 10.000000e+00, 9.000000e+00, 8.000000e+00, 7.000000e+00, 6.000000e+00, 5.000000e+00, 4.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00, 0.000000e+00> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
+  %cst1 = mo.constant {value = #M.dense_array<1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01, 1.500000e-01, 1.500000e-01, 2.500000e-01, 3.500000e-01, 4.500000e-01, 5.500000e-01, 6.500000e-01, 7.500000e-01> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
+  %cst2 = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
+  %cst3 = mo.constant {value = #M.dense_array<15.000000e+00, 14.000000e+00, 13.000000e+00, 12.000000e+00, 11.000000e+00, 10.000000e+00, 9.000000e+00, 8.000000e+00, 7.000000e+00, 6.000000e+00, 5.000000e+00, 4.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00, 0.000000e+00> : tensor<16xf32>} : !mo.tensor<[2, 2, 4], f32>
 
   %1 = mo.add(%arg0, %cst1) : !mo.tensor<[2, 2, 4], f32>
   %2 = mo.sub(%1, %cst2) : !mo.tensor<[2, 2, 4], f32>
@@ -21,15 +21,15 @@ mo.graph @basic_constant_fuse(%arg0: !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check the constants are inside the kernel now.
-// CHECK-NEXT: mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.500000e+01,
-// CHECK-NEXT: mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.000000e+00,
-// CHECK-NEXT: mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.500000e-01
+// CHECK-NEXT: mo.constant {value = #M.dense_array<1.500000e+01,
+// CHECK-NEXT: mo.constant {value = #M.dense_array<1.000000e+00,
+// CHECK-NEXT: mo.constant {value = #M.dense_array<1.500000e-01
 
 
 // Check broadcasted constants get fused
 mo.graph @bcasted_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f32>) -> !mo.tensor<[D14, D15], f32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.250000e-01> : tensor<f32>} : !mo.tensor<[], f32>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6.000000e+02> : tensor<f32>} : !mo.tensor<[], f32>
+  %0 = mo.constant {value = #M.dense_array<1.250000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %1 = mo.constant {value = #M.dense_array<6.000000e+02> : tensor<f32>} : !mo.tensor<[], f32>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[D14, D15], f32>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32> -> !mo.tensor<[D14, D15], f32>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], f32>
@@ -43,16 +43,16 @@ mo.graph @bcasted_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f32>) -> 
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.250000e-01>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6.000000e+02>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6.000000e+02>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
 
 // Check broadcasted f64 constants get fused
 mo.graph @bcasted_f64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f64>) -> !mo.tensor<[D14, D15], f64> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.250000e-01> : tensor<f64>} : !mo.tensor<[], f64>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6.000000e+02> : tensor<f64>} : !mo.tensor<[], f64>
+  %0 = mo.constant {value = #M.dense_array<1.250000e-01> : tensor<f64>} : !mo.tensor<[], f64>
+  %1 = mo.constant {value = #M.dense_array<6.000000e+02> : tensor<f64>} : !mo.tensor<[], f64>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f64> -> !mo.tensor<[D14, D15], f64>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], f64> -> !mo.tensor<[D14, D15], f64>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], f64>
@@ -66,16 +66,16 @@ mo.graph @bcasted_f64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f64>)
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.250000e-01>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6.000000e+02>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6.000000e+02>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
 
 // Check broadcasted si32 constants get fused
 mo.graph @bcasted_si32_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si32>) -> !mo.tensor<[D14, D15], si32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6> : tensor<si32>} : !mo.tensor<[], si32>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<si32>} : !mo.tensor<[], si32>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], si32> -> !mo.tensor<[D14, D15], si32>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], si32> -> !mo.tensor<[D14, D15], si32>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], si32>
@@ -88,8 +88,8 @@ mo.graph @bcasted_si32_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si32
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
@@ -97,8 +97,8 @@ mo.graph @bcasted_si32_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si32
 
 // Check broadcasted si64 constants get fused
 mo.graph @bcasted_si64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si64>) -> !mo.tensor<[D14, D15], si64> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6> : tensor<si64>} : !mo.tensor<[], si64>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<si64>} : !mo.tensor<[], si64>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], si64> -> !mo.tensor<[D14, D15], si64>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], si64> -> !mo.tensor<[D14, D15], si64>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], si64>
@@ -111,8 +111,8 @@ mo.graph @bcasted_si64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si64
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
@@ -120,8 +120,8 @@ mo.graph @bcasted_si64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si64
 
 // Check broadcasted si16 constants get fused
 mo.graph @bcasted_si16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si16>) -> !mo.tensor<[D14, D15], si16> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si16>} : !mo.tensor<[], si16>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6> : tensor<si16>} : !mo.tensor<[], si16>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<si16>} : !mo.tensor<[], si16>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<si16>} : !mo.tensor<[], si16>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], si16> -> !mo.tensor<[D14, D15], si16>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], si16> -> !mo.tensor<[D14, D15], si16>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], si16>
@@ -134,8 +134,8 @@ mo.graph @bcasted_si16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si16
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
@@ -143,8 +143,8 @@ mo.graph @bcasted_si16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si16
 
 // Check broadcasted si8 constants get fused
 mo.graph @bcasted_si8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si8>) -> !mo.tensor<[D14, D15], si8> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si8>} : !mo.tensor<[], si8>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6> : tensor<si8>} : !mo.tensor<[], si8>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<si8>} : !mo.tensor<[], si8>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<si8>} : !mo.tensor<[], si8>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], si8> -> !mo.tensor<[D14, D15], si8>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], si8> -> !mo.tensor<[D14, D15], si8>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], si8>
@@ -157,8 +157,8 @@ mo.graph @bcasted_si8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si8>)
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
@@ -166,8 +166,8 @@ mo.graph @bcasted_si8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si8>)
 
 // Check broadcasted ui8 constants get fused
 mo.graph @bcasted_ui8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui8>) -> !mo.tensor<[D14, D15], ui8> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<ui8>} : !mo.tensor<[], ui8>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6> : tensor<ui8>} : !mo.tensor<[], ui8>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<ui8>} : !mo.tensor<[], ui8>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<ui8>} : !mo.tensor<[], ui8>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], ui8> -> !mo.tensor<[D14, D15], ui8>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], ui8> -> !mo.tensor<[D14, D15], ui8>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], ui8>
@@ -180,8 +180,8 @@ mo.graph @bcasted_ui8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui8>)
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
@@ -189,8 +189,8 @@ mo.graph @bcasted_ui8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui8>)
 
 // Check broadcasted ui16 constants get fused
 mo.graph @bcasted_ui16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui16>) -> !mo.tensor<[D14, D15], ui16> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<ui16>} : !mo.tensor<[], ui16>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6> : tensor<ui16>} : !mo.tensor<[], ui16>
+  %0 = mo.constant {value = #M.dense_array<1> : tensor<ui16>} : !mo.tensor<[], ui16>
+  %1 = mo.constant {value = #M.dense_array<6> : tensor<ui16>} : !mo.tensor<[], ui16>
   %2 = mo.static.broadcast_to(%0) : !mo.tensor<[], ui16> -> !mo.tensor<[D14, D15], ui16>
   %3 = mo.static.broadcast_to(%1) : !mo.tensor<[], ui16> -> !mo.tensor<[D14, D15], ui16>
   %4 = mo.add(%2, %arg0) : !mo.tensor<[D14, D15], ui16>
@@ -203,8 +203,8 @@ mo.graph @bcasted_ui16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui16
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check constants are in kernel and used in broadcasts.
-// CHECK-NEXT: %[[CST1:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1>
-// CHECK-NEXT: %[[CST2:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<6>
+// CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
+// CHECK-NEXT: %[[CST2:.*]] = mo.constant {value = #M.dense_array<6>
 // CHECK: mogg.to_mogg
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST2]]
 // CHECK-NEXT: mogg.call "mo.static.broadcast_to"(%[[CST1]]
@@ -212,7 +212,7 @@ mo.graph @bcasted_ui16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui16
 
 // Check transpose permutation gets fused
 mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], f32>) -> !mo.tensor<[D16, D15, D14], f32> {
-  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
   %trans = mo.transpose(%arg0, %perm) : (!mo.tensor<[D14, D15, D16], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D16, D15, D14], f32>
   mo.output %trans : !mo.tensor<[D16, D15, D14], f32>
 }
@@ -222,11 +222,11 @@ mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], 
 // CHECK-NEXT: mogg.output_placeholders
 
 // Check permutation is in kernel and used in transpose.
-// CHECK-NEXT: %[[PERM:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1, 0>
+// CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0>
 // CHECK-NEXT: mogg.call "mo.transpose"(%[[NULL:.*]], %[[PERM]]
 
 mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[12, 64], f32> {
-  %cst = mo.constant {device = #M.device_ref<"cpu", 0>, value = dense_resource<const_6> : tensor<12x64xf32>} : !mo.tensor<[12, 64], f32>
+  %cst = mo.constant {value = dense_resource<const_6> : tensor<12x64xf32>} : !mo.tensor<[12, 64], f32>
   %84 = mo.add(%cst, %input) : !mo.tensor<[12, 64], f32>
   mo.output %84 : !mo.tensor<[12, 64], f32>
 }
@@ -236,7 +236,7 @@ mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[
 // CHECK: mo.constant
 
 mo.graph @fuse_rebind(%input: !mo.tensor<[2, 2], si32>) -> (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>) {
-  %cst = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1, 2, 3> : !M.array<4xsi32>} : !mo.tensor<[2, 2], si32, {layout = #mo.layout<KN>}>
+  %cst = mo.constant {value = #M.dense_array<0, 1, 2, 3> : !M.array<4xsi32>} : !mo.tensor<[2, 2], si32, {layout = #mo.layout<KN>}>
   %cst_reb = mo.rebind(%cst) : !mo.tensor<[2, 2], si32, {layout = #mo.layout<KN>}> -> !mo.tensor<[2, 2], si32, {layout = #mo.layout<NK>}>
   %mm1 = mo.matmul(%input, %cst) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], si32>
   %mm2 = mo.matmul(%input, %cst_reb) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 2], si32>

@@ -2699,7 +2699,7 @@ struct SliceToSplitPattern
       splitSizes.push_back(getSliceValue(sliceOp.getStop()) -
                            getSliceValue(sliceOp.getStart()));
     }
-    auto splitSizesOp = rewriter.createDeviceConstant(loc, splitSizes);
+    auto splitSizesOp = rewriter.createHostConstant(loc, splitSizes);
 
     SmallVector<Value> originalSliceValues;
     for (SliceOp sliceOp : sliceOps)

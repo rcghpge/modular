@@ -3,8 +3,8 @@
 // CHECK-LABEL: mo.graph @static_shape
 // CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {
 mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M, 1], si64> {
-  // CHECK-DAG: %[[RANGE:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>} : !mo.tensor<[5, 1], si64>
-  // CHECK-DAG: %[[PERM:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[RANGE:.*]] = mo.constant {value = #M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>} : !mo.tensor<[5, 1], si64>
+  // CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK-DAG: %[[FLATARG:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[2, 3], f32> -> !mo.tensor<[6], f32>
   // CHECK-DAG: %[[WHERE:.*]] = mo.arg_nonzero<() -> [[W:.*]]>(%[[FLATARG]]) : (!mo.tensor<[6], f32>) -> !mo.tensor<[[[W]], 1], si64>
   // CHECK-DAG: %[[VAL5:.*]] = mo.static.broadcast_to(%[[WHERE]]) : !mo.tensor<[[[W]], 1], si64> -> !mo.tensor<[[[W]], 5], si64>
@@ -23,18 +23,18 @@ mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M
 // DISABLED-CHECK-LABEL: mo.graph @static_shape_with_device
 // DISABLED-CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[[[M]], 1], si64, dev:0> {
 // mo.graph @static_shape_with_device<() -> M>(%arg0: !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[M, 1], si64, dev:0> {
-  // DISABLED-CHECK-DAG: %[[RANGE:.*]] = mo.constant {device = #M.device_ref<"dev", 0>, value = #M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>} : !mo.tensor<[5, 1], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[PERM:.*]] = mo.constant {device = #M.device_ref<"dev", 0>, value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[FLATARG:.*]] = mo.static.reshape(%[[ARG0]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[6], f32, dev:0>
-  // DISABLED-CHECK-DAG: %[[WHERE:.*]] = mo.arg_nonzero<() -> [[W:.*]]>(%[[FLATARG]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[6], f32, dev:0>) -> !mo.tensor<[[[W]], 1], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[VAL5:.*]] = mo.static.broadcast_to(%[[WHERE]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[[[W]], 1], si64, dev:0> -> !mo.tensor<[[[W]], 5], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[VAL6:.*]] = mo.static.broadcast_to(%[[RANGE]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[5, 1], si64, dev:0> -> !mo.tensor<[5, [[W]]], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[WHERETP:.*]] = mo.transpose(%[[VAL5]], %[[PERM]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[[[W]], 5], si64, dev:0>, !mo.tensor<[2], si64, dev:0>) -> !mo.tensor<[5, [[W]]], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[RES:.*]] = mo.add(%[[WHERETP]], %[[VAL6]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[5, [[W]]], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[OLDRES:.*]] = mo.static.reshape(%[[RES]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[5, [[W]]], si64, dev:0> -> !mo.tensor<[mul_nuw([[W]], 5), 1], si64, dev:0>
-  // %0 = mo.static.broadcast_to(%arg0) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[5, 2, 3], f32, dev:0>
-  // %1 = mo.static.reshape(%0) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[5, 2, 3], f32, dev:0> -> !mo.tensor<[30], f32, dev:0>
-  // %2 = mo.arg_nonzero<() -> K>(%1) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[30], f32, dev:0>) -> !mo.tensor<[K, 1], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[RANGE:.*]] = mo.constant {value = #M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>} : !mo.tensor<[5, 1], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[FLATARG:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[6], f32, dev:0>
+  // DISABLED-CHECK-DAG: %[[WHERE:.*]] = mo.arg_nonzero<() -> [[W:.*]]>(%[[FLATARG]]) : (!mo.tensor<[6], f32, dev:0>) -> !mo.tensor<[[[W]], 1], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[VAL5:.*]] = mo.static.broadcast_to(%[[WHERE]]) : !mo.tensor<[[[W]], 1], si64, dev:0> -> !mo.tensor<[[[W]], 5], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[VAL6:.*]] = mo.static.broadcast_to(%[[RANGE]]) : !mo.tensor<[5, 1], si64, dev:0> -> !mo.tensor<[5, [[W]]], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[WHERETP:.*]] = mo.transpose(%[[VAL5]], %[[PERM]]) : (!mo.tensor<[[[W]], 5], si64, dev:0>, !mo.tensor<[2], si64, dev:0>) -> !mo.tensor<[5, [[W]]], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[RES:.*]] = mo.add(%[[WHERETP]], %[[VAL6]]) : !mo.tensor<[5, [[W]]], si64, dev:0>
+  // DISABLED-CHECK-DAG: %[[OLDRES:.*]] = mo.static.reshape(%[[RES]]) : !mo.tensor<[5, [[W]]], si64, dev:0> -> !mo.tensor<[mul_nuw([[W]], 5), 1], si64, dev:0>
+  // %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[5, 2, 3], f32, dev:0>
+  // %1 = mo.static.reshape(%0) : !mo.tensor<[5, 2, 3], f32, dev:0> -> !mo.tensor<[30], f32, dev:0>
+  // %2 = mo.arg_nonzero<() -> K>(%1) : (!mo.tensor<[30], f32, dev:0>) -> !mo.tensor<[K, 1], si64, dev:0>
   // DISABLED-CHECK: mo.output<mul_nuw([[W]], 5)> %[[OLDRES]] : !mo.tensor<[mul_nuw([[W]], 5), 1], si64, dev:0>
   // mo.output<K> %2 : !mo.tensor<[K, 1], si64, dev:0>
 // }
@@ -44,11 +44,11 @@ mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M
 mo.graph @dynamic_shape<A, B -> M>(%arg0: !mo.tensor<[2, A], f32>) -> !mo.tensor<[M, 1], si64> {
   // CHECK-DAG: %[[C0:.*]] = mosh.param.to_value = <mul_nuw([[A]], [[A]], [[B]], 2)>
   // CHECK-DAG: %[[C1:.*]] = mosh.param.to_value = <mul_nuw([[A]], 2)>
-  // CHECK-DAG: %[[START:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  // CHECK-DAG: %[[START:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
   // CHECK-DAG: %[[LIMIT:.*]] = mo.index.to_tensor(%[[C0]]) -> !mo.tensor<[], si64>
   // CHECK-DAG: %[[STEP:.*]] = mo.index.to_tensor(%[[C1]]) -> !mo.tensor<[], si64>
   // CHECK-DAG: %[[RANGE:.*]] = mo.range(%[[START]], %[[LIMIT]], %[[STEP]]) : (!mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[mul_nuw([[A]], [[B]])], si64>
-  // CHECK-DAG: %[[PERM:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK-DAG: %[[FLATARG:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[2, [[A]]], f32> -> !mo.tensor<[mul_nuw([[A]], 2)], f32>
   // CHECK-DAG: %[[WHERE:.*]] = mo.arg_nonzero<() -> [[W:.*]]>(%[[FLATARG]]) : (!mo.tensor<[mul_nuw([[A]], 2)], f32>) -> !mo.tensor<[[[W]], 1], si64>
   // CHECK-DAG: %[[RNG2:.*]] = mo.static.reshape(%[[RANGE]]) : !mo.tensor<[mul_nuw([[A]], [[B]])], si64> -> !mo.tensor<[mul_nuw([[A]], [[B]]), 1], si64>

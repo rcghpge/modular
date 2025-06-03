@@ -2,8 +2,8 @@
 
 // Original graph
 // mo.graph @oneOp() -> (!mo.tensor<[8], f32>) {
-//  %iota = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<8xf32>} : () -> !mo.tensor<[8],f32>
-//  %tens = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0> : tensor<8xf32>} : () -> !mo.tensor<[8], f32>  %1 = mo.mul(%iota, %tens) : !mo.tensor<[8], f32>
+//  %iota = "mo.constant"() {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<8xf32>} : () -> !mo.tensor<[8],f32>
+//  %tens = "mo.constant"() {value = #M.dense_array<10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0> : tensor<8xf32>} : () -> !mo.tensor<[8], f32>  %1 = mo.mul(%iota, %tens) : !mo.tensor<[8], f32>
 //  %2 = mo.mul(%1, %tens) : !mo.tensor<[8], f32>
 //  %3 = mo.add(%2, %tens) : !mo.tensor<[8], f32>
 //  mo.output %3 : !mo.tensor<[8], f32>

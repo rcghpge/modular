@@ -13,15 +13,15 @@ mo.graph @sink_reshape_through_binary_elemwise(%input: !mo.tensor<[50, 50, 30], 
 // CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[2500, 30], f32>
 
 mo.graph @sink_reshape_through_binary_elemwise_with_device(%input: !mo.tensor<[50, 50, 30], f32, dev:0>, %elemwise: !mo.tensor<[30], f32, dev:0>) -> !mo.tensor<[2500, 30], f32, dev:0>{
-    %reshape = mo.static.reshape(%input) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[50, 50, 30], f32, dev:0> -> !mo.tensor<[2500, 30], f32, dev:0>
-    %broadcast = mo.static.broadcast_to(%elemwise) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[30], f32, dev:0> -> !mo.tensor<[2500, 30], f32, dev:0>
-    %add = mo.add(%reshape, %broadcast) { device = #M.device_ref<"dev", 0> } : !mo.tensor<[2500, 30], f32, dev:0>
+    %reshape = mo.static.reshape(%input) : !mo.tensor<[50, 50, 30], f32, dev:0> -> !mo.tensor<[2500, 30], f32, dev:0>
+    %broadcast = mo.static.broadcast_to(%elemwise) : !mo.tensor<[30], f32, dev:0> -> !mo.tensor<[2500, 30], f32, dev:0>
+    %add = mo.add(%reshape, %broadcast) : !mo.tensor<[2500, 30], f32, dev:0>
     mo.output %add : !mo.tensor<[2500, 30], f32, dev:0>
 }
 // CHECK: mo.graph @sink_reshape_through_binary_elemwise_with_device(%[[INPUT:.*]]: !mo.tensor<[50, 50, 30], f32, dev:0>, %[[ELEMWISE:.*]]: !mo.tensor<[30], f32, dev:0>) -> !mo.tensor<[2500, 30], f32, dev:0>
-// CHECK-NEXT: %[[NEW_BROADCAST:.*]] = mo.static.broadcast_to(%[[ELEMWISE]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[30], f32, dev:0> -> !mo.tensor<[50, 50, 30], f32, dev:0>
-// CHECK-NEXT: %[[NEW_ADD:.*]] = mo.add(%[[INPUT]], %[[NEW_BROADCAST]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[50, 50, 30], f32, dev:0>
-// CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_ADD]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[50, 50, 30], f32, dev:0> -> !mo.tensor<[2500, 30], f32, dev:0>
+// CHECK-NEXT: %[[NEW_BROADCAST:.*]] = mo.static.broadcast_to(%[[ELEMWISE]]) : !mo.tensor<[30], f32, dev:0> -> !mo.tensor<[50, 50, 30], f32, dev:0>
+// CHECK-NEXT: %[[NEW_ADD:.*]] = mo.add(%[[INPUT]], %[[NEW_BROADCAST]]) : !mo.tensor<[50, 50, 30], f32, dev:0>
+// CHECK-NEXT: %[[NEW_RESHAPE:.*]] = mo.static.reshape(%[[NEW_ADD]]) : !mo.tensor<[50, 50, 30], f32, dev:0> -> !mo.tensor<[2500, 30], f32, dev:0>
 // CHECK-NEXT: mo.output %[[NEW_RESHAPE]] : !mo.tensor<[2500, 30], f32, dev:0>
 
 

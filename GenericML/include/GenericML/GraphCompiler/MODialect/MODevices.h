@@ -75,7 +75,9 @@ struct DeviceAnnots {
   /// Stamps these device annotations into operation and returns it.
   template <typename Op>
   Op stamp(Op op) const {
-    stampAny(op);
+    // Only stamp ops that need an explicit device annotation.
+    if (op.template hasTrait<MOExplicitDevice>() || isa<CustomOp>(op))
+      stampAny(op);
     return op;
   }
 

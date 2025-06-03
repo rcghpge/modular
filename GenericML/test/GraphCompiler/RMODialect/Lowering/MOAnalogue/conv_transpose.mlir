@@ -61,10 +61,10 @@ mo.graph @conv_transpose_static(%input : !mo.tensor<[3, 12, 17, 19, 16], f32>, %
 // -----
 
 mo.graph @conv_transpose_static_const_params(%input : !mo.tensor<[3, 12, 17, 19, 16], f32>, %filter : !mo.tensor<[3, 4, 5, 8, 16], f32>) -> (!mo.tensor<?, f32>) {
-  %st = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 3, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 3, 3, 2, 2> : tensor<6xsi64>} : !mo.tensor<[6], si64>
-  %op = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %st = mo.constant {value = #M.dense_array<2, 3, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %di = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %pa = mo.constant {value = #M.dense_array<1, 1, 3, 3, 2, 2> : tensor<6xsi64>} : !mo.tensor<[6], si64>
+  %op = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %0 = rmo.mo.conv_transpose(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<[3, 12, 17, 19, 16], f32>, !mo.tensor<[3, 4, 5, 8, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<?, f32>
@@ -72,10 +72,10 @@ mo.graph @conv_transpose_static_const_params(%input : !mo.tensor<[3, 12, 17, 19,
 }
 // CHECK-LABEL: mo.graph
 //  CHECK-SAME: @conv_transpose_static_const_params<() -> [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[3, 12, 17, 19, 16], f32>, [[ARG1:%.*]]: !mo.tensor<[3, 4, 5, 8, 16], f32>) -> !mo.tensor<[[SH2]], f32> {
-//   CHECK-DAG:   [[V0:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 3, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-//   CHECK-DAG:   [[V1:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-//   CHECK-DAG:   [[V2:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 3, 3, 2, 2> : tensor<6xsi64>} : !mo.tensor<[6], si64>
-//   CHECK-DAG:   [[V3:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+//   CHECK-DAG:   [[V0:%.*]] = mo.constant {value = #M.dense_array<2, 3, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+//   CHECK-DAG:   [[V1:%.*]] = mo.constant {value = #M.dense_array<1, 2, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+//   CHECK-DAG:   [[V2:%.*]] = mo.constant {value = #M.dense_array<1, 1, 3, 3, 2, 2> : tensor<6xsi64>} : !mo.tensor<[6], si64>
+//   CHECK-DAG:   [[V3:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
 //  CHECK-NEXT:   [[V4:%.*]] = mo.conv_transpose<() -> [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]], [[RMO_D5:[A-Za-z0-9_]*]], [[RMO_D6:[A-Za-z0-9_]*]], [[RMO_D7:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) [strides = [[V0]], dilations = [[V1]], paddings = [[V2]], output_paddings = [[V3]]] : (!mo.tensor<[3, 12, 17, 19, 16], f32>, !mo.tensor<[3, 4, 5, 8, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]], [[RMO_D7]]], f32>
 //  CHECK-NEXT:   [[V5:%.*]] = rmo.rebind_tensor_shape<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[V4]]) {{.*}} : (!mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]], [[RMO_D7]]], f32>) -> !mo.tensor<[[SH1]], f32>
 //  CHECK-NEXT:   mo.output<:!mosh.ape [[SH1]]> [[V5]] : !mo.tensor<[[SH1]], f32>

@@ -13,14 +13,14 @@ mo.graph @conv2d(
   %input: !mo.tensor<[10, 5, 5, 16], f32>,
   %filter: !mo.tensor<[3, 3, 16, 32], f32>
 ) -> !mo.tensor<[10, 2, 2, 32], f32> {
-  // CHECK-DAG: %[[ST:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[DI:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[PA:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  // CHECK-DAG: %[[NG:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %st = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %ng = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[DI:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[PA:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-DAG: %[[NG:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
   // CHECK: mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], num_groups = %[[NG]]]
   %0 = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[10, 5, 5, 16], f32>, !mo.tensor<[3, 3, 16, 32], f32>,
@@ -60,14 +60,14 @@ mo.graph @conv_transpose2d(
   %input: !mo.tensor<[10, 2, 2, 32], f32>,
   %filter: !mo.tensor<[3, 3, 16, 32], f32>
 ) -> !mo.tensor<[10, 4, 4, 16], f32> {
-  // CHECK-DAG: %[[ST:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[DI:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[PA:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  // CHECK-DAG: %[[OP:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %st = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %op = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[DI:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[PA:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-DAG: %[[OP:.*]] = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK: mo.conv_transpose(%[[INPUT]], %[[FILTER]])
   // CHECK-SAME: [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], output_paddings = %[[OP]]]
   %0 = mo.conv_transpose(%input, %filter)
@@ -108,14 +108,14 @@ mo.graph @conv_transpose_dyn_rank(
 // CHECK-LABEL: mo.graph @avg_pool(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
 mo.graph @avg_pool(%input: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
-  // CHECK-DAG: %[[FS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[ST:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[DI:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[PA:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %fs = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %st = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-DAG: %[[FS:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[DI:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[PA:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   // CHECK: mo.avg_pool(%[[INPUT]]) [filter_shape = %[[FS]], strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]]]
   %0 = mo.avg_pool(%input) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (
     !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
@@ -144,14 +144,14 @@ mo.graph @avg_pool_dyn_rank(
 // CHECK-LABEL: mo.graph @max_pool(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
 mo.graph @max_pool(%input: !mo.tensor<[20, 10, 10, 32], f32>) -> !mo.tensor<[20, 9, 5, 32], f32> {
-  // CHECK-DAG: %[[FS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[ST:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[DI:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[PA:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %fs = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %st = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %di = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pa = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-DAG: %[[FS:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[ST:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[DI:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[PA:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %fs = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %st = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %di = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   // CHECK: mo.max_pool(%[[INPUT]]) [filter_shape = %[[FS]], strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]]]
   %0 = mo.max_pool(%input) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] : (
     !mo.tensor<[20, 10, 10, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>

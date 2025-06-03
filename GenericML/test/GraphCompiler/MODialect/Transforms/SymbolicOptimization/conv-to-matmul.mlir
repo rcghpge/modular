@@ -5,9 +5,9 @@ mo.graph @conv_to_matmul_static_dims(
   %filter: !mo.tensor<[1, 1, 3, 9], f32>
 ) -> !mo.tensor<[32, 10, 10, 9], f32> {
 
-  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
@@ -37,11 +37,11 @@ mo.graph @conv_to_matmul_with_device(
   %filter: !mo.tensor<[1, 1, 3, 9], f32, dev:0>
 ) -> !mo.tensor<[32, 10, 10, 9], f32, dev:0> {
 
-  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  %res = mo.conv(%input, %filter) {filter_layout = "", device = #M.device_ref<"dev", 0>} [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
+  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32, dev:0>, !mo.tensor<[1, 1, 3, 9], f32, dev:0>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[32, 10, 10, 9], f32, dev:0>
@@ -53,11 +53,11 @@ mo.graph @conv_to_matmul_with_device(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[32, 10, 10, 3], f32, dev:0>,
 // CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[1, 1, 3, 9], f32, dev:0>
 // CHECK-SAME: ) -> !mo.tensor<[32, 10, 10, 9], f32, dev:0> {
-// CHECK-NEXT:   %[[MATMUL_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[32, 10, 10, 3], f32, dev:0> -> !mo.tensor<[3200, 3], f32, dev:0>
-// CHECK-NEXT:   %[[MATMUL_WEIGHT:.*]] = mo.static.reshape(%[[FILTER]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[1, 1, 3, 9], f32, dev:0> -> !mo.tensor<[3, 9], f32, dev:0>
-// CHECK-NEXT:   %[[MATMUL:.*]] = mo.matmul(%[[MATMUL_INPUT]], %[[MATMUL_WEIGHT]]) {device = #M.device_ref<"dev", 0>}
+// CHECK-NEXT:   %[[MATMUL_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[32, 10, 10, 3], f32, dev:0> -> !mo.tensor<[3200, 3], f32, dev:0>
+// CHECK-NEXT:   %[[MATMUL_WEIGHT:.*]] = mo.static.reshape(%[[FILTER]]) : !mo.tensor<[1, 1, 3, 9], f32, dev:0> -> !mo.tensor<[3, 9], f32, dev:0>
+// CHECK-NEXT:   %[[MATMUL:.*]] = mo.matmul(%[[MATMUL_INPUT]], %[[MATMUL_WEIGHT]]) 
 // CHECK-SAME:     : (!mo.tensor<[3200, 3], f32, dev:0>, !mo.tensor<[3, 9], f32, dev:0>) -> !mo.tensor<[3200, 9], f32, dev:0>
-// CHECK-NEXT:   %[[RES:.*]] = mo.static.reshape(%[[MATMUL]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[3200, 9], f32, dev:0> -> !mo.tensor<[32, 10, 10, 9], f32, dev:0>
+// CHECK-NEXT:   %[[RES:.*]] = mo.static.reshape(%[[MATMUL]]) : !mo.tensor<[3200, 9], f32, dev:0> -> !mo.tensor<[32, 10, 10, 9], f32, dev:0>
 // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 10, 10, 9], f32, dev:0>
 
 mo.graph @conv_to_matmul_dynamic_dims<N, H, W, CI, CO>(
@@ -65,9 +65,9 @@ mo.graph @conv_to_matmul_dynamic_dims<N, H, W, CI, CO>(
   %filter: !mo.tensor<[1, 1, CI, CO], f32>
 ) -> !mo.tensor<[N, H, W, CO], f32> {
 
-  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[N, H, W, CI], f32>, !mo.tensor<[1, 1, CI, CO], f32>,
@@ -101,9 +101,9 @@ mo.graph @conv_to_matmul_non_1x1_filter(
   %filter: !mo.tensor<[3, 3, 3, 9], f32>
 ) -> !mo.tensor<[32, 8, 8, 9], f32> {
 
-  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[3, 3, 3, 9], f32>,
@@ -118,9 +118,9 @@ mo.graph @conv_to_matmul_non_1x1_filter(
 // CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[3, 3, 3, 9], f32>
 // CHECK-SAME: ) -> !mo.tensor<[32, 8, 8, 9], f32> {
 //
-// CHECK-NEXT:   %[[ONES:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:   %[[ONES:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 //
 // CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[ONES]], dilations = %[[ONES]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
 // CHECK-SAME:     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[3, 3, 3, 9], f32>,
@@ -136,10 +136,10 @@ mo.graph @conv_to_matmul_non_ones_strides(
   %filter: !mo.tensor<[1, 1, 3, 9], f32>
 ) -> !mo.tensor<[32, 10, 5, 9], f32> {
 
-  %strides = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %dilations = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %strides = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %dilations = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
@@ -154,10 +154,10 @@ mo.graph @conv_to_matmul_non_ones_strides(
 // CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[1, 1, 3, 9], f32>
 // CHECK-SAME: ) -> !mo.tensor<[32, 10, 5, 9], f32> {
 //
-// CHECK-NEXT:   %[[STRIDES:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT:   %[[DILATIONS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:   %[[STRIDES:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   %[[DILATIONS:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 //
 // CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
 // CHECK-SAME:     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
@@ -173,10 +173,10 @@ mo.graph @conv_to_matmul_non_ones_dilations(
   %filter: !mo.tensor<[1, 1, 3, 9], f32>
 ) -> !mo.tensor<[32, 10, 10, 9], f32> {
 
-  %strides = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %dilations = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %strides = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %dilations = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
@@ -206,9 +206,9 @@ mo.graph @conv_to_matmul_non_zero_pads(
   %filter: !mo.tensor<[1, 1, 3, 9], f32>
 ) -> !mo.tensor<[32, 11, 11, 9], f32> {
 
-  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1, 0, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 1, 0, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
@@ -223,9 +223,9 @@ mo.graph @conv_to_matmul_non_zero_pads(
 // CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[1, 1, 3, 9], f32>
 // CHECK-SAME: ) -> !mo.tensor<[32, 11, 11, 9], f32> {
 //
-// CHECK-NEXT:   %[[ONES:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1, 0, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+// CHECK-NEXT:   %[[ONES:.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-NEXT:   %[[PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 1, 0, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT:   %[[NUM_GROUPS:.*]] = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 //
 // CHECK-NEXT:   %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[ONES]], dilations = %[[ONES]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
 // CHECK-SAME:     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 3, 9], f32>,
@@ -240,9 +240,9 @@ mo.graph @conv_to_matmul_nontrivial_num_groups(
   %filter: !mo.tensor<[1, 1, 1, 9], f32>
 ) -> !mo.tensor<[32, 10, 10, 9], f32> {
 
-  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pads = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %num_groups = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %pads = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %num_groups = mo.constant {value = #M.dense_array<3> : tensor<si64>} : !mo.tensor<[], si64>
 
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pads, num_groups = %num_groups] : (
     !mo.tensor<[32, 10, 10, 3], f32>, !mo.tensor<[1, 1, 1, 9], f32>,

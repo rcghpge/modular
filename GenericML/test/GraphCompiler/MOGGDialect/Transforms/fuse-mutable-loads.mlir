@@ -100,9 +100,9 @@ mo.graph @multiple_load_fusion(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2,
 // CHECK-NOT: mo.mutable.load
 // CHECK: mogg.kernel ([[buf]]
 mo.graph @fusion_with_slice(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.tensor<[3, 3], f32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %1 = mo.constant {value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2 = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %3 = mo.chain.create()
   %outTensor, %outChain = mo.mutable.load(%arg0, %3) : (!mo.buffer<[10, 10], f32>, !mo.chain) -> (!mo.tensor<[10, 10], f32>, !mo.chain)
   %4 = mo.slice(%outTensor, %2, %1, %0) : (!mo.tensor<[10, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 3], f32>

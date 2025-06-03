@@ -100,9 +100,9 @@ mo.graph @dontFuseCompound<N, M>(%arg0 : !mo.tensor<[M], ui32>, %arg1 : !mo.tens
 
 // Example with multiple view operations fused into a mutable slice
 mo.graph @in_place_slice<d0, d1, d2>(%arg0: !mo.buffer<[3, 3, 3], f32>, %arg1: !mo.tensor<[27], f32>, %arg2: !mo.tensor<[d0, d1, d2], f32>, %arg3: !mo.tensor<[3], si64>, %arg4: !mo.tensor<[1], si32>, %arg5: !mo.tensor<[2], si32>, %arg6: !mo.tensor<[3], si32>) -> !mo.buffer<[3, 3, 3], f32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 3, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %1 = mo.constant {value = #M.dense_array<3, 3, 3> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %2 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %3 = mo.chain.create(%arg0) : !mo.buffer<[3, 3, 3], f32>
 
   %outChain, %outTensor = mo.mutable.load(%3, %arg0) : (!mo.chain, !mo.buffer<[3, 3, 3], f32>) -> (!mo.chain, !mo.tensor<[3, 3, 3], f32>)

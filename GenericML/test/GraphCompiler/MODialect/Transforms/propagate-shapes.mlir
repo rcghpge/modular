@@ -512,10 +512,10 @@ mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
   %input: !mo.tensor<[seq_len, batch_size], si32>
 ) -> !mo.tensor<[O1, O2], si32> {
 
-  %zero = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-  %neg_one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %zeros = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %zero = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %zeros = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
 
   // Essentially constructing `%target_shape` to represent
   //   `[-1 == 0 ? seq_len : -1,  batch_size == 0 ? batch_size : batch_size]
@@ -544,8 +544,8 @@ mo.graph @range_gather<N1, N2, N3 -> O1, O2>(
   %dummy: !mo.tensor<[N1, N2, N3], si32>
 ) -> !mo.tensor<[O1, O2], si32> {
 
-  %zero = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %zero = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, N2, N3], si32>) -> !mo.tensor<[3], si32>
   %three_idx = mosh.param.to_value = <3>
   %three = mo.index.to_tensor(%three_idx) -> !mo.tensor<[], si32>
@@ -567,8 +567,8 @@ mo.graph @slice_and_shape_of<D0 -> O1>(
 ) -> !mo.tensor<[O1], si32> {
 
   // Construct a tensor value that represents `[D0, 10, 1]`
-  %zero_scalar = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %zero_scalar = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
   %input_shape = mo.shape_of(%input) : (!mo.tensor<[D0, 10], si32>) -> !mo.tensor<[2], si32>
   mo.invoke_shape_func["concat_shape"]<() -> D1>(%zero_scalar, %input_shape, %one)
     {dataDeptTensors = [0]} : (!mo.tensor<[], si32>, !mo.tensor<[2], si32>, !mo.tensor<[1], si32>)
@@ -602,8 +602,8 @@ mo.graph @slice_and_shape_of<D0 -> O1>(
 // CHECK-LABEL: mo.graph @slice_with_staticized_input
 //  CHECK-SAME: <[[D0:.*]]>(
 //  CHECK-SAME: [[INPUT:%.*]]: !mo.tensor<[[[D0]], 2304], f32>
-//   CHECK-DAG:   [[STEP:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-//   CHECK-DAG:   [[START:%.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 768> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+//   CHECK-DAG:   [[STEP:%.*]] = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+//   CHECK-DAG:   [[START:%.*]] = mo.constant {value = #M.dense_array<0, 768> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 //   CHECK-DAG:   [[STOP_MOSH:%.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 1536]>
 //  CHECK-NEXT:   [[STOP:%.*]] = mo.shape.to_tensor([[STOP_MOSH]]) -> !mo.tensor<[2], si64>
 //  CHECK-NEXT:   [[RES:%.*]] = mo.slice([[INPUT]], [[START]], [[STOP]], [[STEP]]) : {{.*}} -> !mo.tensor<[D0, 768], f32>
@@ -611,12 +611,12 @@ mo.graph @slice_and_shape_of<D0 -> O1>(
 mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
   %input: !mo.tensor<[D0, 2304], f32>
 ) -> !mo.tensor<[D1, D2], f32> {
-  %step = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %two = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %zero = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %zero_scalar = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-  %neg_one = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %three = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %two = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %zero = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %zero_scalar = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %three = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
 
   // The following is a generic way to compute N // 3 (where N == 2304 in our
   // case). It can't be constant folded because `mo.shape_of(%input)` isn't a
@@ -644,13 +644,13 @@ mo.graph @slice_with_staticized_input<D0 -> D1, D2>(
 // CHECK:       %[[OUT:.*]] = mo.static.broadcast_to(%[[ARG0]]) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 // CHECK:       mo.output %[[OUT]] : !mo.tensor<[2, 2], si32>
 mo.graph @slice<() -> O0, O1>(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[O0, O1], si32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-  %c2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %c3 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+  %c2 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %c3 = mo.constant {value = #M.dense_array<3, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 
-  %ones = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %zeros = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %zeros = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
 
   %6 = mo.greater(%zeros, %ones) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], bool>
   %7 = mo.not(%6) : !mo.tensor<[2], bool>
@@ -667,7 +667,7 @@ mo.graph @test_param_from_value<d0, d1 -> Sh2: !mosh.ape>(
     %arg0: !mo.tensor<[d0], si64>,
     %arg1: !mo.tensor<[d1], si64>
 ) -> !mo.tensor<Sh2, si64> {
-  // CHECK: %[[C0:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK: %[[C0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // CHECK: kgen.param.declare SH: !mosh.ape = <[d0, d1, d0, d1]>
   // CHECK: %[[OUT:.*]] = mo.static.broadcast_to(%[[C0]]) : !mo.tensor<[], si64> -> !mo.tensor<[d0, d1, d0, d1], si64>
   // CHECK: mo.output %[[OUT]] : !mo.tensor<[d0, d1, d0, d1], si64>
@@ -676,7 +676,7 @@ mo.graph @test_param_from_value<d0, d1 -> Sh2: !mosh.ape>(
   %sh1 = mosh.concat(%sh, %sh)
   mosh.param.from_value SH : !mosh.ape = %sh1
 
-  %c0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64> } : !mo.tensor<[], si64>
+  %c0 = mo.constant {value = #M.dense_array<0> : tensor<si64> } : !mo.tensor<[], si64>
   %result = mo.static.broadcast_to(%c0) : !mo.tensor<[], si64> -> !mo.tensor<SH, si64>
   mo.output<:!mosh.ape SH> %result : !mo.tensor<SH, si64>
 }

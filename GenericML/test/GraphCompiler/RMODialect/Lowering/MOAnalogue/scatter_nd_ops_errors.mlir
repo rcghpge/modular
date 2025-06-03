@@ -1,9 +1,9 @@
 // RUN: not mo-opt --legalize-rmo-operators %s 2>&1 | FileCheck %s
 
 mo.graph @forward() -> !mo.tensor<[2, 3], si32> {
-  %data = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<10, 20, 30, 40, 50, 60> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
-  %updates = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<100, 200, 300, 1000, 2000, 3000> : tensor<6xsi32>} : !mo.tensor<[6], si32>
-  %indices = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2, 1], si32>
+  %data = mo.constant {value = #M.dense_array<10, 20, 30, 40, 50, 60> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
+  %updates = mo.constant {value = #M.dense_array<100, 200, 300, 1000, 2000, 3000> : tensor<6xsi32>} : !mo.tensor<[6], si32>
+  %indices = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2, 1], si32>
 
   // NOTE: we do not use --verify-diagnostics as other diagnostics are emitted
   // and we seem to need to check all of them.

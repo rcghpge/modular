@@ -49,11 +49,11 @@ mo.graph @bmm_with_device(
   %input: !mo.tensor<[4, 3, 2], f32, dev:0>,
   %weight: !mo.tensor<[2, 3], f32, dev:0>
 ) -> (!mo.tensor<[4, 3, 3], f32, dev:0>){
-  // CHECK-NEXT: %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[4, 3, 2], f32, dev:0> -> !mo.tensor<[12, 2], f32, dev:0>
-  // CHECK-NEXT: %[[RES:.*]] = mo.matmul(%[[INPUT_RS]], %[[WEIGHT]]) {device = #M.device_ref<"dev", 0>} : (!mo.tensor<[12, 2], f32, dev:0>, !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[12, 3], f32, dev:0>
-  // CHECK-NEXT: %[[RES_RS:.*]] = mo.static.reshape(%[[RES]]) {device = #M.device_ref<"dev", 0>} : !mo.tensor<[12, 3], f32, dev:0> -> !mo.tensor<[4, 3, 3], f32, dev:0>
-  %weight_bcast = mo.static.broadcast_to(%weight) {device = #M.device_ref<"dev", 0>}: !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[4, 2, 3], f32, dev:0>
-  %res = mo.batch_matmul(%input, %weight_bcast) { device = #M.device_ref<"dev", 0> }: (!mo.tensor<[4, 3, 2], f32, dev:0>, !mo.tensor<[4, 2, 3], f32, dev:0>) -> !mo.tensor<[4, 3, 3], f32, dev:0>
+  // CHECK-NEXT: %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[4, 3, 2], f32, dev:0> -> !mo.tensor<[12, 2], f32, dev:0>
+  // CHECK-NEXT: %[[RES:.*]] = mo.matmul(%[[INPUT_RS]], %[[WEIGHT]]) : (!mo.tensor<[12, 2], f32, dev:0>, !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[12, 3], f32, dev:0>
+  // CHECK-NEXT: %[[RES_RS:.*]] = mo.static.reshape(%[[RES]]) : !mo.tensor<[12, 3], f32, dev:0> -> !mo.tensor<[4, 3, 3], f32, dev:0>
+  %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[4, 2, 3], f32, dev:0>
+  %res = mo.batch_matmul(%input, %weight_bcast): (!mo.tensor<[4, 3, 2], f32, dev:0>, !mo.tensor<[4, 2, 3], f32, dev:0>) -> !mo.tensor<[4, 3, 3], f32, dev:0>
 
   // CHECK-NEXT: mo.output %[[RES_RS]] : !mo.tensor<[4, 3, 3], f32, dev:0>
   mo.output %res : !mo.tensor<[4, 3, 3], f32, dev:0>
@@ -144,7 +144,7 @@ mo.graph @bmm_with_transpose(
   %input: !mo.tensor<[4, 3, 2], f32>,
   %weight: !mo.tensor<[3, 2], f32>
 ) -> (!mo.tensor<[4, 3, 3], f32>) {
-  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[3, 2], f32> -> !mo.tensor<[4, 3, 2], f32>
   %transpose = mo.transpose(%weight_bcast, %perm) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 2, 3], f32>
   %res = mo.batch_matmul(%input, %transpose) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[4, 2, 3], f32>) -> !mo.tensor<[4, 3, 3], f32>
@@ -172,7 +172,7 @@ mo.graph @fail_bmm_transpose_affects_batch_dim(
   %input: !mo.tensor<[4, 4, 4], f32>,
   %weight: !mo.tensor<[4, 4], f32>
 ) -> (!mo.tensor<[4, 4, 4], f32>) {
-  %perm = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant {value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[4, 4], f32> -> !mo.tensor<[4, 4, 4], f32>
   %transpose = mo.transpose(%weight_bcast, %perm) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 4, 4], f32>
   %res = mo.batch_matmul(%input, %transpose) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[4, 4, 4], f32>) -> !mo.tensor<[4, 4, 4], f32>

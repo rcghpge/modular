@@ -23,7 +23,7 @@ mo.graph @tensor_type_neg_dim(%arg0: !mo.tensor<[-1, 10], f32>) -> !mo.tensor<[-
 mo.graph @graph_early_output(%arg0: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {
   // expected-error @below {{'mo.output' op must be the last operation in the parent block}}
   mo.output %arg0 : !mo.tensor<[], f32>
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<2xui32>} : !mo.tensor<[2], ui32>
+  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui32>} : !mo.tensor<[2], ui32>
 }
 
 // -----
@@ -71,7 +71,7 @@ mo.graph @cycle<D0 -> O0, O1, O2, O3>(
 
 mo.graph @constant_illegal_attr() -> !mo.tensor<[4], f32> {
   // expected-error@+1 {{'mo.constant' op attribute 'value' failed to satisfy constraint}}
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf32>} : !mo.tensor<[4], f32>
+  %0 = mo.constant {value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf32>} : !mo.tensor<[4], f32>
   mo.output %0 : !mo.tensor<[4], f32>
 }
 
@@ -79,7 +79,7 @@ mo.graph @constant_illegal_attr() -> !mo.tensor<[4], f32> {
 
 mo.graph @constant_dtype() -> !mo.tensor<[1, 2], si32> {
   // expected-error @below {{'mo.constant' op element type of the value ('si64') must match the element type of the result ('si32')}}
-  %res = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 2> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si32>
+  %res = mo.constant {value = #M.dense_array<1, 2> : tensor<1x2xsi64>} : !mo.tensor<[1, 2], si32>
   mo.output %res : !mo.tensor<[1, 2], si32>
 }
 
@@ -87,7 +87,7 @@ mo.graph @constant_dtype() -> !mo.tensor<[1, 2], si32> {
 
 mo.graph @constant_dtype_bool() -> !mo.tensor<[], bool> {
   // expected-error @below {{'mo.constant' op for boolean tensors, the element type of the value must be an integer type, but got 'f32'}}
-  %res = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], bool>
+  %res = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], bool>
   mo.output %res : !mo.tensor<[], bool>
 }
 

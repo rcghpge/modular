@@ -3,7 +3,7 @@
 // Check that with many broadcasts of the same value we still produce a unique kernel for each
 
 mo.graph @many_bcasts_same_val(%arg0: !mo.tensor<[1, 100], f32>) -> !mo.tensor<[1, 65], f32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
   %bcast1 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[100, 300], f32, {layout = #mo.layout<KN>}>
   %4 = mo.matmul(%arg0, %bcast1) : (!mo.tensor<[1, 100], f32>, !mo.tensor<[100, 300], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, 300], f32>
   %bcast2 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32> -> !mo.tensor<[1, 300], f32>

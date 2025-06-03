@@ -5,29 +5,29 @@
 // CHECK: mgp.model @dlrm
 
 mo.graph @dlrm(%arg0: !mo.tensor<[?, 8, 100], si32>, %arg1: !mo.tensor<[?, 256], f32>, %arg2: !mo.tensor<[200000, 32], f32>, %arg3: !mo.tensor<[200000, 32], f32>, %arg4: !mo.tensor<[200000, 32], f32>, %arg5: !mo.tensor<[200000, 32], f32>, %arg6: !mo.tensor<[200000, 32], f32>, %arg7: !mo.tensor<[200000, 32], f32>, %arg8: !mo.tensor<[200000, 32], f32>, %arg9: !mo.tensor<[200000, 32], f32>, %arg10: !mo.tensor<[256, 64], f32>, %arg11: !mo.tensor<[77, 256], f32>, %arg12: !mo.tensor<[128, 32], f32>, %arg13: !mo.tensor<[256, 128], f32>) -> !mo.tensor<[?, 1], f32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<> : tensor<0xsi32>} : !mo.tensor<[0], si32>
-  %1 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
-  %2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
-  %3 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %4 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<32> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %5 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<9> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %6 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<i8>} : !mo.tensor<[], bool>
-  %7 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %8 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %9 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %10 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1, 1, 1, 1, 1, 1, 1> : tensor<8xsi64>} : !mo.tensor<[8], si64>
-  %11 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %12 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-0.121941715, -0.112631559, 0.199184537, 0.260294795, -0.190447032, 0.214445293, 0.0505436063, 0.254368067, 0.18954441, -0.156480938, -0.0834032595, -1.882630e-01, -0.125319079, -0.225907743, 0.122629285, -0.0715062469, -0.184827894, -0.228427023, 0.229661107, 0.0153187215, -0.118268147, 0.159035563, 0.0799599587, 0.0667982101, 0.0901305377, -0.0790597349, 0.04434672, -0.278808236, 0.300504982, 0.0512512624, 0.156755388, -0.141259581, -0.0541819781, -0.207770735, -0.232766122, -0.180529654, 0.185262382, -0.155863777, -5.34206629E-4, 0.194931746, -3.772080e-02, 0.188996345, 0.128953159, 0.273819387, -0.0088250339, 0.191499621, 0.204237163, -0.0390079916, -0.292554468, 0.260827839, -0.114037767, 0.249398828, -0.0697858631, -0.271265894, -0.0694437474, 0.141885012, 8.175060e-02, 0.289748192, 0.165302575, 0.228590071, -0.0586845726, -0.22602132, 0.19075048, 0.0257503986> : tensor<64x1xf32>} : !mo.tensor<[64, 1], f32>
-  %13 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
-  %14 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-  %15 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %16 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %17 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-  %18 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %19 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1, 45> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %20 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
-  %21 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %22 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
+  %0 = mo.constant {value = #M.dense_array<> : tensor<0xsi32>} : !mo.tensor<[0], si32>
+  %1 = mo.constant {value = #M.dense_array<2> : tensor<si32>} : !mo.tensor<[], si32>
+  %2 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %3 = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %4 = mo.constant {value = #M.dense_array<32> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %5 = mo.constant {value = #M.dense_array<9> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %6 = mo.constant {value = #M.dense_array<0> : tensor<i8>} : !mo.tensor<[], bool>
+  %7 = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %8 = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %9 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %10 = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1, 1, 1> : tensor<8xsi64>} : !mo.tensor<[8], si64>
+  %11 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %12 = mo.constant {value = #M.dense_array<-0.121941715, -0.112631559, 0.199184537, 0.260294795, -0.190447032, 0.214445293, 0.0505436063, 0.254368067, 0.18954441, -0.156480938, -0.0834032595, -1.882630e-01, -0.125319079, -0.225907743, 0.122629285, -0.0715062469, -0.184827894, -0.228427023, 0.229661107, 0.0153187215, -0.118268147, 0.159035563, 0.0799599587, 0.0667982101, 0.0901305377, -0.0790597349, 0.04434672, -0.278808236, 0.300504982, 0.0512512624, 0.156755388, -0.141259581, -0.0541819781, -0.207770735, -0.232766122, -0.180529654, 0.185262382, -0.155863777, -5.34206629E-4, 0.194931746, -3.772080e-02, 0.188996345, 0.128953159, 0.273819387, -0.0088250339, 0.191499621, 0.204237163, -0.0390079916, -0.292554468, 0.260827839, -0.114037767, 0.249398828, -0.0697858631, -0.271265894, -0.0694437474, 0.141885012, 8.175060e-02, 0.289748192, 0.165302575, 0.228590071, -0.0586845726, -0.22602132, 0.19075048, 0.0257503986> : tensor<64x1xf32>} : !mo.tensor<[64, 1], f32>
+  %13 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %14 = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %15 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %16 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %17 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %18 = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %19 = mo.constant {value = #M.dense_array<-1, 45> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %20 = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
+  %21 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %22 = mo.constant {value = #M.dense_array<0.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
   %23 = mo.static.broadcast_to(%22) : !mo.tensor<[], f32> -> !mo.tensor<[128], f32>
   %24 = mo.static.broadcast_to(%22) : !mo.tensor<[], f32> -> !mo.tensor<[32], f32>
   %25 = mo.static.broadcast_to(%22) : !mo.tensor<[], f32> -> !mo.tensor<[256], f32>

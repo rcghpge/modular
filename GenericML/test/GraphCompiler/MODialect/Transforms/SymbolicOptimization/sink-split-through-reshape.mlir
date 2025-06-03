@@ -4,8 +4,8 @@
 // creates host constants for split sizes and axis.
 
 // CHECK-LABEL: mo.graph @sink_split_through_reshape
-// CHECK-DAG: %[[SIZES:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: %[[AXIS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-DAG: %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-DAG: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%arg0) : !mo.tensor<[2, 8], f32> -> !mo.tensor<[2, 4, 2], f32>
 // CHECK-NEXT: %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si64>] (%[[RESHAPE]], %[[SIZES]]) : (!mo.tensor<[2, 4, 2], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>)
 // CHECK-NEXT: mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>
@@ -23,8 +23,8 @@ mo.graph @sink_split_through_reshape(%in: !mo.tensor<[2, 8], f32>) -> (!mo.tenso
 
 // Test with device placement to ensure constants are still created as host constants
 // CHECK-LABEL: mo.graph @sink_split_through_reshape_with_device
-// CHECK-DAG: %[[SIZES:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: %[[AXIS:.*]] = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
+// CHECK-DAG: %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+// CHECK-DAG: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%arg0) : !mo.tensor<[2, 8], f32, dev:0> -> !mo.tensor<[2, 4, 2], f32, dev:0>
 // CHECK-NEXT: %[[SPLIT:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si64>] (%[[RESHAPE]], %[[SIZES]]) : (!mo.tensor<[2, 4, 2], f32, dev:0>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2, 2], f32, dev:0>, !mo.tensor<[2, 2, 2], f32, dev:0>)
 // CHECK-NEXT: mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2, 2], f32, dev:0>, !mo.tensor<[2, 2, 2], f32, dev:0>
