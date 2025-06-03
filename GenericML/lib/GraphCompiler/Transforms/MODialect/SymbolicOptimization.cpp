@@ -3237,9 +3237,9 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
         op.getNumResults(), firstReshapeType.getIntDim(newSplitAxis));
     SmallVector<Value> newSplitOpOperands = op.getOperands();
     newSplitOpOperands[0] = newReshape;
-    newSplitOpOperands[1] = rewriter.createDeviceConstant(loc, newSplitSizes);
+    newSplitOpOperands[1] = rewriter.createHostConstant(loc, newSplitSizes);
     newSplitOpOperands[2] =
-        rewriter.createDeviceConstant(loc, int64_t(newSplitAxis));
+        rewriter.createHostConstant(loc, int64_t(newSplitAxis));
     OperationState splitOpState(loc, op->getName(), newSplitOpOperands,
                                 newSplitTypes, op->getAttrs(),
                                 op->getSuccessors());
