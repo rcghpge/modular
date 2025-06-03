@@ -1131,29 +1131,6 @@ struct TensorWrapperPrinter:
         print(tw.buffer)
 
 
-@compiler.register("fused_read_multiply_from_tensor_wrapper")
-struct FusedReadMultiplyFromTensorWrapper:
-    @staticmethod
-    fn execute(
-        output: FusedOutputTensor[type = DType.float32, rank=2],
-        tw: TensorWrapper,
-        ctx: DeviceContextPtr,
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn output_fn[
-            _width: Int,
-        ](coords: IndexList[2], val: SIMD[output.type, _width]):
-            output._lambda_store[width=_width](coords, val * 10)
-
-        for i in range(output.shape()[0]):
-            for j in range(output.shape()[1]):
-                var idx = IndexList[2](i, j)
-                var load_idx = IndexList[2](i + 1, j + 1)
-                var val = tw.buffer.load[width=1](load_idx)
-                output_fn[1](idx, val)
-
-
 @compiler.register("fused_write_to_tensor_wrapper")
 struct MutableStore:
     @staticmethod
@@ -1191,70 +1168,6 @@ struct MutableStore:
             _synchronous=_synchronous,
             _trace_name=_trace_name,
         ](tensor, ctx)
-
-
-@compiler.register("fused_write_to_tensor_wrapper_with_offset")
-struct FusedWriteToTensorWrapperWithOffset:
-    @staticmethod
-    fn execute[
-        target: StaticString,
-        _synchronous: Bool,
-    ](
-        tw: TensorWrapper,
-        tensor: FusedInputTensor[type = DType.float32, rank=2],
-        column_offset: Scalar,
-        ctx: DeviceContextPtr,
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn func[
-            width: Int
-        ](idx: IndexList[tensor.rank]) -> SIMD[DType.float32, width]:
-            return rebind[SIMD[tensor.type, width]](
-                tensor._fused_load[width](idx)
-            )
-
-        @parameter
-        @always_inline
-        fn out_func[width: Int](index: IndexList[tensor.rank]) capturing:
-            var idx = rebind[IndexList[tensor.rank]](index)
-            var val = func[width](idx)
-            var dst_idx = IndexList[tensor.rank](
-                idx[0], idx[1] + Int(column_offset)
-            )
-            tw.buffer.store[width=width](dst_idx, val)
-
-        foreach[
-            func,
-            out_func,
-            target=target,
-            _synchronous=_synchronous,
-        ](tensor, ctx)
-
-
-@compiler.register("fused_read_from_tensor_wrapper_with_offset")
-struct FusedReadFromTensorWrapperWithOffset:
-    @staticmethod
-    fn execute[
-        target: StaticString,
-        _synchronous: Bool,
-    ](
-        output: FusedOutputTensor[type = DType.float32, rank=2],
-        tw: TensorWrapper,
-        column_offset: Scalar,
-        ctx: DeviceContextPtr,
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn func[
-            width: Int
-        ](idx: IndexList[output.rank]) -> SIMD[DType.float32, width]:
-            var src_idx = IndexList[output.rank](
-                idx[0], idx[1] + Int(column_offset)
-            )
-            return tw.buffer.load[width=width](src_idx)
-
-        foreach[func, target=target, _synchronous=_synchronous](output, ctx)
 
 
 @compiler.register("my_square_compute_out_fusion")

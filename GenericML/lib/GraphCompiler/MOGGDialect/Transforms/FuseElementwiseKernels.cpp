@@ -506,44 +506,11 @@ struct FuseElementwisePass
 
       // KGEN fusion path.
       auto dstKernelOp = cast<KernelOp>(subgraph.back());
-
-      llvm::DenseSet<StringAttr> opaqueTypesInSubgraph;
-      for (Value v : dstKernelOp.getOperands()) {
-        if (auto opaqueType = dyn_cast<MO::OpaqueType>(v.getType()))
-          opaqueTypesInSubgraph.insert(opaqueType.getSymbol());
-      }
-
       for (auto op : llvm::reverse(subgraph)) {
         if (op == dstKernelOp)
           continue;
 
         auto srcKernelOp = cast<KernelOp>(op);
-
-        bool sharedOpaqueTypeInSubgraph =
-            llvm::any_of(srcKernelOp.getOperands(), [&](Value v) {
-              if (auto opaqueType = dyn_cast<MO::OpaqueType>(v.getType()))
-                return opaqueTypesInSubgraph.count(opaqueType.getSymbol()) > 0;
-              return false;
-            });
-
-        // This is a rather brutish way of ensuring correctness when fusing
-        // kernels with opaques...
-        //
-        // We could have a scenario where one op in the
-        // subgraph reads from an opaque value and writes to a fused tensor
-        // where the dstKernelOp then takes the same opaque value as input with
-        // some intermediate elementwise ops.
-        //
-        // There are potential correctness issues if we allow the full subgraph
-        // to get fused if say there are conflicting reads/writes for the
-        // kernel reading out from then into the opaque value.
-        //
-        // We stop the fusion here (as opposed to changing the logic in
-        // kernelsAreCompatible) as there's an issue with
-        // sourceDestinationSequenceFusionAnalysis (GEX-2193) which would
-        // prevent all fusion opportunities.
-        if (sharedOpaqueTypeInSubgraph)
-          break;
 
         LLVM_DEBUG({
           llvm::dbgs()
@@ -557,6 +524,8 @@ struct FuseElementwisePass
 
         fuseSrcKernelIntoDstKernelKGEN(srcKernelOp, dstKernelOp);
 
+        dstKernelOp.setSummaryAttr(
+            getSummaryString({srcKernelOp, dstKernelOp}, FusionType::HARD));
         srcKernelOp.erase();
       }
 
@@ -571,21 +540,6 @@ struct FuseElementwisePass
   // lambda with calls to the elementwise lambda in the source kernel. This is
   // possible because they have the same signature.
   void fuseSrcKernelIntoDstKernelKGEN(KernelOp srcKernel, KernelOp dstKernel) {
-
-    // Check if source kernel has chains while destination kernel doesn't
-    bool srcHasChainsButDstDoesNot =
-        (srcKernel.maybeGetInChain() && srcKernel.maybeGetOutChain()) &&
-        (!dstKernel.maybeGetInChain() || !dstKernel.maybeGetOutChain());
-
-    // Save source kernel's chains if they exist but destination doesn't have
-    // them
-    Value srcInChain;
-    Value srcOutChain;
-    if (srcHasChainsButDstDoesNot) {
-      srcInChain = srcKernel.getInChain();
-      srcOutChain = srcKernel.getOutChain();
-    }
-
     stageKernelsForFusion({srcKernel, dstKernel});
 
     auto fusionIndices = *getFusionIndices(srcKernel, dstKernel);
@@ -763,102 +717,9 @@ struct FuseElementwisePass
                                dstKernel.getHasReadEffect());
     dstKernel.setHasWriteEffect(srcKernel.getHasWriteEffect() ||
                                 dstKernel.getHasWriteEffect());
-
-    dstKernel.setSummaryAttr(
-        getSummaryString({srcKernel, dstKernel}, FusionType::HARD));
-
     LLVM_DEBUG(llvm::dbgs()
                << "SUCCESS: Fused " << srcKernel.getSummaryAttr().getValue()
                << " into " << dstKernel.getSummaryAttr().getValue() << "\n");
-
-    // Create a chain-only kernel if source had chains but destination didn't
-    if (srcHasChainsButDstDoesNot) {
-      MLIRContext *ctx = dstKernel.getContext();
-
-      // Get the chain type
-      MO::ChainType chainType = MO::ChainType::get(ctx);
-
-      // Get the current result types and add a chain type
-      SmallVector<Type> newResultTypes(dstKernel->getResultTypes());
-      newResultTypes.push_back(chainType);
-
-      // Create a collection of all the current operands
-      SmallVector<Value> newOperands(dstKernel.getOperands());
-      // Add the input chain as an operand
-      newOperands.push_back(srcInChain);
-
-      SmallVector<Attribute> newInputFusionAttrs(
-          dstKernel.getInputFusionInterfaceAttr().getValue());
-      newInputFusionAttrs.push_back(StringAttr::get(ctx, ""));
-
-      SmallVector<Attribute> newOutputFusionAttrs(
-          dstKernel.getOutputFusionInterfaceAttr().getValue());
-      newOutputFusionAttrs.push_back(StringAttr::get(ctx, ""));
-
-      // need to create array attrs out of newInputFusionAttrs and
-      // newOutputFusionAttrs
-      auto newInputFusionAttr = ArrayAttr::get(ctx, newInputFusionAttrs);
-      auto newOutputFusionAttr = ArrayAttr::get(ctx, newOutputFusionAttrs);
-
-      // Create a new kernel op with the updated types and operands
-      builder.setInsertionPoint(dstKernel);
-      auto newKernelOp = builder.create<MOGG::KernelOp>(
-          dstKernel.getLoc(),
-          /*results=*/newResultTypes,
-          /*operands=*/newOperands,
-          /*outputParamDecls=*/dstKernel.getOutputParamDeclsAttr(),
-          /*inputFusionInterface=*/newInputFusionAttr,
-          /*outputFusionInterface=*/newOutputFusionAttr,
-          /*fusionBodyLambda=*/dstKernel.getFusionBodyLambdaAttr(),
-          /*isViewOp=*/dstKernel.getIsViewOpAttr(),
-          /*summary=*/dstKernel.getSummaryAttr(),
-          /*isAsync=*/dstKernel.getIsAsyncAttr(),
-          /*computationallyTrivial=*/
-          dstKernel.getComputationallyTrivialAttr(),
-          /*allocIndices=*/dstKernel.getAllocIndicesAttr(),
-          /*hasReadEffects=*/dstKernel.getHasReadEffect() ||
-              srcKernel.getHasReadEffect(),
-          /*hasWriteEffects=*/dstKernel.getHasWriteEffect() ||
-              srcKernel.getHasWriteEffect(),
-          /*device=*/dstKernel.getExecutionDevice());
-
-      // Move the body from the old kernel to the new one
-      newKernelOp.getBody().takeBody(dstKernel.getBody());
-
-      // get the block arguments and add a chain type to the end
-      auto &newKernelBody = newKernelOp.getBody().front();
-      newKernelBody.addArgument(chainType, newKernelOp.getLoc());
-
-      // Create a ready chain for the output inside the kernel body
-      newKernelOp.setInsertionPointToTop(builder);
-      auto outChain = builder.create<MOGG::CreateReadyChainOp>(
-          newKernelOp.getLoc(), chainType);
-
-      // Update the output operation to include the chain
-      MOGG::OutputOp outputOp = newKernelOp.getOutputOp();
-      builder.setInsertionPoint(outputOp);
-
-      // Create a new OutputOp with chain result included
-      SmallVector<Value> outputValues(outputOp->getOperands());
-      outputValues.push_back(outChain.getResult());
-      builder.create<MOGG::OutputOp>(newKernelOp.getLoc(), outputValues);
-      outputOp.erase();
-
-      // Replace all uses of the dst kernel's results with the new kernel's
-      // non-chain results
-      for (auto [oldResult, newResult] : llvm::zip(
-               dstKernel.getResults(), newKernelOp.getResults().drop_back())) {
-        oldResult.replaceAllUsesWith(newResult);
-      }
-
-      // Any uses of src kernel's out chain should now use dst kernel's out
-      // chain
-      srcOutChain.replaceAllUsesWith(
-          newKernelOp.getResult(newKernelOp->getNumResults() - 1));
-
-      // The old kernel is no longer needed
-      dstKernel.erase();
-    }
   }
 };
 
