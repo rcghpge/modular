@@ -121,7 +121,7 @@ mo.graph @chained_conv2d_transpose_with_reused_filter(
   %output_paddings: !mo.tensor<[2], si64>
 ) -> (!mo.tensor<[?, ?, ?, ?], f32>, !mo.tensor<[?, ?, ?, ?], f32>) {
 
-  // CHECK-NEXT: %[[CONV_TRANSPOSE1:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
+  // CHECK-NEXT: %[[CONV_TRANSPOSE1:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSFC>}>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
@@ -129,7 +129,7 @@ mo.graph @chained_conv2d_transpose_with_reused_filter(
   // CHECK-SAME:   !mo.tensor<[4], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>
-  %conv_transpose1 = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
+  %conv_transpose1 = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[2], si64>,
@@ -138,7 +138,7 @@ mo.graph @chained_conv2d_transpose_with_reused_filter(
     !mo.tensor<[2], si64>
   ) -> !mo.tensor<[?, ?, ?, ?], f32>
 
-  // CHECK-NEXT: %[[CONV_TRANSPOSE2:.*]] = mo.conv_transpose(%[[CONV_TRANSPOSE1]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
+  // CHECK-NEXT: %[[CONV_TRANSPOSE2:.*]] = mo.conv_transpose(%[[CONV_TRANSPOSE1]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSFC>}>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
@@ -146,7 +146,7 @@ mo.graph @chained_conv2d_transpose_with_reused_filter(
   // CHECK-SAME:   !mo.tensor<[4], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?], f32>
-  %conv_transpose2 = mo.conv_transpose(%conv_transpose1, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
+  %conv_transpose2 = mo.conv_transpose(%conv_transpose1, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[2], si64>,
@@ -175,7 +175,7 @@ mo.graph @chained_conv3d_transpose_with_reused_filter(
   %output_paddings: !mo.tensor<[3], si64>
 ) -> (!mo.tensor<[?, ?, ?, ?, ?], f32>, !mo.tensor<[?, ?, ?, ?, ?], f32>) {
 
-  // CHECK-NEXT: %[[CONV_TRANSPOSE1:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
+  // CHECK-NEXT: %[[CONV_TRANSPOSE1:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<QRSFC>}>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
@@ -183,7 +183,7 @@ mo.graph @chained_conv3d_transpose_with_reused_filter(
   // CHECK-SAME:   !mo.tensor<[6], si64>,
   // CHECK-SAME:   !mo.tensor<[3], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>
-  %conv_transpose1 = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
+  %conv_transpose1 = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[3], si64>,
@@ -192,7 +192,7 @@ mo.graph @chained_conv3d_transpose_with_reused_filter(
     !mo.tensor<[3], si64>
   ) -> !mo.tensor<[?, ?, ?, ?, ?], f32>
 
-  // CHECK-NEXT: %[[CONV_TRANSPOSE2:.*]] = mo.conv_transpose(%[[CONV_TRANSPOSE1]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
+  // CHECK-NEXT: %[[CONV_TRANSPOSE2:.*]] = mo.conv_transpose(%[[CONV_TRANSPOSE1]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>,
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<QRSFC>}>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
@@ -200,7 +200,7 @@ mo.graph @chained_conv3d_transpose_with_reused_filter(
   // CHECK-SAME:   !mo.tensor<[6], si64>,
   // CHECK-SAME:   !mo.tensor<[3], si64>
   // CHECK-SAME: ) -> !mo.tensor<[?, ?, ?, ?, ?], f32>
-  %conv_transpose2 = mo.conv_transpose(%conv_transpose1, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
+  %conv_transpose2 = mo.conv_transpose(%conv_transpose1, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %output_paddings] : (
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?, ?], f32>,
     !mo.tensor<[3], si64>,

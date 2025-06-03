@@ -773,6 +773,10 @@ struct ConvTransposeConstFilterPattern
           op, "packing is only supported on the host device");
     }
 
+    if (filterLayout.getFormat() == "CFRS")
+      return rewriter.notifyMatchFailure(op,
+                                         "Packing CFRS format isn't supported");
+
     // Create shape parameters for the new type.
     auto graphOp = op->getParentOfType<MO::GraphOp>();
 

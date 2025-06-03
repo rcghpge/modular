@@ -2340,14 +2340,14 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
     MO_ShapeLikeIfRanked:$output_paddings,
-    MO_ParamDecls:$outputParamDecls,
-    DefaultValuedAttr<BoolAttr, "false">:$filter_packed);
+    DefaultValuedAttr<StrAttr, "">:$filter_layout,
+    MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
-    `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
-        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)` attr-dict
+    ` ` `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
+        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` `:`
     functional-type(operands, results)
   }];
 

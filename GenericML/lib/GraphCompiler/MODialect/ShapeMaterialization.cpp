@@ -131,9 +131,10 @@ ConvTransposeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr dilations = inputAttrs[3];
   TypedAttr paddings = inputAttrs[4];
   TypedAttr outPaddings = inputAttrs[5];
+  LayoutAttr filterLayout = getFilter().getType().getLayoutAttr();
   return materializeConvTransposeShape(graphOp, loc, inputShape, filterShape,
                                        strides, dilations, paddings,
-                                       outPaddings);
+                                       outPaddings, filterLayout);
 }
 
 //===----------------------------------------------------------------------===//

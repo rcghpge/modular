@@ -347,7 +347,7 @@ mo.graph @conv_transpose_fallback_shape_func<() -> D0, D1, D2, D3>(
   %out_paddings: !mo.tensor<[2], si64>
 ) -> !mo.tensor<[D0, D1, D2, D3], f32> {
 
-  %res = mo.conv_transpose<() -> D4, D5, D6, D7>(%input, %filter)
+  %res = mo.conv_transpose<() -> D4, D5, D6, D7>(%input, %filter) {filter_layout = ""}
     [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %out_paddings] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[D4, D5, D6, D7], f32>
@@ -362,7 +362,7 @@ mo.graph @conv_transpose_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-SAME:   {dataDeptTensors = [2 : i32, 3 : i32, 4 : i32, 5 : i32]} :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]]
+// CHECK-NEXT: %[[RES:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]]
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
 // CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 //

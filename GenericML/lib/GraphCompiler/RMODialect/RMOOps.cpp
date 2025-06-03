@@ -819,7 +819,8 @@ LogicalResult ConvTransposeOp::inferReturnTypes(
   MO::ShapeMaterializeResult result = MO::materializeConvTransposeShape(
       graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
       adaptor.getDilations(), adaptor.getPaddings(),
-      adaptor.getOutputPaddings());
+      adaptor.getOutputPaddings(),
+      cast<MO::TensorType>(adaptor.getFilter().getType()).getLayoutAttr());
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
                              result, inferredReturnTypes, getDevice(input),

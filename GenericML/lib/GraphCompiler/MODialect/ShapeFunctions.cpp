@@ -775,7 +775,8 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
 ShapeMaterializeResult materializeConvTransposeShape(
     GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     TypedAttr filterShapeAttr, TypedAttr stridesAttr, TypedAttr dilationsAttr,
-    TypedAttr paddingsAttr, TypedAttr outputPaddingsAttr) {
+    TypedAttr paddingsAttr, TypedAttr outputPaddingsAttr,
+    LayoutAttr filterLayoutAttr) {
   auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   auto filterShape = dyn_cast<ShapeAttr>(filterShapeAttr);
   auto strides = dyn_cast<ShapeAttr>(stridesAttr);
@@ -821,10 +822,13 @@ ShapeMaterializeResult materializeConvTransposeShape(
   //
   // BUT since ConvTranspose is the inverse of Conv w.r.t. the input, the output
   // shape would have layout [batch_size, ...spatial_dims..., filter_channels]
+  bool isCFRS = filterLayoutAttr && filterLayoutAttr.getFormat() == "CFRS";
+  size_t filterChannelIdx = isCFRS ? 1 : inputRank - 2;
+  size_t outputChannelIdx = isCFRS ? 0 : inputRank - 1;
   Var batchSize = b.createVar(inputShape[0]);
   Var inputChannels = b.createVar(inputShape[inputRank - 1]);
-  Var filterChannels = b.createVar(filterShape[inputRank - 2]);
-  Var outputChannels = b.createVar(filterShape[inputRank - 1]);
+  Var filterChannels = b.createVar(filterShape[filterChannelIdx]);
+  Var outputChannels = b.createVar(filterShape[outputChannelIdx]);
 
   // Check input and kernel channels.
   b.createAssert(inputChannels == outputChannels,
@@ -846,7 +850,7 @@ ShapeMaterializeResult materializeConvTransposeShape(
   // Compute and collect output spatial dimensions;
   for (size_t axis = 0; axis < inputRank - 2; axis++) {
     Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
-    Var filterSpatialDim = b.createVar(filterShape[axis]);
+    Var filterSpatialDim = b.createVar(filterShape[isCFRS ? axis + 2 : axis]);
     Var dilation = b.createVar(dilations[axis]);
     Var stride = b.createVar(strides[axis]);
     Var prePad = b.createVar(paddings[2 * axis]);

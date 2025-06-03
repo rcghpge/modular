@@ -10,11 +10,11 @@ mo.graph @conv_transpose2d_constant_filter(%input: !mo.tensor<[1, 4, 4, 2], f32>
   %opa = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  // CHECK: mo.layout.transform(%[[FILTER]]) 
+  // CHECK: mo.layout.transform(%[[FILTER]])
   // CHECK-SAME: {layout = #mo.layout<RSFC>}
   // CHECK-SAME: {layout = #mo.layout<FRSCf>}
 
-  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
     !mo.tensor<[1, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 6, 6, 2], f32>
@@ -32,11 +32,11 @@ mo.graph @conv_transpose3d_constant_filter(%input: !mo.tensor<[1, 4, 4, 4, 2], f
   %opa = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  // CHECK: mo.layout.transform(%[[FILTER]]) 
+  // CHECK: mo.layout.transform(%[[FILTER]])
   // CHECK-SAME: {layout = #mo.layout<QRSFC>}
   // CHECK-SAME: {layout = #mo.layout<FQRSCf>}
 
-  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
     !mo.tensor<[1, 4, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2, 2], f32>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 6, 6, 6, 2], f32>
@@ -55,7 +55,7 @@ mo.graph @conv_transpose2d_dynamic_filter(%input: !mo.tensor<[1, 4, 4, 2], f32>,
 
   // CHECK-NOT: mo.layout.transform(%[[FILTER]])
 
-  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
     !mo.tensor<[1, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 6, 6, 2], f32>

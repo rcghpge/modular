@@ -15,7 +15,7 @@ mo.graph @conv_transpose2d_constant_filter(%input: !mo.tensor<[1, 4, 4, 2], f32>
   // CHECK: mogg.call "mo.conv_transpose"
   // CHECK-SAME: filter_packed = true
 
-  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
     !mo.tensor<[1, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 6, 6, 2], f32>
@@ -36,7 +36,7 @@ mo.graph @conv_transpose3d_constant_filter(%input: !mo.tensor<[1, 8, 8, 8, 3], f
   // CHECK: mogg.call "mo.conv_transpose"
   // CHECK-SAME: filter_packed = true
 
-  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
     !mo.tensor<[1, 8, 8, 8, 3], f32>, !mo.tensor<[2, 2, 2, 4, 3], f32>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 7, 7, 7, 4], f32>

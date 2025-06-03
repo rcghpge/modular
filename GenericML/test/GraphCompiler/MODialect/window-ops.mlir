@@ -70,7 +70,7 @@ mo.graph @conv_transpose2d(
   %op = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK: mo.conv_transpose(%[[INPUT]], %[[FILTER]])
   // CHECK-SAME: [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], output_paddings = %[[OP]]]
-  %0 = mo.conv_transpose(%input, %filter)
+  %0 = mo.conv_transpose(%input, %filter) {filter_layout = ""}
     [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<[10, 2, 2, 32], f32>, !mo.tensor<[3, 3, 16, 32], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
@@ -93,7 +93,7 @@ mo.graph @conv_transpose_dyn_rank(
 ) -> !mo.tensor<?, f32> {
   // CHECK: mo.conv_transpose(%[[INPUT]], %[[FILTER]])
   // CHECK-SAME: [strides = %[[ST]], dilations = %[[DI]], paddings = %[[PA]], output_paddings = %[[OP]]]
-  %0 = mo.conv_transpose(%input, %filter)
+  %0 = mo.conv_transpose(%input, %filter) {filter_layout = ""}
     [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
     !mo.tensor<?, f32>, !mo.tensor<?, f32>,
     !mo.tensor<?, si64>, !mo.tensor<[?], si64>, !mo.tensor<[?], si64>,  !mo.tensor<[?], si64>

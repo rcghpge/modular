@@ -1117,13 +1117,14 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
     MO_IndicesTensor:$dilations,
     MO_IndicesTensor:$paddings,
     MO_IndicesTensor:$output_paddings,
+    DefaultValuedAttr<StrAttr, "">:$filter_layout,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)` attr-dict
     `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
-        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` attr-dict `:`
+        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` `:`
     functional-type(operands, results)
   }];
 }

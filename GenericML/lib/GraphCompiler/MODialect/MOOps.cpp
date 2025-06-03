@@ -2637,17 +2637,15 @@ LogicalResult ConvTransposeOp::verify() {
 
 LogicalResult ConvTransposeOp::canonicalize(ConvTransposeOp op,
                                             PatternRewriter &rewriter) {
-  bool packedFilter = false;
+  StringRef filterLayoutStr = "";
   LayoutAttr filterLayout = op.getFilter().getType().getLayoutAttr();
-  if (filterLayout) {
-    packedFilter =
-        llvm::is_contained({"FRSCf", "FQRSCf"}, filterLayout.getFormat());
-  }
+  if (filterLayout)
+    filterLayoutStr = filterLayout.getFormat();
 
-  if (op.getFilterPacked() == packedFilter)
+  if (op.getFilterLayout() == filterLayoutStr)
     return failure();
 
-  rewriter.modifyOpInPlace(op, [&]() { op.setFilterPacked(packedFilter); });
+  rewriter.modifyOpInPlace(op, [&]() { op.setFilterLayout(filterLayoutStr); });
 
   return success();
 }

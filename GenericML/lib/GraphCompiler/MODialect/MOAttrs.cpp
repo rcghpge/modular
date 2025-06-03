@@ -93,6 +93,7 @@ LayoutAttr::verify(llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
       // convTranspose filter
       // 2d
       "RSFC",
+      "CFRS",
       "QRSFC",
 
       // packed conv and convTranspose filter
