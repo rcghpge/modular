@@ -69,6 +69,8 @@ public:
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const override;
   ErrorOrSuccess chunkFree(void *ptr) const override;
 
+  ErrorOr<Device::MemInfo> getMemoryInfo() const override;
+
   ErrorOr<void *> getCurrentDriverContext() const override;
   ErrorOrSuccess setCurrentDriverContext(void *ctx) const override;
 

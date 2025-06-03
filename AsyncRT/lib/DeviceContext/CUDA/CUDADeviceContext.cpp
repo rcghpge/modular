@@ -404,6 +404,13 @@ ErrorOrSuccess CUDADevice::chunkFree(void *ptr) const {
   return success();
 }
 
+ErrorOr<Device::MemInfo> CUDADevice::getMemoryInfo() const {
+  Device::MemInfo memInfo;
+  CUDA_WITH_DEV_ERR(*this);
+  CUDA_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
+  return memInfo;
+}
+
 ErrorOr<void *> CUDADevice::getCurrentDriverContext() const {
   CUcontext result = nullptr;
   CUDA_CHECK_ERR(driver_.CtxGetCurrent(&result));
@@ -1411,14 +1418,12 @@ CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
 }
 
 ErrorOr<Device::MemInfo> CUDADeviceContext::getMemoryInfo() const {
-  Device::MemInfo memInfo;
   CUDA_WITH_CTX(*this);
   // To get more accurate memory stats, ensure that at least all pending memory
   // allocations and frees have completed for this context's stream.
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
 
-  CUDA_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
-  return memInfo;
+  return device().getMemoryInfo();
 }
 
 const CUDADriver &CUDADeviceContext::cudaDriver() const { return driver_; }

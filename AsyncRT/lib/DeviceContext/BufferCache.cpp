@@ -371,6 +371,10 @@ void BufferCacheFreeList::flushToParent() {
 
   {
     std::lock_guard<std::mutex> lock(bufferCache_.mu_);
+    // Early return if no chunks have been allocated yet.
+    if (bufferCache_.chunks_ == nullptr)
+      return;
+
     if (bufferCache_.doLog_) {
       bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent");
     }
@@ -596,6 +600,10 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
   // Determine state of debugging flags.
   doLog_ = DeviceContext::configAsBool("buffer_cache_log", false);
   doSelfCheck_ = DeviceContext::configAsBool("buffer_cache_self_check", false);
+  if (doLog_) {
+    logErr("initial memInfo(free: " + TWINE(memInfo.free) +
+           ", total: " + TWINE(memInfo.total) + ")");
+  }
 }
 
 BufferCache::~BufferCache() {
@@ -714,7 +722,14 @@ void BufferCache::growChunkSizeTo(size_t newChunkSize) {
                         std::min(maxCacheSize_, cacheSize_));
 
   // Ensure to not fall below current chunkSize_.
+  size_t oldChunkSize = chunkSize_;
   chunkSize_ = std::max(newChunkSize, chunkSize_);
+  if (doLog_ && (chunkSize_ != oldChunkSize)) {
+    ErrorOr<Device::MemInfo> memInfo = device_.getMemoryInfo();
+    logErr("growing_chunk_size_to(" + TWINE(chunkSize_) +
+           ", free: " + TWINE((*memInfo).free) +
+           ", total: " + TWINE((*memInfo).total) + ")");
+  }
 }
 
 std::atomic<int32_t> BufferCache::useMaxSize_ = {0};
@@ -799,10 +814,20 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
           // adjust chunk size to max cache size. We take this situation as an
           // indication that a large amount of memory will be necessary during
           // the execution of a model.
-          assert(bufferCache_.cacheSize_ == 0);
-          BufferCache::enableUseMaxSize();
-          bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
-          bufferCache_.chunkSize_ = bufferCache_.maxCacheSize_;
+          //
+          // Avoid aggressive growth if running in Bazel to avoid consuming all
+          // of memory of a GPU shared amongst multiple tests.
+          if (std::getenv("BAZEL_TEST") == nullptr) {
+            assert(bufferCache_.cacheSize_ == 0);
+            BufferCache::enableUseMaxSize();
+            bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
+            bufferCache_.chunkSize_ = bufferCache_.maxCacheSize_;
+          } else {
+            if (bufferCache_.doLog_) {
+              bufferCache_.logErr("allocate(" + TWINE(size) +
+                                  ") - skip growChunkSizeTo()");
+            }
+          }
         } else if (BufferCache::shouldUseMaxSize()) {
           // Heuristic: Another buffer cache has determined that we should grow
           // to the largest possible chunk size. Update the chunk size to all

@@ -135,6 +135,8 @@ public:
   virtual ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const = 0;
   virtual ErrorOrSuccess chunkFree(void *ptr) const = 0;
 
+  virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
+
   virtual ErrorOr<DeviceContextRef> createContext() const = 0;
 
   virtual ErrorOr<DeviceStreamRef>

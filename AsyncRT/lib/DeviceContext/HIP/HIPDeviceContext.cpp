@@ -354,6 +354,13 @@ ErrorOrSuccess HIPDevice::chunkFree(void *ptr) const {
   return success();
 }
 
+ErrorOr<Device::MemInfo> HIPDevice::getMemoryInfo() const {
+  Device::MemInfo memInfo;
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
+  return memInfo;
+}
+
 ErrorOr<void *> HIPDevice::getCurrentDriverContext() const {
   hipDevice_t curDev = 0;
   HIP_CHECK_ERR(driver_.GetDevice(&curDev));
@@ -941,10 +948,12 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
 }
 
 ErrorOr<Device::MemInfo> HIPDeviceContext::getMemoryInfo() const {
-  Device::MemInfo memInfo;
-  HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
-  return memInfo;
+  HIP_WITH_CTX(*this);
+  // To get more accurate memory stats, ensure that at least all pending memory
+  // allocations and frees have completed for this context's stream.
+  HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
+
+  return device().getMemoryInfo();
 }
 
 const HIPDriver &HIPDeviceContext::hipDriver() const { return driver_; }
