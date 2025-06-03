@@ -33,8 +33,10 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Host.h"
+
+#include "xxh3.h"
+#include "xxhash.h"
 
 namespace M::MOGG {
 namespace {
@@ -364,8 +366,9 @@ StubCompiler::compile(
                            saveTempsPrefix)
       .print(*keyBufRef);
 
+  auto keyBuffer = keyBufRef->getBuffer();
   std::string envKeyHash =
-      llvm::utohexstr(llvm::xxHash64(llvm::toStringRef(keyBufRef->getBuffer())),
+      llvm::utohexstr(XXH3_64bits(keyBuffer.data(), keyBuffer.size()),
                       /*LowerCase=*/true,
                       /*Width=*/16);
 
