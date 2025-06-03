@@ -8,12 +8,15 @@
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "Runtime/MojoValue.h"
 #include "Runtime/Tensor/StateContext.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Runtime/Tensor/TensorBufferRef.h"
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorSpec.h"
+#include "weights_registry_c_api.h"
+#include "llvm/ADT/bit.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -111,9 +114,62 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.buffer.constant.external.cpu
+//===----------------------------------------------------------------------===//
+
+// Note: This primitive is temporarily implemented in C++ to enable subgraph
+// inlining after JitCompileKernels. GEX-2312 tracks the future work regarding
+// this primitive.
+static void mgp_buffer_constant_external_cpu(
+    Chain inChain, AsyncValueRef<MojoValue> weights,
+    Result<TensorBufferRef> outBuffer, MEFAttr<StringRef> bName,
+    MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dAlign,
+    MEFAttr<uint64_t> eDeviceId, MEFAttr<bool> gHasAlias,
+    MEFAttr<bool> hIsPlaceholder) {
+
+  if (dAlign.get() == 0) {
+    return std::move(outBuffer).setToError(
+        "align must be a positive integer value");
+  }
+
+  // Look up the weight by name in the registry using the C API directly
+  void *data;
+  static constexpr int kResultSuccess = 0;
+
+  // Copy into SmallString to guarantee null termination
+  SmallString<128> nameStr(bName.get());
+
+  if (weights_registry_lookup(&data, weights->getData(),
+                              const_cast<char *>(nameStr.c_str())) !=
+      kResultSuccess) {
+    return std::move(outBuffer).setToError(Twine("unable to look up weight: ") +
+                                           bName.get());
+  }
+
+  const std::byte *weightPtr = llvm::bit_cast<const std::byte *>(data);
+
+  // Validate alignment
+  if ((reinterpret_cast<uintptr_t>(weightPtr) % dAlign.get()) != 0) {
+    return std::move(outBuffer).setToError(
+        Twine("invalid alignment for address ") +
+        Twine(reinterpret_cast<uintptr_t>(weightPtr)) + " and align " +
+        Twine(dAlign.get()));
+  }
+
+  // Create a TensorBufferRef from the weight data
+  // Note: The weights registry owns the data, so we create a non-tracked buffer
+  std::move(outBuffer).emplace(TensorBufferRef::createWithNonTrackedMemory(
+      const_cast<void *>(reinterpret_cast<const void *>(weightPtr)),
+      cSize.get(),
+      /*alignment=*/dAlign.get()));
+}
+
+//===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.constant.external.cpu",
+                mgp_buffer_constant_external_cpu);
 }
