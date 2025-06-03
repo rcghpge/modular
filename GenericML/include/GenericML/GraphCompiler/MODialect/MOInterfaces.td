@@ -366,36 +366,6 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
   let verify = [{ return Impl::verifyReduction(cast<Reduction>($_op)); }];
 }
 
-def MO_DeviceInput : MO_TensorOpInterfaceBase<"DeviceInput"> {
-  let description = [{
-    Trait to indicate the only input to consider for device assignment
-  }];
-  let methods = [
-    InterfaceMethod<"Get the left input tensor as a TypedValue",
-      "TensorValue", "getInput", (ins), [{}],
-      [{ return $_op.getInput(); }]>,
-  ];
-}
-
-def MO_DeviceInputs : MO_TensorOpInterfaceBase<"DeviceInputs"> {
-  let description = [{
-    Trait to indicate the inputs to consider for device assignment
-  }];
-  let methods = [
-    InterfaceMethod<"Get the left input tensor as a TypedValue",
-      "OperandRange", "getInputs", (ins), [{}],
-      [{ return $_op.getInputs(); }]>,
-  ];
-}
-
-def MO_Distributed : MO_TensorOpInterfaceBase<"Distributed"> {
-  let description = [{
-    Interface for modeling distributed operations which have
-    variadic number of inputs and outputs which can be on different devices.
-  }];
-}
-
-
 def MO_ScatterLike : MO_TensorOpInterfaceBase<"ScatterLike",
     [MO_ParamDeclaration,]> {
   let description = [{
@@ -667,7 +637,6 @@ def MO_PadLikeTraits: TraitList<[
   MO_PadLike,
   MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_DeviceInput>,
 ]>;
 
 def MO_ConstantLike : MO_TensorOpInterfaceBase<"ConstantLike"> {

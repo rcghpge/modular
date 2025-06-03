@@ -2951,7 +2951,6 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 def MO_SplitOp : MO_TensorOp<"split", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_DeviceInput>,
   MO_SingleDeviceWithHostOperands<["splitSizes", "axis"]>,
 ]> {
   let summary = "Splitting operation";
@@ -3006,7 +3005,6 @@ def MO_SplitOp : MO_TensorOp<"split", [
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  DeclareOpInterfaceMethods<MO_DeviceInput>,
   MO_SingleDeviceWithHostOperands<["perm"]>
 ]> {
   let summary = "Transposition operation";
@@ -5254,7 +5252,7 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
 //===----------------------------------------------------------------------===//
 
 class MO_DistributedOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [MO_Distributed, MO_MultiDevice]> {
+    : MO_TensorOp<name, traits # [MO_MultiDevice]> {
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
   let results   = (outs Variadic<MO_Tensor>:$outputs);
   let assemblyFormat = [{
