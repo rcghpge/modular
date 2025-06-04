@@ -141,14 +141,18 @@ public:
   ErrorOrSuccess verifyMOOpMatchesKernel(Operation *op) const;
 
 private:
-  /// Get the iterator range of the mojo kernels.
-  inline auto getRawMojoKernels() const {
+  /// Get the iterator range of the mojo kernels within the given kernel map.
+  static auto toRawMojoKernelRange(
+      const llvm::StringMap<KGEN::GeneratorOp> &userKernelMap) {
     return llvm::map_range(
-        llvm::iterator_range(rawMojoKernel),
+        userKernelMap,
         [&](const llvm::StringMapEntry<KGEN::GeneratorOp> &entry) {
           return entry.getValue();
         });
   }
+
+  /// Get the iterator range of the mojo kernels.
+  auto getRawMojoKernels() const { return toRawMojoKernelRange(rawMojoKernel); }
 
   /// Helper function to update the module and state data but account for
   /// collisions
@@ -182,16 +186,6 @@ private:
   /// Replace all symbol names in the specified mojo kernel so that all symbol
   /// name conflicts are resolved after calling this method.
   LogicalResult replaceSymbols(KGEN::GeneratorOp gen);
-
-  /// Get the iterator range of the mojo kernels within the given kernel map.
-  inline auto toRawMojoKernelRange(
-      const llvm::StringMap<KGEN::GeneratorOp> &userKernelMap) const {
-    return llvm::map_range(
-        llvm::iterator_range(userKernelMap),
-        [&](const llvm::StringMapEntry<KGEN::GeneratorOp> &entry) {
-          return entry.getValue();
-        });
-  }
 
   KGEN::GeneratorOp foreachKernel;
   KGEN::GeneratorOp viewMaterializeKernel;

@@ -443,11 +443,6 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
     registerKernelFunction(outlinedFrom,
                            KGEN::MOGGPreElab::OUTLINED_ELEMW_ATTR);
   }
-  if (auto name = generator->getAttrOfType<StringAttr>(
-          KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
-    registerKernelFunction(
-        name, KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel);
-  }
   return success();
 }
 
@@ -495,7 +490,8 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 }
 
 MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
-    : config(ctx, false), sourceMgr(new llvm::SourceMgr()) {}
+    : config(ctx, /*verifyAfterParse=*/false),
+      sourceMgr(new llvm::SourceMgr()) {}
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() {
   for (auto &rd : readers) {
@@ -600,12 +596,6 @@ MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
   auto maybeExecuteFunc = getMojoKernelTarget(*this, op);
   if (maybeExecuteFunc.isError())
     return maybeExecuteFunc.takeError();
-
-  /// TODO: Remove this when PT infra is gone.
-  if ((*maybeExecuteFunc)
-          ->hasAttr(KGEN::MOGGPreElab::kMOGGPyTorchFallbackFunctionLabel)) {
-    return success();
-  }
 
   using namespace KGEN::MOGGPreElab;
   MojoKernelAdaptor<KGEN::GeneratorOp> adaptor("", maybeExecuteFunc.takeValue(),

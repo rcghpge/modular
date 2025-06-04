@@ -4812,7 +4812,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     with the exact same symbol string.
 
     The `function` attribute specifies which labeled function the operation
-    refers to. Examples: `mogg.shape`, `mogg.pytorch_fallback`.
+    refers to. Examples: `mogg.shape`.
 
     Example:
 
