@@ -6,7 +6,7 @@
 // CHECK: %[[TUPLE:.*]] = pop.array.create [%[[CTX]]]
 // CHECK: kgen.call @"{{.*}}MOGGKernelAPITest::SingleDeviceContext::execute{{.*}}"(%[[TUPLE]]
 mo.graph @single_device_context(%arg0: !mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0> {
-  %0 = mo.custom {symbol = "single_device_context"}(%arg0) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
+  %0 = mo.custom {symbol = "single_device_context", device = #M.device_ref<"cpu", 0>}(%arg0) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
   mo.output %0 : !mo.tensor<[4], f32, gpu:0>
 }
 

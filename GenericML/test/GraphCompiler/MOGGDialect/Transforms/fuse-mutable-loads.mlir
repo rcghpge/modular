@@ -156,6 +156,6 @@ mo.graph @dont_parallelize_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %
 mo.graph @block_fusion_non_elementwise_inplace_kernel(%buffer: !mo.buffer<[2, 2], f32>) {
   %0 = mo.chain.create()
   %outTensor, %outChain = mo.mutable.load(%buffer, %0) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)
-  %1 = mo.custom {symbol = "inplace_no_out_func"}(%buffer, %outTensor, %outChain) : (!mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.chain) -> !mo.chain
+  %1 = mo.custom {symbol = "inplace_no_out_func", device = #M.device_ref<"cpu", 0>}(%buffer, %outTensor, %outChain) : (!mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.chain) -> !mo.chain
   mo.output
 }
