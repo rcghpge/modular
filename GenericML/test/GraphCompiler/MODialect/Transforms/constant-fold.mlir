@@ -425,7 +425,7 @@ mo.graph @scalar_to_scalar_ndbuff_reg() -> (!mo.opaque<"MyCustomScalarReg">) {
   %0 = mo.constant {value = #M.dense_array<42> : tensor<si32>} : !mo.tensor<[1], si32>
   %ch0 = mo.chain.create()
 
-  %1 = mo.custom {symbol = "buff_to_my_custom_scalar_reg"}(%0) : (!mo.tensor<[1], si32>) -> (!mo.opaque<"MyCustomScalarReg">)
+  %1 = mo.custom {symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], si32>) -> (!mo.opaque<"MyCustomScalarReg">)
 
   mo.output %1 : !mo.opaque<"MyCustomScalarReg">
 }
