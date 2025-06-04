@@ -173,12 +173,8 @@ struct DeviceAwareRewriter {
   /// wrong device.
   template <typename... Args>
   ConstantOp createHostConstant(Location location, Args &&...args) {
-    // If no device was detected, don't stamp the constant with the host device.
-    auto device = deviceAnnots.device
-                      ? DeviceRefAttr::getDefault(rewriter.getContext())
-                      : nullptr;
     return rewriter.create<ConstantOp>(location, std::forward<Args>(args)...,
-                                       device);
+                                       getHostDevice(rewriter.getContext()));
   }
 
   /// Create a constant that is stamped with the current device.
