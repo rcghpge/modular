@@ -14,15 +14,15 @@ An example can be found
 struct BottomK:
     @staticmethod
     fn execute[
-        type: DType,
+        dtype: DType,
         rank: Int,
     ](
-        values: OutputTensor[type=type, rank=rank],
-        indices: InputTensor[type = DType.int64, rank=rank],
-        input: InputTensor[type=type, rank=rank],
+        values: OutputTensor[dtype=dtype, rank=rank],
+        indices: InputTensor[dtype = DType.int64, rank=rank],
+        input: InputTensor[dtype=dtype, rank=rank],
         k: Scalar,
         axis: Scalar,
-        sorted: Scalar[type = DType.bool],
+        sorted: Scalar[dtype = DType.bool],
     ):
         top_k(
             managed_tensor_slice_to_ndbuffer(input),
@@ -113,7 +113,7 @@ defined elsewhere.
     **OutputVariadicTensors** aliases instead
   - We don’t support other variadic types besides Tensor
 - Dynamic lists of tensors are supported via
-**List[ManagedTensorSlice[type, rank]]** though support is
+**List[ManagedTensorSlice[dtype, rank]]** though support is
 limited at this time.
   - We don’t support lists of other types besides Tensor
   - We only support lists of inputs at this time
@@ -141,15 +141,18 @@ fully featured as the old API. We support both register and memory-only types.
 @compiler.register("myOp")
 struct MyOp:
     @staticmethod
-    fn execute(
+    fn execute[
+        dtype: DType,
+        rank: Int,
+    ](
       # Varidic output support.
       # It is assumed the size of the tuple can be inferred from the call site
-        output: OutputVariadicTensors[type, rank, *_],
+        output: OutputVariadicTensors[dtype, rank, *_],
 
         # First class citizen
-        input: InputTensor[type=output.type, rank=output.rank],
+        input: InputTensor[type=output.dtype, rank=output.rank],
 
-        mutable_input: MutableInputTensor[type=output.type, rank=output.rank]
+        mutable_input: MutableInputTensor[dtype=output.dtype, rank=output.rank]
 
         # Handled via opaque type support
         cache: MyCacheStruct,
@@ -197,7 +200,7 @@ fn execute[
     target: StringLiteral
 ](
     output: OutputTensor,
-    input: InputTensor[output.type, output.rank],
+    input: InputTensor[dtype=output.dtype, rank=output.rank],
     ctx: DeviceContextPtr,
 ) raises:
     alias static_shape = input._static_shape
@@ -206,7 +209,7 @@ fn execute[
     alias exclusive = input.exclusive
 ```
 
-The `static_spec` parameter has the type `StaticTensorSpec[type, rank]`. In
+The `static_spec` parameter has the type `StaticTensorSpec[dtype, rank]`. In
 addition to the information above, the `StaticTensorSpec` also contains the
 fusion lambdas for input/output fusion, which should not be used directly.
 
@@ -225,16 +228,16 @@ accessing the fusion lambdas when loading or storing to a tensor.
 struct BottomK:
     @staticmethod
     fn execute[
-        type: DType,
+        dtype: DType,
         rank: Int,
     ](
         # An "output"
-        values: OutputTensor[type=type, rank=rank],
+        values: OutputTensor[dtype=dtype, rank=rank],
         # Another "output" but specifying io_spec directly
-        indices: ManagedTensorSlice[type = DType.int64, rank=rank, io_spec=Output],
+        indices: ManagedTensorSlice[dtype = DType.int64, rank=rank, io_spec=Output],
 
         # Inputs below!
-        input: InputTensor[type=type, rank=rank],
+        input: InputTensor[dtype=dtype, rank=rank],
         k: Scalar,
         axis: Scalar,
         sorted: Bool,
@@ -253,11 +256,11 @@ struct TensorMutatingOperation:
     @always_inline
     @staticmethod
     fn execute[
-        type: DType, target: StringLiteral
+        dtype: DType, target: StringLiteral
     ](
         #These are all "inputs" to the graph-api operation
-        mutable_input: MutableInputTensor[type=type, rank=6],
-        input: InputTensor[type=type, rank=4]
+        mutable_input: MutableInputTensor[dtype=dtype, rank=6],
+        input: InputTensor[dtype=dtype, rank=4]
     ):
      # Since this kernel takes a MutableInputTensor as an input
      # we want chains on the graph-api side to reason about side-effects
@@ -278,14 +281,14 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
     @always_inline
     @staticmethod
     fn execute[
-        type: DType, target: StringLiteral
+        dtype: DType, target: StringLiteral
     ](
-        blocks: InputTensor[type, 6],
+        blocks: InputTensor[dtype, 6],
         cache_lengths: InputTensor[DType.uint32, 1],
         lookup_table: InputTensor[DType.uint32, 1],
         max_lengths: InputTensor[DType.uint32, 2],
     **) -> ContinuousBatchingKVCacheCollection[
-        type,
+        dtype,
         kv_params_h8_d128_bshd,
     ]:**
         return generic_get_continuous_cache_kernel_api[
@@ -300,7 +303,7 @@ struct ReturningTranspose:
     fn transpose_in_place(
         input: ManagedTensorSlice,
         permutations: ManagedTensorSlice[rank=1],
-    ) -> **ManagedTensorSlice[type = input.type, rank = input.rank]:**
+    ) -> **ManagedTensorSlice[dtype = input.dtype, rank = input.rank]:**
         var new_shape = IndexList[input.rank]()
         var new_stride = IndexList[input.rank]()
 
@@ -310,7 +313,7 @@ struct ReturningTranspose:
             new_shape[i] = input.dim_size(dim)
             new_stride[i] = input.stride_length(dim)
 
-        return ManagedTensorSlice[type = input.type, rank = input.rank](
+        return ManagedTensorSlice[dtype = input.dtype, rank = input.rank](
             input._ptr, new_shape, new_stride
         )
 ```
