@@ -94,15 +94,17 @@ isLowerableToMOGGCall(MLIRContext *ctx,
                       Operation *op) {
   // Operations that involve runtime slots should not be lowered to mojo
   // because they need special slot offsetting during inlining
-  if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::BufferGetCachedOp,
-          MGP::BufferRemoveCachedOp, MGP::ModuleLoadOp, MGP::ExecuteGenericOp>(
-          op))
-    return false;
+  // TODO(GEX-2324): re-enable C++ mgp.context primitives.
+  // if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::BufferGetCachedOp,
+  //         MGP::BufferRemoveCachedOp, MGP::ModuleLoadOp,
+  //         MGP::ExecuteGenericOp>( op))
+  //   return false;
 
   // Constant external ops should not be lowered to mojo so they can be
   // updated with a prefix during inlining.
-  if (isa<MGP::BufferConstantExternalOp>(op))
-    return false;
+  // TODO(GEX-2324): re-enable C++ mgp.context primitives.
+  // if (isa<MGP::BufferConstantExternalOp>(op))
+  //   return false;
 
   bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
       op->getName().getStringRef());
