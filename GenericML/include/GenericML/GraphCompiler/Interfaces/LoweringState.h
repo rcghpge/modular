@@ -364,13 +364,21 @@ public:
   static Value indexToDimension(OpBuilder &builder, Location loc, Value index);
   static Value dimensionToIndex(OpBuilder &builder, Location loc, Value dim);
 
+  struct ArgLoweringResult {
+    bool hasParameters;
+    Value loweredArg;
+  };
+
   /// The given MO inArg (a !mo.tensor) has been lowered to the given MGP
   /// outArg (an !mgp.tensor). If inArg is subject to any dynamic shapes
   /// (rank or dimensions), update the parameter map to capture the MGP values
-  /// they are represented by, either indexes or !mgp.tensor_specs. Returns
-  /// true if any parameters were mapped.
-  ErrorOr<bool> lowerArg(Region *parentRegion, BlockArgument &inArg,
-                         BlockArgument &outArg);
+  /// they are represented by, either indexes or !mgp.tensor_specs.
+  ///
+  /// The return value indicates if the value contains parameters and the value
+  /// guarded by any runtime assertions needed to ensure the input is a legal
+  /// input to the model.
+  ErrorOr<ArgLoweringResult> lowerArg(Region *parentRegion, BlockArgument inArg,
+                                      BlockArgument outArg);
 
   /// Returns a lowered value for the parameter expression attribute.
   /// Parameter references not seen before are lowered to a placeholder,

@@ -23,6 +23,37 @@
 using namespace M;
 using namespace M::MGP;
 
+static FailureOr<Type> builtinTypeToDType(mlir::MLIRContext *ctx, Type type) {
+  KGEN::KGENDType dtype;
+
+  if (type.isIndex())
+    dtype = KGEN::KGENDType{KGEN::KGENDType::ExtraCases::index};
+  else if (auto integer = dyn_cast<IntegerType>(type))
+    dtype = KGEN::KGENDType(M::getEquivalentDType(integer));
+  else
+    return failure();
+
+  return KGEN::POP::SIMDType::get(ctx, 1, dtype);
+}
+
+static Value popScalarToBuitltinType(OpBuilder &builder, Location loc,
+                                     Value v) {
+  auto type = cast<KGEN::POP::SIMDType>(v.getType());
+  auto maybeDtype = type.getResolvedDType();
+  assert(maybeDtype && "unable to resolve dtype");
+
+  auto dtype = *maybeDtype;
+
+  MLIRContext *ctx = builder.getContext();
+
+  auto resultType =
+      dtype.isIndex()
+          ? (Type)IndexType::get(ctx)
+          : (Type)M::getEquivalentIntegerType(ctx, DType(dtype.getValue()));
+
+  return builder.createOrFold<KGEN::POP::CastToBuiltinOp>(loc, resultType, v);
+}
+
 //===----------------------------------------------------------------------===//
 // MOGraphLoweringState
 //===----------------------------------------------------------------------===//
@@ -100,11 +131,39 @@ Value MOGraphLoweringState::dimensionToIndex(OpBuilder &builder, Location loc,
                                                     dim);
 }
 
-ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
-                                             BlockArgument &inArg,
-                                             BlockArgument &outArg) {
+static Value assertSymbolicDimensionMatchesPreviousValue(
+    OpBuilder &builder, Location loc, Value previousValue, Value newValue,
+    KGEN::ParamDeclRefAttr symbolicDimension, unsigned argumentIndex) {
+  FailureOr<Type> targetType =
+      builtinTypeToDType(builder.getContext(), previousValue.getType());
+
+  Value isEqual = builder.create<KGEN::POP::CmpOp>(
+      loc, KGEN::POP::CmpPredicate::EQ,
+      builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
+                                                         previousValue),
+      builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
+                                                         newValue));
+
+  isEqual = popScalarToBuitltinType(builder, loc, isEqual);
+
+  auto errorMessage = llvm::formatv(
+      "symbolic dimension '{}' for input {} does not match prior uses "
+      "of that dimension",
+      symbolicDimension.getName().strref(), argumentIndex);
+
+  auto assertOp = builder.create<MGP::AssertOp>(
+      loc, isEqual, builder.getStringAttr(errorMessage));
+
+  return assertOp;
+}
+
+ErrorOr<MOGraphLoweringState::ArgLoweringResult>
+MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
+                               BlockArgument outArg) {
   bool hasParams = false;
   Location loc = inArg.getLoc();
+
+  Value loweredArg = outArg;
   if (auto argType = MO::dynCastFromTensorLike(inArg.getType())) {
     DeviceRefAttr argDevice = MO::getDeviceOrDefault(argType);
     if (argType.hasStaticShape()) {
@@ -147,17 +206,43 @@ ErrorOr<bool> MOGraphLoweringState::lowerArg(Region *parentRegion,
         // TODO(#14531) handle param expr
         return Error("Expressions in parameter arguments are not supported");
       }
+
+      OpBuilder &builder = getExecuteOpBuilder();
+      SmallVector<Value> assertChains;
       for (auto [inDimParam, outDim] : llvm::zip(inDimParams, dynDims)) {
         // Only update the parameter mapping for the first parameter
         // occurrence.
-        if (!params.lookupLowered(parentRegion, inDimParam)) {
-          auto retyped = indexToDimension(getExecuteOpBuilder(), loc, outDim);
-          params.emplaceLowered(parentRegion, inDimParam, retyped);
+        auto existingValue = params.lookupLowered(parentRegion, inDimParam);
+        auto loweredValue = indexToDimension(builder, loc, outDim);
+
+        if (existingValue) {
+          // If the parameter has been lowered previously, then assert that the
+          // current instance is equal to the previously lowered value.
+          auto assert = assertSymbolicDimensionMatchesPreviousValue(
+              builder, loc, existingValue, loweredValue, inDimParam,
+              inArg.getArgNumber());
+
+          assertChains.push_back(assert);
+        } else {
+          // Otherwise lower the dimension value and record the lowering.
+          params.emplaceLowered(parentRegion, inDimParam, loweredValue);
         }
+      }
+
+      // If any assertions were generated, guard the outArg tensor value by
+      // those assertions.
+      if (!assertChains.empty()) {
+        auto consolidatedChains =
+            builder.create<GRT::ChainCreateOp>(loc, assertChains);
+
+        auto guarded =
+            builder.create<MGP::GuardOp>(loc, consolidatedChains, outArg);
+
+        loweredArg = guarded.getResult(0);
       }
     }
   }
-  return hasParams;
+  return ArgLoweringResult{hasParams, loweredArg};
 }
 
 ErrorOr<Value> MOGraphLoweringState::lowerExpression(Region *parentRegion,
@@ -306,37 +391,6 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
   default:
     return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
   }
-}
-
-static FailureOr<Type> builtinTypeToDType(mlir::MLIRContext *ctx, Type type) {
-  KGEN::KGENDType dtype;
-
-  if (type.isIndex())
-    dtype = KGEN::KGENDType{KGEN::KGENDType::ExtraCases::index};
-  else if (auto integer = dyn_cast<IntegerType>(type))
-    dtype = KGEN::KGENDType(M::getEquivalentDType(integer));
-  else
-    return failure();
-
-  return KGEN::POP::SIMDType::get(ctx, 1, dtype);
-}
-
-static Value popScalarToBuitltinType(OpBuilder &builder, Location loc,
-                                     Value v) {
-  auto type = cast<KGEN::POP::SIMDType>(v.getType());
-  auto maybeDtype = type.getResolvedDType();
-  assert(maybeDtype && "unable to resolve dtype");
-
-  auto dtype = *maybeDtype;
-
-  MLIRContext *ctx = builder.getContext();
-
-  auto resultType =
-      dtype.isIndex()
-          ? (Type)IndexType::get(ctx)
-          : (Type)M::getEquivalentIntegerType(ctx, DType(dtype.getValue()));
-
-  return builder.createOrFold<KGEN::POP::CastToBuiltinOp>(loc, resultType, v);
 }
 
 ErrorOr<Value>

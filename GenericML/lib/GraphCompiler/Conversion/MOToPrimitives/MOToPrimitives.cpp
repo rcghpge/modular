@@ -2140,16 +2140,17 @@ LogicalResult MOGraphLowering::run() {
   for (auto [graphArg, exeArg] :
        llvm::zip(graph.getBody().front().getArguments(),
                  loweringState.getModelOp().getExecuteInputs())) {
-    auto hasParamsOr =
+    auto loweringResult =
         loweringState.lowerArg(&graph.getRegion(), graphArg, exeArg);
-    if (hasParamsOr.isError())
-      return graph->emitOpError(hasParamsOr.getError());
+    if (loweringResult.isError())
+      return graph->emitOpError(loweringResult.getError());
 
     // If the argument has no uses (and no parameters) then just ignore it.
-    if (!hasParamsOr.get() && graphArg.use_empty())
+    if (!loweringResult->hasParameters && graphArg.use_empty())
       continue;
 
-    loweringState.emplaceExecuteLoweredValue(graphArg, exeArg);
+    loweringState.emplaceExecuteLoweredValue(graphArg,
+                                             loweringResult->loweredArg);
   }
 
   // Lower all of the operations in the graph.
