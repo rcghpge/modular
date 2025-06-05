@@ -29,21 +29,21 @@
   do {                                                                         \
     auto err_result = (err_call);                                              \
     if (err_result.isError()) {                                                \
-      return formatError(__FILE__, __LINE__, __FUNCTION__,                     \
-                         err_result.getError());                               \
+      return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,      \
+                                        err_result.getError());                \
     }                                                                          \
   } while (0)
 
-#define ERR_CHECK(err_call)                                                    \
+#define ERR_CHECK(ctx, err_call)                                               \
   do {                                                                         \
     auto err_result = (err_call);                                              \
     if (err_result.isError()) {                                                \
       M::Error err = DeviceContext::formatError(                               \
           __FILE__, __LINE__, __FUNCTION__, err_result.getError());            \
-      /* We are not in a context where we can return an Error here. So we   */ \
-      /* print the message and abort().                                     */ \
-      llvm::errs() << err << "\n";                                             \
-      abort();                                                                 \
+      /* We are not in a function where we can return an Error here. So we     \
+       * remember the error in the context and will report at a later time.    \
+       */                                                                      \
+      (ctx).setPendingError(std::move(err));                                   \
     }                                                                          \
   } while (0)
 
@@ -278,7 +278,7 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
     return;
   }
   // Release the memory (either to buffer cache or using memFree).
-  ERR_CHECK(context().freeList().free(ptr_, isHost()));
+  ERR_CHECK(context(), context().freeList().free(ptr_, isHost()));
 }
 
 MODULAR_CXX_EXPORT const DeviceContext &DeviceBuffer::context() const {
@@ -333,7 +333,7 @@ DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
     RAISE_ERROR_MESSAGE("cannot reassign a buffer between different devices");
   }
   DEFINE_OR_RAISE(DeviceEventRef, srcEvent, context().enqueueEvent());
-  ERR_CHECK(ctx.enqueueWaitForEvent(*srcEvent));
+  ERR_CHECK_ERR(ctx.enqueueWaitForEvent(*srcEvent));
 
   context_ = DeviceContextRef::copy(&ctx);
   return success();
@@ -549,6 +549,40 @@ DeviceContext::~DeviceContext() {
 
 MODULAR_CXX_EXPORT const Device &DeviceContext::device() const {
   return *device_;
+}
+
+void DeviceContext::setPendingError(Error err) const {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    // Do not overwrite an already pending error.
+    if (pendingError_.isError())
+      return;
+
+    pendingError_ = std::move(err);
+  }
+  // After releasing mu_ also set the atomic value to true.
+  hasPendingError_.store(1, std::memory_order_release);
+}
+ErrorOrSuccess DeviceContext::checkPendingError() const {
+  // Quickly check if we should check for a pending error.
+  if (hasPendingError_.load(std::memory_order_acquire) == 0) {
+    return success();
+  }
+
+  // We can safely remove the flag indicating that the pending error should be
+  // checked. We will unconditionally acquire the lock below and check the
+  // pending error while protected by the lock.
+  hasPendingError_.store(0, std::memory_order_release);
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (!pendingError_.isError()) {
+      return success();
+    }
+    // Return the error and reset.
+    Error result = pendingError_.takeError();
+    pendingError_ = success();
+    return result;
+  }
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>

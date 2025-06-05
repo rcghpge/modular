@@ -239,7 +239,7 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
 }
 
 TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
-  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen = 256;
 
@@ -264,6 +264,14 @@ TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
 
   // Ensure that all copy operations have finished.
   EXPECT_NO_ERR(ctx->synchronize());
+
+  // Create an *owned* DeviceBuffer which will be invalid when destructed.
+  {
+    DeviceBufferRef bad = ctx->createBufferOwning(aPtr, allocLen,
+                                                  /* ownning = */ true);
+  }
+  // Trigger deferred error.
+  EXPECT_ERR_MSG(ctx->synchronize(), "failed");
 
   free(aPtr);
 }

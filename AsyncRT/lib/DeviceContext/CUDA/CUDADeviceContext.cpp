@@ -123,20 +123,20 @@ private:
   }                                                                            \
   type var = _err_or_##var.takeValue()
 
-#define ERR_CHECK(err_call)                                                    \
+#define ERR_CHECK_ERR(err_call)                                                \
   do {                                                                         \
     auto err_result = (err_call);                                              \
     if (err_result.isError()) {                                                \
-      M::Error err = DeviceContext::formatError(                               \
-          __FILE__, __LINE__, __FUNCTION__, err_result.getError());            \
-      /* We are not in a context where we can return an Error here. So we   */ \
-      /* print the message and abort().                                     */ \
-      llvm::errs() << err << "\n";                                             \
-      abort();                                                                 \
+      return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,      \
+                                        err_result.getError());                \
     }                                                                          \
   } while (0)
 
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
+  ErrorOrSuccess __pendingErr = (ctx).checkPendingError();                     \
+  if (__pendingErr.isError()) {                                                \
+    return __pendingErr.takeError();                                           \
+  }                                                                            \
   CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
   CUDA_CHECK_ERR(__cudaWithContext.status());
 
@@ -975,7 +975,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   if (srcCtx.context_ != dstCtx.context_) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
-    ERR_CHECK(dstCtx.enqueueWaitForEvent(*srcEvent));
+    ERR_CHECK_ERR(dstCtx.enqueueWaitForEvent(*srcEvent));
 
     CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
                                            srcCtx.context_, dstByteSize,
@@ -984,7 +984,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     // Wait for the copy to complete before proceeding with the source stream
     // (e.g. freeing or overwriting memory).
     DEFINE_OR_RAISE(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
-    ERR_CHECK(srcCtx.enqueueWaitForEvent(*dstEvent));
+    ERR_CHECK_ERR(srcCtx.enqueueWaitForEvent(*dstEvent));
   } else {
     CUDA_CHECK_ERR(
         driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
@@ -1358,7 +1358,7 @@ CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 ErrorOrSuccess
 CUDADeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
-  ERR_CHECK(enqueueWaitFor(*event));
+  ERR_CHECK_ERR(enqueueWaitFor(*event));
   return success();
 }
 

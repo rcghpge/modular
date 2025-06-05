@@ -489,6 +489,8 @@ public:
   static Error formatError(const char *file, int line, const char *func,
                            const llvm::Twine &msg);
 
+  ErrorOrSuccess checkPendingError() const;
+
   // Debugging helpers.
   bool syncMode() const;
   void incSyncMode() const;
@@ -509,6 +511,8 @@ protected:
 
   virtual void *driverContext() const = 0;
 
+  void setPendingError(Error err) const;
+
 private:
   friend class BufferCacheFreeList;
   friend class DeviceBuffer;
@@ -522,6 +526,19 @@ private:
   std::unique_ptr<BufferCacheFreeList> freeList_;
 
   mutable std::atomic<int> syncMode_ = {0};
+
+  // hasPendingError does indicate whether pendingError_ should be checked.
+  // Since pendingError_ is protected by a lock we set an atomic value that can
+  // be quickly checked without fully acquiring a mutex lock. Raising errors
+  // across threads is inherently racing, so we are fine with possibly
+  // missing an update to hasPendingError_ from a different thread.
+  //
+  // To make sure the pendingError_ is properly set and memory been made visible
+  // to other threads, we first need to lock mu_, update the pendingError_,
+  // release mu_ and only then atomically set pendingError_.
+  mutable std::atomic<int> hasPendingError_ = {0};
+  mutable std::mutex mu_;
+  mutable ErrorOrSuccess pendingError_;
 
   // Explicitly mark copy and assignment as unsupported.
   DeviceContext(const DeviceContext &other) = delete;

@@ -63,20 +63,20 @@
   }                                                                            \
   type var = _err_or_##var.takeValue()
 
-#define ERR_CHECK(err_call)                                                    \
+#define ERR_CHECK_ERR(err_call)                                                \
   do {                                                                         \
     auto err_result = (err_call);                                              \
     if (err_result.isError()) {                                                \
-      M::Error err = DeviceContext::formatError(                               \
-          __FILE__, __LINE__, __FUNCTION__, err_result.getError());            \
-      /* We are not in a context where we can return an Error here. So we   */ \
-      /* print the message and abort().                                     */ \
-      llvm::errs() << err << "\n";                                             \
-      abort();                                                                 \
+      return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,      \
+                                        err_result.getError());                \
     }                                                                          \
   } while (0)
 
 #define HIP_WITH_CTX_ERR(ctx)                                                  \
+  ErrorOrSuccess __pendingErr = (ctx).checkPendingError();                     \
+  if (__pendingErr.isError()) {                                                \
+    return __pendingErr.takeError();                                           \
+  }                                                                            \
   HIPDeviceScope __hipWithContext((ctx).hipDevice(), (ctx).hipDriver());       \
   HIP_CHECK_ERR(__hipWithContext.status());
 
@@ -568,10 +568,7 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernel(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const HIPDeviceFunctionArguments &args, hipStream_t stream) const {
-  const auto &hipContext = HIPDeviceContext::cast(context());
-
-  HIP_WITH_CTX_ERR(hipContext);
-  HIP_CHECK_ERR(hipContext.hipDriver().ModuleLaunchKernel(
+  HIP_CHECK_ERR(moduleFunction_->hipDriver().ModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args.hipArgs().data(), nullptr));
   return success();
@@ -581,10 +578,7 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes, void **args,
     hipStream_t stream) const {
-  const auto &hipContext = HIPDeviceContext::cast(context());
-
-  HIP_WITH_CTX_ERR(hipContext);
-  HIP_CHECK_ERR(hipContext.hipDriver().ModuleLaunchKernel(
+  HIP_CHECK_ERR(moduleFunction_->hipDriver().ModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args, nullptr));
   return success();
@@ -849,6 +843,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExec(
 
   const auto &hipFunc = HIPDeviceFunction::cast(func);
 
+  HIP_WITH_CTX_ERR(*this);
   return hipFunc.hipCallKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,
                                sharedMemBytes,
                                HIPDeviceFunctionArguments::cast(args), stream_);
@@ -861,6 +856,8 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
   const auto &hipFunc = HIPDeviceFunction::cast(func);
   if (numAttrs > 0)
     RAISE_ERROR("Function launch attributes not supported;");
+
+  HIP_WITH_CTX_ERR(*this);
   return hipFunc.hipCallKernelDirect(gridX, gridY, gridZ, blockX, blockY,
                                      blockZ, sharedMemBytes, args, stream_);
 }
@@ -894,7 +891,7 @@ HIPDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 ErrorOrSuccess
 HIPDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
-  ERR_CHECK(enqueueWaitFor(*event));
+  ERR_CHECK_ERR(enqueueWaitFor(*event));
   return success();
 }
 
