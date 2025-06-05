@@ -111,11 +111,11 @@ struct OpaqueAddToTensorSI32Reg:
         target: StaticString,
         _synchronous: Bool,
     ](
-        out: OutputTensor[dtype = DType.int32, rank=1],
+        outp: OutputTensor[dtype = DType.int32, rank=1],
         x: MyCustomScalarRegSI32,
         y: MyCustomScalarRegSI32,
     ):
-        out[0] = x.val + y.val
+        outp[0] = x.val + y.val
 
 
 @compiler.register("opaque_add_to_tensor_f32_reg")
@@ -125,11 +125,11 @@ struct OpaqueAddToTensorF32:
         target: StaticString,
         _synchronous: Bool,
     ](
-        out: OutputTensor[dtype = DType.float32, rank=1],
+        outp: OutputTensor[dtype = DType.float32, rank=1],
         x: MyCustomScalarRegF32,
         y: MyCustomScalarRegF32,
     ):
-        out[0] = x.val + y.val
+        outp[0] = x.val + y.val
 
 
 # ===-----------------------------------------------------------------------===#
@@ -167,11 +167,11 @@ struct OpaqueAddToTensorSI32:
         target: StaticString,
         _synchronous: Bool,
     ](
-        out: OutputTensor[dtype = DType.int32, rank=1],
+        outp: OutputTensor[dtype = DType.int32, rank=1],
         x: MyCustomScalarSI32,
         y: MyCustomScalarSI32,
     ):
-        out[0] = x.val + y.val
+        outp[0] = x.val + y.val
 
 
 @compiler.register("opaque_add_to_tensor_si32_raises")
@@ -181,11 +181,11 @@ struct OpaqueAddToTensorSI32Raises:
         target: StaticString,
         _synchronous: Bool,
     ](
-        out: OutputTensor[dtype = DType.int32, rank=1],
+        outp: OutputTensor[dtype = DType.int32, rank=1],
         x: MyCustomScalarSI32,
         y: MyCustomScalarSI32,
     ) raises:
-        out[0] = x.val + y.val
+        outp[0] = x.val + y.val
 
 
 # ===-----------------------------------------------------------------------===#
@@ -288,7 +288,7 @@ struct PrintTensorSpecOp:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](out: OutputTensor, x: InputTensor) raises:
+    ](outp: OutputTensor, x: InputTensor) raises:
         print("x.shape =", x._static_shape)
         print("x.strides =", x._static_strides)
         print("x.alignment =", x.alignment)
@@ -297,10 +297,12 @@ struct PrintTensorSpecOp:
 
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[out.rank]) -> SIMD[out.dtype, width]:
-            return rebind[SIMD[out.dtype, width]](x.load[width](idx))
+        fn func[
+            width: Int
+        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+            return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
 
-        foreach[func](out)
+        foreach[func](outp)
 
     @staticmethod
     fn shape(x: InputTensor) -> IndexList[x.rank]:
@@ -313,15 +315,17 @@ struct PrintTensor:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](out: OutputTensor, input: InputTensor) raises:
+    ](outp: OutputTensor, input: InputTensor) raises:
         print(input)
 
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[out.rank]) -> SIMD[out.dtype, width]:
-            return rebind[SIMD[out.dtype, width]](input.load[width](idx))
+        fn func[
+            width: Int
+        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+            return rebind[SIMD[outp.dtype, width]](input.load[width](idx))
 
-        foreach[func](out)
+        foreach[func](outp)
 
 
 @compiler.register("print_tensor_spec_view")
@@ -344,15 +348,17 @@ struct PrintTensorSpecViewOp:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](out: OutputTensor, x: InputTensor) raises:
+    ](outp: OutputTensor, x: InputTensor) raises:
         Self.print_spec(x)
 
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[out.rank]) -> SIMD[out.dtype, width]:
-            return rebind[SIMD[out.dtype, width]](x.load[width](idx))
+        fn func[
+            width: Int
+        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+            return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
 
-        foreach[func](out)
+        foreach[func](outp)
 
     @staticmethod
     fn shape(x: InputTensor) -> IndexList[x.rank]:
@@ -365,7 +371,7 @@ struct PrintTensorSpecFusedOp:
     fn execute[
         target: StaticString,
         _synchronous: Bool,
-    ](out: FusedOutputTensor, x: FusedInputTensor) capturing raises:
+    ](outp: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         print("x.shape =", x._static_shape)
         print("x.strides =", x._static_strides)
         print("x.alignment =", x.alignment)
@@ -374,10 +380,12 @@ struct PrintTensorSpecFusedOp:
 
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[out.rank]) -> SIMD[out.dtype, width]:
-            return rebind[SIMD[out.dtype, width]](x._fused_load[width](idx))
+        fn func[
+            width: Int
+        ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
+            return rebind[SIMD[outp.dtype, width]](x._fused_load[width](idx))
 
-        foreach[func](out)
+        foreach[func](outp)
 
     @staticmethod
     fn shape(x: InputTensor) -> IndexList[x.rank]:
@@ -499,14 +507,14 @@ struct WithSynchronous:
     @staticmethod
     fn execute[
         _synchronous: Bool,
-    ](out: OutputTensor, input: InputTensor):
+    ](outp: OutputTensor, input: InputTensor):
         print("what up ", _synchronous)
 
 
 @compiler.register("op_without_synchronous")
 struct WithoutSynchronous:
     @staticmethod
-    fn execute(out: OutputTensor, input: InputTensor):
+    fn execute(outp: OutputTensor, input: InputTensor):
         print("what up")
 
 
@@ -813,7 +821,7 @@ struct SupportsScalarKernel:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, rank=1],
+        outp: OutputTensor[dtype=dtype, rank=1],
         x: InputTensor[dtype=dtype, rank=1],
         y: Scalar[dtype],
     ) raises:
@@ -827,7 +835,7 @@ struct KernelWithNoTarget:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, *_],
+        outp: OutputTensor[dtype=dtype, *_],
         x: InputTensor[dtype=dtype, *_],
     ) raises:
         print("hello from kernel with no target")
@@ -839,7 +847,7 @@ struct BasicTarget:
     fn execute[
         dtype: DType, target: StaticString
     ](
-        out: OutputTensor[dtype=dtype, *_],
+        outp: OutputTensor[dtype=dtype, *_],
         x: InputTensor[dtype=dtype, *_],
     ) raises:
         print("hello from kernel on", target)
@@ -887,7 +895,7 @@ struct TestCustomOp:
     fn execute[
         target: StaticString, dtype: DType, rank: Int
     ](
-        out: OutputTensor[dtype=dtype, rank=rank],
+        output: OutputTensor[dtype=dtype, rank=rank],
         input: InputTensor[dtype=dtype, rank=rank],
     ):
         print("World!")
@@ -906,7 +914,7 @@ struct SingleDeviceContext:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, *_],
+        output: OutputTensor[dtype=dtype, *_],
         x: InputTensor[dtype=dtype, *_],
         dev_ctx: DeviceContextPtrList[1],
     ) raises:
@@ -919,7 +927,7 @@ struct MultiDeviceContext:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, *_],
+        output: OutputTensor[dtype=dtype, *_],
         x: InputTensor[dtype=dtype, *_],
         dev_ctxs: DeviceContextPtrList[2],
     ) raises:
@@ -935,7 +943,7 @@ struct MultiDeviceContextDedup:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, *_],
+        output: OutputTensor[dtype=dtype, *_],
         x: InputTensor[dtype=dtype, *_],
         y: InputTensor[dtype=dtype, *_],
         dev_ctxs: DeviceContextPtrList[2],
@@ -1030,10 +1038,10 @@ struct TestSameRankDtype:
     fn execute[
         dtype: DType, rank: Int
     ](
-        out: OutputTensor[dtype=dtype, rank=rank],
+        output: OutputTensor[dtype=dtype, rank=rank],
         input: InputTensor[dtype=dtype, rank=rank],
     ):
-        out[0] = input[0]
+        output[0] = input[0]
 
 
 @compiler.register("test_fix_rank")
@@ -1042,10 +1050,10 @@ struct TestFixRank:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, rank=2],
+        output: OutputTensor[dtype=dtype, rank=2],
         input: InputTensor[dtype=dtype, rank=2],
     ):
-        out[0] = input[0]
+        output[0] = input[0]
 
 
 @compiler.register("test_simd_input_size_1")
@@ -1054,10 +1062,10 @@ struct TestSIMDInputSize1:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, rank=2],
+        output: OutputTensor[dtype=dtype, rank=2],
         input: SIMD[dtype=dtype, size=1],
     ):
-        out[0] = input[0]
+        output[0] = input[0]
 
 
 @compiler.register("test_simd_input")
@@ -1065,8 +1073,8 @@ struct TestSIMDInput:
     @staticmethod
     fn execute[
         dtype: DType
-    ](out: OutputTensor[dtype=dtype, rank=2], input: SIMD[dtype=dtype],):
-        out[0] = input[0]
+    ](output: OutputTensor[dtype=dtype, rank=2], input: SIMD[dtype=dtype],):
+        output[0] = input[0]
 
 
 @compiler.register("test_simd_input_size_2")
@@ -1075,10 +1083,10 @@ struct TestSIMDInputSize2:
     fn execute[
         dtype: DType
     ](
-        out: OutputTensor[dtype=dtype, rank=2],
+        output: OutputTensor[dtype=dtype, rank=2],
         input: SIMD[dtype=dtype, size=2],
     ):
-        out[0] = input[0]
+        output[0] = input[0]
 
 
 @compiler.register("custom_op_with_custom_parameter_shape_func")
@@ -1188,23 +1196,23 @@ struct MySquareComputeOutFusion:
     fn execute[
         dtype: DType
     ](
-        out: _FusedComputeOutputTensor[dtype=dtype, rank=1],
+        outp: _FusedComputeOutputTensor[dtype=dtype, rank=1],
         input: InputTensor[dtype=dtype, rank=1],
     ) capturing:
         var res = input[0] * input[0]
-        alias has_compute_lambda = out.static_spec.out_compute_lambda is not None
-        alias has_store_lambda = out.static_spec.out_lambda is not None
+        alias has_compute_lambda = outp.static_spec.out_compute_lambda is not None
+        alias has_store_lambda = outp.static_spec.out_lambda is not None
         print("has_compute_lambda =", has_compute_lambda)
         print("has_store_lambda =", has_store_lambda)
 
         @parameter
         if has_compute_lambda:
-            out[0] = out._fused_compute_output_lambda[width=1](
+            outp[0] = outp._fused_compute_output_lambda[width=1](
                 IndexList[1](0), res
             )
         else:
             # We still need to support normal fusion in case the kernel is fused with a cast.
-            out._fused_store[width=1](IndexList[1](0), res)
+            outp._fused_store[width=1](IndexList[1](0), res)
 
 
 @compiler.register("inplace_no_out_func")
