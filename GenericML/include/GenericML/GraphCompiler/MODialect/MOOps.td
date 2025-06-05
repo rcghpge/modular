@@ -4800,10 +4800,10 @@ def MO_ListSliceOp : MO_TensorOp<"list.slice", [
 
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_HasDeviceInterface, ["getExecutionDevices"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_ExplicitDevice,
 ]> {
   let summary = "User-defined operation";
   let description = [{
@@ -4854,6 +4854,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   let arguments = (ins Variadic<AnyType>:$operands,
                        StrAttr:$symbol,
                        DefaultValuedAttr<StrAttr, "\"\"">:$function,
+                       DefaultValuedAttr<M_DeviceRefAttr, "\"cpu\", 0">:$device,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs Variadic<AnyType>:$results);
 
@@ -4872,8 +4873,6 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     /// Collects all operands of type !mo.buffer.
     mlir::SmallVector<Value> getBufferOperands();
   }];
-
-  let hasVerifier = 1;
 }
 
 def MO_ConcatFromListOp : MO_TensorOp<"concat_from_list", [

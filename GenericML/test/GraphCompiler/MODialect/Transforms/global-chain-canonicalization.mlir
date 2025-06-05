@@ -53,8 +53,8 @@ mo.graph @interleaved_sequence(%buf0: !bt, %buf1: !bt, %lhs: !tt) -> (!bt, !bt)
 // CHECK-LABEL: mo.graph @custom_ops
 // CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]:
 // CHECK-DAG: [[ch0:%.*]] = mo.chain.create
-// CHECK-DAG: [[ch1:%.*]] = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "foo"}([[buf0]], [[ch0]])
-// CHECK-DAG: [[ch2:%.*]] = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "foo"}([[buf1]], [[ch0]])
+// CHECK-DAG: [[ch1:%.*]] = mo.custom {symbol = "foo"}([[buf0]], [[ch0]])
+// CHECK-DAG: [[ch2:%.*]] = mo.custom {symbol = "foo"}([[buf1]], [[ch0]])
 mo.graph @custom_ops(%buf0: !bt, %buf1: !bt)
 {
   %ch0 = mo.chain.create()
@@ -106,14 +106,14 @@ mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)
 // CHECK-LABEL: @everything
 // CHECK-SAME: ([[arg0:%.*]]: !mo.buffer<[3, 3], f32>, [[arg1:%.*]]: !mo.buffer<[3, 3], f32>, [[arg2:%.*]]: !mo.tensor<[3, 3], f32>) {
 // CHECK-DAG:  [[a0:%.*]] = mo.chain.create()
-// CHECK-DAG:  [[a1:%.*]] = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "foo"}([[arg0]], [[a0]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
+// CHECK-DAG:  [[a1:%.*]] = mo.custom {symbol = "foo"}([[arg0]], [[a0]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
 // CHECK-DAG:  [[outTensor_1:%.*]], [[outChain_0:%.*]] = mo.mutable.load([[arg0]], [[a1]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> (!mo.tensor<[3, 3], f32>, !mo.chain)
 // CHECK-DAG:  [[a3:%.*]] = mo.add([[outTensor_1]], [[arg2]]) : !mo.tensor<[3, 3], f32>
 // CHECK-DAG:  [[a5:%.*]] = mo.mutable.store([[arg0]], [[a3]], [[outChain_0]]) : (!mo.buffer<[3, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.chain) -> !mo.chain
 // CHECK-DAG:  [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load([[arg1]], [[a0]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> (!mo.tensor<[3, 3], f32>, !mo.chain)
 // CHECK-DAG:  [[a2:%.*]] = mo.add([[outTensor]], [[arg2]]) : !mo.tensor<[3, 3], f32>
 // CHECK-DAG:  [[a4:%.*]] = mo.mutable.store([[arg1]], [[a2]], [[outChain]]) : (!mo.buffer<[3, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.chain) -> !mo.chain
-// CHECK-DAG:  [[a6:%.*]] = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "foo"}([[arg1]], [[a4]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
+// CHECK-DAG:  [[a6:%.*]] = mo.custom {symbol = "foo"}([[arg1]], [[a4]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
 mo.graph @everything(%buf0: !bt, %buf1: !bt, %tensor: !tt)
 {
   %ch0 = mo.chain.create()

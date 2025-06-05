@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: mo.graph @custom_dynamic
 // CHECK-SAME:  (%[[ARG0:.*]]: !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>
-// CHECK-NEXT:  %[[CUSTOM:.*]] = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "test_custom_op"}(%[[ARG0]])
+// CHECK-NEXT:  %[[CUSTOM:.*]] = mo.custom {symbol = "test_custom_op"}(%[[ARG0]])
 // CHECK-NEXT:  mo.output %[[CUSTOM]]
 
 mo.graph @custom_dynamic(%arg0 : !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32> {
@@ -13,7 +13,7 @@ mo.graph @custom_dynamic(%arg0 : !mo.tensor<[?], f32>) -> !mo.tensor<[?], f32> {
 // CHECK-LABEL: mo.graph @inplace_custom_op
 // CHECK-SAME: [[arg0:%.*]]: !mo.buffer<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "inplace"}([[arg0]], [[ch0]])
+// CHECK: mo.custom {symbol = "inplace"}([[arg0]], [[ch0]])
 mo.graph @inplace_custom_op(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()
 

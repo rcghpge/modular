@@ -15,7 +15,7 @@ mo.graph @custom_op(
   // CHECK-NEXT: mo.invoke_shape_func["test_custom_op"]<() -> [[D2:.*]], [[D3:.*]]>(%[[INPUT]])
   // CHECK-SAME:   {dataDeptTensors = [0 : i32], kgenParams = {output_idx = 0 : index}} : (!mo.tensor<[[[D0]], [[D1]]], f32>)
 
-  // CHECK-NEXT:  %[[RES:.*]] = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "test_custom_op"}(%[[INPUT]]) :
+  // CHECK-NEXT:  %[[RES:.*]] = mo.custom {symbol = "test_custom_op"}(%[[INPUT]]) :
   // CHECK-SAME:    (!mo.tensor<[[[D0]], [[D1]]], f32>) -> !mo.tensor<[[[D2]], [[D3]]], f32>
   %res = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "test_custom_op"}(%input) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
 
