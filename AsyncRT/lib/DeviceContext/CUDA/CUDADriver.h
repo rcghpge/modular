@@ -86,6 +86,37 @@ enum class CUlaunchAttributeID {
   CU_LAUNCH_ATTRIBUTE_ACCESS_POLICY_WINDOW = 1,
 };
 
+typedef enum CUmemorytype_enum {
+  CU_MEMORYTYPE_HOST = 0x01,
+  CU_MEMORYTYPE_DEVICE = 0x02,
+  CU_MEMORYTYPE_ARRAY = 0x03,
+  CU_MEMORYTYPE_UNIFIED = 0x04
+} CUmemorytype;
+
+typedef enum CUpointer_attribute_enum {
+  CU_POINTER_ATTRIBUTE_CONTEXT = 1,
+  CU_POINTER_ATTRIBUTE_MEMORY_TYPE = 2,
+  CU_POINTER_ATTRIBUTE_DEVICE_POINTER = 3,
+  CU_POINTER_ATTRIBUTE_HOST_POINTER = 4,
+  CU_POINTER_ATTRIBUTE_P2P_TOKENS = 5,
+  CU_POINTER_ATTRIBUTE_SYNC_MEMOPS = 6,
+  CU_POINTER_ATTRIBUTE_BUFFER_ID = 7,
+  CU_POINTER_ATTRIBUTE_IS_MANAGED = 8,
+  CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL = 9,
+  CU_POINTER_ATTRIBUTE_IS_LEGACY_CUDA_IPC_CAPABLE = 10,
+  CU_POINTER_ATTRIBUTE_RANGE_START_ADDR = 11,
+  CU_POINTER_ATTRIBUTE_RANGE_SIZE = 12,
+  CU_POINTER_ATTRIBUTE_MAPPED = 13,
+  CU_POINTER_ATTRIBUTE_ALLOWED_HANDLE_TYPES = 14,
+  CU_POINTER_ATTRIBUTE_IS_GPU_DIRECT_RDMA_CAPABLE = 15,
+  CU_POINTER_ATTRIBUTE_ACCESS_FLAGS = 16,
+  CU_POINTER_ATTRIBUTE_MEMPOOL_HANDLE = 17,
+  CU_POINTER_ATTRIBUTE_MAPPING_SIZE = 18,
+  CU_POINTER_ATTRIBUTE_MAPPING_BASE_ADDR = 19,
+  CU_POINTER_ATTRIBUTE_MEMORY_BLOCK_ID = 20,
+  CU_POINTER_ATTRIBUTE_IS_HW_DECOMPRESS_CAPABLE = 21
+} CUpointer_attribute;
+
 enum class CUtensorMapDataType {
   CU_TENSOR_MAP_DATA_TYPE_UINT8 = 0,
   CU_TENSOR_MAP_DATA_TYPE_UINT16,
@@ -670,6 +701,13 @@ public:
     return cuMulticastUnbind_(mcHandle, dev, mcOffset, size);
   }
 
+  Result PointerGetAttributes(unsigned int numAttributes,
+                              CUpointer_attribute *attributes, void **data,
+                              CUdeviceptr ptr) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuPointerGetAttributes_(numAttributes, attributes, data, ptr);
+  }
+
   Result TensorMapEncodeTiled(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
       void *globalAddress, const uint64_t *globalDim,
@@ -1055,6 +1093,11 @@ private:
   using tcuMulticastUnbind = Result(CUmemGenericAllocationHandle mcHandle,
                                     CUdevice dev, size_t mcOffset, size_t size);
   tcuMulticastUnbind *cuMulticastUnbind_;
+
+  using tcuPointerGetAttributes = Result(unsigned int numAttributes,
+                                         CUpointer_attribute *attributes,
+                                         void **data, CUdeviceptr ptr);
+  tcuPointerGetAttributes *cuPointerGetAttributes_;
 
   using tcuTensorMapEncodeTiled = Result(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
