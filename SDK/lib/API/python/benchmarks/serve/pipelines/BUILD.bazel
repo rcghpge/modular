@@ -5,7 +5,11 @@ modular_py_test(
     srcs = glob(["*.py"]),
     tags = ["manual"],
     deps = [
+        "//SDK/lib/API/python/max/pipelines/core",
         "//SDK/lib/API/python/max/serve",
         requirement("pytest-benchmark"),
+        requirement("numpy"),
+        requirement("msgspec"),
+        requirement("pyzmq"),
     ],
 )
