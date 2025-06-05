@@ -206,39 +206,6 @@ def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
-def MarkTrivialKernels: Pass<"mark-trivial-kernels", "MO::GraphOp"> {
-  let summary = "Decide which `MOGG::KernelOp`s can be sequentially fused.";
-  let description = [{
-    Adds the attribute `single_thread_blocking_override=true` to all
-    `MOGG::KernelOp` which can be fused into a sequence of kernel calls.
-    Such a sequence can avoid the overhead of the AsyncRT::AsyncValue machinery
-    to coordinate dataflow between kernel calls.
-
-    On CPU this is only enabled for 'trivial' kernels, ie those with small
-    input and output shapes. For GPU this is enabled generally.
-  }];
-
-  // Balloons due to dependency on MojoLibrarryAnalysis
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::HLCF::HLCFDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::ROCDL::ROCDLDialect",
-    "mlir::index::IndexDialect",
-  ];
-
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-  ];
-}
-
 def SetKernelsTraceName: Pass<"set-kernels-trace-name", "MO::GraphOp"> {
   let summary = "Set the trace name parameter for every kernel.";
   let description = [{
@@ -307,44 +274,6 @@ def StackAllocateTemporaries: Pass<"stack-allocate-temporaries", "MO::GraphOp"> 
     "M::MDialect",
     "M::MOGG::MOGGDialect",
     "M::KGEN::KGENDialect",
-  ];
-}
-
-// This pass has to match a ModuleOp because it lowers operations which is not
-// thread safe.
-def FuseKernelSequences: Pass<"fuse-kernel-sequences", "ModuleOp"> {
-  let summary = "Fuse a sequence of kernels into a single kernel.";
-  let description = [{
-    This pass will combine a sequence of MOGG::KernelOp invocations into a
-    single invocation. The original kernels will be called in some topological
-    order. Intermediate tensors may be stack-allocated within the fused kernel.
-
-    Generally only 'small' kernels and 'small' intermediate tensors may be
-    fused.
-  }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
-
-  let options = [
-    Option<"nonHostKernelLimit", "non-host-kernel-limit", "size_t", "3",
-           "Maximum number of non-host kernels to place in a single fused "
-           "kernel.">,
-    ListOption<"heuristics", "heuristics", "std::string",
-      "List of heuristics to use for evaluating which kernels to fuse. Choices"
-      "are greedy, conservative, floodfill and inout.">,
-  ];
-
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::HLCF::HLCFDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::ROCDL::ROCDLDialect",
-    "mlir::index::IndexDialect",
   ];
 }
 

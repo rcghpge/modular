@@ -278,30 +278,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // fusion.
   pm.addPass(MOGG::createSetKernelsTraceName());
 
-  if (opts.performTrivialKernelOpt) {
-    // Mark trivial kernels as being synchronous.
-    pm.addPass(MOGG::createMarkTrivialKernels({kernelLibraryPaths}));
-
-    // Soft fuse trivial and non-host kernels where possible.
-    if (opts.fuseJitKernels) {
-      MOGG::FuseKernelSequencesOptions sequenceFusionOpts;
-      sequenceFusionOpts.nonHostKernelLimit = opts.softFusionNonHostKernelLimit;
-      // First fuse obvious sequences and then across edges.
-      sequenceFusionOpts.heuristics = {"inout", "conservative"};
-      pm.addPass(MOGG::createFuseKernelSequences(sequenceFusionOpts));
-      pm.addPass(MOGG::createSimplifyKernelOperands());
-      // Then, fuse concat now that providing ops may be fused.
-      pm.addPass(MOGG::createFuseConcatAsSlice({kernelLibraryPaths}));
-      // Finally, attempt another fusion now that we got mogg.concat out of the
-      // way.
-      pm.addPass(MOGG::createFuseKernelSequences(sequenceFusionOpts));
-      pm.addPass(MOGG::createSimplifyKernelOperands());
-
-      pm.addPass(mlir::createCanonicalizerPass());
-      pm.addPass(mlir::createCSEPass());
-    }
-  }
-
   // Run before fuse constant.
   pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
   pm.addPass(MOGG::createSimplifyKernelOperands());
