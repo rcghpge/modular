@@ -88,6 +88,10 @@ private:
   void growChunkSizeTo(size_t newChunkSize);
 
   const Device &device_;
+
+  // Does this buffer cache need to allow for other concurrently running tests.
+  const bool isBazelTest_;
+
   const size_t maxCacheSize_;
   size_t chunkSize_;
 
@@ -162,10 +166,6 @@ private:
   BufferCacheFreeList *parent_;
 
   BufferCache::Desc *freeBuffers_ = nullptr;
-
-  // For logging and debugging.
-  size_t ffreeSize_ = 0;
-  size_t ffreeCount_ = 0;
 };
 
 } // namespace M::AsyncRT

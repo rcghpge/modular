@@ -560,19 +560,25 @@ void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
   }
 }
 
-static constexpr size_t KB = 1024; // NOLINT
+static constexpr size_t KB = 1024;        // NOLINT
+static constexpr size_t MB = 1024 * 1024; // NOLINT
 
 BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
                          size_t alignment)
     : device_(device),
+      // Determine whether we are running as part of a `bazel test` to
+      // appropriately scale the cache sizes allowing for other tests to execute
+      // concurrently on the device.
+      isBazelTest_(std::getenv("BAZEL_TEST") != nullptr),
       // Calculate the sizes for the BufferCache here based on defaults or the
       // environment.
       // Make the buffer cache disabled by setting percentages to zero.
-      // Limit to 99% (default) of available memory.
-      // TODO(GEX-1303): BufferCache is currently disabled to evaluate
+      // Limit to 99% (default) or 10% (bazel test) of available memory.
+      // TODO(GEX-1303): BufferCache is currently enabled to evaluate
       maxCacheSize_(llvm::alignToPowerOf2(
           (memInfo.free *
-           DeviceContext::configAsInt("buffer_cache_size_percent", 0)) /
+           DeviceContext::configAsInt("buffer_cache_size_percent",
+                                      isBazelTest_ ? 10 : 99)) /
               100,
           256 * KB)),
       // Allocate chunks of 2% (default) of maximum cache size.
@@ -592,6 +598,12 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
   // chunks_ will be lazily initialized on the first allocation request.
   // Alignment masking only works with powers of 2.
   assert(llvm::isPowerOf2_64(alignment));
+
+  // When running as part of a Bazel test, limit the chunk size to allow for
+  // multiple tests executing on the same GPU.
+  if (isBazelTest_) {
+    chunkSize_ = std::min(chunkSize_, 200 * MB);
+  }
 
   // Allocate a freelist that maintains free memory blocks not associated with a
   // DeviceContext (aka stream).
@@ -623,12 +635,16 @@ bool BufferCache::allocateChunk() {
     growChunkSizeTo(maxCacheSize_);
   }
 
-  // Avoid allocating chunks beyond the maxCacheSize_.
-  const size_t allocSize = std::min(
-      chunkSize_, maxCacheSize_ -
-                      // Avoid overflowing the subtraction by guarding
-                      // against cacheSize_ being larger than maxCacheSize_.
-                      std::min(maxCacheSize_, cacheSize_));
+  // Avoid allocating chunks beyond the maxCacheSize_ or available memory.
+  ErrorOr<Device::MemInfo> memInfo = device_.getMemoryInfo();
+  size_t maxSize = memInfo.isError() ? maxCacheSize_
+                                     : std::min((*memInfo).free, maxCacheSize_);
+
+  const size_t allocSize =
+      std::min(chunkSize_, maxSize -
+                               // Avoid overflowing the subtraction by guarding
+                               // against cacheSize_ being larger than maxSize.
+                               std::min(maxSize, cacheSize_));
 
   const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
   if (allocSize < minChunkSize) {
@@ -817,7 +833,7 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
           //
           // Avoid aggressive growth if running in Bazel to avoid consuming all
           // of memory of a GPU shared amongst multiple tests.
-          if (std::getenv("BAZEL_TEST") == nullptr) {
+          if (!bufferCache_.isBazelTest_) {
             assert(bufferCache_.cacheSize_ == 0);
             BufferCache::enableUseMaxSize();
             bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
