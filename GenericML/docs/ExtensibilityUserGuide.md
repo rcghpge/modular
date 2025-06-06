@@ -145,7 +145,7 @@ struct MyOp:
         dtype: DType,
         rank: Int,
     ](
-      # Varidic output support.
+      # Variadic output support.
       # It is assumed the size of the tuple can be inferred from the call site
         output: OutputVariadicTensors[dtype, rank, *_],
 

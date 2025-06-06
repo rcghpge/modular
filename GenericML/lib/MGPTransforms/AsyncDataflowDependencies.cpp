@@ -264,7 +264,7 @@ void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
     // This is equivalent to:
     //   if (isTrue(o) for all o in mergeOp.getOperands())
     //     setTrue(mergeOp.getResult())
-    // but writen to mirror how flowControlFlow works with the relation.
+    // but written to mirror how flowControlFlow works with the relation.
     ValueSet set = domainMap.bottom;
     for (Value operand : chainCreateOp.getInputChains()) {
       domainMap.leastUpperBound(

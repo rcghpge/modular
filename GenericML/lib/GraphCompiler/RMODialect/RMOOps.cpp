@@ -352,7 +352,7 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
 
     // Float is unsafe if formats differ for same virtual bitwidth (tf32 with
     // f32 or bf16 with f16). I say "virtual bitwidth" cause tf32 is
-    // techincally only 19bits.
+    // technically only 19bits.
     if ((dtype == DType::f16 && result == DType::bf16) ||
         (dtype == DType::bf16 && result == DType::f16) ||
         (dtype == DType::tf32 && result == DType::f32))

@@ -19,7 +19,7 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
   // from, up to the last parent that is in the same block as from. When
   // doFirstLevel is set, we will create the dependency between from and to
   // (parametric dependencies are never present in SSA graphs so we need to do
-  // it unconditonally).
+  // it unconditionally).
   const auto applyDependencyToParentOps = [&](Operation *from, Operation *to,
                                               bool doAtLeastOnce) {
     // Parameters don't obey region dominance like SSA values. An operation can

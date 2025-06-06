@@ -245,7 +245,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
   CHECK_IS_CPU_ERR(dst.context().device());
 
   if (valSize > sizeof(uint64_t))
-    return Error("unsupport val size");
+    return Error("unsupported val size");
 
   size_t byteSize = dst.byteSize();
 
@@ -273,8 +273,8 @@ ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
     return M::fillHomogeneous(ptr, len, DType::ui64, &ui64Val);
   }
   default:
-    llvm_unreachable("unsupport val size");
-    return Error("unsupport val size");
+    llvm_unreachable("unsupported val size");
+    return Error("unsupported val size");
   }
 }
 

@@ -378,7 +378,7 @@ public:
   bool hadError = false;
 
   /// Uniquing set of attributes we need to emit, kept in order so we always
-  /// produce a determinstic output file.  This only maintains the attributes
+  /// produce a deterministic output file.  This only maintains the attributes
   /// that are references by the MLIR operations, it doesn't hold the
   /// recursive elements.
   llvm::SetVector<Attribute> attributes;
@@ -411,7 +411,7 @@ public:
   // attribute names.
   llvm::SetVector<StringAttr> metadataStrings;
 
-  // All of the types we need when emiting metadata in the MEF file.
+  // All of the types we need when emitting metadata in the MEF file.
   std::vector<Type> types;
   DenseMap<Type, unsigned> typeIDs;
 

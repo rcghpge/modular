@@ -67,7 +67,7 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
   MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
-  let summary = "`index` to scalar `!mo.tensor` casting operaton";
+  let summary = "`index` to scalar `!mo.tensor` casting operation";
   let description = [{
     Example:
 
@@ -944,7 +944,7 @@ def MO_GeluOp : MO_ElementWiseUnaryMonoTypeOp<"gelu"> {
 def MO_LogOp : MO_ElementWiseUnaryMonoTypeOp<"log"> {
   let summary = "Natural logarithm operation";
   let description = [{
-    Returns the natural logorithm, `log(x)`.
+    Returns the natural logarithm, `log(x)`.
 
     Example:
 
@@ -1149,7 +1149,7 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
     then the first element is excluded. The `reverse` attribute causes the
     summation to be done in the opposite direction of the axis.
 
-    The value of `axis` follows numpy sematics, e.g., -1 represents the last
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
     axis.
 
     Example of outputs:
@@ -1729,7 +1729,7 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
 }
 
 def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax", [MO_HostOnly]> {
-  let summary = "Logarighmic softmax operation";
+  let summary = "Logarithmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
 
@@ -1926,7 +1926,7 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -1991,7 +1991,7 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -2056,7 +2056,7 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -2120,7 +2120,7 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -2191,7 +2191,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
     0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    Convolution, dim1 here repesents H and dim2 represents W. In python like
+    Convolution, dim1 here represents H and dim2 represents W. In python like
     syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
 
     ```python
@@ -2290,7 +2290,7 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
     0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    ConvTranspose, dim1 here repesents H_out and dim2 represents W_out. In
+    ConvTranspose, dim1 here represents H_out and dim2 represents W_out. In
     python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
     yield:
 
@@ -4246,7 +4246,7 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
   let description = [{
     Copies a tensor setting everything outside central (diagonal) band of the
     matrices to zero, where all but the last two axes are effectively batches,
-    and the last two axes define sub matricies.
+    and the last two axes define sub matrices.
 
     Assumes the input has dimensions [I, J, ..., M, N], then the output tensor
     has the same shape as the input, and the values values are given by
@@ -4262,7 +4262,7 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
     to zero while the elements outside the band are copied to the output tensor.
 
     Please explicitly note that with negative values, this kernel returns the
-    entire lower or uppper triangle of the matrix, and otherwise returns
+    entire lower or upper triangle of the matrix, and otherwise returns
     a diagonal band around the main diagonal of the matrix.
 
     Example:
@@ -4654,7 +4654,7 @@ def MO_ListGetOp : MO_TensorOp<"list.get", [
 ]> {
   let summary = "List access operation";
   let description = [{
-    Retrives the element at given (base zero) index of the list. The index can be
+    Retrieves the element at given (base zero) index of the list. The index can be
     negative, with numpy indexing semantics, i.e., `-1` means the last element,
     `-2` means the second to last element, etc.
 
@@ -5045,7 +5045,7 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [
 {
   let summary = "Create a new chain conditioned on a variadic number of inputs";
   let description = [{
-    This operation consumes an aribtrary number of values and produces a chain.
+    This operation consumes an arbitrary number of values and produces a chain.
     Can be used for the sequencing for side-effecting ops when they might
     depend on multiple other ops producing chains.
 

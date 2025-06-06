@@ -69,9 +69,9 @@ kgen.generator @concat_canonicalize<Sh0: !mosh.ape>(%sh1: !mosh.ape, %sh2: !mosh
 }
 
 // TODO: implement tests for shapes that do not fold
-//       - becasue of unknown shape arg
-//       - becasue of not broadcastable shapes
-//       - becasue it's not possible to decide without asserts if broadcastable
+//       - because of unknown shape arg
+//       - because of not broadcastable shapes
+//       - because it's not possible to decide without asserts if broadcastable
 // CHECK: kgen.generator @broadcast_fold_static() -> (!mosh.ape, !mosh.ape) {
 kgen.generator @broadcast_fold_static() -> (!mosh.ape, !mosh.ape) {
   // CHECK-NEXT: %[[RES:.*]] = mosh.param.to_value: !mosh.ape = <[5, 10, 42]>

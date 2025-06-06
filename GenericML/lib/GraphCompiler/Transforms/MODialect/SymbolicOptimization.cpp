@@ -1513,7 +1513,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
 
     // TODO (#36567):
     // This following early exit is a bit of a hack used to
-    // avoid an infinite loop that can occur somtimes occure between
+    // avoid an infinite loop that can occur sometimes occure between
     // this pattern and the SwimViewOpThroughBinaryOpWithConstantSubtree
     // patterns
     if (op.getResult().hasOneUse()) {
@@ -1781,7 +1781,7 @@ TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
 /// (expressed as reshape) on each result, and rewrites them into a transpose
 /// followed by a axis-0 split and the reshapes.
 ///
-/// This is benefitial because
+/// This is beneficial because
 /// 1. split on axis-0 can be lowered into in-place split.
 /// 2. the transpose kernel is much faster than the split kernel.
 ///
@@ -2786,11 +2786,11 @@ struct MergeParallelMatmulPattern
 
           // TODO(GEX-1978): To temporarily unblock GEX-1968, since it might
           // forbid `ForceMatmulTransposeBForGPU`, we should instead sink the
-          // tranpose after concat to enable both pattern. I.e.,
+          // transpose after concat to enable both pattern. I.e.,
           //
           // mo.transpose
           // mo.matmul
-          // mo.tranpose
+          // mo.transpose
           // mo.matmul
           // =>
           // mo.concat
@@ -3304,7 +3304,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
 /// BroadcastTo):
 /// - For reduce.add (reduce.mul), the input must be multiplied (use pow) by the
 /// size of the axis.
-/// - For min / max / mean, the input isn't modfied (identity).
+/// - For min / max / mean, the input isn't modified (identity).
 /// - For argmin / argmax, the input is transformed into a tensor of 0s.
 struct SinkBroadcastsThroughReduction
     : public DeviceAwareRewritePattern<OpInterfaceRewritePattern, Reduction> {
@@ -3969,9 +3969,9 @@ struct ArithmeticFoldingModByOne
 };
 
 // >=(x, x) -> bcast(true)
-struct ArithmeticFoldingGreatherOrEqualThanSameOperand
+struct ArithmeticFoldingGreaterOrEqualThanSameOperand
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::GreaterEqualOp> {
-  ArithmeticFoldingGreatherOrEqualThanSameOperand(MLIRContext *ctx)
+  ArithmeticFoldingGreaterOrEqualThanSameOperand(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 1) {}
   LogicalResult
   deviceAwareMatchAndRewrite(MO::GreaterEqualOp geOp,
@@ -3985,9 +3985,9 @@ struct ArithmeticFoldingGreatherOrEqualThanSameOperand
 };
 
 // >(x, x) -> bcast(false)
-struct ArithmeticFoldingGreatherThanSameOperand
+struct ArithmeticFoldingGreaterThanSameOperand
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::GreaterOp> {
-  ArithmeticFoldingGreatherThanSameOperand(MLIRContext *ctx)
+  ArithmeticFoldingGreaterThanSameOperand(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 1) {}
   LogicalResult
   deviceAwareMatchAndRewrite(MO::GreaterOp gtOp,
@@ -4721,8 +4721,8 @@ struct SymbolicOptimizationPass
       patterns.add<ArithmeticFoldingSubWithSame, ArithmeticFoldingMulWithZero,
                    ArithmeticFoldingPowByZero, ArithmeticFoldingMinOfMax,
                    ArithmeticFoldingMaxOfMin,
-                   ArithmeticFoldingGreatherOrEqualThanSameOperand,
-                   ArithmeticFoldingGreatherThanSameOperand,
+                   ArithmeticFoldingGreaterOrEqualThanSameOperand,
+                   ArithmeticFoldingGreaterThanSameOperand,
                    ArithmeticFoldingNotEqualSameOperand,
                    MathematicalSimplificationDivByDivToDivOfMul,
                    MathematicalSimplificationDivOfDivToDivByMul,

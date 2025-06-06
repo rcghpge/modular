@@ -393,7 +393,7 @@ void BufferCacheFreeList::flushToParent() {
       bufferCache_.freeCount_--;
       bufferCache_.freeSize_ -= curDesc->size_;
 
-      // Merge the block with sourrounding free blocks if possible and add it to
+      // Merge the block with surrounding free blocks if possible and add it to
       // the parent free list.
       curDesc->chunk_->mergeFreeBlockDesc(parent_, curDesc);
       curDesc = nextDesc;
@@ -543,7 +543,7 @@ void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
     if (deviceDescription_.empty()) {
       deviceDescription_ =
           (device().api() + "[" + llvm::Twine(device().id()) + "]").str();
-      // Print the intial information about this BufferCache.
+      // Print the initial information about this BufferCache.
       llvm::errs() << "##(" << deviceDescription_ << ":" << this
                    << ")##: buffer_cache(chunk_size: " << chunkSize_
                    << "; max_cache_size: " << maxCacheSize_

@@ -302,7 +302,7 @@ mo.graph @propagate_max_add_optimization<A, B -> D1, D2, D3, D4>
   kgen.param.declare expr3: si64 = <max(A, add(A, B))>
   kgen.param.declare expr4: si64 = <max(B, add(A, B))>
 
-  // NOTE: no A and B exist which fufill this rebind safely, but we just have it
+  // NOTE: no A and B exist which fulfill this rebind safely, but we just have it
   // to easily test the simplification of this MAX property.
   // CHECK-NEXT: [[V0:%.*]] = mo.rebind([[IN]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[add([[A]], [[B]]), 1], f32>
   // CHECK-NEXT: [[V1:%.*]] = mo.rebind([[IN]]) : !mo.tensor<[[[A]], [[B]]], f32> -> !mo.tensor<[add([[A]], [[B]]), 1], f32>
@@ -322,7 +322,7 @@ mo.graph @propagate_max_add_optimization<A, B -> D1, D2, D3, D4>
 // CHECK-SAME:  <[[D1:.*]]>() {
 mo.graph @update_param_declare_rhs<D1>() {
   // In cases like this, where we do some folding in the RHS of a
-  // `kgen.param.decalre`, we still want to update the RHS to the simplified
+  // `kgen.param.declare`, we still want to update the RHS to the simplified
   // version in the IR (not just in the evaluator during the pass).
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "test" : !kgen.string}, eq(:si64 [[D1]], 1))>

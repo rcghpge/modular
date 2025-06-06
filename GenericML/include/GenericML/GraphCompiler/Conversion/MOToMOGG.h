@@ -15,7 +15,7 @@
 
 // Need to include the dialects we use, which includes many KGEN ones. These
 // KGEN dialects are needed so we can load the LIT kernels to dynamically create
-// the list of avaliable MOGG operations.
+// the list of available MOGG operations.
 #include "KGEN/HLCFDialect/HLCFDialect.h"
 #include "KGEN/LITDialect/LITAttrs.h"
 #include "KGEN/LITDialect/LITDialect.h"

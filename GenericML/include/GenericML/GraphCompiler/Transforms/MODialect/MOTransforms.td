@@ -43,7 +43,7 @@ def InvokeShapePackingFunctions : Pass<"invoke-shape-packing-funcs", "GraphOp"> 
 
   let description = [{
     Attempts to process the fallback shape functions for packing operations.
-    Internally, this will call into a C++ re-implmentation of the shape
+    Internally, this will call into a C++ re-implementation of the shape
     calculations.
   }];
 
@@ -70,7 +70,7 @@ def MergeDuplicateShapeMaterializations : Pass<"merge-duplicate-shape-materializ
   let description = [{
     This pass goes through ops that implement the Staticization interface and
     ensures that only a single op of its type is operating on the same
-    operands, thus ensuring that multple shape parameters are not being
+    operands, thus ensuring that multiple shape parameters are not being
     constructed for the same value.
     Example:
     ```
@@ -412,7 +412,7 @@ def CanonicalizeChainSequences : Pass<"canonicalize-chain-sequences", "GraphOp">
 
     Even though `%buf0` and `%buf1` are entirely different mo.buffer values the
     fact that operations on them are ordered by the same sequence of chains
-    means the side-effecting operations on `%buf1` must unnecesarily wait for
+    means the side-effecting operations on `%buf1` must unnecessarily wait for
     the operations on `%buf1` to complete.
 
     This pass will try to take such sequences of chains and perform a series of

@@ -162,7 +162,7 @@ constexpr StringRef kOperationViaHostAttrName = "via_host";
 namespace Impl {
 /// Verify that ranks are either all static and match or all dynamic.
 LogicalResult verifyMatchingRanks(ArrayRef<TensorValue> values);
-/// Check compatiblity of shapes for the expression AB = C, supporting leading
+/// Check compatibility of shapes for the expression AB = C, supporting leading
 /// batch axes and dynamic ranks/dynamic shapes.
 LogicalResult checkMatmulCompatibility(Operation *op, TensorValue A,
                                        TensorValue B, TensorValue C);

@@ -320,7 +320,7 @@ static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
   return std::accumulate(rest.begin(), rest.end(), start, createBinop);
 }
 
-/// Convert the given KGEN::POC operation to the equvalent operation in
+/// Convert the given KGEN::POC operation to the equivalent operation in
 /// in the POP dialect. This function assumes that input/output types
 /// are !pop.scalar values.
 static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,

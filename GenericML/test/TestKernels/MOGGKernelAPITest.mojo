@@ -426,7 +426,7 @@ struct AddFuseLHS:
             ) + rebind[SIMD[z.dtype, width]](y.load[width](idx))
 
         # Wrapper to hide the foreach call from MOGGPreElab.
-        # Otherwhise it would still be detected as an elementwise kernel.
+        # Otherwise it would still be detected as an elementwise kernel.
         fn foo() raises:
             foreach[func](z)
 
@@ -450,7 +450,7 @@ struct AddFuseInputs:
             ) + rebind[SIMD[z.dtype, width]](y._fused_load[width](idx))
 
         # Wrapper to hide the foreach call from MOGGPreElab.
-        # Otherwhise it would still be detected as an elementwise kernel.
+        # Otherwise it would still be detected as an elementwise kernel.
         fn foo() raises:
             foreach[func](z)
 
@@ -607,7 +607,7 @@ struct VariadicAdd:
             return acc
 
         # Wrapper to hide the foreach call from MOGGPreElab.
-        # Otherwhise it would still be detected as an elementwise kernel.
+        # Otherwise it would still be detected as an elementwise kernel.
         fn foo() raises:
             foreach[func](output)
 

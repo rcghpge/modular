@@ -2,7 +2,7 @@
 
 //--- Test lowering of Index Primitives
 
-//--- index.constant will be tested throughtout the tests ---/
+//--- index.constant will be tested throughout the tests ---/
 
 // CHECK-LABEL: mgp.model @mip_add
 // CHECK: index.add

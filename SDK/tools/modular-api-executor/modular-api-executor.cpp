@@ -345,9 +345,9 @@ AnyAsyncValueRef getAsyncValue(ValuePtr value,
 class ModularExecutableModel final : public ExecutableModel {
 public:
   ModularExecutableModel(const ModularModel *model, Runtime &runtime,
-                         ModelPtr initalizedModel)
+                         ModelPtr initializedModel)
       : ExecutableModel(model, runtime),
-        initializedModel(std::move(initalizedModel)) {}
+        initializedModel(std::move(initializedModel)) {}
 
   ~ModularExecutableModel() override = default;
 

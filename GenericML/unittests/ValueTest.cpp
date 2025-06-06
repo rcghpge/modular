@@ -329,7 +329,7 @@ TEST_F(ValueTest, ResultConversionTest) {
 
   Dict dict;
 
-  // Reuse some of the tensors occuring in the list in the dictionary as well.
+  // Reuse some of the tensors occurring in the list in the dictionary as well.
   dict.getElements()[Variant(
       AsyncRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"))] =
       list.getElements()[0];

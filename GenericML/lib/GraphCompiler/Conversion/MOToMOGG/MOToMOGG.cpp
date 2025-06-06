@@ -43,7 +43,7 @@ bool opHasCompatibleTypes(Operation *op) {
     return MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
   };
 
-  // Returns true if a type is compatable with jit.
+  // Returns true if a type is compatible with jit.
   auto isShapeAllowed = [&](MO::TensorType tensorTy) {
     if (!tensorTy || !tensorTy.hasRank() || tensorTy.getRank() > kMaxRank ||
         tensorTy.hasUnknownShape())

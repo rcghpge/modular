@@ -476,7 +476,7 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
 ///
 /// allowParametricDenominator removes the `denominator != 0` check when
 /// parametric expressions are involved (e.g. [-1, X]). The default shape
-/// inference behavour is very pessimistic. It assumes that `X` might be `0`,
+/// inference behaviour is very pessimistic. It assumes that `X` might be `0`,
 /// which fails the check. This flag allows a more optimistic view where `X` is
 /// assumed to not be `0` (requires runtime assert to be guaranteed).
 ///

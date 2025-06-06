@@ -155,7 +155,7 @@ struct FuseAffineViewsPass
     // paramterization, but currently this function is only ever called with
     // output tensors so we just hard-code that in.
     //
-    // TODO: have a publicly accesible helper function to provide these
+    // TODO: have a publicly accessible helper function to provide these
     // constants
     parameterValues.push_back(builder.getBoolAttr(1));
     parameterValues.push_back(builder.getIndexAttr(0));

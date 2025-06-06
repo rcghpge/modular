@@ -17,7 +17,7 @@
 // In this way we have the convenience of first-class device attributes on
 // ops for use during lowering and MGP-level transformations, but have the
 // efficiency of direct dispatch to per-device label primitives without the
-// overhead of dealing with device lables at runtime.
+// overhead of dealing with device labels at runtime.
 //
 // Note that MGP has an `!mgp.chain` type which carries its device. For host
 // devices this is has the same runtime representation as for `!mef.chain`.
@@ -682,7 +682,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
     Given the runtimeSize and lifetime information for a list of allocations,
     returns the high watermark size and offsets for each allocation.
 
-    Alloc lifetimes are reprsented as the min/max pre/postorder indices of the
+    Alloc lifetimes are represented as the min/max pre/postorder indices of the
     uses of every allocation in the "dependency tree". An allocation A can reuse
     an allocation B if A.maxPre < B.minPre && A.minPost > B.maxPost.
     See MGPBufferLifetimeAnalysis.h for details.

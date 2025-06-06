@@ -165,7 +165,7 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
       if (auto [_, inserted] = worklistHistory.insert(value); inserted)
         worklist.push_back(value);
     };
-    // Intialize the worklist
+    // Initialize the worklist
     for (auto [value, _] : valueToInferredLayout)
       tryPushOntoWorklist(value);
 

@@ -30,7 +30,7 @@ MO to carve out special exceptions to its strongly typed nature to deal with
 also inconsistent with itself!
 
 RMO handles all of these unknown types, and allows MO to maintain its
-stronly-typed stance.
+strongly-typed stance.
 
 ### Main Design Points
 
@@ -64,7 +64,7 @@ ensure long-tail coverage of user models.
 MO will initially focus purely on value semantics (all ops look like
 `return_value = op(input_values...)`), and use explicit broadcasting for
 backend lowering simplicity. In the long run, we expect to rebase this into
-numpy-like implict broadcasting for alignment with the rest of the kernel
+numpy-like implicit broadcasting for alignment with the rest of the kernel
 libraries and framework frontends.
 
 ### Type System

@@ -843,7 +843,7 @@ struct PropagateShapes {
     DenseSet<int32_t> dataDepInputIdxs;
     for (int32_t idx : op.getDataDependentInputIndices()) {
       ASSERT_STREAM(0 <= idx && uint32_t(idx) < op->getNumOperands(),
-                    << "data depedent input index must be in bound");
+                    << "data dependent input index must be in bound");
       dataDepInputIdxs.insert(idx);
     }
 

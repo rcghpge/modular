@@ -495,7 +495,7 @@ private:
 /// A dense, backwards dataflow analysis to find ops which, though liftable,
 /// must also be 'left behind' in the 'execute' block by cloning. The op must
 /// be cloned if it is i) liftable, and ii) its results cannot be conveyed via
-/// the !mgp.context or 'exceute' block args, and iii) any:
+/// the !mgp.context or 'execute' block args, and iii) any:
 ///  - it provides operands to an unliftable op
 ///  - it provides operands to an op already considered needing to be cloned
 ///    by this analysis.

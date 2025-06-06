@@ -234,7 +234,7 @@ private:
   /// Source manager needed for parsing.
   std::shared_ptr<llvm::SourceMgr> sourceMgr;
 
-  /// Cached value that results from hasing the Mojo module.
+  /// Cached value that results from hashing the Mojo module.
   mutable std::string kgenModuleHash;
 };
 

@@ -298,7 +298,7 @@ private:
       "minimum-cpu-alignment",
       cl::desc(
           "The minimum byte alignment for all CPU-allocated buffers. Default "
-          "is 64 bytes for compatability with the stock TensorFlow runtime."),
+          "is 64 bytes for compatibility with the stock TensorFlow runtime."),
       llvm::cl::location(options.minimumCpuAlignment),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 

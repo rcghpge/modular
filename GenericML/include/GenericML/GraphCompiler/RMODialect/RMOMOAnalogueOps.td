@@ -264,7 +264,7 @@ def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu"> {
 def RMO_MOLogOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log"> {
   let summary = "Natural logarithm operation";
   let description = [{
-    Returns the natural logorithm, `log(x)`.
+    Returns the natural logarithm, `log(x)`.
 
     Example:
 
@@ -291,7 +291,7 @@ def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log1p"> {
 }
 
 def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"logsoftmax"> {
-  let summary = "Logarighmic softmax operation";
+  let summary = "Logarithmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
 
@@ -978,7 +978,7 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
     0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    Convolution, dim1 here repesents H and dim2 represents W. In python like
+    Convolution, dim1 here represents H and dim2 represents W. In python like
     syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
 
     ```python
@@ -1067,7 +1067,7 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
     0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    ConvTranspose, dim1 here repesents H_out and dim2 represents W_out. In
+    ConvTranspose, dim1 here represents H_out and dim2 represents W_out. In
     python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
     yield:
 
@@ -1167,7 +1167,7 @@ def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -1217,7 +1217,7 @@ def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -1267,7 +1267,7 @@ def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -1308,7 +1308,7 @@ def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
     corresponding dimensions of the input (after ignoring the batch and channel dimensions),
     with padding representing a before/after pair for each axis. The padding values
     are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here repesents H and dim2 represents W.
+    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
 
     This op currently only supports strides and dilations on the filter.
 
@@ -2038,7 +2038,7 @@ def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part",
   let description = [{
     Copies a tensor setting everything outside central (diagonal) band of the
     matrices to zero, where all but the last two axes are effectively batches,
-    and the last two axes define sub matricies.
+    and the last two axes define sub matrices.
 
     Assumes the input has dimensions [I, J, ..., M, N], then the output tensor
     has the same shape as the input, and the values values are given by
@@ -2054,7 +2054,7 @@ def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part",
     to zero while the elements outside the band are copied to the output tensor.
 
     Please explicitly note that with negative values, this kernel returns the
-    entire lower or uppper triangle of the matrix, and otherwise returns
+    entire lower or upper triangle of the matrix, and otherwise returns
     a diagonal band around the main diagonal of the matrix.
 
     Example:
@@ -2656,7 +2656,7 @@ def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
     then the first element is excluded. The `reverse` attribute causes the
     summation to be done in the opposite direction of the axis.
 
-    The value of `axis` follows numpy sematics, e.g., -1 represents the last
+    The value of `axis` follows numpy semantics, e.g., -1 represents the last
     axis.
 
     Example of outputs:

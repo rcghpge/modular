@@ -1562,8 +1562,8 @@ void MORoiAlignOp::inferMOTypesImpl(
       2, rois.getType().getDtype(), graphOp, roisParamDecls, dev));
   moInputParamDecls.push_back(std::move(roisParamDecls));
 
-  // `ouput_height` / `output_width` / `spatial_case` / `sampling_ratio` must be
-  // scalars.
+  // `output_height` / `output_width` / `spatial_case` / `sampling_ratio` must
+  // be scalars.
   moOperandTypes.push_back(
       outputHeight.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
@@ -1704,7 +1704,7 @@ void RMO::inferMOTypesScatterNdImpl(
   DeviceRefAttr dev = input.getType().getDeviceRef();
   if (!inOutTy.hasRank() && rmoResults.has_value()) {
     // TODO: Is it possible to do refineShape(inputTy, outputTy) here ?
-    // It doesn't work when outputTy has param declatations.
+    // It doesn't work when outputTy has param declarations.
     TensorType outputTy = cast<TensorType>((*rmoResults)[0].getType());
     if (outputTy.hasRank())
       inOutTy = getRankedParamTensorType(outputTy.getRank(), inOutTy.getDtype(),

@@ -117,7 +117,7 @@ struct Fallback<MO::CustomOp> {
 };
 
 // Eventually all ops must be accounted for here. They either must have a
-// fallback or an explict vouch that they need no fallback.
+// fallback or an explicit vouch that they need no fallback.
 NEEDS_NO_FALLBACK(MO::MatmulOp)
 NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 

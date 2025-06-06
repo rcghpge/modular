@@ -3,7 +3,7 @@
 // NOTE: Keep the tests grouped by op, and the order of ops alphabetical.
 
 //===----------------------------------------------------------------------===//
-// Static_BrodcastToOp
+// Static_BroadcastToOp
 //===----------------------------------------------------------------------===//
 
 // CHECK: mo.graph @static_broadcast_to<[[N:.*]]>(%[[FROM:.*]]: !mo.tensor<[[[N]], 3], f32>) -> !mo.tensor<[2, [[N]], 3], f32> {
@@ -58,7 +58,7 @@ mo.graph @static_broadcast_fold_consecutive_broadcast(%from: !mo.tensor<[3, 1], 
 mo.graph @static_broadcast_no_fold_differing_metadata<D0>(
   %input: !mo.tensor<[D0, 3], f32>
 ) -> !mo.tensor<[D0, 3], f32, {layout = #mo.layout<NHWC>}> {
-  // Such pattern could show up from this sequence of passses
+  // Such pattern could show up from this sequence of passes
   // 1. InferLayouts
   // 2. SymbolicizeFallbackShapeFunctions
   // 3. PropagateShapes

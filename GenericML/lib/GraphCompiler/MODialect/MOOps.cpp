@@ -1303,7 +1303,7 @@ namespace {
 struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
   using OpRewritePattern<WhileOp>::OpRewritePattern;
 
-  /// Can the given value to the terminator op be simplifed if it appears as
+  /// Can the given value to the terminator op be simplified if it appears as
   /// the index'th operand to the terminator.
   static bool canSimplifyValue(Value val, Value initVal, Block *block,
                                unsigned index) {

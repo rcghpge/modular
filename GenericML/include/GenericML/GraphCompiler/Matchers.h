@@ -56,7 +56,7 @@ public:
     stack.push_back(stringifyMLIRObject(val));
   }
   // Pop back to a fork if a particular fork was
-  // sucessful, not as interesting to look at
+  // successful, not as interesting to look at
   template <typename T>
   void pop(T &&val) {
     auto string = stringifyMLIRObject(val);
@@ -265,7 +265,7 @@ struct Capture {
   bool match(T op, Logger *log = nullptr) {
     if (!matcher.match(op, log))
       return false;
-    // Don't log a sucessful capture, it was already
+    // Don't log a successful capture, it was already
     // logged in the match. May revisit in the future
     bindDest = op;
     return true;

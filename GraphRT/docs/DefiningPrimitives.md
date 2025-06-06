@@ -470,7 +470,7 @@ This could be (incorrectly!) implemented with primitives like this:
 
 ```c++
 static MyAcceleratorType *allocate_thing() {
-  return new MyCoolAccelaratorThing(...);
+  return new MyCoolAcceleratorThing(...);
 }
 static void deallocate_thing(MyAcceleratorType *coolThing) {
   delete coolThing;

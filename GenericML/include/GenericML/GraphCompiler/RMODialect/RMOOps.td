@@ -562,7 +562,7 @@ def RMO_ConvOp : RMO_Op<"conv", [
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
     0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    Convolution, dim1 here repesents H and dim2 represents W. In python like
+    Convolution, dim1 here represents H and dim2 represents W. In python like
     syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
 
     ```python
@@ -647,7 +647,7 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
     The padding values are expected to take the form (pad_dim1_before,
     pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
     0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    ConvTranspose, dim1 here repesents H_out and dim2 represents W_out. In
+    ConvTranspose, dim1 here represents H_out and dim2 represents W_out. In
     python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
     yield:
 

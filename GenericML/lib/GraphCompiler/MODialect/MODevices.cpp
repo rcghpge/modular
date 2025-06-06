@@ -135,7 +135,7 @@ Operation *DeviceAnnots::stampAny(Operation *op) const {
                                         device);
   }
   // If the op does not support device annotations then we'll just ignore
-  // the annotation and trust the AssingDevicesPass will check everything is
+  // the annotation and trust the AssignDevicesPass will check everything is
   // consistent.
   return op;
 }

@@ -199,7 +199,7 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 
   llvm::SmallVector<AnyAsyncValueRef> deviceContexts;
   for (const auto &devRef : deviceRefs) {
-    // CPU device not explicity yet so deviceMap["cpu"] may be null
+    // CPU device not explicitly set so deviceMap["cpu"] may be null
     if (devRef.label == kCPULabel) {
       ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create("cpu", 0));
       deviceContexts.push_back(

@@ -519,7 +519,7 @@ struct BatchMatmulAdjBPattern
       // Take the non-transposed weight.
       op.setOperand(1, weight);
 
-      // Mark this matmul as being a tranposed kernel.
+      // Mark this matmul as being a transposed kernel.
       op.setTransposeBAttr(rewriter.getBoolAttr(true));
     });
 
@@ -2107,8 +2107,8 @@ struct MultiHeadAttentionPattern
   // transpose.
   struct TransposeTensorHelper {
     static TensorValue backwardGetBSHDTensor(
-        // indices for a tranpose operator to move the layout of `start` to BSHD
-        // e.g. {0, 2, 1, 3} implies `start` is BHSD
+        // indices for a transpose operator to move the layout of `start` to
+        // BSHD e.g. {0, 2, 1, 3} implies `start` is BHSD
         ArrayRef<int64_t> transposeToBSHD, TensorValue start,
         DeviceAwareRewriter &rewriter, GraphOp graphOp) {
       // Stores all tensor types from intermediate reshapes/broadcasts.
@@ -2435,7 +2435,7 @@ struct MultiHeadAttentionPattern
     // This is a bit odd and may be a good target of spring cleaning to see
     // if we need this anymore.
     auto finalTranspose = dyn_cast<TransposeOp>(curOp);
-    auto tranposeIsStaticallyWrong = [&]() {
+    auto transposeIsStaticallyWrong = [&]() {
       ArrayRef<TypedAttr> transposeShapeAttr =
           finalTranspose.getType().getTypedShapeAttr().getValues();
       ArrayRef<TypedAttr> finalResultShapeAttr =
@@ -2449,7 +2449,7 @@ struct MultiHeadAttentionPattern
                           });
     };
 
-    if (finalTranspose && !tranposeIsStaticallyWrong() && oneUseBMM) {
+    if (finalTranspose && !transposeIsStaticallyWrong() && oneUseBMM) {
       // The idea is we now have a chain of ops like
       // *rootOp (BHSD) --> *bcast/reshape --> *bcast/reshape
       //                --> transpose (BSHD)
@@ -2460,7 +2460,7 @@ struct MultiHeadAttentionPattern
 
       // Runtime Check 1: make sure all the ops in `oneUseOps` have the same
       // shape. This guarantees the bcasts/reshapes we collected do nothing.
-      // Note we allow the ellision of batch dimension still.
+      // Note we allow the elision of batch dimension still.
       TypedAttr targetShape = ShapeAttr::get(
           TransposeTensorHelper::getRank4Dims(rootOp.getResult(), rewriter),
           MOSH::ShapeType::get(rewriter.getContext()));

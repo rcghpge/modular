@@ -798,7 +798,7 @@ struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
     auto graphOp = op->getParentOfType<MO::GraphOp>();
     Location loc = op->getLoc();
 
-    // Let's decompse the sigmoid operation into RMO analogue operations to
+    // Let's decompose the sigmoid operation into RMO analogue operations to
     // perform this calculation:
     //
     // 1/(1+e^-x)

@@ -146,7 +146,7 @@ def MOGG_OutputOp
   let summary = "MOGG output operation";
   let description = [{
     The "mogg.output" operation specifies the output values for a region in a
-    MOGG operation. It is intendend to allow the regions of mogg operations to
+    MOGG operation. It is intended to allow the regions of mogg operations to
     grow in complexity with specific outputs.
 
     ```mlir
@@ -744,7 +744,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     }
   }];
 
-  // This should set all attribuets including MO_HasDeviceInterface
+  // This should set all attributes including MO_HasDeviceInterface
   let builders = [
     OpBuilder<(ins
       "TypeRange":$results,
@@ -989,7 +989,7 @@ def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
     Each result of this op is an opaque object.
     It represents the outputs of a kernel call.
     This op does a stack allocation for the outputs of the kernel.
-    The data is unitialized, and will be filled by the kernel.
+    The data is uninitialized, and will be filled by the kernel.
 
     Example:
     ```mlir
@@ -1341,7 +1341,7 @@ def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
     This is a placeholder for each input/output buffer's alignment parameter.
     All allocations and alignment becomes concrete in MGP. This placeholder
     associates a value operand and the param for alignment, so that information
-    about the input value and the parameter can be assosciated when the
+    about the input value and the parameter can be associated when the
     alignment is known.
 
     This must resolve to a `kgen.param_declare` with the specified name.

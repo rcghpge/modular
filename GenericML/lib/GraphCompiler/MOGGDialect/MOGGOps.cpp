@@ -167,7 +167,7 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   // The split can only be accessed once it's safe to access the inputs. Though
-  // fine to perfom the actual split.
+  // fine to perform the actual split.
   Value guardChain =
       opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
 
@@ -1902,10 +1902,10 @@ static LogicalResult verifyKernelSetParam(KernelOp kernel) {
           return llvm::all_of(
               resType.getTypedShapeAttr().getValues(),
               [&](mlir::TypedAttr dim) {
-                auto symblicDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
-                if (!symblicDim)
+                auto symbolicDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
+                if (!symbolicDim)
                   return true;
-                return symbolicDimSet.contains(symblicDim.getName());
+                return symbolicDimSet.contains(symbolicDim.getName());
               });
         }))
       return mlir::emitError(outputPlaceholder->getLoc(),

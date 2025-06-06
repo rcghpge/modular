@@ -75,7 +75,7 @@ SmallVector<MO::ConstantOp> tryGetConstantOpsOfRank(TensorValue val,
 
 /// If `val` is defined by a ConstantOp, RebindOp, ConcatOp, ReshapeOp or
 /// unrealized conversion (that takes in a ConstantOp with given rank),
-/// convert it to an vector of specificed type, else return None.
+/// convert it to an vector of specified type, else return None.
 template <typename T>
 static std::optional<SmallVector<T>> tryGetConstantOfRank(TensorValue val,
                                                           size_t rank) {

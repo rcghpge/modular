@@ -220,7 +220,7 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
           idx += listSize;
 
         // We must set the output this way because
-        // (1). list can contain arbitray types of values, so we can't put a
+        // (1). list can contain arbitrary types of values, so we can't put a
         // single type into `Result<...>`> (2). we want to share the
         // underlying value as `AsyncValueRef` to avoid deep copying expensive
         // objects like `Tensor`.

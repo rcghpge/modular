@@ -471,7 +471,7 @@ def MGP_ListGetOp : MGP_Op<"list.get", [
 ]> {
   let summary = "List get Operation.";
   let description = [{
-    Retrive the element at given (base zero) index of the list. The index can be
+    Retrieve the element at given (base zero) index of the list. The index can be
     negative, with numpy indexing semantics, i.e., `-1` means the last element,
     `-2` means the second to last element, etc.
 

@@ -210,7 +210,7 @@ public:
     return result;
   }
 
-  /// Returns copy of set using only canonical Vs w.r.t. equivalance.
+  /// Returns copy of set using only canonical Vs w.r.t. equivalence.
   [[nodiscard]] Set toCanonicalForm(const Equivalence &equivalence,
                                     const Set &set) const {
     Set result(set.size());

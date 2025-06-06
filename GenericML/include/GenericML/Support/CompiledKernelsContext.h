@@ -113,7 +113,7 @@ struct CompiledKernelCall {
 //  - The underlying buffer of a TensorBufferRef (for
 //  `!mgp.buffer`s).
 //    The lifetime is managed by the C++ runtime, possibly my moving
-//    referencs into a sub-task closure.
+//    references into a sub-task closure.
 //  - A `CompiledKernelABI::ABIList*` (for `!mgp.list`s). The lifetime is
 //    managed by the `CompiledKernelCall`, and the called kernel shim is
 //    responsible for unmarshalling before returning.

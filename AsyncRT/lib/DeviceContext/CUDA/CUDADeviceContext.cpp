@@ -1116,7 +1116,7 @@ CUDADeviceContext::compileFunction_v2(StringRef ptx, StringRef debugLevel,
   // This call does not destroy state.
   CUDA_CHECK_ERR(driver_.LinkComplete(linkState, &cubin, &cubinSize));
 
-  // Copy cubin to a BufferRef so that the original one can be destoried
+  // Copy cubin to a BufferRef so that the original one can be destroyed
   // with the link state to avoid leaking memory.
   auto result = M::Buffer::get(StringRef((char *)cubin, cubinSize));
 

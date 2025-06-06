@@ -20,7 +20,7 @@ instead of locks.  As with AsyncRT, GraphRT is designed with full error
 propagation support.
 
 GraphRT is also compatible with "regions of synchronicity" for specialized
-situations that don't benefit from asyncronous designs.
+situations that don't benefit from asynchronous designs.
 
 ## Primitives: the ingredients of a GraphRT program
 

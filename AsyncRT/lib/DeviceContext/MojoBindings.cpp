@@ -44,7 +44,7 @@ const char *checkRef(const T **result, ErrorOr<R> errOr) {
     // pointer from Mojo.
     return strdup(errOr.getError());
   }
-  // Return the pointer, transfering the ownership to Mojo.
+  // Return the pointer, transferring the ownership to Mojo.
   *result = errOr.get().release();
   return nullptr;
 }

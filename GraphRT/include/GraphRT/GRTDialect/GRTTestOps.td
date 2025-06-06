@@ -39,7 +39,7 @@ def TestcaseOp : GRTOp<"testcase",
 
 def DebugPrintNumRefs : GRTOp<"debug.print_num_refs", [
     AllTypesMatch<["input", "result"]>]> {
-  let summary = "Prints the number of refereces to its operand, and returns "
+  let summary = "Prints the number of references to its operand, and returns "
                 "the operand.";
   let description = [{
     This op prints to stdout the number of references to its operand,

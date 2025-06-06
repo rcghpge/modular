@@ -152,7 +152,7 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
 
   let extraClassDeclaration = [{
      /// Return the tensor spec for tensor. If isShapeOnly is true, the tensor
-     /// spec will have an unkown dtype.
+     /// spec will have an unknown dtype.
      M::MGP::TensorSpecType getTensorSpec(bool isShapeOnly);
   }];
 }

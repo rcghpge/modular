@@ -31,7 +31,7 @@ mo.graph @sort_no_nested_region<D0, D1 -> out>(
 // CHECK-NEXT:    kgen.param.declare [[D3:.*]]: si64 = <add([[D1]], [[D2]])>
 // CHECK-NEXT:    %[[INPUT_RS:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]]], f32> -> !mo.tensor<[[[D2]], 768], f32>
 // CHECK-NEXT:    %[[RES:.*]] = mo.static.broadcast_to(%[[INPUT_RS]]) : !mo.tensor<[[[D2]], 768], f32> -> !mo.tensor<[[[D3]], 768], f32>
-// CHECK-NEXT:    %[[USUSED:.*]] = mo.relu(%[[RES]]) : !mo.tensor<[[[D3]], 768], f32>
+// CHECK-NEXT:    %[[UNUSED:.*]] = mo.relu(%[[RES]]) : !mo.tensor<[[[D3]], 768], f32>
 //
 // CHECK-NEXT:    mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]], 768], f32>
 // CHECK-NEXT: }
@@ -92,7 +92,7 @@ mo.graph @sort_with_nested_region<D0, D1>(
 // CHECK-NEXT: }
 
 // mogg.kernel regions are not graph regions, meaning order matters. topo
-// sort shoudl not sort these regions.
+// sort should not sort these regions.
 
 // CHECK-LABEL: mo.graph @sort_with_nested_non_graph_region
 // CHECK: mogg.kernel

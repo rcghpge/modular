@@ -269,7 +269,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // After all lambda fusions we can inline the lambdas.
   pm.addPass(MOGG::createInlineLambdas({kernelLibraryPaths}));
 
-  // Convert output lambdas to compute output lambdas whn possible.
+  // Convert output lambdas to compute output lambdas when possible.
   if (opts.enableComputeLambdas) {
     pm.addPass(MOGG::createGenerateComputeLambdas({kernelLibraryPaths}));
   }

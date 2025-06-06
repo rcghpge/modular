@@ -141,7 +141,7 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
     non-view kernel, and fuses the body lambda of the former into that of the
     consumer kernel.
   }];
-  // Balloons due to dependency on MojoLibrarryAnalysis
+  // Balloons due to dependency on MojoLibraryAnalysis
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -171,7 +171,7 @@ def FuseProloguesEpilogues: Pass<"fuse-prologues-epilogues", "MO::GraphOp"> {
     kernel. I.E fused directly into a matmul output loop.
   }];
 
-  // Balloons due to dependency on MojoLibrarryAnalysis
+  // Balloons due to dependency on MojoLibraryAnalysis
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
@@ -228,7 +228,7 @@ def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
     Note that this also disables fusion because the lambda hooks will be inlined
     and erased.
   }];
-  // Balloons due to dependency on MojoLibrarryAnalysis
+  // Balloons due to dependency on MojoLibraryAnalysis
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",

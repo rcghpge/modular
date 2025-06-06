@@ -37,7 +37,7 @@ nb::object core::processTensorResult(TensorPtr outTensor) {
   M_Dtype type = M_getTensorType(outTensor.get());
   size_t outputTensorSizeInBytes = M_sizeOf(type) * numElements;
   const void *outTensorSrcBuffer = M_getTensorData(outTensor.get());
-  // `outTensorDestBuffer` is the underlying buffer backing the ouput tensor
+  // `outTensorDestBuffer` is the underlying buffer backing the output tensor
   //  returned to Python. This will be garbage collected by Python as per
   // usual.
   void *outTensorDestBuffer = ::operator new(outputTensorSizeInBytes);

@@ -200,9 +200,9 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
   };
 
   const int copyLengths[] = {0, 256, 1024 * 1024};
-  const int numCopyLenghts = 3;
+  const int numCopyLengths = 3;
 
-  for (int i = 0; i < numCopyLenghts; i++) {
+  for (int i = 0; i < numCopyLengths; i++) {
     int allocLen = copyLengths[i];
 
     ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf, ctx->enqueueCreateBuffer(0));

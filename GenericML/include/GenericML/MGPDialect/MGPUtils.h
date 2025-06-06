@@ -30,7 +30,7 @@ TypedValue<MGP::ContextType> getContextForBlock(Block *block);
 
 /// Returns the !mef.chain representing the 'root' chain for block, which can
 /// be found from:
-///  - a block argument, such as the first argument to the 'excecute' block,
+///  - a block argument, such as the first argument to the 'execute' block,
 ///    or a control flow sub-block.
 ///  - the result of a nullary grt.chain.create in the block, such as would be
 ///    found in the 'init' block.

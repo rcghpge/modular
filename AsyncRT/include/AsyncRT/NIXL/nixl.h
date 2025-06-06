@@ -253,7 +253,7 @@ public:
    *         After this, the transfer state can be checked asynchronously till
    * completion. In case of small transfers that are completed within the call,
    * return value will be NIXL_SUCCESS. Otherwise, the output status will be
-   * NIXL_IN_PROG until completion. Notification  message  can be preovided
+   * NIXL_IN_PROG until completion. Notification  message  can be provided
    * through the extra_params, and can be updated per re-post.
    *
    * @param  req_hndl      Transfer request handle obtained from

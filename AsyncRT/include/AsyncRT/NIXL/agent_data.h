@@ -57,7 +57,7 @@ private:
   backend_map_t backendEngines;
   std::array<backend_list_t, to_underlying(nixl_mem_t::COUNT)> memToBackend;
 
-  // Bookkeping for local connection metadata and user handles per backend
+  // Bookkeeping for local connection metadata and user handles per backend
   std::unordered_map<nixl_backend_t, nixlBackendH *> backendHandles;
   std::unordered_map<nixl_backend_t, nixl_blob_t> connMD;
 

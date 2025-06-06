@@ -65,7 +65,7 @@ def RMO_MOAnalogue : OpInterface<"MOAnalogue"> {
     "result respectively. If a new parameter is used more than once, it "
     "should be declared in the earliest operand/result only."
     "This method must always populate `mo*` fields with values which can "
-    "construct the analagous MO operation.",
+    "construct the analogous MO operation.",
 
       /*retTy=*/"void",
       /*methodName=*/"inferMOTypes",

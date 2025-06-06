@@ -73,7 +73,7 @@ struct FuseProloguesEpilogues
     moGraph.walk([&](MOGG::ExpKernelOp dst) {
       if (dst.getElemwiseBodyLambda())
         return;
-      // Do signed substraction to avoid integer underflow.
+      // Do signed subtraction to avoid integer underflow.
       int64_t numInputs = dst.getExecBody().getNumArguments();
       for (int64_t fusionIdx = numInputs - 1; fusionIdx >= 0; --fusionIdx) {
         auto inputLambda = dst.getBoundInputLambda(fusionIdx);
@@ -196,7 +196,7 @@ struct FuseProloguesEpilogues
         // Move in all src's kernel operands and arguments into dst's except for
         // the one that is being fused.
         //
-        // TODO: we probalby need to merge chain here.
+        // TODO: we probably need to merge chain here.
         Value srcFusionArgument;
         for (const auto [argument, operand] : llvm::reverse(llvm::zip_first(
                  src.getExecBody().getArguments(), src.getInputs()))) {
@@ -574,7 +574,7 @@ struct FuseProloguesEpilogues
   /// canonicalizer / verifier.
   llvm::BitVector canDoOutputFusion(MOGG::KernelOp kernel,
                                     ArrayAttr fusionInterface) {
-    // Unreachable: Ambigious what we should actually fuse. Previous passes
+    // Unreachable: Ambiguous what we should actually fuse. Previous passes
     // should have maintained 1:1 relationship of output to output interfaces.
     if (fusionInterface.size() != kernel.getNumResults())
       return llvm::BitVector();

@@ -105,7 +105,7 @@ private:
 /// Increment the count for a particular error code. This function will
 /// internally increment a session scoped counter and emit telemetry metrics for
 /// the error code. This function is useful if we want to count the error
-/// occurence but no associated error logs to emit along with it.
+/// occurrence but no associated error logs to emit along with it.
 template <MaxEngineErrorCode ErrorCode>
 void incrementTelemetryErrorCount(MaxEngineTelemetryContext &ctx) {
 #ifdef MODULAR_ENABLE_TELEMETRY
