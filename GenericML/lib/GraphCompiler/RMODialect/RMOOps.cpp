@@ -785,6 +785,7 @@ ConvOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
   MO::ShapeMaterializeResult result = MO::materializeConvShape(
       graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
       adaptor.getDilations(), adaptor.getPaddings(), adaptor.getNumGroupsAttr(),
+      adaptor.getInputLayoutAttr(),
       cast<MO::TensorType>(adaptor.getFilter().getType()).getLayoutAttr());
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
@@ -819,7 +820,7 @@ LogicalResult ConvTransposeOp::inferReturnTypes(
   MO::ShapeMaterializeResult result = MO::materializeConvTransposeShape(
       graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
       adaptor.getDilations(), adaptor.getPaddings(),
-      adaptor.getOutputPaddings(),
+      adaptor.getOutputPaddings(), adaptor.getInputLayoutAttr(),
       cast<MO::TensorType>(adaptor.getFilter().getType()).getLayoutAttr());
 
   return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,

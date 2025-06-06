@@ -1028,6 +1028,7 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
     MO_IndicesTensor:$dilations,
     MO_IndicesTensor:$paddings,
     MO_IndicesTensor:$num_groups,
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
@@ -1117,6 +1118,7 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
     MO_IndicesTensor:$dilations,
     MO_IndicesTensor:$paddings,
     MO_IndicesTensor:$output_paddings,
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);

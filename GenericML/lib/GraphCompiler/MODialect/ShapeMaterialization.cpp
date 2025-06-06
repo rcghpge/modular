@@ -108,9 +108,11 @@ ConvOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr dilations = inputAttrs[3];
   TypedAttr paddings = inputAttrs[4];
   TypedAttr numGroup = inputAttrs[5];
+  StringAttr inputLayout = getInputLayoutAttr();
   LayoutAttr filterLayout = getFilter().getType().getLayoutAttr();
   return materializeConvShape(graphOp, loc, inputShape, filterShape, strides,
-                              dilations, paddings, numGroup, filterLayout);
+                              dilations, paddings, numGroup, inputLayout,
+                              filterLayout);
 }
 
 //===----------------------------------------------------------------------===//
@@ -131,10 +133,11 @@ ConvTransposeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   TypedAttr dilations = inputAttrs[3];
   TypedAttr paddings = inputAttrs[4];
   TypedAttr outPaddings = inputAttrs[5];
+  StringAttr inputLayout = getInputLayoutAttr();
   LayoutAttr filterLayout = getFilter().getType().getLayoutAttr();
   return materializeConvTransposeShape(graphOp, loc, inputShape, filterShape,
                                        strides, dilations, paddings,
-                                       outPaddings, filterLayout);
+                                       outPaddings, inputLayout, filterLayout);
 }
 
 //===----------------------------------------------------------------------===//

@@ -938,6 +938,7 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
     ShapeAttr paddings = conv.getPaddings();
     ShapeAttr dilations = conv.getDilations();
     int64_t groups = conv.getNumGroups();
+    StringAttr inputLayout = conv.getInputLayoutAttr();
 
     auto resultType = conv.getType();
 
@@ -959,7 +960,7 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
 
     rewriter.replaceOpWithNewOp<RMO::MOConvOp>(
         conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
-        dilationsConstant, paddingConstant, groupsConstant,
+        dilationsConstant, paddingConstant, groupsConstant, inputLayout,
         rewriter.getStringAttr(""));
     return success();
   }
@@ -976,6 +977,7 @@ struct LowerConvTranspose : public OpRewritePattern<RMO::ConvTransposeOp> {
     ShapeAttr paddings = conv.getPaddings();
     ShapeAttr dilations = conv.getDilations();
     ShapeAttr outputPaddings = conv.getOutputPaddings();
+    StringAttr inputLayout = conv.getInputLayoutAttr();
 
     TensorType resultType = conv.getType();
 
@@ -999,7 +1001,7 @@ struct LowerConvTranspose : public OpRewritePattern<RMO::ConvTransposeOp> {
 
     rewriter.replaceOpWithNewOp<RMO::MOConvTransposeOp>(
         conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
-        dilationsConstant, paddingConstant, outputPaddingConstant,
+        dilationsConstant, paddingConstant, outputPaddingConstant, inputLayout,
         rewriter.getStringAttr(""));
     return success();
   }

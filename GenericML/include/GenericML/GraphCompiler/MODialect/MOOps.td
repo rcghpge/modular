@@ -2241,6 +2241,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
     MO_RankedScalarIndexTensor:$num_groups,
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
     MO_ParamDecls:$outputParamDecls
   );
@@ -2340,6 +2341,7 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     MO_ShapeLikeIfRanked:$dilations,
     MO_ShapeLikeIfRanked:$paddings,
     MO_ShapeLikeIfRanked:$output_paddings,
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout,
     DefaultValuedAttr<StrAttr, "">:$filter_layout,
     MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);

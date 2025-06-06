@@ -608,7 +608,8 @@ def RMO_ConvOp : RMO_Op<"conv", [
     KnownShapeAttr:$strides,
     KnownShapeAttr:$dilations,
     KnownShapeAttr:$paddings,
-    SI64Attr:$num_groups
+    SI64Attr:$num_groups,
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout
   );
 
   let results = (outs MO_KnownTensor:$result);
@@ -690,7 +691,8 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
     KnownShapeAttr:$strides,
     KnownShapeAttr:$dilations,
     KnownShapeAttr:$paddings,
-    KnownShapeAttr:$output_paddings
+    KnownShapeAttr:$output_paddings,
+    DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout
   );
 
   let results = (outs MO_KnownTensor:$result);

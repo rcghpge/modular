@@ -688,7 +688,8 @@ ShapeMaterializeResult
 materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
                      TypedAttr filterShapeAttr, TypedAttr stridesAttr,
                      TypedAttr dilationsAttr, TypedAttr paddingsAttr,
-                     TypedAttr numGroupsAttr, LayoutAttr filterLayoutAttr) {
+                     TypedAttr numGroupsAttr, StringAttr inputLayoutAttr,
+                     LayoutAttr filterLayoutAttr) {
   auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   auto filterShape = dyn_cast<ShapeAttr>(filterShapeAttr);
   auto strides = dyn_cast<ShapeAttr>(stridesAttr);
@@ -729,11 +730,13 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   // - input and output have layout [batch_size, ...spatial_dims...,
   //   input_channels]
   // - filter has layout [...spatial_dims..., filter_channels, output_channels]
+  bool isNCHW = inputLayoutAttr == "NCHW";
   bool isFCRS = filterLayoutAttr && filterLayoutAttr.getFormat() == "FCRS";
   size_t filterChannelIdx = isFCRS ? 1 : inputRank - 2;
   size_t outputChannelIdx = isFCRS ? 0 : inputRank - 1;
+  size_t inputChannelIdx = isNCHW ? 1 : inputRank - 1;
   Var batchSize = b.createVar(inputShape[0]);
-  Var inputChannels = b.createVar(inputShape[inputRank - 1]);
+  Var inputChannels = b.createVar(inputShape[inputChannelIdx]);
   Var filterChannels = b.createVar(filterShape[filterChannelIdx]);
   Var outputChannels = b.createVar(filterShape[outputChannelIdx]);
   Var numGroups = b.createVar(numGroupsAttr);
@@ -750,7 +753,7 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   SmallVector<TypedAttr> resDims;
   resDims.push_back(batchSize.getAttr());
   for (size_t axis = 0; axis < inputRank - 2; axis++) {
-    Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
+    Var inputSpatialDim = b.createVar(inputShape[isNCHW ? axis + 2 : axis + 1]);
     Var filterSpatialDim = isFCRS ? b.createVar(filterShape[axis + 2])
                                   : b.createVar(filterShape[axis]);
     Var dilation = b.createVar(dilations[axis]);
@@ -776,7 +779,7 @@ ShapeMaterializeResult materializeConvTransposeShape(
     GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     TypedAttr filterShapeAttr, TypedAttr stridesAttr, TypedAttr dilationsAttr,
     TypedAttr paddingsAttr, TypedAttr outputPaddingsAttr,
-    LayoutAttr filterLayoutAttr) {
+    StringAttr inputLayoutAttr, LayoutAttr filterLayoutAttr) {
   auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   auto filterShape = dyn_cast<ShapeAttr>(filterShapeAttr);
   auto strides = dyn_cast<ShapeAttr>(stridesAttr);
@@ -822,11 +825,13 @@ ShapeMaterializeResult materializeConvTransposeShape(
   //
   // BUT since ConvTranspose is the inverse of Conv w.r.t. the input, the output
   // shape would have layout [batch_size, ...spatial_dims..., filter_channels]
+  bool isNCHW = inputLayoutAttr == "NCHW";
   bool isCFRS = filterLayoutAttr && filterLayoutAttr.getFormat() == "CFRS";
   size_t filterChannelIdx = isCFRS ? 1 : inputRank - 2;
   size_t outputChannelIdx = isCFRS ? 0 : inputRank - 1;
+  size_t inputChannelIdx = isNCHW ? 1 : inputRank - 1;
   Var batchSize = b.createVar(inputShape[0]);
-  Var inputChannels = b.createVar(inputShape[inputRank - 1]);
+  Var inputChannels = b.createVar(inputShape[inputChannelIdx]);
   Var filterChannels = b.createVar(filterShape[filterChannelIdx]);
   Var outputChannels = b.createVar(filterShape[outputChannelIdx]);
 
@@ -849,7 +854,7 @@ ShapeMaterializeResult materializeConvTransposeShape(
 
   // Compute and collect output spatial dimensions;
   for (size_t axis = 0; axis < inputRank - 2; axis++) {
-    Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
+    Var inputSpatialDim = b.createVar(inputShape[isNCHW ? axis + 2 : axis + 1]);
     Var filterSpatialDim = b.createVar(filterShape[isCFRS ? axis + 2 : axis]);
     Var dilation = b.createVar(dilations[axis]);
     Var stride = b.createVar(strides[axis]);
