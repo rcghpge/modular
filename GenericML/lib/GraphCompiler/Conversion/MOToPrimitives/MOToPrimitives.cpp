@@ -25,6 +25,9 @@
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/DialectResourceBlobManager.h"
 
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
+
 using namespace M;
 
 namespace M::MGP {
@@ -2277,12 +2280,53 @@ void MOToPrimitivesPass::getDependentDialects(DialectRegistry &registry) const {
 void MOToPrimitivesPass::runOnOperation() {
   ModuleOp theModule = getOperation();
 
-  // Convert each mo.graph into a mgp.model.
-  for (auto graphOp :
-       llvm::make_early_inc_range(theModule.getOps<MO::GraphOp>())) {
-    if (failed(MOGraphLowering(graphOp, compiledFrameworkLabel.getValue(),
-                               minimumCpuAlignment.getValue())
-                   .run()))
+  SmallVector<MO::GraphOp> graphOps =
+      llvm::to_vector(theModule.getOps<MO::GraphOp>());
+
+  DenseSet<MO::GraphOp> unprocessedGraphs;
+  llvm::StringMap<StringSet<>> graphDependencies;
+  for (auto graphOp : graphOps) {
+    unprocessedGraphs.insert(graphOp);
+    StringRef graphName = graphOp.getName();
+    auto &dependencies = graphDependencies[graphName];
+    graphOp.walk([&](MO::CallOp callOp) {
+      StringRef calleeName = callOp.getSymbol().getRootReference();
+      dependencies.insert(calleeName);
+    });
+  }
+
+  // Process graphs in dependency order until all graphs are processed
+  while (!unprocessedGraphs.empty()) {
+    size_t numUnprocessed = unprocessedGraphs.size();
+    // Iterate through unprocessed graphs, using early_inc_range to safely
+    // modify the container
+    for (auto graphOp : llvm::make_early_inc_range(unprocessedGraphs)) {
+      // Get dependencies for current graph
+      auto &dependencies = graphDependencies[graphOp.getName()];
+
+      // Check if any dependencies are still unprocessed
+      if (llvm::any_of(
+              dependencies, [&](llvm::StringMapEntry<std::nullopt_t> &dep) {
+                return llvm::find_if(unprocessedGraphs, [&](MO::GraphOp graph) {
+                         return graph.getName() == dep.first();
+                       }) != unprocessedGraphs.end();
+              }))
+        // Skip this graph if any dependencies are still unprocessed
+        continue;
+      else {
+        // All dependencies are processed, so we can convert this graph
+        // Convert each mo.graph into a mgp.model using MOGraphLowering
+        if (failed(MOGraphLowering(graphOp, compiledFrameworkLabel.getValue(),
+                                   minimumCpuAlignment.getValue())
+                       .run()))
+          return signalPassFailure();
+        // Remove the processed graph from unprocessed set
+        unprocessedGraphs.erase(graphOp);
+      }
+    }
+    // If no graphs were processed in this iteration, we have a circular
+    // dependency
+    if (numUnprocessed == unprocessedGraphs.size())
       return signalPassFailure();
   }
 }
