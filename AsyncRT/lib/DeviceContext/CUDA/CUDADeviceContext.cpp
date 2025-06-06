@@ -1280,6 +1280,11 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
       driver_.ModuleGetFunction(&function, module, functionName.data()),
       "function name: " + functionName.str());
 
+  CUDA_CHECK_ERR(driver_.FuncSetAttribute(
+      function,
+      CUfunction_attribute::FUNC_ATTRIBUTE_NON_PORTABLE_CLUSTER_SIZE_ALLOWED,
+      1));
+
   if (maxDynamicSharedBytes >= 0) {
     CUDA_CHECK_ERR(driver_.FuncSetAttribute(
         function,

@@ -72,6 +72,7 @@ enum class CUjit_option {
 
 enum class CUfunction_attribute {
   FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES = 8,
+  FUNC_ATTRIBUTE_NON_PORTABLE_CLUSTER_SIZE_ALLOWED = 14
 };
 
 enum class CUfunc_cache {
