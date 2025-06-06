@@ -261,7 +261,7 @@ private:
   unsigned requiredAlignment = 1;
 
   // These are the results that we are building up as we go.  At any point in
-  // time, any data in 'treeResult' is assumed to preceed any data in
+  // time, any data in 'treeResult' is assumed to precede any data in
   // 'dataResult'.
   ConcatenationTree treeResult;
   std::vector<uint8_t> dataResult;

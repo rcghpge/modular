@@ -5098,8 +5098,8 @@ def MO_BufferTransferOp : MO_DeviceAgnosticMutableOp<"buffer.transfer", [
 }
 
 
-// TODO(GEX-1292): Support paramterization interfaces for this op
-// Not currently an issue since paramterization for mo.buffer operands that are
+// TODO(GEX-1292): Support parameterization interfaces for this op
+// Not currently an issue since parameterization for mo.buffer operands that are
 // graph inputs works and this op will only be used in a pass where the shape
 // attr of the results of this op are derived from an existing mo.buffer value.
 def MO_BufferCreateOp : MO_Op<"buffer.create", [

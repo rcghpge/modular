@@ -332,7 +332,7 @@ number of operands that the primitive has.
 The primitive list that is following the Primitive Table contains all the
 primitives used in this invokable. Note that every invokable has a
 pseudo-primitive that is the single entry point to the rest of the primitives.
-Specifially, a pseudo-primitive defines registers for invokable arguments and a
+Specifically, a pseudo-primitive defines registers for invokable arguments and a
 pseudo-register that is conceptually used by primitives that take no arguments.
 
 The result registers specify the register values to return, and must align with

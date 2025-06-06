@@ -204,7 +204,7 @@ def RMO_EqualOp : RMO_PureBinaryComparisonOp<"equal", [Commutative]> {
 }
 
 def RMO_GreaterOp : RMO_PureBinaryComparisonOp<"greater"> {
-  let summary = "Flexible greate than comparison op";
+  let summary = "Flexible greater than comparison op";
   let description = [{
     A flexible binary elementwise greater than comparison operation with implicit broadcasting and implicit dtype promotion.
 

@@ -1513,7 +1513,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
 
     // TODO (#36567):
     // This following early exit is a bit of a hack used to
-    // avoid an infinite loop that can occur sometimes occure between
+    // avoid an infinite loop that can occur sometimes occur between
     // this pattern and the SwimViewOpThroughBinaryOpWithConstantSubtree
     // patterns
     if (op.getResult().hasOneUse()) {

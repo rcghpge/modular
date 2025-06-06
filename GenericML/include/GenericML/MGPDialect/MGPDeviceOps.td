@@ -174,7 +174,7 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load",
     constants will be associated with the runtime established in the given
     `!mgp.context` slot. A functions may be referenced by
     (module index, function index) in `mgp.generic.execute`, and constant
-    by (module index, constant index) in `mgp.buffer.contant.load`.
+    by (module index, constant index) in `mgp.buffer.constant.load`.
 
     There is no universal representation for device modules in the host C++
     runtime, each device type may use its own representation.

@@ -188,7 +188,7 @@ static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
   return success();
 }
 
-/// Helper to wite YAML with tensor result info.
+/// Helper to write YAML with tensor result info.
 static LogicalResult
 writeYamlToFile(const std::filesystem::path &yamlFilePath,
                 SmallVector<std::shared_ptr<ResultInfo>> &tensorResultsInfo) {

@@ -82,7 +82,7 @@ struct RemoveRedundantOperands
       for (OpOperand *toRemove : unUsedOrChainVec) {
         unsigned idx = toRemove->getOperandNumber();
 
-        // Check wether all chains has no use.
+        // Check whether all chains has no use.
         if (isa<MEF::ChainType>(toRemove->get().getType()))
           usedChain = usedChain || !regionOp->getResult(idx).use_empty();
 

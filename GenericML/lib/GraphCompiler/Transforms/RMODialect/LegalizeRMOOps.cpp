@@ -56,7 +56,7 @@ bool isCompatibleShape(TensorType a, TensorType b) {
 template <typename T>
 using ToTensorValueType = TensorValue;
 
-/// Convience function for promoting the dtype of a sequence of tensor values.
+/// Convenience function for promoting the dtype of a sequence of tensor values.
 template <typename... Tensors>
 static std::tuple<ToTensorValueType<Tensors>...>
 promoteDTypes(OpBuilder &builder, Location loc, DType targetDType,

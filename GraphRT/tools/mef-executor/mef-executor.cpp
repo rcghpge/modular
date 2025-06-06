@@ -151,7 +151,7 @@ runTestcases(SmallVectorImpl<GRTTestcase> &testcasesToExecute,
              const MEFExecutorCLOptions &options, MLIRContext *context) {
   // Create our execution context. Note that we limit the scope of this
   // context in order to ensure that the full runtime is torn-down before
-  // the mefFile is reset, since there may still be operatings outstanding.
+  // the mefFile is reset, since there may still be operations outstanding.
   ErrorOr<ContextRef> ctxOr =
       Init::createContext("mef-executor", Init::Options());
   if (ctxOr.isError())

@@ -152,7 +152,7 @@ struct FuseAffineViewsPass
 
     // Normally we would've found to the mogg.to_kgen op corresponding to the
     // tensor and read the tensor_io_type attr off of that to perform the
-    // paramterization, but currently this function is only ever called with
+    // parameterization, but currently this function is only ever called with
     // output tensors so we just hard-code that in.
     //
     // TODO: have a publicly accessible helper function to provide these

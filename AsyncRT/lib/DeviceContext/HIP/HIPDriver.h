@@ -79,7 +79,7 @@ enum class hipDeviceAttribute_t {
                                                         ///< Use cudaDeviceGetTexture1DLinearMaxWidth() instead on Cuda.
     hipDeviceAttributeMaxTexture1DMipmap,               ///< Maximum size of 1D mipmapped texture.
     hipDeviceAttributeMaxTexture2DWidth,                ///< Maximum dimension width of 2D texture.
-    hipDeviceAttributeMaxTexture2DHeight,               ///< Maximum dimension hight of 2D texture.
+    hipDeviceAttributeMaxTexture2DHeight,               ///< Maximum dimension height of 2D texture.
     hipDeviceAttributeMaxTexture2DGather,               ///< Maximum dimensions of 2D texture if gather operations  performed.
     hipDeviceAttributeMaxTexture2DLayered,              ///< Maximum dimensions of 2D layered texture.
     hipDeviceAttributeMaxTexture2DLinear,               ///< Maximum dimensions (width, height, pitch) of 2D textures bound to pitched memory.

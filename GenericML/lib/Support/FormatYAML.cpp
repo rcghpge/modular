@@ -101,7 +101,7 @@ static void fromYAML(llvm::yaml::IO &io, QuantTensorSpec &quantTensorSpec) {
   uint8_t quantDim = 0;
   io.mapOptional("quant_dim", quantDim, 0);
 
-  // The "params" field constains the optionally available vector of
+  // The "params" field contains the optionally available vector of
   // ScaleZeroPointPair.
   SmallVector<M::QuantSpec::ScaleZeroPointPair> scaleZeroPointPairs;
   io.mapOptional("params", scaleZeroPointPairs);
