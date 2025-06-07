@@ -2264,7 +2264,7 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  MO_SingleDeviceWithHostOperands<["strides", "dilations", "paddings", "output_paddings"]>,
 ]>{
   let summary = "Transposed convolution operation";
   let description = [{

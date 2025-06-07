@@ -986,7 +986,8 @@ struct LowerConvTranspose : public OpRewritePattern<RMO::ConvTransposeOp> {
         promoteDTypes(rewriter, conv.getLoc(), resultType.getDtype(),
                       conv.getInput(), conv.getFilter());
 
-    DeviceRefAttr device = promotedInput.getType().getDeviceRef();
+    // DeviceRefAttr device = promotedInput.getType().getDeviceRef();
+    auto device = getHostDevice(conv.getContext());
     TensorValue stridesConstant =
         shapeToIndicesTensor(rewriter, loc, strides, device);
 
