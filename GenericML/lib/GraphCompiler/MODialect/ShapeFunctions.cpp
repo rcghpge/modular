@@ -827,8 +827,8 @@ ShapeMaterializeResult materializeConvTransposeShape(
   // shape would have layout [batch_size, ...spatial_dims..., filter_channels]
   bool isNCHW = inputLayoutAttr == "NCHW";
   bool isCFRS = filterLayoutAttr && filterLayoutAttr.getFormat() == "CFRS";
-  size_t filterChannelIdx = isCFRS ? 1 : inputRank - 2;
-  size_t outputChannelIdx = isCFRS ? 0 : inputRank - 1;
+  size_t filterChannelIdx = isCFRS ? 0 : inputRank - 1;
+  size_t outputChannelIdx = isCFRS ? 1 : inputRank - 2;
   size_t inputChannelIdx = isNCHW ? 1 : inputRank - 1;
   Var batchSize = b.createVar(inputShape[0]);
   Var inputChannels = b.createVar(inputShape[inputChannelIdx]);
@@ -836,12 +836,16 @@ ShapeMaterializeResult materializeConvTransposeShape(
   Var outputChannels = b.createVar(filterShape[outputChannelIdx]);
 
   // Check input and kernel channels.
-  b.createAssert(inputChannels == outputChannels,
-                 "[conv_transpose] requires input channel to match output "
+  b.createAssert(inputChannels == filterChannels,
+                 "[conv_transpose] requires input channel to match filter "
                  "channel in kernel");
 
   SmallVector<TypedAttr> resDims;
   resDims.push_back(batchSize.getAttr());
+
+  // Output has same layout input
+  if (isNCHW)
+    resDims.push_back(outputChannels.getAttr());
 
   // Compute a specific output spatial dimension.
   auto computeOutDim = [](const Var &inputDim, const Var &filterDim,
@@ -871,7 +875,9 @@ ShapeMaterializeResult materializeConvTransposeShape(
   }
 
   // Create output shape
-  resDims.push_back(filterChannels.getAttr());
+  if (!isNCHW)
+    resDims.push_back(outputChannels.getAttr());
+
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
