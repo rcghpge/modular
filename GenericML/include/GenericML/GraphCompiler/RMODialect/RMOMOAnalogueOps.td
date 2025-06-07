@@ -290,7 +290,7 @@ def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log1p"> {
   }];
 }
 
-def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"logsoftmax", [MO_HostOnly]> {
+def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"logsoftmax"> {
   let summary = "Logarithmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -749,8 +749,8 @@ def MO_MOArgMinOp : RMO_MOAnalogeArgMinMaxOp<"arg_min"> {
     }];
 }
 
-class RMO_MOAnaloguePureScatterOp<string name, list<Trait> traits = []> : RMO_MOAnaloguePureTensorOp<
-  name, traits # [AllDTypesMatch<["input", "updates", "result"]>]
+class RMO_MOAnaloguePureScatterOp<string name> : RMO_MOAnaloguePureTensorOp<
+  name, [AllDTypesMatch<["input", "updates", "result"]>]
 > {
 let arguments = (ins MO_Tensor:$input,
                        MO_NonScalarIfRanked:$updates,
@@ -847,7 +847,7 @@ def RMO_MOScatterAddOp : RMO_MOAnaloguePureScatterOp<"scatter.add"> {
   }];
 }
 
-def RMO_MOScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max", [MO_HostOnly]> {
+def RMO_MOScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max"> {
   let summary = "scatter-max operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -883,7 +883,7 @@ def RMO_MOScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max", [MO_HostOnly
   }];
 }
 
-def RMO_MOScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min", [MO_HostOnly]> {
+def RMO_MOScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min"> {
   let summary = "`scatter-min` operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -919,7 +919,7 @@ def RMO_MOScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min", [MO_HostOnly
   }];
 }
 
-def RMO_MOScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul", [MO_HostOnly]> {
+def RMO_MOScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
   let summary = "scatter-mul operation";
   let description = [{
     Produces an output tensor by scattering elements from updates to input
@@ -1042,7 +1042,7 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv">{
   }];
 }
 
-def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose", [MO_HostOnly]>{
+def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose">{
   let summary = "Transposed convolution operation";
   let description = [{
     This op effectively computes the gradient of a convolution with
@@ -1151,7 +1151,7 @@ class RMO_MOAnaloguePurePoolOp<string name, list<Trait> traits = []>
   }];
 }
 
-def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool", [MO_HostOnly]>{
+def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool">{
   let summary = "Average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -1201,7 +1201,7 @@ def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool", [MO_HostOnly]>{
     MO_ParamDecls:$outputParamDecls);
 }
 
-def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true", [MO_HostOnly]>{
+def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true">{
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
@@ -1251,7 +1251,7 @@ def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true", [M
     MO_ParamDecls:$outputParamDecls);
 }
 
-def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool", [MO_HostOnly]>{
+def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool">{
   let summary = "Maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -1292,7 +1292,7 @@ def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool", [MO_HostOnly]>{
   }];
 }
 
-def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true", [MO_HostOnly]>{
+def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true">{
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
@@ -1483,7 +1483,7 @@ def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range",
   }];
 }
 
-def RMO_MOResizeLinearOp : RMO_MOAnaloguePureTensorOp<"resize.linear", [MO_HostOnly]> {
+def RMO_MOResizeLinearOp : RMO_MOAnaloguePureTensorOp<"resize.linear"> {
   let summary = "Linear resize operation";
   let description = [{
     Resizes a tensor to a new shape using the linear algorithm.
@@ -1504,7 +1504,7 @@ def RMO_MOResizeLinearOp : RMO_MOAnaloguePureTensorOp<"resize.linear", [MO_HostO
 }
 
 
-def RMO_MOResizeNearestOp : RMO_MOAnaloguePureTensorOp<"resize.nearest", [MO_HostOnly]> {
+def RMO_MOResizeNearestOp : RMO_MOAnaloguePureTensorOp<"resize.nearest"> {
   let summary = "Nearest-neighbor resize operation";
   let description = [{
     Resizes a tensor to a new shape using the nearest-neighbor algorithm.
@@ -1856,7 +1856,7 @@ def RMO_MOTileOp : RMO_MOAnaloguePureTensorOp<"tile",
 }
 
 def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape",
-  [AllDTypesMatch<["input_shape", "result"]>, MO_HostOnly]> {
+  [AllDTypesMatch<["input_shape", "result"]>]> {
   let summary = "Squeeze-shape operation";
   let description = [{
     Calculates the shape from squeeze like operators. Given an input shape
@@ -1890,7 +1890,7 @@ def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape",
 }
 
 def RMO_MOUnsqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"unsqueeze_shape",
-  [AllDTypesMatch<["input_shape", "result"]>, MO_HostOnly]> {
+  [AllDTypesMatch<["input_shape", "result"]>]> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
     Calculates the shape from unsqueeze like operators. Given an input shape
@@ -2206,7 +2206,7 @@ def RMO_MOPadConstantOp : RMO_MOAnaloguePureTensorOp<"pad.constant",
 }
 
 def RMO_MOPadReflectOp : RMO_MOAnaloguePureTensorOp<"pad.reflect",
-  [AllDTypesMatch<["input", "result"]>, MO_HostOnly]> {
+  [AllDTypesMatch<["input", "result"]>]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
     Pads the `input` tensor by reflecting it according to the `paddings`.
@@ -2239,7 +2239,7 @@ def RMO_MOPadReflectOp : RMO_MOAnaloguePureTensorOp<"pad.reflect",
 }
 
 def RMO_MOPadRepeatOp : RMO_MOAnaloguePureTensorOp<"pad.repeat",
-  [AllDTypesMatch<["input", "result"]>, MO_HostOnly]> {
+  [AllDTypesMatch<["input", "result"]>]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
     Pads the `input` tensor by repeating border values according to `paddings`.
@@ -2322,7 +2322,7 @@ def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice",
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align", [MO_HostOnly]> {
+def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
   let summary = "ROI alignment operation";
   let description = [{
     ROI align consumes an input tensor and regions of interest in which to apply pooling.
@@ -2395,7 +2395,7 @@ def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal",
 }
 
 def RMO_MORandomUniformOp : RMO_MOAnaloguePureTensorOp<"random.uniform",
-  [AllDTypesMatch<["lowerBound", "upperBound", "result"]>, MO_HostOnly]> {
+  [AllDTypesMatch<["lowerBound", "upperBound", "result"]>]> {
   let summary = "Uniform distribution operation";
   let description = [{
     Returns a tensor with shape `shape` populated with random
@@ -2429,8 +2429,8 @@ def RMO_MORandomUniformOp : RMO_MOAnaloguePureTensorOp<"random.uniform",
   let results = (outs MO_Tensor:$result);
 }
 
-class RMO_MOAnaloguePureScatterNdOp<string name, list<Trait> traits = []> : RMO_MOAnaloguePureTensorOp<
-  name, traits # [AllDTypesMatch<["input", "updates", "result"]>]
+class RMO_MOAnaloguePureScatterNdOp<string name> : RMO_MOAnaloguePureTensorOp<
+  name, [AllDTypesMatch<["input", "updates", "result"]>]
 > {
 let arguments = (ins MO_Tensor:$input,
                        MO_NonScalarIfRanked:$updates,
@@ -2454,7 +2454,7 @@ let arguments = (ins MO_Tensor:$input,
   }];
 }
 
-def RMO_MOScatterNdOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd", [MO_HostOnly]> {
+def RMO_MOScatterNdOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd"> {
   let summary = "Multi-dimensional `scatter` operation";
   let description = [{
     Produces an output tensor by scattering slices from updates to input
@@ -2594,7 +2594,7 @@ def RMO_MOScatterNdMulOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.mul"> {
   }];
 }
 
-def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_suppression", [MO_HostOnly]> {
+def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_suppression"> {
   let summary = "Non-max suppression operation";
   let description = [{
    Filters out boxes that have high intersection-over-union (IOU).
@@ -2625,7 +2625,7 @@ def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_supp
   let results = (outs MO_IndicesTensor:$output);
 }
 
-def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero", [MO_HostOnly]> {
+def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero"> {
   let summary = "Nonzero-value indices operation";
   let description = [{
     Returns a tensor of coordinates of the nonzero values in the given tensor.
@@ -2647,10 +2647,8 @@ def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero", [MO_HostOnly]
   let results = (outs MO_I64Tensor:$result);
 }
 
-def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum", [
-  AllDTypesMatch<["input", "result"]>,
-  MO_HostOnly,
-]> {
+def RMO_MOCumSumOp: RMO_MOAnaloguePureTensorOp<"cumsum",
+  [AllDTypesMatch<["input", "result"]>]> {
   let summary = "Cumulative summation operation";
   let description = [{
     Returns the cumulative summation of input tensors along an axis. By default,
