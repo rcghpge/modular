@@ -573,8 +573,8 @@ BufferCache::BufferCache(const Device &device, Device::MemInfo memInfo,
       // Calculate the sizes for the BufferCache here based on defaults or the
       // environment.
       // Make the buffer cache disabled by setting percentages to zero.
-      // Limit to 99% (default) or 10% (bazel test) of available memory.
-      // TODO(GEX-1303): BufferCache is currently disabled to evaluate
+      // Limit to 95% (default) or 10% (bazel test) of available memory.
+      // TODO(GEX-1303): BufferCache is currently disabled to evaluate.
       maxCacheSize_(llvm::alignToPowerOf2(
           (memInfo.free *
            DeviceContext::configAsInt("buffer_cache_size_percent",
@@ -729,8 +729,7 @@ void BufferCache::enableUseMaxSize() {
 }
 
 void BufferCache::growChunkSizeTo(size_t newChunkSize) {
-  // Limit newChunkSize to available memory to not overflow beyond
-  // maxCacheSize_.
+  // Limit newChunkSize to fit overall cache size within maxCacheSize_.
   newChunkSize = std::min(
       newChunkSize, maxCacheSize_ -
                         // Avoid overflowing the subtraction by guarding
@@ -823,7 +822,8 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
     {
       std::lock_guard<std::mutex> lock(bufferCache_.mu_);
       if (size > bufferCache_.chunkSize_) {
-        // Check heuristics if chunk size should be updated:
+        // Check heuristics if chunk size should be updated.
+
         if (bufferCache_.chunks_ == nullptr) {
           // Heuristic: If the first allocation does overrun the chunk size,
           // then we override the "buffer_cache_chunk_percent" setting and
@@ -833,28 +833,25 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
           //
           // Avoid aggressive growth if running in Bazel to avoid consuming all
           // of memory of a GPU shared amongst multiple tests.
-          if (!bufferCache_.isBazelTest_) {
+          // Avoid aggressive growth if the allocation will not fit within the
+          // maximum buffer cache size to start.
+          if (!bufferCache_.isBazelTest_ &&
+              (size <= bufferCache_.maxCacheSize_)) {
             assert(bufferCache_.cacheSize_ == 0);
             BufferCache::enableUseMaxSize();
-            bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
-            bufferCache_.chunkSize_ = bufferCache_.maxCacheSize_;
           } else {
             if (bufferCache_.doLog_) {
               bufferCache_.logErr("allocate(" + TWINE(size) +
                                   ") - skip growChunkSizeTo()");
             }
           }
-        } else if (BufferCache::shouldUseMaxSize()) {
-          // Heuristic: Another buffer cache has determined that we should grow
-          // to the largest possible chunk size. Update the chunk size to all
-          // remaining memory for future chunk allocations.
-          bufferCache_.chunkSize_ = std::max(
-              bufferCache_.chunkSize_,
-              bufferCache_.maxCacheSize_ -
-                  // Avoid overflowing the subtraction by guarding
-                  // against cacheSize_ being larger than maxCacheSize_.
-                  std::min(bufferCache_.maxCacheSize_,
-                           bufferCache_.cacheSize_));
+        }
+
+        if (BufferCache::shouldUseMaxSize()) {
+          // Heuristic: The code above or another buffer cache has determined
+          // that we should grow to the largest possible chunk size. Update the
+          // chunk size to all remaining memory for future chunk allocations.
+          bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
         }
       }
 
