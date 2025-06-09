@@ -523,7 +523,7 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
 
     // Add other bespoke kgen params declared by the custom operator if they are
     // needed
-    for (const NamedAttribute &namedAttr : op->getAttrDictionary())
+    for (const NamedAttribute &namedAttr : op.getParameters())
       if (inputParamsNeeded.contains(namedAttr.getName()))
         kgenParams.emplace_back(namedAttr.getName(), namedAttr.getValue());
 

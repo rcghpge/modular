@@ -21,7 +21,11 @@ mo.graph @advanced_indexing_setitem() -> !mo.tensor<[2, 3, 4, 5], si32> {
   %index_tensor2 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1, 1], si32>
   %index_tensor2_bcast = mo.static.broadcast_to(%index_tensor2): !mo.tensor<[1, 1], si32> -> !mo.tensor<[3, 3], si32>
 
-  %out = mo.custom {symbol = "advanced_indexing_setitem", start_axis=2, device = #M.device_ref<"cpu", 0>} (%input_reshape, %data_bcast, %index_tensor1_bcast, %index_tensor2_bcast) : (
+  %out = mo.custom {
+    symbol = "advanced_indexing_setitem",
+    device = #M.device_ref<"cpu", 0>,
+    parameters = { start_axis = 2 }
+  } (%input_reshape, %data_bcast, %index_tensor1_bcast, %index_tensor2_bcast) : (
     !mo.tensor<[2, 3, 4, 5], si32>, !mo.tensor<[2, 3, 3, 3], si32>, !mo.tensor<[3, 3], si32>, !mo.tensor<[3, 3], si32>
   ) -> !mo.tensor<[2, 3, 4, 5], si32>
 

@@ -933,6 +933,10 @@ mo.graph @broadcast_partially_bound_params<A, B, C -> O1, O2, O3, O4, O5, O6>(
 // CHECK: mo.invoke_shape_func["custom_op_with_custom_parameter_shape_func"]
 // CHECK-SAME: kgenParams = {output_idx = 0 : index, test_flag = 0 : index}
 mo.graph @custom_shape_func<() -> O1, O2, O3, O4, O5>(%arg0: !mo.tensor<[5, 5, 5, 5, 5], f32>) -> !mo.tensor<[O1, O2, O3, O4, O5], f32> {
-  %0 = mo.custom<() -> A, B, C, D, E>{test_flag = 0 : index, symbol = "custom_op_with_custom_parameter_shape_func", device = #M.device_ref<"cpu", 0>}(%arg0) : (!mo.tensor<[5, 5, 5, 5, 5], f32>) -> !mo.tensor<[A, B, C, D, E], f32>
+  %0 = mo.custom<() -> A, B, C, D, E>{
+    symbol = "custom_op_with_custom_parameter_shape_func",
+    device = #M.device_ref<"cpu", 0>,
+    parameters = {test_flag = 0 : index}
+  }(%arg0) : (!mo.tensor<[5, 5, 5, 5, 5], f32>) -> !mo.tensor<[A, B, C, D, E], f32>
   mo.output<A, B, C, D, E> %0 : !mo.tensor<[A, B, C, D, E], f32>
 }

@@ -237,10 +237,42 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
                                        regRetTypeAttr, inputs, outputs);
 }
 
+static ErrorOr<NamedAttribute>
+getValidatedParameter(const NamedAttribute &attr) {
+  auto value = attr.getValue();
+
+  // Validate supported attribute types.
+  if (!isa<IntegerAttr, StringAttr, TypeAttr>(attr.getValue()))
+    return Error(llvm::formatv("Unsupported typed attribute {}: {}",
+                               attr.getName(), attr.getValue()));
+
+  // Convert TypeAttr to DTypeConstantAttr
+  if (auto typeAttr = dyn_cast<TypeAttr>(value)) {
+    auto typedTypeAttr = KGEN::DTypeConstantAttr::get(
+        typeAttr.getContext(), MO::getDTypeOrInvalid(typeAttr.getValue()));
+    value = typedTypeAttr;
+  }
+
+  return NamedAttribute(attr.getName(), value);
+}
+
 ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
   auto customOpOperationName =
       mlir::OperationName(MO::CustomOp::getOperationName(), moOp->getContext());
   SmallVector<NamedAttribute> forwardedParameters;
+
+  // Custom op is handled specially by parsing the parameters dictionary.
+  if (auto custom = dyn_cast<MO::CustomOp>(moOp)) {
+    for (NamedAttribute param : custom.getParameters()) {
+      if (ErrorOr<NamedAttribute> validated = getValidatedParameter(param))
+        return validated.takeError();
+      else
+        forwardedParameters.push_back(validated.takeValue());
+    }
+
+    return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
+  }
+
   for (auto param : moOp->getAttrDictionary()) {
     if (isa<M::DeviceRefAttr>(param.getValue()))
       continue;
@@ -249,18 +281,6 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
     if (param.getName() ==
         MO::CustomOp::getOutputParamDeclsAttrName(customOpOperationName)) {
       continue;
-    }
-
-    if (isa<MO::CustomOp>(moOp)) {
-      if (param.getName() ==
-          MO::CustomOp::getSymbolAttrName(customOpOperationName)) {
-        continue;
-      }
-
-      if (param.getName() ==
-          MO::CustomOp::getFunctionAttrName(customOpOperationName)) {
-        continue;
-      }
     }
 
     auto asTypeAttr = dyn_cast<TypeAttr>(param.getValue());
