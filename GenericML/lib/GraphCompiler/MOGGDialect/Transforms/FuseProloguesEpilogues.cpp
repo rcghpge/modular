@@ -217,9 +217,8 @@ struct FuseProloguesEpilogues
           rewriter.setInsertionPointAfter(outHolderOp);
           auto scratchPlaceholder =
               rewriter
-                  .create<MOGG::ScratchPlaceholdersOp>(
-                      outputLambda.getLoc(),
-                      outHolderOp->getResult(fusionIdx).getType())
+                  .create<MOGG::ScratchPlaceholdersOp>(outputLambda.getLoc(),
+                                                       outputLambda.getType())
                   .getResult(0);
           rewriter.setInsertionPointAfter(outputLambda);
           auto concretizeOp = rewriter.create<MOGG::ConcretizeTensorOp>(

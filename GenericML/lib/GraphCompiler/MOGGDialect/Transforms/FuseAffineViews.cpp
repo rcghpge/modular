@@ -55,11 +55,44 @@ struct FuseAffineViewsPass
     return true;
   }
 
+  static inline bool isFusibleNonElementwise(ExpKernelOp kernel) {
+    // Cannot be elementwise kernel, that is fused differently.
+    auto isElemwise = kernel.getElemwiseBodyLambda();
+    if (isElemwise)
+      return false;
+
+    return true;
+  }
+
   static inline bool isOutputFusibleNonElementwise(KernelOp kernel) {
     if (!isFusibleNonElementwise(kernel))
       return false;
 
     if (!kernel.getOutputFusionInterface().has_value())
+      return false;
+
+    // Output can only have one user.
+    Value result = kernel.getResult(0);
+    if (!result.hasOneUse())
+      return false;
+    Operation *user = *result.getUsers().begin();
+
+    // Only fuse within the same block and not across, i.e, control flow.
+    if (kernel->getBlock() != user->getBlock()) {
+      return false;
+    }
+
+    return true;
+  }
+
+  static inline bool isOutputFusibleNonElementwise(ExpKernelOp kernel) {
+    if (kernel->getNumResults() != 1)
+      return false;
+
+    if (!isFusibleNonElementwise(kernel))
+      return false;
+
+    if (!kernel.getBoundOutputLambda(0))
       return false;
 
     // Output can only have one user.
@@ -470,8 +503,87 @@ struct FuseAffineViewsPass
     viewOpUser.getResult().replaceAllUsesWith(result);
   }
 
+  // Support fusion for new-style kernels which go directly to KGEN ops
+  template <typename ViewOp>
+  void fuseViewOpDimKGEN(MOGG::ExpKernelOp kernel, ViewOp viewOpUser,
+                         Value result,
+                         MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                         TypeManager &typeManager) {
+    mlir::IRRewriter builder(kernel.getContext());
+
+    // Save the old output placeholder and associated type
+    OutputPlaceholdersOp oldOutputPlaceholder = kernel.getOutputPlaceholder();
+
+    // Create new output placeholder op which points to the new affine shape
+    MO::TensorType newOutputTensorType = viewOpUser.getResult().getType();
+    SmallVector<Type> newOutputPlaceHolderTy = {newOutputTensorType};
+    builder.setInsertionPoint(oldOutputPlaceholder);
+    OutputPlaceholdersOp newOutputPlaceholder =
+        builder.create<OutputPlaceholdersOp>(oldOutputPlaceholder->getLoc(),
+                                             newOutputPlaceHolderTy);
+
+    BindLambdaOp outputLambda = kernel.getBoundOutputLambda(0);
+    outputLambda->setOperand(0, newOutputPlaceholder.getResult(0));
+    Block &outputLambdaBody = outputLambda.getLambda().front();
+    auto outputOp = cast<MOGG::OutputOp>(outputLambdaBody.getTerminator());
+    auto indexValue = outputOp.getOperand(1);
+    auto indexValueType = cast<KGEN::POP::ArrayType>(indexValue.getType());
+    auto newIndexValueType = KGEN::POP::ArrayType::get(
+        viewOpUser.getType().getRank(), indexValueType.getElementType());
+
+    mlir::NamedAttrList parameters;
+    parameters.set("axis", viewOpUser.getAxisAttr());
+    SmallVector<Value> operands = {indexValue};
+    StringLiteral funcName = "";
+    Location loc = viewOpUser.getLoc();
+    if constexpr (std::is_same_v<ViewOp, MO::SplitDimOp>) {
+      TypedAttr axis =
+          viewOpUser.getType()
+              .getDims()[viewOpUser.getAxis().getLimitedValue() + 1];
+      operands.push_back(lowerDimToKGEN(loc, builder, axis));
+      funcName = Utils::SplitDimIndices;
+    } else if (std::is_same_v<ViewOp, MO::MergeDimOp>) {
+      TypedAttr axis =
+          viewOpUser.getInput()
+              .getType()
+              .getDims()[viewOpUser.getAxis().getLimitedValue() + 1];
+      operands.push_back(lowerDimToKGEN(loc, builder, axis));
+      funcName = Utils::MergeDimIndices;
+    } else if (std::is_same_v<ViewOp, MO::AddSingletonDimOp>) {
+      parameters.set("value", builder.getIndexAttr(0));
+      funcName = Utils::InsertIndex;
+    }
+    ASSERT_STREAM(!funcName.empty(), << "Unsupported affine view op");
+
+    builder.setInsertionPoint(outputOp);
+    auto newIndexValue =
+        builder
+            .create<MOGG::CallOp>(loc, TypeRange{newIndexValueType},
+                                  builder.getStringAttr(funcName), operands,
+                                  mlir::ArrayAttr{},
+                                  builder.getDictionaryAttr(parameters))
+            .getResult(0);
+    outputOp->setOperand(1, newIndexValue);
+
+    // Change graph level type of the mogg kernel op and replace the
+    // old view.
+    result.setType(newOutputTensorType);
+    viewOpUser.getResult().replaceAllUsesWith(result);
+  }
+
   template <typename ViewOp>
   void fuseViewOpDim(MOGG::KernelOp kernel, ViewOp viewOp, Value result,
+                     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                     TypeManager &typeManager) {
+    fuseViewOpDimKGEN(kernel, viewOp, result, mojoLibraryAnalysis, typeManager);
+
+    // construct the new summary string
+    SmallVector<Operation *> ops{kernel, viewOp};
+    kernel.setSummary(getSummaryString(ops, FusionType::HARD));
+  }
+
+  template <typename ViewOp>
+  void fuseViewOpDim(MOGG::ExpKernelOp kernel, ViewOp viewOp, Value result,
                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                      TypeManager &typeManager) {
     fuseViewOpDimKGEN(kernel, viewOp, result, mojoLibraryAnalysis, typeManager);
@@ -510,6 +622,30 @@ struct FuseAffineViewsPass
 
       auto graph = getOperation();
       graph.walk([&](MOGG::KernelOp kernel) {
+        // These fusions fuse `kernel` into users of the kernel for certain ops.
+        if (isOutputFusibleNonElementwise(kernel)) {
+          Value result = kernel.getResult(0);
+          Operation *user = *result.getUsers().begin();
+          if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user)) {
+            fuseViewOpDim(kernel, addDim, result, mojoLibraryAnalysis,
+                          typeManager);
+            opsToErase.push_back(user);
+          } else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user)) {
+            fuseViewOpDim(kernel, split, result, mojoLibraryAnalysis,
+                          typeManager);
+            opsToErase.push_back(user);
+          } else if (auto merge = dyn_cast_or_null<MO::MergeDimOp>(user)) {
+            fuseViewOpDim(kernel, merge, result, mojoLibraryAnalysis,
+                          typeManager);
+            opsToErase.push_back(user);
+          }
+        }
+
+        MOGG::addForwardDeclsOfReferencedFuncs(
+            kernel, kernel->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
+      });
+
+      graph.walk([&](MOGG::ExpKernelOp kernel) {
         // These fusions fuse `kernel` into users of the kernel for certain ops.
         if (isOutputFusibleNonElementwise(kernel)) {
           Value result = kernel.getResult(0);
