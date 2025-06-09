@@ -290,8 +290,7 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
     // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
     Value val = outputs[idx];
     auto moOpaqueTy = MO::OpaqueType::get(
-        kernel->getContext(),
-        StringAttr::get(kernel->getContext(), "OpaquePrimitive"), std::nullopt);
+        StringAttr::get(kernel->getContext(), "OpaquePrimitive"));
     val = builder.create<MOGG::ToMOGGOp>(loc, moOpaqueTy, val,
                                          *methodsDictAttrOr, isRegister);
     outputs[idx] = builder.create<MOGG::ToMGPFromOpaqueOp>(

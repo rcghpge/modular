@@ -7,7 +7,7 @@ mo.graph @opaque_type() {
 
 // -----
 
-mo.graph @opaque_type_metadata() {
+mo.graph @opaque_type_parameter() {
   %0 = "my_op"() : () -> !mo.opaque<"q4_0", {some_data = 8 : index}>
   mo.output
 }

@@ -938,6 +938,26 @@ TensorType M::MO::dynCastFromTensorLike(Type ty) {
 }
 
 //===----------------------------------------------------------------------===//
+// OpaqueType
+//===----------------------------------------------------------------------===//
+
+OpaqueType OpaqueType::get(MLIRContext *ctx, StringAttr symbol,
+                           DictionaryAttr parameters) {
+  if (!parameters)
+    parameters = DictionaryAttr::get(ctx);
+  return Base::get(ctx, symbol, parameters);
+}
+
+OpaqueType OpaqueType::get(StringAttr symbol) {
+  auto ctx = symbol.getContext();
+  return get(ctx, symbol, DictionaryAttr::get(ctx));
+}
+
+OpaqueType OpaqueType::get(StringAttr symbol, DictionaryAttr parameters) {
+  return get(symbol.getContext(), symbol, parameters);
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

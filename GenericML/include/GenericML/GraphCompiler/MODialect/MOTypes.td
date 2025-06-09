@@ -371,9 +371,21 @@ def MO_Opaque : MO_Type<"Opaque", "opaque"> {
       ```
   }];
 
-  let parameters = (ins "StringAttr" : $symbol,
-                        OptionalParameter<"std::optional<DictionaryAttr>"> : $metadata);
-  let assemblyFormat = "`<` $symbol (`,` $metadata^)? `>`";
+  let parameters = (ins
+    "StringAttr": $symbol,
+    DefaultValuedParameter<"::mlir::DictionaryAttr",
+                           "::mlir::DictionaryAttr::get($_ctxt)">:$parameters
+  );
+
+  let builders = [
+    TypeBuilder<(ins "StringAttr": $symbol, "DictionaryAttr": $parameters)>,
+    TypeBuilderWithInferredContext<(ins "StringAttr": $symbol)>,
+    TypeBuilderWithInferredContext<(ins "StringAttr": $symbol,
+                                        "DictionaryAttr": $parameters)>,
+  ];
+
+  let assemblyFormat = "`<` $symbol (`,` $parameters^)? `>`";
+  let skipDefaultBuilders = true;
 }
 
 //===----------------------------------------------------------------------===//
