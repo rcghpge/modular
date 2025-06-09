@@ -67,6 +67,68 @@ static std::optional<SmallVector<int>> getFusionIndices(KernelOp src,
   return indices;
 }
 
+static bool checkMutableKernelFusible(std::optional<Value> srcInChain,
+                                      std::optional<Value> srcOutChain,
+                                      std::optional<Value> dstInChain,
+                                      std::optional<Value> dstOutChain) {
+  LLVM_DEBUG({
+    if (dstInChain.has_value() || dstOutChain.has_value()) {
+      llvm::dbgs() << "  Destination kernel has ";
+      if (dstInChain.has_value() && dstOutChain.has_value())
+        llvm::dbgs() << "input and output chains\n";
+    }
+  });
+
+  if (srcInChain.has_value() && srcOutChain.has_value() &&
+      dstInChain.has_value() && dstOutChain.has_value()) {
+    LLVM_DEBUG(llvm::dbgs() << "  Both kernels have input and output chains\n");
+
+    // Ensure the input chain to dstKernel is output chain from srcKernel
+    if (*dstInChain != *srcOutChain) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "  FAILED: Chain mismatch - source output chain and "
+                        "destination input chain are different values\n";
+      });
+      return false;
+    }
+
+    // Ensure that dstKernel is the sole consumer of the output chain from
+    // srcKernel.
+    // Strictly speaking srcKernel having more than one consumer of
+    // its output chain would be UB when those consumers perform writes to
+    // mo.buffers -- skip fusion here to make the presence of that situation
+    // clearer.
+    if (!srcOutChain->hasOneUse()) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "  FAILED: Source output chain has multiple uses: "
+                     << std::distance(srcOutChain->getUses().begin(),
+                                      srcOutChain->getUses().end())
+                     << "\n";
+      });
+      return false;
+    }
+  }
+
+  // Ensure if the kernel has an input chain, it has only one use
+  // TODO(GEX-2105): This check is slightly stricter than it needs to be, as we
+  // kind of assume that the kernel in question potentially mutates all of its
+  // buffer operands.
+  if (dstInChain.has_value()) {
+    if (!dstInChain->hasOneUse()) {
+      LLVM_DEBUG({
+        llvm::dbgs() << "  FAILED: Destination input chain has multiple uses: "
+                     << std::distance(dstInChain->getUses().begin(),
+                                      dstInChain->getUses().end())
+                     << "\n";
+      });
+      return false;
+    }
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "  Kernels are compatible for fusion\n");
+  return true;
+}
+
 static inline bool isAnElementwiseKernel(Operation *op) {
   if (auto kernelOp = dyn_cast<ExpKernelOp>(op)) {
     return kernelOp.getElemwiseBodyLambda() != nullptr;
@@ -142,67 +204,8 @@ static inline bool kernelsAreCompatible(Operation *src, Operation *dst) {
   auto dstInChain = dstKernel.maybeGetInChain();
   auto dstOutChain = dstKernel.maybeGetOutChain();
 
-  LLVM_DEBUG({
-    if (dstInChain.has_value() || dstOutChain.has_value()) {
-      llvm::dbgs() << "  Destination kernel has ";
-      if (dstInChain.has_value() && dstOutChain.has_value())
-        llvm::dbgs() << "input and output chains\n";
-    }
-  });
-
-  if (srcInChain.has_value() && srcOutChain.has_value() &&
-      dstInChain.has_value() && dstOutChain.has_value()) {
-    LLVM_DEBUG(llvm::dbgs() << "  Both kernels have input and output chains\n");
-
-    // Get actual chain values
-    Value srcOutChain = srcKernel.getOutChain();
-    Value dstInChain = dstKernel.getInChain();
-
-    // Ensure the input chain to dstKernel is output chain from srcKernel
-    if (dstInChain != srcOutChain) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "  FAILED: Chain mismatch - source output chain and "
-                        "destination input chain are different values\n";
-      });
-      return false;
-    }
-
-    // Ensure that dstKernel is the sole consumer of the output chain from
-    // srcKernel.
-    // Strictly speaking srcKernel having more than one consumer of
-    // its output chain would be UB when those consumers perform writes to
-    // mo.buffers -- skip fusion here to make the presence of that situation
-    // clearer.
-    if (!srcOutChain.hasOneUse()) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "  FAILED: Source output chain has multiple uses: "
-                     << std::distance(srcOutChain.getUses().begin(),
-                                      srcOutChain.getUses().end())
-                     << "\n";
-      });
-      return false;
-    }
-  }
-
-  // Ensure if the kernel has an input chain, it has only one use
-  // TODO(GEX-2105): This check is slightly stricter than it needs to be, as we
-  // kind of assume that the kernel in question potentially mutates all of its
-  // buffer operands.
-  if (dstInChain.has_value()) {
-    Value chainVal = dstKernel.getInChain();
-    if (!chainVal.hasOneUse()) {
-      LLVM_DEBUG({
-        llvm::dbgs() << "  FAILED: Destination input chain has multiple uses: "
-                     << std::distance(chainVal.getUses().begin(),
-                                      chainVal.getUses().end())
-                     << "\n";
-      });
-      return false;
-    }
-  }
-
-  LLVM_DEBUG(llvm::dbgs() << "  Kernels are compatible for fusion\n");
-  return true;
+  return checkMutableKernelFusible(srcInChain, srcOutChain, dstInChain,
+                                   dstOutChain);
 }
 
 // Check if applyExpr is of the form `apply(get_kernel_simd_width, ...)`.
@@ -324,7 +327,7 @@ static std::optional<SmallVector<int>> getFusionIndices(ExpKernelOp src,
   for (auto [i, operand] : llvm::enumerate(dst.getOperands())) {
     /// TODO: Support fusion in the presence of chains.
     if (isa<MO::ChainType>(operand.getType()))
-      return {};
+      continue;
 
     if (operand.getDefiningOp() != src)
       continue;
@@ -357,7 +360,16 @@ static inline bool expKernelsAreCompatible(Operation *src, Operation *dst) {
   auto srcKernel = cast<ExpKernelOp>(src);
   auto dstKernel = cast<ExpKernelOp>(dst);
 
-  return getFusionIndices(srcKernel, dstKernel).has_value();
+  if (!getFusionIndices(srcKernel, dstKernel).has_value())
+    return false;
+
+  auto srcInChain = srcKernel.maybeGetInChain();
+  auto srcOutChain = srcKernel.maybeGetOutChain();
+  auto dstInChain = dstKernel.maybeGetInChain();
+  auto dstOutChain = dstKernel.maybeGetOutChain();
+
+  return checkMutableKernelFusible(srcInChain, srcOutChain, dstInChain,
+                                   dstOutChain);
 }
 
 static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
@@ -399,7 +411,7 @@ static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {
     SmallVector<Value> fusedArgs(src->getNumOperands() + 1);
     Region &srcFuseRegion = src.getElemwiseBodyLambda().getBodyRegion();
 
-    for (int index : llvm::reverse(indices)) {
+    for (int kernelOperandIdx : llvm::reverse(indices)) {
       // Make a clone first, since one region might be used multiple time.
       // Otherwise, the `rewriter.inlineBlockBefore` below would delete the
       // block.
@@ -411,20 +423,31 @@ static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {
       Value fusedVal = yieldOp->getOperand(0);
       yieldOp->erase();
 
-      // Replace to the block argument to fused result.
-      BlockArgument dstArg = dstFuseBody->getArgument(index);
+      // Find the block argument in bindop corresponding to the value being
+      // fused, replace the block argument to fused result.
+      BlockArgument dstArg;
+      for (auto ba : dstFuseBody->getArguments()) {
+        if (dstBindOp->getOperand(ba.getArgNumber()) ==
+            dst.getExecBody().getArgument(kernelOperandIdx)) {
+          dstArg = ba;
+          break;
+        }
+      }
+      assert(dstArg);
+
+      int bindOperandIdx = dstArg.getArgNumber();
       dstArg.replaceAllUsesWith(fusedVal);
-      dstFuseBody->eraseArgument(index);
+      dstFuseBody->eraseArgument(bindOperandIdx);
       for (auto ba : llvm::reverse(srcFuseBody->getArguments().drop_back())) {
-        fusedArgs[ba.getArgNumber()] =
-            dstFuseBody->insertArgument(index, ba.getType(), ba.getLoc());
+        fusedArgs[ba.getArgNumber()] = dstFuseBody->insertArgument(
+            bindOperandIdx, ba.getType(), ba.getLoc());
       }
       // Indices are reused.
       fusedArgs.back() = dstFuseBody->getArguments().back();
       rewriter.inlineBlockBefore(srcFuseBody, dstFuseBody, dstFuseBody->begin(),
                                  fusedArgs);
 
-      fuseAndReplaceOperandWith(dst, index, src);
+      fuseAndReplaceOperandWith(dst, kernelOperandIdx, src);
     }
 
     dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));

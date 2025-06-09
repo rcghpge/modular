@@ -561,6 +561,23 @@ void ExpKernelOp::eraseInputsAt(unsigned idx, size_t len) {
 void ExpKernelOp::setChain(Value chain) { getChainMutable().assign(chain); }
 void ExpKernelOp::eraseChain() { getChainMutable().erase(0); }
 
+std::optional<MO::ChainValue> ExpKernelOp::maybeGetInChain() {
+  auto chainOrNull = getChain();
+  return chainOrNull ? std::optional(chainOrNull) : std::nullopt;
+}
+
+std::optional<MO::ChainValue> ExpKernelOp::maybeGetOutChain() {
+  if (getNumResults() == 0)
+    return std::nullopt;
+
+  auto finalVal = getResults().back();
+
+  if (auto chain = dyn_cast<MO::ChainValue>(finalVal))
+    return chain;
+  else
+    return std::nullopt;
+}
+
 KernelTerminator ExpKernelOp::getTerminator() {
   return cast<KernelTerminator>(getExecBody().front().getTerminator());
 }
@@ -742,7 +759,7 @@ void ExpKernelOp::print(OpAsmPrinter &p) {
                                      getExecBody().getArguments(),
                                      /*isIsolatedFromAbove=*/true);
   if (auto chain = getChain()) {
-    p.printKeywordOrString(" chain");
+    p << " chain";
     p << "(";
     p.printOperand(chain);
     p << ")";

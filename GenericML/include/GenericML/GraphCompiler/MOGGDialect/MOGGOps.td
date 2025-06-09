@@ -372,6 +372,11 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     // Returns the OutputOp for this operation or null if it does not exist.
     OutputOp getOutputOp();
 
+    /// Returns the sole input chain (if present) and std::nullopt otherwise.
+    std::optional<MO::ChainValue> maybeGetInChain();
+    /// Returns the sole output chain (if present) and std::nullopt otherwise.
+    std::optional<MO::ChainValue> maybeGetOutChain();
+
     // Use the following methods to update inputs/chains
     // (instead of op->insertOperand/eraseOperand) to keep the
     // `operandSegmentSize` up-to-date.
