@@ -4973,16 +4973,20 @@ void AllReduceSumOp::getEffects(
 LogicalResult AllGatherOp::verify() {
   // Checks input/output counts and that corresponding device types match.
   auto outputs = getOutputs();
-  if (getInputs().size() != outputs.size())
-    return emitError(
-        "number of inputs and outputs should match for all-gather");
+  auto inputs = getInputs();
+  if (outputs.size() != inputs.size() * inputs.size())
+    return emitError(llvm::formatv(
+        "number of outputs should be num_inputs * num_inputs for all-gather. "
+        "Expected {0} outputs but got {1} (num_inputs={2})",
+        inputs.size() * inputs.size(), outputs.size(), inputs.size()));
   return success();
 }
 
 LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
                                 SmallVectorImpl<OpFoldResult> &results) {
   // If the all-gather has 1 input, return the input (identity op).
-  if (getNumResults() == 1 &&
+  // The verifier ensures that with 1 input, there is exactly 1 output.
+  if (getInputs().size() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
     return success();
