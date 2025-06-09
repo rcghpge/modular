@@ -150,7 +150,7 @@ struct MyOp:
         output: OutputVariadicTensors[dtype, rank, *_],
 
         # First class citizen
-        input: InputTensor[type=output.dtype, rank=output.rank],
+        input: InputTensor[dtype=output.dtype, rank=output.rank],
 
         mutable_input: MutableInputTensor[dtype=output.dtype, rank=output.rank]
 
