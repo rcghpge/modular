@@ -39,11 +39,11 @@ public:
         mode{ser_mode_t::SERIALIZE} {};
 
   /* Ser/Des for Strings */
-  nixl_status_t addStr(const std::string &tag, const std::string &str);
+  void addStr(std::string_view tag, std::string_view str);
   std::string getStr(const std::string &tag);
 
   /* Ser/Des for Byte buffers */
-  nixl_status_t addBuf(std::string_view tag, const void *buf, ssize_t len);
+  void addBuf(std::string_view tag, const void *buf, size_t len);
   ssize_t getBufLen(std::string_view tag) const;
   nixl_status_t getBuf(std::string_view tag, void *buf, ssize_t len);
 

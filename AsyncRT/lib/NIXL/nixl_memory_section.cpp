@@ -265,34 +265,23 @@ nixl_status_t nixlLocalSection::remDescList(const nixl_reg_dlist_t &mem_elms,
 }
 
 namespace {
-nixl_status_t serializeSections(nixlSerDes &serializer,
-                                const section_map_t &sections) {
-  nixl_status_t ret;
-
+void serializeSections(nixlSerDes &serializer, const section_map_t &sections) {
   size_t seg_count = sections.size();
-  ret = serializer.addBuf("nixlSecElms", &seg_count, sizeof(seg_count));
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
+  serializer.addBuf("nixlSecElms", &seg_count, sizeof(seg_count));
 
   for (const auto &[sec_key, dlist] : sections) {
     nixlBackendEngine *eng = sec_key.second;
     if (!eng->supportsRemote())
       continue;
 
-    ret = serializer.addStr("bknd", eng->getType());
-    if (ret != nixl_status_t::NIXL_SUCCESS)
-      return ret;
-    ret = dlist->serialize(&serializer);
-    if (ret != nixl_status_t::NIXL_SUCCESS)
-      return ret;
+    serializer.addStr("bknd", eng->getType());
+    dlist->serialize(&serializer);
   }
-
-  return nixl_status_t::NIXL_SUCCESS;
 }
 }; // namespace
 
-nixl_status_t nixlLocalSection::serialize(nixlSerDes &serializer) const {
-  return serializeSections(serializer, sectionMap);
+void nixlLocalSection::serialize(nixlSerDes &serializer) const {
+  serializeSections(serializer, sectionMap);
 }
 
 nixl_status_t
@@ -305,8 +294,10 @@ nixlLocalSection::serializePartial(nixlSerDes &serializer,
 
   // If there are no descriptors to serialize, just serialize empty list of
   // sections
-  if (mem_elms.descCount() == 0)
-    return serializeSections(serializer, mem_elms_to_serialize);
+  if (mem_elms.descCount() == 0) {
+    serializeSections(serializer, mem_elms_to_serialize);
+    return nixl_status_t::NIXL_SUCCESS;
+  }
 
   // TODO: consider concatenating 2 serializers instead of using
   // mem_elms_to_serialize
@@ -336,7 +327,7 @@ nixlLocalSection::serializePartial(nixlSerDes &serializer,
   }
 
   if (ret == nixl_status_t::NIXL_SUCCESS)
-    ret = serializeSections(serializer, mem_elms_to_serialize);
+    serializeSections(serializer, mem_elms_to_serialize);
 
   for (auto &[sec_key, m_desc] : mem_elms_to_serialize)
     delete m_desc;

@@ -25,17 +25,14 @@ void nixlSerDes::_stringToBytes(void *fill_buf, const std::string &s,
 }
 
 /* Ser/Des for Strings */
-nixl_status_t nixlSerDes::addStr(const std::string &tag,
-                                 const std::string &str) {
-
-  size_t len = str.size();
+void nixlSerDes::addStr(const std::string_view tag,
+                        const std::string_view str) {
+  const size_t len = str.size();
 
   workingStr.append(tag);
-  workingStr.append(_bytesToString(&len, sizeof(size_t)));
+  workingStr.append(reinterpret_cast<const char *>(&len), sizeof(size_t));
   workingStr.append(str);
   workingStr.append("|");
-
-  return nixl_status_t::NIXL_SUCCESS;
 }
 
 std::string nixlSerDes::getStr(const std::string &tag) {
@@ -64,14 +61,11 @@ std::string nixlSerDes::getStr(const std::string &tag) {
 }
 
 /* Ser/Des for Byte buffers */
-nixl_status_t nixlSerDes::addBuf(std::string_view tag, const void *buf,
-                                 ssize_t len) {
+void nixlSerDes::addBuf(std::string_view tag, const void *buf, size_t len) {
   workingStr.append(tag);
-  workingStr.append(_bytesToString(&len, sizeof(ssize_t)));
-  workingStr.append(_bytesToString(buf, len));
+  workingStr.append(reinterpret_cast<const char *>(&len), sizeof(size_t));
+  workingStr.append(reinterpret_cast<const char *>(buf), len);
   workingStr.append("|");
-
-  return nixl_status_t::NIXL_SUCCESS;
 }
 
 ssize_t nixlSerDes::getBufLen(std::string_view tag) const {

@@ -323,8 +323,11 @@ public:
    * @brief Serialize a descriptor list with nixlSerDes class
    * @param serializer nixlSerDes object to serialize nixlDescList
    * @return nixl_status_t Error code if serialize was not successful
+   * @note This class is templated to allow it to be compiled independently of
+   * the class template
    */
-  nixl_status_t serialize(nixlSerDes *serializer) const;
+  template <class = void>
+  void serialize(nixlSerDes *serializer) const;
   /**
    * @brief Print the descriptor list for debugging
    */

@@ -86,7 +86,7 @@ public:
   nixl_status_t remDescList(const nixl_reg_dlist_t &mem_elms,
                             nixlBackendEngine &backend);
 
-  nixl_status_t serialize(nixlSerDes &serializer) const;
+  void serialize(nixlSerDes &serializer) const;
 
   nixl_status_t serializePartial(nixlSerDes &serializer,
                                  const backend_set_t &backends,

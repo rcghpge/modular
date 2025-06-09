@@ -956,43 +956,25 @@ nixl_status_t nixlAgent::genNotif(const std::string &remote_agent,
 }
 
 nixl_status_t nixlAgent::getLocalMD(nixl_blob_t &str) const {
-  size_t conn_cnt;
-  nixl_backend_t nixl_backend;
-  nixl_status_t ret;
-
   NIXL_LOCK_GUARD(data->lock);
   // data->connMD was populated when the backend was created
-  conn_cnt = data->connMD.size();
+  const size_t conn_cnt = data->connMD.size();
 
   if (conn_cnt == 0) // Error, no backend supports remote
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
 
   nixlSerDes sd;
-  ret = sd.addStr("Agent", data->name);
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
+  sd.addStr("Agent", data->name);
+  sd.addBuf("Conns", &conn_cnt, sizeof(conn_cnt));
 
-  ret = sd.addBuf("Conns", &conn_cnt, sizeof(conn_cnt));
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
-
-  for (auto &c : data->connMD) {
-    nixl_backend = c.first;
-    ret = sd.addStr("t", nixl_backend);
-    if (ret != nixl_status_t::NIXL_SUCCESS)
-      return ret;
-    ret = sd.addStr("c", c.second);
-    if (ret != nixl_status_t::NIXL_SUCCESS)
-      return ret;
+  for (const auto &[backend, metadata] : data->connMD) {
+    sd.addStr("t", backend);
+    sd.addStr("c", metadata);
   }
 
-  ret = sd.addStr("", "MemSection");
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
+  sd.addStr("", "MemSection");
 
-  ret = data->memorySection->serialize(sd);
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
+  data->memorySection->serialize(sd);
 
   str = sd.exportStr();
   return nixl_status_t::NIXL_SUCCESS;
@@ -1039,35 +1021,25 @@ nixlAgent::getLocalPartialMD(const nixl_reg_dlist_t &descs, nixl_blob_t &str,
   }
 
   nixlSerDes sd;
-  ret = sd.addStr("Agent", data->name);
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
+  sd.addStr("Agent", data->name);
 
   // Only add connection info if requested via extra_params or empty dlist
   size_t conn_cnt = ((extra_params && extra_params->includeConnInfo) ||
                      descs.descCount() == 0)
                         ? found_iters.size()
                         : 0;
-  ret = sd.addBuf("Conns", &conn_cnt, sizeof(conn_cnt));
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
+  sd.addBuf("Conns", &conn_cnt, sizeof(conn_cnt));
 
   for (size_t i = 0; i < conn_cnt; i++) {
-    ret = sd.addStr("t", found_iters[i]->first);
-    if (ret != nixl_status_t::NIXL_SUCCESS)
-      return ret;
-    ret = sd.addStr("c", found_iters[i]->second);
-    if (ret != nixl_status_t::NIXL_SUCCESS)
-      return ret;
+    sd.addStr("t", found_iters[i]->first);
+    sd.addStr("c", found_iters[i]->second);
   }
 
   // No engines found, but there are descs, this is an error
   if (selected_engines.size() == 0 && descs.descCount() > 0)
     return nixl_status_t::NIXL_ERR_BACKEND;
 
-  ret = sd.addStr("", "MemSection");
-  if (ret != nixl_status_t::NIXL_SUCCESS)
-    return ret;
+  sd.addStr("", "MemSection");
 
   ret = data->memorySection->serializePartial(sd, selected_engines, descs);
   if (ret != nixl_status_t::NIXL_SUCCESS)
