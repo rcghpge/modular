@@ -267,6 +267,11 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createInlineLambdas({kernelLibraryPaths}));
 
   // Convert output lambdas to compute output lambdas when possible.
+  pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
+  pm.addPass(MOGG::createSimplifyKernelOperands());
+  pm.addPass(mlir::createCanonicalizerPass());
+
+  // Convert output lambdas to compute output lambdas whn possible.
   if (opts.enableComputeLambdas) {
     pm.addPass(MOGG::createGenerateComputeLambdas({kernelLibraryPaths}));
   }
@@ -274,11 +279,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // Set the _trace_name parameter after lambda fusion and before sequence
   // fusion.
   pm.addPass(MOGG::createSetKernelsTraceName());
-
-  // Run before fuse constant.
-  pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
-  pm.addPass(MOGG::createSimplifyKernelOperands());
-  pm.addPass(mlir::createCanonicalizerPass());
 
   // Fuse constants last as they don't enable any extra fusions directly and
   // should be fused as late as possible to catch all cases of constants.
