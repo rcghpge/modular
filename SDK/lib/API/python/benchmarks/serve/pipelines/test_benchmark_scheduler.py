@@ -40,7 +40,6 @@ def test_stream_responses_to_frontend(benchmark, zmq_ctx):
         max_batch_size_ce=4,
         max_forward_steps_ce=1,
         target_tokens_per_batch_ce=1,
-        batch_timeout=None,
     )
 
     scheduler = TokenGenerationScheduler(
