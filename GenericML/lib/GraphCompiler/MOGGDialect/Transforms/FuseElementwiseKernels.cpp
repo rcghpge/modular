@@ -451,6 +451,8 @@ static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {
     }
 
     dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));
+    dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
+    dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
     src.erase();
   }
 }

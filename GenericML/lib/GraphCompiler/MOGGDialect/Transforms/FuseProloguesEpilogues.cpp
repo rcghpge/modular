@@ -41,9 +41,38 @@ static bool containsMatmulOrConvOrConcat(KernelTy kernel) {
           summary.contains(MO::ConvTransposeOp::getOperationName()));
 }
 
-static bool containsMutableStore(MOGG::KernelOp kernel) {
+template <typename KernelTy>
+static bool containsMutableStore(KernelTy kernel) {
   StringRef summary = kernel.getSummaryAttr().strref();
+  // TODO: we have a better way to check this under the new representation (by
+  // looking for call.outlined["mo.mutable.store"]).
   return summary.contains(MO::MutableStoreOp::getOperationName());
+}
+
+static bool checkMutableFusible(std::optional<Value> proInChain,
+                                std::optional<Value> proOutChain,
+                                std::optional<Value> epiInChain,
+                                std::optional<Value> epiOutChain) {
+
+  if (proInChain.has_value() && proOutChain.has_value() &&
+      epiInChain.has_value() && epiOutChain.has_value()) {
+
+    // Ensure the input chain to epilogue kernel is output chain from producer
+    // kernel
+    if (*epiInChain != *proOutChain)
+      return false;
+
+    // Ensure that user kernel is the sole consumer of the output chain from
+    // source kernel.
+    // Strictly speaking source kernel having more than one consumer of
+    // its output chain would be UB when those consumers perform writes to
+    // mo.buffers -- skip fusion here to make the presence of that situation
+    // clearer.
+    if (!proOutChain->hasOneUse())
+      return false;
+  }
+
+  return true;
 }
 
 struct FuseProloguesEpilogues
@@ -188,6 +217,23 @@ struct FuseProloguesEpilogues
                                   /*lookThroughView=*/false))
           continue;
 
+        // TODO(GEX-2213): Come up with more general mechanisms for when fusion
+        // with kernels handling mutable values is permissible. (This might be a
+        // redundant check and should be revisited later after fully migrating
+        // to the new codegen path).
+        if (containsMutableStore(src) && !containsMatmulOrConvOrConcat(dst))
+          continue;
+
+        // Check chain compatibility if both kernels have input and output
+        // chains
+        auto proInChain = dst.maybeGetInChain();
+        auto proOutChain = dst.maybeGetOutChain();
+        auto epiInChain = src.maybeGetInChain();
+        auto epiOutChain = src.maybeGetOutChain();
+        if (!checkMutableFusible(proInChain, proOutChain, epiInChain,
+                                 epiOutChain))
+          continue;
+
         if (dst.getExecutionDevice() != src.getExecutionDevice())
           continue;
 
@@ -209,11 +255,12 @@ struct FuseProloguesEpilogues
           }
         }
 
-        auto fusedResultTp = cast<MO::TensorType>(src->getResult(0).getType());
+        auto fusedResultTp = src->getResult(0).getType();
+        // TODO: we also need to rotate chain to the end.
         dstOutput.setType(fusedResultTp);
         MOGG::OutputPlaceholdersOp outHolderOp = dst.getOutputPlaceholder();
         if (containsMatmulOrConvOrConcat(dst) &&
-            outputLambda.getResult().getType() != fusedResultTp) {
+            outputLambda.getOutput().getType() != fusedResultTp) {
           rewriter.setInsertionPointAfter(outHolderOp);
           auto scratchPlaceholder =
               rewriter
@@ -228,7 +275,13 @@ struct FuseProloguesEpilogues
                 return operand.getOwner() != concretizeOp;
               });
         }
-        outHolderOp->getResult(fusionIdx).setType(fusedResultTp);
+        if (isa<MO::ChainType>(fusedResultTp)) {
+          auto foreachCall = cast<MOGG::CallForeachOp>(src.getTerminator());
+          auto bufferOut = foreachCall.getOutput();
+          outHolderOp->getResult(fusionIdx).replaceAllUsesWith(bufferOut);
+        } else {
+          outHolderOp->getResult(fusionIdx).setType(fusedResultTp);
+        }
 
         auto outputLambdaBody = outputLambda.getBody(0);
         auto outputLambdaTerminator = outputLambdaBody->getTerminator();
@@ -267,8 +320,13 @@ struct FuseProloguesEpilogues
 
         src->replaceAllUsesWith(ValueRange{dstOutput});
         dst.setSummaryAttr(getSummaryString({dst, src}, FusionType::HARD));
-        // There is no support for reverse walks in walk (mlir::WalkOrder is not
-        // it).
+
+        dst.setHasReadEffect(dst.getHasReadEffect() || src.getHasReadEffect());
+        dst.setHasWriteEffect(dst.getHasWriteEffect() ||
+                              src.getHasWriteEffect());
+        // TODO: this should be a merge of chain instead to be more general.
+        dst.setChain(src.getChain());
+
         toErase.insert(src);
       }
     });
@@ -696,29 +754,10 @@ struct FuseProloguesEpilogues
       auto dstInChain = user.maybeGetInChain();
       auto dstOutChain = user.maybeGetOutChain();
 
-      if (srcInChain.has_value() && srcOutChain.has_value() &&
-          dstInChain.has_value() && dstOutChain.has_value()) {
-        // Get actual chain values
-        Value srcOutChain = kernel.getOutChain();
-        Value dstInChain = user.getInChain();
-
-        // Ensure the input chain to user kernel is output chain from source
-        // kernel
-        if (dstInChain != srcOutChain) {
-          fusableOutput.reset(idx);
-          continue;
-        }
-
-        // Ensure that user kernel is the sole consumer of the output chain from
-        // source kernel.
-        // Strictly speaking source kernel having more than one consumer of
-        // its output chain would be UB when those consumers perform writes to
-        // mo.buffers -- skip fusion here to make the presence of that situation
-        // clearer.
-        if (!srcOutChain.hasOneUse()) {
-          fusableOutput.reset(idx);
-          continue;
-        }
+      if (!checkMutableFusible(srcInChain, srcOutChain, dstInChain,
+                               dstOutChain)) {
+        fusableOutput.reset(idx);
+        continue;
       }
     }
 

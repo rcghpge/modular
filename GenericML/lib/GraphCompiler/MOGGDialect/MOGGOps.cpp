@@ -350,9 +350,17 @@ LogicalResult BindLambdaOp::verify() {
   if (getLambda().getNumArguments() != getFusibleTensors().size() + 1)
     return emitError("Expecting #operands + 1 arguments for lambda");
 
-  auto verifyTensorRank = [this](Value tensorVal,
-                                 Type indicesTp) -> LogicalResult {
-    int64_t rank = cast<MO::TensorType>(tensorVal.getType()).getRank();
+  auto verifyRank = [this](Value val, Type indicesTp) -> LogicalResult {
+    // TODO(GEX-2221): We should instead create interface (e.g., ShapedType) for
+    // Buffer and TensorType.
+    int rank;
+    if (auto bufTp = dyn_cast<MO::BufferType>(val.getType())) {
+      rank = cast<MOSH::ShapeAttr>(bufTp.getShapeAttr()).getRank();
+    } else {
+      auto tensorTp = cast<MO::TensorType>(val.getType());
+      rank = tensorTp.getRank();
+    };
+
     auto idxTp = dyn_cast<KGEN::POP::ArrayType>(indicesTp);
     if (idxTp == nullptr || idxTp.getResolvedSize().value() != rank)
       return emitError(
@@ -361,10 +369,18 @@ LogicalResult BindLambdaOp::verify() {
     return success();
   };
 
-  auto verifyTensorDType = [this](Value tensorVal,
-                                  Value elemVal) -> LogicalResult {
-    auto elemType = cast<MO::TensorType>(tensorVal.getType()).getElementType();
-    if (elemType != elemVal.getType())
+  auto verifyDType = [this](Value val, Value elemVal) -> LogicalResult {
+    // TODO(GEX-2221): We should instead create interface (e.g., ShapedType) for
+    // Buffer and TensorType.
+    DType valDType;
+    if (auto bufTp = dyn_cast<MO::BufferType>(val.getType())) {
+      valDType = bufTp.getDtype();
+    } else {
+      auto tensorTp = cast<MO::TensorType>(val.getType());
+      valDType = tensorTp.getDtype();
+    };
+
+    if (valDType != MO::getDTypeOrInvalid(elemVal.getType()))
       return emitError(
           "Mismatch between tensor dtype and dtype used by lambda");
 
@@ -383,9 +399,9 @@ LogicalResult BindLambdaOp::verify() {
     Type indicesTp = outVals.back().getType();
     // lambdaArg <-> virtual tensor (the returned one).
     // castedVal <-> physical tensor (the bound one).
-    if (failed(verifyTensorRank(getFusibleTensors().front(), indicesTp)) ||
-        failed(verifyTensorDType(getResult(), getValueArgs().front())) ||
-        failed(verifyTensorDType(getFusibleTensors().front(), castedVal)))
+    if (failed(verifyRank(getFusibleTensors().front(), indicesTp)) ||
+        failed(verifyDType(getResult(), getValueArgs().front())) ||
+        failed(verifyDType(getFusibleTensors().front(), castedVal)))
       return failure();
 
   } else {
@@ -393,13 +409,12 @@ LogicalResult BindLambdaOp::verify() {
     // Symmetrical to output lambda:
     // castedVal <-> virtual tensor (the returned one).
     // lambdaArg <-> physical tensor (the bound one).
-    if (failed(verifyTensorDType(getResult(), castedVal)))
+    if (failed(verifyDType(getResult(), castedVal)))
       return failure();
 
     Type indicesTp = getIndicesArg().getType();
     for (auto [t, v] : llvm::zip_equal(getFusibleTensors(), getValueArgs())) {
-      if (failed(verifyTensorRank(t, indicesTp)) ||
-          failed(verifyTensorDType(t, v)))
+      if (failed(verifyRank(t, indicesTp)) || failed(verifyDType(t, v)))
         return failure();
     }
   }
@@ -558,7 +573,10 @@ void ExpKernelOp::eraseInputsAt(unsigned idx, size_t len) {
     getExecBody().eraseArgument(idx);
 }
 
-void ExpKernelOp::setChain(Value chain) { getChainMutable().assign(chain); }
+void ExpKernelOp::setChain(Value chain) {
+  if (chain)
+    getChainMutable().assign(chain);
+}
 void ExpKernelOp::eraseChain() { getChainMutable().erase(0); }
 
 std::optional<MO::ChainValue> ExpKernelOp::maybeGetInChain() {

@@ -472,7 +472,7 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
   }];
 
   let arguments = (ins MOGG_BindLambdaKind: $bindKind,
-                       Variadic<MO_Tensor>: $fusibleTensors);
+                       Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>: $fusibleTensors);
 
 
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>: $output);
