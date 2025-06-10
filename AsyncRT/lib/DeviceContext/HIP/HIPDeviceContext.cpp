@@ -277,21 +277,28 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
       (driverVersionMajorFactor / driverVersionMinorFactor);
   int driverVersionMajor = driverVersionCoded / driverVersionMajorFactor;
 
-  if (driverVersionMajor > MIN_DRIVER_VERSION_MAJOR) {
+  if (driverVersionMajor > MIN_HIP_DRIVER_VERSION_MAJOR) {
     return success();
-  } else if (driverVersionMajor == MIN_DRIVER_VERSION_MAJOR) {
-    if (driverVersionMinor > MIN_DRIVER_VERSION_MINOR) {
+  } else if (driverVersionMajor == MIN_HIP_DRIVER_VERSION_MAJOR) {
+    if (driverVersionMinor > MIN_HIP_DRIVER_VERSION_MINOR) {
       return success();
-    } else if (driverVersionMinor == MIN_DRIVER_VERSION_MINOR) {
-      if (driverVersionPatch >= MIN_DRIVER_VERSION_PATCH) {
+    } else if (driverVersionMinor == MIN_HIP_DRIVER_VERSION_MINOR) {
+      if (driverVersionPatch >= MIN_HIP_DRIVER_VERSION_PATCH) {
         return success();
       }
     }
   }
 
-  RAISE_ERROR("MAX not supported using current HIP driver (" +
-              TWINE(driverVersionMajor) + "." + TWINE(driverVersionMinor) +
-              "." + TWINE(driverVersionPatch) + ")");
+  RAISE_ERROR(
+      "MAX doesn't support your current AMD GPU driver. MAX requires a "
+      "minimum driver version of " +
+      TWINE(MIN_HIP_DRIVER_VERSION_MAJOR) + "." +
+      TWINE(MIN_HIP_DRIVER_VERSION_MINOR) + "." +
+      TWINE(MIN_HIP_DRIVER_VERSION_PATCH) +
+      ". The driver version MAX detected is: " + TWINE(driverVersionMajor) +
+      "." + TWINE(driverVersionMinor) + "." + TWINE(driverVersionPatch) +
+      ".\nFor information about how to update your driver, see "
+      "https://modul.ar/gpu-requirements.");
 }
 
 ErrorOr<int> HIPDevice::computeCapability() const {
