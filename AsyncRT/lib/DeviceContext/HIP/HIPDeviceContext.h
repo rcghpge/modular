@@ -87,8 +87,11 @@ public:
 private:
   // We only support HIP architectures sm_80 and above.
   static constexpr int MIN_COMPUTE_CAPABILITY = 80;
-  // We only support HIP versions 12.0 and above.
-  static constexpr int MIN_DRIVER_VERSION = 12.0;
+
+  // We only support HIP versions 6.3.30000 and above.
+  static constexpr int MIN_DRIVER_VERSION_MAJOR = 6;
+  static constexpr int MIN_DRIVER_VERSION_MINOR = 3;
+  static constexpr int MIN_DRIVER_VERSION_PATCH = 30000;
 
   static ErrorOr<const DeviceList &> deviceList();
 

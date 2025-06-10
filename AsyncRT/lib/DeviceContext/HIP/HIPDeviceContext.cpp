@@ -22,6 +22,9 @@
 #include <mutex>
 #include <string>
 
+// Helpers for logging.
+#define TWINE(val) (llvm::Twine(val))
+
 #define HIP_CHECK_ERR(hip_call)                                                \
   do {                                                                         \
     HIPDriver::Result hipResult = hip_call;                                    \
@@ -257,16 +260,38 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
   if (compute.isError())
     return compute.takeError();
   if (*compute < MIN_COMPUTE_CAPABILITY) {
-    RAISE_ERROR("MAX only supports HIP Ampere architectures or higher");
+    RAISE_ERROR("MAX only supports HIP architectures " +
+                TWINE(MIN_COMPUTE_CAPABILITY) + " or higher");
   }
 
-  int driverVersion = 0;
-  HIP_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
-  if (driverVersion < MIN_DRIVER_VERSION) {
-    RAISE_ERROR("MAX not supported using current GPU driver");
+  int driverVersionCoded = 0;
+  HIP_CHECK_ERR(driver_.DriverGetVersion(&driverVersionCoded));
+
+  // Deconstruct the driverVersionCoded into major, minor and patch.
+  constexpr int driverVersionMinorFactor = 100000;
+  constexpr int driverVersionMajorFactor = 10000000;
+
+  int driverVersionPatch = driverVersionCoded % driverVersionMinorFactor;
+  int driverVersionMinor =
+      (driverVersionCoded / driverVersionMinorFactor) %
+      (driverVersionMajorFactor / driverVersionMinorFactor);
+  int driverVersionMajor = driverVersionCoded / driverVersionMajorFactor;
+
+  if (driverVersionMajor > MIN_DRIVER_VERSION_MAJOR) {
+    return success();
+  } else if (driverVersionMajor == MIN_DRIVER_VERSION_MAJOR) {
+    if (driverVersionMinor > MIN_DRIVER_VERSION_MINOR) {
+      return success();
+    } else if (driverVersionMinor == MIN_DRIVER_VERSION_MINOR) {
+      if (driverVersionPatch >= MIN_DRIVER_VERSION_PATCH) {
+        return success();
+      }
+    }
   }
 
-  return success();
+  RAISE_ERROR("MAX not supported using current HIP driver (" +
+              TWINE(driverVersionMajor) + "." + TWINE(driverVersionMinor) +
+              "." + TWINE(driverVersionPatch) + ")");
 }
 
 ErrorOr<int> HIPDevice::computeCapability() const {

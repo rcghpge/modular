@@ -43,6 +43,19 @@ TEST_F(GPUDeviceContextTest, NumDevices) {
   std::cerr << "Number of GPU devices: " << num << "\n";
 }
 
+TEST_F(GPUDeviceContextTest, ComputeCapability) {
+  ASSIGN_NO_ERR(DeviceRef, dev, Device::create(Device::gpuAPI));
+
+  ASSIGN_NO_ERR(int, cap, dev->computeCapability());
+  EXPECT_GE(cap, 75);
+  std::cerr << "Compute capability of GPU[0]: " << cap << "\n";
+}
+
+TEST_F(GPUDeviceContextTest, MAXCompatibility) {
+  ASSIGN_NO_ERR(DeviceRef, dev, Device::create(Device::gpuAPI));
+  EXPECT_NO_ERR(dev->isCompatible());
+}
+
 TEST_F(GPUDeviceContextTest, DefaultContext) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx0, DeviceContext::create(Device::gpuAPI));
   ASSIGN_NO_ERR(DeviceContextRef, ctx1,
