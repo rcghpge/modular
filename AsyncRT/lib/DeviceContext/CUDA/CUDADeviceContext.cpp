@@ -287,14 +287,13 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
   CUDA_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
   if (driverVersion < MIN_CUDA_DRIVER_VERSION) {
     RAISE_ERROR(
-        "MAX is not supported using current GPU driver. MAX "
+        "MAX doesn't support your current NVIDIA GPU driver. MAX "
         "requires a minimum driver version of " +
         llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version " +
         apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
-        ". See https://modul.ar/nvidia-driver-version for "
-        "details about how to install the proper NVIDIA driver. The current "
-        "CUDA version MAX detected is: " +
-        apiVersionToString(driverVersion));
+        ". The driver version MAX detected is: " +
+        apiVersionToString(driverVersion) +
+        ".\nFor more information, see https://modul.ar/gpu-requirements.");
   }
 
   return success();
