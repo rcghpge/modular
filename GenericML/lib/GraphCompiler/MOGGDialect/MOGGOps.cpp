@@ -445,20 +445,14 @@ ParseResult BindLambdaOp::parse(OpAsmParser &parser, OperationState &result) {
       BindLambdaKindAttr::get(parser.getContext(), *bindKind));
 
   SmallVector<Type, 4> operandTps;
-  if (bindKind == BindLambdaKind::OutputLambda) {
-    if (parser.parseColon() || parser.parseTypeList(operandTps))
-      return failure();
-    // Resolve to the same result types.
-    result.types = operandTps;
-  } else {
-    FunctionType ftp;
-    if (parser.parseColonType(ftp))
-      return failure();
 
-    // Inputs type
-    operandTps.assign(ftp.getInputs().begin(), ftp.getInputs().end());
-    result.types.assign(ftp.getResults().begin(), ftp.getResults().end());
-  }
+  FunctionType ftp;
+  if (parser.parseColonType(ftp))
+    return failure();
+
+  operandTps.assign(ftp.getInputs().begin(), ftp.getInputs().end());
+  result.types.assign(ftp.getResults().begin(), ftp.getResults().end());
+
   if (parser.resolveOperands(operands, operandTps, {}, result.operands) ||
       parser.parseOptionalAttrDict(result.attributes)) {
     return failure();
@@ -478,14 +472,7 @@ void BindLambdaOp::print(OpAsmPrinter &p) {
   p.printRegion(getLambda(), /*printEntryBlockArgs=*/false);
 
   p << ": ";
-  if (getBindKind() == BindLambdaKind::OutputLambda) {
-    // To bind an output lambda, it has no input tensor (the value coming from a
-    // data stream during kernel execution).
-    p.printType(getResult().getType());
-  } else {
-    p.printFunctionalType(getOperands().getTypes(), (*this)->getResultTypes());
-  }
-
+  p.printFunctionalType(getOperands().getTypes(), (*this)->getResultTypes());
   p.printOptionalAttrDict(getOperation()->getAttrs(),
                           getBindKindAttrName().strref());
 }
@@ -786,7 +773,7 @@ void ExpKernelOp::print(OpAsmPrinter &p) {
   p.printArrowTypeList(getResultTypes());
   p << ' ';
   printRegion(p, getInputs(), getExecBody(), /*isIsolatedFromAbove=*/true);
-  p.printOptionalAttrDict(getOperation()->getAttrs());
+  p.printOptionalAttrDict(getOperation()->getAttrs(), {"operandSegmentSizes"});
 }
 
 void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
