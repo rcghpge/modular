@@ -5266,7 +5266,7 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_HasDeviceInterface,
-  SameVariadicOperandSize
+  MO_SameVariadicOperandSize
 ]> {
   let summary = "Allreduce sum across N devices (variadic).";
   let description = [{

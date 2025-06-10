@@ -675,4 +675,17 @@ def MO_ElementWiseLike : OpInterface<"ElementWiseLike"> {
   let cppNamespace = "::M::MO";
 }
 
+def MO_SameVariadicOperandSizeInterface : OpInterface<"SameVariadicOperandSizeInterface"> {
+  let description = [{
+    Interface that represent MO Ops that take multiple variadics, all with the same size.
+    Wrapper around the builtin `SameVariadicOperandSize` that can't be checked in C++.
+  }];
+  let cppNamespace = "::M::MO";
+}
+
+def MO_SameVariadicOperandSize: TraitList<[
+  MO_SameVariadicOperandSizeInterface,
+  SameVariadicOperandSize,
+]>;
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD

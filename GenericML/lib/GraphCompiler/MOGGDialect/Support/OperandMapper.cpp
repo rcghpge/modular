@@ -100,11 +100,70 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
     return std::nullopt;
   };
 
-  IndexToOperandAdaptorMapping mapping;
-  uint64_t moOpIndex = 0, kernelIndex = 0;
-  bool matchingVariadicTensor = false;
   const SmallVector<MojoKernelOperandAdaptor> &kernelOperands =
       matchOperands ? adaptor.inputArguments : adaptor.outputArguments;
+
+  // When the kernel have multiple variadic operands, we need to figure out
+  // which operand is associated to which variadic. Today we only support one
+  // mode: SameVariadicOperandSize: All variadic inputs are divided evenly
+  // between the variadics. We first count the expected size of a variadic
+  // before checking the operands.
+  uint64_t mojoVariadicsCount = 0;
+  uint64_t mojoNonVariadicsCount = 0;
+  uint64_t moOperandsCount = 0;
+  uint64_t moOpIndex = 0, kernelIndex = 0;
+  // Go through all operands and count them beforehand.
+  while (true) {
+    auto moType = matchOperands
+                      ? skipChainType(op->getOperandTypes(), moOpIndex)
+                      : skipChainType(op->getResultTypes(), moOpIndex);
+    if (!moType.has_value())
+      break;
+    ++moOpIndex;
+    ++moOperandsCount;
+  }
+
+  while (true) {
+    auto kernelType = skipContextType(kernelOperands, kernelIndex);
+    if (!kernelType.has_value())
+      break;
+
+    if (kernelType->isVariadicTensorType())
+      ++mojoVariadicsCount;
+    else
+      ++mojoNonVariadicsCount;
+    ++kernelIndex;
+  }
+
+  // Currently variadics are expected to have the same size.
+  uint64_t variadicSize = 0;
+  if (mojoVariadicsCount > 0) {
+    if (mojoVariadicsCount > 1 &&
+        !isa<MO::SameVariadicOperandSizeInterface>(op)) {
+      return Error(
+          llvm::formatv("Op with multiple variadic operands must implement the "
+                        "SameVariadicOperandSize interface. Custom ops are not "
+                        "supported yet."));
+    }
+    // We'll check that we don't get empty variadic / missing operands later.
+    uint64_t totalVariadicOperands =
+        moOperandsCount < mojoNonVariadicsCount
+            ? 0
+            : moOperandsCount - mojoNonVariadicsCount;
+    if (totalVariadicOperands % mojoVariadicsCount != 0) {
+      return Error(llvm::formatv("Op '{}' has a total {} variadic operands "
+                                 "divided between {} variadic kernel operands"
+                                 "They are expected to divide evenly",
+                                 moOperationName(op), totalVariadicOperands,
+                                 mojoVariadicsCount));
+    }
+    variadicSize = totalVariadicOperands / mojoVariadicsCount;
+  }
+
+  IndexToOperandAdaptorMapping mapping;
+  moOpIndex = 0, kernelIndex = 0;
+  uint64_t currVariadicSize = 0;
+  bool matchingVariadicTensor = false;
   while (true) {
     auto moType = matchOperands
                       ? skipChainType(op->getOperandTypes(), moOpIndex)
@@ -125,14 +184,6 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
     bool matched = matchConvertedMOTypeToKernelType(*moTypeToMojoKernelOperand,
                                                     kernelType->underlyingType);
 
-    // If there is a mismatch but we were previously matching on a variadic, go
-    // to the next kernel argument and retry.
-    if (!matched && matchingVariadicTensor) {
-      matchingVariadicTensor = false;
-      ++kernelIndex;
-      continue;
-    }
-
     if (!matched) {
       return Error(llvm::formatv(
           "Op '{}' {} at position {} does not match registered kernel "
@@ -145,10 +196,15 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
 
     mapping[moOpIndex] = *kernelType;
 
-    // If the current kernel argument is a variadic tensor type, then we set a
-    // flag such that we don't iterate and stay here until there is a mismatch.
-    if (kernelType->isVariadicTensorType())
+    // Keep iterating over the same variadic until we mapped the expected number
+    // of operands per variadic.
+    if (kernelType->isVariadicTensorType()) {
       matchingVariadicTensor = true;
+      if (++currVariadicSize == variadicSize) {
+        matchingVariadicTensor = false;
+        currVariadicSize = 0;
+      }
+    }
 
     ++moOpIndex;
     kernelIndex += !matchingVariadicTensor;
