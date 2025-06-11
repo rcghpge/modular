@@ -15,7 +15,7 @@ mo.graph @negative_scalar<N -> out>(
   %sum = mo.add(%negative, %ten) : !mo.tensor<[], si64>
   %shape = mo.static.reshape(%sum) : !mo.tensor<[], si64> -> !mo.tensor<[1], si64>
 
-  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[add(mul_nuw([[N]], -1), 10)], f32>
+  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[add(mul_no_wrap([[N]], -1), 10)], f32>
   %res = mo.broadcast_to<() -> D0>(%input, %shape) : (
     !mo.tensor<[], f32>, !mo.tensor<[1], si64>
   ) -> !mo.tensor<[D0], f32>
@@ -38,7 +38,7 @@ mo.graph @negative_non_scalar<N1, N2 -> O1, O2>(
   %negative = mo.negative(%dummy_shape) : !mo.tensor<[2], si64>
   %shape = mo.add(%negative, %const) : !mo.tensor<[2], si64>
 
-  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[add(mul_nuw([[N1]], -1), 20), add(mul_nuw([[N2]], -1), 30)], f32>
+  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[add(mul_no_wrap([[N1]], -1), 20), add(mul_no_wrap([[N2]], -1), 30)], f32>
   %res = mo.broadcast_to<() -> D0, D1>(%input, %shape) : (
     !mo.tensor<[], f32>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[D0, D1], f32>

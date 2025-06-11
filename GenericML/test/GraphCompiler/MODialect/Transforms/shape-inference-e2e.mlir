@@ -205,7 +205,7 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @scalar_to_tensor_reshapes_before_staticization<[[D18:.*]], [[D19:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D18]], [[D19]]], si32>) -> !mo.tensor<[[[D18]], [[D18]]], si32> {
-// CHECK-NEXT: kgen.param.declare [[P29:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D18, D19]> : !mosh.ape != #mosh<ape[D18, D18]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_nuw(D18, D18), mul_nuw(D18, D19)))>
+// CHECK-NEXT: kgen.param.declare [[P29:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D18, D19]> : !mosh.ape != #mosh<ape[D18, D18]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_no_wrap(D18, D18), mul_no_wrap(D18, D19)))>
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG0]]) : !mo.tensor<[[[D18]], [[D19]]], si32> -> !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT:   mo.output [[V0]] : !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT: }
@@ -842,9 +842,9 @@ mo.graph @squeeze_shape_dynamic_shape(%input_shape: !mo.tensor<[?], si32>, %indi
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @squeeze_shape_dynamic_shape<[[D1:.*]], [[D2:.*]] -> [[D3:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D1]]], si32>, [[VARG1:%.*]]: !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[D3]]], si32> {
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[squeeze_shape] cannot remove more dimensions than there exists" : !kgen.string}, le(:si64 [[D2]], [[D1]]))>
-// CHECK-NEXT:   kgen.param.declare [[EXPR:.*]]: si64 = <add(mul_nuw([[D2]], -1), [[D1]])>
+// CHECK-NEXT:   kgen.param.declare [[EXPR:.*]]: si64 = <add(mul_no_wrap([[D2]], -1), [[D1]])>
 // CHECK-NEXT:   [[V0:%.*]] = mo.squeeze_shape([[VARG0]], [[VARG1]]) : (!mo.tensor<[[[D1]]], si32>, !mo.tensor<[[[D2]]], si32>) -> !mo.tensor<[[[EXPR]]], si32>
-// CHECK-NEXT:   [[V1:%.*]] = mo.rebind([[V0]]) : !mo.tensor<[[[EXPR]]], si32> -> !mo.tensor<[add(mul_nuw([[D2]], -1), [[D1]])], si32>
+// CHECK-NEXT:   [[V1:%.*]] = mo.rebind([[V0]]) : !mo.tensor<[[[EXPR]]], si32> -> !mo.tensor<[add(mul_no_wrap([[D2]], -1), [[D1]])], si32>
 // CHECK-NEXT:   mo.output<{{.*}}> [[V1]]
 // CHECK-NEXT: }
 
@@ -860,7 +860,7 @@ mo.graph @squeeze_shape_dynamic_shape_with_reshape(%input_tensor: !mo.tensor<[?,
 // CHECK-NEXT:   [[V1:%.*]] = mo.shape.to_tensor([[V0]]) -> !mo.tensor<[3], si32>
 // CHECK-NEXT:   kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[squeeze_shape] cannot remove more dimensions than there exists" : !kgen.string}, lt(:si64 [[D11]], 4))>
 // CHECK-NEXT:   [[V2:%.*]] = mo.squeeze_shape([[V1]], [[VARG1]]) : (!mo.tensor<[3], si32>, !mo.tensor<[[[D11]]], si32>) -> !mo.tensor<[param_expr_20], si32>
-// CHECK-NEXT:   kgen.param.declare param_expr_20: si64 = <add(mul_nuw([[D11]], -1), 3)>
+// CHECK-NEXT:   kgen.param.declare param_expr_20: si64 = <add(mul_no_wrap([[D11]], -1), 3)>
 // CHECK-NEXT:   [[V3:%.*]] = mo.reshape<() -> [[Sh5:.*]]: !mosh.ape>([[VARG0]], [[V2]]) : (!mo.tensor<[[[D8]], [[D9]], [[D10]]], si32>, !mo.tensor<[param_expr_20], si32>) -> !mo.tensor<[[Sh5]], si32>
 // CHECK-NEXT:   mo.output<{{.*}}> [[V3]]
 // CHECK-NEXT: }
@@ -1043,14 +1043,14 @@ mo.graph @reshape_neg_one_dim_in_const_shape<D0 -> D4, D5, D6>(
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME: {message = "[reshape] input and output number of elements must match:
-  // CHECK-SAME: #mosh<ape[D0, 4]> : !mosh.ape != #mosh<ape[3, var_div3, 2]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_nuw(div(mul_nuw(D0, 2), 3), 6), mul_nuw(D0, 4)))>
-  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]]: si64 = <div(mul_nuw(D0, 2), 3)>
+  // CHECK-SAME: #mosh<ape[D0, 4]> : !mosh.ape != #mosh<ape[3, var_div3, 2]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_no_wrap(div(mul_no_wrap(D0, 2), 3), 6), mul_no_wrap(D0, 4)))>
+  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]]: si64 = <div(mul_no_wrap(D0, 2), 3)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[D0, 4], si32> -> !mo.tensor<[3, [[EXPR]], 2], si32>
   %shape = mo.constant {value = #M.dense_array<3, -1, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %res = mo.reshape<() -> D1, D2, D3>(%input, %shape) : (!mo.tensor<[D0, 4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[D1, D2, D3], si32>
 
-  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES:.*]]) : !mo.tensor<[3, [[EXPR]], 2], si32> -> !mo.tensor<[3, div(mul_nuw(D0, 2), 3), 2], si32>
-  // CHECK-NEXT: mo.output<div(mul_nuw(D0, 2), 3)> %[[REB]] : !mo.tensor<[3, div(mul_nuw(D0, 2), 3), 2], si32>
+  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES:.*]]) : !mo.tensor<[3, [[EXPR]], 2], si32> -> !mo.tensor<[3, div(mul_no_wrap(D0, 2), 3), 2], si32>
+  // CHECK-NEXT: mo.output<div(mul_no_wrap(D0, 2), 3)> %[[REB]] : !mo.tensor<[3, div(mul_no_wrap(D0, 2), 3), 2], si32>
   mo.output<D1, D2, D3> %res : !mo.tensor<[D1, D2, D3], si32>
 }
 
@@ -1062,7 +1062,7 @@ mo.graph @reshape_flatten_const_shape<D0 -> D2>(
   %input: !mo.tensor<[D0, 4], si32>
 ) -> !mo.tensor<[D2], si32> {
 
-  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]]: si64 = <mul_nuw([[D0]], 4)>
+  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]]: si64 = <mul_no_wrap([[D0]], 4)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0:.*]], 4], si32> -> !mo.tensor<[[[EXPR]]], si32>
   %shape = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %res = mo.reshape<() -> D1>(%input, %shape) : (!mo.tensor<[D0, 4], si32>, !mo.tensor<[1], si64>) -> !mo.tensor<[D1], si32>

@@ -257,7 +257,7 @@ SmallVector<int64_t> ShapeAttr::getIntDims() const {
 TypedAttr ShapeAttr::getSymbolicNumElements() const {
   if (getRank() == 0)
     return ShapeAttr::getDim(getContext(), 1);
-  return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, getValues());
+  return KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, getValues());
 }
 
 ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {

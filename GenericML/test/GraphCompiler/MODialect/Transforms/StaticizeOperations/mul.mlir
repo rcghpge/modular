@@ -13,8 +13,8 @@ mo.graph @mul_scalar<N -> out>(
   %two = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
   %mul = mo.mul(%n_scalar, %two) : !mo.tensor<[], si64>
   %shape = mo.static.reshape(%mul) : !mo.tensor<[], si64> -> !mo.tensor<[1], si64>
-  
-  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_nuw([[N]], 2)], si64>
+
+  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_no_wrap([[N]], 2)], si64>
   %res = mo.broadcast_to<() -> D0>(%input, %shape) : (
     !mo.tensor<[], si64>, !mo.tensor<[1], si64>
   ) -> !mo.tensor<[D0], si64>
@@ -36,7 +36,7 @@ mo.graph @mul_non_scalar<N1, N2 -> out0, out1>(
   %const = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %shape = mo.mul(%dummy_shape, %const) : !mo.tensor<[2], si64>
 
-  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_nuw([[N1]], 2), mul_nuw([[N2]], 3)], si64>
+  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_no_wrap([[N1]], 2), mul_no_wrap([[N2]], 3)], si64>
   %res = mo.broadcast_to<() -> D0, D1>(%input, %shape) : (
     !mo.tensor<[], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[D0, D1], si64>

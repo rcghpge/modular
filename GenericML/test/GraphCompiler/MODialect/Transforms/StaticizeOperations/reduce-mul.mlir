@@ -14,7 +14,7 @@ mo.graph @reduce_mul<N1, N2 -> out>(
     !mo.tensor<[3], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1], si64>
 
-  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_nuw([[N1]], [[N2]], 10)], si64>
+  // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[mul_no_wrap([[N1]], [[N2]], 10)], si64>
   %res = mo.broadcast_to<() -> D0>(%input, %shape) : (
     !mo.tensor<[], si64>, !mo.tensor<[1], si64>
   ) -> !mo.tensor<[D0], si64>

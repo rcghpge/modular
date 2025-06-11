@@ -56,13 +56,13 @@ mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
   // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
   // CHECK-DAG: %[[MUL0:.*]] = pop.mul %[[D0]], %[[D1]]
-  kgen.param.declare M0: si64 = <mul_nuw(X, Y)>
-  kgen.param.declare M1: si64 = <mul_nuw(Y, X)>
+  kgen.param.declare M0: si64 = <mul_no_wrap(X, Y)>
+  kgen.param.declare M1: si64 = <mul_no_wrap(Y, X)>
 
   // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
   // CHECK-DAG: %[[MUL1:.*]] = pop.mul %[[MUL0]], %[[C2]]
   //     CHECK: mef.output
-  kgen.param.declare M2: si64 = <mul_nuw(M0, 2)>
+  kgen.param.declare M2: si64 = <mul_no_wrap(M0, 2)>
   mo.output
 }
 
@@ -237,7 +237,7 @@ mo.graph @complex_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   // CHECK-DAG: %[[MUL1:.*]] = pop.mul %[[D1]], %[[D2]] : !pop.scalar<si64>
   // CHECK-DAG: %[[ADD:.*]] = pop.add %[[MUL0]], %[[MUL1]] : !pop.scalar<si64>
   //     CHECK: mef.output
-  kgen.param.declare C0: si64 = <add(mul_nuw(X, Y), mul_nuw(Y, Z))>
+  kgen.param.declare C0: si64 = <add(mul_no_wrap(X, Y), mul_no_wrap(Y, Z))>
   mo.output
 }
 
@@ -294,7 +294,7 @@ mo.graph @shape_attr<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) -> !mo.tensor<[
 // CHECK: } execute
 mo.graph @param_expr_in_output_shape<D0>(
   %arg0: !mo.tensor<[D0, 4], f32>
-) -> !mo.tensor<[mul_nuw(D0, 2), 2], f32> {
+) -> !mo.tensor<[mul_no_wrap(D0, 2), 2], f32> {
   //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]] : index to si64
   // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
@@ -306,8 +306,8 @@ mo.graph @param_expr_in_output_shape<D0>(
   // CHECK-DAG: %[[SPEC:.*]] = mgp.tensor_spec.create %[[INDEX]] : !mgp.tensor_spec<?x2xf32>
   // CHECK-DAG: %[[TENSOR:.*]] = mgp.tensor.create %{{.*}}, %{{.*}}, %[[SPEC]] : !mgp.tensor<?x2xf32>
   //     CHECK: mef.output {{.*}}%[[TENSOR]]
-  %res = mo.static.reshape(%arg0) : !mo.tensor<[D0, 4], f32> -> !mo.tensor<[mul_nuw(D0, 2), 2], f32>
-  mo.output %res : !mo.tensor<[mul_nuw(D0, 2), 2], f32>
+  %res = mo.static.reshape(%arg0) : !mo.tensor<[D0, 4], f32> -> !mo.tensor<[mul_no_wrap(D0, 2), 2], f32>
+  mo.output %res : !mo.tensor<[mul_no_wrap(D0, 2), 2], f32>
 }
 
 // -----

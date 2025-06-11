@@ -9,8 +9,8 @@
 !tte = !mo.tensor<[1,2,12,5], f32>
 
 // CHECK-MO-LABEL: mo.graph @binary_elemwise_with_parameter
-// CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[mul_nuw(P1, 20)], f32>
-// CHECK-MO: mo.add({{.*}}) : !mo.tensor<[mul_nuw(P1, 20)], f32>
+// CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
+// CHECK-MO: mo.add({{.*}}) : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
 
 // CHECK-MOGG-LABEL: mo.graph @binary_elemwise_with_parameter
 // CHECK-NOT: mogg.kernel

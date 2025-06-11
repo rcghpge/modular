@@ -113,7 +113,8 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     KGEN::ParamDeclAttr fsDecl = graphOp.getNewDimParam("FS");
     ArrayRef<TypedAttr> reshapeInputDims = reshapeInputTy.getDims();
     ArrayRef<TypedAttr> trailingDims = reshapeInputDims.drop_front(rankDiff);
-    auto fsAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, trailingDims);
+    auto fsAttr =
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, trailingDims);
     rewriter.create<KGEN::ParamDeclareOp>(loc, fsDecl, fsAttr);
 
     auto flattenedTy = bcastInputTy.cloneWith(
@@ -141,11 +142,12 @@ struct CommuteBroadcastWithFlatennedArgNonzero
 
     // Second, we calculate the batch size symbolically (BS/bs).
     ArrayRef<TypedAttr> batchDims = reshapeInputDims.take_front(rankDiff);
-    auto bsAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, batchDims);
+    auto bsAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, batchDims);
 
     // We can now calculate the range limit (FS*BS) symbolically.
     SmallVector<TypedAttr> limFactors{bsAttr, fsAttr};
-    auto limAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, limFactors);
+    auto limAttr =
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, limFactors);
     auto lim = rewriter.create<MOSH::ParamToValueOp>(loc, limAttr);
     auto limT = rewriter.create<IndexToTensorOp>(loc, start.getType(), lim);
 
@@ -201,7 +203,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     rewriter.modifyOpInPlace(argNonzeroOp,
                              [&]() { argNonzeroOp.setOutputParamDecls({}); });
     auto numResAttr = KGEN::ParamOperatorAttr::get(
-        KGEN::POC::MulNuw, SmallVector<TypedAttr>{bsAttr, wRef});
+        KGEN::POC::MulNoWrap, SmallVector<TypedAttr>{bsAttr, wRef});
     rewriter.create<KGEN::ParamDeclareOp>(loc, oldDecls[0], numResAttr);
 
     // Replace the original argNonzero op, with the new result.
@@ -326,8 +328,8 @@ struct ConvertBatchMatmulToMatmulPattern
 
     ArrayRef<TypedAttr> oldShape = inputTy.getDims();
     ArrayRef<TypedAttr> kVec = oldShape.take_back();
-    TypedAttr batch =
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, oldShape.drop_back(1));
+    TypedAttr batch = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap,
+                                                   oldShape.drop_back(1));
     SmallVector<TypedAttr> newShape{batch, kVec[0]};
 
     auto shapeTy = rewriter.getType<ShapeType>();
@@ -501,8 +503,8 @@ struct ConvToMatmulPattern
     // Insert reshapes for conv input and filter
     auto shapeTy = rewriter.getType<MOSH::ShapeType>();
     // TODO provide a better API for symbolic dimension manipulations
-    auto matmulDimM =
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, inputDims.slice(0, 3));
+    auto matmulDimM = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap,
+                                                   inputDims.slice(0, 3));
     TypedAttr matmulDimK = inputDims.back();
     TypedAttr matmulDimN = filterDims.back();
     auto matmulInputShape =

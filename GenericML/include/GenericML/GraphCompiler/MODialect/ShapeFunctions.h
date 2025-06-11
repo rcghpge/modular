@@ -197,7 +197,7 @@ public:
   // Allows one to write `v1 * v2`.
   Var operator*(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, attr, other.attr),
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, attr, other.attr),
         "var_mul");
     return Var(resDeclRef, builder);
   }

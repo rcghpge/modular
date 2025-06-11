@@ -135,8 +135,8 @@ mo.graph @sink_consecutive_elemwise_with_parameters<D8431, P49533, P49878>(
     %elemwise4: !mo.tensor<[], f32>
 ) -> !mo.tensor<[P49878, P49533, 3072], f32>{
     kgen.param.declare D8421: si64 = <D8431>
-    kgen.param.declare P39675: si64 = <mul_nuw(D8431, 3072)>
-    kgen.param.declare P39676: si64 = <mul_nuw(P49533, P49878, 3072)>
+    kgen.param.declare P39675: si64 = <mul_no_wrap(D8431, 3072)>
+    kgen.param.declare P39676: si64 = <mul_no_wrap(P49533, P49878, 3072)>
     %280 = mo.static.reshape(%input) : !mo.tensor<[D8431, 3072], f32> -> !mo.tensor<[P49878, P49533, 3072], f32>
     %281 = mo.static.broadcast_to(%elemwise1) : !mo.tensor<[3072], f32> -> !mo.tensor<[P49878, P49533, 3072], f32>
     %282 = mo.add(%280, %281) : !mo.tensor<[P49878, P49533, 3072], f32>

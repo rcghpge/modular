@@ -123,7 +123,7 @@ module {
     %107 = mo.merge_dim[0] (%106) : (!mo.tensor<[9, 9], f32>) -> !mo.tensor<[81], f32>
     mo.invoke_shape_func["mo.arg_nonzero"]<() -> W619, F621>(%107) {dataDeptTensors = [0 : i32]} : (!mo.tensor<[81], f32>)
     %108 = mo.arg_nonzero(%107) : (!mo.tensor<[81], f32>) -> !mo.tensor<[W619, 1], si64>
-    %109 = mosh.param.to_value = <mul_nuw(D474, 81)>
+    %109 = mosh.param.to_value = <mul_no_wrap(D474, 81)>
     %110 = mo.index.to_tensor(%109) -> !mo.tensor<[], si64>
     %111 = mo.range(%22, %110, %20) : (!mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D474], si64>
     %112 = mo.add_singleton_dim[1] (%111) : (!mo.tensor<[D474], si64>) -> !mo.tensor<[D474, 1], si64>
@@ -132,14 +132,14 @@ module {
     %115 = mo.static.broadcast_to(%112) : !mo.tensor<[D474, 1], si64> -> !mo.tensor<[D474, W619], si64>
     %116 = mo.add(%114, %115) : !mo.tensor<[D474, W619], si64>
     %117 = mo.merge_dim[0] (%116) : (!mo.tensor<[D474, W619], si64>) -> !mo.tensor<[param_expr_625], si64>
-    kgen.param.declare param_expr_627: si64 = <mul_nuw(D474, 81)>
+    kgen.param.declare param_expr_627: si64 = <mul_no_wrap(D474, 81)>
     %118 = mo.gather(%104, %117, %27) : (!mo.tensor<[param_expr_627], f32>, !mo.tensor<[param_expr_625], si64>, !mo.tensor<[], si32>) -> !mo.tensor<[param_expr_625], f32>
-    kgen.param.declare assert599: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D52]> : !mosh.ape != #mosh<ape[var_div596, 45]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_nuw(div(mul_nuw(D474, W619), 45), 45), mul_nuw(D474, W619)))>
-    kgen.param.declare param_expr_625: si64 = <mul_nuw(D474, W619)>
-    kgen.param.declare param_expr_626: si64 = <cond(eq(:si64 div(mul_nuw(D474, W619), 45), 0), 0, div(mul_nuw(D474, W619), cond(eq(:si64 div(mul_nuw(D474, W619), 45), 0), 1, div(mul_nuw(D474, W619), 45))))>
+    kgen.param.declare assert599: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D52]> : !mosh.ape != #mosh<ape[var_div596, 45]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_no_wrap(div(mul_no_wrap(D474, W619), 45), 45), mul_no_wrap(D474, W619)))>
+    kgen.param.declare param_expr_625: si64 = <mul_no_wrap(D474, W619)>
+    kgen.param.declare param_expr_626: si64 = <cond(eq(:si64 div(mul_no_wrap(D474, W619), 45), 0), 0, div(mul_no_wrap(D474, W619), cond(eq(:si64 div(mul_no_wrap(D474, W619), 45), 0), 1, div(mul_no_wrap(D474, W619), 45))))>
     %119 = mo.split_dim[0] (%118) : (!mo.tensor<[param_expr_625], f32>) -> !mo.tensor<[param_expr_624, param_expr_626], f32>
-    kgen.param.declare assert602: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 div(mul_nuw(D474, W619), 45), D474))>
-    kgen.param.declare param_expr_624: si64 = <div(mul_nuw(D474, W619), 45)>
+    kgen.param.declare assert602: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[concat] input shapes must match except at concat axis" : !kgen.string}, eq(:si64 div(mul_no_wrap(D474, W619), 45), D474))>
+    kgen.param.declare param_expr_624: si64 = <div(mul_no_wrap(D474, W619), 45)>
     %120 = mo.rebind(%119) : !mo.tensor<[param_expr_624, param_expr_626], f32> -> !mo.tensor<[param_expr_624, 45], f32>
     %121 = mo.concat[%28 : !mo.tensor<[], si32>] (%99, %120) : (!mo.tensor<[D474, 32], f32>, !mo.tensor<[param_expr_624, 45], f32>) -> !mo.tensor<[D474, 77], f32>
     %122 = mo.matmul(%121, %arg11) : (!mo.tensor<[D474, 77], f32>, !mo.tensor<[77, 256], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[D474, 256], f32>

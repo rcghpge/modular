@@ -55,7 +55,7 @@ mo.graph @conv_to_matmul_with_device(
 // CHECK-SAME: ) -> !mo.tensor<[32, 10, 10, 9], f32, dev:0> {
 // CHECK-NEXT:   %[[MATMUL_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[32, 10, 10, 3], f32, dev:0> -> !mo.tensor<[3200, 3], f32, dev:0>
 // CHECK-NEXT:   %[[MATMUL_WEIGHT:.*]] = mo.static.reshape(%[[FILTER]]) : !mo.tensor<[1, 1, 3, 9], f32, dev:0> -> !mo.tensor<[3, 9], f32, dev:0>
-// CHECK-NEXT:   %[[MATMUL:.*]] = mo.matmul(%[[MATMUL_INPUT]], %[[MATMUL_WEIGHT]]) 
+// CHECK-NEXT:   %[[MATMUL:.*]] = mo.matmul(%[[MATMUL_INPUT]], %[[MATMUL_WEIGHT]])
 // CHECK-SAME:     : (!mo.tensor<[3200, 3], f32, dev:0>, !mo.tensor<[3, 9], f32, dev:0>) -> !mo.tensor<[3200, 9], f32, dev:0>
 // CHECK-NEXT:   %[[RES:.*]] = mo.static.reshape(%[[MATMUL]]) : !mo.tensor<[3200, 9], f32, dev:0> -> !mo.tensor<[32, 10, 10, 9], f32, dev:0>
 // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[32, 10, 10, 9], f32, dev:0>
@@ -83,16 +83,16 @@ mo.graph @conv_to_matmul_dynamic_dims<N, H, W, CI, CO>(
 // CHECK-SAME: ) -> !mo.tensor<[[[N]], [[H]], [[W]], [[CO]]], f32> {
 // Reshapes for input/filter into matmul input/weight shape
 // CHECK-NEXT:   %[[MATMUL_INPUT:.*]] = mo.static.reshape(%[[INPUT]])
-// CHECK-SAME:     : !mo.tensor<[[[N]], [[H]], [[W]], [[CI]]], f32> -> !mo.tensor<[mul_nuw([[H]], [[N]], [[W]]), [[CI]]], f32>
+// CHECK-SAME:     : !mo.tensor<[[[N]], [[H]], [[W]], [[CI]]], f32> -> !mo.tensor<[mul_no_wrap([[H]], [[N]], [[W]]), [[CI]]], f32>
 // CHECK-NEXT:   %[[MATMUL_WEIGHT:.*]] = mo.static.reshape(%[[FILTER]])
 // CHECK-SAME:     : !mo.tensor<[1, 1, [[CI]], [[CO]]], f32> -> !mo.tensor<[[[CI]], [[CO]]], f32>
 // Matmul
 // CHECK-NEXT:   %[[MATMUL:.*]] = mo.matmul(%[[MATMUL_INPUT]], %[[MATMUL_WEIGHT]]) : (
-// CHECK-SAME:     !mo.tensor<[mul_nuw([[H]], [[N]], [[W]]), [[CI]]], f32>, !mo.tensor<[[[CI]], [[CO]]], f32>
-// CHECK-SAME:   ) -> !mo.tensor<[mul_nuw([[H]], [[N]], [[W]]), [[CO]]], f32>
+// CHECK-SAME:     !mo.tensor<[mul_no_wrap([[H]], [[N]], [[W]]), [[CI]]], f32>, !mo.tensor<[[[CI]], [[CO]]], f32>
+// CHECK-SAME:   ) -> !mo.tensor<[mul_no_wrap([[H]], [[N]], [[W]]), [[CO]]], f32>
 // Reshape for matmul result back to conv output shape
 // CHECK-NEXT:   %[[RES:.*]] = mo.static.reshape(%[[MATMUL]])
-// CHECK-SAME:     : !mo.tensor<[mul_nuw([[H]], [[N]], [[W]]), [[CO]]], f32> -> !mo.tensor<[[[N]], [[H]], [[W]], [[CO]]], f32>
+// CHECK-SAME:     : !mo.tensor<[mul_no_wrap([[H]], [[N]], [[W]]), [[CO]]], f32> -> !mo.tensor<[[[N]], [[H]], [[W]], [[CO]]], f32>
 // CHECK-NEXT:   mo.output %[[RES]] : !mo.tensor<[[[N]], [[H]], [[W]], [[CO]]], f32>
 
 

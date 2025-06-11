@@ -361,7 +361,7 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
     return buildVariadicOp<KGEN::POP::MinOp>(builder, loc, operands,
                                              resultType);
   case KGEN::POC::Mul:
-  case KGEN::POC::MulNuw:
+  case KGEN::POC::MulNoWrap:
     return buildVariadicOp<KGEN::POP::MulOp>(builder, loc, operands,
                                              resultType);
   case KGEN::POC::And:

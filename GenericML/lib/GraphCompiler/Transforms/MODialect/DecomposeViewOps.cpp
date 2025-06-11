@@ -132,7 +132,7 @@ static void decomposeFlatteningReshape(Static::ReshapeOp reshape,
     // add back the multiplied dim ([..., a] -> [a, b*c])
     SmallVector<TypedAttr> dimsToMultiply{lastDim, secondLastDim};
     TypedAttr multipliedDim =
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, dimsToMultiply);
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, dimsToMultiply);
     newShape.push_back(multipliedDim);
 
     // create the new merge_dim op using the new shape
@@ -156,7 +156,7 @@ static void decomposeFlatteningReshape(Static::ReshapeOp reshape,
 
   // If the final output type doesn't match the input type, we need to rebind
   // the final output to the input type.
-  // e.g: [mul_nuw(D1, D2, D3)] -> [D123]
+  // e.g: [mul_no_wrap(D1, D2, D3)] -> [D123]
   auto finalOutput = lastMergeOp.getResult();
   if (finalOutput.getType() != oldOutType) {
     auto rebindOp =
@@ -262,7 +262,7 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
 
   // If the final output type doesn't match the input type, we need to rebind
   // the final output to the input type.
-  // e.g: [mul_nuw(D1, D2, D3)] -> [D123]
+  // e.g: [mul_no_wrap(D1, D2, D3)] -> [D123]
   auto finalOutput = lastSplitOp.getResult();
   if (finalOutput.getType() != oldOutType) {
     auto rebindOp =

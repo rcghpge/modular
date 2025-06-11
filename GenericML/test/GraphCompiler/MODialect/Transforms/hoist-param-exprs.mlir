@@ -15,7 +15,7 @@ mo.graph @complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tenso
 }
 
 // CHECK-LABEL: mo.graph @multiple_complex_expression
-mo.graph @multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>) -> (!mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>) {
+mo.graph @multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>) -> (!mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>) {
   // CHECK-NEXT: mo.constant
   // CHECK-NEXT: mo.concat
   // CHECK-NEXT: mo.static.broadcast_to
@@ -23,19 +23,19 @@ mo.graph @multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: 
   %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
   %2 = mo.static.broadcast_to(%arg1):!mo.tensor<[M], f32> ->!mo.tensor<[N, M], f32>
-  %3 = mo.static.reshape(%2):!mo.tensor<[N, M], f32> ->!mo.tensor<[mul_nuw(N, M)], f32>
+  %3 = mo.static.reshape(%2):!mo.tensor<[N, M], f32> ->!mo.tensor<[mul_no_wrap(N, M)], f32>
   // CHECK-DAG: kgen.param.declare [[NAME_ADD:[a-zA-Z0-9_]+]]: si64 = <add
-  // CHECK-DAG: kgen.param.declare [[NAME_MUL:[a-zA-Z0-9_]+]]: si64 = <mul_nuw
-  // CHECK-DAG: kgen.param.declare [[NAME_ADD_MUL:[a-zA-Z0-9_]+]]: si64 = <add(mul_nuw
+  // CHECK-DAG: kgen.param.declare [[NAME_MUL:[a-zA-Z0-9_]+]]: si64 = <mul_no_wrap
+  // CHECK-DAG: kgen.param.declare [[NAME_ADD_MUL:[a-zA-Z0-9_]+]]: si64 = <add(mul_no_wrap
   // CHECK-NEXT: mo.concat{{.*}} : (!mo.tensor<[[[NAME_ADD]]], f32>, !mo.tensor<[[[NAME_MUL]]], f32>) -> !mo.tensor<[[[NAME_ADD_MUL]]], f32>
   // CHECK-NEXT: mo.rebind
-  // CHECK-NEXT: mo.output{{.*}} : !mo.tensor<[add(mul_nuw{{.*}})], f32>
-  %4 = mo.concat[%ax:!mo.tensor<[],si64>](%1, %3) :(!mo.tensor<[add(N,M)], f32>, !mo.tensor<[mul_nuw(N,M)], f32>) -> !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>
-  mo.output %4 : !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>
+  // CHECK-NEXT: mo.output{{.*}} : !mo.tensor<[add(mul_no_wrap{{.*}})], f32>
+  %4 = mo.concat[%ax:!mo.tensor<[],si64>](%1, %3) :(!mo.tensor<[add(N,M)], f32>, !mo.tensor<[mul_no_wrap(N,M)], f32>) -> !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>
+  mo.output %4 : !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>
 }
 
 // CHECK-LABEL: mo.graph @scoped_multiple_complex_expression
-mo.graph @scoped_multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>, %arg2: !mo.tensor<[1], bool>) -> (!mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>) {
+mo.graph @scoped_multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>, %arg2: !mo.tensor<[1], bool>) -> (!mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>) {
   // CHECK-NEXT: mo.constant
   // CHECK-NEXT: mo.concat
   // CHECK-NEXT: mo.static.broadcast_to
@@ -43,24 +43,24 @@ mo.graph @scoped_multiple_complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, 
   %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
   %1 = mo.concat[%ax:!mo.tensor<[],si64>](%arg0, %arg1):(!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
   %2 = mo.static.broadcast_to(%arg1):!mo.tensor<[M], f32> ->!mo.tensor<[N, M], f32>
-  %3 = mo.static.reshape(%2):!mo.tensor<[N, M], f32> ->!mo.tensor<[mul_nuw(N, M)], f32>
+  %3 = mo.static.reshape(%2):!mo.tensor<[N, M], f32> ->!mo.tensor<[mul_no_wrap(N, M)], f32>
   // CHECK-DAG: kgen.param.declare [[NAME_ADD:[a-zA-Z0-9_]+]]: si64 = <add
-  // CHECK-DAG: kgen.param.declare [[NAME_MUL:[a-zA-Z0-9_]+]]: si64 = <mul_nuw
-  // CHECK-DAG: kgen.param.declare [[NAME_ADD_MUL:[a-zA-Z0-9_]+]]: si64 = <add(mul_nuw
+  // CHECK-DAG: kgen.param.declare [[NAME_MUL:[a-zA-Z0-9_]+]]: si64 = <mul_no_wrap
+  // CHECK-DAG: kgen.param.declare [[NAME_ADD_MUL:[a-zA-Z0-9_]+]]: si64 = <add(mul_no_wrap
   // CHECK-NEXT: mo.concat{{.*}} : (!mo.tensor<[[[NAME_ADD]]], f32>, !mo.tensor<[[[NAME_MUL]]], f32>) -> !mo.tensor<[[[NAME_ADD_MUL]]], f32>
   // CHECK-NEXT: mo.rebind
-  %4 = mo.concat[%ax:!mo.tensor<[],si64>](%1, %3) :(!mo.tensor<[add(N,M)], f32>, !mo.tensor<[mul_nuw(N,M)], f32>) -> !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>
+  %4 = mo.concat[%ax:!mo.tensor<[],si64>](%1, %3) :(!mo.tensor<[add(N,M)], f32>, !mo.tensor<[mul_no_wrap(N,M)], f32>) -> !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>
   %cond = mo.static.reshape(%arg2) : !mo.tensor<[1], bool> -> !mo.tensor<[], bool>
-  %5 = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32> {
-    // CHECK: kgen.param.declare [[NAME_ADD_MUL_SCOPED:[a-zA-Z0-9_]+]]: si64 = <add(mul_nuw
+  %5 = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32> {
+    // CHECK: kgen.param.declare [[NAME_ADD_MUL_SCOPED:[a-zA-Z0-9_]+]]: si64 = <add(mul_no_wrap
     // CHECK-NEXT: mo.rebind{{.*}} : !mo.tensor<[[[NAME_ADD_MUL]]], f32> -> !mo.tensor<[[[NAME_ADD_MUL_SCOPED]]], f32>
-    %6 = mo.concat[%ax:!mo.tensor<[],si64>](%4) : (!mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>) -> !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>
-    mo.yield %6 : !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>
+    %6 = mo.concat[%ax:!mo.tensor<[],si64>](%4) : (!mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>) -> !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>
+    mo.yield %6 : !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>
   } else {
-    mo.yield %4 : !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>
+    mo.yield %4 : !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>
   }
-  // CHECK: mo.output{{.*}} : !mo.tensor<[add(mul_nuw{{.*}})], f32>
-  mo.output %5 : !mo.tensor<[add(add(N, M), mul_nuw(N,M))], f32>
+  // CHECK: mo.output{{.*}} : !mo.tensor<[add(mul_no_wrap{{.*}})], f32>
+  mo.output %5 : !mo.tensor<[add(add(N, M), mul_no_wrap(N,M))], f32>
 }
 
 
@@ -104,12 +104,12 @@ mo.graph @dont_rebind_opaque(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.opaque<"Opa
   %0 = mo.rebind<() -> D1>(%arg0) : !mo.tensor<[?], f32> -> !mo.tensor<[D1], f32>
 
   // CHECK-NEXT: mo.custom
-  %1 = mo.custom {symbol = "custom0", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_nuw(D1, 2)], f32>
+  %1 = mo.custom {symbol = "custom0", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_no_wrap(D1, 2)], f32>
 
-  // CHECK-NEXT: kgen.param.declare [[MUL:.*]]: si64 = <mul_nuw
+  // CHECK-NEXT: kgen.param.declare [[MUL:.*]]: si64 = <mul_no_wrap
 
   // CHECK-NEXT: (!mo.tensor<[[[MUL]]], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
-  %2 = mo.custom {symbol = "custom", device = #M.device_ref<"cpu", 0>}(%1, %arg1) : (!mo.tensor<[mul_nuw(D1, 2)], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
+  %2 = mo.custom {symbol = "custom", device = #M.device_ref<"cpu", 0>}(%1, %arg1) : (!mo.tensor<[mul_no_wrap(D1, 2)], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
 
   // CHECK-NEXT: mo.output
   mo.output %2 : !mo.opaque<"Opaque">

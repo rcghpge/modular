@@ -1332,8 +1332,8 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     // Add a 1 to the shapes to multiply to ensure the denominator is valid
     auto mulDims = targetNonNegOneDims;
     mulDims.emplace_back(IntegerAttr::get(numerator.getAttr().getType(), 1));
-    Var denominator =
-        b.createVar(KGEN::ParamOperatorAttr::get(KGEN::POC::MulNuw, mulDims));
+    Var denominator = b.createVar(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, mulDims));
 
     if (allowParametricDenominator) {
       for (auto dim : mulDims) {

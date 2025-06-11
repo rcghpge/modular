@@ -126,8 +126,8 @@ mo.graph @nested_div_mul_simplification<D0, D1 -> D2>(
   %arg: !mo.tensor<[D0, D1, 20], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32> {
 ) -> !mo.tensor<[D0, D2, 4, 5], f32> {
-  kgen.param.declare NUM: si64 = <mul_nuw(D0, D1, 20)>
-  kgen.param.declare DENOM: si64 = <mul_nuw(D0, 4, 5)>
+  kgen.param.declare NUM: si64 = <mul_no_wrap(D0, D1, 20)>
+  kgen.param.declare DENOM: si64 = <mul_no_wrap(D0, 4, 5)>
   kgen.param.declare DIV: si64 = <div(NUM, DENOM)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[ARG]])
   // CHECK-SAME: : !mo.tensor<[[[D0]], [[D1]], 20], f32> -> !mo.tensor<[[[D0]], [[D1]], 4, 5], f32>
@@ -266,15 +266,15 @@ mo.graph @range_based_folding<D0 -> O0, O1, O2, O3>(
 ) -> !mo.tensor<[O0, O1, O2, O3], f32> {
 
   kgen.param.declare P0: si64 = <max(D0, 0)> // D0
-  kgen.param.declare P1: si64 = <max(mul_nuw(D0, -1), 0)> // 0
+  kgen.param.declare P1: si64 = <max(mul_no_wrap(D0, -1), 0)> // 0
   kgen.param.declare P2: si64 = <min(D0, 0)> // 0
-  kgen.param.declare P3: si64 = <min(mul_nuw(D0, -1), 0)> // mul_nuw(D0, -1)
+  kgen.param.declare P3: si64 = <min(mul_no_wrap(D0, -1), 0)> // mul_no_wrap(D0, -1)
 
   // CHECK-NEXT: %[[OUT:.*]] = mo.static.broadcast_to(%[[IN]])
-  // CHECK-SAME: : !mo.tensor<[], f32> -> !mo.tensor<[[[D0]], 0, 0, mul_nuw([[D0]], -1)], f32>
+  // CHECK-SAME: : !mo.tensor<[], f32> -> !mo.tensor<[[[D0]], 0, 0, mul_no_wrap([[D0]], -1)], f32>
   %out = mo.static.broadcast_to(%in) : !mo.tensor<[], f32> -> !mo.tensor<[P0, P1, P2, P3], f32>
 
-  // CHECK-NEXT: mo.output<mul_nuw([[D0]], -1)> %[[OUT]] : !mo.tensor<[[[D0]], 0, 0, mul_nuw([[D0]], -1)], f32>
+  // CHECK-NEXT: mo.output<mul_no_wrap([[D0]], -1)> %[[OUT]] : !mo.tensor<[[[D0]], 0, 0, mul_no_wrap([[D0]], -1)], f32>
   mo.output<P0, P1, P2, P3> %out : !mo.tensor<[P0, P1, P2, P3], f32>
 }
 
@@ -420,7 +420,7 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[reshape] input and output number of elements must match:
   // CHECK-SAME: #mosh<ape[D0, D1]> : !mosh.ape != #mosh<ape[D0, 4, 5]> : !mosh.ape" : !kgen.string},
-  // CHECK-SAME: eq(:si64 mul_nuw(D0, D1), mul_nuw(D0, 20)))>
+  // CHECK-SAME: eq(:si64 mul_no_wrap(D0, D1), mul_no_wrap(D0, 20)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
   // CHECK-SAME:   : !mo.tensor<[[[D0]], [[D1]]], f32> -> !mo.tensor<[[[D0]], 4, 5], f32>
@@ -497,7 +497,7 @@ mo.graph @fold_abs_on_non_negative_dim<D0 -> D1>(
 ) -> !mo.tensor<[D1], f32> {
 
   // CHECK-NEXT: %[[RESULT:.*]] = mo.static.broadcast_to{{.*}} -> !mo.tensor<[D0], f32>
-  kgen.param.declare D2: si64 = <cond(ge(:si64 D0, 0), D0, mul_nuw(D0, -1))>
+  kgen.param.declare D2: si64 = <cond(ge(:si64 D0, 0), D0, mul_no_wrap(D0, -1))>
   %result = mo.static.broadcast_to(%scalar) : !mo.tensor<[], f32> -> !mo.tensor<[D2], f32>
 
   // CHECK-NEXT: mo.output %[[RESULT]]

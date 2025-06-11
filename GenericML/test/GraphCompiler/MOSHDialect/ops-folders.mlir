@@ -223,7 +223,7 @@ kgen.generator @num_elements_dyn_rank_no_fold<Sh0: !mosh.ape>() -> si64 {
 // CHECK: kgen.generator @num_elements_static_rank_fold<[[D0:.*]]>() -> si64 {
 kgen.generator @num_elements_static_rank_fold<D0>() -> si64 {
   %sh0 = mosh.param.to_value: !mosh.ape = <[42, D0, 10]>
-  // CHECK-NEXT: %[[RES:.*]] = mosh.param.to_value = <mul_nuw([[D0]], 420)>
+  // CHECK-NEXT: %[[RES:.*]] = mosh.param.to_value = <mul_no_wrap([[D0]], 420)>
   %0 = mosh.num_elements(%sh0)
   // CHECK-NEXT: kgen.return %[[RES]] : si64
   kgen.return %0 : si64

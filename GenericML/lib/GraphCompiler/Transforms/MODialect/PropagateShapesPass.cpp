@@ -583,7 +583,7 @@ struct PropagateShapes {
     case KGEN::POC::Mul:
       return mlir::intrange::inferMul(inputs,
                                       mlir::intrange::OverflowFlags::None);
-    case KGEN::POC::MulNuw:
+    case KGEN::POC::MulNoWrap:
       return mlir::intrange::inferMul(inputs,
                                       mlir::intrange::OverflowFlags::Nuw);
     case KGEN::POC::And:
