@@ -68,3 +68,15 @@ mo.graph @resize_nearest_dyn(%arg0: !mo.tensor<?, f32>, %size: !mo.tensor<?, si6
 //  CHECK-NEXT:   [[V3:%.*]] = mo.resize.nearest<() -> [[RMO_SH8:[A-Za-z0-9_]*]]: !mosh.ape>([[V0]], [[V2]]) {coordinate_transform_mode = #mo<coord_trans_mode half_pixel>, round_mode = 1 : i64} : (!mo.tensor<[[SH4]], f32>, !mo.tensor<[[[RMO_D7]]], si64>) -> !mo.tensor<[[RMO_SH8]], f32>
 //  CHECK-NEXT:   [[V4:%.*]] = rmo.rebind_tensor_shape<() -> [[SH6:[A-Za-z0-9_]*]]: !mosh.ape>([[V3]]) {{.*}} : (!mo.tensor<[[RMO_SH8]], f32>) -> !mo.tensor<[[SH6]], f32>
 //  CHECK-NEXT:   mo.output<:!mosh.ape [[SH6]]> [[V4]] : !mo.tensor<[[SH6]], f32>
+
+// -----
+
+mo.graph @resize_bicubic_static(%arg0: !mo.tensor<[1, 3, 224, 224], f32>, %size: !mo.tensor<[4], si64>) -> !mo.tensor<?, f32> {
+  %0 = rmo.mo.resize.bicubic(%arg0, %size) : (!mo.tensor<[1, 3, 224, 224], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<?, f32>
+  mo.output %0 : !mo.tensor<?, f32>
+}
+// CHECK-LABEL: mo.graph
+//  CHECK-SAME: @resize_bicubic_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[1, 3, 224, 224], f32>, [[ARG1:%.*]]: !mo.tensor<[4], si64>) -> !mo.tensor<[[SH1]], f32> {
+//  CHECK-NEXT:   [[V0:%.*]] = mo.resize.bicubic<() -> [[RMO_D3:[A-Za-z0-9_]*]], [[RMO_D4:[A-Za-z0-9_]*]], [[RMO_D5:[A-Za-z0-9_]*]], [[RMO_D6:[A-Za-z0-9_]*]]>([[ARG0]], [[ARG1]]) : (!mo.tensor<[1, 3, 224, 224], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]]], f32>
+//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D3]], [[RMO_D4]], [[RMO_D5]], [[RMO_D6]]], f32>) -> !mo.tensor<[[SH2]], f32>
+//  CHECK-NEXT:   mo.output<:!mosh.ape [[SH2]]> [[V1]] : !mo.tensor<[[SH2]], f32>

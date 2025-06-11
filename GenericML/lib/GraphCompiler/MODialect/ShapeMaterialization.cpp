@@ -333,6 +333,9 @@ SmallVector<int32_t> ResizeLinearOp::getDataDependentInputIndices() {
 SmallVector<int32_t> ResizeNearestOp::getDataDependentInputIndices() {
   return {1};
 }
+SmallVector<int32_t> ResizeBicubicOp::getDataDependentInputIndices() {
+  return {1};
+}
 
 ShapeMaterializeResult
 ResizeLinearOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
@@ -342,6 +345,12 @@ ResizeLinearOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 }
 ShapeMaterializeResult
 ResizeNearestOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
+  auto graphOp = getOperation()->getParentOfType<GraphOp>();
+  Location loc = getLoc();
+  return materializeTargetShapeLike(graphOp, loc, inputAttrs[1]);
+}
+ShapeMaterializeResult
+ResizeBicubicOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
   auto graphOp = getOperation()->getParentOfType<GraphOp>();
   Location loc = getLoc();
   return materializeTargetShapeLike(graphOp, loc, inputAttrs[1]);

@@ -858,6 +858,18 @@ void MOResizeNearestOp::inferMOTypesImpl(
       moResultTypes, moInputParamDecls, moOutputParamDecls);
 }
 
+void MOResizeBicubicOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+  inferMOTypesResizeImpl(
+      context, graphOp, cast<TensorValue>(operands.getInput()),
+      cast<TensorValue>(operands.getSize()), rmoResults, moOperandTypes,
+      moResultTypes, moInputParamDecls, moOutputParamDecls);
+}
+
 void MOSelectOp::inferMOTypesImpl(
     MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
     std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,

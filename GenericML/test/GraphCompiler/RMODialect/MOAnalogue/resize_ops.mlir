@@ -19,3 +19,10 @@ mo.graph @resize_nearest_ok(%arg0: !mo.tensor<?, f32>, %size: !mo.tensor<?, si64
   %0 = rmo.mo.resize.nearest(%arg0, %size) {coordinate_transform_mode = #mo<coord_trans_mode half_pixel>, round_mode = 0}: (!mo.tensor<?, f32>, !mo.tensor<?, si64>) -> !mo.tensor<?, f32>
   mo.output %0 : !mo.tensor<?, f32>
 }
+
+// -----
+
+mo.graph @resize_bicubic_ok(%arg0: !mo.tensor<?, f32>, %size: !mo.tensor<?, si64>) -> !mo.tensor<?, f32> {
+  %0 = rmo.mo.resize.bicubic(%arg0, %size) : (!mo.tensor<?, f32>, !mo.tensor<?, si64>) -> !mo.tensor<?, f32>
+  mo.output %0 : !mo.tensor<?, f32>
+}

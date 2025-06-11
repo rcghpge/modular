@@ -1541,6 +1541,34 @@ def RMO_MOResizeNearestOp : RMO_MOAnaloguePureTensorOp<"resize.nearest"> {
   let results = (outs MO_Tensor:$result);
 }
 
+
+def RMO_MOResizeBicubicOp : RMO_MOAnaloguePureTensorOp<"resize.bicubic"> {
+  let summary = "Bicubic resize operation";
+  let description = [{
+    Resizes a tensor to a new shape using the bicubic interpolation algorithm.
+
+    Bicubic interpolation uses a 4x4 pixel neighborhood and cubic polynomials
+    to produce smoother results than linear interpolation. This implementation
+    uses Keys' cubic convolution with a = -0.5.
+
+    Example:
+    ```mlir
+      %input : !mo.tensor<[1, 3, 224, 224], f32>
+      %size = mo.constant {
+        value = #M.dense_array<1, 3, 448, 448> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = rmo.resize.bicubic(%input, %size) :
+        (!mo.tensor<[1, 3, 224, 224], f32>, !mo.tensor<[4], si64>) ->
+          !mo.tensor<[1, 3, 448, 448], f32>
+    ```
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesVectorIfRanked:$size,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+}
+
 class RMO_MOAnaloguePureLogicalBinaryOp<string name, list<Trait> traits = []>
     : RMO_MOAnaloguePureBinaryElementWiseOp<name, traits # [Commutative]> {
   let arguments = (ins MO_BooleanMask:$input_x, MO_BooleanMask:$input_y, MO_ParamDecls:$outputParamDecls);

@@ -4081,6 +4081,42 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
   }];
 }
 
+
+def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic",
+  [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+   MO_SingleDeviceWithHostOperands<["size"]>
+]> {
+  let summary = "Bicubic resize operation";
+  let description = [{
+    Resizes a tensor to a new shape using the bicubic interpolation algorithm.
+
+    Bicubic interpolation uses a 4x4 pixel neighborhood and cubic polynomials
+    to produce smoother results than linear interpolation. This implementation
+    uses Keys' cubic convolution with a = -0.5.
+
+    Example:
+    ```mlir
+      %input : !mo.tensor<[1, 3, 224, 224], f32>
+      %size = mo.constant {
+        value = #M.dense_array<1, 3, 448, 448> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+      %res = mo.resize.bicubic(%input, %size) :
+        (!mo.tensor<[1, 3, 224, 224], f32>, !mo.tensor<[4], si64>) ->
+          !mo.tensor<[1, 3, 448, 448], f32>
+    ```
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$size,
+    MO_ParamDecls:$outputParamDecls);
+
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // ROI align op
 //===----------------------------------------------------------------------===//
