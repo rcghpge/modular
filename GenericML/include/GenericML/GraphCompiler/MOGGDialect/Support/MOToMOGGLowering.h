@@ -54,7 +54,16 @@ public:
   ErrorOr<MOGG::ExpKernelOp> lowerToKernel();
 
 private:
-  DeviceRefAttr getDevice() const { return MO::getDeviceOrDefaultAny(moOp); }
+  DeviceRefAttr getDevice() const {
+    // GEX-2278 If this is a multi-device op, we can't return a single device.
+    // Existing code expects the default host device in this case.
+    if (moOp->hasTrait<MO::MOMultiDevice>()) {
+      return getHostDevice();
+    }
+
+    return MO::getDeviceOrDefaultAny(moOp);
+  }
+
   DeviceRefAttr getHostDevice() const { return M::getHostDevice(graphOp); }
 
   using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;

@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/Support.h"
@@ -30,7 +31,7 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
       typeManager(
           MOGG::TypeManager::get(ctx, mojoLibraryAnalysis).takeValue()) {
 
-  isAsync = (getDevice() == getHostDevice()) && !forceSync;
+  isAsync = MO::isOnHost(op) && !forceSync && !isa<MO::LayoutTransformOp>(op);
 
   // Get ready for building ops.
   builder.setInsertionPoint(op);
