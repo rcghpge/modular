@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 
 namespace M::MOGG {
@@ -30,32 +31,47 @@ MOTypeToMojoKernelOperand(Type type) {
   return std::nullopt;
 }
 
-static bool matchConvertedMOTypeToKernelType(
+static ErrorOrSuccess matchConvertedMOTypeToKernelType(
     const KGEN::MOGGPreElab::MojoKernelOperandVariant &moType,
-    const KGEN::MOGGPreElab::MojoKernelOperandVariant &kernelType) {
+    const KGEN::MOGGPreElab::MojoKernelOperandVariant &kernelType,
+    Type originalMOType) {
   using namespace KGEN::MOGGPreElab;
 
   if (moType == kernelType)
-    return true;
+    return success();
 
   if (std::holds_alternative<VariadicTensorOperandAdaptor>(kernelType)) {
     auto tensorType = std::get_if<TensorOperandAdaptor>(&moType);
     if (!tensorType)
-      return false;
+      return Error("MO type is not a tensor type");
 
-    return *reinterpret_cast<const TensorOperandAdaptor *>(&kernelType) ==
-           *tensorType;
+    if (!(*reinterpret_cast<const TensorOperandAdaptor *>(&kernelType) ==
+          *tensorType)) {
+      return Error("Tensor type mismatch");
+    }
+
+    return success();
   }
 
   if (std::holds_alternative<ScalarOperandAdaptor>(kernelType)) {
     auto tensorType = std::get_if<TensorOperandAdaptor>(&moType);
     if (!tensorType)
-      return false;
+      return Error("MO type is not a tensor type");
 
-    return !tensorType->mut;
+    if (tensorType->mut)
+      return Error("Expected an immutable tensor type");
+
+    auto moTensorType = cast<MO::TensorType>(originalMOType);
+    if (moTensorType.getRank() != 0)
+      return Error("MO tensor type should have a rank of 0");
+
+    if (!isOnHost(moTensorType))
+      return Error("Scalars should always be on the host CPU");
+
+    return success();
   }
 
-  return false;
+  return Error("Mismatched types");
 }
 
 static StringRef moOperationName(Operation *op) {
@@ -181,17 +197,17 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
           llvm::formatv("Unsupported op argument type at index {}", moOpIndex));
     }
 
-    bool matched = matchConvertedMOTypeToKernelType(*moTypeToMojoKernelOperand,
-                                                    kernelType->underlyingType);
+    auto errorOnMatch = matchConvertedMOTypeToKernelType(
+        *moTypeToMojoKernelOperand, kernelType->underlyingType, *moType);
 
-    if (!matched) {
+    if (errorOnMatch.isError()) {
       return Error(llvm::formatv(
           "Op '{}' {} at position {} does not match registered kernel "
           "operand at "
-          "position {}: {} vs {}",
+          "position {}: {} vs {}. Detail: {}",
           moOperationName(op), argumentKind, moOpIndex,
           kernelType->sourceDescriptor->position, *moTypeToMojoKernelOperand,
-          *kernelType));
+          *kernelType, errorOnMatch.getError()));
     }
 
     mapping[moOpIndex] = *kernelType;
@@ -283,13 +299,15 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   }
 
   // 3. We have results for both but they don't match.
-  if (!matchConvertedMOTypeToKernelType(*moTypeToMojoKernelOperand,
-                                        adaptor.outputResult->underlyingType)) {
-    return Error(
-        llvm::formatv("Op '{}' output at position {} does not match kernel "
-                      "function result; op has {} but kernel has {}",
-                      moOperationName(op), moOpIndex,
-                      *moTypeToMojoKernelOperand, *adaptor.outputResult));
+  auto errorOnMatch = matchConvertedMOTypeToKernelType(
+      *moTypeToMojoKernelOperand, adaptor.outputResult->underlyingType,
+      *moType);
+  if (errorOnMatch.isError()) {
+    return Error(llvm::formatv(
+        "Op '{}' output at position {} does not match kernel "
+        "function result; op has {} but kernel has {}. Detail: {}",
+        moOperationName(op), moOpIndex, *moTypeToMojoKernelOperand,
+        *adaptor.outputResult, errorOnMatch.getError()));
   }
   mapping[moOpIndex] = *adaptor.outputResult;
 

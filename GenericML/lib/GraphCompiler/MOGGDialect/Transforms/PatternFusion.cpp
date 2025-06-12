@@ -1692,9 +1692,9 @@ public:
     // Allowed to elide the batch dimension
     if (scalarConstant) {
       // May have a pre-broadcasted batch-dimension
-      ErrorOrSuccess normScalarOk = checkRank(
-          scalarConstant, "[MultiHeadAttentionNormalizationMatcher] normScalar",
-          {0, 1});
+      ErrorOrSuccess normScalarOk =
+          checkRank(scalarConstant,
+                    "[MultiHeadAttentionNormalizationMatcher] normScalar", {0});
       if (normScalarOk.isError())
         return normScalarOk.takeError();
     }
