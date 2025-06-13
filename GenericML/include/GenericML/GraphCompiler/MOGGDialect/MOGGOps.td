@@ -205,9 +205,9 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
                        Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
-    `[` $kernelName `]` `inputs` `(` $inputs `:` qualified(type($inputs)) `)`
-                      (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
-                      (`->` $regRetType^)? attr-dict
+    `[` $kernelName `]` (`inputs` `(` $inputs^ `:` qualified(type($inputs)) `)`)?
+                        (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
+                        (`->` $regRetType^)? attr-dict
   }];
 }
 
