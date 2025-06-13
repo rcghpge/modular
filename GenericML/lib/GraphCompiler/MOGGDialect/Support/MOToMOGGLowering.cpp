@@ -67,20 +67,25 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
                       const IndexToOperandAdaptorMapping &mapping,
                       OpBuilder &builder) {
   SmallVector<Value> ret;
-  for (uint64_t idx = 0; idx < originalInputs.size(); ++idx) {
+  uint64_t idx = 0;
+  while (idx < originalInputs.size()) {
     if (!mapping.lookup(idx).isVariadicTensorType()) {
       ret.push_back(originalInputs[idx]);
+      ++idx;
       continue;
     }
 
     SmallVector<Value> valuesThatMatchVariadics;
     SmallVector<Type> tupleTypes;
+    KGEN::MOGGPreElab::MojoKernelOperandAdaptor variadicType;
     do {
       tupleTypes.push_back(originalInputs[idx].getType());
-      valuesThatMatchVariadics.push_back(originalInputs[idx++]);
+      valuesThatMatchVariadics.push_back(originalInputs[idx]);
+      variadicType = mapping.lookup(idx);
+      ++idx;
     } while (idx < originalInputs.size() &&
-             mapping.lookup(idx).isVariadicTensorType());
-    --idx;
+             mapping.lookup(idx).sourceDescriptor->position ==
+                 variadicType.sourceDescriptor->position);
     ret.push_back(builder.create<MOGG::AsTupleOp>(
         valuesThatMatchVariadics.front().getLoc(),
         builder.getTupleType(tupleTypes), valuesThatMatchVariadics));
