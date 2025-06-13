@@ -9,18 +9,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "AsyncRT/NIXL/plugins/ucx/ucx_backend.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "Support/STLExtras.h"
 #include <AsyncRT/NIXL/plugins/ucx/ucx_backend.h>
-#include <atomic>
 
-#ifdef HAVE_CUDA
-
-#include <cuda_runtime.h>
-#include <cufile.h>
-
-#endif
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
+#include "Support/ErrorOr.h"
+#include "Support/LogicalResult.h"
 
 using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
@@ -29,28 +28,6 @@ using namespace M::AsyncRT::NIXL;
  * CUDA related code
  *****************************************/
 
-namespace M::AsyncRT::NIXL {
-
-class nixlUcxCudaCtx {
-public:
-#ifdef HAVE_CUDA
-  CUcontext pthrCudaCtx;
-  int myDevId;
-
-  nixlUcxCudaCtx() {
-    pthrCudaCtx = NULL;
-    myDevId = -1;
-  }
-#endif
-  void cudaResetCtxPtr();
-  int cudaUpdateCtxPtr(void *address, int expected_dev, bool &was_updated);
-  int cudaSetCtx();
-};
-
-} // namespace M::AsyncRT::NIXL
-
-#ifdef HAVE_CUDA
-
 static int cudaQueryAddr(void *address, bool &is_dev, CUdevice &dev,
                          CUcontext &ctx) {
   CUmemorytype mem_type = CU_MEMORYTYPE_HOST;
@@ -58,7 +35,7 @@ static int cudaQueryAddr(void *address, bool &is_dev, CUdevice &dev,
 #define NUM_ATTRS 4
   CUpointer_attribute attr_type[NUM_ATTRS];
   void *attr_data[NUM_ATTRS];
-  CUresult result;
+  CUDADriver::Result result;
 
   attr_type[0] = CU_POINTER_ATTRIBUTE_MEMORY_TYPE;
   attr_data[0] = &mem_type;
@@ -69,117 +46,53 @@ static int cudaQueryAddr(void *address, bool &is_dev, CUdevice &dev,
   attr_type[3] = CU_POINTER_ATTRIBUTE_CONTEXT;
   attr_data[3] = &ctx;
 
-  result =
-      cuPointerGetAttributes(4, attr_type, attr_data, (CUdeviceptr)address);
+  const CUDADriver &driver = CUDADriver::get().get();
+  result = driver.PointerGetAttributes(4, attr_type, attr_data,
+                                       (CUdeviceptr)address);
 
   is_dev = (mem_type == CU_MEMORYTYPE_DEVICE);
 
-  return (CUDA_SUCCESS != result);
+  return (CUDADriver::Result::SUCCESS != result);
 }
 
-int nixlUcxCudaCtx::cudaUpdateCtxPtr(void *address, int expected_dev,
-                                     bool &was_updated) {
-  bool is_dev;
-  CUdevice dev;
-  CUcontext ctx;
-  int ret;
-
-  was_updated = false;
+// Check if the device pointer is associated with the expected device.
+M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
+                                                          int addrDeviceId) {
 
   /* TODO: proper error codes and log outputs through this method */
-  if (expected_dev == -1)
-    return -1;
+  if (addrDeviceId == -1)
+    return failure();
 
-  // incorrect dev id from first registration
-  if (myDevId != -1 && expected_dev != myDevId)
-    return -1;
+  // Incorrect dev id from first registration?
+  int myDevId = deviceCtx ? deviceCtx->device().id() : -1;
+  if (myDevId != -1 && addrDeviceId != myDevId)
+    return failure();
 
-  ret = cudaQueryAddr(address, is_dev, dev, ctx);
-  if (ret) {
-    return ret;
-  }
+  bool isDevicePointer;
+  CUdevice dev;
+  CUcontext ctx;
+  // Call failed?
+  if (0 != cudaQueryAddr(address, isDevicePointer, dev, ctx))
+    return failure();
 
-  if (!is_dev) {
-    return 0;
-  }
+  // We don't care about device for host pointers.
+  if (!isDevicePointer)
+    return success();
 
-  if (dev != expected_dev) {
+  if (dev != addrDeviceId) {
     // User provided address that does not match dev_id
-    return -1;
+    return failure();
   }
 
-  if (pthrCudaCtx) {
+  if (deviceCtx) {
     // Context was already set previously, and does not match new context
-    if (pthrCudaCtx != ctx) {
-      return -1;
+    auto myContext = CUDADeviceContext::cast(*deviceCtx).cudaContext();
+    if (myContext != ctx) {
+      return failure();
     }
-    return 0;
   }
-
-  pthrCudaCtx = ctx;
-  was_updated = true;
-  myDevId = expected_dev;
-
-  return 0;
+  return success();
 }
-
-int nixlUcxCudaCtx::cudaSetCtx() {
-  CUresult result;
-  if (NULL == pthrCudaCtx) {
-    return 0;
-  }
-
-  result = cuCtxSetCurrent(pthrCudaCtx);
-
-  return (CUDA_SUCCESS == result);
-}
-
-#else
-
-int ::nixlUcxCudaCtx::cudaUpdateCtxPtr(void *address, int expected_dev,
-                                       bool &was_updated) {
-  was_updated = false;
-  return 0;
-}
-
-int nixlUcxCudaCtx::cudaSetCtx() { return 0; }
-
-#endif
-
-void nixlUcxEngine::vramInitCtx() { cudaCtx = new nixlUcxCudaCtx; }
-
-int nixlUcxEngine::vramUpdateCtx(void *address, uint64_t devId,
-                                 bool &restart_reqd) {
-  int ret;
-  bool was_updated;
-
-  restart_reqd = false;
-
-  if (!cuda_addr_wa) {
-    // Nothing to do
-    return 0;
-  }
-
-  ret = cudaCtx->cudaUpdateCtxPtr(address, devId, was_updated);
-  if (ret) {
-    return ret;
-  }
-
-  restart_reqd = was_updated;
-
-  return 0;
-}
-
-int nixlUcxEngine::vramApplyCtx() {
-  if (!cuda_addr_wa) {
-    // Nothing to do
-    return 0;
-  }
-
-  return cudaCtx->cudaSetCtx();
-}
-
-void nixlUcxEngine::vramFiniCtx() { delete cudaCtx; }
 
 /****************************************
  * UCX request management
@@ -317,7 +230,8 @@ void nixlUcxEngine::progressFunc() {
   using namespace nixlTime;
   pthrActive = 1;
 
-  vramApplyCtx();
+  // Set active device context for the progress thread.
+  auto deviceCtxScope = activateContext();
 
   while (!pthrStop) {
     int i;
@@ -397,6 +311,21 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   if (custom_params->count("device_list") != 0)
     devs = str_split_substr((*custom_params)["device_list"], ", ");
 
+  // If the caller passes a GPU device ID, set up the corresponding device
+  // context.
+  if (custom_params->count("gpu_device_id")) {
+    int gpuDeviceId = std::stoi((*custom_params)["gpu_device_id"]);
+    ErrorOr<DeviceContextRef> errorOrDeviceCtx =
+        DeviceContext::create(Device::gpuAPI, gpuDeviceId);
+    if (errorOrDeviceCtx.isError()) {
+      initErr = true;
+      return;
+    }
+    this->deviceCtx = errorOrDeviceCtx.takeValue();
+  }
+  // Set the context as active for the UCX initialization in this function.
+  auto deviceCtxScope = activateContext();
+
   uc = new nixlUcxContext(devs, sizeof(nixlUcxIntReq), _internalRequestInit,
                           _internalRequestFini, NIXL_UCX_MT_WORKER);
   uw = new nixlUcxWorker(uc);
@@ -414,14 +343,6 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     pthrOn = false;
   }
 
-  // Temp fixup
-  if (getenv("NIXL_DISABLE_CUDA_ADDR_WA")) {
-    std::cout << "WARNING: disabling CUDA address workaround" << std::endl;
-    cuda_addr_wa = false;
-  } else {
-    cuda_addr_wa = true;
-  }
-  vramInitCtx();
   progressThreadStart();
 }
 
@@ -443,7 +364,6 @@ nixlUcxEngine::~nixlUcxEngine() {
   }
 
   progressThreadStop();
-  vramFiniCtx();
   delete uw;
   delete uc;
   free(workerAddr);
@@ -646,14 +566,21 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
   size_t rkey_size;
 
   if (nixl_mem == nixl_mem_t::VRAM_SEG) {
-    bool need_restart;
-    if (vramUpdateCtx((void *)mem.addr, mem.devId, need_restart)) {
+    // This call checks if the device memory we are registering is associated
+    // with our device context.
+    // With tighter integration between NIXL and AsyncRT DeviceContext, we could
+    // simplify or eliminate this check, since it is trivial to get the context
+    // associated with a DeviceBuffer. But since we only have a raw
+    // pointer here, we must rely on a CUDA call to recover the associated
+    // context.
+    if (failed(checkDevicePointerContext((void *)mem.addr, mem.devId))) {
       return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
       // TODO Add to logging
     }
-    if (need_restart) {
-      progressThreadRestart();
-    }
+  }
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
   // TODO: Add nixl_mem check?
@@ -674,6 +601,7 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
 }
 
 nixl_status_t nixlUcxEngine::deregisterMem(nixlBackendMD *meta) {
+  auto deviceCtxScope = activateContext();
   nixlUcxPrivateMetadata *priv = (nixlUcxPrivateMetadata *)meta;
   uw->memDereg(priv->mem);
   delete priv;

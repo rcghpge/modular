@@ -11,6 +11,7 @@
 #ifndef ASYNCRT_NIXL_PLUGINS_UCX_UCX_BACKEND_H
 #define ASYNCRT_NIXL_PLUGINS_UCX_UCX_BACKEND_H
 
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/NIXL/backend/backend_engine.h"
 #include "AsyncRT/NIXL/nixl.h"
 #include "AsyncRT/NIXL/utils/common/str_tools.h"
@@ -70,13 +71,6 @@ public:
   ~nixlUcxPublicMetadata() {}
 };
 
-// Forward declaration of CUDA context
-// It is only visible in ucx_backend.cpp to ensure that
-// HAVE_CUDA works properly
-// Once we will introduce static config (i.e. config.h) that
-// will be part of NIXL installation - we can have
-// HAVE_CUDA in h-files
-class nixlUcxCudaCtx;
 class nixlUcxEngine : public nixlBackendEngine {
 private:
   /* UCX data */
@@ -92,8 +86,7 @@ private:
   nixlTime::us_t pthrDelay;
 
   /* CUDA data*/
-  nixlUcxCudaCtx *cudaCtx;
-  bool cuda_addr_wa;
+  DeviceContextRef deviceCtx;
 
   /* Notifications */
   notif_list_t notifMainList;
@@ -105,10 +98,16 @@ private:
                      strEqual>
       remoteConnMap;
 
-  void vramInitCtx();
-  void vramFiniCtx();
-  int vramUpdateCtx(void *address, uint64_t devId, bool &restart_reqd);
-  int vramApplyCtx();
+  // Check if the device pointer is associated with the expected device.
+  M::LogicalResult checkDevicePointerContext(void *address, int addrDeviceId);
+
+  // If we have a device context, set it as active within the scope of the
+  // returned object. Otherwise do nothing.
+  [[nodiscard]] std::unique_ptr<DeviceContextScope> activateContext() const {
+    if (deviceCtx)
+      return std::make_unique<DeviceContextScope>(*deviceCtx);
+    return {};
+  }
 
   // Threading infrastructure
   //   TODO: move the thread management one outside of NIXL common infra

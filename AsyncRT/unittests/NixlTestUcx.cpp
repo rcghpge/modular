@@ -64,7 +64,7 @@ struct NixlAgentWithUCXBackend {
   }
 
   static void create(NixlAgentWithUCXBackend &self, std::string agentName,
-                     int port, std::string backendName) {
+                     int port, std::string backendName, int gpuDeviceId = -1) {
     self.agentName = agentName;
     self.agent = std::make_unique<nixlAgent>(
         agentName, nixlAgentConfig(/*use_prog_thread=*/false,
@@ -84,6 +84,10 @@ struct NixlAgentWithUCXBackend {
     nixl_mem_list_t mems;
     ASSERT_SUCCESS(
         self.agent->getPluginParams(backendName, mems, backendParams));
+
+    if (gpuDeviceId != -1) {
+      backendParams["gpu_device_id"] = std::to_string(gpuDeviceId);
+    }
 
     ASSERT_SUCCESS(
         self.agent->createBackend(backendName, backendParams, self.backend));
