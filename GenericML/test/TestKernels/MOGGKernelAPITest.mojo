@@ -5,6 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 from collections import Optional
 from collections.string import StaticString
+from math import iota
 from sys import external_call
 from sys.info import simdwidthof
 
@@ -1233,3 +1234,34 @@ struct InplaceNoOutFunc:
             return val * SIMD[output.dtype, width](2.0)
 
         foreach[func](output)
+
+
+@value
+@register_passable
+struct SIMDPair[S0: Int, S1: Int]:
+    var x: SIMD[DType.int32, S0]
+    var y: SIMD[DType.int32, S1]
+
+
+@compiler.register("make_simd_pair")
+struct MakeSimdPair:
+    @staticmethod
+    fn execute[P0: Int, P1: Int]() -> SIMDPair[P0, P1]:
+        return SIMDPair[P0, P1](
+            iota[DType.int32, P0](), iota[DType.int32, P1](P0)
+        )
+
+
+@compiler.register("kernel_with_parameterized_opaque")
+struct ParameterizedOpaqueType:
+    @staticmethod
+    fn execute[
+        P0: Int
+    ](
+        output: OutputTensor[dtype = DType.int32, rank=1], x: SIMDPair[P0, _]
+    ) capturing:
+        output.store(IndexList[1](0), Scalar[DType.int32](x.S0 + x.S1))
+
+    @staticmethod
+    fn shape[P0: Int](x: SIMDPair[P0, _]) -> IndexList[1]:
+        return IndexList[1](x.S0 + x.S1)
