@@ -17,10 +17,16 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <vector>
 
 // Helpers for logging.
 #define TWINE(val) (llvm::Twine(val))
@@ -339,6 +345,153 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   int value = 0;
   HIP_CHECK_ERR(driver_.DeviceGetAttribute(&value, *errorOrAttr, hipDevice()));
   return value;
+}
+
+ErrorOr<std::string> HIPDevice::getArchName() const {
+  // We do need the full AMD GPU architecture name in order to compie for the
+  // right LLVM target. Parsing via KFD, as used by amd-smi and rocm-smi seems
+  // to be one of the two reliable ways to get the full architecture name. The
+  // other way, which we use here, is through the HSA API and some PCIe device
+  // matching with the HIP API. The HIP API directly does provide the
+  // architecture name in the `hipDeviceProp_t::gcnArchName` field, but it is
+  // not always set. Likewise, `hipDeviceAttributeGcnArchName` is now
+  // deprecated. Major & minor versions are available via
+  // `hipDeviceAttributeComputeCapabilityMajor` and
+  // `hipDeviceAttributeComputeCapabilityMinor`, but lack the last digit.
+
+  // Initialize HSA runtime if available.
+  if (driver_.HsaInit() != HSA_STATUS_SUCCESS)
+    return Error("Failed to initialize HSA runtime");
+
+  // Get HIP device PCIe info via device attributes
+  int pciBusId = 0, pciDeviceId = 0, pciDomainId = 0;
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      &pciBusId, hipDeviceAttribute_t::hipDeviceAttributePciBusId,
+      hipDevice()));
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      &pciDeviceId, hipDeviceAttribute_t::hipDeviceAttributePciDeviceId,
+      hipDevice()));
+  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      &pciDomainId, hipDeviceAttribute_t::hipDeviceAttributePciDomainID,
+      hipDevice()));
+
+  // Data structure to pass to HSA agent and ISA iteration callbacks.
+  struct SearchData {
+    const HIPDriver *driver;
+    uint32_t targetPciBusID;
+    uint32_t targetPciDeviceID;
+    uint32_t targetPciDomainID;
+    std::string archName;
+  };
+
+  SearchData search = {&driver_, static_cast<uint32_t>(pciBusId),
+                       static_cast<uint32_t>(pciDeviceId),
+                       static_cast<uint32_t>(pciDomainId), ""};
+
+  // Callback function for HSA agent iteration.
+  auto agentCallback = [](hsaAgent_t agent, void *data) -> hsaStatus_t {
+    auto *search = static_cast<SearchData *>(data);
+
+    // Match by PCIe address of HIP and HSA device.
+    uint32_t hsaDomain = 0;
+    uint32_t hsaBdfId = 0;
+
+    // Get PCIe domain. On failure, continue to next agent.
+    if (search->driver->HsaAgentGetInfo(
+            agent, hsaAgentInfo_t::HSA_AMD_AGENT_INFO_DOMAIN, &hsaDomain) !=
+            HSA_STATUS_SUCCESS ||
+        search->driver->HsaAgentGetInfo(
+            agent, hsaAgentInfo_t::HSA_AMD_AGENT_INFO_BDFID, &hsaBdfId) !=
+            HSA_STATUS_SUCCESS)
+      return HSA_STATUS_SUCCESS;
+
+    // BDFID is typically encoded as: (bus << 8) | (device << 3) | function
+    uint32_t hsaBus = (hsaBdfId >> 8) & 0xFF;
+    uint32_t hsaDevice = (hsaBdfId >> 3) & 0x1F;
+    // uint32_t hsaFunction = hsaBdfId & 0x7;
+
+    // Compare with HIP device PCIe info. On failure, continue to next agent.
+    if (hsaDomain != search->targetPciDomainID ||
+        hsaBus != search->targetPciBusID ||
+        hsaDevice != search->targetPciDeviceID)
+      return HSA_STATUS_SUCCESS;
+
+    // Callback to iterate through ISAs for this agent.
+    auto isaCallback = [](hsaIsa_t isa, void *data) -> hsaStatus_t {
+      auto *search = static_cast<SearchData *>(data);
+
+      // First, get the length of the ISA name.
+      uint32_t nameLen = 0;
+      if (search->driver->HsaIsaGetInfo(isa,
+                                        hsaIsaInfo_t::HSA_ISA_INFO_NAME_LENGTH,
+                                        &nameLen) != HSA_STATUS_SUCCESS)
+        return HSA_STATUS_SUCCESS;
+
+      // Continue if the ISA name length is invalid.
+      if (nameLen == 0 || nameLen > 256)
+        return HSA_STATUS_SUCCESS;
+
+      // Allocate memory for the ISA name
+      std::vector<char> isaName(nameLen);
+
+      // Get the actual ISA name. Continue to next ISA if it fails.
+      if (search->driver->HsaIsaGetInfo(isa, hsaIsaInfo_t::HSA_ISA_INFO_NAME,
+                                        isaName.data()) != HSA_STATUS_SUCCESS)
+        return HSA_STATUS_SUCCESS;
+
+      // Check if this ISA name contains "gfx".
+      std::string isaStr(isaName.data(), nameLen > 0
+                                             ? nameLen - 1
+                                             : 0); // Remove null terminator.
+      size_t gfxPos = isaStr.find("gfx");
+      if (gfxPos != std::string::npos) {
+        // Find the end of the digits after "gfx".
+        size_t start = gfxPos;
+        // Start after "gfx".
+        size_t end = start + 3;
+
+        // Continue until we find a non-digit character.
+        while (end < isaStr.length() && std::isdigit(isaStr[end]))
+          ++end;
+
+        // Extract the gfx* part.
+        std::string gfxArch = isaStr.substr(start, end - start);
+        search->archName = gfxArch;
+        // Stop ISA iteration.
+        return HSA_STATUS_INFO_BREAK;
+      }
+
+      // Continue ISA iteration.
+      return HSA_STATUS_SUCCESS;
+    };
+
+    // Iterate through ISAs for this agent. Continue agent iteration if it
+    // fails.
+    if (search->driver->HsaAgentIterateIsas(agent, isaCallback, search) !=
+        HSA_STATUS_SUCCESS)
+      return HSA_STATUS_SUCCESS;
+
+    // If we found an architecture, stop agent iteration.
+    if (search->archName.size())
+      return HSA_STATUS_INFO_BREAK;
+
+    // Continue agent iteration.
+    return HSA_STATUS_SUCCESS;
+  };
+
+  // Iterate through all HSA agents to find our device.
+  if (driver_.HsaIterateAgents(agentCallback, &search) != HSA_STATUS_SUCCESS) {
+    driver_.HsaShutDown();
+    return Error("Failed to iterate HSA agents");
+  }
+
+  // Clean up HSA runtime.
+  driver_.HsaShutDown();
+
+  if (search.archName.empty())
+    return Error("Could not determine architecture name for HIP device");
+
+  return search.archName;
 }
 
 ErrorOr<DeviceContextRef> HIPDevice::createContext() const {

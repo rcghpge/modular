@@ -91,6 +91,15 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_deviceApi(llvm::StringRef *result,
   *result = ctx->device().api();
 }
 
+MODULAR_EXPORT void AsyncRT_DeviceContext_archName(llvm::StringRef *result,
+                                                   const DeviceContext *ctx) {
+  ErrorOr<std::string> archName = ctx->device().getArchName();
+  if (archName.isError())
+    *result = "";
+  else
+    *result = archName.get();
+}
+
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
     const DeviceBuffer **result, void **devicePtr, const DeviceContext *ctx,
     size_t len, size_t elemSize) {

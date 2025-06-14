@@ -21,8 +21,10 @@ namespace M::AsyncRT {
 
 #ifdef MODULAR_LINUX
 const char HIPDriver::lib_name[] = "libamdhip64.so";
+const char hsa_lib_name[] = "libhsa-runtime64.so";
 #else
 const char HIPDriver::lib_name[] = "";
+const char hsa_lib_name[] = "";
 #endif
 
 #define GET_FUNC(name)                                                         \
@@ -31,6 +33,10 @@ const char HIPDriver::lib_name[] = "";
     return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
                  "\" in \"" + lib_name + "\"");                                \
   }
+
+#define GET_HSA_FUNC(name)                                                     \
+  driver->name##_ = reinterpret_cast<t##name *>(dlsym(hsa_lib, #name));        \
+  // Note: We don't fail if HSA functions are not available
 
 ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   // Attempt to open the shared library of the HIP driver.
@@ -101,6 +107,26 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   GET_FUNC(hipEventElapsedTime);
 
   GET_FUNC(hipMemGetInfo);
+
+  // Try to load HSA Runtime symbols (optional - for getting device
+  // architecture)
+  void *hsa_lib = dlopen(hsa_lib_name, RTLD_NOW);
+  if (hsa_lib != nullptr) {
+    GET_HSA_FUNC(hsa_init);
+    GET_HSA_FUNC(hsa_shut_down);
+    GET_HSA_FUNC(hsa_iterate_agents);
+    GET_HSA_FUNC(hsa_agent_get_info);
+    GET_HSA_FUNC(hsa_agent_iterate_isas);
+    GET_HSA_FUNC(hsa_isa_get_info_alt);
+  } else {
+    // HSA runtime not available - set all function pointers to nullptr
+    driver->hsa_init_ = nullptr;
+    driver->hsa_shut_down_ = nullptr;
+    driver->hsa_iterate_agents_ = nullptr;
+    driver->hsa_agent_get_info_ = nullptr;
+    driver->hsa_agent_iterate_isas_ = nullptr;
+    driver->hsa_isa_get_info_alt_ = nullptr;
+  }
 
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);

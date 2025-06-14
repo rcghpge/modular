@@ -14,8 +14,11 @@
 #include "Support/ErrorOr.h"
 
 #include <stddef.h>
+#include <stdint.h>
 
 namespace M::AsyncRT {
+
+// clang-format off
 
 using hipCtx_t = struct ihipCtx_t *;
 using hipDevice_t = int;
@@ -25,9 +28,366 @@ using hipModule_t = struct ihipModule_t *;
 using hipStream_t = struct ihipStream_t *;
 using hipEvent_t = struct ihipEvent_t *;
 
+// HSA Runtime types (for getting device architecture info).
+using hsaStatus_t = uint32_t;
+using hsaAgent_t = uint64_t;
+using hsaIsa_t = uint64_t;
+
+// COPIED FROM hsa.h
+
+enum class hsaAgentInfo_t {
+  /**
+   * Agent name. The type of this attribute is a NUL-terminated char[64]. The
+   * name must be at most 63 characters long (not including the NUL terminator)
+   * and all array elements not used for the name must be NUL.
+   */
+  HSA_AGENT_INFO_NAME = 0,
+  /**
+   * Name of vendor. The type of this attribute is a NUL-terminated char[64].
+   * The name must be at most 63 characters long (not including the NUL
+   * terminator) and all array elements not used for the name must be NUL.
+   */
+  HSA_AGENT_INFO_VENDOR_NAME = 1,
+  /**
+   * Agent capability. The type of this attribute is ::hsa_agent_feature_t.
+   */
+  HSA_AGENT_INFO_FEATURE = 2,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_MACHINE_MODELS for a given intruction set
+   * architecture supported by the agent instead.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Machine model supported by the agent. The type of this attribute is
+   * ::hsa_machine_model_t.
+   */
+  HSA_AGENT_INFO_MACHINE_MODEL = 3,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_PROFILES for a given intruction set
+   * architecture supported by the agent instead.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Profile supported by the agent. The type of this attribute is
+   * ::hsa_profile_t.
+   */
+  HSA_AGENT_INFO_PROFILE = 4,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_DEFAULT_FLOAT_ROUNDING_MODES for a given
+   * intruction set architecture supported by the agent instead.  If more than
+   * one ISA is supported by the agent, the returned value corresponds to the
+   * first ISA enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Default floating-point rounding mode. The type of this attribute is
+   * ::hsa_default_float_rounding_mode_t, but the value
+   * ::HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT is not allowed.
+   */
+  HSA_AGENT_INFO_DEFAULT_FLOAT_ROUNDING_MODE = 5,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_BASE_PROFILE_DEFAULT_FLOAT_ROUNDING_MODES
+   * for a given intruction set architecture supported by the agent instead.  If
+   * more than one ISA is supported by the agent, the returned value corresponds
+   * to the first ISA enumerated by ::hsa_agent_iterate_isas.
+   *
+   * A bit-mask of ::hsa_default_float_rounding_mode_t values, representing the
+   * default floating-point rounding modes supported by the agent in the Base
+   * profile. The type of this attribute is uint32_t. The default floating-point
+   * rounding mode (::HSA_AGENT_INFO_DEFAULT_FLOAT_ROUNDING_MODE) bit must not
+   * be set.
+   */
+  HSA_AGENT_INFO_BASE_PROFILE_DEFAULT_FLOAT_ROUNDING_MODES = 23,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_FAST_F16_OPERATION for a given intruction
+   * set architecture supported by the agent instead.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Flag indicating that the f16 HSAIL operation is at least as fast as the
+   * f32 operation in the current agent. The value of this attribute is
+   * undefined if the agent is not a kernel agent. The type of this
+   * attribute is bool.
+   */
+  HSA_AGENT_INFO_FAST_F16_OPERATION = 24,
+  /**
+   * @deprecated Query ::HSA_WAVEFRONT_INFO_SIZE for a given wavefront and
+   * intruction set architecture supported by the agent instead.  If more than
+   * one ISA is supported by the agent, the returned value corresponds to the
+   * first ISA enumerated by ::hsa_agent_iterate_isas and the first wavefront
+   * enumerated by ::hsa_isa_iterate_wavefronts for that ISA.
+   *
+   * Number of work-items in a wavefront. Must be a power of 2 in the range
+   * [1,256]. The value of this attribute is undefined if the agent is not
+   * a kernel agent. The type of this attribute is uint32_t.
+   */
+  HSA_AGENT_INFO_WAVEFRONT_SIZE = 6,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_WORKGROUP_MAX_DIM for a given intruction
+   * set architecture supported by the agent instead.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Maximum number of work-items of each dimension of a work-group.  Each
+   * maximum must be greater than 0. No maximum can exceed the value of
+   * ::HSA_AGENT_INFO_WORKGROUP_MAX_SIZE. The value of this attribute is
+   * undefined if the agent is not a kernel agent. The type of this
+   * attribute is uint16_t[3].
+   */
+  HSA_AGENT_INFO_WORKGROUP_MAX_DIM = 7,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_WORKGROUP_MAX_SIZE for a given intruction
+   * set architecture supported by the agent instead.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Maximum total number of work-items in a work-group. The value of this
+   * attribute is undefined if the agent is not a kernel agent. The type
+   * of this attribute is uint32_t.
+   */
+  HSA_AGENT_INFO_WORKGROUP_MAX_SIZE = 8,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_GRID_MAX_DIM for a given intruction set
+   * architecture supported by the agent instead.
+   *
+   * Maximum number of work-items of each dimension of a grid. Each maximum must
+   * be greater than 0, and must not be smaller than the corresponding value in
+   * ::HSA_AGENT_INFO_WORKGROUP_MAX_DIM. No maximum can exceed the value of
+   * ::HSA_AGENT_INFO_GRID_MAX_SIZE. The value of this attribute is undefined
+   * if the agent is not a kernel agent. The type of this attribute is
+   * ::hsa_dim3_t.
+   */
+  HSA_AGENT_INFO_GRID_MAX_DIM = 9,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_GRID_MAX_SIZE for a given intruction set
+   * architecture supported by the agent instead.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Maximum total number of work-items in a grid. The value of this attribute
+   * is undefined if the agent is not a kernel agent. The type of this
+   * attribute is uint32_t.
+   */
+  HSA_AGENT_INFO_GRID_MAX_SIZE = 10,
+  /**
+   * @deprecated Query ::HSA_ISA_INFO_FBARRIER_MAX_SIZE for a given intruction
+   * set architecture supported by the agent instead.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Maximum number of fbarriers per work-group. Must be at least 32. The value
+   * of this attribute is undefined if the agent is not a kernel agent. The
+   * type of this attribute is uint32_t.
+   */
+  HSA_AGENT_INFO_FBARRIER_MAX_SIZE = 11,
+  /**
+   * @deprecated The maximum number of queues is not statically determined.
+   *
+   * Maximum number of queues that can be active (created but not destroyed) at
+   * one time in the agent. The type of this attribute is uint32_t.
+   */
+  HSA_AGENT_INFO_QUEUES_MAX = 12,
+  /**
+   * Minimum number of packets that a queue created in the agent
+   * can hold. Must be a power of 2 greater than 0. Must not exceed
+   * the value of ::HSA_AGENT_INFO_QUEUE_MAX_SIZE. The type of this
+   * attribute is uint32_t.
+   */
+  HSA_AGENT_INFO_QUEUE_MIN_SIZE = 13,
+  /**
+   * Maximum number of packets that a queue created in the agent can
+   * hold. Must be a power of 2 greater than 0. The type of this attribute
+   * is uint32_t.
+   */
+  HSA_AGENT_INFO_QUEUE_MAX_SIZE = 14,
+  /**
+   * Type of a queue created in the agent. The type of this attribute is
+   * ::hsa_queue_type32_t.
+   */
+  HSA_AGENT_INFO_QUEUE_TYPE = 15,
+  /**
+   * @deprecated NUMA information is not exposed anywhere else in the API.
+   *
+   * Identifier of the NUMA node associated with the agent. The type of this
+   * attribute is uint32_t.
+   */
+  HSA_AGENT_INFO_NODE = 16,
+  /**
+   * Type of hardware device associated with the agent. The type of this
+   * attribute is ::hsaDeviceType_t.
+   */
+  HSA_AGENT_INFO_DEVICE = 17,
+  /**
+   * @deprecated Query ::hsa_agent_iterate_caches to retrieve information about
+   * the caches present in a given agent.
+   *
+   * Array of data cache sizes (L1..L4). Each size is expressed in bytes. A size
+   * of 0 for a particular level indicates that there is no cache information
+   * for that level. The type of this attribute is uint32_t[4].
+   */
+  HSA_AGENT_INFO_CACHE_SIZE = 18,
+  /**
+   * @deprecated An agent may support multiple instruction set
+   * architectures. See ::hsa_agent_iterate_isas.  If more than one ISA is
+   * supported by the agent, the returned value corresponds to the first ISA
+   * enumerated by ::hsa_agent_iterate_isas.
+   *
+   * Instruction set architecture of the agent. The type of this attribute
+   * is ::hsaIsa_t.
+   */
+  HSA_AGENT_INFO_ISA = 19,
+  /**
+   * Bit-mask indicating which extensions are supported by the agent. An
+   * extension with an ID of @p i is supported if the bit at position @p i is
+   * set. The type of this attribute is uint8_t[128].
+   */
+  HSA_AGENT_INFO_EXTENSIONS = 20,
+  /**
+   * Major version of the HSA runtime specification supported by the
+   * agent. The type of this attribute is uint16_t.
+   */
+  HSA_AGENT_INFO_VERSION_MAJOR = 21,
+  /**
+   * Minor version of the HSA runtime specification supported by the
+   * agent. The type of this attribute is uint16_t.
+   */
+  HSA_AGENT_INFO_VERSION_MINOR = 22,
+  /**
+   * This enum does not have a fixed underlying type, thus in C++ post D2338:
+   * If the enumeration type does not have a fixed underlying type, the value is
+   * unchanged if the original value is within the range of the enumeration
+   * values (9.7.1 [dcl.enum]), and otherwise, the behavior is
+   * undefined.
+   * Thus increase the range of this enum to encompass vendor extensions.
+   */
+  HSA_AGENT_INFO_LAST = INT32_MAX,
+
+  /**
+   * PCIe domain for the agent.  Pairs with HSA_AMD_AGENT_INFO_BDFID
+   * to give the full physical location of the Agent.
+   * The type of this attribute is uint32_t.
+   */
+  HSA_AMD_AGENT_INFO_DOMAIN = 0xA00F,
+
+  /**
+   * Agent BDF_ID, named LocationID in thunk. The type of this attribute is
+   * uint32_t.
+   */
+  HSA_AMD_AGENT_INFO_BDFID = 0xA006,
+
+};
+
+constexpr hsaStatus_t HSA_STATUS_SUCCESS = 0x0;
+constexpr hsaStatus_t HSA_STATUS_INFO_BREAK = 0x1;
+
+enum class hsaIsaInfo_t {
+  /**
+   * The length of the ISA name in bytes, not including the NUL terminator. The
+   * type of this attribute is uint32_t.
+   */
+  HSA_ISA_INFO_NAME_LENGTH = 0,
+  /**
+   * Human-readable description.  The type of this attribute is character array
+   * with the length equal to the value of ::HSA_ISA_INFO_NAME_LENGTH attribute.
+   */
+  HSA_ISA_INFO_NAME = 1,
+  /**
+   * @deprecated
+   *
+   * Number of call conventions supported by the instruction set architecture.
+   * Must be greater than zero. The type of this attribute is uint32_t.
+   */
+  HSA_ISA_INFO_CALL_CONVENTION_COUNT = 2,
+  /**
+   * @deprecated
+   *
+   * Number of work-items in a wavefront for a given call convention. Must be a
+   * power of 2 in the range [1,256]. The type of this attribute is uint32_t.
+   */
+  HSA_ISA_INFO_CALL_CONVENTION_INFO_WAVEFRONT_SIZE = 3,
+  /**
+   * @deprecated
+   *
+   * Number of wavefronts per compute unit for a given call convention. In
+   * practice, other factors (for example, the amount of group memory used by a
+   * work-group) may further limit the number of wavefronts per compute
+   * unit. The type of this attribute is uint32_t.
+   */
+  HSA_ISA_INFO_CALL_CONVENTION_INFO_WAVEFRONTS_PER_COMPUTE_UNIT = 4,
+  /**
+   * Machine models supported by the instruction set architecture. The type of
+   * this attribute is a bool[2]. If the ISA supports the small machine model,
+   * the element at index ::HSA_MACHINE_MODEL_SMALL is true. If the ISA supports
+   * the large model, the element at index ::HSA_MACHINE_MODEL_LARGE is true.
+   */
+  HSA_ISA_INFO_MACHINE_MODELS = 5,
+  /**
+   * Profiles supported by the instruction set architecture. The type of this
+   * attribute is a bool[2]. If the ISA supports the base profile, the element
+   * at index ::HSA_PROFILE_BASE is true. If the ISA supports the full profile,
+   * the element at index ::HSA_PROFILE_FULL is true.
+   */
+  HSA_ISA_INFO_PROFILES = 6,
+  /**
+   * Default floating-point rounding modes supported by the instruction set
+   * architecture. The type of this attribute is a bool[3]. The value at a given
+   * index is true if the corresponding rounding mode in
+   * ::hsa_default_float_rounding_mode_t is supported. At least one default mode
+   * has to be supported.
+   *
+   * If the default mode is supported, then
+   * ::HSA_ISA_INFO_BASE_PROFILE_DEFAULT_FLOAT_ROUNDING_MODES must report that
+   * both the zero and the near roundings modes are supported.
+   */
+  HSA_ISA_INFO_DEFAULT_FLOAT_ROUNDING_MODES = 7,
+  /**
+   * Default floating-point rounding modes supported by the instruction set
+   * architecture in the Base profile. The type of this attribute is a
+   * bool[3]. The value at a given index is true if the corresponding rounding
+   * mode in ::hsa_default_float_rounding_mode_t is supported. The value at
+   * index HSA_DEFAULT_FLOAT_ROUNDING_MODE_DEFAULT must be false.  At least one
+   * of the values at indexes ::HSA_DEFAULT_FLOAT_ROUNDING_MODE_ZERO or
+   * HSA_DEFAULT_FLOAT_ROUNDING_MODE_NEAR must be true.
+   */
+  HSA_ISA_INFO_BASE_PROFILE_DEFAULT_FLOAT_ROUNDING_MODES = 8,
+  /**
+   * Flag indicating that the f16 HSAIL operation is at least as fast as the
+   * f32 operation in the instruction set architecture. The type of this
+   * attribute is bool.
+   */
+  HSA_ISA_INFO_FAST_F16_OPERATION = 9,
+  /**
+   * Maximum number of work-items of each dimension of a work-group.  Each
+   * maximum must be greater than 0. No maximum can exceed the value of
+   * ::HSA_ISA_INFO_WORKGROUP_MAX_SIZE. The type of this attribute is
+   * uint16_t[3].
+   */
+  HSA_ISA_INFO_WORKGROUP_MAX_DIM = 12,
+  /**
+   * Maximum total number of work-items in a work-group. The type
+   * of this attribute is uint32_t.
+   */
+  HSA_ISA_INFO_WORKGROUP_MAX_SIZE = 13,
+  /**
+   * Maximum number of work-items of each dimension of a grid. Each maximum must
+   * be greater than 0, and must not be smaller than the corresponding value in
+   * ::HSA_ISA_INFO_WORKGROUP_MAX_DIM. No maximum can exceed the value of
+   * ::HSA_ISA_INFO_GRID_MAX_SIZE. The type of this attribute is
+   * ::hsa_dim3_t.
+   */
+  HSA_ISA_INFO_GRID_MAX_DIM = 14,
+  /**
+   * Maximum total number of work-items in a grid. The type of this
+   * attribute is uint64_t.
+   */
+  HSA_ISA_INFO_GRID_MAX_SIZE = 16,
+  /**
+   * Maximum number of fbarriers per work-group. Must be at least 32. The
+   * type of this attribute is uint32_t.
+   */
+  HSA_ISA_INFO_FBARRIER_MAX_SIZE = 17
+};
+
 // COPIED FROM hip_runtime_api.h
 
-// clang-format off
 enum class hipDeviceAttribute_t {
     hipDeviceAttributeCudaCompatibleBegin = 0,
 
@@ -162,6 +522,38 @@ enum class hipDeviceAttribute_t {
     hipDeviceAttributeVendorSpecificBegin = 20000,
     // Extended attributes for vendors
 };
+
+typedef struct {
+    // 32-bit Atomics
+    unsigned hasGlobalInt32Atomics : 1;     ///< 32-bit integer atomics for global memory.
+    unsigned hasGlobalFloatAtomicExch : 1;  ///< 32-bit float atomic exch for global memory.
+    unsigned hasSharedInt32Atomics : 1;     ///< 32-bit integer atomics for shared memory.
+    unsigned hasSharedFloatAtomicExch : 1;  ///< 32-bit float atomic exch for shared memory.
+    unsigned hasFloatAtomicAdd : 1;  ///< 32-bit float atomic add in global and shared memory.
+
+    // 64-bit Atomics
+    unsigned hasGlobalInt64Atomics : 1;  ///< 64-bit integer atomics for global memory.
+    unsigned hasSharedInt64Atomics : 1;  ///< 64-bit integer atomics for shared memory.
+
+    // Doubles
+    unsigned hasDoubles : 1;  ///< Double-precision floating point.
+
+    // Warp cross-lane operations
+    unsigned hasWarpVote : 1;     ///< Warp vote instructions (__any, __all).
+    unsigned hasWarpBallot : 1;   ///< Warp ballot instructions (__ballot).
+    unsigned hasWarpShuffle : 1;  ///< Warp shuffle operations. (__shfl_*).
+    unsigned hasFunnelShift : 1;  ///< Funnel two words into one with shift&mask caps.
+
+    // Sync
+    unsigned hasThreadFenceSystem : 1;  ///< __threadfence_system.
+    unsigned hasSyncThreadsExt : 1;     ///< __syncthreads_count, syncthreads_and, syncthreads_or.
+
+    // Misc
+    unsigned hasSurfaceFuncs : 1;        ///< Surface functions.
+    unsigned has3dGrid : 1;              ///< Grid and group dims are 3D (rather than 2D).
+    unsigned hasDynamicParallelism : 1;  ///< Dynamic parallelism.
+} hipDeviceArch_t;
+
 // clang-format on
 
 enum class hipJitOption {
@@ -369,6 +761,42 @@ public:
     return hipMemGetInfo_(free, total);
   }
 
+  // HSA Runtime methods for getting device architecture info
+  hsaStatus_t HsaInit() const {
+    return hsa_init_ ? hsa_init_() : 1; // Return error if not available
+  }
+
+  hsaStatus_t HsaShutDown() const {
+    return hsa_shut_down_ ? hsa_shut_down_() : 1;
+  }
+
+  hsaStatus_t HsaIterateAgents(hsaStatus_t (*callback)(hsaAgent_t agent,
+                                                       void *data),
+                               void *data) const {
+    return hsa_iterate_agents_ ? hsa_iterate_agents_(callback, data) : 1;
+  }
+
+  hsaStatus_t HsaAgentGetInfo(hsaAgent_t agent, hsaAgentInfo_t attribute,
+                              void *value) const {
+    return hsa_agent_get_info_ ? hsa_agent_get_info_(agent, attribute, value)
+                               : 1;
+  }
+
+  hsaStatus_t HsaAgentIterateIsas(hsaAgent_t agent,
+                                  hsaStatus_t (*callback)(hsaIsa_t isa,
+                                                          void *data),
+                                  void *data) const {
+    return hsa_agent_iterate_isas_
+               ? hsa_agent_iterate_isas_(agent, callback, data)
+               : 1;
+  }
+
+  hsaStatus_t HsaIsaGetInfo(hsaIsa_t isa, hsaIsaInfo_t attribute,
+                            void *value) const {
+    return hsa_isa_get_info_alt_ ? hsa_isa_get_info_alt_(isa, attribute, value)
+                                 : 1;
+  }
+
   static ErrorOr<const HIPDriver &> get();
 
 private:
@@ -546,6 +974,32 @@ private:
 
   using thipMemGetInfo = Result(size_t *, size_t *);
   thipMemGetInfo *hipMemGetInfo_;
+
+  // HSA Runtime function pointers (optional - may not be available).
+  using thsa_init = hsaStatus_t();
+  thsa_init *hsa_init_;
+
+  using thsa_shut_down = hsaStatus_t();
+  thsa_shut_down *hsa_shut_down_;
+
+  using thsa_iterate_agents = hsaStatus_t(
+      hsaStatus_t (*callback)(hsaAgent_t agent, void *data), void *data);
+  thsa_iterate_agents *hsa_iterate_agents_;
+
+  using thsa_agent_get_info = hsaStatus_t(hsaAgent_t agent,
+                                          hsaAgentInfo_t attribute,
+                                          void *value);
+  thsa_agent_get_info *hsa_agent_get_info_;
+
+  using thsa_agent_iterate_isas = hsaStatus_t(
+      hsaAgent_t agent, hsaStatus_t (*callback)(hsaIsa_t isa, void *data),
+      void *data);
+  thsa_agent_iterate_isas *hsa_agent_iterate_isas_;
+
+  using thsa_isa_get_info_alt = hsaStatus_t(hsaIsa_t isa,
+                                            hsaIsaInfo_t attribute,
+                                            void *value);
+  thsa_isa_get_info_alt *hsa_isa_get_info_alt_;
 
   static ErrorOr<const HIPDriver &> allocAndInitDriver();
 };

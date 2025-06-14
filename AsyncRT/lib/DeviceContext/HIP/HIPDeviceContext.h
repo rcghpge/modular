@@ -53,6 +53,8 @@ public:
             std::string name, MemInfo memInfo, size_t allocAlignment);
   ~HIPDevice() override;
 
+  ErrorOr<std::string> getArchName() const override;
+
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;
 

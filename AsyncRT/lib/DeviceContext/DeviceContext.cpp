@@ -142,6 +142,10 @@ Device::~Device() {
 
 MODULAR_CXX_EXPORT const std::string &Device::name() const { return name_; }
 
+ErrorOr<std::string> Device::getArchName() const {
+  return Error(Twine("Not implemented for device: ") + name());
+}
+
 MODULAR_CXX_EXPORT int Device::id() const { return id_; }
 
 MODULAR_CXX_EXPORT Device::API Device::api() const { return api_; }
@@ -800,10 +804,18 @@ ErrorOr<Config> &DeviceContext::getConfig() {
 MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
     ErrorOr<DeviceRef> device = Device::create(gpuAPI);
-    if (device.isError()) {
+    if (device.isError())
       return std::string();
-    }
 
+    // Try to get the arch name directly. For AMD GPUs, we need this to succeed,
+    // since major/minor compute capabilities don't describe the LLVM target
+    // sufficiently.
+    ErrorOr<std::string> archName = (*device)->getArchName();
+
+    if (!archName.isError())
+      return (llvm::Twine((*device)->vendor()) + ":" + archName.get()).str();
+
+    // Fallback to compute capability if arch name is not available.
     ErrorOr<int> major =
         (*device)->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MAJOR);
     ErrorOr<int> minor =

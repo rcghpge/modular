@@ -108,6 +108,9 @@ public:
   virtual ~Device();
 
   const std::string &name() const;
+
+  virtual ErrorOr<std::string> getArchName() const;
+
   int id() const;
 
   API api() const;
