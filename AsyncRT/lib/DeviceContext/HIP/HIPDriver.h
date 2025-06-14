@@ -523,37 +523,6 @@ enum class hipDeviceAttribute_t {
     // Extended attributes for vendors
 };
 
-typedef struct {
-    // 32-bit Atomics
-    unsigned hasGlobalInt32Atomics : 1;     ///< 32-bit integer atomics for global memory.
-    unsigned hasGlobalFloatAtomicExch : 1;  ///< 32-bit float atomic exch for global memory.
-    unsigned hasSharedInt32Atomics : 1;     ///< 32-bit integer atomics for shared memory.
-    unsigned hasSharedFloatAtomicExch : 1;  ///< 32-bit float atomic exch for shared memory.
-    unsigned hasFloatAtomicAdd : 1;  ///< 32-bit float atomic add in global and shared memory.
-
-    // 64-bit Atomics
-    unsigned hasGlobalInt64Atomics : 1;  ///< 64-bit integer atomics for global memory.
-    unsigned hasSharedInt64Atomics : 1;  ///< 64-bit integer atomics for shared memory.
-
-    // Doubles
-    unsigned hasDoubles : 1;  ///< Double-precision floating point.
-
-    // Warp cross-lane operations
-    unsigned hasWarpVote : 1;     ///< Warp vote instructions (__any, __all).
-    unsigned hasWarpBallot : 1;   ///< Warp ballot instructions (__ballot).
-    unsigned hasWarpShuffle : 1;  ///< Warp shuffle operations. (__shfl_*).
-    unsigned hasFunnelShift : 1;  ///< Funnel two words into one with shift&mask caps.
-
-    // Sync
-    unsigned hasThreadFenceSystem : 1;  ///< __threadfence_system.
-    unsigned hasSyncThreadsExt : 1;     ///< __syncthreads_count, syncthreads_and, syncthreads_or.
-
-    // Misc
-    unsigned hasSurfaceFuncs : 1;        ///< Surface functions.
-    unsigned has3dGrid : 1;              ///< Grid and group dims are 3D (rather than 2D).
-    unsigned hasDynamicParallelism : 1;  ///< Dynamic parallelism.
-} hipDeviceArch_t;
-
 // clang-format on
 
 enum class hipJitOption {
