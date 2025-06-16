@@ -39,6 +39,8 @@ for those of the new ExtensibilityAPI.
 
 namespace M::MOGG {
 
+using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
+
 // Forward declarations
 class MojoLibraryAnalysis;
 
@@ -66,7 +68,6 @@ private:
 
   DeviceRefAttr getHostDevice() const { return M::getHostDevice(graphOp); }
 
-  using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
   KernelCallInterface lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                                const OperandMapping &mapping,
                                                const KernelAdaptor &adaptor);
@@ -79,7 +80,7 @@ private:
                                           const OperandMapping &mapping,
                                           const KernelAdaptor &adaptor);
 
-  ErrorOr<DictionaryAttr> forwardParameters();
+  ErrorOr<DictionaryAttr> forwardParameters(const KernelAdaptor &adaptor);
 
   /// The original MO operation we are lowering.
   Operation *moOp;
