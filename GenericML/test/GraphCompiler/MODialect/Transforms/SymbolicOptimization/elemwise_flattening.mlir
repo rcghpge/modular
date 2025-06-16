@@ -13,11 +13,9 @@ mo.graph @erf(%arg0 : !mo.tensor<[64, 1], f32>) -> !mo.tensor<[64, 1], f32>{
 
 // CHECK: mo.graph @erf_with_device(%[[ARG0:.*]]: !mo.tensor<[64, 1], f32, dev:0>) -> !mo.tensor<[64, 1], f32, dev:0> {
 mo.graph @erf_with_device(%arg0 : !mo.tensor<[64, 1], f32, dev:0>) -> !mo.tensor<[64, 1], f32, dev:0>{
-  // CHECK: %[[VAL0:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[64, 1], f32, dev:0> -> !mo.tensor<[64], f32, dev:0>
-  // CHECK: %[[VAL1:.*]] = mo.erf(%[[VAL0]]) : !mo.tensor<[64], f32, dev:0>
-  // CHECK: %[[VAL2:.*]] = mo.static.reshape(%[[VAL1]]) : !mo.tensor<[64], f32, dev:0> -> !mo.tensor<[64, 1], f32, dev:0>
+  // CHECK: %[[OUT:.*]] = mo.erf(%[[ARG0]]) : !mo.tensor<[64, 1], f32, dev:0>
   %out = mo.erf(%arg0) : !mo.tensor<[64, 1], f32, dev:0>
-  // CHECK: mo.output %[[VAL2]] : !mo.tensor<[64, 1], f32, dev:0>
+  // CHECK: mo.output %[[OUT]] : !mo.tensor<[64, 1], f32, dev:0>
   mo.output %out : !mo.tensor<[64, 1], f32, dev:0>
 // CHECK: }
 }

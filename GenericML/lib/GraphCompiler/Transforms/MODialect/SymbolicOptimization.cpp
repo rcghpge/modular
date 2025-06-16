@@ -1131,7 +1131,13 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
 
 /// Check whether `val` comes from a reshape that eliminates the trailing 1s
 /// from input's shape.
-static bool isValueFromReshapeThatSqueezesFinalDims(Value val) {
+static bool shouldSkipPatternIfReshapeSqueezesFinalDims(Value val) {
+  // From PAQ-988, we skip these reshapes because the cycle creating patterns
+  // (ElementWiseUnaryVectorPattern and ElementWiseBinaryVectorPattern) are
+  // disabled on non-host devices.
+  if (!isOnHost(val.getDefiningOp()))
+    return false;
+
   TensorType inputTy, outputTy;
   if (auto reshapeOp = val.getDefiningOp<MO::Static::ReshapeOp>()) {
     inputTy = reshapeOp.getInput().getType();
@@ -1464,7 +1470,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
 
     // TODO(#18823) find a more general solution
-    if (isValueFromReshapeThatSqueezesFinalDims(reshapedTensor)) {
+    if (shouldSkipPatternIfReshapeSqueezesFinalDims(reshapedTensor)) {
       return rewriter.notifyMatchFailure(
           op, "Don't sink reshape that squeezes final dim.");
     }
@@ -1517,8 +1523,8 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     // This following early exit is a bit of a hack used to
     // avoid an infinite loop that can occur sometimes occur between
     // this pattern and the SwimViewOpThroughBinaryOpWithConstantSubtree
-    // patterns
-    if (op.getResult().hasOneUse()) {
+    // patterns. This happens on CPU only (check PAQ-988).
+    if (isOnHost(op) && op.getResult().hasOneUse()) {
       auto user = op.getResult().getUses().begin().getUser();
       if (auto userReshapeOp = dyn_cast<ReshapeOpType>(user)) {
         return rewriter.notifyMatchFailure(
@@ -1593,7 +1599,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
 
     // TODO(#18823) find a more general solution
-    if (isValueFromReshapeThatSqueezesFinalDims(op.getInput())) {
+    if (shouldSkipPatternIfReshapeSqueezesFinalDims(op.getInput())) {
       return rewriter.notifyMatchFailure(
           op, "Don't sink reshape that squeezes final dim.");
     }
@@ -1657,7 +1663,7 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
 
     // TODO(#18823) find a more general solution
-    if (isValueFromReshapeThatSqueezesFinalDims(op.getInput())) {
+    if (shouldSkipPatternIfReshapeSqueezesFinalDims(op.getInput())) {
       return rewriter.notifyMatchFailure(
           op, "Don't sink reshape that squeezes final dim.");
     }
@@ -1745,8 +1751,8 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
       return rewriter.notifyMatchFailure(op, "Input shapes must be known");
 
     // TODO(#18823) find a more general solution
-    if (isValueFromReshapeThatSqueezesFinalDims(op.getLhsInput()) ||
-        isValueFromReshapeThatSqueezesFinalDims(op.getRhsInput())) {
+    if (shouldSkipPatternIfReshapeSqueezesFinalDims(op.getLhsInput()) ||
+        shouldSkipPatternIfReshapeSqueezesFinalDims(op.getRhsInput())) {
       return rewriter.notifyMatchFailure(
           op, "Don't sink reshape that squeezes final dim.");
     }
@@ -2179,8 +2185,10 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
     // This following early exit is a bit of a hack used to
     // avoid an infinite loop that can occur between the interaction
     // of SwimReshapeThroughBinaryOpWithConstantSubtree,
-    // BroadcastReshapePattern, and ElementwiseBinaryVectorPattern
-    if (result.getType().hasRank() && result.getType().getRank() == 1) {
+    // BroadcastReshapePattern, and ElementwiseBinaryVectorPattern. This happens
+    // on CPU only (check PAQ-988).
+    if (isOnHost(op) && result.getType().hasRank() &&
+        result.getType().getRank() == 1) {
       return rewriter.notifyMatchFailure(
           op, "Ignoring to not conflict with binary vector pattern");
     }
@@ -2393,6 +2401,9 @@ struct ElementWiseUnaryVectorPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ElementWiseUnary op,
                              DeviceAwareRewriter &rewriter) const override {
+    if (!isOnHost(op))
+      return rewriter.notifyMatchFailure(op, "Operation not on host CPU");
+
     Location loc = op.getLoc();
     TensorValue input = op.getInput();
 
@@ -2429,6 +2440,9 @@ struct ElementWiseBinaryVectorPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ElementWiseBinary op,
                              DeviceAwareRewriter &rewriter) const override {
+    if (!isOnHost(op))
+      return rewriter.notifyMatchFailure(op, "Operation not on host CPU");
+
     Location loc = op.getLoc();
     TensorValue a = op.getLhsInput();
     TensorValue b = op.getRhsInput();
