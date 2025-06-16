@@ -610,12 +610,27 @@ BindLambdaOp ExpKernelOp::getBoundOutputLambda(uint64_t resultIdx) {
   if (!executeOp)
     return nullptr;
 
-  // Only dps tensor have fusible output interface.
-  if (resultIdx < executeOp.getKernelDPSOutputs().size())
-    return executeOp.getKernelDPSOutputs()[resultIdx]
-        .getDefiningOp<BindLambdaOp>();
+  SmallVector<Value> flattenedOutputs;
+  for (auto outputValue : executeOp.getKernelDPSOutputs()) {
+    if (auto asTupleOp = outputValue.getDefiningOp<MOGG::AsTupleOp>()) {
+      for (auto outputValueInTuple : asTupleOp.getInputs())
+        flattenedOutputs.push_back(outputValueInTuple);
+    } else {
+      flattenedOutputs.push_back(outputValue);
+    }
+  }
 
-  return nullptr;
+  if (resultIdx >= flattenedOutputs.size())
+    return nullptr;
+
+  auto lambdaOp = flattenedOutputs[resultIdx].getDefiningOp<BindLambdaOp>();
+  if (!lambdaOp)
+    return nullptr;
+
+  if (lambdaOp.getBindKind() != MOGG::BindLambdaKind::OutputLambda)
+    return nullptr;
+
+  return lambdaOp;
 }
 
 BindLambdaOp ExpKernelOp::getElemwiseBodyLambda() {

@@ -42,6 +42,13 @@ static bool containsMatmulOrConvOrConcat(KernelTy kernel) {
 }
 
 template <typename KernelTy>
+static bool containsDistributedOp(KernelTy kernel) {
+  StringRef summary = kernel.getSummaryAttr().strref();
+  return (summary.contains(MO::AllGatherOp::getOperationName()) ||
+          summary.contains(MO::AllReduceSumOp::getOperationName()));
+}
+
+template <typename KernelTy>
 static bool containsMutableStore(KernelTy kernel) {
   StringRef summary = kernel.getSummaryAttr().strref();
   // TODO: we have a better way to check this under the new representation (by
@@ -202,6 +209,8 @@ struct FuseProloguesEpilogues
       if (dst.getElemwiseBodyLambda())
         return;
 
+      bool isADistributedOp = containsDistributedOp(dst);
+
       for (int64_t fusionIdx = dst.getNumResults() - 1; fusionIdx >= 0;
            --fusionIdx) {
         if (isa<MO::ChainType>(dst.getResult(fusionIdx).getType()))
@@ -253,8 +262,21 @@ struct FuseProloguesEpilogues
                                  epiOutChain))
           continue;
 
-        if (dst.getExecutionDevice() != src.getExecutionDevice())
+        // If this is a distributed op, the op itself will be executed on the
+        // CPU (it would make no sense to put on a GPU if it uses many GPUs, for
+        // instance). For that reason, we only compare the output's device with
+        // the consuming op's device. Otherwise, just compare both op's devices
+        // as usual.
+        if (!isADistributedOp &&
+            dst.getExecutionDevice() != src.getExecutionDevice()) {
           continue;
+        }
+
+        if (isADistributedOp &&
+            cast<MO::TensorType>(dstOutput.getType()).getDeviceRef() !=
+                src.getExecutionDevice()) {
+          continue;
+        }
 
         ++numberOfFusedEpilogues;
 
@@ -755,7 +777,7 @@ struct FuseProloguesEpilogues
       }
 
       // Must have the same device.
-      if (kernel.getResults().size() == 1) {
+      if (!containsDistributedOp(kernel)) {
         if (kernel.getExecutionDevice() != user.getExecutionDevice()) {
           fusableOutput.reset(idx);
           continue;
