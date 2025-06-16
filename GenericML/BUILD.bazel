@@ -40,6 +40,7 @@ modular_cc_library(
     name = "GraphCompiler",
     srcs = glob(["lib/GraphCompiler/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/*.h"]),
+    copts = ["-fvisibility=default"],
     deps = [
         ":MGPRT",
         ":MODialect",
@@ -228,24 +229,32 @@ td_library(
 
 mlir_nanobind(
     name = "MODialectNanobindInc",
-    srcs = glob(["include/GenericML/GraphCompiler/MODialect/*.td"]),
+    srcs = glob([
+        "include/GenericML/GraphCompiler/MODialect/*.td",
+        "include/GenericML/GraphCompiler/Transforms/MODialect/**/*.td",
+        "include/GenericML/GraphCompiler/Conversion/**/*.td",
+    ]),
     output_dir = "include/GenericML/MODialect/Nanobind",
     visibility = ["//visibility:public"],
     deps = [
         ":MODialectTdFiles",
         ":MOSHDialectTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
 mlir_nanobind(
     name = "RMODialectNanobindInc",
-    srcs = glob(["include/GenericML/GraphCompiler/RMODialect/*.td"]),
+    srcs = glob([
+        "include/GenericML/GraphCompiler/RMODialect/*.td",
+        "include/GenericML/GraphCompiler/Transforms/RMODialect/**/*.td",
+    ]),
     exclude = [
         # rmo.concat uses OptionalAttr, which tblgen generates as a normal
         # mlir::Attribute that's allowed to be null, while our bindings
         # generate as std::optional<mlir::Attribute>.
         "RMO_ConcatOp",
-        # rmo.sigmoind and rmo.mo_transfer both declare builders that
+        # rmo.sigmoid and rmo.mo_transfer both declare builders that
         # we don't have definitions for, leading to linker errors
         # at python import time.
         "RMO_SigmoidOp",
@@ -257,6 +266,7 @@ mlir_nanobind(
         ":MODialectTdFiles",
         ":MOSHDialectTdFiles",
         ":RMODialectTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
@@ -485,6 +495,7 @@ modular_cc_library(
         "lib/GraphCompiler/Transforms/MODialect/*.h",
     ]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
+    copts = ["-fvisibility=default"],
     deps = [
         ":CommonDriver",
         ":DeviceDriver",
@@ -525,6 +536,7 @@ modular_cc_library(
     hdrs = [
         "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h",
     ],
+    copts = ["-fvisibility=default"],
     deps = [
         ":MONameInputDimsPassIncGen",
         ":MOTransforms",
@@ -659,6 +671,7 @@ modular_cc_library(
     name = "RMOTransforms",
     srcs = glob(["lib/GraphCompiler/Transforms/RMODialect/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/Transforms/RMODialect/*.h"]),
+    copts = ["-fvisibility=default"],
     deps = [
         ":RMODialect",
         ":RMOSupport",
@@ -1269,6 +1282,7 @@ modular_cc_library(
     name = "MOToMOGG",
     srcs = glob(["lib/GraphCompiler/Conversion/MOToMOGG/*.cpp"]),
     hdrs = ["include/GenericML/GraphCompiler/Conversion/MOToMOGG.h"],
+    copts = ["-fvisibility=default"],
     deps = [
         ":GraphCompilerInterfaces",
         ":MGPDialect",

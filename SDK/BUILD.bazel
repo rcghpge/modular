@@ -80,6 +80,7 @@ mlir_nanobind(
         "@llvm-project//mlir:include/mlir/IR/BuiltinOps.td",
         "@llvm-project//mlir:include/mlir/IR/BuiltinTypeInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/BuiltinTypes.td",
+        "@llvm-project//mlir:include/mlir/Transforms/Passes.td",
     ],
     exclude = [
         "Builtin_DenseResourceElementsAttr",  # can't deal with AsmResourceBlob yet
@@ -90,6 +91,8 @@ mlir_nanobind(
     visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+        "@llvm-project//mlir:RewritePassBaseTdFiles",
     ],
 )
 
