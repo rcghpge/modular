@@ -172,6 +172,25 @@ struct FuseProloguesEpilogues
     });
   }
 
+  MO::TensorType getTensorType(Type type) {
+    if (auto asTensorType = dyn_cast<MO::TensorType>(type))
+      return asTensorType;
+
+    if (auto asBufferType = dyn_cast<MO::BufferType>(type))
+      return asBufferType.toTensorType();
+
+    return nullptr;
+  }
+
+  bool dataTypesMatch(Type t1, Type t2) {
+    auto tensor1 = getTensorType(t1);
+    auto tensor2 = getTensorType(t2);
+    if (!tensor1 || !tensor2)
+      return false;
+
+    return tensor1.getElementType() == tensor2.getElementType();
+  }
+
   void fuseEpilogues(MO::GraphOp moGraph) {
     IRRewriter rewriter(moGraph->getContext());
     DenseSet<Operation *> toErase;
@@ -260,7 +279,8 @@ struct FuseProloguesEpilogues
         dstOutput.setType(fusedResultTp);
         MOGG::OutputPlaceholdersOp outHolderOp = dst.getOutputPlaceholder();
         if (containsMatmulOrConvOrConcat(dst) &&
-            outputLambda.getOutput().getType() != fusedResultTp) {
+            !dataTypesMatch(outputLambda.getOutput().getType(),
+                            fusedResultTp)) {
           rewriter.setInsertionPointAfter(outHolderOp);
           auto scratchPlaceholder =
               rewriter
