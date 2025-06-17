@@ -286,13 +286,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createFuseConstants());
 
   // Add cleanup passes to catch e.g used/duplicated constants.
-  pm.addPass(MOGG::createStackAllocateTemporaries());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
-
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
 
   if (opts.fuseMutableLoadStore)
     pm.addPass(MOGG::createFuseMutableLoads());

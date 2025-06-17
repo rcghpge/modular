@@ -259,47 +259,6 @@ def SimplifyKernelOperands: Pass<"simplify-kernel-operands", "MO::GraphOp"> {
   ];
 }
 
-def StackAllocateTemporaries: Pass<"stack-allocate-temporaries", "MO::GraphOp"> {
-  let summary = "Converts small dynamic temporaries to stack allocations";
-  let description = [{
-    Any output placeholder that is small enough and that is not an actual output
-    is converted to a stack allocation.
-  }];
-  let options = [
-    Option<"smallTensorLimit", "small-tensor-limit", "uint64_t", "5000",
-           "Maximum number of elements a tensor may have to be eligible for a"
-           "stack allocation.">,
-  ];
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-  ];
-}
-
-def FuseConcatAsSlice: Pass<"fuse-concat-as-slice", "ModuleOp"> {
-  let summary = "Turn a concat into a slice and sequence fuse it.";
-  let description = [{
-    This pass will transform mogg.concat ops into slices and sequence fuse the
-    resulting kernel with it's original producer.
-  }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
-
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-  ];
-
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::ROCDL::ROCDLDialect",
-  ];
-}
-
 def GenerateComputeLambdas: Pass<"generate-compute-lambdas", "MO::GraphOp"> {
   let summary = "Replace Output lambdas with ComputeOutput lambdas when possible";
   let description = [{
