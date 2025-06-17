@@ -290,6 +290,7 @@ static ErrorOrSuccess validateCustomOpparameters(MO::CustomOp customOp,
     Attribute mlirParamAttr = namedAttr.getValue();
 
     Type kgenParamTy = customParamDecl.getType();
+    auto asIntegerType = dyn_cast<IntegerType>(kgenParamTy);
 
     if (isa<IndexType>(kgenParamTy)) {
       auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
@@ -297,6 +298,14 @@ static ErrorOrSuccess validateCustomOpparameters(MO::CustomOp customOp,
         return Error(llvm::formatv(
             "failed to convert custom op '{}' attribute '{}' with value '{}' "
             "to the proper Mojo parameter type: expected an integer type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (asIntegerType && asIntegerType.getWidth() == 1) {
+      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
+      if (asBool == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an boolean type",
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (isa<KGEN::StringType>(kgenParamTy)) {
