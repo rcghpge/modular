@@ -104,7 +104,11 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
 
   Value outputValue = nullptr;
   MO::TensorType tensorType = nullptr;
-  if (isa<MO::MutableStoreOp>(moOp)) {
+  /// TODO(GEX-2360): These checks are extremely brittle. We need to agree on
+  /// clear rules around mutable elementwise kernels.
+  bool isInPlaceElementwise =
+      isa<MO::MutableStoreOp>(moOp) || !kernelOp.getOutputPlaceholder();
+  if (isInPlaceElementwise) {
     for (auto argument : kernelOp.getExecBody().getArguments()) {
       if (auto asBufferType = dyn_cast<MO::BufferType>(argument.getType())) {
         outputValue = argument;
@@ -137,7 +141,7 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       outlinedArgs.push_back(elemwiseBody->getArgument(fusedArgIdx++));
     // If this is a mutable store and that this is the mutable input, don't put
     // it in the list of outlined args. Otherwise, just capture everything.
-    else if (!isa<MO::MutableStoreOp>(moOp) || !arg.isMutableTensorType())
+    else if (!isInPlaceElementwise || !arg.isMutableTensorType())
       outlinedArgs.push_back(inputs[idx]);
   }
 

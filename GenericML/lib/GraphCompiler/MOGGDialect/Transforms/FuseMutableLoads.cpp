@@ -67,6 +67,8 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   if (llvm::any_of(kernelOp.getOperands(), [&](Value operand) {
         return operand == loadOp.getInBuffer();
       })) {
+    /// TODO(GEX-2359): Remove this attribute in favour of a more stable
+    /// solution.
     if (!kernelOp->hasAttr("elementwise")) {
       LLVM_DEBUG(loadOp.emitRemark()
                  << "Attempting load fusion with an in-place kernel that is "

@@ -119,7 +119,15 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
     MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
                                        mojoLibraryAnalysis);
 
-    return builder.lowerToKernel();
+    auto kernelOrErr = builder.lowerToKernel();
+    /// TODO(GEX-2359): Remove this attribute in favour of a more stable
+    /// solution.
+    if (!kernelOrErr.isError() &&
+        (isa<MO::ElementWiseLike>(op) || isa<MO::MutableStoreOp>(op))) {
+      kernelOrErr.get()->setDiscardableAttr("elementwise",
+                                            UnitAttr::get(op->getContext()));
+    }
+    return kernelOrErr;
   } else {
     MO::MOGGKernelBuilder builder(op, insertPoint, forceSync,
                                   mojoLibraryAnalysis);

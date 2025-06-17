@@ -1,4 +1,4 @@
-// RUN: mo-opt --infer-layouts --mo-to-mogg --fuse-elementwise --fuse-prologues-epilogues --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt --infer-layouts --mo-to-mogg --fuse-elementwise --fuse-prologues-epilogues --mogg-to-kgen --fuse-mutable-loads %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_rhs(
 // CHECK: [[ch0:%.*]] = mo.chain.create()
@@ -91,7 +91,7 @@ mo.graph @store_to_fuse_has_sibling(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo
 // CHECK-LABEL: mo.graph @load_matmul_add_store
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[loaded_tensor:%.*]], [[ch1:%.*]] = mo.mutable.load({{.*}}, [[ch0]])
-// CHECK: [[ch2:%.*]] = mogg.kernel ([[loaded_tensor]], {{.*}}, [[ch1]])
+// CHECK: [[ch2:%.*]] = mogg.kernel ({{.*}}[[loaded_tensor]], {{.*}}, [[ch1]])
 // CHECK: summary = "mo.matmul:{{[0-9]+}}+mo.add:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
 mo.graph @load_matmul_add_store(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tensor<[4, 4], f32>, %arg2: !mo.tensor<[4, 4], f32>) -> !mo.buffer<[4, 4], f32> {
   %ch0 = mo.chain.create()
@@ -107,10 +107,10 @@ mo.graph @load_matmul_add_store(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tenso
 // CHECK-LABEL: mo.graph @load_matmul_store_twice
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[loaded_tensor1:%.*]], [[ch1:%.*]] = mo.mutable.load({{.*}}, [[ch0]])
-// CHECK: [[ch2:%.*]] = mogg.kernel ([[loaded_tensor1]], {{.*}}, [[ch1]])
+// CHECK: [[ch2:%.*]] = mogg.kernel ({{.*}}[[loaded_tensor1]], {{.*}}, [[ch1]])
 // CHECK: summary = "mo.matmul:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
 // CHECK: [[loaded_tensor2:%.*]], [[ch3:%.*]] = mo.mutable.load({{.*}}, [[ch2]])
-// CHECK: [[ch4:%.*]] = mogg.kernel ([[loaded_tensor2]], {{.*}}, [[ch3]])
+// CHECK: [[ch4:%.*]] = mogg.kernel ({{.*}}[[loaded_tensor2]], {{.*}}, [[ch3]])
 // CHECK: summary = "mo.matmul:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
 mo.graph @load_matmul_store_twice(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tensor<[4, 4], f32>, %arg2: !mo.tensor<[4, 4], f32>) -> !mo.buffer<[4, 4], f32> {
   %ch0 = mo.chain.create()
