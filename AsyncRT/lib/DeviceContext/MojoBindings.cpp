@@ -27,6 +27,8 @@ using namespace M::AsyncRT;
 // DeviceContext
 //===----------------------------------------------------------------------===//
 
+const char *raiseError(const char *msg) { return strdup(msg); }
+
 const char *checkSuccess(ErrorOrSuccess errOr) {
   if (errOr) {
     // Make a malloc'd copy of the string, so that we can safely free the
@@ -98,6 +100,34 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_archName(llvm::StringRef *result,
     *result = "";
   else
     *result = archName.get();
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContextScope_create(const DeviceContextScope **result,
+                                  const DeviceContext *ctx) {
+  DeviceContextScope *scope = new DeviceContextScope(*ctx);
+  const char *errMsg = checkSuccess(scope->err());
+  if (errMsg == nullptr) {
+    *result = scope;
+  }
+  return errMsg;
+}
+
+MODULAR_EXPORT void
+AsyncRT_DeviceContextScope_release(const DeviceContextScope *scope) {
+  delete scope;
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_cuda_current_context(CUcontext *result) {
+  ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
+  if (errDriver.isError()) {
+    return raiseError(errDriver.getError());
+  }
+  if ((*errDriver).CtxGetCurrent(result) != CUDADriver::SUCCESS) {
+    return raiseError("cuCtxGetCurrent failed.");
+  }
+  return nullptr;
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
