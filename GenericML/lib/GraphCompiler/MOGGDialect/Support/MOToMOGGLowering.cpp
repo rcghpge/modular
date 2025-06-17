@@ -113,13 +113,18 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       if (auto asBufferType = dyn_cast<MO::BufferType>(argument.getType())) {
         outputValue = argument;
         tensorType = asBufferType.toTensorType();
+        break;
       }
     }
-    ASSERT_STREAM(outputValue, << "Expected a buffer type operand");
   } else {
     outputValue = kernelOp.getOutputPlaceholder().getResult(0);
     tensorType = cast<MO::TensorType>(outputValue.getType());
   }
+
+  /// TODO(GEX-2314): Support opaque elementwise in the new dialect.
+  if (!tensorType)
+    return lowerToNormalKernel(kernelOp, mapping, adaptor);
+
   Type resultValTp = tensorType.getElementType();
 
   SmallVector<Value> fusibleTensors;
