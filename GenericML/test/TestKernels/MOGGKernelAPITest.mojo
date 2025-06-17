@@ -1260,7 +1260,8 @@ struct ParameterizedOpaqueType:
     ](
         output: OutputTensor[dtype = DType.int32, rank=1], x: SIMDPair[P0, _]
     ) capturing:
-        output.store(IndexList[1](0), Scalar[DType.int32](x.S0 + x.S1))
+        output.store(IndexList[1](0), x.x)
+        output.store(IndexList[1](P0), x.y)
 
     @staticmethod
     fn shape[P0: Int](x: SIMDPair[P0, _]) -> IndexList[1]:
