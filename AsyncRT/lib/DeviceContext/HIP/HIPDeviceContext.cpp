@@ -568,11 +568,20 @@ const HIPDevice *HIPDevice::verified_cast(const Device *device) {
 }
 
 ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
+  if (id < 0) {
+    RAISE_ERROR("Device id must be positive. Got " + TWINE(id));
+  }
   ErrorOr<const DeviceList &> errOrDevices = deviceList();
   if (errOrDevices) {
     return errOrDevices.takeError();
   }
-  return *(errOrDevices.get()[id]);
+  const DeviceList &devices = *errOrDevices;
+  if (devices.size() > static_cast<size_t>(id)) {
+    return *(devices[id]);
+  }
+  RAISE_ERROR(
+      "Device(id: " + TWINE(id) +
+      ") not available. Number of supported devices: " + TWINE(devices.size()));
 }
 
 ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {

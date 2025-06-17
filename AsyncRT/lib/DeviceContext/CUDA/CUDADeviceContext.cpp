@@ -425,11 +425,20 @@ const CUDADevice &CUDADevice::cast(const Device &device) {
 };
 
 ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
+  if (id < 0) {
+    RAISE_ERROR("Device id must be positive. Got " + llvm::Twine(id));
+  }
   ErrorOr<const DeviceList &> errOrDevices = deviceList();
   if (errOrDevices) {
     return errOrDevices.takeError();
   }
-  return *(errOrDevices.get()[id]);
+  const DeviceList &devices = *errOrDevices;
+  if (devices.size() > static_cast<size_t>(id)) {
+    return *(devices[id]);
+  }
+  RAISE_ERROR("Device(id: " + llvm::Twine(id) +
+              ") not available. Number of supported devices: " +
+              llvm::Twine(devices.size()));
 }
 
 ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {

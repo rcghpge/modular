@@ -41,6 +41,10 @@ TEST_F(GPUDeviceContextTest, NumDevices) {
   EXPECT_GT(num, 0);
   EXPECT_LT(num, 16);
   std::cerr << "Number of GPU devices: " << num << "\n";
+
+  // Create devices outside of allowed range.
+  EXPECT_ERR_MSG(Device::create(Device::gpuAPI, -7), "must be positive");
+  EXPECT_ERR_MSG(Device::create(Device::gpuAPI, num), "not available");
 }
 
 TEST_F(GPUDeviceContextTest, ComputeCapability) {
