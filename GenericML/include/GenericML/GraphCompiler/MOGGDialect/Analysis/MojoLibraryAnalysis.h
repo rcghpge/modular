@@ -141,24 +141,12 @@ public:
   ErrorOrSuccess verifyMOOpMatchesKernel(Operation *op) const;
 
 private:
-  /// Get the iterator range of the mojo kernels within the given kernel map.
-  static auto toRawMojoKernelRange(
-      const llvm::StringMap<KGEN::GeneratorOp> &userKernelMap) {
-    return llvm::map_range(
-        userKernelMap,
-        [&](const llvm::StringMapEntry<KGEN::GeneratorOp> &entry) {
-          return entry.getValue();
-        });
-  }
-
   /// Get the iterator range of the mojo kernels.
-  auto getRawMojoKernels() const { return toRawMojoKernelRange(rawMojoKernel); }
+  auto getRawMojoKernels() { return module.getOps<KGEN::GeneratorOp>(); }
 
   /// Helper function to update the module and state data but account for
   /// collisions
-  ErrorOrSuccess updateLoadedKernelsForCollisions(
-      Operation *userModule,
-      llvm::StringMap<KGEN::GeneratorOp> &userRawMojoKernel);
+  ErrorOrSuccess updateLoadedKernelsForCollisions(ModuleOp userModule);
 
   /// Helper functionn to add `generator` to the maps of registered kernels if
   /// needed.
@@ -174,18 +162,12 @@ private:
   ErrorOr<llvm::MemoryBufferRef> readAndInternMLIRFile(StringRef filename);
 
   /// Load and process kernels from an MLIR buffer.
-  ErrorOr<Operation *>
-  loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
-                  llvm::StringMap<KGEN::GeneratorOp> &kernelMap,
-                  const Twine &diag);
+  ErrorOr<ModuleOp> loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
+                                    const Twine &diag);
 
   /// Materialize the specified mojo kernel. It does nothing if the kernel has
   /// been materialized.
   LogicalResult ready(KGEN::GeneratorOp gen);
-
-  /// Replace all symbol names in the specified mojo kernel so that all symbol
-  /// name conflicts are resolved after calling this method.
-  LogicalResult replaceSymbols(KGEN::GeneratorOp gen);
 
   KGEN::GeneratorOp foreachKernel;
   KGEN::GeneratorOp viewMaterializeKernel;
@@ -219,17 +201,10 @@ private:
   /// materialization (enforced by the `getMojoBindings` call).
   ModuleOp module;
 
+  /// The symbol table for resolving names in `module`.
+  std::optional<SymbolTable> rawMojoKernelTable;
+
   mlir::ParserConfig config;
-
-  /// This map captures all the mojo kernels (main and user-provided), which
-  /// might not be materialized yet.
-  llvm::StringMap<KGEN::GeneratorOp> rawMojoKernel;
-
-  /// Stores all re-naming information needed to resolve the symbol name
-  /// conflicts (duplication).
-  using RenameEntry = std::pair<std::string, FlatSymbolRefAttr>;
-  llvm::DenseMap<Operation *, llvm::SmallVector<RenameEntry, 16>>
-      symbolNameRemapping;
 
   /// Source manager needed for parsing.
   std::shared_ptr<llvm::SourceMgr> sourceMgr;
