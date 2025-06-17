@@ -56,7 +56,7 @@ public:
 
   /// Get the fully materialized module which contains all exported generators
   /// from mojo libraries.
-  inline mlir::ModuleOp getMojoBindings() const { return module; }
+  mlir::ModuleOp getMojoBindings() const { return module; }
 
   /// Get the hash of the backing Mojo bindings.
   FailureOr<std::string> getMojoBindingsHash() const;
@@ -66,14 +66,14 @@ public:
   Operation *lookup(StringRef name) const;
 
   /// Get the MLIR context.
-  inline MLIRContext *getContext() { return module->getContext(); }
+  MLIRContext *getContext() { return module->getContext(); }
 
   /// Looks up a registered Mojo symbol using the name that was used for
   /// registration.
   KGEN::GeneratorOp getRegisteredMojoKernelFor(StringRef name) const;
 
   /// Returns true if a registered Mojo symbol using the name exists.
-  inline bool hasRegisteredMojoKernelFor(StringRef name) const {
+  bool hasRegisteredMojoKernelFor(StringRef name) const {
     return registeredMojoKernelSymbol.contains(name);
   }
 
