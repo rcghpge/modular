@@ -8,6 +8,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_ANALYSIS_SUPPORT_H
 
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 
 namespace M::MOGG {
 
@@ -25,6 +26,13 @@ getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
 ErrorOr<KGEN::GeneratorOp>
 getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     StringRef mojoOperationName, StringRef functionLabel);
+
+using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
+
+/// Construct the kernel adaptor for the given operation.
+ErrorOr<KernelAdaptor>
+getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                     Operation *op);
 
 } // namespace M::MOGG
 

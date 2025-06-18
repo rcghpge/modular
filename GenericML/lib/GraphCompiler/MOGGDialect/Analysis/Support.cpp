@@ -94,4 +94,15 @@ getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                              info.functionLabel);
 }
 
+ErrorOr<KernelAdaptor>
+getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                     Operation *op) {
+  // Find the kernel from the library.
+  auto maybeExecuteFunc = getMojoKernelTarget(mojoLibraryAnalysis, op);
+  if (maybeExecuteFunc.isError())
+    return maybeExecuteFunc.takeError();
+
+  return KernelAdaptor("", /*execute=*/*maybeExecuteFunc, /*shape=*/nullptr);
+}
+
 } // namespace M::MOGG

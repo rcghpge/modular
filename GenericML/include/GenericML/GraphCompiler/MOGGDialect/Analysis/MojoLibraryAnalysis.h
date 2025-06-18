@@ -15,6 +15,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/SymbolExport.h"
 #include "mlir/Bytecode/BytecodeReader.h"
@@ -139,6 +140,9 @@ public:
 
   /// Verify the call to a MO or custom kernel.
   ErrorOrSuccess verifyMOOpMatchesKernel(Operation *op) const;
+
+  /// Verify the parameters attached to the MO custom operation.
+  ErrorOrSuccess validateCustomOpParameters(MO::CustomOp customOp) const;
 
 private:
   /// Get the iterator range of the mojo kernels.

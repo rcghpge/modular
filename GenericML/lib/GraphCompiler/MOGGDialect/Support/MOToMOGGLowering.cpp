@@ -194,7 +194,7 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   auto view = builder.create<MOGG::CallViewOp>(
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
-  // mog..call.view above).
+  // mogg.call.view above).
   builder.create<MOGG::CallMaterializeOp>(loc, view->getResult(0), outputVal);
 
   return view;
@@ -271,102 +271,6 @@ getValidatedParameter(const NamedAttribute &attr) {
   return NamedAttribute(attr.getName(), value);
 }
 
-/// TODO(GEX-2357): Put this in a dedicated piece of code.
-static ErrorOrSuccess validateCustomOpparameters(MO::CustomOp customOp,
-                                                 const KernelAdaptor &adaptor) {
-  auto parameterTypeNames =
-      adaptor.executeFunction->mojoCode->getAttrOfType<ArrayAttr>(
-          KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
-  struct MojoParameterAdaptor {
-    KGEN::ParamDeclAttr attr;
-    StringAttr typeName;
-  };
-  llvm::DenseMap<StringAttr, MojoParameterAdaptor> paramDecls;
-  for (auto [i, param] :
-       llvm::enumerate(adaptor.executeFunction->mojoCode.getInputParams())) {
-    paramDecls[param.getName()] = {
-        param, dyn_cast_or_null<StringAttr>(parameterTypeNames[i])};
-  }
-
-  for (NamedAttribute namedAttr : customOp.getParameters()) {
-    // Skip if the attribute doesn't correspond to any declaration.
-    // This is because `op` might have other attributes that are not used to
-    // infer custom kernel parameters (eg mo.custom has `symbol`).
-    auto it = paramDecls.find(namedAttr.getName());
-    if (it == paramDecls.end())
-      continue;
-    auto [customParamDecl, typeName] = it->second;
-    Attribute mlirParamAttr = namedAttr.getValue();
-
-    Type kgenParamTy = customParamDecl.getType();
-    auto asIntegerType = dyn_cast<IntegerType>(kgenParamTy);
-
-    if (isa<IndexType>(kgenParamTy)) {
-      auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
-      if (asInt == nullptr) {
-        return Error(llvm::formatv(
-            "failed to convert custom op '{}' attribute '{}' with value '{}' "
-            "to the proper Mojo parameter type: expected an integer type",
-            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
-      }
-    } else if (asIntegerType && asIntegerType.getWidth() == 1) {
-      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
-      if (asBool == nullptr) {
-        return Error(llvm::formatv(
-            "failed to convert custom op '{}' attribute '{}' with value '{}' "
-            "to the proper Mojo parameter type: expected an boolean type",
-            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
-      }
-    } else if (isa<KGEN::StringType>(kgenParamTy)) {
-      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
-      ASSERT_STREAM(asString != nullptr,
-                    "failed to convert custom op attribute "
-                        << mlirParamAttr
-                        << " to expected mojo kernel param type " << kgenParamTy
-                        << ": expected string type");
-    } else if (isa<KGEN::DTypeType>(kgenParamTy)) {
-      auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
-      if (asType == nullptr) {
-        return Error(llvm::formatv(
-            "failed to convert custom op '{}' attribute '{}' with value '{}' "
-            "to the proper Mojo parameter type: expected a DType",
-            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
-      }
-    } else if (typeName &&
-               typeName ==
-                   KGEN::MOGGPreElab::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
-      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
-      if (asString == nullptr) {
-        return Error(llvm::formatv(
-            "failed to convert custom op '{}' attribute '{}' with value '{}' "
-            "to the proper Mojo parameter type: expected string type",
-            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
-      }
-    } else if (typeName &&
-               (typeName ==
-                    KGEN::MOGGPreElab::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME ||
-                typeName == KGEN::MOGGPreElab::MOJO_STRING_TYPE_NAME)) {
-      std::string userTypeName =
-          typeName == KGEN::MOGGPreElab::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME
-              ? "StringSlice"
-              : "String";
-      return Error(llvm::formatv(
-          "in custom op '{}' attribute '{}' uses type {}. Use type "
-          "StaticString instead to define a string parameter for a custom op.",
-          customOp.getSymbol(), customParamDecl.getName(), userTypeName));
-    } else {
-      return Error(llvm::formatv(
-          "failed to convert custom op '{}' attribute '{}' with value '{}' to "
-          "the proper Mojo parameter type: no type conversion found to type "
-          "'{}'",
-          customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr,
-          kgenParamTy));
-    }
-  }
-
-  return success();
-}
-
 ErrorOr<DictionaryAttr>
 MOGGExpKernelBuilder::forwardParameters(const KernelAdaptor &adaptor) {
   auto customOpOperationName =
@@ -375,7 +279,8 @@ MOGGExpKernelBuilder::forwardParameters(const KernelAdaptor &adaptor) {
 
   // Custom op is handled specially by parsing the parameters dictionary.
   if (auto custom = dyn_cast<MO::CustomOp>(moOp)) {
-    if (auto validParameters = validateCustomOpparameters(custom, adaptor))
+    if (auto validParameters =
+            mojoLibraryAnalysis.validateCustomOpParameters(custom))
       return validParameters.takeError();
 
     for (NamedAttribute param : custom.getParameters()) {
@@ -478,11 +383,11 @@ MOGGExpKernelBuilder::forwardParameters(const KernelAdaptor &adaptor) {
 }
 
 ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
-  auto mojoKernelOr = getMojoKernelTarget(mojoLibraryAnalysis, moOp);
-  if (mojoKernelOr.isError())
-    return mojoKernelOr.takeError();
+  auto maybeAdaptor = getMojoKernelAdaptor(mojoLibraryAnalysis, moOp);
+  if (maybeAdaptor.isError())
+    return maybeAdaptor.takeError();
 
-  KernelAdaptor adaptor("", *mojoKernelOr, nullptr);
+  KernelAdaptor adaptor = maybeAdaptor.takeValue();
   auto operandMappingOr =
       mapMOOpToKernelImplementation(moOp, *adaptor.executeFunction);
 

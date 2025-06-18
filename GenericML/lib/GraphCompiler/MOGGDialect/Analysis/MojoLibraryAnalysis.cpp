@@ -530,19 +530,127 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoOutlinedFunctionFor(
 // MO op to mojo kernel verification
 //===----------------------------------------------------------------------===//
 
+using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
+
+ErrorOrSuccess
+MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
+  // Find the kernel from the library.
+  auto maybeAdaptor = getMojoKernelAdaptor(*this, customOp);
+  if (maybeAdaptor.isError())
+    return maybeAdaptor.takeError();
+
+  auto adaptor = maybeAdaptor.takeValue();
+  auto mojoCode = adaptor.executeFunction->mojoCode;
+
+  auto parameterTypeNames = mojoCode->getAttrOfType<ArrayAttr>(
+      KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
+
+  struct MojoParameterAdaptor {
+    KGEN::ParamDeclAttr attr;
+    StringAttr typeName;
+  };
+  llvm::DenseMap<StringAttr, MojoParameterAdaptor> paramDecls;
+
+  for (auto [param, value] :
+       llvm::zip(mojoCode.getInputParams(), parameterTypeNames))
+    paramDecls[param.getName()] = {param, dyn_cast<StringAttr>(value)};
+
+  for (const NamedAttribute &namedAttr : customOp.getParameters()) {
+    auto it = paramDecls.find(namedAttr.getName());
+    if (it == paramDecls.end()) {
+      return Error(llvm::formatv(
+          "parameter '{}' supplied to custom op does not exist in the "
+          "corresponding Mojo code",
+          namedAttr.getName().strref()));
+    }
+
+    auto [customParamDecl, typeName] = it->second;
+    Attribute mlirParamAttr = namedAttr.getValue();
+
+    Type kgenParamTy = customParamDecl.getType();
+    auto asIntegerType = dyn_cast<IntegerType>(kgenParamTy);
+
+    if (isa<IndexType>(kgenParamTy)) {
+      auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
+      if (asInt == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an integer type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (asIntegerType && asIntegerType.getWidth() == 1) {
+      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
+      if (asBool == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an boolean type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (isa<KGEN::StringType>(kgenParamTy)) {
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      ASSERT_STREAM(asString != nullptr,
+                    "failed to convert custom op attribute "
+                        << mlirParamAttr
+                        << " to expected mojo kernel param type " << kgenParamTy
+                        << ": expected string type");
+    } else if (isa<KGEN::DTypeType>(kgenParamTy)) {
+      auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
+      if (asType == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a DType",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               typeName ==
+                   KGEN::MOGGPreElab::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      if (asString == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected string type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               (typeName ==
+                    KGEN::MOGGPreElab::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME ||
+                typeName == KGEN::MOGGPreElab::MOJO_STRING_TYPE_NAME)) {
+      std::string userTypeName =
+          typeName == KGEN::MOGGPreElab::MOJO_INTERNAL_STRING_SLICE_TYPE_NAME
+              ? "StringSlice"
+              : "String";
+      return Error(llvm::formatv(
+          "in custom op '{}' attribute '{}' uses type {}. Use type "
+          "StaticString instead to define a string parameter for a custom op.",
+          customOp.getSymbol(), customParamDecl.getName(), userTypeName));
+    } else {
+      return Error(llvm::formatv(
+          "failed to convert custom op '{}' attribute '{}' with value '{}' to "
+          "the proper Mojo parameter type: no type conversion found to type "
+          "'{}'",
+          customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr,
+          kgenParamTy));
+    }
+  }
+
+  return success();
+}
+
 ErrorOrSuccess
 MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
   // Find the kernel from the library.
-  auto maybeExecuteFunc = getMojoKernelTarget(*this, op);
-  if (maybeExecuteFunc.isError())
-    return maybeExecuteFunc.takeError();
+  auto maybeAdaptor = getMojoKernelAdaptor(*this, op);
+  if (maybeAdaptor.isError())
+    return maybeAdaptor.takeError();
 
-  using namespace KGEN::MOGGPreElab;
-  MojoKernelAdaptor<KGEN::GeneratorOp> adaptor("", maybeExecuteFunc.takeValue(),
-                                               nullptr);
-  auto errOr = mapMOOpToKernelImplementation(op, *adaptor.executeFunction);
+  auto adaptor = maybeAdaptor.takeValue();
+  ErrorOr<OperandMapping> errOr =
+      mapMOOpToKernelImplementation(op, *adaptor.executeFunction);
   if (errOr.isError())
     return errOr.takeError();
+
+  if (auto custom = dyn_cast<MO::CustomOp>(op))
+    return validateCustomOpParameters(custom);
 
   return success();
 }
