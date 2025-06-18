@@ -1028,7 +1028,7 @@ struct LowerAvgPool : public OpRewritePattern<RMO::AvgPoolOp> {
         promoteDTypes(rewriter, avg_pool.getLoc(), resultType.getDtype(),
                       avg_pool.getInput());
 
-    DeviceRefAttr device = promotedInput.getType().getDeviceRef();
+    auto device = getHostDevice(avg_pool.getContext());
     TensorValue filterShapeConstant =
         shapeToIndicesTensor(rewriter, loc, filter_shape, device);
 
@@ -1075,8 +1075,7 @@ struct LowerMaxPool : public OpRewritePattern<RMO::MaxPoolOp> {
         promoteDTypes(rewriter, max_pool.getLoc(), resultType.getDtype(),
                       max_pool.getInput());
 
-    DeviceRefAttr device = promotedInput.getType().getDeviceRef();
-    // auto device = getHostDevice(max_pool.getContext());
+    auto device = getHostDevice(max_pool.getContext());
     TensorValue filterShapeConstant =
         shapeToIndicesTensor(rewriter, loc, filter_shape, device);
 

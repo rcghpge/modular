@@ -1909,7 +1909,7 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
   let summary = "Average pooling operation";
   let description = [{
@@ -1974,7 +1974,7 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
   let summary = "Ceiling-mode average pooling operation";
   let description = [{
@@ -2039,7 +2039,7 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
   let summary = "Maximum pooling operation";
   let description = [{
@@ -2103,7 +2103,7 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
   MO_SlidingWindow,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly
+  MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
   let summary = "Ceiling-mode maximum pooling operation";
   let description = [{
