@@ -439,62 +439,67 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
   if (id < 0) {
     RAISE_ERROR("Device id must be positive. Got " + llvm::Twine(id));
   }
-  ErrorOr<const DeviceList &> errOrDevices = deviceList();
-  if (errOrDevices) {
-    return errOrDevices.takeError();
-  }
-  const DeviceList &devices = *errOrDevices;
-  if (devices.size() > static_cast<size_t>(id)) {
-    return *(devices[id]);
-  }
-  RAISE_ERROR("Device(id: " + llvm::Twine(id) +
-              ") not available. Number of supported devices: " +
-              llvm::Twine(devices.size()));
-}
-
-ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
-  // Initialization of these two statics only happens once on the first call. We
-  // ensure this by initializing the err using a lambda.
-  static DeviceList *devices = new DeviceList();
+  // On first call initialize devices and err. devices is only set if there was
+  // no error during setup.
+  static std::mutex mu;
+  static DeviceList *devices = nullptr;
   static const ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
+    ErrorOr<int> errOrCount = numberOfGPUs();
+    if (errOrCount.isError()) {
+      return errOrCount.takeError();
+    }
+    devices = new DeviceList(*errOrCount, nullptr);
+    return success();
+  }();
+
+  // If we did get an error during setup skip accessing the device and forward
+  // the error.
+  if (err.isError()) {
+    RAISE_ERROR(err.getError());
+  }
+
+  assert(devices != nullptr);
+  if (devices->size() <= static_cast<size_t>(id)) {
+    RAISE_ERROR("Device(id: " + llvm::Twine(id) +
+                ") not available. Number of supported devices: " +
+                llvm::Twine(devices->size()));
+  }
+
+  // Get or initialize the Device object.
+  std::lock_guard<std::mutex> lock(mu);
+  CUDADevice *device = (*devices)[id];
+  if (device == nullptr) {
     ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
     if (errDriver) {
       RAISE_ERROR(llvm::Twine("CUDA Driver initialization failed: ") +
                   errDriver.getError());
     }
     const CUDADriver &driver = *errDriver;
-    int count = 0;
-    CUDA_CHECK_ERR(driver.DeviceGetCount(&count));
+    char name[256];
+    int alignment;
+    CUdevice cuDevice;
+    CUcontext cuContext;
 
-    for (int i = 0; i < count; i++) {
-      char name[256];
-      int alignment;
-      CUdevice device;
-      CUcontext context;
+    CUDA_CHECK_ERR(driver.DeviceGet(&cuDevice, id));
+    CUDA_CHECK_ERR(driver.DeviceGetName(name, sizeof(name), cuDevice));
+    CUDA_CHECK_ERR(driver.DeviceGetAttribute(
+        &alignment, CUdevice_attribute::TEXTURE_ALIGNMENT, cuDevice));
 
-      CUDA_CHECK_ERR(driver.DeviceGet(&device, i));
-      CUDA_CHECK_ERR(driver.DeviceGetName(name, sizeof(name), device));
-      CUDA_CHECK_ERR(driver.DeviceGetAttribute(
-          &alignment, CUdevice_attribute::TEXTURE_ALIGNMENT, device));
+    // Use the primary context for this device, with the effect that we share
+    // the same context with other users of the CUDA Runtime API.
+    CUDA_CHECK_ERR(driver.DevicePrimaryCtxRetain(&cuContext, cuDevice));
 
-      // Use the primary context for this device, with the effect that we share
-      // the same context with other users of the CUDA Runtime API.
-      CUDA_CHECK_ERR(driver.DevicePrimaryCtxRetain(&context, device));
+    CUDAContextScope withCtx(cuContext, driver);
+    Device::MemInfo memInfo;
+    CUDA_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
 
-      CUDAContextScope withCtx(context, driver);
-      Device::MemInfo memInfo;
-      CUDA_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
+    device = new CUDADevice(driver, id, cuDevice, cuContext, name, memInfo,
+                            alignment);
 
-      devices->emplace_back(
-          new CUDADevice(driver, i, device, context, name, memInfo, alignment));
-    }
-    return success();
-  }();
-
-  if (err) {
-    RAISE_ERROR(err.getError());
+    // Once the Device has been created remember it in the devices list.
+    (*devices)[id] = device;
   }
-  return *devices;
+  return *device;
 }
 
 void CUDADevice::eventCacheClear() const {

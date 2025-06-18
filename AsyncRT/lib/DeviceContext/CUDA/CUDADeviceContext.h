@@ -122,8 +122,6 @@ private:
   static constexpr int MIN_CUDA_DRIVER_VERSION = 12040;
   static constexpr int MIN_NVIDIA_DRIVER_VERSION = 550;
 
-  static ErrorOr<const DeviceList &> deviceList();
-
   const CUDADriver &driver_;
   const CUdevice device_;
   // Device context to be shared across all `CUDADeviceContext` objects. We
