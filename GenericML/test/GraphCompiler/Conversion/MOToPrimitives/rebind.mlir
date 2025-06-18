@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --allow-unregistered-dialect --cse --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --mogg-to-kgen --mo-to-primitives --allow-unregistered-dialect --cse --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mgp.model @static_ranks_int_to_unknown : mof
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,

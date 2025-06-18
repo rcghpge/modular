@@ -20,10 +20,8 @@ mo.graph @conv_const_params(
 }
 
 // CHECK-LABEL: mo.graph @conv_const_params
-// CHECK: kgen.param.declare MOGG_10_static_strides: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<42>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<23>)]>
-// CHECK: kgen.param.declare MOGG_11_static_dilations: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<-24141>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<4352>)]>
-// CHECK: kgen.param.declare MOGG_12_static_padding: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<1>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<2>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<3>), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_known_dim[::Int]()"<-16>)]>
-
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.execute["mo.conv"]
 mo.graph @conv_unknown_params(
   %input: !mo.tensor<[4, 3, 3, 1], f32>,
   %filter: !mo.tensor<[2, 2, 1, 1], f32>,
@@ -42,4 +40,5 @@ mo.graph @conv_unknown_params(
 }
 
 // CHECK-LABEL: mo.graph @conv_unknown_params
-// CHECK: kgen.param.declare MOGG_28_static_padding: variadic<index> = <[apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()"), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()"), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()"), apply(:() -> index @"MOGGKernelAPILib::MOGGKernelAPI::create_unknown_dim()")]>
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.execute["mo.conv"]

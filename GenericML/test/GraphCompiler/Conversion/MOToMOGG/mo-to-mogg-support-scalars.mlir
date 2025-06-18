@@ -3,8 +3,9 @@
 // RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib"
 
 // CHECK-LABEL: mo.graph @supports_scalars
-// CHECK: kgen.call @"{{.*}}MOGGKernelAPI::get_scalar_from_managed_tensor_slice
-// CHECK: kgen.call @"{{.*}}MOGGKernelAPITest::SupportsScalarKernel::execute
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.as_scalar
+// CHECK: mogg.call.execute["supports_scalar_kernel"]
 mo.graph @supports_scalars(%a : !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {
   %0 = mo.custom {symbol = "supports_scalar_kernel", device = #M.device_ref<"cpu", 0>}(%a, %a) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], f32>
   mo.output %0 : !mo.tensor<[], f32>

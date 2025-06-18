@@ -2,11 +2,8 @@
 
 // CHECK-LABEL: mo.graph @fuse_store_to_add
 // CHECK: [[CHAIN:%.*]] = mo.chain.create()
-// CHECK: mogg.kernel ({{.*}}[[CHAIN]])
-
-// CHECK: inputFusionInterface = ["", {{.*}}", "{{.*}}", ""]
-// CHECK-SAME: outputFusionInterface = [""]
-// CHECK-SAME: summary = "mo.add:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
+// CHECK: mogg.experimental.kernel
+// CHECK: summary = "mo.add:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
 mo.graph @fuse_store_to_add(%buf: !mo.buffer<[2, 2], f32>, %a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) {
 
   %chain = mo.chain.create()

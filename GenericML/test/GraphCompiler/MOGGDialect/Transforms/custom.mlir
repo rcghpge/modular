@@ -1,12 +1,16 @@
-// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-prologues-epilogues=kernel-library-paths="%kernel_api_test_lib" --cse | FileCheck %s
+// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-prologues-epilogues=kernel-library-paths="%kernel_api_test_lib" --cse | FileCheck %s
 
-// CHECK: module {
-// CHECK:   kgen.extern.generator @"MOGGKernelAPITestLib::MOGGKernelAPITest::TestCustomOp::execute
-
-// CHECK:       kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::Ceil::execute
-// CHECK:       kgen.call @"MOGGKernelAPITestLib::MOGGKernelAPITest::TestCustomOp::execute
-// CHECK:       kgen.call @"MOGGKernelAPILib::MOGGKernelAPI::ReLU::execute
-// CHECK:       mogg.output %{{.*}} : !mo.tensor<[2], f32>
+// CHECK-LABEL: mo.graph @input_output_fusion
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.bind {{.*}} elemwise_lambda
+// CHECK: mogg.call.outlined["mo.ceil"]
+// CHECK: mogg.call.foreach
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.execute["test_custom_op"]
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.bind {{.*}} elemwise_lambda
+// CHECK: mogg.call.outlined["mo.relu"]
+// CHECK: mogg.call.foreach
 
 mo.graph @input_output_fusion(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {
   %0 = mo.ceil(%arg0) : !mo.tensor<[2], f32>

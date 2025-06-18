@@ -256,6 +256,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     dst->getArgument(idx).replaceAllUsesWith(srcTerm.getInputs().front());
     kernel.eraseInputsAt(idx);
     srcTerm.erase();
+
+    kernel.setSummaryAttr(
+        getSummaryString({viewProducer, kernel}, FusionType::HARD));
   }
 
   // Fuse at the given index.

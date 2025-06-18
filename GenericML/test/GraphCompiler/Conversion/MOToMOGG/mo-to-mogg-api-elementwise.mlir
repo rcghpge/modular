@@ -4,13 +4,11 @@
 
 // Check mo-to-mogg correctly lowers an elementwise KernelAPI
 
-// CHECK: mogg.kernel
-// CHECK: kgen.param.declare.region {{.+}}_output_{{.+}}_fn =
-// CHECK: kgen.param.declare.region {{.+}}_input_{{.+}}_fn =
-// CHECK: kgen.param.declare.region {{.+}}_input_{{.+}}_fn =
-// CHECK: kgen.param.declare.region {{.+}}func
-// CHECK: fusionBodyLambda = "{{.+}}func
-// CHECK-SAME: inputFusionInterface = ["MOGG{{.+}}", "MOGG{{.+}}"]{{.+}} outputFusionInterface = ["MOGG{{.+}}"]
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.output_placeholders
+// CHECK: mogg.bind {{.*}} elemwise_lambda
+// CHECK: mogg.call.outlined["imposter_add_elementwise"]
+// CHECK: mogg.call.foreach
 
 mo.graph @add_elemwise() -> !mo.tensor<[2, 3], f32> {
   %x = mo.constant {value = #M.dense_array<1.0, 1.5, 2.0, 2.5, 3.0, 3.5> : tensor<6xf32>} : !mo.tensor<[2, 3], f32>
