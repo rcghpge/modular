@@ -15,9 +15,6 @@ lit_tests(
         "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITestLib)",
     },
     data = ["//GenericML/test/TestKernels:MOGGKernelAPITestLib"],
-    env = {
-        "MOGG_USE_EXP_KERNELS": "1",
-    },
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
         "//conditions:default": [],
