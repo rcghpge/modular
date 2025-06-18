@@ -1008,6 +1008,101 @@ struct LowerConvTranspose : public OpRewritePattern<RMO::ConvTransposeOp> {
   }
 };
 
+struct LowerAvgPool : public OpRewritePattern<RMO::AvgPoolOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RMO::AvgPoolOp avg_pool,
+                                PatternRewriter &rewriter) const override {
+    Location loc = avg_pool.getLoc();
+
+    ShapeAttr filter_shape = avg_pool.getFilterShape();
+    ShapeAttr strides = avg_pool.getStrides();
+    ShapeAttr paddings = avg_pool.getPaddings();
+    ShapeAttr dilations = avg_pool.getDilations();
+    auto ceil_mode = avg_pool.getCeilMode();
+    auto count_boundary = avg_pool.getCountBoundary();
+    TensorType resultType = avg_pool.getType();
+
+    // Promote inputs
+    auto [promotedInput] =
+        promoteDTypes(rewriter, avg_pool.getLoc(), resultType.getDtype(),
+                      avg_pool.getInput());
+
+    DeviceRefAttr device = promotedInput.getType().getDeviceRef();
+    TensorValue filterShapeConstant =
+        shapeToIndicesTensor(rewriter, loc, filter_shape, device);
+
+    TensorValue stridesConstant =
+        shapeToIndicesTensor(rewriter, loc, strides, device);
+
+    TensorValue paddingConstant =
+        shapeToIndicesTensor(rewriter, loc, paddings, device);
+
+    TensorValue dilationsConstant =
+        shapeToIndicesTensor(rewriter, loc, dilations, device);
+
+    if (ceil_mode) {
+      rewriter.replaceOpWithNewOp<RMO::MOAvgPoolCeilOp>(
+          avg_pool, avg_pool.getType(), promotedInput, filterShapeConstant,
+          stridesConstant, dilationsConstant, paddingConstant, count_boundary);
+    } else {
+      rewriter.replaceOpWithNewOp<RMO::MOAvgPoolOp>(
+          avg_pool, avg_pool.getType(), promotedInput, filterShapeConstant,
+          stridesConstant, dilationsConstant, paddingConstant, count_boundary);
+    }
+
+    return success();
+  }
+};
+
+struct LowerMaxPool : public OpRewritePattern<RMO::MaxPoolOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RMO::MaxPoolOp max_pool,
+                                PatternRewriter &rewriter) const override {
+    Location loc = max_pool.getLoc();
+
+    ShapeAttr filter_shape = max_pool.getFilterShape();
+    ShapeAttr strides = max_pool.getStrides();
+    ShapeAttr paddings = max_pool.getPaddings();
+    ShapeAttr dilations = max_pool.getDilations();
+    auto ceil_mode = max_pool.getCeilMode();
+
+    TensorType resultType = max_pool.getType();
+
+    // Promote inputs
+    auto [promotedInput] =
+        promoteDTypes(rewriter, max_pool.getLoc(), resultType.getDtype(),
+                      max_pool.getInput());
+
+    DeviceRefAttr device = promotedInput.getType().getDeviceRef();
+    // auto device = getHostDevice(max_pool.getContext());
+    TensorValue filterShapeConstant =
+        shapeToIndicesTensor(rewriter, loc, filter_shape, device);
+
+    TensorValue stridesConstant =
+        shapeToIndicesTensor(rewriter, loc, strides, device);
+
+    TensorValue paddingConstant =
+        shapeToIndicesTensor(rewriter, loc, paddings, device);
+
+    TensorValue dilationsConstant =
+        shapeToIndicesTensor(rewriter, loc, dilations, device);
+
+    if (ceil_mode) {
+      rewriter.replaceOpWithNewOp<RMO::MOMaxPoolCeilOp>(
+          max_pool, max_pool.getType(), promotedInput, filterShapeConstant,
+          stridesConstant, dilationsConstant, paddingConstant);
+    } else {
+      rewriter.replaceOpWithNewOp<RMO::MOMaxPoolOp>(
+          max_pool, max_pool.getType(), promotedInput, filterShapeConstant,
+          stridesConstant, dilationsConstant, paddingConstant);
+    }
+
+    return success();
+  }
+};
+
 struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -1372,9 +1467,10 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::AndOp, RMO::MOAndOp>,
         LowerCompositeBinaryComparisonOp<RMO::OrOp, RMO::MOOrOp>,
         LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
-        LowerBroadcastLike, LowerConv, LowerConvTranspose, LowerSigmoid,
-        LowerConcat, LowerReshape, LowerMatmul, LowerBroadcastTo, LowerSelect,
-        LowerTopK, LowerSlice, LowerShapeToTensor>(context);
+        LowerBroadcastLike, LowerConv, LowerConvTranspose, LowerAvgPool,
+        LowerMaxPool, LowerSigmoid, LowerConcat, LowerReshape, LowerMatmul,
+        LowerBroadcastTo, LowerSelect, LowerTopK, LowerSlice,
+        LowerShapeToTensor>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo

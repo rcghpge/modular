@@ -829,6 +829,54 @@ LogicalResult ConvTransposeOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// Pool Ops
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+MaxPoolOp::inferReturnTypes(MLIRContext *context,
+                            std::optional<Location> location, Adaptor adaptor,
+                            SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto input = cast<TensorValue>(adaptor.getInput());
+
+  TypedAttr inputShape = cast<ShapeAttr>(getShapeOf(input));
+
+  Location loc = location.value_or(input.getLoc());
+
+  // Materialize shape function.
+  auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
+  MO::ShapeMaterializeResult result = MO::materializePoolShape(
+      graphOp, loc, inputShape, adaptor.getFilterShape(), adaptor.getStrides(),
+      adaptor.getDilations(), adaptor.getPaddings(), adaptor.getCeilMode());
+
+  return runShapePropagation(adaptor.getOperands(), location,
+                             input.getType().getDtype(), result,
+                             inferredReturnTypes, getDevice(input),
+                             /*validateAsserts=*/false);
+}
+
+LogicalResult
+AvgPoolOp::inferReturnTypes(MLIRContext *context,
+                            std::optional<Location> location, Adaptor adaptor,
+                            SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto input = cast<TensorValue>(adaptor.getInput());
+
+  TypedAttr inputShape = cast<ShapeAttr>(getShapeOf(input));
+
+  Location loc = location.value_or(input.getLoc());
+
+  // Materialize shape function.
+  auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
+  MO::ShapeMaterializeResult result = MO::materializePoolShape(
+      graphOp, loc, inputShape, adaptor.getFilterShape(), adaptor.getStrides(),
+      adaptor.getDilations(), adaptor.getPaddings(), adaptor.getCeilMode());
+
+  return runShapePropagation(adaptor.getOperands(), location,
+                             input.getType().getDtype(), result,
+                             inferredReturnTypes, getDevice(input),
+                             /*validateAsserts=*/false);
+}
+
+//===----------------------------------------------------------------------===//
 // ShapeToTensor
 //===----------------------------------------------------------------------===//
 
