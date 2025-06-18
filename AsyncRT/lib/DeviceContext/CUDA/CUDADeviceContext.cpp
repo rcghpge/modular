@@ -455,7 +455,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
 ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
   // Initialization of these two statics only happens once on the first call. We
   // ensure this by initializing the err using a lambda.
-  static DeviceList devices;
+  static DeviceList *devices = new DeviceList();
   static const ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
     ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
     if (errDriver) {
@@ -485,7 +485,7 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
       Device::MemInfo memInfo;
       CUDA_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
 
-      devices.emplace_back(
+      devices->emplace_back(
           new CUDADevice(driver, i, device, context, name, memInfo, alignment));
     }
     return success();
@@ -494,7 +494,7 @@ ErrorOr<const CUDADevice::DeviceList &> CUDADevice::deviceList() {
   if (err) {
     RAISE_ERROR(err.getError());
   }
-  return devices;
+  return *devices;
 }
 
 void CUDADevice::eventCacheClear() const {
