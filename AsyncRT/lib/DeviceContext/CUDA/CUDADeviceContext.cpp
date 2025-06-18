@@ -452,7 +452,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
     return success();
   }();
 
-  // If we did get an error during setup skip accessing the device and forward
+  // If we did get an error during setup, skip accessing the device and forward
   // the error.
   if (err.isError()) {
     RAISE_ERROR(err.getError());

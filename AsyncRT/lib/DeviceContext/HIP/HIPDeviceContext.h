@@ -96,8 +96,6 @@ private:
   static constexpr int MIN_HIP_DRIVER_VERSION_MINOR = 3;
   static constexpr int MIN_HIP_DRIVER_VERSION_PATCH = 30000;
 
-  static ErrorOr<const DeviceList &> deviceList();
-
   const HIPDriver &driver_;
   hipDevice_t device_;
 };

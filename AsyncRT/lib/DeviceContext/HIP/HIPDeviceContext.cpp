@@ -582,56 +582,61 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
   if (id < 0) {
     RAISE_ERROR("Device id must be positive. Got " + TWINE(id));
   }
-  ErrorOr<const DeviceList &> errOrDevices = deviceList();
-  if (errOrDevices) {
-    return errOrDevices.takeError();
-  }
-  const DeviceList &devices = *errOrDevices;
-  if (devices.size() > static_cast<size_t>(id)) {
-    return *(devices[id]);
-  }
-  RAISE_ERROR(
-      "Device(id: " + TWINE(id) +
-      ") not available. Number of supported devices: " + TWINE(devices.size()));
-}
+  // On first call initialize devices and err. devices is only set if there was
+  // no error during setup.
+  static std::mutex mu;
+  static DeviceList *devices = nullptr;
+  static const ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
+    ErrorOr<int> errOrCount = numberOfGPUs();
+    if (errOrCount.isError()) {
+      return errOrCount.takeError();
+    }
+    devices = new DeviceList(*errOrCount, nullptr);
+    return success();
+  }();
 
-ErrorOr<const HIPDevice::DeviceList &> HIPDevice::deviceList() {
-  static DeviceList devices; // Filled in by the initialization lambda below.
-  static ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
+  // If we did get an error during setup, skip accessing the device and forward
+  // the error.
+  if (err.isError()) {
+    RAISE_ERROR(err.getError());
+  }
+
+  assert(devices != nullptr);
+  if (devices->size() <= static_cast<size_t>(id)) {
+    RAISE_ERROR("Device(id: " + llvm::Twine(id) +
+                ") not available. Number of supported devices: " +
+                llvm::Twine(devices->size()));
+  }
+
+  // Get or initialize the Device object.
+  std::lock_guard<std::mutex> lock(mu);
+  HIPDevice *device = (*devices)[id];
+  if (device == nullptr) {
     ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
     if (errDriver) {
       RAISE_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
                   errDriver.getError());
     }
-
     const HIPDriver &driver = *errDriver;
-    int count = 0;
-    HIP_CHECK_ERR(driver.DeviceGetCount(&count));
+    char name[256];
+    int alignment;
 
-    for (int i = 0; i < count; i++) {
-      char name[256];
-      int alignment;
+    hipDevice_t hipDevice = static_cast<hipDevice_t>(id);
+    HIP_CHECK_ERR(driver.DeviceGetName(name, sizeof(name), hipDevice));
+    HIP_CHECK_ERR(driver.DeviceGetAttribute(
+        &alignment, hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment,
+        hipDevice));
 
-      hipDevice_t device = static_cast<hipDevice_t>(i);
-      HIP_CHECK_ERR(driver.DeviceGetName(name, sizeof(name), device));
-      HIP_CHECK_ERR(driver.DeviceGetAttribute(
-          &alignment, hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment,
-          device));
+    HIPDeviceScope withDev(hipDevice, driver);
+    Device::MemInfo memInfo;
+    HIP_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
 
-      HIPDeviceScope withDev(device, driver);
-      Device::MemInfo memInfo;
-      HIP_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
+    device = new HIPDevice(driver, id, hipDevice, name, memInfo, alignment);
 
-      devices.emplace_back(
-          new HIPDevice(driver, i, device, name, memInfo, alignment));
-    }
-    return success();
-  }();
-
-  if (err) {
-    RAISE_ERROR(err.getError());
+    // Once the Device has been created remember it in the devices list.
+    (*devices)[id] = device;
   }
-  return devices;
+  return *device;
 }
 
 // ===== HIPDeviceEvent ===== //
