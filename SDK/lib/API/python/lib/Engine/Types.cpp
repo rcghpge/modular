@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/API/max/c/types.h"
-#include "GenericML/API/c/detail/helpers.h"
 #include "SDK/EngineAPI/python/Types.h"
 #include "Support/ML/DType.h"
 #include "nanobind/nanobind.h"
