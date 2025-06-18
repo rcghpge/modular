@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="constant-fold=false kernel-library-paths=%kernel_api_test_lib" --allow-unregistered-dialect --mlir-print-ir-after="fuse-prologues-epilogues" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --allow-unregistered-dialect --fuse-elementwise="kernel-library-paths=%kernel_api_test_lib" --fuse-views="kernel-library-paths=%kernel_api_test_lib" --fuse-prologues-epilogues="kernel-library-paths=%kernel_api_test_lib" --cse --canonicalize --simplify-kernel-operands --mlir-disable-threading | FileCheck %s --check-prefix=CHECK-IR
 
 
 
