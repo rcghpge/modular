@@ -741,11 +741,25 @@ DeviceContext::compileFunction_v2(StringRef ir, StringRef debugLevel,
 // ===== Device ===== //
 //
 MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
-  ErrorOr<DeviceRef> device = Device::create(api);
-  if (device.isError()) {
-    return 0;
+  // TODO(iposva): Implement dynamic registration mechanism.
+  if ((api == gpuAPI) || (api == cudaAPI)) {
+    ErrorOr<int> count = CUDADevice::numberOfGPUs();
+    if (!count.isError())
+      return *count;
   }
-  return (*device)->deviceCount();
+  if ((api == gpuAPI) || (api == hipAPI)) {
+    ErrorOr<int> count = HIPDevice::numberOfGPUs();
+    if (!count.isError())
+      return *count;
+  }
+  if (api == cpuAPI) {
+    // For CPU we go back to the device to get the number of supported devices.
+    ErrorOr<const CpuDevice &> device = CpuDevice::get(0);
+    if (!device.isError())
+      return device->deviceCount();
+  }
+
+  return 0;
 }
 
 BufferCache &Device::bufferCache() const {

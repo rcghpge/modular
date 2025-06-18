@@ -375,19 +375,30 @@ CUDADevice::createExternalStream(void *externalStream) const {
       *this, reinterpret_cast<CUstream>(externalStream));
 }
 
-int CUDADevice::deviceCount() const {
-  static int count = []() -> int {
+ErrorOr<int> CUDADevice::numberOfGPUs() {
+  static ErrorOr<int> errOrCount = []() -> ErrorOr<int> {
     ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
     if (errDriver.isError())
-      return 0;
+      return errDriver.takeError();
 
     int result;
-    if ((*errDriver).DeviceGetCount(&result) != CUDADriver::SUCCESS)
-      return 0;
-
+    CUDA_CHECK_ERR((*errDriver).DeviceGetCount(&result));
     return result;
   }();
-  return count;
+
+  if (errOrCount.isError()) {
+    return errOrCount.copy();
+  }
+  return *errOrCount;
+}
+
+int CUDADevice::deviceCount() const {
+  ErrorOr<int> errOrCount = numberOfGPUs();
+  if (errOrCount.isError()) {
+    // Do not propagate an error.
+    return 0;
+  }
+  return *errOrCount;
 }
 
 ErrorOrSuccess CUDADevice::chunkAlloc(void **ptr, size_t byteSize) const {

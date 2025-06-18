@@ -66,6 +66,7 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
+  static ErrorOr<int> numberOfGPUs();
   int deviceCount() const override;
 
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const override;

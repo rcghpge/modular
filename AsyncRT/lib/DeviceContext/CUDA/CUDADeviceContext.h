@@ -91,6 +91,7 @@ public:
 
   static const CUDADevice &cast(const Device &device);
 
+  static ErrorOr<int> numberOfGPUs();
   static ErrorOr<const CUDADevice &> get(int id);
 
   ErrorOr<CUevent> eventCachePop() const;

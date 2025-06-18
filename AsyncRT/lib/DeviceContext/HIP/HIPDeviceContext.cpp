@@ -511,19 +511,30 @@ HIPDevice::createExternalStream(void *externalStream) const {
       *this, reinterpret_cast<hipStream_t>(externalStream));
 }
 
-int HIPDevice::deviceCount() const {
-  static int count = []() -> int {
+ErrorOr<int> HIPDevice::numberOfGPUs() {
+  static ErrorOr<int> errOrCount = []() -> ErrorOr<int> {
     ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
     if (errDriver.isError())
-      return 0;
+      return errDriver.takeError();
 
     int result;
-    if ((*errDriver).DeviceGetCount(&result) != HIPDriver::SUCCESS)
-      return 0;
-
+    HIP_CHECK_ERR((*errDriver).DeviceGetCount(&result));
     return result;
   }();
-  return count;
+
+  if (errOrCount.isError()) {
+    return errOrCount.copy();
+  }
+  return *errOrCount;
+}
+
+int HIPDevice::deviceCount() const {
+  ErrorOr<int> errOrCount = numberOfGPUs();
+  if (errOrCount.isError()) {
+    // Do not propagate an error.
+    return 0;
+  }
+  return *errOrCount;
 }
 
 ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize) const {
