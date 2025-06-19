@@ -179,45 +179,59 @@ MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
+  // Only zero and positive values are allowed as device ids.
+  if (id < 0) {
+    RAISE_ERROR_MESSAGE("Device id must be positive. Got " + llvm::Twine(id));
+  }
+  // Make sure that we are not requesting a device that is out of range. If
+  // numberOfDevices(api) returned a zero, then this is an unsupported API and
+  // we let the code below issue the correct error.
+  int numDevices = numberOfDevices(api);
+  if ((numDevices != 0) && (id >= numDevices)) {
+    RAISE_ERROR_MESSAGE(
+        "Device(api: " + api + ", id: " + llvm::Twine(id) +
+        ") is not available. Maximum number of supported devices is " +
+        llvm::Twine(numDevices) + ".");
+  }
+
   // TODO(iposva): Implement dynamic registration mechanism.
-  if (api == gpuAPI) {
+  std::string cudaError;
+  if ((api == gpuAPI) || (api == cudaAPI)) {
     ErrorOr<const Device &> device = CUDADevice::get(id);
     if (!device.isError()) {
       return DeviceRef::copy(&device.get());
-    }
-    std::string cudaError = device.getError();
-
-    device = HIPDevice::get(id);
-    if (!device.isError()) {
-      return DeviceRef::copy(&device.get());
-    }
-    std::string hipError = device.getError();
-
-    return Error(llvm::Twine("No supported \"gpu\" device available.\n") +
-                 "  CUDA information: " + cudaError + "\n" +
-                 "  HIP information:  " + hipError);
-  } else if (api == cudaAPI) {
-    ErrorOr<const CUDADevice &> device = CUDADevice::get(id);
-    if (device.isError())
+    } else if (api == cudaAPI)
       return device.takeError();
-    return DeviceRef::copy(&device.get());
-  } else if (api == cpuAPI) {
+    cudaError = device.getError();
+  }
+
+  std::string hipError;
+  if ((api == gpuAPI) || (api == hipAPI)) {
+    ErrorOr<const Device &> device = HIPDevice::get(id);
+    if (!device.isError()) {
+      // This disables full buffering when piping to a file if running
+      // on AMD GPU. Without setting this `FileCheck` will have CPU
+      // prints and GPU kernel prints mixed together, causing the tests
+      // to fail.
+      setbuf(stdout, nullptr);
+      return DeviceRef::copy(&device.get());
+    } else if (api == hipAPI)
+      return device.takeError();
+    hipError = device.getError();
+  }
+
+  if (api == cpuAPI) {
     ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
     if (device.isError())
       return device.takeError();
     return DeviceRef::copy(&device.get());
-  } else if (api == hipAPI) {
-    ErrorOr<const HIPDevice &> device = HIPDevice::get(id);
-    if (device.isError())
-      return device.takeError();
-    // This disables full buffering when piping to a file if running
-    // on AMD GPU. Without setting this `FileCheck` will have CPU
-    // prints and GPU kernel prints mixed together, causing the tests
-    // to fail.
-    setbuf(stdout, nullptr);
-    return DeviceRef::copy(&device.get());
   }
 
+  if (api == gpuAPI) {
+    return Error(llvm::Twine("No supported \"gpu\" device available.\n") +
+                 "  CUDA information: " + cudaError + "\n" +
+                 "  HIP information:  " + hipError);
+  }
   return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
 }
 

@@ -436,9 +436,6 @@ const CUDADevice &CUDADevice::cast(const Device &device) {
 };
 
 ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
-  if (id < 0) {
-    RAISE_ERROR("Device id must be positive. Got " + llvm::Twine(id));
-  }
   // On first call initialize devices and err. devices is only set if there was
   // no error during setup.
   static std::mutex mu;
@@ -459,11 +456,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
   }
 
   assert(devices != nullptr);
-  if (devices->size() <= static_cast<size_t>(id)) {
-    RAISE_ERROR("Device(id: " + llvm::Twine(id) +
-                ") not available. Number of supported devices: " +
-                llvm::Twine(devices->size()));
-  }
+  assert((id >= 0) && (static_cast<size_t>(id) < devices->size()));
 
   // Get or initialize the Device object.
   std::lock_guard<std::mutex> lock(mu);

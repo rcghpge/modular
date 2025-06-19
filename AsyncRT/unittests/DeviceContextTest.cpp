@@ -27,15 +27,10 @@ TEST(DeviceContextTest, Smoke) {
 }
 
 TEST(DeviceContextTest, CreationFailure) {
-  ErrorOr<DeviceContextRef> errCtx = DeviceContext::create(Device::cpuAPI, 1);
-  ASSERT_TRUE(errCtx.isError());
-  EXPECT_EQ(strcmp(errCtx.getError(), "CPU device only supports id == 0."), 0)
-      << errCtx.getError();
-
-  errCtx = DeviceContext::create("pcu");
-  ASSERT_TRUE(errCtx.isError());
-  EXPECT_EQ(strcmp(errCtx.getError(), "Unsupported device api: \"pcu\""), 0)
-      << errCtx.getError();
+  EXPECT_ERR_MSG(DeviceContext::create(Device::cpuAPI, 1),
+                 "Device(api: cpu, id: 1) is not available");
+  EXPECT_ERR_MSG(DeviceContext::create("pcu"),
+                 "Unsupported device api: \"pcu\"");
 }
 
 TEST(DeviceContextTest, NumDevices) {
