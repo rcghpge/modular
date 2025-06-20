@@ -161,7 +161,7 @@ struct FuseAffineViewsPass
     // We may need a rebind since some complex default parameter value logic
     // may not be folded all the way at the start.
     Value toShapeKGENRebound = builder.create<KGEN::RebindOp>(
-        loc, reshapeSignature.getArguments()[1], toShapeKGEN);
+        loc, reshapeSignature.getArgument(1), toShapeKGEN);
 
     auto callArgs = SmallVector<Value>{kgenTensor, toShapeKGENRebound};
     auto reshapedTensorCall =
@@ -381,7 +381,7 @@ struct FuseAffineViewsPass
     auto signature = simdStoreInternalSymbol->getType().getBody();
 
     Value kgenNewIndicesOperandRebound = builder.create<KGEN::RebindOp>(
-        kgenNewIndicesOperand.getLoc(), signature.getArguments()[1],
+        kgenNewIndicesOperand.getLoc(), signature.getArgument(1),
         kgenNewIndicesOperand);
 
     // Applying a bunch of logic on the parameters
