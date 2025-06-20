@@ -389,6 +389,9 @@ struct FuseProloguesEpilogues
     if (isElemwise)
       return false;
 
+    if (!fusionInterfaces)
+      return false;
+
     // Input fusion interface must be non null.
     auto inputFusion = SmallVector<StringAttr>(
         fusionInterfaces.getAsRange<StringAttr>())[inputIdx];
@@ -427,8 +430,11 @@ struct FuseProloguesEpilogues
       return false;
 
     // Fusion interface must be non-null.
-    auto outputInterface =
-        *outputInterfaceAttr->getAsRange<StringAttr>().begin();
+    auto outputInterfaceStrArr = outputInterfaceAttr->getAsRange<StringAttr>();
+    if (outputInterfaceStrArr.empty())
+      return false;
+
+    auto outputInterface = *outputInterfaceStrArr.begin();
     if (outputInterface.empty())
       return false;
 
@@ -673,6 +679,9 @@ struct FuseProloguesEpilogues
   /// canonicalizer / verifier.
   llvm::BitVector canDoOutputFusion(MOGG::KernelOp kernel,
                                     ArrayAttr fusionInterface) {
+    if (!fusionInterface)
+      return llvm::BitVector();
+
     // Unreachable: Ambiguous what we should actually fuse. Previous passes
     // should have maintained 1:1 relationship of output to output interfaces.
     if (fusionInterface.size() != kernel.getNumResults())

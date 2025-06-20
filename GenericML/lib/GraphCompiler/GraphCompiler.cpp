@@ -235,11 +235,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(mlir::createCanonicalizerPass());
+
   pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync}));
-  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
 
   // Fuse connected elementwise kernels.
   if (opts.fuseJitKernels) {
@@ -247,19 +245,14 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     MOGG::FuseElementwiseOptions fuseElementwiseOptions;
     fuseElementwiseOptions.kernelLibraryPaths = kernelLibraryPaths;
     pm.addPass(MOGG::createFuseElementwise(fuseElementwiseOptions));
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
     // Fuse views.
     pm.addPass(MOGG::createFuseViews({kernelLibraryPaths}));
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
     // Fuse into big ops. I.E epilogue fusion into matmul.
     pm.addPass(MOGG::createFuseProloguesEpilogues({kernelLibraryPaths}));
-    pm.addPass(mlir::createCSEPass());
     pm.addPass(MOGG::createSimplifyKernelOperands());
   }
 
@@ -269,7 +262,6 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // Convert output lambdas to compute output lambdas when possible.
   pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
   pm.addPass(MOGG::createSimplifyKernelOperands());
-  pm.addPass(mlir::createCanonicalizerPass());
 
   // Convert output lambdas to compute output lambdas whn possible.
   if (opts.enableComputeLambdas) {

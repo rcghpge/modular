@@ -68,7 +68,13 @@ struct FuseAffineViewsPass
     if (!isFusibleNonElementwise(kernel))
       return false;
 
+    if (kernel.getNumResults() == 0)
+      return false;
+
     if (!kernel.getOutputFusionInterface().has_value())
+      return false;
+
+    if (kernel.getOutputFusionInterfaceAt(0).empty())
       return false;
 
     // Output can only have one user.
@@ -473,9 +479,9 @@ struct FuseAffineViewsPass
 
     // Find the output lambda region. We will rewrite this to take into account
     // the affine transformation.
-    StringAttr outputLambdaToRewriteName = kernel.getOutputFusionInterfaceAt(0);
     ASSERT_STREAM(kernel.getOutputFusionInterface()->size() == 1,
                   "Expect only one output fusion lambda");
+    StringAttr outputLambdaToRewriteName = kernel.getOutputFusionInterfaceAt(0);
     KGEN::ParamDeclareRegionOp outputLambdaToRewrite;
     kernel.walk([&](KGEN::ParamDeclareRegionOp regionDeclareOp) {
       // Insert call to inverse of the view op to invert the indices.

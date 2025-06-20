@@ -255,7 +255,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     // Clean up.
     dst->getArgument(idx).replaceAllUsesWith(srcTerm.getInputs().front());
     kernel.eraseInputsAt(idx);
+    auto srcOutputPlaceholders = srcTerm.getOutput().getDefiningOp();
     srcTerm.erase();
+    srcOutputPlaceholders->erase();
 
     kernel.setSummaryAttr(
         getSummaryString({viewProducer, kernel}, FusionType::HARD));
