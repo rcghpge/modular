@@ -4928,18 +4928,23 @@ LogicalResult MutableStoreSliceOp::verify() {
 /// Checks input/output counts and that corresponding device types match.
 template <typename ConcreteOp>
 static LogicalResult verifyAllReduceSum(ConcreteOp op) {
-  auto allReduceOp = cast<ConcreteOp>(op);
-  auto outputs = allReduceOp.getOutputs();
-  if (allReduceOp.getInputs().size() != outputs.size())
+  // Verify we have the same number of inputs/outputs.
+  auto inputs = op.getInputs();
+  auto outputs = op.getOutputs();
+  if (inputs.size() != outputs.size())
     return op->emitError(
         "number of inputs and outputs should match for all-reduce");
 
-  // Check that the devices for inputs and outputs match 1:1.
-  for (auto [input, output] : llvm::zip(allReduceOp.getInputs(), outputs)) {
-    auto inputTy = dyn_cast<TensorType>(input.getType());
-    auto outputTy = dyn_cast<TensorType>(output.getType());
-    if (!inputTy || !outputTy || inputTy != outputTy)
-      return op->emitError("each input/output must have the same tensor type");
+  // Verify that input/output types match.
+  auto inputTypes = TypeRange(inputs);
+  auto outputTypes = TypeRange(outputs);
+  auto mismatch = llvm::mismatch(inputTypes, outputTypes);
+
+  if (mismatch.first != inputTypes.end()) {
+    auto index = std::distance(inputTypes.begin(), mismatch.first);
+    return op->emitError() << "input type " << *mismatch.first
+                           << " does not match corresponding output type "
+                           << *mismatch.second << " at position " << index;
   }
 
   return success();
@@ -4950,9 +4955,10 @@ LogicalResult AllReduceSumOp::verify() { return verifyAllReduceSum(*this); }
 LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult> &results) {
   // If the all-reduce has 1 input, return the input (identity op).
-  if (getNumResults() == 1 &&
+  if (getOutputs().size() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
+    results.push_back(getInChain());
     return success();
   }
   return failure();
