@@ -110,7 +110,6 @@ struct OpaqueAddToTensorSI32Reg:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         outp: OutputTensor[dtype = DType.int32, rank=1],
         x: MyCustomScalarRegSI32,
@@ -124,7 +123,6 @@ struct OpaqueAddToTensorF32:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         outp: OutputTensor[dtype = DType.float32, rank=1],
         x: MyCustomScalarRegF32,
@@ -166,7 +164,6 @@ struct OpaqueAddToTensorSI32:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         outp: OutputTensor[dtype = DType.int32, rank=1],
         x: MyCustomScalarSI32,
@@ -180,7 +177,6 @@ struct OpaqueAddToTensorSI32Raises:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         outp: OutputTensor[dtype = DType.int32, rank=1],
         x: MyCustomScalarSI32,
@@ -199,7 +195,6 @@ struct Foo:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](z: OutputTensor, x: InputTensor, y: InputTensor) raises:
         @parameter
         @always_inline
@@ -264,7 +259,6 @@ struct ImposterMatmul:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         c: OutputTensor,
         a: InputTensor,
@@ -288,7 +282,6 @@ struct PrintTensorSpecOp:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](outp: OutputTensor, x: InputTensor) raises:
         print("x.shape =", x._static_shape)
         print("x.strides =", x._static_strides)
@@ -315,7 +308,6 @@ struct PrintTensor:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](outp: OutputTensor, input: InputTensor) raises:
         print(input)
 
@@ -348,7 +340,6 @@ struct PrintTensorSpecViewOp:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](outp: OutputTensor, x: InputTensor) raises:
         Self.print_spec(x)
 
@@ -371,7 +362,6 @@ struct PrintTensorSpecFusedOp:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](outp: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         print("x.shape =", x._static_shape)
         print("x.strides =", x._static_strides)
@@ -398,7 +388,6 @@ struct AddElementwise:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         z: FusedOutputTensor, x: FusedInputTensor, y: FusedInputTensor
     ) capturing raises:
@@ -417,7 +406,6 @@ struct AddFuseLHS:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](z: OutputTensor, x: FusedInputTensor, y: InputTensor) capturing raises:
         @parameter
         @always_inline
@@ -439,7 +427,6 @@ struct AddFuseInputs:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         z: OutputTensor, x: FusedInputTensor, y: FusedInputTensor
     ) capturing raises:
@@ -465,7 +452,6 @@ struct MatmulFuseOut:
     fn execute[
         target: StaticString,
         lambdas_have_fusion: Bool,
-        _synchronous: Bool,
     ](
         c: FusedOutputTensor,
         a: InputTensor,
@@ -503,22 +489,6 @@ struct MatmulFuseOut:
         return rebind[IndexList[2]](shape)
 
 
-@compiler.register("op_with_synchronous")
-struct WithSynchronous:
-    @staticmethod
-    fn execute[
-        _synchronous: Bool,
-    ](outp: OutputTensor, input: InputTensor):
-        print("what up ", _synchronous)
-
-
-@compiler.register("op_without_synchronous")
-struct WithoutSynchronous:
-    @staticmethod
-    fn execute(outp: OutputTensor, input: InputTensor):
-        print("what up")
-
-
 # Simple, expects variadics to have the same size, and simply copies the first
 # number from the associated inputs to outputs, plus a bias
 @compiler.register("variadic_input_to_output")
@@ -526,7 +496,6 @@ struct VariadicInputToOutput:
     @staticmethod
     fn execute[
         dtype: DType,
-        _synchronous: Bool,
         size: Int,
         target: StaticString,
     ](
@@ -549,7 +518,6 @@ struct AddBiasToDouble:
     fn execute[
         rank: Int,
         dtype: DType,
-        _synchronous: Bool,
     ](
         output1: OutputTensor[dtype=dtype, rank=rank],
         output2: OutputTensor[dtype=dtype, rank=rank],
@@ -591,7 +559,6 @@ struct VariadicAdd:
         dtype: DType,
         rank: Int,
         target: StaticString,
-        _synchronous: Bool,
     ](
         output: OutputTensor[dtype=dtype, rank=rank],
         inputs: FusedInputVariadicTensors[dtype, rank, *_],
@@ -657,7 +624,6 @@ struct Transpose2DOp:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
         dtype: DType,
     ](
         z: OutputTensor[dtype=dtype, rank=2],
@@ -666,7 +632,7 @@ struct Transpose2DOp:
     ) raises:
         var x_view = Self.update_input_view[z._static_shape](x)
 
-        view_copy_impl[target=target, _synchronous=_synchronous](z, x_view, ctx)
+        view_copy_impl[target=target](z, x_view, ctx)
 
 
 @compiler.register("print_shape_fused")
@@ -674,7 +640,6 @@ struct ElementwisePrintShape:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](z: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         @parameter
         @always_inline
@@ -697,7 +662,6 @@ struct CustomOpThatRaises:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](z: OutputTensor, x: InputTensor) raises:
         if x.shape()[0] == 10:
             raise ("input_shape[0] == 10")
@@ -975,7 +939,6 @@ struct CastElementwise:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
     ) capturing raises:
@@ -986,7 +949,7 @@ struct CastElementwise:
                 x._fused_load[width](idx).cast[y.dtype]()
             )
 
-        foreach[func, target=target, _synchronous=_synchronous](y, ctx)
+        foreach[func, target=target](y, ctx)
 
 
 @compiler.register("print_vector_size")
@@ -994,7 +957,6 @@ struct PrintVectorSize:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
     ) capturing raises:
@@ -1015,7 +977,7 @@ struct PrintVectorSize:
                 )
             return rebind[SIMD[y.dtype, width]](x._fused_load[width](idx))
 
-        foreach[func, target=target, _synchronous=_synchronous](y, ctx)
+        foreach[func, target=target](y, ctx)
 
 
 @compiler.register("tensor_opaque_tensor_kernel")
@@ -1023,7 +985,6 @@ struct TensorOpaqueTensorKernel:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
     ](
         output1: OutputTensor,
         output2: OutputTensor,
@@ -1157,7 +1118,6 @@ struct MutableStore:
     @staticmethod
     fn execute[
         target: StaticString,
-        _synchronous: Bool,
         _trace_name: StaticString,
     ](
         tw: TensorWrapper,
@@ -1186,7 +1146,6 @@ struct MutableStore:
             func,
             out_func,
             target=target,
-            _synchronous=_synchronous,
             _trace_name=_trace_name,
         ](tensor, ctx)
 
