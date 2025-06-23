@@ -29,6 +29,7 @@ def MODialect : Dialect {
     "M::MDialect",
     "MOSH::MOSHDialect",
   ];
+  let hasCanonicalizer = 1;
   let hasConstantMaterializer = 1;
   let useDefaultAttributePrinterParser = 1;
 

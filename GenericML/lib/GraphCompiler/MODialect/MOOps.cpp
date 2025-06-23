@@ -4995,6 +4995,34 @@ LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
 }
 
 //===----------------------------------------------------------------------===//
+// Scatter op rewriter
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// A scatter-like operation with an empty indices tensor is a no-op.
+struct FoldNoOpScatterLikeOp : public OpInterfaceRewritePattern<ScatterLike> {
+  using OpInterfaceRewritePattern<ScatterLike>::OpInterfaceRewritePattern;
+
+  LogicalResult matchAndRewrite(ScatterLike op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getInput().getType() != op.getResult().getType())
+      return rewriter.notifyMatchFailure(op,
+                                         "input and result types do not match");
+
+    std::optional<int64_t> numIndices =
+        op.getIndices().getType().getNumElements();
+
+    if (numIndices != 0)
+      return rewriter.notifyMatchFailure(op, "non-empty indices tensor");
+
+    rewriter.replaceAllOpUsesWith(op, op.getInput());
+    return success();
+  }
+};
+} // namespace
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
@@ -5009,6 +5037,10 @@ void MODialect::registerOperations() {
 #define GET_OP_LIST
 #include "GenericML/GraphCompiler/MODialect/MO.cpp.inc"
       >();
+}
+
+void MODialect::getCanonicalizationPatterns(RewritePatternSet &patterns) const {
+  patterns.add<FoldNoOpScatterLikeOp>(patterns.getContext());
 }
 
 #define GET_OP_CLASSES
