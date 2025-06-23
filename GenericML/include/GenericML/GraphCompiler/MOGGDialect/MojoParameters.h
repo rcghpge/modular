@@ -11,8 +11,6 @@
 
 namespace M::MOGG {
 
-static constexpr llvm::StringLiteral PARAMETER_SINGLE_THREAD_BLOCKING_OVERRIDE =
-    "single_thread_blocking_override";
 static constexpr llvm::StringLiteral PARAMETER_LAMBDAS_HAVE_FUSION =
     "lambdas_have_fusion";
 
