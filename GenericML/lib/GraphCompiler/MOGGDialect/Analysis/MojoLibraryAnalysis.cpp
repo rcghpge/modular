@@ -559,9 +559,9 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
     auto it = paramDecls.find(namedAttr.getName());
     if (it == paramDecls.end()) {
       return Error(llvm::formatv(
-          "parameter '{}' supplied to custom op does not exist in the "
+          "parameter '{}' supplied to custom op '{}' does not exist in the "
           "corresponding Mojo code",
-          namedAttr.getName().strref()));
+          namedAttr.getName().strref(), customOp.getSymbol()));
     }
 
     auto [customParamDecl, typeName] = it->second;
