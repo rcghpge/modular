@@ -73,7 +73,7 @@ def process_module_string(module_str: str):
     return module_str
 
 
-def pretty_print_module_string(module_str: str):
+def pretty_print_module_string(module_str: str) -> None:
     # remove first two lines for enclosing module {} statement:
     module_str = "\n".join(module_str.split("\n")[1:-1])
 

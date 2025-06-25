@@ -18,7 +18,7 @@ msgpack_encoder = msgpack_numpy_encoder()
 msgpack_decoder = msgpack_numpy_decoder(TextContext)
 
 
-def test_text_context_pickle_serialization(benchmark):
+def test_text_context_pickle_serialization(benchmark) -> None:
     context = TextContext(
         prompt="sampling params test prompt",
         max_length=50,
@@ -28,7 +28,7 @@ def test_text_context_pickle_serialization(benchmark):
     benchmark(pickle.dumps, context)
 
 
-def test_text_context_pickle_deserialization(benchmark):
+def test_text_context_pickle_deserialization(benchmark) -> None:
     context = TextContext(
         prompt="sampling params test prompt",
         max_length=50,
@@ -38,7 +38,7 @@ def test_text_context_pickle_deserialization(benchmark):
     benchmark(pickle.loads, pickle.dumps(context))
 
 
-def test_text_context_msgpack_serialization(benchmark):
+def test_text_context_msgpack_serialization(benchmark) -> None:
     context = TextContext(
         prompt="sampling params test prompt",
         max_length=50,
@@ -48,7 +48,7 @@ def test_text_context_msgpack_serialization(benchmark):
     benchmark(msgpack_encoder, context)
 
 
-def test_text_context_msgpack_deserialization(benchmark):
+def test_text_context_msgpack_deserialization(benchmark) -> None:
     context = TextContext(
         prompt="sampling params test prompt",
         max_length=50,
@@ -61,7 +61,7 @@ def test_text_context_msgpack_deserialization(benchmark):
     )
 
 
-def test_long_text_context_pickle_serialization(benchmark):
+def test_long_text_context_pickle_serialization(benchmark) -> None:
     # Create a longer prompt with more than 240 tokens
     long_prompt = (
         "This is a much longer test prompt that contains more than 240 tokens. "
@@ -79,7 +79,7 @@ def test_long_text_context_pickle_serialization(benchmark):
     benchmark(pickle.dumps, context)
 
 
-def test_long_text_context_pickle_deserialization(benchmark):
+def test_long_text_context_pickle_deserialization(benchmark) -> None:
     long_prompt = (
         "This is a much longer test prompt that contains more than 240 tokens. "
         * 50
@@ -95,7 +95,7 @@ def test_long_text_context_pickle_deserialization(benchmark):
     benchmark(pickle.loads, pickle.dumps(context))
 
 
-def test_long_text_context_msgpack_serialization(benchmark):
+def test_long_text_context_msgpack_serialization(benchmark) -> None:
     long_prompt = (
         "This is a much longer test prompt that contains more than 240 tokens. "
         * 50
@@ -111,7 +111,7 @@ def test_long_text_context_msgpack_serialization(benchmark):
     benchmark(msgpack_encoder, context)
 
 
-def test_long_text_context_msgpack_deserialization(benchmark):
+def test_long_text_context_msgpack_deserialization(benchmark) -> None:
     long_prompt = (
         "This is a much longer test prompt that contains more than 240 tokens. "
         * 50
@@ -130,7 +130,7 @@ def test_long_text_context_msgpack_deserialization(benchmark):
     )
 
 
-def test_very_long_text_context_pickle_serialization(benchmark):
+def test_very_long_text_context_pickle_serialization(benchmark) -> None:
     # Create a very long prompt with more than 10k tokens
     very_long_prompt = (
         "This is a very long test prompt that contains more than 10k tokens. "
@@ -148,7 +148,7 @@ def test_very_long_text_context_pickle_serialization(benchmark):
     benchmark(pickle.dumps, context)
 
 
-def test_very_long_text_context_pickle_deserialization(benchmark):
+def test_very_long_text_context_pickle_deserialization(benchmark) -> None:
     very_long_prompt = (
         "This is a very long test prompt that contains more than 10k tokens. "
         * 1000
@@ -164,7 +164,7 @@ def test_very_long_text_context_pickle_deserialization(benchmark):
     benchmark(pickle.loads, pickle.dumps(context))
 
 
-def test_very_long_text_context_msgpack_serialization(benchmark):
+def test_very_long_text_context_msgpack_serialization(benchmark) -> None:
     very_long_prompt = (
         "This is a very long test prompt that contains more than 10k tokens. "
         * 1000
@@ -180,7 +180,7 @@ def test_very_long_text_context_msgpack_serialization(benchmark):
     benchmark(msgpack_encoder, context)
 
 
-def test_very_long_text_context_msgpack_deserialization(benchmark):
+def test_very_long_text_context_msgpack_deserialization(benchmark) -> None:
     very_long_prompt = (
         "This is a very long test prompt that contains more than 10k tokens. "
         * 1000

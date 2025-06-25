@@ -32,7 +32,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def test_vs_numpy(testCase, file_to_run):
+def test_vs_numpy(testCase, file_to_run) -> None:
     np.random.seed(42)
 
     golden_value = []

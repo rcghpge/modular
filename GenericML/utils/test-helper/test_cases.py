@@ -26,7 +26,7 @@ class TestBase:
         return np.allclose(ours, theirs, rtol=1e-05, atol=1e-08, equal_nan=True)
 
     @staticmethod
-    def num_runs():
+    def num_runs() -> int:
         return 25
 
 
@@ -114,7 +114,7 @@ class Range(TestBase):
         return np.array_equal(ours, theirs)
 
     @staticmethod
-    def num_runs():
+    def num_runs() -> int:
         return 100
 
     @staticmethod
@@ -155,7 +155,7 @@ class Split(TestBase):
         return np.array_equal(ours, theirs)
 
     @staticmethod
-    def num_runs():
+    def num_runs() -> int:
         return 300
 
     @staticmethod
@@ -286,7 +286,7 @@ class GatherReduceConstAxis(TestBase):
 
 class GatherReduceDynamicAxes(TestBase):
     @staticmethod
-    def num_runs():
+    def num_runs() -> int:
         return 100
 
     @staticmethod
@@ -379,7 +379,7 @@ class GatherOfGathers(TestBase):
 
 class MultiViewFusionBase(TestBase):
     @staticmethod
-    def num_runs():
+    def num_runs() -> int:
         return 100
 
     @staticmethod
@@ -446,7 +446,7 @@ class MultiViewFusionNoAdd(MultiViewFusionBase):
 
 class Elementwise(TestBase):
     @staticmethod
-    def num_runs():
+    def num_runs() -> int:
         return 100
 
     @staticmethod
@@ -525,7 +525,7 @@ class ElementwiseStatic(Elementwise):
 
 class ElementwiseBoolOps(TestBase):
     @staticmethod
-    def num_runs():
+    def num_runs() -> int:
         return 100
 
     @staticmethod

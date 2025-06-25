@@ -26,7 +26,7 @@ def zmq_ctx():
     return zmq.Context(io_threads=2)
 
 
-def test_stream_responses_to_frontend(benchmark, zmq_ctx):
+def test_stream_responses_to_frontend(benchmark, zmq_ctx) -> None:
     """Benchmark stream_responses_to_frontend performance."""
     batch_size_to_test = 512
 
