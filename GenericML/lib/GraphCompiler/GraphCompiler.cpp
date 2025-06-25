@@ -253,7 +253,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
     // Fuse into big ops. I.E epilogue fusion into matmul.
-    pm.addPass(MOGG::createFuseProloguesEpilogues({kernelLibraryPaths}));
+    pm.addPass(MOGG::createFuseProloguesEpilogues());
     pm.addPass(MOGG::createSimplifyKernelOperands());
   }
 

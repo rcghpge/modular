@@ -183,11 +183,6 @@ def FuseProloguesEpilogues: Pass<"fuse-prologues-epilogues", "MO::GraphOp"> {
     "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
-
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-  ];
 }
 
 def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {
