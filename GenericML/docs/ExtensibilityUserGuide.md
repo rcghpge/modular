@@ -177,7 +177,7 @@ and in our stack).
 
 We have a few “special parameters” the compiler always knows how to handle:
 
-- **target: StringLiteral** which might be “cpu” or “gpu” and can be used for
+- **target: StaticString** which might be “cpu” or “gpu” and can be used for
 specializing code for devices. This corresponds to the **device annotated on
 the associated MO op.** `mo.add(...) {device = **gpu:0**}`
 - **synchronous: Bool** if the graph compiler chooses to run this kernel
@@ -197,7 +197,7 @@ information of each tensor.
 
 ```python
 fn execute[
-    target: StringLiteral
+    target: StaticString
 ](
     output: OutputTensor,
     input: InputTensor[dtype=output.dtype, rank=output.rank],
@@ -256,7 +256,7 @@ struct TensorMutatingOperation:
     @always_inline
     @staticmethod
     fn execute[
-        dtype: DType, target: StringLiteral
+        dtype: DType, target: StaticString
     ](
         #These are all "inputs" to the graph-api operation
         mutable_input: MutableInputTensor[dtype=dtype, rank=6],
@@ -281,7 +281,7 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
     @always_inline
     @staticmethod
     fn execute[
-        dtype: DType, target: StringLiteral
+        dtype: DType, target: StaticString
     ](
         blocks: InputTensor[dtype, 6],
         cache_lengths: InputTensor[DType.uint32, 1],
