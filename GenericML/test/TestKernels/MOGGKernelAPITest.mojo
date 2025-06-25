@@ -1225,3 +1225,19 @@ struct ParameterizedOpaqueType:
     @staticmethod
     fn shape[P0: Int](x: SIMDPair[P0, _]) -> IndexList[1]:
         return IndexList[1](x.S0 + x.S1)
+
+
+@compiler.register("kernel_with_default_parameter")
+struct KernelWithDefaultParameter:
+    @staticmethod
+    fn execute[
+        rank: Int,
+        rank_defaulted: Int = 128,
+        rank_derived_from_other: Int = rank + 1,
+        rank_derived_from_derived: Int = rank_derived_from_other + 1,
+    ](x: OutputTensor[dtype = DType.int32, rank=1], y: InputTensor):
+        print("rank =", rank)
+        print("rank_defaulted =", rank_defaulted)
+        print("rank_derived_from_other =", rank_derived_from_other)
+        print("rank_derived_from_derived =", rank_derived_from_derived)
+        x.store(IndexList[1](0), Scalar[DType.int32](0))
