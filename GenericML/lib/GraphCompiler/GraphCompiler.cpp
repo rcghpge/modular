@@ -243,7 +243,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.fuseJitKernels) {
     pm.addPass(MOGG::createFuseAffineViews());
     MOGG::FuseElementwiseOptions fuseElementwiseOptions;
-    fuseElementwiseOptions.kernelLibraryPaths = kernelLibraryPaths;
+    // To dump dot graph, uncomment below:
+    // fuseElementwiseOptions.dumpDotGraph = true;
     pm.addPass(MOGG::createFuseElementwise(fuseElementwiseOptions));
     pm.addPass(MOGG::createSimplifyKernelOperands());
 

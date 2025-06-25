@@ -355,7 +355,8 @@ LogicalResult BindLambdaOp::verify() {
     size_t rank = shapedType.getRank();
 
     auto idxTp = dyn_cast<KGEN::POP::ArrayType>(indicesTp);
-    if (idxTp == nullptr || idxTp.getResolvedSize().value() != rank)
+    if (idxTp == nullptr ||
+        idxTp.getResolvedSize().value() != static_cast<int64_t>(rank))
       return emitError(
           "Mismatch between tensor rank and and indices array size");
 

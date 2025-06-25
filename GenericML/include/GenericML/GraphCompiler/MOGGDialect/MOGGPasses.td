@@ -159,8 +159,6 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
     Option<"dumpDotGraph", "dump-dot-graph",
            "bool", /*default=*/"false",
            "Prints the connected elementwise graph we traverse to find fusions.">,
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
   ];
 }
 
