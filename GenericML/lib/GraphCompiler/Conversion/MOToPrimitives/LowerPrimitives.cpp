@@ -58,7 +58,9 @@ static inline bool canFuseOp(Operation *op) {
   if (isa<MGP::SyncOp>(op))
     return false;
 
-  if (isa<MGP::BufferAllocOp>(*op))
+  // Do not fused buffer.constant.external as doing it would lead to a HUGE
+  // region.
+  if (isa<MGP::BufferAllocOp, MGP::BufferConstantExternalOp>(*op))
     return false;
 
   // Allow for custom ops starting with "testfuse." for testing purposes.
