@@ -351,15 +351,8 @@ LogicalResult BindLambdaOp::verify() {
     return emitError("Expecting #operands + 1 arguments for lambda");
 
   auto verifyRank = [this](Value val, Type indicesTp) -> LogicalResult {
-    // TODO(GEX-2221): We should instead create interface (e.g., ShapedType) for
-    // Buffer and TensorType.
-    int rank;
-    if (auto bufTp = dyn_cast<MO::BufferType>(val.getType())) {
-      rank = cast<MOSH::ShapeAttr>(bufTp.getShapeAttr()).getRank();
-    } else {
-      auto tensorTp = cast<MO::TensorType>(val.getType());
-      rank = tensorTp.getRank();
-    };
+    auto shapedType = cast<MO::MOShapedTypeInterface>(val.getType());
+    size_t rank = shapedType.getRank();
 
     auto idxTp = dyn_cast<KGEN::POP::ArrayType>(indicesTp);
     if (idxTp == nullptr || idxTp.getResolvedSize().value() != rank)
@@ -370,15 +363,8 @@ LogicalResult BindLambdaOp::verify() {
   };
 
   auto verifyDType = [this](Value val, Value elemVal) -> LogicalResult {
-    // TODO(GEX-2221): We should instead create interface (e.g., ShapedType) for
-    // Buffer and TensorType.
-    DType valDType;
-    if (auto bufTp = dyn_cast<MO::BufferType>(val.getType())) {
-      valDType = bufTp.getDtype();
-    } else {
-      auto tensorTp = cast<MO::TensorType>(val.getType());
-      valDType = tensorTp.getDtype();
-    };
+    auto shapedType = cast<MO::MOShapedTypeInterface>(val.getType());
+    DType valDType = shapedType.getDtype();
 
     if (valDType != MO::getDTypeOrInvalid(elemVal.getType()))
       return emitError(

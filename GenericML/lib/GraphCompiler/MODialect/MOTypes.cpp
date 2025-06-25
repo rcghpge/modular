@@ -937,6 +937,15 @@ TensorType M::MO::dynCastFromTensorLike(Type ty) {
   return nullptr;
 }
 
+size_t BufferType::getRank() const {
+  return cast<MOSH::ShapeAttr>(getShapeAttr()).getRank();
+}
+
+size_t BufferType::getRankNonZero() const {
+  size_t rank = getRank();
+  return rank == 0 ? rank + 1 : rank;
+}
+
 //===----------------------------------------------------------------------===//
 // OpaqueType
 //===----------------------------------------------------------------------===//

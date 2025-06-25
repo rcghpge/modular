@@ -41,4 +41,33 @@ def MO_HasDeviceTypeInterface : TypeInterface<"MOHasDeviceTypeInterface"> {
   ];
 }
 
+def MO_ShapedTypeInterface : TypeInterface<"MOShapedTypeInterface"> {
+  let cppNamespace = "::M::MO";
+  let description = [{
+    Interface for shaped types that have data type and shape information.
+  }];
+  let methods = [
+    InterfaceMethod<
+      [{
+        Returns the element data type of this shaped type.
+      }],
+      "DType", "getDtype", (ins )
+    >,
+
+    InterfaceMethod<
+      [{
+        Returns the rank of this shaped type.
+      }],
+      "size_t", "getRank", (ins )
+    >,
+
+    InterfaceMethod<
+      [{
+        Returns the rank of this shaped type, excluding unknown dimensions.
+      }],
+      "size_t", "getRankNonZero", (ins )
+    >,
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPEINTERFACES_TD

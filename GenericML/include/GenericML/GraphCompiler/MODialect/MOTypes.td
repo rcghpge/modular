@@ -27,7 +27,7 @@ class MO_Type<string name, string typeMnemonic, list<Trait> traits = []>
 // MO_Tensor
 //===----------------------------------------------------------------------===//
 
-def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface]> {
+def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_ShapedTypeInterface]> {
   let summary = "Type of tensor specs of statically known rank.";
   let description = [{
     This type represents the shape and element type of a tensor, an optional
@@ -274,7 +274,8 @@ def MO_Scalar : MO_Type<"Scalar", "scalar"> {
 // MO_Buffer
 //===----------------------------------------------------------------------===//
 
-def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface]> {
+def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface, MO_ShapedTypeInterface, 
+  DeclareTypeInterfaceMethods<MO_ShapedTypeInterface>]> {
   let summary = "Mutable tensor type.";
   let description = [{
     This is a close analogue of the existing mo.tensor type but is meant
