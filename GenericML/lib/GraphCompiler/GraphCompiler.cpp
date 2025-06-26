@@ -170,6 +170,9 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
+  pm.addPass(MO::createHoistConstantSubgraphsIntoParent());
+  pm.addPass(mlir::createCSEPass());
+
   // Run symbolic operator set domain-specific optimizations
   SymbolicOptimizationOptions symbolicOptimizationOpts;
   symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;

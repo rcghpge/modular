@@ -36,25 +36,28 @@ namespace {
 // HoistConstantSubgraphsIntoParent Pass
 //===----------------------------------------------------------------------===//
 //
-// This pass optimizes graphs by hoisting constant operations from
+// This pass optimizes graphs by hoisting callsite-invariant operations from
 // subgraphs into their parent graphs, enabling optimizations like
 // ExecInvariantCodeMotion to hoist them into the init block. For each subgraph
-// called with constant arguments, it analyzes which operations in the subgraph
-// are constant-derived (operations whose results only depend on constants), and
-// hoists these constant operations into the parent at each call site.
+// called with callsite-invariant arguments (arguments that are the same SSA
+// value across all callsites), it analyzes which operations in the subgraph are
+// invariant-derived (operations whose results only depend on callsite-invariant
+// arguments), and hoists these operations into the parent at each call site.
 
 //
 // The pass performs the following steps:
 // 1. Build a call graph of all subgraphs in the module
 // 2. Topologically sort the subgraphs (callees before callers) for processing
-// 3. For each subgraph, identify which arguments are constant across all
-// callsites
-// 4. Perform dataflow analysis to find operations with constant-derived results
-// 5. Find boundary values between constant and non-constant parts of the graph
-// 6. Hoist constant operations to parent graphs at each callsite
+// 3. For each subgraph, identify which arguments are effectively invariant
+// across all callsites
+// 4. Perform dataflow analysis to find operations with invariant-derived
+// results
+// 5. Find boundary values between invariant-derived and non-invariant-derived
+// parts of the graph
+// 6. Hoist invariant-derived operations to parent graphs at each callsite
 // 7. Update subgraph definitions by:
-//    - Removing constant arguments
-//    - Removing constant operations
+//    - Removing callsite-invariant arguments
+//    - Removing invariant-derived operations
 //    - Adding new arguments for boundary values
 //
 // Note: The pass only operates on the acyclic portion of the call graph, and
@@ -66,22 +69,6 @@ enum class ConstLattice {
   NonConst, // Not constant-derived
   Const     // Constant-derived
 };
-
-// Helper that determines if a value is constant-derived in its containing
-// block. Used for analyzing values in the parent that are passed to callsites.
-bool isConstantDerived(Value value) {
-  Operation *definingOp = value.getDefiningOp();
-  if (!definingOp)
-    return false;
-
-  // Base case: if the value is directly a constant
-  if (isa<MO::ConstantLike>(definingOp))
-    return true;
-
-  // Recursive case: check if all operands are constant-derived
-  // If any operand is not constant-derived, this op isn't either
-  return llvm::all_of(definingOp->getOperands(), isConstantDerived);
-}
 
 struct HoistConstantSubgraphsIntoParentPass
     : public M::MO::impl::HoistConstantSubgraphsIntoParentBase<
@@ -217,31 +204,32 @@ private:
       return;
     }
 
-    // STEP 3: Identify which arguments are constant across all callsites
-    llvm::BitVector constantMask =
-        identifyConstantArguments(graphOp, callsites);
+    // STEP 3: Identify which arguments are effectively invariant across all
+    // callsites
+    llvm::BitVector effectiveInvariantArgMask =
+        computeEffectiveInvariantArgMask(graphOp, callsites);
 
-    // Skip if no constant arguments
-    if (!constantMask.any()) {
-      LLVM_DEBUG(llvm::dbgs() << "No constant arguments found for "
+    // Skip if no effectively invariant arguments
+    if (!effectiveInvariantArgMask.any()) {
+      LLVM_DEBUG(llvm::dbgs() << "No effectively invariant arguments found for "
                               << graphOp.getName() << "\n");
       return;
     }
 
     // STEP 4: Perform dataflow analysis
     llvm::DenseMap<Value, ConstLattice> lattice;
-    performDataflowAnalysis(graphOp, constantMask, lattice);
+    performDataflowAnalysis(graphOp, effectiveInvariantArgMask, lattice);
 
     // STEP 5: Find constant operations and boundary values
     llvm::SmallSetVector<Operation *, 16> constantOps;
     SetVector<Value> boundaryValues;
-    llvm::BitVector preservedArgs = constantMask;
-    preservedArgs.flip(); // Invert constantMask: true for non-constant args
+    llvm::BitVector preservedArgs = effectiveInvariantArgMask;
+    preservedArgs.flip(); // Invert mask: true for non-invariant args initially
     SmallVector<Operation *> sortedConstantOps;
 
-    findConstantOpsAndBoundaryValues(graphOp, lattice, constantMask,
-                                     constantOps, boundaryValues, preservedArgs,
-                                     sortedConstantOps);
+    findConstantOpsAndBoundaryValues(
+        graphOp, lattice, effectiveInvariantArgMask, constantOps,
+        boundaryValues, preservedArgs, sortedConstantOps);
 
     // Skip if no boundary values - nothing to hoist
     if (boundaryValues.empty()) {
@@ -251,49 +239,70 @@ private:
     }
 
     // STEP 6: Hoist constant operations to parent at each callsite
-    hoistConstantOperations(graphOp, callsites, preservedArgs, constantMask,
-                            constantOps, boundaryValues, sortedConstantOps);
+    hoistConstantOperations(graphOp, callsites, preservedArgs,
+                            effectiveInvariantArgMask, constantOps,
+                            boundaryValues, sortedConstantOps);
 
     // STEP 7: Update the subgraph definition
     updateSubgraphDefinition(graphOp, preservedArgs, boundaryValues,
                              sortedConstantOps);
   }
 
-  // Identify which arguments are constant across all callsites
-  llvm::BitVector identifyConstantArguments(GraphOp graphOp,
-                                            ArrayRef<CallOp> callsites) {
-
+  // Identify which arguments are callsite-invariant across all callsites.
+  // An argument is "callsite-invariant" if all corresponding operands
+  // refer to the exact same SSA Value in the parent across all callsites.
+  llvm::BitVector computeEffectiveInvariantArgMask(GraphOp graphOp,
+                                                   ArrayRef<CallOp> callsites) {
     unsigned numArgs = graphOp.getBody().getArguments().size();
-    llvm::BitVector constantMask(numArgs,
-                                 true); // Start assuming all args are constant
+    if (numArgs == 0)
+      return llvm::BitVector(); // No arguments to check
 
-    // For each argument position, check if it's a constant across all callsites
+    llvm::BitVector effectiveInvariantMask(numArgs,
+                                           false); // Initialize to all false
+
+    // This function is called after a check ensures `callsites` is not empty.
+    assert(!callsites.empty() && "Callsites should not be empty here.");
+
     for (unsigned i = 0; i < numArgs; ++i) {
-      for (CallOp callOp : callsites) {
-        Value arg = callOp.getOperand(i);
-        if (!isConstantDerived(arg)) {
-          constantMask[i] = false;
-          LLVM_DEBUG(llvm::dbgs()
-                     << "Arg " << i << " is not constant in callsite at "
-                     << callOp.getLoc() << "\n");
+      // Check if all callsite operands are the exact same SSA Value
+      Value firstOperandValue = callsites[0]->getOperand(i);
+      bool allSameValue = true;
+      for (size_t cIdx = 1; cIdx < callsites.size(); ++cIdx) {
+        if (callsites[cIdx]->getOperand(i) != firstOperandValue) {
+          allSameValue = false;
           break;
         }
+      }
+
+      if (allSameValue && callsites.size() > 1) {
+        // If all callsites pass the exact same Value for this argument,
+        // it's invariant from the subgraph's perspective.
+        effectiveInvariantMask[i] = true;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Arg " << i
+                   << " is callsite-invariant (all same parent value: "
+                   << firstOperandValue << ").\n");
+      } else {
+        effectiveInvariantMask[i] = false;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Arg " << i << " is NOT callsite-invariant.\n");
       }
     }
 
     LLVM_DEBUG({
-      llvm::dbgs() << "Constant arguments: ";
-      for (unsigned i : constantMask.set_bits())
+      llvm::dbgs() << "Callsite-invariant arguments mask for graph "
+                   << graphOp.getName() << ": ";
+      for (unsigned i : effectiveInvariantMask.set_bits())
         llvm::dbgs() << i << " ";
       llvm::dbgs() << "\n";
     });
 
-    return constantMask;
+    return effectiveInvariantMask;
   }
 
-  // Perform dataflow analysis to find constant-derived operations
+  // Perform dataflow analysis to find callsite-invariant-derived operations
   void performDataflowAnalysis(GraphOp graphOp,
-                               const llvm::BitVector &constantMask,
+                               const llvm::BitVector &effectiveInvariantArgMask,
                                llvm::DenseMap<Value, ConstLattice> &lattice) {
 
     Block *body = graphOp.getBodyBlock();
@@ -301,8 +310,8 @@ private:
 
     // Initialize lattice states for block arguments
     for (auto [idx, arg] : llvm::enumerate(body->getArguments())) {
-      lattice[arg] =
-          constantMask[idx] ? ConstLattice::Const : ConstLattice::NonConst;
+      lattice[arg] = effectiveInvariantArgMask[idx] ? ConstLattice::Const
+                                                    : ConstLattice::NonConst;
     }
 
     // Initialize worklist with all operations in the block
@@ -315,25 +324,22 @@ private:
       worklist.pop_back();
 
       // Determine the result state for this operation
-      ConstLattice newState = isa<MO::ConstantLike>(op)
-                                  ? ConstLattice::Const
-                                  : ConstLattice::NonConst;
+      // An operation is considered "const" (invariant-derived) if all its
+      // operands are invariant-derived (come from callsite-invariant arguments
+      // or other invariant-derived operations)
+      ConstLattice newState = ConstLattice::NonConst;
 
-      // If not a constant-like op, check if it's constant-derived from its
-      // operands
-      if (newState == ConstLattice::NonConst) {
-        bool allOperandsConst = true;
-        for (Value operand : op->getOperands()) {
-          auto it = lattice.find(operand);
-          if (it == lattice.end() || it->second != ConstLattice::Const) {
-            allOperandsConst = false;
-            break;
-          }
+      bool allOperandsConst = op->getNumOperands() > 0;
+      for (Value operand : op->getOperands()) {
+        auto it = lattice.find(operand);
+        if (it == lattice.end() || it->second != ConstLattice::Const) {
+          allOperandsConst = false;
+          break;
         }
-
-        if (allOperandsConst)
-          newState = ConstLattice::Const;
       }
+
+      if (allOperandsConst)
+        newState = ConstLattice::Const;
 
       // Update lattice states for all results
       bool changed = false;
@@ -359,20 +365,20 @@ private:
     }
   }
 
-  // Find constant operations and boundary values
+  // Find callsite-invariant-derived operations and boundary values
   void findConstantOpsAndBoundaryValues(
       GraphOp graphOp, const llvm::DenseMap<Value, ConstLattice> &lattice,
-      const llvm::BitVector &constantMask,
+      const llvm::BitVector &effectiveInvariantArgMask,
       llvm::SmallSetVector<Operation *, 16> &constantOps,
       SetVector<Value> &boundaryValues, llvm::BitVector &preservedArgs,
       SmallVector<Operation *> &sortedConstantOps) {
 
     Block *body = graphOp.getBodyBlock();
 
-    // Identify operations with all constant results
+    // Identify operations with all invariant-derived results
     for (Operation &op : body->without_terminator()) {
 
-      // Check if all results are constant
+      // Check if all results are invariant-derived
       bool allResultsConst = llvm::all_of(op.getResults(), [&](Value result) {
         auto it = lattice.find(result);
         return it != lattice.end() && it->second == ConstLattice::Const;
@@ -382,20 +388,24 @@ private:
         constantOps.insert(&op);
     }
 
-    // Determine which constant arguments are used by non-constant operations
-    for (unsigned i : constantMask.set_bits()) {
+    // Determine which callsite-invariant arguments are used by
+    // non-invariant-derived operations An invariant argument needs to be
+    // preserved if it's used by a non-hoistable operation.
+    for (unsigned i : effectiveInvariantArgMask.set_bits()) {
       BlockArgument arg = body->getArgument(i);
 
-      // Check if this constant argument is used by any non-constant operation
+      // Check if this invariant argument is used by any non-invariant-derived
+      // operation
       for (Operation *user : arg.getUsers()) {
         if (!constantOps.contains(user)) {
-          // This argument is used by a non-constant operation, so we need to
-          // preserve it
+          // This argument is used by a non-invariant-derived operation, so we
+          // need to preserve it
           preservedArgs[i] = true;
-          LLVM_DEBUG(llvm::dbgs()
-                     << "Arg " << i
-                     << " is constant but used by non-constant op: " << *user
-                     << ", keeping it\n");
+          LLVM_DEBUG(
+              llvm::dbgs()
+              << "Arg " << i
+              << " is callsite-invariant but used by non-invariant-derived op: "
+              << *user << ", keeping it\n");
           break;
         }
       }
@@ -436,7 +446,7 @@ private:
     }
 
     LLVM_DEBUG({
-      llvm::dbgs() << "Constant ops in topological order:\n";
+      llvm::dbgs() << "Invariant-derived ops in topological order:\n";
       for (Operation *op : sortedConstantOps)
         llvm::dbgs() << "  " << *op << "\n";
     });
@@ -455,8 +465,9 @@ private:
     }
 
     LLVM_DEBUG({
-      llvm::dbgs() << "Found " << constantOps.size() << " constant ops and "
-                   << boundaryValues.size() << " boundary values\n";
+      llvm::dbgs() << "Found " << constantOps.size()
+                   << " invariant-derived ops and " << boundaryValues.size()
+                   << " boundary values\n";
 
       llvm::dbgs() << "Boundary values: ";
       for (Value boundaryVal : boundaryValues)
@@ -466,10 +477,11 @@ private:
     });
   }
 
-  // Hoist constant operations to parent at each callsite
+  // Hoist callsite-invariant-derived operations to parent at each callsite
   void hoistConstantOperations(
       GraphOp subgraphGraphOp, ArrayRef<CallOp> callsites,
-      const llvm::BitVector &preservedArgs, const llvm::BitVector &constantMask,
+      const llvm::BitVector &preservedArgs,
+      const llvm::BitVector &effectiveInvariantArgMask,
       const llvm::SmallSetVector<Operation *, 16> &constantOps,
       const SetVector<Value> &boundaryValues,
       const SmallVector<Operation *> &sortedConstantOps) {
@@ -503,14 +515,14 @@ private:
 
       assert(parentGraphOp && "expected parent graph op");
 
-      // Map constant arguments
-      for (unsigned i : constantMask.set_bits())
+      // Map callsite-invariant arguments
+      for (unsigned i : effectiveInvariantArgMask.set_bits())
         valueMapping.map(body->getArgument(i), callOp.getOperand(i));
 
-      // Clone constant-derived ops in topological order
+      // Clone invariant-derived ops in topological order
       for (Operation *op : sortedConstantOps) {
         LLVM_DEBUG(llvm::dbgs()
-                   << "Cloning constant operation: " << *op << "\n");
+                   << "Cloning invariant-derived operation: " << *op << "\n");
         Operation *clonedOp = builder.clone(*op, valueMapping);
 
         if (auto itf = dyn_cast<KGEN::ParamOpInterface>(*clonedOp)) {
