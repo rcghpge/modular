@@ -4,6 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 mojo_kgen_lib(
     name = "MOGGKernelAPITestLib",
+    testonly = True,
     srcs = glob(["**/*.mojo"]),
     deps = [
         "@mojo//:compiler_internal",
