@@ -196,7 +196,7 @@ static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
   }
 
   if (dtype)
-    attrs.push_back(builder.getNamedAttr("type", dtype));
+    attrs.push_back(builder.getNamedAttr("dtype", dtype));
 
   return builder.getDictionaryAttr(attrs);
 }
