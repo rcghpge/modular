@@ -219,6 +219,14 @@ static void offsetRuntimeSlot(Operation *op, uint64_t slotOffset) {
     uint64_t oldSlot = executeGenericOp.getARuntimeSlot();
     executeGenericOp.setARuntimeSlot(oldSlot + slotOffset);
   }
+
+  // Recurse into regions (for example, grt.if)
+  for (Region &region : op->getRegions()) {
+    for (Block &block : region) {
+      for (Operation &nestedOp : block)
+        offsetRuntimeSlot(&nestedOp, slotOffset);
+    }
+  }
 }
 
 /// Updates the name attribute of mgp.buffer.constant.external operations
@@ -228,6 +236,7 @@ static void updatePlaceholderNames(Operation *op, StringRef prefix) {
     if (bufferConstExtOp.getHIsPlaceholder() && !prefix.empty()) {
       bufferConstExtOp.setBNameAttr(StringAttr::get(
           op->getContext(), Twine(prefix) + bufferConstExtOp.getBName()));
+      bufferConstExtOp.setHIsPlaceholder(false);
     }
   }
 }
