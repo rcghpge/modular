@@ -29,42 +29,25 @@ size_t M::decodeMEFArrayLength(const uint8_t *dataPtr) {
   return size;
 }
 
-/// Parse a VBR and increment `workptr` in the process, so we can skip over
-/// the VBR values. This is a little weird, being a reference to a pointer,
-/// but it's to simplify the parsing use cases above by allowing us to
-/// increment the pointer that's been passed-in.
-size_t M::parseVBR(uint8_t *&workptr) {
-  size_t result;
-  uint8_t nextByte = *workptr++;
-  // Mask just the low 7 bits of the first byte to start the integer
-  result = nextByte & 127;
-  // While the high bit is non-zero, get the next byte, increment the work
-  // pointer, and pack the 7 data bits into the result integer.
-  while ((nextByte & 128) != 0) {
-    nextByte = *workptr++;
-    result = (result << 7) | size_t(nextByte & 127);
-  }
-
-  return result;
-}
-
 //===----------------------------------------------------------------------===//
 // MEFListAttr implementation
 //===----------------------------------------------------------------------===//
 
 MEFListAttr::Iterator &MEFListAttr::Iterator::operator+=(
     MEFListAttr::Iterator::Base::difference_type n) {
+  const uint8_t *tempPtr = ptr;
   for (auto i = 0; i < n; ++i) {
     // We have to increment our current pointer past the VBR for each element.
-    (void)parseVBR(ptr);
+    (void)MEF::parseVBR(tempPtr);
     ++iterIdx;
   }
+  ptr = const_cast<uint8_t *>(tempPtr);
   return *this;
 }
 
 MEFDynamicAttr MEFListAttr::Iterator::operator*() const {
-  auto *workPtr = ptr;
-  return MEFDynamicAttr(basePtr - parseVBR(workPtr), attrSection);
+  const uint8_t *workPtr = ptr;
+  return MEFDynamicAttr(basePtr - MEF::parseVBR(workPtr), attrSection);
 }
 
 //===----------------------------------------------------------------------===//
@@ -73,20 +56,22 @@ MEFDynamicAttr MEFListAttr::Iterator::operator*() const {
 
 MEFDictionaryAttr::Iterator &MEFDictionaryAttr::Iterator::operator+=(
     MEFAttr<Dictionary>::Iterator::Base::difference_type n) {
+  const uint8_t *tempPtr = ptr;
   for (auto i = 0; i < n; ++i) {
     // We have to increment our current pointer past the VBRs and the inline
     // name.
-    (void)parseVBR(ptr);
-    (void)parseVBR(ptr);
+    (void)MEF::parseVBR(tempPtr);
+    (void)MEF::parseVBR(tempPtr);
     ++iterIdx;
   }
+  ptr = const_cast<uint8_t *>(tempPtr);
   return *this;
 }
 
 MEFDictionaryAttr::Element MEFDictionaryAttr::Iterator::operator*() const {
-  uint8_t *workptr = ptr;
-  size_t nameOffset = parseVBR(workptr);
-  size_t dataOffset = parseVBR(workptr);
+  const uint8_t *workptr = ptr;
+  size_t nameOffset = MEF::parseVBR(workptr);
+  size_t dataOffset = MEF::parseVBR(workptr);
   return Element{basePtr, nameOffset, dataOffset, attrSection};
 }
 

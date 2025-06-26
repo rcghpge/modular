@@ -56,13 +56,16 @@ inline bool hasMEFMagicNumber(llvm::StringRef contents) {
 }
 
 /// Parse a VBR encoded integer from the byte stream, moving the pointer for
-/// the number of bytes consumed.
+/// the number of bytes consumed. The calling function must provide a
+/// `const`-matched actual-argument to avoid compiler-error. Hence, if a
+/// non-const pointer needs to be provided here, then create a `const` temporary
+/// and later copy back its const_cast<>-ed updated value.
 inline size_t parseVBR(const uint8_t *&pointer) {
   uint8_t nextByte = *pointer++;
-  size_t result = nextByte & 127;
-  while ((nextByte & 128) != 0) {
+  size_t result = nextByte & 0x7Fu;
+  while ((nextByte & 0x80u) != 0) {
     nextByte = *pointer++;
-    result = (result << 7) | size_t(nextByte & 127);
+    result = (result << 7) | size_t(nextByte & 0x7Fu);
   }
   return result;
 }

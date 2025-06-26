@@ -126,12 +126,6 @@ struct MEFDecoder<MEF::TypeKind> {
 /// length of array or string by decoding the prefix encoded VBR.
 size_t decodeMEFArrayLength(const uint8_t *dataPtr);
 
-/// Parse a VBR and increment `workptr` in the process, so we can skip over
-/// the VBR values. This is a little weird, being a reference to a pointer,
-/// but it's to simplify the parsing use cases above by allowing us to
-/// increment the pointer that's been passed-in.
-size_t parseVBR(uint8_t *&workptr);
-
 // Utility template for tag dispatching.
 template <typename... T>
 struct TypeTag {};
