@@ -1,13 +1,10 @@
-load("//bazel:api.bzl", "modular_python_binding_library_test", "requirement")
+load("//bazel:api.bzl", "modular_python_binding_library_test")
 
 modular_python_binding_library_test(
     name = "tests",
     srcs = glob(["*.cpp"]),
-    py_deps = [
-        requirement("numpy"),
-    ],
+    py_deps = [],
     deps = [
         "//SDK:ModularFrameworkPython",
-        "@pybind11",
     ],
 )
