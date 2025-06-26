@@ -199,47 +199,6 @@ def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
-def SetKernelsTraceName: Pass<"set-kernels-trace-name", "MO::GraphOp"> {
-  let summary = "Set the trace name parameter for every kernel.";
-  let description = [{
-    The Mojo kernels can take a `_trace_name` parameter used to get better trace name.
-    We set it in the graph compiler to have all the fusion informations.
-    Eg _trace_name = "mo.matmul+mo.add".
-    This need to live in its own pass, because the trace name of the kernel must be updated
-    after all lambda fusion passes but before any sequence / soft fusion pass.
-  }];
-  let dependentDialects = ["M::MOGG::MOGGDialect"];
-}
-
-def InlineLambdas: Pass<"inline-lambdas", "MO::GraphOp"> {
-  let summary = "Inline lambda invokes and remove unused lambdas";
-  let description = [{
-    This passes replaces individual `LambdaInvokeOp` by inlining the body of the
-    invoked lambda, if the lambda body is not available. It also erases all the
-    lambdas that become unused after inlining.
-
-    Note that this also disables fusion because the lambda hooks will be inlined
-    and erased.
-  }];
-  // Balloons due to dependency on MojoLibraryAnalysis
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::HLCF::HLCFDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::index::IndexDialect",
-  ];
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-  ];
-}
-
 def SimplifyKernelOperands: Pass<"simplify-kernel-operands", "MO::GraphOp"> {
   let summary = "Gets rid of duplicate kernel operands";
   let description = [{
