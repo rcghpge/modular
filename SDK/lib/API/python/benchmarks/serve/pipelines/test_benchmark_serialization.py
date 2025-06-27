@@ -55,10 +55,7 @@ def test_text_context_msgpack_deserialization(benchmark) -> None:
         tokens=np.array([0, 1, 2, 3, 4]),
     )
 
-    benchmark(
-        msgpack_decoder,
-        msgpack_encoder(context),
-    )
+    benchmark(msgpack_decoder, msgpack_encoder(context))
 
 
 def test_long_text_context_pickle_serialization(benchmark) -> None:
@@ -124,10 +121,7 @@ def test_long_text_context_msgpack_deserialization(benchmark) -> None:
         tokens=long_tokens,
     )
 
-    benchmark(
-        msgpack_decoder,
-        msgpack_encoder(context),
-    )
+    benchmark(msgpack_decoder, msgpack_encoder(context))
 
 
 def test_very_long_text_context_pickle_serialization(benchmark) -> None:
@@ -193,7 +187,4 @@ def test_very_long_text_context_msgpack_deserialization(benchmark) -> None:
         tokens=very_long_tokens,
     )
 
-    benchmark(
-        msgpack_decoder,
-        msgpack_encoder(context),
-    )
+    benchmark(msgpack_decoder, msgpack_encoder(context))
