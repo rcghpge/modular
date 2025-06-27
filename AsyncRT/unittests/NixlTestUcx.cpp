@@ -175,6 +175,11 @@ void transferData(NixlAgentWithUCXBackend &nixl1,
 class NixlUcxIntegrationTest : public ::testing::Test {};
 
 TEST_F(NixlUcxIntegrationTest, DramTransfer) {
+  // Explicitly enable verbose logging for UCX.
+  // This is incredibly helpful to leave enabled by default.
+  // If a test passes locally but fails in CI, it lets us see logs in CI.
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
   // Create two NIXL agents on separate ports with 1KB host buffers
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
