@@ -25,7 +25,9 @@ struct SimplifyKernelOperands
     : public impl::SimplifyKernelOperandsBase<SimplifyKernelOperands> {
   using SimplifyKernelOperandsBase::SimplifyKernelOperandsBase;
 
-  void simplifyExpKernelOperands(MO::GraphOp graphOp) {
+  void runOnOperation() override {
+    MO::GraphOp graphOp = getOperation();
+
     graphOp->walk([](MOGG::ExpKernelOp kernelOp) {
       DenseMap<Value, BlockArgument> map;
       for (int idx = kernelOp.getInputs().size() - 1; idx >= 0; idx--) {
@@ -53,92 +55,6 @@ struct SimplifyKernelOperands
           }
         }
       });
-    });
-  }
-
-  void runOnOperation() override {
-    MO::GraphOp graphOp = getOperation();
-
-    simplifyExpKernelOperands(graphOp);
-
-    OpBuilder builder{graphOp.getContext()};
-    graphOp.walk([](MOGG::KernelOp kernelOp) {
-      auto kernelArguments = kernelOp.getBody().front().getArguments();
-
-      struct CacheEntryWithLambda {
-        Value argument;
-        KGEN::ParamDeclareRegionOp inputLambda;
-      };
-      struct CacheEntryWithoutLambda {
-        Value argument;
-      };
-
-      DenseMap<Value, CacheEntryWithLambda> operandValueToCacheEntryWithLambda;
-      DenseMap<Value, CacheEntryWithoutLambda>
-          operandValueToCacheEntryWithoutLambda;
-      SmallVector<uint64_t> indicesToErase;
-
-      for (uint64_t currentIndex = 0, e = kernelOp->getNumOperands();
-           currentIndex < e; ++currentIndex) {
-        Value currentOperandValue = kernelOp->getOperand(currentIndex);
-        Value currentArgument = kernelArguments[currentIndex];
-        KGEN::ParamDeclareRegionOp currentInputLambda = kernelOp.findLambda(
-            kernelOp.getInputFusionInterfaceAt(currentIndex));
-
-        if (!currentInputLambda) {
-          // If there is no input lambda, replace with the older argument that
-          // was also not accessed via a lambda.
-          auto insertionPair =
-              operandValueToCacheEntryWithoutLambda.try_emplace(
-                  currentOperandValue,
-                  CacheEntryWithoutLambda{currentArgument});
-          if (insertionPair.second)
-            continue;
-
-          auto &[previousArgument] = insertionPair.first->getSecond();
-          indicesToErase.push_back(currentIndex);
-          currentArgument.replaceAllUsesWith(previousArgument);
-        } else {
-          // Otherwise, replace with the older argument that was accessed via a
-          // lambda and also erase the unused lambda.
-          auto insertionPair = operandValueToCacheEntryWithLambda.try_emplace(
-              currentOperandValue,
-              CacheEntryWithLambda{currentArgument, currentInputLambda});
-          if (insertionPair.second)
-            continue;
-
-          auto &[previousArgument, previousInputLambda] =
-              insertionPair.first->getSecond();
-          indicesToErase.push_back(currentIndex);
-          currentArgument.replaceAllUsesWith(previousArgument);
-
-          auto currentInputLambdaName =
-              currentInputLambda.getParamDecl().getName();
-          auto previousInputLambdaName =
-              previousInputLambda.getParamDecl().getName();
-          auto previousInputLambdaType =
-              previousInputLambda.getParamDecl().getType();
-
-          // Replacing lambda calls. This is necessary because the replaced
-          // operand is accessed via a lambda and not directly.
-          mlir::AttrTypeReplacer walker;
-          walker.addReplacement([&](KGEN::ParamDeclRefAttr attr)
-                                    -> std::optional<KGEN::ParamDeclRefAttr> {
-            if (attr.getName() == currentInputLambdaName)
-              return KGEN::ParamDeclRefAttr::get(previousInputLambdaName,
-                                                 previousInputLambdaType);
-            return std::nullopt;
-          });
-          walker.recursivelyReplaceElementsIn(kernelOp, /*replaceAttrs=*/true,
-                                              /*replaceLocs=*/false,
-                                              /*replaceTypes=*/true);
-          currentInputLambda.erase();
-        }
-      }
-
-      // Iterating in reverse order to preserve the indices.
-      for (uint64_t index : llvm::reverse(indicesToErase))
-        kernelOp.removeOperandAtIndex(index);
     });
   }
 };
