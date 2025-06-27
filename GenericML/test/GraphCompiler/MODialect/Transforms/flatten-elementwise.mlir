@@ -1,5 +1,5 @@
 // RUN: mo-opt --flatten-elementwise --cse --canonicalize %s | FileCheck %s --check-prefix=CHECK-MO
-// RUN: mo-opt --flatten-elementwise --cse --canonicalize --mo-to-mogg --fuse-prologues-epilogues --fuse-elementwise %s | FileCheck %s --check-prefix=CHECK-MOGG
+// RUN: mo-opt --flatten-elementwise --hoist-param-exprs --cse --canonicalize --mo-to-mogg --fuse-elementwise --fuse-views --cse %s | FileCheck %s --check-prefix=CHECK-MOGG
 
 !tt = !mo.tensor<[1,2,3,4,5], f32>
 !tta = !mo.tensor<[6,4,5], f32>
@@ -14,7 +14,7 @@
 
 // CHECK-MOGG-LABEL: mo.graph @binary_elemwise_with_parameter
 // CHECK-MOGG: mogg.experimental.kernel
-// CHECK-MOGG: summary = "mo.relu:{{.*}}+mo.add:{{.*}}"
+// CHECK-MOGG: summary = "mo.static.reshape:{{.*}}+mo.static.reshape:{{.*}}+mo.relu:{{.*}}+mo.add:{{.*}}"
 mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, %arg1 : !mo.tensor<[2,2,P1,5], f32>) -> !mo.tensor<[P1,4,5], f32> {
     %0 = mo.relu(%arg0) : !mo.tensor<[P1,4,5], f32>
     %1 = mo.static.reshape(%0) : !mo.tensor<[P1,4,5], f32> -> !mo.tensor<[2,2,P1,5], f32>
@@ -29,11 +29,11 @@ mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, 
 
 // CHECK-MOGG-LABEL: mo.graph @with_non_elemwise
 // CHECK-MOGG: mogg.experimental.kernel
-// CHECK-MOGG: summary = "mo.relu:{{.*}}+mo.add:{{.*}}"
+// CHECK-MOGG: summary = "{{.*}}+mo.relu:{{.*}}+mo.add:{{.*}}"
 // CHECK-MOGG: mogg.experimental.kernel
-// CHECK-MOGG: summary = "mo.softmax:{{.*}}"
+// CHECK-MOGG: summary = "{{.*}}+mo.softmax:{{.*}}"
 // CHECK-MOGG: mogg.experimental.kernel
-// CHECK-MOGG: summary = "mo.relu:{{.*}}+mo.add:{{.*}}"
+// CHECK-MOGG: summary = "{{.*}}+mo.relu:{{.*}}+mo.add:{{.*}}"
 // CHECK-MOGG-NOT: mogg.experimental.kernel
 mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb) -> !tta {
     %0 = mo.relu(%arg0) : !tta
@@ -109,7 +109,7 @@ mo.graph @many_reshapes(%arg1 : !tt, %arg2 : !tt) -> !tt {
 
 // CHECK-MOGG-LABEL: mo.graph @with_cast
 // CHECK-MOGG: mogg.experimental.kernel
-// CHECK-MOGG: summary = "mo.cast:{{.*}}+mo.relu:{{.*}}+mo.cast:{{.*}}"
+// CHECK-MOGG: summary = "{{.*}}+mo.cast:{{.*}}+mo.relu:{{.*}}+mo.cast:{{.*}}"
 // CHECK-MOGG-NOT: mogg.experimental.kernel
 mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f64> {
     %0 = mo.cast(%arg0) : (!mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f16>
@@ -125,7 +125,7 @@ mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f
 
 // CHECK-MOGG-LABEL: mo.graph @with_pow
 // CHECK-MOGG: mogg.experimental.kernel
-// CHECK-MOGG: summary = "mo.pow:{{.*}}+mo.relu:{{.*}}"
+// CHECK-MOGG: summary = "{{.*}}+mo.pow:{{.*}}+mo.relu:{{.*}}"
 // CHECK-MOGG-NOT: mogg.experimental.kernel
 mo.graph @with_pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) -> !mo.tensor<[3,2], f32> {
     %0 = mo.pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) : !mo.tensor<[3,2], f32>

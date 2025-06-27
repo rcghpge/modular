@@ -94,11 +94,6 @@ def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
     end of the original view kernel.
   }];
 
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-  ];
-
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",

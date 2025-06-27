@@ -2825,7 +2825,6 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to", [
 
 def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
   MO_ViewLike,
-  MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Reshape operation";
