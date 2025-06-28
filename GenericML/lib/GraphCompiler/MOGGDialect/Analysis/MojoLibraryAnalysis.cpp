@@ -6,6 +6,7 @@
 
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
 
@@ -34,7 +35,10 @@ static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
                                 KGEN::GeneratorOp gen2) {
   if (gen1.getFuncTypeGenerator() != gen2.getFuncTypeGenerator())
     return false;
-  return areBlocksSame(*gen1.getBody(), *gen2.getBody());
+
+  return mlir::OperationEquivalence::isRegionEquivalentTo(
+      &gen1.getBodyRegion(), &gen2.getBodyRegion(),
+      /*flags=*/mlir::OperationEquivalence::IgnoreLocations);
 }
 
 [[maybe_unused]] static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
