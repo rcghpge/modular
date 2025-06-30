@@ -505,6 +505,49 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     // Doing so avoids conds in the result shapes here, while still handling the
     // common case of slicing by a dim (guaranteed to be positive).
 
+    // Check for potential overflow conditions early - this should be done
+    // before bounds checking to preserve existing overflow detection behavior
+    maybeStartConst = tryGetConstantInt(start.getAttr());
+    maybeStopConst = tryGetConstantInt(stop.getAttr());
+    if (maybeStartConst && maybeStopConst) {
+      int64_t startConst = *maybeStartConst;
+      int64_t stopConst = *maybeStopConst;
+      int64_t diff;
+      int64_t dim;
+      // Check for overflow early to preserve existing overflow detection
+      if (llvm::SubOverflow(stopConst, startConst, diff) ||
+          llvm::AddOverflow(diff, stepOffset, dim)) {
+        return ShapeMaterializeResult::error(llvm::formatv(
+            "rmo.slice index computation overflow: doesn't fit in an int64 "
+            "start {0}, stop {1} for step {2}",
+            startConst, stopConst, step));
+      }
+    }
+
+    // Validate bounds for static dimensions to prevent memory out of bounds
+    auto maybeInputDimConst = tryGetConstantInt(inputDim.getAttr());
+    if (maybeInputDimConst) {
+      int64_t inputDimConst = *maybeInputDimConst;
+
+      if (maybeStartConst) {
+        int64_t startConst = *maybeStartConst;
+        if (startConst < 0 || startConst > inputDimConst) {
+          return ShapeMaterializeResult::error(llvm::formatv(
+              "rmo.slice start index {0} out of range for dimension size {1}",
+              startConst, inputDimConst));
+        }
+      }
+
+      if (maybeStopConst) {
+        int64_t stopConst = *maybeStopConst;
+        if (stopConst < 0 || stopConst > inputDimConst) {
+          return ShapeMaterializeResult::error(llvm::formatv(
+              "rmo.slice stop index {0} out of range for dimension size {1}",
+              stopConst, inputDimConst));
+        }
+      }
+    }
+
     // Make sure start and stop don't cross each other.
     // This ensures normalized (stop - start) has the same sign as step if both
     // are statically known.
@@ -521,18 +564,6 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
             "and decreasing for negative step, but got "
             "start {0}, stop {1} for step {2}",
             startConst, stopConst, step));
-
-      int64_t diff;
-      int64_t dim;
-      // Check statically whether the downstream error will overflow.
-      // Otherwise TensorType's verifier asserts due to a negative dim.
-      if (llvm::SubOverflow(stopConst, startConst, diff) ||
-          llvm::AddOverflow(diff, stepOffset, dim)) {
-        return ShapeMaterializeResult::error(llvm::formatv(
-            "rmo.slice index computation overflow: doesn't fit in an int64 "
-            "start {0}, stop {1} for step {2}",
-            startConst, stopConst, step));
-      }
     }
 
     // Invariants that should hold at this point:
