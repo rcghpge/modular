@@ -57,17 +57,16 @@ struct JitCompileKernels
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
 
     for (auto model : module.getOps<MGP::ModelOp>()) {
-      auto errOr = runPass(model, mojoLibraryAnalysis);
-      if (errOr.isError()) {
+      if (CompileDiagnosticOrSuccess errOr =
+              runPass(model, mojoLibraryAnalysis)) {
         signalPassFailure();
         return;
       }
     }
 
-    // Strip all KGEN forward decls. There is now nothing they can be lowered
-    // to.
-    module.walk([](KGEN::ExternGeneratorOp op) { op.erase(); });
-    module.walk([](KGEN::GeneratorOp gen) { gen.erase(); });
+    for (Operation &op : llvm::make_early_inc_range(module.getOps()))
+      if (isa<KGEN::GeneratorOp, KGEN::ExternGeneratorOp>(op))
+        op.erase();
   }
 
   CompileDiagnosticOrSuccess
