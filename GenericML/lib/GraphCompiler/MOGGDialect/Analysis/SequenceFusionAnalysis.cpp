@@ -448,7 +448,7 @@ FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
 FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
     EligibilityFunction isEligible, CompatibilityFunction areCompatible,
-    bool allowDuplication, uint64_t maximumFusionSetSize) {
+    CanDuplicate canDuplicate, uint64_t maximumFusionSetSize) {
   FusionSubGraphs subgraphs;
   region.walk([&](Block *block) {
     int64_t numOps = block->getOperations().size();
@@ -530,7 +530,7 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
                 // if there are more than one user, this will fail because one
                 // of the users will be in another subgraph from a past
                 // iteration.
-                return allowDuplication || curSubgraph.contains(user);
+                return canDuplicate(parent) || curSubgraph.contains(user);
               });
 
           if (!proceed)

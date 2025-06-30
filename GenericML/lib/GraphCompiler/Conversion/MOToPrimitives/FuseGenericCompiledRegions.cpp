@@ -87,12 +87,13 @@ static inline bool isComputationallySignificant(Operation *op) {
 // if we allow src ops to duplicate into many dst ops.
 template <bool allowDuplication>
 static void doSourceDestinationSequenceFusion(ModuleOp module) {
+  auto canDuplicate = [](Operation *op) -> bool { return allowDuplication; };
   for (auto model : module.getOps<MGP::ModelOp>()) {
     for (auto &region : model->getRegions()) {
       MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
       auto subgraphs = MOGG::sourceDestinationSequenceFusionAnalysis(
           region, parametricTopologyAnalysis, isaGenericCompiledRegionOp,
-          areCompatibleForFusion<true, allowDuplication>, allowDuplication);
+          areCompatibleForFusion<true, allowDuplication>, canDuplicate);
 
       for (auto &subgraph : subgraphs)
         parametricTopologyAnalysis.computeTopologicalSorting(subgraph);

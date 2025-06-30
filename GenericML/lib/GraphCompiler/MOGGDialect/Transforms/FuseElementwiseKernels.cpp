@@ -104,6 +104,10 @@ static inline bool isAnElementwiseKernel(Operation *op) {
   return false;
 }
 
+static inline bool canDuplicateIfOnNotOnHost(Operation *op) {
+  return !MO::isOnHost(op);
+}
+
 //-------------------------------------------------
 // mogg.experimental.kernel fusion utils.
 //-------------------------------------------------
@@ -194,7 +198,7 @@ static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
   dst.getInputsMutable().erase(opIdx + numSrcVal);
 };
 
-static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {
+static void fuseKernelsIntoLastKernel(ArrayRef<Operation *> subgraph) {
   auto dst = cast<ExpKernelOp>(subgraph.back());
   PatternRewriter rewriter(dst.getContext());
   MOGG::BindLambdaOp dstBindOp = dst.getElemwiseBodyLambda();
@@ -248,7 +252,6 @@ static void fuseExpElementwiseKernel(ArrayRef<Operation *> subgraph) {
     dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));
     dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
     dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
-    src.erase();
   }
 }
 
@@ -267,14 +270,26 @@ struct FuseElementwisePass
     static constexpr uint64_t kMaximumFusionSetSize = 64;
     auto subgraphs = sourceDestinationSequenceFusionAnalysis(
         graphOp.getBody(), topologyAnalysis, isAnElementwiseKernel,
-        compatibilityCheck, false, kMaximumFusionSetSize);
+        compatibilityCheck, canDuplicateIfOnNotOnHost, kMaximumFusionSetSize);
 
     for (auto &subgraph : subgraphs)
       topologyAnalysis.computeTopologicalSorting(subgraph);
 
     for (ArrayRef subgraph : subgraphs) {
       numberOfFusedKernels += subgraph.size();
-      fuseExpElementwiseKernel(subgraph);
+      fuseKernelsIntoLastKernel(subgraph);
+    }
+
+    // Erase operations that were fused. The DenseSet is necessary because when
+    // duplication is allowed, an op will appear in more than one subgraph.
+    DenseSet<Operation *> erased;
+    for (ArrayRef subgraph : subgraphs) {
+      for (auto op : llvm::reverse(subgraph.drop_back())) {
+        if (!erased.contains(op) && op->getUsers().empty()) {
+          erased.insert(op);
+          op->erase();
+        }
+      }
     }
   }
 };

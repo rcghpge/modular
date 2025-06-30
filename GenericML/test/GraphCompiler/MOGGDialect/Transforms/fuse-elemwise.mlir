@@ -1,25 +1,4 @@
-// REQUIRES: disabled
-// TODO(GEX-1573): Delete or convert to the new API
-// RUN: mo-opt --mo-to-mogg --canonicalize --fuse-elementwise --canonicalize --cse %s | FileCheck %s
-
-mo.graph @blocked_by_unfusible(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
-  %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
-  %1 = mo.custom {symbol = "pytorch_operator_custom_test", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
-  %2 = mo.add(%0, %1) : !mo.tensor<[4, 3], f32>
-  %3 = mo.sqrt(%2) : !mo.tensor<[4, 3], f32>
-  %4 = mo.custom {symbol = "pytorch_operator_custom_test", device = #M.device_ref<"cpu", 0>}(%3) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
-  %5 = mo.add(%2, %4) : !mo.tensor<[4, 3], f32>
-  mo.output %5 : !mo.tensor<[4, 3], f32>
-}
-// CHECK-LABEL: mo.graph @blocked_by_unfusible
-// CHECK:   mogg.kernel
-// CHECK:   mogg.kernel
-// CHECK:   mogg.kernel
-// CHECK:   mogg.kernel
-// CHECK:   mogg.kernel
-// CHECK:   mogg.kernel
-// CHECK-NOT: mogg.kernel
-
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --simplify-kernel-operands --canonicalize --cse %s | FileCheck %s
 
 mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -28,18 +7,10 @@ mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3],
 }
 
 // CHECK-LABEL: mo.graph @simpleDoubleUse
-// CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]])
-
-// Find the input lambda name.
-// CHECK: mogg.lambda @[[IN_NAME:.*]] = (%[[INDICES:.*]]: !mogg.indices) -> !mogg.simd<f32>{
-
-// Check the main body.
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
-// CHECK-NEXT:    %[[LOAD:.*]] = mogg.invoke @[[IN_NAME]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[LOAD]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ADD:.*]] = mogg.call "mo.add"(%[[SQRT]], %[[SQRT]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    mogg.invoke @[[OUTPUT_0_FN:.*]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
-
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.add"]
+// CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -52,24 +23,14 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
 }
 
 // CHECK-LABEL: mo.graph @rightmostTreeFusion
-// CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]], %[[ARG2:.*]])
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
-// CHECK-NEXT:    %[[LOAD1:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[LOAD2:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT1:.*]] = mogg.call "mo.sqrt"(%[[LOAD2]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT2:.*]] =  mogg.call "mo.sqrt"(%[[SQRT1]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT3:.*]] =  mogg.call "mo.sqrt"(%[[SQRT2]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT4:.*]] =  mogg.call "mo.sqrt"(%[[SQRT3]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SUB:.*]] = mogg.call "mo.sub"(%[[LOAD1]], %[[SQRT4]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[SUB]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:    mogg.output
-// CHECK-NEXT:}
-// CHECK-NEXT: mogg.call "elementwise" [@[[ELEMWISE_COMPUTE_LAMBDA]]]
-// CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "[[ELEMWISE_COMPUTE_LAMBDA]]", inputFusionInterface = ["{{.*}}", "{{.*}}"], isAsync = true, outputFusionInterface = ["{{.*}}"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
-// CHECK:  mo.output %[[KERNEL_OUT]]
-
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sub"]
+// CHECK-NEXT: mogg.call.outlined["mo.add"]
+// CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -82,24 +43,14 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 }
 
 // CHECK-LABEL: mo.graph @leftmostTreeFusion
-// CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel (%[[ARG1:.*]], %[[ARG2:.*]])
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
-// CHECK-NEXT:    %[[LOAD1:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT1:.*]] = mogg.call "mo.sqrt"(%[[LOAD1]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT2:.*]] = mogg.call "mo.sqrt"(%[[SQRT1]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT3:.*]] = mogg.call "mo.sqrt"(%[[SQRT2]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT4:.*]] = mogg.call "mo.sqrt"(%[[SQRT3]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[LOAD2:.*]] = mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SUB:.*]] = mogg.call "mo.sub"(%[[SQRT4]], %[[LOAD2]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ADD:.*]] = mogg.call "mo.add"(%[[SUB]], %[[LOAD2]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    mogg.invoke @[[ANY_NAME:.*]](%[[INDICES]], %[[ADD]]) : !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:    mogg.output
-// CHECK-NEXT:}
-// CHECK-NEXT: mogg.call "elementwise" [@[[ELEMWISE_COMPUTE_LAMBDA]]]
-// CHECK-NEXT: mogg.output
-// CHECK-NEXT:} {fusionBodyLambda = "[[ELEMWISE_COMPUTE_LAMBDA]]", inputFusionInterface = ["{{.*}}", "{{.*}}"], isAsync = true, outputFusionInterface = ["{{.*}}"], summary = "mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sqrt{{.*}}+mo.sub{{.*}}+mo.add{{.*}}"}
-// CHECK:  mo.output %[[KERNEL_OUT]]
-
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sub"]
+// CHECK-NEXT: mogg.call.outlined["mo.add"]
+// CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -119,27 +70,22 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 }
 
 // CHECK-LABEL: mo.graph @multipleDiamondPattern
-// CHECK-NEXT: mogg.kernel (%[[NULL:.*]]) : (%[[ARG1:.*]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
-// CHECK-NEXT:    %[[IN:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]]) {readOnly = true} : !mogg.indices -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT:.*]] = mogg.call "mo.sqrt"(%[[IN]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ISQRT:.*]] = mogg.call "mo.isqrt"(%[[SQRT]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[TANH:.*]] = mogg.call "mo.tanh"(%[[SQRT]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SUB:.*]] = mogg.call "mo.sub"(%[[ISQRT]], %[[TANH]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT2:.*]] = mogg.call "mo.sqrt"(%[[SUB]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ISQRT2:.*]] = mogg.call "mo.isqrt"(%[[SUB]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ADD:.*]] = mogg.call "mo.add"(%[[SQRT2]], %[[ISQRT2]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT3:.*]] = mogg.call "mo.sqrt"(%[[ADD]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ISQRT3:.*]] = mogg.call "mo.isqrt"(%[[ADD]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT3]], %[[ISQRT3]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[SQRT4:.*]] = mogg.call "mo.sqrt"(%[[MUL]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[ISQRT4:.*]] = mogg.call "mo.isqrt"(%[[MUL]]) : !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    %[[MUL:.*]] = mogg.call "mo.mul"(%[[SQRT4]], %[[ISQRT4]]) : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
-// CHECK-NEXT:    mogg.invoke @[[OUTPUT_LAMBDA:.*]](%[[INDICES]], %[[MUL]]) : !mogg.indices, !mogg.simd<f32>
-// CHECK-NEXT:    mogg.output
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.tanh"]
+// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sub"]
+// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.add"]
+// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.mul"]
+// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.mul"]
+// CHECK-NOT: mogg.experimental.kernel
 
-
-// Check we correctly fuse a top heavy graph with a wide input surface and still fuse into one at the end.
 mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   // Top level ops.
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
@@ -152,7 +98,6 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
   %7 = mo.div(%arg0, %arg1) : !mo.tensor<[4, 3], f32>
   %8 = mo.tanh(%arg0) : !mo.tensor<[4, 3], f32>
 
-  // Start reducing down into a pyramid
   %9 = mo.add(%0, %1) : !mo.tensor<[4, 3], f32>
   %10 = mo.add(%2, %3) : !mo.tensor<[4, 3], f32>
   %11 = mo.add(%5, %6) : !mo.tensor<[4, 3], f32>
@@ -165,68 +110,32 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
   mo.output %out : !mo.tensor<[4, 3], f32>
 }
 
-
 // CHECK-LABEL: mo.graph @inversePyramid
-// CHECK-NEXT: mogg.kernel (%[[NULL:.*]]) : (%[[ARG1:.*]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
-// CHECK: mogg.lambda @[[ELEMWISE_COMPUTE_LAMBDA:.*]] = (%[[INDICES:.*]]: !mogg.indices){
-// CHECK-NEXT:    %[[IN1:.*]] = mogg.invoke @[[INPUT_LAMBDA:.*]](%[[INDICES]])
-// CHECK-NEXT:    %[[OP0:.*]] = mogg.call "mo.sqrt"(%[[IN1]])
-// CHECK-NEXT:    %[[OP1:.*]] = mogg.call "mo.relu"(%[[IN1]])
-// CHECK-NEXT:    %[[OP2:.*]] = mogg.call "mo.add"(%[[OP0]], %[[OP1]])
-// CHECK-NEXT:    %[[IN2:.*]] = mogg.invoke @[[INPUT_LAMBDA2:.*]](%[[INDICES]])
-// CHECK-NEXT:    %[[OP3:.*]] = mogg.call "mo.sqrt"(%[[IN2]])
-// CHECK-NEXT:    %[[OP4:.*]] = mogg.call "mo.relu"(%[[IN2]])
-// CHECK-NEXT:    %[[OP5:.*]] = mogg.call "mo.add"(%[[OP3]], %[[OP4]])
-// CHECK-NEXT:    %[[OP6:.*]] = mogg.call "mo.add"(%[[OP2]], %[[OP5]])
-// CHECK-NEXT:    %[[OP7:.*]] = mogg.call "mo.mul"(%[[IN1]], %[[IN2]])
-// CHECK-NEXT:    %[[OP8:.*]] = mogg.call "mo.sub"(%[[IN1]], %[[IN2]])
-// CHECK-NEXT:    %[[OP9:.*]] = mogg.call "mo.add"(%[[OP7]], %[[OP8]])
-// CHECK-NEXT:    %[[OP10:.*]] = mogg.call "mo.div"(%[[IN1]], %[[IN2]])
-// CHECK-NEXT:    %[[OP11:.*]] = mogg.call "mo.tanh"(%[[IN1]])
-// CHECK-NEXT:    %[[OP12:.*]] = mogg.call "mo.add"(%[[OP10]], %[[OP11]])
-// CHECK-NEXT:    %[[OP13:.*]] = mogg.call "mo.add"(%[[OP9]], %[[OP12]])
-// CHECK-NEXT:    %[[FINAL:.*]] = mogg.call "mo.mul"(%[[OP6]], %[[OP13]])
-// CHECK-NEXT:    mogg.invoke @[[OUTPUT_LAMBDA:.*]](%[[INDICES]], %[[FINAL]])
-// CHECK-NEXT:    mogg.output
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.tanh"]
+// CHECK-NEXT: mogg.call.outlined["mo.div"]
+// CHECK-NEXT: mogg.call.outlined["mo.sub"]
+// CHECK-NEXT: mogg.call.outlined["mo.mul"]
+// CHECK-NEXT: mogg.call.outlined["mo.relu"]
+// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT: mogg.call.outlined["mo.relu"]
+// CHECK-NEXT:  mogg.call.outlined["mo.sqrt"]
+// CHECK-NEXT:  mogg.call.outlined["mo.add"]
+// CHECK-NEXT:  mogg.call.outlined["mo.add"]
+// CHECK-NEXT:  mogg.call.outlined["mo.add"]
+// CHECK-NEXT:  mogg.call.outlined["mo.add"]
+// CHECK-NEXT:  mogg.call.outlined["mo.add"]
+// CHECK-NEXT:  mogg.call.outlined["mo.add"]
+// CHECK-NEXT:  mogg.call.outlined["mo.mul"]
+// CHECK-NOT: mogg.experimental.kernel
 
-
-// Broadcast (currently) has its own fusion pass so should not be fused along with the elementwise ops in the fuse-elementwise pass.
-
-mo.graph @broadcastNoFuse<N, M, K>(%arg0: !mo.tensor<[N, K], f32>, %arg1: !mo.tensor<[K, M], f32>) -> (!mo.tensor<[N, M], f32>) {
-  %bcast1 = mo.static.broadcast_to(%arg0) : !mo.tensor<[N, K], f32> -> !mo.tensor<[N, M], f32>
-  %bcast2 = mo.static.broadcast_to(%arg1) : !mo.tensor<[K, M], f32> -> !mo.tensor<[N, M], f32>
-  %1 = mo.add(%bcast1, %bcast2) : !mo.tensor<[N, M], f32>
-  mo.output %1 : !mo.tensor<[N, M], f32>
-}
-
-// Check each broadcast is in its own standalone kernel.
-// CHECK-LABEL: mo.graph @broadcastNoFuse
-// CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
-// CHECK: %[[BCAST2:.*]] = mogg.kernel
-// CHECK: %[[ADD:.*]] = mogg.kernel (%[[BCAST1]], %[[BCAST2]])
-// CHECK: mo.output %[[ADD]] : !mo.tensor<[N, M], f32>
-
-mo.graph @fused_si32(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[6], si32>) -> (!mo.tensor<[6], si32>) {
-  %0 = mo.add(%arg0, %arg1) : !mo.tensor<[6], si32>
-  %1 = mo.relu(%0) : !mo.tensor<[6], si32>
-  mo.output %1 : !mo.tensor<[6], si32>
-}
-
-// CHECK-LABEL: mo.graph @fused_si32
-
-// CHECK: mogg.lambda @elemwise_compute_lambda
-// CHECK-NEXT: %[[LOAD1:.*]] = mogg.invoke @input_0_fn
-// CHECK-NEXT: %[[LOAD2:.*]] = mogg.invoke @input_1_fn
-// CHECK-NEXT: %[[ADD:.*]] = mogg.call "mo.add"(%[[LOAD1]], %[[LOAD2]]) : !mogg.simd<si32>, !mogg.simd<si32> -> !mogg.simd<si32>
-// CHECK-NEXT: %[[RELU:.*]] = mogg.call "mo.relu"(%[[ADD]]) : !mogg.simd<si32> -> !mogg.simd<si32>
-
-
-mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[N, M], f32>) -> (!mo.tensor<[N, M], f32>) {
+mo.graph @controlFlow<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[N, M], f32>) -> (!mo.tensor<[N, M], f32>) {
   %relu = mo.relu(%arg0) : !mo.tensor<[N, M], f32>
 
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[N, M], f32> {
     %1 = mo.add(%relu, %relu) : !mo.tensor<[N, M], f32>
-    mo.yield %1 : !mo.tensor<[N, M], f32>
+    %2 = mo.tanh(%1) : !mo.tensor<[N, M], f32>
+    mo.yield %2 : !mo.tensor<[N, M], f32>
   } else {
     %2 = mo.mul(%relu, %relu) : !mo.tensor<[N, M], f32>
     mo.yield %2 : !mo.tensor<[N, M], f32>
@@ -235,247 +144,50 @@ mo.graph @check_no_fuse_if<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor
 }
 
 // Check all kernels are compiled but unfused.
-
-// CHECK-LABEL: mo.graph @check_no_fuse_if
-
-// CHECK-NEXT: %[[BCAST1:.*]] = mogg.kernel
-// CHECK-NEXT: mogg.output_placeholders
-// CHECK: mogg.call "mo.relu"
-
+// CHECK-LABEL: mo.graph @controlFlow
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.relu"]
 // CHECK: mo.if
-// CHECK-NEXT: mogg.kernel
-// CHECK: mogg.call "mo.add"
-// CHECK: mo.yield
-// CHECK-NEXT: } else {
-// CHECK-NEXT: mogg.kernel
-// CHECK: mogg.call "mo.mul"
-// CHECK: mo.yield
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.add"]
+// CHECK-NEXT: mogg.call.outlined["mo.tanh"]
+// CHECK: else
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.mul"]
 
-// Here fusion may greedily fuse compute lambda, making some values out of
-// order of the definitions. Test we topographically sort the final compute
-// lambda expressions.
-mo.graph @out_of_order() -> !mo.tensor<[5], f32> {
+
+mo.graph @noDuplicationOfCompute() -> (!mo.tensor<[5], f32>,!mo.tensor<[5], f32>) {
   %0 = mo.constant {value = #M.dense_array<-1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00, 5.000000e+00> : tensor<5xf32>} : !mo.tensor<[5], f32>
   %1 = mo.constant {value = #M.dense_array<3.000000e+00, 1.000000e+00, -6.000000e+00, 2.000000e+00, 5.000000e+00> : tensor<5xf32>} : !mo.tensor<[5], f32>
   %2 = mo.add(%0, %1) : !mo.tensor<[5], f32>
-  %3 = mo.mul(%0, %2) : !mo.tensor<[5], f32>
-  %4 = mo.sub(%0, %2) : !mo.tensor<[5], f32>
-  %5 = mo.relu(%4) : !mo.tensor<[5], f32>
-  %6 = mo.add(%5, %2) : !mo.tensor<[5], f32>
-  mo.output %6 : !mo.tensor<[5], f32>
+  %3 = mo.tanh(%2) : !mo.tensor<[5], f32>
+  %4 = mo.relu(%2) : !mo.tensor<[5], f32>
+  mo.output %3, %4 : !mo.tensor<[5], f32>, !mo.tensor<[5], f32>
 }
 
-// CHECK-LABEL: mo.graph @out_of_order
-// CHECK: mogg.lambda @elemwise_compute_lambda
-// CHECK-NEXT: %[[V0:.*]] = mogg.invoke
-// CHECK-NEXT: %[[V1:.*]] = mogg.invoke
-// CHECK-NEXT: %[[V2:.*]] = mogg.call "mo.add"
-// CHECK-NEXT: %[[V3:.*]] = mogg.call "mo.sub"
-// CHECK-NEXT: %[[V4:.*]] = mogg.call "mo.relu"
-// CHECK-NEXT: %[[V5:.*]] = mogg.call "mo.add"
+// CHECK-LABEL: mo.graph @noDuplicationOfCompute
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.add"]
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.tanh"]
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.relu"]
+// CHECK-NOT: mogg.experimental.kernel
 
-
-// Synthized from this with annotations manually removed.
-//mo.graph @test(%arg0: !mo.tensor<[10], ui32>) -> (!mo.tensor<[10], ui32>) {
-//  %o0 = mo.exp(%arg0): !mo.tensor<[10], ui32>
-//  %o1 = mo.relu(%o0): !mo.tensor<[10], ui32>
-//  %o2 = mo.exp(%o0): !mo.tensor<[10], ui32>
-//  %o3 = mo.mul(%o1, %o2): !mo.tensor<[10], ui32>
-//  %o4 = mo.relu(%o3): !mo.tensor<[10], ui32>
-//  mo.output %o4 : !mo.tensor<[10], ui32>
-//}
-//
-// The input fusion interface has been removed from the 2nd `exp` which
-// should prevent the first `exp` from being fused into that relu but
-// should still fuse the other subgraph.
-//
-
-mo.graph @missingInputFusionInterface(%arg0: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32> {
-  %0 = mogg.kernel (%arg0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
-    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
-    mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
-      mogg.output %6 : !mogg.simd<ui32>
-    }
-    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
-      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
-      %6 = mogg.invoke @input_0_fn(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
-      %7 = mogg.call "mo.exp"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
-      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
-    mogg.output %5 : !mo.tensor<[10], ui32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
-
-
-  %1 = mogg.kernel (%0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
-    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
-    mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
-      mogg.output %6 : !mogg.simd<ui32>
-    }
-    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
-      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
-      %6 = mogg.invoke @input_0_fn(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
-      %7 = mogg.call "mo.relu"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
-      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
-    mogg.output %5 : !mo.tensor<[10], ui32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
-
-
-  %2 = mogg.kernel (%0) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
-    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
-    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
-      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
-      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
-      %7 = mogg.call "mo.exp"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
-      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
-    mogg.output %5 : !mo.tensor<[10], ui32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", outputFusionInterface = ["output_0_fn"]}
-
-
-  %3 = mogg.kernel (%1, %2) : (%arg1: !mo.tensor<[10], ui32>, %arg2: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
-    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
-    mogg.lambda @input_0_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.call "simd_load"(%arg1, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
-      mogg.output %6 : !mogg.simd<ui32>
-    }
-    mogg.lambda @input_1_fn = (%arg3: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.call "simd_load"(%arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
-      mogg.output %6 : !mogg.simd<ui32>
-    }
-    mogg.lambda @output_0_fn = (%arg3: !mogg.indices, %arg4: !mogg.simd<ui32>){
-      mogg.call "simd_store"(%5, %arg3, %arg4) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.lambda @elemwise_compute_lambda = (%arg3: !mogg.indices){
-      %6 = mogg.invoke @input_0_fn(%arg3) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
-      %7 = mogg.invoke @input_1_fn(%arg3) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
-      %8 = mogg.call "mo.mul"(%6, %7) : !mogg.simd<ui32>, !mogg.simd<ui32> -> !mogg.simd<ui32>
-      mogg.invoke @output_0_fn(%arg3, %8) : !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
-    mogg.output %5 : !mo.tensor<[10], ui32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_1_fn"], outputFusionInterface = ["output_0_fn"]}
-
-
-  %4 = mogg.kernel (%3) : (%arg1: !mo.tensor<[10], ui32>) -> !mo.tensor<[10], ui32>{
-    %5 = mogg.output_placeholders : !mo.tensor<[10], ui32>
-    mogg.lambda @input_0_fn = (%arg2: !mogg.indices) -> !mogg.simd<ui32>{
-      %6 = mogg.call "simd_load"(%arg1, %arg2) : !mo.tensor<[10], ui32>, !mogg.indices -> !mogg.simd<ui32>
-      mogg.output %6 : !mogg.simd<ui32>
-    }
-    mogg.lambda @output_0_fn = (%arg2: !mogg.indices, %arg3: !mogg.simd<ui32>){
-      mogg.call "simd_store"(%5, %arg2, %arg3) : !mo.tensor<[10], ui32>, !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.lambda @elemwise_compute_lambda = (%arg2: !mogg.indices){
-      %6 = mogg.invoke @input_0_fn(%arg2) {readOnly = true} : !mogg.indices -> !mogg.simd<ui32>
-      %7 = mogg.call "mo.relu"(%6) : !mogg.simd<ui32> -> !mogg.simd<ui32>
-      mogg.invoke @output_0_fn(%arg2, %7) : !mogg.indices, !mogg.simd<ui32>
-      mogg.output
-    }
-    mogg.call "elementwise" [@elemwise_compute_lambda](%5) {single_thread_blocking_override = false} : !mo.tensor<[10], ui32>
-    mogg.output %5 : !mo.tensor<[10], ui32>
-  } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn"], outputFusionInterface = ["output_0_fn"]}
-
-  mo.output %4 : !mo.tensor<[10], ui32>
+mo.graph @withDuplicationOfCompute() -> (!mo.tensor<[5], f32, gpu:0>,!mo.tensor<[5], f32, gpu:0>) {
+  %0 = mo.constant {value = #M.dense_array<-1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00, 5.000000e+00> : tensor<5xf32>} : !mo.tensor<[5], f32, gpu:0>
+  %1 = mo.constant {value = #M.dense_array<3.000000e+00, 1.000000e+00, -6.000000e+00, 2.000000e+00, 5.000000e+00> : tensor<5xf32>} : !mo.tensor<[5], f32, gpu:0>
+  %2 = mo.add(%0, %1) : !mo.tensor<[5], f32, gpu:0>
+  %3 = mo.tanh(%2) : !mo.tensor<[5], f32, gpu:0>
+  %4 = mo.relu(%2) : !mo.tensor<[5], f32, gpu:0>
+  mo.output %3, %4 : !mo.tensor<[5], f32, gpu:0>, !mo.tensor<[5], f32, gpu:0>
 }
 
-// CHECK-LABEL: mo.graph @missingInputFusionInterface
-// CHECK: %[[OUT:.*]] = mogg.kernel
-// CHECK: mogg.lambda @elemwise_compute_lambda
-// CHECK-NEXT: mogg.invoke @input_0_fn
-// CHECK-NEXT: mogg.call "mo.exp"
-// CHECK-NEXT: mogg.invoke @output_0_fn
-// CHECK-NEXT: mogg.output
-
-// CHECK: mogg.kernel (%[[OUT]])
-// CHECK: mogg.lambda @elemwise_compute_lambda
-// CHECK-NEXT: mogg.invoke @input
-// CHECK-NEXT: mogg.call "mo.relu"
-// CHECK-NEXT: mogg.call "simd_load"
-// CHECK-NEXT: mogg.call "mo.exp"
-// CHECK-NEXT: mogg.call "mo.mul"
-// CHECK-NEXT: mogg.call "mo.relu"
-// CHECK-NEXT: mogg.invoke @output_0_fn
-// CHECK-NEXT: mogg.output
-
-
-// Check the broadcast at the end doesn't mess with the fusion graph identification.
-mo.graph @with_bcasts(%arg0 : !mo.tensor<[], si32>) -> !mo.tensor<[500, 5, 4], si32>  {
-  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20> : tensor<20xsi32>} : !mo.tensor<[4, 5], si32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %trans = mo.transpose(%0, %perm) : (!mo.tensor<[4, 5], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, 4], si32>
-  %bcast = mo.static.broadcast_to(%arg0) : !mo.tensor<[], si32> -> !mo.tensor<[5, 4], si32>
-  %add = mo.add(%bcast, %trans) : !mo.tensor<[5, 4], si32>
-  %relu = mo.relu(%add) : !mo.tensor<[5, 4], si32>
-  %mul = mo.mul(%relu, %relu) : !mo.tensor<[5, 4], si32>
-  %B = mo.static.broadcast_to(%mul) : !mo.tensor<[5, 4], si32> -> !mo.tensor<[500, 5, 4], si32>
-  mo.output %B : !mo.tensor<[500, 5, 4], si32>
-}
-
-// CHECK-LABEL: mo.graph @with_bcasts
-
-// CHECK: mogg.kernel
-// CHECK: mogg.call "mo.transpose"
-// CHECK: mogg.kernel
-// CHECK: mogg.call "mo.static.broadcast_to"
-
-// CHECK: mogg.kernel
-// CHECK: mogg.lambda @elemwise_compute_lambda
-// CHECK-NEXT: mogg.invoke @input_0_fn
-// CHECK-NEXT: mogg.invoke @input_1_fn
-// CHECK-NEXT: mogg.call "mo.add"
-// CHECK-NEXT: mogg.call "mo.relu"
-// CHECK-NEXT: mogg.call "mo.mul"
-
-// CHECK: mogg.kernel
-// CHECK: mogg.call "mo.static.broadcast_to"
-
-mo.graph @controlFlow(%arg0: !mo.tensor<[4, 3], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[4, 3], f32>) {
-  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[4, 3], f32> {
-    %1 = mo.mul(%arg0, %arg0) : !mo.tensor<[4, 3], f32>
-    %2 = mo.mul(%1, %1) : !mo.tensor<[4, 3], f32>
-    mo.yield %2 : !mo.tensor<[4, 3], f32>
-  } else {
-    mo.yield %arg0 : !mo.tensor<[4, 3], f32>
-  }
-  mo.output %0 : !mo.tensor<[4, 3], f32>
-}
-
-// CHECK-LABEL: @controlFlow
-// CHECK-NEXT:  mo.if
-// CHECK-NEXT:  mogg.kernel
-// CHECK:       mo.mul
-// CHECK-NEXT:  mo.mul
-
-mo.graph @duplication(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>) {
-  %0 = mo.relu(%arg0) : !mo.tensor<[4, 3], f32>
-  %1 = mo.add(%0, %0) : !mo.tensor<[4, 3], f32>
-  %2 = mo.add(%0, %0) : !mo.tensor<[4, 3], f32>
-  mo.output %1, %2 : !mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>
-}
-
-// CHECK-LABEL: @duplication
-// CHECK:         mogg.kernel
-// CHECK:         mogg.kernel
-// CHECK:         mogg.kernel
-// CHECK-NOT:     mogg.kernel
+// CHECK-LABEL: mo.graph @withDuplicationOfCompute
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.add"]
+// CHECK-NEXT: mogg.call.outlined["mo.tanh"]
+// CHECK: mogg.experimental.kernel
+// CHECK: mogg.call.outlined["mo.add"]
+// CHECK-NEXT: mogg.call.outlined["mo.relu"]
+// CHECK-NOT: mogg.experimental.kernel

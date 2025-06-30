@@ -18,8 +18,11 @@
 
 namespace M::MOGG {
 
+using BooleanFunctionOnOperation =
+    const std::function<bool(mlir::Operation *)> &;
+
 /// Eligibility is defined as ops that should be considered fusible.
-using EligibilityFunction = const std::function<bool(mlir::Operation *)> &;
+using EligibilityFunction = BooleanFunctionOnOperation;
 
 /// Comparability means that the operations are eligible but we should still
 /// see if they can be fused together (ex: same device, fusion interfaces, etc).
@@ -29,8 +32,10 @@ using CompatibilityFunction =
 // If an operation matters when preserving parallelism (computationally
 // significant) aka is this operation computationally heavy so we should care
 // about how it ends up being scheduled.
-using ComputationallySignificantFunction =
-    const std::function<bool(mlir::Operation *)> &;
+using ComputationallySignificantFunction = BooleanFunctionOnOperation;
+
+/// If an operation can be duplicated during sequence fusion.
+using CanDuplicate = BooleanFunctionOnOperation;
 
 using FusionSubGraphs = llvm::SmallVector<llvm::SmallVector<mlir::Operation *>>;
 
@@ -63,7 +68,7 @@ FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
 FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
     EligibilityFunction isEligible, CompatibilityFunction areCompatible,
-    bool allowDuplication,
+    CanDuplicate canDuplicate,
     uint64_t maximumFusionSetSize = std::numeric_limits<uint64_t>::max());
 
 } // namespace M::MOGG
