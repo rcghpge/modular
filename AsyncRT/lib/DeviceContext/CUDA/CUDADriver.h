@@ -806,6 +806,7 @@ private:
   // Shared library name for the CUDA driver.
   static const char lib_name[];
   static const char lib_nvptx_name[];
+  static const char lib_nvml_name[];
 
   // Once created, the CUDADriver object cannot be deleted.
   CUDADriver() = default;

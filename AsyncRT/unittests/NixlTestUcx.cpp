@@ -4,7 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/NIXL/nixl.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
+#include "AsyncRT/unittests/TestUtils.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -25,6 +29,7 @@ std::ostream &operator<<(std::ostream &os, nixl_status_t status) {
 } // namespace M::AsyncRT::NIXL
 
 using namespace M;
+using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
 
 // Make a NIXL call and assert that the status is NIXL_SUCCESS.
@@ -179,6 +184,15 @@ TEST_F(NixlUcxIntegrationTest, DramTransfer) {
   // This is incredibly helpful to leave enabled by default.
   // If a test passes locally but fails in CI, it lets us see logs in CI.
   setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Instantiating NIXL loads the UCX backend. Currently the only UCX backend
+  // we have is the one that has CUDA enabled. This plugin's shared object
+  // assumes that symbols from libcuda.so.1 and libnvidia-ml.so.1 (nvml) are
+  // available at runtime globally (w/ RTLD_GLOBAL). As such, we must ensure
+  // that we create a CUDA device context prior to instantiating a NIXL agent as
+  // loading of CUDA and NVML is done in the DeviceContext constructor.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
 
   // Create two NIXL agents on separate ports with 1KB host buffers
   size_t bufferSize = 1024;
