@@ -5029,6 +5029,18 @@ struct FoldNoOpScatterLikeOp : public OpInterfaceRewritePattern<ScatterLike> {
 } // namespace
 
 //===----------------------------------------------------------------------===//
+// MO_MatmulAllReduceOp
+//===----------------------------------------------------------------------===//
+
+void MatmulAllReduceOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

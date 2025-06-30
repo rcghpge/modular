@@ -34,7 +34,8 @@ template <typename KernelTy>
 static bool containsDistributedOp(KernelTy kernel) {
   StringRef summary = kernel.getSummaryAttr().strref();
   return (summary.contains(MO::AllGatherOp::getOperationName()) ||
-          summary.contains(MO::AllReduceSumOp::getOperationName()));
+          summary.contains(MO::AllReduceSumOp::getOperationName()) ||
+          summary.contains(MO::MatmulAllReduceOp::getOperationName()));
 }
 
 template <typename KernelTy>

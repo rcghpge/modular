@@ -5344,6 +5344,34 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
   );
 }
 
+def MO_MatmulAllReduceOp : MO_DistributedOp<"distributed.matmul_allreduce", [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_HasDeviceInterface,
+  MO_SameVariadicOperandSize
+]> {
+  let summary = "Split + overlap Matmul + Allreduce sum";
+  let description = [{
+    Execute a multi-gpu Matmul + AllReduce.
+    This op encode multiple GPU kernels.
+    This needs to be a single op to handle kernel overlap / PDL correctly.
+    Mega kernel that execute a multi-gpu Matmul + AllReduce.
+    The computation is potentially split on the row / col axis
+    (For H100+ and large enough dimensions).
+    This way we can overlap some of the operations that are independent.
+  }];
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Tensor>:$weights,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Chain:$inChain
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputs,
+    MO_Chain:$outChain
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//
