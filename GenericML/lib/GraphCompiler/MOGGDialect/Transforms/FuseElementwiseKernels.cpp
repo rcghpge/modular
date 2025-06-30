@@ -257,10 +257,6 @@ struct FuseElementwisePass
   using FuseElementwiseBase::FuseElementwiseBase;
 
   FuseElementwisePass() = default;
-  FuseElementwisePass(const FuseElementwisePass &pass) {}
-
-  Statistic numberOfFusedKernels{this, "numberOfFusedKernels",
-                                 "Number of fused kernels"};
 
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();

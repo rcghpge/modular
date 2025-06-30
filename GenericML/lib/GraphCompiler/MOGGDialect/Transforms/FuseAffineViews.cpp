@@ -38,13 +38,7 @@ namespace {
 // handled in the pass) is "affine".
 struct FuseAffineViewsPass
     : public impl::FuseAffineViewsBase<FuseAffineViewsPass> {
-  using FuseAffineViewsBase::FuseAffineViewsBase;
-
   FuseAffineViewsPass() = default;
-  FuseAffineViewsPass(const FuseAffineViewsPass &pass) {}
-
-  Statistic numberOfFusedViews{this, "numberOfFusedViews",
-                               "Number of fused views"};
 
   static inline bool isFusibleNonElementwise(ExpKernelOp kernel) {
     // Cannot be elementwise kernel, that is fused differently.

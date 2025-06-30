@@ -76,13 +76,6 @@ struct FuseProloguesEpilogues
   using FuseProloguesEpiloguesBase::FuseProloguesEpiloguesBase;
 
   FuseProloguesEpilogues() = default;
-  FuseProloguesEpilogues(const FuseProloguesEpilogues &pass) {}
-
-  Statistic numberOfFusedPrologues{this, "numberOfFusedPrologues",
-                                   "Number of fused input elementwise kernels"};
-  Statistic numberOfFusedEpilogues{
-      this, "numberOfFusedEpilogues",
-      "Number of fused output elementwise kernels"};
 
   template <typename... ExcludedOpTy, typename OperationIter>
   static void moveBeforeExcept(Operation *dst,

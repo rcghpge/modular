@@ -107,6 +107,10 @@ def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
     "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
   ];
+
+  let statistics = [
+    Statistic<"numberOfFusedViews", "# of fused views", "Number of fused views">
+  ];
 }
 
 def FuseAffineViews: Pass<"fuse-affine-views", "MO::GraphOp"> {
@@ -117,6 +121,9 @@ def FuseAffineViews: Pass<"fuse-affine-views", "MO::GraphOp"> {
     elementwise lambdas.
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
+  let statistics = [
+    Statistic<"numberOfFusedViews", "# of fused views", "Number of fused views">
+  ];
 }
 
 def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {
@@ -155,6 +162,9 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
            "bool", /*default=*/"false",
            "Prints the connected elementwise graph we traverse to find fusions.">,
   ];
+  let statistics = [
+    Statistic<"numberOfFusedKernels", "# of fused kernels", "Number of fused kernels">
+  ];
 }
 
 def FuseProloguesEpilogues: Pass<"fuse-prologues-epilogues", "MO::GraphOp"> {
@@ -177,6 +187,11 @@ def FuseProloguesEpilogues: Pass<"fuse-prologues-epilogues", "MO::GraphOp"> {
     "mlir::NVVM::NVVMDialect",
     "mlir::ROCDL::ROCDLDialect",
     "mlir::index::IndexDialect",
+  ];
+
+  let statistics = [
+    Statistic<"numberOfFusedEpilogues", "# of fused epiloges", "Number of fused epiloges">,
+    Statistic<"numberOfFusedPrologues", "# of fused prologues", "Number of fused prologues">
   ];
 }
 

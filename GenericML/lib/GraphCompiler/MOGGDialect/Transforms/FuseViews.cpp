@@ -83,13 +83,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
   using FuseViewsBase::FuseViewsBase;
 
   FuseViewsPass() = default;
-  FuseViewsPass(const FuseViewsPass &pass) {}
-
-  Statistic numberOfFusedViews{this, "numberOfFusedViews",
-                               "Number of fused views"};
   void runOnOperationImpl(MO::GraphOp graph, MLIRContext *ctx,
                           bool fuseReshape) {
-
     graph.walk([&](MOGG::ExpKernelOp op) {
       // We never fusion other kernel into reshapes since reshape requires a
       // contiguous buffer.
