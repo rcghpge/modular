@@ -482,7 +482,7 @@ MojoLibraryAnalysis::~MojoLibraryAnalysis() {
 
 FailureOr<std::string> MojoLibraryAnalysis::getMojoBindingsHash() const {
   if (kgenModuleHash.empty()) {
-    FailureOr<std::string> hash = getBytecodeHash(getMojoBindings());
+    FailureOr<std::string> hash = getModuleBytecodeHash(getMojoBindings());
 
     if (failed(hash))
       return failure();
