@@ -252,3 +252,96 @@ TEST_F(NixlUcxIntegrationTest, DramTransfer) {
         << "Data after destination range was modified";
   }
 }
+
+TEST_F(NixlUcxIntegrationTest, VramTransfer) {
+  // Create two NIXL agents on separate ports and separate GPU devices with 1KB
+  // device buffers
+  const size_t bufferSize = 1024;
+  const char srcValue = 'S';
+  const char initialDstValue = 'D';
+
+  // Check there there are at least two GPUs with CUDA
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  ASSERT_GE(numDevices, 2) << "Need at least two GPUs with CUDA";
+
+  // NOTE: needs CUDA API for now, will make generic later
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer1, ctx1->createBuffer(bufferSize));
+  EXPECT_NO_ERR(ctx1->enqueueSetMemory(*deviceBuffer1, srcValue, sizeof(char)));
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx2,
+                DeviceContext::create(Device::cudaAPI, 1));
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer2, ctx2->createBuffer(bufferSize));
+  EXPECT_NO_ERR(
+      ctx2->enqueueSetMemory(*deviceBuffer2, initialDstValue, sizeof(char)));
+
+  // Initialize the NIXL agents
+  DeviceContextScope ctx1Scope(*ctx1);
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Ucx1", 8037, "ucx");
+  nixl1.registerMemory(
+      nixl_mem_t::VRAM_SEG,
+      nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer1->ptr()),
+                   bufferSize, 0, ""});
+
+  DeviceContextScope ctx2Scope(*ctx2);
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Ucx2", 8042, "ucx");
+  nixl2.registerMemory(
+      nixl_mem_t::VRAM_SEG,
+      nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer2->ptr()),
+                   bufferSize, 1, ""});
+
+  EXPECT_NO_ERR(ctx1->synchronize());
+  EXPECT_NO_ERR(ctx2->synchronize());
+
+  exchangeMetadata(nixl1, nixl2);
+
+  // Prepare buffers for transfer
+  size_t transferSize = bufferSize / 2;
+  size_t srcOffset = 0;
+  size_t dstOffset = bufferSize / 4; // Arbitrary offset
+
+  // === Prepare Transfer Descriptors ===
+  nixl_xfer_dlist_t regSrcDescs(nixl_mem_t::VRAM_SEG);
+  regSrcDescs.addDesc(nixlBasicDesc{
+      reinterpret_cast<uintptr_t>(deviceBuffer1->ptr()) + srcOffset,
+      transferSize, 0});
+
+  nixl_xfer_dlist_t regDstDescs(nixl_mem_t::VRAM_SEG);
+  regDstDescs.addDesc(nixlBasicDesc{
+      reinterpret_cast<uintptr_t>(deviceBuffer2->ptr()) + dstOffset,
+      transferSize, 1});
+
+  transferData(nixl1, nixl2, regSrcDescs, regDstDescs);
+
+  // Verify transferred data
+  // Allocate host buffers for verification
+  std::vector<char> dramBuffer1(bufferSize);
+  std::vector<char> dramBuffer2(bufferSize);
+
+  // Copy data back from device to host for verification
+  EXPECT_NO_ERR(
+      ctx1->enqueueCopyFromDevice(dramBuffer1.data(), *deviceBuffer1));
+  EXPECT_NO_ERR(
+      ctx2->enqueueCopyFromDevice(dramBuffer2.data(), *deviceBuffer2));
+
+  // Synchronize to ensure copies are complete
+  EXPECT_NO_ERR(ctx1->synchronize());
+  EXPECT_NO_ERR(ctx2->synchronize());
+  ASSERT_EQ(std::memcmp(dramBuffer1.data() + srcOffset,
+                        dramBuffer2.data() + dstOffset, transferSize),
+            0)
+      << "Transferred data in dramBuffer2 does not match source in dramBuffer1";
+
+  // Check if data outside the destination range was untouched
+  if (dstOffset > 0) {
+    ASSERT_EQ(dramBuffer2[dstOffset - 1], initialDstValue)
+        << "Data before destination offset was modified";
+  }
+  if (dstOffset + transferSize < dramBuffer2.size()) {
+    ASSERT_EQ(dramBuffer2[dstOffset + transferSize], initialDstValue)
+        << "Data after destination range was modified";
+  }
+}
