@@ -150,9 +150,9 @@ immediately and 1 means `SECTION_BODY_ALIGNMENT` follows.
   SECTION_DATA ::= BYTE*
 ```
 
-The top level structure of the file is a two-byte "magic number" of `0xMEF0`
-and a list of sections. The `0xMEF0` magic number allows us to encode version
-numbers, for example the following would be `0xMEF1`.
+The top level structure of the file is a two-byte "magic number" of `0xBEF0`
+and a list of sections. The `0xBEF0` magic number allows us to encode version
+numbers, for example the following would be `0xBEF1`.
 
 The MEF reader skips over unknown sections, which could be useful for future
 evolution of the format, for example if we want to store extra metadata in the
