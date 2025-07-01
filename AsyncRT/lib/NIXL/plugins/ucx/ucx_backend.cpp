@@ -709,6 +709,11 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
                                       const std::string &remote_agent,
                                       nixlBackendReqH *&handle,
                                       const nixl_opt_b_args_t *opt_args) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   size_t lcnt = local.descCount();
   size_t rcnt = remote.descCount();
   size_t i;
@@ -768,6 +773,11 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
 }
 
 nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   nixlUcxBackendH *intHandle = (nixlUcxBackendH *)handle;
 
   return intHandle->status();
@@ -897,6 +907,11 @@ void nixlUcxEngine::notifProgress() {
 }
 
 nixl_status_t nixlUcxEngine::getNotifs(notif_list_t &notif_list) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   if (notif_list.size() != 0)
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
 
@@ -912,6 +927,11 @@ nixl_status_t nixlUcxEngine::getNotifs(notif_list_t &notif_list) {
 
 nixl_status_t nixlUcxEngine::genNotif(const std::string &remote_agent,
                                       const std::string &msg) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   nixl_status_t ret;
   nixlUcxReq req;
 
