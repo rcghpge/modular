@@ -4980,12 +4980,29 @@ LogicalResult AllGatherOp::verify() {
   // Checks input/output counts and that corresponding device types match.
   auto outputs = getOutputs();
   auto inputs = getInputs();
+  auto signalBuffers = getSignalBuffers();
+
+  // Check that number of signal buffers matches number of inputs
+  if (signalBuffers.size() != inputs.size())
+    return emitError(
+        llvm::formatv("number of signal buffers should match number of inputs. "
+                      "Expected {0} signal buffers but got {1}",
+                      inputs.size(), signalBuffers.size()));
+
   if (outputs.size() != inputs.size() * inputs.size())
     return emitError(llvm::formatv(
         "number of outputs should be num_inputs * num_inputs for all-gather. "
         "Expected {0} outputs but got {1} (num_inputs={2})",
         inputs.size() * inputs.size(), outputs.size(), inputs.size()));
   return success();
+}
+
+void AllGatherOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
 }
 
 LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
@@ -4995,6 +5012,7 @@ LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
   if (getInputs().size() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
+    results.push_back(getInChain());
     return success();
   }
   return failure();

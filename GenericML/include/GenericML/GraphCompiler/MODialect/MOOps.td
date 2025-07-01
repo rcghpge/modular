@@ -5325,7 +5325,10 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
 
 
 def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_HasDeviceInterface,
+  MO_SameVariadicOperandSize
 ]> {
   let summary = "AllGather across N devices (variadic).";
   let description = [{
@@ -5337,10 +5340,13 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
   // Variadic allgather has a folder since it can take 1 input.
   let hasFolder = 1;
   let arguments = (ins
-    Variadic<MO_Tensor>:$inputs
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Chain:$inChain
   );
   let results = (outs
-    Variadic<MO_Tensor>:$outputs
+    Variadic<MO_Tensor>:$outputs,
+    MO_Chain:$outChain
   );
 }
 
