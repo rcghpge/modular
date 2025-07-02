@@ -376,14 +376,32 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
   return bufOr.takeValue();
 }
 
-/// Lowers a module op to MGP, exports to MEF, and returns a raw pointer.
-static ErrorOr<Buffer *> convertMOToMEFRawPtr(ModuleOp moduleOp,
-                                              mlir::PassManager &moToMgpPasses,
-                                              bool enableMEFMetadata) {
-  auto outBufOr = convertMOToMEF(moduleOp, moToMgpPasses, enableMEFMetadata);
-  if (outBufOr.isError())
-    return outBufOr.takeError();
-  return outBufOr.takeValue().release();
+/// Lowers a module op to MGP then exports to MEF.
+static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
+                                         const MO::MoToMgpOptions &options,
+                                         bool enableMEFMetadata) {
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(options.kernelLibraryPaths);
+
+  auto libraryAnalysis = MOGG::MojoLibraryAnalysis::fromPaths(
+      moduleOp.getContext(), kernelLibraryPaths);
+  if (failed(libraryAnalysis))
+    return libraryAnalysis.takeError();
+
+  auto moToMgpPasses = mlir::PassManager::on<ModuleOp>(
+      moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
+  MO::buildMoToMgpPipeline(moToMgpPasses, options, libraryAnalysis.takeValue());
+
+  return convertMOToMEF(moduleOp, moToMgpPasses, enableMEFMetadata);
+}
+
+/// Get the textual key used to represent the compilation pipeline.
+static void getMOToMGPPipelineKey(llvm::raw_ostream &os, MLIRContext *ctx,
+                                  const MO::MoToMgpOptions &options) {
+  auto moToMgpPasses = mlir::PassManager::on<ModuleOp>(
+      ctx, mlir::OpPassManager::Nesting::Implicit);
+  MO::buildMoToMgpPipeline(moToMgpPasses, options);
+  moToMgpPasses.printAsTextualPipeline(os);
 }
 
 M::ErrorOr<M::Buffer *>
@@ -421,19 +439,6 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   mofLoweringOptions.setupContext(ctxHandle.maxContext.copy());
   bool enableMEFMetadata = mofContext->getEnableMEFMetadata();
 
-  auto moToMgpPasses = mlir::PassManager::on<ModuleOp>(
-      mlirCtx, mlir::OpPassManager::Nesting::Implicit);
-
-  auto kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(moToMgpOptions.kernelLibraryPaths);
-  if (auto libraryAnalysis =
-          MOGG::MojoLibraryAnalysis::fromPaths(mlirCtx, kernelLibraryPaths))
-    return libraryAnalysis.takeError();
-  else
-    // Build the MOToMGP pass pipeline and add instrumentation.
-    MO::buildMoToMgpPipeline(moToMgpPasses, moToMgpOptions,
-                             libraryAnalysis.takeValue());
-
   // Enable saving intermediate IR by setting `max.temps_dir` in modular.cfg.
   // Save MO IR pre mo-to-mgp.
   writeIntermediateFileIfRequested("mo", *moduleOp, /*options=*/nullptr,
@@ -443,7 +448,8 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   // Disable caching if set or we can't find any suitable location to cache.
   if (!isModelIRCacheEnabled() || !baseCacheDirOr)
-    return convertMOToMEFRawPtr(*moduleOp, moToMgpPasses, enableMEFMetadata);
+    return convertMOToMEF(*moduleOp, moToMgpOptions, enableMEFMetadata)
+        ->release();
 
   // Create the MEF cache filesystem backend.
   const std::filesystem::path &baseCacheDir = *baseCacheDirOr;
@@ -453,7 +459,8 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   if (mefBackendOr.isError()) {
     // We couldn't create a cache, so don't cache.
-    return convertMOToMEFRawPtr(*moduleOp, moToMgpPasses, enableMEFMetadata);
+    return convertMOToMEF(*moduleOp, moToMgpOptions, enableMEFMetadata)
+        ->release();
   }
 
   // Write the MAX Graph MEF cache key:
@@ -465,7 +472,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   WriteableBufferRef keyBuf = WriteableBuffer::get();
   mofLoweringOptions.print(*keyBuf);
   moToMgpOptions.print(*keyBuf);
-  moToMgpPasses.printAsTextualPipeline(*keyBuf);
+  getMOToMGPPipelineKey(*keyBuf, mlirCtx, moToMgpOptions);
   *keyBuf << M::MO::getGraphCompilerVersionString();
 
   // We also cache the flags passed to mojo for compilation.
@@ -532,7 +539,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
       {{"pipeline", "mof::M_compileToBinaryFromSource"}});
   onMissLambda(*moduleOp);
 
-  auto outBufOr = convertMOToMEF(*moduleOp, moToMgpPasses, enableMEFMetadata);
+  auto outBufOr = convertMOToMEF(*moduleOp, moToMgpOptions, enableMEFMetadata);
   if (outBufOr.isError())
     return outBufOr.takeError();
   BufferRef outputBuffer = outBufOr.takeValue();
@@ -603,8 +610,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
         return libraryAnalysis.takeError();
 
       GraphApiDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
-      if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions,
-                              libraryAnalysis.takeValue())))
+      if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions)))
         return Error(Twine("unable to lower MO to MGP") +
                      diagnostics.formatMessage());
       writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
