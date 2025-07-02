@@ -12,6 +12,10 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectRegistry.h"
 
+namespace M::MOGG {
+class MojoLibraryAnalysis;
+}
+
 namespace M::MO {
 
 /// Load dialects in Graph Compiler to the given registry.
@@ -23,8 +27,9 @@ void registerPasses();
 struct MoToMgpOptions;
 
 /// Compile a module at the MO dialect level down to the MGP level.
-LogicalResult lowerMOToMGP(ModuleOp module,
-                           const MoToMgpOptions &moToMgpOptions);
+LogicalResult lowerMOToMGP(
+    ModuleOp module, const MoToMgpOptions &moToMgpOptions,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
 
 /// Convert a module at the MGP level to a buffer in MEF format.
 /// Note, that this will destroy the dense resources in the MGP constants

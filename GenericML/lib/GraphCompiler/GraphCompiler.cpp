@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOQDialect/MOQDialect.h"
@@ -70,7 +71,10 @@ void M::MO::registerShapeInferencePipeline() {
 
 void M::MO::registerMoToMgpPipeline() {
   mlir::PassPipelineRegistration<MoToMgpOptions>(
-      "mo-to-mgp", "Lower MO to MGP.", buildMoToMgpPipeline);
+      "mo-to-mgp", "Lower MO to MGP.",
+      [](mlir::OpPassManager &pm, const MoToMgpOptions &opts) {
+        buildMoToMgpPipeline(pm, opts);
+      });
 }
 
 void M::MO::registerPasses() {
@@ -107,8 +111,9 @@ void M::MO::registerPasses() {
   mlir::registerViewOpGraphPass();
 }
 
-LogicalResult MO::lowerMOToMGP(ModuleOp module,
-                               const MoToMgpOptions &moToMgpOptions) {
+LogicalResult
+MO::lowerMOToMGP(ModuleOp module, const MoToMgpOptions &moToMgpOptions,
+                 std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
 
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
@@ -123,12 +128,13 @@ LogicalResult MO::lowerMOToMGP(ModuleOp module,
     }
   }
 
-  MO::buildMoToMgpPipeline(pm, moToMgpOptions);
+  MO::buildMoToMgpPipeline(pm, moToMgpOptions, std::move(libraryAnalysis));
   return pm.run(module);
 }
 
-void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
-                                 const MoToMgpOptions &opts) {
+void M::MO::buildMoToMgpPipeline(
+    mlir::OpPassManager &pm, const MoToMgpOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
@@ -188,7 +194,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
   pm.addPass(MO::createMergeDuplicateShapeMaterializations());
-  pm.addPass(MO::createAddFallbackShapeFunctions({kernelLibraryPaths}));
+  pm.addPass(MO::createAddFallbackShapeFunctions({kernelLibraryPaths},
+                                                 libraryAnalysis));
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -239,7 +246,8 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync}));
+  pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
+                                libraryAnalysis));
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   // Fuse connected elementwise kernels.
@@ -261,12 +269,14 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   }
 
   // Convert output lambdas to compute output lambdas when possible.
-  pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync}));
+  pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync},
+                                    libraryAnalysis));
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   // Convert output lambdas to compute output lambdas whn possible.
   if (opts.enableComputeLambdas) {
-    pm.addPass(MOGG::createGenerateComputeLambdas({kernelLibraryPaths}));
+    pm.addPass(MOGG::createGenerateComputeLambdas({kernelLibraryPaths},
+                                                  libraryAnalysis));
   }
 
   // Fuse constants last as they don't enable any extra fusions directly and
@@ -314,7 +324,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MGP::HoistHarnessOptions harnessOpts;
   harnessOpts.kernelLibraryPaths = kernelLibraryPaths;
   harnessOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  pm.addPass(MGP::createHoistHarness(harnessOpts));
+  pm.addPass(MGP::createHoistHarness(harnessOpts, libraryAnalysis));
 
   // Before any sort of fusion, use location information to create better
   // runtime assert messages.
@@ -325,7 +335,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
 
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
-  pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
+  pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts, libraryAnalysis));
   pm.addPass(MGP::createFuseGenericCompiledRegions());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -352,7 +362,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   // Lower async pack/unpack intrinsic.
   MGP::LowerAsyncRefsOptions lowerAsyncopt;
   lowerAsyncopt.kernelLibraryPaths = kernelLibraryPaths;
-  pm.addPass(MGP::createLowerAsyncRefs(lowerAsyncopt));
+  pm.addPass(MGP::createLowerAsyncRefs(lowerAsyncopt, libraryAnalysis));
   pm.addPass(MGP::createCoalesceAsyncRefs());
 
   // If we are jitting then we need to compile the jit kernels as well.
@@ -364,7 +374,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
   jitOpts.debugKGENStubs = opts.debugKGENStubs;
 
-  pm.addPass(MOGG::createJitCompileKernels(jitOpts));
+  pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());

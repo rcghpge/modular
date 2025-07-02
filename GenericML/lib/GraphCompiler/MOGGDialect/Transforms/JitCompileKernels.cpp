@@ -38,23 +38,20 @@ namespace M::MOGG {
 namespace {
 
 // Convert all possible operations directly to the available operation.
-struct JitCompileKernels
-    : public impl::JitCompileKernelsBase<JitCompileKernels> {
-  using JitCompileKernelsBase::JitCompileKernelsBase;
+struct JitCompileKernels : public MojoLibraryAnalysisPass<
+                               impl::JitCompileKernelsBase<JitCompileKernels>> {
+  using Base::Base;
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    MLIRContext *ctx = &getContext();
 
     KGEN::CompilerTimeTraceScope traceScope("jit-compile-kernels",
                                             module->getName().getStringRef());
 
-    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(ctx, kernelLibraryPaths);
-    if (errOr.isError())
+    auto analysisOr = getLibraryAnalysis();
+    if (analysisOr.isError())
       return signalPassFailure();
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
 
     for (auto model : module.getOps<MGP::ModelOp>()) {
       if (CompileDiagnosticOrSuccess errOr =
@@ -92,3 +89,9 @@ struct JitCompileKernels
 } // namespace
 
 } // namespace M::MOGG
+
+std::unique_ptr<mlir::Pass> M::MOGG::createJitCompileKernels(
+    const JitCompileKernelsOptions &opts,
+    std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis) {
+  return std::make_unique<JitCompileKernels>(opts, std::move(libraryAnalysis));
+}

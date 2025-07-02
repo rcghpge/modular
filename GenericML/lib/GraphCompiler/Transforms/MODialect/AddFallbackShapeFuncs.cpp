@@ -14,6 +14,7 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
 #include <numeric>
 
@@ -140,37 +141,14 @@ NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 //===----------------------------------------------------------------------===//
 
 struct AddFallbackShapeFunctions
-    : public impl::AddFallbackShapeFunctionsBase<AddFallbackShapeFunctions> {
-
-  AddFallbackShapeFunctions() : AddFallbackShapeFunctionsBase() {}
-
-  AddFallbackShapeFunctions(const AddFallbackShapeFunctionsOptions &opts)
-      : AddFallbackShapeFunctionsBase(opts) {}
+    : public MOGG::MojoLibraryAnalysisPass<
+          impl::AddFallbackShapeFunctionsBase<AddFallbackShapeFunctions>> {
+  using Base::Base;
 
   void runOnOperation() override {
     MO::GraphOp graph = getOperation();
     MLIRContext *ctx = graph.getContext();
     OpBuilder builder{ctx};
-
-    MOGG::MojoLibraryAnalysis *cachedAnalysis = nullptr;
-
-    // This pass actually only needs to touch the analysis for custom ops, most
-    // ops don't use it.
-    auto getLazyAnalysis = [&]() -> MOGG::MojoLibraryAnalysis * {
-      if (cachedAnalysis)
-        return cachedAnalysis;
-
-      auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-      ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-          analysis.initIfNeeded(ctx, kernelLibraryPaths);
-      if (errOr.isError())
-        return nullptr;
-      cachedAnalysis = errOr.takeValue();
-      return cachedAnalysis;
-    };
-
-    // We will never modify the state.
-    markAnalysesPreserved<MOGG::LoadMojoAnalysisPass>();
 
     WalkResult result = graph.walk([&](ParamDeclarationInterface op) {
       // Shape function was already materialized or never needed.
@@ -232,9 +210,11 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::TileOp)
 
       if (auto asOp = dyn_cast<MO::CustomOp>(op.getOperation())) {
-        MOGG::MojoLibraryAnalysis *analysis = getLazyAnalysis();
-        if (!analysis)
-          signalPassFailure();
+        auto analysisOr = getLibraryAnalysis();
+        if (analysisOr.isError())
+          return WalkResult::interrupt();
+
+        auto analysis = analysisOr.takeValue();
 
         auto mojoKernel =
             analysis->getRegisteredMojoKernelFor(asOp.getSymbol());
@@ -824,10 +804,16 @@ ErrorOrSuccess Fallback<MO::TileOp>::build(GraphOp &graph, OpBuilder &builder,
   return success();
 }
 
+#undef HAS_FALLBACK
+#undef NEEDS_NO_FALLBACK
+#undef CALL_FALLBACK
+
 } // namespace
 
 } // namespace M::MO
 
-#undef HAS_FALLBACK
-#undef NEEDS_NO_FALLBACK
-#undef CALL_FALLBACK
+std::unique_ptr<mlir::Pass> M::MO::createAddFallbackShapeFunctions(
+    const M::MO::AddFallbackShapeFunctionsOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> analysis) {
+  return std::make_unique<AddFallbackShapeFunctions>(opts, std::move(analysis));
+}

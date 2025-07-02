@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --mogg-to-kgen --canonicalize --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --mogg-to-kgen=kernel-library-paths="%kernel_api_test_lib" --canonicalize --fuse-mutable-loads %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>

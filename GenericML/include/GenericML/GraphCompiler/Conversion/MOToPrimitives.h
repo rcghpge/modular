@@ -46,4 +46,20 @@ namespace M::MGP {
 
 } // namespace M::MGP
 
+namespace M::MOGG {
+class MojoLibraryAnalysis;
+} // namespace M::MOGG
+
+namespace M::MGP {
+
+std::unique_ptr<mlir::Pass> createLowerPrimitives(
+    const LowerPrimitivesOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
+
+std::unique_ptr<mlir::Pass> createLowerAsyncRefs(
+    const LowerAsyncRefsOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
+
+} // namespace M::MGP
+
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H

@@ -62,6 +62,16 @@ inline std::string buildTypeString(KernelBuildType bt) {
 #define GEN_PASS_REGISTRATION
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
+class MojoLibraryAnalysis;
+
+std::unique_ptr<mlir::Pass> createGenerateComputeLambdas(
+    const GenerateComputeLambdasOptions &opts,
+    std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
+
+std::unique_ptr<mlir::Pass>
+createJitCompileKernels(const JitCompileKernelsOptions &opts,
+                        std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_TRANSFORMS_MOGGPASSES_H

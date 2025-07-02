@@ -144,6 +144,9 @@ public:
   /// Verify the parameters attached to the MO custom operation.
   ErrorOrSuccess validateCustomOpParameters(MO::CustomOp customOp) const;
 
+  static ErrorOr<std::shared_ptr<MojoLibraryAnalysis>>
+  fromPaths(MLIRContext *ctx, ArrayRef<std::string> paths);
+
 private:
   /// Get the iterator range of the mojo kernels.
   auto getRawMojoKernels() { return module.getOps<KGEN::GeneratorOp>(); }
@@ -168,10 +171,6 @@ private:
   /// Load and process kernels from an MLIR buffer.
   ErrorOr<ModuleOp> loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
                                     const Twine &diag);
-
-  /// Materialize the specified mojo kernel. It does nothing if the kernel has
-  /// been materialized.
-  LogicalResult ready(KGEN::GeneratorOp gen);
 
   KGEN::GeneratorOp foreachKernel;
   KGEN::GeneratorOp viewMaterializeKernel;
@@ -217,31 +216,63 @@ private:
   mutable std::string kgenModuleHash;
 };
 
-/// An analysis "pass" for our passes to use to share the loaded library state.
-struct LoadMojoAnalysisPass {
-  LoadMojoAnalysisPass(Operation *op) : analysis(nullptr) {}
+/// A Pass mixin which supplements an MLIR pass with an optional
+/// MojoLibraryAnalysis.
+template <typename PassBaseT>
+class MojoLibraryAnalysisPass : public PassBaseT {
+public:
+  using Base = MojoLibraryAnalysisPass<PassBaseT>;
 
-  /// Aggressively assume it is valid so the passes don't force a load each time
-  /// even when they don't touch it.
-  bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses &) {
-    return false;
-  }
+  MojoLibraryAnalysisPass() = default;
 
-  ErrorOr<MojoLibraryAnalysis *>
-  initIfNeeded(MLIRContext *ctx, ArrayRef<std::string> kernelLibraryPaths) {
-    // Reuse the library if it exists.
-    if (analysis)
-      return analysis.get();
-    analysis = std::make_unique<MojoLibraryAnalysis>(ctx);
-    auto loadError = analysis->init(kernelLibraryPaths);
-    if (loadError.isError()) {
-      analysis = nullptr;
-      return loadError.takeError();
+  MojoLibraryAnalysisPass(std::shared_ptr<MojoLibraryAnalysis> analysis)
+      : PassBaseT(), mojoLibraryAnalysis(std::move(analysis)), status() {}
+
+  template <typename PassOptions>
+  MojoLibraryAnalysisPass(PassOptions args)
+      : PassBaseT(std::move(args)), mojoLibraryAnalysis(nullptr), status() {}
+
+  template <typename PassOptions>
+  MojoLibraryAnalysisPass(PassOptions args,
+                          std::shared_ptr<MojoLibraryAnalysis> analysis)
+      : PassBaseT(std::move(args)), mojoLibraryAnalysis(std::move(analysis)),
+        status() {}
+
+  MojoLibraryAnalysisPass(const MojoLibraryAnalysisPass &other)
+      : PassBaseT(other), mojoLibraryAnalysis(other.mojoLibraryAnalysis),
+        status(other.status.isError() ? other.status.copy().takeError()
+                                      : ErrorOrSuccess()) {}
+
+  MojoLibraryAnalysisPass(MojoLibraryAnalysisPass &&other) = default;
+  ~MojoLibraryAnalysisPass() = default;
+
+  ErrorOr<MOGG::MojoLibraryAnalysis *> getLibraryAnalysis() {
+    if (status.isError())
+      return status.copy().takeError();
+
+    if (!mojoLibraryAnalysis) {
+      auto libraryPaths =
+          llvm::to_vector_of<std::string>(this->kernelLibraryPaths);
+
+      MLIRContext &ctx = this->getContext();
+
+      mojoLibraryAnalysis = std::make_shared<MOGG::MojoLibraryAnalysis>(&ctx);
+      status = mojoLibraryAnalysis->init(libraryPaths);
+
+      if (status.isError()) {
+        mojoLibraryAnalysis = nullptr;
+        return status.copy().takeError();
+      }
     }
-    return analysis.get();
+
+    assert(mojoLibraryAnalysis != nullptr);
+    return mojoLibraryAnalysis.get();
   }
 
-  std::shared_ptr<MojoLibraryAnalysis> analysis;
+protected:
+  /// The loaded analysis
+  std::shared_ptr<MOGG::MojoLibraryAnalysis> mojoLibraryAnalysis = nullptr;
+  ErrorOrSuccess status;
 };
 
 } // namespace M::MOGG

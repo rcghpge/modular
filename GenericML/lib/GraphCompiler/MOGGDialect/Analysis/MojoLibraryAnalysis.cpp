@@ -658,3 +658,12 @@ MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
 
   return success();
 }
+
+ErrorOr<std::shared_ptr<MojoLibraryAnalysis>>
+M::MOGG::MojoLibraryAnalysis::fromPaths(MLIRContext *ctx,
+                                        ArrayRef<std::string> paths) {
+  auto result = std::make_shared<MOGG::MojoLibraryAnalysis>(ctx);
+  if (auto status = result->init(paths))
+    return status.takeError();
+  return result;
+}

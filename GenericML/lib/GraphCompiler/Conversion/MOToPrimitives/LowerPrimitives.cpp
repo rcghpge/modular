@@ -46,8 +46,9 @@ using CompiledRegionBodyBuilder =
     llvm::function_ref<ErrorOr<SmallVector<Value>>(OpBuilder &, Location,
                                                    Operation *, ValueRange)>;
 struct LowerPrimitivesPass
-    : public MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass> {
-  using LowerPrimitivesBase::LowerPrimitivesBase;
+    : public MOGG::MojoLibraryAnalysisPass<
+          MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass>> {
+  using Base::Base;
 
   void runOnOperation() override;
 };
@@ -360,12 +361,10 @@ void LowerPrimitivesPass::runOnOperation() {
   ModuleOp mod = getOperation();
   MLIRContext *ctx = mod->getContext();
 
-  auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-  ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-      analysis.initIfNeeded(ctx, kernelLibraryPaths);
-  if (errOr.isError())
+  auto analysisOr = getLibraryAnalysis();
+  if (analysisOr.isError())
     return signalPassFailure();
-  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
 
   auto moggCallBodyBuilder =
       [&mojoLibraryAnalysis](OpBuilder &builder, Location loc, Operation *op,
@@ -491,3 +490,10 @@ void LowerPrimitivesPass::runOnOperation() {
 } // namespace
 
 } // namespace M::MGP
+
+std::unique_ptr<mlir::Pass> M::MGP::createLowerPrimitives(
+    const LowerPrimitivesOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+  return std::make_unique<LowerPrimitivesPass>(opts,
+                                               std::move(libraryAnalysis));
+}

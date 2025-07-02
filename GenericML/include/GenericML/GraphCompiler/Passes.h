@@ -12,6 +12,10 @@
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/PassOptions.h"
 
+namespace M::MOGG {
+class MojoLibraryAnalysis;
+};
+
 namespace M::MO {
 
 /// Collects mlir options which influence buildMoToMgpPipeline.
@@ -207,7 +211,9 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
 void registerMoToMgpPipeline();
 
 /// Creates the canonical MO-to-MGP pipeline for the given options.
-void buildMoToMgpPipeline(mlir::OpPassManager &pm, const MoToMgpOptions &opts);
+void buildMoToMgpPipeline(
+    mlir::OpPassManager &pm, const MoToMgpOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
 
 /// Registers the end-to-end shape inference pipeline for use by testing tools.
 void registerShapeInferencePipeline();

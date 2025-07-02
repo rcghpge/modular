@@ -19,6 +19,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "Support/AssertStream.h"
 #include "Support/ML/TensorShape.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -145,20 +146,19 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
   }
 }
 
-struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
-  using MOToMOGGBase::MOToMOGGBase;
+struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
+                          M::MO::impl::MOToMOGGBase<MOToMOGGPass>> {
+  using Base::Base;
 
   // Replaces almost all rebinds which do not operate with unknown shapes.
   // Returns whether we were successful.
   bool replaceMORebinds() {
     // Load mojo library analysis
-    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(&getContext(), kernelLibraryPaths);
-    if (errOr.isError()) {
+    auto analysisOr = getLibraryAnalysis();
+    if (analysisOr.isError()) {
       emitError(getOperation().getLoc(),
                 Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
-                    errOr.getError());
+                    analysisOr.getError());
       return false;
     }
 
@@ -197,16 +197,14 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
 
   bool lowerMOOpsToMOGG() {
     // Load mojo library analysis
-    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(&getContext(), kernelLibraryPaths);
-    if (errOr.isError()) {
+    auto analysisOr = getLibraryAnalysis();
+    if (analysisOr.isError()) {
       emitError(getOperation().getLoc(),
                 Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
-                    errOr.getError());
+                    analysisOr.getError());
       return false;
     }
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
+    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
 
     // Run MOGG lowering on any valid operation
     auto result = getOperation().walk([&](Operation *op) {
@@ -260,3 +258,9 @@ struct MOToMOGGPass : public M::MO::impl::MOToMOGGBase<MOToMOGGPass> {
 };
 
 } // namespace
+
+std::unique_ptr<Pass> M::MO::createMOToMOGG(
+    const MOToMOGGOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+  return std::make_unique<MOToMOGGPass>(opts, libraryAnalysis);
+}

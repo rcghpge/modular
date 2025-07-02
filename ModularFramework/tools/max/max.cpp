@@ -15,6 +15,7 @@
 #include "GenericML/Driver/DriverInputFormat.h"
 #include "GenericML/Driver/Utils.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/GraphCompiler/Version.h"
@@ -423,8 +424,15 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   auto moToMgpPasses = mlir::PassManager::on<ModuleOp>(
       mlirCtx, mlir::OpPassManager::Nesting::Implicit);
 
-  // Build the MOToMGP pass pipeline and add instrumentation.
-  MO::buildMoToMgpPipeline(moToMgpPasses, moToMgpOptions);
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(moToMgpOptions.kernelLibraryPaths);
+  if (auto libraryAnalysis =
+          MOGG::MojoLibraryAnalysis::fromPaths(mlirCtx, kernelLibraryPaths))
+    return libraryAnalysis.takeError();
+  else
+    // Build the MOToMGP pass pipeline and add instrumentation.
+    MO::buildMoToMgpPipeline(moToMgpPasses, moToMgpOptions,
+                             libraryAnalysis.takeValue());
 
   // Enable saving intermediate IR by setting `max.temps_dir` in modular.cfg.
   // Save MO IR pre mo-to-mgp.
@@ -586,8 +594,17 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
 
       mofLoweringOptions.setupContext(compileCtx.context.copy());
 
+      auto kernelLibraryPaths =
+          llvm::to_vector_of<std::string>(moToMgpOptions.kernelLibraryPaths);
+
+      auto libraryAnalysis = MOGG::MojoLibraryAnalysis::fromPaths(
+          &compileCtx.mlirCtx, kernelLibraryPaths);
+      if (failed(libraryAnalysis))
+        return libraryAnalysis.takeError();
+
       GraphApiDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
-      if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions)))
+      if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions,
+                              libraryAnalysis.takeValue())))
         return Error(Twine("unable to lower MO to MGP") +
                      diagnostics.formatMessage());
       writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),

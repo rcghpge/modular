@@ -38,7 +38,7 @@ namespace {
 // handled in the pass) is "affine".
 struct FuseAffineViewsPass
     : public impl::FuseAffineViewsBase<FuseAffineViewsPass> {
-  FuseAffineViewsPass() = default;
+  using Base::Base;
 
   static inline bool isFusibleNonElementwise(ExpKernelOp kernel) {
     // Cannot be elementwise kernel, that is fused differently.
@@ -76,9 +76,7 @@ struct FuseAffineViewsPass
   // Support fusion for new-style kernels which go directly to KGEN ops
   template <typename ViewOp>
   void fuseViewOpDimKGEN(MOGG::ExpKernelOp kernel, ViewOp viewOpUser,
-                         Value result,
-                         MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                         TypeManager &typeManager) {
+                         Value result) {
     mlir::IRRewriter builder(kernel.getContext());
 
     // Save the old output placeholder and associated type
@@ -142,10 +140,8 @@ struct FuseAffineViewsPass
   }
 
   template <typename ViewOp>
-  void fuseViewOpDim(MOGG::ExpKernelOp kernel, ViewOp viewOp, Value result,
-                     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                     TypeManager &typeManager) {
-    fuseViewOpDimKGEN(kernel, viewOp, result, mojoLibraryAnalysis, typeManager);
+  void fuseViewOpDim(MOGG::ExpKernelOp kernel, ViewOp viewOp, Value result) {
+    fuseViewOpDimKGEN(kernel, viewOp, result);
 
     // construct the new summary string
     SmallVector<Operation *> ops{kernel, viewOp};
@@ -153,27 +149,6 @@ struct FuseAffineViewsPass
   }
 
   void runOnOperation() override {
-    // Initialize mojoLibraryAnalysis
-    auto &analysis = getAnalysis<MOGG::LoadMojoAnalysisPass>();
-    ErrorOr<MOGG::MojoLibraryAnalysis *> errOr =
-        analysis.initIfNeeded(&getContext(), {});
-    if (errOr.isError()) {
-      emitError(getOperation().getLoc(),
-                Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
-                    errOr.getError());
-      return;
-    }
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *errOr.takeValue();
-
-    // Initialize type manager
-    ErrorOr<TypeManager> maybeTypeManager = MOGG::TypeManager::get(
-        mojoLibraryAnalysis.getContext(), mojoLibraryAnalysis);
-    if (maybeTypeManager.isError()) {
-      emitError(getOperation().getLoc(), maybeTypeManager.getError());
-      return;
-    }
-    TypeManager typeManager = maybeTypeManager.get();
-
     // Repeatedly fuse affine views until convergence.
     bool changed = true;
     while (changed) {
@@ -186,22 +161,16 @@ struct FuseAffineViewsPass
           Value result = kernel.getResult(0);
           Operation *user = *result.getUsers().begin();
           if (auto addDim = dyn_cast_or_null<MO::AddSingletonDimOp>(user)) {
-            fuseViewOpDim(kernel, addDim, result, mojoLibraryAnalysis,
-                          typeManager);
+            fuseViewOpDim(kernel, addDim, result);
             opsToErase.push_back(user);
           } else if (auto split = dyn_cast_or_null<MO::SplitDimOp>(user)) {
-            fuseViewOpDim(kernel, split, result, mojoLibraryAnalysis,
-                          typeManager);
+            fuseViewOpDim(kernel, split, result);
             opsToErase.push_back(user);
           } else if (auto merge = dyn_cast_or_null<MO::MergeDimOp>(user)) {
-            fuseViewOpDim(kernel, merge, result, mojoLibraryAnalysis,
-                          typeManager);
+            fuseViewOpDim(kernel, merge, result);
             opsToErase.push_back(user);
           }
         }
-
-        MOGG::addForwardDeclsOfReferencedFuncs(
-            kernel, kernel->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
       });
 
       // Check if we did anything
