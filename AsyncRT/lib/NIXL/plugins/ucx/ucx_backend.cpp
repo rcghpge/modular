@@ -84,7 +84,13 @@ M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
     return failure();
   }
 
-  if (deviceCtx) {
+  // For a mysterious reason, sometimes the queried context for a device pointer
+  // is null. However, the program appears to continue without issue.
+  if (!ctx)
+    std::cerr << "Warning: Unable to identify CUDA context which owns address "
+              << std::hex << address << std::endl;
+
+  if (deviceCtx && ctx) {
     // Context was already set previously, and does not match new context
     auto myContext = CUDADeviceContext::cast(*deviceCtx).cudaContext();
     if (myContext != ctx) {
