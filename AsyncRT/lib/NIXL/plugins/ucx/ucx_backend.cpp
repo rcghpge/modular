@@ -264,7 +264,8 @@ void nixlUcxEngine::progressFunc() {
 }
 
 void nixlUcxEngine::progressThreadStart() {
-  pthrStop = pthrActive = 0;
+  pthrStop = 0;
+  pthrActive = 0;
   noSyncIters = 32;
 
   if (!pthrOn) {
