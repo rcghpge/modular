@@ -103,7 +103,7 @@ def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "ModuleOp"
   let description = [{}];
 
   let options = [
-    Option<"enableFusion", "enable-fusion", "bool", "true",
+    Option<"enableTransitiveFusion", "enable-transitive-fusion", "bool", "false",
       "Flag to allow control of fusion pass">
   ];
   let dependentDialects = ["MEF::MEFDialect",

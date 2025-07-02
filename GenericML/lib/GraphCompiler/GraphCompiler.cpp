@@ -326,9 +326,7 @@ void M::MO::buildMoToMgpPipeline(mlir::OpPassManager &pm,
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
-  MGP::FuseGenericCompiledRegionsOptions fuseOpts;
-  fuseOpts.enableFusion = opts.enableCompiledRegionsFusion;
-  pm.addPass(MGP::createFuseGenericCompiledRegions(fuseOpts));
+  pm.addPass(MGP::createFuseGenericCompiledRegions());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createRemoveRedundantOperands());

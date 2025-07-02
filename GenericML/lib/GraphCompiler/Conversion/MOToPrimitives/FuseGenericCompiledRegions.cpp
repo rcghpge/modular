@@ -150,18 +150,16 @@ struct FuseGenericCompiledRegions
   using FuseGenericCompiledRegionsBase::FuseGenericCompiledRegionsBase;
 
   void runOnOperation() override {
-    if (enableFusion) {
-      ModuleOp module = getOperation();
-      // TODO(GEX-784): NOTE: all generic regions should not allow duplication.
-      // Fuse in any op that can be duplicated.
-      doSourceDestinationSequenceFusion<true>(module);
+    ModuleOp module = getOperation();
+    // TODO(GEX-784): NOTE: all generic regions should not allow duplication.
+    // Fuse in any op that can be duplicated.
+    doSourceDestinationSequenceFusion<true>(module);
 
-      // Fuse in any op that can't be duplicated (must have one user).
-      doSourceDestinationSequenceFusion<false>(module);
+    // Fuse in any op that can't be duplicated (must have one user).
+    doSourceDestinationSequenceFusion<false>(module);
 
-      // Fuse in anything that remains while preserving parallelism.
+    if (enableTransitiveFusion)
       doTransitiveDependencySequenceFusion(module);
-    }
   }
 };
 
