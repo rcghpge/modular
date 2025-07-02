@@ -1641,15 +1641,15 @@ public:
   bool collectEntities(bool enableMEFMetadata) {
     return entities.collect(module, enableMEFMetadata);
   }
-  void emitLocationInfo(MEFEmitter &locationFilenames,
-                        MEFEmitter &locationPositions);
+  void extractLocationInfo(MEFEmitter &locationFilenames,
+                           MEFEmitter &locationPositions);
   void emitStrings();
-  void emitStringsMD(MEFEmitter &stringsMDSection);
-  void emitTypesMD(MEFEmitter &typeStringsMDSection);
-  void emitAttributes(MEFEmitter &attrMDSection);
+  void extractStringsMD(MEFEmitter &stringsMDSection);
+  void extractTypesMD(MEFEmitter &typeStringsMDSection);
+  void emitAttributesAndExtractIndexMD(MEFEmitter &attrMDSection);
   void emitPrimitiveNames();
-  void emitInvokables(MEFEmitter *attributeNamesSection,
-                      MEFEmitter *mlirTypesSection);
+  void emitInvokablesAndExtractMD(MEFEmitter *attributeNamesSection,
+                                  MEFEmitter *mlirTypesSection);
   void emitInvokableIndex();
 
   bool hadError() const { return entities.hadError; }
@@ -1660,8 +1660,8 @@ private:
 };
 } // namespace
 
-void MEFModuleEmitter::emitLocationInfo(MEFEmitter &locationFilenames,
-                                        MEFEmitter &locationPositions) {
+void MEFModuleEmitter::extractLocationInfo(MEFEmitter &locationFilenames,
+                                           MEFEmitter &locationPositions) {
   DenseMap<StringAttr, MEFOffset> filenameOffsets;
   for (StringAttr filename : entities.locationFilenames) {
     filenameOffsets[filename] = locationFilenames.getOffset();
@@ -1689,7 +1689,7 @@ void MEFModuleEmitter::emitStrings() {
   emitSection(MEF::SectionID::kStrings, stringSection);
 }
 
-void MEFModuleEmitter::emitStringsMD(MEFEmitter &stringsMDSection) {
+void MEFModuleEmitter::extractStringsMD(MEFEmitter &stringsMDSection) {
   // Emit the strings to the metadata string section and remember their offsets.
   for (StringAttr string : entities.metadataStrings) {
     entities.metadataStringOffsets[string] = stringsMDSection.getOffset();
@@ -1697,7 +1697,7 @@ void MEFModuleEmitter::emitStringsMD(MEFEmitter &stringsMDSection) {
   }
 }
 
-void MEFModuleEmitter::emitTypesMD(MEFEmitter &typeStringsMDSection) {
+void MEFModuleEmitter::extractTypesMD(MEFEmitter &typeStringsMDSection) {
   // Emit the type strings to the type string section.
   SmallVector<char, 64> result;
   for (Type type : entities.types) {
@@ -1709,7 +1709,8 @@ void MEFModuleEmitter::emitTypesMD(MEFEmitter &typeStringsMDSection) {
 }
 
 /// Emit the ATTRIBUTES and the ATTRIBUTE_INDEX_MD sections.
-void MEFModuleEmitter::emitAttributes(MEFEmitter &attrMDSection) {
+void MEFModuleEmitter::emitAttributesAndExtractIndexMD(
+    MEFEmitter &attrMDSection) {
   // Emit attributes and record them in EntityIndex. Nested array attributes
   // will be traversed recursively and their elements will be emitted and
   // recorded before the top level offsets array is emitted.
@@ -1739,8 +1740,8 @@ void MEFModuleEmitter::emitPrimitiveNames() {
 /// Emit the INVOKABLES_BODIES section.  If optional metadata is enabled,
 /// the attributeNamesSection/mlirTypesSection will be non-null and should be
 /// filled in.
-void MEFModuleEmitter::emitInvokables(MEFEmitter *attributeNamesSection,
-                                      MEFEmitter *mlirTypesSection) {
+void MEFModuleEmitter::emitInvokablesAndExtractMD(
+    MEFEmitter *attributeNamesSection, MEFEmitter *mlirTypesSection) {
   RegionEmitter invokablesSection(entities, attributeNamesSection,
                                   mlirTypesSection);
 
@@ -1812,20 +1813,21 @@ ConcatenationTree M::translateMLIRToMEF(ModuleOp module,
 
   // Emit magic numbers and format version.
   emitter.emitBytes({MEF::kMagic1, MEF::kMagic2 + MEF::kVersion0});
-  emitter.emitLocationInfo(locationFilenames, locationPositions);
+  emitter.extractLocationInfo(locationFilenames, locationPositions);
   emitter.emitStrings();
   if (enableMEFMetadata) {
-    emitter.emitStringsMD(stringsMDSection);
-    emitter.emitTypesMD(typeStringsMDSection);
+    emitter.extractStringsMD(stringsMDSection);
+    emitter.extractTypesMD(typeStringsMDSection);
   }
 
   // Emitting the attributes can fail if there's an unsupported attribute or
   // attribute type. The diagnostic will be recorded and reported by MLIR.
-  emitter.emitAttributes(attrIndexMDSection);
+  emitter.emitAttributesAndExtractIndexMD(attrIndexMDSection);
 
   emitter.emitPrimitiveNames();
-  emitter.emitInvokables(enableMEFMetadata ? &attrNamesSection : nullptr,
-                         enableMEFMetadata ? &mlirTypesSection : nullptr);
+  emitter.emitInvokablesAndExtractMD(
+      enableMEFMetadata ? &attrNamesSection : nullptr,
+      enableMEFMetadata ? &mlirTypesSection : nullptr);
   emitter.emitInvokableIndex();
 
   // Now that we've emitted all of the critical sections used in the common case

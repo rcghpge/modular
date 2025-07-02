@@ -4,7 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "GraphRT/MEF/MEFAttr.h"
+
 using namespace M;
 using namespace Detail;
 
