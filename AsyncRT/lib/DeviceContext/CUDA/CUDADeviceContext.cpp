@@ -989,14 +989,19 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   CUdeviceptr dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   assert(src.byteSize() >= dstByteSize);
-  if (srcCtx.context_ != dstCtx.context_) {
+  if (srcCtx.cudaStream() != dstCtx.cudaStream()) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
     ERR_CHECK_ERR(dstCtx.enqueueWaitForEvent(*srcEvent));
 
-    CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
-                                           srcCtx.context_, dstByteSize,
-                                           stream_));
+    if (srcCtx.cudaContext() != dstCtx.cudaContext()) {
+      CUDA_CHECK_ERR(driver_.MemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
+                                             srcCtx.context_, dstByteSize,
+                                             stream_));
+    } else {
+      CUDA_CHECK_ERR(
+          driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+    }
 
     // Wait for the copy to complete before proceeding with the source stream
     // (e.g. freeing or overwriting memory).

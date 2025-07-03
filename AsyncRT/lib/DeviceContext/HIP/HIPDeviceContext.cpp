@@ -924,16 +924,35 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                              const DeviceBuffer &src) const {
   CHECK_IS_HIP_ERR(src.context().device());
   CHECK_IS_HIP_ERR(dst.context().device());
+
   const auto &srcCtx = HIPDeviceContext::cast(src.context());
   const auto &dstCtx = HIPDeviceContext::cast(dst.context());
 
-  auto srcPtr = src.ptr();
-  auto dstPtr = dst.ptr();
+  if (this->device_ != dstCtx.device_) {
+    RAISE_ERROR("device context does not match context of dst");
+  }
+
+  // It is recommended to set the src device to be the current device according
+  // to documentation:
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api/modules/memory_management.html#_CPPv49hipMemcpyPvPKv6size_t13hipMemcpyKind
+  HIP_WITH_CTX_ERR(srcCtx);
+
+  hipDeviceptr_t srcPtr = src.ptr();
+  hipDeviceptr_t dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
   assert(src.byteSize() >= dstByteSize);
-  if (srcCtx.hipDevice() != dstCtx.hipDevice()) {
+  if (srcCtx.hipStream() != dstCtx.hipStream()) {
+    // Ensure that we are waiting for the source data to be ready.
+    DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
+    ERR_CHECK_ERR(dstCtx.enqueueWaitForEvent(*srcEvent));
+
     HIP_CHECK_ERR(
         driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+
+    // Wait for the copy to complete before proceeding with the source stream
+    // (e.g. freeing or overwriting memory).
+    DEFINE_OR_RAISE(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
+    ERR_CHECK_ERR(srcCtx.enqueueWaitForEvent(*dstEvent));
   } else {
     HIP_CHECK_ERR(
         driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
