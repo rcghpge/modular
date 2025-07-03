@@ -269,15 +269,10 @@ void M::MO::buildMoToMgpPipeline(
   }
 
   // Convert output lambdas to compute output lambdas when possible.
-  pm.addPass(MOGG::createMOGGToKGEN({kernelLibraryPaths, opts.forceSync},
-                                    libraryAnalysis));
+  pm.addPass(MOGG::createMOGGToKGEN(
+      {kernelLibraryPaths, opts.forceSync, opts.enableComputeLambdas},
+      libraryAnalysis));
   pm.addPass(MOGG::createSimplifyKernelOperands());
-
-  // Convert output lambdas to compute output lambdas whn possible.
-  if (opts.enableComputeLambdas) {
-    pm.addPass(MOGG::createGenerateComputeLambdas({kernelLibraryPaths},
-                                                  libraryAnalysis));
-  }
 
   // Fuse constants last as they don't enable any extra fusions directly and
   // should be fused as late as possible to catch all cases of constants.
