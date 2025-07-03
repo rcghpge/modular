@@ -327,6 +327,8 @@ void M::MO::buildMoToMgpPipeline(
 
   // pm.addPass(MGP::createGlobalizeSlotIndicesPass());
   pm.addPass(MGP::createInlineMGPCallsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
