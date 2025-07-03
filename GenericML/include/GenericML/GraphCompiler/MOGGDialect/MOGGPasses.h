@@ -64,10 +64,6 @@ inline std::string buildTypeString(KernelBuildType bt) {
 
 class MojoLibraryAnalysis;
 
-std::unique_ptr<mlir::Pass> createGenerateComputeLambdas(
-    const GenerateComputeLambdasOptions &opts,
-    std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
-
 std::unique_ptr<mlir::Pass>
 createJitCompileKernels(const JitCompileKernelsOptions &opts,
                         std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
