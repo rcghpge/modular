@@ -13,13 +13,10 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/SourceMgr.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/SymbolExport.h"
-#include "mlir/Bytecode/BytecodeReader.h"
-#include "mlir/Pass/AnalysisManager.h"
 
 //===----------------------------------------------------------------------===//
 // Forward Declarations
@@ -42,22 +39,18 @@ public:
   /// This method must be called before we can use this object. The standard
   /// Mojo kernel library is directly embedded. Only the extra library paths
   /// must be provided.
-  ///
-  /// We have eager and lazy mode for the library loading. Lazy mode parses the
-  /// mojo library on-demand and is triggered for the full materialization via
-  /// `getMojoBindings()`. Eager mode fully materializes the library during
-  /// `init()`. In general, eager mode has faster bulk materialization API than
-  /// the lazy mode. Therefore, if you know you are going to have a full
-  /// materialization, use eager mode. Otherwise, lazy mode is more efficient.
   ErrorOrSuccess init(ArrayRef<std::string> kernelLibraryPaths = {});
 
   /// Load an extra kernel library.
   /// Update in place the bindings and registered kernels.
-  ErrorOrSuccess addKernelLibraryPath(const std::string &kernelLibraryPath);
+  ErrorOr<OwningOpRef<ModuleOp>>
+  loadMojoPackageOrBytecode(StringRef kernelLibraryPath);
+
+  ErrorOrSuccess addKernelLibraryPath(StringRef kernelLibraryPath);
 
   /// Get the fully materialized module which contains all exported generators
   /// from mojo libraries.
-  mlir::ModuleOp getMojoBindings() const { return module; }
+  mlir::ModuleOp getMojoBindings() const { return *module; }
 
   /// Get the hash of the backing Mojo bindings.
   FailureOr<std::string> getMojoBindingsHash() const;
@@ -67,7 +60,7 @@ public:
   Operation *lookup(StringRef name) const;
 
   /// Get the MLIR context.
-  MLIRContext *getContext() { return module->getContext(); }
+  MLIRContext *getContext() { return config.getContext(); }
 
   /// Looks up a registered Mojo symbol using the name that was used for
   /// registration.
@@ -149,7 +142,7 @@ public:
 
 private:
   /// Get the iterator range of the mojo kernels.
-  auto getRawMojoKernels() { return module.getOps<KGEN::GeneratorOp>(); }
+  auto getRawMojoKernels() { return module->getOps<KGEN::GeneratorOp>(); }
 
   /// Helper function to update the module and state data but account for
   /// collisions
@@ -159,18 +152,13 @@ private:
   /// needed.
   ErrorOrSuccess updateRegisteredKernelsMap(KGEN::GeneratorOp generator);
 
-  /// Internalize an MLIR bytecode buffer into the source manager and return a
-  /// buffer reference.
-  llvm::MemoryBufferRef
-  internMLIRFile(std::unique_ptr<llvm::MemoryBuffer> buffer);
-
-  /// Read and internalize an MLIR bytecode file from a filepath into the source
-  /// manager and return a buffer reference.
-  ErrorOr<llvm::MemoryBufferRef> readAndInternMLIRFile(StringRef filename);
-
   /// Load and process kernels from an MLIR buffer.
-  ErrorOr<ModuleOp> loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
-                                    const Twine &diag);
+  ErrorOr<OwningOpRef<ModuleOp>>
+  loadMLIRKernels(std::unique_ptr<llvm::MemoryBuffer> bufferRef,
+                  const Twine &diag);
+
+  ErrorOr<SmallVector<OwningOpRef<ModuleOp>>>
+  loadAllMLIRKernels(ArrayRef<std::string> paths);
 
   KGEN::GeneratorOp foreachKernel;
   KGEN::GeneratorOp viewMaterializeKernel;
@@ -188,29 +176,15 @@ private:
   llvm::StringMap<llvm::StringMap<KGEN::GeneratorOp>>
       registeredKernelFunctionSymbols;
 
-  /// MLIR bytecode readers for lazy loading the mojo libraries. Each library
-  /// has a dedicated reader.
-  llvm::SmallVector<std::unique_ptr<mlir::BytecodeReader>> readers;
-
-  /// This block holds the MLIR modules (might be partially loaded) from mojo
-  /// libraries. It holds all of the Module OPs. Each library (either the
-  /// main binding or the user-provided ones) would have a module op, which
-  /// stays inside the block. Inside each module op, we have a bunch of
-  /// generator ops.
-  Block block;
-
   /// This module holds all mojo kernels from all mojo libraries.
   /// User-provided modules are cloned into this module after the full
   /// materialization (enforced by the `getMojoBindings` call).
-  ModuleOp module;
+  OwningOpRef<ModuleOp> module;
 
   /// The symbol table for resolving names in `module`.
   std::optional<SymbolTable> rawMojoKernelTable;
 
   mlir::ParserConfig config;
-
-  /// Source manager needed for parsing.
-  std::shared_ptr<llvm::SourceMgr> sourceMgr;
 
   /// Cached value that results from hashing the Mojo module.
   mutable std::string kgenModuleHash;

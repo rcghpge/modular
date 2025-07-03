@@ -9,9 +9,9 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
+#include "llvm/Support/SourceMgr.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/Support.h"
@@ -170,21 +170,6 @@ MojoLibraryAnalysis::buildParameterCall(llvm::StringLiteral callee,
   return KGEN::ParamOperatorAttr::get(KGEN::POC::Apply, allOperands, resultTy);
 }
 
-llvm::MemoryBufferRef MojoLibraryAnalysis::internMLIRFile(
-    std::unique_ptr<llvm::MemoryBuffer> buffer) {
-  unsigned bufferId =
-      sourceMgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
-  return sourceMgr->getMemoryBuffer(bufferId)->getMemBufferRef();
-}
-
-ErrorOr<llvm::MemoryBufferRef>
-MojoLibraryAnalysis::readAndInternMLIRFile(StringRef filename) {
-  auto bufOr = toModularErrorOr(llvm::MemoryBuffer::getFile(filename));
-  if (bufOr.isError())
-    return bufOr.takeError();
-  return internMLIRFile(bufOr.takeValue());
-}
-
 bool MojoLibraryAnalysis::kernelHasInputParameter(
     KGEN::GeneratorOp kernel, StringRef parameterName) const {
   return llvm::any_of(kernel.getInputParams(), [&](auto param) {
@@ -192,11 +177,18 @@ bool MojoLibraryAnalysis::kernelHasInputParameter(
   });
 }
 
-ErrorOr<ModuleOp>
-MojoLibraryAnalysis::loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
-                                     const Twine &diag) {
-  mlir::BytecodeReader &reader = *readers.emplace_back(new mlir::BytecodeReader(
-      bufferRef, config, /*lazyLoad=*/false, sourceMgr));
+ErrorOr<OwningOpRef<ModuleOp>> MojoLibraryAnalysis::loadMLIRKernels(
+    std::unique_ptr<llvm::MemoryBuffer> bufferRef, const Twine &diag) {
+  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+  unsigned bufferId =
+      sourceMgr->AddNewSourceBuffer(std::move(bufferRef), llvm::SMLoc());
+
+  auto internedBuffer = sourceMgr->getMemoryBuffer(bufferId);
+
+  mlir::BytecodeReader reader(*internedBuffer, config, /*lazyLoad=*/false,
+                              sourceMgr);
+
+  Block block;
   if (failed(reader.readTopLevel(
           &block, [&](Operation *op) { return isa<ModuleOp>(op); }))) {
     return Error(
@@ -204,57 +196,103 @@ MojoLibraryAnalysis::loadMLIRKernels(llvm::MemoryBufferRef bufferRef,
         diag);
   }
 
-  Operation *module = &block.back();
-  return cast<ModuleOp>(module);
+  auto module = cast<ModuleOp>(&block.back());
+  module->remove();
+  return module;
+}
+
+ErrorOr<SmallVector<OwningOpRef<ModuleOp>>>
+MojoLibraryAnalysis::loadAllMLIRKernels(ArrayRef<std::string> paths) {
+  SmallVector<OwningOpRef<ModuleOp>> loadedModules;
+  loadedModules.reserve(paths.size() + 2);
+
+  { // Load MOGGKernelAPI.mojo
+    auto buffer = getEmbeddingsNewAPISourceBuffer();
+    if (buffer.isError())
+      return buffer.takeError();
+
+    auto module = loadMLIRKernels(buffer.takeValue(), "the standard library");
+    if (module.isError())
+      return module.takeError();
+
+    loadedModules.push_back(module.takeValue());
+  }
+
+  { // Load MOGGPrimitives.mojo
+    auto buffer = getEmbeddingsPrimitiveSourceBuffer();
+    if (buffer.isError())
+      return buffer.takeError();
+
+    auto module = loadMLIRKernels(buffer.takeValue(), "the standard library");
+    if (module.isError())
+      return module.takeError();
+
+    loadedModules.push_back(module.takeValue());
+  }
+
+  // Load all user provided library paths.
+  for (auto index : llvm::seq(paths.size())) {
+    if (auto buffer = loadMojoPackageOrBytecode(paths[index]))
+      return buffer.takeError();
+    else
+      loadedModules.push_back(buffer.takeValue());
+  }
+
+  return loadedModules;
 }
 
 // Load a list of kernels from the provided user libraries.
-ErrorOrSuccess MojoLibraryAnalysis::addKernelLibraryPath(
-    const std::string &kernelLibraryPath) {
+ErrorOr<OwningOpRef<ModuleOp>>
+MojoLibraryAnalysis::loadMojoPackageOrBytecode(StringRef kernelLibraryPath) {
 
   // Load the extra user library and update the book-keepings.
-  ModuleOp userModule;
+  OwningOpRef<ModuleOp> userModule;
 
-  if (Filesystem::isMojoBinaryPackagePath(kernelLibraryPath)) {
+  if (Filesystem::isMojoBinaryPackagePath(kernelLibraryPath.str())) {
+    auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+
     // Load user library that is a mojo package file.
-    auto userModuleOr =
+    ErrorOr<OwningOpRef<ModuleOp>> userModuleOr =
         parseMojoPackage(getContext(), kernelLibraryPath, sourceMgr);
     if (userModuleOr.isError())
       return userModuleOr.takeError();
 
-    auto parsedModule = userModuleOr.takeValue().release().getOperation();
+    OwningOpRef<ModuleOp> parsedModule = userModuleOr.takeValue();
 
     if (!parsedModule)
       return Error("[MojoLibraryAnalysis] Could not load MOGG Mojo "
                    "auxiliary binding library");
 
-    // We read the library from `mojopkg` which means we don't need a lazy
-    // reader for that. We insert this module op into the block because the
-    // block is our centralized container for all module ops (some modules are
-    // fully loaded from `mojopkg` files and some are partially loaded from
-    // `mlirbc` files).
-    block.push_back(parsedModule);
-    userModule = cast<ModuleOp>(parsedModule);
+    userModule = std::move(parsedModule);
   } else {
     // Load user library that is a mojo mlibrc file.
-    ErrorOr<llvm::MemoryBufferRef> bufOr =
-        readAndInternMLIRFile(kernelLibraryPath);
-    if (failed(bufOr))
+    ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufOr =
+        getFile(kernelLibraryPath);
+    if (bufOr.isError())
       return bufOr.takeError();
-    ErrorOr<ModuleOp> moduleOr =
-        loadMLIRKernels(bufOr.takeValue(), kernelLibraryPath);
+
+    auto moduleOr = loadMLIRKernels(bufOr.takeValue(), kernelLibraryPath);
     if (failed(moduleOr))
       return moduleOr.takeError();
+
     userModule = moduleOr.takeValue();
   }
-  if (auto updateErr = updateLoadedKernelsForCollisions(userModule))
-    return Error(Twine("failed to load kernel library ") + kernelLibraryPath +
-                 ":" + updateErr.getError());
 
-  return success();
+  return userModule;
 }
 
-// Update the state in MJA for collisions etc.
+ErrorOrSuccess
+MojoLibraryAnalysis::addKernelLibraryPath(StringRef kernelLibraryPath) {
+  auto moduleOr = loadMojoPackageOrBytecode(kernelLibraryPath);
+
+  if (moduleOr.isError())
+    return moduleOr.takeError();
+
+  auto module = moduleOr.takeValue();
+  return updateLoadedKernelsForCollisions(*module);
+}
+
+// Update the state in MojoLibraryAnalysis for collisions etc.
 ErrorOrSuccess
 MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
 
@@ -309,20 +347,23 @@ MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
   }
 
   // Update the metadata and clone the operators.
-  for (auto op : userModule.getOps<mlir::SymbolOpInterface>()) {
+  for (auto op : llvm::make_early_inc_range(
+           userModule.getOps<mlir::SymbolOpInterface>())) {
     StringAttr oldName = op.getNameAttr();
 
     // Don't duplicate.
     if (rawMojoTable.lookup(oldName))
       continue;
 
-    // Insert the duplicated operation into the module table.
-    Operation *duplicate = op.clone();
-    [[maybe_unused]] StringAttr newName = rawMojoTable.insert(duplicate);
+    // Move the operation to the end of the module and insert into the symbol
+    // table. The operation has to be unlinked from its parent before symbol
+    // table insertion.
+    op->moveBefore(module->getBody(), module->getBody()->end());
 
+    [[maybe_unused]] StringAttr newName = rawMojoTable.insert(op);
     ASSERT_STREAM(oldName == newName, "no renaming should occur at this point");
 
-    if (auto gen = dyn_cast<KGEN::GeneratorOp>(duplicate)) {
+    if (auto gen = dyn_cast<KGEN::GeneratorOp>(op.getOperation())) {
       if (auto updateErr = updateRegisteredKernelsMap(gen))
         return updateErr;
     }
@@ -427,58 +468,41 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
 
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  // Load MOGGKernelAPI.mojo [new API] / MOGG.mojo [old API]
-  ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOr =
-      getEmbeddingsNewAPISourceBuffer();
-  if (failed(bufferOr))
-    return Error(Twine("failed to load compiled main module: ") +
-                 bufferOr.getError());
-  llvm::MemoryBufferRef bufferRef = internMLIRFile(bufferOr.takeValue());
-  ErrorOr<Operation *> moduleOr =
-      loadMLIRKernels(bufferRef, "the standard library");
-  if (failed(moduleOr))
-    return moduleOr.takeError();
+  auto loadedModulesOr = loadAllMLIRKernels(kernelLibraryPaths);
 
-  // Initialize the module and the backing symbol table.
-  module = cast<ModuleOp>(moduleOr.takeValue());
-  rawMojoKernelTable.emplace(module);
+  if (loadedModulesOr.isError())
+    return loadedModulesOr.takeError();
+
+  SmallVector<OwningOpRef<ModuleOp>> loadedModules =
+      loadedModulesOr.takeValue();
+  ASSERT_STREAM(loadedModules.size() >= 2,
+                "Must contains standard library and MOGG primitives");
+
+  // Pull out the loaded standard library.
+  module = std::move(loadedModules[0]);
+  loadedModules.erase(loadedModules.begin());
+
+  // Initialize the symbol table over the standard library module.
+  rawMojoKernelTable.emplace(*module);
 
   for (auto generator : getRawMojoKernels())
     if (auto updateErr = updateRegisteredKernelsMap(generator))
       return updateErr;
 
-  // Load MOGGPrimitives.mojo
-  bufferOr = getEmbeddingsPrimitiveSourceBuffer();
-  if (failed(bufferOr))
-    return Error(Twine("failed to load compiled MOGGPrimitives.mojo: ") +
-                 bufferOr.getError());
-  bufferRef = internMLIRFile(bufferOr.takeValue());
-  moduleOr = loadMLIRKernels(bufferRef, "the standard library");
-  if (failed(moduleOr))
-    return moduleOr.takeError();
-  auto primitiveModule = cast<ModuleOp>(moduleOr.takeValue());
-  if (auto updateErr = updateLoadedKernelsForCollisions(primitiveModule))
-    return Error(Twine("failed to load compiled MOGGPrimitives.mojo: ") +
-                 updateErr.getError());
-
-  // Load the extra user kernel libraries.
-  for (const std::string &libraryPath : kernelLibraryPaths)
-    if (auto loadErr = addKernelLibraryPath(libraryPath))
-      return loadErr;
+  // Process all remaining modules.
+  for (auto [index, loadedModule] : llvm::enumerate(loadedModules)) {
+    if (auto updateErr = updateLoadedKernelsForCollisions(*loadedModule))
+      return Error(Twine("failed to load kernel library: ") +
+                   updateErr.getError());
+  }
 
   return success();
 }
 
 MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
-    : config(ctx, /*verifyAfterParse=*/false),
-      sourceMgr(new llvm::SourceMgr()) {}
+    : config(ctx, /*verifyAfterParse=*/false) {}
 
-MojoLibraryAnalysis::~MojoLibraryAnalysis() {
-  for (auto &rd : readers) {
-    if (failed(rd->finalize([](Operation *op) { return false; })))
-      llvm::report_fatal_error("failed to finalize bytecode reader.");
-  }
-}
+MojoLibraryAnalysis::~MojoLibraryAnalysis() = default;
 
 FailureOr<std::string> MojoLibraryAnalysis::getMojoBindingsHash() const {
   if (kgenModuleHash.empty()) {
