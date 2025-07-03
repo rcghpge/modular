@@ -299,6 +299,22 @@ MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
   SymbolTable userModuleTable(userModule);
   SymbolTable &rawMojoTable = *rawMojoKernelTable;
 
+  // Generate a new name that is unique to both userModuleTable and
+  // rawMojoTable.
+  auto newUniqueName = [&](StringAttr oldName) {
+    MLIRContext *context = oldName.getContext();
+    SmallString<64> prefix = oldName.getValue();
+    int uniqueId = 0;
+    prefix.push_back('_');
+
+    StringAttr newName;
+    do
+      newName = StringAttr::get(context, prefix + Twine(uniqueId++));
+    while (userModuleTable.lookup(newName) || rawMojoTable.lookup(newName));
+
+    return newName;
+  };
+
   llvm::DenseMap<Attribute, Attribute> renaming;
 
   // Remap only exposed kernel functions if their name collides with an
@@ -319,13 +335,11 @@ MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
       continue;
 
     // Create a new symbol which is unique in both files.
-    FailureOr<StringAttr> newSymName =
-        userModuleTable.renameToUnique(op, {&rawMojoTable});
-    if (failed(newSymName))
-      return Error("failed to rename");
+    auto newSymName = newUniqueName(op.getSymNameAttr());
+    op.setSymNameAttr(newSymName);
 
     auto oldSymbolRef = FlatSymbolRefAttr::get(oldSymName);
-    auto newSymbolRef = FlatSymbolRefAttr::get(*newSymName);
+    auto newSymbolRef = FlatSymbolRefAttr::get(newSymName);
     renaming[oldSymbolRef] = newSymbolRef;
   }
 
