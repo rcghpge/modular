@@ -34,10 +34,6 @@ from sys.ffi import (
     c_uint,
 )
 
-from python.bindings import (
-    Typed_initproc,
-    Typed_newfunc,
-)
 
 alias Py_ssize_t = c_ssize_t
 alias Py_hash_t = Py_ssize_t
@@ -399,13 +395,24 @@ alias Py_tp_methods = 64
 alias Py_tp_new = 65
 alias Py_tp_repr = 66
 
-# Slot Type typedefs
 # https://docs.python.org/3/c-api/typeobj.html#slot-type-typedefs
 
 alias destructor = fn (PyObjectPtr) -> None
 """`typedef void (*destructor)(PyObject*)`"""
 alias reprfunc = fn (PyObjectPtr) -> PyObjectPtr
 """`typedef PyObject *(*reprfunc)(PyObject*)`"""
+alias Typed_initproc = fn (
+    PyObjectPtr,
+    PyObjectPtr,
+    PyObjectPtr,  # NULL if no keyword arguments were passed
+) -> c_int
+"""`typedef int (*initproc)(PyObject*, PyObject*, PyObject*)`"""
+alias Typed_newfunc = fn (
+    PyTypeObjectPtr,
+    PyObjectPtr,
+    PyObjectPtr,
+) -> PyObjectPtr
+"""`typedef PyObject *(*newfunc)(PyTypeObject*, PyObject*, PyObject*)`"""
 
 
 @fieldwise_init
@@ -728,15 +735,18 @@ struct ExternalFunction[
         return lib._get_function[name, type]()
 
 
-# void Py_IncRef(PyObject *o)
+# external functions for the CPython C API
+# ordered based on https://docs.python.org/3/c-api/index.html
+
+# Reference Counting
 alias Py_IncRef = ExternalFunction[
     "Py_IncRef",
+    # void Py_IncRef(PyObject *o)
     fn (PyObjectPtr) -> None,
 ]
-
-# void Py_DecRef(PyObject *o)
 alias Py_DecRef = ExternalFunction[
     "Py_DecRef",
+    # void Py_DecRef(PyObject *o)
     fn (PyObjectPtr) -> None,
 ]
 
@@ -861,8 +871,13 @@ struct CPython(Copyable, Defaultable, Movable):
     var init_error: StringSlice[StaticConstantOrigin]
     """An error message if initialization failed."""
 
-    var Py_IncRef_func: Py_IncRef.type
-    var Py_DecRef_func: Py_DecRef.type
+    # fields holding function pointers to CPython C API functions
+    # ordered based on https://docs.python.org/3/c-api/index.html
+
+    # Reference Counting
+    var _Py_IncRef: Py_IncRef.type
+    var _Py_DecRef: Py_DecRef.type
+
     var PyLong_FromSsize_t_func: PyLong_FromSsize_t.type
     var PyList_SetItem_func: PyList_SetItem.type
 
@@ -935,8 +950,9 @@ struct CPython(Copyable, Defaultable, Movable):
         else:
             self.version = PythonVersion(0, 0, 0)
 
-        self.Py_IncRef_func = Py_IncRef.load(self.lib)
-        self.Py_DecRef_func = Py_DecRef.load(self.lib)
+        self._Py_IncRef = Py_IncRef.load(self.lib)
+        self._Py_DecRef = Py_DecRef.load(self.lib)
+
         self.PyLong_FromSsize_t_func = PyLong_FromSsize_t.load(self.lib)
         self.PyList_SetItem_func = PyList_SetItem.load(self.lib)
 
@@ -1059,7 +1075,8 @@ struct CPython(Copyable, Defaultable, Movable):
         print(flush=True)
 
     # ===-------------------------------------------------------------------===#
-    # Reference count management
+    # Reference Counting
+    # ref: https://docs.python.org/3/c-api/refcounting.html
     # ===-------------------------------------------------------------------===#
 
     fn _inc_total_rc(self):
@@ -1069,21 +1086,25 @@ struct CPython(Copyable, Defaultable, Movable):
         self.total_ref_count[] -= 1
 
     fn Py_IncRef(self, ptr: PyObjectPtr):
-        """[Reference](
-        https://docs.python.org/3/c-api/refcounting.html#c.Py_IncRef).
+        """Indicate taking a new strong reference to the object `ptr` points to.
+
+        References:
+        - https://docs.python.org/3/c-api/refcounting.html#c.Py_IncRef
         """
 
         self.log(ptr, " INCREF refcnt:", self._Py_REFCNT(ptr))
-        self.Py_IncRef_func(ptr)
+        self._Py_IncRef(ptr)
         self._inc_total_rc()
 
     fn Py_DecRef(self, ptr: PyObjectPtr):
-        """[Reference](
-        https://docs.python.org/3/c-api/refcounting.html#c.Py_DecRef).
+        """Release a strong reference to the object `ptr` points to.
+
+        References:
+        - https://docs.python.org/3/c-api/refcounting.html#c.Py_DecRef
         """
 
         self.log(ptr, " DECREF refcnt:", self._Py_REFCNT(ptr))
-        self.Py_DecRef_func(ptr)
+        self._Py_DecRef(ptr)
         self._dec_total_rc()
 
     # This function assumes a specific way PyObjectPtr is implemented, namely
@@ -1296,7 +1317,7 @@ struct CPython(Copyable, Defaultable, Movable):
         self._inc_total_rc()
         return r
 
-    fn PyImport_AddModule(self, owned name: String) -> PyObjectPtr:
+    fn PyImport_AddModule(self, var name: String) -> PyObjectPtr:
         """[Reference](
         https://docs.python.org/3/c-api/import.html#c.PyImport_AddModule).
         """
@@ -1414,7 +1435,7 @@ struct CPython(Copyable, Defaultable, Movable):
     # Python Evaluation
     # ===-------------------------------------------------------------------===#
 
-    fn PyRun_SimpleString(self, owned str: String) -> Bool:
+    fn PyRun_SimpleString(self, var str: String) -> Bool:
         """Executes the given Python code.
 
         Args:
