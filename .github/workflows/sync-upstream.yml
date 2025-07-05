@@ -2,7 +2,7 @@ name: Sync from upstream
 
 on:
   schedule:
-    - cron: '0 3 1 * *'
+    - cron: '0 3 1 * *'  # Runs monthly, adjust as needed
   workflow_dispatch: {}
 
 permissions:
@@ -17,19 +17,32 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        
+        persist-credentials: false
 
     - name: Add upstream remote
       run: |
-        git remote add upstream https://github.com/modular/modular.git
+        git remote add upstream https://github.com/modularml/modular.git
         git fetch upstream
 
+    - name: Check for workflow file changes
+      id: check_workflows
+      run: |
+        if git diff --name-only upstream/main | grep '^.github/workflows/'; then
+          echo "WORKFLOWS_CHANGED=true" >> $GITHUB_ENV
+          echo "⚠️ Detected workflow file changes in upstream. You may need to handle this manually later."
+        else
+          echo "WORKFLOWS_CHANGED=false" >> $GITHUB_ENV
+          echo "✅ No workflow file changes detected. Proceeding with merge."
+        fi
+
     - name: Merge upstream changes
+      if: env.WORKFLOWS_CHANGED == 'false'
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git merge upstream/main || echo "No upstream changes to merge"
 
     - name: Push updates to fork
+      if: env.WORKFLOWS_CHANGED == 'false'
       run: |
         git push origin main
