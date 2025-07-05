@@ -21,7 +21,7 @@ jobs:
 
     - name: Add upstream remote
       run: |
-        git remote add upstream https://github.com/modularml/modular.git
+        git remote add upstream https://github.com/modular/modular.git
         git fetch upstream
 
     - name: Check for workflow file changes
