@@ -19,12 +19,12 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/GraphCompiler/Version.h"
+#include "GenericML/MEFModel/MEFModel.h"
 #include "GenericML/Support/ModelCollection.h"
 #include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
 #include "MOF/Driver/DriverImpl.h"
-#include "MOF/ModularModel/ModularModelFile.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/ErrorOr.h"
@@ -686,7 +686,7 @@ void M_sniffBinaryFileContents(FrameworkContextHandle ctx,
 ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
                             DriverHandle handle,
                             std::unique_ptr<ModelCollection> &modelsPtr) {
-  auto modelsPtrOr = loadMGPMEFFile(copyRCRef(handle.unwrap<MEFFile>()));
+  auto modelsPtrOr = MO::loadMGPMEFFile(copyRCRef(handle.unwrap<MEFFile>()));
   if (modelsPtrOr.isError())
     return modelsPtrOr.takeError();
   modelsPtr = std::move(*modelsPtrOr);

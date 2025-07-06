@@ -3,17 +3,20 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-// This file is a copy-paste of ModularModel.h and ModularModelFile.h with
-// the name changed to MEFModel. TODO: #18388 Remove duplication.
-//
-#ifndef GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
-#define GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
 
+#include "GenericML/MEFModel/MEFModel.h"
+#include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "GenericML/Support/MEFTypeUtils.h"
 #include "GenericML/Support/MGPModel.h"
-#include "Support/ForwardDecls.h"
+#include "GraphRT/MEFExecutor/MEFInvokable.h"
+#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "GraphRT/Primitives.h"
+#include "Support/LLVMForwardDecls.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
-#include "Support/RCRef.h"
-#include <memory>
+#include "llvm/ADT/SmallVector.h"
+
+using namespace M;
+using namespace M::MO;
 
 namespace M::MO {
 struct ModularExecutableModel;
@@ -24,6 +27,10 @@ namespace M {
 class MEFFile;
 class ModelCollection;
 
+} // namespace M
+
+namespace M {
+
 /// Instantiate model type traits.
 template <>
 struct ModelTraits<MO::ModularModel> {
@@ -33,15 +40,8 @@ template <>
 struct ModelTraits<MO::ModularExecutableModel> {
   using ModelType = MO::ModularModel;
 };
-} // namespace M
 
-namespace M::MO {
-
-/// Load all the models from the contents of the specified MEFFile, which
-/// holds them compiled to MEF format. Assumes the
-/// MemoryBuffer will outlive the ModelCollection.
-ErrorOr<std::unique_ptr<ModelCollection>>
-loadMGPMEFFile(RCRef<MEFFile> mefFile);
+namespace /*M::*/ MO {
 
 /// This class describes a model overall, including the MEF
 /// invokables that implement its phases and metadata about what tensors it
@@ -58,12 +58,29 @@ struct ModularExecutableModel final
   using MGPExecutableModelImpl::MGPExecutableModelImpl;
 };
 
-/// Load all the models from the contents of the specified MEFFile, which
-/// holds them compiled to MEF format. Assumes the
-/// MemoryBuffer will outlive the ModelCollection.
-ErrorOr<std::unique_ptr<ModelCollection>>
-loadMGPMEFFile(RCRef<MEFFile> mefFile);
+} // namespace MO
 
-} // namespace M::MO
+} // namespace M
 
-#endif // GRAPHCOMPILER_TRANSFORMS_MODIALECT_MEFMODEL_H
+namespace M {
+M::ErrorOr<std::unique_ptr<M::ModelCollection>>
+MO::loadMGPMEFFile(RCRef<M::MEFFile> mefFile) {
+  // Set up all our primitives.
+  PrimitiveRegistry primitives;
+  registerAllGraphRTPrimitives(primitives);
+  registerMGPPrimitives(primitives);
+  primitives.finalize();
+
+  if (auto err = mefFile->installPrimitives(primitives))
+    return err.takeError();
+
+  SmallVector<M::ModelCollection::ModelPtrTy> models;
+  auto *moduleInv = mefFile->getTopLevelInvokable();
+  if (auto err = moduleInv->walkPrimitives<ModularModel>(
+          [&](auto &&m) { models.push_back(std::forward<decltype(m)>(m)); }))
+    return err.takeError();
+
+  return std::make_unique<M::ModelCollection>(std::move(models));
+}
+
+} // namespace M

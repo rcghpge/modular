@@ -3,26 +3,24 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+//
+#ifndef GENERICML_MEFMODEL_MEFMODEL_H
+#define GENERICML_MEFMODEL_MEFMODEL_H
 
-#ifndef MODULARMOUDEL_TFMODELFILE_H
-#define MODULARMOUDEL_TFMODELFILE_H
-
+#include "GenericML/Support/ModelCollection.h"
+#include "GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/ForwardDecls.h"
+#include "Support/RCRef.h"
 #include <memory>
 
-namespace M {
-class MEFFile;
-class ModelCollection;
-} // namespace M
-
-namespace M::MOF {
+namespace M::MO {
 
 /// Load all the models from the contents of the specified MEFFile, which
 /// holds them compiled to MEF format. Assumes the
 /// MemoryBuffer will outlive the ModelCollection.
-ErrorOr<std::unique_ptr<ModelCollection>>
-loadMGPMEFFile(RCRef<M::MEFFile> mefFile);
+ErrorOr<std::unique_ptr<M::ModelCollection>>
+loadMGPMEFFile(RCRef<MEFFile> mefFile);
 
-} // namespace M::MOF
+} // namespace M::MO
 
-#endif // MODULARMOUDEL_TFMODELFILE_H
+#endif // GENERICML_MEFMODEL_MEFMODEL_H

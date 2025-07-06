@@ -500,6 +500,7 @@ modular_cc_library(
         ":CommonDriver",
         ":DeviceDriver",
         ":GraphCompilerPublic.headers",
+        ":MEFModel",
         ":MGPPrimitives",
         ":MOAnalysis",
         ":MODialect",
@@ -1100,6 +1101,15 @@ modular_cc_library(
         "//GraphRT:MEFDialect",
         "//Support:HashUtils",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "MEFModel",
+    srcs = glob(["lib/MEFModel/*.cpp"]),
+    hdrs = glob(["include/GenericML/MEFModel/*.h"]),
+    deps = [
+        ":MGPPrimitives",
     ],
 )
 
