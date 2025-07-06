@@ -1,4 +1,4 @@
-[![Sync from upstream](https://github.com/rcghpge/modular/actions/workflows/sync-upstream.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/sync-upstream.yml)
+[![Sync from upstream](https://github.com/rcghpge/modular/actions/workflows/sync-upstream.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/sync-upstream.yml)[![CodeQL Advanced](https://github.com/rcghpge/modular/actions/workflows/codeql.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/codeql.yml)[![Bandit](https://github.com/rcghpge/modular/actions/workflows/bandit.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/bandit.yml)
 
 <div align="center">
     <img src="https://modular-assets.s3.amazonaws.com/images/GitHubBannerModular.png">
