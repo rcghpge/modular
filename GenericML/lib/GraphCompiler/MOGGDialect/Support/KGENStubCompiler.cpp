@@ -489,6 +489,7 @@ StubCompiler::compile(
     results.push_back(builder.create<MOGG::LoadCompiledKernelOp>(
         loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
         /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType)));
+    results.back()->setAttr("cache_miss", builder.getUnitAttr());
   }
 
   for (const auto &[blobHash, symbolsAndBufferPair] : mojoCacheHits) {
@@ -499,6 +500,7 @@ StubCompiler::compile(
     results.push_back(builder.create<MOGG::LoadCompiledKernelOp>(
         loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
         /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType)));
+    results.back()->setAttr("cache_hit", builder.getUnitAttr());
   }
   return results;
 }
