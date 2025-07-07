@@ -266,6 +266,10 @@ void M::MO::buildMoToMgpPipeline(
     // Fuse into big ops. I.E epilogue fusion into matmul.
     pm.addPass(MOGG::createFuseProloguesEpilogues());
     pm.addPass(MOGG::createSimplifyKernelOperands());
+
+    // Fuse constants last as they don't enable any extra fusions directly and
+    // should be fused as late as possible to catch all cases of constants.
+    pm.addPass(MOGG::createFuseConstants());
   }
 
   // Convert output lambdas to compute output lambdas when possible.
@@ -273,11 +277,6 @@ void M::MO::buildMoToMgpPipeline(
       {kernelLibraryPaths, opts.forceSync, opts.enableComputeLambdas},
       libraryAnalysis));
   pm.addPass(MOGG::createSimplifyKernelOperands());
-
-  // Fuse constants last as they don't enable any extra fusions directly and
-  // should be fused as late as possible to catch all cases of constants.
-  if (opts.fuseJitKernels)
-    pm.addPass(MOGG::createFuseConstants());
 
   // Add cleanup passes to catch e.g used/duplicated constants.
   pm.addPass(mlir::createCanonicalizerPass());

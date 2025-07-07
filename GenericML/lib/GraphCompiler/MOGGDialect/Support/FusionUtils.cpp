@@ -116,14 +116,11 @@ static MO::ConstantOp tryGetConstantOp(Value val) {
 }
 
 /// Check whether the `index`-th operand of `kernel` is a fusable constant op.
-static bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
+static bool canFuseOperand(MOGG::ExpKernelOp kernel, int32_t index) {
   // HACK HACK HACK https://github.com/modularml/modular/issues/22959
   // Don't fuse constant unless on the host. TEMPORARY until constant
   // lowering fixed.
   if (!MO::isOnHost(kernel))
-    return false;
-
-  if (kernel.isInPlaceAlloc())
     return false;
 
   MO::ConstantOp cst = tryGetConstantOp(kernel.getOperand(index));
@@ -151,14 +148,14 @@ static bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
 }
 
 /// Fold the constant at `idx`-th operand of `kernel` into the kernel body.
-static void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
+static void fuseInputAtIndex(MOGG::ExpKernelOp kernel, int32_t idx) {
   Value inputVal = kernel.getOperand(idx);
   MO::ConstantOp cst = tryGetConstantOp(inputVal);
 
-  Block &block = kernel.getBody().front();
+  Block *block = kernel.getBody();
 
   mlir::OpBuilder builder{kernel->getContext()};
-  kernel.setInsertionPointToTop(builder);
+  builder.setInsertionPointToStart(block);
 
   // Clone the constant and add it to the kernel.
   MO::ConstantOp newOp = cst.clone();
@@ -166,17 +163,17 @@ static void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
   builder.insert(newOp);
 
   // Replace all uses of it with the now in-kernel constant.
-  block.getArgument(idx).replaceAllUsesWith(newOp.getResult());
+  block->getArgument(idx).replaceAllUsesWith(newOp.getResult());
 
   // Remove the argument.
-  kernel.removeOperandAtIndex(idx);
+  kernel.eraseInputsAt(idx);
 
   // Kill the constant if that was the last use.
   if (cst->use_empty())
     cst->erase();
 }
 
-void fuseConstant(MOGG::KernelOp kernel) {
+void fuseConstant(MOGG::ExpKernelOp kernel) {
   // Traverse from the back to simplify removing operands.
   int32_t preFuseNumOperands = kernel.getNumOperands();
   for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {

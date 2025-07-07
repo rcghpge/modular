@@ -48,7 +48,7 @@ StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType);
 ///     %const = mo.constant ...
 ///     ...
 ///   }
-void fuseConstant(MOGG::KernelOp kernel);
+void fuseConstant(MOGG::ExpKernelOp kernel);
 
 /// Given a set of kernels to fuse together, rename just the right number of
 /// parameters to avoid collisions. Any attempt at fusing the bodies of two
