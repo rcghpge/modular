@@ -221,4 +221,17 @@ def SimplifyKernelOperands: Pass<"simplify-kernel-operands", "MO::GraphOp"> {
   ];
 }
 
+def HashModuleContents: Pass<"hash-module-contents", "mlir::ModuleOp"> {
+  let summary = "Compute and attach hash of module contents";
+  let description = [{
+    This pass computes a hash of the module contents and attaches it as an
+    attribute. This can be used for caching, verification, or tracking changes
+    to the module.
+  }];
+  let dependentDialects = [
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD
