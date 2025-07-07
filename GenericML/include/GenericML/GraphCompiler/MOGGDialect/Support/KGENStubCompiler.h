@@ -20,7 +20,6 @@ namespace M::MOGG {
 CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
 compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
              std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-             const std::string &kgenModuleHash,
              const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
              bool enableTiming = false, bool debugKGENStubs = false);
 

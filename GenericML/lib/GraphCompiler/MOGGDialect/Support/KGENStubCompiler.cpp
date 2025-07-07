@@ -47,8 +47,7 @@ public:
   static CompileDiagnosticOr<StubCompiler>
   create(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
          std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-         const std::string &kgenModuleHash, bool enableTiming,
-         bool debugKGENStubs);
+         bool enableTiming, bool debugKGENStubs);
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
@@ -58,13 +57,12 @@ public:
 private:
   StubCompiler(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
                std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-               const std::string &kgenModuleHash, bool enableTiming,
-               bool debugKGENStubs)
+               bool enableTiming, bool debugKGENStubs)
       : ctx(graph->getContext()), kgenModule(std::move(kgenStubs)),
         graph(graph), loc(graph->getLoc()),
         saveTempsPrefix(std::move(saveTempsPrefix)),
         kernelBuildType(kernelBuildType), enableTiming(enableTiming),
-        debugKGENStubs(debugKGENStubs), kgenModuleHash(kgenModuleHash) {}
+        debugKGENStubs(debugKGENStubs) {}
 
   /// Run the KGEN elaboration passes on the module.
   CompileDiagnosticOrSuccess elaborateKGEN();
@@ -108,8 +106,16 @@ private:
 
   /// Whether to emit debug info.
   bool debugKGENStubs;
+};
 
-  std::string kgenModuleHash;
+/// Cache key which queries the semnatic hash created by the hashModuleContents
+/// function.
+struct SemanticHashKey {
+  using KeyTy = M::KGEN::GeneratorOp;
+
+  static std::string hashKey(M::KGEN::GeneratorOp op) {
+    return op->getAttrOfType<StringAttr>("semantic_hash").str();
+  }
 };
 
 } // namespace
@@ -190,14 +196,14 @@ static ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
   return targetInfoOr;
 }
 
-/*static*/ CompileDiagnosticOr<StubCompiler> StubCompiler::create(
-    OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
-    std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-    const std::string &kgenModuleHash, bool enableTiming, bool debugKGENStubs) {
+/*static*/ CompileDiagnosticOr<StubCompiler>
+StubCompiler::create(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
+                     std::string saveTempsPrefix,
+                     KernelBuildType kernelBuildType, bool enableTiming,
+                     bool debugKGENStubs) {
   MLIRContext *ctx = graph->getContext();
   StubCompiler compiler(std::move(kgenStubs), graph, saveTempsPrefix,
-                        kernelBuildType, kgenModuleHash, enableTiming,
-                        debugKGENStubs);
+                        kernelBuildType, enableTiming, debugKGENStubs);
   auto targetInfoOr = getTargetInfo(ctx);
   if (targetInfoOr.isError())
     return compiler.graph->emitError(targetInfoOr.getError());
@@ -374,7 +380,7 @@ StubCompiler::compile(
 
   // The MOGG cache is identified by the hash of the environment and the hash
   // of the KGEN stub module.
-  std::string keyHash = std::move(envKeyHash) + "_" + kgenModuleHash;
+  std::string keyHash = std::move(envKeyHash);
 
   ErrorOr<RCRef<Cache::BlobCacheBackend>> moggCacheBackendOr =
       Cache::getLocalDefaultBackendChain(std::filesystem::path(".mogg_cache") /
@@ -382,7 +388,7 @@ StubCompiler::compile(
   if (moggCacheBackendOr.isError())
     return kgenModule->emitError(moggCacheBackendOr.getError());
 
-  auto moggCache = RCRef<Cache::BlobCache<Cache::Keys::OperationKey>>::create(
+  auto moggCache = RCRef<Cache::BlobCache<SemanticHashKey>>::create(
       moggCacheBackendOr.takeValue());
   RCRef<Cache::TransformCache> mojoCache = compiler->getTransformCache();
 
@@ -508,13 +514,12 @@ StubCompiler::compile(
 CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
 compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
              std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-             const std::string &kgenModuleHash,
              const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
              bool enableTiming /*= false*/, bool debugKGENStubs /*= false*/) {
   initLLVM();
-  CompileDiagnosticOr<StubCompiler> compilerOr = StubCompiler::create(
-      std::move(kgenStubs), graph, saveTempsPrefix, kernelBuildType,
-      kgenModuleHash, enableTiming, debugKGENStubs);
+  CompileDiagnosticOr<StubCompiler> compilerOr =
+      StubCompiler::create(std::move(kgenStubs), graph, saveTempsPrefix,
+                           kernelBuildType, enableTiming, debugKGENStubs);
   if (compilerOr.isError())
     return compilerOr.takeError();
   StubCompiler compiler = compilerOr.takeValue();
