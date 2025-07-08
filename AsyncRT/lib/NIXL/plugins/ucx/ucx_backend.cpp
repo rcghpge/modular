@@ -233,11 +233,16 @@ public:
  *****************************************/
 
 void nixlUcxEngine::progressFunc() {
-  using namespace nixlTime;
-  pthrActive = 1;
-
   // Set active device context for the progress thread.
   auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    std::cerr << "Error: Failed to activate context for progress thread"
+              << std::endl;
+    return;
+  }
+
+  using namespace nixlTime;
+  pthrActive = 1;
 
   while (!pthrStop) {
     int i;
@@ -332,6 +337,11 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   }
   // Set the context as active for the UCX initialization in this function.
   auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    std::cerr << "Error: Failed to activate context for UCX initialization"
+              << std::endl;
+    return;
+  }
 
   uc = new nixlUcxContext(devs, sizeof(nixlUcxIntReq), _internalRequestInit,
                           _internalRequestFini, NIXL_UCX_MT_WORKER);
@@ -381,6 +391,11 @@ nixlUcxEngine::~nixlUcxEngine() {
  *****************************************/
 
 nixl_status_t nixlUcxEngine::checkConn(const std::string &remote_agent) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   if (remoteConnMap.find(remote_agent) == remoteConnMap.end())
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
 
@@ -388,6 +403,10 @@ nixl_status_t nixlUcxEngine::checkConn(const std::string &remote_agent) {
 }
 
 nixl_status_t nixlUcxEngine::endConn(const std::string &remote_agent) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
 
   auto search = remoteConnMap.find(remote_agent);
 
@@ -407,6 +426,11 @@ nixl_status_t nixlUcxEngine::endConn(const std::string &remote_agent) {
 }
 
 nixl_status_t nixlUcxEngine::getConnInfo(std::string &str) const {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   str = nixlSerDes::_bytesToString(workerAddr, workerSize);
   return nixl_status_t::NIXL_SUCCESS;
 }
@@ -467,6 +491,11 @@ ucs_status_t nixlUcxEngine::connectionTermAmCb(
 }
 
 nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   struct nixl_ucx_am_hdr hdr;
   uint32_t flags = 0;
   nixl_status_t ret;
@@ -503,6 +532,10 @@ nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
 }
 
 nixl_status_t nixlUcxEngine::disconnect(const std::string &remote_agent) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
 
   static struct nixl_ucx_am_hdr hdr;
   uint32_t flags = 0;
@@ -540,6 +573,11 @@ nixl_status_t nixlUcxEngine::disconnect(const std::string &remote_agent) {
 nixl_status_t
 nixlUcxEngine::loadRemoteConnInfo(const std::string &remote_agent,
                                   const std::string &remote_conn_info) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   size_t size = remote_conn_info.size();
   int ret;
   SmallVector<char> addr(size);
@@ -567,6 +605,11 @@ nixlUcxEngine::loadRemoteConnInfo(const std::string &remote_agent,
 nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
                                          const nixl_mem_t &nixl_mem,
                                          nixlBackendMD *&out) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   int ret;
   nixlUcxPrivateMetadata *priv = new nixlUcxPrivateMetadata;
   uint64_t rkey_addr;
@@ -584,10 +627,6 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
       return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
       // TODO Add to logging
     }
-  }
-  auto deviceCtxScope = activateContext();
-  if (deviceCtxScope && deviceCtxScope->err().isError()) {
-    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
   // TODO: Add nixl_mem check?
@@ -609,6 +648,10 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
 
 nixl_status_t nixlUcxEngine::deregisterMem(nixlBackendMD *meta) {
   auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   nixlUcxPrivateMetadata *priv = (nixlUcxPrivateMetadata *)meta;
   uw->memDereg(priv->mem);
   delete priv;
@@ -617,6 +660,11 @@ nixl_status_t nixlUcxEngine::deregisterMem(nixlBackendMD *meta) {
 
 nixl_status_t nixlUcxEngine::getPublicData(const nixlBackendMD *meta,
                                            std::string &str) const {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   const nixlUcxPrivateMetadata *priv = (const nixlUcxPrivateMetadata *)meta;
   str = priv->get();
   return nixl_status_t::NIXL_SUCCESS;
@@ -653,6 +701,11 @@ nixl_status_t nixlUcxEngine::internalMDHelper(const nixl_blob_t &blob,
 
 nixl_status_t nixlUcxEngine::loadLocalMD(nixlBackendMD *input,
                                          nixlBackendMD *&output) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   nixlUcxPrivateMetadata *input_md = (nixlUcxPrivateMetadata *)input;
   return internalMDHelper(input_md->rkeyStr, localAgent, output);
 }
@@ -662,10 +715,19 @@ nixl_status_t nixlUcxEngine::loadRemoteMD(const nixlBlobDesc &input,
                                           const nixl_mem_t &nixl_mem,
                                           const std::string &remote_agent,
                                           nixlBackendMD *&output) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   return internalMDHelper(input.metaInfo, remote_agent, output);
 }
 
 nixl_status_t nixlUcxEngine::unloadMD(nixlBackendMD *input) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
 
   nixlUcxPublicMetadata *md = (nixlUcxPublicMetadata *)input; // typecast?
 
@@ -703,6 +765,11 @@ nixl_status_t nixlUcxEngine::prepXfer(const nixl_xfer_op_t &operation,
                                       const std::string &remote_agent,
                                       nixlBackendReqH *&handle,
                                       const nixl_opt_b_args_t *opt_args) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   /* TODO: try to get from a pool first */
   nixlUcxBackendH *intHandle = new nixlUcxBackendH(uw);
 
@@ -791,6 +858,11 @@ nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) {
 }
 
 nixl_status_t nixlUcxEngine::releaseReqH(nixlBackendReqH *handle) {
+  auto deviceCtxScope = activateContext();
+  if (deviceCtxScope && deviceCtxScope->err().isError()) {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
   nixlUcxBackendH *intHandle = (nixlUcxBackendH *)handle;
   nixl_status_t status = intHandle->release();
 
