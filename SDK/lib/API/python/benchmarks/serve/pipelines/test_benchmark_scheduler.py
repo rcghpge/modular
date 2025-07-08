@@ -9,7 +9,7 @@ import multiprocessing
 
 import pytest
 import zmq
-from max.pipelines.core import (
+from max.interfaces import (
     TextGenerationResponse,
     TextGenerationStatus,
     TextResponse,
