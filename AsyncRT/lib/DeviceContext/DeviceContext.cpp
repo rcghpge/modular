@@ -132,8 +132,8 @@ MODULAR_CXX_EXPORT size_t getPreferredAlignment(std::string label) {
 Device::Device(API api, std::string name, int id, MemInfo memInfo,
                size_t allocAlignment)
     : name_(std::move(name)), id_(id), api_(api),
-      bufferCache_(
-          std::make_unique<BufferCache>(*this, memInfo, allocAlignment)) {}
+      bufferCache_(BufferCache::onDevice(*this, memInfo, allocAlignment)),
+      hostBufferCache_(BufferCache::onHost(*this, allocAlignment)) {}
 
 Device::~Device() {
   // Destroy the function map before destroying the context.
@@ -295,8 +295,19 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
     // Parent owns the memory.
     return;
   }
-  // Release the memory (either to buffer cache or using memFree).
-  ERR_CHECK(context(), context().freeList().free(ptr_, isHost()));
+  // Release the GPU memory now or enqueue an event based release for host
+  // memory. Host memory can only be released once the stream of execution on
+  // the corresponding device has completed all currently pending events.
+  const DeviceContext &ctx = context();
+  if (!isHost()) {
+    ERR_CHECK(ctx, ctx.freeList().free(ptr_));
+  } else {
+    ERR_CHECK(
+        ctx, ctx.enqueueEventHandler(
+                 [contextRef = DeviceContextRef::copy(&ctx), ptr = ptr_]() {
+                   ERR_CHECK(*contextRef, contextRef->hostFreeList().free(ptr));
+                 }));
+  }
 }
 
 MODULAR_CXX_EXPORT const DeviceContext &DeviceBuffer::context() const {
@@ -555,6 +566,8 @@ DeviceContext::DeviceContext(const Device &device)
     : device_(DeviceRef::copy(&device)),
       freeList_(std::make_unique<BufferCacheFreeList>(
           this, device.bufferCache(), device.bufferCache().freeList())),
+      hostFreeList_(std::make_unique<BufferCacheFreeList>(
+          this, device.hostBufferCache(), device.hostBufferCache().freeList())),
       syncMode_(0) {
   if (configAsBool("sync-mode", false)) {
     incSyncMode();
@@ -579,20 +592,93 @@ void DeviceContext::setPendingError(Error err) const {
     pendingError_ = std::move(err);
   }
   // After releasing mu_ also set the atomic value to true.
-  hasPendingError_.store(1, std::memory_order_release);
+  hasPendingWork_.store(1, std::memory_order_release);
 }
-ErrorOrSuccess DeviceContext::checkPendingError() const {
+
+class DeviceContext::PendingEventHandler {
+public:
+  PendingEventHandler(DeviceContextRef ctx, DeviceEventRef event,
+                      std::function<void()> handler)
+      : next_(nullptr), ctx_(ctx), event_(std::move(event)),
+        handler_(std::move(handler)) {}
+
+  ErrorOr<bool> isReady() { return event_->isReady(); }
+
+  void runHandler() { handler_(); }
+
+private:
+  friend class DeviceContext;
+
+  PendingEventHandler *next_;
+  // We keep a reference to the context to ensure that we do not release the
+  // context while we still have pending events in the queue.
+  DeviceContextRef ctx_;
+  DeviceEventRef event_;
+  std::function<void()> handler_;
+};
+
+void DeviceContext::setPendingEventHandler(PendingEventHandler *h) const {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (pendingEventsLast_ != nullptr) {
+      // Enqueue at end.
+      assert(pendingEventsLast_->next_ == nullptr);
+      pendingEventsLast_->next_ = h;
+      pendingEventsLast_ = h;
+    } else {
+      // Enqueue as first item.
+      pendingEvents_ = h;
+      pendingEventsLast_ = h;
+    }
+  }
+  // After releasing mu_ also set the atomic value to true.
+  hasPendingWork_.store(1, std::memory_order_release);
+}
+
+ErrorOrSuccess DeviceContext::checkPendingWork() const {
   // Quickly check if we should check for a pending error.
-  if (hasPendingError_.load(std::memory_order_acquire) == 0) {
+  if (hasPendingWork_.load(std::memory_order_acquire) == 0) {
     return success();
   }
 
   // We can safely remove the flag indicating that the pending error should be
   // checked. We will unconditionally acquire the lock below and check the
   // pending error while protected by the lock.
-  hasPendingError_.store(0, std::memory_order_release);
+  hasPendingWork_.store(0, std::memory_order_release);
   {
     std::lock_guard<std::mutex> lock(mu_);
+
+    // Check if the head of the queue of pending events exists and its event is
+    // ready.
+    while (pendingEvents_ != nullptr) {
+      ErrorOr<bool> isReadyOr = pendingEvents_->isReady();
+      if (isReadyOr.isError()) {
+        return isReadyOr.takeError();
+      }
+      if (!*isReadyOr) {
+        // First element in the queue is not ready, so we can abort the
+        // walk through the pending events.
+        break;
+      }
+      // The handler at the head of the queue is ready to run. Before calling
+      // the handler we need to release the lock in case there are pending
+      // errors to be enqueued or there are other effects by the handler code
+      // (e.g. causing dead lock or contention).
+      mu_.unlock();
+      pendingEvents_->runHandler();
+      mu_.lock();
+
+      // Advance to the next handler and delete the current entry.
+      PendingEventHandler *curHandler = pendingEvents_;
+      pendingEvents_ = pendingEvents_->next_;
+      if (pendingEvents_ == nullptr) {
+        // We reached the end of the queue.
+        pendingEventsLast_ = nullptr;
+      }
+      delete curHandler;
+    }
+
+    // Check if we have a pending error recorded.
     if (!pendingError_.isError()) {
       return success();
     }
@@ -640,20 +726,14 @@ ErrorOr<DeviceBufferRef>
 DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
   assert(byteSize != 0);
   void *ptr = nullptr;
-  // Only attempt to allocate from the buffer cache if this is an on-device
-  // allocation.
-  if (mode != Device::AllocMode::HOST) {
-    ErrorOr<void *> errPtr = freeList().allocate(byteSize, mode);
-    if (errPtr.isError()) {
-      return errPtr.takeError();
-    }
-    ptr = errPtr.takeValue();
-  } else {
-    ErrorOrSuccess err = memAlloc(&ptr, byteSize, Device::AllocMode::HOST);
-    if (err.isError()) {
-      return err.takeError();
-    }
+  // Allocate from the correct buffer cache.
+  ErrorOr<void *> errPtr =
+      ((mode == Device::AllocMode::HOST) ? hostFreeList() : freeList())
+          .allocate(byteSize, mode);
+  if (errPtr.isError()) {
+    return errPtr.takeError();
   }
+  ptr = errPtr.takeValue();
   return DeviceBufferRef::take(
       new DeviceBuffer(*this, ptr, byteSize, mode == Device::AllocMode::HOST));
 }
@@ -674,6 +754,15 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
   }
   return Error("Device API mismatch copying from \"" + srcApi + "\" to \"" +
                dstApi + "\"");
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess
+DeviceContext::enqueueEventHandler(std::function<void()> handler) const {
+  DEFINE_OR_RAISE(DeviceEventRef, event, this->enqueueEvent());
+  PendingEventHandler *eventHandler = new PendingEventHandler(
+      DeviceContextRef::copy(this), std::move(event), std::move(handler));
+  setPendingEventHandler(eventHandler);
+  return success();
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
@@ -735,6 +824,9 @@ DeviceContext::operator!=(const DeviceContext &other) const {
 }
 
 BufferCacheFreeList &DeviceContext::freeList() const { return *freeList_; }
+BufferCacheFreeList &DeviceContext::hostFreeList() const {
+  return *hostFreeList_;
+}
 
 // DeviceFunction compiling, loading, and execution.
 ErrorOr<M::BufferRef>
@@ -779,6 +871,11 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
 BufferCache &Device::bufferCache() const {
   assert(bufferCache_ != nullptr);
   return *bufferCache_;
+}
+
+BufferCache &Device::hostBufferCache() const {
+  assert(hostBufferCache_ != nullptr);
+  return *hostBufferCache_;
 }
 
 bool DeviceContext::syncMode() const {

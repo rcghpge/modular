@@ -86,13 +86,14 @@ int CpuDevice::deviceCount() const {
   return 1;
 }
 
-ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize) const {
+ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize,
+                                     bool isHost) const {
   assert(byteSize != 0);
   *ptr = TCMallocGlobals::tc_new(byteSize, 1);
   return success();
 }
 
-ErrorOrSuccess CpuDevice::chunkFree(void *ptr) const {
+ErrorOrSuccess CpuDevice::chunkFree(void *ptr, bool isHost) const {
   TCMallocGlobals::tc_delete(ptr);
   return success();
 }

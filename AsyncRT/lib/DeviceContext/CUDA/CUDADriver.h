@@ -273,6 +273,7 @@ class CUDADriver {
 public:
   enum Result : unsigned int {
     SUCCESS = 0,
+    NOT_READY = 600,
   };
 
   Result GetErrorName(Result error, const char **pStr) const {

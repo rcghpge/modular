@@ -48,8 +48,9 @@ public:
 
   int deviceCount() const override;
 
-  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const override;
-  ErrorOrSuccess chunkFree(void *ptr) const override;
+  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
+                            bool isHost) const override;
+  ErrorOrSuccess chunkFree(void *ptr, bool isHost) const override;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 

@@ -82,7 +82,7 @@
   } while (0)
 
 #define HIP_WITH_CTX_ERR(ctx)                                                  \
-  ErrorOrSuccess __pendingErr = (ctx).checkPendingError();                     \
+  ErrorOrSuccess __pendingErr = (ctx).checkPendingWork();                      \
   if (__pendingErr.isError()) {                                                \
     return __pendingErr.takeError();                                           \
   }                                                                            \
@@ -537,16 +537,25 @@ int HIPDevice::deviceCount() const {
   return *errOrCount;
 }
 
-ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize) const {
+ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize,
+                                     bool isHost) const {
   assert(byteSize != 0);
   HIP_WITH_DEV_ERR(*this);
-  HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  if (isHost) {
+    HIP_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
+  } else {
+    HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  }
   return success();
 }
 
-ErrorOrSuccess HIPDevice::chunkFree(void *ptr) const {
+ErrorOrSuccess HIPDevice::chunkFree(void *ptr, bool isHost) const {
   HIP_WITH_DEV_ERR(*this);
-  HIP_CHECK_ERR(driver_.MemFree(ptr));
+  if (isHost) {
+    HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
+  } else {
+    HIP_CHECK_ERR(driver_.MemFree(ptr));
+  }
   return success();
 }
 
@@ -645,10 +654,25 @@ HIPDeviceEvent::~HIPDeviceEvent() {
 
 ErrorOrSuccess HIPDeviceEvent::synchronize() const {
   const auto &hipDevice = HIPDevice::cast(device());
-
   HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(hipDevice.hipDriver().EventSynchronize(event_));
   return success();
+}
+
+ErrorOr<bool> HIPDeviceEvent::isReady() const {
+  const auto &hipDevice = HIPDevice::cast(device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  HIPDriver::Result res = hipDevice.hipDriver().EventQuery(event_);
+  if (res == HIPDriver::SUCCESS)
+    return true;
+  else if (res == HIPDriver::NOT_READY) {
+    return false;
+  }
+  HIP_CHECK_ERR(res); // All other errors get raised here.
+  // Not reachable because there is an error status in res, but compiler
+  // complains if not returning a value.
+  llvm_unreachable("Not Reachable");
+  return Error("Not Reachable.");
 }
 
 hipEvent_t HIPDeviceEvent::hipEvent() const { return event_; }

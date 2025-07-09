@@ -354,6 +354,42 @@ TEST_F(GPUDeviceContextTest, SubBuffer) {
   free(dPtr);
   free(aPtr);
 }
+TEST_F(GPUDeviceContextTest, OverlappingCopies) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  int allocLen =
+      127 * 1024 * 1024; // 127MB to fit into host buffer cache chunks.
+  ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, refBuf, ctx->createHostBuffer(allocLen));
+
+  void *aHostPtr = nullptr;
+  {
+    ASSIGN_NO_ERR(DeviceBufferRef, hostBuf, ctx->createHostBuffer(allocLen));
+    aHostPtr = hostBuf->ptr();
+    memset(aHostPtr, 12, allocLen);
+    EXPECT_NO_ERR(hostBuf->copyTo(*aBuf));
+    // hostBuf is released here, but should not be reallocated from the host
+    // buffer cache until the copy above has finished.
+  }
+
+  // Allocate another host buffer of the same size and overwrite the last byte.
+  // If the above hostBuf was released too early this write will race with the
+  // copy.
+  ASSIGN_NO_ERR(DeviceBufferRef, hostBuf, ctx->createHostBuffer(allocLen));
+  char *bHostPtr = reinterpret_cast<char *>(hostBuf->ptr());
+  bHostPtr[allocLen - 1] = 15;
+  EXPECT_NO_ERR(hostBuf->copyTo(*bBuf));
+
+  // Verify that the original hostBuf was not overwritten.
+  EXPECT_NO_ERR(ctx->synchronize());
+  EXPECT_NO_ERR(aBuf->copyTo(*refBuf));
+  EXPECT_NO_ERR(ctx->synchronize());
+  char *refPtr = reinterpret_cast<char *>(refBuf->ptr());
+  for (int i = 0; i < allocLen; i++) {
+    EXPECT_EQ(refPtr[i], 12) << "failure at index: " << i << "\n";
+  }
+}
 
 TEST_F(GPUDeviceContextTest, SetMemory) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));

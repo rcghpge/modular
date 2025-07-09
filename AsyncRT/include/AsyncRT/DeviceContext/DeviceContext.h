@@ -131,12 +131,14 @@ public:
   virtual int deviceCount() const = 0;
 
   BufferCache &bufferCache() const;
+  BufferCache &hostBufferCache() const;
 
   // Low-level uncached synchronous allocation of memory to support the
   // BufferCache.
   // REQUIRES: byteSize > 0
-  virtual ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize) const = 0;
-  virtual ErrorOrSuccess chunkFree(void *ptr) const = 0;
+  virtual ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
+                                    bool isHost) const = 0;
+  virtual ErrorOrSuccess chunkFree(void *ptr, bool isHost) const = 0;
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
@@ -174,6 +176,7 @@ private:
   API api_;
 
   std::unique_ptr<BufferCache> bufferCache_;
+  std::unique_ptr<BufferCache> hostBufferCache_;
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;
@@ -258,6 +261,8 @@ public:
   const Device &device() const;
 
   virtual ErrorOrSuccess synchronize() const = 0;
+
+  virtual ErrorOr<bool> isReady() const = 0;
 
 protected:
   DeviceEvent(const Device &device);
@@ -466,6 +471,8 @@ public:
     return enqueueWaitFor(event);
   }
 
+  ErrorOrSuccess enqueueEventHandler(std::function<void()> handler) const;
+
   virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
@@ -475,6 +482,7 @@ public:
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
   BufferCacheFreeList &freeList() const;
+  BufferCacheFreeList &hostFreeList() const;
 
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
 
@@ -492,7 +500,7 @@ public:
   static Error formatError(const char *file, int line, const char *func,
                            const llvm::Twine &msg);
 
-  ErrorOrSuccess checkPendingError() const;
+  ErrorOrSuccess checkPendingWork() const;
 
   // Debugging helpers.
   bool syncMode() const;
@@ -524,24 +532,30 @@ private:
   // FRIEND_TEST(GPUDeviceContextTest, DeviceContextScope)
   friend class GPUDeviceContextTest_DeviceContextScope_Test;
 
+  class PendingEventHandler;
+
   DeviceRef device_;
 
   std::unique_ptr<BufferCacheFreeList> freeList_;
+  std::unique_ptr<BufferCacheFreeList> hostFreeList_;
 
   mutable std::atomic<int> syncMode_ = {0};
 
-  // hasPendingError does indicate whether pendingError_ should be checked.
-  // Since pendingError_ is protected by a lock we set an atomic value that can
-  // be quickly checked without fully acquiring a mutex lock. Raising errors
-  // across threads is inherently racing, so we are fine with possibly
-  // missing an update to hasPendingError_ from a different thread.
+  // hasPendingWork_ does indicate whether pendingError_ and pendingEvents_
+  // should be checked. Since pending[Error_ | Events_] are protected by a lock
+  // we set an atomic value that can be quickly checked without fully acquiring
+  // a mutex lock. Raising errors and enqueueing work across threads is
+  // inherently racing, so we are fine with possibly missing an update to
+  // hasPendingWork_ from a different thread.
   //
-  // To make sure the pendingError_ is properly set and memory been made visible
-  // to other threads, we first need to lock mu_, update the pendingError_,
-  // release mu_ and only then atomically set pendingError_.
-  mutable std::atomic<int> hasPendingError_ = {0};
+  // To make sure the pendingWork_ is properly set and memory been made visible
+  // to other threads, we first need to lock mu_, update the pendingError_ or
+  // pendingEvents_, release mu_ and only then atomically set pendingWork_.
+  mutable std::atomic<int> hasPendingWork_ = {0};
   mutable std::mutex mu_;
   mutable ErrorOrSuccess pendingError_;
+  mutable PendingEventHandler *pendingEvents_ = nullptr;
+  mutable PendingEventHandler *pendingEventsLast_ = nullptr;
 
   // Explicitly mark copy and assignment as unsupported.
   DeviceContext(const DeviceContext &other) = delete;
@@ -552,6 +566,8 @@ private:
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
                                        Device::AllocMode mode) const;
+
+  void setPendingEventHandler(PendingEventHandler *h) const;
 
   // Shared configuration object.
   // REQUIRES: `DeviceContext::mu_` must be held to get and access the shared

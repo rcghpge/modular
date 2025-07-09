@@ -45,18 +45,28 @@ public:
     Desc **buckets_;
   };
 
-  BufferCache(const Device &device_, Device::MemInfo memInfo, size_t alignment);
   ~BufferCache();
 
   size_t allocationAlignment() const;
+
+  bool isHost() const;
 
   void clear();
 
   BufferCacheFreeList *freeList() const;
 
+  // Factory methods configure the buffer cache based on defaults or the
+  // environment.
+  static BufferCache *onDevice(const Device &device, Device::MemInfo memInfo,
+                               size_t alignment);
+  static BufferCache *onHost(const Device &device, size_t alignment);
+
 private:
   friend class Chunk;
   friend class BufferCacheFreeList;
+
+  BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
+              size_t alignment, bool isHost, bool isBazelTest);
 
   const Device &device() const;
 
@@ -88,6 +98,9 @@ private:
   void growChunkSizeTo(size_t newChunkSize);
 
   const Device &device_;
+
+  // This buffer cache is managing "pinned" host memory.
+  const bool isHost_;
 
   // Does this buffer cache need to allow for other concurrently running tests.
   const bool isBazelTest_;
@@ -141,7 +154,7 @@ public:
   // capacity, then the allocation request gets transparently forwarded to the
   // associated `DeviceContext`.
   ErrorOr<void *> allocate(size_t size, Device::AllocMode mode);
-  ErrorOrSuccess free(void *buf, bool isHost);
+  ErrorOrSuccess free(void *buf);
 
   bool empty();
 

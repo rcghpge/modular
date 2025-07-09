@@ -133,7 +133,7 @@ private:
   } while (0)
 
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
-  ErrorOrSuccess __pendingErr = (ctx).checkPendingError();                     \
+  ErrorOrSuccess __pendingErr = (ctx).checkPendingWork();                      \
   if (__pendingErr.isError()) {                                                \
     return __pendingErr.takeError();                                           \
   }                                                                            \
@@ -401,16 +401,25 @@ int CUDADevice::deviceCount() const {
   return *errOrCount;
 }
 
-ErrorOrSuccess CUDADevice::chunkAlloc(void **ptr, size_t byteSize) const {
+ErrorOrSuccess CUDADevice::chunkAlloc(void **ptr, size_t byteSize,
+                                      bool isHost) const {
   assert(byteSize != 0);
   CUDA_WITH_DEV_ERR(*this);
-  CUDA_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  if (isHost) {
+    CUDA_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
+  } else {
+    CUDA_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+  }
   return success();
 }
 
-ErrorOrSuccess CUDADevice::chunkFree(void *ptr) const {
+ErrorOrSuccess CUDADevice::chunkFree(void *ptr, bool isHost) const {
   CUDA_WITH_DEV_ERR(*this);
-  CUDA_CHECK_ERR(driver_.MemFree(ptr));
+  if (isHost) {
+    CUDA_CHECK_ERR(driver_.MemFreeHost(ptr));
+  } else {
+    CUDA_CHECK_ERR(driver_.MemFree(ptr));
+  }
   return success();
 }
 
@@ -687,6 +696,22 @@ ErrorOrSuccess CUDADeviceEvent::synchronize() const {
   CUDA_WITH_DEV_ERR(cudaDevice);
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().EventSynchronize(event_));
   return success();
+}
+
+ErrorOr<bool> CUDADeviceEvent::isReady() const {
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDADriver::Result res = cudaDevice.cudaDriver().EventQuery(event_);
+  if (res == CUDADriver::SUCCESS)
+    return true;
+  else if (res == CUDADriver::NOT_READY) {
+    return false;
+  }
+  CUDA_CHECK_ERR(res); // All other errors get raised here.
+  // Not reachable because there is an error status in res, but compiler
+  // complains if not returning a value.
+  llvm_unreachable("Not Reachable");
+  return Error("Not Reachable.");
 }
 
 CUevent CUDADeviceEvent::cudaEvent() const { return event_; }

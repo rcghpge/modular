@@ -549,6 +549,7 @@ class HIPDriver {
 public:
   enum Result {
     SUCCESS = 0,
+    NOT_READY = 600,
   };
 
   Result GetErrorName(Result error, const char **pStr) const {
