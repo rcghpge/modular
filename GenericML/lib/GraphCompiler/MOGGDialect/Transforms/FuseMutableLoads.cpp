@@ -31,7 +31,7 @@ namespace M::MOGG {
 /// tensor output of the load op.
 ///
 /// Also the kernel op must not have any other buffer inputs
-std::optional<MOGG::KernelOp>
+std::optional<MOGG::ExpKernelOp>
 maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
 
   auto tensor = loadOp.getOutTensor();
@@ -52,7 +52,8 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
     return std::nullopt;
   }
 
-  MOGG::KernelOp kernelOp = dyn_cast<KernelOp>(*tensor.getUsers().begin());
+  MOGG::ExpKernelOp kernelOp =
+      dyn_cast<MOGG::ExpKernelOp>(*tensor.getUsers().begin());
 
   if (!kernelOp)
     return std::nullopt;
@@ -80,14 +81,14 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   return kernelOp;
 }
 
-KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
-                                 KernelOp kernelOp) {
+ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
+                                    MO::MutableLoadOp loadOp,
+                                    ExpKernelOp kernelOp) {
   MLIRContext *ctx = builder.getContext();
 
   auto loc = kernelOp.getLoc();
 
   auto chainType = MO::ChainType::get(ctx);
-  auto emptyStrAttr = builder.getStringAttr("");
 
   auto &tensorUse = *loadOp.getOutTensor().getUses().begin();
   auto replaceIdx = tensorUse.getOperandNumber();
@@ -95,74 +96,38 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
   // create the new operand list
   SmallVector<Value> newOperandList(kernelOp.getOperands());
   newOperandList[replaceIdx] = loadOp.getInBuffer();
+  // Add the extra chain operand.
   newOperandList.push_back(loadOp.getInChain());
 
   // create new result list
   SmallVector<Type> newResults(TypeRange(kernelOp.getResults()));
   newResults.push_back(chainType);
 
-  // add empty entry for the chain output if the output fusion interface is
-  // present
-  ArrayAttr newOutputFusionInterface;
-  auto oldOutputFusionInterface = kernelOp.getOutputFusionInterface();
-
-  newOutputFusionInterface = nullptr;
-  if (oldOutputFusionInterface) {
-    SmallVector<Attribute> rawFusionInterface(
-        oldOutputFusionInterface->getValue());
-    rawFusionInterface.push_back(emptyStrAttr);
-
-    newOutputFusionInterface = builder.getArrayAttr(rawFusionInterface);
-  }
-
-  // disable input fusion for the buffer input
-  auto oldFusionInterface = kernelOp.getInputFusionInterface();
-
-  ArrayAttr newInputFusionInterface = nullptr;
-  if (oldFusionInterface) {
-    SmallVector<Attribute> rawFusionInterface(oldFusionInterface->getValue());
-    rawFusionInterface[replaceIdx] = emptyStrAttr;
-    rawFusionInterface.push_back(emptyStrAttr);
-
-    newInputFusionInterface = builder.getArrayAttr(rawFusionInterface);
-  }
-
   builder.setInsertionPointAfter(kernelOp);
 
   auto newSummaryString =
       MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
 
-  auto newKernelOp = builder.create<MOGG::KernelOp>(
-      kernelOp.getLoc(),
+  auto newKernelOp = builder.create<MOGG::ExpKernelOp>(
+      kernelOp->getLoc(),
       /*results=*/newResults,
-      /*operands=*/newOperandList,
-      /*outputParamDecls=*/kernelOp.getOutputParamDeclsAttr(),
-      /*inputFusionInterface=*/
-      newInputFusionInterface,
-      /*outputFusionInterface=*/
-      newOutputFusionInterface,
-      /*fusionBodyLambda=*/kernelOp.getFusionBodyLambdaAttr(),
-      /*isViewOp=*/kernelOp.getIsViewOpAttr(),
+      /*inputs=*/newOperandList,
       /*summary=*/newSummaryString,
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
-      /*computationallyTrivial=*/kernelOp.getComputationallyTrivialAttr(),
+      /*device*/ kernelOp.getExecutionDevice(),
+      /*outputParamDecls=*/kernelOp.getOutputParamDeclsAttr(),
       /*allocIndices=*/kernelOp.getAllocIndicesAttr(),
-      /*hasReadEffect*/ true, // from load
-      /*hasWriteEffects*/ kernelOp.getHasWriteEffect(),
-      /*device*/ kernelOp.getExecutionDevice());
-
-  // respect the old deviceRef if it was present
-  if (auto deviceRef = kernelOp.getExecutionDevice())
-    newKernelOp.setDeviceRef(deviceRef);
+      /*hasReadEffect=*/true,
+      /*hasWriteEffect=*/kernelOp.getHasWriteEffect());
 
   // Copy over any discardable attributes from the original kernel
   for (auto attr : kernelOp->getDiscardableAttrs())
     newKernelOp->setDiscardableAttr(attr.getName(), attr.getValue());
 
-  Block &oldBody = kernelOp.getBody().front();
+  Block &oldBody = *kernelOp.getBody();
+  Block &newBody = *newKernelOp.getBody();
 
-  mlir::Block &newBody = newKernelOp.getBody().emplaceBlock();
-  newKernelOp.setInsertionPointToTop(builder);
+  builder.setInsertionPointToStart(&newBody);
 
   IRMapping remapper;
 
@@ -173,9 +138,6 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
   for (Value val : outputPlaceholder.getResults()) {
     newPlaceholderTypes.push_back(val.getType());
   }
-  // Create ready chain at top of kernel body
-  auto chainPlaceholder =
-      builder.create<MOGG::CreateReadyChainOp>(loc, chainType);
 
   auto newOutputPlaceHolderOp =
       builder.create<OutputPlaceholdersOp>(loc, newPlaceholderTypes);
@@ -184,28 +146,15 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
                                            newOutputPlaceHolderOp.getResults()))
     remapper.map(oldRes, newres);
 
-  for (Value val : newOperandList)
-    newBody.addArgument(val.getType(), val.getLoc());
-
   for (auto &&[oldArg, newArg] :
-       llvm::zip(oldBody.getArguments(), newBody.getArguments()))
+       llvm::zip(oldBody.getArguments(), newBody.getArguments())) {
     remapper.map(oldArg, newArg);
+  }
 
-  newKernelOp.setInsertionPointToTop(builder);
   for (Operation &op : kernelOp.getOps()) {
     if (!isa<MOGG::CreateReadyChainOp, OutputPlaceholdersOp>(op))
       builder.insert(op.clone(remapper));
   }
-
-  auto oldOut = newKernelOp.getOutputOp();
-  builder.setInsertionPointAfter(oldOut);
-
-  SmallVector<Value> newOutputs = oldOut.getOperands();
-  newOutputs.push_back(chainPlaceholder);
-
-  builder.create<MOGG::OutputOp>(loc, newOutputs);
-
-  oldOut->erase();
 
   auto outChainIdx = newKernelOp.getNumResults() - 1;
   auto outChain = newKernelOp->getResult(outChainIdx);
@@ -224,7 +173,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
 }
 
 void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
-                    KernelOp kernelOp, bool kernelHasLoadsOutputChain) {
+                    ExpKernelOp kernelOp, bool kernelHasLoadsOutputChain) {
   auto buffer = loadOp.getInBuffer();
   auto tensor = loadOp.getOutTensor();
 
@@ -235,13 +184,14 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   OpOperand &operand = *tensor.getUses().begin();
   auto argIdx = operand.getOperandNumber();
 
-  auto newBufferArg = kernelOp.addOperandAtIndex(buffer, argIdx);
+  Block &kernelBody = *kernelOp.getBody();
 
-  Block &kernelBody = kernelOp.getBody().front();
+  kernelOp.insertInputsAt(argIdx, buffer);
+  Value newBufferArg = kernelBody.getArgument(argIdx);
 
   auto oldBlockArg = kernelBody.getArgument(argIdx + 1);
   oldBlockArg.replaceAllUsesWith(newBufferArg);
-  kernelOp.removeOperandAtIndex(argIdx + 1);
+  kernelOp.eraseInputsAt(argIdx + 1);
 
   if (!kernelHasLoadsOutputChain) {
     loadOp.getOutChain().replaceAllUsesWith(
@@ -252,12 +202,11 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
     auto newChain = builder.createOrFold<MO::ChainCreateOp>(
         loadOp.getLoc(),
         ValueRange{kernelOp.maybeGetInChain().value(), loadOp.getInChain()});
-
-    kernelOp.setOperand(kernelOp.getNumOperands() - 1, newChain);
+    kernelOp.setChain(newChain);
   } else {
     // Simply rewrite the loads input chain when the kernel has the loads output
     // chain as input.
-    kernelOp.setOperand(kernelOp.getNumOperands() - 1, loadOp.getInChain());
+    kernelOp.setChain(loadOp.getInChain());
   }
 
   auto newSummaryString =
@@ -290,7 +239,7 @@ struct ParallelizeLoadsWithMultipleUsers
     // Check if any of the consumer kernels have a write effect and share the
     // same buffer
     for (OpOperand &use : tensor.getUses()) {
-      if (auto kernelOp = dyn_cast<MOGG::KernelOp>(use.getOwner())) {
+      if (auto kernelOp = dyn_cast<MOGG::ExpKernelOp>(use.getOwner())) {
         if (kernelOp.getHasWriteEffect()) {
           // Check if this kernel uses the same buffer as the load op
           for (auto operand : kernelOp.getOperands()) {
@@ -356,7 +305,7 @@ struct ParallelizeLoadsWithMultipleUsers
   }
 };
 
-bool kernelAlreadyHasDirectBufferInput(KernelOp kernelOp,
+bool kernelAlreadyHasDirectBufferInput(ExpKernelOp kernelOp,
                                        MO::MutableLoadOp loadOp) {
   // Check if kernel is sole consumer of load's chain output
   if (!loadOp.getOutChain().hasOneUse())
@@ -389,12 +338,12 @@ bool kernelAlreadyHasDirectBufferInput(KernelOp kernelOp,
   return false;
 }
 
-bool hasBufferOperand(KernelOp kernelOp) {
+bool hasBufferOperand(ExpKernelOp kernelOp) {
   return llvm::any_of(kernelOp.getOperandTypes(),
                       [](Type type) { return isa<MO::BufferType>(type); });
 }
 
-bool kernelHasInOutChains(KernelOp kernelOp) {
+bool kernelHasInOutChains(ExpKernelOp kernelOp) {
   return kernelOp.maybeGetInChain().has_value() &&
          kernelOp.maybeGetOutChain().has_value();
 }

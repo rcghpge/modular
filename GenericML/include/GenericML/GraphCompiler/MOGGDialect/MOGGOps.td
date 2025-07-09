@@ -402,7 +402,11 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
       "ValueRange":$operands,
       "StringAttr":$summary,
       "BoolAttr":$isAsync,
-      "DeviceRefAttr":$device
+      "DeviceRefAttr":$device,
+      CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls,
+      CArg<"ArrayAttr", "{}">:$allocIndices,
+      CArg<"bool", "false">:$hasReadEffect,
+      CArg<"bool", "false">:$hasWriteEffect
     )>,
   ];
 

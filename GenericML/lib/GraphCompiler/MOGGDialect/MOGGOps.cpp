@@ -781,14 +781,28 @@ void ExpKernelOp::print(OpAsmPrinter &p) {
 void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
                         TypeRange results, ValueRange operands,
                         StringAttr summary, BoolAttr isAsync,
-                        DeviceRefAttr device) {
+                        DeviceRefAttr device,
+                        ArrayRef<ParamDeclAttr> outputParamDecls,
+                        ArrayAttr allocIndices, bool hasReadEffect,
+                        bool hasWriteEffect) {
   state.addOperands(operands);
-
   if (summary)
     state.addAttribute(getSummaryAttrName(state.name), summary);
 
   if (isAsync)
     state.addAttribute(getIsAsyncAttrName(state.name), isAsync);
+
+  if (!outputParamDecls.empty())
+    state.addAttribute(getOutputParamDeclsAttrName(state.name),
+                       builder.getAttr<ParamDeclArrayAttr>(outputParamDecls));
+
+  if (allocIndices)
+    state.addAttribute(getAllocIndicesAttrName(state.name), allocIndices);
+
+  state.addAttribute(getHasReadEffectAttrName(state.name),
+                     builder.getBoolAttr(hasReadEffect));
+  state.addAttribute(getHasWriteEffectAttrName(state.name),
+                     builder.getBoolAttr(hasWriteEffect));
 
   Region *execBodyRegion = state.addRegion();
   Block &body = execBodyRegion->emplaceBlock();

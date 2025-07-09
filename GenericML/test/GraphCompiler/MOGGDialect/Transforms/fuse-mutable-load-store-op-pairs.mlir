@@ -1,4 +1,4 @@
-// RUN: mo-opt --infer-layouts --mo-to-mogg --fuse-elementwise --fuse-prologues-epilogues --mogg-to-kgen --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt --infer-layouts --mo-to-mogg --fuse-elementwise --fuse-prologues-epilogues --fuse-mutable-loads --mogg-to-kgen %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_rhs(
 // CHECK: [[ch0:%.*]] = mo.chain.create()

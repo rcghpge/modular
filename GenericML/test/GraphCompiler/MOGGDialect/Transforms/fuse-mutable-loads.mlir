@@ -1,12 +1,12 @@
-// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --mogg-to-kgen=kernel-library-paths="%kernel_api_test_lib" --canonicalize --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --canonicalize --fuse-mutable-loads --mogg-to-kgen=kernel-library-paths="%kernel_api_test_lib" %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK-NOT: mo.mutable.store
 // CHECK: [[out:%.*]]:2 = mogg.kernel ([[buffer]], [[rhs]], [[ch0]])
-// CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
+// CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
 mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
@@ -21,8 +21,8 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK-NOT: mo.mutable.store
 // CHECK: [[out:%.*]]:2 = mogg.kernel ([[rhs]], [[buffer]], [[ch0]])
-// CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
+// CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
 // CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
 // CHECK: summary = "mo.mutable.store
 mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {

@@ -272,6 +272,9 @@ void M::MO::buildMoToMgpPipeline(
     pm.addPass(MOGG::createFuseConstants());
   }
 
+  if (opts.fuseMutableLoadStore)
+    pm.addPass(MOGG::createFuseMutableLoads());
+
   // Convert output lambdas to compute output lambdas when possible.
   pm.addPass(MOGG::createMOGGToKGEN(
       {kernelLibraryPaths, opts.forceSync, opts.enableComputeLambdas},
@@ -282,9 +285,6 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
-
-  if (opts.fuseMutableLoadStore)
-    pm.addPass(MOGG::createFuseMutableLoads());
 
   // Create the options for MoToPrimitives.
   MGP::MOToPrimitivesOptions moToPrimOpts;
