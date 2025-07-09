@@ -325,7 +325,6 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
 
   // pm.addPass(MGP::createGlobalizeSlotIndicesPass());
-  pm.addPass(MGP::createInlineMGPCallsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
@@ -372,6 +371,7 @@ void M::MO::buildMoToMgpPipeline(
 
   pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
+  pm.addPass(MGP::createInlineMGPCallsPass());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createSimplifyChainsPass());
