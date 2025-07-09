@@ -11,7 +11,7 @@
 namespace M::KGEN::MOGGPreElab {
 
 MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
-    std::optional<uint64_t> positionInFunction, StringRef typeName,
+    std::optional<uint64_t> positionInFunction, StringAttr typeName,
     ArrayAttr argumentSourceNames, ArrayAttr argsIoSpecs, bool isByRefResult) {
   if (positionInFunction.has_value()) {
     sourceDescriptor = MojoKernelOperandSourceDescriptor{
@@ -32,7 +32,12 @@ MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
     return *KGEN::MOGGPreElab::toIOSpec(specAttr);
   };
 
-  llvm::StringSwitch<std::function<void(void)>>(typeName)
+  if (!typeName) {
+    underlyingType.emplace<UnsupportedOperandAdaptor>();
+    return;
+  }
+
+  llvm::StringSwitch<std::function<void(void)>>(typeName.strref())
       .Case(TensorOperandAdaptor::typeName,
             [&]() {
               underlyingType.emplace<TensorOperandAdaptor>(

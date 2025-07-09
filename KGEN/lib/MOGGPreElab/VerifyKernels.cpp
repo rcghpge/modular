@@ -303,6 +303,51 @@ LogicalResult verifyExecuteNotReturningOpaqueAndThrows(
   return success();
 }
 
+LogicalResult
+verifyAllOperandTypesAreSupported(const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+  auto noUnsupportedArgument =
+      [&](const std::optional<MojoKernelFunctionAdaptor<LIT::FnOp>> &function)
+      -> LogicalResult {
+    if (!function.has_value())
+      return success();
+
+    static constexpr StringLiteral commonMessage =
+        "Traits are currently unsupported";
+
+    for (auto &operand : function->inputArguments) {
+      if (operand.isUnsupportedType()) {
+        function->mojoCode.emitError(
+            llvm::formatv("Unsupported input operand type for `{}`: {}",
+                          operand.sourceDescriptor->sourceName, commonMessage));
+        return failure();
+      }
+    }
+
+    for (auto result : function->outputArguments) {
+      if (result.isUnsupportedType()) {
+        function->mojoCode.emitError(
+            llvm::formatv("Unsupported output operand type for `{}`: {}",
+                          result.sourceDescriptor->sourceName, commonMessage));
+        return failure();
+      }
+    }
+
+    if (function->outputResult.has_value() &&
+        function->outputResult->isUnsupportedType()) {
+      function->mojoCode.emitError(
+          llvm::formatv("Unsupported result type: {}", commonMessage));
+      return failure();
+    }
+
+    return success();
+  };
+
+  if (noUnsupportedArgument(adaptor.executeFunction).failed())
+    return failure();
+
+  return noUnsupportedArgument(adaptor.shapeFunction);
+}
+
 template <typename Func, typename... Args>
 [[nodiscard]] LogicalResult setFlagIfFailed(bool &flag, Func &&func,
                                             Args &&...args) {
@@ -338,9 +383,14 @@ public:
     bool failed = false;
     for (auto &[structDeclOp, entry] : kernels) {
       auto &[execute, shape] = entry;
+
       MojoKernelAdaptor<LIT::FnOp> adaptor(
           structDeclOp.getSourceName().value().getName().strref(), execute,
           shape);
+
+      if (setFlagIfFailed(failed, verifyAllOperandTypesAreSupported, adaptor)
+              .failed())
+        continue;
 
       if (setFlagIfFailed(failed, verifyHasExecuteFunction, structDeclOp,
                           adaptor)
