@@ -81,33 +81,6 @@ public:
   /// This specifies the number of times we should execute the model.
   unsigned numRuns{1};
 
-  /// Benchmarks the model using the mlperf infrastructure.
-  bool benchmarkMode{false};
-
-  /// This specifies the name of the benchmark. Typically the benchmark name is
-  /// the same as the model name.
-  std::string benchmarkName{"benchmark"};
-
-  /// This specifies the benchmarking workload scenario during benchmarking.
-  /// The valid options are "online" and "batched"
-  BenchmarkScenario benchmarkScenario{BenchmarkScenario::kOnline};
-
-  /// This specifies the output directory which will contain the benchmarking
-  /// logs. The default is to query the MODULAR_DERIVED_PATH env variable, if
-  /// it is set then that's the default output directory. Otherwise, the current
-  /// working directory is used.
-  std::string benchmarkOutputDir{
-      llvm::sys::Process::GetEnv("MODULAR_DERIVED_PATH").value_or(".")};
-
-  /// This specifies whether to prefix the benchmarking logs or not. If the
-  /// option is not set, then the default prefix
-  /// (modular_<benchmark_name>_benchmark_log_) is used
-  bool benchmarkNoLogPrefix{false};
-
-  uint64_t benchmarkMinDurationMs{10'000};
-
-  uint64_t benchmarkMinQueryCount{100};
-
   /// This tells the execution driver how to initialize model inputs.
   InputGenerationKind inputGenKind{InputGenerationKind::kZeros};
 
@@ -159,73 +132,6 @@ private:
   M::cl::MOpt<unsigned, true> numRuns{
       "num-runs", cl::desc("Execute inference model N times (default 1)."),
       llvm::cl::location(options.numRuns),
-      llvm::cl::cat(ExecutorDriverOptionsCategory)};
-
-  /// Benchmarks the model using the mlperf infrastructure.
-  M::cl::MOpt<bool, true> benchmarkMode{
-      "benchmark",
-      cl::desc("If set, benchmarks the model using the mlperf infrastructure."),
-      llvm::cl::location(options.benchmarkMode),
-      llvm::cl::cat(ExecutorDriverOptionsCategory)};
-
-  /// This specifies the name of the benchmark. Typically the benchmark name is
-  /// the same as the model name.
-  M::cl::MOpt<std::string, true> benchmarkName{
-      "benchmark-name", cl::desc("The name of the benchmark."),
-      llvm::cl::location(options.benchmarkName),
-      llvm::cl::cat(ExecutorDriverOptionsCategory)};
-
-  /// This specifies the benchmarking workload scenario during benchmarking.
-  /// The valid options are "online" and "batched"
-  M::cl::MOpt<BenchmarkScenario, true> benchmarkScenario{
-      "benchmark-scenario", cl::desc("The benchmarking scenario to use."),
-      cl::values(
-          clEnumValN(
-              BenchmarkScenario::kOnline, "online",
-              "Online / streamed benchmarking execution mode. Corresponds "
-              "to mlperf's 'single stream' model. Default."),
-          clEnumValN(
-              BenchmarkScenario::kBatched, "batched",
-              "Batched benchmarking execution mode. Corresponds to mlperf's "
-              "'multi stream' model).")),
-      llvm::cl::location(options.benchmarkScenario),
-      llvm::cl::cat(ExecutorDriverOptionsCategory)};
-
-  /// This specifies the output directory which will contain the benchmarking
-  /// logs. The default is to query the MODULAR_DERIVED_PATH env variable, if
-  /// it is set then that's the default output directory. Otherwise, the current
-  /// working directory is used.
-  M::cl::MOpt<std::string, true> benchmarkOutputDir{
-      "benchmark-output-dir",
-      cl::desc("The output directory to place the benchmarking logs."),
-      llvm::cl::location(options.benchmarkOutputDir),
-      llvm::cl::cat(ExecutorDriverOptionsCategory)};
-
-  /// This specifies whether to prefix the benchmarking logs or not. If the
-  /// option is not set, then the default prefix
-  /// (modular_<benchmark_name>_benchmark_log_) is used
-  M::cl::MOpt<bool, true> benchmarkNoLogPrefix{
-      "no-benchmark-log-prefix",
-      cl::desc(
-          "Don't add prefix to mlperf results. If this option is not "
-          "used the prefix will be modular_<benchmark_name>_benchmark_log_"),
-      llvm::cl::location(options.benchmarkNoLogPrefix),
-      llvm::cl::cat(ExecutorDriverOptionsCategory)};
-
-  M::cl::MOpt<uint64_t, true> benchmarkMinDurationMs{
-      "benchmark-min-duration-ms",
-      cl::desc(
-          "Minimum duration to run the benchmarks, in milliseconds. "
-          "Corresponds to mlperf's min_duration_ms configuration parameter."),
-      llvm::cl::location(options.benchmarkMinDurationMs),
-      llvm::cl::cat(ExecutorDriverOptionsCategory)};
-
-  M::cl::MOpt<uint64_t, true> benchmarkMinQueryCount{
-      "benchmark-min-query-count",
-      cl::desc(
-          "Minimum number of queries to run in benchmark mode. Corresponds to "
-          "mlperf's min_query_count configuration parameter."),
-      llvm::cl::location(options.benchmarkMinQueryCount),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
   /// This tells the execution driver how to initialize model inputs.

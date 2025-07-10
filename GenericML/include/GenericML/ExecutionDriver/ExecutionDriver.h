@@ -27,7 +27,7 @@ namespace M {
 class Model;
 class ExecutorDriverOptions;
 
-/// Profiler entry for main execute/benchmark events.
+/// Profiler entry for main execute events.
 using DriverProfilerEntry =
     ProfilerEntry<Trace::EnableTrace(Trace::kOther, 1), Trace::kOther>;
 
@@ -59,8 +59,6 @@ inline bool isSet(TensorGeneratorFlag a, TensorGeneratorFlag b) {
 }
 
 std::optional<TensorGeneratorFlag> symbolizeTensorGeneratorFlag(StringRef s);
-
-enum class BenchmarkScenario { kOnline, kBatched };
 
 /// Run `model` using the command line options flags configured by the user.
 LogicalResult runModel(MLIRContext *ctx, const Model *model,

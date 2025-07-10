@@ -88,7 +88,6 @@ modular_cc_library(
         ":GraphCompilerPublic.headers",
         ":Support",
         "//Support:Base",
-        "//third-party/mlperf-loadgen",
     ],
 )
 
@@ -102,7 +101,6 @@ modular_cc_library(
         ":Support",
         "//GraphRT:MLIRToMEF",
         "//Support:Base",
-        "//third-party/mlperf-loadgen",
     ],
 )
 
@@ -114,7 +112,6 @@ modular_cc_library(
         ":GraphCompiler",
         ":Support",
         "//Support:Base",
-        "//third-party/mlperf-loadgen",
     ],
 )
 

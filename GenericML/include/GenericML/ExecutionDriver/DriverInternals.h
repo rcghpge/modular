@@ -47,12 +47,6 @@ createTensorGenerators(InputGenerationKind inputGenKind,
                        ArrayRef<InputDataSpec> inputDataSpecs,
                        size_t minimumCpuAlignment, Runtime &runtime);
 
-ErrorOrSuccess
-benchmarkModel(std::unique_ptr<ExecutableModel> model, Runtime &runtime,
-               StringRef benchmarkName, const ExecutorDriverOptions &options,
-               ArrayRef<QuantTensorSpec> inputSpecs, BenchmarkScenario scenario,
-               StringRef outputDir, bool benchmarkNoLogPrefix,
-               uint64_t min_duration_ms, uint64_t min_query_count);
 } // namespace M
 
 #endif // GENERICML_EXECUTIONDRIVER_DRIVERINTERNALS_H

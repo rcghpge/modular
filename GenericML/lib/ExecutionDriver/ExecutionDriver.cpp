@@ -585,42 +585,9 @@ LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
   const auto &inputSpecs = shapesOrErr.takeValue();
   saveInputSpecs(inputSpecs, runtime.getProfiler());
 
-  if (options.benchmarkMode) {
-    int numWarmup = options.numWarmup;
-    if (options.numRuns > 2) {
-      // If it's not the default 1, the user most likely set it; warn them
-      // about that.
-      llvm::errs() << "WARNING: num-runs is ignored in benchmarking mode. "
-                      "Please use benchmark-min-query-count instead.\n";
-    }
-    if (numWarmup == 0) {
-      // Force at least one warmup.
-      llvm::errs() << "WARNING: forcing one warmup run in benchmarking mode. "
-                      "You can set an larger value using --num-warmup.\n";
-      numWarmup = 1;
-    }
-
-    // Execute the model for the warmup runs only.
-    auto executableModelOr = executeModel(model, runtime, options, inputSpecs,
-                                          /*numRuns=*/0, numWarmup);
-    if (executableModelOr.isError())
-      return failure(options.reportError(executableModelOr.getError()));
-
-    std::unique_ptr<ExecutableModel> executableModel =
-        executableModelOr.takeValue();
-    // Run the actual benchmark.
-    if (auto err = benchmarkModel(
-            std::move(executableModel), runtime, options.benchmarkName, options,
-            inputSpecs, options.benchmarkScenario, options.benchmarkOutputDir,
-            options.benchmarkNoLogPrefix, options.benchmarkMinDurationMs,
-            options.benchmarkMinQueryCount))
-      return failure(options.reportError(err.getError()));
-
-  } else {
-    auto executableModelOr = executeModel(model, runtime, options, inputSpecs,
-                                          options.numRuns, options.numWarmup);
-    if (executableModelOr.isError())
-      return failure(options.reportError(executableModelOr.getError()));
-  }
+  auto executableModelOr = executeModel(model, runtime, options, inputSpecs,
+                                        options.numRuns, options.numWarmup);
+  if (executableModelOr.isError())
+    return failure(options.reportError(executableModelOr.getError()));
   return success();
 }

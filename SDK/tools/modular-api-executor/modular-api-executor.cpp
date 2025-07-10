@@ -662,9 +662,9 @@ int main(int argc, char **argv) {
 
   // Create the ModularModel. Note that the Model object will outlive
   // the execution.
-  auto model = std::make_unique<ModularModel>(
-      clOptions.benchmarkName, clOptions.inputNames, clOptions.outputNames,
-      modelSpec, state, std::move(loc));
+  auto model = std::make_unique<ModularModel>("model", clOptions.inputNames,
+                                              clOptions.outputNames, modelSpec,
+                                              state, std::move(loc));
 
   // Run with leak checking.
   if (failed(clOptions.configureMLIRContextAndExecute(

@@ -83,7 +83,6 @@ General options:
     =malloc                       -   System malloc/free
     =leak-checker                 -   Allocator with leak checking
     =profiler                     -   Allocator with profiling and leak checking
-  --benchmark                     - Measure each invocation of the model inference.
   ...
   --save-temps                    - Store the usual 'temporary' intermediate files permanently in the directory specified by -temps-dir (defaults to the output directory); name them as auxiliary output files. This option only changes the behavior of the `compile` and `execute` commands.
   --temps-dir=<string>            - The directory in which to store 'temporary' intermediate files. No files will be saved here unless `-save-temps` is also specified.
