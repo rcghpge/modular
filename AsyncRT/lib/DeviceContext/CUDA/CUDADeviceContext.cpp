@@ -1089,6 +1089,11 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
   return success();
 }
 
+DeviceContext::MMapFileImplResult
+CUDADeviceContext::memmapFileImpl(const std::filesystem::path &filename) const {
+  return Error("Unimplemented for CUDA devices");
+}
+
 static ErrorOr<std::pair<SmallVector<CUjit_option>, SmallVector<uintptr_t>>>
 setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
   static constexpr int kDefaultOptimizationLevel = 4;

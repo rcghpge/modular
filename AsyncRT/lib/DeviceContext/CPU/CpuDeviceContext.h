@@ -155,6 +155,9 @@ private:
   ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
 
   void *driverContext() const override;
+
+  MMapFileImplResult
+  memmapFileImpl(const std::filesystem::path &filename) const override;
 };
 
 } // namespace M::AsyncRT

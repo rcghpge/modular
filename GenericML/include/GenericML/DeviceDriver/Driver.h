@@ -50,6 +50,10 @@ struct DeviceMemory {
   size_t bytecount() const { return buf->byteSize(); }
 
   ~DeviceMemory();
+  DeviceMemory(const DeviceMemory &) = delete;
+  DeviceMemory &operator=(const DeviceMemory &) = delete;
+  DeviceMemory(DeviceMemory &&) = delete;
+  DeviceMemory &operator=(DeviceMemory &&) = delete;
 
   bool isHost() const {
     return buf->isHost() ||
@@ -144,6 +148,12 @@ struct Device : M::ReferenceCounted<Device> {
 
   /// Returns whether or not the device is compatible with MAX.
   ErrorOrSuccess isCompatible() const;
+
+  /// On CPUs, memory maps the given file, returns a handle to the memmap'ed
+  /// file. On GPUs, direct transfers the data to the GPU (TODO: unimplemented)
+  ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+                    std::optional<llvm::sys::fs::mapped_file_region>>>
+  memmapFile(const std::filesystem::path &filename);
 
 protected:
   AsyncRT::DeviceContextRef ctx;

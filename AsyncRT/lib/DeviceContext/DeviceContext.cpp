@@ -765,6 +765,28 @@ DeviceContext::enqueueEventHandler(std::function<void()> handler) const {
   return success();
 }
 
+MODULAR_CXX_EXPORT
+ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+                  std::optional<llvm::sys::fs::mapped_file_region>>>
+DeviceContext::memmapFile(const std::filesystem::path &filename) const {
+  auto result = this->memmapFileImpl(filename);
+  if (result.isError())
+    return result.takeError();
+  auto [ptr, size, mmap] = result.takeValue();
+
+  return std::pair{
+      // Some oddities here:
+      // This doesn't own memory, but it seems that functionality is deprecated?
+      // Even if we allocate on the host, this fails further up the stack (SDK)
+      // if we set isHost=true, since it gets treated as pinned memory (goes
+      // down some other code path).
+      RCRef<AsyncRT::DeviceBuffer>::take(
+          new AsyncRT::DeviceBuffer(*this, ptr, size, /*isHost*/ false,
+                                    /*owning*/ false)),
+      std::optional{std::move(mmap)},
+  };
+}
+
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
 DeviceContext::create(StringRef api, int id) {
   ErrorOr<DeviceRef> device = Device::create(api, id);

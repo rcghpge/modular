@@ -14,6 +14,7 @@
 #include "AsyncRT/Runtime/Globals/Globals.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "Support/AlignedAlloc.h"
+#include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/Fill.h"
 #include "llvm/ADT/Twine.h"
@@ -277,6 +278,33 @@ ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
     llvm_unreachable("unsupported val size");
     return Error("unsupported val size");
   }
+}
+
+DeviceContext::MMapFileImplResult
+CpuDeviceContext::memmapFileImpl(const std::filesystem::path &filename) const {
+  auto result = openFile(filename, /*readOnly*/ true);
+  if (result)
+    return result.takeError();
+  auto [fd, status] = *result;
+
+  auto size = status.getSize();
+
+  std::error_code ec;
+  llvm::sys::fs::mapped_file_region mappedFile(
+      fd, llvm::sys::fs::mapped_file_region::readonly, size, 0, ec);
+  if (ec) {
+    llvm::sys::fs::closeFile(fd);
+    return Error(ec.message());
+  }
+
+  // Close the file, mmap will hold a ref to the descriptor.
+  llvm::sys::fs::closeFile(fd);
+
+  return std::tuple{
+      mappedFile.data(),
+      size,
+      std::optional{std::move(mappedFile)},
+  };
 }
 
 ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(

@@ -143,6 +143,13 @@ MODULAR_DRIVER_EXPORT ErrorOrSuccess Device::isCompatible() const {
   return ctx->device().isCompatible();
 }
 
+MODULAR_DRIVER_EXPORT
+ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+                  std::optional<llvm::sys::fs::mapped_file_region>>>
+Device::memmapFile(const std::filesystem::path &filename) {
+  return ctx->memmapFile(filename);
+}
+
 MODULAR_DRIVER_EXPORT ErrorOr<void *> Device::allocateData(size_t bytes) {
   ASSIGN_OR_RETURN(buf, ctx->enqueueCreateBuffer(bytes));
   // TODO change return type to DeviceBufferRef instead of returning naked void

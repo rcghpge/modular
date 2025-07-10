@@ -1036,6 +1036,11 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
   return success();
 }
 
+DeviceContext::MMapFileImplResult
+HIPDeviceContext::memmapFileImpl(const std::filesystem::path &filename) const {
+  return Error("Unimplemented for HIP devices");
+}
+
 ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     StringRef moduleName, StringRef functionName,
     const DeviceFunction::SignatureBuilder &signature, StringRef code,

@@ -430,6 +430,10 @@ public:
   virtual ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
                                           size_t valSize) const = 0;
 
+  ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+                    std::optional<llvm::sys::fs::mapped_file_region>>>
+  memmapFile(const std::filesystem::path &filename) const;
+
   // DeviceFunction compiling.
   virtual ErrorOr<M::BufferRef>
   compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
@@ -519,6 +523,13 @@ protected:
   // Low-level copies.
   virtual ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
                                      const DeviceBuffer &src) const = 0;
+
+  using MMapFileImplResult =
+      ErrorOr<std::tuple<void *, size_t,
+                         std::optional<llvm::sys::fs::mapped_file_region>>>;
+
+  virtual MMapFileImplResult
+  memmapFileImpl(const std::filesystem::path &filename) const = 0;
 
   virtual void *driverContext() const = 0;
 
