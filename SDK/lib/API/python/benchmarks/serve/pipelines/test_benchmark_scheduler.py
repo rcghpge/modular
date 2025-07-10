@@ -10,8 +10,8 @@ import multiprocessing
 import pytest
 import zmq
 from max.interfaces import (
+    GenerationStatus,
     TextGenerationResponse,
-    TextGenerationStatus,
     TextResponse,
 )
 from max.serve.process_control import ProcessControl
@@ -53,7 +53,7 @@ def test_stream_responses_to_frontend(benchmark, zmq_ctx) -> None:
     for i in range(batch_size_to_test):
         tokens = [TextResponse(next_token=i) for i in range(10)]
         batch_responses[f"req{i}"] = TextGenerationResponse(
-            tokens=tokens, final_status=TextGenerationStatus.ACTIVE
+            tokens=tokens, final_status=GenerationStatus.ACTIVE
         )
 
     # Run the benchmark
