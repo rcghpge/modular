@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Driver/Utils.h"
+#include "GenericML/CommonDriver/Utils.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"

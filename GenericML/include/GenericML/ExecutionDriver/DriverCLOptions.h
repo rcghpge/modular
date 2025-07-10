@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVER_DRIVERCLOPTIONS_H
-#define GENERICML_DRIVER_DRIVERCLOPTIONS_H
+#ifndef GENERICML_EXECUTIONDRIVER_DRIVERCLOPTIONS_H
+#define GENERICML_EXECUTIONDRIVER_DRIVERCLOPTIONS_H
 
 #include "AsyncRT/Runtime/RuntimeCLOptions.h"
-#include "GenericML/Driver/DriverInputFormat.h"
-#include "GenericML/Driver/ExecutionDriver.h"
+#include "GenericML/CommonDriver/DriverInputFormat.h"
+#include "GenericML/ExecutionDriver/ExecutionDriver.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/ML/TensorSpec.h"
@@ -483,4 +483,4 @@ private:
 
 } // namespace M
 
-#endif // GENERICML_DRIVER_DRIVERCLOPTIONS_H
+#endif // GENERICML_EXECUTIONDRIVER_DRIVERCLOPTIONS_H

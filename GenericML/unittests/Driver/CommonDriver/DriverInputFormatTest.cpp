@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Driver/DriverInputFormat.h"
+#include "GenericML/CommonDriver/DriverInputFormat.h"
 #include "llvm/Support/FileSystem.h"
 
 #include "gmock/gmock.h"

@@ -6,7 +6,7 @@
 #ifndef GENERICML_API_APIVALIDATORCLOPTIONS_H
 #define GENERICML_API_APIVALIDATORCLOPTIONS_H
 
-#include "GenericML/Driver/DriverCLOptions.h"
+#include "GenericML/ExecutionDriver/DriverCLOptions.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/ML/TensorShape.h"
 

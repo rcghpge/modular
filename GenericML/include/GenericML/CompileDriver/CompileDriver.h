@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVER_COMPILEDRIVER_H
-#define GENERICML_DRIVER_COMPILEDRIVER_H
+#ifndef GENERICML_COMPILEDRIVER_COMPILEDRIVER_H
+#define GENERICML_COMPILEDRIVER_COMPILEDRIVER_H
 
 #include "AsyncRT/ForwardDecls.h"
 #include "Cache/CachedTransform.h"
@@ -56,4 +56,4 @@ WriteableBufferRef makeCacheKey(BufferRef buffer, Options &...options) {
 }
 } // namespace M
 
-#endif // GENERICML_DRIVER_COMPILEDRIVER_H
+#endif // GENERICML_COMPILEDRIVER_COMPILEDRIVER_H

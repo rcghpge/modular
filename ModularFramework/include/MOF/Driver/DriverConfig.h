@@ -7,7 +7,7 @@
 #ifndef MOF_DRIVER_DRIVERCONFIG_H
 #define MOF_DRIVER_DRIVERCONFIG_H
 
-#include "GenericML/Driver/DriverConfig.h"
+#include "GenericML/CommonDriver/DriverConfig.h"
 
 namespace M::MOF {
 

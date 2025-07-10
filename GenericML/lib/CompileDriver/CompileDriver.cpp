@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Driver/CompileDriver.h"
+#include "GenericML/CompileDriver/CompileDriver.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "Config/Version.h"

@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Driver/ExecutionDriver.h"
+#include "GenericML/ExecutionDriver/ExecutionDriver.h"
 #include "AsyncRT/Runtime/Algorithms.h"
-#include "GenericML/Driver/DriverCLOptions.h"
-#include "GenericML/Driver/DriverInternals.h"
+#include "GenericML/ExecutionDriver/DriverCLOptions.h"
+#include "GenericML/ExecutionDriver/DriverInternals.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ResultInfo.h"

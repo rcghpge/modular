@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVER_DRIVERINPUTFORMAT_H
-#define GENERICML_DRIVER_DRIVERINPUTFORMAT_H
+#ifndef GENERICML_COMMONDRIVER_DRIVERINPUTFORMAT_H
+#define GENERICML_COMMONDRIVER_DRIVERINPUTFORMAT_H
 
 #include "Support/CommandLine.h"
 #include "Support/ErrorOr.h"
@@ -132,4 +132,4 @@ private:
 };
 } // namespace M
 
-#endif // GENERICML_DRIVER_DRIVERINPUTFORMAT_H
+#endif // GENERICML_COMMONDRIVER_DRIVERINPUTFORMAT_H

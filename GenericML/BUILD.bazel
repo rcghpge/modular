@@ -82,8 +82,8 @@ rpath_shim(
 
 modular_cc_library(
     name = "CommonDriver",
-    srcs = glob(["lib/Driver/CommonDriver/*.cpp"]),
-    hdrs = glob(["include/GenericML/Driver/*.h"]),
+    srcs = glob(["lib/CommonDriver/*.cpp"]),
+    hdrs = glob(["include/GenericML/CommonDriver/*.h"]),
     deps = [
         ":GraphCompilerPublic.headers",
         ":Support",
@@ -94,8 +94,8 @@ modular_cc_library(
 
 modular_cc_library(
     name = "CompileDriver",
-    srcs = glob(["lib/Driver/CompileDriver/*.cpp"]),
-    hdrs = glob(["include/GenericML/Driver/*.h"]),
+    srcs = glob(["lib/CompileDriver/*.cpp"]),
+    hdrs = glob(["include/GenericML/CompileDriver/*.h"]),
     local_defines = CONFIG_SECTION_LOCAL_DEFINES,
     deps = [
         ":CommonDriver",
@@ -108,8 +108,8 @@ modular_cc_library(
 
 modular_cc_library(
     name = "ExecutionDriver",
-    srcs = glob(["lib/Driver/ExecutionDriver/*.cpp"]),
-    hdrs = glob(["include/GenericML/Driver/*.h"]),
+    srcs = glob(["lib/ExecutionDriver/*.cpp"]),
+    hdrs = glob(["include/GenericML/ExecutionDriver/*.h"]),
     deps = [
         ":GraphCompiler",
         ":Support",

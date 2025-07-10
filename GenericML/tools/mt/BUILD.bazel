@@ -11,6 +11,7 @@ modular_cc_binary(
     deps = [
         ":rpaths",
         "//GenericML:CommonDriver",
+        "//GenericML:ExecutionDriver",
         "//Init",
         "//Support:Globals",
     ],

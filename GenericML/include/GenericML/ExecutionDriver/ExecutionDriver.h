@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVER_EXECUTIONDRIVER_H
-#define GENERICML_DRIVER_EXECUTIONDRIVER_H
+#ifndef GENERICML_EXECUTIONDRIVER_EXECUTIONDRIVER_H
+#define GENERICML_EXECUTIONDRIVER_EXECUTIONDRIVER_H
 
 #include "AsyncRT/ForwardDecls.h"
 #include "Support/ErrorOr.h"
@@ -69,4 +69,4 @@ LogicalResult runModel(MLIRContext *ctx, const Model *model,
 
 } // namespace M
 
-#endif // GENERICML_DRIVER_EXECUTIONDRIVER_H
+#endif // GENERICML_EXECUTIONDRIVER_EXECUTIONDRIVER_H

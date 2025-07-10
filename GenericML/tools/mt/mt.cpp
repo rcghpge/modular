@@ -5,9 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "Config/Version.h"
-#include "GenericML/Driver/CXXDriverAPI.h"
-#include "GenericML/Driver/DriverAPI.h"
-#include "GenericML/Driver/DriverInputFormat.h"
+#include "GenericML/CommonDriver/CXXDriverAPI.h"
+#include "GenericML/CommonDriver/DriverAPI.h"
+#include "GenericML/CommonDriver/DriverInputFormat.h"
+#include "GenericML/ExecutionDriver/DriverCLOptions.h"
 #include "Init/Init.h"
 #include "Support/AssertStream.h"
 #include "Support/ML/SizeUtils.h"

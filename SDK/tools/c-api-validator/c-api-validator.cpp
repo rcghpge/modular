@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Driver/DriverCLOptions.h"
+#include "GenericML/ExecutionDriver/DriverCLOptions.h"
 #include "SDK/API/max/c/common.h"
 #include "SDK/API/max/c/context.h"
 #include "SDK/API/max/c/model.h"

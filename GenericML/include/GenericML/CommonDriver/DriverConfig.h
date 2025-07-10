@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVER_DRIVERCONFIG_H
-#define GENERICML_DRIVER_DRIVERCONFIG_H
+#ifndef GENERICML_COMMONDRIVER_DRIVERCONFIG_H
+#define GENERICML_COMMONDRIVER_DRIVERCONFIG_H
 
 #include "Support/DeviceSpecs.h"
 #include "llvm/ADT/StringRef.h"
@@ -85,4 +85,4 @@ private:
 
 } // namespace M
 
-#endif // GENERICML_DRIVER_DRIVERCONFIG_H
+#endif // GENERICML_COMMONDRIVER_DRIVERCONFIG_H

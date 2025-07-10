@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Driver/DriverInputFormat.h"
+#include "GenericML/CommonDriver/DriverInputFormat.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"

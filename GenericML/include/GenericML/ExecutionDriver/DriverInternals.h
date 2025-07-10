@@ -8,10 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef DRIVERINTERNALS_H
-#define DRIVERINTERNALS_H
+#ifndef GENERICML_EXECUTIONDRIVER_DRIVERINTERNALS_H
+#define GENERICML_EXECUTIONDRIVER_DRIVERINTERNALS_H
 
-#include "GenericML/Driver/DriverCLOptions.h"
+#include "GenericML/ExecutionDriver/DriverCLOptions.h"
 #include "GenericML/Support/Model.h"
 #include "Support/ForwardDecls.h"
 
@@ -55,4 +55,4 @@ benchmarkModel(std::unique_ptr<ExecutableModel> model, Runtime &runtime,
                uint64_t min_duration_ms, uint64_t min_query_count);
 } // namespace M
 
-#endif // DRIVERINTERNALS_H
+#endif // GENERICML_EXECUTIONDRIVER_DRIVERINTERNALS_H

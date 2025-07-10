@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/Driver/CompileDriver.h"
+#include "GenericML/CompileDriver/CompileDriver.h"
 #include "Support/CommandLine.h"
 
 using namespace M;

@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DRIVER_COMPILETOBINARY_H
-#define GENERICML_DRIVER_COMPILETOBINARY_H
+#ifndef GENERICML_COMPILEDRIVER_COMPILETOBINARY_H
+#define GENERICML_COMPILEDRIVER_COMPILETOBINARY_H
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "AsyncRT/Runtime/Runtime.h"
@@ -61,4 +61,4 @@ struct CompileToBinaryCtx {
 
 } // namespace M
 
-#endif // GENERICML_DRIVER_COMPILETOBINARY_H
+#endif // GENERICML_COMPILEDRIVER_COMPILETOBINARY_H
