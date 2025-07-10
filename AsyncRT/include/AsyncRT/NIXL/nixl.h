@@ -335,7 +335,7 @@ public:
    * @return nixl_status_t Error code if call was not successful
    */
   nixl_status_t genNotif(const std::string &remote_agent,
-                         const nixl_blob_t &msg,
+                         const std::string_view msg,
                          const nixl_opt_args_t *extra_params = nullptr);
 
   /*** Metadata handling through side channel ***/

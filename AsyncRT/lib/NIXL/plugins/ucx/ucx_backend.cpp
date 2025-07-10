@@ -10,16 +10,15 @@
 
 #include "AsyncRT/NIXL/plugins/ucx/ucx_backend.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/NIXL/nixl_types.h"
+#include "AsyncRT/NIXL/plugins/ucx/ucx_backend.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
-#include "Support/STLExtras.h"
-#include <AsyncRT/NIXL/plugins/ucx/ucx_backend.h>
-
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/LogicalResult.h"
+#include "Support/STLExtras.h"
 
 using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
@@ -578,9 +577,7 @@ nixlUcxEngine::loadRemoteConnInfo(const std::string &remote_agent,
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  size_t size = remote_conn_info.size();
   int ret;
-  SmallVector<char> addr(size);
 
   auto [iter, inserted] =
       remoteConnMap.emplace(remote_agent, nixlUcxConnection());
@@ -588,8 +585,7 @@ nixlUcxEngine::loadRemoteConnInfo(const std::string &remote_agent,
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
   nixlUcxConnection &conn = iter->second;
 
-  nixlSerDes::_stringToBytes(addr.data(), remote_conn_info, size);
-  ret = uw->connect(addr.data(), size, conn.ep);
+  ret = uw->connect(remote_conn_info.data(), remote_conn_info.size(), conn.ep);
   if (ret)
     return nixl_status_t::NIXL_ERR_BACKEND;
 
@@ -671,11 +667,10 @@ nixl_status_t nixlUcxEngine::getPublicData(const nixlBackendMD *meta,
 }
 
 // To be cleaned up
-nixl_status_t nixlUcxEngine::internalMDHelper(const nixl_blob_t &blob,
+nixl_status_t nixlUcxEngine::internalMDHelper(const blob_ref blob,
                                               const std::string &agent,
                                               nixlBackendMD *&output) {
   nixlUcxPublicMetadata *md = new nixlUcxPublicMetadata;
-  size_t size = blob.size();
 
   auto search = remoteConnMap.find(agent);
   if (search == remoteConnMap.end())
@@ -685,10 +680,7 @@ nixl_status_t nixlUcxEngine::internalMDHelper(const nixl_blob_t &blob,
   // directly copy underlying conn struct
   md->conn = conn;
 
-  SmallVector<char> addr(size);
-  nixlSerDes::_stringToBytes(addr.data(), blob, size);
-
-  int ret = uw->rkeyImport(conn.ep, addr.data(), size, md->rkey);
+  int ret = uw->rkeyImport(conn.ep, blob, md->rkey);
   if (ret) {
     // TODO: error out. Should we indicate which desc failed or unroll
     // everything prior
@@ -707,7 +699,7 @@ nixl_status_t nixlUcxEngine::loadLocalMD(nixlBackendMD *input,
   }
 
   nixlUcxPrivateMetadata *input_md = (nixlUcxPrivateMetadata *)input;
-  return internalMDHelper(input_md->rkeyStr, localAgent, output);
+  return internalMDHelper(blob_ref{input_md->rkeyStr}, localAgent, output);
 }
 
 // To be cleaned up
@@ -720,7 +712,7 @@ nixl_status_t nixlUcxEngine::loadRemoteMD(const nixlBlobDesc &input,
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  return internalMDHelper(input.metaInfo, remote_agent, output);
+  return internalMDHelper(blob_ref{input.metaInfo}, remote_agent, output);
 }
 
 nixl_status_t nixlUcxEngine::unloadMD(nixlBackendMD *input) {
@@ -883,7 +875,7 @@ int nixlUcxEngine::progress() {
 
 // agent will provide cached msg
 nixl_status_t nixlUcxEngine::notifSendPriv(const std::string &remote_agent,
-                                           const std::string &msg,
+                                           const std::string_view msg,
                                            nixlUcxReq &req) {
   nixlSerDes ser_des;
   std::string *ser_msg;
@@ -930,7 +922,6 @@ ucs_status_t nixlUcxEngine::notifAmCb(void *arg, const void *header,
   const struct nixl_ucx_am_hdr *hdr = (const struct nixl_ucx_am_hdr *)header;
   nixlSerDes ser_des;
 
-  std::string ser_str((char *)data, length);
   nixlUcxEngine *engine = (nixlUcxEngine *)arg;
   std::string remote_name, msg;
 
@@ -945,7 +936,7 @@ ucs_status_t nixlUcxEngine::notifAmCb(void *arg, const void *header,
     return UCS_ERR_INVALID_PARAM;
   }
 
-  ser_des.importStr(ser_str);
+  ser_des.importBlob(blob_ref{data, length});
   remote_name = ser_des.getStr("name");
   msg = ser_des.getStr("msg");
 
@@ -1005,7 +996,7 @@ nixl_status_t nixlUcxEngine::getNotifs(notif_list_t &notif_list) {
 }
 
 nixl_status_t nixlUcxEngine::genNotif(const std::string &remote_agent,
-                                      const std::string &msg) {
+                                      const std::string_view msg) {
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;

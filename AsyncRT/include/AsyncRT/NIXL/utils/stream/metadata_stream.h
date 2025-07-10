@@ -84,7 +84,7 @@ public:
   nixlMDStreamClient &operator=(nixlMDStreamClient &&) = delete;
 
   bool connectListener();
-  void sendData(const std::string &data);
+  void sendData(const blob_ref data);
   std::string recvData();
 };
 

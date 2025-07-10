@@ -134,8 +134,8 @@ void nixlMDStreamListener::recvFromClients(int clientSocket) {
     // Return ack
     std::string_view ack = "Message received"sv;
     send(clientSocket, ack.data(), ack.size(), 0);
-    std::string recv_message(buffer);
-    std::cout << "Message Received" << recv_message << "\n";
+    std::string_view recvMessage(buffer);
+    std::cout << "Message Received" << recvMessage << "\n";
   }
   close(clientSocket);
   std::cout << "Client disconnected\n";
@@ -182,9 +182,9 @@ bool nixlMDStreamClient::setupClient() {
 
 bool nixlMDStreamClient::connectListener() { return setupClient(); }
 
-void nixlMDStreamClient::sendData(const std::string &data) {
+void nixlMDStreamClient::sendData(const blob_ref data) {
   // TODO(GENAI-170): Fix logging and indicate error another way.
-  if (send(socketFd, data.c_str(), data.size(), 0) < 0)
+  if (send(socketFd, data.data, data.size, 0) < 0)
     std::cerr << "Send failed\n";
 }
 

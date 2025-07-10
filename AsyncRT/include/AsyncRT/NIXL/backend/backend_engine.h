@@ -166,7 +166,7 @@ public:
 
   // Generates a standalone notification, not bound to a transfer.
   virtual nixl_status_t genNotif(const std::string &remote_agent,
-                                 const std::string &msg) {
+                                 const std::string_view msg) {
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
 

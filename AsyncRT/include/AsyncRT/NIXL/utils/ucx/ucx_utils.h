@@ -92,7 +92,7 @@ public:
 
   /* Connection */
   int epAddr(uint64_t &addr, size_t &size);
-  int connect(void *addr, size_t size, nixlUcxEp &ep);
+  int connect(const void *addr, size_t size, nixlUcxEp &ep);
   int disconnect(nixlUcxEp &ep);
   int disconnect_nb(nixlUcxEp &ep);
 
@@ -102,7 +102,7 @@ public:
   void memDereg(nixlUcxMem &mem);
 
   /* Rkey */
-  int rkeyImport(nixlUcxEp &ep, void *addr, size_t size, nixlUcxRkey &rkey);
+  int rkeyImport(nixlUcxEp &ep, blob_ref data, nixlUcxRkey &rkey);
   void rkeyDestroy(nixlUcxRkey &rkey);
 
   /* Active message handling */

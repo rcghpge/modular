@@ -12,6 +12,7 @@
 #define ASYNCRT_NIXL_UTILS_COMMON_STR_TOOLS_H
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace M::AsyncRT::NIXL {
@@ -22,7 +23,7 @@ std::vector<std::string_view> str_split_substr(std::string_view str,
 
 class strEqual {
 public:
-  bool operator()(const std::string &t1, const std::string &t2) const {
+  bool operator()(const std::string_view t1, const std::string_view t2) const {
     size_t s1 = t1.size();
     size_t s2 = t2.size();
 

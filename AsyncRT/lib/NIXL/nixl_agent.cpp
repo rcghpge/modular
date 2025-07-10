@@ -916,7 +916,7 @@ nixl_status_t nixlAgent::getNotifs(nixl_notifs_t &notif_map,
 }
 
 nixl_status_t nixlAgent::genNotif(const std::string &remote_agent,
-                                  const nixl_blob_t &msg,
+                                  const std::string_view msg,
                                   const nixl_opt_args_t *extra_params) {
 
   nixlBackendEngine *backend = nullptr;

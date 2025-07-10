@@ -173,7 +173,7 @@ static void err_cb(void *arg, ucp_ep_h ep, ucs_status_t status) {
          ucs_status_string(status));
 }
 
-int nixlUcxWorker::connect(void *addr, size_t size, nixlUcxEp &ep) {
+int nixlUcxWorker::connect(const void *addr, size_t size, nixlUcxEp &ep) {
   ucp_ep_params_t ep_params;
   ucs_status_t status;
 
@@ -186,7 +186,7 @@ int nixlUcxWorker::connect(void *addr, size_t size, nixlUcxEp &ep) {
   ep_params.err_mode = UCP_ERR_HANDLING_MODE_NONE;
 
   ep_params.err_handler.cb = err_cb;
-  ep_params.address = (ucp_address_t *)addr;
+  ep_params.address = static_cast<const ucp_address_t *>(addr);
 
   status = ucp_ep_create(worker, &ep_params, &ep.eph);
   if (status != UCS_OK) {
@@ -305,11 +305,10 @@ void nixlUcxWorker::memDereg(nixlUcxMem &mem) {
  * RKey management
  * =========================================== */
 
-int nixlUcxWorker::rkeyImport(nixlUcxEp &ep, void *addr, size_t size,
-                              nixlUcxRkey &rkey) {
+int nixlUcxWorker::rkeyImport(nixlUcxEp &ep, blob_ref blob, nixlUcxRkey &rkey) {
   ucs_status_t status;
 
-  status = ucp_ep_rkey_unpack(ep.eph, addr, &rkey.rkeyh);
+  status = ucp_ep_rkey_unpack(ep.eph, blob.data, &rkey.rkeyh);
   if (status != UCS_OK) {
     /* TODO: MSW_NET_ERROR(priv->net, "unable to unpack key!\n"); */
     return -1;

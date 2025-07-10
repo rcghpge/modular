@@ -18,6 +18,7 @@
 
 // Local includes
 #include "AsyncRT/NIXL/backend/backend_plugin.h"
+#include "AsyncRT/NIXL/nixl_types.h"
 #include "AsyncRT/NIXL/utils/common/list_elem.h"
 #include "AsyncRT/NIXL/utils/common/nixl_time.h"
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
@@ -26,6 +27,7 @@
 #include <cstring>
 #include <iostream>
 #include <mutex>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -131,8 +133,7 @@ private:
                                          const ucp_am_recv_param_t *param);
 
   // Memory management helpers
-  nixl_status_t internalMDHelper(const nixl_blob_t &blob,
-                                 const std::string &agent,
+  nixl_status_t internalMDHelper(const blob_ref blob, const std::string &agent,
                                  nixlBackendMD *&output);
 
   // Notifications
@@ -140,7 +141,7 @@ private:
                                 size_t header_length, void *data, size_t length,
                                 const ucp_am_recv_param_t *param);
   nixl_status_t notifSendPriv(const std::string &remote_agent,
-                              const std::string &msg, nixlUcxReq &req);
+                              const std::string_view msg, nixlUcxReq &req);
   void notifProgress();
   void notifCombineHelper(notif_list_t &src, notif_list_t &tgt);
   void notifProgressCombineHelper(notif_list_t &src, notif_list_t &tgt);
@@ -205,7 +206,7 @@ public:
 
   nixl_status_t getNotifs(notif_list_t &notif_list) override;
   nixl_status_t genNotif(const std::string &remote_agent,
-                         const std::string &msg) override;
+                         const std::string_view msg) override;
 
   // public function for UCX worker to mark connections as connected
   nixl_status_t checkConn(const std::string &remote_agent);

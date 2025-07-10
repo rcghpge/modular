@@ -15,12 +15,12 @@
 
 using namespace M::AsyncRT::NIXL;
 
-std::string nixlSerDes::_bytesToString(const void *buf, ssize_t size) {
+std::string nixlSerDes::_bytesToString(const void *buf, size_t size) {
   return std::string(reinterpret_cast<const char *>(buf), size);
 }
 
 void nixlSerDes::_stringToBytes(void *fill_buf, const std::string &s,
-                                ssize_t size) {
+                                size_t size) {
   s.copy(reinterpret_cast<char *>(fill_buf), size);
 }
 
@@ -35,21 +35,21 @@ void nixlSerDes::addStr(const std::string_view tag,
   workingStr.append("|");
 }
 
-std::string nixlSerDes::getStr(const std::string &tag) {
+std::string nixlSerDes::getStr(const std::string_view tag) {
   if (workingStr.compare(des_offset, tag.size(), tag) != 0) {
     // incorrect tag
     return "";
   }
-  ssize_t len;
+  size_t len;
 
   // skip tag
   des_offset += tag.size();
 
   // get len
-  //_stringToBytes(&len, workingStr.data() + des_offset, sizeof(ssize_t));
-  _stringToBytes(&len, workingStr.substr(des_offset, sizeof(ssize_t)),
-                 sizeof(ssize_t));
-  des_offset += sizeof(ssize_t);
+  //_stringToBytes(&len, workingStr.data() + des_offset, sizeof(size_t));
+  _stringToBytes(&len, workingStr.substr(des_offset, sizeof(size_t)),
+                 sizeof(size_t));
+  des_offset += sizeof(size_t);
 
   // get string
   std::string ret = workingStr.substr(des_offset, len);
@@ -68,32 +68,32 @@ void nixlSerDes::addBuf(std::string_view tag, const void *buf, size_t len) {
   workingStr.append("|");
 }
 
-ssize_t nixlSerDes::getBufLen(std::string_view tag) const {
+size_t nixlSerDes::getBufLen(std::string_view tag) const {
   if (workingStr.compare(des_offset, tag.size(), tag) != 0) {
     // incorrect tag
     return -1;
   }
 
-  ssize_t len;
+  size_t len;
 
   // get len
   //_stringToBytes(&len, workingStr.data() + des_offset + tag.size(),
-  // sizeof(ssize_t));
+  // sizeof(size_t));
   _stringToBytes(&len,
-                 workingStr.substr(des_offset + tag.size(), sizeof(ssize_t)),
-                 sizeof(ssize_t));
+                 workingStr.substr(des_offset + tag.size(), sizeof(size_t)),
+                 sizeof(size_t));
 
   return len;
 }
 
-nixl_status_t nixlSerDes::getBuf(std::string_view tag, void *buf, ssize_t len) {
+nixl_status_t nixlSerDes::getBuf(std::string_view tag, void *buf, size_t len) {
   if (workingStr.compare(des_offset, tag.size(), tag) != 0) {
     // incorrect tag
     return nixl_status_t::NIXL_ERR_MISMATCH;
   }
 
   // skip over tag and size, which we assume has been read previously
-  des_offset += tag.size() + sizeof(ssize_t);
+  des_offset += tag.size() + sizeof(size_t);
 
   //_stringToBytes(buf, workingStr.data() + des_offset, len);
   _stringToBytes(buf, workingStr.substr(des_offset, len), len);
@@ -106,19 +106,6 @@ nixl_status_t nixlSerDes::getBuf(std::string_view tag, void *buf, ssize_t len) {
 
 /* Ser/Des buffer management */
 std::string nixlSerDes::exportStr() const { return workingStr; }
-
-nixl_status_t nixlSerDes::importStr(const std::string &sdbuf) {
-  if (sdbuf.compare(0, kWireMagic.size(), kWireMagic) != 0) {
-    // incorrect tag
-    return nixl_status_t::NIXL_ERR_MISMATCH;
-  }
-
-  workingStr = sdbuf;
-  mode = ser_mode_t::DESERIALIZE;
-  des_offset = kWireMagic.size();
-
-  return nixl_status_t::NIXL_SUCCESS;
-}
 
 nixl_status_t nixlSerDes::importBlob(const blob_ref sdbuf) {
   // Ensure the blob has the expected starting tag
