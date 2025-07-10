@@ -5,10 +5,10 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//GenericML:ExecutionDriver",
-        "//GenericML:MaxAPI",
         "//Init",
         "//ModularFramework/tools/max",
         "//Runtime:Tensor",
+        "//SDK:MaxAPI",
         "//Support:Globals",
     ],
 )

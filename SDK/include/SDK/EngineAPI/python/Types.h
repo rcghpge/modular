@@ -6,7 +6,7 @@
 #ifndef SDK_ENGINEAPI_PYTHON_TYPES_H
 #define SDK_ENGINEAPI_PYTHON_TYPES_H
 
-#include "GenericML/API/max/c/types.h"
+#include "SDK/API/max/c/types.h"
 #include "Support/ML/DType.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"

@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineAPI/python/ResultProcessing.h"
-#include "GenericML/API/max/cpp/aliases.h"
+#include "SDK/API/max/cpp/aliases.h"
 #include "SDK/EngineAPI/python/Types.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"

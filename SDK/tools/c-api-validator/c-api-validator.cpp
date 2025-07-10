@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/API/max/c/common.h"
-#include "GenericML/API/max/c/context.h"
-#include "GenericML/API/max/c/model.h"
-#include "GenericML/API/max/c/tensor.h"
-#include "GenericML/API/max/cpp/aliases.h"
 #include "GenericML/Driver/DriverCLOptions.h"
+#include "SDK/API/max/c/common.h"
+#include "SDK/API/max/c/context.h"
+#include "SDK/API/max/c/model.h"
+#include "SDK/API/max/c/tensor.h"
+#include "SDK/API/max/cpp/aliases.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/Configuration.h"
 #include "Support/CrashReporting/CrashReporting.h"

@@ -74,7 +74,10 @@ rpath_shim(
     packages = [
         "//ModularFramework/tools/max",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//SDK:__pkg__",
+        "//visibility:private",
+    ],
 )
 
 modular_cc_library(
@@ -1418,75 +1421,15 @@ modular_cc_library(
     ],
 )
 
-modular_cc_library(
-    name = "MaxAPI",
-    hdrs = glob(["include/GenericML/API/max/**/*.h"]),
-    includes = ["include/GenericML/API"],
-    deps = [
-        ":API.headers",
-        ":DeviceDriver.headers",
-    ],
-)
-
-modular_cc_library(
-    name = "API.headers",
-    hdrs = glob(["include/GenericML/API/**/*.h"]),
-    includes = ["include/GenericML/API"],
-    deps = [
-        ":CommonDriver",
-        ":DeviceDriver.headers",
-        "//AsyncRT:DeviceContext",
-        "//Support:Telemetry",
-        "//Support:Threading",
-    ],
-)
-
-modular_cc_library(
-    name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
-    testonly = True,
-    srcs = glob(["include/GenericML/API/max/c/*.h"]),
-    includes = ["include/GenericML/API"],
-    tags = ["clang-tidy-is-c-tu"],
-    visibility = ["//visibility:private"],
-)
-
-pkg_files(
-    name = "API.c.headers",
-    srcs = glob(["include/GenericML/API/max/c/*.h"]),
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "doxygen-sources",
-    srcs = glob([
-        "include/GenericML/API/max/**",
-    ]),
-)
-
-modular_shared_library(
-    name = "modular-framework-common",
-    srcs = glob(["lib/API/c/**/*.cpp"]),
-    hdrs = glob(["include/GenericML/API/**/*.h"]),
-    deps = [
-        ":CommonDriver",
-        ":CompileDriver",
-        ":DeviceDriver",
-        ":MaxAPI",
-        ":rpaths",
-        "//Init",
-        "//Kernels:WeightsRegistry",
-        "//Support:Base",
-        "//Support:CrashReporting",
-        "//Support:Globals",
-    ],
-)
-
 # TODO: Break circular dependency and remove this
 modular_cc_library(
     name = "DeviceDriver.headers",
     hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
     tags = ["no-clang-tidy-headers"],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//SDK:__pkg__",
+        "//visibility:private",
+    ],
     deps = [
         "//Support:DeviceSpecs",
         "//Support:ML",

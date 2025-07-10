@@ -5,9 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/EngineAPI/python/InputProcessing.h"
-#include "GenericML/API/max/c/internal/value.h"
-#include "GenericML/API/max/c/value.h"
-#include "GenericML/API/max/cpp/aliases.h"
+#include "SDK/API/max/c/internal/value.h"
+#include "SDK/API/max/c/value.h"
+#include "SDK/API/max/cpp/aliases.h"
 #include "SDK/EngineAPI/python/MojoValue.h"
 #include "SDK/EngineAPI/python/Types.h"
 #include "Support/CPython/PythonObject.h"

@@ -7,7 +7,7 @@
 #ifndef SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H
 #define SDK_ENGINEAPI_PYTHON_RESULTPROCESSING_H
 
-#include "GenericML/API/max/cpp/aliases.h"
+#include "SDK/API/max/cpp/aliases.h"
 #include "nanobind/nanobind.h"
 
 namespace nb = nanobind;

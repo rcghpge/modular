@@ -5,9 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "max/c/custom_ops.h"
-#include "GenericML/API/c/detail/types.h"
+#include "SDK/API/c/detail/types.h"
 
-#include "GenericML/API/c/detail/helpers.h"
+#include "SDK/API/c/detail/helpers.h"
 
 #include <filesystem>
 

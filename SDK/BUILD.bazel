@@ -1,5 +1,70 @@
-load("//bazel:api.bzl", "modular_nanobind_library", "py_repl", "requirement")
+load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
+
+modular_cc_library(
+    name = "MaxAPI",
+    hdrs = glob(["include/SDK/API/max/**/*.h"]),
+    includes = ["include/SDK/API"],
+    deps = [
+        ":API.headers",
+        "//GenericML:DeviceDriver.headers",
+    ],
+)
+
+modular_cc_library(
+    name = "API.headers",
+    hdrs = glob(["include/SDK/API/**/*.h"]),
+    includes = ["include/SDK/API"],
+    deps = [
+        "//AsyncRT:DeviceContext",
+        "//GenericML:CommonDriver",
+        "//GenericML:DeviceDriver.headers",
+        "//Support:Telemetry",
+        "//Support:Threading",
+    ],
+)
+
+modular_cc_library(
+    name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
+    testonly = True,
+    srcs = glob(["include/SDK/API/max/c/*.h"]),
+    includes = ["include/SDK/API"],
+    tags = ["clang-tidy-is-c-tu"],
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "API.c.headers",
+    srcs = glob(["include/SDK/API/max/c/*.h"]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "doxygen-sources",
+    srcs = glob([
+        "include/SDK/API/max/**",
+    ]),
+    visibility = ["//SDK/include/SDK/API/max/c/docs:__pkg__"],
+)
+
+modular_shared_library(
+    name = "modular-framework-common",
+    srcs = glob(["lib/API/c/**/*.cpp"]),
+    hdrs = glob(["include/SDK/API/**/*.h"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":MaxAPI",
+        "//GenericML:CommonDriver",
+        "//GenericML:CompileDriver",
+        "//GenericML:DeviceDriver",
+        "//GenericML:rpaths",
+        "//Init",
+        "//Kernels:WeightsRegistry",
+        "//Support:Base",
+        "//Support:CrashReporting",
+        "//Support:Globals",
+    ],
+)
 
 modular_nanobind_library(
     name = "DLPackPython",
