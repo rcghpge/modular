@@ -1499,7 +1499,6 @@ modular_shared_library(
     hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
     deps = [
         ":CommonDriver",
-        ":MaxAPI",
         ":Support",
         ":rpaths",
         "//AsyncRT:DeviceContext",

@@ -7,7 +7,6 @@
 #ifndef GENERICML_DEVICEDRIVER_DEVICEEXECUTION
 #define GENERICML_DEVICEDRIVER_DEVICEEXECUTION
 
-#include "GenericML/API/max/c/types.h"
 #include "GenericML/DeviceDriver/Driver.h"
 #include "GenericML/Support/Model.h"
 #include "Support/ADT/SmartVariant.h"
@@ -16,11 +15,6 @@
 #include "Support/SymbolExport.h"
 
 namespace M::Driver {
-
-/// Container holding the result of device execution.
-/// Each element is either a tensor or a Mojo value boxed by an AsyncValue.
-using ExecResultType =
-    SmallVector<SmartVariant<Driver::DeviceMemory *, M_AsyncValue *>>;
 
 /// Element type of a speclist; std::nullopt represents non-tensor inputs.
 using SpecType = std::optional<const M::TensorSpec *>;
