@@ -18,7 +18,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/RCRef.h"
-#include "Support/include/Support/ReferenceCounted.h"
+#include "Support/ReferenceCounted.h"
 #include "llvm/ADT/StringMap.h"
 
 #include <chrono>

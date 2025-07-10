@@ -13,7 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
-#include "KGEN/include/KGEN/MOGGPreElab/MojoKernelAdaptor.h"
+#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
 

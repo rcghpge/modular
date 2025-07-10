@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/include/AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 
 #include "./AsyncDataflowDependencies.h"
