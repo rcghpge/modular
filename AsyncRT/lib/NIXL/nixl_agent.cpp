@@ -628,98 +628,97 @@ nixl_status_t nixlAgent::createXferReq(
     nixlXferReqH *&req_hndl, const nixl_opt_args_t *extra_params) const {
   nixl_status_t ret1, ret2;
   nixl_opt_b_args_t opt_args;
-  backend_set_t *backend_set = new backend_set_t();
+  nixlXferReqH *handle{nullptr};
+  {
+    backend_set_t backendSet;
 
-  req_hndl = nullptr;
+    req_hndl = nullptr;
 
-  NIXL_LOCK_GUARD(data->lock);
-  if (data->remoteSections.count(remote_agent) == 0) {
-    NIXL_ERROR << "No remote agents are found\n";
-    return nixl_status_t::NIXL_ERR_NOT_FOUND;
-  }
+    NIXL_LOCK_GUARD(data->lock);
+    if (data->remoteSections.count(remote_agent) == 0) {
+      NIXL_ERROR << "No remote agents are found\n";
+      return nixl_status_t::NIXL_ERR_NOT_FOUND;
+    }
 
-  // Check the correspondence between descriptor lists
-  if (local_descs.descCount() != remote_descs.descCount()) {
-    NIXL_ERROR << "The local and remote descriptor lists have different sizes ("
-               << local_descs.descCount() << " != " << remote_descs.descCount()
-               << ")\n";
-    return nixl_status_t::NIXL_ERR_INVALID_PARAM;
-  }
-  for (int i = 0; i < local_descs.descCount(); ++i) {
-    size_t local_len = local_descs[i].len;
-    size_t remote_len = remote_descs[i].len;
-    if (local_len != remote_len) {
-      NIXL_ERROR << "Local and remote descriptor has different lengths ("
-                 << local_len << " != " << remote_len << ")\n";
+    // Check the correspondence between descriptor lists
+    if (local_descs.descCount() != remote_descs.descCount()) {
+      NIXL_ERROR
+          << "The local and remote descriptor lists have different sizes ("
+          << local_descs.descCount() << " != " << remote_descs.descCount()
+          << ")\n";
       return nixl_status_t::NIXL_ERR_INVALID_PARAM;
     }
+    for (int i = 0; i < local_descs.descCount(); ++i) {
+      size_t local_len = local_descs[i].len;
+      size_t remote_len = remote_descs[i].len;
+      if (local_len != remote_len) {
+        NIXL_ERROR << "Local and remote descriptor has different lengths ("
+                   << local_len << " != " << remote_len << ")\n";
+        return nixl_status_t::NIXL_ERR_INVALID_PARAM;
+      }
+    }
+
+    if (!extra_params || extra_params->backends.size() == 0) {
+      // Finding backends that support the corresponding memories
+      // locally and remotely, and find the common ones.
+      backend_set_t *local_set =
+          data->memorySection->queryBackends(local_descs.getType());
+      backend_set_t *remote_set =
+          data->remoteSections[remote_agent]->queryBackends(
+              remote_descs.getType());
+
+      if (local_set->empty()) {
+        NIXL_ERROR << "The local backend set is empty\n";
+        return nixl_status_t::NIXL_ERR_NOT_FOUND;
+      }
+      if (remote_set->empty()) {
+        NIXL_ERROR << "The remote backend set is empty\n";
+        return nixl_status_t::NIXL_ERR_NOT_FOUND;
+      }
+
+      for (auto &elm : *local_set)
+        if (remote_set->count(elm) != 0)
+          backendSet.insert(elm);
+
+      if (backendSet.empty()) {
+        NIXL_ERROR
+            << "Unable to find a common backend between local and remote\n";
+        return nixl_status_t::NIXL_ERR_NOT_FOUND;
+      }
+    } else {
+      for (auto &elm : extra_params->backends)
+        backendSet.insert(elm->engine);
+    }
+
+    // TODO: when central KV is supported, add a call to fetchRemoteMD
+    // TODO: merge descriptors back to back in memory (like makeXferReq).
+    // TODO [Perf]: Avoid heap allocation on the datapath, maybe use a mem pool
+
+    handle = new nixlXferReqH;
+    handle->initiatorDescs =
+        new nixl_meta_dlist_t(local_descs.getType(), local_descs.isSorted());
+
+    handle->targetDescs =
+        new nixl_meta_dlist_t(remote_descs.getType(), remote_descs.isSorted());
+
+    // Currently we loop through and find first local match. Can use a
+    // preference list or more exhaustive search.
+    for (auto &backend : backendSet) {
+      // If populate fails, it clears the resp before return
+      ret1 = data->memorySection->populate(local_descs, backend,
+                                           *handle->initiatorDescs);
+      ret2 = data->remoteSections[remote_agent]->populate(remote_descs, backend,
+                                                          *handle->targetDescs);
+
+      if ((ret1 == nixl_status_t::NIXL_SUCCESS) &&
+          (ret2 == nixl_status_t::NIXL_SUCCESS)) {
+        // For Logging:
+        // std::cout << "Selected backend: " << backend->getType() << "\n";
+        handle->engine = backend;
+        break;
+      }
+    }
   }
-
-  if (!extra_params || extra_params->backends.size() == 0) {
-    // Finding backends that support the corresponding memories
-    // locally and remotely, and find the common ones.
-    backend_set_t *local_set =
-        data->memorySection->queryBackends(local_descs.getType());
-    backend_set_t *remote_set =
-        data->remoteSections[remote_agent]->queryBackends(
-            remote_descs.getType());
-
-    if (local_set->empty()) {
-      delete backend_set;
-      NIXL_ERROR << "The local backend set is empty\n";
-      return nixl_status_t::NIXL_ERR_NOT_FOUND;
-    }
-    if (remote_set->empty()) {
-      delete backend_set;
-      NIXL_ERROR << "The remote backend set is empty\n";
-      return nixl_status_t::NIXL_ERR_NOT_FOUND;
-    }
-
-    for (auto &elm : *local_set)
-      if (remote_set->count(elm) != 0)
-        backend_set->insert(elm);
-
-    if (backend_set->empty()) {
-      delete backend_set;
-      NIXL_ERROR
-          << "Unable to find a common backend between local and remote\n";
-      return nixl_status_t::NIXL_ERR_NOT_FOUND;
-    }
-  } else {
-    for (auto &elm : extra_params->backends)
-      backend_set->insert(elm->engine);
-  }
-
-  // TODO: when central KV is supported, add a call to fetchRemoteMD
-  // TODO: merge descriptors back to back in memory (like makeXferReq).
-  // TODO [Perf]: Avoid heap allocation on the datapath, maybe use a mem pool
-
-  nixlXferReqH *handle = new nixlXferReqH;
-  handle->initiatorDescs =
-      new nixl_meta_dlist_t(local_descs.getType(), local_descs.isSorted());
-
-  handle->targetDescs =
-      new nixl_meta_dlist_t(remote_descs.getType(), remote_descs.isSorted());
-
-  // Currently we loop through and find first local match. Can use a
-  // preference list or more exhaustive search.
-  for (auto &backend : *backend_set) {
-    // If populate fails, it clears the resp before return
-    ret1 = data->memorySection->populate(local_descs, backend,
-                                         *handle->initiatorDescs);
-    ret2 = data->remoteSections[remote_agent]->populate(remote_descs, backend,
-                                                        *handle->targetDescs);
-
-    if ((ret1 == nixl_status_t::NIXL_SUCCESS) &&
-        (ret2 == nixl_status_t::NIXL_SUCCESS)) {
-      // For Logging:
-      // std::cout << "Selected backend: " << backend->getType() << "\n";
-      handle->engine = backend;
-      break;
-    }
-  }
-
-  delete backend_set;
 
   if (!handle->engine) {
     delete handle;
