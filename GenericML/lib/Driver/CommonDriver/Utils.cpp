@@ -7,32 +7,14 @@
 #include "GenericML/Driver/Utils.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Runtime.h"
-#include "AsyncRT/Runtime/Utils.h"
-#include "GenericML/Driver/DriverCLOptions.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/ADT/GenericUniquePtrSet.h"
 #include "Support/Buffer.h"
+#include "Support/CommonCLOptions.h"
 #include "Support/Configuration.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/ToolOutputFile.h"
-
-int M::setupMLIRAndRun(ContextRef context, const ExecutorDriverOptions &options,
-                       const char *testName,
-                       std::unique_ptr<llvm::MemoryBuffer> &&file,
-                       BodyFn &&bodyFn) {
-  if (failed(options.configureMLIRContextAndExecute(
-          std::move(file), [&](MLIRContext *ctx) {
-            AsyncRT::Runtime *runtime = context->get<Runtime>();
-            assert(runtime && "caller should have set up runtime for this");
-            registerContext(*ctx, context);
-            return AsyncRT::runWithLeakCheckedRuntime(
-                testName, [&]() { return bodyFn(*runtime, ctx); });
-          })))
-    return EXIT_FAILURE;
-  return EXIT_SUCCESS;
-}
 
 M::ErrorOr<std::string> M::getFileContentIdentity(const BufferRef &file,
                                                   FileFormat format) {

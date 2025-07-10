@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Runtime.h"
+#include "AsyncRT/Runtime/Utils.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
 #include "Config/Version.h"
@@ -46,6 +48,22 @@ using namespace M;
 using namespace M::AsyncRT;
 using namespace M::MOF;
 using llvm::MemoryBuffer;
+
+static int setupMLIRAndRun(
+    ContextRef context, const ExecutorDriverOptions &options,
+    const char *testName, std::unique_ptr<llvm::MemoryBuffer> &&file,
+    std::function<LogicalResult(Runtime &, MLIRContext *)> &&bodyFn) {
+  if (failed(options.configureMLIRContextAndExecute(
+          std::move(file), [&](MLIRContext *ctx) {
+            AsyncRT::Runtime *runtime = context->get<Runtime>();
+            assert(runtime && "caller should have set up runtime for this");
+            registerContext(*ctx, context);
+            return AsyncRT::runWithLeakCheckedRuntime(
+                testName, [&]() { return bodyFn(*runtime, ctx); });
+          })))
+    return EXIT_FAILURE;
+  return EXIT_SUCCESS;
+}
 
 namespace {
 
