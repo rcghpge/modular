@@ -867,51 +867,40 @@ nixl_status_t nixlAgent::releasedDlistH(nixlDlistH *dlist_hndl) const {
 
 nixl_status_t nixlAgent::getNotifs(nixl_notifs_t &notif_map,
                                    const nixl_opt_args_t *extra_params) {
-  notif_list_t bknd_notif_list;
-  nixl_status_t ret, bad_ret = nixl_status_t::NIXL_SUCCESS;
-  backend_list_t *backend_list;
+  const auto getNotifsImpl = [&notif_map](backend_list_t &backend_list) {
+    if (backend_list.empty())
+      return nixl_status_t::NIXL_ERR_BACKEND;
+
+    notif_list_t backendNotifList;
+    nixl_status_t badRet = nixl_status_t::NIXL_SUCCESS;
+
+    // Doing best effort, if any backend errors out we return
+    // error but proceed with the rest. We can add metadata about
+    // the backend to the msg, but user could put it themselves.
+    for (nixlBackendEngine *&eng : backend_list) {
+      backendNotifList.clear();
+
+      if (const nixl_status_t ret = eng->getNotifs(backendNotifList);
+          isErrorStatus(ret))
+        badRet = ret;
+
+      // If the above fails then this list is empty, this becomes a no-op.
+      for (auto &[agent, notif] : backendNotifList)
+        notif_map[agent].push_back(std::move(notif));
+    }
+    return badRet;
+  };
 
   NIXL_LOCK_GUARD(data->lock);
   if (!extra_params || extra_params->backends.size() == 0) {
-    backend_list = &data->notifEngines;
-    if (backend_list->empty())
-      return nixl_status_t::NIXL_ERR_BACKEND;
+    return getNotifsImpl(data->notifEngines);
   } else {
-    backend_list = new backend_list_t();
+    backend_list_t backendList;
     for (auto &elm : extra_params->backends)
       if (elm->engine->supportsNotif())
-        backend_list->push_back(elm->engine);
-
-    if (backend_list->empty()) {
-      delete backend_list;
-      return nixl_status_t::NIXL_ERR_BACKEND;
-    }
+        backendList.push_back(elm->engine);
+    return getNotifsImpl(backendList);
   }
-
-  // Doing best effort, if any backend errors out we return
-  // error but proceed with the rest. We can add metadata about
-  // the backend to the msg, but user could put it themselves.
-  for (auto &eng : *backend_list) {
-    bknd_notif_list.clear();
-    ret = eng->getNotifs(bknd_notif_list);
-    if (isErrorStatus(ret))
-      bad_ret = ret;
-
-    if (bknd_notif_list.size() == 0)
-      continue;
-
-    for (auto &elm : bknd_notif_list) {
-      if (notif_map.count(elm.first) == 0)
-        notif_map[elm.first] = std::vector<nixl_blob_t>();
-
-      notif_map[elm.first].push_back(elm.second);
-    }
-  }
-
-  if (extra_params && extra_params->backends.size() > 0)
-    delete backend_list;
-
-  return bad_ret;
 }
 
 nixl_status_t nixlAgent::genNotif(const std::string &remote_agent,
