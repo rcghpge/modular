@@ -9,7 +9,6 @@
 #include "AsyncRT/CompilerSupport/MLIRLocationDecoder.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/Runtime.h"
-#include "GenericML/Driver/CXXDriverAPI.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
