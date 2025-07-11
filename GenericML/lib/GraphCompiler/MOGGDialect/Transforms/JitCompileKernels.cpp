@@ -62,7 +62,8 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     }
 
     for (Operation &op : llvm::make_early_inc_range(module.getOps()))
-      if (isa<KGEN::GeneratorOp, KGEN::ExternGeneratorOp>(op))
+      if (isa<KGEN::GeneratorOp, KGEN::ExternGeneratorOp,
+              KGEN::StructGeneratorOp>(op))
         op.erase();
   }
 

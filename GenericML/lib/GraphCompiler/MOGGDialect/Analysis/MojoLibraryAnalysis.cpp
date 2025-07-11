@@ -531,10 +531,6 @@ FailureOr<std::string> MojoLibraryAnalysis::getMojoBindingsHash() const {
   return kgenModuleHash;
 }
 
-Operation *MojoLibraryAnalysis::lookup(StringRef name) const {
-  return rawMojoKernelTable->lookup<KGEN::GeneratorOp>(name);
-}
-
 KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) const {
   auto registeredFunction = registeredMojoKernelSymbol.find(name);

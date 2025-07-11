@@ -57,7 +57,10 @@ public:
 
   /// Query the mojo kernel with the specified `name`. Return nullptr if not
   /// existed.
-  Operation *lookup(StringRef name) const;
+  template <typename OpTy>
+  OpTy lookup(StringRef name) const {
+    return rawMojoKernelTable->lookup<OpTy>(name);
+  }
 
   /// Get the MLIR context.
   MLIRContext *getContext() { return config.getContext(); }
