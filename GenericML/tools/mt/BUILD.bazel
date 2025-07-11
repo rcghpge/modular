@@ -9,7 +9,7 @@ modular_cc_binary(
         "//GenericML:CommonDriver",
         "//GenericML:ExecutionDriver",
         "//Init",
-        "//ModularFramework/tools/max",
+        "//SDK:max",
         "//Support:Globals",
     ],
 )

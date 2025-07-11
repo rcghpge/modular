@@ -5,7 +5,7 @@ mojo_library(
     srcs = glob(["**/*.mojo"]),
     data = [
         "//GenericML:DeviceDriver",
-        "//ModularFramework/tools/max",
+        "//SDK:max",
     ],
     visibility = ["//visibility:public"],
     deps = [

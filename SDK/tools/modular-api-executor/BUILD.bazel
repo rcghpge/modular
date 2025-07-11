@@ -6,9 +6,9 @@ modular_cc_binary(
     deps = [
         "//GenericML:ExecutionDriver",
         "//Init",
-        "//ModularFramework/tools/max",
         "//Runtime:Tensor",
         "//SDK:MaxAPI",
+        "//SDK:max",
         "//Support:Globals",
     ],
 )

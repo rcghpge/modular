@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "pkg_files", "py_repl", "requirement")
+load("//bazel:api.bzl", "cc_autolink_deps", "modular_cc_library", "modular_nanobind_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
 
 modular_cc_library(
@@ -51,17 +51,26 @@ modular_cc_library(
     name = "modular-framework-common",
     srcs = glob(["lib/API/c/**/*.cpp"]),
     hdrs = glob(["include/SDK/API/**/*.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":MaxAPI",
         "//GenericML:CommonDriver",
         "//GenericML:CompileDriver",
         "//GenericML:DeviceDriver",
+        "//GenericML:ExecutionDriver",
+        "//GenericML:GraphCompiler",
+        "//GenericML:MEFModel",
+        "//GenericML:MONameInputDimsPass",
+        "//GenericML:MOTransforms",
+        "//GenericML:RMOTransforms",
         "//Init",
         "//Kernels:WeightsRegistry",
+        "//ModularFramework:API",
+        "//ModularFramework:Driver",
         "//Support:Base",
         "//Support:CrashReporting",
+        "//Support:Diagnostics",
         "//Support:Globals",
+        "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
     ],
 )
 
@@ -84,7 +93,7 @@ modular_nanobind_library(
     ],
     tags = ["no-clang-tidy-headers"],
     deps = [
-        "//ModularFramework/tools/max",
+        ":max",
     ],
 )
 
@@ -96,7 +105,7 @@ modular_nanobind_library(
         "//SDK:DLPackPython",
     ],
     deps = [
-        "//ModularFramework/tools/max",
+        ":max",
     ],
 )
 
@@ -108,7 +117,7 @@ modular_nanobind_library(
         "//:MLIRBindingsPythonHeaders",
     ],
     deps = [
-        "//ModularFramework/tools/max",
+        ":max",
     ],
 )
 
@@ -163,8 +172,8 @@ mlir_nanobind(
 py_repl(
     name = "python",
     data = [
+        ":max",
         "//GenericML:MGPRT",
-        "//ModularFramework/tools/max",
     ],
     deps = [
         "//SDK/lib/API/python/max",
@@ -179,4 +188,33 @@ alias(
     name = "pipelines",
     actual = "//SDK/lib/API/python/max/entrypoints:pipelines",
     tags = ["maybe-unused"],
+)
+
+cc_autolink_deps(
+    name = "deps",
+    deps = [
+        ":modular-framework-common",
+    ],
+)
+
+modular_shared_library(
+    name = "max",
+    srcs = [],
+    deps = [
+        ":deps",
+        "//AsyncRT:NIXL",
+        "//GenericML:CommonDriver",
+        "//GenericML:CompileDriver",
+        "//GenericML:GraphCompiler",
+        "//GenericML:MEFModel",
+        "//GenericML:MONameInputDimsPass",
+        "//GenericML:MOTransforms",
+        "//GenericML:RMOTransforms",
+        "//Init",
+        "//ModularFramework:API",
+        "//ModularFramework:Driver",
+        "//Support:Diagnostics",
+        "//Support:Globals",
+        "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
+    ],
 )
