@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "pkg_files", "rpath_shim", "td_library")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind")
 
@@ -66,17 +66,6 @@ modular_cc_library(
         "//Support:Diagnostics",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
-    ],
-)
-
-rpath_shim(
-    name = "rpaths",
-    packages = [
-        "//ModularFramework/tools/max",
-    ],
-    visibility = [
-        "//SDK:__pkg__",
-        "//visibility:private",
     ],
 )
 
@@ -1440,7 +1429,6 @@ modular_shared_library(
     deps = [
         ":CommonDriver",
         ":Support",
-        ":rpaths",
         "//AsyncRT:DeviceContext",
         "//Init",
     ],
