@@ -6,7 +6,7 @@ modular_cc_binary(
     deps = [
         "//AsyncRT:RuntimeGlobals",
         "//GenericML:ExecutionDriver",
-        "//SDK:modular-framework-common",
+        "//ModularFramework/tools/max",
         "//Support:Globals",
     ],
 )

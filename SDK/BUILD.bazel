@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
+load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "pkg_files", "py_repl", "requirement")
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
 
 modular_cc_library(
@@ -47,7 +47,7 @@ filegroup(
     visibility = ["//SDK/include/SDK/API/max/c/docs:__pkg__"],
 )
 
-modular_shared_library(
+modular_cc_library(
     name = "modular-framework-common",
     srcs = glob(["lib/API/c/**/*.cpp"]),
     hdrs = glob(["include/SDK/API/**/*.h"]),
@@ -59,7 +59,6 @@ modular_shared_library(
         "//GenericML:DeviceDriver",
         "//Init",
         "//Kernels:WeightsRegistry",
-        "//ModularFramework/tools/max",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",
@@ -85,7 +84,6 @@ modular_nanobind_library(
     ],
     tags = ["no-clang-tidy-headers"],
     deps = [
-        ":modular-framework-common",
         "//ModularFramework/tools/max",
     ],
 )
