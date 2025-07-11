@@ -14,6 +14,7 @@
 
 > A unified platform for AI development and deployment, including **MAX**🧑‍🚀 and
 **Mojo**🔥.
+
 [![Sync from upstream](https://github.com/rcghpge/modular/actions/workflows/sync-upstream.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/sync-upstream.yml)[![CodeQL Advanced](https://github.com/rcghpge/modular/actions/workflows/codeql.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/codeql.yml)[![Bandit](https://github.com/rcghpge/modular/actions/workflows/bandit.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/bandit.yml)
 
 The Modular Platform is an open and fully-integrated suite of AI libraries
