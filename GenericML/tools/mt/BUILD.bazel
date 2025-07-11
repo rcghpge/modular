@@ -1,26 +1,15 @@
-load("//bazel:api.bzl", "modular_cc_binary", "rpath_shim")
+load("//bazel:api.bzl", "modular_cc_binary")
 load("//bazel:config.bzl", "ASYNCRT_PROFILING_LOCAL_DEFINES")
 
 modular_cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
-    data = [
-        "//ModularFramework/tools/max",
-    ],
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
     deps = [
-        ":rpaths",
         "//GenericML:CommonDriver",
         "//GenericML:ExecutionDriver",
         "//Init",
+        "//ModularFramework/tools/max",
         "//Support:Globals",
     ],
-)
-
-rpath_shim(
-    name = "rpaths",
-    packages = [
-        "//ModularFramework/tools/max",
-    ],
-    visibility = ["//visibility:private"],
 )

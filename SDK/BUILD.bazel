@@ -60,6 +60,7 @@ modular_shared_library(
         "//GenericML:rpaths",
         "//Init",
         "//Kernels:WeightsRegistry",
+        "//ModularFramework/tools/max",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Globals",
@@ -85,6 +86,7 @@ modular_nanobind_library(
     ],
     tags = ["no-clang-tidy-headers"],
     deps = [
+        ":modular-framework-common",
         "//ModularFramework/tools/max",
     ],
 )

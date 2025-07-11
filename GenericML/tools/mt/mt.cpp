@@ -93,7 +93,7 @@ private:
 /// file.
 static M::ErrorOr<std::string>
 getFileContentIdentity(M::BufferRef file, FileFormat format,
-                       FrameworkContextHandle ctxHandle, CXXDriverAPI dylib) {
+                       FrameworkContextHandle ctxHandle) {
   switch (format) {
   default:
     return "input has unknown contents";
@@ -108,10 +108,11 @@ getFileContentIdentity(M::BufferRef file, FileFormat format,
   case FileFormat::kTorchPDialect:
     return "input is a PyTorch model in MLIR form consisting of primitive ops";
   case FileFormat::kMEFFile: {
-    auto fileHandleOr = dylib.openBinaryFile(ctxHandle, file.copy());
+    auto fileHandleOr = CXXDriverAPI::openBinaryFile(ctxHandle, file.copy());
     if (fileHandleOr.isError())
       return fileHandleOr.takeError();
-    return dylib.sniffBinaryFileContents(ctxHandle, std::move(*fileHandleOr));
+    return CXXDriverAPI::sniffBinaryFileContents(ctxHandle,
+                                                 std::move(*fileHandleOr));
   }
   }
 }
@@ -191,13 +192,6 @@ int main(int argc, char **argv) {
     return options.reportError(contextOr.getError());
 
   for (auto &inputInfo : inputsInfo) {
-    auto dylibOr = loadDesiredLibrary(argc, argv, inputInfo.file.copy(),
-                                      inputInfo.format, options.loadLib);
-    if (failed(dylibOr))
-      return options.reportError(dylibOr.getError());
-
-    CXXDriverAPI dylib = *dylibOr;
-
     // If the driver command is just `-get-version` then print the version and
     // exit right away. No need to do anything else.
     if (options.command == DriverCommand::getVersion) {
@@ -206,14 +200,14 @@ int main(int argc, char **argv) {
       snprintf(profilingLevelStr, sizeof(profilingLevelStr), "%#o",
                MODULAR_ASYNCRT_MAX_PROFILING_LEVEL);
       llvm::outs() << "mt: " << getModularVersionString()
-                   << "\nFramework: " << dylib.getVersion()
+                   << "\nFramework: " << CXXDriverAPI::getVersion()
                    << "\nmt profiling level: " << profilingLevelStr << "\n";
       return EXIT_SUCCESS;
     }
 
     // Setup the framework context.
     auto frameworkCtxOr =
-        dylib.initFrameworkContext(contextOr->copy(), argc, argv);
+        CXXDriverAPI::initFrameworkContext(contextOr->copy(), argc, argv);
     if (failed(frameworkCtxOr))
       return options.reportError(frameworkCtxOr.getError());
     auto frameworkCtx = std::move(*frameworkCtxOr);
@@ -223,7 +217,7 @@ int main(int argc, char **argv) {
 
     // We might want to get the framework's help string.
     if (options.command == DriverCommand::frameworkHelp) {
-      if (auto err = dylib.setOptions(frameworkCtx, {"-h"}))
+      if (auto err = CXXDriverAPI::setOptions(frameworkCtx, {"-h"}))
         return options.reportError(err.getError());
       return EXIT_SUCCESS;
     }
@@ -240,7 +234,7 @@ int main(int argc, char **argv) {
     }
 
     // Tell the framework about our options.
-    if (auto err = dylib.setOptions(frameworkCtx, dylibOptions))
+    if (auto err = CXXDriverAPI::setOptions(frameworkCtx, dylibOptions))
       return options.reportError(err.getError());
 
     // Start processing the input in stages.  The inspect command is first,
@@ -248,8 +242,8 @@ int main(int argc, char **argv) {
     if (options.command == DriverCommand::inspect) {
       std::unique_ptr<llvm::ToolOutputFile> outputFile =
           options.getOutputFile(options.commandHasBinaryOutput());
-      auto identityOr = getFileContentIdentity(
-          inputInfo.file.copy(), inputInfo.format, frameworkCtx, dylib);
+      auto identityOr = getFileContentIdentity(inputInfo.file.copy(),
+                                               inputInfo.format, frameworkCtx);
       if (failed(identityOr))
         return options.reportError(identityOr.getError());
 
@@ -261,7 +255,7 @@ int main(int argc, char **argv) {
     // If we are dealing with a directory, we need to open it.
     if (inputInfo.isInputDirectory) {
       // TODO: this should be called for all files
-      auto bufferOr = dylib.openPath(frameworkCtx, inputInfo.inputPath);
+      auto bufferOr = CXXDriverAPI::openPath(frameworkCtx, inputInfo.inputPath);
       if (bufferOr.isError())
         return options.reportError(bufferOr.getError());
       inputInfo.file = bufferOr.takeValue();
@@ -274,8 +268,8 @@ int main(int argc, char **argv) {
 
       // If the file is already a binary, just emit it directly.
       if (inputInfo.format == FileFormat::kMEFFile ||
-          dylib.isBinary(frameworkCtx, inputInfo.file.copy(),
-                         inputInfo.format)) {
+          CXXDriverAPI::isBinary(frameworkCtx, inputInfo.file.copy(),
+                                 inputInfo.format)) {
         outputFile->os().write(inputInfo.file->getBufferStart(),
                                inputInfo.file->getBufferSize());
         outputFile->keep();
@@ -283,8 +277,8 @@ int main(int argc, char **argv) {
       }
 
       // Otherwise, compile it.
-      auto bufferOr = dylib.compileToBinary(frameworkCtx, inputInfo.file.copy(),
-                                            inputInfo.format);
+      auto bufferOr = CXXDriverAPI::compileToBinary(
+          frameworkCtx, inputInfo.file.copy(), inputInfo.format);
       if (bufferOr.isError())
         return options.reportError(bufferOr.getError());
 
@@ -299,10 +293,10 @@ int main(int argc, char **argv) {
     // If we are not inspecting, we must need a compiled format.  If this is
     // already done then we're golden, otherwise compile now.
     if (inputInfo.format != FileFormat::kMEFFile &&
-        !dylib.isBinary(frameworkCtx, inputInfo.file.copy(),
-                        inputInfo.format)) {
-      auto bufferOr = dylib.compileToBinary(frameworkCtx, inputInfo.file.copy(),
-                                            inputInfo.format);
+        !CXXDriverAPI::isBinary(frameworkCtx, inputInfo.file.copy(),
+                                inputInfo.format)) {
+      auto bufferOr = CXXDriverAPI::compileToBinary(
+          frameworkCtx, inputInfo.file.copy(), inputInfo.format);
       if (bufferOr.isError())
         return options.reportError(bufferOr.getError());
 
@@ -318,19 +312,21 @@ int main(int argc, char **argv) {
     }
 
     auto binaryFileOr =
-        dylib.openBinaryFile(frameworkCtx, inputInfo.file.copy());
+        CXXDriverAPI::openBinaryFile(frameworkCtx, inputInfo.file.copy());
     if (failed(binaryFileOr))
       return options.reportError(binaryFileOr.getError());
     auto binaryFile = std::move(*binaryFileOr);
 
     // Check to see if this file contains what we expected.  If not, throw an
     // error message.
-    if (auto err = dylib.checkExpectedContents(frameworkCtx, binaryFile))
+    if (auto err =
+            CXXDriverAPI::checkExpectedContents(frameworkCtx, binaryFile))
       return options.reportError(err.getError());
 
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
-    rc = dylib.runBinaryFile(frameworkCtx, inputInfo.file.copy(), binaryFile);
+    rc = CXXDriverAPI::runBinaryFile(frameworkCtx, inputInfo.file.copy(),
+                                     binaryFile);
   }
 
   return rc;
