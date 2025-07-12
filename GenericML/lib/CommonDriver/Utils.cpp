@@ -21,12 +21,10 @@ M::ErrorOr<std::string> M::getFileContentIdentity(const BufferRef &file,
   switch (format) {
   default:
     return "input has unknown contents";
-  case FileFormat::kTorchDialect:
-    return "input is a PyTorch model in Torch MLIR dialect form";
-  case FileFormat::kPTPickle:
-    return "input is a PyTorch model in PT pickled form";
-  case FileFormat::kTorchPDialect:
-    return "input is a PyTorch model in MLIR form consisting of primitive ops";
+  case FileFormat::kMODialect:
+    [[fallthrough]];
+  case FileFormat::kMGPDialect:
+    return "input is a Modular model";
   case FileFormat::kMEFFile: {
     ErrorOr<RCRef<MEFFile>> mefFileOr = MEFFile::open(file->getBuffer());
     if (failed(mefFileOr))

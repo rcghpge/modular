@@ -8,6 +8,7 @@
 #include "GenericML/CommonDriver/CXXDriverAPI.h"
 #include "GenericML/CommonDriver/DriverAPI.h"
 #include "GenericML/CommonDriver/DriverInputFormat.h"
+#include "GenericML/CommonDriver/Utils.h"
 #include "GenericML/ExecutionDriver/DriverCLOptions.h"
 #include "Init/Init.h"
 #include "Support/AssertStream.h"
@@ -86,36 +87,6 @@ private:
       llvm::cl::location(options.unparsed)};
 };
 } // namespace
-// TODO(#1639): Remove.
-/// Returns a string that describes the contents of the file. Given that
-/// this driver cannot link the MEF libraries, it relies on the symbols
-/// provided by the framework supplied with dylib if the input is a MEF
-/// file.
-static M::ErrorOr<std::string>
-getFileContentIdentity(M::BufferRef file, FileFormat format,
-                       FrameworkContextHandle ctxHandle) {
-  switch (format) {
-  default:
-    return "input has unknown contents";
-  case FileFormat::kMODialect:
-    [[fallthrough]];
-  case FileFormat::kMGPDialect:
-    return "input is a Modular model";
-  case FileFormat::kTorchDialect:
-    return "input is a PyTorch model in Torch MLIR dialect form";
-  case FileFormat::kPTPickle:
-    return "input is a PyTorch model in PT pickled form";
-  case FileFormat::kTorchPDialect:
-    return "input is a PyTorch model in MLIR form consisting of primitive ops";
-  case FileFormat::kMEFFile: {
-    auto fileHandleOr = CXXDriverAPI::openBinaryFile(ctxHandle, file.copy());
-    if (fileHandleOr.isError())
-      return fileHandleOr.takeError();
-    return CXXDriverAPI::sniffBinaryFileContents(ctxHandle,
-                                                 std::move(*fileHandleOr));
-  }
-  }
-}
 
 int main(int argc, char **argv) {
   // Register all our command line options.  We expect that the subframeworks
@@ -242,8 +213,8 @@ int main(int argc, char **argv) {
     if (options.command == DriverCommand::inspect) {
       std::unique_ptr<llvm::ToolOutputFile> outputFile =
           options.getOutputFile(options.commandHasBinaryOutput());
-      auto identityOr = getFileContentIdentity(inputInfo.file.copy(),
-                                               inputInfo.format, frameworkCtx);
+      auto identityOr =
+          getFileContentIdentity(inputInfo.file.copy(), inputInfo.format);
       if (failed(identityOr))
         return options.reportError(identityOr.getError());
 
