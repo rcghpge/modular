@@ -100,8 +100,8 @@ struct NixlAgentWithUCXBackend {
   }
 };
 
-void exchangeMetadata(NixlAgentWithUCXBackend &nixl1,
-                      NixlAgentWithUCXBackend &nixl2) {
+static void exchangeMetadata(NixlAgentWithUCXBackend &nixl1,
+                             NixlAgentWithUCXBackend &nixl2) {
   // Exchange metadata between the agends
   std::string meta1, meta2;
   std::string loadedAgentName1, loadedAgentName2;
@@ -119,9 +119,10 @@ void exchangeMetadata(NixlAgentWithUCXBackend &nixl1,
   ASSERT_EQ(loadedAgentName1, nixl1.agentName);
 }
 
-void transferData(NixlAgentWithUCXBackend &nixl1,
-                  NixlAgentWithUCXBackend &nixl2, nixl_xfer_dlist_t &srcDescs,
-                  nixl_xfer_dlist_t &dstDescs) {
+static void transferData(NixlAgentWithUCXBackend &nixl1,
+                         NixlAgentWithUCXBackend &nixl2,
+                         nixl_xfer_dlist_t &srcDescs,
+                         nixl_xfer_dlist_t &dstDescs) {
   nixlXferReqH *reqHandle = nullptr;
   nixlAgentOptionalArgs xferArgs;
   xferArgs.notifMsg = "notification";
@@ -174,6 +175,50 @@ void transferData(NixlAgentWithUCXBackend &nixl1,
       << "Notification map missing agent1";
   ASSERT_EQ(notifMap[nixl1.agentName].size(), 1)
       << "Incorrect number of notifications received";
+}
+
+static void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
+                                    NixlAgentWithUCXBackend &nixl2,
+                                    nixl_xfer_dlist_t &srcDescs,
+                                    nixl_xfer_dlist_t &dstDescs,
+                                    nixl_status_t expectedStatus) {
+  nixlXferReqH *reqHandle = nullptr;
+  nixlAgentOptionalArgs xferArgs;
+  xferArgs.notifMsg = "notification";
+  xferArgs.hasNotif = true;
+  ASSERT_SUCCESS(nixl1.agent->createXferReq(nixl_xfer_op_t::NIXL_WRITE,
+                                            srcDescs, dstDescs, nixl2.agentName,
+                                            reqHandle, &xferArgs));
+
+  // === Create and Execute Transfer (Agent 1 writes to Agent 2) ===
+  ASSERT_NE(reqHandle, nullptr) << "Transfer handle is null";
+  nixl_status_t xferStatus = nixl1.agent->postXferReq(reqHandle);
+  // The error may be returned immediately or later during polling
+  if (xferStatus != expectedStatus &&
+      xferStatus != nixl_status_t::NIXL_IN_PROG) {
+    FAIL() << "postXferReq returned unexpected status: "
+           << nixlEnumStrings::statusStr(xferStatus);
+  }
+
+  // Poll for completion
+  nixl_status_t checkStatus = xferStatus;
+  const auto startTime = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::seconds(10); // 10 second timeout
+
+  while (checkStatus == nixl_status_t::NIXL_IN_PROG &&
+         (std::chrono::steady_clock::now() - startTime < timeout)) {
+    checkStatus = nixl1.agent->getXferStatus(reqHandle);
+    // Yield/Sleep briefly to avoid busy-waiting
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  ASSERT_EQ(checkStatus, expectedStatus)
+      << "Transfer did not complete with expected status. Got: "
+      << nixlEnumStrings::statusStr(checkStatus)
+      << ", Expected: " << nixlEnumStrings::statusStr(expectedStatus);
+
+  // Clean up the request handle
+  nixl1.agent->releaseXferReq(reqHandle);
 }
 
 // Fixture for UCX Integration Tests
@@ -344,4 +389,58 @@ TEST_F(NixlUcxIntegrationTest, VramTransfer) {
     ASSERT_EQ(dramBuffer2[dstOffset + transferSize], initialDstValue)
         << "Data after destination range was modified";
   }
+}
+
+TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
+  // Test remote disconnection error handling
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create two NIXL agents.
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", 8037, "ucx");
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", 8042, "ucx");
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange metadata.
+  exchangeMetadata(nixl1, nixl2);
+
+  // Prepare buffers for transfer
+  size_t transferSize = bufferSize / 2;
+  const char srcValue = 'S';
+  std::fill(dramBuffer1.begin(), dramBuffer1.begin() + transferSize, srcValue);
+
+  // Prepare transfer descriptors
+  nixl_xfer_dlist_t regSrcDescs(nixl_mem_t::DRAM_SEG);
+  auto srcBuf = llvm::ArrayRef{dramBuffer1.data(), transferSize};
+  regSrcDescs.addDesc(basicDescfromArrayRef(srcBuf, 0));
+
+  nixl_xfer_dlist_t regDstDescs(nixl_mem_t::DRAM_SEG);
+  auto dstBuf = llvm::ArrayRef{dramBuffer2.data(), transferSize};
+  regDstDescs.addDesc(basicDescfromArrayRef(dstBuf, 0));
+
+  // Simulate receiver failure by deregistering memory and destroying agent
+  nixl_opt_args_t deregArgs;
+  deregArgs.backends = {nixl2.backend};
+  nixl_reg_dlist_t deregList(nixl_mem_t::DRAM_SEG);
+  deregList.addDesc(blobDescfromVector(dramBuffer2, 0));
+  ASSERT_SUCCESS(nixl2.agent->deregisterMem(deregList, &deregArgs));
+
+  // Destroy the receiver agent to simulate disconnection
+  nixl2.agent.reset();
+
+  // Attempt transfer which should fail with NIXL_ERR_REMOTE_DISCONNECT
+  transferDataWithFailure(nixl1, nixl2, regSrcDescs, regDstDescs,
+                          nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT);
 }

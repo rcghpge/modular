@@ -414,7 +414,7 @@ nixl_status_t nixlUcxEngine::endConn(const std::string &remote_agent) {
 
   nixlUcxConnection &conn = remoteConnMap[remote_agent];
 
-  if (uw->disconnect_nb(conn.ep) < 0) {
+  if (uw->disconnectNonblocking(conn.getEp()) < 0) {
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
 
@@ -516,7 +516,7 @@ nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
   // agent names should never be long enough to need RNDV
   flags |= UCP_AM_SEND_FLAG_EAGER;
 
-  ret = uw->sendAm(conn.ep, to_underlying(UcxCallbackOp::CONN_CHECK), &hdr,
+  ret = uw->sendAm(conn.getEp(), to_underlying(UcxCallbackOp::CONN_CHECK), &hdr,
                    sizeof(struct nixl_ucx_am_hdr), (void *)localAgent.data(),
                    localAgent.size(), flags, req);
 
@@ -550,17 +550,20 @@ nixl_status_t nixlUcxEngine::disconnect(const std::string &remote_agent) {
 
     nixlUcxConnection &conn = remoteConnMap[remote_agent];
 
-    hdr.op = UcxCallbackOp::DISCONNECT;
-    // agent names should never be long enough to need RNDV
-    flags |= UCP_AM_SEND_FLAG_EAGER;
+    if (conn.getEp().checkTxState() == nixl_status_t::NIXL_SUCCESS) {
+      hdr.op = UcxCallbackOp::DISCONNECT;
+      // agent names should never be long enough to need RNDV
+      flags |= UCP_AM_SEND_FLAG_EAGER;
 
-    ret = uw->sendAm(conn.ep, to_underlying(UcxCallbackOp::DISCONNECT), &hdr,
-                     sizeof(struct nixl_ucx_am_hdr), (void *)localAgent.data(),
-                     localAgent.size(), flags, req);
+      ret =
+          uw->sendAm(conn.getEp(), to_underlying(UcxCallbackOp::DISCONNECT),
+                     &hdr, sizeof(struct nixl_ucx_am_hdr),
+                     (void *)localAgent.data(), localAgent.size(), flags, req);
 
-    // don't care
-    if (ret == nixl_status_t::NIXL_IN_PROG) {
-      uw->reqRelease(req);
+      // don't care
+      if (ret == nixl_status_t::NIXL_IN_PROG) {
+        uw->reqRelease(req);
+      }
     }
   }
 
@@ -585,12 +588,13 @@ nixlUcxEngine::loadRemoteConnInfo(const std::string &remote_agent,
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
   nixlUcxConnection &conn = iter->second;
 
-  ret = uw->connect(remote_conn_info.data(), remote_conn_info.size(), conn.ep);
+  ret = uw->connect(remote_conn_info.data(), remote_conn_info.size(),
+                    conn.getEp());
   if (ret)
     return nixl_status_t::NIXL_ERR_BACKEND;
 
   conn.remoteAgent = remote_agent;
-  conn.connected = false;
+  // TODO: should we use move semantics here?
 
   return nixl_status_t::NIXL_SUCCESS;
 }
@@ -680,7 +684,7 @@ nixl_status_t nixlUcxEngine::internalMDHelper(const blob_ref blob,
   // directly copy underlying conn struct
   md->conn = conn;
 
-  int ret = uw->rkeyImport(conn.ep, blob, md->rkey);
+  int ret = uw->rkeyImport(conn.getEp(), blob, md->rkey);
   if (ret) {
     // TODO: error out. Should we indicate which desc failed or unroll
     // everything prior
@@ -810,12 +814,12 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
 
     switch (operation) {
     case nixl_xfer_op_t::NIXL_READ:
-      ret = uw->read(rmd->conn.ep, (uint64_t)raddr, rmd->rkey, laddr, lmd->mem,
-                     lsize, req);
+      ret = uw->read(rmd->conn.getEp(), (uint64_t)raddr, rmd->rkey, laddr,
+                     lmd->mem, lsize, req);
       break;
     case nixl_xfer_op_t::NIXL_WRITE:
-      ret = uw->write(rmd->conn.ep, laddr, lmd->mem, (uint64_t)raddr, rmd->rkey,
-                      lsize, req);
+      ret = uw->write(rmd->conn.getEp(), laddr, lmd->mem, (uint64_t)raddr,
+                      rmd->rkey, lsize, req);
       break;
     }
 
@@ -825,7 +829,7 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
   }
 
   rmd = (nixlUcxPublicMetadata *)remote[0].metadataP;
-  ret = uw->flushEp(rmd->conn.ep, req);
+  ret = uw->flushEp(rmd->conn.getEp(), req);
   if (_retHelper(ret, intHandle, req) != nixl_status_t::NIXL_SUCCESS)
     return ret;
 
@@ -902,7 +906,7 @@ nixl_status_t nixlUcxEngine::notifSendPriv(const std::string &remote_agent,
   // TODO: replace with mpool for performance
   ser_msg = new std::string(ser_des.exportStr());
 
-  ret = uw->sendAm(conn.ep, to_underlying(UcxCallbackOp::NOTIF_STR), &hdr,
+  ret = uw->sendAm(conn.getEp(), to_underlying(UcxCallbackOp::NOTIF_STR), &hdr,
                    sizeof(struct nixl_ucx_am_hdr), (void *)ser_msg->data(),
                    ser_msg->size(), flags, req);
 

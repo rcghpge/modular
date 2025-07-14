@@ -64,6 +64,8 @@ const char *nixlEnumStrings::statusStr(nixl_status_t status) {
     return "NIXL_ERR_UNKNOWN";
   case nixl_status_t::NIXL_ERR_NOT_SUPPORTED:
     return "NIXL_ERR_NOT_SUPPORTED";
+  case nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT:
+    return "NIXL_ERR_REMOTE_DISCONNECT";
   }
 
   llvm_unreachable("bad status");
@@ -817,7 +819,7 @@ nixl_status_t nixlAgent::getXferStatus(nixlXferReqH *req_hndl) {
 
   NIXL_LOCK_GUARD(data->lock);
   // If the status is done, no need to recheck.
-  if (req_hndl->status != nixl_status_t::NIXL_SUCCESS) {
+  if (req_hndl->status == nixl_status_t::NIXL_IN_PROG) {
     // Check if the remote was invalidated before completion
     if (data->remoteSections.count(req_hndl->remoteAgent) == 0) {
       delete req_hndl;

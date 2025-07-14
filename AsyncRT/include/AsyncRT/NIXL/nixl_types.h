@@ -66,7 +66,8 @@ enum class nixl_status_t {
   NIXL_ERR_NOT_ALLOWED = -6,
   NIXL_ERR_REPOST_ACTIVE = -7,
   NIXL_ERR_UNKNOWN = -8,
-  NIXL_ERR_NOT_SUPPORTED = -9
+  NIXL_ERR_NOT_SUPPORTED = -9,
+  NIXL_ERR_REMOTE_DISCONNECT = -10,
 };
 
 constexpr bool isErrorStatus(nixl_status_t status) {

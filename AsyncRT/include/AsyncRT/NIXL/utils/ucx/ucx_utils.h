@@ -36,10 +36,49 @@ enum nixl_ucx_mt_t {
 };
 
 class nixlUcxEp {
+  enum class nixl_ucx_ep_state_t : std::uint8_t {
+    NIXL_UCX_EP_STATE_NULL,
+    NIXL_UCX_EP_STATE_CONNECTED,
+    NIXL_UCX_EP_STATE_FAILED,
+    NIXL_UCX_EP_STATE_DISCONNECTED
+  };
+
 private:
-  ucp_ep_h eph;
+  ucp_ep_h eph{nullptr};
+  nixl_ucx_ep_state_t state{nixl_ucx_ep_state_t::NIXL_UCX_EP_STATE_NULL};
+
+  static void err_cb(void *arg, ucp_ep_h ucp_ep, ucs_status_t status);
+  void setState(nixl_ucx_ep_state_t new_state);
+  nixl_status_t closeImpl(ucp_worker_h worker, ucp_ep_close_flags_t flags);
 
 public:
+  // TODO: Add read/write methods to avoid using raw handle outside.
+  ucp_ep_h getHandle() const { return eph; }
+
+  nixl_status_t checkTxState() const {
+    switch (state) {
+    case nixl_ucx_ep_state_t::NIXL_UCX_EP_STATE_CONNECTED:
+      return nixl_status_t::NIXL_SUCCESS;
+    case nixl_ucx_ep_state_t::NIXL_UCX_EP_STATE_FAILED:
+      return nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT;
+    case nixl_ucx_ep_state_t::NIXL_UCX_EP_STATE_NULL:
+    case nixl_ucx_ep_state_t::NIXL_UCX_EP_STATE_DISCONNECTED:
+      return nixl_status_t::NIXL_ERR_BACKEND;
+    }
+  }
+
+  nixl_status_t connect(ucp_worker_h worker, void *addr);
+
+  nixl_status_t close(ucp_worker_h worker) {
+    return closeImpl(worker, ucp_ep_close_flags_t(0));
+  }
+  nixl_status_t closeForce() {
+    return closeImpl(nullptr, UCP_EP_CLOSE_FLAG_FORCE);
+  }
+  nixl_status_t closeNonblocking() {
+    return closeImpl(nullptr, ucp_ep_close_flags_t(0));
+  }
+
   friend class nixlUcxWorker;
 };
 
@@ -94,7 +133,7 @@ public:
   int epAddr(uint64_t &addr, size_t &size);
   int connect(const void *addr, size_t size, nixlUcxEp &ep);
   int disconnect(nixlUcxEp &ep);
-  int disconnect_nb(nixlUcxEp &ep);
+  int disconnectNonblocking(nixlUcxEp &ep);
 
   /* Memory management */
   int memReg(void *addr, size_t size, nixlUcxMem &mem);
