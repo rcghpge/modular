@@ -31,7 +31,7 @@ const char CUDADriver::lib_nvml_name[] = "";
 #endif
 
 #define GET_FUNC(name)                                                         \
-  driver->name##_ = reinterpret_cast<t##name *>(dlsym(dl_lib, #name));         \
+  driver->name##_ = reinterpret_cast<t##name *>(dlsym(dlLib, #name));          \
   if (driver->name##_ == nullptr) {                                            \
     return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
                  "\" in \"" + lib_name + "\"");                                \
@@ -41,20 +41,20 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   // Attempt to open the shared library of the CUDA driver.
   // We use RTLD_GLOBAL to allow UCX CUDA backend to also use these loaded CUDA
   // symbols.
-  void *dl_lib = dlopen(lib_name, RTLD_NOW | RTLD_GLOBAL);
-  if (dl_lib == nullptr) {
+  void *dlLib = dlopen(lib_name, RTLD_NOW | RTLD_GLOBAL);
+  if (dlLib == nullptr) {
     return Error(llvm::Twine("Failed to open library \"") + lib_name + "\"");
   }
 
   // NVML is unused by DeviceContext, but its symbols must be available at
   // runtime by UCX CUDA backend.
-  void *dl_lib_nvml = dlopen(lib_nvml_name, RTLD_NOW | RTLD_GLOBAL);
-  if (dl_lib_nvml == nullptr) {
+  void *dlLibNvml = dlopen(lib_nvml_name, RTLD_NOW | RTLD_GLOBAL);
+  if (dlLibNvml == nullptr) {
     return Error(llvm::Twine("Failed to open library \"") + lib_nvml_name +
                  "\"");
   }
   // Suppress unused variable warning.
-  (void)dl_lib_nvml;
+  (void)dlLibNvml;
 
   // Allocate a driver and register all of the used shared library entry points.
   CUDADriver *driver = new CUDADriver();

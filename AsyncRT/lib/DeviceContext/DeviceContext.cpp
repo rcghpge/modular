@@ -27,19 +27,19 @@
 
 #define ERR_CHECK_ERR(err_call)                                                \
   do {                                                                         \
-    auto err_result = (err_call);                                              \
-    if (err_result.isError()) {                                                \
+    auto errResult = (err_call);                                               \
+    if (errResult.isError()) {                                                 \
       return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,      \
-                                        err_result.getError());                \
+                                        errResult.getError());                 \
     }                                                                          \
   } while (0)
 
 #define ERR_CHECK(ctx, err_call)                                               \
   do {                                                                         \
-    auto err_result = (err_call);                                              \
-    if (err_result.isError()) {                                                \
+    auto errResult = (err_call);                                               \
+    if (errResult.isError()) {                                                 \
       M::Error err = DeviceContext::formatError(                               \
-          __FILE__, __LINE__, __FUNCTION__, err_result.getError());            \
+          __FILE__, __LINE__, __FUNCTION__, errResult.getError());             \
       /* We are not in a function where we can return an Error here. So we     \
        * remember the error in the context and will report at a later time.    \
        */                                                                      \

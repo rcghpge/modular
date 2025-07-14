@@ -1015,12 +1015,12 @@ struct LowerAvgPool : public OpRewritePattern<RMO::AvgPoolOp> {
                                 PatternRewriter &rewriter) const override {
     Location loc = avg_pool.getLoc();
 
-    ShapeAttr filter_shape = avg_pool.getFilterShape();
+    ShapeAttr filterShape = avg_pool.getFilterShape();
     ShapeAttr strides = avg_pool.getStrides();
     ShapeAttr paddings = avg_pool.getPaddings();
     ShapeAttr dilations = avg_pool.getDilations();
-    auto ceil_mode = avg_pool.getCeilMode();
-    auto count_boundary = avg_pool.getCountBoundary();
+    auto ceilMode = avg_pool.getCeilMode();
+    auto countBoundary = avg_pool.getCountBoundary();
     TensorType resultType = avg_pool.getType();
 
     // Promote inputs
@@ -1030,7 +1030,7 @@ struct LowerAvgPool : public OpRewritePattern<RMO::AvgPoolOp> {
 
     auto device = getHostDevice(avg_pool.getContext());
     TensorValue filterShapeConstant =
-        shapeToIndicesTensor(rewriter, loc, filter_shape, device);
+        shapeToIndicesTensor(rewriter, loc, filterShape, device);
 
     TensorValue stridesConstant =
         shapeToIndicesTensor(rewriter, loc, strides, device);
@@ -1041,14 +1041,14 @@ struct LowerAvgPool : public OpRewritePattern<RMO::AvgPoolOp> {
     TensorValue dilationsConstant =
         shapeToIndicesTensor(rewriter, loc, dilations, device);
 
-    if (ceil_mode) {
+    if (ceilMode) {
       rewriter.replaceOpWithNewOp<RMO::MOAvgPoolCeilOp>(
           avg_pool, avg_pool.getType(), promotedInput, filterShapeConstant,
-          stridesConstant, dilationsConstant, paddingConstant, count_boundary);
+          stridesConstant, dilationsConstant, paddingConstant, countBoundary);
     } else {
       rewriter.replaceOpWithNewOp<RMO::MOAvgPoolOp>(
           avg_pool, avg_pool.getType(), promotedInput, filterShapeConstant,
-          stridesConstant, dilationsConstant, paddingConstant, count_boundary);
+          stridesConstant, dilationsConstant, paddingConstant, countBoundary);
     }
 
     return success();
@@ -1062,11 +1062,11 @@ struct LowerMaxPool : public OpRewritePattern<RMO::MaxPoolOp> {
                                 PatternRewriter &rewriter) const override {
     Location loc = max_pool.getLoc();
 
-    ShapeAttr filter_shape = max_pool.getFilterShape();
+    ShapeAttr filterShape = max_pool.getFilterShape();
     ShapeAttr strides = max_pool.getStrides();
     ShapeAttr paddings = max_pool.getPaddings();
     ShapeAttr dilations = max_pool.getDilations();
-    auto ceil_mode = max_pool.getCeilMode();
+    auto ceilMode = max_pool.getCeilMode();
 
     TensorType resultType = max_pool.getType();
 
@@ -1077,7 +1077,7 @@ struct LowerMaxPool : public OpRewritePattern<RMO::MaxPoolOp> {
 
     auto device = getHostDevice(max_pool.getContext());
     TensorValue filterShapeConstant =
-        shapeToIndicesTensor(rewriter, loc, filter_shape, device);
+        shapeToIndicesTensor(rewriter, loc, filterShape, device);
 
     TensorValue stridesConstant =
         shapeToIndicesTensor(rewriter, loc, strides, device);
@@ -1088,7 +1088,7 @@ struct LowerMaxPool : public OpRewritePattern<RMO::MaxPoolOp> {
     TensorValue dilationsConstant =
         shapeToIndicesTensor(rewriter, loc, dilations, device);
 
-    if (ceil_mode) {
+    if (ceilMode) {
       rewriter.replaceOpWithNewOp<RMO::MOMaxPoolCeilOp>(
           max_pool, max_pool.getType(), promotedInput, filterShapeConstant,
           stridesConstant, dilationsConstant, paddingConstant);
