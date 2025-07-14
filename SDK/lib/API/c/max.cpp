@@ -26,7 +26,7 @@
 #include "GenericML/Support/Telemetry.h"
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
-#include "MOF/Driver/DriverImpl.h"
+#include "SDK/MOF/Driver/DriverImpl.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/ErrorOr.h"

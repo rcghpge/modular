@@ -49,8 +49,14 @@ filegroup(
 
 modular_cc_library(
     name = "modular-framework-common",
-    srcs = glob(["lib/API/c/**/*.cpp"]),
-    hdrs = glob(["include/SDK/API/**/*.h"]),
+    srcs = glob([
+        "lib/API/c/**/*.cpp",
+        "lib/MOF/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/SDK/API/**/*.h",
+        "include/SDK/MOF/**/*.h",
+    ]),
     deps = [
         ":MaxAPI",
         "//GenericML:CommonDriver",
@@ -64,8 +70,6 @@ modular_cc_library(
         "//GenericML:RMOTransforms",
         "//Init",
         "//Kernels:WeightsRegistry",
-        "//ModularFramework:API",
-        "//ModularFramework:Driver",
         "//Support:Base",
         "//Support:CrashReporting",
         "//Support:Diagnostics",
@@ -211,8 +215,6 @@ modular_shared_library(
         "//GenericML:MOTransforms",
         "//GenericML:RMOTransforms",
         "//Init",
-        "//ModularFramework:API",
-        "//ModularFramework:Driver",
         "//Support:Diagnostics",
         "//Support:Globals",
         "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",

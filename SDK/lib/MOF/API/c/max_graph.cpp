@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MOF/API/c/detail/max_graph.h"
+#include "SDK/MOF/API/c/detail/max_graph.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
-#include "MOF/API/c/symbol_export.h"
-#include "MOF/GraphBuilder/Module.h"
+#include "SDK/MOF/API/c/symbol_export.h"
+#include "SDK/MOF/GraphBuilder/Module.h"
 #include "Support/Buffer.h"
 #include "mlir-c/IR.h"
 #include "mlir/CAPI/IR.h"

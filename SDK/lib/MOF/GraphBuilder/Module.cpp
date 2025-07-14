@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MOF/GraphBuilder/Module.h"
+#include "SDK/MOF/GraphBuilder/Module.h"
 
 #include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/GraphCompiler/Conversion/Attributes.h"

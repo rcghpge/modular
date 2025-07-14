@@ -7,7 +7,7 @@
 #ifndef MOF_API_C_DETAIL_MAX_GRAPH_H
 #define MOF_API_C_DETAIL_MAX_GRAPH_H
 
-#include "MOF/API/c/symbol_export.h"
+#include "SDK/MOF/API/c/symbol_export.h"
 #include "mlir-c/IR.h"
 #include "llvm/ADT/StringRef.h"
 
