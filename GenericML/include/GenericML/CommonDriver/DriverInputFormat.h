@@ -19,12 +19,6 @@ class MemoryBuffer;
 
 namespace M {
 
-/// Format for a framework object.
-// TODO: With only one value left, we should probably remove this entirely.
-enum class FrameworkFormat : uint8_t {
-  MAXGraph = 0,
-};
-
 enum class FileFormat : uint8_t {
   kUnknown = 0,
 
@@ -38,14 +32,7 @@ enum class FileFormat : uint8_t {
   kMGPDialect,
 };
 
-inline FileFormat frameworkToFileFormat(FrameworkFormat frameworkFormat) {
-  switch (frameworkFormat) {
-  case FrameworkFormat::MAXGraph:
-    return FileFormat::kMODialect;
-  }
-
-  llvm_unreachable("unknown framework format");
-}
+inline FileFormat frameworkToFileFormat() { return FileFormat::kMODialect; }
 
 /// Use heuristics to determine what kind of file the input file contents
 /// represent.
