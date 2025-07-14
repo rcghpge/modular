@@ -518,19 +518,6 @@ MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() = default;
 
-FailureOr<std::string> MojoLibraryAnalysis::getMojoBindingsHash() const {
-  if (kgenModuleHash.empty()) {
-    FailureOr<std::string> hash = getModuleBytecodeHash(getMojoBindings());
-
-    if (failed(hash))
-      return failure();
-
-    kgenModuleHash = std::move(*hash);
-  }
-
-  return kgenModuleHash;
-}
-
 KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) const {
   auto registeredFunction = registeredMojoKernelSymbol.find(name);

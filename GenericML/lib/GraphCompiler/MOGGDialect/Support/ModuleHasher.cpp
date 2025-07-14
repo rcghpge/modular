@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGDialect/Analysis/ModuleHasher.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/ModuleHasher.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -18,7 +18,6 @@ using namespace M;
 
 namespace {
 
-constexpr StringLiteral kGeneratorHashName = "generator_hash";
 constexpr StringLiteral kSemanticHashName = "semantic_hash";
 
 /// The analysis for each node is a small state machine computing the
@@ -198,7 +197,6 @@ void Graph::doRewrite(const Node *node) {
   Builder builder(func->getContext());
 
   NamedAttrList attrs(func->getDiscardableAttrDictionary());
-  attrs.append(kGeneratorHashName, node->generatorHash);
   attrs.append(kSemanticHashName, node->totalHash);
   func->setDiscardableAttrs(attrs);
 }
@@ -224,4 +222,60 @@ std::string M::MOGG::getSemanticHash(KGEN::GeneratorOp generator) {
   auto hashAttr = generator->getAttrOfType<StringAttr>(kSemanticHashName);
   ASSERT_STREAM(hashAttr, "unable to find semantic hash for function");
   return hashAttr.str();
+}
+
+llvm::DenseMap<StringAttr, KGEN::GeneratorOp>
+M::MOGG::applySemanticNaming(ModuleOp module,
+                             ArrayRef<StringAttr> symbolsToRename,
+                             const SymbolTable &symtab, StringRef namePrefix) {
+  // Mapping from old names in the module to the new semantic names.
+  llvm::DenseMap<StringAttr, KGEN::GeneratorOp> renaming;
+  renaming.reserve(symbolsToRename.size());
+
+  if (symbolsToRename.empty())
+    return renaming;
+
+  hashModuleContents(module, symtab);
+
+  // The semantic hashes of the functions we have visited already. This tells
+  // us if we need to rename the current generator, or if we can delete it.
+  llvm::DenseMap<StringAttr, KGEN::GeneratorOp> visited;
+  visited.reserve(symbolsToRename.size());
+
+  for (StringAttr symbol : symbolsToRename) {
+    auto generator = symtab.lookup<KGEN::GeneratorOp>(symbol);
+    ASSERT_STREAM(generator, << "symbol " << symbol << " not found in module");
+
+    auto hash = generator->getAttrOfType<StringAttr>(kSemanticHashName);
+    ASSERT_STREAM(hash, "module has not had semantic hashes computed");
+
+    // If the operation is already in the module, then it is semantically
+    // equivalent to another operation. We can delete it and replace it with its
+    // equivalent when updating all symbol uses
+    if (auto remapped = visited.lookup_or(hash, nullptr)) {
+      renaming[generator.getSymNameAttr()] = remapped;
+      generator.erase();
+    } else {
+      auto newName = StringAttr::get(module.getContext(),
+                                     Twine(namePrefix) + hash.strref());
+
+      renaming[generator.getSymNameAttr()] = generator;
+      generator.setSymNameAttr(newName);
+      visited.insert({hash, generator});
+    }
+  }
+
+  mlir::AttrTypeReplacer replacer;
+  replacer.addReplacement([&](FlatSymbolRefAttr ref) {
+    if (auto generator = renaming.lookup_or(ref.getAttr(), {}))
+      return FlatSymbolRefAttr::get(generator.getSymNameAttr());
+    return ref;
+  });
+
+  replacer.recursivelyReplaceElementsIn(module,
+                                        /*replaceAttrs=*/true,
+                                        /*replaceLocs=*/false,
+                                        /*replaceTypes=*/true);
+
+  return renaming;
 }

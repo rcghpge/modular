@@ -52,9 +52,6 @@ public:
   /// from mojo libraries.
   mlir::ModuleOp getMojoBindings() const { return *module; }
 
-  /// Get the hash of the backing Mojo bindings.
-  FailureOr<std::string> getMojoBindingsHash() const;
-
   /// Query the mojo kernel with the specified `name`. Return nullptr if not
   /// existed.
   template <typename OpTy>

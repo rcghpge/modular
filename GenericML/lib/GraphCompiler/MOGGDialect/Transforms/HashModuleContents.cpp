@@ -7,7 +7,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 
-#include "GenericML/GraphCompiler/MOGGDialect/Analysis/ModuleHasher.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/ModuleHasher.h"
 
 #include "mlir/Analysis/SymbolTableAnalysis.h"
 

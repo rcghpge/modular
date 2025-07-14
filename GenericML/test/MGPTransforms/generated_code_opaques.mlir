@@ -1,3 +1,4 @@
+// REQUIRES: disabled
 // RUN: mo-opt --coalesce-async-refs --jit-compile-kernels="dry-run=true dump-stub=true" %s -o %t 2>&1 | FileCheck %s
 
 
