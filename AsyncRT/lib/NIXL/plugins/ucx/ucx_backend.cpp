@@ -20,6 +20,8 @@
 #include "Support/LogicalResult.h"
 #include "Support/STLExtras.h"
 
+#include <optional>
+
 using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
 
@@ -151,7 +153,16 @@ private:
   nixlUcxIntReq head;
   nixlUcxWorker *uw;
 
+  // Notification to be sent after completion of all requests.
+  struct Notif {
+    std::string agent;
+    nixl_blob_t payload;
+  };
+  std::optional<Notif> notif;
+
 public:
+  std::optional<Notif> &notification() { return notif; }
+
   nixlUcxBackendH(nixlUcxWorker *_uw) { uw = _uw; }
 
   void append(nixlUcxIntReq *req) { head.link(req); }
@@ -828,18 +839,29 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
     }
   }
 
+  /*
+   * Flush keeps intHandle non-empty until the operation is actually
+   * completed, which can happen after local requests completion.
+   */
   rmd = (nixlUcxPublicMetadata *)remote[0].metadataP;
   ret = uw->flushEp(rmd->conn.getEp(), req);
   if (_retHelper(ret, intHandle, req) != nixl_status_t::NIXL_SUCCESS)
     return ret;
 
+  ret = intHandle->status();
   if (opt_args && opt_args->hasNotif) {
-    ret = notifSendPriv(remote_agent, opt_args->notifMsg, req);
-    if (_retHelper(ret, intHandle, req) != nixl_status_t::NIXL_SUCCESS)
-      return ret;
+    if (ret == nixl_status_t::NIXL_SUCCESS) {
+      ret = notifSendPriv(remote_agent, opt_args->notifMsg, req);
+      if (_retHelper(ret, intHandle, req) != nixl_status_t::NIXL_SUCCESS)
+        return ret;
+
+      ret = intHandle->status();
+    } else if (ret == nixl_status_t::NIXL_IN_PROG) {
+      intHandle->notification().emplace(remote_agent, opt_args->notifMsg);
+    }
   }
 
-  return intHandle->status();
+  return ret;
 }
 
 nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) {
@@ -850,7 +872,20 @@ nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) {
 
   nixlUcxBackendH *intHandle = (nixlUcxBackendH *)handle;
 
-  return intHandle->status();
+  nixl_status_t status = intHandle->status();
+  auto &notif = intHandle->notification();
+  if (status == nixl_status_t::NIXL_SUCCESS && notif.has_value()) {
+    nixlUcxReq req;
+    status = notifSendPriv(notif->agent, notif->payload, req);
+    notif.reset();
+    if (_retHelper(status, intHandle, req) != nixl_status_t::NIXL_SUCCESS) {
+      return status;
+    }
+
+    status = intHandle->status();
+  }
+
+  return status;
 }
 
 nixl_status_t nixlUcxEngine::releaseReqH(nixlBackendReqH *handle) {

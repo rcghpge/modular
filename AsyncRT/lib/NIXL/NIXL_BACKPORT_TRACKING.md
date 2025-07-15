@@ -78,7 +78,7 @@ This document tracks the backporting of NIXL commits from upstream
 | 620bc45 | 2025-05-07 | POSIX: Add more logs | Skip | - | POSIX backend not included |
 | 7fa5723 | 2025-05-07 | UCX: add remote failure error handling | **Port** | ✅ Completed | UCX error handling improvements |
 | 6f0e405 | 2025-05-08 | CI: Change default runner labels | Skip | - | CI configuration |
-| 16dd334 | 2025-05-07 | UCX: Only send request notification when requests have completed | **Port** | Pending | UCX performance optimization |
+| 16dd334 | 2025-05-07 | UCX: Only send request notification when requests have completed | **Port** | ✅ Completed | UCX performance optimization |
 | 48ff7bf | 2025-05-08 | chore: update CODEOWNERS file | Skip | - | Project maintenance |
 | 99d4436 | 2025-05-07 | NIXLBench: Bug fixes | Skip | - | Benchmarking tool not included |
 | 9135a18 | 2025-05-08 | python: use torch.set_default_device | Skip | - | Python API changes |
@@ -164,3 +164,8 @@ handling patterns (ErrorOr vs exceptions) and code style.
   returning NIXL_ERR_BACKEND.
 - Fixed nixlUcxWorker::flushEp() to use ucx_status_to_nixl for error cases.
 - Added regression test ReceiverFailure to verify remote disconnect handling.
+
+#### 2. 16dd334 - UCX: Only send request notification when requests have completed
+
+- Added deferred notification support to nixlUcxBackendH using std::optional
+- Modified postXfer/checkXfer to send notifications only after flush completes
