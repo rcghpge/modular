@@ -18,7 +18,6 @@
 #include "Kernels/WeightsRegistry.h"
 #include "Runtime/Tensor/Tensor.h"
 #include "SDK/API/c/detail/helpers.h"
-#include "Support/DynamicLibrary.h"
 #include "Support/ML/DType.h"
 #include "max/c/common.h"
 #include "max/c/custom_ops.h"
