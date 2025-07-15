@@ -1811,7 +1811,7 @@ ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
     }
 
     // Otherwise remember this substitution.
-    evaluator.setParameterValue(lhsAttr, rhsAttr);
+    evaluator.setDeclBinding(lhsAttr, rhsAttr);
   }
 
   // Apply accumulated substitutions to target shape.

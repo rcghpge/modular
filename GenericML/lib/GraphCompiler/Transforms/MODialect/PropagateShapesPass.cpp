@@ -148,7 +148,7 @@ void handleOutputBindings(GraphOp graphOp,
     if ((isa<ShapeType>(bindingParam.getType()) &&
          isValidOutputShape(bindingParam)) ||
         isValidOutputDim(bindingParam)) {
-      evaluator.setParameterValue(resultParam.getName(), bindingParam);
+      evaluator.setDeclBinding(resultParam.getName(), bindingParam);
     }
     // Otherwise `KGEN::ParameterEvaluator` will map the result parameter to
     // itself by default, meaning it won't change in the signature.
@@ -1098,7 +1098,7 @@ struct PropagateShapes {
               exprToRegionToDeclRef[paramOpAttr].contains(opParentRegion)) {
             KGEN::ParamDeclRefAttr existingDeclRef =
                 exprToRegionToDeclRef[paramOpAttr][opParentRegion];
-            evaluator.setParameterValue(declAttr, existingDeclRef);
+            evaluator.setDeclBinding(declAttr, existingDeclRef);
             declOp.setValueAttr(existingDeclRef);
 
             // Else we remember this decl has this expression (if pure), and map
@@ -1107,12 +1107,12 @@ struct PropagateShapes {
             auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
             if (isParamOperatorPure(paramOpAttr))
               exprToRegionToDeclRef[paramOpAttr][opParentRegion] = declRefAttr;
-            evaluator.setParameterValue(declAttr.getName(), declRefAttr);
+            evaluator.setDeclBinding(declAttr.getName(), declRefAttr);
           }
 
         } else {
           // The param expression can be nested, so we just record it as is.
-          evaluator.setParameterValue(declAttr, foldedRhsAttr);
+          evaluator.setDeclBinding(declAttr, foldedRhsAttr);
         }
 
         // Emit compile time error for any `mo.assert false`
@@ -1141,7 +1141,7 @@ struct PropagateShapes {
           llvm::append_range(worklist, llvm::reverse(newOps));
 
           auto result = evaluator.getReboundAttribute(success.resultAttr);
-          evaluator.setParameterValue(paramFromValue.getParamDecl(), result);
+          evaluator.setDeclBinding(paramFromValue.getParamDecl(), result);
         }
       }
 
