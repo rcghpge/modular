@@ -41,7 +41,7 @@ def process_module_string(module_str: str):
     # Process text format of mlir module to lit-test pattern
     var_names = set()
 
-    def get_lit_var(m, group_num, prefix=""):
+    def get_lit_var(m, group_num, prefix=""):  # noqa: ANN001
         var_name = prefix + m.group(group_num).upper()
         var_names.add(var_name)
         return var_name

@@ -14,61 +14,61 @@ This file contains the op implementations for numpy.
 
 
 class CommonImpls:
-    def add(self, x, y):
+    def add(self, x, y):  # noqa: ANN001
         return x + y
 
-    def sub(self, x, y):
+    def sub(self, x, y):  # noqa: ANN001
         return x - y
 
-    def mul(self, x, y):
+    def mul(self, x, y):  # noqa: ANN001
         return x * y
 
-    def lt(self, x, y):
+    def lt(self, x, y):  # noqa: ANN001
         return x < y
 
-    def lte(self, x, y):
+    def lte(self, x, y):  # noqa: ANN001
         return x <= y
 
-    def gt(self, x, y):
+    def gt(self, x, y):  # noqa: ANN001
         return x > y
 
-    def gte(self, x, y):
+    def gte(self, x, y):  # noqa: ANN001
         return x >= y
 
-    def eq(self, x, y):
+    def eq(self, x, y):  # noqa: ANN001
         return x == y
 
-    def neq(self, x, y):
+    def neq(self, x, y):  # noqa: ANN001
         return x != y
 
 
 # Numpy implementation of each primitive.
 class NumpyImpl(CommonImpls):
-    def constant(self, values, dtype=None):
+    def constant(self, values, dtype=None):  # noqa: ANN001
         if dtype:
             return np.array(values, dtype=dtype)
 
         return np.array(values)
 
-    def ceil(self, x):
+    def ceil(self, x):  # noqa: ANN001
         return np.ceil(x)
 
-    def floor(self, x):
+    def floor(self, x):  # noqa: ANN001
         return np.floor(x)
 
-    def transpose(self, input, permute):
+    def transpose(self, input, permute):  # noqa: ANN001
         return np.transpose(input, permute)
 
-    def bmm(self, x, y):
+    def bmm(self, x, y):  # noqa: ANN001
         return np.matmul(x, y)
 
-    def range(self, start, stop, step):
+    def range(self, start, stop, step):  # noqa: ANN001
         return np.arange(start, stop, step)
 
-    def reshape(self, x, shape):
+    def reshape(self, x, shape):  # noqa: ANN001
         return x.reshape(shape)
 
-    def split(self, x, split_sizes, axis):
+    def split(self, x, split_sizes, axis):  # noqa: ANN001
         # To match the TF api exactly we need to manually slice up the tensor.
         to_return = []
 
@@ -90,66 +90,66 @@ class NumpyImpl(CommonImpls):
 
         return to_return
 
-    def sum(self, x, axis):
+    def sum(self, x, axis):  # noqa: ANN001
         return np.sum(x, axis=axis, keepdims=True)
 
-    def max(self, x, y):
+    def max(self, x, y):  # noqa: ANN001
         return np.maximum(x, y)
 
-    def gather(self, x, indices, axis):
+    def gather(self, x, indices, axis):  # noqa: ANN001
         return np.take(x, indices, axis=axis)
 
-    def strided_slice(self, x, start, stop, step):
+    def strided_slice(self, x, start, stop, step):  # noqa: ANN001
         slice_to_apply = []
         for i in range(len(start)):
             slice_to_apply.append(slice(start[i], stop[i], step[i]))
         return x[tuple(slice_to_apply)]
 
-    def abs(self, x):
+    def abs(self, x):  # noqa: ANN001
         return np.abs(x)
 
-    def erf(self, x):
+    def erf(self, x):  # noqa: ANN001
         apply = lambda t: math.erf(t)
         return np.vectorize(apply)(x)
 
-    def exp(self, x):
+    def exp(self, x):  # noqa: ANN001
         return np.exp(x)
 
-    def log(self, x):
+    def log(self, x):  # noqa: ANN001
         return np.log(x)
 
-    def log1p(self, x):
+    def log1p(self, x):  # noqa: ANN001
         return np.log1p(x)
 
-    def min(self, x, limit):
+    def min(self, x, limit):  # noqa: ANN001
         return np.minimum(x, limit)
 
-    def select(self, cond, x, y):
+    def select(self, cond, x, y):  # noqa: ANN001
         return np.where(cond, x, y)
 
-    def sin(self, x):
+    def sin(self, x):  # noqa: ANN001
         return np.sin(x)
 
-    def cos(self, x):
+    def cos(self, x):  # noqa: ANN001
         return np.cos(x)
 
-    def tanh(self, x):
+    def tanh(self, x):  # noqa: ANN001
         return np.tanh(x)
 
-    def is_nan(self, x):
+    def is_nan(self, x):  # noqa: ANN001
         return np.isnan(x)
 
-    def is_inf(self, x):
+    def is_inf(self, x):  # noqa: ANN001
         return np.isinf(x)
 
-    def logical_and(self, x, y):
+    def logical_and(self, x, y):  # noqa: ANN001
         return np.logical_and(x, y)
 
-    def logical_or(self, x, y):
+    def logical_or(self, x, y):  # noqa: ANN001
         return np.logical_or(x, y)
 
-    def logical_xor(self, x, y):
+    def logical_xor(self, x, y):  # noqa: ANN001
         return np.logical_xor(x, y)
 
-    def isqrt(self, x):
+    def isqrt(self, x):  # noqa: ANN001
         return 1.0 / np.sqrt(x)
