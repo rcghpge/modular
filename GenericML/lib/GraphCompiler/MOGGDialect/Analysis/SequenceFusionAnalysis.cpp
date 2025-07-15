@@ -479,7 +479,7 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
 
       llvm::SetVector<Operation *> curSubgraph;
 
-      typedef std::tuple<mlir::Operation *, Operation *> FusionPair;
+      using FusionPair = std::tuple<mlir::Operation *, Operation *>;
 
       // Comparator ensures the highest priority items are those whose "parents"
       // in FusionPair (e.g. the first element of the tuple) has a higher

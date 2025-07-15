@@ -87,14 +87,14 @@ enum class CUlaunchAttributeID {
   CU_LAUNCH_ATTRIBUTE_ACCESS_POLICY_WINDOW = 1,
 };
 
-typedef enum CUmemorytype_enum {
+using CUmemorytype = enum CUmemorytype_enum {
   CU_MEMORYTYPE_HOST = 0x01,
   CU_MEMORYTYPE_DEVICE = 0x02,
   CU_MEMORYTYPE_ARRAY = 0x03,
   CU_MEMORYTYPE_UNIFIED = 0x04
-} CUmemorytype;
+};
 
-typedef enum CUpointer_attribute_enum {
+using CUpointer_attribute = enum CUpointer_attribute_enum {
   CU_POINTER_ATTRIBUTE_CONTEXT = 1,
   CU_POINTER_ATTRIBUTE_MEMORY_TYPE = 2,
   CU_POINTER_ATTRIBUTE_DEVICE_POINTER = 3,
@@ -116,7 +116,7 @@ typedef enum CUpointer_attribute_enum {
   CU_POINTER_ATTRIBUTE_MAPPING_BASE_ADDR = 19,
   CU_POINTER_ATTRIBUTE_MEMORY_BLOCK_ID = 20,
   CU_POINTER_ATTRIBUTE_IS_HW_DECOMPRESS_CAPABLE = 21
-} CUpointer_attribute;
+};
 
 enum class CUtensorMapDataType {
   CU_TENSOR_MAP_DATA_TYPE_UINT8 = 0,
