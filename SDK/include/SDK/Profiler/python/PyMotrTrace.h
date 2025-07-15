@@ -16,8 +16,8 @@ namespace M::Profiler::Python {
 /// PyObject wrapper around the MotrTrace C++ interface.
 class PyMotrTrace {
 public:
-  PyMotrTrace(const char *message, uint64_t parentId)
-      : motrTrace(message, "", parentId) {}
+  PyMotrTrace(const char *message, const char *color, uint64_t parentId)
+      : motrTrace(message, color, parentId) {}
 
   PyMotrTrace &enter() {
     motrTrace.start();
@@ -30,7 +30,6 @@ public:
 
   void mark() { motrTrace.mark(); }
 
-  // Add getter for the trace ID
   uint64_t getId() const { return motrTrace.getSpanId(); }
 
 private:
