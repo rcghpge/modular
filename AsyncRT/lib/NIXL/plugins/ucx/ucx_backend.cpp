@@ -110,21 +110,11 @@ private:
   int _completed;
 
 public:
-  std::string *amBuffer;
+  std::string amBuffer;
 
-  nixlUcxIntReq() : nixlLinkElem() {
-    _completed = 0;
-    amBuffer = nullptr;
-  }
+  nixlUcxIntReq() : nixlLinkElem(), _completed{0} {}
 
-  ~nixlUcxIntReq() {
-    _completed = 0;
-    if (amBuffer) {
-      delete amBuffer;
-    }
-  }
-
-  bool is_complete() { return _completed; }
+  bool is_complete() const { return _completed; }
   void completed() { _completed = 1; }
 };
 
@@ -320,7 +310,6 @@ void nixlUcxEngine::progressThreadRestart() {
 nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     : nixlBackendEngine(init_params) {
   std::vector<std::string_view> devs;
-  uint64_t n_addr;
   nixl_b_params_t *custom_params = init_params->customParams;
 
   if (init_params->enableProgTh) {
@@ -353,11 +342,16 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     return;
   }
 
-  uc = new nixlUcxContext(devs, sizeof(nixlUcxIntReq), _internalRequestInit,
-                          _internalRequestFini, NIXL_UCX_MT_WORKER);
-  uw = new nixlUcxWorker(uc);
-  uw->epAddr(n_addr, workerSize);
-  workerAddr = (void *)n_addr;
+  uc = std::make_unique<nixlUcxContext>(
+      devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
+      NIXL_UCX_MT_WORKER);
+  uw = std::make_unique<nixlUcxWorker>(uc.get());
+  workerAddr = uw->epAddr(workerSize);
+
+  if (workerAddr == nullptr) {
+    initErr = true;
+    return;
+  }
 
   uw->regAmCallback(UcxCallbackOp::CONN_CHECK, connectionCheckAmCb, this);
   uw->regAmCallback(UcxCallbackOp::DISCONNECT, connectionTermAmCb, this);
@@ -391,9 +385,6 @@ nixlUcxEngine::~nixlUcxEngine() {
   }
 
   progressThreadStop();
-  delete uw;
-  delete uc;
-  free(workerAddr);
 }
 
 /****************************************
@@ -441,7 +432,7 @@ nixl_status_t nixlUcxEngine::getConnInfo(std::string &str) const {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  str = nixlSerDes::_bytesToString(workerAddr, workerSize);
+  str = nixlSerDes::_bytesToString(workerAddr.get(), workerSize);
   return nixl_status_t::NIXL_SUCCESS;
 }
 
@@ -513,7 +504,7 @@ nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
 
   if (remote_agent == localAgent)
     return loadRemoteConnInfo(
-        remote_agent, nixlSerDes::_bytesToString(workerAddr, workerSize));
+        remote_agent, nixlSerDes::_bytesToString(workerAddr.get(), workerSize));
 
   auto search = remoteConnMap.find(remote_agent);
 
@@ -622,8 +613,7 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
   }
 
   int ret;
-  nixlUcxPrivateMetadata *priv = new nixlUcxPrivateMetadata;
-  uint64_t rkey_addr;
+  auto priv = std::make_unique<nixlUcxPrivateMetadata>();
   size_t rkey_size;
 
   if (nixl_mem == nixl_mem_t::VRAM_SEG) {
@@ -645,15 +635,13 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
   if (ret) {
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
-  ret = uw->packRkey(priv->mem, rkey_addr, rkey_size);
-  if (ret) {
+  std::unique_ptr<char[]> rkey = uw->packRkey(priv->mem, rkey_size);
+  if (rkey == nullptr) {
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
-  priv->rkeyStr = nixlSerDes::_bytesToString((void *)rkey_addr, rkey_size);
+  priv->rkeyStr = nixlSerDes::_bytesToString(rkey.get(), rkey_size);
 
-  out = (nixlBackendMD *)priv; // typecast?
-
-  free((void *)rkey_addr);
+  out = priv.release();
   return nixl_status_t::NIXL_SUCCESS; // Or errors
 }
 
@@ -778,9 +766,8 @@ nixl_status_t nixlUcxEngine::prepXfer(const nixl_xfer_op_t &operation,
   }
 
   /* TODO: try to get from a pool first */
-  nixlUcxBackendH *intHandle = new nixlUcxBackendH(uw);
-
-  handle = (nixlBackendReqH *)intHandle;
+  auto intHandle = std::make_unique<nixlUcxBackendH>(uw.get());
+  handle = intHandle.release();
   return nixl_status_t::NIXL_SUCCESS;
 }
 
@@ -917,7 +904,6 @@ nixl_status_t nixlUcxEngine::notifSendPriv(const std::string &remote_agent,
                                            const std::string_view msg,
                                            nixlUcxReq &req) {
   nixlSerDes ser_des;
-  std::string *ser_msg;
   nixlUcxConnection conn;
   // TODO - temp fix, need to have an mpool
   static struct nixl_ucx_am_hdr hdr;
@@ -939,17 +925,15 @@ nixl_status_t nixlUcxEngine::notifSendPriv(const std::string &remote_agent,
   ser_des.addStr("name", localAgent);
   ser_des.addStr("msg", msg);
   // TODO: replace with mpool for performance
-  ser_msg = new std::string(ser_des.exportStr());
+  std::string buffer = ser_des.exportStr();
 
   ret = uw->sendAm(conn.getEp(), to_underlying(UcxCallbackOp::NOTIF_STR), &hdr,
-                   sizeof(struct nixl_ucx_am_hdr), (void *)ser_msg->data(),
-                   ser_msg->size(), flags, req);
+                   sizeof(struct nixl_ucx_am_hdr), (void *)buffer.data(),
+                   buffer.size(), flags, req);
 
   if (ret == nixl_status_t::NIXL_IN_PROG) {
     nixlUcxIntReq *nReq = (nixlUcxIntReq *)req;
-    nReq->amBuffer = ser_msg;
-  } else {
-    delete ser_msg;
+    nReq->amBuffer = std::move(buffer);
   }
   return ret;
 }

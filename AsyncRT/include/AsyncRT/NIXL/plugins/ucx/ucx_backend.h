@@ -79,9 +79,9 @@ public:
 class nixlUcxEngine : public nixlBackendEngine {
 private:
   /* UCX data */
-  nixlUcxContext *uc;
-  nixlUcxWorker *uw;
-  void *workerAddr;
+  std::unique_ptr<nixlUcxContext> uc;
+  std::unique_ptr<nixlUcxWorker> uw;
+  std::unique_ptr<char[]> workerAddr;
   size_t workerSize;
 
   /* Progress thread data */

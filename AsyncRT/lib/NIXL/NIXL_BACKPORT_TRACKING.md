@@ -83,10 +83,10 @@ This document tracks the backporting of NIXL commits from upstream
 | 99d4436 | 2025-05-07 | NIXLBench: Bug fixes | Skip | - | Benchmarking tool not included |
 | 9135a18 | 2025-05-08 | python: use torch.set_default_device | Skip | - | Python API changes |
 | c5311a0 | 2025-05-07 | TEST: fix improper rebase in nixl_test | Skip | - | Test framework changes |
-| 7e5328d | 2025-05-08 | UCX: Fix potential memory leak with genNotif() | **Port** | Pending | UCX memory leak fix |
+| 7e5328d | 2025-05-08 | UCX: Fix potential memory leak with genNotif() | **Port** | ✅ Completed | UCX memory leak fix |
 | 6c1db45 | 2025-05-08 | posix: Updated implementation | Skip | - | POSIX backend not included |
 | 1705e82 | 2025-05-08 | pytest: add more fixtures | Skip | - | Python test infrastructure |
-| 16227e2 | 2025-05-08 | Refactor UCX code to comply with smart pointers | **Port** | Pending | UCX smart pointer refactoring |
+| 16227e2 | 2025-05-08 | Refactor UCX code to comply with smart pointers | **Port** | ✅ Completed | UCX smart pointer refactoring |
 | f147b1f | 2025-05-08 | TEST: Add data transfer test in gtest | Skip | - | Test framework, AsyncRT has own tests |
 | 9545895 | 2025-05-08 | build: Miscellanous fixes | Skip | - | Build system (Meson) |
 | ef85fd3 | 2025-05-08 | Agent: small fixes to commWorker | Skip | - | Not UCX-specific, need to check relevance |
@@ -97,7 +97,7 @@ This document tracks the backporting of NIXL commits from upstream
 | 9f06b7e | 2025-05-08 | README: link to plugin requirements | Skip | - | Documentation |
 | 791ec60 | 2025-05-08 | chore: bump nixl versions to 0.2.1 | Skip | - | Version management |
 | bcbb42f | 2025-05-08 | Dockerfile for building EFA wheel | Skip | - | Docker/EFA infrastructure |
-| a55250b | 2025-05-09 | UCX: Fix worker address query to enable cuda-ipc | **Port** | Pending | UCX CUDA IPC fix |
+| a55250b | 2025-05-09 | UCX: Fix worker address query to enable cuda-ipc | **Port** | ✅ Completed | UCX CUDA IPC fix |
 | 4f73441 | 2025-05-09 | fix: add crate metadata for publishing | Skip | - | Rust/crate metadata |
 | ca87709 | 2025-05-11 | CI: Add AWS EFA testing infrastructure | Skip | - | CI infrastructure |
 | e8257bb | 2025-05-12 | BUILD/TEST: Fix compilation on RedHat8 | Skip | - | Build system specific to upstream |
@@ -169,3 +169,19 @@ handling patterns (ErrorOr vs exceptions) and code style.
 
 - Added deferred notification support to nixlUcxBackendH using std::optional
 - Modified postXfer/checkXfer to send notifications only after flush completes
+
+#### 3. 7e5328d - UCX: Fix potential memory leak with genNotif()
+
+- Changed nixlUcxIntReq::amBuffer from raw pointer to std::unique_ptr<std::string>
+- Updated notifSendPriv to use std::make_unique and std::move
+
+#### 4. 16227e2 - Refactor UCX code to comply with smart pointers
+
+- Converted UCX context/worker to std::unique_ptr in nixlUcxEngine
+- Changed epAddr() and packRkey() to return std::unique_ptr<char[]>
+- Removed all manual memory management in favor of RAII
+
+#### 5. a55250b - UCX: Fix worker address query to enable cuda-ipc
+
+- Removed UCP_WORKER_ADDRESS_FLAG_NET_ONLY flag from epAddr()
+- Enables CUDA IPC transport for GPU-to-GPU transfers
