@@ -41,9 +41,9 @@ modular_cc_library(
         "//GraphRT:MEFExecutor",
         "//SDK:MOFDriver",
         "//SDK:MOFOptions",
-        "//Support:ADT",  # TODO: Remove this when ENGALL-255 resolved.
         "//Support:Base",
         "//Support:Buffer",
+        "//Support:Context",
     ],
 )
 
@@ -52,9 +52,9 @@ modular_cc_library(
     hdrs = ["include/GenericML/FrameworkFrontend.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//Support:ADT",  # TODO: Remove this when ENGALL-255 resolved.
         "//Support:Base",
         "//Support:Buffer",
+        "//Support:Context",
     ],
 )
 
@@ -108,6 +108,7 @@ modular_cc_library(
         ":GraphCompilerPublic.headers",
         ":Support",
         "//Support:Base",
+        "//Support:Context",
     ],
 )
 
@@ -121,6 +122,7 @@ modular_cc_library(
         ":Support",
         "//GraphRT:MLIRToMEF",
         "//Support:Base",
+        "//Support:Context",
     ],
 )
 
@@ -529,6 +531,7 @@ modular_cc_library(
         ":MOTransformsIncGen",
         ":RMODialect",
         ":RMOSupport",
+        "//Support:Context",
     ],
 )
 
@@ -829,6 +832,7 @@ modular_cc_library(
         ":Support",
         "//AsyncRT:DeviceContext",
         "//KGEN:ObjectCompiler",
+        "//Support:Context",
         "//Support:HashUtils",
     ],
 )
@@ -844,6 +848,7 @@ modular_cc_library(
         ":Support",
         "//KGEN:MojoParser",
         "//Kernels/mojo/Mogg:MOGGLoader",
+        "//Support:Context",
         "//Support:HashUtils",
     ],
 )
@@ -1167,6 +1172,7 @@ modular_cc_library(
         "//Runtime",
         "//Runtime:Tensor",
         "//Support:Base",
+        "//Support:Context",
         "//Support:ML",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Transforms",
@@ -1462,6 +1468,7 @@ modular_shared_library(
         ":Support",
         "//AsyncRT:DeviceContext",
         "//Init",
+        "//Support:Context",
     ],
 )
 

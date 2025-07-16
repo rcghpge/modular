@@ -53,8 +53,8 @@ modular_cc_library(
     srcs = glob(["lib/MOF/Options/**/*.cpp"]),
     hdrs = glob(["include/SDK/MOF/Options/**/*.h"]),
     deps = [
-        "//Support:ADT",  # TODO: Remove this when ENGALL-255 resolved.
         "//Support:Base",
+        "//Support:Context",
         "//Support:ML",
     ],
 )
@@ -102,6 +102,7 @@ modular_cc_library(
         "//Init",
         "//Kernels:WeightsRegistry",
         "//Support:Base",
+        "//Support:Context",
         "//Support:CrashReporting",
         "//Support:Diagnostics",
         "//Support:Globals",
