@@ -9,74 +9,11 @@
 #include "SDK/API/max/c/value.h"
 #include "SDK/API/max/cpp/aliases.h"
 #include "SDK/EngineAPI/python/MojoValue.h"
-#include "SDK/EngineAPI/python/Types.h"
 #include "Support/CPython/PythonObject.h"
-#include <vector>
 
 using namespace M;
 
 namespace nb = nanobind;
-
-/// Verifies that `tensor` has the same shape and
-/// data type as the tensor spec.
-void core::verifyTensorInputSpecs(const TensorData &tensor,
-                                  const TensorSpec &inputTensorSpec) {
-  // Assert the input tensor has the same tensor specification
-  // Assert same dtype.
-  if (M::DType expectedDtype = inputTensorSpec.getDtype();
-      tensor.dtype != expectedDtype)
-    throw std::invalid_argument(
-        "Input tensor has incompatible type. Expected type " +
-        printDType(expectedDtype) + " but got " + printDType(tensor.dtype) +
-        " instead.");
-
-  // Assert same number of dims
-  auto shapeOr = inputTensorSpec.getShape();
-  if (shapeOr) {
-    const std::vector<std::optional<int64_t>> &shape = *shapeOr;
-    size_t actualNumDims = tensor.shape.size();
-    if (unsigned long expectedNDim = shape.size();
-        actualNumDims != expectedNDim) {
-      throw std::invalid_argument(
-          "Input tensor has incompatible number of dimensions. Expected "
-          "number of dimensions to be " +
-          std::to_string(expectedNDim) + " but input has " +
-          std::to_string(actualNumDims) + " dimensions.");
-    }
-
-    // Assert same shape
-    for (ssize_t d = 0, ndim = actualNumDims; d < ndim; ++d) {
-      auto expectedDimOr = shape.at(d);
-      if (!expectedDimOr)
-        continue;
-      if (int64_t actualDim = tensor.shape[d]; *expectedDimOr != actualDim) {
-        throw std::invalid_argument(
-            "Input tensor has incompatible dimension along axis " +
-            std::to_string(d) + ". Expected " + std::to_string(*expectedDimOr) +
-            " but found " + std::to_string(actualDim) + ".");
-      }
-    }
-  }
-}
-
-/// Borrows the data from `tensor` into a new
-/// `Tensor` wrapped in an `AsyncValue` and sets its name to
-/// `name`.
-M_AsyncValue *core::processTensorInput(const TensorData &tensor,
-                                       const std::string &name,
-                                       M_RuntimeContext *context) {
-  TensorSpecPtr tensorSpec{M_newTensorSpec(
-      tensor.shape.data(), tensor.shape.size(),
-      static_cast<M_Dtype>(tensor.dtype.getValue()), name.c_str())};
-  // tensor points to a buffer owned by the input tensor.
-  // Since .execute() is synchronous currently, the tensor will survive at
-  // least as long as we need it: we won't use the input tensor anymore
-  // after .execute() returns.
-  //
-  // TODO(#7919): Figure out lifetime management for input tensors in the
-  // asynchronous case.
-  return M_createBorrowedTensor(tensor.dataPtr, tensorSpec.get(), context);
-}
 
 /// Recursively converts the nanobind object `pyObj` containing a value composed
 /// of `array`, `dict`, `list`, `tuple`, `none`, `double`, `long`, `bool`
@@ -86,9 +23,6 @@ M_AsyncValue *core::processTensorInput(const TensorData &tensor,
 M_AsyncValue *core::processValueInput(const nb::object &pyObj,
                                       M_RuntimeContext *context,
                                       M_Status *status) {
-  if (core::TensorData * tensor; nb::try_cast(pyObj, tensor))
-    return processTensorInput(*tensor, /*name=*/"", context);
-
   if (nb::dict pyDict; nb::try_cast(pyObj, pyDict)) {
     M_AsyncValue *dictValue = M_createDictAsyncValue(context);
     M_AsyncDict *dict = M_getDictFromValue(dictValue);

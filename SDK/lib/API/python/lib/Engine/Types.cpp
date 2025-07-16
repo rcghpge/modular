@@ -6,9 +6,7 @@
 
 #include "SDK/API/max/c/types.h"
 #include "SDK/EngineAPI/python/Types.h"
-#include "Support/ML/DType.h"
 #include "nanobind/nanobind.h"
-#include "llvm/ADT/StringExtras.h"
 
 using namespace M::core;
 
@@ -91,25 +89,6 @@ nb::dlpack::dtype M::core::mapDType(M_Dtype dtype) {
     return nb::dtype<double>();
   case M_BOOL:
     return nb::dtype<bool>();
-  default:
-    throw nb::type_error("Unrecognized DType");
-  }
-}
-
-std::string M::core::printDType(M::DType dtype) {
-  if (dtype.isUInt())
-    return "DType.uint" + llvm::utostr(dtype.getIntegerWidthInBits());
-  if (dtype.isSInt())
-    return "DType.int" + llvm::utostr(dtype.getIntegerWidthInBits());
-
-  switch (dtype.getValue()) {
-#define DECLARE_FLOAT(SHORT_NAME, LONG_NAME, ...)                              \
-  case DType::SHORT_NAME:                                                      \
-    return "DType." #LONG_NAME;
-#include "Support/ML/FloatTypes.def"
-#undef DECLARE_FLOAT
-  case DType::kBool:
-    return "DType.bool";
   default:
     throw nb::type_error("Unrecognized DType");
   }

@@ -9,6 +9,7 @@
 #include "SDK/EngineAPI/python/Types.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"
+#include <cstring>
 #include <vector>
 
 using namespace M;
