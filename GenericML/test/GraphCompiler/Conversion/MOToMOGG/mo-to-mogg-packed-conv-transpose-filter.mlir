@@ -1,5 +1,3 @@
-// REQUIRES: disabled
-// TODO(GEX-1573): Delete or convert to the new API
 // RUN: mo-opt %s --infer-layouts --mo-pattern-fusion --mo-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @conv_transpose2d_constant_filter
@@ -12,8 +10,8 @@ mo.graph @conv_transpose2d_constant_filter(%input: !mo.tensor<[1, 4, 4, 2], f32>
   %opa = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  // CHECK: mogg.call "mo.conv_transpose"
-  // CHECK-SAME: filter_packed = true
+  // CHECK: mogg.call.execute["mo.conv_transpose"]
+  // CHECK-SAME: filter_layout = ""
 
   %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
     !mo.tensor<[1, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2], f32>,
@@ -33,8 +31,8 @@ mo.graph @conv_transpose3d_constant_filter(%input: !mo.tensor<[1, 8, 8, 8, 3], f
   %opa = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
-  // CHECK: mogg.call "mo.conv_transpose"
-  // CHECK-SAME: filter_packed = true
+  // CHECK: mogg.call.execute["mo.conv_transpose"]
+  // CHECK-SAME: filter_layout = ""
 
   %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
     !mo.tensor<[1, 8, 8, 8, 3], f32>, !mo.tensor<[2, 2, 2, 4, 3], f32>,
