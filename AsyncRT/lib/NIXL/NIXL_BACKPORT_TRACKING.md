@@ -101,7 +101,7 @@ This document tracks the backporting of NIXL commits from upstream
 | 4f73441 | 2025-05-09 | fix: add crate metadata for publishing | Skip | - | Rust/crate metadata |
 | ca87709 | 2025-05-11 | CI: Add AWS EFA testing infrastructure | Skip | - | CI infrastructure |
 | e8257bb | 2025-05-12 | BUILD/TEST: Fix compilation on RedHat8 | Skip | - | Build system specific to upstream |
-| 9ea7db2 | 2025-05-12 | Extend UCX engine with multi worker support | **Port** | Pending | UCX multi-worker support |
+| 9ea7db2 | 2025-05-12 | Extend UCX engine with multi worker support | **Port** | ✅ Completed | UCX multi-worker support |
 
 ### Commits to Port (6 total)
 
@@ -116,6 +116,7 @@ This document tracks the backporting of NIXL commits from upstream
 
 - **Total commits reviewed**: 30
 - **Commits to port**: 6 (all UCX-related improvements)
+- **Commits ported**: 6 ✅
 - **Commits skipped**: 24
 
 ### Implementation Notes
@@ -185,3 +186,35 @@ handling patterns (ErrorOr vs exceptions) and code style.
 
 - Removed UCP_WORKER_ADDRESS_FLAG_NET_ONLY flag from epAddr()
 - Enables CUDA IPC transport for GPU-to-GPU transfers
+
+#### 6. 9ea7db2 - Extend UCX engine with multi worker support
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Updated data structures
+  for multi-worker support
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Major refactoring to move
+  operations to appropriate classes
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Multi-worker implementation
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Refactored implementation
+- `AsyncRT/unittests/NixlTestUcx.cpp`: Updated tests for new API
+
+**Key changes**:
+
+- Refactored nixlUcxEp to be created via constructor instead of connect()
+  method.
+- Moved memory management operations (memReg, packRkey, memDereg) from Worker
+  to Context.
+- Moved data transfer operations (sendAm, read, write, flushEp) from Worker to
+  Ep.
+- Added support for multiple workers configured via 'num_workers' parameter.
+- Workers are stored in a vector and selected based on thread ID hash.
+- Connection establishment now happens on all workers.
+- Converted nixlUcxContext to shared_ptr for proper lifetime management.
+- Updated all tests to use ErrorOr pattern instead of raw pointers.
+
+**Adaptations for AsyncRT**:
+
+- Converted all designated initializers to memset + field assignment for C++ compatibility
+- Used ErrorOr instead of absl::StatusOr for return types
+- Maintained backward compatibility by defaulting to single worker

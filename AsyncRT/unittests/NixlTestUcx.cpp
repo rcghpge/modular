@@ -13,6 +13,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "gtest/gtest.h"
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -69,10 +70,11 @@ struct NixlAgentWithUCXBackend {
   }
 
   static void create(NixlAgentWithUCXBackend &self, std::string agentName,
-                     int port, std::string backendName, int gpuDeviceId = -1) {
+                     int port, std::string backendName, int gpuDeviceId = -1,
+                     int numWorkers = 1) {
     self.agentName = agentName;
     self.agent = std::make_unique<nixlAgent>(
-        agentName, nixlAgentConfig(/*use_prog_thread=*/false,
+        agentName, nixlAgentConfig(/*use_prog_thread=*/true,
                                    /*use_listen_thread=*/true,
                                    /*port=*/port));
     // Check if UCX plugin is available
@@ -92,6 +94,10 @@ struct NixlAgentWithUCXBackend {
 
     if (gpuDeviceId != -1) {
       backendParams["gpu_device_id"] = std::to_string(gpuDeviceId);
+    }
+
+    if (numWorkers > 1) {
+      backendParams["num_workers"] = std::to_string(numWorkers);
     }
 
     ASSERT_SUCCESS(
@@ -443,4 +449,129 @@ TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
   // Attempt transfer which should fail with NIXL_ERR_REMOTE_DISCONNECT
   transferDataWithFailure(nixl1, nixl2, regSrcDescs, regDstDescs,
                           nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT);
+}
+
+TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
+  // Test multi-worker UCX support with concurrent transfers from multiple
+  // threads.
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Number of workers and threads for testing
+  const int numWorkers = 4;
+  const int numThreads = 4;
+  const size_t bufferSize = 1024;
+  const size_t transferSize = bufferSize / 2;
+
+  // Create NIXL agents with multiple workers - use different ports to avoid
+  // conflicts
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_MultiWorker1", 8047, "ucx",
+                                  -1, numWorkers);
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_MultiWorker2", 8052, "ucx",
+                                  -1, numWorkers);
+
+  // Register multiple buffers for concurrent transfers
+  std::vector<std::vector<char>> dramBuffers1(numThreads);
+  std::vector<std::vector<char>> dramBuffers2(numThreads);
+
+  for (int i = 0; i < numThreads; i++) {
+    dramBuffers1[i].resize(bufferSize);
+    dramBuffers2[i].resize(bufferSize);
+
+    // Fill source buffers with unique values
+    std::fill(dramBuffers1[i].begin(), dramBuffers1[i].end(), 'A' + i);
+    std::fill(dramBuffers2[i].begin(), dramBuffers2[i].end(), 'Z');
+
+    // Register memory for each buffer
+    nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                         blobDescfromVector(dramBuffers1[i], 0));
+    nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                         blobDescfromVector(dramBuffers2[i], 0));
+  }
+
+  // Exchange metadata
+  exchangeMetadata(nixl1, nixl2);
+
+  // Launch concurrent transfers from multiple threads
+  std::vector<std::thread> threads;
+  std::atomic<int> successCount{0};
+
+  for (int i = 0; i < numThreads; i++) {
+    threads.emplace_back([&, i]() {
+      // Prepare transfer descriptors for this thread
+      nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
+      auto srcBuf = llvm::ArrayRef{dramBuffers1[i].data(), transferSize};
+      srcDescs.addDesc(basicDescfromArrayRef(srcBuf, 0));
+
+      nixl_xfer_dlist_t dstDescs(nixl_mem_t::DRAM_SEG);
+      auto dstBuf = llvm::ArrayRef{dramBuffers2[i].data(), transferSize};
+      dstDescs.addDesc(basicDescfromArrayRef(dstBuf, 0));
+
+      // Create and execute transfer
+      nixlXferReqH *reqHandle = nullptr;
+      nixlAgentOptionalArgs xferArgs;
+      xferArgs.notifMsg = "notification_thread_" + std::to_string(i);
+      xferArgs.hasNotif = true;
+
+      if (nixl1.agent->createXferReq(
+              nixl_xfer_op_t::NIXL_WRITE, srcDescs, dstDescs, nixl2.agentName,
+              reqHandle, &xferArgs) == nixl_status_t::NIXL_SUCCESS) {
+
+        // Post the transfer
+        nixl_status_t xferStatus = nixl1.agent->postXferReq(reqHandle);
+        if (xferStatus == nixl_status_t::NIXL_SUCCESS ||
+            xferStatus == nixl_status_t::NIXL_IN_PROG) {
+
+          // Poll for completion
+          nixl_status_t checkStatus = xferStatus;
+          const auto startTime = std::chrono::steady_clock::now();
+          const auto timeout = std::chrono::seconds(10);
+
+          while (checkStatus == nixl_status_t::NIXL_IN_PROG &&
+                 (std::chrono::steady_clock::now() - startTime < timeout)) {
+            checkStatus = nixl1.agent->getXferStatus(reqHandle);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          }
+
+          if (checkStatus == nixl_status_t::NIXL_SUCCESS) {
+            // Verify the transfer
+            if (std::memcmp(dramBuffers1[i].data(), dramBuffers2[i].data(),
+                            transferSize) == 0) {
+              successCount++;
+            }
+          }
+
+          nixl1.agent->releaseXferReq(reqHandle);
+        }
+      }
+    });
+  }
+
+  // Wait for all threads to complete
+  for (auto &thread : threads) {
+    thread.join();
+  }
+
+  // Verify all transfers completed successfully
+  ASSERT_EQ(successCount, numThreads)
+      << "Not all concurrent transfers completed successfully. "
+      << "Success count: " << successCount << "/" << numThreads;
+
+  // Additionally verify all destination buffers have correct data
+  for (int i = 0; i < numThreads; i++) {
+    ASSERT_EQ(std::memcmp(dramBuffers1[i].data(), dramBuffers2[i].data(),
+                          transferSize),
+              0)
+        << "Buffer " << i << " transfer verification failed";
+
+    // Check untouched region
+    ASSERT_EQ(dramBuffers2[i][transferSize], 'Z')
+        << "Buffer " << i << " has data corruption beyond transfer region";
+  }
 }

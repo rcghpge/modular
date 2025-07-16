@@ -24,6 +24,7 @@
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstring>
 #include <iostream>
 #include <mutex>
@@ -36,17 +37,16 @@ namespace M::AsyncRT::NIXL {
 class nixlUcxConnection : public nixlBackendConnMD {
 private:
   std::string remoteAgent;
-  // NOTE: nixlUcxEp object must be alive as long as ucp_ep_h is alive
-  //       since the object is passed to ucp_ep_create_nbx as err_cb
-  //       argument.
-  std::shared_ptr<nixlUcxEp> ep = std::make_shared<nixlUcxEp>();
+  std::vector<std::unique_ptr<nixlUcxEp>> eps;
 
 public:
-  nixlUcxEp &getEp() { return *ep; }
+  nixlUcxEp &getEp(size_t ep_id) const { return *eps[ep_id]; }
   // Extra information required for UCX connections
 
   friend class nixlUcxEngine;
 };
+
+using ucx_connection_ptr_t = std::shared_ptr<nixlUcxConnection>;
 
 // A private metadata has to implement get, and has all the metadata
 class nixlUcxPrivateMetadata : public nixlBackendMD {
@@ -66,27 +66,35 @@ public:
 
 // A public metadata has to implement put, and only has the remote metadata
 class nixlUcxPublicMetadata : public nixlBackendMD {
+private:
+  std::vector<nixlUcxRkey> rkeys;
 
 public:
-  nixlUcxRkey rkey;
-  nixlUcxConnection conn;
+  ucx_connection_ptr_t conn;
 
   nixlUcxPublicMetadata() : nixlBackendMD(false) {}
 
   ~nixlUcxPublicMetadata() {}
+
+  nixlUcxRkey &getRkey(size_t id) { return rkeys[id]; }
+
+  friend class nixlUcxEngine;
 };
 
 class nixlUcxEngine : public nixlBackendEngine {
 private:
   /* UCX data */
-  std::unique_ptr<nixlUcxContext> uc;
-  std::unique_ptr<nixlUcxWorker> uw;
+  std::shared_ptr<nixlUcxContext> uc;
+  std::vector<std::unique_ptr<nixlUcxWorker>> uws;
   std::unique_ptr<char[]> workerAddr;
   size_t workerSize;
 
   /* Progress thread data */
-  volatile bool pthrStop, pthrActive, pthrOn;
-  int noSyncIters;
+  std::mutex pthrActiveLock;
+  std::condition_variable pthrActiveCV;
+  std::atomic_bool pthrActive{false};
+  std::atomic_bool pthrStop{false};
+  bool pthrOn;
   std::thread pthr;
   nixlTime::us_t pthrDelay;
 
@@ -99,7 +107,7 @@ private:
   notif_list_t notifPthrPriv, notifPthr;
 
   // Map of agent name to saved nixlUcxConnection info
-  std::unordered_map<std::string, nixlUcxConnection, std::hash<std::string>,
+  std::unordered_map<std::string, ucx_connection_ptr_t, std::hash<std::string>,
                      strEqual>
       remoteConnMap;
 
@@ -144,7 +152,8 @@ private:
                                 size_t header_length, void *data, size_t length,
                                 const ucp_am_recv_param_t *param);
   nixl_status_t notifSendPriv(const std::string &remote_agent,
-                              const std::string_view msg, nixlUcxReq &req);
+                              const std::string_view msg, nixlUcxReq &req,
+                              size_t worker_id);
   void notifProgress();
   void notifCombineHelper(notif_list_t &src, notif_list_t &tgt);
   void notifProgressCombineHelper(notif_list_t &src, notif_list_t &tgt);
@@ -214,6 +223,14 @@ public:
   // public function for UCX worker to mark connections as connected
   nixl_status_t checkConn(const std::string &remote_agent);
   nixl_status_t endConn(const std::string &remote_agent);
+
+  const std::unique_ptr<nixlUcxWorker> &getWorker(size_t worker_id) const {
+    return uws[worker_id];
+  }
+  size_t getWorkerId() const {
+    return std::hash<std::thread::id>{}(std::this_thread::get_id()) %
+           uws.size();
+  }
 };
 
 nixlBackendPlugin *createStaticUcxPlugin();

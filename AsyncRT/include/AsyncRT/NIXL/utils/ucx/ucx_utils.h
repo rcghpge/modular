@@ -16,6 +16,7 @@ extern "C" {
 }
 
 #include "AsyncRT/NIXL/nixl_types.h"
+#include "Support/ErrorOr.h"
 #include <cstdint>
 #include <memory>
 #include <string_view>
@@ -36,6 +37,11 @@ enum nixl_ucx_mt_t {
   NIXL_UCX_MT_MAX
 };
 
+using nixlUcxReq = void *;
+
+class nixlUcxRkey;
+class nixlUcxMem;
+
 class nixlUcxEp {
   enum class nixl_ucx_ep_state_t : std::uint8_t {
     NIXL_UCX_EP_STATE_NULL,
@@ -48,13 +54,17 @@ private:
   ucp_ep_h eph{nullptr};
   nixl_ucx_ep_state_t state{nixl_ucx_ep_state_t::NIXL_UCX_EP_STATE_NULL};
 
-  static void err_cb(void *arg, ucp_ep_h ucp_ep, ucs_status_t status);
   void setState(nixl_ucx_ep_state_t new_state);
   nixl_status_t closeImpl(ucp_worker_h worker, ucp_ep_close_flags_t flags);
+  nixl_status_t closeNonblocking() {
+    return closeImpl(nullptr, ucp_ep_close_flags_t(0));
+  }
+
+  /* Connection */
+  nixl_status_t disconnectNonblocking();
 
 public:
-  // TODO: Add read/write methods to avoid using raw handle outside.
-  ucp_ep_h getHandle() const { return eph; }
+  void err_cb(ucp_ep_h ucp_ep, ucs_status_t status);
 
   nixl_status_t checkTxState() const {
     switch (state) {
@@ -68,17 +78,27 @@ public:
     }
   }
 
-  nixl_status_t connect(ucp_worker_h worker, void *addr);
+  nixlUcxEp(ucp_worker_h worker, void *addr);
+  ~nixlUcxEp();
+  nixlUcxEp(const nixlUcxEp &) = delete;
+  nixlUcxEp &operator=(const nixlUcxEp &) = delete;
+  nixlUcxEp(const nixlUcxEp &&) = delete;
+  nixlUcxEp &operator=(const nixlUcxEp &&) = delete;
 
-  nixl_status_t close(ucp_worker_h worker) {
-    return closeImpl(worker, ucp_ep_close_flags_t(0));
-  }
-  nixl_status_t closeForce() {
-    return closeImpl(nullptr, UCP_EP_CLOSE_FLAG_FORCE);
-  }
-  nixl_status_t closeNonblocking() {
-    return closeImpl(nullptr, ucp_ep_close_flags_t(0));
-  }
+  /* Rkey */
+  int rkeyImport(void *addr, size_t size, nixlUcxRkey &rkey);
+  void rkeyDestroy(nixlUcxRkey &rkey);
+
+  /* Active message handling */
+  nixl_status_t sendAm(unsigned msg_id, void *hdr, size_t hdr_len, void *buffer,
+                       size_t len, uint32_t flags, nixlUcxReq &req);
+
+  /* Data access */
+  nixl_status_t read(uint64_t raddr, nixlUcxRkey &rk, void *laddr,
+                     nixlUcxMem &mem, size_t size, nixlUcxReq &req);
+  nixl_status_t write(void *laddr, nixlUcxMem &mem, uint64_t raddr,
+                      nixlUcxRkey &rk, size_t size, nixlUcxReq &req);
+  nixl_status_t flushEp(nixlUcxReq &req);
 
   friend class nixlUcxWorker;
 };
@@ -91,6 +111,8 @@ private:
 
 public:
   friend class nixlUcxWorker;
+  friend class nixlUcxContext;
+  friend class nixlUcxEp;
 };
 
 class nixlUcxRkey {
@@ -99,9 +121,8 @@ private:
 
 public:
   friend class nixlUcxWorker;
+  friend class nixlUcxEp;
 };
-
-using nixlUcxReq = void *;
 
 class nixlUcxContext {
 private:
@@ -117,52 +138,36 @@ public:
 
   static bool mtLevelIsSupported(nixl_ucx_mt_t mt_type);
 
+  /* Memory management */
+  int memReg(void *addr, size_t size, nixlUcxMem &mem);
+  std::unique_ptr<char[]> packRkey(nixlUcxMem &mem, size_t &size);
+  void memDereg(nixlUcxMem &mem);
+
   friend class nixlUcxWorker;
 };
 
 class nixlUcxWorker {
 private:
   /* Local UCX stuff */
-  nixlUcxContext *ctx;
+  std::shared_ptr<nixlUcxContext> ctx;
   ucp_worker_h worker;
 
 public:
-  nixlUcxWorker(nixlUcxContext *ctx);
+  nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx);
   ~nixlUcxWorker();
 
   /* Connection */
   std::unique_ptr<char[]> epAddr(size_t &size);
-  int connect(const void *addr, size_t size, nixlUcxEp &ep);
-  int disconnect(nixlUcxEp &ep);
-  int disconnectNonblocking(nixlUcxEp &ep);
-
-  /* Memory management */
-  int memReg(void *addr, size_t size, nixlUcxMem &mem);
-  std::unique_ptr<char[]> packRkey(nixlUcxMem &mem, size_t &size);
-  void memDereg(nixlUcxMem &mem);
-
-  /* Rkey */
-  int rkeyImport(nixlUcxEp &ep, blob_ref data, nixlUcxRkey &rkey);
-  void rkeyDestroy(nixlUcxRkey &rkey);
+  M::ErrorOr<std::unique_ptr<nixlUcxEp>> connect(void *addr, size_t size);
 
   /* Active message handling */
   int regAmCallback(UcxCallbackOp callbackOp, ucp_am_recv_callback_t cb,
                     void *arg);
-  nixl_status_t sendAm(nixlUcxEp &ep, unsigned msg_id, void *hdr,
-                       size_t hdr_len, void *buffer, size_t len, uint32_t flags,
-                       nixlUcxReq &req);
   int getRndvData(void *data_desc, void *buffer, size_t len,
                   const ucp_request_param_t *param, nixlUcxReq &req);
 
   /* Data access */
   int progress();
-  nixl_status_t flushEp(nixlUcxEp &ep, nixlUcxReq &req);
-  nixl_status_t read(nixlUcxEp &ep, uint64_t raddr, nixlUcxRkey &rk,
-                     void *laddr, nixlUcxMem &mem, size_t size,
-                     nixlUcxReq &req);
-  nixl_status_t write(nixlUcxEp &ep, void *laddr, nixlUcxMem &mem,
-                      uint64_t raddr, nixlUcxRkey &rk, size_t size,
-                      nixlUcxReq &req);
   nixl_status_t test(nixlUcxReq req);
 
   void reqRelease(nixlUcxReq req);
