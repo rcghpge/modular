@@ -815,7 +815,7 @@ nixlAgent::postXferReq(nixlXferReqH *req_hndl,
   return ret;
 }
 
-nixl_status_t nixlAgent::getXferStatus(nixlXferReqH *req_hndl) {
+nixl_status_t nixlAgent::getXferStatus(nixlXferReqH *req_hndl) const {
 
   NIXL_LOCK_GUARD(data->lock);
   // If the status is done, no need to recheck.
@@ -838,7 +838,7 @@ nixl_status_t nixlAgent::queryXferBackend(const nixlXferReqH *req_hndl,
   return nixl_status_t::NIXL_SUCCESS;
 }
 
-nixl_status_t nixlAgent::releaseXferReq(nixlXferReqH *req_hndl) {
+nixl_status_t nixlAgent::releaseXferReq(nixlXferReqH *req_hndl) const {
 
   NIXL_LOCK_GUARD(data->lock);
   // attempt to cancel request
@@ -907,7 +907,7 @@ nixl_status_t nixlAgent::getNotifs(nixl_notifs_t &notif_map,
 
 nixl_status_t nixlAgent::genNotif(const std::string &remote_agent,
                                   const std::string_view msg,
-                                  const nixl_opt_args_t *extra_params) {
+                                  const nixl_opt_args_t *extra_params) const {
 
   nixlBackendEngine *backend = nullptr;
   backend_list_t *backend_list;

@@ -12,6 +12,7 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/NIXL/nixl_types.h"
 #include "AsyncRT/NIXL/plugins/ucx/ucx_backend.h"
+#include "AsyncRT/NIXL/utils/common/nixl_log.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
@@ -144,7 +145,7 @@ static constexpr int const noSyncIters = 32;
 class nixlUcxBackendH : public nixlBackendReqH {
 private:
   nixlUcxIntReq head;
-  nixlUcxEngine &eng;
+  const nixlUcxEngine &eng;
   size_t worker_id;
 
   // Notification to be sent after completion of all requests.
@@ -157,7 +158,7 @@ private:
 public:
   std::optional<Notif> &notification() { return notif; }
 
-  nixlUcxBackendH(nixlUcxEngine &eng_, size_t worker_id_)
+  nixlUcxBackendH(const nixlUcxEngine &eng_, size_t worker_id_)
       : eng(eng_), worker_id(worker_id_) {}
 
   void append(nixlUcxIntReq *req) { head.link(req); }
@@ -326,6 +327,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   if (init_params->enableProgTh) {
     if (!nixlUcxContext::mtLevelIsSupported(NIXL_UCX_MT_WORKER)) {
+      NIXL_ERROR << "UCX library does not support multi-threading\n";
       initErr = true;
       return;
     }
@@ -376,6 +378,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   workerAddr = uw->epAddr(workerSize);
 
   if (workerAddr == nullptr) {
+    NIXL_ERROR << "Failed to get UCX worker address\n";
     initErr = true;
     return;
   }
@@ -804,7 +807,7 @@ nixl_status_t nixlUcxEngine::prepXfer(const nixl_xfer_op_t &operation,
                                       const nixl_meta_dlist_t &remote,
                                       const std::string &remote_agent,
                                       nixlBackendReqH *&handle,
-                                      const nixl_opt_b_args_t *opt_args) {
+                                      const nixl_opt_b_args_t *opt_args) const {
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
@@ -822,7 +825,7 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
                                       const nixl_meta_dlist_t &remote,
                                       const std::string &remote_agent,
                                       nixlBackendReqH *&handle,
-                                      const nixl_opt_b_args_t *opt_args) {
+                                      const nixl_opt_b_args_t *opt_args) const {
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
@@ -898,7 +901,7 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
   return ret;
 }
 
-nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) {
+nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) const {
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
@@ -923,7 +926,7 @@ nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) {
   return status;
 }
 
-nixl_status_t nixlUcxEngine::releaseReqH(nixlBackendReqH *handle) {
+nixl_status_t nixlUcxEngine::releaseReqH(nixlBackendReqH *handle) const {
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
@@ -953,7 +956,8 @@ int nixlUcxEngine::progress() {
 // agent will provide cached msg
 nixl_status_t nixlUcxEngine::notifSendPriv(const std::string &remote_agent,
                                            const std::string_view msg,
-                                           nixlUcxReq &req, size_t worker_id) {
+                                           nixlUcxReq &req,
+                                           size_t worker_id) const {
   nixlSerDes ser_des;
   // TODO - temp fix, need to have an mpool
   static struct nixl_ucx_am_hdr hdr;
@@ -1068,7 +1072,7 @@ nixl_status_t nixlUcxEngine::getNotifs(notif_list_t &notif_list) {
 }
 
 nixl_status_t nixlUcxEngine::genNotif(const std::string &remote_agent,
-                                      const std::string_view msg) {
+                                      const std::string_view msg) const {
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;

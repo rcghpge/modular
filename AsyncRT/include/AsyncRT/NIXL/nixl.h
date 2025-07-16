@@ -53,10 +53,11 @@ public:
    */
   ~nixlAgent();
 
-  /* Declare copy and move operations (needed because we declared a destructor)
+  /* Delete copy and move operations -- moves are unsafe due to leaking data
+   * pointer.
    */
-  nixlAgent(nixlAgent &&) noexcept = default;
-  nixlAgent &operator=(nixlAgent &&) noexcept = default;
+  nixlAgent(nixlAgent &&) noexcept = delete;
+  nixlAgent &operator=(nixlAgent &&) noexcept = delete;
   nixlAgent(const nixlAgent &) = delete;
   nixlAgent &operator=(const nixlAgent &) = delete;
 
@@ -272,7 +273,7 @@ public:
    * @param  req_hndl      Transfer request handle after postXferReq
    * @return nixl_status_t NIXL_IN_PROG or error code if call was not successful
    */
-  nixl_status_t getXferStatus(nixlXferReqH *req_hndl);
+  nixl_status_t getXferStatus(nixlXferReqH *req_hndl) const;
 
   /**
    * @brief  Query the backend associated with `req_hndl`. E.g., if for genNotif
@@ -294,7 +295,7 @@ public:
    * @param  req_hndl      Transfer request handle to be released
    * @return nixl_status_t Error code if call was not successful
    */
-  nixl_status_t releaseXferReq(nixlXferReqH *req_hndl);
+  nixl_status_t releaseXferReq(nixlXferReqH *req_hndl) const;
 
   /**
    * @brief  Release the prepared descriptor list handle `dlist_hndl`
@@ -336,7 +337,7 @@ public:
    */
   nixl_status_t genNotif(const std::string &remote_agent,
                          const std::string_view msg,
-                         const nixl_opt_args_t *extra_params = nullptr);
+                         const nixl_opt_args_t *extra_params = nullptr) const;
 
   /*** Metadata handling through side channel ***/
   /**
