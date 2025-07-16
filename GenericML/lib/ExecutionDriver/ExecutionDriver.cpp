@@ -332,14 +332,14 @@ static LogicalResult outputResults(const ExecutableModel *model,
       hasError = true;
     else {
       if (auto *tensor = dyn_cast<Tensor>(result)) {
-        if (auto err = tensor->print(outputStyle, precision)) {
+        if (auto err = tensor->print(os, outputStyle, precision)) {
           os << "<error: " << err.getError() << '>';
           hasError = true;
         }
       } else {
         // Not a value that can be printed generically, let the framework
         // specific model implementation handle it.
-        if (auto err = model->printValue(result, outputStyle, precision)) {
+        if (auto err = model->printValue(os, result, outputStyle, precision)) {
           os << "<error: " << err.getError() << '>';
           hasError = true;
         }
@@ -564,8 +564,7 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 }
 
 /// Run `model` using the command line options flags configured by the user.
-LogicalResult M::runModel(MLIRContext *ctx, const Model *model,
-                          AsyncRT::Runtime &runtime,
+LogicalResult M::runModel(const Model *model, AsyncRT::Runtime &runtime,
                           const ExecutorDriverOptions &options) {
   SmallVector<TensorSpec> userInputSpecs;
   if (!options.inputSpecs.empty()) {

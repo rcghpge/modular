@@ -4,13 +4,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Utils.h"
 #include "Config/Version.h"
-#include "GenericML/CommonDriver/CXXDriverAPI.h"
-#include "GenericML/CommonDriver/DriverAPI.h"
 #include "GenericML/CommonDriver/DriverInputFormat.h"
 #include "GenericML/CommonDriver/Utils.h"
 #include "GenericML/ExecutionDriver/DriverCLOptions.h"
+#include "GenericML/FrameworkFrontend.h"
+#include "GenericML/GraphCompiler/Passes.h"
+#include "GenericML/MEFModel/MEFModel.h"
+#include "GraphRT/MEFExecutor/MEFFile.h"
 #include "Init/Init.h"
+#include "SDK/MOF/Options/LoweringOptions.h"
 #include "Support/AssertStream.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/Process.h"
@@ -33,11 +38,6 @@ class GenericDriverOptions : public DriverCommandOptions,
                              public CommonOptions,
                              public AsyncRT::RuntimeOptions {
 public:
-  //===--------------------------------------------------------------------===//
-  // Force loading a specific dylib
-  //===--------------------------------------------------------------------===//
-
-  std::string loadLib{""};
   //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
   //===--------------------------------------------------------------------===//
@@ -63,15 +63,6 @@ private:
   llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
       "Generic driver options"};
   //===--------------------------------------------------------------------===//
-  // Force loading a specific dylib
-  //===--------------------------------------------------------------------===//
-
-  M::cl::MOpt<std::string, true> loadLib{
-      "load", cl::desc("Load the specified framework directly."),
-      llvm::cl::cat(GenericDriverCLOptionsCategory),
-      llvm::cl::location(options.loadLib)};
-
-  //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
   //===--------------------------------------------------------------------===//
 
@@ -88,6 +79,52 @@ private:
 };
 } // namespace
 
+static int setupMLIRAndRun(
+    ContextRef context, const ExecutorDriverOptions &options,
+    const char *testName, std::unique_ptr<llvm::MemoryBuffer> &&file,
+    std::function<LogicalResult(Runtime &, MLIRContext *)> &&bodyFn) {
+  if (failed(options.configureMLIRContextAndExecute(
+          std::move(file), [&](MLIRContext *ctx) {
+            AsyncRT::Runtime *runtime = context->get<Runtime>();
+            assert(runtime && "caller should have set up runtime for this");
+            registerContext(*ctx, context);
+            return AsyncRT::runWithLeakCheckedRuntime(
+                testName, [&]() { return bodyFn(*runtime, ctx); });
+          })))
+    return EXIT_FAILURE;
+  return EXIT_SUCCESS;
+}
+
+static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
+                         M::BufferRef fileBuffer, ModelCollection &models) {
+  MOF::MOFLoweringOptions mofLoweringOptions;
+  MO::MoToMgpOptions moToMgpOptions;
+  ctx.overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+  const ExecutorDriverOptions *driverOptions = ctx.getExecutorDriverOptions();
+  assert(driverOptions && "cannot run a binary file via the API");
+
+  auto runModels = [&, context = maxCtx.copy()](
+                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+    mofLoweringOptions.setupContext(context);
+    for (const auto &model : models) {
+      if (failed(runModel(model.get(), runtime, *driverOptions))) {
+        if (driverOptions->stopOnFirstError())
+          return failure();
+      }
+    }
+    return success();
+  };
+
+  // Run it.
+  std::unique_ptr<llvm::MemoryBuffer> aliasedBuffer =
+      llvm::MemoryBuffer::getMemBuffer(fileBuffer->getMemBufferRef(),
+                                       /*RequiresNullTerminator=*/
+                                       false);
+
+  return setupMLIRAndRun(maxCtx.copy(), *driverOptions, "Modular model",
+                         std::move(aliasedBuffer), runModels);
+}
+
 int main(int argc, char **argv) {
   // Register all our command line options.  We expect that the subframeworks
   // will not call InitLLVM, and that is the responsibility of the driver.
@@ -99,7 +136,6 @@ int main(int argc, char **argv) {
   struct InputInfo {
     M::BufferRef file;
     FileFormat format = FileFormat::kUnknown;
-    bool isInputDirectory = false;
     std::filesystem::path inputPath;
   };
 
@@ -126,16 +162,13 @@ int main(int argc, char **argv) {
       info.inputPath = std::filesystem::path{inputFilename.str()};
 
       std::error_code errorCode;
-      info.isInputDirectory =
-          std::filesystem::is_directory(info.inputPath, errorCode);
+      if (std::filesystem::is_directory(info.inputPath, errorCode))
+        return options.reportError("unable to detect input model format");
       if (errorCode) {
         return options.reportError(
             Twine("failed to check type of path: ") + inputFilename +
             " (error code: " + Twine(errorCode.message()) + ")");
       }
-
-      if (info.isInputDirectory)
-        return options.reportError("unable to detect input model format");
 
       // The input file is not a directory, so we open and sniff the format.
       // In case the input file is MEF, it has to be aligned to the maximum
@@ -171,24 +204,19 @@ int main(int argc, char **argv) {
       snprintf(profilingLevelStr, sizeof(profilingLevelStr), "%#o",
                MODULAR_ASYNCRT_MAX_PROFILING_LEVEL);
       llvm::outs() << "mt: " << getModularVersionString()
-                   << "\nFramework: " << CXXDriverAPI::getVersion()
                    << "\nmt profiling level: " << profilingLevelStr << "\n";
       return EXIT_SUCCESS;
     }
 
     // Setup the framework context.
-    auto frameworkCtxOr =
-        CXXDriverAPI::initFrameworkContext(contextOr->copy(), argc, argv);
-    if (failed(frameworkCtxOr))
-      return options.reportError(frameworkCtxOr.getError());
-    auto frameworkCtx = std::move(*frameworkCtxOr);
+    MOFContext frameworkCtx(contextOr->copy(), argc, argv);
 
     // We'll accumulate command line arguments for the framework as we go below,
     SmallVector<std::string> dylibOptions;
 
     // We might want to get the framework's help string.
     if (options.command == DriverCommand::frameworkHelp) {
-      if (auto err = CXXDriverAPI::setOptions(frameworkCtx, {"-h"}))
+      if (auto err = frameworkCtx.setOptions({"-h"}))
         return options.reportError(err.getError());
       return EXIT_SUCCESS;
     }
@@ -205,7 +233,7 @@ int main(int argc, char **argv) {
     }
 
     // Tell the framework about our options.
-    if (auto err = CXXDriverAPI::setOptions(frameworkCtx, dylibOptions))
+    if (auto err = frameworkCtx.setOptions(dylibOptions))
       return options.reportError(err.getError());
 
     // Start processing the input in stages.  The inspect command is first,
@@ -223,24 +251,13 @@ int main(int argc, char **argv) {
       return EXIT_SUCCESS;
     }
 
-    // If we are dealing with a directory, we need to open it.
-    if (inputInfo.isInputDirectory) {
-      // TODO: this should be called for all files
-      auto bufferOr = CXXDriverAPI::openPath(frameworkCtx, inputInfo.inputPath);
-      if (bufferOr.isError())
-        return options.reportError(bufferOr.getError());
-      inputInfo.file = bufferOr.takeValue();
-    }
-
     // If we're stopping at compilation, emit the binary file directly to the
     // output.
     if (options.command == DriverCommand::compile) {
       auto outputFile = options.getOutputFile(options.commandHasBinaryOutput());
 
       // If the file is already a binary, just emit it directly.
-      if (inputInfo.format == FileFormat::kMEFFile ||
-          CXXDriverAPI::isBinary(frameworkCtx, inputInfo.file.copy(),
-                                 inputInfo.format)) {
+      if (inputInfo.format == FileFormat::kMEFFile) {
         outputFile->os().write(inputInfo.file->getBufferStart(),
                                inputInfo.file->getBufferSize());
         outputFile->keep();
@@ -248,8 +265,8 @@ int main(int argc, char **argv) {
       }
 
       // Otherwise, compile it.
-      auto bufferOr = CXXDriverAPI::compileToBinary(
-          frameworkCtx, inputInfo.file.copy(), inputInfo.format);
+      auto bufferOr =
+          frameworkCtx.compileToBinary(inputInfo.file.copy(), inputInfo.format);
       if (bufferOr.isError())
         return options.reportError(bufferOr.getError());
 
@@ -263,11 +280,9 @@ int main(int argc, char **argv) {
 
     // If we are not inspecting, we must need a compiled format.  If this is
     // already done then we're golden, otherwise compile now.
-    if (inputInfo.format != FileFormat::kMEFFile &&
-        !CXXDriverAPI::isBinary(frameworkCtx, inputInfo.file.copy(),
-                                inputInfo.format)) {
-      auto bufferOr = CXXDriverAPI::compileToBinary(
-          frameworkCtx, inputInfo.file.copy(), inputInfo.format);
+    if (inputInfo.format != FileFormat::kMEFFile) {
+      auto bufferOr =
+          frameworkCtx.compileToBinary(inputInfo.file.copy(), inputInfo.format);
       if (bufferOr.isError())
         return options.reportError(bufferOr.getError());
 
@@ -282,22 +297,17 @@ int main(int argc, char **argv) {
       return options.reportError("Unknown command:");
     }
 
-    auto binaryFileOr =
-        CXXDriverAPI::openBinaryFile(frameworkCtx, inputInfo.file.copy());
-    if (failed(binaryFileOr))
-      return options.reportError(binaryFileOr.getError());
-    auto binaryFile = std::move(*binaryFileOr);
-
-    // Check to see if this file contains what we expected.  If not, throw an
-    // error message.
-    if (auto err =
-            CXXDriverAPI::checkExpectedContents(frameworkCtx, binaryFile))
-      return options.reportError(err.getError());
+    auto mefFileOr = MEFFile::open(inputInfo.file->getBuffer());
+    if (failed(mefFileOr))
+      return options.reportError(mefFileOr.getError());
+    auto modelsOr = MO::loadMGPMEFFile(*mefFileOr);
+    if (modelsOr.isError())
+      return options.reportError(modelsOr.getError());
 
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
-    rc = CXXDriverAPI::runBinaryFile(frameworkCtx, inputInfo.file.copy(),
-                                     binaryFile);
+    rc = runBinaryFile(contextOr->copy(), frameworkCtx, inputInfo.file.copy(),
+                       **modelsOr);
   }
 
   return rc;

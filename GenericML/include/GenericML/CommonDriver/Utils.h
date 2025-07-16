@@ -21,7 +21,6 @@
 namespace M {
 
 class CommonOptions;
-class ExecutorDriverOptions;
 
 // FIXME: We have to duplicate this here because of #1639 (RUNP-82). Remove
 //        this when possible to do so.

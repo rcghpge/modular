@@ -4,13 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/FrameworkFrontend.h"
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "AsyncRT/Runtime/Runtime.h"
 #include "AsyncRT/Runtime/Utils.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
 #include "Config/Version.h"
-#include "GenericML/CommonDriver/DriverAPI.h"
+#include "GenericML/CommonDriver/DriverConfig.h"
 #include "GenericML/CommonDriver/DriverInputFormat.h"
 #include "GenericML/CommonDriver/Utils.h"
 #include "GenericML/CompileDriver/CompileDriver.h"
@@ -27,6 +28,7 @@
 #include "GraphRT/MEFExecutor/MEFFile.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
 #include "SDK/MOF/Driver/DriverImpl.h"
+#include "SDK/MOF/Options/LoweringOptions.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/ErrorOr.h"
@@ -47,23 +49,6 @@
 using namespace M;
 using namespace M::AsyncRT;
 using namespace M::MOF;
-using llvm::MemoryBuffer;
-
-static int setupMLIRAndRun(
-    ContextRef context, const ExecutorDriverOptions &options,
-    const char *testName, std::unique_ptr<llvm::MemoryBuffer> &&file,
-    std::function<LogicalResult(Runtime &, MLIRContext *)> &&bodyFn) {
-  if (failed(options.configureMLIRContextAndExecute(
-          std::move(file), [&](MLIRContext *ctx) {
-            AsyncRT::Runtime *runtime = context->get<Runtime>();
-            assert(runtime && "caller should have set up runtime for this");
-            registerContext(*ctx, context);
-            return AsyncRT::runWithLeakCheckedRuntime(
-                testName, [&]() { return bodyFn(*runtime, ctx); });
-          })))
-    return EXIT_FAILURE;
-  return EXIT_SUCCESS;
-}
 
 namespace {
 
@@ -122,120 +107,96 @@ struct MOFConfig {
   }
 };
 
-class MOFContext {
-public:
-  /// Constructor when invoking from command line.
-  MOFContext(int &argc, char **argv)
-      : clOptions(std::make_unique<MOFDriverOptions>()),
-        parser(std::make_unique<MOFDriverCLOptions>(argc, argv, *clOptions,
-                                                    /*skipInitLLVM=*/true)) {}
+} // namespace
 
-  /// Constructor when invoking via API.
-  MOFContext() {}
-
-  ~MOFContext() {
-    if (clOptions)
-      llvm::cl::ResetCommandLineParser();
-  }
+struct MOFContext::Impl final {
+  ContextRef maxContext;
+  std::unique_ptr<MOFDriverOptions> clOptions;
+  std::unique_ptr<MOFDriverCLOptions> parser;
+  std::unique_ptr<MOFConfig> mofConfig;
 
   const CommonOptions *getCommonCLOptions() const { return clOptions.get(); }
-  const ExecutorDriverOptions *getExecutorDriverOptions() const {
-    return clOptions.get();
-  }
+
   bool getEnableMEFMetadata() const {
     return clOptions ? clOptions->enableMEFMetadata : true;
   }
   bool getSaveTemps() const { return clOptions ? clOptions->saveTemps : false; }
-
-  ErrorOrSuccess setOptions(ArrayRef<std::string> opts) {
-    if (!clOptions)
-      return Error("CL Options parser is not initialized");
-
-    // Reset all option occurrences every time this is called.
-    llvm::cl::ResetAllOptionOccurrences();
-
-    // Parse the options one at a time, so we don't have to combine the list
-    // of strings.
-    for (StringRef opt : opts) {
-      const char *optChars[] = {clOptions->getProgramName().data(), opt.data()};
-      if (!llvm::cl::ParseCommandLineOptions(std::size(optChars), optChars))
-        return Error("unable to parse argument: " + opt);
-    }
-
-    return success();
-  }
-
-  ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
-    if (!mofConfig)
-      mofConfig = std::make_unique<MOFConfig>();
-
-    for (auto &driverConfig : configs) {
-      if (auto kernelLibraryConfig =
-              dyn_cast<KernelLibraryDriverConfig>(driverConfig.get())) {
-        mofConfig->kernelLibraryPaths.push_back(
-            kernelLibraryConfig->getPath().string());
-      } else if (auto deviceConfig =
-                     dyn_cast<DeviceConfig>(driverConfig.get())) {
-        mofConfig->defaultDeviceLabel = deviceConfig->getDeviceLabel();
-        mofConfig->deviceID = deviceConfig->getDeviceID();
-        mofConfig->deviceSpec = deviceConfig->deviceSpec;
-      }
-    }
-    return success();
-  }
-
-  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
-                               MO::MoToMgpOptions &moToMgpOptions) {
-    if (clOptions)
-      clOptions->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
-    if (mofConfig)
-      mofConfig->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
-  }
-
-private:
-  std::unique_ptr<MOFDriverOptions> clOptions;
-  std::unique_ptr<MOFDriverCLOptions> parser;
-  std::unique_ptr<MOFConfig> mofConfig;
 };
 
-} // namespace
-
-void M_getVersionString(std::string *rev) { *rev = getModularVersionString(); }
-
-M::ErrorOrSuccess M_initFrameworkContext(M::FrameworkContextHandle *ctx,
-                                         int &argc, char **&argv) {
-  ctx->ctx = new MOFContext(argc, argv);
-  return success();
+/// Constructor when invoking from command line.
+MOFContext::MOFContext(ContextRef maxContext, int &argc, char **&argv)
+    : impl(std::make_unique<Impl>()) {
+  impl->maxContext = std::move(maxContext);
+  impl->clOptions = std::make_unique<MOFDriverOptions>();
+  impl->parser =
+      std::make_unique<MOFDriverCLOptions>(argc, argv, *impl->clOptions,
+                                           /*skipInitLLVM=*/true);
 }
 
-M::ErrorOrSuccess
-M_initFrameworkContextWithConfig(M::FrameworkContextHandle *ctx) {
-  ctx->ctx = new MOFContext();
-  return success();
+/// Constructor when invoking via API.
+MOFContext::MOFContext(ContextRef maxContext) : impl(std::make_unique<Impl>()) {
+  impl->maxContext = std::move(maxContext);
 }
 
-void M_freeFrameworkContext(M::FrameworkContextHandle *ctx) {
-  assert(ctx && "null framework context");
-  delete ctx->unwrap<MOFContext>();
-  ctx->ctx = nullptr;
+MOFContext::~MOFContext() {
+  if (impl->clOptions)
+    llvm::cl::ResetCommandLineParser();
 }
 
-ErrorOrSuccess M_setOptions(FrameworkContextHandle ctx,
-                            ArrayRef<std::string> opts) {
+const ExecutorDriverOptions *MOFContext::getExecutorDriverOptions() const {
+  return impl->clOptions.get();
+}
+
+ErrorOrSuccess MOFContext::setOptions(ArrayRef<std::string> opts) {
   if (opts.empty())
     return success();
 
-  return ctx.unwrap<MOFContext>()->setOptions(opts);
+  if (!impl->clOptions)
+    return Error("CL Options parser is not initialized");
+
+  // Reset all option occurrences every time this is called.
+  llvm::cl::ResetAllOptionOccurrences();
+
+  // Parse the options one at a time, so we don't have to combine the list
+  // of strings.
+  for (StringRef opt : opts) {
+    const char *optChars[] = {impl->clOptions->getProgramName().data(),
+                              opt.data()};
+    if (!llvm::cl::ParseCommandLineOptions(std::size(optChars), optChars))
+      return Error("unable to parse argument: " + opt);
+  }
+
+  return success();
 }
 
-ErrorOrSuccess M_setConfigs(FrameworkContextHandle ctx,
-                            ArrayRef<std::unique_ptr<DriverConfig>> configs) {
-  return ctx.unwrap<MOFContext>()->setConfigs(configs);
+ErrorOrSuccess
+MOFContext::setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
+  auto &mofConfig = impl->mofConfig;
+  if (!mofConfig)
+    mofConfig = std::make_unique<MOFConfig>();
+
+  for (auto &driverConfig : configs) {
+    if (auto kernelLibraryConfig =
+            dyn_cast<KernelLibraryDriverConfig>(driverConfig.get())) {
+      mofConfig->kernelLibraryPaths.push_back(
+          kernelLibraryConfig->getPath().string());
+    } else if (auto deviceConfig = dyn_cast<DeviceConfig>(driverConfig.get())) {
+      mofConfig->defaultDeviceLabel = deviceConfig->getDeviceLabel();
+      mofConfig->deviceID = deviceConfig->getDeviceID();
+      mofConfig->deviceSpec = deviceConfig->deviceSpec;
+    }
+  }
+  return success();
 }
 
-bool M_isBinary(FrameworkContextHandle ctx, M::BufferRef file,
-                FileFormat format) {
-  return false;
+void MOFContext::overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
+                                         MO::MoToMgpOptions &moToMgpOptions) {
+  if (impl->clOptions)
+    impl->clOptions->overrideLoweringOptions(mofLoweringOptions,
+                                             moToMgpOptions);
+  if (impl->mofConfig)
+    impl->mofConfig->overrideLoweringOptions(mofLoweringOptions,
+                                             moToMgpOptions);
 }
 
 /// A diagnostic handler for the graph api.
@@ -422,22 +383,19 @@ static void getMOToMGPPipelineKey(llvm::raw_ostream &os, MLIRContext *ctx,
   moToMgpPasses.printAsTextualPipeline(os);
 }
 
-M::ErrorOr<M::Buffer *>
-M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
-                            FileFormat format) {
-  auto *mofContext = ctxHandle.unwrap<MOFContext>();
-
+M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
+                                                     FileFormat format) {
   // Clone the ModuleOp so compilation doesn't have side effects on the input
   // op. Cloning should be reasonably cheap since all model weights are stored
   // as dense_resource attributes owned by the MLIRContext.
   OwningOpRef<ModuleOp> moduleOp =
       ModuleOp::getFromOpaquePointer(source).clone();
 
+  auto &maxContext = impl->maxContext;
   MLIRContext *mlirCtx = moduleOp->getContext();
-  registerContext(*mlirCtx, ctxHandle.maxContext);
+  registerContext(*mlirCtx, maxContext);
 
-  auto telemetryContext =
-      ctxHandle.maxContext->get<GML::MaxEngineTelemetryContext>();
+  auto telemetryContext = maxContext->get<GML::MaxEngineTelemetryContext>();
 
   // Install a source manager diagnostic handler to properly display MLIR
   // diagnostics that can originate from downstream compilation errors. Do this
@@ -452,10 +410,10 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
   MO::MoToMgpOptions moToMgpOptions;
-  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+  overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
 
-  mofLoweringOptions.setupContext(ctxHandle.maxContext.copy());
-  bool enableMEFMetadata = mofContext->getEnableMEFMetadata();
+  mofLoweringOptions.setupContext(maxContext.copy());
+  bool enableMEFMetadata = impl->getEnableMEFMetadata();
 
   // Enable saving intermediate IR by setting `max.temps_dir` in modular.cfg.
   // Save MO IR pre mo-to-mgp.
@@ -466,8 +424,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   // Disable caching if set or we can't find any suitable location to cache.
   if (!isModelIRCacheEnabled() || !baseCacheDirOr)
-    return convertMOToMEF(*moduleOp, moToMgpOptions, enableMEFMetadata)
-        ->release();
+    return convertMOToMEF(*moduleOp, moToMgpOptions, enableMEFMetadata);
 
   // Create the MEF cache filesystem backend.
   const std::filesystem::path &baseCacheDir = *baseCacheDirOr;
@@ -477,8 +434,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   if (mefBackendOr.isError()) {
     // We couldn't create a cache, so don't cache.
-    return convertMOToMEF(*moduleOp, moToMgpOptions, enableMEFMetadata)
-        ->release();
+    return convertMOToMEF(*moduleOp, moToMgpOptions, enableMEFMetadata);
   }
 
   // Write the MAX Graph MEF cache key:
@@ -495,7 +451,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
 
   // We also cache the flags passed to mojo for compilation.
   // If these change, the mojo kernels must be recompiled.
-  auto *compileCtx = ctxHandle.maxContext->get<KGEN::CompilationContext>();
+  auto *compileCtx = maxContext->get<KGEN::CompilationContext>();
   if (compileCtx)
     compileCtx->print(*keyBuf);
 
@@ -546,7 +502,7 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
     onHitLambda(*moduleOp);
 
     // On cache hit, directly return the MEF buffer.
-    return maybeMef->release();
+    return std::move(*maybeMef);
   }
 
   // Otherwise, on cache miss, lower and export to MEF.
@@ -565,28 +521,18 @@ M_compileToBinaryFromSource(FrameworkContextHandle ctxHandle, void *source,
   // Insert MEF buffer to cache, ignoring failure to insert.
   (void)mefCache->insertKeyedSync(std::move(keyBufHash), outputBuffer.copy());
 
-  return outputBuffer.release();
+  return outputBuffer;
 }
 
-ErrorOrSuccess M_openBinaryFile(FrameworkContextHandle ctx, M::BufferRef file,
-                                DriverHandle *modelBinaryHandle) {
-  auto mefFileOr = MEFFile::open(file->getBuffer());
-  if (mefFileOr.isError())
-    return mefFileOr.takeError();
-  *modelBinaryHandle = DriverHandle{std::move(*mefFileOr).release()};
-  return success();
-}
-
-ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
-                                       M::BufferRef file, FileFormat format) {
-  auto *mofContext = ctxHandle.unwrap<MOFContext>();
-  CompileToBinaryCtx compileCtx(ctxHandle.maxContext.copy());
+ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
+                                                  FileFormat format) {
+  CompileToBinaryCtx compileCtx(impl->maxContext.copy());
   auto telemetryContext =
-      ctxHandle.maxContext->get<GML::MaxEngineTelemetryContext>();
+      impl->maxContext->get<GML::MaxEngineTelemetryContext>();
   // Gather all the options from all the sources.
   MOFLoweringOptions mofLoweringOptions;
   MO::MoToMgpOptions moToMgpOptions;
-  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+  overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
 
   auto loweringTransform =
       [&, file = file.copy()]() mutable -> ErrorOr<BufferRef> {
@@ -614,8 +560,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     switch (format) {
     case FileFormat::kMODialect: {
       writeIntermediateFileIfRequested("mo", compileCtx.module.get(),
-                                       mofContext->getCommonCLOptions(),
-                                       file.copy());
+                                       impl->getCommonCLOptions(), file.copy());
 
       mofLoweringOptions.setupContext(compileCtx.context.copy());
 
@@ -632,8 +577,7 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
         return Error(Twine("unable to lower MO to MGP") +
                      diagnostics.formatMessage());
       writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
-                                       mofContext->getCommonCLOptions(),
-                                       file.copy());
+                                       impl->getCommonCLOptions(), file.copy());
 
       format = FileFormat::kMGPDialect;
       break;
@@ -650,107 +594,17 @@ ErrorOr<M::Buffer *> M_compileToBinary(FrameworkContextHandle ctxHandle,
     }
 
     return MO::convertMGPToMEF(compileCtx.module.get(),
-                               mofContext->getEnableMEFMetadata());
+                               impl->getEnableMEFMetadata());
   };
 
   // If kernel paths are not empty then we'd need to inspect them to get the
   // key, so default to not caching at this time.
   if (!moToMgpOptions.kernelLibraryPaths.empty() || !isModelIRCacheEnabled()) {
-    auto bufOr = loweringTransform();
-    if (bufOr)
-      return bufOr.takeError();
-    M::BufferRef outputBuffer = bufOr.takeValue();
-    return outputBuffer.release();
+    return loweringTransform();
   }
 
   WriteableBufferRef keyBuffer =
       makeCacheKey(std::move(file), mofLoweringOptions, moToMgpOptions);
 
-  auto bufOr =
-      M::cacheMEFTransform("mof", loweringTransform, std::move(keyBuffer));
-  if (bufOr.isError())
-    return bufOr.takeError();
-  M::BufferRef outputBuffer = bufOr.takeValue();
-  return outputBuffer.release();
-}
-
-void M_closeBinaryFile(DriverHandle modelBinaryHandle) {
-  // We're going to use RCRef to destroy the MEFFile handle for simplicity's
-  // sake. We take the RCRef and then immediately destroy it, which should
-  // essentially just decrement the refcount to 0 and destroy the MEFFile.
-  (void)takeRCRef(modelBinaryHandle.unwrap<MEFFile>());
-}
-
-ErrorOrSuccess M_checkExpectedContents(FrameworkContextHandle ctx,
-                                       DriverHandle modelBinaryHandle) {
-  auto expectedFramework =
-      CompiledFrameworkLabel{CompiledFrameworkLabel::kModularModel};
-  auto actualFramework =
-      modelBinaryHandle.unwrap<MEFFile>()->sniffFileContents();
-  if (actualFramework != expectedFramework)
-    return Error(Twine("expected ") + expectedFramework.getAsString() +
-                 ", found " + actualFramework.getAsString() + " instead");
-  return success();
-}
-
-void M_sniffBinaryFileContents(FrameworkContextHandle ctx,
-                               DriverHandle modelBinaryHandle,
-                               std::string &str) {
-  auto mefContents = modelBinaryHandle.unwrap<MEFFile>()->sniffFileContents();
-  str = std::string("input is a MEF file containing a ") +
-        mefContents.getAsString();
-}
-
-ErrorOrSuccess M_loadModels(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
-                            DriverHandle handle,
-                            std::unique_ptr<ModelCollection> &modelsPtr) {
-  auto modelsPtrOr = MO::loadMGPMEFFile(copyRCRef(handle.unwrap<MEFFile>()));
-  if (modelsPtrOr.isError())
-    return modelsPtrOr.takeError();
-  modelsPtr = std::move(*modelsPtrOr);
-  return success();
-}
-
-int M_runBinaryFile(FrameworkContextHandle ctx, M::BufferRef fileBuffer,
-                    DriverHandle modelBinaryHandle) {
-  auto *mofContext = ctx.unwrap<MOFContext>();
-  MOFLoweringOptions mofLoweringOptions;
-  MO::MoToMgpOptions moToMgpOptions;
-  mofContext->overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
-  const ExecutorDriverOptions *driverOptions =
-      mofContext->getExecutorDriverOptions();
-  assert(driverOptions && "cannot run a binary file via the API");
-
-  std::unique_ptr<ModelCollection> models;
-  if (auto err =
-          M_loadModels(ctx, fileBuffer.copy(), modelBinaryHandle, models)) {
-    return driverOptions->reportError("unable to load models: " +
-                                      Twine(err.getError()));
-  }
-
-  auto runModels = [&, context = ctx.maxContext.copy()](
-                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
-    mofLoweringOptions.setupContext(context);
-    for (const auto &model : (*models)) {
-      if (failed(runModel(ctx, model.get(), runtime, *driverOptions))) {
-        if (driverOptions->stopOnFirstError())
-          return failure();
-      }
-    }
-    return success();
-  };
-
-  // Run it.
-  std::unique_ptr<llvm::MemoryBuffer> aliasedBuffer =
-      llvm::MemoryBuffer::getMemBuffer(fileBuffer->getMemBufferRef(),
-                                       /*RequiresNullTerminator=*/
-                                       false);
-
-  return setupMLIRAndRun(ctx.maxContext.copy(), *driverOptions, "Modular model",
-                         std::move(aliasedBuffer), runModels);
-}
-
-M::ErrorOr<M::Buffer *> M_openPath(FrameworkContextHandle ctx,
-                                   const std::filesystem::path &path) {
-  llvm_unreachable("Not implemented");
+  return M::cacheMEFTransform("mof", loweringTransform, std::move(keyBuffer));
 }

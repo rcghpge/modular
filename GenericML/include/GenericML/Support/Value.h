@@ -106,9 +106,10 @@ bool operator<(const Variant &lhs, const Variant &rhs);
 raw_ostream &operator<<(raw_ostream &os, const Variant &variant);
 std::ostream &operator<<(std::ostream &os, const Variant &variant);
 
-/// This prints the (nested) values to stdout. Leaf node tensors are printed
-/// with `Kernels::printTensor`.
-ErrorOrSuccess printGenericValue(const AsyncRT::AnyAsyncValueRef &value,
+/// This prints the (nested) values to the provided ostream. Leaf node tensors
+/// are printed with `Kernels::printTensor`.
+ErrorOrSuccess printGenericValue(raw_ostream &os,
+                                 const AsyncRT::AnyAsyncValueRef &value,
                                  ResultOutputStyle style, unsigned precision);
 
 /// Returns a string representation of an `AnyAsyncValueRef` referencing

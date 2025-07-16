@@ -19,6 +19,7 @@ modular_cc_library(
         "//AsyncRT:DeviceContext",
         "//GenericML:CommonDriver",
         "//GenericML:DeviceDriver.headers",
+        "//GenericML:FrameworkFrontend.headers",
         "//Support:Telemetry",
         "//Support:Threading",
     ],
@@ -48,21 +49,51 @@ filegroup(
 )
 
 modular_cc_library(
+    name = "MOFOptions",
+    srcs = glob(["lib/MOF/Options/**/*.cpp"]),
+    hdrs = glob(["include/SDK/MOF/Options/**/*.h"]),
+    deps = [
+        "//Support:ADT",  # TODO: Remove this when ENGALL-255 resolved.
+        "//Support:Base",
+        "//Support:ML",
+    ],
+)
+
+modular_cc_library(
+    name = "MOFDriver",
+    srcs = glob(["lib/MOF/Driver/**/*.cpp"]),
+    hdrs = [
+        "include/SDK/MOF/InitAllDialects.h",
+    ] + glob([
+        "include/SDK/MOF/Driver/**/*.h",
+    ]),
+    deps = [
+        "//GenericML:GraphCompiler",
+        "//Support:Base",
+        "//Support:Buffer",
+    ],
+)
+
+modular_cc_library(
     name = "modular-framework-common",
     srcs = glob([
         "lib/API/c/**/*.cpp",
-        "lib/MOF/**/*.cpp",
+        "lib/MOF/API/**/*.cpp",
+        "lib/MOF/GraphBuilder/**/*.cpp",
     ]),
     hdrs = glob([
         "include/SDK/API/**/*.h",
-        "include/SDK/MOF/**/*.h",
+        "include/SDK/MOF/API/**/*.h",
+        "include/SDK/MOF/GraphBuilder/**/*.h",
     ]),
     deps = [
+        ":MOFDriver",
         ":MaxAPI",
         "//GenericML:CommonDriver",
         "//GenericML:CompileDriver",
         "//GenericML:DeviceDriver",
         "//GenericML:ExecutionDriver",
+        "//GenericML:FrameworkFrontend",
         "//GenericML:GraphCompiler",
         "//GenericML:MEFModel",
         "//GenericML:MONameInputDimsPass",

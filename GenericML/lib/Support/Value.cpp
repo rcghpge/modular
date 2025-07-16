@@ -117,16 +117,16 @@ std::ostream &M::GML::operator<<(std::ostream &os, const Variant &variant) {
   return os;
 }
 
-ErrorOrSuccess M::GML::printGenericValue(const AsyncRT::AnyAsyncValueRef &value,
+ErrorOrSuccess M::GML::printGenericValue(raw_ostream &os,
+                                         const AsyncRT::AnyAsyncValueRef &value,
                                          ResultOutputStyle style,
                                          unsigned precision) {
-  auto &os = llvm::outs();
   if (List *list = dyn_cast<List>(value)) {
     size_t size = list->getElements().size();
     os << "List[";
     for (auto [index, value] : llvm::enumerate(list->getElements())) {
       ErrorOrSuccess errorOr =
-          M::GML::printGenericValue(value.getValue(), style, precision);
+          M::GML::printGenericValue(os, value.getValue(), style, precision);
       if (errorOr.isError())
         return errorOr;
       if (index < size - 1)
@@ -138,7 +138,7 @@ ErrorOrSuccess M::GML::printGenericValue(const AsyncRT::AnyAsyncValueRef &value,
     os << "Tuple[";
     for (auto [index, value] : llvm::enumerate(tuple->getElements())) {
       ErrorOrSuccess errorOr =
-          M::GML::printGenericValue(value.getValue(), style, precision);
+          M::GML::printGenericValue(os, value.getValue(), style, precision);
       if (errorOr.isError())
         return errorOr;
       if (index < size - 1)
@@ -150,8 +150,8 @@ ErrorOrSuccess M::GML::printGenericValue(const AsyncRT::AnyAsyncValueRef &value,
     os << "Dict{";
     for (auto [index, value] : llvm::enumerate(dict->getElements())) {
       os << value.first << ": ";
-      ErrorOrSuccess errorOr =
-          M::GML::printGenericValue(value.second.getValue(), style, precision);
+      ErrorOrSuccess errorOr = M::GML::printGenericValue(
+          os, value.second.getValue(), style, precision);
       if (errorOr.isError())
         return errorOr;
       if (index < size - 1)

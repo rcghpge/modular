@@ -666,15 +666,10 @@ int main(int argc, char **argv) {
                                               state, std::move(loc));
 
   // Run with leak checking.
-  if (failed(clOptions.configureMLIRContextAndExecute(
-          std::move(inputFile), [&](MLIRContext *ctx) {
-            return AsyncRT::runWithLeakCheckedRuntime(
-                "modular-api-executor", [&]() {
-                  return runModel(ctx, model.get(),
-                                  *(*ctxOr)->get<AsyncRT::Runtime>(),
-                                  clOptions);
-                });
-          })))
+  if (failed(AsyncRT::runWithLeakCheckedRuntime("modular-api-executor", [&]() {
+        return runModel(model.get(), *(*ctxOr)->get<AsyncRT::Runtime>(),
+                        clOptions);
+      })))
     return EXIT_FAILURE;
   return EXIT_SUCCESS;
 }
