@@ -121,15 +121,13 @@ modular_nanobind_library(
     name = "ModularFrameworkPython",
     srcs = glob(["lib/API/python/lib/Engine/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
-    nanobind_deps = [
-        "//:MLIRBindingsPythonHeaders",
-        "//Support:CPythonNanobind",
-        "//SDK:DriverPython",
-        "//SDK:DLPackPython",
-    ],
     tags = ["no-clang-tidy-headers"],
     deps = [
         ":max",
+        "//:MLIRBindingsPythonHeaders",
+        "//SDK:DLPackPython",
+        "//SDK:DriverPython",
+        "//Support:CPythonNanobind",
     ],
 )
 
@@ -137,11 +135,9 @@ modular_nanobind_library(
     name = "DriverPython",
     srcs = glob(["lib/API/python/lib/Driver/*.cpp"]),
     hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
-    nanobind_deps = [
-        "//SDK:DLPackPython",
-    ],
     deps = [
         ":max",
+        "//SDK:DLPackPython",
     ],
 )
 
@@ -149,11 +145,9 @@ modular_nanobind_library(
     name = "GraphPython",
     srcs = glob(["lib/API/python/lib/Graph/*.cpp"]),
     hdrs = glob(["include/SDK/GraphAPI/python/*.h"]),
-    nanobind_deps = [
-        "//:MLIRBindingsPythonHeaders",
-    ],
     deps = [
         ":max",
+        "//:MLIRBindingsPythonHeaders",
     ],
 )
 
