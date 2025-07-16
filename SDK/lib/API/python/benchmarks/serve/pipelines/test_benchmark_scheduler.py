@@ -36,9 +36,7 @@ def test_stream_responses_to_frontend(benchmark, zmq_ctx) -> None:  # noqa: ANN0
     config = TokenGenerationSchedulerConfig(
         max_batch_size_tg=4,
         max_forward_steps_tg=1,
-        target_tokens_per_batch_tg=None,
         max_batch_size_ce=4,
-        max_forward_steps_ce=1,
         target_tokens_per_batch_ce=1,
     )
 
