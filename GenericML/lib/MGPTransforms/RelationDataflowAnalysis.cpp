@@ -77,7 +77,7 @@ std::pair<ForwardsRelationDataflowAnalysis::Set,
 ForwardsRelationDataflowAnalysis::splitByScope(const Set &set, Block *block) {
   Set within = index->emptySet();
   Set without = index->emptySet();
-  for (Value value : index->setToVector(set)) {
+  for (Value value : index->values(set)) {
     if (value.getDefiningOp() && block->getParent()->isAncestor(
                                      value.getDefiningOp()->getParentRegion()))
       index->addToSet(within, value);
@@ -366,7 +366,7 @@ std::pair<BackwardsRelationDataflowAnalysis::Set,
 BackwardsRelationDataflowAnalysis::splitByScope(const Set &set, Block *block) {
   Set within = index->emptySet();
   Set without = index->emptySet();
-  for (const OpOperand *operand : index->setToVector(set)) {
+  for (const OpOperand *operand : index->values(set)) {
     if (operand->get().getDefiningOp() &&
         block->getParent()->isAncestor(
             operand->get().getDefiningOp()->getParentRegion()))

@@ -121,7 +121,7 @@ class SimplifyChainsPass
       dependencies.simplify(valuesSet);
       SmallVector<Value> values = valueIndex.setToVector(valuesSet);
       if (values.empty() &&
-          dyn_cast<GRT::ChainCreateOp>(chainCreateOp.getOperation())) {
+          isa<GRT::ChainCreateOp>(chainCreateOp.getOperation())) {
         // Instead of creating a fresh chain, try to reuse the 'execute'
         // block's %arg0 if it is also always ready.
         Value replacementValue =

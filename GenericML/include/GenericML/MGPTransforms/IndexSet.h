@@ -107,13 +107,17 @@ public:
     return set;
   }
 
+  /// Iterate over the values in the index set.
+  auto values(const Set &set) const {
+    return llvm::map_range(set.set_bits(),
+                           [this](size_t index) { return allVs[index]; });
+  }
+
   /// Returns set as vector of Vs. Entries will always be in index order.
   SmallVector<V> setToVector(const Set &set) const {
     SmallVector<V> result;
     result.reserve(set.count());
-    for (auto itr = set.set_bits_begin(), e = set.set_bits_end(); itr != e;
-         ++itr)
-      result.emplace_back(allVs[*itr]);
+    llvm::append_range(result, values(set));
     return result;
   }
 
@@ -201,9 +205,8 @@ public:
   [[nodiscard]] Set closeSetUnderEquivalence(const Equivalence &equivalence,
                                              const Set &set) const {
     Set result(set.size());
-    for (auto setItr = set.set_bits_begin(), e = set.set_bits_end();
-         setItr != e; ++setItr) {
-      for (auto equivItr = equivalence.findLeader(*setItr);
+    for (auto index : set.set_bits()) {
+      for (auto equivItr = equivalence.findLeader(index);
            equivItr != equivalence.member_end(); ++equivItr)
         result.set(*equivItr);
     }
@@ -214,9 +217,8 @@ public:
   [[nodiscard]] Set toCanonicalForm(const Equivalence &equivalence,
                                     const Set &set) const {
     Set result(set.size());
-    for (auto itr = set.set_bits_begin(), e = set.set_bits_end(); itr != e;
-         ++itr)
-      result.set(equivalence.getLeaderValue(*itr));
+    for (auto index : set.set_bits())
+      result.set(equivalence.getLeaderValue(index));
     return result;
   }
 

@@ -355,7 +355,7 @@ public:
   void addRelationToEquivalence(Equivalence &equivalence,
                                 const Relation &relation) const {
     for (const auto &[lhs, set] : relation) {
-      for (auto rhs : index->setToVector(set))
+      for (auto rhs : index->values(set))
         index->setEquivalent(equivalence, lhs, rhs);
     }
   }

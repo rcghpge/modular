@@ -110,11 +110,10 @@ void AsyncDataflowDependencies::simplify(ValueSet &values) const {
   values.reset(getAlwaysReady());
 
   // For every value...
-  for (auto itr = values.set_bits_begin(), e = values.set_bits_end(); itr != e;
-       ++itr) {
+  for (auto value : valueAnalysis.index->values(values)) {
     // No need to also wait for values which are known to be ready if the
     // current value is ready.
-    values.reset(strictUpwardsImpliesReadySet(valueAnalysis.index->getV(*itr)));
+    values.reset(strictUpwardsImpliesReadySet(value));
   }
 }
 
@@ -491,7 +490,7 @@ AsyncDataflowDependencies::runsLaterSet(Operation *earlierOp) const {
     ValueSet set = downwardsImpliesReadySet(indicatingResult);
     // Any use of a value in that set as a gating operand forces the
     // using operation to BEGIN only after earlierOp has FINISHED.
-    for (Value user : valueAnalysis.index->setToVector(set)) {
+    for (Value user : valueAnalysis.index->values(set)) {
       for (OpOperand &opOperand : user.getUses()) {
         if (opOperand.getOwner()->getNumResults() == 0) {
           // Ignore ops with no results since we can't track them.
@@ -601,7 +600,7 @@ AsyncDataflowDependencies::getEffectiveOwner(const OpOperand *opOperand) const {
 
 bool AsyncDataflowDependencies::allUsesAreByOperationsInSet(
     const ValueSet &values, const OperationSet &ops) const {
-  for (Value value : valueAnalysis.index->setToVector(values)) {
+  for (Value value : valueAnalysis.index->values(values)) {
     for (OpOperand &opOperand : value.getUses()) {
       Operation *owningOp = getEffectiveOwner(&opOperand);
       if (!owningOp) {
@@ -693,7 +692,7 @@ AsyncDataflowDependencies::getEquivalenceAtOp(Operation *op) const {
   for (const auto &[lhs, set] : maybeSameAsRelation) {
     if (valueAnalysis.index->setContains(loopResults, lhs))
       continue;
-    for (auto rhs : valueAnalysis.index->setToVector(set)) {
+    for (auto rhs : valueAnalysis.index->values(set)) {
       if (valueAnalysis.index->setContains(loopArgs, lhs) &&
           valueAnalysis.index->setContains(freshResultValues, rhs))
         continue;
@@ -726,8 +725,7 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
   // Collect the candidate SSA values by looking at all the operands of
   // operations in earlierOps.
   ValueSet candidates = valueAnalysis.index->emptySet();
-  for (Operation *earlierOp :
-       operationAnalysis.index->setToVector(earlierOps)) {
+  for (Operation *earlierOp : operationAnalysis.index->values(earlierOps)) {
     for (Value value : earlierOp->getOperands())
       valueAnalysis.index->addToSet(candidates, value);
   }
@@ -822,7 +820,7 @@ void AsyncDataflowDependencies::setupExclusive() {
     // never created in the first place) when op BEGINS execution.
     ValueSet consumedSet = getFullyConsumedWhenOpBegins(op);
 
-    for (Value consumedValue : valueAnalysis.index->setToVector(consumedSet)) {
+    for (Value consumedValue : valueAnalysis.index->values(consumedSet)) {
       if (consumedValue.getDefiningOp() &&
           !exclusiveOpsFilter(consumedValue.getDefiningOp())) {
         // The consumed value is the result of an op which is not of interest.
@@ -834,8 +832,9 @@ void AsyncDataflowDependencies::setupExclusive() {
     // the indicating result itself) can't overlap with any value in
     // consumedSet.
     for (Value indicatingResult : getIndicatingResults(op)) {
-      for (Value alsoReadyIndicatingResult : valueAnalysis.index->setToVector(
-               downwardsImpliesReadySet(indicatingResult))) {
+      auto downward = downwardsImpliesReadySet(indicatingResult);
+      for (Value alsoReadyIndicatingResult :
+           valueAnalysis.index->values(downward)) {
         if (alsoReadyIndicatingResult.getDefiningOp() &&
             !exclusiveOpsFilter(alsoReadyIndicatingResult.getDefiningOp())) {
           // Also-ready value is the result of an op which is not of interest.
@@ -888,7 +887,7 @@ void AsyncDataflowDependencies::setupExclusive() {
       continue;
     }
 
-    for (Operation *disjointOp : operationAnalysis.index->setToVector(
+    for (Operation *disjointOp : operationAnalysis.index->values(
              operationAnalysis.getEntries(structurallyAtMostOneRelation, op))) {
       if (!exclusiveOpsFilter(disjointOp)) {
         // The disjoint op is not of interest.

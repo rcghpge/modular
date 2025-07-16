@@ -673,10 +673,10 @@ class ExecInvariantCodeMotionPass
   void rewrite(const std::pair<OperationSet, OperationSet> &sets) {
     // Set up to use the analysis results.
     DenseSet<Operation *> unliftableOps;
-    for (Operation *op : operationIndex->setToVector(sets.first))
+    for (Operation *op : operationIndex->values(sets.first))
       unliftableOps.insert(op);
     DenseSet<Operation *> cloneOps;
-    for (Operation *op : operationIndex->setToVector(sets.second))
+    for (Operation *op : operationIndex->values(sets.second))
       cloneOps.insert(op);
 
     // Is operand directly used by an unliftable op?
