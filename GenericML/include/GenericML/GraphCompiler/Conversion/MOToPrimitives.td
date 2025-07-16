@@ -98,7 +98,7 @@ def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
   ];
 }
 
-def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "ModuleOp"> {
+def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "MGP::ModelOp"> {
   let summary = "Fuse sequences of GenericCompiledRegionOp";
   let description = [{}];
 

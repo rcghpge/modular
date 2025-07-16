@@ -86,31 +86,29 @@ static inline bool isComputationallySignificant(Operation *op) {
 // down into a region until nothing else can be fused. allowDuplication controls
 // if we allow src ops to duplicate into many dst ops.
 template <bool allowDuplication>
-static void doSourceDestinationSequenceFusion(ModuleOp module) {
+static void doSourceDestinationSequenceFusion(MGP::ModelOp model) {
   auto canDuplicate = [](Operation *op) -> bool { return allowDuplication; };
-  for (auto model : module.getOps<MGP::ModelOp>()) {
-    for (auto &region : model->getRegions()) {
-      MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
-      auto subgraphs = MOGG::sourceDestinationSequenceFusionAnalysis(
-          region, parametricTopologyAnalysis, isaGenericCompiledRegionOp,
-          areCompatibleForFusion<true, allowDuplication>, canDuplicate);
+  for (auto &region : model->getRegions()) {
+    MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
+    auto subgraphs = MOGG::sourceDestinationSequenceFusionAnalysis(
+        region, parametricTopologyAnalysis, isaGenericCompiledRegionOp,
+        areCompatibleForFusion<true, allowDuplication>, canDuplicate);
 
-      for (auto &subgraph : subgraphs)
-        parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
+    for (auto &subgraph : subgraphs)
+      parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
 
-      mlir::SetVector<Operation *> opsToErase;
-      for (auto &subgraph : subgraphs)
-        opsToErase.insert(subgraph.begin(), subgraph.end());
-      SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
-                                                 opsToErase.end());
-      parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
+    mlir::SetVector<Operation *> opsToErase;
+    for (auto &subgraph : subgraphs)
+      opsToErase.insert(subgraph.begin(), subgraph.end());
+    SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
+                                               opsToErase.end());
+    parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
 
-      for (auto &subgraph : subgraphs)
-        fuseCompiledRegionsAndReplaceUses<allowDuplication>(subgraph);
+    for (auto &subgraph : subgraphs)
+      fuseCompiledRegionsAndReplaceUses<allowDuplication>(subgraph);
 
-      for (auto op : llvm::reverse(opsToEraseOrdered))
-        op->erase();
-    }
+    for (auto op : llvm::reverse(opsToEraseOrdered))
+      op->erase();
   }
 }
 
@@ -118,29 +116,27 @@ static void doSourceDestinationSequenceFusion(ModuleOp module) {
 // graph edges. It produces kernels with multiple outputs. It is configured to
 // maintain parallelism of computationally expensive operations.
 [[maybe_unused]] static void
-doTransitiveDependencySequenceFusion(ModuleOp module) {
-  for (auto model : module.getOps<MGP::ModelOp>()) {
-    for (auto &region : model->getRegions()) {
-      MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
-      auto subgraphs = MOGG::transitiveDependencySequenceFusionAnalysis(
-          region, parametricTopologyAnalysis, isFusibleIntoOther,
-          areCompatibleForFusion<false>, isComputationallySignificant, true);
+doTransitiveDependencySequenceFusion(MGP::ModelOp model) {
+  for (auto &region : model->getRegions()) {
+    MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
+    auto subgraphs = MOGG::transitiveDependencySequenceFusionAnalysis(
+        region, parametricTopologyAnalysis, isFusibleIntoOther,
+        areCompatibleForFusion<false>, isComputationallySignificant, true);
 
-      for (auto &subgraph : subgraphs)
-        parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
+    for (auto &subgraph : subgraphs)
+      parametricTopologyAnalysis.computeTopologicalSorting(subgraph);
 
-      mlir::SetVector<Operation *> opsToErase;
-      for (auto &subgraph : subgraphs)
-        opsToErase.insert(subgraph.begin(), subgraph.end());
-      SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
-                                                 opsToErase.end());
-      parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
-      for (auto &subgraph : subgraphs)
-        fuseCompiledRegionsAndReplaceUses<false>(subgraph);
+    mlir::SetVector<Operation *> opsToErase;
+    for (auto &subgraph : subgraphs)
+      opsToErase.insert(subgraph.begin(), subgraph.end());
+    SmallVector<Operation *> opsToEraseOrdered(opsToErase.begin(),
+                                               opsToErase.end());
+    parametricTopologyAnalysis.computeTopologicalSorting(opsToEraseOrdered);
+    for (auto &subgraph : subgraphs)
+      fuseCompiledRegionsAndReplaceUses<false>(subgraph);
 
-      for (auto op : llvm::reverse(opsToEraseOrdered))
-        op->erase();
-    }
+    for (auto op : llvm::reverse(opsToEraseOrdered))
+      op->erase();
   }
 }
 
@@ -150,16 +146,16 @@ struct FuseGenericCompiledRegions
   using FuseGenericCompiledRegionsBase::FuseGenericCompiledRegionsBase;
 
   void runOnOperation() override {
-    ModuleOp module = getOperation();
+    MGP::ModelOp model = getOperation();
     // TODO(GEX-784): NOTE: all generic regions should not allow duplication.
     // Fuse in any op that can be duplicated.
-    doSourceDestinationSequenceFusion<true>(module);
+    doSourceDestinationSequenceFusion<true>(model);
 
     // Fuse in any op that can't be duplicated (must have one user).
-    doSourceDestinationSequenceFusion<false>(module);
+    doSourceDestinationSequenceFusion<false>(model);
 
     if (enableTransitiveFusion)
-      doTransitiveDependencySequenceFusion(module);
+      doTransitiveDependencySequenceFusion(model);
   }
 };
 
