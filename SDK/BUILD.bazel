@@ -230,6 +230,7 @@ cc_autolink_deps(
     name = "deps",
     deps = [
         ":modular-framework-common",
+        "//GenericML:SafeTensor",
     ],
 )
 
