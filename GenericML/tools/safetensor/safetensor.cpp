@@ -9,13 +9,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/SafeTensor.h"
+#include "GenericML/Support/SafeTensor/SafeTensor.h"
+#include "GenericML/DeviceDriver/Driver.h"
 #include "Support/CommandLine.h"
 #include "Support/CommonCLOptions.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/ToolOutputFile.h"
+#include "Support/RCRef.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include <filesystem>
 
 using namespace M;
@@ -63,7 +63,11 @@ int main(int argc, char **argv) {
   if (opts.inputFilename == "-")
     return reportError("stdin not supported, please specify an input file");
 
-  ErrorOr<SafeTensor> safeTensorOr = SafeTensor::get(opts.inputFilename);
+  auto device = M::Driver::makeCPUDevice();
+  if (device.isError())
+    return reportError(device.getError());
+  ErrorOr<SafeTensor> safeTensorOr = SafeTensor::get(
+      opts.inputFilename, RCRef<M::Driver::Device>::copy(&(**device)));
   if (safeTensorOr.isError())
     return reportError(safeTensorOr.getError());
 
@@ -78,6 +82,11 @@ int main(int argc, char **argv) {
       return reportError(info.getError());
 
     llvm::outs() << info->toJSON() << "\n";
+  } else {
+    for (const auto &[key, value] : safeTensor.getTensorInfo()) {
+      llvm::outs() << "tensor name: " << key << '\n';
+      llvm::outs() << "value: " << value.toJSON() << '\n';
+    }
   }
 
   return EXIT_SUCCESS;

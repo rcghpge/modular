@@ -4,8 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/SafeTensor.h"
+#include "GenericML/Support/SafeTensor/SafeTensor.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "GenericML/DeviceDriver/Driver.h"
 #include "Support/Preprocessor.h"
 
 using namespace M;
@@ -15,6 +16,8 @@ static constexpr size_t kHeaderMaxSize = 100'000'000;
 
 #define DEBUG_TYPE "safetensor"
 
+// f8e4m3 follows HF's `safetensor` implementation,
+// this maps f8e4m3 to f8e4m3fn intentionally.
 #define TYPE_MAPPING(X)                                                        \
   X(kBool, BOOL)                                                               \
   X(ui8, U8)                                                                   \
@@ -25,7 +28,7 @@ static constexpr size_t kHeaderMaxSize = 100'000'000;
   X(si16, I16)                                                                 \
   X(si32, I32)                                                                 \
   X(si64, I64)                                                                 \
-  X(f8e4m3, F8_E4M3)                                                           \
+  X(f8e4m3fn, F8_E4M3)                                                         \
   X(f8e5m2, F8_E5M2)                                                           \
   X(f16, F16)                                                                  \
   X(f32, F32)                                                                  \
@@ -136,9 +139,12 @@ llvm::json::Value SafeTensor::TensorInfo::toJSON() const {
 //===----------------------------------------------------------------------===//
 
 /// Load and parse a SafeTensor file from the given data.
-ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
+ErrorOr<SafeTensor>
+SafeTensor::get(RCRef<Driver::Device> device,
+                AsyncRT::DeviceBufferRef parentBuffer,
+                std::optional<llvm::sys::fs::mapped_file_region> mmap) {
   // Get the buffer size.
-  size_t bufferSize = buffer->getBufferSize();
+  size_t bufferSize = parentBuffer->byteSize();
 
   // Check if the buffer size is smaller than the header binary size (8
   // bytes).
@@ -150,7 +156,7 @@ ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
   uint64_t headerLength =
       llvm::support::endian::read<uint64_t, llvm::endianness::little,
                                   llvm::support::unaligned>(
-          buffer->getBufferStart());
+          parentBuffer->ptr());
 
   LLVM_DEBUG(llvm::outs() << "headerLength = " << headerLength << "\n");
 
@@ -165,7 +171,8 @@ ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
 
   // Extract the JSON string from the buffer, starting after the header binary
   // size, with the length of headerLength.
-  StringRef jsonString(buffer->getBufferStart() + kHeaderBinarySize,
+  StringRef jsonString(reinterpret_cast<const char *>(parentBuffer->ptr()) +
+                           kHeaderBinarySize,
                        headerLength);
 
   // If the buffer does not start with `{` then it's not a valid json.
@@ -207,26 +214,30 @@ ErrorOr<SafeTensor> SafeTensor::get(BufferRef buffer) {
       return Error(Twine("duplicate tensor name: ") + key.str());
   }
 
-  return SafeTensor(std::move(buffer), std::move(metadata),
-                    std::move(tensorInfo));
+  SafeTensor result(headerLength, std::move(device), std::move(parentBuffer),
+                    std::move(metadata), std::move(tensorInfo));
+  if (mmap)
+    result.mmap =
+        std::make_shared<llvm::sys::fs::mapped_file_region>(std::move(*mmap));
+
+  return result;
 }
 
 /// Load and parse a SafeTensor file from the given path.
-ErrorOr<SafeTensor> SafeTensor::get(const std::filesystem::path &path) {
-  // Check if the file exists at the given path.
-  std::error_code ec;
-  if (!std::filesystem::exists(path, ec))
-    return Error::fromErrorCode(ec, "file does not exist");
+ErrorOr<SafeTensor> SafeTensor::get(const std::filesystem::path &path,
+                                    RCRef<Driver::Device> device) {
+  // TODO: On the CPU path, can read just once.
+  // On the GPU path, read the file twice: first for the metadata (tensor
+  // names, etc) and second to send the data to the GPU.
 
-  // Load the file into a buffer.
-  ErrorOr<BufferRef> buffer = Buffer::getFile(path);
-  if (buffer.isError())
-    return buffer.takeError();
+  auto result = device->memmapFile(path);
+  if (result)
+    return result.takeError();
 
-  return get(*buffer);
+  return get(std::move(device), std::move(result->first),
+             std::move(result->second));
 }
 
-/// Retrieve metadata for a specific tensor by name.
 ErrorOr<SafeTensor::TensorInfo>
 SafeTensor::getTensorInfo(StringRef name) const {
   auto it = tensorInfo.find(name.str());
@@ -237,18 +248,38 @@ SafeTensor::getTensorInfo(StringRef name) const {
   return it->second;
 }
 
+/// Gets a tensor from given info.
+std::shared_ptr<Driver::DeviceMemory>
+SafeTensor::getTensorMemory(const TensorInfo &info) const {
+  auto subBuffer = parentBuffer->createSubBuffer(
+      8 + headerLength + info.offsets.first, info.getSizeInBytes());
+  assert(!subBuffer.isError() &&
+         "sub-buffer dimensions should already have been validated");
+  auto result = std::make_shared<Driver::DeviceMemory>(
+      device, std::move(*subBuffer), TensorSpec{info.shape, info.dtype});
+
+  // If the memory is memmap'ed, shared ownership of the RAII memmap object
+  // with the new tensor so it can outlive this object.
+  if (mmap)
+    result->setDestructorFn(
+        [mmap = mmap](void *, const TensorSpec &) { (void)mmap; });
+
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // SafeTensorBundle
 //===----------------------------------------------------------------------===//
 
 ErrorOr<SafeTensorBundle>
-SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths) {
+SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths,
+                      RCRef<Driver::Device> ctx) {
   DenseMap<std::string, size_t> tensorNameToIndex;
   SmallVector<SafeTensor> files;
   files.reserve(files.size());
 
   for (const auto &[i, path] : llvm::enumerate(paths)) {
-    auto safeTensorOr = SafeTensor::get(path);
+    auto safeTensorOr = SafeTensor::get(path, ctx);
     if (safeTensorOr.isError())
       return safeTensorOr.takeError();
     for (const auto &[name, tensorInfo] : safeTensorOr->getTensorInfo())
@@ -259,19 +290,19 @@ SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths) {
   return SafeTensorBundle(std::move(tensorNameToIndex), std::move(files));
 }
 
-ErrorOr<BufferRef>
-SafeTensorBundle::getTensorData(StringRef name,
-                                AsyncRT::DeviceContextRef device) const {
+ErrorOr<std::shared_ptr<Driver::DeviceMemory>>
+SafeTensorBundle::getTensorMemory(StringRef name) const {
   auto it = tensorNameToIndex.find(name.str());
   if (it == tensorNameToIndex.end())
     return Error(Twine("the tensor named '") + name +
                  "' was not found in the safetensor bundle");
 
-  SafeTensor file = files[it->second];
-  ErrorOr<SafeTensor::TensorInfo> tensorInfo = file.getTensorInfo(name);
-  if (tensorInfo.isError())
-    return tensorInfo.takeError();
+  const SafeTensor &file = files[it->second];
 
-  return Buffer::getAlias(file.getBuffer(), tensorInfo->offsets.first,
-                          tensorInfo->getSizeInBytes());
+  // Minor todo: see if we can avoid this .str()
+  auto it2 = file.getTensorInfo().find(name.str());
+
+  assert(it2 != file.getTensorInfo().end());
+
+  return file.getTensorMemory(it2->second);
 }

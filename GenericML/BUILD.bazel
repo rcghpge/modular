@@ -1498,3 +1498,15 @@ modular_shared_library(
         "@llvm-project//llvm:Support",
     ],
 )
+
+modular_cc_library(
+    name = "SafeTensor",
+    srcs = ["lib/Support/SafeTensor/SafeTensor.cpp"],
+    hdrs = ["include/GenericML/Support/SafeTensor/SafeTensor.h"],
+    deps = [
+        ":DeviceDriver",
+        "//AsyncRT:DeviceContext",
+        "//Support:Base",
+        "//Support:ML",
+    ],
+)

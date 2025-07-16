@@ -4,17 +4,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/SafeTensor.h"
-#include "Support/Buffer.h"
-#include "llvm/ADT/StringRef.h"
+#include "GenericML/Support/SafeTensor/SafeTensor.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "GenericML/DeviceDriver/Driver.h"
 
 #include "gtest/gtest.h"
 
 using namespace M;
 
 template <size_t N>
-BufferRef getDeserializedBuffer(const char (&data)[N]) {
-  return Buffer::get(StringRef(data, N));
+AsyncRT::DeviceBufferRef
+getDeserializedBuffer(const char (&data)[N],
+                      const RCRef<M::Driver::Device> &device) {
+  // There's got to be an easier way to do this
+  auto ctx = device->tmpGetDeviceContext();
+  auto buffer = ctx->createBuffer(N);
+  assert(!buffer.isError());
+  auto copyResult = (*buffer)->copyFrom(data);
+  assert(!copyResult.isError());
+  return *buffer;
 }
 
 static std::string toString(const llvm::json::Value &value) {
@@ -28,25 +36,35 @@ static std::string toString(const SafeTensor::TensorInfo &info) {
   return toString(info.toJSON());
 }
 
+static RCRef<M::Driver::Device> makeCPU() {
+  auto device = M::Driver::makeCPUDevice();
+  assert(!device.isError());
+  return RCRef<M::Driver::Device>::copy(&(**device));
+}
+
 TEST(SafeTensor, CanReadMetadata) {
-  BufferRef buffer = getDeserializedBuffer(
+  auto device = makeCPU();
+  auto buffer = getDeserializedBuffer(
       "\x59\x00\x00\x00\x00\x00\x00\x00{\"test\":{\"dtype\":\"I32\",\"shape\":["
       "2,2],\"data_offsets\":[0,16]},\"__metadata__\":{\"foo\":\"bar\"}}"
-      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00");
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+      device);
 
-  auto safeTensorOr = SafeTensor::get(buffer);
+  auto safeTensorOr = SafeTensor::get(device, buffer, {});
   ASSERT_FALSE(safeTensorOr.isError()) << safeTensorOr.getError();
 
   ASSERT_EQ(toString(safeTensorOr->getMetadata()), "{\"foo\":\"bar\"}");
 }
 
 TEST(SafeTensor, CanReadTensorInfo) {
-  BufferRef buffer = getDeserializedBuffer(
+  auto device = makeCPU();
+  auto buffer = getDeserializedBuffer(
       "<\x00\x00\x00\x00\x00\x00\x00{\"test\":{\"dtype\":\"I32\",\"shape\":[2,"
       "2],\"data_offsets\":[0,16]}}"
-      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00");
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+      device);
 
-  auto safeTensorOr = SafeTensor::get(buffer);
+  auto safeTensorOr = SafeTensor::get(device, buffer, {});
   ASSERT_FALSE(safeTensorOr.isError()) << safeTensorOr.getError();
 
   // llvm::outs() << "metadata = " << safeTensor.getMetadata() << "\n";
@@ -64,20 +82,23 @@ TEST(SafeTensor, CanReadTensorInfo) {
 }
 
 TEST(SafeTensor, HeaderTooSmall) {
-  BufferRef buffer = getDeserializedBuffer("");
+  auto device = makeCPU();
+  auto buffer = getDeserializedBuffer("", device);
 
-  auto safeTensorOr = SafeTensor::get(buffer);
+  auto safeTensorOr = SafeTensor::get(device, buffer, {});
   ASSERT_TRUE(safeTensorOr.isError()) << safeTensorOr.getError();
   ASSERT_STREQ(safeTensorOr.getError(), "file is too small to be a safetensor");
 }
 
 TEST(SafeTensor, HeaderTooLarge) {
-  BufferRef buffer = getDeserializedBuffer(
+  auto device = makeCPU();
+  auto buffer = getDeserializedBuffer(
       "<\x00\x00\x00\x00\xff\xff\xff{\"test\":{\"dtype\":\"I32\",\"shape\":[2,"
       "2],\"data_offsets\":[0,16]}}"
-      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00");
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+      device);
 
-  auto safeTensorOr = SafeTensor::get(buffer);
+  auto safeTensorOr = SafeTensor::get(device, buffer, {});
   ASSERT_TRUE(safeTensorOr.isError()) << safeTensorOr.getError();
   ASSERT_STREQ(safeTensorOr.getError(),
                "header length is greater than the max header size");
