@@ -238,40 +238,6 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
   }
 }
 
-void clearUnusedParamDecls(Operation *fusedKernel,
-                           ArrayRef<KGEN::ParamDeclareOp> newParamDeclsOps) {
-  SmallVector<KGEN::ParamDeclareOp> toDeleteDecls(newParamDeclsOps);
-
-  mlir::AttrTypeWalker walker;
-  walker.addWalk([&](KGEN::ParamDeclRefAttr refAttr) {
-    auto it = std::find_if(toDeleteDecls.begin(), toDeleteDecls.end(),
-                           [&](KGEN::ParamDeclareOp declOp) {
-                             return declOp.getParamDeclAttr().getName() ==
-                                    refAttr.getName();
-                           });
-
-    // Attr is used, don't remove the declaration
-    if (it != toDeleteDecls.end())
-      toDeleteDecls.erase(it);
-  });
-
-  // Walk the whole kernel
-  fusedKernel->walk([&](Operation *op) {
-    for (const NamedAttribute &attr : op->getAttrs())
-      walker.walk(attr.getValue());
-    for (Type type : op->getOperandTypes())
-      walker.walk(type);
-    for (Region &region : op->getRegions()) {
-      for (Type type : region.getArgumentTypes())
-        walker.walk(type);
-    }
-  });
-
-  // Remove the unused ops.
-  for (auto op : toDeleteDecls)
-    op->erase();
-}
-
 void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
                                    ArrayRef<Operation *> toFuse,
                                    fuseRegionInlineCallBackT inlineOpCallBack) {
@@ -578,53 +544,6 @@ bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
 
     auto extConst = dyn_cast<MO::ConstantExternalOp>(op);
     return !extConst || !extConst.getHasAlias();
-  });
-}
-
-void setKGENKernelParamValueIfPresent(MOGG::KernelOp kernelOp,
-                                      MojoLibraryAnalysis &analysis,
-                                      StringRef paramLabel, TypedAttr value) {
-  // Collect name of parameter declarations we need to reset.
-  llvm::StringSet<> paramsToReset;
-  kernelOp->walk([&](KGEN::CallOp call) {
-    auto callee = call.getCallee();
-    auto callName = callee.getSymbol().getLeafReference();
-
-    // For handling calls to custom op symbols.
-    auto funcRef = analysis.getRegisteredMojoKernelFor(callName);
-    // For handling calls to inline kgen.
-    if (!funcRef)
-      funcRef = analysis.getMojoFunctionNamed(callName);
-    ASSERT_STREAM(funcRef, << " could not find "
-                           << callee.getSymbol().getLeafReference()
-                           << " in the mojo libraries given!");
-
-    // Find the index of the parameter
-    if (auto param =
-            cast_or_null<ParamDeclAttr>(funcRef->getAttr(paramLabel))) {
-      auto inputParams = funcRef.getInputParams();
-      size_t callParamIndex =
-          llvm::find(inputParams, param) - inputParams.begin();
-      // Check the the param is found. Unused parameters might be optimized
-      // away, but the function attr is still present.
-      if (callParamIndex < inputParams.size()) {
-
-        auto paramAsRef = dyn_cast<KGEN::ParamDeclRefAttr>(
-            call.getParamValues()[callParamIndex]);
-
-        // It is assumed each KGEN parameter is unique to each call
-        paramsToReset.insert(paramAsRef.getName());
-      }
-    }
-  });
-
-  if (paramsToReset.empty())
-    return;
-
-  // Update the parameter declarations.
-  kernelOp->walk([&](KGEN::ParamDeclareOp decl) {
-    if (paramsToReset.contains(decl.getName()))
-      decl.setValueAttr(value);
   });
 }
 

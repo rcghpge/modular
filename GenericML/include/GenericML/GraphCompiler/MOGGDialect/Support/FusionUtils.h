@@ -13,12 +13,6 @@ using namespace M;
 
 namespace M::MOGG {
 
-inline bool useExperimentalMOGGPath() {
-  return true;
-  // auto var = llvm::sys::Process::GetEnv("MOGG_USE_EXP_KERNELS");
-  // return var.has_value() && var.value() == "1";
-}
-
 enum class FusionType {
   SOFT, // e.g. simply combine invocations into a single execution unit
   HARD  // e.g. use lambda fusion interface
@@ -55,28 +49,6 @@ void fuseConstant(MOGG::ExpKernelOp kernel);
 /// kernels should be prefaced with a call to this function.
 void stageKernelsForFusion(ArrayRef<Operation *> kernelOps);
 
-/// Helper function for "soft" fusing kernels.
-/// - It is expected that all kernels in `kernelOpsToFuseTogether` are sorted
-/// topologically.
-/// - The end result is a single kernel where results are guaranteed to be used
-/// from the outside.
-/// - Operands can be duplicated.
-/// - There is no attempt at maintaining optional attributes which means some
-/// optional attributes are set to their reasonable default (isAsync = false,
-/// isViewOp = false).
-/// - There is no attempt at checking if the fusion would create a cycle.
-Operation *sequenceFuseKernelsAndReplaceUses(
-    ArrayRef<Operation *> kernelOpsToFuseTogether);
-
-/// Remove all ParamDeclareOp in newParamDeclsOps that are unused in
-/// fusedKernel. We need this because MoToMOGG define some staticTensorSpec attr
-/// that references a lambda. But during fusion that lambda might be removed
-/// (and the spec left unused) Eg: `kgen.param.declare spec0 =
-/// build_static_tensor_spec(..., in_lambda, ...)`
-/// But `in_lambda` was removed by the fusion pass.
-void clearUnusedParamDecls(Operation *fusedKernel,
-                           ArrayRef<KGEN::ParamDeclareOp> newParamDeclsOps);
-
 /// Callback type to intercept inlining on a specific operation.
 /// Return true if the operation is handled by the callback, false otherwise.
 ///
@@ -101,34 +73,6 @@ void fuseAndReplaceCompiledRegions(
     bool allowDuplication, bool genReleaseOpaque, ArrayRef<Operation *> toFuse,
     fuseRegionInlineCallBackT inlineOpCallBack = nullptr);
 
-/// This function will merge multiple ops of the same OpTy type. This is needed
-/// for cases where only one instance of OpTy should be present within a block.
-template <typename OpTy>
-static void mergeAllocationOfType(MOGG::KernelOp kernelOp) {
-  SmallVector<OpTy> allocs;
-  SmallVector<Type> resultTypes;
-  for (auto alloc : kernelOp.getOps<OpTy>()) {
-    allocs.push_back(alloc);
-    for (auto type : alloc.getResultTypes())
-      resultTypes.push_back(type);
-  }
-
-  if (allocs.size() < 2)
-    return;
-
-  OpBuilder builder(kernelOp.getContext());
-  builder.setInsertionPoint(allocs.front());
-  auto mergedAlloc = builder.create<OpTy>(kernelOp->getLoc(), resultTypes);
-
-  int idx = 0;
-  for (auto alloc : allocs) {
-    for (auto result : alloc.getResults())
-      result.replaceAllUsesWith(mergedAlloc.getResult(idx++));
-
-    alloc.erase();
-  }
-}
-
 /// Build the static tensor spec used as a parameter for kernels.
 /// The tensor spec value does not include fusion lambdas.
 ErrorOr<TypedAttr>
@@ -149,10 +93,6 @@ KGEN::ParamDeclAttr bindAttrToParam(Location loc, TypedAttr toBind,
 // might reduce the performance gains from certain optimization. We probably
 // need to revisit it when the aliased constant is handled correctly.
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation);
-
-void setKGENKernelParamValueIfPresent(MOGG::KernelOp kernelOp,
-                                      MojoLibraryAnalysis &analysis,
-                                      StringRef paramLabel, TypedAttr value);
 
 } // namespace M::MOGG
 

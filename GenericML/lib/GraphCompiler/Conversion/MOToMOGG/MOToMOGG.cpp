@@ -113,37 +113,21 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
 
   // Done to match expected behavior of non-extensibility api
   forceSync = forceSync || forceTrivial;
-  if (MOGG::useExperimentalMOGGPath()) {
-    if (isa<MO::InvokeShapeFuncOp, MO::LayoutTransformOp>(op))
-      return std::nullopt;
+  if (isa<MO::InvokeShapeFuncOp, MO::LayoutTransformOp>(op))
+    return std::nullopt;
 
-    MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
-                                       mojoLibraryAnalysis);
+  MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
+                                     mojoLibraryAnalysis);
 
-    auto kernelOrErr = builder.lowerToKernel();
-    /// TODO(GEX-2359): Remove this attribute in favour of a more stable
-    /// solution.
-    if (!kernelOrErr.isError() &&
-        (isa<MO::ElementWiseLike>(op) || isa<MO::MutableStoreOp>(op))) {
-      kernelOrErr.get()->setDiscardableAttr("elementwise",
-                                            UnitAttr::get(op->getContext()));
-    }
-    return kernelOrErr;
-  } else {
-    MO::MOGGKernelBuilder builder(op, insertPoint, forceSync,
-                                  mojoLibraryAnalysis);
-    if (isa<MO::InvokeShapeFuncOp>(op))
-      return builder.lowerShapeFuncToKernel();
-
-    auto kernelOrErr = builder.lowerToKernel();
-
-    if (!kernelOrErr.isError() &&
-        (isa<MO::ElementWiseLike>(op) || isa<MO::MutableStoreOp>(op))) {
-      kernelOrErr.get()->setDiscardableAttr("elementwise",
-                                            UnitAttr::get(op->getContext()));
-    }
-    return kernelOrErr;
+  auto kernelOrErr = builder.lowerToKernel();
+  /// TODO(GEX-2359): Remove this attribute in favour of a more stable
+  /// solution.
+  if (!kernelOrErr.isError() &&
+      (isa<MO::ElementWiseLike>(op) || isa<MO::MutableStoreOp>(op))) {
+    kernelOrErr.get()->setDiscardableAttr("elementwise",
+                                          UnitAttr::get(op->getContext()));
   }
+  return kernelOrErr;
 }
 
 struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
