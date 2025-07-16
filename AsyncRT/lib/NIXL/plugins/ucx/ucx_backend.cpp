@@ -23,6 +23,8 @@
 
 #include "AsyncRT/NIXL/utils/common/str_tools.h"
 #include <optional>
+#include <string.h>
+#include <unistd.h>
 
 using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
@@ -140,8 +142,6 @@ static void _internalRequestReset(nixlUcxIntReq *req) {
  * Backend request management
  *****************************************/
 
-static constexpr int const noSyncIters = 32;
-
 class nixlUcxBackendH : public nixlBackendReqH {
 private:
   nixlUcxIntReq head;
@@ -251,40 +251,58 @@ void nixlUcxEngine::progressFunc() {
     return;
   }
 
-  using namespace nixlTime;
   {
     std::unique_lock<std::mutex> lock(pthrActiveLock);
     pthrActive = true;
   }
   pthrActiveCV.notify_one();
 
+  // Set POLLIN event on all worker fds so that the main loop would process them
+  // all on first iteration
+  for (size_t wid = 0; wid < pollFds.size() - 1; wid++)
+    pollFds[wid].revents = POLLIN;
+
+  bool pthrStop = false;
   while (!pthrStop) {
-    int i;
-    for (i = 0; i < noSyncIters; i++) {
-      for (auto &uw : uws)
-        uw->progress();
+    for (size_t wid = 0; wid < pollFds.size() - 1; wid++) {
+      if (!(pollFds[wid].revents & POLLIN))
+        continue;
+      pollFds[wid].revents = 0;
+
+      bool made_progress = false;
+      ucs_status_t status = UCS_INPROGRESS;
+      const auto &uw = uws[wid];
+      do {
+        while (uw->progress())
+          made_progress = true;
+
+        status = ucp_worker_arm(uw->getWorker());
+      } while (status == UCS_ERR_BUSY);
+      assert(status == UCS_OK);
+
+      if (made_progress && !wid)
+        notifProgress();
     }
-    notifProgress();
-    // TODO: once NIXL thread infrastructure is available - move it there!!!
 
-    // {
-    //     static uint64_t cnt = 0;
-    //     if ( !(cnt % 1000000)) {
-    //         std::cout << "Progress round" << std::endl;
-    //     }
-    //     cnt++;
-    // }
+    while (poll(pollFds.data(), pollFds.size(), -1) <= 0)
+      NIXL_ERROR << "Call to poll() was interrupted, retrying. Error: "
+                 << strerror(errno) << "\n";
 
-    /* Wait for predefined number of */
-    us_t start = getUs();
-    while ((start + pthrDelay) > getUs()) {
-      std::this_thread::yield();
+    if (pollFds.back().revents & POLLIN) {
+      pollFds.back().revents = 0;
+
+      char signal;
+      int ret = read(pollFds.back().fd, &signal, sizeof(signal));
+      if (ret < 0)
+        NIXL_ERROR << "read() on control pipe failed. Error: "
+                   << strerror(errno) << "\n";
+
+      pthrStop = true;
     }
   }
 }
 
 void nixlUcxEngine::progressThreadStart() {
-  pthrStop = false;
   {
     std::unique_lock<std::mutex> lock(pthrActiveLock);
     pthrActive = false;
@@ -306,7 +324,11 @@ void nixlUcxEngine::progressThreadStop() {
     return;
   }
 
-  pthrStop = true;
+  const char signal = 'X';
+  int ret = write(pthrControlPipe[1], &signal, sizeof(signal));
+  if (ret < 0)
+    NIXL_ERROR << "write to progress thread control pipe failed, error: "
+               << strerror(errno) << "\n";
   pthr.join();
 }
 
@@ -326,11 +348,20 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   nixl_b_params_t *custom_params = init_params->customParams;
 
   if (init_params->enableProgTh) {
+    pthrOn = true;
     if (!nixlUcxContext::mtLevelIsSupported(NIXL_UCX_MT_WORKER)) {
       NIXL_ERROR << "UCX library does not support multi-threading\n";
       initErr = true;
       return;
     }
+    if (pipe(pthrControlPipe) < 0) {
+      NIXL_ERROR << "Couldn't create progress thread control pipe, error: "
+                 << strerror(errno) << "\n";
+      initErr = true;
+      return;
+    }
+  } else {
+    pthrOn = false;
   }
 
   if (custom_params->count("device_list") != 0)
@@ -370,7 +401,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   uc = std::make_shared<nixlUcxContext>(
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
-      NIXL_UCX_MT_WORKER);
+      NIXL_UCX_MT_WORKER, pthrOn);
   for (unsigned int i = 0; i < numWorkers; i++)
     uws.emplace_back(std::make_unique<nixlUcxWorker>(uc));
 
@@ -383,16 +414,25 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     return;
   }
 
+  if (pthrOn) {
+    for (auto &uw : uws) {
+      int fd;
+      ucs_status_t ret = ucp_worker_get_efd(uw->getWorker(), &fd);
+      if (ret != UCS_OK) {
+        NIXL_ERROR << "Couldn't obtain fd for a worker, status: "
+                   << ucs_status_string(ret) << "\n";
+        initErr = true;
+        return;
+      }
+
+      pollFds.push_back({fd, POLLIN, 0});
+    }
+    pollFds.push_back({pthrControlPipe[0], POLLIN, 0});
+  }
+
   uw->regAmCallback(UcxCallbackOp::CONN_CHECK, connectionCheckAmCb, this);
   uw->regAmCallback(UcxCallbackOp::DISCONNECT, connectionTermAmCb, this);
   uw->regAmCallback(UcxCallbackOp::NOTIF_STR, notifAmCb, this);
-
-  if (init_params->enableProgTh) {
-    pthrOn = true;
-    pthrDelay = init_params->pthrDelay;
-  } else {
-    pthrOn = false;
-  }
 
   progressThreadStart();
 }
@@ -415,6 +455,10 @@ nixlUcxEngine::~nixlUcxEngine() {
   }
 
   progressThreadStop();
+  if (pthrOn) {
+    close(pthrControlPipe[0]);
+    close(pthrControlPipe[1]);
+  }
 }
 
 /****************************************

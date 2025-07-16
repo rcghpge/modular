@@ -299,7 +299,7 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
                                size_t req_size,
                                nixlUcxContext::req_cb_t init_cb,
                                nixlUcxContext::req_cb_t fini_cb,
-                               nixl_ucx_mt_t __mt_type) {
+                               nixl_ucx_mt_t __mt_type, bool prog_thread) {
   ucp_params_t ucp_params;
   ucp_config_t *ucp_config;
   ucs_status_t status = UCS_OK;
@@ -310,6 +310,8 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
       UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_MT_WORKERS_SHARED;
   ucp_params.features =
       UCP_FEATURE_RMA | UCP_FEATURE_AMO32 | UCP_FEATURE_AMO64 | UCP_FEATURE_AM;
+  if (prog_thread)
+    ucp_params.features |= UCP_FEATURE_WAKEUP;
   switch (mt_type) {
   case NIXL_UCX_MT_SINGLE:
     ucp_params.mt_workers_shared = 0;

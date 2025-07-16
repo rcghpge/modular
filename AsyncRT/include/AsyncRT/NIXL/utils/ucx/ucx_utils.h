@@ -133,7 +133,8 @@ private:
 public:
   using req_cb_t = void(void *request);
   nixlUcxContext(std::vector<std::string_view> devices, size_t req_size,
-                 req_cb_t init_cb, req_cb_t fini_cb, nixl_ucx_mt_t mt_type);
+                 req_cb_t init_cb, req_cb_t fini_cb, nixl_ucx_mt_t mt_type,
+                 bool prog_thread = false);
   ~nixlUcxContext();
 
   static bool mtLevelIsSupported(nixl_ucx_mt_t mt_type);
@@ -172,6 +173,8 @@ public:
 
   void reqRelease(nixlUcxReq req);
   void reqCancel(nixlUcxReq req);
+
+  ucp_worker_h getWorker() const { return worker; }
 };
 
 } // namespace M::AsyncRT::NIXL

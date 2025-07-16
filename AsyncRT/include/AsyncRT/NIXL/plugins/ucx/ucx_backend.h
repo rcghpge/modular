@@ -28,6 +28,7 @@
 #include <cstring>
 #include <iostream>
 #include <mutex>
+#include <poll.h>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -93,10 +94,10 @@ private:
   std::mutex pthrActiveLock;
   std::condition_variable pthrActiveCV;
   std::atomic_bool pthrActive{false};
-  std::atomic_bool pthrStop{false};
   bool pthrOn;
   std::thread pthr;
-  nixlTime::us_t pthrDelay;
+  int pthrControlPipe[2];
+  std::vector<pollfd> pollFds;
 
   /* CUDA data*/
   DeviceContextRef deviceCtx;
