@@ -41,7 +41,7 @@ private:
   std::vector<std::unique_ptr<nixlUcxEp>> eps;
 
 public:
-  nixlUcxEp &getEp(size_t ep_id) const { return *eps[ep_id]; }
+  [[nodiscard]] nixlUcxEp &getEp(size_t ep_id) const { return *eps[ep_id]; }
   // Extra information required for UCX connections
 
   friend class nixlUcxEngine;
@@ -60,7 +60,7 @@ public:
 
   ~nixlUcxPrivateMetadata() override {}
 
-  std::string get() const { return rkeyStr; }
+  [[nodiscard]] const std::string &get() const { return rkeyStr; }
 
   friend class nixlUcxEngine;
 };
@@ -75,9 +75,9 @@ public:
 
   nixlUcxPublicMetadata() : nixlBackendMD(false) {}
 
-  ~nixlUcxPublicMetadata() {}
+  ~nixlUcxPublicMetadata() = default;
 
-  nixlUcxRkey &getRkey(size_t id) { return rkeys[id]; }
+  [[nodiscard]] nixlUcxRkey &getRkey(size_t id) { return rkeys[id]; }
 
   friend class nixlUcxEngine;
 };
@@ -129,8 +129,8 @@ private:
   void progressThreadStart();
   void progressThreadStop();
   void progressThreadRestart();
-  bool isProgressThread() {
-    return (std::this_thread::get_id() == pthr.get_id());
+  bool isProgressThread() const {
+    return std::this_thread::get_id() == pthr.get_id();
   }
 
   // Connection helper

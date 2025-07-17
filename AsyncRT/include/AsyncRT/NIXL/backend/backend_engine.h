@@ -13,6 +13,7 @@
 
 #include "AsyncRT/NIXL/backend/backend_aux.h"
 #include "AsyncRT/NIXL/nixl_types.h"
+#include <memory>
 #include <string>
 
 namespace M::AsyncRT::NIXL {
@@ -25,40 +26,48 @@ class nixlBackendEngine {
 private:
   // Members that cannot be modified by a child backend and parent bookkeep
   nixl_backend_t backendType;
-  nixl_b_params_t *customParams;
+  nixl_b_params_t customParams;
 
 protected:
   // Members that can be accessed by the child (localAgent cannot be modified)
-  bool initErr;
-  std::string localAgent;
+  bool initErr = false;
+  const std::string localAgent;
 
-  nixl_status_t setInitParam(const std::string &key, std::string value) {
-    if (auto iter = customParams->find(key); iter != customParams->end()) {
-      iter->second = std::move(value);
+  [[nodiscard]] nixl_status_t setInitParam(const std::string &key,
+                                           const std::string &value) {
+    if (customParams.try_emplace(key, value).second) {
       return nixl_status_t::NIXL_SUCCESS;
-    } else {
-      return nixl_status_t::NIXL_ERR_NOT_ALLOWED;
     }
+    return nixl_status_t::NIXL_ERR_NOT_ALLOWED;
   }
 
-  std::optional<std::string_view> getInitParam(const std::string &key) {
-    if (auto iter = customParams->find(key); iter != customParams->end())
-      return iter->second;
-
-    return std::nullopt;
+  [[nodiscard]] nixl_status_t getInitParam(const std::string &key,
+                                           std::string &value) const {
+    const auto iter = customParams.find(key);
+    if (iter != customParams.end()) {
+      value = iter->second;
+      return nixl_status_t::NIXL_SUCCESS;
+    }
+    return nixl_status_t::NIXL_ERR_INVALID_PARAM;
   }
 
 public:
-  nixlBackendEngine(const nixlBackendInitParams *init_params)
+  explicit nixlBackendEngine(const nixlBackendInitParams *init_params)
       : backendType(init_params->type),
-        customParams{new nixl_b_params_t(*(init_params->customParams))},
-        initErr{false}, localAgent(init_params->localAgent) {}
+        customParams(*init_params->customParams),
+        localAgent(init_params->localAgent) {}
 
-  virtual ~nixlBackendEngine() { delete customParams; }
+  nixlBackendEngine(nixlBackendEngine &&) = delete;
+  nixlBackendEngine(const nixlBackendEngine &) = delete;
 
-  bool getInitErr() { return initErr; }
-  nixl_backend_t getType() const { return backendType; }
-  nixl_b_params_t getCustomParams() const { return *customParams; }
+  void operator=(nixlBackendEngine &&) = delete;
+  void operator=(const nixlBackendEngine &) = delete;
+
+  virtual ~nixlBackendEngine() = default;
+
+  bool getInitErr() const { return initErr; }
+  const nixl_backend_t &getType() const { return backendType; }
+  const nixl_b_params_t &getCustomParams() const { return customParams; }
 
   // The support function determine which methods are necessary by the child
   // backend, and if they're called by mistake, they will return error if not
@@ -78,7 +87,8 @@ public:
   // Determines if a backend supports progress thread.
   virtual bool supportsProgTh() const = 0;
 
-  virtual nixl_mem_list_t getSupportedMems() const = 0;
+  virtual nixl_mem_list_t getSupportedMems()
+      const = 0; // TODO: Return by const-reference and mark noexcept?
 
   // *** Pure virtual methods that need to be implemented by any backend *** //
 
