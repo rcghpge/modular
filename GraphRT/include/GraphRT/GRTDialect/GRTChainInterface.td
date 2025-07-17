@@ -25,7 +25,7 @@ def GRT_ChainCreateOpInterface : OpInterface<"GRTChainCreateOpInterface"> {
     >,
     InterfaceMethod<
       "Get the input chains that this chain depends on",
-      "::llvm::SmallVector<::mlir::Value>", "getInputChains", (ins)
+      "::mlir::ValueRange", "getInputChains", (ins)
     >
   ];
 }

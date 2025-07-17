@@ -68,8 +68,9 @@ LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
   }
   // Remove duplicate operands.
   if (operands.size() < createOp.getOperands().size()) {
-    createOp.getOperandsMutable().clear();
-    createOp.getOperandsMutable().append(operands.takeVector());
+    rewriter.modifyOpInPlace(createOp, [&] {
+      createOp.getOperandsMutable().assign(operands.takeVector());
+    });
     return success();
   }
 

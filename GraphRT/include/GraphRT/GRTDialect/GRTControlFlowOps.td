@@ -53,8 +53,8 @@ def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative,
     OpBuilder<(ins)>
   ];
   let extraClassDefinition = [{
-      llvm::SmallVector<mlir::Value> ChainCreateOp::getInputChains() {
-        return this->getOperands();
+      ValueRange ChainCreateOp::getInputChains() {
+        return getOperands();
       }
       void ChainCreateOp::setInputChains(::mlir::ValueRange inChains) {
         return getOperation()->setOperands(inChains);
