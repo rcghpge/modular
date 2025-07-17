@@ -26,6 +26,22 @@ enum class NixlLogLevel {
   kFatal = 5    // Map to FATAL
 };
 
+// Helper class that adds a newline when destroyed
+class NixlLogStream {
+public:
+  NixlLogStream(llvm::raw_ostream &os) : os_(os) {}
+  ~NixlLogStream() { os_ << '\n'; }
+
+  template <typename T>
+  NixlLogStream &operator<<(const T &value) {
+    os_ << value;
+    return *this;
+  }
+
+private:
+  llvm::raw_ostream &os_;
+};
+
 } // namespace M::AsyncRT::NIXL
 
 /*-----------------------------------------------------------------------------*
@@ -39,30 +55,30 @@ enum class NixlLogLevel {
  * Logs a message and terminates the program unconditionally.
  * Maps to LOG(FATAL). Use for unrecoverable errors.
  */
-#define NIXL_FATAL llvm::errs()
+#define NIXL_FATAL M::AsyncRT::NIXL::NixlLogStream(llvm::errs())
 
 /* Logs messages unconditionally (maps to ERROR level) */
-#define NIXL_ERROR llvm::errs()
+#define NIXL_ERROR M::AsyncRT::NIXL::NixlLogStream(llvm::errs())
 
 /*
  * Logs messages unconditionally (maps to WARNING level)
  */
-#define NIXL_WARN llvm::errs()
+#define NIXL_WARN M::AsyncRT::NIXL::NixlLogStream(llvm::errs())
 
 /*
  * Logs messages unconditionally (maps to INFO level)
  */
-#define NIXL_INFO llvm::errs()
+#define NIXL_INFO M::AsyncRT::NIXL::NixlLogStream(llvm::errs())
 
 /*
  * Logs messages unconditionally (maps to verbosity level 1)
  */
-#define NIXL_DEBUG llvm::errs()
+#define NIXL_DEBUG M::AsyncRT::NIXL::NixlLogStream(llvm::errs())
 
 /*
  * Logs messages unconditionally (maps to verbosity level 2)
  * Stripped from release buids.
  */
-#define NIXL_TRACE llvm::errs()
+#define NIXL_TRACE M::AsyncRT::NIXL::NixlLogStream(llvm::errs())
 
 #endif // ASYNCRT_NIXL_UTILS_COMMON_NIXL_LOG_H

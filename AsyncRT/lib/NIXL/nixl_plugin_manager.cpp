@@ -337,9 +337,9 @@ void nixlPluginManager::discoverPluginsFromDir(
     if (plugin) {
       // Use NIXL logging for consistency
       NIXL_INFO << "Discovered and loaded plugin '" << pluginName << "' from "
-                << entry.path().string() << "\n";
+                << entry.path().string();
     } else {
-      NIXL_ERROR << "Failed to load discovered plugin: " << pluginName << "\n";
+      NIXL_ERROR << "Failed to load discovered plugin: " << pluginName;
     }
   }
 }

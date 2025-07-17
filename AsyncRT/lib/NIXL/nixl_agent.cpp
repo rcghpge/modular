@@ -265,7 +265,7 @@ nixl_status_t nixlAgent::createBackend(const nixl_backend_t &type,
     // TODO: Check if backend supports ProgThread
     //       when threading is in agent
 
-    NIXL_DEBUG << "Created backend: " << type << "\n";
+    NIXL_DEBUG << "Created backend: " << type;
   }
 
   return nixl_status_t::NIXL_SUCCESS;
@@ -1061,7 +1061,7 @@ nixl_status_t nixlAgent::loadRemoteMD(const blob_ref remote_metadata,
   if (remote_agent == data->name)
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
 
-  NIXL_DEBUG << "Loading remote metadata for agent: " << remote_agent << "\n";
+  NIXL_DEBUG << "Loading remote metadata for agent: " << remote_agent;
 
   ret = sd.getBuf("Conns", &conn_cnt, sizeof(conn_cnt));
   if (ret != nixl_status_t::NIXL_SUCCESS) {
