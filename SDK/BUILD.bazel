@@ -74,42 +74,6 @@ modular_cc_library(
     ],
 )
 
-modular_cc_library(
-    name = "modular-framework-common",
-    srcs = glob([
-        "lib/API/c/**/*.cpp",
-        "lib/MOF/API/**/*.cpp",
-        "lib/MOF/GraphBuilder/**/*.cpp",
-    ]),
-    hdrs = glob([
-        "include/SDK/API/**/*.h",
-        "include/SDK/MOF/API/**/*.h",
-        "include/SDK/MOF/GraphBuilder/**/*.h",
-    ]),
-    deps = [
-        ":MOFDriver",
-        ":MaxAPI",
-        "//GenericML:CommonDriver",
-        "//GenericML:CompileDriver",
-        "//GenericML:DeviceDriver",
-        "//GenericML:ExecutionDriver",
-        "//GenericML:FrameworkFrontend",
-        "//GenericML:GraphCompiler",
-        "//GenericML:MEFModel",
-        "//GenericML:MONameInputDimsPass",
-        "//GenericML:MOTransforms",
-        "//GenericML:RMOTransforms",
-        "//Init",
-        "//Kernels:WeightsRegistry",
-        "//Support:Base",
-        "//Support:Context",
-        "//Support:CrashReporting",
-        "//Support:Diagnostics",
-        "//Support:Globals",
-        "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
-    ],
-)
-
 modular_nanobind_library(
     name = "DLPackPython",
     srcs = glob(["lib/API/python/lib/DLPack/*.cpp"]),
@@ -222,25 +186,43 @@ alias(
 cc_autolink_deps(
     name = "deps",
     deps = [
-        ":modular-framework-common",
         "//GenericML:SafeTensor",
     ],
 )
 
 modular_shared_library(
     name = "max",
-    srcs = [],
+    srcs = glob([
+        "lib/API/c/**/*.cpp",
+        "lib/MOF/API/**/*.cpp",
+        "lib/MOF/GraphBuilder/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/SDK/API/**/*.h",
+        "include/SDK/MOF/API/**/*.h",
+        "include/SDK/MOF/GraphBuilder/**/*.h",
+    ]),
     deps = [
+        ":MOFDriver",
+        ":MaxAPI",
         ":deps",
         "//AsyncRT:NIXL",
         "//GenericML:CommonDriver",
         "//GenericML:CompileDriver",
+        "//GenericML:DeviceDriver",
+        "//GenericML:ExecutionDriver",
+        "//GenericML:FrameworkFrontend",
         "//GenericML:GraphCompiler",
         "//GenericML:MEFModel",
         "//GenericML:MONameInputDimsPass",
         "//GenericML:MOTransforms",
         "//GenericML:RMOTransforms",
+        "//GenericML:SafeTensor",
         "//Init",
+        "//Kernels:WeightsRegistry",
+        "//Support:Base",
+        "//Support:Context",
+        "//Support:CrashReporting",
         "//Support:Diagnostics",
         "//Support:Globals",
         "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
