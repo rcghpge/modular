@@ -2392,7 +2392,7 @@ struct MultiHeadAttentionPattern
 
     auto customOp = rewriter.create<CustomOp>(
         rootOp.getLoc(), TypeRange{rootOp.getType().cloneWith(mhaOutputShape)},
-        customOpInputs, kernelName);
+        customOpInputs, StringAttr::get(getContext(), kernelName));
     auto mhaResult = cast<TensorValue>(customOp.getResult(0));
 
     // The mhaResult should be shape BSHD, however the rooted op is layout BHSD.

@@ -46,11 +46,8 @@ struct MojoOperationInfo {
 /// Returns the name of the given `op` is registered under in mojo.
 static MojoOperationInfo getMojoOperationInfo(Operation *op) {
   // Custom operations call the symbol and function directly.
-  if (auto customOp = dyn_cast<MO::CustomOp>(op)) {
-    if (!customOp.getFunction().empty())
-      return {customOp.getSymbol(), customOp.getFunction()};
+  if (auto customOp = dyn_cast<MO::CustomOp>(op))
     return {customOp.getSymbol(), KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel};
-  }
 
   // Layout transforms map to a hardcoded op name based on the inferred layouts
   if (auto layoutTransformOp = dyn_cast<MO::LayoutTransformOp>(op)) {

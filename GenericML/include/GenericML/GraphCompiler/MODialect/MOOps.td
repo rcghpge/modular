@@ -4890,7 +4890,6 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 
   let arguments = (ins Variadic<AnyType>:$operands,
                        StrAttr:$symbol,
-                       DefaultValuedAttr<StrAttr, "\"\"">:$function,
                        DefaultValuedAttr<M_DeviceRefAttr, "\"cpu\", 0">:$device,
                        DefaultValuedAttr<DictionaryAttr, "{}">:$parameters,
                        MO_ParamDecls:$outputParamDecls);
