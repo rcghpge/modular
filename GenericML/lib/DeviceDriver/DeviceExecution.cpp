@@ -6,8 +6,6 @@
 
 #include "GenericML/DeviceDriver/DeviceExecution.h"
 #include "AsyncRT/Runtime/Algorithms.h"
-#include "Runtime/MojoValue.h"
-#include "Support/AssertStream.h"
 
 using namespace M;
 namespace {
@@ -77,21 +75,6 @@ ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
                                     std::move(destructor));
 }
 
-// Given an AsyncValue that contains a MojoValue convert to a type that
-// we can pass to mojo. We assume the outputValue is already awaited.
-static Driver::DriverMojoValue
-getMojoValueFromAsyncValue(AnyAsyncValueRef outputValue) {
-  // Take ownership of underlying mojo value.
-  auto mojoValue = std::move(outputValue.get<MojoValue>());
-  Driver::DriverMojoValue value;
-  ASSERT_STREAM(mojoValue.isOwned() && !mojoValue.destructorWillFree(),
-                "MojoValue must be owned and the destructor should not free");
-  value.destructor = mojoValue.getDestructor();
-  value.data = mojoValue.take();
-  // TODO: this is unsafe, need to copy owning too.
-  return value;
-}
-
 AnyAsyncValueRef M::Driver::prepareInput(Runtime &runtime,
                                          M::Driver::DeviceMemory *inputMemory,
                                          TensorSpec inputSpec) {
@@ -106,75 +89,4 @@ AnyAsyncValueRef M::Driver::prepareInput(Runtime &runtime,
                 std::move(inputSpec));
 
   return AnyAsyncValueRef::createReady<Tensor>(runtime, std::move(tensor));
-}
-
-Driver::GraphExecutionResultsTy
-M::Driver::processResults(llvm::MutableArrayRef<AnyAsyncValueRef> results,
-                          ExecutableModel *model) {
-  // First result is a chain.
-  results = results.drop_front();
-  llvm::SmallVector<AnyAsyncValueRef> outputRefs;
-  outputRefs.reserve(results.size());
-  for (auto &result : results) {
-    // Convert only outputs that are of tensor types.
-    if (result.isType<Tensor>()) {
-      // Each framework has their own way to convert to tensor. So call this
-      // function to get the generic form.
-      outputRefs.push_back(model->convertToGenericTensor(std::move(result)));
-    } else {
-      outputRefs.push_back(std::move(result));
-    }
-  }
-  AsyncRT::await(outputRefs);
-
-  Driver::GraphExecutionResultsTy outputs;
-
-  for (auto &&outputRef : outputRefs) {
-    if (outputRef.isType<Tensor>()) {
-      outputs.push_back(std::move(outputRef.get<Tensor>()));
-    } else if (outputRef.isType<MojoValue>()) {
-      // Pass through opaque mojo types. We don't have much info here and
-      // rely on caller to do the right thing.
-      Driver::DriverMojoValue value =
-          getMojoValueFromAsyncValue(std::move(outputRef));
-      outputs.push_back(value);
-    }
-  }
-
-  return outputs;
-}
-
-ErrorOrSuccess M::Driver::passResultsToMojo(
-    MutableArrayRef<std::variant<M::Tensor, M::Driver::DriverMojoValue>>
-        results,
-    decltype(addTensorToOutputList) addTensorToOutputListFn,
-    decltype(addValueToOutputList) addValueToOutputListFn, void *mojoContext,
-    void *outputList, ContextRef maxContext,
-    ArrayRef<Driver::Device *> resultDevices) {
-  // We only count non-opaque or Tensor values as a result.
-  size_t resultDeviceIndex = 0;
-  for (auto &output : results) {
-    if (M::Tensor *tensor = std::get_if<M::Tensor>(&output)) {
-      auto device = resultDevices[resultDeviceIndex];
-      // Convert tensor back to device memory and call the callback we got from
-      // mojo. Here we take ownership of output.
-      ErrorOr<Driver::DeviceMemory *> outputMemoryOr =
-          M::Driver::constructDeviceMemoryFromTensor(
-              std::move(maxContext), device, std::move(*tensor));
-
-      if (outputMemoryOr.isError())
-        return outputMemoryOr.takeError();
-
-      Driver::DeviceMemory *outputMemory = outputMemoryOr.get();
-      auto spec = outputMemory->getSpec();
-      addTensorToOutputListFn(mojoContext, outputList, outputMemory, &spec);
-      resultDeviceIndex++;
-    } else {
-      // Pass through opaque mojo types. We don't have much info here and
-      // rely on caller to do the right thing.
-      addValueToOutputListFn(mojoContext, outputList,
-                             std::get<DriverMojoValue>(output));
-    }
-  }
-  return success();
 }
