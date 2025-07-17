@@ -56,13 +56,6 @@ public:
     return MojoValue(data, nullptr, false, false, tag);
   }
 
-  /// Create a MojoValue with a destructor that frees the pointer. The default
-  /// free will not be called.
-  static MojoValue createSelfFree(void *data, DestructorFn destructor,
-                                  Tag tag = Tag::kDefault) {
-    return MojoValue(data, destructor, true, false, tag);
-  }
-
   ~MojoValue();
 
   MojoValue(MojoValue &&rhs);

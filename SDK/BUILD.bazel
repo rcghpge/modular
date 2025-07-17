@@ -127,7 +127,6 @@ modular_nanobind_library(
         "//:MLIRBindingsPythonHeaders",
         "//SDK:DLPackPython",
         "//SDK:DriverPython",
-        "//Support:CPythonNanobind",
     ],
 )
 
