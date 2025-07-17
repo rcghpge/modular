@@ -65,23 +65,11 @@ static bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
 
 /// Return true if currOp needs to be visited. Will assert fail if a cycle
 /// is detected.
-static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
+static bool shouldStartVisiting(DenseSet<Operation *> &visited,
                                 Operation *currOp, Block *block) {
   if (currOp->getBlock() != block) {
     // We've already accounted for outer values when visiting the block
     // containing currOp.
-    return false;
-  }
-
-  auto itr = visited.find(currOp);
-  if (itr == visited.end()) {
-    // Start visiting.
-    visited.insert({currOp, false});
-    return true;
-  }
-
-  if (itr->second) {
-    // We've finished visiting.
     return false;
   }
 
@@ -101,8 +89,7 @@ static bool shouldStartVisiting(DenseMap<Operation *, bool> &visited,
   }
 #endif
 
-  ASSERT_STREAM(itr->second, << "model contains cycle involving op");
-  return false;
+  return !visited.contains(currOp);
 }
 
 namespace {
@@ -110,34 +97,21 @@ namespace {
 struct Frame {
   Operation *frameOp;
   size_t nextOperandIndex;
-  /// If frameOp is a control flow op, and we've not yet run
-  /// fixupIsolatedFromAbove, then it may contain free values.
-  /// Capture those and treat them as if they were additional operands
-  /// to the op (which is what they'll show up as after fixupIsolatedFromAbove).
-  llvm::SetVector<Value> freeValues;
 
   /// Returns the next operand of frameOp to visit, or null if done.
   Value next() {
-    if (nextOperandIndex >= frameOp->getNumOperands() + freeValues.size())
+    if (nextOperandIndex >= frameOp->getNumOperands())
       return {};
-    else if (nextOperandIndex < frameOp->getNumOperands())
-      return frameOp->getOperand(nextOperandIndex++);
-    else
-      return freeValues[nextOperandIndex++ - frameOp->getNumOperands()];
+    return frameOp->getOperand(nextOperandIndex++);
   }
 
   Frame(Operation *frameOp, size_t nextOperandIndex)
-      : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {
-    for (Region &subRegion : frameOp->getRegions()) {
-      Block *subBlock = &subRegion.front();
-      accumFreeValues(freeValues, subBlock, subBlock);
-    }
-  }
+      : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {}
 };
 } // namespace
 
 /// Pushes onto stack the frame necessary to visit currOp, if any.
-static void startVisiting(DenseMap<Operation *, bool> &visited,
+static void startVisiting(DenseSet<Operation *> &visited,
                           SmallVector<Frame> &stack, Operation *currOp,
                           Block *block) {
   if (!shouldStartVisiting(visited, currOp, block))
@@ -148,12 +122,9 @@ static void startVisiting(DenseMap<Operation *, bool> &visited,
 }
 
 /// Records that currOp has been fully visited.
-static void finishVisiting(DenseMap<Operation *, bool> &visited,
-                           Operation *currOp) {
-  auto itr = visited.find(currOp);
-  ASSERT_STREAM(itr != visited.end(), << "never started visiting op");
-  ASSERT_STREAM(!itr->second, << "finishing already finished op");
-  itr->second = true;
+static void finishVisiting(DenseSet<Operation *> &visited, Operation *currOp) {
+  auto [_, inserted] = visited.insert(currOp);
+  ASSERT_STREAM(inserted, "operation already finished");
 }
 
 /// Non-recursively visit inputs of op in dfs order, accumulating post-order
@@ -161,7 +132,7 @@ static void finishVisiting(DenseMap<Operation *, bool> &visited,
 /// In release builds will ignore back-arcs in cycles.
 static void visitInDataflowOrder(Operation *op,
                                  SmallVectorImpl<Operation *> &dataflowOrder,
-                                 DenseMap<Operation *, bool> &visited) {
+                                 DenseSet<Operation *> &visited) {
   Block *block = op->getBlock();
   SmallVector<Frame> stack;
 
@@ -184,7 +155,7 @@ static void visitInDataflowOrder(Operation *op,
 SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   SmallVector<Operation *> dataflowOrder;
   // Map op to false if starting to visit, true if completed.
-  DenseMap<Operation *, bool> visited;
+  DenseSet<Operation *> visited;
   for (Operation &op : block->getOperations())
     visitInDataflowOrder(&op, dataflowOrder, visited);
   return dataflowOrder;
@@ -275,7 +246,7 @@ bool M::MGP::isGatingOperand(const OpOperand *opOperand) {
   if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
     // Only the extra strict operands are gating for control flow ops.
     auto extraOperands = cfOp.getStrictExtraOperands();
-    return llvm::find(extraOperands, opOperand->get()) != extraOperands.end();
+    return llvm::is_contained(extraOperands, opOperand->get());
   }
 
   if (isa<MEF::OutputOp>(op))
