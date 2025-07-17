@@ -91,9 +91,9 @@ private:
   size_t workerSize;
 
   /* Progress thread data */
-  std::mutex pthrActiveLock;
-  std::condition_variable pthrActiveCV;
-  std::atomic_bool pthrActive{false};
+  std::mutex progressThreadActiveLock;
+  std::condition_variable progressThreadActiveCV;
+  std::atomic_bool progressThreadActive{false};
   bool pthrOn;
   std::thread pthr;
   int pthrControlPipe[2];

@@ -35,6 +35,7 @@ static nixl_status_t ucx_status_to_nixl(ucs_status_t status) {
   case UCS_ERR_INVALID_PARAM:
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
   default:
+    NIXL_WARN << "Unexpected UCX error: " << ucs_status_string(status);
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
 }
@@ -77,7 +78,8 @@ void nixlUcxEp::setState(nixl_ucx_ep_state_t new_state) {
   state = new_state;
 }
 
-nixlUcxEp::nixlUcxEp(ucp_worker_h worker, void *addr) {
+nixlUcxEp::nixlUcxEp(ucp_worker_h worker, void *addr,
+                     ucp_err_handling_mode_t err_handling_mode) {
   ucp_ep_params_t ep_params;
   nixl_status_t status;
 
@@ -85,7 +87,7 @@ nixlUcxEp::nixlUcxEp(ucp_worker_h worker, void *addr) {
   ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
                          UCP_EP_PARAM_FIELD_ERR_HANDLER |
                          UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
-  ep_params.err_mode = UCP_ERR_HANDLING_MODE_PEER;
+  ep_params.err_mode = err_handling_mode;
   ep_params.err_handler.cb = err_cb_wrapper;
   ep_params.err_handler.arg = reinterpret_cast<void *>(this);
   ep_params.address = reinterpret_cast<ucp_address_t *>(addr);
@@ -108,8 +110,7 @@ nixlUcxEp::~nixlUcxEp() {
   }
 }
 
-nixl_status_t nixlUcxEp::closeImpl(ucp_worker_h worker,
-                                   ucp_ep_close_flags_t flags) {
+nixl_status_t nixlUcxEp::closeImpl(ucp_ep_close_flags_t flags) {
   ucs_status_ptr_t request = nullptr;
   ucp_request_param_t req_param = {};
   req_param.op_attr_mask = UCP_OP_ATTR_FIELD_FLAGS;
@@ -138,36 +139,24 @@ nixl_status_t nixlUcxEp::closeImpl(ucp_worker_h worker,
       return ucx_status_to_nixl(UCS_PTR_STATUS(request));
     }
 
-    if (worker == nullptr) {
-      ucp_request_free(request);
-      eph = nullptr;
-      return nixl_status_t::NIXL_SUCCESS;
-    }
-    break;
+    ucp_request_free(request);
+    eph = nullptr;
+    return nixl_status_t::NIXL_SUCCESS;
   }
-
-  assert(UCS_PTR_IS_PTR(request));
-  assert(worker != nullptr);
-
-  // Blocking close.
-  ucs_status_t status;
-  do {
-    ucp_worker_progress(worker);
-    status = ucp_request_check_status(request);
-  } while (status == UCS_INPROGRESS);
-
-  ucp_request_free(request);
-  eph = nullptr;
-  setState(nixl_ucx_ep_state_t::NIXL_UCX_EP_STATE_DISCONNECTED);
-
-  return ucx_status_to_nixl(status);
 }
 
 /* ===========================================
  * EP management
  * =========================================== */
 
-nixl_status_t nixlUcxEp::disconnectNonblocking() { return closeNonblocking(); }
+nixl_status_t nixlUcxEp::disconnectNonblocking() {
+  nixl_status_t status = closeImpl(ucp_ep_close_flags_t(0));
+
+  // At step of disconnect we can ignore the remote disconnect error.
+  return (status == nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT)
+             ? nixl_status_t::NIXL_SUCCESS
+             : status;
+}
 
 /* ===========================================
  * RKey management
@@ -299,12 +288,14 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
                                size_t req_size,
                                nixlUcxContext::req_cb_t init_cb,
                                nixlUcxContext::req_cb_t fini_cb,
-                               nixl_ucx_mt_t __mt_type, bool prog_thread) {
+                               nixl_ucx_mt_t __mt_type, bool prog_thread,
+                               ucp_err_handling_mode_t __err_handling_mode) {
   ucp_params_t ucp_params;
   ucp_config_t *ucp_config;
   ucs_status_t status = UCS_OK;
 
   mt_type = __mt_type;
+  err_handling_mode = __err_handling_mode;
 
   ucp_params.field_mask =
       UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_MT_WORKERS_SHARED;
@@ -423,7 +414,7 @@ std::unique_ptr<char[]> nixlUcxWorker::epAddr(size_t &size) {
 
 M::ErrorOr<std::unique_ptr<nixlUcxEp>> nixlUcxWorker::connect(void *addr,
                                                               size_t size) {
-  auto ep = std::make_unique<nixlUcxEp>(worker, addr);
+  auto ep = std::make_unique<nixlUcxEp>(worker, addr, ctx->err_handling_mode);
   // Check if the endpoint was successfully created by checking its state
   if (ep->eph == nullptr) {
     return M::Error("Failed to create UCX endpoint");

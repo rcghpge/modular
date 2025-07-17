@@ -71,7 +71,7 @@ struct NixlAgentWithUCXBackend {
 
   static void create(NixlAgentWithUCXBackend &self, std::string agentName,
                      int port, std::string backendName, int gpuDeviceId = -1,
-                     int numWorkers = 1) {
+                     int numWorkers = 1, std::string errorHandlingMode = "") {
     self.agentName = agentName;
     self.agent = std::make_unique<nixlAgent>(
         agentName, nixlAgentConfig(/*use_prog_thread=*/true,
@@ -98,6 +98,10 @@ struct NixlAgentWithUCXBackend {
 
     if (numWorkers > 1) {
       backendParams["num_workers"] = std::to_string(numWorkers);
+    }
+
+    if (!errorHandlingMode.empty()) {
+      backendParams["ucx_error_handling_mode"] = errorHandlingMode;
     }
 
     ASSERT_SUCCESS(
@@ -128,14 +132,14 @@ static void exchangeMetadata(NixlAgentWithUCXBackend &nixl1,
 static void transferData(NixlAgentWithUCXBackend &nixl1,
                          NixlAgentWithUCXBackend &nixl2,
                          nixl_xfer_dlist_t &srcDescs,
-                         nixl_xfer_dlist_t &dstDescs) {
+                         nixl_xfer_dlist_t &dstDescs,
+                         nixl_xfer_op_t op = nixl_xfer_op_t::NIXL_WRITE) {
   nixlXferReqH *reqHandle = nullptr;
   nixlAgentOptionalArgs xferArgs;
   xferArgs.notifMsg = "notification";
   xferArgs.hasNotif = true;
-  ASSERT_SUCCESS(nixl1.agent->createXferReq(nixl_xfer_op_t::NIXL_WRITE,
-                                            srcDescs, dstDescs, nixl2.agentName,
-                                            reqHandle, &xferArgs));
+  ASSERT_SUCCESS(nixl1.agent->createXferReq(
+      op, srcDescs, dstDescs, nixl2.agentName, reqHandle, &xferArgs));
 
   // === Create and Execute Transfer (Agent 1 writes to Agent 2) ===
   ASSERT_NE(reqHandle, nullptr) << "Transfer handle is null";
@@ -408,13 +412,18 @@ TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
   // Create two NIXL agents.
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", 8037, "ucx");
+  // Use "peer" error handling mode to propagate remote disconnect errors.
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", 8037, "ucx",
+                                  /*gpuDeviceId=*/-1, /*numWorkers=*/1,
+                                  /*errorHandlingMode=*/"peer");
   std::vector<char> dramBuffer1(bufferSize);
   nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", 8042, "ucx");
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", 8042, "ucx",
+                                  /*gpuDeviceId=*/-1, /*numWorkers=*/1,
+                                  /*errorHandlingMode=*/"peer");
   std::vector<char> dramBuffer2(bufferSize);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer2, 0));
@@ -448,6 +457,284 @@ TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
 
   // Attempt transfer which should fail with NIXL_ERR_REMOTE_DISCONNECT
   transferDataWithFailure(nixl1, nixl2, regSrcDescs, regDstDescs,
+                          nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT);
+}
+
+TEST_F(NixlUcxIntegrationTest, XferThenFail_Write) {
+  // Test scenario where first transfer succeeds, then receiver fails before
+  // second transfer
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create two NIXL agents with peer error handling mode.
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", 8037, "ucx", -1, 1,
+                                  "peer");
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", 8042, "ucx", -1,
+                                  1, "peer");
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange metadata.
+  exchangeMetadata(nixl1, nixl2);
+
+  // Prepare buffers for first transfer.
+  size_t transferSize = bufferSize / 2;
+  const char srcValue1 = 'A';
+  const char srcValue2 = 'B';
+  const char initialDstValue = 'Z';
+
+  std::fill(dramBuffer1.begin(), dramBuffer1.begin() + transferSize, srcValue1);
+  std::fill(dramBuffer2.begin(), dramBuffer2.end(), initialDstValue);
+
+  // Prepare transfer descriptors.
+  nixl_xfer_dlist_t regSrcDescs(nixl_mem_t::DRAM_SEG);
+  auto srcBuf = llvm::ArrayRef{dramBuffer1.data(), transferSize};
+  regSrcDescs.addDesc(basicDescfromArrayRef(srcBuf, 0));
+
+  nixl_xfer_dlist_t regDstDescs(nixl_mem_t::DRAM_SEG);
+  auto dstBuf = llvm::ArrayRef{dramBuffer2.data(), transferSize};
+  regDstDescs.addDesc(basicDescfromArrayRef(dstBuf, 0));
+
+  // First transfer should succeed.
+  transferData(nixl1, nixl2, regSrcDescs, regDstDescs);
+
+  // Verify first transfer succeeded.
+  ASSERT_EQ(std::memcmp(dramBuffer1.data(), dramBuffer2.data(), transferSize),
+            0)
+      << "First transfer failed to complete correctly";
+
+  // Prepare for second transfer with different data.
+  std::fill(dramBuffer1.begin(), dramBuffer1.begin() + transferSize, srcValue2);
+
+  // Simulate receiver failure by deregistering memory and destroying agent.
+  nixl_opt_args_t deregArgs;
+  deregArgs.backends = {nixl2.backend};
+  nixl_reg_dlist_t deregList(nixl_mem_t::DRAM_SEG);
+  deregList.addDesc(blobDescfromVector(dramBuffer2, 0));
+  ASSERT_SUCCESS(nixl2.agent->deregisterMem(deregList, &deregArgs));
+  nixl2.agent.reset();
+
+  // Second transfer should fail with NIXL_ERR_REMOTE_DISCONNECT.
+  transferDataWithFailure(nixl1, nixl2, regSrcDescs, regDstDescs,
+                          nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT);
+}
+
+TEST_F(NixlUcxIntegrationTest, XferThenFail_Read) {
+  // Test scenario where first READ transfer succeeds, then receiver fails
+  // before second transfer
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create two NIXL agents with peer error handling mode.
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Reader", 8037, "ucx", -1, 1,
+                                  "peer");
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Source", 8042, "ucx", -1, 1,
+                                  "peer");
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange metadata.
+  exchangeMetadata(nixl1, nixl2);
+
+  // Prepare buffers for first transfer
+  size_t transferSize = bufferSize / 2;
+  const char srcValue1 = 'A';
+  const char srcValue2 = 'B';
+  const char initialDstValue = 'Z';
+
+  std::fill(dramBuffer2.begin(), dramBuffer2.begin() + transferSize, srcValue1);
+  std::fill(dramBuffer1.begin(), dramBuffer1.end(), initialDstValue);
+
+  // Prepare transfer descriptors for READ operation
+  // For READ: local buffer is destination, remote buffer is source
+  nixl_xfer_dlist_t localDescs(nixl_mem_t::DRAM_SEG);
+  auto localBuf = llvm::ArrayRef{dramBuffer1.data(), transferSize};
+  localDescs.addDesc(basicDescfromArrayRef(localBuf, 0));
+
+  nixl_xfer_dlist_t remoteDescs(nixl_mem_t::DRAM_SEG);
+  auto remoteBuf = llvm::ArrayRef{dramBuffer2.data(), transferSize};
+  remoteDescs.addDesc(basicDescfromArrayRef(remoteBuf, 0));
+
+  // First READ transfer should succeed.
+  transferData(nixl1, nixl2, localDescs, remoteDescs,
+               nixl_xfer_op_t::NIXL_READ);
+
+  // Verify first transfer succeeded.
+  ASSERT_EQ(std::memcmp(dramBuffer1.data(), dramBuffer2.data(), transferSize),
+            0)
+      << "First READ transfer failed to complete correctly";
+
+  // Prepare for second transfer with different data.
+  std::fill(dramBuffer2.begin(), dramBuffer2.begin() + transferSize, srcValue2);
+
+  // Simulate source failure by deregistering memory and destroying agent.
+  nixl_opt_args_t deregArgs;
+  deregArgs.backends = {nixl2.backend};
+  nixl_reg_dlist_t deregList(nixl_mem_t::DRAM_SEG);
+  deregList.addDesc(blobDescfromVector(dramBuffer2, 0));
+  ASSERT_SUCCESS(nixl2.agent->deregisterMem(deregList, &deregArgs));
+  nixl2.agent.reset();
+
+  // Second READ transfer should fail with NIXL_ERR_REMOTE_DISCONNECT
+  transferDataWithFailure(nixl1, nixl2, localDescs, remoteDescs,
+                          nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT);
+}
+
+TEST_F(NixlUcxIntegrationTest, BasicXfer_Read) {
+  // Test basic successful READ operation.
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create two NIXL agents
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Reader", 8037, "ucx");
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Source", 8042, "ucx");
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  exchangeMetadata(nixl1, nixl2);
+
+  // Prepare buffers for transfer
+  size_t transferSize = bufferSize / 2;
+  size_t srcOffset = 0;
+  size_t dstOffset = bufferSize / 4;
+
+  const char srcValue = 'S';
+  const char initialDstValue = 'D';
+
+  std::fill(dramBuffer2.begin() + srcOffset,
+            dramBuffer2.begin() + srcOffset + transferSize, srcValue);
+  std::fill(dramBuffer1.begin(), dramBuffer1.end(), initialDstValue);
+
+  // Prepare transfer descriptors for READ operation
+  nixl_xfer_dlist_t localDescs(nixl_mem_t::DRAM_SEG);
+  auto localBuf = llvm::ArrayRef{dramBuffer1.data() + dstOffset, transferSize};
+  localDescs.addDesc(basicDescfromArrayRef(localBuf, 0));
+
+  nixl_xfer_dlist_t remoteDescs(nixl_mem_t::DRAM_SEG);
+  auto remoteBuf = llvm::ArrayRef{dramBuffer2.data() + srcOffset, transferSize};
+  remoteDescs.addDesc(basicDescfromArrayRef(remoteBuf, 0));
+
+  // Perform READ transfer
+  transferData(nixl1, nixl2, localDescs, remoteDescs,
+               nixl_xfer_op_t::NIXL_READ);
+
+  // Verify transferred data
+  ASSERT_EQ(std::memcmp(dramBuffer1.data() + dstOffset,
+                        dramBuffer2.data() + srcOffset, transferSize),
+            0)
+      << "READ: Transferred data in dramBuffer1 does not match source in "
+         "dramBuffer2";
+
+  // Check if data outside the destination range was untouched
+  if (dstOffset > 0) {
+    ASSERT_EQ(dramBuffer1[dstOffset - 1], initialDstValue)
+        << "READ: Data before destination offset was modified";
+  }
+  if (dstOffset + transferSize < dramBuffer1.size()) {
+    ASSERT_EQ(dramBuffer1[dstOffset + transferSize], initialDstValue)
+        << "READ: Data after destination range was modified";
+  }
+}
+
+TEST_F(NixlUcxIntegrationTest, ErrorHandling_PeerMode) {
+  // Test explicit peer error handling mode configuration
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create agents with explicit peer error handling mode
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Peer1", 8037, "ucx", -1, 1,
+                                  "peer");
+
+  // Verify that the backend was created with peer mode
+  nixl_b_params_t params;
+  nixl_mem_list_t mems;
+  ASSERT_SUCCESS(nixl1.agent->getBackendParams(nixl1.backend, mems, params));
+  ASSERT_EQ(params["ucx_error_handling_mode"], "peer")
+      << "Error handling mode was not set to peer";
+
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Peer2", 8042, "ucx", -1, 1,
+                                  "peer");
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange metadata
+  exchangeMetadata(nixl1, nixl2);
+
+  // Prepare buffers
+  size_t transferSize = bufferSize / 2;
+  const char srcValue = 'P';
+  std::fill(dramBuffer1.begin(), dramBuffer1.begin() + transferSize, srcValue);
+
+  // Prepare descriptors
+  nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
+  auto srcBuf = llvm::ArrayRef{dramBuffer1.data(), transferSize};
+  srcDescs.addDesc(basicDescfromArrayRef(srcBuf, 0));
+
+  nixl_xfer_dlist_t dstDescs(nixl_mem_t::DRAM_SEG);
+  auto dstBuf = llvm::ArrayRef{dramBuffer2.data(), transferSize};
+  dstDescs.addDesc(basicDescfromArrayRef(dstBuf, 0));
+
+  // First transfer should succeed with peer mode
+  transferData(nixl1, nixl2, srcDescs, dstDescs);
+
+  // Verify transfer
+  ASSERT_EQ(std::memcmp(dramBuffer1.data(), dramBuffer2.data(), transferSize),
+            0)
+      << "Transfer with peer mode failed";
+
+  // Now test error handling with peer mode
+  // Destroy receiver to trigger peer error handling
+  nixl_opt_args_t deregArgs;
+  deregArgs.backends = {nixl2.backend};
+  nixl_reg_dlist_t deregList(nixl_mem_t::DRAM_SEG);
+  deregList.addDesc(blobDescfromVector(dramBuffer2, 0));
+  ASSERT_SUCCESS(nixl2.agent->deregisterMem(deregList, &deregArgs));
+  nixl2.agent.reset();
+
+  // Transfer should fail gracefully with peer error handling
+  transferDataWithFailure(nixl1, nixl2, srcDescs, dstDescs,
                           nixl_status_t::NIXL_ERR_REMOTE_DISCONNECT);
 }
 

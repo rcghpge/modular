@@ -218,3 +218,101 @@ handling patterns (ErrorOr vs exceptions) and code style.
 - Converted all designated initializers to memset + field assignment for C++ compatibility
 - Used ErrorOr instead of absl::StatusOr for return types
 - Maintained backward compatibility by defaulting to single worker
+
+## Week 3 (May 13-19, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 05b5f61 | 2025-05-13 | Python: Reimplement GDRAPI / kvlib module | Skip | - | Python bindings, not relevant to C++ AsyncRT |
+| 26d6c8a | 2025-05-13 | NVLS: add endpoint estimation helpers | Skip | - | NVLS backend not included in AsyncRT |
+| f3e9b42 | 2025-05-13 | Agent: enable cross-process KV block allocs | Skip | - | KV block manager not in AsyncRT scope |
+| cf17e23 | 2025-05-13 | CI: use iam-role for ecr | Skip | - | CI configuration |
+| 54b1aac | 2025-05-13 | UCX: Check context before create endpoint | **Port** | ✅ Completed | UCX initialization safety |
+| a1b82f8 | 2025-05-13 | Agent: Fix python bindings for KV allocation | Skip | - | Python bindings |
+| 498fe2a | 2025-05-13 | UCX: Set endpointCount to 0 instead of hardcoded number | **Port** | ✅ Completed | UCX endpoint estimation fix |
+| 1c456a5 | 2025-05-13 | CI: Make containers reusable | Skip | - | CI configuration |
+| 77f0a51 | 2025-05-13 | NVLS: rename backend files | Skip | - | NVLS backend not included |
+| a00d7d9 | 2025-05-13 | NVLS backend initial implementation | Skip | - | NVLS backend not included |
+| 92a4bbd | 2025-05-13 | UCX: add UCS_ERR_NOT_CONNECTED in error map | Skip | - | Already incorporated in Week 2 changes |
+| 7b4f73f | 2025-05-13 | Python: allow changing default port | Skip | - | Python API changes |
+| e9b9302 | 2025-05-13 | Example: update etcd example | Skip | - | Example code |
+| b9a3ee5 | 2025-05-13 | Agent: getLocalMD should add sorted flag | Skip | - | API changes, need to check relevance |
+| b0a9bb7 | 2025-05-14 | fix: add test check that non-sorted flag is populated | Skip | - | Test framework |
+| d36b8de | 2025-05-14 | NVLS: finish bring up | Skip | - | NVLS backend not included |
+| ebdb96d | 2025-05-14 | nixl_test: encapsulate gtest names in anon namespace | Skip | - | User noted preference for static functions |
+| 48646a9 | 2025-05-14 | UCX: make data path const for thread safe | **Port** | ✅ Completed | Thread safety improvements |
+| 957448e | 2025-05-14 | UCX: remove copy and move semantics | Skip | - | User noted already incorporated |
+| c7e396f | 2025-05-14 | TEST: Add missing data-structure tests | Skip | - | Test framework |
+| d70fa87 | 2025-05-15 | UCX: Refactor progress thread | **Port** | ✅ Completed | Progress thread optimization |
+| 4f37f07 | 2025-05-16 | UCX: Add ucx worker to handle | **Port** | ✅ Completed | UCX error handling improvements |
+| 1a4a6ae | 2025-05-16 | UCX: fix multi GPU scenario | Skip | - | Not applicable - AsyncRT uses DeviceContext |
+| 6f6bfb9 | 2025-05-16 | nixl_test: reduce sleep overhead | Skip | - | Test framework |
+| 96f6aee | 2025-05-16 | test: fix test correctness | Skip | - | Test framework |
+| 3d88c8f | 2025-05-16 | NVLS: extend test to target >=2 pairs | Skip | - | NVLS backend tests |
+| c8a071d | 2025-05-16 | h2o fork | Skip | - | Already at this commit (initial HackToOwn) |
+
+### Commits to Port
+
+1. **54b1aac + 498fe2a** - UCX initialization and endpoint fixes
+   (✅ Completed - cd7d019a2)
+2. **48646a9** - UCX: make data path const for thread safe
+   (✅ Completed - amended to cd7d019a2)
+3. **d70fa87** - UCX: Refactor progress thread (✅ Completed)
+4. **4f37f07** - UCX: Add ucx worker to handle (✅ Completed)
+
+### Summary
+
+- **Total commits reviewed**: 27
+- **Commits to port**: 4 (all UCX-related improvements)
+- **Commits ported**: 4 ✅
+- **Commits skipped**: 23
+
+### Changes Made
+
+#### 3. d70fa87 - UCX: Refactor progress thread
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Replaced busy-polling with
+  poll()
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Replaced atomic
+  bool with control pipe
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added UCP_FEATURE_WAKEUP support
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Added getWorker()
+  method
+
+**Key changes**:
+
+- Replaced busy-polling loop with poll()-based event-driven approach
+- Added control pipe for clean thread cancellation
+- Enable UCP_FEATURE_WAKEUP when progress thread is enabled
+- Monitor UCX worker file descriptors with poll()
+
+#### 4. 4f37f07 - UCX: Add error handling mode parameter
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_plugin.cpp`: Added
+  ucx_error_handling_mode parameter
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Parse error handling mode
+  parameter
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Updated class
+  signatures
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Implemented error handling mode
+  support
+- `AsyncRT/unittests/NixlTestUcx.cpp`: Added comprehensive error handling
+  tests
+
+**Key changes**:
+
+- Added configurable error handling mode ("none" or "peer")
+- Updated nixlUcxContext to store and pass error handling mode
+- Updated nixlUcxEp constructor to use configured error handling mode
+- Simplified closeImpl() by removing blocking behavior
+- Fixed disconnectNonblocking() to ignore remote disconnect errors
+- Added comprehensive error handling tests:
+  - XferThenFail for both WRITE and READ operations
+  - Basic READ operation test
+  - Explicit peer mode configuration test

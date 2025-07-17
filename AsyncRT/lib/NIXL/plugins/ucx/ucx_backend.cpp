@@ -251,19 +251,16 @@ void nixlUcxEngine::progressFunc() {
     return;
   }
 
-  {
-    std::unique_lock<std::mutex> lock(pthrActiveLock);
-    pthrActive = true;
-  }
-  pthrActiveCV.notify_one();
+  progressThreadActive = true;
+  progressThreadActiveCV.notify_one();
 
   // Set POLLIN event on all worker fds so that the main loop would process them
   // all on first iteration
   for (size_t wid = 0; wid < pollFds.size() - 1; wid++)
     pollFds[wid].revents = POLLIN;
 
-  bool pthrStop = false;
-  while (!pthrStop) {
+  bool progressThreadStop = false;
+  while (!progressThreadStop) {
     for (size_t wid = 0; wid < pollFds.size() - 1; wid++) {
       if (!(pollFds[wid].revents & POLLIN))
         continue;
@@ -297,15 +294,15 @@ void nixlUcxEngine::progressFunc() {
         NIXL_ERROR << "read() on control pipe failed. Error: "
                    << strerror(errno) << "\n";
 
-      pthrStop = true;
+      progressThreadStop = true;
     }
   }
 }
 
 void nixlUcxEngine::progressThreadStart() {
   {
-    std::unique_lock<std::mutex> lock(pthrActiveLock);
-    pthrActive = false;
+    std::unique_lock<std::mutex> lock(progressThreadActiveLock);
+    progressThreadActive = false;
   }
   if (!pthrOn) {
     // not enabled
@@ -314,8 +311,9 @@ void nixlUcxEngine::progressThreadStart() {
 
   pthr = std::thread(&nixlUcxEngine::progressFunc, this);
 
-  std::unique_lock<std::mutex> lock(pthrActiveLock);
-  pthrActiveCV.wait(lock, [&] { return pthrActive.load(); });
+  std::unique_lock<std::mutex> lock(progressThreadActiveLock);
+  progressThreadActiveCV.wait(lock,
+                              [&] { return progressThreadActive.load(); });
 }
 
 void nixlUcxEngine::progressThreadStop() {
@@ -345,7 +343,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     : nixlBackendEngine(init_params) {
   unsigned long numWorkers;
   std::vector<std::string_view> devs;
-  nixl_b_params_t *custom_params = init_params->customParams;
+  nixl_b_params_t *customParams = init_params->customParams;
 
   if (init_params->enableProgTh) {
     pthrOn = true;
@@ -364,14 +362,14 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     pthrOn = false;
   }
 
-  if (custom_params->count("device_list") != 0)
-    devs = str_split_substr((*custom_params)["device_list"], ", ");
+  if (customParams->count("device_list") != 0)
+    devs = str_split_substr((*customParams)["device_list"], ", ");
 
-  const auto num_workers_iter = custom_params->find("num_workers");
-  if (num_workers_iter == custom_params->end()) {
+  const auto numWorkersIter = customParams->find("num_workers");
+  if (numWorkersIter == customParams->end()) {
     numWorkers = 1;
   } else {
-    const char *start = num_workers_iter->second.c_str();
+    const char *start = numWorkersIter->second.c_str();
     char *end;
     numWorkers = std::strtoul(start, &end, 10);
     if (end == start || *end != '\0' || numWorkers == 0) {
@@ -381,8 +379,8 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   // If the caller passes a GPU device ID, set up the corresponding device
   // context.
-  if (custom_params->count("gpu_device_id")) {
-    int gpuDeviceId = std::stoi((*custom_params)["gpu_device_id"]);
+  if (customParams->count("gpu_device_id")) {
+    int gpuDeviceId = std::stoi((*customParams)["gpu_device_id"]);
     ErrorOr<DeviceContextRef> errorOrDeviceCtx =
         DeviceContext::create(Device::gpuAPI, gpuDeviceId);
     if (errorOrDeviceCtx.isError()) {
@@ -391,6 +389,14 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     }
     this->deviceCtx = errorOrDeviceCtx.takeValue();
   }
+  // Parse error handling mode
+  const auto errHandlingModeIt = customParams->find("ucx_error_handling_mode");
+  ucp_err_handling_mode_t errHandlingMode = UCP_ERR_HANDLING_MODE_NONE;
+  if (errHandlingModeIt != customParams->end() &&
+      (errHandlingModeIt->second == "peer")) {
+    errHandlingMode = UCP_ERR_HANDLING_MODE_PEER;
+  }
+
   // Set the context as active for the UCX initialization in this function.
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
@@ -401,7 +407,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   uc = std::make_shared<nixlUcxContext>(
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
-      NIXL_UCX_MT_WORKER, pthrOn);
+      NIXL_UCX_MT_WORKER, pthrOn, errHandlingMode);
   for (unsigned int i = 0; i < numWorkers; i++)
     uws.emplace_back(std::make_unique<nixlUcxWorker>(uc));
 
