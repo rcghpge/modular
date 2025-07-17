@@ -408,8 +408,17 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   uc = std::make_shared<nixlUcxContext>(
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
       NIXL_UCX_MT_WORKER, pthrOn, errHandlingMode);
-  for (unsigned int i = 0; i < numWorkers; i++)
-    uws.emplace_back(std::make_unique<nixlUcxWorker>(uc));
+
+  for (unsigned int i = 0; i < numWorkers; i++) {
+    auto workerOrError = nixlUcxWorker::create(uc);
+    if (workerOrError.isError()) {
+      NIXL_ERROR << "Failed to create UCX worker " << i << ": "
+                 << workerOrError.getError();
+      initErr = true;
+      return;
+    }
+    uws.emplace_back(workerOrError.takeValue());
+  }
 
   const auto &uw = uws.front();
   workerAddr = uw->epAddr(workerSize);

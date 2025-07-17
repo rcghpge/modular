@@ -213,7 +213,7 @@ nixl_status_t nixlUcxEp::read(uint64_t raddr, nixlUcxRkey &rk, void *laddr,
 
   ucp_request_param_t param;
   memset(&param, 0, sizeof(param));
-  param.op_attr_mask = UCP_OP_ATTR_FIELD_MEMH;
+  param.op_attr_mask = UCP_OP_ATTR_FIELD_MEMH | UCP_OP_ATTR_FLAG_MULTI_SEND;
   param.memh = mem.memh;
 
   ucs_status_ptr_t request =
@@ -235,7 +235,7 @@ nixl_status_t nixlUcxEp::write(void *laddr, nixlUcxMem &mem, uint64_t raddr,
 
   ucp_request_param_t param;
   memset(&param, 0, sizeof(param));
-  param.op_attr_mask = UCP_OP_ATTR_FIELD_MEMH;
+  param.op_attr_mask = UCP_OP_ATTR_FIELD_MEMH | UCP_OP_ATTR_FLAG_MULTI_SEND;
   param.memh = mem.memh;
 
   ucs_status_ptr_t request =
@@ -356,15 +356,15 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
 
 nixlUcxContext::~nixlUcxContext() { ucp_cleanup(ctx); }
 
-nixlUcxWorker::nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx)
-    : ctx(_ctx) {
+M::ErrorOr<std::unique_ptr<nixlUcxWorker>>
+nixlUcxWorker::create(std::shared_ptr<nixlUcxContext> &_ctx) {
   ucp_worker_params_t worker_params;
-  ucs_status_t status = UCS_OK;
+  ucs_status_t status;
 
   memset(&worker_params, 0, sizeof(worker_params));
   worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
 
-  switch (ctx->mt_type) {
+  switch (_ctx->mt_type) {
   case NIXL_UCX_MT_CTX:
     worker_params.thread_mode = UCS_THREAD_MODE_SINGLE;
     break;
@@ -375,16 +375,25 @@ nixlUcxWorker::nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx)
     worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
     break;
   default:
-    assert(ctx->mt_type < NIXL_UCX_MT_MAX);
-    abort();
+    return M::Error("Invalid UCX worker type: " +
+                    std::to_string(_ctx->mt_type));
   }
 
-  status = ucp_worker_create(ctx->ctx, &worker_params, &worker);
+  ucp_worker_h worker;
+  status = ucp_worker_create(_ctx->ctx, &worker_params, &worker);
   if (status != UCS_OK) {
-    // TODO: MSW_NET_ERROR(priv->net, "failed to create ucp_worker (%s)\n",
-    // ucs_status_string(status));
-    return;
+    return M::Error("Failed to create UCX worker: " +
+                    std::string(ucs_status_string(status)));
   }
+
+  // Pass the successfully created worker to the constructor
+  return std::make_unique<nixlUcxWorker>(_ctx, worker);
+}
+
+nixlUcxWorker::nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx,
+                             ucp_worker_h _worker)
+    : ctx(_ctx), worker(_worker) {
+  // Constructor just stores the pre-created worker handle
 }
 
 nixlUcxWorker::~nixlUcxWorker() { ucp_worker_destroy(worker); }

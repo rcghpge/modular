@@ -154,7 +154,11 @@ private:
   ucp_worker_h worker;
 
 public:
-  nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx);
+  /// Fallible constructor for UCX worker.
+  static M::ErrorOr<std::unique_ptr<nixlUcxWorker>>
+  create(std::shared_ptr<nixlUcxContext> &_ctx);
+
+  nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx, ucp_worker_h _worker);
   ~nixlUcxWorker();
 
   /* Connection */

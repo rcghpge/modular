@@ -316,3 +316,84 @@ handling patterns (ErrorOr vs exceptions) and code style.
   - XferThenFail for both WRITE and READ operations
   - Basic READ operation test
   - Explicit peer mode configuration test
+
+## Week 4 (May 20-26, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 4f37f07 | 2025-05-19 | UCX/BACKEND: add custom error handling parameter + gtests improvements | Skip | - | Already backported in Week 3 |
+| 1b60b99 | 2025-05-19 | plugins/posix: Fix build on RHEL8/Manylinux | Skip | - | POSIX backend not included |
+| 1a4a6ae | 2025-05-20 | UCX: fix multi GPU scenario | Skip | - | Already analyzed - not applicable to AsyncRT |
+| 9f00c7c | 2025-05-20 | Benchmark: make it possible to build container with UCX built from source | Skip | - | Benchmarking infrastructure |
+| a87c086 | 2025-05-21 | Implement new synchronization read-write locking mode | Skip | - | Not UCX-specific, likely ETCD related |
+| d8ffa6a | 2025-05-21 | set multi flag for read/write in ucx backend | **Port** | ✅ Completed | UCX read/write operation improvements |
+| 47c9d46 | 2025-05-21 | BACKEND/UCX_MO: add ucx_error_handling_mode parameter | Skip | - | UCX_MO backend not included |
+| 9cb30a6 | 2025-05-21 | UCX: handle ucp_worker_create failure | **Port** | ✅ Completed | UCX error handling improvement |
+| 846e043 | 2025-05-21 | Refactor: Some C++ best practices | **Port** | Pending | Code quality improvements |
+| 598ae34 | 2025-05-21 | UCX: Set a CUDA context when loading remote MD from listener thread | **Port** | Pending | CUDA context management for UCX |
+| 2e9262f | 2025-05-21 | Use codespellrc file to ignore words | Skip | - | Spelling/linting configuration |
+| d18a757 | 2025-05-22 | Agent: Bug fix: apply timeout to socket connection and add gtests for md exchange | Skip | - | Agent/socket timeouts, not UCX specific |
+| 1144491 | 2025-05-22 | Agent: Improve MD fetch and invalidate flow in ETCD mode using watchers | Skip | - | ETCD functionality removed |
+| 7c87207 | 2025-05-22 | Posix: Updated Uring Queue implementation | Skip | - | POSIX backend not included |
+| af9ccc4 | 2025-05-22 | plugins/hf3fs: Add 3FS backend | Skip | - | 3FS backend not included |
+| ace79e7 | 2025-05-21 | Dockerfile: Add RDMA libraries for UCX build | Skip | - | Docker/build infrastructure |
+| d01a854 | 2025-05-22 | Timeout from poll() in progress thread after pthrDelay | **Port** | Pending | Progress thread timeout improvements |
+| 23ed7ae | 2025-05-22 | Cost estimation | Skip | - | Cost estimation not in AsyncRT scope |
+| ad31f86 | 2025-05-22 | clang: Add clang format file | Skip | - | Formatting configuration |
+| 0a60d25 | 2025-05-22 | Revert "clang: Add clang format file" | Skip | - | Revert of formatting config |
+| bf55d8e | 2025-05-22 | UCX_MO: Send notification when workers have completed in postXfer | Skip | - | UCX_MO backend not included |
+| 98b0223 | 2025-05-22 | Add missing UCX backends option | Skip | - | Build system option |
+| 7f24393 | 2025-05-22 | Expose python API for cost estimation | Skip | - | Python API changes |
+| 49ff03e | 2025-05-22 | Agent API: update sendLocalPartialMD to require label in etcd mode and update python bindings with label | Skip | - | ETCD/Python API changes |
+| 9ddf7a7 | 2025-05-22 | NIXL KV Cache Benchmark | Skip | - | Benchmarking tool |
+| 2d9e847 | 2025-05-22 | BINDINGS/RUST: Example, fix building, tests | Skip | - | Rust bindings |
+| c77372b | 2025-05-22 | Memory leak fix | **Port** | Pending | Generic memory leak fix |
+| f2061ae | 2025-05-22 | SRC/BINDINGS/RUST: added missing APIs, reordered APIs to match python + tests | Skip | - | Rust bindings |
+| 16c0611 | 2025-05-22 | chore: add attributions files for NIXL | Skip | - | Documentation/licensing |
+| e525c26 | 2025-05-23 | fix: remove nixlGdsIOBatch::destroyBatch to prevent double cuFileBatchIODestroy call | Skip | - | GDS backend not included |
+| c90a0d9 | 2025-05-23 | UCX: set rma rails to 2 for ucx backend | **Port** | Pending | UCX RMA configuration |
+| e3920bb | 2025-05-23 | UCX_MO: Check memory registration success to avoid invalid memory access | Skip | - | UCX_MO backend not included |
+| b6832ec | 2025-05-23 | INFRA: Sections serialization: Only count remotely supported backends | Skip | - | Serialization infrastructure |
+| ba66407 | 2025-05-23 | nixlbench: automatically detect NIXL lib path based on host CPU | Skip | - | Benchmarking tool |
+| 371a5a8 | 2025-05-23 | chore: update versions to 0.3.0 | Skip | - | Version management |
+| 71bbebf | 2025-05-23 | pyproject: Fix dependencies | Skip | - | Python packaging |
+| 502d1b4 | 2025-05-24 | Fix missing common/status.h compile error in 3fs plugin | Skip | - | 3FS backend not included |
+| e48a70a | 2025-05-23 | Reordered rust API | Skip | - | Rust bindings |
+| 55364f0 | 2025-05-25 | CI: Blossom CI initial commit | Skip | - | CI infrastructure |
+| c4acdc1 | 2025-05-26 | CI: Blossom-ci workflow file name fixup | Skip | - | CI infrastructure |
+| 9997e32 | 2025-05-26 | fix: consistent naming for NIXL KV Bench | Skip | - | Benchmarking tool |
+| a994fc9 | 2025-05-26 | CI: Increase timeout for AWS job status check | Skip | - | CI infrastructure |
+| e0b34a3 | 2025-05-27 | LISTENER: Add connection creation for invalidation message | Skip | - | ETCD listener functionality |
+
+### Commits to Port
+
+1. **d8ffa6a** - set multi flag for read/write in ucx backend
+2. **9cb30a6** - UCX: handle ucp_worker_create failure
+3. **846e043** - Refactor: Some C++ best practices
+4. **598ae34** - UCX: Set a CUDA context when loading remote MD from listener thread
+5. **d01a854** - Timeout from poll() in progress thread after pthrDelay
+6. **c77372b** - Memory leak fix
+7. **c90a0d9** - UCX: set rma rails to 2 for ucx backend
+
+### Summary
+
+- **Total commits reviewed**: 41
+- **Commits to port**: 7 (UCX improvements and code quality)
+- **Commits ported**: 0 (pending)
+- **Commits skipped**: 34
+
+### Notes
+
+Week 4 contains several important UCX improvements:
+
+- Error handling for worker creation failures
+- CUDA context management improvements
+- Progress thread timeout enhancements
+- RMA configuration optimizations
+- Memory leak fixes
+- Code quality improvements
+
+Many commits are related to backends not included in AsyncRT (UCX_MO, POSIX,
+3FS, etc.) or infrastructure changes (CI, benchmarking, Python/Rust bindings).
