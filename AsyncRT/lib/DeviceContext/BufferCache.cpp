@@ -13,7 +13,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include <atomic>
 #include <cstdint>
-#include <iostream>
 #include <mutex>
 
 // Helpers for logging.
@@ -367,61 +366,49 @@ BufferCacheFreeList::BufferCacheFreeList(const DeviceContext *context,
 BufferCacheFreeList::~BufferCacheFreeList() { flushToParent(); }
 
 void BufferCacheFreeList::flushToParent() {
-  std::lock_guard<std::mutex> lock(bufferCache_.mu_);
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
-    flushFreeBuffersToParent(i);
-  }
-}
-
-void BufferCacheFreeList::flushFreeBuffersToParent(int id) {
   if (parent_ == nullptr)
     return;
 
-  // Early return if no chunks have been allocated yet.
-  if (bufferCache_.chunks_ == nullptr)
-    return;
+  {
+    std::lock_guard<std::mutex> lock(bufferCache_.mu_);
+    // Early return if no chunks have been allocated yet.
+    if (bufferCache_.chunks_ == nullptr)
+      return;
 
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
-                        " to parent");
-  }
-  size_t bufSize = 0;
-  BufferCache::Desc *curDesc = freeBuffers_[id];
-  while (curDesc != nullptr) {
-    bufSize += curDesc->size_;
-    BufferCache::Desc *nextDesc = curDesc->nextFree_;
+    if (bufferCache_.doLog_) {
+      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent");
+    }
+    size_t bufSize = 0;
+    BufferCache::Desc *curDesc = freeBuffers_;
+    while (curDesc != nullptr) {
+      bufSize += curDesc->size_;
+      BufferCache::Desc *nextDesc = curDesc->nextFree_;
 
-    // "Remove" from free list. Avoid manipulating the list itself since it
-    // will be entirely reset after this loop.
-    assert(curDesc->isFree());
-    curDesc->nextFree_ = nullptr;
-    curDesc->prevFree_ = nullptr;
-    curDesc->setInUse();
-    bufferCache_.freeCount_--;
-    bufferCache_.freeSize_ -= curDesc->size_;
+      // "Remove" from free list. Avoid manipulating the list itself since it
+      // will be entirely reset after this loop.
+      assert(curDesc->isFree());
+      curDesc->nextFree_ = nullptr;
+      curDesc->prevFree_ = nullptr;
+      curDesc->setInUse();
+      bufferCache_.freeCount_--;
+      bufferCache_.freeSize_ -= curDesc->size_;
 
-    // Merge the block with surrounding free blocks if possible and add it
-    // to the parent free list.
-    curDesc->chunk_->mergeFreeBlockDesc(parent_, curDesc);
-    curDesc = nextDesc;
-  }
-  // Reset the current freelist to empty.
-  freeBuffers_[id] = nullptr;
+      // Merge the block with surrounding free blocks if possible and add it to
+      // the parent free list.
+      curDesc->chunk_->mergeFreeBlockDesc(parent_, curDesc);
+      curDesc = nextDesc;
+    }
+    // Reset the current freelist to empty.
+    freeBuffers_ = nullptr;
 
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
-                            " to parent: Done",
-                        0, bufSize);
+    if (bufferCache_.doLog_) {
+      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent: Done", 0,
+                          bufSize);
+    }
   }
 }
 
-bool BufferCacheFreeList::empty() {
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
-    if (freeBuffers_[i] != nullptr)
-      return false;
-  }
-  return true;
-}
+bool BufferCacheFreeList::empty() { return freeBuffers_ == nullptr; }
 
 void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
   assert(!desc->isFree());
@@ -432,19 +419,18 @@ void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
   size_t descSize = desc->size_;
 
   desc->setFree(this);
-  BufferCache::Desc *&activeList = freeBuffers_[primaryFreeBuffers_];
-  if (activeList == nullptr) {
-    activeList = desc;
-  } else if (activeList->size_ >= descSize) {
+  if (freeBuffers_ == nullptr) {
+    freeBuffers_ = desc;
+  } else if (freeBuffers_->size_ >= descSize) {
     // Enter desc at head.
-    assert(activeList->prevFree_ == nullptr);
-    activeList->prevFree_ = desc;
-    desc->nextFree_ = activeList;
-    activeList = desc;
+    assert(freeBuffers_->prevFree_ == nullptr);
+    freeBuffers_->prevFree_ = desc;
+    desc->nextFree_ = freeBuffers_;
+    freeBuffers_ = desc;
   } else {
-    assert(activeList != nullptr);
-    BufferCache::Desc *prevDesc = activeList;
-    BufferCache::Desc *nextDesc = activeList->nextFree_;
+    assert(freeBuffers_ != nullptr);
+    BufferCache::Desc *prevDesc = freeBuffers_;
+    BufferCache::Desc *nextDesc = freeBuffers_->nextFree_;
     while ((nextDesc != nullptr) && (nextDesc->size_ < descSize)) {
       prevDesc = nextDesc;
       nextDesc = prevDesc->nextFree_;
@@ -467,21 +453,14 @@ void BufferCacheFreeList::removeFromFreeList(BufferCache::Desc *desc) {
   bufferCache_.freeSize_ -= desc->size_.load(std::memory_order_relaxed);
   bufferCache_.freeCount_--;
 
-  if (desc->prevFree_ == nullptr) {
-    // desc is at the head of a freeBuffers_ list. Identify which list and
-    // unhook.
-    int i = 0;
-    for (; i < kNumFreeBufferLists; i++) {
-      if (freeBuffers_[i] == desc) {
-        freeBuffers_[i] = desc->nextFree_;
-        if (freeBuffers_[i] != nullptr) {
-          freeBuffers_[i]->prevFree_ = nullptr;
-        }
-        break; // Found the entry, no need to iterate further.
-      }
+  if (desc == freeBuffers_) {
+    assert(desc->prevFree_ == nullptr);
+    freeBuffers_ = desc->nextFree_;
+    if (freeBuffers_ != nullptr) {
+      freeBuffers_->prevFree_ = nullptr;
     }
-    assert(i < kNumFreeBufferLists);
   } else {
+    assert(desc->prevFree_ != nullptr);
     desc->prevFree_->nextFree_ = desc->nextFree_;
     if (desc->nextFree_ != nullptr) {
       desc->nextFree_->prevFree_ = desc->prevFree_;
@@ -502,31 +481,28 @@ void BufferCacheFreeList::selfCheck() const {
     abort();                                                                   \
   }
 
-  // Make sure all lists are checked.
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
-    // Check free markers, no cycle, increasing sizes.
-    BufferCache::Desc *curDesc = freeBuffers_[i];
-    BufferCache::Desc *aheadDesc = curDesc;
-    if (curDesc != nullptr) {
-      SELF_CHECK(curDesc->prevFree_ == nullptr);
-    }
-    size_t prevSize = 0;
-    while (curDesc != nullptr) {
-      BufferCache::Desc *next = curDesc->nextFree_;
-      SELF_CHECK(curDesc->isFree());
-      SELF_CHECK(curDesc->owner() == this);
-      SELF_CHECK(prevSize <= curDesc->size_);
-      prevSize = curDesc->size_;
-      SELF_CHECK((next == nullptr) || (next->prevFree_ == curDesc));
-      if ((aheadDesc != nullptr) && (aheadDesc->nextFree_ != nullptr)) {
-        aheadDesc = aheadDesc->nextFree_->nextFree_;
-        if (aheadDesc == curDesc) {
-          bufferCache_.logErr("!!! selfCheck !!! cycle - free buffers");
-          abort();
-        }
+  // Check free markers, no cycle, increasing sizes.
+  BufferCache::Desc *curDesc = freeBuffers_;
+  BufferCache::Desc *aheadDesc = curDesc;
+  if (curDesc != nullptr) {
+    SELF_CHECK(curDesc->prevFree_ == nullptr);
+  }
+  size_t prevSize = 0;
+  while (curDesc != nullptr) {
+    BufferCache::Desc *next = curDesc->nextFree_;
+    SELF_CHECK(curDesc->isFree());
+    SELF_CHECK(curDesc->owner() == this);
+    SELF_CHECK(prevSize <= curDesc->size_);
+    prevSize = curDesc->size_;
+    SELF_CHECK((next == nullptr) || (next->prevFree_ == curDesc));
+    if ((aheadDesc != nullptr) && (aheadDesc->nextFree_ != nullptr)) {
+      aheadDesc = aheadDesc->nextFree_->nextFree_;
+      if (aheadDesc == curDesc) {
+        bufferCache_.logErr("!!! selfCheck !!! cycle - free buffers");
+        abort();
       }
-      curDesc = next;
     }
+    curDesc = next;
   }
 
   if (parent_ != nullptr) {
@@ -542,13 +518,11 @@ void BufferCacheFreeList::selfCheck() const {
 }
 
 bool BufferCacheFreeList::contains(BufferCache::Desc *desc) const {
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
-    BufferCache::Desc *curDesc = freeBuffers_[i];
-    while (curDesc != nullptr) {
-      if (curDesc == desc)
-        return true;
-      curDesc = curDesc->nextFree_;
-    }
+  BufferCache::Desc *curDesc = freeBuffers_;
+  while (curDesc != nullptr) {
+    if (curDesc == desc)
+      return true;
+    curDesc = curDesc->nextFree_;
   }
   return false;
 }
@@ -594,8 +568,11 @@ static constexpr size_t GB = 1024 * MB; // NOLINT
 
 BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
                          size_t alignment, bool isHost, bool isBazelTest)
-    : device_(device), isHost_(isHost), isBazelTest_(isBazelTest),
-      maxCacheSize_(maxSize), chunkSize_(chunkSize),
+    : device_(device), isHost_(isHost),
+      // Determine whether we are running as part of a `bazel test` to
+      // appropriately scale the cache sizes allowing for other tests to execute
+      // concurrently on the device.
+      isBazelTest_(isBazelTest), maxCacheSize_(maxSize), chunkSize_(chunkSize),
       // A minimum of 64 byte alignment for allocations from the buffer cache.
       alignmentOffset_(std::max(64UL, alignment) - 1),
       alignmentMask_(~(std::max(64UL, alignment) - 1)),
@@ -610,8 +587,8 @@ BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
     chunkSize_ = std::min(chunkSize_, 200 * MB);
   }
 
-  // Allocate a freelist that maintains free memory blocks not associated with
-  // a DeviceContext (aka stream).
+  // Allocate a freelist that maintains free memory blocks not associated with a
+  // DeviceContext (aka stream).
   freeList_ = std::make_unique<BufferCacheFreeList>(nullptr, *this, nullptr);
 
   // Determine state of debugging flags.
@@ -712,29 +689,29 @@ BufferCache::Desc *BufferCache::popDesc() {
 }
 
 void BufferCache::pushDesc(Desc *desc) {
-  // Do not preemptively clear the desc. The reset work could be unnecessary
-  // and reset before writing will load the memory locations into the CPU cache.
+  // Do not preemptively clear the desc. The reset work could be unnecessary and
+  // reset before writing will load the memory locations in the cache.
   desc->next_ = unusedDescs_;
   unusedDescs_ = desc;
 }
 
 bool BufferCache::shouldUseMaxSize() {
-  // The state whether this process has determined to use the full buffer
-  // cache in as few chunks as possible is kept in an atomic integer. A value
-  // of zero is interpreted as false, while a value greater other than zero is
+  // The state whether this process has determined to use the full buffer cache
+  // in as few chunks as possible is kept in an atomic integer. A value of zero
+  // is interpreted as false, while a value greater other than zero is
   // interpreted as true.
   // We use a relaxed load since we do not require strong synchronization. If
   // another thread races to set the value to true we potentially miss
-  // allocating one chunk at maximum size. However even with proper locking
-  // this race would exist.
+  // allocating one chunk at maximum size. However even with proper locking this
+  // race would exist.
   return useMaxSize_.load(std::memory_order_relaxed) != 0;
 }
 
 void BufferCache::enableUseMaxSize() {
   // We use a relaxed store since we do not require strong synchronization. If
   // another thread races to set the value to "true" we potentially miss
-  // allocating one chunk at maximum size. However even with proper locking
-  // this race would exist.
+  // allocating one chunk at maximum size. However even with proper locking this
+  // race would exist.
   useMaxSize_.store(1, std::memory_order_relaxed);
 }
 
@@ -770,28 +747,30 @@ void BufferCache::clear() {
 
   selfCheck();
 
-  Desc *desc = freeList_->freeBuffers_[freeList_->primaryFreeBuffers_];
+  // Ensure each free desc is spanning the whole chunk area.
+  Desc *desc = freeList_->freeBuffers_;
   while (desc != nullptr) {
-    // Ensure each free desc is spanning the whole chunk area. We should have
-    // one desc per chunk at this point.
     assert(desc->ptr_ == desc->chunk_->base_);
     assert(desc->size_ == desc->chunk_->size_);
+
     desc = desc->nextFree_;
   }
 
   Chunk *chunk = chunks_;
   while (chunk != nullptr) {
     Chunk *nextChunk = chunk->next_;
-    Desc *desc = chunk->descs_;
-    // Ensure each chunk only contains one free desc.
-    assert(desc->ptr_ == chunk->base_);
-    assert(desc->size_ == chunk->size_);
-    assert(desc->prev_ == nullptr);
-    assert(desc->next_ == nullptr);
-    assert(desc->isFree());
+    [[maybe_unused]] void *base = chunk->base_;
+    [[maybe_unused]] size_t size = chunk->size_;
 
-    freeList_->removeFromFreeList(desc);
-    delete desc;
+    // Ensure each chunk only contains one free desc.
+    assert(chunk->descs_->ptr_ == base);
+    assert(chunk->descs_->size_ == size);
+    assert(chunk->descs_->prev_ == nullptr);
+    assert(chunk->descs_->next_ == nullptr);
+    assert(chunk->descs_->isFree());
+
+    freeList_->removeFromFreeList(chunk->descs_);
+    delete chunk->descs_;
     // Release the chunk memory.
     if (doLog_) {
       logErr("free_chunk(" + TWINE_PTR(chunk->base_) + ", " +
@@ -808,9 +787,7 @@ void BufferCache::clear() {
     chunk = nextChunk;
   }
   chunks_ = nullptr;
-  for (int i = 0; i < BufferCacheFreeList::kNumFreeBufferLists; i++) {
-    assert(freeList_->freeBuffers_[i] == nullptr);
-  }
+  assert(freeList_->freeBuffers_ == nullptr);
 
   Desc *cur = unusedDescs_;
   while (cur != nullptr) {
@@ -843,9 +820,9 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
           // indication that a large amount of memory will be necessary during
           // the execution of a model.
           //
-          // Avoid aggressive growth if running in Bazel to avoid consuming
-          // all of memory of a GPU shared amongst multiple tests. Avoid
-          // aggressive growth if the allocation will not fit within the
+          // Avoid aggressive growth if running in Bazel to avoid consuming all
+          // of memory of a GPU shared amongst multiple tests.
+          // Avoid aggressive growth if the allocation will not fit within the
           // maximum buffer cache size to start.
           if (!bufferCache_.isBazelTest_ &&
               (size <= bufferCache_.maxCacheSize_)) {
@@ -861,9 +838,8 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
 
         if (BufferCache::shouldUseMaxSize()) {
           // Heuristic: The code above or another buffer cache has determined
-          // that we should grow to the largest possible chunk size. Update
-          // the chunk size to all remaining memory for future chunk
-          // allocations.
+          // that we should grow to the largest possible chunk size. Update the
+          // chunk size to all remaining memory for future chunk allocations.
           bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
         }
       }
@@ -883,19 +859,14 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
   // mode.
   void *ptr = nullptr;
   if (ctx_ == nullptr) {
-    // In the case of the bottom most freelist being consulted for allocation
-    // we might not have a DeviceContext associated, so we fail the allocation
-    // with an error.
+    // In the case of the bottom most freelist being consulted for allocation we
+    // might not have a DeviceContext associated, so we fail the allocation with
+    // an error.
     if (bufferCache_.doLog_) {
       bufferCache_.logErr("allocate_buffer(" + TWINE(size) +
                           ") - failed due to missing context");
     }
     return Error("memAlloc failed due to missing context");
-  }
-  static bool useOnlyBufferCache =
-      DeviceContext::configAsBool("buffer_cache_only", false);
-  if (useOnlyBufferCache) {
-    return Error("[Use only buffer cache mode]: No room left in buffer cache.");
   }
   ErrorOrSuccess err = ctx_->memAlloc(
       &ptr, size,
@@ -923,36 +894,33 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
   assert((size & bufferCache_.alignmentMask_) == size);
   int iterations = 0;
   {
-    for (int i = 0; i < kNumFreeBufferLists; i++) {
-      // Find a fit in the free list.
-      BufferCache::Desc *desc =
-          freeBuffers_[(primaryFreeBuffers_ + i) & (kNumFreeBufferLists - 1)];
-      while ((desc != nullptr) && (desc->size_ < size)) {
-        desc = desc->nextFree_;
-        iterations++;
+    // Find a fit in the free list.
+    BufferCache::Desc *desc = freeBuffers_;
+    while ((desc != nullptr) && (desc->size_ < size)) {
+      desc = desc->nextFree_;
+      iterations++;
+    }
+    if (desc != nullptr) {
+      assert(desc->isFree());
+      if (desc->size_ == size) {
+        removeFromFreeList(desc);
+      } else {
+        desc = desc->chunk_->splitFreeDesc(desc, size);
       }
-      if (desc != nullptr) {
-        assert(desc->isFree());
-        if (desc->size_ == size) {
-          removeFromFreeList(desc);
-        } else {
-          desc = desc->chunk_->splitFreeDesc(desc, size);
-        }
-        assert(desc->nextFree_ == nullptr);
-        assert(desc->prevFree_ == nullptr);
-        assert(desc->isInUse());
+      assert(desc->nextFree_ == nullptr);
+      assert(desc->prevFree_ == nullptr);
+      assert(desc->isInUse());
 
-        bufferCache_.allocatedMap_.add(desc);
+      bufferCache_.allocatedMap_.add(desc);
 
-        if (bufferCache_.doLog_) {
-          bufferCache_.logErr("allocate on " + TWINE_PTR(this) + " (" +
-                                  TWINE_PTR(desc->ptr_) + "; " + TWINE(size) +
-                                  ")",
-                              iterations, -size);
-        }
-
-        return desc;
+      if (bufferCache_.doLog_) {
+        bufferCache_.logErr("allocate on " + TWINE_PTR(this) + " (" +
+                                TWINE_PTR(desc->ptr_) + "; " + TWINE(size) +
+                                ")",
+                            iterations, -size);
       }
+
+      return desc;
     }
   }
 
@@ -989,28 +957,6 @@ ErrorOrSuccess BufferCacheFreeList::free(void *ptr) {
     BufferCache::Desc *desc = bufferCache_.allocatedMap_.remove(ptr);
     if (desc != nullptr) {
       freeDesc(desc);
-      if ((ctx_ != nullptr) && !handlerPending_) {
-        // Free the list preceeding the next primary so that we can keep buffers
-        // cached for an extended period.
-        int toFreeId = (primaryFreeBuffers_ + 2) & (kNumFreeBufferLists - 1);
-        primaryFreeBuffers_ =
-            (primaryFreeBuffers_ + 1) & (kNumFreeBufferLists - 1);
-        assert(freeBuffers_[primaryFreeBuffers_] == nullptr);
-        handlerPending_ = true;
-        ErrorOrSuccess err = ctx_->enqueueEventHandler(
-            // We need to ensure that ctx_ survives while this handler is
-            // pending.
-            [contextRef = DeviceContextRef::copy(ctx_), freelist = this,
-             id = toFreeId, isHost = bufferCache_.isHost()]() {
-              std::lock_guard<std::mutex> lock(freelist->bufferCache_.mu_);
-              assert(freelist->handlerPending_);
-              freelist->flushFreeBuffersToParent(id);
-              freelist->handlerPending_ = false;
-            });
-        if (err.isError()) {
-          return err.takeError();
-        }
-      }
       return success();
     }
   }
