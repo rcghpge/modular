@@ -87,8 +87,7 @@ private:
   /* UCX data */
   std::shared_ptr<nixlUcxContext> uc;
   std::vector<std::unique_ptr<nixlUcxWorker>> uws;
-  std::unique_ptr<char[]> workerAddr;
-  size_t workerSize;
+  std::string workerAddr;
 
   /* Progress thread data */
   std::mutex progressThreadActiveLock;

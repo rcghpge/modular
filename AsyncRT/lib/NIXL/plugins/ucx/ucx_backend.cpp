@@ -351,7 +351,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   if (init_params->enableProgTh) {
     pthrOn = true;
-    if (!nixlUcxContext::mtLevelIsSupported(NIXL_UCX_MT_WORKER)) {
+    if (!nixlUcxMtLevelIsSupported(nixl_ucx_mt_t::WORKER)) {
       NIXL_ERROR << "UCX library does not support multi-threading\n";
       initErr = true;
       return;
@@ -419,7 +419,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   uc = std::make_shared<nixlUcxContext>(
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
-      NIXL_UCX_MT_WORKER, pthrOn, errHandlingMode);
+      nixl_ucx_mt_t::WORKER, pthrOn, errHandlingMode);
 
   for (unsigned int i = 0; i < numWorkers; i++) {
     auto workerOrError = nixlUcxWorker::create(uc);
@@ -433,9 +433,9 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   }
 
   const auto &uw = uws.front();
-  workerAddr = uw->epAddr(workerSize);
+  workerAddr = uw->epAddr();
 
-  if (workerAddr == nullptr) {
+  if (workerAddr.empty()) {
     NIXL_ERROR << "Failed to get UCX worker address\n";
     initErr = true;
     return;
@@ -508,7 +508,7 @@ nixl_status_t nixlUcxEngine::endConn(const std::string &remote_agent) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  auto search = remoteConnMap.find(remote_agent);
+  const auto search = remoteConnMap.find(remote_agent);
 
   if (search == remoteConnMap.end())
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
@@ -525,14 +525,14 @@ nixl_status_t nixlUcxEngine::getConnInfo(std::string &str) const {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  str = nixlSerDes::_bytesToString(workerAddr.get(), workerSize);
+  str = workerAddr;
   return nixl_status_t::NIXL_SUCCESS;
 }
 
 ucs_status_t nixlUcxEngine::connectionCheckAmCb(
     void *arg, const void *header, size_t header_length, void *data,
     size_t length, const ucp_am_recv_param_t *param) {
-  const struct nixl_ucx_am_hdr *hdr = (const struct nixl_ucx_am_hdr *)header;
+  const nixl_ucx_am_hdr *hdr = (const nixl_ucx_am_hdr *)header;
 
   std::string remote_agent((char *)data, length);
   nixlUcxEngine *engine = (nixlUcxEngine *)arg;
@@ -559,7 +559,7 @@ ucs_status_t nixlUcxEngine::connectionCheckAmCb(
 ucs_status_t nixlUcxEngine::connectionTermAmCb(
     void *arg, const void *header, size_t header_length, void *data,
     size_t length, const ucp_am_recv_param_t *param) {
-  const struct nixl_ucx_am_hdr *hdr = (const struct nixl_ucx_am_hdr *)header;
+  const nixl_ucx_am_hdr *hdr = (const nixl_ucx_am_hdr *)header;
 
   std::string remote_agent((char *)data, length);
 
@@ -590,14 +590,13 @@ nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  struct nixl_ucx_am_hdr hdr;
-  uint32_t flags = 0;
+  nixl_ucx_am_hdr hdr;
+  std::uint32_t flags = 0;
 
   if (remote_agent == localAgent)
-    return loadRemoteConnInfo(
-        remote_agent, nixlSerDes::_bytesToString(workerAddr.get(), workerSize));
+    return loadRemoteConnInfo(remote_agent, workerAddr);
 
-  auto search = remoteConnMap.find(remote_agent);
+  const auto search = remoteConnMap.find(remote_agent);
 
   if (search == remoteConnMap.end()) {
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
@@ -613,9 +612,8 @@ nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
   for (size_t i = 0; i < uws.size(); i++) {
     reqs.emplace_back();
     ret = search->second->getEp(i).sendAm(
-        to_underlying(UcxCallbackOp::CONN_CHECK), &hdr,
-        sizeof(struct nixl_ucx_am_hdr), (void *)localAgent.data(),
-        localAgent.size(), flags, reqs.back());
+        to_underlying(UcxCallbackOp::CONN_CHECK), &hdr, sizeof(nixl_ucx_am_hdr),
+        (void *)localAgent.data(), localAgent.size(), flags, reqs.back());
     if (isErrorStatus(ret)) {
       error = true;
       break;
@@ -637,11 +635,11 @@ nixl_status_t nixlUcxEngine::disconnect(const std::string &remote_agent) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  static struct nixl_ucx_am_hdr hdr;
-  uint32_t flags = 0;
+  static nixl_ucx_am_hdr hdr;
+  std::uint32_t flags = 0;
 
   if (remote_agent != localAgent) {
-    auto search = remoteConnMap.find(remote_agent);
+    const auto search = remoteConnMap.find(remote_agent);
 
     if (search == remoteConnMap.end()) {
       return nixl_status_t::NIXL_ERR_NOT_FOUND;
@@ -658,7 +656,7 @@ nixl_status_t nixlUcxEngine::disconnect(const std::string &remote_agent) {
         nixlUcxReq req;
         ret = search->second->getEp(i).sendAm(
             to_underlying(UcxCallbackOp::DISCONNECT), &hdr,
-            sizeof(struct nixl_ucx_am_hdr), (void *)localAgent.data(),
+            sizeof(nixl_ucx_am_hdr), (void *)localAgent.data(),
             localAgent.size(), flags, req);
         // don't care
         if (ret == nixl_status_t::NIXL_IN_PROG)
@@ -718,9 +716,8 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
-  int ret;
-  auto priv = std::make_unique<nixlUcxPrivateMetadata>();
-  size_t rkey_size;
+  std::unique_ptr<nixlUcxPrivateMetadata> priv =
+      std::make_unique<nixlUcxPrivateMetadata>();
 
   if (nixl_mem == nixl_mem_t::VRAM_SEG) {
     // This call checks if the device memory we are registering is associated
@@ -737,15 +734,15 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
   }
 
   // TODO: Add nixl_mem check?
-  ret = uc->memReg((void *)mem.addr, mem.len, priv->mem);
+  const int ret = uc->memReg((void *)mem.addr, mem.len, priv->mem);
   if (ret) {
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
-  auto rkey = uc->packRkey(priv->mem, rkey_size);
-  if (rkey == nullptr) {
+  priv->rkeyStr = uc->packRkey(priv->mem);
+
+  if (priv->rkeyStr.empty()) {
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
-  priv->rkeyStr = nixlSerDes::_bytesToString(rkey.get(), rkey_size);
 
   out = priv.release();
   return nixl_status_t::NIXL_SUCCESS; // Or errors
@@ -782,7 +779,7 @@ nixl_status_t nixlUcxEngine::internalMDHelper(const blob_ref blob,
   auto md = std::make_unique<nixlUcxPublicMetadata>();
   size_t size = blob.size;
 
-  auto search = remoteConnMap.find(agent);
+  const auto search = remoteConnMap.find(agent);
   if (search == remoteConnMap.end())
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
 
@@ -1031,11 +1028,11 @@ nixl_status_t nixlUcxEngine::notifSendPriv(const std::string &remote_agent,
                                            size_t worker_id) const {
   nixlSerDes ser_des;
   // TODO - temp fix, need to have an mpool
-  static struct nixl_ucx_am_hdr hdr;
-  uint32_t flags = 0;
+  static nixl_ucx_am_hdr hdr;
+  std::uint32_t flags = 0;
   nixl_status_t ret;
 
-  auto search = remoteConnMap.find(remote_agent);
+  const auto search = remoteConnMap.find(remote_agent);
 
   if (search == remoteConnMap.end()) {
     // TODO: err: remote connection not found
@@ -1066,7 +1063,7 @@ ucs_status_t nixlUcxEngine::notifAmCb(void *arg, const void *header,
                                       size_t header_length, void *data,
                                       size_t length,
                                       const ucp_am_recv_param_t *param) {
-  const struct nixl_ucx_am_hdr *hdr = (const struct nixl_ucx_am_hdr *)header;
+  const nixl_ucx_am_hdr *hdr = (const nixl_ucx_am_hdr *)header;
   nixlSerDes ser_des;
 
   nixlUcxEngine *engine = (nixlUcxEngine *)arg;

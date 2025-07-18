@@ -11,12 +11,16 @@
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
 #include "AsyncRT/NIXL/plugins/ucx/ucx_backend.h"
 #include "AsyncRT/NIXL/utils/common/nixl_log.h"
+#include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "Support/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 #include <cstring>
 #include <string>
+#include <type_traits>
 #include <vector>
 
+using namespace M;
 using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
 
@@ -70,6 +74,7 @@ void nixlUcxEp::err_cb(ucp_ep_h ucp_ep, ucs_status_t status) {
     }
     return;
   }
+  llvm_unreachable("Invalid endpoint state");
 }
 
 void nixlUcxEp::setState(nixl_ucx_ep_state_t new_state) {
@@ -145,6 +150,7 @@ nixl_status_t nixlUcxEp::closeImpl(ucp_ep_close_flags_t flags) {
     eph = nullptr;
     return nixl_status_t::NIXL_SUCCESS;
   }
+  llvm_unreachable("Invalid endpoint state");
 }
 
 /* ===========================================
@@ -268,22 +274,19 @@ nixl_status_t nixlUcxEp::flushEp(nixlUcxReq &req) {
   return nixl_status_t::NIXL_IN_PROG;
 }
 
-bool nixlUcxContext::mtLevelIsSupported(nixl_ucx_mt_t mt_type) {
+bool M::AsyncRT::NIXL::nixlUcxMtLevelIsSupported(nixl_ucx_mt_t mt_type) {
   ucp_lib_attr_t attr;
   attr.field_mask = UCP_LIB_ATTR_FIELD_MAX_THREAD_LEVEL;
   ucp_lib_query(&attr);
 
   switch (mt_type) {
-  case NIXL_UCX_MT_SINGLE:
+  case nixl_ucx_mt_t::SINGLE:
     return (attr.max_thread_level >= UCS_THREAD_MODE_SERIALIZED);
-  case NIXL_UCX_MT_CTX:
-  case NIXL_UCX_MT_WORKER:
+  case nixl_ucx_mt_t::CTX:
+  case nixl_ucx_mt_t::WORKER:
     return (attr.max_thread_level >= UCS_THREAD_MODE_MULTI);
-  default:
-    assert(mt_type < NIXL_UCX_MT_MAX);
-    abort();
   }
-  return false;
+  llvm_unreachable("Invalid mt type");
 }
 
 nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
@@ -306,16 +309,13 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
   if (prog_thread)
     ucp_params.features |= UCP_FEATURE_WAKEUP;
   switch (mt_type) {
-  case NIXL_UCX_MT_SINGLE:
+  case nixl_ucx_mt_t::SINGLE:
     ucp_params.mt_workers_shared = 0;
     break;
-  case NIXL_UCX_MT_WORKER:
-  case NIXL_UCX_MT_CTX:
+  case nixl_ucx_mt_t::WORKER:
+  case nixl_ucx_mt_t::CTX:
     ucp_params.mt_workers_shared = 1;
     break;
-  default:
-    assert(mt_type < NIXL_UCX_MT_MAX);
-    abort();
   }
 
   if (req_size) {
@@ -363,74 +363,78 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
 
 nixlUcxContext::~nixlUcxContext() { ucp_cleanup(ctx); }
 
-M::ErrorOr<std::unique_ptr<nixlUcxWorker>>
-nixlUcxWorker::create(std::shared_ptr<nixlUcxContext> &_ctx) {
-  ucp_worker_params_t worker_params;
-  ucs_status_t status;
-
-  memset(&worker_params, 0, sizeof(worker_params));
-  worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-
-  switch (_ctx->mt_type) {
-  case NIXL_UCX_MT_CTX:
-    worker_params.thread_mode = UCS_THREAD_MODE_SINGLE;
-    break;
-  case NIXL_UCX_MT_SINGLE:
-    worker_params.thread_mode = UCS_THREAD_MODE_SERIALIZED;
-    break;
-  case NIXL_UCX_MT_WORKER:
-    worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
-    break;
-  default:
-    return M::Error("Invalid UCX worker type: " +
-                    std::to_string(_ctx->mt_type));
+static ucs_thread_mode_t toUcsThreadModeChecked(nixl_ucx_mt_t t) {
+  switch (t) {
+  case nixl_ucx_mt_t::CTX:
+    return UCS_THREAD_MODE_SINGLE;
+  case nixl_ucx_mt_t::SINGLE:
+    return UCS_THREAD_MODE_SERIALIZED;
+  case nixl_ucx_mt_t::WORKER:
+    return UCS_THREAD_MODE_MULTI;
   }
+  llvm_unreachable("Invalid UCX worker type");
+}
 
-  ucp_worker_h worker;
-  status = ucp_worker_create(_ctx->ctx, &worker_params, &worker);
+struct nixlUcpWorkerParams : ucp_worker_params_t {
+  explicit nixlUcpWorkerParams(nixl_ucx_mt_t t) {
+    field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
+    thread_mode = toUcsThreadModeChecked(t);
+  }
+};
+
+static_assert(sizeof(nixlUcpWorkerParams) == sizeof(ucp_worker_params_t));
+
+ErrorOr<ucp_worker_h> nixlUcxWorker::createUcpWorker(nixlUcxContext &ctx) {
+  ucp_worker_h worker = nullptr;
+  nixlUcpWorkerParams params(ctx.mt_type);
+  ucs_status_t status = ucp_worker_create(ctx.ctx, &params, &worker);
   if (status != UCS_OK) {
-    return M::Error("Failed to create UCX worker: " +
-                    std::string(ucs_status_string(status)));
+    auto err_str = std::string("Failed to create UCX worker: ") +
+                   ucs_status_string(status);
+    NIXL_ERROR << err_str;
+    return M::Error(err_str);
   }
+  return worker;
+}
 
-  // Pass the successfully created worker to the constructor
-  return std::make_unique<nixlUcxWorker>(_ctx, worker);
+ErrorOr<std::unique_ptr<nixlUcxWorker>>
+nixlUcxWorker::create(std::shared_ptr<nixlUcxContext> &_ctx) {
+  ErrorOr<ucp_worker_h> workerOrError = createUcpWorker(*_ctx);
+  if (workerOrError.isError()) {
+    return workerOrError.takeError();
+  }
+  return std::make_unique<nixlUcxWorker>(_ctx, workerOrError.takeValue());
 }
 
 nixlUcxWorker::nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx,
                              ucp_worker_h _worker)
-    : ctx(_ctx), worker(_worker) {
-  // Constructor just stores the pre-created worker handle
+    : ctx(_ctx), worker(_worker, &ucp_worker_destroy) {
+  // Constructor stores the pre-created worker handle with custom deleter
 }
 
-nixlUcxWorker::~nixlUcxWorker() { ucp_worker_destroy(worker); }
-
-std::unique_ptr<char[]> nixlUcxWorker::epAddr(size_t &size) {
+std::string nixlUcxWorker::epAddr() {
   ucp_worker_attr_t wattr;
-  ucs_status_t status;
 
   wattr.field_mask = UCP_WORKER_ATTR_FIELD_ADDRESS;
-  status = ucp_worker_query(worker, &wattr);
+  ucs_status_t status = ucp_worker_query(worker.get(), &wattr);
   if (UCS_OK != status) {
-    // TODO: printf
-    return nullptr;
+    NIXL_WARN << "Unable to query UCX endpoint address";
+    return {};
   }
-
-  auto res = std::make_unique<char[]>(wattr.address_length);
-  memcpy(res.get(), wattr.address, wattr.address_length);
-  ucp_worker_release_address(worker, wattr.address);
-
-  size = wattr.address_length;
-  return res;
+  std::string result =
+      nixlSerDes::_bytesToString(wattr.address, wattr.address_length);
+  ucp_worker_release_address(worker.get(), wattr.address);
+  return result;
 }
 
 /* ===========================================
  * EP management
  * =========================================== */
 
-M::ErrorOr<std::unique_ptr<nixlUcxEp>> nixlUcxWorker::connect(void *addr,
-                                                              size_t size) {
-  auto ep = std::make_unique<nixlUcxEp>(worker, addr, ctx->err_handling_mode);
+ErrorOr<std::unique_ptr<nixlUcxEp>> nixlUcxWorker::connect(void *addr,
+                                                           size_t size) {
+  auto ep =
+      std::make_unique<nixlUcxEp>(worker.get(), addr, ctx->err_handling_mode);
   // Check if the endpoint was successfully created by checking its state
   if (ep->eph == nullptr) {
     return M::Error("Failed to create UCX endpoint");
@@ -467,24 +471,19 @@ int nixlUcxContext::memReg(void *addr, size_t size, nixlUcxMem &mem) {
   return 0;
 }
 
-std::unique_ptr<char[]> nixlUcxContext::packRkey(nixlUcxMem &mem,
-                                                 size_t &size) {
-  ucs_status_t status;
+std::string nixlUcxContext::packRkey(nixlUcxMem &mem) {
   void *rkey_buf;
+  size_t size;
 
-  status = ucp_rkey_pack(ctx, mem.memh, &rkey_buf, &size);
+  ucs_status_t status = ucp_rkey_pack(ctx, mem.memh, &rkey_buf, &size);
   if (status != UCS_OK) {
     /* TODO: MSW_NET_ERROR(priv->net, "failed to ucp_rkey_pack (%s)\n",
      * ucs_status_string(status)); */
-    return nullptr;
+    return {};
   }
-
-  /* Allocate the buffer */
-  auto res = std::make_unique<char[]>(size);
-  memcpy(res.get(), rkey_buf, size);
+  std::string result = nixlSerDes::_bytesToString(rkey_buf, size);
   ucp_rkey_buffer_release(rkey_buf);
-
-  return res;
+  return result;
 }
 
 void nixlUcxContext::memDereg(nixlUcxMem &mem) { ucp_mem_unmap(ctx, mem.memh); }
@@ -507,7 +506,7 @@ int nixlUcxWorker::regAmCallback(UcxCallbackOp callbackOp,
   params.cb = cb;
   params.arg = arg;
 
-  status = ucp_worker_set_am_recv_handler(worker, &params);
+  status = ucp_worker_set_am_recv_handler(worker.get(), &params);
 
   if (status != UCS_OK) {
     // TODO: error handling
@@ -516,41 +515,19 @@ int nixlUcxWorker::regAmCallback(UcxCallbackOp callbackOp,
   return 0;
 }
 
-int nixlUcxWorker::getRndvData(void *data_desc, void *buffer, size_t len,
-                               const ucp_request_param_t *param,
-                               nixlUcxReq &req) {
-  ucs_status_ptr_t status;
-
-  status = ucp_am_recv_data_nbx(worker, data_desc, buffer, len, param);
-  if (UCS_PTR_IS_ERR(status)) {
-    // TODO: error handling
-    return -1;
-  }
-  req = (void *)status;
-
-  return 0;
-}
-
 /* ===========================================
  * Data transfer
  * =========================================== */
 
-int nixlUcxWorker::progress() { return ucp_worker_progress(worker); }
+int nixlUcxWorker::progress() { return ucp_worker_progress(worker.get()); }
 
 nixl_status_t nixlUcxWorker::test(nixlUcxReq req) {
-  ucs_status_t status;
-
   if (req == nullptr) {
     return nixl_status_t::NIXL_SUCCESS;
   }
 
-  ucp_worker_progress(worker);
-  status = ucp_request_check_status(req);
-  if (status == UCS_INPROGRESS) {
-    return nixl_status_t::NIXL_IN_PROG;
-  }
-
-  return ucx_status_to_nixl(status);
+  ucp_worker_progress(worker.get());
+  return ucx_status_to_nixl(ucp_request_check_status(req));
 }
 
 void nixlUcxWorker::reqRelease(nixlUcxReq req) {
@@ -558,5 +535,5 @@ void nixlUcxWorker::reqRelease(nixlUcxReq req) {
 }
 
 void nixlUcxWorker::reqCancel(nixlUcxReq req) {
-  ucp_request_cancel(worker, (void *)req);
+  ucp_request_cancel(worker.get(), req);
 }

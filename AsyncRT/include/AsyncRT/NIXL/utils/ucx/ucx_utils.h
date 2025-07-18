@@ -30,12 +30,7 @@ struct nixl_ucx_am_hdr {
   UcxCallbackOp op;
 };
 
-enum nixl_ucx_mt_t {
-  NIXL_UCX_MT_SINGLE,
-  NIXL_UCX_MT_CTX,
-  NIXL_UCX_MT_WORKER,
-  NIXL_UCX_MT_MAX
-};
+enum class nixl_ucx_mt_t { SINGLE, CTX, WORKER };
 
 using nixlUcxReq = void *;
 
@@ -137,21 +132,23 @@ public:
       ucp_err_handling_mode_t err_handling_mode = UCP_ERR_HANDLING_MODE_NONE);
   ~nixlUcxContext();
 
-  static bool mtLevelIsSupported(nixl_ucx_mt_t mt_type);
-
   /* Memory management */
   int memReg(void *addr, size_t size, nixlUcxMem &mem);
-  std::unique_ptr<char[]> packRkey(nixlUcxMem &mem, size_t &size);
+  std::string packRkey(nixlUcxMem &mem);
   void memDereg(nixlUcxMem &mem);
 
   friend class nixlUcxWorker;
 };
 
+bool nixlUcxMtLevelIsSupported(nixl_ucx_mt_t mt_type);
+
 class nixlUcxWorker {
 private:
   /* Local UCX stuff */
   std::shared_ptr<nixlUcxContext> ctx;
-  ucp_worker_h worker;
+  std::unique_ptr<ucp_worker, void (*)(ucp_worker *)> worker;
+
+  static M::ErrorOr<ucp_worker_h> createUcpWorker(nixlUcxContext &ctx);
 
 public:
   /// Fallible constructor for UCX worker.
@@ -159,17 +156,20 @@ public:
   create(std::shared_ptr<nixlUcxContext> &_ctx);
 
   nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx, ucp_worker_h _worker);
-  ~nixlUcxWorker();
+  ~nixlUcxWorker() = default;
+
+  nixlUcxWorker(const nixlUcxWorker &) = delete;
+  nixlUcxWorker &operator=(const nixlUcxWorker &) = delete;
+  nixlUcxWorker(nixlUcxWorker &&) = delete;
+  nixlUcxWorker &operator=(nixlUcxWorker &&) = delete;
 
   /* Connection */
-  std::unique_ptr<char[]> epAddr(size_t &size);
+  std::string epAddr();
   M::ErrorOr<std::unique_ptr<nixlUcxEp>> connect(void *addr, size_t size);
 
   /* Active message handling */
   int regAmCallback(UcxCallbackOp callbackOp, ucp_am_recv_callback_t cb,
                     void *arg);
-  int getRndvData(void *data_desc, void *buffer, size_t len,
-                  const ucp_request_param_t *param, nixlUcxReq &req);
 
   /* Data access */
   int progress();
@@ -178,7 +178,7 @@ public:
   void reqRelease(nixlUcxReq req);
   void reqCancel(nixlUcxReq req);
 
-  ucp_worker_h getWorker() const { return worker; }
+  ucp_worker_h getWorker() const { return worker.get(); }
 };
 
 } // namespace M::AsyncRT::NIXL

@@ -465,22 +465,22 @@ Many commits are related to backends not included in AsyncRT (UCX_MO, POSIX,
 | b1c22ed | 2025-05-28 | NIXLBench: add support for specifying GDS batch and pool sizes | Skip | - | Benchmarking tool not included |
 | 2a88836 | 2025-06-02 | Build and container fixes for aarch64 | Skip | - | Build system differences |
 | e3c5527 | 2025-06-02 | nixlbench: Add deps for IB devices, revert WORKDIR | Skip | - | Benchmarking tool not included |
-| 6119bc3 | 2025-06-02 | UCX: Refactor nixlUcxWorker (and some related code) | **Port** | 🔄 In Progress | Major UCX refactoring |
+| 6119bc3 | 2025-06-02 | UCX: Refactor nixlUcxWorker (and some related code) | **Port** | ✅ Completed | Major UCX refactoring |
 | 0a76701 | 2025-06-02 | LISTENER: Segment socket-based message transfers | **Port** | 🔄 In Progress | AsyncRT has listener functionality |
 | 6a8df82 | 2025-06-03 | Fix for UCX build with IB dependencies | Skip | - | Benchmarking Dockerfile only |
 
 ### Commits to Port (4 total)
 
-1. **e0b34a3** - LISTENER: Add connection creation for invalidation message
-2. **e99bd98** - Gtest transfer test multi-threading extensions
-3. **6119bc3** - UCX: Refactor nixlUcxWorker (and some related code)
-4. **0a76701** - LISTENER: Segment socket-based message transfers
+1. **e0b34a3** - LISTENER: Add connection creation for invalidation message (✅ Completed)
+2. **e99bd98** - Gtest transfer test multi-threading extensions (✅ Completed)
+3. **6119bc3** - UCX: Refactor nixlUcxWorker (and some related code) (✅ Completed)
+4. **0a76701** - LISTENER: Segment socket-based message transfers (🔄 In Progress)
 
 ### Summary
 
 - **Total commits reviewed**: 11
 - **Commits to port**: 4 (2 listener improvements, 1 UCX refactoring, 1 test enhancement)
-- **Commits ported**: 0 (in progress)
+- **Commits ported**: 3 ✅
 - **Commits skipped**: 7
 
 ### Implementation Plan
@@ -542,10 +542,54 @@ multi-threading tests in `NixlTestUcx.cpp` including:
 cover multi-threading scenarios with appropriate AsyncRT-specific APIs and
 error handling.
 
+#### 3. 6119bc3 - UCX: Refactor nixlUcxWorker (and some related code) (✅ Completed)
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Major refactoring of
+  UCX worker interface.
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Updated implementation with
+  modern C++ patterns.
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Updated to use
+  string-based APIs.
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Adapted to new UCX worker
+  interface.
+
+**Key changes**:
+
+- Converted `nixl_ucx_mt_t` from enum to enum class with simplified names
+  (SINGLE, CTX, WORKER).
+- Moved `mtLevelIsSupported` from static method to standalone function
+  `nixlUcxMtLevelIsSupported`.
+- Refactored `nixlUcxWorker` to use RAII with `std::unique_ptr<ucp_worker,
+  void(*)(ucp_worker*)>`.
+- Changed `epAddr()` and `packRkey()` to return `std::string` instead of
+  `std::unique_ptr<char[]>`.
+- Added fallible constructor pattern with `createUcpWorker` returning
+  `ErrorOr<ucp_worker_h>`.
+- Removed unused `getRndvData` method.
+- Added move/copy constructors deletion for proper RAII.
+- Updated all enum usage to scoped enum syntax.
+
+**Adaptations for AsyncRT**:
+
+- Used `ErrorOr` instead of exceptions for fallible operations
+- Used `llvm_unreachable` instead of `std::terminate` for unreachable code paths
+- Added proper `M::AsyncRT::NIXL::` namespace qualification for standalone functions
+- Converted designated initializers to memset + field assignment for C++ compatibility
+- Used `static_assert` for compile-time size validation
+- Maintained backward compatibility with existing AsyncRT patterns
+
+**Testing**:
+
+- All existing UCX tests continue to pass
+- No new test failures introduced
+- Memory management properly handled with RAII patterns
+
 ### Summary of Week 5 Progress
 
 - **Total commits reviewed**: 11
 - **Commits to port**: 4
-- **Commits completed**: 2 ✅
-- **Commits pending**: 2 (major UCX refactoring and socket message segmentation)
+- **Commits completed**: 3 ✅
+- **Commits pending**: 1 (socket message segmentation)
 - **Commits skipped**: 7
