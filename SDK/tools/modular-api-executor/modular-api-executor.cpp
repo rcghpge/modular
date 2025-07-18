@@ -40,7 +40,7 @@ static M::TensorSpec getTensorSpec(M_TensorSpec *spec) {
   assert(numDims >= 0 && "for this usage this should always be positive");
   inputShape.reserve(numDims);
   for (size_t i = 0, e = (size_t)numDims; i < e; ++i) {
-    if (M_getDimAt(spec, i) == M_getDynamicDimensionValue()) {
+    if (M_getDimAt(spec, i) == kDynamicDimensionValue) {
       // Shapes in the Tensor layer need to follow MLIR convention
       // where dynamic dimensions are represented by constant kDynamic which is
       // equal to std::numeric_limits<int64_t>::min()
