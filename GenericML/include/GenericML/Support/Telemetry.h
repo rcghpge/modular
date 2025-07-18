@@ -13,6 +13,7 @@
 #include "Support/STLExtras.h"
 #include "Support/Telemetry/Telemetry.h"
 #include "mlir/IR/Diagnostics.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace M::GML {
 

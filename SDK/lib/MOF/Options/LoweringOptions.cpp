@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "SDK/MOF/Options/LoweringOptions.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace M;
 using namespace M::MOF;

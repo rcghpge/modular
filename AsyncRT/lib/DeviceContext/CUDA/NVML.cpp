@@ -10,6 +10,7 @@
 
 #include "NVML.h"
 #include "Support/PlatformUtils.h"
+#include "llvm/Support/raw_ostream.h"
 #include <dlfcn.h>
 #include <sstream>
 #include <stddef.h>
