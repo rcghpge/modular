@@ -116,7 +116,7 @@ nixlAgent::nixlAgent(std::string name, nixlAgentConfig cfg)
     data->listener->setupListener();
   }
 
-  if (data->useEtcd || cfg.useListenThread) {
+  if (cfg.useListenThread) {
     data->commThreadStop = false;
     data->commThread =
         std::thread(&nixlAgentData::commWorker, data.get(), this);
@@ -124,15 +124,13 @@ nixlAgent::nixlAgent(std::string name, nixlAgentConfig cfg)
 }
 
 nixlAgent::~nixlAgent() {
-  if (data->useEtcd || data->config.useListenThread) {
+  if (data->config.useListenThread) {
     data->commThreadStop = true;
     if (data->commThread.joinable())
       data->commThread.join();
 
-    if (data->config.useListenThread) {
-      if (data->listener)
-        delete data->listener;
-    }
+    if (data->listener)
+      delete data->listener;
   }
 }
 

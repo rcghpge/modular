@@ -94,13 +94,16 @@ static std::pair<std::string, ssize_t> recvCommMessage(int fd) {
 }
 
 void nixlAgentData::commWorker(nixlAgent *myAgent) {
+  NIXL_INFO << "Listener thread started for agent: " << name
+            << " (useListenThread=" << config.useListenThread << ")";
+
   while (!(commThreadStop)) {
     std::vector<nixl_comm_req_t> work_queue;
 
     // first, accept new connections
     int new_fd = 0;
 
-    while (new_fd != -1 && config.useListenThread && !useEtcd) {
+    while (new_fd != -1 && config.useListenThread) {
       new_fd = listener->acceptClient();
       nixl_socket_peer_t accepted_client;
 
@@ -149,53 +152,40 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
       auto client = remoteSockets.find(req_sock);
       int client_fd;
 
-      switch (req_command) {
-      case nixl_comm_t::SOCK_SEND: {
-        // not connected
+      // Create connection for all socket commands if not already connected
+      if (req_command < nixl_comm_t::SOCK_MAX) {
         if (client == remoteSockets.end()) {
           int new_client = connectToIP(req_ip, req_port);
           if (new_client == -1) {
             NIXL_ERROR << "Listener thread could not connect to IP " << req_ip
                        << " and port " << req_port << "\n";
-            break;
+            continue;
           }
           remoteSockets[req_sock] = new_client;
           client_fd = new_client;
         } else {
           client_fd = client->second;
         }
+      }
 
+      switch (req_command) {
+      case nixl_comm_t::SOCK_SEND: {
         sendCommMessage(client_fd, ("NIXLCOMM:LOAD" + Twine(my_MD)).str());
         break;
       }
       case nixl_comm_t::SOCK_FETCH: {
-        if (client == remoteSockets.end()) {
-          int new_client = connectToIP(req_ip, req_port);
-          if (new_client == -1) {
-            NIXL_ERROR << "Listener thread could not connect to IP " << req_ip;
-            break;
-          }
-          remoteSockets[req_sock] = new_client;
-          client_fd = new_client;
-        } else {
-          client_fd = client->second;
-        }
-
         sendCommMessage(client_fd, "NIXLCOMM:SEND"sv);
         break;
       }
       case nixl_comm_t::SOCK_INVAL: {
-        if (client == remoteSockets.end()) {
-          // TODO(GENAI-170): return ErrorOr here.
-          NIXL_FATAL << "invalidate on closed socket\n";
-          std::abort();
-        }
-        client_fd = client->second;
         sendCommMessage(client_fd, ("NIXLCOMM:INVL"sv + Twine(name)).str());
         break;
       }
+      case nixl_comm_t::SOCK_MAX: {
+        // Invalid command, should not reach here
+        llvm_unreachable("invalid NIXL request command");
       }
-      llvm_unreachable("invalid NIXL request command");
+      }
     }
 
     // third, do remote commands

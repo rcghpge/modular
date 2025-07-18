@@ -971,3 +971,56 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithNoContext) {
 
   noContextThread.join();
 }
+
+TEST_F(NixlUcxIntegrationTest, MetadataInvalidation) {
+  // Test socket-based metadata invalidation functionality
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create two NIXL agents with listener threads enabled
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Source", 8037, "ucx");
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Dest", 8042, "ucx");
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange metadata - nixl2 loads metadata from nixl1
+  std::string meta1, meta2;
+  std::string loadedAgentName1, loadedAgentName2;
+
+  ASSERT_SUCCESS(nixl1.agent->getLocalMD(meta1));
+  ASSERT_SUCCESS(nixl2.agent->getLocalMD(meta2));
+
+  ASSERT_SUCCESS(nixl2.agent->loadRemoteMD(blob_ref{meta1}, loadedAgentName1));
+  ASSERT_EQ(loadedAgentName1, nixl1.agentName);
+
+  // Verify that remote metadata check succeeds initially
+  nixl_xfer_dlist_t checkDescs(nixl_mem_t::DRAM_SEG);
+  auto checkBuf = llvm::ArrayRef{dramBuffer1.data(), bufferSize};
+  checkDescs.addDesc(basicDescfromArrayRef(checkBuf, 0));
+  ASSERT_SUCCESS(nixl2.agent->checkRemoteMD(nixl1.agentName, checkDescs));
+
+  // Invalidate metadata from nixl1 to nixl2
+  nixl_opt_args_t invalidateArgs;
+  invalidateArgs.ipAddr = "127.0.0.1";
+  invalidateArgs.port = 8042; // nixl2's port
+
+  ASSERT_SUCCESS(nixl1.agent->invalidateLocalMD(&invalidateArgs));
+
+  // Give time for invalidation message to be processed
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // Verify that remote metadata check now fails
+  ASSERT_NE(nixl2.agent->checkRemoteMD(nixl1.agentName, checkDescs),
+            nixl_status_t::NIXL_SUCCESS);
+}

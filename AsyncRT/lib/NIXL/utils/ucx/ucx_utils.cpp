@@ -48,7 +48,8 @@ static void err_cb_wrapper(void *arg, ucp_ep_h ucp_ep, ucs_status_t status) {
 void nixlUcxEp::err_cb(ucp_ep_h ucp_ep, ucs_status_t status) {
   ucs_status_ptr_t request;
 
-  NIXL_DEBUG << "ep " << eph << ": state " << to_underlying(state)
+  NIXL_DEBUG << "ep " << eph << ": state "
+             << static_cast<int>(to_underlying(state))
              << ", UCX error handling callback was invoked with status "
              << status << " (" << ucs_status_string(status) << ")";
 
@@ -73,8 +74,9 @@ void nixlUcxEp::err_cb(ucp_ep_h ucp_ep, ucs_status_t status) {
 
 void nixlUcxEp::setState(nixl_ucx_ep_state_t new_state) {
   assert(new_state != state);
-  NIXL_DEBUG << "ep " << eph << ": state " << to_underlying(state) << " -> "
-             << to_underlying(new_state);
+  NIXL_DEBUG << "ep " << eph << ": state "
+             << static_cast<int>(to_underlying(state)) << " -> "
+             << static_cast<int>(to_underlying(new_state));
   state = new_state;
 }
 

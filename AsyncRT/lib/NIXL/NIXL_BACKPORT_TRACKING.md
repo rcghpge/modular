@@ -450,3 +450,102 @@ Week 4 contains several important UCX improvements:
 
 Many commits are related to backends not included in AsyncRT (UCX_MO, POSIX,
 3FS, etc.) or infrastructure changes (CI, benchmarking, Python/Rust bindings).
+
+## Week 5 (May 27 - June 2, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| a994fc9 | 2025-05-26 | CI: Increase timeout for AWS job status check | Skip | - | CI configuration only |
+| e0b34a3 | 2025-05-27 | LISTENER: Add connection creation for invalidation message | **Port** | 🔄 In Progress | AsyncRT has listener functionality |
+| eedcde6 | 2025-05-28 | CI: add first blossom-ci build job | Skip | - | CI configuration only |
+| e99bd98 | 2025-05-28 | Gtest transfer test multi-threading extensions | **Port** | 🔄 In Progress | Test improvements for AsyncRT |
+| 4de5ee3 | 2025-05-28 | SRC/BINDINGS/RUST: Revert has_overlaps to pub | Skip | - | Rust bindings, not relevant |
+| b1c22ed | 2025-05-28 | NIXLBench: add support for specifying GDS batch and pool sizes | Skip | - | Benchmarking tool not included |
+| 2a88836 | 2025-06-02 | Build and container fixes for aarch64 | Skip | - | Build system differences |
+| e3c5527 | 2025-06-02 | nixlbench: Add deps for IB devices, revert WORKDIR | Skip | - | Benchmarking tool not included |
+| 6119bc3 | 2025-06-02 | UCX: Refactor nixlUcxWorker (and some related code) | **Port** | 🔄 In Progress | Major UCX refactoring |
+| 0a76701 | 2025-06-02 | LISTENER: Segment socket-based message transfers | **Port** | 🔄 In Progress | AsyncRT has listener functionality |
+| 6a8df82 | 2025-06-03 | Fix for UCX build with IB dependencies | Skip | - | Benchmarking Dockerfile only |
+
+### Commits to Port (4 total)
+
+1. **e0b34a3** - LISTENER: Add connection creation for invalidation message
+2. **e99bd98** - Gtest transfer test multi-threading extensions
+3. **6119bc3** - UCX: Refactor nixlUcxWorker (and some related code)
+4. **0a76701** - LISTENER: Segment socket-based message transfers
+
+### Summary
+
+- **Total commits reviewed**: 11
+- **Commits to port**: 4 (2 listener improvements, 1 UCX refactoring, 1 test enhancement)
+- **Commits ported**: 0 (in progress)
+- **Commits skipped**: 7
+
+### Implementation Plan
+
+#### Phase 1: Listener Improvements
+
+- Port connection creation logic for invalidation messages
+- Implement socket message segmentation
+
+#### Phase 2: UCX Refactoring
+
+- Major nixlUcxWorker refactoring (requires careful adaptation)
+
+#### Phase 3: Test Enhancements
+
+- Adapt multi-threading test extensions to AsyncRT patterns
+
+### Key Considerations
+
+- AsyncRT has listener functionality that needs these improvements
+- UCX refactoring is a major change requiring careful adaptation
+- Test changes should follow AsyncRT patterns rather than direct port
+- All changes need ErrorOr compatibility and AsyncRT coding style
+
+### Changes Made
+
+#### 1. e0b34a3 - LISTENER: Add connection creation for invalidation message (✅ Completed)
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/agent_data.h`: Added SOCK_MAX enum value
+- `AsyncRT/lib/NIXL/nixl_listener.cpp`: Refactored connection creation logic
+- `AsyncRT/unittests/NixlTestUcx.cpp`: Added MetadataInvalidation test
+
+**Key changes**:
+
+- Added SOCK_MAX enum value to define the boundary of valid socket commands
+- Moved connection creation logic before the switch statement for all socket commands
+- Unified connection creation handling for SOCK_SEND, SOCK_FETCH, and SOCK_INVAL
+- Added comprehensive test to verify metadata invalidation works correctly
+
+**Adaptations for AsyncRT**:
+
+- Maintained compatibility with existing NIXL error handling patterns
+- Used `continue` instead of `break` for connection failures to skip to next request
+- Added proper test with AsyncRT's API patterns (nixl_xfer_dlist_t usage)
+- Fixed unreachable statement placement in switch statement
+
+#### 2. e99bd98 - Gtest transfer test multi-threading extensions (✅ Completed)
+
+**Status**: Reviewed and assessed. AsyncRT already has comprehensive
+multi-threading tests in `NixlTestUcx.cpp` including:
+
+- MultiWorkerDramTransfer test with concurrent transfers from multiple threads
+- Thread-safe UCX worker operations
+- Proper synchronization and error handling patterns
+
+**Decision**: No additional porting required as AsyncRT test patterns already
+cover multi-threading scenarios with appropriate AsyncRT-specific APIs and
+error handling.
+
+### Summary of Week 5 Progress
+
+- **Total commits reviewed**: 11
+- **Commits to port**: 4
+- **Commits completed**: 2 ✅
+- **Commits pending**: 2 (major UCX refactoring and socket message segmentation)
+- **Commits skipped**: 7

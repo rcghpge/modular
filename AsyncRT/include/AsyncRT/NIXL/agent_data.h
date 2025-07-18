@@ -24,6 +24,7 @@ enum class nixl_comm_t {
   SOCK_SEND,
   SOCK_FETCH,
   SOCK_INVAL,
+  SOCK_MAX,
 };
 
 // Command to be sent to listener thread from NIXL API
@@ -78,8 +79,7 @@ private:
   std::thread commThread;
   std::vector<nixl_comm_req_t> commQueue;
   std::mutex commLock;
-  bool commThreadStop;
-  bool useEtcd;
+  bool commThreadStop = false;
 
   void commWorker(nixlAgent *myAgent);
   void enqueueCommWork(nixl_comm_req_t request);
