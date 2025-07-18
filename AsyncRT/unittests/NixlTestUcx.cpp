@@ -6,9 +6,8 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/NIXL/nixl.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "AsyncRT/unittests/TestUtils.h"
+#include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -17,9 +16,14 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
+#include <netinet/in.h>
+#include <random>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 // Pretty-printer for NIXL status values.
@@ -53,6 +57,40 @@ template <class T>
 nixlBasicDesc basicDescfromArrayRef(llvm::ArrayRef<T> ref, uint64_t devId) {
   return {reinterpret_cast<uintptr_t>(ref.data()), ref.size() * sizeof(T),
           devId};
+}
+
+// Helper function to find an available port
+static int available_port(int start_port = 8000, int end_port = 9000,
+                          int max_attempts = 100) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(start_port, end_port);
+
+  for (int i = 0; i < max_attempts; ++i) {
+    int port = dis(gen);
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+      continue;
+    }
+
+    // Set SO_REUSEADDR to avoid TIME_WAIT issues
+    int opt = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
+
+    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+      close(sock);
+      return port;
+    }
+
+    close(sock);
+  }
+
+  llvm_unreachable("no available port found");
 }
 
 // Helper class to hold state for a NIXL agent with a UCX backend.
@@ -252,13 +290,15 @@ TEST_F(NixlUcxIntegrationTest, DramTransfer) {
   // Create two NIXL agents on separate ports with 1KB host buffers
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Ucx1", 8037, "ucx");
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Ucx1", available_port(),
+                                  "ucx");
   std::vector<char> dramBuffer1(bufferSize);
   nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Ucx2", 8042, "ucx");
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Ucx2", available_port(),
+                                  "ucx");
   std::vector<char> dramBuffer2(bufferSize);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer2, 0));
@@ -330,7 +370,8 @@ TEST_F(NixlUcxIntegrationTest, VramTransfer) {
   ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer1, ctx1->createBuffer(bufferSize));
   EXPECT_NO_ERR(ctx1->enqueueSetMemory(*deviceBuffer1, srcValue, sizeof(char)));
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Ucx1", 8037, "ucx", 0);
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Ucx1", available_port(),
+                                  "ucx", 0);
   nixl1.registerMemory(
       nixl_mem_t::VRAM_SEG,
       nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer1->ptr()),
@@ -342,7 +383,8 @@ TEST_F(NixlUcxIntegrationTest, VramTransfer) {
   EXPECT_NO_ERR(
       ctx2->enqueueSetMemory(*deviceBuffer2, initialDstValue, sizeof(char)));
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Ucx2", 8042, "ucx", 1);
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Ucx2", available_port(),
+                                  "ucx", 1);
   nixl2.registerMemory(
       nixl_mem_t::VRAM_SEG,
       nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer2->ptr()),
@@ -413,7 +455,8 @@ TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
   // Use "peer" error handling mode to propagate remote disconnect errors.
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", 8037, "ucx",
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", available_port(),
+                                  "ucx",
                                   /*gpuDeviceId=*/-1, /*numWorkers=*/1,
                                   /*errorHandlingMode=*/"peer");
   std::vector<char> dramBuffer1(bufferSize);
@@ -421,7 +464,8 @@ TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", 8042, "ucx",
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", available_port(),
+                                  "ucx",
                                   /*gpuDeviceId=*/-1, /*numWorkers=*/1,
                                   /*errorHandlingMode=*/"peer");
   std::vector<char> dramBuffer2(bufferSize);
@@ -472,15 +516,15 @@ TEST_F(NixlUcxIntegrationTest, XferThenFail_Write) {
   // Create two NIXL agents with peer error handling mode.
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", 8037, "ucx", -1, 1,
-                                  "peer");
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Sender", available_port(),
+                                  "ucx", -1, 1, "peer");
   std::vector<char> dramBuffer1(bufferSize);
   nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", 8042, "ucx", -1,
-                                  1, "peer");
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", available_port(),
+                                  "ucx", -1, 1, "peer");
   std::vector<char> dramBuffer2(bufferSize);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer2, 0));
@@ -542,15 +586,15 @@ TEST_F(NixlUcxIntegrationTest, XferThenFail_Read) {
   // Create two NIXL agents with peer error handling mode.
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Reader", 8037, "ucx", -1, 1,
-                                  "peer");
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Reader", available_port(),
+                                  "ucx", -1, 1, "peer");
   std::vector<char> dramBuffer1(bufferSize);
   nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Source", 8042, "ucx", -1, 1,
-                                  "peer");
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Source", available_port(),
+                                  "ucx", -1, 1, "peer");
   std::vector<char> dramBuffer2(bufferSize);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer2, 0));
@@ -612,13 +656,15 @@ TEST_F(NixlUcxIntegrationTest, BasicXfer_Read) {
   // Create two NIXL agents
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Reader", 8037, "ucx");
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Reader", available_port(),
+                                  "ucx");
   std::vector<char> dramBuffer1(bufferSize);
   nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Source", 8042, "ucx");
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Source", available_port(),
+                                  "ucx");
   std::vector<char> dramBuffer2(bufferSize);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer2, 0));
@@ -678,8 +724,8 @@ TEST_F(NixlUcxIntegrationTest, ErrorHandling_PeerMode) {
   // Create agents with explicit peer error handling mode
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Peer1", 8037, "ucx", -1, 1,
-                                  "peer");
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Peer1", available_port(),
+                                  "ucx", -1, 1, "peer");
 
   // Verify that the backend was created with peer mode
   nixl_b_params_t params;
@@ -693,8 +739,8 @@ TEST_F(NixlUcxIntegrationTest, ErrorHandling_PeerMode) {
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Peer2", 8042, "ucx", -1, 1,
-                                  "peer");
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Peer2", available_port(),
+                                  "ucx", -1, 1, "peer");
   std::vector<char> dramBuffer2(bufferSize);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer2, 0));
@@ -888,8 +934,9 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithWrongContext) {
 
   // Create NIXL agent1 with device 0.
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Device0", /*port=*/8037,
-                                  "ucx", /*gpuDeviceId=*/0);
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Device0",
+                                  /*port=*/available_port(), "ucx",
+                                  /*gpuDeviceId=*/0);
   nixl1.registerMemory(
       nixl_mem_t::VRAM_SEG,
       nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer0->ptr()),
@@ -897,8 +944,9 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithWrongContext) {
 
   // Create NIXL agent2 with device 1.
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Device1", /*port=*/8042,
-                                  "ucx", /*gpuDeviceId=*/1);
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Device1",
+                                  /*port=*/available_port(), "ucx",
+                                  /*gpuDeviceId=*/1);
 
   // Get metadata from agent1 (device 0).
   nixl_blob_t meta1;
@@ -939,8 +987,9 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithNoContext) {
 
   // Create NIXL agent with device 0.
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_NoCtx", /*port=*/8037,
-                                  "ucx", /*gpuDeviceId=*/0);
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_NoCtx",
+                                  /*port=*/available_port(), "ucx",
+                                  /*gpuDeviceId=*/0);
   nixl1.registerMemory(
       nixl_mem_t::VRAM_SEG,
       nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer0->ptr()),
@@ -952,8 +1001,9 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithNoContext) {
 
   // Create another agent to receive the metadata.
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", /*port=*/8042,
-                                  "ucx", /*gpuDeviceId=*/0);
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver",
+                                  /*port=*/available_port(), "ucx",
+                                  /*gpuDeviceId=*/0);
 
   // Create a thread with NO device context (simulating listener thread).
   std::thread noContextThread([&]() {
@@ -983,13 +1033,15 @@ TEST_F(NixlUcxIntegrationTest, MetadataInvalidation) {
   // Create two NIXL agents with listener threads enabled
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
-  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Source", 8037, "ucx");
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Source", available_port(),
+                                  "ucx");
   std::vector<char> dramBuffer1(bufferSize);
   nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer1, 0));
 
   NixlAgentWithUCXBackend nixl2;
-  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Dest", 8042, "ucx");
+  int port2 = available_port();
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Dest", port2, "ucx");
   std::vector<char> dramBuffer2(bufferSize);
   nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
                        blobDescfromVector(dramBuffer2, 0));
@@ -1013,7 +1065,7 @@ TEST_F(NixlUcxIntegrationTest, MetadataInvalidation) {
   // Invalidate metadata from nixl1 to nixl2
   nixl_opt_args_t invalidateArgs;
   invalidateArgs.ipAddr = "127.0.0.1";
-  invalidateArgs.port = 8042; // nixl2's port
+  invalidateArgs.port = port2; // nixl2's port
 
   ASSERT_SUCCESS(nixl1.agent->invalidateLocalMD(&invalidateArgs));
 
