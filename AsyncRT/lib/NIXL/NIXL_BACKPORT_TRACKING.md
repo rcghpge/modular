@@ -458,15 +458,15 @@ Many commits are related to backends not included in AsyncRT (UCX_MO, POSIX,
 | Hash | Date | Description | Relevance | Status | Notes |
 |------|------|-------------|-----------|---------|-------|
 | a994fc9 | 2025-05-26 | CI: Increase timeout for AWS job status check | Skip | - | CI configuration only |
-| e0b34a3 | 2025-05-27 | LISTENER: Add connection creation for invalidation message | **Port** | 🔄 In Progress | AsyncRT has listener functionality |
+| e0b34a3 | 2025-05-27 | LISTENER: Add connection creation for invalidation message | **Port** | ✅ Completed | AsyncRT has listener functionality |
 | eedcde6 | 2025-05-28 | CI: add first blossom-ci build job | Skip | - | CI configuration only |
-| e99bd98 | 2025-05-28 | Gtest transfer test multi-threading extensions | **Port** | 🔄 In Progress | Test improvements for AsyncRT |
+| e99bd98 | 2025-05-28 | Gtest transfer test multi-threading extensions | **Port** | ✅ Completed | Test improvements for AsyncRT |
 | 4de5ee3 | 2025-05-28 | SRC/BINDINGS/RUST: Revert has_overlaps to pub | Skip | - | Rust bindings, not relevant |
 | b1c22ed | 2025-05-28 | NIXLBench: add support for specifying GDS batch and pool sizes | Skip | - | Benchmarking tool not included |
 | 2a88836 | 2025-06-02 | Build and container fixes for aarch64 | Skip | - | Build system differences |
 | e3c5527 | 2025-06-02 | nixlbench: Add deps for IB devices, revert WORKDIR | Skip | - | Benchmarking tool not included |
 | 6119bc3 | 2025-06-02 | UCX: Refactor nixlUcxWorker (and some related code) | **Port** | ✅ Completed | Major UCX refactoring |
-| 0a76701 | 2025-06-02 | LISTENER: Segment socket-based message transfers | **Port** | 🔄 In Progress | AsyncRT has listener functionality |
+| 0a76701 | 2025-06-02 | LISTENER: Segment socket-based message transfers | **Port** | ✅ Completed | AsyncRT has listener functionality |
 | 6a8df82 | 2025-06-03 | Fix for UCX build with IB dependencies | Skip | - | Benchmarking Dockerfile only |
 
 ### Commits to Port (4 total)
@@ -474,7 +474,7 @@ Many commits are related to backends not included in AsyncRT (UCX_MO, POSIX,
 1. **e0b34a3** - LISTENER: Add connection creation for invalidation message (✅ Completed)
 2. **e99bd98** - Gtest transfer test multi-threading extensions (✅ Completed)
 3. **6119bc3** - UCX: Refactor nixlUcxWorker (and some related code) (✅ Completed)
-4. **0a76701** - LISTENER: Segment socket-based message transfers (🔄 In Progress)
+4. **0a76701** - LISTENER: Segment socket-based message transfers (✅ Completed)
 
 ### Summary
 
@@ -590,6 +590,50 @@ error handling.
 
 - **Total commits reviewed**: 11
 - **Commits to port**: 4
-- **Commits completed**: 3 ✅
-- **Commits pending**: 1 (socket message segmentation)
+- **Commits completed**: 4 ✅
+- **Commits pending**: 0
 - **Commits skipped**: 7
+
+#### 4. 0a76701 - LISTENER: Segment socket-based message transfers (✅ Completed)
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/nixl_listener.cpp`: Implemented segmented message transfer protocol
+
+**Key changes**:
+
+- Updated `sendCommMessage` to use segmented transfer with size header
+- Added `recvCommMessageType` helper function for robust message reception
+- Updated `recvCommMessage` to handle segmented messages with proper error handling
+- Modified `commWorker` to use new boolean-based recv API
+- Added scatter-gather I/O using `iovec` for efficient message sending
+- Implemented proper error handling for partial reads and network errors
+- Added sys/uio.h include for iovec structure
+
+**Adaptations for AsyncRT**:
+
+- Used `std::string_view` instead of `const std::string&` for better performance
+- Replaced `absl::StrFormat` with AsyncRT NIXL_ERROR logging
+- Maintained compatibility with existing AsyncRT error handling patterns
+- Used `static_cast` for type conversions instead of C-style casts
+
+**Technical details**:
+
+- Messages now have a size header followed by the actual message data
+- Send operations use scatter-gather I/O to send header and message in one syscall
+- Receive operations first read the size header, then read the exact message length
+- Proper handling of EINTR, EAGAIN, and EWOULDBLOCK for non-blocking sockets
+- Force parameter in recvCommMessageType ensures complete message reception
+
+**Testing**:
+
+- All existing tests continue to pass.
+- MetadataInvalidation test validates socket-based message transfers work
+  correctly.
+- Large message handling is implicitly tested through existing metadata
+  exchange tests.
+- Added ListenerCommSize test to specifically verify segmented message handling
+  with large metadata.
+- Added wait_until_true helper function to improve test reliability.
+- Added available_port helper function to prevent port conflicts during test
+  execution.

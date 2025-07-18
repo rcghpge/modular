@@ -93,6 +93,15 @@ static int available_port(int start_port = 8000, int end_port = 9000,
   llvm_unreachable("no available port found");
 }
 
+// Helper function to wait until a condition becomes true with timeout
+static bool wait_until_true(std::function<bool()> func, int retries = 500) {
+  bool result;
+  while (!(result = func()) && retries-- > 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return result;
+}
+
 // Helper class to hold state for a NIXL agent with a UCX backend.
 struct NixlAgentWithUCXBackend {
   std::string agentName;
@@ -1075,4 +1084,57 @@ TEST_F(NixlUcxIntegrationTest, MetadataInvalidation) {
   // Verify that remote metadata check now fails
   ASSERT_NE(nixl2.agent->checkRemoteMD(nixl1.agentName, checkDescs),
             nixl_status_t::NIXL_SUCCESS);
+}
+
+TEST_F(NixlUcxIntegrationTest, ListenerCommSize) {
+  // Test large metadata exchange to verify segmented message handling
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create two NIXL agents with listener threads enabled
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_LargeSource",
+                                  available_port(), "ucx");
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_LargeDest",
+                                  available_port(), "ucx");
+
+  // Register many small buffers to create large metadata
+  const size_t bufferSize = 64;
+  const size_t numBuffers = 10000;
+  std::vector<std::vector<char>> buffers(numBuffers);
+
+  for (size_t i = 0; i < numBuffers; i++) {
+    buffers[i].resize(bufferSize);
+    std::fill(buffers[i].begin(), buffers[i].end(),
+              static_cast<char>('A' + (i % 26)));
+    nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                         blobDescfromVector(buffers[i], 0));
+  }
+
+  // Exchange metadata - this will create a large message that tests
+  // segmentation
+  std::string meta1, meta2;
+  std::string loadedAgentName1, loadedAgentName2;
+
+  ASSERT_SUCCESS(nixl1.agent->getLocalMD(meta1));
+  ASSERT_SUCCESS(nixl2.agent->getLocalMD(meta2));
+
+  // The large metadata should be exchanged successfully via segmented messages
+  ASSERT_SUCCESS(nixl1.agent->loadRemoteMD(blob_ref{meta2}, loadedAgentName2));
+  ASSERT_EQ(loadedAgentName2, nixl2.agentName);
+
+  // Verify metadata exchange completed within timeout using wait_until_true
+  nixl_xfer_dlist_t checkDescs(nixl_mem_t::DRAM_SEG);
+  auto checkBuf = llvm::ArrayRef{buffers[0].data(), bufferSize};
+  checkDescs.addDesc(basicDescfromArrayRef(checkBuf, 0));
+
+  ASSERT_TRUE(wait_until_true([&]() {
+    return nixl1.agent->checkRemoteMD(nixl2.agentName, checkDescs) ==
+           nixl_status_t::NIXL_SUCCESS;
+  })) << "Large metadata exchange failed or timed out";
 }

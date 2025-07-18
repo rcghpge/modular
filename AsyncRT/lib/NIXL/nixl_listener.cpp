@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <string_view>
+#include <sys/uio.h>
 
 using namespace M::AsyncRT::NIXL;
 using namespace std::string_view_literals;
@@ -62,35 +63,76 @@ static int connectToIP(const std::string &ip_addr, int port) {
   return ret_fd;
 }
 
-static size_t sendCommMessage(int fd, std::string_view msg) {
-  size_t bytes;
-  bytes = send(fd, msg.data(), msg.size(), 0);
-  if (bytes < 0)
-    std::cerr << "Cannot send on socket to fd " << fd << "\n";
+static void sendCommMessage(int fd, std::string_view msg) {
+  size_t size = msg.size();
+  constexpr size_t iov_size = 2;
+  struct iovec iov[iov_size] = {{&size, sizeof(size)},
+                                {const_cast<char *>(msg.data()), msg.size()}};
 
-  return bytes;
+  for (size_t i = 0, offset = 0, sent = 0; i < iov_size;) {
+    auto bytes = send(fd, static_cast<char *>(iov[i].iov_base) + offset,
+                      iov[i].iov_len - offset, 0);
+    if (bytes < 0) {
+      if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+        continue;
+      }
+
+      NIXL_ERROR << "sendCommMessage(fd=" << fd << ") " << sent << "/"
+                 << (size + sizeof(size)) << " bytes failed, errno=" << errno;
+      return;
+    }
+
+    offset += bytes;
+    sent += bytes;
+    if (offset == iov[i].iov_len) {
+      offset = 0;
+      ++i;
+    }
+  }
 }
 
-static std::pair<std::string, ssize_t> recvCommMessage(int fd) {
-  char buffer[16384];
-  ssize_t one_recv_bytes = 0;
-  ssize_t recv_bytes = 0;
-  std::string msg;
-
-  do {
-    one_recv_bytes = recv(fd, buffer, sizeof(buffer), 0);
-    if (one_recv_bytes == -1) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK)
-        return {msg, recv_bytes};
-      // TODO(GENAI-170): Use logging utils.
-      std::cerr << "Cannot recv on socket fd " << fd << "\n";
-      return {msg, one_recv_bytes};
+static bool recvCommMessageType(int fd, void *data, size_t size,
+                                bool force = false) {
+  for (size_t received = 0; received < size;) {
+    auto bytes =
+        recv(fd, static_cast<char *>(data) + received, size - received, 0);
+    if (bytes > 0) {
+      received += bytes;
+      continue;
     }
-    msg.append(buffer, one_recv_bytes);
-    recv_bytes += one_recv_bytes;
-  } while (one_recv_bytes > 0);
+    if (bytes == 0 && received == 0 && !force) {
+      return false;
+    }
 
-  return {msg, recv_bytes};
+    if (bytes < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        if (!force && received == 0) {
+          return false; // nothing to read yet
+        }
+        continue;
+      }
+    }
+
+    NIXL_ERROR << "recvCommMessage(fd=" << fd << ") " << received << "/" << size
+               << " bytes failed ret=" << bytes << " errno=" << errno;
+    return false;
+  }
+
+  return true;
+}
+
+static bool recvCommMessage(int fd, std::string &msg) {
+  size_t size;
+  if (!recvCommMessageType(fd, &size, sizeof(size))) {
+    return false;
+  }
+
+  msg.resize(size);
+  return recvCommMessageType(fd, msg.data(), size, true);
 }
 
 void nixlAgentData::commWorker(nixlAgent *myAgent) {
@@ -191,8 +233,8 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
     // third, do remote commands
     auto socket_iter = remoteSockets.begin();
     while (socket_iter != remoteSockets.end()) {
-      auto [commands, recv_bytes] = recvCommMessage(socket_iter->second);
-      if (recv_bytes == 0 || recv_bytes == -1) {
+      std::string commands;
+      if (!recvCommMessage(socket_iter->second, commands)) {
         socket_iter++;
         continue;
       }
