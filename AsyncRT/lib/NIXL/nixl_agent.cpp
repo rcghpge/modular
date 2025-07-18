@@ -1122,6 +1122,7 @@ nixl_status_t nixlAgent::loadRemoteMD(const blob_ref remote_metadata,
   if (ret != nixl_status_t::NIXL_SUCCESS) {
     delete data->remoteSections[remote_agent];
     data->remoteSections.erase(remote_agent);
+    data->remoteBackends.erase(remote_agent);
     return ret;
   }
 

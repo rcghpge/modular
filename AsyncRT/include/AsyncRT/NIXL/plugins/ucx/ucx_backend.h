@@ -96,6 +96,7 @@ private:
   std::atomic_bool progressThreadActive{false};
   bool pthrOn;
   std::thread pthr;
+  std::chrono::milliseconds pthrDelay;
   int pthrControlPipe[2];
   std::vector<pollfd> pollFds;
 

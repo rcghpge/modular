@@ -862,3 +862,112 @@ TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
         << "Buffer " << i << " has data corruption beyond transfer region";
   }
 }
+
+// Test loading remote VRAM metadata from a thread with wrong CUDA context.
+// This simulates what happens in the listener thread when it has a different
+// device context active than the one expected by the VRAM memory.
+TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithWrongContext) {
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Check if we have at least 2 CUDA devices
+  // Try to create context on device 1 - if it fails, we don't have 2 devices
+  ErrorOr<DeviceContextRef> ctx1Result =
+      DeviceContext::create(Device::cudaAPI, /*id=*/1);
+  if (ctx1Result.isError())
+    GTEST_SKIP() << "Need at least 2 CUDA devices for this test";
+
+  DeviceContextRef ctx1 = ctx1Result.takeValue();
+
+  // Create CUDA device context for device 0.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx0,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+
+  // Create device buffer on device 0.
+  const size_t bufferSize = 64 * 1024;
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer0, ctx0->createBuffer(bufferSize));
+
+  // Create NIXL agent1 with device 0.
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Device0", /*port=*/8037,
+                                  "ucx", /*gpuDeviceId=*/0);
+  nixl1.registerMemory(
+      nixl_mem_t::VRAM_SEG,
+      nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer0->ptr()),
+                   bufferSize, 0, ""});
+
+  // Create NIXL agent2 with device 1.
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Device1", /*port=*/8042,
+                                  "ucx", /*gpuDeviceId=*/1);
+
+  // Get metadata from agent1 (device 0).
+  nixl_blob_t meta1;
+  ASSERT_SUCCESS(nixl1.agent->getLocalMD(meta1));
+
+  // Create a thread that will have device 1 context active.
+  std::thread wrongContextThread([&]() {
+    // Activate device 1 context in this thread.
+    DeviceContextScope scope(*ctx1);
+    ASSERT_FALSE(scope.err().isError());
+
+    // Now try to load metadata for device 0 VRAM while device 1 is active.
+    // This simulates the listener thread scenario where the wrong context
+    // might be active when processing metadata from a different device.
+    nixl_status_t status =
+        nixl2.agent->loadRemoteMD(blob_ref{meta1}, nixl1.agentName);
+
+    // This should still succeed because the implementation should handle
+    // activating the correct context for the VRAM operations.
+    EXPECT_EQ(status, nixl_status_t::NIXL_SUCCESS);
+  });
+
+  wrongContextThread.join();
+}
+
+// Test loading remote VRAM metadata from a thread with NO CUDA context.
+// This directly simulates the listener thread scenario.
+TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithNoContext) {
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context for device 0.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx0,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+
+  // Create device buffer on device 0.
+  const size_t bufferSize = 64 * 1024;
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer0, ctx0->createBuffer(bufferSize));
+
+  // Create NIXL agent with device 0.
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_NoCtx", /*port=*/8037,
+                                  "ucx", /*gpuDeviceId=*/0);
+  nixl1.registerMemory(
+      nixl_mem_t::VRAM_SEG,
+      nixlBlobDesc{reinterpret_cast<uintptr_t>(deviceBuffer0->ptr()),
+                   bufferSize, 0, ""});
+
+  // Get metadata with VRAM memory
+  nixl_blob_t meta1;
+  ASSERT_SUCCESS(nixl1.agent->getLocalMD(meta1));
+
+  // Create another agent to receive the metadata.
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Receiver", /*port=*/8042,
+                                  "ucx", /*gpuDeviceId=*/0);
+
+  // Create a thread with NO device context (simulating listener thread).
+  std::thread noContextThread([&]() {
+    // This thread has no CUDA context active - exactly like the listener
+    // thread. Try to load VRAM metadata without any context.
+    std::string loadedAgentName;
+    nixl_status_t status =
+        nixl2.agent->loadRemoteMD(blob_ref{meta1}, loadedAgentName);
+
+    // Without activateContext, this would fail because UCX operations on VRAM
+    // need a CUDA context.
+    EXPECT_EQ(status, nixl_status_t::NIXL_SUCCESS);
+    EXPECT_EQ(loadedAgentName, nixl1.agentName);
+  });
+
+  noContextThread.join();
+}

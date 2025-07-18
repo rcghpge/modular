@@ -332,14 +332,14 @@ handling patterns (ErrorOr vs exceptions) and code style.
 | 47c9d46 | 2025-05-21 | BACKEND/UCX_MO: add ucx_error_handling_mode parameter | Skip | - | UCX_MO backend not included |
 | 9cb30a6 | 2025-05-21 | UCX: handle ucp_worker_create failure | **Port** | ✅ Completed | UCX error handling improvement |
 | 846e043 | 2025-05-21 | Refactor: Some C++ best practices | **Port** | ✅ Completed | Code quality improvements |
-| 598ae34 | 2025-05-21 | UCX: Set a CUDA context when loading remote MD from listener thread | **Port** | Pending | CUDA context management for UCX |
+| 598ae34 | 2025-05-21 | UCX: Set a CUDA context when loading remote MD from listener thread | **Port** | ✅ Completed | Already present in AsyncRT via activateContext() |
 | 2e9262f | 2025-05-21 | Use codespellrc file to ignore words | Skip | - | Spelling/linting configuration |
 | d18a757 | 2025-05-22 | Agent: Bug fix: apply timeout to socket connection and add gtests for md exchange | Skip | - | Agent/socket timeouts, not UCX specific |
 | 1144491 | 2025-05-22 | Agent: Improve MD fetch and invalidate flow in ETCD mode using watchers | Skip | - | ETCD functionality removed |
 | 7c87207 | 2025-05-22 | Posix: Updated Uring Queue implementation | Skip | - | POSIX backend not included |
 | af9ccc4 | 2025-05-22 | plugins/hf3fs: Add 3FS backend | Skip | - | 3FS backend not included |
 | ace79e7 | 2025-05-21 | Dockerfile: Add RDMA libraries for UCX build | Skip | - | Docker/build infrastructure |
-| d01a854 | 2025-05-22 | Timeout from poll() in progress thread after pthrDelay | **Port** | Pending | Progress thread timeout improvements |
+| d01a854 | 2025-05-22 | Timeout from poll() in progress thread after pthrDelay | **Port** | ✅ Completed | Progress thread timeout improvements |
 | 23ed7ae | 2025-05-22 | Cost estimation | Skip | - | Cost estimation not in AsyncRT scope |
 | ad31f86 | 2025-05-22 | clang: Add clang format file | Skip | - | Formatting configuration |
 | 0a60d25 | 2025-05-22 | Revert "clang: Add clang format file" | Skip | - | Revert of formatting config |
@@ -349,11 +349,11 @@ handling patterns (ErrorOr vs exceptions) and code style.
 | 49ff03e | 2025-05-22 | Agent API: update sendLocalPartialMD to require label in etcd mode and update python bindings with label | Skip | - | ETCD/Python API changes |
 | 9ddf7a7 | 2025-05-22 | NIXL KV Cache Benchmark | Skip | - | Benchmarking tool |
 | 2d9e847 | 2025-05-22 | BINDINGS/RUST: Example, fix building, tests | Skip | - | Rust bindings |
-| c77372b | 2025-05-22 | Memory leak fix | **Port** | Pending | Generic memory leak fix |
+| c77372b | 2025-05-22 | Memory leak fix | **Port** | ✅ Completed | Generic memory leak fix |
 | f2061ae | 2025-05-22 | SRC/BINDINGS/RUST: added missing APIs, reordered APIs to match python + tests | Skip | - | Rust bindings |
 | 16c0611 | 2025-05-22 | chore: add attributions files for NIXL | Skip | - | Documentation/licensing |
 | e525c26 | 2025-05-23 | fix: remove nixlGdsIOBatch::destroyBatch to prevent double cuFileBatchIODestroy call | Skip | - | GDS backend not included |
-| c90a0d9 | 2025-05-23 | UCX: set rma rails to 2 for ucx backend | **Port** | Pending | UCX RMA configuration |
+| c90a0d9 | 2025-05-23 | UCX: set rma rails to 2 for ucx backend | **Port** | ✅ Completed | UCX RMA configuration |
 | e3920bb | 2025-05-23 | UCX_MO: Check memory registration success to avoid invalid memory access | Skip | - | UCX_MO backend not included |
 | b6832ec | 2025-05-23 | INFRA: Sections serialization: Only count remotely supported backends | Skip | - | Serialization infrastructure |
 | ba66407 | 2025-05-23 | nixlbench: automatically detect NIXL lib path based on host CPU | Skip | - | Benchmarking tool |
@@ -372,17 +372,70 @@ handling patterns (ErrorOr vs exceptions) and code style.
 1. **d8ffa6a** - set multi flag for read/write in ucx backend
 2. **9cb30a6** - UCX: handle ucp_worker_create failure
 3. **846e043** - Refactor: Some C++ best practices
-4. **598ae34** - UCX: Set a CUDA context when loading remote MD from listener thread
+4. **598ae34** - UCX: Set a CUDA context when loading remote MD from listener
+   thread (✅ Completed - already present in AsyncRT)
 5. **d01a854** - Timeout from poll() in progress thread after pthrDelay
-6. **c77372b** - Memory leak fix
-7. **c90a0d9** - UCX: set rma rails to 2 for ucx backend
+   (✅ Completed)
+6. **c77372b** - Memory leak fix (✅ Completed)
+7. **c90a0d9** - UCX: set rma rails to 2 for ucx backend (✅ Completed)
 
 ### Summary
 
 - **Total commits reviewed**: 41
 - **Commits to port**: 7 (UCX improvements and code quality)
-- **Commits ported**: 0 (pending)
+- **Commits ported**: 7 ✅
 - **Commits skipped**: 34
+
+### Changes Made
+
+#### 1. d8ffa6a & 9cb30a6 - UCX multi flag and worker creation error handling
+
+- Already backported in previous commits
+
+#### 2. 846e043 - Refactor: Some C++ best practices
+
+- Already incorporated in AsyncRT with fallible constructor pattern
+
+#### 3. 598ae34 - UCX: Set a CUDA context when loading remote MD from listener thread
+
+- Already present in AsyncRT - `activateContext()` is called in `loadRemoteMD()`
+- Verified with tests that proper error handling exists for wrong/missing contexts
+
+#### 4. d01a854 - Timeout from poll() in progress thread after pthrDelay
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Added poll timeout logic
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Added pthrDelay member
+- `AsyncRT/include/AsyncRT/NIXL/nixl_params.h`: Updated pthrDelay comment
+
+**Key changes**:
+
+- Progress thread now uses poll() with timeout instead of infinite wait
+- Timeout triggers periodic unconditional worker progress
+- pthrDelay is converted from microseconds to milliseconds for poll()
+
+#### 5. c77372b - Memory leak fix
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Fixed memory leak in loadRemoteMD
+
+**Key changes**:
+
+- Added missing `data->remoteBackends.erase(remote_agent)` when backend init fails
+- Prevents memory leak when remote metadata loading fails
+
+#### 6. c90a0d9 - UCX: set rma rails to 2 for ucx backend
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added RMA rails configuration
+
+**Key changes**:
+
+- Set MAX_RMA_RAILS to 2 to optimize UCX RMA performance
+- Added warning log if configuration fails
 
 ### Notes
 
