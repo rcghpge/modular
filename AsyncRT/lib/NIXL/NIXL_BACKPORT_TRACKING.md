@@ -547,36 +547,39 @@ error handling.
 **Files modified**:
 
 - `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Major refactoring of
-  UCX worker interface.
+  UCX worker interface
 - `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Updated implementation with
-  modern C++ patterns.
+  modern C++ patterns
 - `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Updated to use
-  string-based APIs.
+  string-based APIs
 - `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Adapted to new UCX worker
-  interface.
+  interface
 
 **Key changes**:
 
 - Converted `nixl_ucx_mt_t` from enum to enum class with simplified names
-  (SINGLE, CTX, WORKER).
+  (SINGLE, CTX, WORKER)
 - Moved `mtLevelIsSupported` from static method to standalone function
-  `nixlUcxMtLevelIsSupported`.
-- Refactored `nixlUcxWorker` to use RAII with `std::unique_ptr<ucp_worker,
-  void(*)(ucp_worker*)>`.
+  `nixlUcxMtLevelIsSupported`
+- Refactored `nixlUcxWorker` to use RAII with
+  `std::unique_ptr<ucp_worker, void(*)(ucp_worker*)>`
 - Changed `epAddr()` and `packRkey()` to return `std::string` instead of
-  `std::unique_ptr<char[]>`.
+  `std::unique_ptr<char[]>`
 - Added fallible constructor pattern with `createUcpWorker` returning
-  `ErrorOr<ucp_worker_h>`.
-- Removed unused `getRndvData` method.
-- Added move/copy constructors deletion for proper RAII.
-- Updated all enum usage to scoped enum syntax.
+  `ErrorOr<ucp_worker_h>`
+- Removed unused `getRndvData` method
+- Added move/copy constructors deletion for proper RAII
+- Updated all enum usage to scoped enum syntax
 
 **Adaptations for AsyncRT**:
 
 - Used `ErrorOr` instead of exceptions for fallible operations
-- Used `llvm_unreachable` instead of `std::terminate` for unreachable code paths
-- Added proper `M::AsyncRT::NIXL::` namespace qualification for standalone functions
-- Converted designated initializers to memset + field assignment for C++ compatibility
+- Used `llvm_unreachable` instead of `std::terminate` for unreachable code
+  paths
+- Added proper `M::AsyncRT::NIXL::` namespace qualification for standalone
+  functions
+- Converted designated initializers to memset + field assignment for C++
+  compatibility
 - Used `static_assert` for compile-time size validation
 - Maintained backward compatibility with existing AsyncRT patterns
 
@@ -637,3 +640,139 @@ error handling.
 - Added wait_until_true helper function to improve test reliability.
 - Added available_port helper function to prevent port conflicts during test
   execution.
+
+## Week 6 (June 3-9, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 6a8df82 | 2025-06-03 | Fix for UCX build with IB dependencies | Skip | - | Benchmarking Dockerfile only |
+| d0d86a3 | 2025-06-04 | feat: rust bindings improvements | Skip | - | Rust bindings, not relevant to C++ AsyncRT |
+| afdd21d | 2025-06-04 | CONTRIB: Enable UCX build for EFA with common sha1 | Skip | - | Build infrastructure |
+| c2aeb27 | 2025-06-04 | CONTRIB: Fix container build with new option | Skip | - | Container build configuration |
+| fa9dea5 | 2025-06-04 | PLUGINS/UCX: Minor code cleanup related to notification lists | **Port** | ✅ Completed | UCX notification handling improvements |
+| 7fec31c | 2025-06-04 | UCX: Finer grained progress to improve performance | **Port** | ✅ Completed | UCX performance optimization |
+| 490fb42 | 2025-06-04 | API/CPP: Replaced classes with only public members with structures | **Port** | ✅ Completed | Code quality improvement |
+| 587c018 | 2025-06-04 | TEST/PLUGIN: Add more logs | Skip | - | Test framework logging |
+| 8f289f5 | 2025-06-05 | CI: Debug AWS EFA test with retries and faster polling | Skip | - | CI configuration |
+| d01d6b5 | 2025-06-08 | GITHUB: added PR template | Skip | - | GitHub repository configuration |
+| b927d60 | 2025-06-08 | CI: Enable arm build | Skip | - | CI configuration |
+| 4c4237f | 2025-06-09 | UCX: Fix UCP AM usage (do not duplicate id in the header) | **Port** | ✅ Completed | UCX protocol bug fix |
+| 0353362 | 2025-06-09 | Add owners for storage plugins | Skip | - | CODEOWNERS file |
+| 1cb01ca | 2025-06-09 | Made sure cpu is the default device when use_cuda is set to False | Skip | - | Python/device configuration |
+| fdaaae2 | 2025-06-09 | build: Create Dockerfile.manylinux | Skip | - | Build infrastructure |
+| cae4239 | 2025-06-09 | nixlbench: enable VMM CUDA memory allocation | Skip | - | Benchmarking tool |
+| fc2c8c4 | 2025-06-09 | CODEOWNERS: added roiedanino as codeowner of Rust bindings | Skip | - | CODEOWNERS file |
+| 1ae58ca | 2025-06-09 | chore: update attributions post 0.3.0 release | Skip | - | Documentation |
+| fcb22ec | 2025-06-09 | fix: GDS deps and Dockerfile updates | Skip | - | GDS backend/Docker |
+| 3e6a2ac | 2025-06-09 | Python: bindings optimizations and support numpy arrays for xfer_dlist | Skip | - | Python bindings |
+| b46be39 | 2025-06-10 | Introduce GDAKI with DOCA GPUNetIO + DOCA RDMA, stream mode | Skip | - | GDAKI backend not included |
+
+### Commits to Port (4 total)
+
+1. **fa9dea5** - PLUGINS/UCX: Minor code cleanup related to notification lists
+2. **7fec31c** - UCX: Finer grained progress to improve performance
+3. **490fb42** - API/CPP: Replaced classes with only public members with structures
+4. **4c4237f** - UCX: Fix UCP AM usage (do not duplicate id in the header)
+
+### Summary
+
+- **Total commits reviewed**: 21
+- **Commits to port**: 4 (UCX improvements and code quality)
+- **Commits ported**: 4 ✅ (first 3 coalesced into 1 commit, 4th ported separately)
+- **Commits skipped**: 17
+
+### Implementation Plan
+
+#### 1. fa9dea5 - UCX notification list cleanup
+
+**Files to modify**:
+
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`
+
+**Key changes**:
+
+- Add `moveNotifList` helper function in anonymous namespace
+- Remove `notifCombineHelper` method (replaced by `moveNotifList`)
+- Update `notifProgressCombineHelper` to use lock_guard and `moveNotifList`
+- Update `getNotifs` to call `moveNotifList` directly
+
+#### 2. 7fec31c - UCX finer grained progress
+
+**Analysis needed**: Need to examine commit details to understand performance optimizations
+
+#### 3. 490fb42 - Convert POD classes to structs
+
+**Analysis needed**: Need to identify which classes are POD and should be converted
+
+#### 4. 4c4237f - UCX AM header fix
+
+**Analysis needed**: Need to understand the AM protocol issue and fix implementation
+
+### Changes Made
+
+#### 1-3. Coalesced commits (fa9dea5 + 7fec31c + 490fb42) ✅
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`
+- `AsyncRT/include/AsyncRT/NIXL/nixl_types.h`
+
+**Key changes**:
+
+1. **Notification list cleanup (fa9dea5)**:
+   - Added static `moveNotifList` helper function to replace `notifCombineHelper`
+   - Updated `notifProgressCombineHelper` to use `std::lock_guard` for RAII
+   - Removed `notifCombineHelper` method from class declaration
+   - Simplified notification list operations
+
+2. **Finer grained progress (7fec31c)**:
+   - Made `ucx_status_to_nixl` non-static and exposed in header
+   - Added maximum progress loop before checking request status
+   - Replaced `uw->test()` with direct `ucp_request_check_status()` call
+   - Improved UCX performance with better progress handling
+
+3. **POD classes to structs (490fb42)**:
+   - Converted `nixlAgentOptionalArgs` from class to struct
+   - Already had `nixlBackendOptionalArgs` as struct in AsyncRT
+
+**Adaptations for AsyncRT**:
+
+- Used static function instead of anonymous namespace per user preference
+- Maintained compatibility with existing AsyncRT patterns
+- All tests pass successfully
+
+#### 4. 4c4237f - UCX AM header fix ✅
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Removed nixl_ucx_am_hdr
+  struct.
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Updated all AM callbacks and
+  sendAm calls.
+
+**Key changes**:
+
+- Removed `nixl_ucx_am_hdr` struct that duplicated AM ID in headers
+- Updated all AM callbacks to use assertions instead of error returns
+- Changed all `sendAm` calls to pass `nullptr` for header and `0` for
+  header_length.
+- Fixed UCX protocol bug where AM ID was being sent twice
+
+**Technical details**:
+
+- UCX already includes the AM ID in its internal headers.
+- Sending the ID again in the user header was redundant and could cause issues.
+- Callbacks now assert on the AM ID parameter from UCX instead of checking
+  header.
+- Simplified the protocol and improved reliability.
+
+**Testing**:
+
+- All UCX unit tests pass successfully
+- No regressions in existing functionality

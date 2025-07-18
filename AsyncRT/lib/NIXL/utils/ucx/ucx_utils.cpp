@@ -24,7 +24,7 @@ using namespace M;
 using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
 
-static nixl_status_t ucx_status_to_nixl(ucs_status_t status) {
+nixl_status_t M::AsyncRT::NIXL::ucx_status_to_nixl(ucs_status_t status) {
   if (status == UCS_OK) [[likely]] {
     return nixl_status_t::NIXL_SUCCESS;
   }

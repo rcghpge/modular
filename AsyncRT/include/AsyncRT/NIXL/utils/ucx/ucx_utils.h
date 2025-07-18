@@ -26,10 +26,6 @@ namespace M::AsyncRT::NIXL {
 
 enum class UcxCallbackOp : std::uint8_t { CONN_CHECK, NOTIF_STR, DISCONNECT };
 
-struct nixl_ucx_am_hdr {
-  UcxCallbackOp op;
-};
-
 enum class nixl_ucx_mt_t { SINGLE, CTX, WORKER };
 
 using nixlUcxReq = void *;
@@ -180,6 +176,8 @@ public:
 
   ucp_worker_h getWorker() const { return worker.get(); }
 };
+
+nixl_status_t ucx_status_to_nixl(ucs_status_t status);
 
 } // namespace M::AsyncRT::NIXL
 

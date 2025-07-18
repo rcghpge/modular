@@ -148,12 +148,11 @@ using nixl_notifs_t = std::unordered_map<std::string, std::vector<nixl_blob_t>>;
 constexpr int default_comm_port = 8888;
 
 /**
- * @class nixlAgentOptionalArgs
- * @brief A class for optional argument that can be provided to relevant agent
- * methods.
+ * @struct nixlAgentOptionalArgs
+ * @brief A structure for optional argument that can be provided to relevant
+ * agent methods.
  */
-class nixlAgentOptionalArgs {
-public:
+struct nixlAgentOptionalArgs {
   /**
    * @var backends vector to specify a list of backend handles, to limit the
    * list of backends to be considered. Used in registerMem / deregisterMem
