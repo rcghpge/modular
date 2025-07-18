@@ -231,7 +231,8 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
     free(in0Host);
   }
 
-  // Check cached functions do not keep reference count on context.
+  // Check that cached functions do not keep reference count on context.
+  EXPECT_NO_ERR(ctx->synchronize());
   EXPECT_EQ(ctx->getNumReferences(), 1);
 }
 
