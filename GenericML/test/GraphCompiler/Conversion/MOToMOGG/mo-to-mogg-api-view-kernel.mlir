@@ -6,7 +6,7 @@
 
 // CHECK: mogg.experimental.kernel
 // CHECK: %[[OUT:.*]] = mogg.output_placeholders
-// CHECK: %{{.*}} = pop.array.create
+// CHECK: %{{.*}} = mogg.tensor.shape
 // CHECK: mogg.call.view["mo.static.broadcast_to"]
 // CHECK: mogg.call.materialize
 

@@ -1132,8 +1132,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     ArrayRef<TypedAttr> dims;
     if (auto asTensor = MO::dynCastFromTensorLike(t))
       dims = asTensor.getDims();
-    else if (auto shape = dyn_cast<MOGG::ShapeType>(t))
-      dims = dyn_cast<MOSH::ShapeAttr>(shape.getShapeAttr()).getValues();
     else
       return success();
 

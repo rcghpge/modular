@@ -77,9 +77,6 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
     MO::TensorType asTensor = MO::dynCastFromTensorLike(t);
     if (asTensor)
       shape = asTensor.getTypedShapeAttr();
-    MOGG::ShapeType asShape = dyn_cast<MOGG::ShapeType>(t);
-    if (asShape)
-      shape = cast<MOSH::ShapeAttr>(asShape.getShapeAttr());
 
     if (!shape)
       return;

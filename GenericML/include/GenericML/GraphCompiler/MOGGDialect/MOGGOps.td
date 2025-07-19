@@ -1522,6 +1522,16 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
   let hasCanonicalizeMethod = 1;
 }
 
+def MOGG_TensorGetShapeOp: MOGG_Op<"tensor.shape", [Pure]> {
+  let summary = "Gets the shape of a tensor";
+  let arguments = (ins TypeAttr:$tensor);
+  let results = (outs MOGG_Shape:$shape);
+
+  let assemblyFormat = [{
+    `<` $tensor `>` attr-dict
+  }];
+}
+
 def MOGG_AssertOp: MOGG_Op<"assert"> {
   let summary = "Placeholder for inserting a try catch block";
   let description = [{

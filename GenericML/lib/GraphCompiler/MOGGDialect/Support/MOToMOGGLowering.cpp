@@ -181,12 +181,11 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   Value outputVal = kernelOp.getOutputPlaceholder()->getResult(0);
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
-  // Build the shape
-  auto tensorTp = cast<MO::TensorType>(outputVal.getType());
-  Value shapeInKGEN = MOGG::lowerShapeToKGEN(loc, builder, tensorTp.getDims());
 
-  if (isa<MO::Static::ReshapeOp, MO::Static::BroadcastToOp>(moOp))
-    inputs.push_back(shapeInKGEN);
+  if (isa<MO::Static::ReshapeOp, MO::Static::BroadcastToOp>(moOp)) {
+    inputs.push_back(builder.create<MOGG::TensorGetShapeOp>(
+        loc, TypeAttr::get(outputVal.getType())));
+  }
 
   inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),

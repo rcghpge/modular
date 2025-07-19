@@ -52,11 +52,6 @@ def MOGG_Shape : MOGG_Type<"Shape", "shape"> {
   let description = [{
     This is the mogg representation of a runtime shape value.
   }];
-
-  let parameters = (ins "TypedAttr" : $shapeAttr);
-  let assemblyFormat = [{
-    `<` custom<ShapeParam>($shapeAttr) `>`
-  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_TD
