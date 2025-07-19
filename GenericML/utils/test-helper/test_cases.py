@@ -183,7 +183,7 @@ class Split(TestBase):
 
         # Create the vector representing the size along each dimension to split
         # ensuring we are splitting to at least 1 at each point.
-        for i in range(shapes[1][0] - 1):
+        for i in range(shapes[1][0] - 1):  # noqa: B007
             assert dim_splitting_along > 0
             assert dim_splitting_along > splits_left_to_make
             assert splits_left_to_make > 0
