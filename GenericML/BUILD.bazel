@@ -1459,7 +1459,7 @@ modular_cc_library(
     ],
 )
 
-modular_shared_library(
+modular_cc_library(
     name = "DeviceDriver",
     srcs = glob(["lib/DeviceDriver/*.cpp"]),
     hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),

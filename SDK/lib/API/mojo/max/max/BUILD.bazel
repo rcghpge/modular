@@ -4,7 +4,6 @@ mojo_library(
     name = "max",
     srcs = glob(["**/*.mojo"]),
     data = [
-        "//GenericML:DeviceDriver",
         "//SDK:max",
     ],
     visibility = ["//visibility:public"],
