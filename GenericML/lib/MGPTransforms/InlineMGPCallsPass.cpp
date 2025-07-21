@@ -153,38 +153,27 @@ namespace {
 
 /// Offsets the specific slot index attribute of various MGP operations.
 static void offsetRuntimeSlot(Operation *op, uint64_t slotOffset) {
-  if (auto bufferCacheOp = dyn_cast<BufferCacheOp>(op)) {
-    uint64_t oldSlot = bufferCacheOp.getBBufferSlot();
-    bufferCacheOp.setBBufferSlot(oldSlot + slotOffset);
-  }
-  if (auto runtimeCreateOp = dyn_cast<RuntimeCreateOp>(op)) {
-    uint64_t oldSlot = runtimeCreateOp.getARuntimeSlot();
-    runtimeCreateOp.setARuntimeSlot(oldSlot + slotOffset);
-  }
-  if (auto bufferGetCachedOp = dyn_cast<BufferGetCachedOp>(op)) {
-    uint64_t oldSlot = bufferGetCachedOp.getBBufferSlot();
-    bufferGetCachedOp.setBBufferSlot(oldSlot + slotOffset);
-  }
-  if (auto bufferRemoveCachedOp = dyn_cast<BufferRemoveCachedOp>(op)) {
-    uint64_t oldSlot = bufferRemoveCachedOp.getBufferSlot();
-    bufferRemoveCachedOp.setBufferSlot(oldSlot + slotOffset);
-  }
-  if (auto moduleLoadOp = dyn_cast<ModuleLoadOp>(op)) {
-    uint64_t oldSlot = moduleLoadOp.getARuntimeSlot();
-    moduleLoadOp.setARuntimeSlot(oldSlot + slotOffset);
-  }
-  if (auto executeGenericOp = dyn_cast<ExecuteGenericOp>(op)) {
-    uint64_t oldSlot = executeGenericOp.getARuntimeSlot();
-    executeGenericOp.setARuntimeSlot(oldSlot + slotOffset);
-  }
-
-  // Recurse into regions (for example, grt.if)
-  for (Region &region : op->getRegions()) {
-    for (Block &block : region) {
-      for (Operation &nestedOp : block)
-        offsetRuntimeSlot(&nestedOp, slotOffset);
+  op->walk([&](Operation *op) {
+    if (auto bufferCacheOp = dyn_cast<BufferCacheOp>(op)) {
+      uint64_t oldSlot = bufferCacheOp.getBBufferSlot();
+      bufferCacheOp.setBBufferSlot(oldSlot + slotOffset);
+    } else if (auto runtimeCreateOp = dyn_cast<RuntimeCreateOp>(op)) {
+      uint64_t oldSlot = runtimeCreateOp.getARuntimeSlot();
+      runtimeCreateOp.setARuntimeSlot(oldSlot + slotOffset);
+    } else if (auto bufferGetCachedOp = dyn_cast<BufferGetCachedOp>(op)) {
+      uint64_t oldSlot = bufferGetCachedOp.getBBufferSlot();
+      bufferGetCachedOp.setBBufferSlot(oldSlot + slotOffset);
+    } else if (auto bufferRemoveCachedOp = dyn_cast<BufferRemoveCachedOp>(op)) {
+      uint64_t oldSlot = bufferRemoveCachedOp.getBufferSlot();
+      bufferRemoveCachedOp.setBufferSlot(oldSlot + slotOffset);
+    } else if (auto moduleLoadOp = dyn_cast<ModuleLoadOp>(op)) {
+      uint64_t oldSlot = moduleLoadOp.getARuntimeSlot();
+      moduleLoadOp.setARuntimeSlot(oldSlot + slotOffset);
+    } else if (auto executeGenericOp = dyn_cast<ExecuteGenericOp>(op)) {
+      uint64_t oldSlot = executeGenericOp.getARuntimeSlot();
+      executeGenericOp.setARuntimeSlot(oldSlot + slotOffset);
     }
-  }
+  });
 }
 
 /// Updates the name attribute of mgp.buffer.constant.external operations
@@ -204,11 +193,10 @@ static void updatePlaceholderNames(Operation *op, StringRef prefix) {
 /// nullptr otherwise. MGP::ModelOp::verify ensures there's only one
 /// ContextCreateOp per init block.
 static ContextCreateOp findContextCreateOp(ModelOp model) {
-  ContextCreateOp contextCreateOp;
-  model.getInitBlock()->walk([&](ContextCreateOp op) { contextCreateOp = op; });
-  ASSERT_STREAM(contextCreateOp,
+  auto createOps = model.getInitBlock()->getOps<ContextCreateOp>();
+  ASSERT_STREAM(!createOps.empty(),
                 "Model does not contain a ContextCreateOp in its init block.");
-  return contextCreateOp;
+  return *createOps.begin();
 }
 
 //===----------------------------------------------------------------------===//
@@ -219,10 +207,8 @@ struct InlineMGPCallsPass
     : public impl::InlineMGPCallsPassBase<InlineMGPCallsPass> {
   using InlineMGPCallsPassBase::InlineMGPCallsPassBase;
 
-  // Track slot usage per model as we inline into them
-  DenseMap<ModelOp, uint64_t> modelSlotUsage;
-
-  LogicalResult inlineSubgraph(CallOp callOp) {
+  LogicalResult inlineSubgraph(CallOp callOp, const SymbolTable &symtab,
+                               uint64_t &modelSlotUsage) {
     // High-level steps for inlining a subgraph:
     // 1. Prepend call prefix to unique external tensors (placeholder names)
     // 2. Record initial slot usage in parent model
@@ -231,14 +217,13 @@ struct InlineMGPCallsPass
     // 5. Clone execute block operations from subgraph into parent at call site
     // 6. Map return values and clean up the call operation
 
-    ModuleOp moduleOp = getOperation();
-    ModelOp subgraph = moduleOp.lookupSymbol<ModelOp>(callOp.getModel());
+    ModelOp subgraph = symtab.lookup<ModelOp>(callOp.getModelAttr().getAttr());
     ModelOp parentModelOp = callOp->getParentOfType<ModelOp>();
 
     // Find the target subgraph model
     if (!subgraph)
       return callOp.emitError()
-             << "failed to find symbol @" << callOp.getModel();
+             << "failed to find symbol @" << callOp.getModelAttr().getAttr();
 
     // Get the prefix from the call operation
     StringRef callPrefix = callOp.getPrefix();
@@ -247,14 +232,6 @@ struct InlineMGPCallsPass
     ContextCreateOp parentContextCreateOp = findContextCreateOp(parentModelOp);
     if (!parentContextCreateOp)
       return failure();
-
-    // Initialize parent's slot usage if not already tracked
-    if (modelSlotUsage.find(parentModelOp) == modelSlotUsage.end())
-      modelSlotUsage[parentModelOp] = parentContextCreateOp.getNumSlots();
-
-    // Get the current slot usage of the parent (including any previously
-    // inlined subgraphs)
-    uint64_t parentCurrentSlotUsage = modelSlotUsage[parentModelOp];
 
     // Find the number of slots this specific subgraph requires
     ContextCreateOp subgraphContextCreateOp = findContextCreateOp(subgraph);
@@ -265,7 +242,7 @@ struct InlineMGPCallsPass
 
     // The offset for this callsite should start after the parent's current
     // slots
-    uint64_t slotOffset = parentCurrentSlotUsage;
+    uint64_t slotOffset = modelSlotUsage;
 
     // First, inline the init block for this specific callsite
     Block *parentInit = parentModelOp.getInitBlock();
@@ -375,7 +352,7 @@ struct InlineMGPCallsPass
     }
 
     // Update the parent's slot usage to include this inlined subgraph
-    modelSlotUsage[parentModelOp] += subgraphSlotsUsed;
+    modelSlotUsage += subgraphSlotsUsed;
 
     // Erase the call operation
     callOp.erase();
@@ -388,7 +365,7 @@ struct InlineMGPCallsPass
 
     // No work to do if there's only one model.
     auto models = moduleOp.getOps<ModelOp>();
-    if (models.empty() || std::next(models.begin()) == models.end())
+    if (models.empty() || llvm::hasSingleElement(models))
       return;
 
     MGPCallGraph callGraph;
@@ -401,15 +378,24 @@ struct InlineMGPCallsPass
     }
 
     // Set to track subgraphs that we've inlined
-    DenseSet<StringRef> inlinedSubgraphs;
+    DenseSet<StringAttr> inlinedSubgraphs;
+
+    // The slot offsets needed to update the context create operations after
+    // inlining. This is to ensure each inlined subgraph operates on a different
+    // context slot.
+    DenseMap<ModelOp, uint64_t> slotOffsets;
 
     // Inline functions in the determined reverse topological order.
     for (MGPCallGraphNode *node : inliningOrder.get()) {
       [[maybe_unused]] ModelOp modelOp = node->func;
       // Make a copy of callsites as inlining modifies the operation list.
-      SmallVector<KGEN::CallGraphEdgeBase<MGPCallGraphNode, ModelOp, CallOp>>
-          callsitesToInline;
-      callsitesToInline = node->callsites;
+      SmallVector<MGPCallGraph::EdgeT> &callsitesToInline = node->callsites;
+
+      MGP::ContextCreateOp parentContextCreateOp = findContextCreateOp(modelOp);
+      if (!parentContextCreateOp)
+        return signalPassFailure();
+
+      uint64_t modelSlotUsage = parentContextCreateOp.getNumSlots();
 
       for (auto &edge : callsitesToInline) {
         CallOp callOp = edge.call;
@@ -418,11 +404,11 @@ struct InlineMGPCallsPass
         if (!callOp)
           continue;
 
-        StringRef calleeName = edge.node->func.getSymName();
+        StringAttr calleeName = edge.node->func.getSymNameAttr();
         LLVM_DEBUG(llvm::dbgs() << "Inlining call to @" << calleeName
                                 << " into @" << modelOp.getSymName() << "\n");
 
-        if (failed(inlineSubgraph(callOp))) {
+        if (failed(inlineSubgraph(callOp, symtab, modelSlotUsage))) {
           signalPassFailure();
           return;
         }
@@ -430,11 +416,11 @@ struct InlineMGPCallsPass
         // Mark the callee as potentially removable.
         inlinedSubgraphs.insert(calleeName);
       }
+
+      slotOffsets[modelOp] = modelSlotUsage;
     }
 
-    // After inlining everything, update each model's ContextCreateOp to use
-    // the correct slot count based on what was actually inlined into it.
-    for (const auto &entry : modelSlotUsage) {
+    for (const auto &entry : slotOffsets) {
       ModelOp model = entry.first;
       uint64_t slotUsage = entry.second;
       ContextCreateOp contextCreateOp = findContextCreateOp(model);
@@ -445,13 +431,10 @@ struct InlineMGPCallsPass
     // After inlining everything, delete subgraphs that are no longer used.
     // Iterate using the original list of functions in the module before
     // erasing.
-    SmallVector<ModelOp> originalModels;
-    for (auto model : moduleOp.getOps<ModelOp>())
-      originalModels.push_back(model);
-
-    for (ModelOp subgraph : originalModels) {
+    for (ModelOp subgraph :
+         llvm::make_early_inc_range(moduleOp.getOps<ModelOp>())) {
       // Only consider erasing models that were targets of inlining.
-      if (!inlinedSubgraphs.contains(subgraph.getSymName()))
+      if (!inlinedSubgraphs.contains(subgraph.getSymNameAttr()))
         continue;
 
       // Check if this subgraph has any remaining uses. If it's marked

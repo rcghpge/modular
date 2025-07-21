@@ -737,7 +737,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     Block *getExecuteBlock() { return &getExecute().front(); }
 
     /// Get the execute block. This function is required to use with
-    /// our inernal callgraph utilities.
+    /// our internal callgraph utilities.
     Region &getBodyRegion() { return getExecute(); }
 
     MutableArrayRef<BlockArgument> getInitDevices() {
