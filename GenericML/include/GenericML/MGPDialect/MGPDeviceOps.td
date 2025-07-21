@@ -289,8 +289,13 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $weightsRegistry
-    `[` $bName `,` $cSize `,` `align` $dAlign ( `,` `hasAlias` `=` $gHasAlias^ )? ( `,` `isPlaceholder` `=` $hIsPlaceholder^ )? `]`
-    ( `device` $eDevice^ )? attr-dict `:` qualified(type($weightsRegistry))
+    `[`
+    $bName `,` $cSize `,` `align` $dAlign
+    oilist( `has_alias` $gHasAlias
+          | `placeholder` $hIsPlaceholder
+          | `device` $eDevice)
+    `]`
+    attr-dict `:` qualified(type($weightsRegistry))
     `->` qualified(type($outBuffer))
   }];
   let hasVerifier = 1;
