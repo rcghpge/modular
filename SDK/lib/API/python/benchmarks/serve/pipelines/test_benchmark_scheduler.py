@@ -11,8 +11,7 @@ import pytest
 import zmq
 from max.interfaces import (
     GenerationStatus,
-    TextGenerationResponse,
-    TextResponse,
+    TextGenerationOutput,
 )
 from max.serve.process_control import ProcessControl
 from max.serve.scheduler.text_generation_scheduler import (
@@ -49,9 +48,12 @@ def test_stream_responses_to_frontend(benchmark, zmq_ctx) -> None:  # noqa: ANN0
     # Create test data - simulate multiple responses with tokens
     batch_responses = {}
     for i in range(batch_size_to_test):
-        tokens = [TextResponse(next_token=i) for i in range(10)]
-        batch_responses[f"req{i}"] = TextGenerationResponse(
-            tokens=tokens, final_status=GenerationStatus.ACTIVE
+        tokens = [i for i in range(10)]
+        batch_responses[f"req{i}"] = TextGenerationOutput(
+            request_id=f"req{i}",
+            tokens=tokens,
+            final_status=GenerationStatus.ACTIVE,
+            log_probabilities=None,
         )
 
     # Run the benchmark
