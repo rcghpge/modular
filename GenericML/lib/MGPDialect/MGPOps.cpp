@@ -1072,7 +1072,7 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
 LogicalResult ModelOp::verifyRegions() {
   using BlockArgTypeRange = mlir::ValueTypeRange<mlir::Block::BlockArgListType>;
 
-  OpBuilder builder(getContext());
+  Builder builder(getContext());
 
   SmallVector<DeviceRef> devices;
   for (auto attr : getDevices()) {
@@ -1146,11 +1146,24 @@ LogicalResult ModelOp::verifyRegions() {
     if (failed(checkOperandTypes(output, expectedResultTypes)))
       return failure();
   }
+
   return success();
 }
 
 /// Verifies the input/output type signature.
 LogicalResult ModelOp::verify() { return success(); }
+
+ContextCreateOp ModelOp::getInitContext() {
+  auto range = getInitBlock()->getOps<ContextCreateOp>();
+  ASSERT_STREAM(llvm::hasSingleElement(range),
+                "should contain one context create op");
+  return *std::begin(range);
+}
+
+TypedValue<ContextType> ModelOp::getExecuteContext() {
+  auto argument = getExecuteBlock()->getArgument(1);
+  return cast<TypedValue<ContextType>>(argument);
+}
 
 //===----------------------------------------------------------------------===//
 // MGPDialect op support

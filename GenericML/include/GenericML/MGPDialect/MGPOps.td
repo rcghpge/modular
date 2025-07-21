@@ -767,8 +767,14 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
       return getExecuteBlock()->getArguments().take_front(kMgpModelNumFixedImplicitExecArgs + getDevices().size());
     }
     BlockArgument getExecuteChain() { return getExecuteBlock()->getArgument(0); }
-    BlockArgument getExecuteContext() { return getExecuteBlock()->getArgument(1); }
     BlockArgument getExecuteWeightsRegistry() { return getExecuteBlock()->getArgument(2); }
+
+    /// Retrieve the single ContextCreateOp from the init block.
+    ContextCreateOp getInitContext();
+
+    /// Retrieve the context for the execute block.
+    TypedValue<MGP::ContextType> getExecuteContext();
+
 
     StringAttr getName() { return getSymNameAttr(); }
   }];
