@@ -735,6 +735,11 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
   let extraClassDeclaration = [{
     Block *getInitBlock() { return &getInit().front(); }
     Block *getExecuteBlock() { return &getExecute().front(); }
+
+    /// Get the execute block. This function is required to use with
+    /// our inernal callgraph utilities.
+    Region &getBodyRegion() { return getExecute(); }
+
     MutableArrayRef<BlockArgument> getInitDevices() {
       return getInitBlock()->getArguments().drop_front(kMgpModelNumFixedImplicitInitArgs).take_front(getDevices().size());
     }
@@ -1024,7 +1029,7 @@ def MGP_CallOp : MGP_Op<"call"> {
     }
     ```
   }];
-  let arguments = (ins SymbolRefAttr:$model,
+  let arguments = (ins FlatSymbolRefAttr:$model,
                        DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
                        Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
@@ -1033,6 +1038,12 @@ def MGP_CallOp : MGP_Op<"call"> {
 
   let assemblyFormat = [{
     $model `(` $operands `)` attr-dict `:` functional-type($operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+    FlatSymbolRefAttr getCalleeSymbol() {
+      return cast<FlatSymbolRefAttr>(getModelAttr());
+    }
   }];
 }
 

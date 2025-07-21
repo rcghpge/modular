@@ -38,48 +38,6 @@ struct MGPCallGraph : KGEN::CallGraphBase<MGPCallGraph, MGPCallGraphNode> {
 
   explicit MGPCallGraph() : externalNode(nullptr) {}
 
-  // Custom build method for MGP Models, as they don't have a single body
-  // region.
-  template <typename... NodeArgTs>
-  void build(ModuleOp module, const SymbolTable &symtab, NodeArgTs &&...args) {
-    for (auto func : llvm::make_early_inc_range(module.getOps<ModelOp>())) {
-      nodes.insert(std::make_pair(
-          func, MGPCallGraphNode(func, std::forward<NodeArgTs>(args)...)));
-    }
-
-    for (auto &[_, node] : nodes) {
-      auto callerNode = &node;
-
-      Block *executeBlock = callerNode->func.getExecuteBlock();
-
-      executeBlock->walk([&](CallOp call) {
-        Operation *calleeOp = symtab.lookup(call.getModel().getLeafReference());
-        assert(calleeOp && "Call target not found in symbol table");
-
-        // Only add the edge if the symbol we found is an MGP Model.
-        auto callee = dyn_cast<ModelOp>(calleeOp);
-        assert(callee && "Callee is not an MGP model");
-
-        auto it = nodes.find(callee);
-        assert(it != nodes.end() && "Callee is not in the call graph");
-
-        MGPCallGraphNode *calleeNode = &it->second;
-        assert(calleeNode &&
-               "Callee node pointer must not be null before adding edge");
-
-        callerNode->callsites.emplace_back(call, calleeNode);
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Added callsite @" << call.getModel().getLeafReference()
-                   << " to @" << callerNode->func.getSymName() << "\n");
-
-        calleeNode->callers.push_back(callerNode);
-        LLVM_DEBUG(llvm::dbgs()
-                   << "Added caller @" << callerNode->func.getSymName()
-                   << " to callee @" << calleeNode->func.getSymName() << "\n");
-      });
-    }
-  }
-
   /// Builds the MGP call graph and computes a reverse topological ordering
   /// suitable for inlining. Detects cycles (recursion) in the call graph.
   ///

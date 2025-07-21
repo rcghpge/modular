@@ -841,9 +841,9 @@ LogicalResult CallOp::verify() {
   if (!module)
     return emitOpError("must be nested inside a ModuleOp.");
 
-  auto targetModel = module.lookupSymbol<ModelOp>(getModel());
+  auto targetModel = module.lookupSymbol<ModelOp>(getModelAttr());
   if (!targetModel)
-    return emitOpError() << "failed to find symbol " << getModel();
+    return emitOpError() << "failed to find symbol " << getModelAttr();
 
   // Verify operand types match the execute block argument types.
   Block *executeBlock = targetModel.getExecuteBlock();
@@ -852,14 +852,14 @@ LogicalResult CallOp::verify() {
   if (actualArgTypes != expectedArgTypes) {
     return emitOpError() << "operand types " << actualArgTypes
                          << " do not match expected argument types "
-                         << expectedArgTypes << " of " << getModel()
+                         << expectedArgTypes << " of " << getModelAttr()
                          << "'s execute block.";
   }
 
   // Verify result types match the execute block result types.
   auto outputOp = dyn_cast<MEF::OutputOp>(executeBlock->getTerminator());
   if (!outputOp) {
-    return emitOpError() << "execute block of " << getModel()
+    return emitOpError() << "execute block of " << getModelAttr()
                          << " does not end with an mef.output op.";
   }
 
@@ -868,7 +868,7 @@ LogicalResult CallOp::verify() {
   if (actualResultTypes != expectedResultTypes) {
     return emitOpError() << "result types " << actualResultTypes
                          << " do not match expected result types "
-                         << expectedResultTypes << " of " << getModel()
+                         << expectedResultTypes << " of " << getModelAttr()
                          << "'s execute block.";
   }
 

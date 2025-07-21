@@ -2238,7 +2238,7 @@ LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
   // Create the mgp.call operation
   auto targetSymbol = SymbolRefAttr::get(targetModel.getSymNameAttr());
   auto mgpCallOp = opLoweringState.create<MGP::CallOp>(
-      resultTypes, targetSymbol, callOp.getPrefix(), callOperands);
+      resultTypes, targetSymbol, callOp.getPrefixAttr(), callOperands);
   Value callOutChain = mgpCallOp.getResult(0);
 
   // Map the results back
