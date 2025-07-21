@@ -29,6 +29,8 @@ namespace M::MGP {
 #define GEN_PASS_DEF_DYNAMICMEMORYPLANNINGPASS
 #include "GenericML/MGPTransforms/MGPTransforms.h.inc"
 
+namespace {
+
 struct AllocInfo {
   MGP::BufferAllocOp alloc;
   Value runtimeSize;
@@ -39,11 +41,15 @@ struct AllocInfo {
   uint64_t maxPost;
 };
 
-// Return true if the given value is trivially computable (i.e.,
-// arithmetic and tensor_spec ops) from a block argument. This is used to
-// determine if a given value representing the size of an allocation is
-// data-dependent
-bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
+/// Return true if the given value is trivially computable (i.e.,
+/// arithmetic and tensor_spec ops) from a block argument. This is used to
+/// determine if a given value representing the size of an allocation is
+/// data-dependent.
+///
+/// The results of the analysis are cached on a per-operation basis in the
+/// `trivial` cache. The 'isTrivial' property is determined on a per-operation
+/// basis, so we cache the results as a mapping from operations to bools.
+bool isTriviallyComputable(Value v, DenseMap<Operation *, bool> &trivial) {
   Operation *producer = v.getDefiningOp();
 
   // Block argument is trivial
@@ -51,8 +57,13 @@ bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
     return true;
 
   // If we already know this is trivial, continue
-  if (trivial.contains(v))
-    return true;
+  if (auto it = trivial.find(producer); it != trivial.end())
+    return it->second;
+
+  auto cacheResult = [&](bool result) -> bool {
+    trivial[producer] = result;
+    return result;
+  };
 
   // If the producing op isn't trivial, this isn't a trivial value
   bool isTrivialOp = isa<KGEN::POP::POPDialect>(*producer->getDialect()) ||
@@ -60,24 +71,23 @@ bool isTriviallyComputable(Value v, DenseSet<Value> &trivial) {
                      isa<TensorExtractTensorSpecOp, CpuTensorSpecCreateOp,
                          BufferAllocOp, TensorSpecGetDimOp>(*producer);
   if (!isTrivialOp)
-    return false;
+    return cacheResult(false);
 
   // If all operands of the defining op aren't trivial, this isn't a trivial
   // value
-  if (!llvm::all_of(producer->getOperands(), [&](Value operand) {
+  auto trivialOperands =
+      llvm::all_of(producer->getOperands(), [&](Value operand) {
         return isTriviallyComputable(operand, trivial);
-      }))
-    return false;
+      });
 
-  trivial.insert(v);
-
-  return true;
+  return cacheResult(trivialOperands);
 }
+
+} // end namespace
 
 class DynamicMemoryPlanningPass
     : public impl::DynamicMemoryPlanningPassBase<DynamicMemoryPlanningPass> {
-  using DynamicMemoryPlanningPassBase::DynamicMemoryPlanningPassBase;
-  using PostDominationRange = std::pair<int, int>;
+  using Base::Base;
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
@@ -107,7 +117,7 @@ class DynamicMemoryPlanningPass
 
     DenseMap<DeviceRefAttr, SmallVector<AllocInfo>> deviceToAllocs;
 
-    DenseSet<Value> trivialVals;
+    DenseMap<Operation *, bool> trivialVals;
 
     for (auto allocOp : execState.execute->getOps<MGP::BufferAllocOp>()) {
       // Ignore CPU allocations for now. Will be addressed by GEX-557
