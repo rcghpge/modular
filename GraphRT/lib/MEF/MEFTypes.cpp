@@ -30,7 +30,7 @@ size_t MEFType::getEncodedSizeInBytes() const {
   default:
     // All signed/unsigned integers are single-byte encoding.
     // Floating point types are primitive and have a single-byte encoding.
-    if (typeID.isInt() || (typeID.isFloat() && !typeID.isTF32()))
+    if (typeID.isInt() || (typeID.isFloat()))
       return 1;
 
     // Unknown types don't have a known length, just don't advance.

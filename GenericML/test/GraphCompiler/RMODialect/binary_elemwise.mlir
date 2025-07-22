@@ -60,15 +60,6 @@ mo.graph @binary_elemwise_not_ok_bad_cast_f16_bf16(%arg0: !mo.tensor<[7], bf16>,
 
 // -----
 
-mo.graph @binary_elemwise_not_ok_bad_cast_tf32_f32(%arg0: !mo.tensor<[7], tf32>, %arg1: !mo.tensor<[7], f32>) -> !mo.tensor<[7], f32> {
-    // expected-error@below {{Failed to resolve valid dtype: Unsafe cast from tf32 to f32. Insert an explicit cast op if this conversion is wanted.}}
-    // expected-error@below {{'rmo.max' op failed to infer returned types}}
-    %1 = rmo.max(%arg0, %arg1) : (!mo.tensor<[7], tf32>, !mo.tensor<[7], f32>) -> !mo.tensor<[7], f32>
-    mo.output %1: !mo.tensor<[7], f32>
-}
-
-// -----
-
 mo.graph @binary_elemwise_dyn_static_bad_shape<x, y>(%arg0: !mo.tensor<[1, x], si64>, %arg1: !mo.tensor<[y, 5], si64>) -> !mo.tensor<[y, 5], si64> {
     // expected-error@below {{Input lhs (shape [1, x]) dimension at axis 1 (value x) and input rhs (shape [y, 5]) dimension at axis 1 (value 5) are neither equivalent nor broadcastable.}}
     // expected-error@below {{'rmo.mul' op failed to infer returned types}}

@@ -272,8 +272,6 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
       if (inputBF16)
         return DType::bf16;
       return DType::f16;
-    case 19:
-      return DType::tf32;
     case 32:
       return DType::f32;
     case 64:
@@ -350,12 +348,10 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
         return buildError();
     }
 
-    // Float is unsafe if formats differ for same virtual bitwidth (tf32 with
-    // f32 or bf16 with f16). I say "virtual bitwidth" cause tf32 is
-    // technically only 19bits.
+    // Float is unsafe if formats differ for same virtual bitwidth (bf16 with
+    // f16).
     if ((dtype == DType::f16 && result == DType::bf16) ||
-        (dtype == DType::bf16 && result == DType::f16) ||
-        (dtype == DType::tf32 && result == DType::f32))
+        (dtype == DType::bf16 && result == DType::f16))
       return buildError();
 
     return success();
