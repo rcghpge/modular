@@ -17,11 +17,9 @@ from runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
 from tensor_internal import (
     InputTensor,
     InputVariadicTensors,
-    IOUnknown,
     ManagedTensorSlice,
     OutputTensor,
     OutputVariadicTensors,
-    VariadicTensors,
     _FusedComputeOutputTensor,
     _input_fusion_hook_impl,
     _output_fusion_hook_impl,
@@ -40,13 +38,7 @@ from tensor_internal.managed_tensor_slice import (
     _FusedOutputTensor as FusedOutputTensor,
 )
 from tensor_internal.managed_tensor_slice import (
-    _FusedOutputVariadicTensors as FusedOutputVariadicTensors,
-)
-from tensor_internal.managed_tensor_slice import (
     _MutableInputTensor as MutableInputTensor,
-)
-from tensor_internal.managed_tensor_slice import (
-    _MutableInputVariadicTensors as MutableInputVariadicTensors,
 )
 
 from utils import IndexList, StaticTuple
