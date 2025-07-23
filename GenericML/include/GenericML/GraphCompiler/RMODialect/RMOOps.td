@@ -382,11 +382,6 @@ def RMO_SigmoidOp : RMO_Op<"sigmoid", [Pure]> {
   }];
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
-
-  let builders = [
-    /// Inferred return type builder
-    OpBuilder<(ins "TensorValue":$input)>,
-  ];
 }
 
 def RMO_ConcatOp : RMO_Op<"concat", [

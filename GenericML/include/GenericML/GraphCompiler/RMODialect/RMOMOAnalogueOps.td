@@ -2784,10 +2784,6 @@ def RMO_MOTransferOp : RMO_MOAnaloguePureUnaryExplicitOutputOp<"transfer"> {
     $input `:` qualified(type($input)) `to`
     custom<TransferResult>(ref(type($input)), type($result)) attr-dict
   }];
-
-  let builders = [
-    OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice)>,
-  ];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOMOANALOGUEOPS_TD
