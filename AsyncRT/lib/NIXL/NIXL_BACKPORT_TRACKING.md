@@ -683,34 +683,6 @@ error handling.
 - **Commits ported**: 4 ✅ (first 3 coalesced into 1 commit, 4th ported separately)
 - **Commits skipped**: 17
 
-### Implementation Plan
-
-#### 1. fa9dea5 - UCX notification list cleanup
-
-**Files to modify**:
-
-- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`
-- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`
-
-**Key changes**:
-
-- Add `moveNotifList` helper function in anonymous namespace
-- Remove `notifCombineHelper` method (replaced by `moveNotifList`)
-- Update `notifProgressCombineHelper` to use lock_guard and `moveNotifList`
-- Update `getNotifs` to call `moveNotifList` directly
-
-#### 2. 7fec31c - UCX finer grained progress
-
-**Analysis needed**: Need to examine commit details to understand performance optimizations
-
-#### 3. 490fb42 - Convert POD classes to structs
-
-**Analysis needed**: Need to identify which classes are POD and should be converted
-
-#### 4. 4c4237f - UCX AM header fix
-
-**Analysis needed**: Need to understand the AM protocol issue and fix implementation
-
 ### Changes Made
 
 #### 1-3. Coalesced commits (fa9dea5 + 7fec31c + 490fb42) ✅
@@ -776,3 +748,75 @@ error handling.
 
 - All UCX unit tests pass successfully
 - No regressions in existing functionality
+
+## Week 7 (June 10-16, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| fcb22ec | 2025-06-09 | fix: GDS deps and Dockerfile updates | Skip | - | GDS backend/Docker |
+| 3e6a2ac | 2025-06-09 | Python: bindings optimizations and support numpy arrays for xfer_dlist | Skip | - | Python bindings |
+| b46be39 | 2025-06-10 | Introduce GDAKI with DOCA GPUNetIO + DOCA RDMA, stream mode | Skip | - | GDAKI backend not included |
+| 1634808 | 2025-06-10 | chore: Update release version for 0.3.1 | Skip | - | Version management |
+| 79efad4 | 2025-06-13 | NIXL: set env vars for best EFA performance | **Port** | ✅ Completed | UCX configuration for EFA |
+| 62c8513 | 2025-06-15 | Python: Fixed bad cast OBJ_SEG cast in nixl_bindings.cpp | Skip | - | Python bindings |
+| e6be699 | 2025-06-15 | Reduce log verbosity in AWS test waiting loops | Skip | - | CI/test infrastructure |
+| 44dcca7 | 2025-06-16 | build: Add wheel-base to pass the the wheel building platform | Skip | - | Build infrastructure |
+
+### Commits to Port
+
+1. **79efad4** - NIXL: set env vars for best EFA performance (✅ Completed)
+2. **5721827** - Use NIXL logging macros consistently (✅ Completed)
+
+### Summary
+
+- **Total commits reviewed**: 8 (+ 3 from June 17)
+- **Commits to port**: 2
+- **Commits ported**: 2 ✅
+- **Commits skipped**: 9
+
+### Changes Made
+
+#### 1. 79efad4 - UCX env vars for EFA performance ✅
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added UCX configuration optimizations
+
+**Key changes**:
+
+- Added `ucx_modify_config` helper function to apply UCX settings with env var
+  override support.
+- Added UCX version detection using `ucp_get_version()`.
+- Set optimal UCX configuration for EFA performance:
+  - `ADDRESS_VERSION=v2` for all versions
+  - `RNDV_THRESH=inf` for all versions
+  - `MAX_COMPONENT_MDS=32` for UCX >= 1.19
+  - `MAX_RMA_RAILS=4` for UCX >= 1.20, `2` for older versions
+
+#### 2. 5721827 - Use NIXL logging macros consistently ✅
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/utils/common/nixl_log.h`: Added errno-aware
+  logging macros.
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Replaced strerror() with
+  NIXL_PERROR/NIXL_PTRACE.
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Uncommented backend selection logging
+- `AsyncRT/lib/NIXL/utils/stream/metadata_stream.cpp`: Replaced std::cerr/cout
+  with NIXL logging macros.
+
+**Key changes**:
+
+- Added `WithPerror()` method to NixlLogStream for errno-aware logging.
+- Added NIXL_P* macros (NIXL_PERROR, NIXL_PWARN, etc.) that include errno
+  messages.
+- Added thread-safe `nixl_strerror()` function using std::error_code.
+- Replaced all strerror() calls with appropriate NIXL_P* macros.
+- Replaced std::cerr/cout with NIXL_ERROR/NIXL_DEBUG macros.
+
+### Testing
+
+- Built successfully: `./bazelw build //AsyncRT/unittests:NixlTest //AsyncRT/unittests:NixlTestUcx`
+- All tests pass: `./bazelw test //AsyncRT/unittests:NixlTest //AsyncRT/unittests:NixlTestUcx`

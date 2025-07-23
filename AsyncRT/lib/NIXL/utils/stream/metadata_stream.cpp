@@ -9,6 +9,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "AsyncRT/NIXL/utils/stream/metadata_stream.h"
+#include "AsyncRT/NIXL/utils/common/nixl_log.h"
 #include <arpa/inet.h>
 #include <cstring>
 #include <iostream>
@@ -35,7 +36,7 @@ nixlMetadataStream::~nixlMetadataStream() { closeStream(); }
 bool nixlMetadataStream::setupStream() {
   socketFd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (socketFd == -1) {
-    std::cerr << "failed to create stream socket for listener";
+    NIXL_PERROR << "failed to create stream socket for listener";
     return false;
   }
 
@@ -71,24 +72,23 @@ void nixlMDStreamListener::setupListener() {
   }
 
   if (bind(socketFd, (sockaddr *)&listenerAddr, sizeof(listenerAddr)) < 0) {
-    std::cerr << "Socket Bind failed while setting up listener for MD\n";
+    NIXL_PERROR << "Socket Bind failed while setting up listener for MD";
     closeStream();
     return;
   }
 
   if (listen(socketFd, 128) < 0) {
-    std::cerr << "Listening failed for stream Socket: " << socketFd << "\n";
+    NIXL_PERROR << "Listening failed for stream Socket: " << socketFd;
     closeStream();
     return;
   }
-  std::cout << "MD listener is listening on port " << port << "...\n";
+  NIXL_DEBUG << "MD listener is listening on port " << port << "...";
 }
 
 int nixlMDStreamListener::acceptClient() {
   csock = accept(socketFd, nullptr, nullptr);
   if (csock < 0 && errno != EAGAIN) {
-    std::cerr << "Cannot accept client connection\n"
-              << strerror(errno) << std::endl;
+    NIXL_PERROR << "Cannot accept client connection";
   }
   return csock;
 }
@@ -97,11 +97,10 @@ void nixlMDStreamListener::acceptClientsAsync() {
   while (true) {
     int clientSocket = accept(socketFd, nullptr, nullptr);
     if (clientSocket < 0) {
-      std::cerr << "Cannot accept client connection\n"
-                << strerror(errno) << std::endl;
+      NIXL_PERROR << "Cannot accept client connection";
       continue;
     }
-    std::cout << "Client connected.\n";
+    NIXL_DEBUG << "Client connected.";
     std::thread clientThread(&nixlMDStreamListener::recvFromClients, this,
                              clientSocket);
     clientThread.detach();
@@ -118,9 +117,9 @@ std::string nixlMDStreamListener::recvFromClient() {
   if (bytes_read > 0) {
     recvData = std::string(buffer, bytes_read);
   } else if (bytes_read == 0) {
-    std::cout << "Client disconnected" << std::endl;
+    NIXL_DEBUG << "Client disconnected";
   } else {
-    std::cerr << "Error receiving data" << std::endl;
+    NIXL_ERROR << "Error receiving data";
   }
   return recvData;
 }
@@ -135,10 +134,10 @@ void nixlMDStreamListener::recvFromClients(int clientSocket) {
     std::string_view ack = "Message received"sv;
     send(clientSocket, ack.data(), ack.size(), 0);
     std::string_view recvMessage(buffer);
-    std::cout << "Message Received" << recvMessage << "\n";
+    NIXL_DEBUG << "Message Received" << recvMessage;
   }
   close(clientSocket);
-  std::cout << "Client disconnected\n";
+  NIXL_DEBUG << "Client disconnected";
 }
 
 void nixlMDStreamListener::startListenerForClient() {
@@ -171,12 +170,11 @@ bool nixlMDStreamClient::setupClient() {
   }
 
   if (connect(socketFd, (sockaddr *)&listenerAddr, sizeof(listenerAddr)) < 0) {
-    std::cerr << "Connection Failed: " << strerror(errno) << std::endl;
+    NIXL_PERROR << "Connection Failed";
     closeStream();
     return false;
   }
-  std::cout << "Connected to listener at " << listenerAddress << ":" << port
-            << "\n";
+  NIXL_DEBUG << "Connected to listener at " << listenerAddress << ":" << port;
   return true;
 }
 
@@ -185,7 +183,7 @@ bool nixlMDStreamClient::connectListener() { return setupClient(); }
 void nixlMDStreamClient::sendData(const blob_ref data) {
   // TODO(GENAI-170): Fix logging and indicate error another way.
   if (send(socketFd, data.data, data.size, 0) < 0)
-    std::cerr << "Send failed\n";
+    NIXL_ERROR << "Send failed";
 }
 
 std::string nixlMDStreamClient::recvData() {
