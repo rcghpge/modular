@@ -1108,8 +1108,8 @@ UCX is not properly configured with CUDA support.
 
 ### Commits to Port
 
-1. **d6adf38** - UTILS/UCX: Added ucx::rkey class
-2. **c73b8e2** - UTILS/UCX: Minor improvements in nixlUcxWorker
+1. **d6adf38** - UTILS/UCX: Added ucx::rkey class (✅ Completed)
+2. **c73b8e2** - UTILS/UCX: Minor improvements in nixlUcxWorker (✅ Completed)
 3. **a15e745** - BACKEND/UCX: enable error handling mode peer by default
 4. **47bf357** - UCX/BACKEND: refactor nixlUcxEngine::nixlUcxEngine
 
@@ -1117,7 +1117,7 @@ UCX is not properly configured with CUDA support.
 
 - **Total commits reviewed**: 29
 - **Commits to port**: 4 (all UCX-related improvements)
-- **Commits ported**: 0 (pending)
+- **Commits ported**: 2 ✅
 - **Commits skipped**: 25
 
 ### Key Changes to Port
@@ -1131,3 +1131,60 @@ These commits introduce significant UCX improvements:
 
 These changes build on previous UCX improvements and should be ported
 carefully to maintain compatibility with AsyncRT patterns.
+
+### Changes Made
+
+#### 1. d6adf38 - UCX rkey class (✅ Completed)
+
+**Files created**:
+
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/rkey.h`: RAII wrapper for UCX
+  remote memory keys
+- `AsyncRT/lib/NIXL/utils/ucx/rkey.cpp`: Implementation using ErrorOr pattern
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Removed nixlUcxRkey
+  class
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Updated
+  nixlUcxPublicMetadata to use new Rkey class
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Updated all rkey usage
+
+**Key changes**:
+
+- Created UCX::Rkey class with factory method pattern for error handling
+- Implements RAII for automatic cleanup of UCX remote keys
+- Uses ErrorOr<std::unique_ptr<Rkey>> for fallible construction
+- Removed old nixlUcxRkey typedef
+
+**Adaptations for AsyncRT**:
+
+- Used ErrorOr instead of exceptions
+- Factory method pattern to handle initialization failures
+- llvm::formatv for error messages instead of stringFormat
+
+#### 2. c73b8e2 - UCX minor improvements (✅ Completed)
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added UCS_ERR_BUSY handling,
+  arm() and getEfd() methods
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Updated worker
+  interface
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Updated to use new worker
+  methods
+
+**Key changes**:
+
+- Added UCS_ERR_BUSY to ucx_status_to_nixl mapping (returns NIXL_IN_PROG)
+- Removed error handling mode from nixlUcxContext constructor
+- Added arm() method to nixlUcxWorker for worker arming
+- Added getEfd() method to nixlUcxWorker for event file descriptor
+- Changed shared_ptr<nixlUcxContext> to unique_ptr in nixlUcxEngine
+- Updated progress thread to use arm() method instead of direct UCX calls
+
+**Adaptations for AsyncRT**:
+
+- Used ErrorOr<int> for getEfd() instead of exceptions
+- Used Twine for error string construction
+- Maintained compatibility with existing error handling patterns

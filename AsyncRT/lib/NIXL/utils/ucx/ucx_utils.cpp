@@ -33,6 +33,7 @@ nixl_status_t M::AsyncRT::NIXL::ucx_status_to_nixl(ucs_status_t status) {
 
   switch (status) {
   case UCS_INPROGRESS:
+  case UCS_ERR_BUSY:
     return nixl_status_t::NIXL_IN_PROG;
   case UCS_ERR_NOT_CONNECTED:
   case UCS_ERR_CONNECTION_RESET:
@@ -279,13 +280,11 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
                                size_t req_size,
                                nixlUcxContext::req_cb_t init_cb,
                                nixlUcxContext::req_cb_t fini_cb,
-                               nixl_ucx_mt_t __mt_type, bool prog_thread,
-                               ucp_err_handling_mode_t __err_handling_mode) {
+                               nixl_ucx_mt_t __mt_type, bool prog_thread) {
   ucp_params_t ucp_params;
   ucs_status_t status = UCS_OK;
 
   mt_type = __mt_type;
-  err_handling_mode = __err_handling_mode;
 
   ucp_params.field_mask =
       UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_MT_WORKERS_SHARED;
@@ -385,7 +384,8 @@ struct nixlUcpWorkerParams : ucp_worker_params_t {
 
 static_assert(sizeof(nixlUcpWorkerParams) == sizeof(ucp_worker_params_t));
 
-ErrorOr<ucp_worker_h> nixlUcxWorker::createUcpWorker(nixlUcxContext &ctx) {
+ErrorOr<ucp_worker_h>
+nixlUcxWorker::createUcpWorker(const nixlUcxContext &ctx) {
   ucp_worker_h worker = nullptr;
   nixlUcpWorkerParams params(ctx.mt_type);
   ucs_status_t status = ucp_worker_create(ctx.ctx, &params, &worker);
@@ -393,23 +393,26 @@ ErrorOr<ucp_worker_h> nixlUcxWorker::createUcpWorker(nixlUcxContext &ctx) {
     auto err_str = std::string("Failed to create UCX worker: ") +
                    ucs_status_string(status);
     NIXL_ERROR << err_str;
-    return M::Error(err_str);
+    return Error(err_str);
   }
   return worker;
 }
 
 ErrorOr<std::unique_ptr<nixlUcxWorker>>
-nixlUcxWorker::create(std::shared_ptr<nixlUcxContext> &_ctx) {
-  ErrorOr<ucp_worker_h> workerOrError = createUcpWorker(*_ctx);
+nixlUcxWorker::create(const nixlUcxContext &ctx,
+                      ucp_err_handling_mode_t err_handling_mode) {
+  ErrorOr<ucp_worker_h> workerOrError = createUcpWorker(ctx);
   if (workerOrError.isError()) {
     return workerOrError.takeError();
   }
-  return std::make_unique<nixlUcxWorker>(_ctx, workerOrError.takeValue());
+  return std::make_unique<nixlUcxWorker>(ctx, workerOrError.takeValue(),
+                                         err_handling_mode);
 }
 
-nixlUcxWorker::nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx,
-                             ucp_worker_h _worker)
-    : ctx(_ctx), worker(_worker, &ucp_worker_destroy) {
+nixlUcxWorker::nixlUcxWorker(const nixlUcxContext &ctx, ucp_worker_h _worker,
+                             ucp_err_handling_mode_t err_handling_mode)
+    : worker(_worker, &ucp_worker_destroy),
+      err_handling_mode_(err_handling_mode) {
   // Constructor stores the pre-created worker handle with custom deleter
 }
 
@@ -434,11 +437,10 @@ std::string nixlUcxWorker::epAddr() {
 
 ErrorOr<std::unique_ptr<nixlUcxEp>> nixlUcxWorker::connect(void *addr,
                                                            size_t size) {
-  auto ep =
-      std::make_unique<nixlUcxEp>(worker.get(), addr, ctx->err_handling_mode);
+  auto ep = std::make_unique<nixlUcxEp>(worker.get(), addr, err_handling_mode_);
   // Check if the endpoint was successfully created by checking its state
   if (ep->eph == nullptr) {
-    return M::Error("Failed to create UCX endpoint");
+    return Error("Failed to create UCX endpoint");
   }
   return ep;
 }
@@ -554,4 +556,21 @@ void nixlUcxWorker::reqRelease(nixlUcxReq req) {
 
 void nixlUcxWorker::reqCancel(nixlUcxReq req) {
   ucp_request_cancel(worker.get(), req);
+}
+
+nixl_status_t nixlUcxWorker::arm() const noexcept {
+  return ucx_status_to_nixl(ucp_worker_arm(worker.get()));
+}
+
+ErrorOr<int> nixlUcxWorker::getEfd() const {
+  int fd;
+  const auto status = ucp_worker_get_efd(worker.get(), &fd);
+  if (status != UCS_OK) {
+    const std::string errorStr =
+        (Twine("Couldn't obtain fd for a worker: ") + ucs_status_string(status))
+            .str();
+    NIXL_ERROR << errorStr;
+    return Error(errorStr);
+  }
+  return fd;
 }

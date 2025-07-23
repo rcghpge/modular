@@ -278,15 +278,15 @@ void nixlUcxEngine::progressFunc() {
       pollFds[wid].revents = 0;
 
       bool made_progress = false;
-      ucs_status_t status = UCS_INPROGRESS;
+      nixl_status_t status;
       const auto &uw = uws[wid];
       do {
         while (uw->progress())
           made_progress = true;
 
-        status = ucp_worker_arm(uw->getWorker());
-      } while (status == UCS_ERR_BUSY);
-      assert(status == UCS_OK);
+        status = uw->arm();
+      } while (status == nixl_status_t::NIXL_IN_PROG);
+      assert(status == nixl_status_t::NIXL_SUCCESS);
 
       if (made_progress && !wid)
         notifProgress();
@@ -423,12 +423,12 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     return;
   }
 
-  uc = std::make_shared<nixlUcxContext>(
+  uc = std::make_unique<nixlUcxContext>(
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
-      nixl_ucx_mt_t::WORKER, pthrOn, errHandlingMode);
+      nixl_ucx_mt_t::WORKER, pthrOn);
 
   for (unsigned int i = 0; i < numWorkers; i++) {
-    auto workerOrError = nixlUcxWorker::create(uc);
+    auto workerOrError = nixlUcxWorker::create(*uc, errHandlingMode);
     if (workerOrError.isError()) {
       NIXL_ERROR << "Failed to create UCX worker " << i << ": "
                  << workerOrError.getError();
@@ -449,16 +449,13 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   if (pthrOn) {
     for (auto &uw : uws) {
-      int fd;
-      ucs_status_t ret = ucp_worker_get_efd(uw->getWorker(), &fd);
-      if (ret != UCS_OK) {
-        NIXL_ERROR << "Couldn't obtain fd for a worker, status: "
-                   << ucs_status_string(ret) << "\n";
+      auto fdOrError = uw->getEfd();
+      if (fdOrError.isError()) {
+        NIXL_ERROR << "Failed to get worker fd: " << fdOrError.getError();
         initErr = true;
         return;
       }
-
-      pollFds.push_back({fd, POLLIN, 0});
+      pollFds.push_back({fdOrError.takeValue(), POLLIN, 0});
     }
     pollFds.push_back({pthrControlPipe[0], POLLIN, 0});
   }

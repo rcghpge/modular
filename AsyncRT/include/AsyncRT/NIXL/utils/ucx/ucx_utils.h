@@ -111,14 +111,12 @@ private:
   /* Local UCX stuff */
   ucp_context_h ctx;
   nixl_ucx_mt_t mt_type;
-  ucp_err_handling_mode_t err_handling_mode = UCP_ERR_HANDLING_MODE_NONE;
 
 public:
   using req_cb_t = void(void *request);
-  nixlUcxContext(
-      std::vector<std::string_view> devices, size_t req_size, req_cb_t init_cb,
-      req_cb_t fini_cb, nixl_ucx_mt_t mt_type, bool prog_thread = false,
-      ucp_err_handling_mode_t err_handling_mode = UCP_ERR_HANDLING_MODE_NONE);
+  nixlUcxContext(std::vector<std::string_view> devices, size_t req_size,
+                 req_cb_t init_cb, req_cb_t fini_cb, nixl_ucx_mt_t mt_type,
+                 bool prog_thread = false);
   ~nixlUcxContext();
 
   /* Memory management */
@@ -133,19 +131,14 @@ public:
 bool nixlUcxMtLevelIsSupported(nixl_ucx_mt_t mt_type);
 
 class nixlUcxWorker {
-private:
-  /* Local UCX stuff */
-  std::shared_ptr<nixlUcxContext> ctx;
-  std::unique_ptr<ucp_worker, void (*)(ucp_worker *)> worker;
-
-  static M::ErrorOr<ucp_worker_h> createUcpWorker(nixlUcxContext &ctx);
-
 public:
   /// Fallible constructor for UCX worker.
-  static M::ErrorOr<std::unique_ptr<nixlUcxWorker>>
-  create(std::shared_ptr<nixlUcxContext> &_ctx);
+  static M::ErrorOr<std::unique_ptr<nixlUcxWorker>> create(
+      const nixlUcxContext &ctx,
+      ucp_err_handling_mode_t err_handling_mode = UCP_ERR_HANDLING_MODE_NONE);
 
-  nixlUcxWorker(std::shared_ptr<nixlUcxContext> &_ctx, ucp_worker_h _worker);
+  nixlUcxWorker(const nixlUcxContext &ctx, ucp_worker_h _worker,
+                ucp_err_handling_mode_t err_handling_mode);
   ~nixlUcxWorker() = default;
 
   nixlUcxWorker(const nixlUcxWorker &) = delete;
@@ -168,7 +161,16 @@ public:
   void reqRelease(nixlUcxReq req);
   void reqCancel(nixlUcxReq req);
 
+  [[nodiscard]] nixl_status_t arm() const noexcept;
+  [[nodiscard]] M::ErrorOr<int> getEfd() const;
+
   ucp_worker_h getWorker() const { return worker.get(); }
+
+private:
+  static M::ErrorOr<ucp_worker_h> createUcpWorker(const nixlUcxContext &ctx);
+
+  std::unique_ptr<ucp_worker, void (*)(ucp_worker *)> worker;
+  ucp_err_handling_mode_t err_handling_mode_;
 };
 
 nixl_status_t ucx_status_to_nixl(ucs_status_t status);
