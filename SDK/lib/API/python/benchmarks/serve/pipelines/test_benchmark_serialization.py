@@ -20,7 +20,6 @@ msgpack_decoder = msgpack_numpy_decoder(TextContext)
 
 def test_text_context_pickle_serialization(benchmark) -> None:  # noqa: ANN001
     context = TextContext(
-        prompt="sampling params test prompt",
         max_length=50,
         tokens=np.array([0, 1, 2, 3, 4]),
     )
@@ -30,7 +29,6 @@ def test_text_context_pickle_serialization(benchmark) -> None:  # noqa: ANN001
 
 def test_text_context_pickle_deserialization(benchmark) -> None:  # noqa: ANN001
     context = TextContext(
-        prompt="sampling params test prompt",
         max_length=50,
         tokens=np.array([0, 1, 2, 3, 4]),
     )
@@ -40,7 +38,6 @@ def test_text_context_pickle_deserialization(benchmark) -> None:  # noqa: ANN001
 
 def test_text_context_msgpack_serialization(benchmark) -> None:  # noqa: ANN001
     context = TextContext(
-        prompt="sampling params test prompt",
         max_length=50,
         tokens=np.array([0, 1, 2, 3, 4]),
     )
@@ -50,7 +47,6 @@ def test_text_context_msgpack_serialization(benchmark) -> None:  # noqa: ANN001
 
 def test_text_context_msgpack_deserialization(benchmark) -> None:  # noqa: ANN001
     context = TextContext(
-        prompt="sampling params test prompt",
         max_length=50,
         tokens=np.array([0, 1, 2, 3, 4]),
     )
@@ -59,16 +55,10 @@ def test_text_context_msgpack_deserialization(benchmark) -> None:  # noqa: ANN00
 
 
 def test_long_text_context_pickle_serialization(benchmark) -> None:  # noqa: ANN001
-    # Create a longer prompt with more than 240 tokens
-    long_prompt = (
-        "This is a much longer test prompt that contains more than 240 tokens. "
-        * 50
-    )
     # Create a longer token array
     long_tokens = np.array(range(300))  # 300 tokens
 
     context = TextContext(
-        prompt=long_prompt,
         max_length=500,  # Increased max length
         tokens=long_tokens,
     )
@@ -77,14 +67,9 @@ def test_long_text_context_pickle_serialization(benchmark) -> None:  # noqa: ANN
 
 
 def test_long_text_context_pickle_deserialization(benchmark) -> None:  # noqa: ANN001
-    long_prompt = (
-        "This is a much longer test prompt that contains more than 240 tokens. "
-        * 50
-    )
     long_tokens = np.array(range(300))
 
     context = TextContext(
-        prompt=long_prompt,
         max_length=500,
         tokens=long_tokens,
     )
@@ -93,14 +78,9 @@ def test_long_text_context_pickle_deserialization(benchmark) -> None:  # noqa: A
 
 
 def test_long_text_context_msgpack_serialization(benchmark) -> None:  # noqa: ANN001
-    long_prompt = (
-        "This is a much longer test prompt that contains more than 240 tokens. "
-        * 50
-    )
     long_tokens = np.array(range(300))
 
     context = TextContext(
-        prompt=long_prompt,
         max_length=500,
         tokens=long_tokens,
     )
@@ -109,14 +89,9 @@ def test_long_text_context_msgpack_serialization(benchmark) -> None:  # noqa: AN
 
 
 def test_long_text_context_msgpack_deserialization(benchmark) -> None:  # noqa: ANN001
-    long_prompt = (
-        "This is a much longer test prompt that contains more than 240 tokens. "
-        * 50
-    )
     long_tokens = np.array(range(300))
 
     context = TextContext(
-        prompt=long_prompt,
         max_length=500,
         tokens=long_tokens,
     )
@@ -125,16 +100,10 @@ def test_long_text_context_msgpack_deserialization(benchmark) -> None:  # noqa: 
 
 
 def test_very_long_text_context_pickle_serialization(benchmark) -> None:  # noqa: ANN001
-    # Create a very long prompt with more than 10k tokens
-    very_long_prompt = (
-        "This is a very long test prompt that contains more than 10k tokens. "
-        * 1000
-    )
     # Create a very long token array
     very_long_tokens = np.array(range(12000))  # 12k tokens
 
     context = TextContext(
-        prompt=very_long_prompt,
         max_length=15000,  # Increased max length for very long context
         tokens=very_long_tokens,
     )
@@ -143,14 +112,9 @@ def test_very_long_text_context_pickle_serialization(benchmark) -> None:  # noqa
 
 
 def test_very_long_text_context_pickle_deserialization(benchmark) -> None:  # noqa: ANN001
-    very_long_prompt = (
-        "This is a very long test prompt that contains more than 10k tokens. "
-        * 1000
-    )
     very_long_tokens = np.array(range(12000))
 
     context = TextContext(
-        prompt=very_long_prompt,
         max_length=15000,
         tokens=very_long_tokens,
     )
@@ -159,14 +123,9 @@ def test_very_long_text_context_pickle_deserialization(benchmark) -> None:  # no
 
 
 def test_very_long_text_context_msgpack_serialization(benchmark) -> None:  # noqa: ANN001
-    very_long_prompt = (
-        "This is a very long test prompt that contains more than 10k tokens. "
-        * 1000
-    )
     very_long_tokens = np.array(range(12000))
 
     context = TextContext(
-        prompt=very_long_prompt,
         max_length=15000,
         tokens=very_long_tokens,
     )
@@ -175,14 +134,9 @@ def test_very_long_text_context_msgpack_serialization(benchmark) -> None:  # noq
 
 
 def test_very_long_text_context_msgpack_deserialization(benchmark) -> None:  # noqa: ANN001
-    very_long_prompt = (
-        "This is a very long test prompt that contains more than 10k tokens. "
-        * 1000
-    )
     very_long_tokens = np.array(range(12000))
 
     context = TextContext(
-        prompt=very_long_prompt,
         max_length=15000,
         tokens=very_long_tokens,
     )
