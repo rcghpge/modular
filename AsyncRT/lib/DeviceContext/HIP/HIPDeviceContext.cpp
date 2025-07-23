@@ -1022,13 +1022,14 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
       HIP_CHECK_ERR(driver_.MemsetD32Async(ptr, loBits, len, stream_));
     } else {
       size_t len = byteSize >> 3;
-      char *curPtr = reinterpret_cast<char *>(ptr);
-      uint64_t curVal = val;
-      for (int i = 0; i < 8; i++) {
-        HIP_CHECK_ERR(driver_.Memset2DAsync(
-            curPtr, 8, static_cast<int>(curVal & 0xff), 1, len, stream_));
-        curPtr += 1;
-        curVal >>= 8;
+      // For each 64-bit element, set the low and high 32-bit parts separately
+      for (size_t i = 0; i < len; i++) {
+        void *loPtr =
+            reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) + i * 8);
+        void *hiPtr = reinterpret_cast<void *>(
+            reinterpret_cast<uintptr_t>(ptr) + i * 8 + 4);
+        HIP_CHECK_ERR(driver_.MemsetD32Async(loPtr, loBits, 1, stream_));
+        HIP_CHECK_ERR(driver_.MemsetD32Async(hiPtr, hiBits, 1, stream_));
       }
     }
   }
