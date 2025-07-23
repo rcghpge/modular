@@ -13,6 +13,7 @@
 #include "AsyncRT/NIXL/utils/common/nixl_log.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "AsyncRT/NIXL/utils/ucx/config.h"
+#include "AsyncRT/NIXL/utils/ucx/rkey.h"
 #include "Support/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cassert>
@@ -168,24 +169,6 @@ nixl_status_t nixlUcxEp::disconnectNonblocking() {
 }
 
 /* ===========================================
- * RKey management
- * =========================================== */
-
-int nixlUcxEp::rkeyImport(void *addr, size_t size, nixlUcxRkey &rkey) {
-  ucs_status_t status;
-
-  status = ucp_ep_rkey_unpack(eph, addr, &rkey.rkeyh);
-  if (status != UCS_OK) {
-    /* TODO: MSW_NET_ERROR(priv->net, "unable to unpack key!\n"); */
-    return -1;
-  }
-
-  return 0;
-}
-
-void nixlUcxEp::rkeyDestroy(nixlUcxRkey &rkey) { ucp_rkey_destroy(rkey.rkeyh); }
-
-/* ===========================================
  * Active message handling
  * =========================================== */
 
@@ -213,8 +196,9 @@ nixl_status_t nixlUcxEp::sendAm(unsigned msg_id, void *hdr, size_t hdr_len,
  * Data transfer
  * =========================================== */
 
-nixl_status_t nixlUcxEp::read(uint64_t raddr, nixlUcxRkey &rk, void *laddr,
-                              nixlUcxMem &mem, size_t size, nixlUcxReq &req) {
+nixl_status_t nixlUcxEp::read(uint64_t raddr, const UCX::Rkey &rkey,
+                              void *laddr, nixlUcxMem &mem, size_t size,
+                              nixlUcxReq &req) {
   nixl_status_t status = checkTxState();
   if (status != nixl_status_t::NIXL_SUCCESS) {
     return status;
@@ -226,7 +210,7 @@ nixl_status_t nixlUcxEp::read(uint64_t raddr, nixlUcxRkey &rk, void *laddr,
   param.memh = mem.memh;
 
   ucs_status_ptr_t request =
-      ucp_get_nbx(eph, laddr, size, raddr, rk.rkeyh, &param);
+      ucp_get_nbx(eph, laddr, size, raddr, rkey.get(), &param);
   if (UCS_PTR_IS_PTR(request)) {
     req = (void *)request;
     return nixl_status_t::NIXL_IN_PROG;
@@ -236,7 +220,8 @@ nixl_status_t nixlUcxEp::read(uint64_t raddr, nixlUcxRkey &rk, void *laddr,
 }
 
 nixl_status_t nixlUcxEp::write(void *laddr, nixlUcxMem &mem, uint64_t raddr,
-                               nixlUcxRkey &rk, size_t size, nixlUcxReq &req) {
+                               const UCX::Rkey &rkey, size_t size,
+                               nixlUcxReq &req) {
   nixl_status_t status = checkTxState();
   if (status != nixl_status_t::NIXL_SUCCESS) {
     return status;
@@ -248,7 +233,7 @@ nixl_status_t nixlUcxEp::write(void *laddr, nixlUcxMem &mem, uint64_t raddr,
   param.memh = mem.memh;
 
   ucs_status_ptr_t request =
-      ucp_put_nbx(eph, laddr, size, raddr, rk.rkeyh, &param);
+      ucp_put_nbx(eph, laddr, size, raddr, rkey.get(), &param);
   if (UCS_PTR_IS_PTR(request)) {
     req = (void *)request;
     return nixl_status_t::NIXL_IN_PROG;
@@ -496,10 +481,8 @@ int nixlUcxContext::memReg(void *addr, size_t size, nixlUcxMem &mem,
     }
 
     if (attr.mem_type == UCS_MEMORY_TYPE_HOST) {
-      NIXL_ERROR << "memory is detected as host, check that UCX is configured"
-                    " with CUDA support";
-      ucp_mem_unmap(ctx, mem.memh);
-      return -1;
+      NIXL_WARN << "memory is detected as host, check that UCX is configured"
+                   " with CUDA support";
     }
   }
 

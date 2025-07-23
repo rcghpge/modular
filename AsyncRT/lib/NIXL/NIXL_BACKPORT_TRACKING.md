@@ -989,3 +989,145 @@ All changes were built and tested successfully:
 - `./bazelw test //AsyncRT/unittests:NixlTestUcx` - All tests pass
 - Added new SelfNotification test specifically for self notification feature
 - Existing tests validate GPU memory checks and Config class usage
+
+## Week 10 (July 1-7, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 93256b7 | 2025-07-01 | UTILS/UCX: Added ucx::Config class | Skip | - | Already ported in Week 9 |
+| d8c0fa9 | 2025-07-02 | Add GDS Multi-Threaded backend in NIXL | Skip | - | GDS_MT backend not included in AsyncRT |
+| fa800bc | 2025-07-02 | CI: Add Jenkins job for NIXLBench container builds | Skip | - | CI configuration |
+| 47b70f2 | 2025-06-16 | chore: Update attributions file with licensing details for 0.3.1 | Skip | - | Documentation/licensing |
+| 888cc17 | 2025-06-26 | chore: Update ATTRIBUTIONS-CPP.md | Skip | - | Documentation/licensing |
+| 956c691 | 2025-07-02 | POSIX: Fixed bugs on re-posting requests and added related test case | Skip | - | POSIX backend not included |
+| cad7861 | 2025-07-02 | cuda_gds: Reducing the number of default batches created to 16 | Skip | - | GDS backend not included |
+| a27264d | 2025-07-02 | GDS-MT code fixes | Skip | - | GDS_MT backend not included |
+| b418883 | 2025-07-03 | add hf3fs support in nixlbench | Skip | - | HF3FS backend/benchmarking tool |
+| b6c9468 | 2025-07-03 | Add support for building python wheel on ARM 64 | Skip | - | Build infrastructure |
+| 05c136e | 2025-07-03 | chore: Update release version for 0.4.0 | Skip | - | Version management |
+| 7e64453 | 2025-07-03 | Improve .clang-format | Skip | - | Formatting configuration |
+| 0704dc0 | 2025-07-03 | Merge Custom Traffic Pattern Benchmark into kvbench | Skip | - | Benchmarking tool |
+| 43578d3 | 2025-07-06 | CI: Fix Jenkins job for NIXLBench container builds | Skip | - | CI configuration |
+| d38fda1 | 2025-07-06 | BENCH: Fix UCX install path in dockerfile | Skip | - | Benchmarking Dockerfile |
+| 9856271 | 2025-07-07 | UCX: Do not fail registration in mem check | **Port** | ✅ Completed | UCX memory check improvement |
+
+### Commits to Port
+
+#### 1. 9856271 - UCX: Do not fail registration in mem check
+
+**Files to update**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Change GPU memory detection
+  failure from error to warning
+
+**Key changes**:
+
+- Changes NIXL_ERROR to NIXL_WARN when UCX detects GPU memory as host memory
+- Removes the error return and ucp_mem_unmap call
+- Allows registration to continue even if UCX doesn't recognize GPU memory
+
+This change improves robustness by not failing memory registration when UCX is
+not properly configured with CUDA support, instead just logging a warning.
+
+### Summary
+
+- **Total commits reviewed**: 16
+- **Commits to port**: 1
+- **Commits ported**: 1 ✅
+- **Commits skipped**: 15
+
+### Changes Made
+
+#### 1. 9856271 - UCX: Do not fail registration in mem check
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Changed GPU memory detection from
+  error to warning
+
+**Key changes**:
+
+- Changed NIXL_ERROR to NIXL_WARN when UCX detects GPU memory as host memory
+- Removed `ucp_mem_unmap(ctx, mem.memh)` call
+- Removed `return -1` to allow registration to continue
+
+This improves robustness by allowing memory registration to succeed even when
+UCX is not properly configured with CUDA support.
+
+### Testing
+
+- Built successfully: `./bazelw build //AsyncRT:plugin_ucx`
+- All tests pass: `./bazelw test //AsyncRT/unittests:NixlTestUcx`
+
+### Reasons for skipping commits
+
+- GDS/GDS_MT backend not included in AsyncRT port
+- POSIX backend not included in initial port
+- HF3FS backend not included
+- CI/build infrastructure differences
+- Documentation and version management
+- Benchmarking tool changes
+
+## Week 11+ (July 8-18, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 57577df | 2025-07-08 | POSIX: Fixed bug on reposting reqH in aioQueue | Skip | - | POSIX backend not included |
+| 30c6456 | 2025-07-08 | POSIX: Fix repost test logic error | Skip | - | POSIX backend not included |
+| 2ba783e | 2025-07-09 | Add NIXL plugins to the wheel | Skip | - | Python wheel infrastructure |
+| d6adf38 | 2025-07-09 | UTILS/UCX: Added ucx::rkey class | **Port** | Pending | Major UCX refactoring |
+| f0562f9 | 2025-07-09 | CI: Bump the clang ver in GHA | Skip | - | CI configuration |
+| adb7acb | 2025-07-09 | Extend code style with current practices | Skip | - | Documentation |
+| c73b8e2 | 2025-07-10 | UTILS/UCX: Minor improvements in nixlUcxWorker | **Port** | Pending | UCX worker improvements |
+| 68668fc | 2025-07-10 | Bugfix - cuda_gds and gds_mt plugins fail each other | Skip | - | GDS backend conflict checking |
+| 0aab57d | 2025-07-10 | NIXLBENCH: update nixlbench/kvbench docs | Skip | - | Benchmarking documentation |
+| 686829d | 2025-07-10 | Obj fixes | Skip | - | Obj plugin not included |
+| bbdf7dc | 2025-07-10 | Add nixlbench owners | Skip | - | CODEOWNERS file |
+| a15e745 | 2025-07-10 | BACKEND/UCX: enable error handling mode peer by default | **Port** | Pending | UCX error handling default |
+| e58bdd5 | 2025-07-10 | testing: Add gtest for Agent class | Skip | - | Test infrastructure |
+| 6a429c3 | 2025-07-12 | Improve contributing guidelines | Skip | - | Documentation |
+| 5ead498 | 2025-07-14 | NIXLBench/worker/nixl: clang format | Skip | - | Formatting only |
+| fdd07d1 | 2025-07-14 | PLUGIN/MOONCAKE: fix typos and minors in mooncake plugin | Skip | - | Mooncake backend not included |
+| 47bf357 | 2025-07-14 | UCX/BACKEND: refactor nixlUcxEngine::nixlUcxEngine | **Port** | Pending | UCX engine constructor refactor |
+| d9d7f86 | 2025-07-14 | chore: cherry pick commits from release/0.4.0 | Skip | - | Documentation/licensing |
+| e65b5b0 | 2025-07-15 | Load plugins relative to the install directory | Skip | - | Plugin loading behavior |
+| 061c5c4 | 2025-07-15 | CI run tests on GPU - initial commit | Skip | - | CI infrastructure |
+| f1a9946 | 2025-07-15 | chore: Update the release versions for NIXL | Skip | - | Version management |
+| e55f7aa | 2025-07-16 | CI: Fix clang-format workflow to only process C/C++ files | Skip | - | CI configuration |
+| 1ec923b | 2025-07-16 | clang-format: Separate definition blocks with empty lines | Skip | - | Formatting configuration |
+| fdf1d29 | 2025-07-16 | NIXLBench: Align memory for O_DIRECT | Skip | - | Benchmarking tool |
+| 340ed11 | 2025-07-16 | Fixed the Data types code style to be consistent | Skip | - | Documentation |
+| 0f56527 | 2025-07-17 | clang-tidy: Add config to enforce naming style | Skip | - | Linting configuration |
+| 7d51d40 | 2025-07-17 | Fix dladdr error check | Skip | - | Plugin manager error handling |
+| 10d3fe1 | 2025-07-17 | Unify wheel building | Skip | - | Build infrastructure |
+| 9d90c4e | 2025-07-17 | Add support for parallel nixlbench tests | Skip | - | Benchmarking tool |
+
+### Commits to Port
+
+1. **d6adf38** - UTILS/UCX: Added ucx::rkey class
+2. **c73b8e2** - UTILS/UCX: Minor improvements in nixlUcxWorker
+3. **a15e745** - BACKEND/UCX: enable error handling mode peer by default
+4. **47bf357** - UCX/BACKEND: refactor nixlUcxEngine::nixlUcxEngine
+
+### Summary
+
+- **Total commits reviewed**: 29
+- **Commits to port**: 4 (all UCX-related improvements)
+- **Commits ported**: 0 (pending)
+- **Commits skipped**: 25
+
+### Key Changes to Port
+
+These commits introduce significant UCX improvements:
+
+- **Rkey class**: New RAII class for managing remote memory keys
+- **Worker improvements**: Better error handling and API cleanup
+- **Error handling**: Enable peer error handling by default
+- **Engine refactoring**: Cleaner constructor implementation
+
+These changes build on previous UCX improvements and should be ported
+carefully to maintain compatibility with AsyncRT patterns.

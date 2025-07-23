@@ -13,20 +13,19 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/NIXL/backend/backend_engine.h"
-#include "AsyncRT/NIXL/nixl.h"
-#include "AsyncRT/NIXL/utils/common/str_tools.h"
-
-// Local includes
 #include "AsyncRT/NIXL/backend/backend_plugin.h"
+#include "AsyncRT/NIXL/nixl.h"
 #include "AsyncRT/NIXL/nixl_types.h"
 #include "AsyncRT/NIXL/utils/common/list_elem.h"
+#include "AsyncRT/NIXL/utils/common/nixl_log.h"
 #include "AsyncRT/NIXL/utils/common/nixl_time.h"
+#include "AsyncRT/NIXL/utils/common/str_tools.h"
+#include "AsyncRT/NIXL/utils/ucx/rkey.h"
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
 
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
-#include <iostream>
 #include <mutex>
 #include <poll.h>
 #include <string_view>
@@ -67,19 +66,27 @@ public:
 
 // A public metadata has to implement put, and only has the remote metadata
 class nixlUcxPublicMetadata : public nixlBackendMD {
-private:
-  std::vector<nixlUcxRkey> rkeys;
-
 public:
-  ucx_connection_ptr_t conn;
-
   nixlUcxPublicMetadata() : nixlBackendMD(false) {}
 
-  ~nixlUcxPublicMetadata() = default;
+  [[nodiscard]] const UCX::Rkey &getRkey(size_t id) const {
+    return *rkeys_[id];
+  }
 
-  [[nodiscard]] nixlUcxRkey &getRkey(size_t id) { return rkeys[id]; }
+  nixl_status_t addRkey(const nixlUcxEp &ep, const void *rkeyBuffer) {
+    auto rkeyOrError = UCX::Rkey::create(ep, rkeyBuffer);
+    if (rkeyOrError.isError()) {
+      NIXL_ERROR << "Failed to create rkey: " << rkeyOrError.getError();
+      return nixl_status_t::NIXL_ERR_BACKEND;
+    }
+    rkeys_.emplace_back(rkeyOrError.takeValue());
+    return nixl_status_t::NIXL_SUCCESS;
+  }
 
-  friend class nixlUcxEngine;
+  ucx_connection_ptr_t conn;
+
+private:
+  std::vector<std::unique_ptr<UCX::Rkey>> rkeys_;
 };
 
 class nixlUcxEngine : public nixlBackendEngine {

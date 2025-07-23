@@ -30,7 +30,9 @@ enum class nixl_ucx_mt_t { SINGLE, CTX, WORKER };
 
 using nixlUcxReq = void *;
 
-class nixlUcxRkey;
+namespace UCX {
+class Rkey;
+}
 class nixlUcxMem;
 
 class nixlUcxEp {
@@ -74,19 +76,19 @@ public:
   nixlUcxEp(const nixlUcxEp &&) = delete;
   nixlUcxEp &operator=(const nixlUcxEp &&) = delete;
 
-  /* Rkey */
-  int rkeyImport(void *addr, size_t size, nixlUcxRkey &rkey);
-  void rkeyDestroy(nixlUcxRkey &rkey);
+  ucp_ep_h getEp() const { return eph; }
 
   /* Active message handling */
   nixl_status_t sendAm(unsigned msg_id, void *hdr, size_t hdr_len, void *buffer,
                        size_t len, uint32_t flags, nixlUcxReq &req);
 
   /* Data access */
-  nixl_status_t read(uint64_t raddr, nixlUcxRkey &rk, void *laddr,
-                     nixlUcxMem &mem, size_t size, nixlUcxReq &req);
-  nixl_status_t write(void *laddr, nixlUcxMem &mem, uint64_t raddr,
-                      nixlUcxRkey &rk, size_t size, nixlUcxReq &req);
+  [[nodiscard]] nixl_status_t read(uint64_t raddr, const UCX::Rkey &rkey,
+                                   void *laddr, nixlUcxMem &mem, size_t size,
+                                   nixlUcxReq &req);
+  [[nodiscard]] nixl_status_t write(void *laddr, nixlUcxMem &mem,
+                                    uint64_t raddr, const UCX::Rkey &rkey,
+                                    size_t size, nixlUcxReq &req);
   nixl_status_t flushEp(nixlUcxReq &req);
 
   friend class nixlUcxWorker;
@@ -101,15 +103,6 @@ private:
 public:
   friend class nixlUcxWorker;
   friend class nixlUcxContext;
-  friend class nixlUcxEp;
-};
-
-class nixlUcxRkey {
-private:
-  ucp_rkey_h rkeyh;
-
-public:
-  friend class nixlUcxWorker;
   friend class nixlUcxEp;
 };
 

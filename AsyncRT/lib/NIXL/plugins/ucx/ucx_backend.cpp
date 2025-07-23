@@ -101,8 +101,8 @@ M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
   // For a mysterious reason, sometimes the queried context for a device pointer
   // is null. However, the program appears to continue without issue.
   if (!ctx)
-    std::cerr << "Warning: Unable to identify CUDA context which owns address "
-              << std::hex << address << std::endl;
+    NIXL_ERROR << "Warning: Unable to identify CUDA context which owns address "
+               << address;
 
   if (deviceCtx && ctx) {
     // Context was already set previously, and does not match new context
@@ -260,8 +260,7 @@ void nixlUcxEngine::progressFunc() {
   // Set active device context for the progress thread.
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
-    std::cerr << "Error: Failed to activate context for progress thread"
-              << std::endl;
+    NIXL_ERROR << "Error: Failed to activate context for progress thread";
     return;
   }
 
@@ -420,8 +419,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   // Set the context as active for the UCX initialization in this function.
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
-    std::cerr << "Error: Failed to activate context for UCX initialization"
-              << std::endl;
+    NIXL_ERROR << "Error: Failed to activate context for UCX initialization";
     return;
   }
 
@@ -757,9 +755,10 @@ nixl_status_t nixlUcxEngine::internalMDHelper(const blob_ref blob,
   size_t size = blob.size;
 
   const auto search = remoteConnMap.find(agent);
-  if (search == remoteConnMap.end())
+  if (search == remoteConnMap.end()) {
+    // TODO: err: remote connection not found
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
-
+  }
   md->conn = search->second;
 
   std::vector<char> addr(size);
@@ -767,18 +766,11 @@ nixl_status_t nixlUcxEngine::internalMDHelper(const blob_ref blob,
   std::string blobStr(static_cast<const char *>(blob.data), blob.size);
   nixlSerDes::_stringToBytes(addr.data(), blobStr, size);
 
-  bool error = false;
   for (size_t wid = 0; wid < uws.size(); wid++) {
-    nixlUcxRkey rkey;
-    error = md->conn->getEp(wid).rkeyImport(addr.data(), size, rkey);
-    if (error)
-      break;
-    md->rkeys.push_back(rkey);
-  }
-  if (error) {
-    for (size_t wid = 0; wid < md->rkeys.size(); wid++)
-      md->conn->getEp(wid).rkeyDestroy(md->rkeys[wid]);
-    return nixl_status_t::NIXL_ERR_BACKEND;
+    nixl_status_t status = md->addRkey(md->conn->getEp(wid), addr.data());
+    if (status != nixl_status_t::NIXL_SUCCESS) {
+      return nixl_status_t::NIXL_ERR_BACKEND;
+    }
   }
 
   output = (nixlBackendMD *)md.release();
@@ -817,9 +809,6 @@ nixl_status_t nixlUcxEngine::unloadMD(nixlBackendMD *input) {
   }
 
   nixlUcxPublicMetadata *md = (nixlUcxPublicMetadata *)input; // typecast?
-
-  for (size_t wid = 0; wid < md->rkeys.size(); wid++)
-    md->conn->getEp(wid).rkeyDestroy(md->rkeys[wid]);
   delete md;
 
   return nixl_status_t::NIXL_SUCCESS;
