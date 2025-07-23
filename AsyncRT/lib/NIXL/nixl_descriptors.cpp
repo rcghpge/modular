@@ -11,7 +11,6 @@
 #include "AsyncRT/NIXL/nixl_descriptors.h"
 #include "AsyncRT/NIXL/backend/backend_aux.h"
 #include "AsyncRT/NIXL/mem_section.h"
-#include "AsyncRT/NIXL/nixl.h"
 #include "AsyncRT/NIXL/nixl_types.h"
 #include "AsyncRT/NIXL/utils/common/nixl_log.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
@@ -21,9 +20,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cassert>
-#include <functional>
 #include <iostream>
-#include <stdexcept>
 
 using namespace M;
 using namespace M::AsyncRT::NIXL;
@@ -279,6 +276,10 @@ bool nixlDescList<T>::verifySorted() {
 
   for (int i = 0; i < size - 1; ++i) {
     if (descs[i + 1] < descs[i]) {
+      if (sorted)
+        NIXL_WARN << "Descs are not sorted although sorted=True was passed, "
+                     "this may affect performance";
+
       sorted = false;
       return false;
     }

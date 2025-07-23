@@ -711,7 +711,7 @@ nixl_status_t nixlUcxEngine::registerMem(const nixlBlobDesc &mem,
   }
 
   // TODO: Add nixl_mem check?
-  const int ret = uc->memReg((void *)mem.addr, mem.len, priv->mem);
+  const int ret = uc->memReg((void *)mem.addr, mem.len, priv->mem, nixl_mem);
   if (ret) {
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
@@ -1036,21 +1036,22 @@ ucs_status_t nixlUcxEngine::notifAmCb(void *arg, const void *header,
   nixlSerDes ser_des;
 
   nixlUcxEngine *engine = (nixlUcxEngine *)arg;
-  std::string remote_name, msg;
 
   // send_am should be forcing EAGER protocol
   assert(!(param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV));
   assert(header_length == 0);
 
   ser_des.importBlob(blob_ref{data, length});
-  remote_name = ser_des.getStr("name");
-  msg = ser_des.getStr("msg");
+  std::string remote_name = ser_des.getStr("name");
+  std::string msg = ser_des.getStr("msg");
 
   if (engine->isProgressThread()) {
     /* Append to the private list to allow batching */
-    engine->notifPthrPriv.push_back(std::make_pair(remote_name, msg));
+    engine->notifPthrPriv.push_back(
+        std::make_pair(std::move(remote_name), std::move(msg)));
   } else {
-    engine->notifMainList.push_back(std::make_pair(remote_name, msg));
+    engine->notifMainList.push_back(
+        std::make_pair(std::move(remote_name), std::move(msg)));
   }
 
   return UCS_OK;

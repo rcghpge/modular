@@ -1031,6 +1031,67 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithNoContext) {
   noContextThread.join();
 }
 
+TEST_F(NixlUcxIntegrationTest, SelfNotification) {
+  // Test self notification support
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create a single NIXL agent that will send notifications to itself.
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Self", available_port(),
+                                  "ucx");
+
+  // Test multiple self notifications.
+  const int numNotifications = 10;
+  std::vector<std::string> sentMessages;
+
+  for (int i = 0; i < numNotifications; i++) {
+    std::string msg = "self_notification_" + std::to_string(i);
+    sentMessages.push_back(msg);
+    ASSERT_SUCCESS(nixl1.agent->genNotif(nixl1.agentName, msg));
+  }
+
+  // Poll for notifications with timeout.
+  nixl_notifs_t notifMap;
+  const auto startTime = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::seconds(10);
+  size_t receivedCount = 0;
+
+  while (receivedCount < numNotifications &&
+         (std::chrono::steady_clock::now() - startTime < timeout)) {
+    ASSERT_SUCCESS(nixl1.agent->getNotifs(notifMap));
+    if (notifMap.count(nixl1.agentName) > 0) {
+      receivedCount = notifMap[nixl1.agentName].size();
+    }
+    if (receivedCount < numNotifications) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
+  // Verify we received all self notifications.
+  ASSERT_EQ(receivedCount, numNotifications)
+      << "Did not receive all self notifications within timeout";
+
+  // Verify notification content matches what was sent.
+  ASSERT_EQ(notifMap.count(nixl1.agentName), 1)
+      << "Self notification map missing agent";
+
+  const std::vector<nixl_blob_t> &receivedMessages = notifMap[nixl1.agentName];
+  ASSERT_EQ(receivedMessages.size(), sentMessages.size())
+      << "Incorrect number of self notifications received";
+
+  // Check that all sent messages were received (order may vary).
+  for (const std::string &sentMsg : sentMessages) {
+    auto it =
+        std::find(receivedMessages.begin(), receivedMessages.end(), sentMsg);
+    ASSERT_NE(it, receivedMessages.end())
+        << "Self notification message not found: " << sentMsg;
+  }
+}
+
 TEST_F(NixlUcxIntegrationTest, MetadataInvalidation) {
   // Test socket-based metadata invalidation functionality
   setenv("UCX_LOG_LEVEL", "debug", 1);

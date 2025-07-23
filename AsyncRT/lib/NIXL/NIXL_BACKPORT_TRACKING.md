@@ -820,3 +820,172 @@ error handling.
 
 - Built successfully: `./bazelw build //AsyncRT/unittests:NixlTest //AsyncRT/unittests:NixlTestUcx`
 - All tests pass: `./bazelw test //AsyncRT/unittests:NixlTest //AsyncRT/unittests:NixlTestUcx`
+
+## Week 8 (June 17-23, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 44dcca7 | 2025-06-16 | build: Add wheel-base to pass the the wheel building platform | Skip | - | Build script changes only |
+| 3fad69c | 2025-06-17 | nixlbench: Add GPUNETIO debs to dockerfile | Skip | - | Benchmarking Dockerfile only |
+| 191d607 | 2025-06-17 | contrib: Remove the lib.real from the LD_LIBRARY path | Skip | - | Dockerfile changes only |
+| 5721827 | 2025-06-17 | Use NIXL logging macros consistently | Skip | - | Already ported in Week 7 |
+| 03abe42 | 2025-06-18 | contrib: Clean up libcuda.so.1 | Skip | - | Dockerfile changes only |
+| 92a4bbd | 2025-06-18 | BACKEND/UCX/IB: convert UCS_ERR_ENDPOINT_TIMEOUT to NIXL_ERR_REMOTE_DISCONNECT | Skip | - | Already incorporated in Week 2 |
+| 93f3e8a | 2025-06-18 | clang: Add clang format file | Skip | - | Formatting configuration only |
+| 100887a | 2025-06-19 | POSIX: updated queue_factory_impl, and fixed meson logic | Skip | - | POSIX backend not included |
+| 8a13c25 | 2025-06-19 | fix mem_type in gtest/test_transfer.cpp | Skip | - | Test framework change |
+| 466aadc | 2025-06-19 | Add missing UCX plugins to python wheel | Skip | - | Python wheel infrastructure |
+| 840a892 | 2025-06-19 | SRC/BINDINGS/PYTHON: Fix handling of unsorted desc list passed with sorted=True | **Port** | ✅ Completed | Added warning to verifySorted() |
+| 18477b5 | 2025-06-19 | Upgrade ssl dependency for wheel | Skip | - | Dockerfile changes only |
+| 0a284c3 | 2025-06-24 | CI: Rename Docker images to include OS version info | Skip | - | CI configuration only |
+
+### Commits to Port
+
+1. **840a892** - Fix handling of unsorted desc list passed with sorted=True (✅ Completed)
+
+### Summary
+
+- **Total commits reviewed**: 13
+- **Commits to port**: 1
+- **Commits ported**: 1 ✅
+- **Commits skipped**: 12
+
+### Changes Made
+
+#### 1. 840a892 - Fix handling of unsorted desc list
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/nixl_descriptors.cpp`: Added warning in verifySorted()
+
+**Key changes**:
+
+- Added NIXL_WARN log when descriptor list is marked as sorted but isn't
+  actually sorted
+- This helps identify performance issues when sorted flag is incorrectly set
+- Maintains compatibility with existing behavior (still returns false)
+
+**Testing**:
+
+- All unit tests pass successfully
+- No regressions in existing functionality
+
+## Week 9 (June 24-30, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 0a284c3 | 2025-06-24 | CI: Rename Docker images to include OS version info | Skip | - | CI configuration only |
+| 97b31b5 | 2025-06-24 | Compress wheel | Skip | - | Python wheel infrastructure |
+| e3d36e1 | 2025-06-25 | TEST/GTEST: Added mutex before logging | Skip | - | Test framework changes |
+| 2e2fd97 | 2025-06-25 | NIXL/UCX: Added support for self notification | **Port** | ✅ Completed | UCX self notification support |
+| e6801eb | 2025-06-25 | EXAMPLES/CPP: Fixed includes | Skip | - | Example code only |
+| d385c74 | 2025-06-26 | Support Mooncake backend in nixlbench | Skip | - | Mooncake backend not included |
+| ce6fc50 | 2025-06-26 | UCX: Check if UCX recognizes GPU mem correctly | **Port** | ✅ Completed | UCX GPU memory validation |
+| fb821ec | 2025-06-26 | Update README.md | Skip | - | Documentation only |
+| fdb9c99 | 2025-06-26 | AWS: Remove job retries and add GH metadata tags | Skip | - | CI/AWS infrastructure |
+| db3d922 | 2025-06-28 | Object storage plugin | Skip | - | New plugin not in scope |
+| 2dbd90a | 2025-06-29 | CI: Add separate clang-format workflow | Skip | - | CI workflow only |
+| 1f46ad4 | 2025-06-29 | feat: Enable build with stub api in rust bindings | Skip | - | Rust bindings |
+| 93256b7 | 2025-07-01 | UTILS/UCX: Added ucx::Config class | **Port** | ✅ Completed | UCX configuration refactoring |
+
+### Commits to Port
+
+1. **2e2fd97** - NIXL/UCX: Added support for self notification (✅ Completed)
+2. **ce6fc50** - UCX: Check if UCX recognizes GPU mem correctly (✅ Completed)
+3. **93256b7** - UTILS/UCX: Added ucx::Config class (✅ Completed)
+
+### Summary
+
+- **Total commits reviewed**: 13
+- **Commits to port**: 3
+- **Commits ported**: 3 ✅
+- **Commits skipped**: 10
+
+### Changes Made
+
+#### 1. Self Notification Support (2e2fd97) ✅
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Updated genNotif() to support local
+  notifications.
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Updated notification callback
+  to use move semantics.
+- `AsyncRT/unittests/NixlTestUcx.cpp`: Added comprehensive self notification test.
+
+**Key changes**:
+
+- Modified genNotif() to check if remote_agent equals local agent name
+- Added support for backends that support local notifications (supportsLocal())
+- Updated notification callback to use std::move for better performance
+- Added SelfNotification test that verifies multiple self notifications work correctly
+
+**Adaptations for AsyncRT**:
+
+- Removed dynamic allocation in favor of stack allocation
+- Used existing AsyncRT patterns for backend selection
+- Maintained compatibility with existing notification infrastructure
+
+#### 2. UCX GPU Memory Check (ce6fc50) ✅
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added GPU memory validation in
+  memReg()
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Updated memReg
+  signature with nixl_mem_type parameter.
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Updated memReg calls to pass
+  memory type
+
+**Key changes**:
+
+- Added ucp_mem_query() call to verify GPU memory is correctly identified by UCX
+- Check memory type when VRAM_SEG is specified
+- Return error if UCX identifies GPU memory as host memory
+- Added proper error logging for debugging UCX configuration issues
+
+**Technical details**:
+
+- Uses UCP_MEM_ATTR_FIELD_MEM_TYPE to query memory attributes
+- Verifies attr.mem_type != UCS_MEMORY_TYPE_HOST for GPU memory
+- Helps catch UCX configuration issues early (missing CUDA support)
+
+#### 3. UCX Config Class (93256b7) ✅
+
+**Files created**:
+
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/config.h`: Config class header with
+  RAII pattern
+- `AsyncRT/lib/NIXL/utils/ucx/config.cpp`: Config class implementation
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Refactored to use UCX::Config
+  class
+- Removed old ucx_modify_config function
+
+**Key changes**:
+
+- Created UCX::Config class with factory method pattern for error handling
+- Implemented modify() method that checks environment variables first
+- Implemented modifyAlways() method that always applies configuration
+- Used RAII with unique_ptr for automatic cleanup
+- Factory method returns ErrorOr<Config> for proper error handling
+
+**Adaptations for AsyncRT**:
+
+- Implemented factory method pattern to handle ErrorOr in initialization
+- Used M::Error for error returns instead of exceptions
+
+### Testing
+
+All changes were built and tested successfully:
+
+- `./bazelw build //AsyncRT:plugin_ucx` - Build successful
+- `./bazelw test //AsyncRT/unittests:NixlTestUcx` - All tests pass
+- Added new SelfNotification test specifically for self notification feature
+- Existing tests validate GPU memory checks and Config class usage
