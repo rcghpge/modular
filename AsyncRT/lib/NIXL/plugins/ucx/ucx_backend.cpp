@@ -425,7 +425,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
 
   uc = std::make_unique<nixlUcxContext>(
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
-      nixl_ucx_mt_t::WORKER, pthrOn);
+      pthrOn, numWorkers, init_params->syncMode);
 
   for (unsigned int i = 0; i < numWorkers; i++) {
     auto workerOrError = nixlUcxWorker::create(*uc, errHandlingMode);

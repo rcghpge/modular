@@ -1199,3 +1199,108 @@ TEST_F(NixlUcxIntegrationTest, ListenerCommSize) {
            nixl_status_t::NIXL_SUCCESS;
   })) << "Large metadata exchange failed or timed out";
 }
+
+TEST_F(NixlUcxIntegrationTest, ConcurrentNotifications) {
+  // Test concurrent genNotif calls with RW sync mode.
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+
+  // Create CUDA device context to ensure UCX plugin loads properly.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
+                DeviceContext::create(Device::cudaAPI, 0));
+
+  // Create two NIXL agents configured with RW sync mode.
+  NixlAgentWithUCXBackend nixl1;
+  nixl1.agentName = "TestAgent_NotifSender";
+  nixl1.agent = std::make_unique<nixlAgent>(
+      nixl1.agentName,
+      nixlAgentConfig(/*use_prog_thread=*/true, /*use_listen_thread=*/true,
+                      /*port=*/available_port(),
+                      /*sync_mode=*/nixl_thread_sync_t::NIXL_THREAD_SYNC_RW));
+
+  // Create backend with UCX.
+  nixl_b_params_t backendParams;
+  nixl_mem_list_t mems;
+  std::vector<nixl_backend_t> plugins;
+  ASSERT_SUCCESS(nixl1.agent->getAvailPlugins(plugins));
+  bool ucxFound =
+      std::find_if(plugins.begin(), plugins.end(), [](const nixl_backend_t &p) {
+        return StringRef(p).lower() == "ucx";
+      }) != plugins.end();
+  ASSERT_TRUE(ucxFound) << "UCX plugin not found";
+
+  ASSERT_SUCCESS(nixl1.agent->getPluginParams("ucx", mems, backendParams));
+  ASSERT_SUCCESS(
+      nixl1.agent->createBackend("ucx", backendParams, nixl1.backend));
+
+  // Register memory.
+  std::vector<char> dramBuffer1(1024);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  // Create second agent with RW sync mode.
+  NixlAgentWithUCXBackend nixl2;
+  nixl2.agentName = "TestAgent_NotifReceiver";
+  nixl2.agent = std::make_unique<nixlAgent>(
+      nixl2.agentName,
+      nixlAgentConfig(/*use_prog_thread=*/true, /*use_listen_thread=*/true,
+                      /*port=*/available_port(),
+                      /*sync_mode=*/nixl_thread_sync_t::NIXL_THREAD_SYNC_RW));
+
+  ASSERT_SUCCESS(nixl2.agent->getPluginParams("ucx", mems, backendParams));
+  ASSERT_SUCCESS(
+      nixl2.agent->createBackend("ucx", backendParams, nixl2.backend));
+
+  std::vector<char> dramBuffer2(1024);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange metadata.
+  exchangeMetadata(nixl1, nixl2);
+
+  // Launch concurrent notification threads.
+  const int numThreads = 4;
+  const int notifsPerThread = 10;
+  std::vector<std::thread> threads;
+  std::atomic<int> successCount{0};
+
+  for (int threadId = 0; threadId < numThreads; threadId++) {
+    threads.emplace_back([&, threadId]() {
+      for (int i = 0; i < notifsPerThread; i++) {
+        std::string msg =
+            "thread" + std::to_string(threadId) + "_notif" + std::to_string(i);
+        auto status = nixl1.agent->genNotif(nixl2.agentName, msg);
+        if (status == nixl_status_t::NIXL_SUCCESS)
+          successCount++;
+      }
+    });
+  }
+
+  // Wait for all threads to complete.
+  for (std::thread &thread : threads)
+    thread.join();
+
+  // Verify all notifications were sent successfully
+  ASSERT_EQ(successCount, numThreads * notifsPerThread)
+      << "Not all concurrent notifications were sent successfully";
+
+  // Poll for notifications with timeout.
+  nixl_notifs_t notifMap;
+  const auto startTime = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::seconds(10);
+  size_t receivedCount = 0;
+
+  while (receivedCount < static_cast<size_t>(numThreads * notifsPerThread) &&
+         (std::chrono::steady_clock::now() - startTime < timeout)) {
+    ASSERT_SUCCESS(nixl2.agent->getNotifs(notifMap));
+    if (notifMap.count(nixl1.agentName) > 0) {
+      receivedCount = notifMap[nixl1.agentName].size();
+    }
+    if (receivedCount < static_cast<size_t>(numThreads * notifsPerThread)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
+  // Verify we received all notifications.
+  ASSERT_EQ(receivedCount, static_cast<size_t>(numThreads * notifsPerThread))
+      << "Did not receive all concurrent notifications within timeout";
+}

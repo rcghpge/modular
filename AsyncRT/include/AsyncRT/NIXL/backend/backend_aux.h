@@ -43,6 +43,7 @@ struct nixlBackendInitParams {
 
   bool enableProgTh;
   nixlTime::us_t pthrDelay;
+  nixl_thread_sync_t syncMode;
 };
 
 // Base class to have a common pointer type.
