@@ -15,6 +15,7 @@
 #include "AsyncRT/NIXL/utils/common/nixl_time.h"
 #include "AsyncRT/NIXL/utils/common/str_tools.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <string_view>
@@ -34,31 +35,59 @@ static int connectToIP(const std::string &ip_addr, int port) {
   listenerAddr.sin_port = htons(port);
   listenerAddr.sin_family = AF_INET;
 
+  if (inet_pton(AF_INET, ip_addr.c_str(), &listenerAddr.sin_addr) <= 0) {
+    NIXL_ERROR << "inet_pton failed for ip_addr: " << ip_addr;
+    return -1;
+  }
+
+  // Create a non-blocking socket
   int ret_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (ret_fd == -1) {
+    NIXL_ERROR << "socket creation failed for ip_addr: " << ip_addr
+               << " and port: " << port;
     return -1;
   }
 
-  if (inet_pton(AF_INET, ip_addr.c_str(), &listenerAddr.sin_addr) <= 0) {
+  // Connect will return immediately with EINPROGRESS
+  int ret =
+      connect(ret_fd, (struct sockaddr *)&listenerAddr, sizeof(listenerAddr));
+  if (ret < 0 && errno != EINPROGRESS) {
     close(ret_fd);
     return -1;
   }
 
-  // make connect block for now to avoid ambiguity in send right after
-  int orig_flags = fcntl(ret_fd, F_GETFL, 0);
-  int new_flags = orig_flags ^ O_NONBLOCK;
+  // Use select to wait for connection with timeout
+  fd_set write_fds;
+  FD_ZERO(&write_fds);
+  FD_SET(ret_fd, &write_fds);
 
-  fcntl(ret_fd, F_SETFL, new_flags);
+  struct timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
 
-  if (connect(ret_fd, (struct sockaddr *)&listenerAddr, sizeof(listenerAddr)) <
-      0) {
-    perror("async connect");
+  ret = select(ret_fd + 1, NULL, &write_fds, NULL, &tv);
+  if (ret <= 0) {
+    if (ret < 0) {
+      NIXL_ERROR << "select failed for ip_addr: " << ip_addr
+                 << " and port: " << port << " with error: " << strerror(errno);
+    } else {
+      NIXL_ERROR << "select timed out for ip_addr: " << ip_addr
+                 << " and port: " << port;
+    }
     close(ret_fd);
     return -1;
   }
 
-  // make nonblocking again
-  fcntl(ret_fd, F_SETFL, orig_flags);
+  // Check if connection was successful
+  int error = 0;
+  socklen_t len = sizeof(error);
+  if (getsockopt(ret_fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 ||
+      error != 0) {
+    NIXL_ERROR << "getsockopt failed for ip_addr: " << ip_addr
+               << " and port: " << port << " with error: " << strerror(error);
+    close(ret_fd);
+    return -1;
+  }
 
   return ret_fd;
 }
@@ -252,10 +281,11 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
           nixl_status_t ret =
               myAgent->loadRemoteMD(remoteMetaData, remote_agent);
           if (ret != nixl_status_t::NIXL_SUCCESS) {
-            // TODO(GENAI-170): return ErrorOr here.
-            NIXL_FATAL << "loadRemoteMD in listener thread failed, critically "
-                          "failing\n";
-            std::abort();
+            NIXL_ERROR
+                << "loadRemoteMD in listener thread failed for md from peer "
+                << socket_iter->first.first << ":" << socket_iter->first.second
+                << " with error " << to_underlying(ret);
+            continue;
           }
           // not sure what to do with remote_agent
         } else if (header == "SEND"sv) {
@@ -268,10 +298,9 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
           myAgent->invalidateRemoteMD(std::string(remote_agent));
           break;
         } else {
-          // TODO(GENAI-170): return ErrorOr here.
-          NIXL_FATAL << "Received socket message with bad header" << header
-                     << ", critically failing\n";
-          std::abort();
+          NIXL_ERROR << "Received socket message with bad header " << header
+                     << " from peer " << socket_iter->first.first << ":"
+                     << socket_iter->first.second;
         }
       }
 
