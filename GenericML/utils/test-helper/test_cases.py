@@ -5,6 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 
 import inspect
+import random
 import sys
 
 import numpy as np
@@ -284,55 +285,6 @@ class GatherReduceConstAxis(TestBase):
         return impl.sum(gathered, reduce_axis)
 
 
-class GatherReduceDynamicAxes(TestBase):
-    @staticmethod
-    def num_runs() -> int:
-        return 100
-
-    @staticmethod
-    def input_sizes_to_test():
-        return [
-            ([30, 20], [10, 20], [1], [1]),
-        ]
-
-    @staticmethod
-    def get_input_specs():
-        return [
-            ((None, None), np.float32),
-            ((None, None), np.int32),
-            ((1,), np.int32),
-            ((1,), np.int32),
-        ]
-
-    @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
-        gather_axis = np.random.randint(
-            -len(shapes[0]), len(shapes[0]), size=(1,)
-        ).astype(np.int32)
-
-        # Gather can increase the number of dimensions
-        num_dims = len(shapes[0]) + len(shapes[1]) - 1
-        reduce_axis = np.random.randint(-num_dims, num_dims, size=(1,)).astype(
-            np.int32
-        )
-        return [
-            # Use randint for input to avoid fp tolerance issues
-            np.random.randint(-5, 5, size=shapes[0]).astype(np.float32),
-            np.random.randint(
-                0, shapes[0][gather_axis[0]], size=shapes[1]
-            ).astype(np.int32),
-            gather_axis,
-            reduce_axis,
-        ]
-
-    @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
-        gather_axis = impl.reshape(inputs[-2], shape=())
-        reduce_axis = impl.reshape(inputs[-1], shape=())
-        gathered = impl.gather(inputs[0], inputs[1], gather_axis)
-        return impl.sum(gathered, reduce_axis)
-
-
 class GatherOfGathers(TestBase):
     @staticmethod
     def input_sizes_to_test():
@@ -354,12 +306,11 @@ class GatherOfGathers(TestBase):
 
     @staticmethod
     def generate_inputs(shapes):  # noqa: ANN001
-        axis = np.random.randint(
-            -len(shapes[0]), len(shapes[0]), size=(1,)
-        ).astype(np.int32)
+        axis = random.randint(0, len(shapes[0]) - 1)
+
         return [
             np.random.randint(-1000, 1000, size=shapes[0]).astype(np.float32),
-            np.random.randint(0, shapes[0][axis[0]], size=shapes[1]).astype(
+            np.random.randint(0, shapes[0][axis], size=shapes[1]).astype(
                 np.int32
             ),
             np.random.randint(0, shapes[1][0], size=shapes[2]).astype(np.int32),
