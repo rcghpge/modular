@@ -181,13 +181,8 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
     // second, do agent commands
     getCommWork(work_queue);
 
-    for (nixl_comm_req_t request : work_queue) {
-      // TODO(GENAI-170): Clean up with future IP type.
-      nixl_comm_t req_command = std::get<0>(request);
-      std::string req_ip = std::get<1>(request);
-      int req_port = std::get<2>(request);
-      std::string_view my_MD = std::get<3>(request);
-
+    // TODO(GENAI-170): Clean up with future IP type.
+    for (const auto &[req_command, req_ip, req_port, my_MD] : work_queue) {
       nixl_socket_peer_t req_sock = std::make_pair(req_ip, req_port);
 
       // use remote IP for socket lookup
@@ -288,22 +283,15 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
       std::this_thread::yield();
     }
   }
-
-  // Close remaining connections
-  for (auto &[remote, fd] : remoteSockets) {
-    shutdown(fd, SHUT_RDWR);
-    close(fd);
-  }
 }
 
-void nixlAgentData::enqueueCommWork(
-    std::tuple<nixl_comm_t, std::string, int, std::string> request) {
+void nixlAgentData::enqueueCommWork(nixl_comm_req_t request) {
   std::lock_guard<std::mutex> lock(commLock);
-  commQueue.push_back(request);
+  commQueue.push_back(std::move(request));
 }
 
 void nixlAgentData::getCommWork(std::vector<nixl_comm_req_t> &req_list) {
   std::lock_guard<std::mutex> lock(commLock);
-  req_list = commQueue;
+  req_list = std::move(commQueue);
   commQueue.clear();
 }

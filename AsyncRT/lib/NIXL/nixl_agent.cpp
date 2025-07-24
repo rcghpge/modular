@@ -129,6 +129,12 @@ nixlAgent::~nixlAgent() {
     if (data->commThread.joinable())
       data->commThread.join();
 
+    // Close remaining connections from comm thread
+    for (auto &[remote, fd] : data->remoteSockets) {
+      shutdown(fd, SHUT_RDWR);
+      close(fd);
+    }
+
     if (data->listener)
       delete data->listener;
   }
@@ -1157,7 +1163,7 @@ nixlAgent::sendLocalMD(const nixl_opt_args_t *extra_params) const {
   if (extra_params && !extra_params->ipAddr.empty()) {
     data->enqueueCommWork(std::make_tuple(nixl_comm_t::SOCK_SEND,
                                           extra_params->ipAddr,
-                                          extra_params->port, myMD));
+                                          extra_params->port, std::move(myMD)));
     return nixl_status_t::NIXL_SUCCESS;
   }
 
@@ -1176,7 +1182,7 @@ nixlAgent::sendLocalPartialMD(const nixl_reg_dlist_t &descs,
   if (extra_params && !extra_params->ipAddr.empty()) {
     data->enqueueCommWork(std::make_tuple(nixl_comm_t::SOCK_SEND,
                                           extra_params->ipAddr,
-                                          extra_params->port, myMD));
+                                          extra_params->port, std::move(myMD)));
     return nixl_status_t::NIXL_SUCCESS;
   }
 

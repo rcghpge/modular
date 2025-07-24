@@ -79,7 +79,7 @@ private:
   std::thread commThread;
   std::vector<nixl_comm_req_t> commQueue;
   std::mutex commLock;
-  bool commThreadStop = false;
+  volatile bool commThreadStop = false;
 
   void commWorker(nixlAgent *myAgent);
   void enqueueCommWork(nixl_comm_req_t request);

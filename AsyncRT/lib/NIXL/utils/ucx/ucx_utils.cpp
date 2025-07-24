@@ -30,7 +30,7 @@ using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
 
 nixl_status_t NIXL::ucx_status_to_nixl(ucs_status_t status) {
-  if (status == UCS_OK) [[likely]] {
+  if (status == UCS_OK) {
     return nixl_status_t::NIXL_SUCCESS;
   }
 

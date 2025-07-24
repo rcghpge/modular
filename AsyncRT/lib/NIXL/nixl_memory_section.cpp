@@ -15,6 +15,7 @@
 #include "AsyncRT/NIXL/nixl_types.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "Support/STLExtras.h"
+#include <algorithm>
 #include <iostream>
 #include <map>
 
@@ -266,7 +267,11 @@ nixl_status_t nixlLocalSection::remDescList(const nixl_reg_dlist_t &mem_elms,
 
 namespace {
 void serializeSections(nixlSerDes &serializer, const section_map_t &sections) {
-  size_t seg_count = sections.size();
+  size_t seg_count =
+      std::count_if(sections.begin(), sections.end(), [](const auto &pair) {
+        section_key_t sec_key = pair.first;
+        return sec_key.second->supportsRemote();
+      });
   serializer.addBuf("nixlSecElms", &seg_count, sizeof(seg_count));
 
   for (const auto &[sec_key, dlist] : sections) {
