@@ -293,7 +293,7 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
     codePath = "no merge";
   }
   if (bufferCache.doLog_) {
-    bufferCache.logErr("mergeFreeBlockDesc(" + TWINE_PTR(ptr) + "; " +
+    bufferCache.logErr("mergeFreeBlockDesc(" + TWINE_PTR(ptr) + " ; " +
                        TWINE(bufSize) + ") -  (" + codePath + ")");
   }
 }
@@ -376,7 +376,8 @@ void BufferCacheFreeList::flushToParent() {
       return;
 
     if (bufferCache_.doLog_) {
-      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent");
+      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent " +
+                          TWINE_PTR(parent_));
     }
     size_t bufSize = 0;
     BufferCache::Desc *curDesc = freeBuffers_;
@@ -402,8 +403,9 @@ void BufferCacheFreeList::flushToParent() {
     freeBuffers_ = nullptr;
 
     if (bufferCache_.doLog_) {
-      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent: Done", 0,
-                          bufSize);
+      bufferCache_.logErr("flushing " + TWINE_PTR(this) + " to parent " +
+                              TWINE_PTR(parent_) + " : Done",
+                          0, bufSize);
     }
   }
 }
@@ -527,6 +529,22 @@ bool BufferCacheFreeList::contains(BufferCache::Desc *desc) const {
   return false;
 }
 
+std::string &BufferCache::getDeviceDescription() const {
+  static std::mutex mu;
+  std::lock_guard<std::mutex> lock(mu);
+  if (deviceDescription_.empty()) {
+    deviceDescription_ = (device().api() + "[" + llvm::Twine(device().id()) +
+                          (isHost() ? " - host]" : "]"))
+                             .str();
+    // Print the initial information about this BufferCache.
+    llvm::errs() << "##(" << deviceDescription_ << ":" << this
+                 << ")##: buffer_cache(chunk_size: " << chunkSize_
+                 << " ; max_cache_size: " << maxCacheSize_
+                 << " ; free_list: " << freeList_.get() << ")\n";
+  }
+  return deviceDescription_;
+}
+
 void BufferCache::logErr(llvm::Twine msg) const {
   logErr(msg, 0, 0, /* printInfoSize = */ false);
 }
@@ -540,24 +558,15 @@ void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
   static std::mutex mu;
   {
     std::lock_guard<std::mutex> lock(mu);
-    if (deviceDescription_.empty()) {
-      deviceDescription_ = (device().api() + "[" + llvm::Twine(device().id()) +
-                            (isHost() ? " - host]" : "]"))
-                               .str();
-      // Print the initial information about this BufferCache.
-      llvm::errs() << "##(" << deviceDescription_ << ":" << this
-                   << ")##: buffer_cache(chunk_size: " << chunkSize_
-                   << "; max_cache_size: " << maxCacheSize_
-                   << "; free_list: " << freeList_.get() << ")\n";
-    }
     if (printInfoSize) {
-      llvm::errs() << "##(" << deviceDescription_ << ")##: " << msg << " - , "
-                   << cacheSize_ << ", " << chunkCount_ << ", " << freeSize_
-                   << ", " << freeCount_ << ", " << info << ", " << size
-                   << "\n";
+      llvm::errs() << "##(" << getDeviceDescription() << ")##: " << msg
+                   << " - , " << cacheSize_ << ", " << chunkCount_ << ", "
+                   << freeSize_ << ", " << freeCount_ << ", " << info << ", "
+                   << size << "\n";
     } else {
       if (!msg.isTriviallyEmpty())
-        llvm::errs() << "##(" << deviceDescription_ << ")##: " << msg << "\n";
+        llvm::errs() << "##(" << getDeviceDescription() << ")##: " << msg
+                     << "\n";
     }
   }
 }
@@ -580,12 +589,6 @@ BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
   // chunks_ will be lazily initialized on the first allocation request.
   // Alignment masking only works with powers of 2.
   assert(llvm::isPowerOf2_64(alignment));
-
-  // When running as part of a Bazel test, limit the chunk size to allow for
-  // multiple tests executing on the same GPU.
-  if (isBazelTest_) {
-    chunkSize_ = std::min(chunkSize_, 200 * MB);
-  }
 
   // Allocate a freelist that maintains free memory blocks not associated with a
   // DeviceContext (aka stream).
@@ -653,7 +656,7 @@ bool BufferCache::allocateChunk() {
   cacheSize_ += allocSize;
   chunkCount_++;
   if (doLog_) {
-    logErr("allocate_chunk(" + TWINE_PTR(ptr) + "; " + TWINE(allocSize) + ")",
+    logErr("allocate_chunk(" + TWINE_PTR(ptr) + " ; " + TWINE(allocSize) + ")",
            0, 0);
   }
   return true;
@@ -850,7 +853,35 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
       }
     }
     if (desc != nullptr) {
+      // Allocation from buffer cache was successful, return the value.
       return desc->ptr_;
+    }
+
+    // If only allowing allocations from the buffer cache, raise an error at
+    // this point, printing as much debugging information as needed.
+    static bool useOnlyBufferCache =
+        DeviceContext::configAsBool("buffer_cache_only", false);
+    if (!bufferCache_.isHost() && useOnlyBufferCache) {
+      if (bufferCache_.doLog_) {
+        bufferCache_.logErr("allocate_buffer(" + TWINE(size) + ") - OOM", 0, 0);
+        // Print more debugging information about the largest available blocks.
+        BufferCacheFreeList *cur = this;
+        while (cur != nullptr) {
+          if (cur->freeBuffers_ != nullptr) {
+            bufferCache_.logErr("max block on " + TWINE_PTR(cur) + ": (" +
+                                TWINE_PTR(cur->freeBuffers_->ptr_) + " ; " +
+                                TWINE(cur->freeBuffers_->size_) + ")");
+          }
+          cur = cur->parent_;
+        }
+      }
+      return Error(
+          "[Use only buffer cache mode]: No room left in buffer cache: " +
+          bufferCache_.getDeviceDescription() + " on " + TWINE_PTR(this) +
+          " (size: " + TWINE(size) +
+          " ; free: " + TWINE(bufferCache_.freeSize_) +
+          " ; cache_size: " + TWINE(bufferCache_.cacheSize_) +
+          " ; max_cache_size: " + TWINE(bufferCache_.maxCacheSize_) + ")");
     }
   }
 
@@ -884,7 +915,7 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
   }
   if (bufferCache_.doLog_) {
     bufferCache_.logErr(
-        "allocate_buffer(" + TWINE_PTR(ptr) + "; " + TWINE(size) + ")", 0, 0);
+        "allocate_buffer(" + TWINE_PTR(ptr) + " ; " + TWINE(size) + ")", 0, 0);
   }
   assert(ptr != nullptr);
   return ptr;
@@ -893,35 +924,32 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
 BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
   assert((size & bufferCache_.alignmentMask_) == size);
   int iterations = 0;
-  {
-    // Find a fit in the free list.
-    BufferCache::Desc *desc = freeBuffers_;
-    while ((desc != nullptr) && (desc->size_ < size)) {
-      desc = desc->nextFree_;
-      iterations++;
+  // Find a fit in the free list.
+  BufferCache::Desc *desc = freeBuffers_;
+  while ((desc != nullptr) && (desc->size_ < size)) {
+    desc = desc->nextFree_;
+    iterations++;
+  }
+  if (desc != nullptr) {
+    assert(desc->isFree());
+    if (desc->size_ == size) {
+      removeFromFreeList(desc);
+    } else {
+      desc = desc->chunk_->splitFreeDesc(desc, size);
     }
-    if (desc != nullptr) {
-      assert(desc->isFree());
-      if (desc->size_ == size) {
-        removeFromFreeList(desc);
-      } else {
-        desc = desc->chunk_->splitFreeDesc(desc, size);
-      }
-      assert(desc->nextFree_ == nullptr);
-      assert(desc->prevFree_ == nullptr);
-      assert(desc->isInUse());
+    assert(desc->nextFree_ == nullptr);
+    assert(desc->prevFree_ == nullptr);
+    assert(desc->isInUse());
 
-      bufferCache_.allocatedMap_.add(desc);
+    bufferCache_.allocatedMap_.add(desc);
 
-      if (bufferCache_.doLog_) {
-        bufferCache_.logErr("allocate on " + TWINE_PTR(this) + " (" +
-                                TWINE_PTR(desc->ptr_) + "; " + TWINE(size) +
-                                ")",
-                            iterations, -size);
-      }
-
-      return desc;
+    if (bufferCache_.doLog_) {
+      bufferCache_.logErr("allocate on " + TWINE_PTR(this) + " (" +
+                              TWINE_PTR(desc->ptr_) + " ; " + TWINE(size) + ")",
+                          iterations, -size);
     }
+
+    return desc;
   }
 
   // Delegate to parent freelist if available.
@@ -973,7 +1001,7 @@ void BufferCacheFreeList::freeDesc(BufferCache::Desc *desc) {
   desc->chunk_->mergeFreeBlockDesc(this, desc);
   if (bufferCache_.doLog_) {
     bufferCache_.logErr("free on " + TWINE_PTR(this) + " (" + TWINE_PTR(ptr) +
-                            "; " + TWINE(bufSize) + ")",
+                            " ; " + TWINE(bufSize) + ")",
                         0, bufSize);
   }
 }
@@ -981,17 +1009,64 @@ void BufferCacheFreeList::freeDesc(BufferCache::Desc *desc) {
 BufferCache *BufferCache::onDevice(const Device &device,
                                    Device::MemInfo memInfo, size_t alignment) {
   bool isBazelTest = std::getenv("BAZEL_TEST") != nullptr;
+  if (memInfo.free == 0) {
+    // Do not use buffer cache if buffer cache has been disabled by the calling
+    // code (empty memInfo).
+    // This is for example the case for CPU Device: We are relying on malloc
+    // optimizations instead.
+    return new BufferCache(device, 0, 0, alignment, false, isBazelTest);
+  }
+
+  bool isDefault = false;
   size_t maxCacheSize = llvm::alignToPowerOf2(
-      (memInfo.free * DeviceContext::configAsInt("buffer_cache_size_percent",
-                                                 isBazelTest ? 10 : 0)) /
-          100,
+      DeviceContext::configAsInt("buffer_cache_size", 1 * GB, &isDefault),
       256 * KB);
+  // If buffer_cache_size was not set, use a percentage of the available memory.
+  if (isDefault) {
+    maxCacheSize = llvm::alignToPowerOf2(
+        (memInfo.free * DeviceContext::configAsInt("buffer_cache_size_percent",
+                                                   isBazelTest ? 10 : 0)) /
+            100,
+        256 * KB);
+  }
+
+  // If we are running as part of a Bazel test we attempt to run in a degraded
+  // mode if the requested buffer cache size does not fit into the available
+  // device.
+  if (isBazelTest && (maxCacheSize > memInfo.total)) {
+    size_t adjustedMaxCacheSize =
+        llvm::alignToPowerOf2((memInfo.total * 98) / 100, 256 * KB);
+    llvm::errs()
+        << "DeviceContext.BufferCache: Requested maximum buffer cache size ("
+        << maxCacheSize << ") does not fit into total available memory ("
+        << memInfo.total
+        << "). Adjusted maximum buffer cache size: " << adjustedMaxCacheSize
+        << "\n";
+    maxCacheSize = adjustedMaxCacheSize;
+  }
+
+  if (maxCacheSize > memInfo.free) {
+    llvm::errs()
+        << "DeviceContext.BufferCache: Requested maximum buffer cache size ("
+        << maxCacheSize << ") does not fit into available free memory ("
+        << memInfo.free << ").\n";
+  }
+
+  // Get chunk size as percentage of max cache size. Limit to between 0 and 100.
+  size_t chunkSizePercent = static_cast<size_t>(std::max(
+      0L, std::min(100L, DeviceContext::configAsInt(
+                             "buffer_cache_chunk_percent", 2, &isDefault))));
+
   size_t chunkSize = std::min(
-      maxCacheSize, static_cast<size_t>(llvm::alignToPowerOf2(
-                        (maxCacheSize * DeviceContext::configAsInt(
-                                            "buffer_cache_chunk_percent", 2)) /
-                            100,
-                        256 * KB)));
+      maxCacheSize,
+      llvm::alignToPowerOf2((maxCacheSize * chunkSizePercent) / 100, 256 * KB));
+
+  // When running as part of a Bazel test and chunk percentage is not set as a
+  // test variable, limit the chunk size to allow for multiple tests executing
+  // on the same GPU.
+  if (isDefault && isBazelTest) {
+    chunkSize = std::min(chunkSize, 200 * MB);
+  }
 
   auto result = new BufferCache(device, maxCacheSize, chunkSize, alignment,
                                 /* isHost = */ false, isBazelTest);

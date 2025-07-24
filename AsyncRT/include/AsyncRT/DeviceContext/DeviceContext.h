@@ -496,9 +496,12 @@ public:
   bool operator!=(const DeviceContext &other) const;
 
   // Access configuration flags from the "device-context" section.
-  static bool configAsBool(StringRef key, bool defaultValue);
-  static int64_t configAsInt(StringRef key, int64_t defaultValue);
-  static StringRef configAsString(StringRef key, StringRef defaultValue);
+  static bool configAsBool(StringRef key, bool defaultValue,
+                           bool *isDefault = nullptr);
+  static int64_t configAsInt(StringRef key, int64_t defaultValue,
+                             bool *isDefault = nullptr);
+  static StringRef configAsString(StringRef key, StringRef defaultValue,
+                                  bool *isDefault = nullptr);
 
   // Error helpers.
   static Error formatError(const char *file, int line, const char *func,

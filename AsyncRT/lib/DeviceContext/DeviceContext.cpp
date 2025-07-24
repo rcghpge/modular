@@ -910,35 +910,67 @@ void DeviceContext::decSyncMode() const {
   syncMode_.fetch_add(-1, std::memory_order_relaxed);
 };
 
-bool DeviceContext::configAsBool(StringRef key, bool defaultValue) {
+bool DeviceContext::configAsBool(StringRef key, bool defaultValue,
+                                 bool *isDefault) {
   std::lock_guard<std::mutex> lock(getGlobalMutex());
   ErrorOr<Config> &config = getConfig();
-  if (config.isError())
+  if (config.isError()) {
+    if (isDefault != nullptr) {
+      *isDefault = true;
+    }
     return defaultValue;
+  }
 
+  if (isDefault != nullptr) {
+    StringRef s =
+        config->getValue((llvm::Twine("device-context.") + key).str());
+    *isDefault = s.empty();
+  }
   return config->getValueAsBool((llvm::Twine("device-context.") + key).str(),
                                 defaultValue);
 }
 
-int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue) {
+int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue,
+                                   bool *isDefault) {
   std::lock_guard<std::mutex> lock(getGlobalMutex());
   ErrorOr<Config> &config = getConfig();
-  if (config.isError())
+  if (config.isError()) {
+    if (isDefault != nullptr) {
+      *isDefault = true;
+    }
     return defaultValue;
+  }
 
   StringRef s = config->getValue((llvm::Twine("device-context.") + key).str());
+  if (isDefault != nullptr) {
+    *isDefault = s.empty();
+  }
   long long result = defaultValue;
-  if (s.getAsInteger(10, result))
+  if (s.getAsInteger(10, result)) {
+    if (isDefault != nullptr) {
+      *isDefault = true;
+    }
     return defaultValue;
+  }
   return result;
 }
 
-StringRef DeviceContext::configAsString(StringRef key, StringRef defaultValue) {
+StringRef DeviceContext::configAsString(StringRef key, StringRef defaultValue,
+                                        bool *isDefault) {
   std::lock_guard<std::mutex> lock(getGlobalMutex());
   ErrorOr<Config> &config = getConfig();
-  if (config.isError())
+  if (config.isError()) {
+    if (isDefault != nullptr) {
+      *isDefault = true;
+    }
     return defaultValue;
+  }
 
+  if (isDefault != nullptr) {
+    StringRef s =
+        config->getValue((llvm::Twine("device-context.") + key).str());
+    *isDefault = s.empty();
+  }
   return config->getValueOr((llvm::Twine("device-context.") + key).str(),
                             defaultValue);
 }

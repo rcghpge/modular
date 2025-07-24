@@ -400,11 +400,11 @@ TEST(DeviceContextTest, BufferCache) {
   constexpr size_t maxCacheSize = 4 * chunkSize;
 
   Device::MemInfo memInfo;
-  memInfo.free = maxCacheSize;
-  memInfo.total = 4 * maxCacheSize;
+  memInfo.free = 128 * maxCacheSize;  // Needs to be larger than 256 * KB.
+  memInfo.total = 256 * maxCacheSize; // Needs to be larger than 256 * KB.
 
   // Ensure that maxCacheSize is all of memInfo.free.
-  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE_PERCENT=100"));
+  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE=25"));
   // Ensure that chunkSize is a 1/4th of maxCacheSize.
   putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT=25"));
   // Ensure that selfCheck() is enabled.

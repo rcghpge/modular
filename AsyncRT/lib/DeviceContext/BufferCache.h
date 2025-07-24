@@ -128,6 +128,7 @@ private:
   DescMap allocatedMap_;
 
   // For logging and debugging.
+  std::string &getDeviceDescription() const;
   void logErr(llvm::Twine msg) const;
   void logErr(llvm::Twine msg, size_t info, int64_t size,
               bool printInfoSize = true) const;
