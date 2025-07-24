@@ -2,30 +2,6 @@ load("//bazel:api.bzl", "cc_autolink_deps", "modular_cc_library", "modular_nanob
 load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
 
 modular_cc_library(
-    name = "MaxAPI",
-    hdrs = glob(["include/SDK/API/max/**/*.h"]),
-    includes = ["include/SDK/API"],
-    deps = [
-        ":API.headers",
-        "//GenericML:DeviceDriver.headers",
-    ],
-)
-
-modular_cc_library(
-    name = "API.headers",
-    hdrs = glob(["include/SDK/API/**/*.h"]),
-    includes = ["include/SDK/API"],
-    deps = [
-        "//AsyncRT:DeviceContext",
-        "//GenericML:CommonDriver",
-        "//GenericML:DeviceDriver.headers",
-        "//GenericML:FrameworkFrontend.headers",
-        "//Support:Telemetry",
-        "//Support:Threading",
-    ],
-)
-
-modular_cc_library(
     name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
     testonly = True,
     srcs = glob(["include/SDK/API/max/c/*.h"]),
@@ -202,9 +178,9 @@ modular_shared_library(
         "include/SDK/MOF/API/**/*.h",
         "include/SDK/MOF/GraphBuilder/**/*.h",
     ]),
+    includes = ["include/SDK/API"],
     deps = [
         ":MOFDriver",
-        ":MaxAPI",
         ":deps",
         "//AsyncRT:NIXL",
         "//GenericML:CommonDriver",

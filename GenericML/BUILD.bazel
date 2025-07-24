@@ -47,17 +47,6 @@ modular_cc_library(
     ],
 )
 
-modular_cc_library(
-    name = "FrameworkFrontend.headers",
-    hdrs = ["include/GenericML/FrameworkFrontend.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//Support:Base",
-        "//Support:Buffer",
-        "//Support:Context",
-    ],
-)
-
 # MOTransforms relies on these, but the GraphCompiler relies
 # on MOTransforms.
 modular_cc_library(
