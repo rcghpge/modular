@@ -1079,20 +1079,20 @@ UCX is not properly configured with CUDA support.
 | 57577df | 2025-07-08 | POSIX: Fixed bug on reposting reqH in aioQueue | Skip | - | POSIX backend not included |
 | 30c6456 | 2025-07-08 | POSIX: Fix repost test logic error | Skip | - | POSIX backend not included |
 | 2ba783e | 2025-07-09 | Add NIXL plugins to the wheel | Skip | - | Python wheel infrastructure |
-| d6adf38 | 2025-07-09 | UTILS/UCX: Added ucx::rkey class | **Port** | Pending | Major UCX refactoring |
+| d6adf38 | 2025-07-09 | UTILS/UCX: Added ucx::rkey class | **Port** | ✅ Completed | Major UCX refactoring |
 | f0562f9 | 2025-07-09 | CI: Bump the clang ver in GHA | Skip | - | CI configuration |
 | adb7acb | 2025-07-09 | Extend code style with current practices | Skip | - | Documentation |
-| c73b8e2 | 2025-07-10 | UTILS/UCX: Minor improvements in nixlUcxWorker | **Port** | Pending | UCX worker improvements |
+| c73b8e2 | 2025-07-10 | UTILS/UCX: Minor improvements in nixlUcxWorker | **Port** | ✅ Completed | UCX worker improvements |
 | 68668fc | 2025-07-10 | Bugfix - cuda_gds and gds_mt plugins fail each other | Skip | - | GDS backend conflict checking |
 | 0aab57d | 2025-07-10 | NIXLBENCH: update nixlbench/kvbench docs | Skip | - | Benchmarking documentation |
 | 686829d | 2025-07-10 | Obj fixes | Skip | - | Obj plugin not included |
 | bbdf7dc | 2025-07-10 | Add nixlbench owners | Skip | - | CODEOWNERS file |
-| a15e745 | 2025-07-10 | BACKEND/UCX: enable error handling mode peer by default | **Port** | Pending | UCX error handling default |
+| a15e745 | 2025-07-10 | BACKEND/UCX: enable error handling mode peer by default | **Port** | ✅ Completed | UCX error handling default |
 | e58bdd5 | 2025-07-10 | testing: Add gtest for Agent class | Skip | - | Test infrastructure |
 | 6a429c3 | 2025-07-12 | Improve contributing guidelines | Skip | - | Documentation |
 | 5ead498 | 2025-07-14 | NIXLBench/worker/nixl: clang format | Skip | - | Formatting only |
 | fdd07d1 | 2025-07-14 | PLUGIN/MOONCAKE: fix typos and minors in mooncake plugin | Skip | - | Mooncake backend not included |
-| 47bf357 | 2025-07-14 | UCX/BACKEND: refactor nixlUcxEngine::nixlUcxEngine | **Port** | Pending | UCX engine constructor refactor |
+| 47bf357 | 2025-07-14 | UCX/BACKEND: refactor nixlUcxEngine::nixlUcxEngine | **Port** | ✅ Completed | UCX engine constructor refactor |
 | d9d7f86 | 2025-07-14 | chore: cherry pick commits from release/0.4.0 | Skip | - | Documentation/licensing |
 | e65b5b0 | 2025-07-15 | Load plugins relative to the install directory | Skip | - | Plugin loading behavior |
 | 061c5c4 | 2025-07-15 | CI run tests on GPU - initial commit | Skip | - | CI infrastructure |
@@ -1101,6 +1101,7 @@ UCX is not properly configured with CUDA support.
 | 1ec923b | 2025-07-16 | clang-format: Separate definition blocks with empty lines | Skip | - | Formatting configuration |
 | fdf1d29 | 2025-07-16 | NIXLBench: Align memory for O_DIRECT | Skip | - | Benchmarking tool |
 | 340ed11 | 2025-07-16 | Fixed the Data types code style to be consistent | Skip | - | Documentation |
+| a87c086 | 2025-07-18 | UCX/UTILS: calculate mt_type in nixlUcxContext | **Port** | ✅ Completed | Critical architectural fix |
 | 0f56527 | 2025-07-17 | clang-tidy: Add config to enforce naming style | Skip | - | Linting configuration |
 | 7d51d40 | 2025-07-17 | Fix dladdr error check | Skip | - | Plugin manager error handling |
 | 10d3fe1 | 2025-07-17 | Unify wheel building | Skip | - | Build infrastructure |
@@ -1108,83 +1109,92 @@ UCX is not properly configured with CUDA support.
 
 ### Commits to Port
 
-1. **d6adf38** - UTILS/UCX: Added ucx::rkey class (✅ Completed)
-2. **c73b8e2** - UTILS/UCX: Minor improvements in nixlUcxWorker (✅ Completed)
-3. **a15e745** - BACKEND/UCX: enable error handling mode peer by default
-4. **47bf357** - UCX/BACKEND: refactor nixlUcxEngine::nixlUcxEngine
-
-### Summary
-
-- **Total commits reviewed**: 29
-- **Commits to port**: 4 (all UCX-related improvements)
-- **Commits ported**: 2 ✅
-- **Commits skipped**: 25
-
-### Key Changes to Port
-
-These commits introduce significant UCX improvements:
-
-- **Rkey class**: New RAII class for managing remote memory keys
-- **Worker improvements**: Better error handling and API cleanup
-- **Error handling**: Enable peer error handling by default
-- **Engine refactoring**: Cleaner constructor implementation
-
-These changes build on previous UCX improvements and should be ported
-carefully to maintain compatibility with AsyncRT patterns.
-
-### Changes Made
-
 #### 1. d6adf38 - UCX rkey class (✅ Completed)
 
-**Files created**:
+**Files updated**:
 
-- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/rkey.h`: RAII wrapper for UCX
-  remote memory keys
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/rkey.h`: New RAII wrapper for UCX rkeys
 - `AsyncRT/lib/NIXL/utils/ucx/rkey.cpp`: Implementation using ErrorOr pattern
-
-**Files modified**:
-
-- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Removed nixlUcxRkey
-  class
-- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Updated
-  nixlUcxPublicMetadata to use new Rkey class
-- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Updated all rkey usage
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Updated read/write methods to use Rkey
+- `AsyncRT/BUILD.bazel`: Added rkey files to build
 
 **Key changes**:
 
-- Created UCX::Rkey class with factory method pattern for error handling
-- Implements RAII for automatic cleanup of UCX remote keys
-- Uses ErrorOr<std::unique_ptr<Rkey>> for fallible construction
-- Removed old nixlUcxRkey typedef
-
-**Adaptations for AsyncRT**:
-
-- Used ErrorOr instead of exceptions
-- Factory method pattern to handle initialization failures
-- llvm::formatv for error messages instead of stringFormat
+- Created RAII wrapper for UCX remote memory keys
+- Used factory method pattern with ErrorOr for error handling
+- Adapted exception-based code to AsyncRT's error handling patterns
 
 #### 2. c73b8e2 - UCX minor improvements (✅ Completed)
 
-**Files modified**:
+**Files updated**:
 
-- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added UCS_ERR_BUSY handling,
-  arm() and getEfd() methods
-- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Updated worker
-  interface
-- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Updated to use new worker
-  methods
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added arm(), getEfd(), and
+  UCS_ERR_BUSY handling.
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Added arm() and
+  getEfd() declarations.
 
 **Key changes**:
 
-- Added UCS_ERR_BUSY to ucx_status_to_nixl mapping (returns NIXL_IN_PROG)
-- Removed error handling mode from nixlUcxContext constructor
-- Added arm() method to nixlUcxWorker for worker arming
-- Added getEfd() method to nixlUcxWorker for event file descriptor
-- Changed shared_ptr<nixlUcxContext> to unique_ptr in nixlUcxEngine
-- Updated progress thread to use arm() method instead of direct UCX calls
+- Added UCS_ERR_BUSY to error status mapping (returns NIXL_IN_PROG)
+- Added arm() method for worker event notification
+- Added getEfd() method to get event file descriptor
+- Changed GPU memory detection from error to warning
 
-**Adaptations for AsyncRT**:
+#### 3. a87c086 - UCX context multi-threading configuration (✅ Completed)
 
-- Used ErrorOr<int> for getEfd() instead of exceptions
-- Used Twine for error string construction
-- Maintained compatibility with existing error handling patterns
+**Files updated**:
+
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Fixed nixlUcxContext constructor
+- `AsyncRT/include/AsyncRT/NIXL/nixl_types.h`: Added NIXL_THREAD_SYNC_RW
+- `AsyncRT/include/AsyncRT/NIXL/sync.h`: Implemented read-write lock support
+- `AsyncRT/include/AsyncRT/NIXL/backend/backend_aux.h`: Added syncMode field
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Pass syncMode to backend
+- `AsyncRT/unittests/NixlTestUcx.cpp`: Added ConcurrentNotifications test
+
+**Key changes**:
+
+- Fixed architectural divergence where AsyncRT was passing mt_type directly
+- nixlUcxContext now calculates mt_type based on sync_mode and prog_thread
+- Added NIXL_THREAD_SYNC_RW mode for read-write synchronization
+- Implemented proper read-write lock support using std::shared_mutex
+
+#### 4. a15e745 - UCX error handling mode peer by default (✅ Completed)
+
+**Files updated**:
+
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Changed default error mode
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Added error mode helper functions
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Added declarations
+
+**Key changes**:
+
+- Changed default UCX error handling mode from NONE to PEER
+- Added get_ucx_backend_common_options() function
+- Added ucx_err_mode_to_string() and ucx_err_mode_from_string() helpers
+- Improved error handling mode parsing with validation
+
+#### 5. 47bf357 - UCX engine refactor (✅ Completed)
+
+**Files updated**:
+
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Refactored constructor
+
+**Key changes**:
+
+- Initialize pthrControlPipe in initializer list with {0, 0}
+- Changed numWorkers from unsigned long to size_t
+- Simplified error handling by removing try-catch blocks
+- Removed empty worker address check (relies on exception in epAddr())
+- Updated destructor to safely close pipe file descriptors
+
+### Implementation Notes
+
+All commits have been successfully ported with appropriate adaptations for AsyncRT:
+
+1. Converted exception-based error handling to ErrorOr pattern
+2. Used AsyncRT's logging macros (NIXL_ERROR, NIXL_WARN) instead of exceptions
+3. Maintained compatibility with AsyncRT's coding patterns
+4. Added proper tests for new functionality
+5. Fixed critical architectural divergence in nixlUcxContext
+
+The backporting effort for Week 10 and Week 11+ (July 1-18, 2025) is now complete.

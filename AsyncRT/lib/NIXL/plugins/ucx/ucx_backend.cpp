@@ -352,18 +352,18 @@ void nixlUcxEngine::progressThreadRestart() {
  *****************************************/
 
 nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
-    : nixlBackendEngine(init_params) {
-  unsigned long numWorkers;
+    : nixlBackendEngine(init_params), pthrControlPipe{0, 0} {
+  size_t numWorkers;
   std::vector<std::string_view> devs;
   nixl_b_params_t *customParams = init_params->customParams;
 
   if (init_params->enableProgTh) {
-    pthrOn = true;
     if (!nixlUcxMtLevelIsSupported(nixl_ucx_mt_t::WORKER)) {
-      NIXL_ERROR << "UCX library does not support multi-threading\n";
+      NIXL_ERROR << "UCX library does not support multi-threading";
       initErr = true;
       return;
     }
+
     if (pipe(pthrControlPipe) < 0) {
       NIXL_PERROR << "Couldn't create progress thread control pipe";
       initErr = true;
@@ -377,6 +377,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
             init_params->pthrDelay < std::numeric_limits<int>::max()
                 ? init_params->pthrDelay
                 : std::numeric_limits<int>::max()));
+    pthrOn = true;
   } else {
     pthrOn = false;
   }
@@ -390,9 +391,11 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
   } else {
     const char *start = numWorkersIter->second.c_str();
     char *end;
-    numWorkers = std::strtoul(start, &end, 10);
-    if (end == start || *end != '\0' || numWorkers == 0) {
+    unsigned long parsed = std::strtoul(start, &end, 10);
+    if (end == start || *end != '\0' || parsed == 0) {
       numWorkers = 1;
+    } else {
+      numWorkers = parsed;
     }
   }
 
@@ -409,11 +412,13 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     this->deviceCtx = errorOrDeviceCtx.takeValue();
   }
   // Parse error handling mode
-  const auto errHandlingModeIt = customParams->find("ucx_error_handling_mode");
-  ucp_err_handling_mode_t errHandlingMode = UCP_ERR_HANDLING_MODE_NONE;
-  if (errHandlingModeIt != customParams->end() &&
-      (errHandlingModeIt->second == "peer")) {
+  ucp_err_handling_mode_t errHandlingMode;
+  const auto errHandlingModeIt =
+      customParams->find(std::string(nixl_ucx_err_handling_param_name));
+  if (errHandlingModeIt == customParams->end()) {
     errHandlingMode = UCP_ERR_HANDLING_MODE_PEER;
+  } else {
+    errHandlingMode = ucx_err_mode_from_string(errHandlingModeIt->second);
   }
 
   // Set the context as active for the UCX initialization in this function.
@@ -427,7 +432,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
       pthrOn, numWorkers, init_params->syncMode);
 
-  for (unsigned int i = 0; i < numWorkers; i++) {
+  for (size_t i = 0; i < numWorkers; i++) {
     auto workerOrError = nixlUcxWorker::create(*uc, errHandlingMode);
     if (workerOrError.isError()) {
       NIXL_ERROR << "Failed to create UCX worker " << i << ": "
@@ -438,14 +443,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     uws.emplace_back(workerOrError.takeValue());
   }
 
-  const auto &uw = uws.front();
-  workerAddr = uw->epAddr();
-
-  if (workerAddr.empty()) {
-    NIXL_ERROR << "Failed to get UCX worker address\n";
-    initErr = true;
-    return;
-  }
+  workerAddr = uws.front()->epAddr();
 
   if (pthrOn) {
     for (auto &uw : uws) {
@@ -460,6 +458,10 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams *init_params)
     pollFds.push_back({pthrControlPipe[0], POLLIN, 0});
   }
 
+  // TODO: in case of UCX error handling is enabled, we can clean up AM based
+  // connections error handling, if user requested disabled error handling, we
+  // dont care about it.
+  auto &uw = uws.front();
   uw->regAmCallback(UcxCallbackOp::CONN_CHECK, connectionCheckAmCb, this);
   uw->regAmCallback(UcxCallbackOp::DISCONNECT, connectionTermAmCb, this);
   uw->regAmCallback(UcxCallbackOp::NOTIF_STR, notifAmCb, this);
@@ -476,18 +478,13 @@ nixl_mem_list_t nixlUcxEngine::getSupportedMems() const {
 
 // Through parent destructor the unregister will be called.
 nixlUcxEngine::~nixlUcxEngine() {
-  // per registered memory deregisters it, which removes the corresponding
-  // metadata too parent destructor takes care of the desc list For remote
-  // metadata, they should be removed here
-  if (initErr) {
-    // Nothing to do
-    return;
-  }
-
   progressThreadStop();
   if (pthrOn) {
-    close(pthrControlPipe[0]);
-    close(pthrControlPipe[1]);
+    for (const auto pthr_control_pipe : pthrControlPipe) {
+      if (pthr_control_pipe != 0) {
+        close(pthr_control_pipe);
+      }
+    }
   }
 }
 

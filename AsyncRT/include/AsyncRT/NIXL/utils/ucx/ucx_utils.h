@@ -173,7 +173,18 @@ private:
   ucp_err_handling_mode_t err_handling_mode_;
 };
 
+constexpr std::string_view nixl_ucx_err_handling_param_name =
+    "ucx_error_handling_mode";
+
+[[nodiscard]] nixl_b_params_t get_ucx_backend_common_options();
+
 nixl_status_t ucx_status_to_nixl(ucs_status_t status);
+
+[[nodiscard]] std::string_view
+ucx_err_mode_to_string(ucp_err_handling_mode_t t);
+
+[[nodiscard]] ucp_err_handling_mode_t
+ucx_err_mode_from_string(std::string_view s);
 
 } // namespace M::AsyncRT::NIXL
 

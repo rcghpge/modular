@@ -16,8 +16,11 @@
 #include "AsyncRT/NIXL/utils/ucx/rkey.h"
 #include "Support/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstring>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -26,7 +29,7 @@ using namespace M;
 using namespace M::AsyncRT;
 using namespace M::AsyncRT::NIXL;
 
-nixl_status_t M::AsyncRT::NIXL::ucx_status_to_nixl(ucs_status_t status) {
+nixl_status_t NIXL::ucx_status_to_nixl(ucs_status_t status) {
   if (status == UCS_OK) [[likely]] {
     return nixl_status_t::NIXL_SUCCESS;
   }
@@ -45,6 +48,54 @@ nixl_status_t M::AsyncRT::NIXL::ucx_status_to_nixl(ucs_status_t status) {
     NIXL_WARN << "Unexpected UCX error: " << ucs_status_string(status);
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
+}
+
+[[nodiscard]] nixl_b_params_t NIXL::get_ucx_backend_common_options() {
+  nixl_b_params_t params = {{"ucx_devices", ""}, {"num_workers", "1"}};
+
+  params.emplace(
+      std::string(nixl_ucx_err_handling_param_name),
+      std::string(ucx_err_mode_to_string(UCP_ERR_HANDLING_MODE_PEER)));
+  return params;
+}
+
+[[nodiscard]] std::string_view
+NIXL::ucx_err_mode_to_string(ucp_err_handling_mode_t t) {
+  switch (t) {
+  case UCP_ERR_HANDLING_MODE_NONE:
+    return "none";
+  case UCP_ERR_HANDLING_MODE_PEER:
+    return "peer";
+  }
+  llvm_unreachable("Invalid UCX error handling mode");
+}
+
+[[nodiscard]] ucp_err_handling_mode_t
+NIXL::ucx_err_mode_from_string(std::string_view s) {
+  constexpr std::array<ucp_err_handling_mode_t, 2> nixl_ucx_err_handling_modes =
+      {
+          UCP_ERR_HANDLING_MODE_NONE,
+          UCP_ERR_HANDLING_MODE_PEER,
+      };
+
+  for (const auto mode : nixl_ucx_err_handling_modes) {
+    if (ucx_err_mode_to_string(mode) == s) {
+      return mode;
+    }
+  }
+
+  std::stringstream err_msg;
+  err_msg << "Invalid error handling mode: " << s << ". Valid values are: <";
+  for (size_t i = 0; i < nixl_ucx_err_handling_modes.size(); ++i) {
+    err_msg << ucx_err_mode_to_string(nixl_ucx_err_handling_modes[i]);
+    if (i < nixl_ucx_err_handling_modes.size() - 1) {
+      err_msg << "|";
+    }
+  }
+
+  err_msg << ">";
+  NIXL_ERROR << err_msg.str();
+  return UCP_ERR_HANDLING_MODE_NONE; // Default in case of error
 }
 
 static void err_cb_wrapper(void *arg, ucp_ep_h ucp_ep, ucs_status_t status) {
@@ -261,7 +312,7 @@ nixl_status_t nixlUcxEp::flushEp(nixlUcxReq &req) {
   return nixl_status_t::NIXL_IN_PROG;
 }
 
-bool M::AsyncRT::NIXL::nixlUcxMtLevelIsSupported(nixl_ucx_mt_t mt_type) {
+bool NIXL::nixlUcxMtLevelIsSupported(nixl_ucx_mt_t mt_type) {
   ucp_lib_attr_t attr;
   attr.field_mask = UCP_LIB_ATTR_FIELD_MAX_THREAD_LEVEL;
   ucp_lib_query(&attr);
