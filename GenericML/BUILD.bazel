@@ -135,7 +135,11 @@ modular_cc_library(
     hdrs = glob(
         ["include/GenericML/GraphCompiler/Conversion/*.h"],
         # Deal with a circular dependency.
-        exclude = ["include/GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"],
+        exclude = [
+            "include/GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h",
+            "include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.h",
+            "include/GenericML/GraphCompiler/Conversion/MOToMOGG.h",
+        ],
     ),
     tags = ["no-clang-tidy-headers"],
     deps = [
