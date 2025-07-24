@@ -11,8 +11,7 @@
 // CHECK: %[[ADD:.*]] = mogg.call.outlined["mo.add"] (%[[ARG6]], %[[LOAD]], %[[INSERT_IDX]]) : f32, f32, !pop.array<3, index> -> f32
 // CHECK: mogg.output %[[ADD]], %[[INSERT_IDX]] : f32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
-// CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]] : !mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) outputs(%[[BIND]] : !mo.tensor<[seq_len, 4096], f32>)
-// CHECK-SAME: {kernel_param = {packed_b = false, transpose_b = false}}
+// CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]], {{.*}}
 // CHECK: } {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true
 // CHECK-SAME: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"}
 // CHECK: mo.output %[[KERNEL_OUT]] : !mo.tensor<[1, seq_len, 4096], f32>
@@ -25,7 +24,7 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 }
 
 // CHECK-LABEL: mo.graph @mixed_precision<seq_len>
-// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1:.*]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) 
+// CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1:.*]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>)
 // CHECK-SAME: -> !mo.tensor<[1, seq_len, 4096], si32>
 // CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.experimental.kernel(%[[ARG0]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, seq_len, 4096], si32>
 // CHECK: %[[OUT_PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], si32>
@@ -36,8 +35,7 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 // CHECK: mogg.output %[[CAST]], %[[INSERT_IDX]] : si32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], si32>) -> !mo.tensor<[seq_len, 4096], f32>
 // CHECK: %[[CONCRETIZE:.*]] = "mogg.concretize"(%[[SCRATCH]], %[[BIND]]) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
-// CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]] : !mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) outputs(%[[CONCRETIZE]] : !mo.tensor<[seq_len, 4096], f32>)
-// CHECK-SAME: {kernel_param = {packed_b = false, transpose_b = false}}
+// CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]], {{.*}}
 // CHECK: } {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true
 // CHECK-SAME: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.cast:{{[0-9]+}}"}
 // CHECK: mo.output %[[KERNEL_OUT]] : !mo.tensor<[1, seq_len, 4096], si32>

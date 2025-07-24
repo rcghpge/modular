@@ -184,7 +184,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     rewriter.inlineBlockBefore(src, dst, dst->begin(), inlinedArgs);
 
     // Clean up.
-    dst->getArgument(idx).replaceAllUsesWith(srcTerm.getInputs().front());
+    dst->getArgument(idx).replaceAllUsesWith(srcTerm.getInput());
     kernel.eraseInputsAt(idx);
     auto srcOutputPlaceholders = srcTerm.getOutput().getDefiningOp();
     srcTerm.erase();

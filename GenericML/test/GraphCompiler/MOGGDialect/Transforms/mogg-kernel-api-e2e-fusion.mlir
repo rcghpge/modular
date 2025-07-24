@@ -4,9 +4,9 @@
 
 // COM: One single elementwise kernel, doesn't fuse anything
 // CHECK-IR-LABEL: mo.graph @elementwise1
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'elementwise1':
@@ -20,10 +20,10 @@ mo.graph @elementwise1() -> !mo.tensor<[2, 3], f32> {
 
 // COM: 3 elementwise kernels, should be fused in one
 // CHECK-IR-LABEL: mo.graph @elementwise3
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'elementwise3':
@@ -40,10 +40,10 @@ mo.graph @elementwise3() -> !mo.tensor<[2, 3], f32> {
 
 // COM: matmul kernel must be fused with add
 // CHECK-IR-LABEL: mo.graph @matmul_add
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK: lambdas_have_fusion = True
@@ -60,9 +60,9 @@ mo.graph @matmul_add() -> !mo.tensor<[2, 2], f32> {
 
 // broadcast and add fused (FuseBroadcast)
 // CHECK-IR-LABEL: mo.graph @broadcast_add
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'broadcast_add':
@@ -77,9 +77,9 @@ mo.graph @broadcast_add() -> !mo.tensor<[3, 4], f32> {
 
 // transpose and add fused (FuseBroadcast)
 // CHECK-IR-LABEL: mo.graph @transpose_add
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'transpose_add':
@@ -105,10 +105,10 @@ mo.graph @matmul_no_fusion() -> !mo.tensor<[2, 2], f32> {
 
 // both add fused
 // CHECK-IR-LABEL: mo.graph @elemwise_input_fusion
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'elemwise_input_fusion':
@@ -124,10 +124,10 @@ mo.graph @elemwise_input_fusion() -> !mo.tensor<[4], f32> {
 
 // firsts add fused by FuseElementwise, then fused with last one with FuseInOutLambdas
 // CHECK-IR-LABEL: mo.graph @elemwise_input_fusion_dbl
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'elemwise_input_fusion_dbl':
@@ -144,11 +144,11 @@ mo.graph @elemwise_input_fusion_dbl() -> !mo.tensor<[4], f32> {
 
 // both add_elementwise fused in add_fuse_inputs by FuseInOutLambdas
 // CHECK-IR-LABEL: mo.graph @elemwise_input_fusion_multi_inputs
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'elemwise_input_fusion_multi_inputs':
@@ -167,11 +167,11 @@ mo.graph @elemwise_input_fusion_multi_inputs() -> !mo.tensor<[4], f32> {
 // add_elementwise and variadic_add fused by FuseInOutLambdas
 // CHECK-IR-LABEL: mo.graph @variadic_fusion
 
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}}, {{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'variadic_fusion':
@@ -189,12 +189,12 @@ mo.graph @variadic_fusion() -> !mo.tensor<[4], f32> {
 // both add_elementwise and variadic_add fused by FuseInOutLambdas
 // CHECK-IR-LABEL: mo.graph @variadic_fusion_multiple
 
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}})
 // COM: CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'variadic_fusion_multiple':
@@ -213,8 +213,8 @@ mo.graph @variadic_fusion_multiple() -> !mo.tensor<[4], f32> {
 
 // Both ops fused by FuseViews
 // CHECK-IR-LABEL: mo.graph @view_fusion_print_specs
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK: x.shape = [3, 2]
@@ -233,8 +233,8 @@ mo.graph @view_fusion_print_specs() -> !mo.tensor<[3, 2], f32> {
 // All ops fuse together.
 // The strides should be propagated through both transposes.
 // CHECK-IR-LABEL: mo.graph @double_view_fusion_print_specs
-// CHECK-IR-NEXT: mo.constant
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}})
+// CHECK-IR: mo.constant
+// CHECK-IR: %[[OUT:.*]] = mogg.experimental.kernel({{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK: x.shape = [2, 3]

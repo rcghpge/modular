@@ -54,4 +54,11 @@ def MOGG_Shape : MOGG_Type<"Shape", "shape"> {
   }];
 }
 
+def MOGG_Context : MOGG_Type<"Context", "context"> {
+  let summary = "A type mapping onto a context";
+  let description = [{
+    This is the mogg representation of a runtime context value.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_TD

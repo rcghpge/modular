@@ -505,24 +505,89 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
 // MOGG KernelTerminatorOp
 //===----------------------------------------------------------------------===//
 
-ValueRange CallForeachOp::getKernelInputs() {
+LogicalResult CallForeachOp::verify() {
+  if (getContext().size() > 1)
+    return emitError("Can use at most one context or tuple of contexts");
+
+  return success();
+}
+
+Value CallForeachOp::getDeviceContext() {
+  if (getContext().empty())
+    return nullptr;
+  return getContext().front();
+}
+SmallVector<Value> CallForeachOp::getKernelInputs() {
   // foreach does not have input, tensors are captured and loads are fused into
   // a static lambda.
   return {};
 }
-ValueRange CallForeachOp::getKernelDPSOutputs() {
-  return getOperands().take_back();
+SmallVector<Value> CallForeachOp::getKernelDPSOutputs() {
+  return {getOutput()};
 }
 Type CallForeachOp::getKernelReturnOutput() { return nullptr; }
 
-ValueRange CallMaterializeOp::getKernelInputs() { return getInputs(); }
-ValueRange CallMaterializeOp::getKernelDPSOutputs() {
-  return getOperands().take_back();
+LogicalResult CallMaterializeOp::verify() {
+  if (getContext().size() > 1)
+    return emitError("Can use at most one context or tuple of contexts");
+
+  return success();
 }
+
+Value CallMaterializeOp::getDeviceContext() {
+  if (getContext().empty())
+    return nullptr;
+  return getContext().front();
+}
+SmallVector<Value> CallMaterializeOp::getKernelInputs() { return {getInput()}; }
+
+SmallVector<Value> CallMaterializeOp::getKernelDPSOutputs() {
+  return {getOutput()};
+}
+
 Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 
-ValueRange CallExecuteOp::getKernelInputs() { return getInputs(); }
-ValueRange CallExecuteOp::getKernelDPSOutputs() { return getOutputs(); }
+LogicalResult CallExecuteOp::verify() {
+  uint64_t numberOfContexts = llvm::count_if(getOperandTypes(), [](auto ty) {
+    if (isa<MOGG::ContextType>(ty))
+      return true;
+
+    if (auto tupleTy = dyn_cast<mlir::TupleType>(ty)) {
+      if (isa<MOGG::ContextType>(tupleTy.getTypes().front()))
+        return true;
+    }
+
+    return false;
+  });
+
+  if (numberOfContexts > 1)
+    return emitError("Can use at most one context or tuple of contexts");
+
+  return success();
+}
+
+Value CallExecuteOp::getDeviceContext() {
+  if (!getNumOperands())
+    return nullptr;
+
+  auto lastOperand = getOperands().back();
+  if (isa<MOGG::ContextType>(lastOperand.getType()))
+    return lastOperand;
+
+  if (!isa<TupleType>(lastOperand.getType()))
+    return nullptr;
+
+  if (isa<MOGG::ContextType>(
+          lastOperand.getDefiningOp<AsTupleOp>().getOperand(0).getType())) {
+    return lastOperand;
+  }
+
+  return nullptr;
+}
+SmallVector<Value> CallExecuteOp::getKernelInputs() {
+  return getInputs().drop_back(getDeviceContext() != nullptr);
+}
+SmallVector<Value> CallExecuteOp::getKernelDPSOutputs() { return getOutputs(); }
 Type CallExecuteOp::getKernelReturnOutput() {
   return getRegRetTypeAttr() ? getRegRetTypeAttr().getValue() : nullptr;
 }
@@ -2376,6 +2441,19 @@ LogicalResult StackAllocateTensorsOp::verify() {
 
   if (!llvm::all_of(getResultTypes(), isCpuTensor))
     return emitError() << "stack allocated tensors must be on the CPU";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsTupleOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsTupleOp::verify() {
+  if (getNumOperands() != getResult().getType().getTypes().size()) {
+    return emitError()
+           << "Number of operands does not match number of types in tuple";
+  }
 
   return success();
 }

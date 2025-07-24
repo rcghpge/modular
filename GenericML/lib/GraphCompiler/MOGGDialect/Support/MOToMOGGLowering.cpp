@@ -94,6 +94,41 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
   return ret;
 }
 
+void addContextIfPresent(Operation *op, SmallVector<Value> &inputs,
+                         const KernelAdaptor &adaptor, OpBuilder &builder,
+                         bool forceAddContext = false) {
+  bool hasContextType = forceAddContext;
+  bool isVariadic = false;
+  for (auto &&arg : adaptor.executeFunction->inputArguments) {
+    if (arg.isContextType()) {
+      hasContextType = true;
+      isVariadic = arg.isVariadicContextType();
+    }
+  }
+  if (!hasContextType)
+    return;
+
+  auto loc = op->getLoc();
+  auto ctx = op->getContext();
+
+  if (isVariadic) {
+    SmallVector<Value> contexts;
+    for (auto deviceAttr : MO::getUniqueDevicesFromKernel(op)) {
+      contexts.push_back(builder.create<MOGG::DeviceContextPlaceholderOp>(
+          loc, MOGG::ContextType::get(ctx), deviceAttr));
+    }
+
+    inputs.push_back(builder.create<MOGG::AsTupleOp>(
+        loc,
+        builder.getTupleType(
+            SmallVector<Type>(contexts.size(), MOGG::ContextType::get(ctx))),
+        contexts));
+  } else {
+    inputs.push_back(builder.create<MOGG::DeviceContextPlaceholderOp>(
+        loc, MOGG::ContextType::get(ctx), MO::getDeviceOrDefaultAny(op)));
+  }
+}
+
 KernelCallInterface
 MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
                                                const OperandMapping &mapping,
@@ -164,8 +199,10 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
   builder.create<OutputOp>(loc, callOutlined->getResults());
   builder.setInsertionPointAfter(bindOp);
 
-  auto ret =
-      builder.create<CallForeachOp>(loc, bindOp.getOutput(), outputValue);
+  SmallVector<Value> contextValue;
+  addContextIfPresent(moOp, contextValue, adaptor, builder, true);
+  auto ret = builder.create<CallForeachOp>(loc, bindOp.getOutput(), outputValue,
+                                           contextValue);
 
   return ret;
 }
@@ -194,7 +231,10 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
       loc, outputVal.getType(), adaptor.registeredOpName, inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
   // mogg.call.view above).
-  builder.create<MOGG::CallMaterializeOp>(loc, view->getResult(0), outputVal);
+  SmallVector<Value> contextValue;
+  addContextIfPresent(moOp, contextValue, adaptor, builder, true);
+  builder.create<MOGG::CallMaterializeOp>(loc, view->getResult(0), outputVal,
+                                          contextValue);
 
   return view;
 }
@@ -211,6 +251,7 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
 
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
+
   SmallVector<Value> fusibleTensors;
   for (const auto &[idx, arg] : mapping.operandMapping) {
     if (!arg.isFusedTensorType())
@@ -245,6 +286,7 @@ MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
   inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
+  addContextIfPresent(moOp, inputs, adaptor, builder);
   outputs = convertTuplesIfNeeded(outputs, mapping.resultMapping, builder);
 
   return builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,

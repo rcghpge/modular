@@ -54,13 +54,17 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let cppNamespace = "::M::MOGG";
 
   let methods = [
+     InterfaceMethod<
+      "Returns the device context that this op uses. Can be nullptr if not needed.",
+      "mlir::Value", "getDeviceContext", (ins)
+    >,
     InterfaceMethod<
       "Returns the dps output values of the kernel (a argument but with dps semantics)",
-      "mlir::ValueRange", "getKernelDPSOutputs", (ins)
+      "mlir::SmallVector<mlir::Value>", "getKernelDPSOutputs", (ins)
     >,
     InterfaceMethod<
       "Returns the inputs values of the kernel",
-      "mlir::ValueRange", "getKernelInputs", (ins)
+      "mlir::SmallVector<mlir::Value>", "getKernelInputs", (ins)
     >,
     InterfaceMethod<
       "Returns the type of kernel returned value (either a by_val/by_ref return)",

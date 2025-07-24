@@ -135,6 +135,7 @@ def MOGG_AsTupleOp
   let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs AnyTuple:$result);
   let assemblyFormat = "attr-dict `(`$inputs `)` `:` type($inputs) `->` type($result)";
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -175,11 +176,13 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
   }];
 
   let arguments = (ins MO_Tensor:$input,
-                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output);
+                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output,
+                       Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context);
 
   let assemblyFormat = [{
-    `input` `(` $input `)` `output` `(` $output `)` `:` qualified(type($input)) `->` qualified(type($output)) attr-dict
+    `input` `(` $input `)` `output` `(` $output `)` (`context` `(` $context^ `)`)? `:` functional-type(operands, results) attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 
@@ -209,6 +212,7 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
                         (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
                         (`->` $regRetType^)? attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 
@@ -227,12 +231,14 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", []>  {
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$inputs,
-                       MO_Tensor:$output);
+  let arguments = (ins AnyType:$input,
+                       MO_Tensor:$output,
+                       Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context);
 
   let assemblyFormat = [{
-    `inputs` `(` $inputs `)` `output` `(` $output `)` `:` functional-type($inputs, $output) attr-dict
+    `input` `(` $input `)` `output` `(` $output `)` (`context` `(` $context^ `)`)? `:` functional-type(operands, results) attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 
