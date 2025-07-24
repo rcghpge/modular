@@ -18,7 +18,7 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
-#include "Support/Compiler/ParserUtils.h"
+#include "Support/MDialect/ParserUtils.h"
 #include "mlir/IR/Diagnostics.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"

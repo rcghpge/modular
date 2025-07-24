@@ -13,7 +13,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
-#include "Support/Compiler/ParserUtils.h"
+#include "Support/MDialect/ParserUtils.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"

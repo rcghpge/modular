@@ -20,7 +20,7 @@
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Support/AssertStream.h"
-#include "Support/Compiler/ParserUtils.h"
+#include "Support/MDialect/ParserUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/STLExtras.h"

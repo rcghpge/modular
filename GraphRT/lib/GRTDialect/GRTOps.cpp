@@ -9,9 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/GRTDialect/GRTOps.h"
-#include "Support/Compiler/ParserUtils.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/MDialect/ParserUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
