@@ -1171,14 +1171,9 @@ modular_cc_library(
 modular_shared_library(
     name = "SupportGlobals",
     srcs = glob(["lib/Support/Globals/*.cpp"]),
-    hdrs = glob([
-        "include/GenericML/Support/Globals/*.h",
-        "include/GenericML/Support/*.h",
-    ]),
+    hdrs = glob(["include/GenericML/Support/Globals/*.h"]),
     output_name = "GenericMLSupportGlobals",
-    tags = ["no-clang-tidy-headers"],
     deps = [
-        "//Support:Base",
         "//Support:SymbolExport",
     ],
 )
