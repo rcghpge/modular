@@ -1053,9 +1053,11 @@ BufferCache *BufferCache::onDevice(const Device &device,
   }
 
   // Get chunk size as percentage of max cache size. Limit to between 0 and 100.
-  size_t chunkSizePercent = static_cast<size_t>(std::max(
-      0L, std::min(100L, DeviceContext::configAsInt(
-                             "buffer_cache_chunk_percent", 2, &isDefault))));
+  size_t chunkSizePercent =
+      std::max(static_cast<size_t>(0),
+               std::min(static_cast<size_t>(100),
+                        static_cast<size_t>(DeviceContext::configAsInt(
+                            "buffer_cache_chunk_percent", 2, &isDefault))));
 
   size_t chunkSize = std::min(
       maxCacheSize,
