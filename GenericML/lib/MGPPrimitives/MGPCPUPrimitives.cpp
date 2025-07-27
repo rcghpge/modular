@@ -172,4 +172,6 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.module.load.cpu", mgp_module_load_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.external.cpu",
                 mgp_buffer_constant_external_cpu);
+  ADD_PRIMITIVE(registry, "mgp.buffer.constant.external.gpu",
+                mgp_buffer_constant_external_cpu);
 }
