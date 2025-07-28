@@ -122,13 +122,18 @@ ErrorOr<SmallVector<Operation *>> getAllocUses(MGP::BufferAllocOp allocOp);
 struct BufferLifetimeAnalysisPass {
   BufferLifetimeAnalysisPass(Operation *op);
 
-  DenseMap<Block *, DependencyTree> dominatorTrees;
+  // Association between blocks and their corresponding dependency tree.
+  // This analysis hands out references, so trees are held behind a
+  // unique_ptr to ensure reference stability.
+  DenseMap<Block *, std::unique_ptr<DependencyTree>> dominatorTrees;
+
   DependencyTree &getDepTree(Block *b) {
     if (auto it = dominatorTrees.find(b); it != dominatorTrees.end())
-      return it->second;
+      return *it->second;
 
-    return dominatorTrees.try_emplace(b, DependencyTree::getDependencyTree(b))
-        .first->second;
+    auto newTree =
+        std::make_unique<DependencyTree>(DependencyTree::getDependencyTree(b));
+    return *dominatorTrees.try_emplace(b, std::move(newTree)).first->second;
   }
 };
 

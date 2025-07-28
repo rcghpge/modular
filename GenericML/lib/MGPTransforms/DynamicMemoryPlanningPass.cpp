@@ -101,7 +101,7 @@ class DynamicMemoryPlanningPass
       return std::optional<Value>();
     };
 
-    auto analysis = getAnalysis<BufferLifetimeAnalysisPass>();
+    auto &analysis = getAnalysis<BufferLifetimeAnalysisPass>();
 
     BufferBuilderContext builderContext =
         TensorBufferDialectInterface::getAllBufferBuilders(modelOp);

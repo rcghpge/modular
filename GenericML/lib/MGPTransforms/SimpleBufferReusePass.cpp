@@ -108,7 +108,7 @@ public:
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
 
-    auto analysis = getAnalysis<BufferLifetimeAnalysisPass>();
+    auto &analysis = getAnalysis<BufferLifetimeAnalysisPass>();
     int reuseCount = 0;
 
     // Mark the analysis as preserved so subsequent passes can reuse it

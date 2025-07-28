@@ -33,7 +33,7 @@ class ExplicitBufferLifetimesPass
     int numAllocs = 0;
     int numFreesAdded = 0;
 
-    auto analysis = getAnalysis<BufferLifetimeAnalysisPass>();
+    auto &analysis = getAnalysis<BufferLifetimeAnalysisPass>();
     markAnalysesPreserved<BufferLifetimeAnalysisPass>();
 
     modelOp->walk([&](Block *block) {
