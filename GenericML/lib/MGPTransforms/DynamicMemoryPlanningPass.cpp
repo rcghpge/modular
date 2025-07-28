@@ -115,7 +115,7 @@ class DynamicMemoryPlanningPass
     // Get dependency tree for the current block
     auto &tree = analysis.getDepTree(execState.execute);
 
-    DenseMap<DeviceRefAttr, SmallVector<AllocInfo>> deviceToAllocs;
+    llvm::MapVector<DeviceRefAttr, SmallVector<AllocInfo>> deviceToAllocs;
 
     DenseMap<Operation *, bool> trivialVals;
 
