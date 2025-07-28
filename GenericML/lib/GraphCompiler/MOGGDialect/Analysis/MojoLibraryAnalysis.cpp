@@ -144,8 +144,9 @@ MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
   };
 
   KGEN::FuncTypeGeneratorType signature =
-      generator.getFuncTypeGenerator().getSpecializedGenerator(params,
-                                                               emitError);
+      generator.getFuncTypeGenerator().getSpecializedGenerator(
+          params,
+          /*evaluationContext=*/nullptr, emitError);
   if (!signature)
     return Error("unable to specialize signature for " + name);
 
