@@ -118,9 +118,18 @@ def IfOp : GRTOp<"if",
   let regions = (region SizedRegion<1>:$thenRegion,
                         SizedRegion<1>:$elseRegion);
 
+  let builders = [
+    OpBuilder<(ins "Value":$cond, CArg<"ValueRange">:$inputs,
+                    CArg<"function_ref<void(OpBuilder &, Location, ValueRange)>">:$thenBuilder,
+                    CArg<"function_ref<void(OpBuilder &, Location, ValueRange)>">:$elseBuilder)>
+  ];
+
+
   let hasCustomAssemblyFormat = 1;
 
   let extraClassDefinition = [{
+    using BodyBuilder = function_ref<void(OpBuilder &, Location, ValueRange)>;
+
     GRT::ControlFlowFlavor IfOp::getFlavor() { return GRT::kBranchLike; }
     llvm::ArrayRef<mlir::OpOperand> IfOp::getInputOpOperands() {
       return getOperation()->getOpOperands().drop_front();

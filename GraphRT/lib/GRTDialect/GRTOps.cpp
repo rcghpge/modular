@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "GraphRT/MEFDialect/MEFOps.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/MDialect/ParserUtils.h"
@@ -152,6 +153,42 @@ void IfOp::print(OpAsmPrinter &p) {
   printRegion(p, getInputs(), getThenRegion(), /*isIsolatedFromAbove=*/true);
   p << " else ";
   printRegion(p, getInputs(), getElseRegion(), /*isIsolatedFromAbove=*/true);
+}
+
+void IfOp::build(
+    OpBuilder &builder, OperationState &result, Value cond, ValueRange inputs,
+    llvm::function_ref<void(OpBuilder &, Location, ValueRange)> thenBuilder,
+    llvm::function_ref<void(OpBuilder &, Location, ValueRange)> elseBuilder) {
+  result.addOperands(cond);
+  result.addOperands(inputs);
+
+  SmallVector<Location> argLocations(inputs.size(), result.location);
+
+  // Build then region.
+  OpBuilder::InsertionGuard guard(builder);
+
+  Region *thenRegion = result.addRegion();
+  Block *thenBlock = builder.createBlock(thenRegion);
+  thenBlock->addArguments(TypeRange(inputs), argLocations);
+  thenBuilder(builder, result.location, thenBlock->getArguments());
+
+  // Add a terminator if not present
+  if (!thenBlock->mightHaveTerminator())
+    IfOp::ensureTerminator(*thenRegion, builder, result.location);
+
+  // Build else region.
+  Region *elseRegion = result.addRegion();
+  auto elseBlock = builder.createBlock(elseRegion);
+  elseBlock->addArguments(TypeRange(inputs), argLocations);
+  elseBuilder(builder, result.location, elseBlock->getArguments());
+
+  // Add a terminator if not present
+  if (!elseBlock->mightHaveTerminator())
+    IfOp::ensureTerminator(*elseRegion, builder, result.location);
+
+  // Pull the result types off of the terminator.
+  auto thenResults = thenBlock->getTerminator()->getOperandTypes();
+  result.addTypes(thenResults);
 }
 
 //===----------------------------------------------------------------------===//

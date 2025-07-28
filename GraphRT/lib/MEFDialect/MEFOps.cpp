@@ -69,6 +69,14 @@ LogicalResult InvokableOp::verifyRegions() {
 }
 
 //===----------------------------------------------------------------------===//
+// OutputOp
+//===----------------------------------------------------------------------===//
+
+void OutputOp::build(OpBuilder &odsBuilder, OperationState &odsState) {
+  build(odsBuilder, odsState, odsBuilder.getType<MEF::ChainType>(), {});
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 

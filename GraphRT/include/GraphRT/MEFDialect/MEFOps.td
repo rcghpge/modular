@@ -106,6 +106,10 @@ def OutputOp : MEFOp<"output", [Terminator, ReturnLike]> {
     ```
   }];
 
+  let builders = [
+    OpBuilder<(ins)>
+  ];
+
   let arguments = (ins Variadic<AnyType>:$operands);
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }

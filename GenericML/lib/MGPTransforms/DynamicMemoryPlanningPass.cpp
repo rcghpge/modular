@@ -257,69 +257,50 @@ class DynamicMemoryPlanningPass
       // re-cache the memory pool buffer. Otherwise, use the cached buffer.
 
       // Create IfOp
-      auto chainType = MEF::ChainType::get(execBuilder.getContext());
-      SmallVector<Type> returnTypes{chainType, bufferType};
-      auto ifOp = execBuilder.create<GRT::IfOp>(
-          loc, returnTypes,
-          SmallVector<Value>({needToResize, execState.getRootChain(),
-                              execState.getContext(), deviceContext.value(),
-                              bufferPlanOp.getHighWatermark()}));
+      SmallVector<Value> inputs{execState.getRootChain(),
+                                execState.getContext(), deviceContext.value(),
+                                bufferPlanOp.getHighWatermark()};
 
-      auto ifBuilder = execBuilder;
+      auto ifOp = GRT::IfOp::create(
+          execBuilder, loc, needToResize, inputs,
+          // Then branch: reallocate buffer
+          [&](OpBuilder &thenBuilder, Location thenLoc, ValueRange thenArgs) {
+            auto thenChain = cast<TypedValue<MEF::ChainType>>(thenArgs[0]);
+            auto thenContext = cast<TypedValue<ContextType>>(thenArgs[1]);
+            auto thenDeviceContext = thenArgs[2];
+            auto thenPoolSize = thenArgs[3];
 
-      auto &thenBlock = ifOp.getThenRegion().emplaceBlock();
-      auto &elseBlock = ifOp.getElseRegion().emplaceBlock();
+            // If we need to resize, remove the old buffer.
+            auto removeCache = bufferBuilder->removeCached(
+                thenBuilder, thenLoc, thenContext, thenChain, cachedSlot);
 
-      // Create 'then' block arguments
-      auto thenChain = cast<TypedValue<MEF::ChainType>>(
-          thenBlock.addArgument(chainType, ifOp->getLoc()));
-      auto thenContext = cast<TypedValue<ContextType>>(thenBlock.addArgument(
-          execState.getContext().getType(), ifOp->getLoc()));
-      auto thenDeviceContext =
-          thenBlock.addArgument(deviceContext->getType(), ifOp->getLoc());
-      auto thenPoolSize =
-          thenBlock.addArgument(poolSize.getType(), ifOp->getLoc());
+            thenChain = cast<TypedValue<MEF::ChainType>>(removeCache);
 
-      // Create 'else' block arguments
-      auto elseChain = elseBlock.addArgument(chainType, ifOp->getLoc());
-      auto elseContext = elseBlock.addArgument(execState.getContext().getType(),
-                                               ifOp->getLoc());
-      // elseDeviceContext
-      elseBlock.addArgument(deviceContext->getType(), ifOp->getLoc());
-      // elsePoolSize
-      elseBlock.addArgument(poolSize.getType(), ifOp->getLoc());
+            // Allocate a larger buffer.
+            auto thenAlloc = bufferBuilder->bufferAlloc(
+                thenBuilder, thenLoc, thenContext, thenChain, thenPoolSize,
+                thenDeviceContext, totalAlignment);
 
-      // Construct 'then' block body
-      ifBuilder.setInsertionPointToEnd(&thenBlock);
+            // Cache the newly allocated buffer
+            auto recache = thenBuilder.create<BufferCacheOp>(
+                thenLoc, /*inChain=*/thenChain, /*theContext=*/thenContext,
+                /*buffer=*/cast<TypedValue<DeviceBufferType>>(thenAlloc),
+                /*bBufferSlot=*/cachedSlot);
+            thenBuilder.create<MEF::OutputOp>(
+                thenLoc, SmallVector<Value>{recache.getOutChain(), thenAlloc});
+          },
+          // Else branch: reuse cached buffer
+          [&](OpBuilder &elseBuilder, Location elseLoc, ValueRange elseArgs) {
+            auto elseChain = cast<TypedValue<MEF::ChainType>>(elseArgs[0]);
+            auto elseContext = cast<TypedValue<ContextType>>(elseArgs[1]);
 
-      // If we need to resize, remove the old buffer.
-      auto removeCache = bufferBuilder->removeCached(
-          ifBuilder, ifOp->getLoc(), thenContext, thenChain, cachedSlot);
-
-      thenChain = cast<TypedValue<MEF::ChainType>>(removeCache);
-
-      // Allocate a larger buffer.
-      auto thenAlloc = bufferBuilder->bufferAlloc(
-          ifBuilder, loc, thenContext, thenChain, thenPoolSize,
-          thenDeviceContext, totalAlignment);
-
-      // Cache the newly allocated buffer
-      auto recache = ifBuilder.create<BufferCacheOp>(
-          ifOp->getLoc(), /*inChain=*/thenChain, /*theContext=*/thenContext,
-          /*buffer=*/cast<TypedValue<DeviceBufferType>>(thenAlloc),
-          /*bBufferSlot=*/cachedSlot);
-      ifBuilder.create<MEF::OutputOp>(
-          ifOp->getLoc(), SmallVector<Value>{recache.getOutChain(), thenAlloc});
-
-      // Create the 'else' block body
-      ifBuilder.setInsertionPointToEnd(&elseBlock);
-
-      // Reuse the existing cached buffer
-      auto elseGetCached = bufferBuilder->getCached(
-          ifBuilder, ifOp->getLoc(), cast<TypedValue<ContextType>>(elseContext),
-          cast<TypedValue<MEF::ChainType>>(elseChain), cachedSlot, bufferType);
-      ifBuilder.create<MEF::OutputOp>(
-          ifOp->getLoc(), SmallVector<Value>{elseChain, elseGetCached});
+            // Reuse the existing cached buffer
+            auto elseGetCached =
+                bufferBuilder->getCached(elseBuilder, elseLoc, elseContext,
+                                         elseChain, cachedSlot, bufferType);
+            elseBuilder.create<MEF::OutputOp>(
+                elseLoc, SmallVector<Value>{elseChain, elseGetCached});
+          });
 
       // Use the output of the if as the memory pool buffer to slice from
       auto memPoolBuffer = ifOp.getResult(1);
