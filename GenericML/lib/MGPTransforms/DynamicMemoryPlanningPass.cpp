@@ -11,10 +11,8 @@
 #include "GenericML/MGPTransforms/Utils.h"
 #include "KGEN/POPDialect/POPDialect.h"
 #include "Support/AssertStream.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
-#include "mlir/IR/Matchers.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include <numeric>
@@ -95,7 +93,7 @@ class DynamicMemoryPlanningPass
     auto getDeviceContext = [&modelOp](DeviceRefAttr dev,
                                        ArrayRef<BlockArgument> devices) {
       for (auto [deviceRefAttr, deviceContext] :
-           llvm::zip(modelOp.getDevices(), devices))
+           llvm::zip_equal(modelOp.getDevices(), devices))
         if (deviceRefAttr == dev)
           return std::optional<Value>(deviceContext);
       return std::optional<Value>();
@@ -106,10 +104,7 @@ class DynamicMemoryPlanningPass
     BufferBuilderContext builderContext =
         TensorBufferDialectInterface::getAllBufferBuilders(modelOp);
 
-    InitState initState(modelOp);
     ExecuteState execState(modelOp->getContext(), modelOp);
-
-    auto &initBuilder = initState.builder;
     auto &execBuilder = execState.builder;
 
     // Get dependency tree for the current block
@@ -124,7 +119,7 @@ class DynamicMemoryPlanningPass
       if (allocOp.getDevice().getLabel() == kCPULabel)
         continue;
 
-      auto allocUses = getAllocUses(allocOp);
+      ErrorOr<SmallVector<Operation *>> allocUses = getAllocUses(allocOp);
 
       // Skip any allocations that have no uses or have untraceable aliases
       if (allocUses.isError() || allocUses->empty())
@@ -163,6 +158,11 @@ class DynamicMemoryPlanningPass
                         maxPost});
     }
 
+    // Set insertion point before the new chain because it makes the IR easier
+    // to read.
+    execBuilder.setInsertionPointToStart(modelOp.getExecuteBlock());
+
+    SmallVector<BufferAllocOp> allocsToDelete;
     for (auto &[device, allocs] : deviceToAllocs) {
       if (allocs.size() <= 1)
         continue;
@@ -183,9 +183,7 @@ class DynamicMemoryPlanningPass
       // Keep track of the LCM of all alignments so we can use this alignment
       // for the main allocation
       uint64_t totalAlignment = 1;
-      // Sum all of constant-sized allocations, used as a rough lower bound
-      uint64_t minimumConstantSize = 0;
-      for (const auto &a : allocs) {
+      for (const AllocInfo &a : allocs) {
         runtimeSizes.push_back(a.runtimeSize);
         alignments.push_back(a.alignment);
         minPres.push_back(a.minPre);
@@ -193,117 +191,31 @@ class DynamicMemoryPlanningPass
         maxPres.push_back(a.maxPre);
         maxPosts.push_back(a.maxPost);
         totalAlignment = std::lcm(totalAlignment, a.alignment);
-
-        IntegerAttr intAttr;
-        if (mlir::matchPattern(a.runtimeSize, mlir::m_Constant(&intAttr)))
-          minimumConstantSize += intAttr.getInt();
       }
 
-      // Make sure allocation size in init is non-zero
-      minimumConstantSize = std::max(minimumConstantSize, uint64_t{1});
+      auto locations = llvm::map_to_vector(
+          allocs, [](const AllocInfo &alloc) { return alloc.alloc->getLoc(); });
 
-      auto loc = allocs[0].alloc->getLoc();
-      execBuilder.setInsertionPointToStart(modelOp.getExecuteBlock());
-
+      auto loc = execBuilder.getFusedLoc(locations);
       auto bufferBuilder = builderContext.getBufferBuilder(device);
-      auto deviceContext =
+
+      std::optional<Value> deviceContext =
           getDeviceContext(device, modelOp.getExecuteDevices());
-      assert(deviceContext && "Could not find device context for device");
-
-      auto initDeviceContext =
-          getDeviceContext(device, modelOp.getInitDevices());
-      assert(initDeviceContext && "Could not find device context for device");
-      auto initLoc = initState.contextCreateOp->getLoc();
-
-      // Create alloc in init using minimumConstantSize
-      auto initSize = initBuilder.create<mlir::index::ConstantOp>(
-          initLoc, minimumConstantSize);
-
-      auto initAlloc = bufferBuilder->bufferAlloc(
-          initBuilder, initLoc, initState.getContext(),
-          initState.getFinalChain(), initSize, initDeviceContext.value(),
-          totalAlignment);
-
-      auto bufferType = initAlloc.getType();
-
-      // Cache alloc in init
-      auto [cached, cachedSlot] = bufferBuilder->cache(
-          initBuilder, initState.contextCreateOp->getLoc(),
-          initState.getContext(), initState.getFinalChain(),
-          initState.contextCreateOp, initAlloc);
-
-      // Final init chain should wait for buffer to be cached
-      initState.updateFinalChain(cached);
+      ASSERT_STREAM(deviceContext, "Could not find device context for device");
 
       // Create BufferPlanOp in execute block
-      auto bufferPlanOp = execBuilder.create<BufferPlanOp>(
-          loc, runtimeSizes, alignments, minPres, minPosts, maxPres, maxPosts);
+      auto bufferPlanOp =
+          BufferPlanOp::create(execBuilder, loc, runtimeSizes, alignments,
+                               minPres, minPosts, maxPres, maxPosts);
 
-      // Get the cached memory pool buffer
-      auto cachedMemoryPool = bufferBuilder->getCached(
+      auto poolSize = bufferPlanOp.getHighWatermark();
+
+      // Allocate a larger buffer.
+      Value alloc = bufferBuilder->bufferAlloc(
           execBuilder, loc, execState.getContext(), execState.getRootChain(),
-          cachedSlot, bufferType);
+          poolSize, deviceContext.value(), totalAlignment);
 
-      // Get the size of the cached memory pool buffer.
-      auto poolSize = bufferBuilder->bufferGetSize(
-          execBuilder, loc, execState.getRootChain(), cachedMemoryPool);
-
-      // Compare high watermark size returned by plan to size of buffer
-      auto needToResize = execBuilder.create<index::CmpOp>(
-          loc, index::IndexCmpPredicate::UGT, bufferPlanOp.getHighWatermark(),
-          poolSize);
-
-      // If high watermark is larger than existing buffer, reallocate and
-      // re-cache the memory pool buffer. Otherwise, use the cached buffer.
-
-      // Create IfOp
-      SmallVector<Value> inputs{execState.getRootChain(),
-                                execState.getContext(), deviceContext.value(),
-                                bufferPlanOp.getHighWatermark()};
-
-      auto ifOp = GRT::IfOp::create(
-          execBuilder, loc, needToResize, inputs,
-          // Then branch: reallocate buffer
-          [&](OpBuilder &thenBuilder, Location thenLoc, ValueRange thenArgs) {
-            auto thenChain = cast<TypedValue<MEF::ChainType>>(thenArgs[0]);
-            auto thenContext = cast<TypedValue<ContextType>>(thenArgs[1]);
-            auto thenDeviceContext = thenArgs[2];
-            auto thenPoolSize = thenArgs[3];
-
-            // If we need to resize, remove the old buffer.
-            auto removeCache = bufferBuilder->removeCached(
-                thenBuilder, thenLoc, thenContext, thenChain, cachedSlot);
-
-            thenChain = cast<TypedValue<MEF::ChainType>>(removeCache);
-
-            // Allocate a larger buffer.
-            auto thenAlloc = bufferBuilder->bufferAlloc(
-                thenBuilder, thenLoc, thenContext, thenChain, thenPoolSize,
-                thenDeviceContext, totalAlignment);
-
-            // Cache the newly allocated buffer
-            auto recache = thenBuilder.create<BufferCacheOp>(
-                thenLoc, /*inChain=*/thenChain, /*theContext=*/thenContext,
-                /*buffer=*/cast<TypedValue<DeviceBufferType>>(thenAlloc),
-                /*bBufferSlot=*/cachedSlot);
-            thenBuilder.create<MEF::OutputOp>(
-                thenLoc, SmallVector<Value>{recache.getOutChain(), thenAlloc});
-          },
-          // Else branch: reuse cached buffer
-          [&](OpBuilder &elseBuilder, Location elseLoc, ValueRange elseArgs) {
-            auto elseChain = cast<TypedValue<MEF::ChainType>>(elseArgs[0]);
-            auto elseContext = cast<TypedValue<ContextType>>(elseArgs[1]);
-
-            // Reuse the existing cached buffer
-            auto elseGetCached =
-                bufferBuilder->getCached(elseBuilder, elseLoc, elseContext,
-                                         elseChain, cachedSlot, bufferType);
-            elseBuilder.create<MEF::OutputOp>(
-                elseLoc, SmallVector<Value>{elseChain, elseGetCached});
-          });
-
-      // Use the output of the if as the memory pool buffer to slice from
-      auto memPoolBuffer = ifOp.getResult(1);
+      auto memPoolBuffer = cast<TypedValue<DeviceBufferType>>(alloc);
 
       // Replace all allocations with slices into the memPoolBuffer.
       // Since all planned runtimeSizes are not data-dependent, this
@@ -313,12 +225,14 @@ class DynamicMemoryPlanningPass
             loc, memPoolBuffer, bufferPlanOp.getOffsets()[i],
             allocs[i].runtimeSize);
 
-        allocs[i].alloc.getOutBuffer().replaceAllUsesWith(slice);
+        allocs[i].alloc->replaceAllUsesWith(ValueRange{slice});
+        allocsToDelete.push_back(allocs[i].alloc);
       }
-
-      for (size_t i = 0; i < allocs.size(); ++i)
-        allocs[i].alloc.erase();
     }
+
+    // Finally delete all the old allocations.
+    for (BufferAllocOp alloc : allocsToDelete)
+      alloc.erase();
   }
 };
 } // namespace M::MGP

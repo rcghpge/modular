@@ -342,9 +342,8 @@ LogicalResult BufferPlanOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   ValueRange operands = adaptor.getOperands();
   // All outputs are index
-  inferredReturnTypes.reserve(operands.size() + 1);
-  for (size_t i = 0; i < operands.size() + 1; ++i)
-    inferredReturnTypes.emplace_back(mlir::IndexType::get(context));
+  inferredReturnTypes.clear();
+  inferredReturnTypes.resize(operands.size() + 1, IndexType::get(context));
 
   return success();
 }
