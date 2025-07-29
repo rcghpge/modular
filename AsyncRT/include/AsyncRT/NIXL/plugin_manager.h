@@ -54,15 +54,6 @@ public:
   nixl_mem_list_t getBackendMems() const;
 };
 
-// Creator Function for static plugins
-typedef nixlBackendPlugin *(*nixlStaticPluginCreatorFunc)();
-
-// Structure to hold static plugin info
-struct nixlStaticPluginInfo {
-  const char *name;
-  nixlStaticPluginCreatorFunc createFunc;
-};
-
 class nixlPluginManager {
 private:
   // Constants for the expected plugin filename structure.
@@ -71,13 +62,7 @@ private:
 
   std::map<nixl_backend_t, std::shared_ptr<const nixlPluginHandle>>
       loaded_plugins_;
-  std::vector<std::string> plugin_dirs_;
-  std::vector<nixlStaticPluginInfo> static_plugins_;
   std::mutex lock;
-
-  void registerBuiltinPlugins();
-  void registerStaticPlugin(const char *name,
-                            nixlStaticPluginCreatorFunc creator);
 
   // Private constructor for singleton pattern
   nixlPluginManager();
@@ -95,14 +80,9 @@ public:
   std::shared_ptr<const nixlPluginHandle>
   loadPluginFromPath(const std::string &plugin_path);
 
-  void loadPluginsFromList(const std::string &filename);
-
   // Load a specific plugin
   std::shared_ptr<const nixlPluginHandle>
   loadPlugin(const nixl_backend_t &plugin_name);
-
-  // Search a directory for plugins
-  void discoverPluginsFromDir(const std::filesystem::path &dirpath);
 
   // Unload a plugin
   void unloadPlugin(const nixl_backend_t &plugin_name);
@@ -116,12 +96,6 @@ public:
 
   // Get backend options
   nixl_b_params_t getBackendOptions(const nixl_backend_t &type);
-
-  // Add a plugin directory
-  void addPluginDirectory(const std::filesystem::path &directory);
-
-  // Static Plugin Helpers
-  const std::vector<nixlStaticPluginInfo> &getStaticPlugins();
 };
 
 } // namespace M::AsyncRT::NIXL

@@ -73,44 +73,6 @@ const char *nixlPluginHandle::getVersion() const {
   return "unknown";
 }
 
-std::map<nixl_backend_t, std::string>
-loadPluginList(const std::string &filename) {
-  std::map<nixl_backend_t, std::string> plugins;
-  std::ifstream file(filename);
-
-  if (!file.is_open()) {
-    NIXL_ERROR << "Failed to open plugin list file: " << filename;
-    return plugins;
-  }
-
-  std::string line;
-  while (std::getline(file, line)) {
-    // Skip empty lines and comments
-    if (line.empty() || line[0] == '#') {
-      continue;
-    }
-
-    // Find the equals sign
-    size_t pos = line.find('=');
-    if (pos != std::string::npos) {
-      std::string name = line.substr(0, pos);
-      std::string path = line.substr(pos + 1);
-
-      auto trim = [](std::string &s) {
-        s.erase(0, s.find_first_not_of(" \t"));
-        s.erase(s.find_last_not_of(" \t") + 1);
-      };
-      trim(name);
-      trim(path);
-
-      // Add to map
-      plugins[name] = path;
-    }
-  }
-
-  return plugins;
-}
-
 std::shared_ptr<const nixlPluginHandle>
 nixlPluginManager::loadPluginFromPath(const std::string &plugin_path) {
   // Open the plugin file
@@ -149,38 +111,15 @@ nixlPluginManager::loadPluginFromPath(const std::string &plugin_path) {
   }
 
   // Create and store the plugin handle
-  auto plugin_handle = std::make_shared<const nixlPluginHandle>(handle, plugin);
+  auto pluginHandle = std::make_shared<const nixlPluginHandle>(handle, plugin);
 
-  return plugin_handle;
-}
-
-void nixlPluginManager::loadPluginsFromList(const std::string &filename) {
-  auto plugins = loadPluginList(filename);
-
-  lock_guard lg(lock);
-
-  for (const auto &[name, path] : plugins) {
-    auto plugin_handle = loadPluginFromPath(path);
-    if (plugin_handle)
-      loaded_plugins_[name] = plugin_handle;
-  }
+  return pluginHandle;
 }
 
 // PluginManager implementation
 nixlPluginManager::nixlPluginManager() {
-  // Check for MODULAR_NIXL_PLUGIN_DIR environment variable
-  const char *pluginDir = getenv("MODULAR_NIXL_PLUGIN_DIR");
-  if (pluginDir) {
-    NIXL_DEBUG << "Loading plugins from directory: " << pluginDir << "\n";
-    // Clean up `.`s and `..`s
-    const auto normalizedPluginDir =
-        std::filesystem::path(pluginDir).lexically_normal();
-    // Insert at the beginning for priority.
-    plugin_dirs_.insert(plugin_dirs_.begin(), normalizedPluginDir.string());
-    discoverPluginsFromDir(normalizedPluginDir);
-  }
-
-  registerBuiltinPlugins();
+  // The only NIXL plugin we support is UCX
+  loadPlugin("ucx");
 }
 
 nixlPluginManager &nixlPluginManager::getInstance() {
@@ -191,45 +130,12 @@ nixlPluginManager &nixlPluginManager::getInstance() {
   return instance;
 }
 
-void nixlPluginManager::addPluginDirectory(
-    const std::filesystem::path &directory) {
-  if (directory.empty()) {
-    NIXL_ERROR << "Cannot add empty plugin directory";
-    return;
-  }
-
-  // Check if directory exists
-  if (!std::filesystem::exists(directory) ||
-      !std::filesystem::is_directory(directory)) {
-    NIXL_ERROR << "Plugin directory does not exist or is not readable: "
-               << directory;
-    return;
-  }
-
-  {
-    lock_guard lg(lock);
-
-    // Check if directory is already in the list
-    for (const auto &dir : plugin_dirs_) {
-      if (dir == directory) {
-        NIXL_WARN << "Plugin directory already registered: " << directory;
-        return;
-      }
-    }
-
-    // Prioritize the new directory by inserting it at the beginning
-    plugin_dirs_.insert(plugin_dirs_.begin(), directory);
-  }
-
-  discoverPluginsFromDir(directory);
-}
-
 std::shared_ptr<const nixlPluginHandle>
-nixlPluginManager::loadPlugin(const std::string &plugin_name) {
+nixlPluginManager::loadPlugin(const std::string &pluginName) {
   lock_guard lg(lock);
 
   // Look up a canonical plugin name.
-  std::string canonPlugName = StringRef(plugin_name).trim().lower();
+  std::string canonPlugName = StringRef(pluginName).trim().lower();
 
   // Check if the plugin is already loaded
   // Static Plugins are preloaded so return handle
@@ -238,33 +144,41 @@ nixlPluginManager::loadPlugin(const std::string &plugin_name) {
     return it->second;
   }
 
-  // Try to load the plugin from all registered directories
-  for (const auto &dir : plugin_dirs_) {
-    // Handle path joining correctly with or without trailing slash
-    std::string plugin_path;
-    if (dir.empty()) {
-      continue;
-    } else if (dir.back() == '/') {
-      plugin_path =
-          (Twine(dir) + kPluginPrefix + canonPlugName + kPluginSuffix).str();
-    } else {
-      plugin_path =
-          (Twine(dir) + "/" + kPluginPrefix + canonPlugName + kPluginSuffix)
-              .str();
-    }
+  auto pluginDirEnv = getenv("MODULAR_NIXL_PLUGIN_DIR");
+  if (!pluginDirEnv) {
+    NIXL_ERROR << "MODULAR_NIXL_PLUGIN_DIR is not set";
+    return nullptr;
+  }
+  std::string pluginDir = std::string(pluginDirEnv);
+  NIXL_DEBUG << "MODULAR_NIXL_PLUGIN_DIR=\"" << pluginDir << "\"\n";
+  // Clean up `.`s and `..`s
+  const auto dirPath = std::filesystem::path(pluginDir).lexically_normal();
+  std::string dir = dirPath.string();
 
-    // Check if the plugin file exists before attempting to load i
-    if (!std::filesystem::exists(plugin_path)) {
-      NIXL_WARN << "Plugin file does not exist: " << plugin_path;
-      continue;
-    }
+  // Handle path joining correctly with or without trailing slash
+  std::string pluginPath;
+  if (dir.back() == '/') {
+    pluginPath =
+        (Twine(dir) + kPluginPrefix + canonPlugName + kPluginSuffix).str();
+  } else {
+    pluginPath =
+        (Twine(dir) + "/" + kPluginPrefix + canonPlugName + kPluginSuffix)
+            .str();
+  }
 
-    std::shared_ptr<const nixlPluginHandle> plugin_handle =
-        loadPluginFromPath(plugin_path);
-    if (plugin_handle) {
-      loaded_plugins_[canonPlugName] = plugin_handle;
-      return plugin_handle;
-    }
+  NIXL_DEBUG << "Loading plugin from path: " << pluginPath << "\n";
+
+  // Check if the plugin file exists before attempting to load it
+  if (!std::filesystem::exists(pluginPath)) {
+    NIXL_WARN << "Plugin file does not exist: " << pluginPath;
+    return nullptr;
+  }
+
+  std::shared_ptr<const nixlPluginHandle> pluginHandle =
+      loadPluginFromPath(pluginPath);
+  if (pluginHandle) {
+    loaded_plugins_[canonPlugName] = pluginHandle;
+    return pluginHandle;
   }
 
   // Failed to load the plugin
@@ -273,84 +187,7 @@ nixlPluginManager::loadPlugin(const std::string &plugin_name) {
   return nullptr;
 }
 
-void nixlPluginManager::discoverPluginsFromDir(
-    const std::filesystem::path &dirPath) {
-  // Calculate the minimum length a filename must have to potentially match the
-  // pattern (length of prefix + length of suffix). A filename shorter than this
-  // cannot contain both the required prefix and suffix.
-  constexpr size_t kMinPluginFilenameLength =
-      kPluginPrefix.length() + kPluginSuffix.length();
-
-  std::error_code ec;
-  std::filesystem::directory_iterator directoryIter(dirPath, ec);
-  if (ec) {
-    NIXL_ERROR << "Error accessing directory(" << dirPath
-               << "):" << ec.message() << "\n";
-    return;
-  }
-
-  for (const auto &entry : directoryIter) {
-    // Check if the entry is a regular file before proceeding.
-    // We only care about files, not subdirectories or other types.
-    if (!entry.is_regular_file())
-      continue;
-
-    std::string filename = entry.path().filename().string();
-
-    // Perform checks based on the expected plugin filename pattern.
-
-    // 1. Check if the filename is long enough to contain the prefix and suffix.
-    if (filename.length() < kMinPluginFilenameLength)
-      continue;
-
-    // 2. Check if the filename starts with the required prefix.
-    if (!StringRef(filename).starts_with(kPluginPrefix))
-      continue;
-
-    // 3. Check if the filename ends with the required suffix.
-    if (!StringRef(filename).ends_with(kPluginSuffix))
-      continue;
-
-    // Extract the plugin name.
-
-    // If all checks passed, the filename matches the pattern
-    // "libplugin_<plugin_name>.so".
-    // The plugin name is the substring between the prefix and the suffix.
-    size_t nameStartPos = kPluginPrefix.length();
-    size_t nameLength = filename.length() - kMinPluginFilenameLength;
-
-    // Ensure the extracted name is not empty (e.g., avoids processing
-    // "libplugin_.so")
-    if (nameLength == 0) {
-      NIXL_WARN << "Skipping potential plugin file with empty name: "
-                << filename;
-      continue;
-    }
-
-    std::string pluginName = filename.substr(nameStartPos, nameLength);
-
-    // Load the discovered plugin.
-
-    // Attempt to load the plugin using its extracted name.
-    // loadPlugin handles checking if it's already loaded.
-    auto plugin = loadPlugin(pluginName);
-    if (plugin) {
-      // Use NIXL logging for consistency
-      NIXL_INFO << "Discovered and loaded plugin '" << pluginName << "' from "
-                << entry.path().string();
-    } else {
-      NIXL_ERROR << "Failed to load discovered plugin: " << pluginName;
-    }
-  }
-}
-
 void nixlPluginManager::unloadPlugin(const nixl_backend_t &plugin_name) {
-  // Skip unloading static plugins.
-  for (const auto &splugin : getStaticPlugins()) {
-    if (splugin.name == plugin_name)
-      return;
-  }
-
   lock_guard lg(lock);
 
   loaded_plugins_.erase(plugin_name);
@@ -392,28 +229,3 @@ std::vector<nixl_backend_t> nixlPluginManager::getLoadedPluginNames() {
   }
   return names;
 }
-
-void nixlPluginManager::registerStaticPlugin(
-    const char *name, nixlStaticPluginCreatorFunc creator) {
-  lock_guard lg(lock);
-
-  nixlStaticPluginInfo info;
-  info.name = name;
-  info.createFunc = creator;
-  static_plugins_.push_back(info);
-
-  // Static Plugins are considered pre-loaded
-  nixlBackendPlugin *plugin = info.createFunc();
-  if (plugin) {
-    // Register the loaded plugin
-    auto plugin_handle =
-        std::make_shared<const nixlPluginHandle>(nullptr, plugin);
-    loaded_plugins_[name] = plugin_handle;
-  }
-}
-
-const std::vector<nixlStaticPluginInfo> &nixlPluginManager::getStaticPlugins() {
-  return static_plugins_;
-}
-
-void nixlPluginManager::registerBuiltinPlugins() {}
