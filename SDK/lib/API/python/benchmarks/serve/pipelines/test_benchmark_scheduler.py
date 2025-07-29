@@ -9,10 +9,7 @@ import multiprocessing
 
 import pytest
 import zmq
-from max.interfaces import (
-    GenerationStatus,
-    TextGenerationOutput,
-)
+from max.interfaces import GenerationStatus, TextGenerationOutput
 from max.serve.process_control import ProcessControl
 from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
