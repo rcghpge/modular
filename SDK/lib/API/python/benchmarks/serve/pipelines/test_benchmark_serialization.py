@@ -8,11 +8,8 @@
 import pickle
 
 import numpy as np
-from max.pipelines.core import (
-    TextContext,
-    msgpack_numpy_decoder,
-    msgpack_numpy_encoder,
-)
+from max.interfaces import msgpack_numpy_decoder, msgpack_numpy_encoder
+from max.pipelines.core import TextContext
 
 msgpack_encoder = msgpack_numpy_encoder()
 msgpack_decoder = msgpack_numpy_decoder(TextContext)
