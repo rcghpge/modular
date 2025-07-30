@@ -10,9 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo %s
 
-from collections import Set
 from sys import sizeof
 
 from testing import assert_equal, assert_false, assert_true
@@ -47,7 +45,6 @@ alias float_dtypes = [
     DType.bfloat16,
     DType.float16,
     DType.float32,
-    DType.tensor_float32,
     DType.float64,
 ]
 

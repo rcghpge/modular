@@ -19,11 +19,7 @@ from dataclasses import dataclass
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.nn.kv_cache import KVCacheParams, KVCacheStrategy
-from max.pipelines.lib import (
-    KVCacheConfig,
-    MAXModelConfig,
-    MAXModelConfigBase,
-)
+from max.pipelines.lib import KVCacheConfig, MAXModelConfig, MAXModelConfigBase
 from transformers import AutoConfig
 
 
@@ -79,11 +75,6 @@ class DeepseekV2ConfigBase(MAXModelConfigBase):
     attention_dropout: float = 0.0
 
     def __post_init__(self):
-        if self.topk_method != "greedy":
-            raise ValueError(
-                "'greedy' is the only topk_method currently supported"
-            )
-
         if self.hidden_act != "silu":
             raise ValueError(
                 "'silu' is the only hidden_act currently supported"
@@ -103,7 +94,7 @@ class DeepseekV2ConfigBase(MAXModelConfigBase):
         if self.tie_word_embeddings:
             raise ValueError("tie_word_embeddings is not supported yet")
 
-        if self.pad_token_id != None:
+        if self.pad_token_id is not None:
             raise ValueError("Padding token is not supported yet")
 
     @staticmethod

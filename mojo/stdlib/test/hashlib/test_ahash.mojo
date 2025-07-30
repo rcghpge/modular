@@ -10,12 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo %s
 
 from hashlib._ahash import AHasher
-from hashlib.hash import hash as old_hash
 
-from builtin._location import __call_location
 from memory import memset_zero
 from testing import assert_equal, assert_not_equal, assert_true
 

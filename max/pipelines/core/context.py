@@ -18,248 +18,14 @@ from __future__ import annotations
 import math
 import time
 import uuid
-from collections.abc import Sequence
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Optional
 
 import msgspec
 import numpy as np
 import numpy.typing as npt
-from max.interfaces import LogProbabilities
-
-from .interfaces import SamplingParams, TextGenerationStatus
+from max.interfaces import GenerationStatus, LogProbabilities, SamplingParams
 
 CHUNK_SIZE = 128
-
-
-@runtime_checkable
-class InputContext(Protocol):
-    """A base class for model contexts, represent model inputs for TokenGenerators.
-
-    Token array layout::
-
-        .                      +---------- full prompt ----------+   CHUNK_SIZE*N v
-        . +--------------------+---------------+-----------------+----------------+
-        . |     completed      |  next_tokens  |                 |  preallocated  |
-        . +--------------------+---------------+-----------------+----------------+
-        .            start_idx ^    active_idx ^         end_idx ^
-
-    -    completed: The tokens that have already been processed and encoded.
-    -  next_tokens: The tokens that will be processed in the next iteration.
-                    This may be a subset of the full prompt due to chunked prefill.
-    - preallocated: The token slots that have been preallocated. The token array
-                    resizes to multiples of CHUNK_SIZE to accommodate the new tokens.
-    """
-
-    @property
-    def id(self) -> str: ...
-
-    def set_draft_offset(self, idx: int) -> None: ...
-
-    def update_status(self, status: TextGenerationStatus) -> None: ...
-
-    @property
-    def status(self) -> TextGenerationStatus: ...
-
-    @property
-    def is_done(self) -> bool: ...
-
-    @property
-    def eos_token_ids(self) -> set[int]: ...
-
-    @property
-    def active_idx(self) -> int: ...
-
-    @property
-    def start_idx(self) -> int: ...
-
-    @property
-    def end_idx(self) -> int: ...
-
-    @property
-    def committed_idx(self) -> int: ...
-
-    @property
-    def current_length(self) -> int:
-        """The current length of the sequence, including completed and active tokens."""
-        ...
-
-    @property
-    def max_length(self) -> int | None:
-        """The maximum length of this sequence."""
-        ...
-
-    @property
-    def min_tokens(self) -> int:
-        """The minimum number of new tokens to generate."""
-        ...
-
-    @property
-    def log_probabilities(self) -> int:
-        """When > 0, returns the log probabilities for the top N tokens for each
-        element token in the sequence."""
-        ...
-
-    @property
-    def log_probabilities_echo(self) -> bool:
-        """When True, the input tokens are added to the returned logprobs."""
-        ...
-
-    @property
-    def active_length(self) -> int:
-        """Current sequence length: num tokens input this iteration.
-
-        This will be the prompt size for context encoding, and simply 1 for
-        token generation.
-        """
-        ...
-
-    @property
-    def next_tokens(self) -> np.ndarray:
-        """The next prompt tokens to be input during this iteration.
-
-        This should be a 1D array of tokens of length active_length.
-        """
-        ...
-
-    @property
-    def tokens(self) -> np.ndarray:
-        """All tokens (including padded tokens) in the context. In most scenarios, use `all_tokens` to get the active full token array."""
-        ...
-
-    @property
-    def all_tokens(self) -> np.ndarray:
-        """All prompt and generated tokens in the context."""
-        return self.tokens[: self.end_idx]
-
-    @property
-    def prompt_tokens(self) -> np.ndarray:
-        """Prompt tokens in the context."""
-        ...
-
-    @property
-    def generated_tokens(self) -> np.ndarray:
-        """All generated tokens in the context."""
-        ...
-
-    def get_min_token_logit_mask(
-        self, num_steps: int
-    ) -> list[npt.NDArray[np.int32]]:
-        """Returns a set of indices for the tokens in the output that should be masked.
-
-        This is primarily used for the min_tokens setting, where we mask
-        `eos` tokens in the logits to avoid generating them before we reach
-        min_tokens.
-        """
-        ...
-
-    def update(
-        self,
-        new_token: int,
-        log_probabilities: Optional[LogProbabilities] = None,
-    ) -> None:
-        """Updates the next_tokens and extends existing tokens to include all generated tokens."""
-        ...
-
-    def jump_ahead(self, new_token: int) -> None:
-        """Updates the token array, while ensuring the new token is returned to the user."""
-        ...
-
-    def bump_token_indices(
-        self,
-        start_idx: int = 0,
-        active_idx: int = 0,
-        end_idx: int = 0,
-        committed_idx: int = 0,
-    ) -> None:
-        """Update the start_idx, active_idx and end_idx without manipulating the token array."""
-        ...
-
-    def set_token_indices(
-        self,
-        start_idx: Optional[int] = None,
-        active_idx: Optional[int] = None,
-        end_idx: Optional[int] = None,
-        committed_idx: Optional[int] = None,
-    ) -> None:
-        """Set the token indices without manipulating the token array."""
-        ...
-
-    def rollback(self, idx: int) -> None:
-        """Rollback and remove the last idx tokens."""
-        ...
-
-    @property
-    def matcher(self) -> Optional[xgr.GrammarMatcher]:  # type: ignore
-        """An optional xgr Grammar Matcher provided when using structured output."""
-        ...
-
-    @property
-    def json_schema(self) -> str | None:
-        """A json schema to use during constrained decoding."""
-        ...
-
-    def set_matcher(self, matcher: xgr.GrammarMatcher) -> None:  # type: ignore
-        """Set a grammar matcher for use during constrained decoding."""
-        ...
-
-    def reset(self) -> None:
-        """Resets the context's state by combining all tokens into a new prompt.
-        This method is used when a request is evicted, meaning that the context
-        needed to be re-encoded in the following CE iteration."""
-        ...
-
-    def outstanding_completion_tokens(
-        self,
-    ) -> list[tuple[int, Optional[LogProbabilities]]]:
-        """Return the list of outstanding completion tokens and log probabilities
-        that must be returned to the user."""
-        ...
-
-    def compute_num_available_steps(
-        self,
-        max_seq_len: int,
-    ) -> int:
-        """Compute the max number of steps we can execute for a given context
-        without exceeding the max_seq_len."""
-        ...
-
-    @property
-    def cache_seq_id(self) -> int:
-        """Returns the cache slot assigned to the context, raising an error if not assigned."""
-        ...
-
-    def assign_to_cache(self, cache_seq_id: int) -> None:
-        """Assigns the context to a cache slot."""
-        ...
-
-    def unassign_from_cache(self) -> None:
-        """Unassigns the context from a cache slot."""
-        ...
-
-    @property
-    def is_assigned_to_cache(self) -> bool:
-        """Returns True if input is assigned to a cache slot, False otherwise."""
-        ...
-
-    @property
-    def is_streaming(self) -> bool:
-        """Returns True if the context is a streaming context, False otherwise."""
-        ...
-
-    @property
-    def is_ce(self) -> bool:
-        """Returns True if the context is a context encoding context, False otherwise."""
-        ...
-
-    @property
-    def is_initial_prompt(self) -> bool:
-        """Returns true if the context has not been updated with tokens."""
-        ...
-
-    @property
-    def sampling_params(self) -> SamplingParams:
-        """Returns the per-request sampling configuration"""
-        ...
 
 
 class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
@@ -270,7 +36,6 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
 
     Configuration:
         request_id: A unique identifier for this sequence.
-        prompt: The input prompt as either a string or sequence of token IDs
         max_length: Maximum allowed length of the generated sequence
         tokens: NumPy array containing the token IDs
         eos_token_ids: Set of token IDs that indicate end of sequence
@@ -297,7 +62,6 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
     """
 
     request_id: str = msgspec.field(default_factory=lambda: str(uuid.uuid4()))
-    prompt: str | Sequence[int]
     max_length: int
     tokens: np.ndarray
     eos_token_ids: set[int] = msgspec.field(default_factory=set)
@@ -309,11 +73,10 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
     sampling_params: SamplingParams = msgspec.field(
         default_factory=SamplingParams
     )
-    streaming: bool = msgspec.field(default=False)
+    model_name: str = msgspec.field(default="")
+    lora_name: str | None = msgspec.field(default=None)
     _matcher: Any | None = msgspec.field(default=None)
-    _status: TextGenerationStatus = msgspec.field(
-        default=TextGenerationStatus.ACTIVE
-    )
+    _status: GenerationStatus = msgspec.field(default=GenerationStatus.ACTIVE)
     _cache_seq_id: int | None = msgspec.field(default=None)
     _size: int = msgspec.field(default=-1)
     _start_idx: int = msgspec.field(default=0)
@@ -433,7 +196,7 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         return self.tokens[: self.end_idx]
 
     @property
-    def status(self) -> TextGenerationStatus:
+    def status(self) -> GenerationStatus:
         return self._status
 
     @property
@@ -491,11 +254,11 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
 
         return ret_list
 
-    def set_matcher(self, matcher: xgr.GrammarMatcher) -> None:  # type: ignore
+    def set_matcher(self, matcher: llguidance.LLMatcher) -> None:  # type: ignore
         self._matcher = matcher
 
     @property
-    def matcher(self) -> Optional[xgr.GrammarMatcher]:  # type: ignore
+    def matcher(self) -> Optional[llguidance.LLMatcher]:  # type: ignore
         return self._matcher
 
     def rollback(self, idx: int) -> None:
@@ -518,8 +281,8 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         if self._active_idx < self._completion_end_idx:
             self._completion_end_idx = new_active_idx
 
-            if self._status == TextGenerationStatus.END_OF_SEQUENCE:
-                self._status = TextGenerationStatus.ACTIVE
+            if self._status == GenerationStatus.END_OF_SEQUENCE:
+                self._status = GenerationStatus.ACTIVE
 
     @property
     def current_length(self) -> int:
@@ -661,7 +424,7 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
 
         return False
 
-    def update_status(self, status: TextGenerationStatus) -> None:
+    def update_status(self, status: GenerationStatus) -> None:
         self._status = status
 
     def update(
@@ -691,18 +454,18 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         self._end_idx += 1
 
         if self._is_eos(new_token):
-            self._status = TextGenerationStatus.END_OF_SEQUENCE
+            self._status = GenerationStatus.END_OF_SEQUENCE
         elif self.active_idx >= self.max_length:
-            self._status = TextGenerationStatus.MAXIMUM_LENGTH
+            self._status = GenerationStatus.MAXIMUM_LENGTH
             # We must return the last token that fits in max length.
             self._completion_end_idx += 1
 
-        if self._status == TextGenerationStatus.ACTIVE:
+        if self._status == GenerationStatus.ACTIVE:
             self._completion_end_idx += 1
 
         # Accept the token, and move the FSM for constrained decoding forward.
         if self.matcher:
-            assert self.matcher.accept_token(new_token)
+            assert self.matcher.consume_token(new_token)
 
         self._is_initial_prompt = False
 
@@ -719,14 +482,14 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         self._end_idx += 1
 
         if is_eos:
-            self._status = TextGenerationStatus.END_OF_SEQUENCE
+            self._status = GenerationStatus.END_OF_SEQUENCE
 
-        if self._status == TextGenerationStatus.ACTIVE:
+        if self._status == GenerationStatus.ACTIVE:
             self._completion_end_idx += 1
 
         # Accept the token, and move the FSM for constrained decoding forward.
         if self.matcher:
-            assert self.matcher.accept_token(new_token)
+            assert self.matcher.consume_token(new_token)
 
         self._is_initial_prompt = False
 
@@ -752,13 +515,13 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
             # this method never returns the same tokens more than once.
             res.append(
                 (
-                    self.tokens[token_idx],
+                    int(self.tokens[token_idx]),
                     self._log_probabilities_data.pop(token_idx, None),
                 )
             )
 
         self._completion_start_idx = self._completion_end_idx
-        self._status = TextGenerationStatus.ACTIVE
+        self._status = GenerationStatus.ACTIVE
 
         return res
 
@@ -839,11 +602,6 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         return self.active_length > 1
 
     @property
-    def is_streaming(self) -> bool:
-        """Returns True if the context is a streaming context, False otherwise."""
-        return self.streaming
-
-    @property
     def is_initial_prompt(self) -> bool:
         """Returns true if the context has not been updated with tokens."""
         return self._is_initial_prompt
@@ -859,17 +617,28 @@ class TextAndVisionContext(
         default_factory=dict
     )
 
-    # HACK: We store a copy of the pixel value in case we need to reset the context
-    # in the event of a request preemption.
-    _saved_pixel_values: tuple[np.ndarray, ...] = msgspec.field(
-        default_factory=tuple
-    )
+    # Flag to track whether vision encoding is still needed.
+    _needs_vision_encoding: bool = msgspec.field(default=True)
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if len(self.pixel_values) > 1:
-            raise ValueError("only one image supported in Llama Vision")
-        self._saved_pixel_values = self.pixel_values
+            raise ValueError("only one image supported in TextAndVisionContext")
+        self._needs_vision_encoding = bool(self.pixel_values)
+
+    @property
+    def needs_vision_encoding(self) -> bool:
+        """Gets whether vision encoding is needed for this context."""
+        return self._needs_vision_encoding and bool(self.pixel_values)
+
+    @needs_vision_encoding.setter
+    def needs_vision_encoding(self, value: bool) -> None:
+        """Sets whether vision encoding is needed.
+
+        Args:
+            value: True if vision encoding is needed, False if already complete.
+        """
+        self._needs_vision_encoding = value
 
     def update(
         self,
@@ -879,14 +648,14 @@ class TextAndVisionContext(
         """Updates the next_tokens and extends existing tokens to include all generated tokens."""
         super().update(new_token=new_token, log_probabilities=log_probabilities)
 
-        # Update context not to re-encode the same image in next steps. There are no image tokens
-        # expected after context encoding.
-        self.pixel_values = tuple()
+        # Vision encoding is no longer needed after token generation starts.
+        self.needs_vision_encoding = False
 
     def reset(self) -> None:
         """Resets the context's state by combining all tokens into a new prompt."""
         super().reset()
-        self.pixel_values = self._saved_pixel_values
+        # Re-enable vision encoding on reset (e.g., after preemption).
+        self.needs_vision_encoding = bool(self.pixel_values)
 
 
 SPEECH_TOKEN_audio_chunk_size = 128
@@ -901,6 +670,7 @@ class TTSContext(TextContext):
 
     Configuration:
         audio_prompt_tokens: Array of input audio prompt tokens used for voice cloning
+        streaming: Whether the request is streaming the audio to client
         _speech_token_size: Size of the speech token buffer, defaults to SPEECH_TOKEN_audio_chunk_size
         _speech_token_end_idx: Index marking the end of valid speech tokens
         _speech_tokens: Buffer containing the generated speech tokens
@@ -918,6 +688,8 @@ class TTSContext(TextContext):
     audio_buffer: np.ndarray | None = msgspec.field(default=None)
     prev_samples_beyond_offset: int = msgspec.field(default=0)
 
+    streaming: bool = msgspec.field(default=False)
+
     # Fields for tracking the state of speech token or audio generation.
     _speech_token_size: int = msgspec.field(
         default=SPEECH_TOKEN_audio_chunk_size
@@ -932,8 +704,8 @@ class TTSContext(TextContext):
     _block_counter: int = msgspec.field(default=0)
     _arrival_time: float = msgspec.field(default_factory=lambda: time.time())
 
-    _audio_generation_status: TextGenerationStatus = msgspec.field(
-        default=TextGenerationStatus.ACTIVE
+    _audio_generation_status: GenerationStatus = msgspec.field(
+        default=GenerationStatus.ACTIVE
     )
 
     @property
@@ -941,32 +713,30 @@ class TTSContext(TextContext):
         return self._audio_generation_status.is_done
 
     @property
-    def audio_generation_status(self) -> TextGenerationStatus:
+    def audio_generation_status(self) -> GenerationStatus:
         return self._audio_generation_status
 
-    def update_audio_generation_status(
-        self, status: TextGenerationStatus
-    ) -> None:
+    def update_audio_generation_status(self, status: GenerationStatus) -> None:
         self._audio_generation_status = status
 
     @property
-    def speech_token_status(self) -> TextGenerationStatus:
+    def speech_token_status(self) -> GenerationStatus:
         """Returns the status of the speech token generation."""
         # Note that `_status` is used here instead of creating a new attribute,
         # because this class inherits from `TextContext`, which updates
         # `_status` when EOS is reached.
         return self._status
 
-    def update_speech_token_status(self, status: TextGenerationStatus) -> None:
+    def update_speech_token_status(self, status: GenerationStatus) -> None:
         self._status = status
 
     @property
-    def status(self) -> TextGenerationStatus:
+    def status(self) -> GenerationStatus:
         raise ValueError(
             "Please call `speech_token_status` or `audio_generation_status` instead."
         )
 
-    def update_status(self, status: TextGenerationStatus) -> None:
+    def update_status(self, status: GenerationStatus) -> None:
         raise ValueError(
             "Please call `update_speech_token_status` or `update_audio_generation_status` instead."
         )
@@ -1010,7 +780,9 @@ class TTSContext(TextContext):
     ) -> tuple[np.ndarray, int]:
         """Returns a chunk of the next unseen speech tokens.
 
-        Calling this function will update the index of the last seen token.
+        Calling this function will *not* update the index of the last seen
+        token. This must be done by calling `set_decoded_index` after the chunk
+        is processed.
 
         Args:
             audio_chunk_size: The number of speech tokens to return.

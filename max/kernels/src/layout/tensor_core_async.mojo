@@ -48,7 +48,6 @@ from gpu.mma import (
 from layout import IntTuple, Layout, LayoutTensor
 from layout.layout import (
     MakeLayoutList,
-    coalesce,
     composition,
     downcast,
     logical_divide,
@@ -632,7 +631,7 @@ fn _convert_cfrags_to_tuple[
 
     @parameter
     for i in range(c_frag_size):
-        c_frags_in_tuple[i] = rebind[Scalar[c_type]](c_frags._get[0, i]())
+        c_frags_in_tuple[i] = rebind[Scalar[c_type]](c_frags[0, i])
 
     return c_frags_in_tuple
 
@@ -648,7 +647,7 @@ fn _convert_cfrags_to_simd[
 ):
     @parameter
     for i in range(c_frag_size):
-        c_frags._set[0, i](c_frags_in_tuple[i])
+        c_frags[0, i] = c_frags_in_tuple[i]
 
 
 struct TensorCoreAsync[

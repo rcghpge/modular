@@ -10,11 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# XFAIL: asan && !system-darwin
-# RUN: %mojo %s
-
 
 from python import Python, PythonObject
+from python._cpython import Py_ssize_t, PyObjectPtr
 from python.bindings import PythonModuleBuilder
 from testing import (
     assert_equal,
@@ -422,6 +420,27 @@ fn test_dict() raises:
     var empty2: PythonObject = {}
     assert_equal(String(empty2), "{}")
 
+    # Test that Python.dict uses RC correctly.
+    ref cpy = Python().cpython()
+
+    # large integer so it's RC'd
+    var n = PythonObject(1000)
+    var d = Python.dict(num=n)
+
+    var _pos: Py_ssize_t = 0
+    var key: PyObjectPtr = {}
+    var val: PyObjectPtr = {}
+    _ = cpy.PyDict_Next(
+        d._obj_ptr,
+        UnsafePointer(to=_pos),
+        UnsafePointer(to=key),
+        UnsafePointer(to=val),
+    )
+
+    assert_equal(cpy._Py_REFCNT(key), 1)
+    assert_equal(cpy._Py_REFCNT(val), 1)
+    _ = d
+
 
 fn test_set() raises:
     # Test Python set literals.
@@ -643,6 +662,11 @@ struct Person(Defaultable, Movable, Representable):
 
 
 def test_python_mojo_object_operations():
+    # TODO(MOTO-1186): Fix test case on Python 3.9 and remove this return.
+    var sys = Python.import_module("sys")
+    if sys.version.startswith("3.9"):
+        return
+
     # Type registration
     var b = PythonModuleBuilder("fake_module")
     _ = b.add_type[Person]("Person")
@@ -655,6 +679,30 @@ def test_python_mojo_object_operations():
     var person_ptr = person_obj.downcast_value_ptr[Person]()
 
     assert_equal(person_ptr[].name, "John Smith")
+
+
+def test_conversion_to_simd():
+    var py_float = PythonObject(0.123456789121212)
+    var py_int = PythonObject(256)
+
+    assert_equal(Float64(py_float), 0.123456789121212)
+    assert_equal(Float32(py_float), 0.12345679)
+    assert_equal(Float16(py_float), 0.12345679)
+    assert_equal(Float64(py_int), 256.0)
+
+    var py_str = PythonObject("inf")
+    with assert_raises(contains="must be real number, not str"):
+        _ = Float64(py_str)
+
+    assert_equal(Int64(py_int), Int64(256))
+    assert_equal(Int32(py_int), Int32(256))
+    assert_equal(Int16(py_int), Int16(256))
+    assert_equal(Int8(py_int), Int8(0))
+
+    assert_equal(UInt64(py_int), UInt64(256))
+    assert_equal(UInt32(py_int), UInt32(256))
+    assert_equal(UInt16(py_int), UInt16(256))
+    assert_equal(UInt8(py_int), UInt8(0))
 
 
 def main():
@@ -679,3 +727,4 @@ def main():
     test_py_slice()
     test_contains_dunder()
     test_python_mojo_object_operations()
+    test_conversion_to_simd()

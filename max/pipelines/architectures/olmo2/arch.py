@@ -12,8 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 
 from max.graph.weights import WeightsFormat
+from max.interfaces import PipelineTask
 from max.nn.kv_cache import KVCacheStrategy
-from max.pipelines.core import PipelineTask
 from max.pipelines.lib import (
     RopeType,
     SupportedArchitecture,
@@ -21,9 +21,7 @@ from max.pipelines.lib import (
     TextTokenizer,
 )
 
-from ..llama3 import (
-    weight_adapters as llama3_weight_adapters,
-)
+from ..llama3 import weight_adapters as llama3_weight_adapters
 from . import weight_adapters
 from .model import Olmo2Model
 

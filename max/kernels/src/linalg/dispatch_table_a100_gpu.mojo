@@ -10,13 +10,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+from hashlib import default_comp_time_hasher
 from utils import IndexList
 
 from .utils_gpu import (
     MatmulConfig,
-    MatmulKernels,
-    _bk_base,
-    select_config,
 )
 
 
@@ -34,9 +32,15 @@ fn create_matmul_configs_ampere[
 
 fn get_dispatch_table[
     a_type: DType, b_type: DType, c_type: DType, transpose_b: Bool
-]() -> Dict[String, MatmulConfig[a_type, b_type, c_type, transpose_b]]:
+]() -> Dict[
+    String,
+    MatmulConfig[a_type, b_type, c_type, transpose_b],
+    default_comp_time_hasher,
+]:
     var tile_configs = Dict[
-        String, MatmulConfig[a_type, b_type, c_type, transpose_b]
+        String,
+        MatmulConfig[a_type, b_type, c_type, transpose_b],
+        default_comp_time_hasher,
     ]()
 
     @always_inline

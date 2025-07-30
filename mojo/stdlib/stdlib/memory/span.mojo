@@ -22,6 +22,7 @@ from memory import Span
 
 from sys.info import simdwidthof
 
+from collections._index_normalization import normalize_index
 from memory import Pointer
 from memory.unsafe_pointer import _default_alignment
 
@@ -55,6 +56,14 @@ struct _SpanIter[
         return self
 
     @always_inline
+    fn __has_next__(self) -> Bool:
+        @parameter
+        if forward:
+            return self.index < len(self.src)
+        else:
+            return self.index > 0
+
+    @always_inline
     fn __next_ref__(mut self) -> ref [origin, address_space] T:
         @parameter
         if forward:
@@ -63,18 +72,6 @@ struct _SpanIter[
         else:
             self.index -= 1
             return self.src[self.index]
-
-    @always_inline
-    fn __has_next__(self) -> Bool:
-        return self.__len__() > 0
-
-    @always_inline
-    fn __len__(self) -> Int:
-        @parameter
-        if forward:
-            return len(self.src) - self.index
-        else:
-            return self.index
 
 
 @fieldwise_init
@@ -156,7 +153,7 @@ struct Span[
             length: The length of the view.
         """
         self._data = ptr
-        self._len = length
+        self._len = Int(length)
 
     @always_inline
     fn copy(self) -> Self:
@@ -176,7 +173,8 @@ struct Span[
             list: The list to which the span refers.
         """
         self._data = (
-            list.data.address_space_cast[address_space]()
+            list.unsafe_ptr()
+            .address_space_cast[address_space]()
             .static_alignment_cast[alignment]()
             .origin_cast[mut, origin]()
         )
@@ -222,15 +220,10 @@ struct Span[
         Returns:
             An element reference.
         """
-        # TODO: Simplify this with a UInt type.
-        debug_assert(
-            -self._len <= Int(idx) < self._len, "index must be within bounds"
+        var normalized_idx = normalize_index["Span", assert_always=False](
+            idx, len(self)
         )
-        # TODO(MSTDL-1086): optimize away SIMD/UInt normalization check
-        var offset = Int(idx)
-        if offset < 0:
-            offset += len(self)
-        return self._data[offset]
+        return self._data[normalized_idx]
 
     @always_inline
     fn __getitem__(self, slc: Slice) -> Self:

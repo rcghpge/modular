@@ -26,23 +26,14 @@ from layout.layout_tensor import (
     cp_async_mn_major,
 )
 from layout.runtime_layout import RuntimeLayout, RuntimeTuple
-from layout.tma_async import PipelineState, SharedMemBarrier
+from layout.tma_async import SharedMemBarrier
 from math import ceildiv
 from math.constants import log2e
 from nn.mha_mask import MHAMask, TileMaskStatus
 from nn.mha_operand import MHAOperand
 from nn.mha_score_mod import ScoreModTrait
 from nn.mha_tile_scheduler import (
-    MHASchedule,
-    MHASchedulerSynchronization,
-    MHATileScheduler,
-    MHATileState,
-    MHATileSummary,
-    QueuedTileScheduler,
     SeqInfo,
-    TileScheduler,
-    TransientScheduler,
-    WorkInfo,
 )
 from nn.mha_utils import (
     MHAConfig,
@@ -511,10 +502,7 @@ fn _apply_mask[
                     @parameter
                     for j in range(WN // 8):
                         score_col = mask_frag_col + j * 8
-                        alias idx = IntTuple(
-                            IntTuple(i, m_mma), IntTuple(j, n_mma)
-                        )
-                        p = p_reg_tile._get[idx=idx]()
+                        p = p_reg_tile[i, m_mma, j, n_mma]
 
                         @parameter
                         if masked:
@@ -580,7 +568,7 @@ fn _apply_mask[
                                 bound,
                                 p,
                             )
-                        p_reg_tile._set[idx=idx](p)
+                        p_reg_tile[i, m_mma, j, n_mma] = p
 
     @parameter
     if decoding:

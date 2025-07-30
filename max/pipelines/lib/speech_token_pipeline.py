@@ -14,26 +14,22 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
-import torch
 from max.driver import DeviceStream, Tensor
 from max.dtype import DType
 from max.graph.weights import WeightsAdapter, WeightsFormat
-from max.nn.kv_cache import KVCacheInputsSequence
-from max.pipelines.core import (
-    TextGenerationResponse,
-    TextGenerationStatus,
-    TextResponse,
-    TTSContext,
+from max.interfaces import (
+    GenerationStatus,
+    LogProbabilities,
+    TextGenerationOutput,
 )
+from max.nn.kv_cache import KVCacheInputsSequence
+from max.pipelines.core import TTSContext
 from max.profiler import Tracer, traced
 
-from .pipeline import (
-    PipelineModel,
-    TextGenerationPipeline,
-)
+from .pipeline import PipelineModel, TextGenerationPipeline
 
 if TYPE_CHECKING:
     from .config import PipelineConfig
@@ -58,7 +54,7 @@ class SpeechTokenGenerationPipeline(TextGenerationPipeline):
         batch: dict[str, TTSContext],
         num_steps: int,
         tokens_to_generate: dict[str, int],
-    ) -> dict[str, TextGenerationResponse]:
+    ) -> dict[str, TextGenerationOutput]:
         """Provided a batch, process batch inputs, execute the graph for num_steps in a multi-step scenario,
         then decode the tokens holistically and return the list of decoded tokens.
         """
@@ -178,14 +174,16 @@ class SpeechTokenGenerationPipeline(TextGenerationPipeline):
                 new_tokens_np = new_tokens.to_numpy()  # type: ignore
                 seq_has_eos |= np.isin(new_tokens_np, eos_token_list)
 
+            tensor_bitmask = None
             if bitmask is not None:
                 assert self.vocab_size is not None
-                bits = 2 ** torch.arange(32, dtype=torch.int32)
-                bitmask = (bitmask.unsqueeze(-1) & bits) != 0
-                bitmask = bitmask.reshape(len(context_batch), -1).to(torch.bool)
+                bits = 2 ** np.arange(32, dtype=np.int32)
+                bitmask = (bitmask[..., np.newaxis] & bits) != 0
+                bitmask = bitmask.reshape(len(context_batch), -1).astype(
+                    np.bool_
+                )
                 bitmask = bitmask[:, 0 : self.vocab_size]
-
-                bitmask = Tensor.from_dlpack(bitmask).to(self._devices[0])
+                tensor_bitmask = Tensor.from_numpy(bitmask).to(self._devices[0])
 
             # Sample next token.
             tracer.next("sample_next_token")
@@ -198,7 +196,7 @@ class SpeechTokenGenerationPipeline(TextGenerationPipeline):
                 top_p,
                 seed,
                 logit_offsets=model_outputs.logit_offsets,
-                bitmask=bitmask,
+                bitmask=tensor_bitmask,
                 frequency_data=frequency_data,
                 min_tokens_mask=min_tokens_masks[i]
                 if min_tokens_masks
@@ -252,11 +250,20 @@ class SpeechTokenGenerationPipeline(TextGenerationPipeline):
         num_steps = i + 1
 
         # Prepare the response, pruning away completed requests as we go.
-        res: dict[str, TextGenerationResponse] = {}
+        res: dict[str, TextGenerationOutput] = {}
         tracer.push("prepare_response")
         for batch_index, (request_id, context) in enumerate(batch.items()):
-            status = TextGenerationStatus.ACTIVE
-            res[request_id] = TextGenerationResponse([], status)
+            status = GenerationStatus.ACTIVE
+            start_log_probs: Optional[list[LogProbabilities]] = None
+            if context.log_probabilities:
+                start_log_probs = []
+
+            res[request_id] = TextGenerationOutput(
+                request_id=request_id,
+                tokens=[],
+                final_status=status,
+                log_probabilities=start_log_probs,
+            )
             num_valid_tokens = min(num_steps, tokens_to_generate[request_id])
             for step in range(num_valid_tokens):
                 # Convert to a Python scalar to improve serialization performance.
@@ -264,13 +271,15 @@ class SpeechTokenGenerationPipeline(TextGenerationPipeline):
 
                 context.update(new_token=next_token)
 
-                res[request_id].update_status(context.speech_token_status)
+                res[request_id].final_status = context.speech_token_status
                 if context.speech_token_status.is_done:
                     break
 
             # Walk outstanding completion tokens, and return to user.
             for token, log_probs in context.outstanding_completion_tokens():
-                res[request_id].append_token(TextResponse(token, log_probs))
+                res[request_id].tokens.append(token)
+                if log_probs and res[request_id].log_probabilities is not None:
+                    res[request_id].log_probabilities.append(log_probs)  # type: ignore
 
         # Update the cache lengths in our kv_cache manager.
         # This should be done after the contexts are updated.

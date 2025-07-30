@@ -18,11 +18,9 @@ from python.bindings import (
     check_and_get_arg,
     check_and_get_or_convert_arg,
     check_arguments_arity,
-    PyMojoObject,
     PythonModuleBuilder,
-    lookup_py_type_object,
 )
-from python._cpython import PyObjectPtr, PyTypeObject
+from python._cpython import PyObjectPtr
 
 
 @export
@@ -76,23 +74,23 @@ fn case_return_arg_tuple(
 
 
 fn case_raise_empty_error() -> PythonObject:
-    var cpython = Python().cpython()
+    ref cpython = Python().cpython()
 
     var error_type = cpython.get_error_global("PyExc_ValueError")
 
     cpython.PyErr_SetNone(error_type)
 
-    return PythonObject(from_owned_ptr=PyObjectPtr())
+    return PythonObject(from_owned=PyObjectPtr())
 
 
 fn case_raise_string_error() -> PythonObject:
-    var cpython = Python().cpython()
+    ref cpython = Python().cpython()
 
     var error_type = cpython.get_error_global("PyExc_ValueError")
 
     cpython.PyErr_SetString(error_type, "sample value error".unsafe_cstr_ptr())
 
-    return PythonObject(from_owned_ptr=PyObjectPtr())
+    return PythonObject(from_owned=PyObjectPtr())
 
 
 # Returning New Mojo Values
@@ -103,7 +101,7 @@ fn create_string() raises -> PythonObject:
 
 
 fn case_mojo_raise() raises -> PythonObject:
-    raise String("Mojo error")
+    raise Error("Mojo error")
 
 
 fn case_mojo_mutate(list: PythonObject) raises -> PythonObject:
@@ -160,7 +158,7 @@ struct Person(Copyable, Defaultable, Movable, Representable):
         ).origin_cast[mut=True]()
 
         if len(new_name) > len(self0[].name.codepoints()):
-            raise String("cannot make name longer than current name")
+            raise Error("cannot make name longer than current name")
 
         self0[].name = String(new_name)
 

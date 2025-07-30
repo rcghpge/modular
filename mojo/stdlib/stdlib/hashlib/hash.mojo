@@ -25,10 +25,8 @@ There are a few main tools in this module:
     These are useful helpers to specialize for the general bytes implementation.
 """
 
-from .hasher import Hasher
+from .hasher import Hasher, default_hasher
 from memory import UnsafePointer
-from sys import is_compile_time
-from ._fnv1a import Fnv1a
 
 
 # ===----------------------------------------------------------------------=== #
@@ -48,6 +46,8 @@ trait Hashable:
     common hash map implementations.
 
     ```mojo
+    from hashlib.hasher import Hasher
+
     @fieldwise_init
     struct Foo(Hashable):
         var value: Int
@@ -72,7 +72,9 @@ trait Hashable:
         ...
 
 
-fn hash[T: Hashable, HasherType: Hasher = Fnv1a](hashable: T) -> UInt64:
+fn hash[
+    T: Hashable, HasherType: Hasher = default_hasher
+](hashable: T) -> UInt64:
     """Hash a Hashable type using its underlying hash implementation.
 
     Parameters:
@@ -92,7 +94,7 @@ fn hash[T: Hashable, HasherType: Hasher = Fnv1a](hashable: T) -> UInt64:
 
 
 fn hash[
-    HasherType: Hasher = Fnv1a
+    HasherType: Hasher = default_hasher
 ](
     bytes: UnsafePointer[
         UInt8, address_space = AddressSpace.GENERIC, mut=False, **_

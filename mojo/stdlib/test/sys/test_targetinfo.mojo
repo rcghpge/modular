@@ -10,12 +10,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo %s
 
 from sys import (
     CompilationTarget,
     alignof,
-    has_intel_amx,
     num_logical_cores,
     num_performance_cores,
     num_physical_cores,
@@ -61,7 +59,7 @@ fn test_target_has_feature():
     _has_feature = CompilationTarget.has_avx2()
     _has_feature = CompilationTarget.has_avx512f()
     _has_feature = CompilationTarget.has_fma()
-    _has_feature = has_intel_amx()
+    _has_feature = CompilationTarget.has_intel_amx()
     _has_feature = CompilationTarget.has_neon()
     _has_feature = CompilationTarget.has_neon_int8_dotprod()
     _has_feature = CompilationTarget.has_neon_int8_matmul()

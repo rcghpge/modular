@@ -42,17 +42,11 @@ domain-specific libraries for machine learning and scientific computing.
 
 import math
 from collections import InlineArray
-from collections.string.string import (
-    _calc_format_buffer_size,
-    _calc_initial_buffer_size,
-)
 from hashlib.hasher import Hasher
 from math import Ceilable, CeilDivable, Floorable, Truncable
 from math.math import _call_ptx_intrinsic
-from os import abort
 from sys import (
     CompilationTarget,
-    PrefetchOptions,
     _RegisterPackType,
     alignof,
     bitwidthof,
@@ -61,7 +55,6 @@ from sys import (
     is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
-    prefetch,
     simdwidthof,
     sizeof,
 )
@@ -72,11 +65,10 @@ from bit import byte_swap, pop_count
 from builtin._format_float import _write_float
 from builtin.device_passable import DevicePassable
 from builtin.format_int import _try_write_int
-from builtin.io import _snprintf
 from builtin.math import Powable
 from documentation import doc_private
-from memory import Span, bitcast, memcpy
-from python import PythonConvertible, PythonObject, Python
+from memory import bitcast, memcpy
+from python import ConvertibleToPython, PythonObject, Python
 
 from utils import IndexList, StaticTuple
 from utils._visualizers import lldb_formatter_wrapping_type
@@ -90,9 +82,7 @@ from utils.numerics import min_or_neg_inf as _min_or_neg_inf
 from utils.numerics import nan as _nan
 
 from .dtype import (
-    _get_dtype_printf_format,
     _integral_type_of,
-    _scientific_notation_digits,
     _uint_type_of_width,
     _unsigned_integral_type_of,
 )
@@ -255,18 +245,16 @@ struct SIMD[dtype: DType, size: Int](
     Boolable,
     CeilDivable,
     Ceilable,
-    Ceilable,
+    ConvertibleToPython,
     Copyable,
     Defaultable,
     DevicePassable,
     ExplicitlyCopyable,
-    Floatable,
     Floorable,
     Hashable,
     Indexer,
     Movable,
     Powable,
-    PythonConvertible,
     Representable,
     Roundable,
     Sized,
@@ -492,35 +480,39 @@ struct SIMD[dtype: DType, size: Int](
         """
         self = value.__float__()
 
+    # TODO(MSTDL-1587): Remove the dummy parameter.
     @always_inline
     fn __init__[
         *, `_`: Int = 0
-    ](out self: Float64, value: PythonObject, /) raises:
-        """Initialize a Float64 from a PythonObject.
+    ](out self: Scalar[dtype], obj: PythonObject, /) raises:
+        """Initialize a SIMD value from a PythonObject.
 
         Parameters:
             _: A dummy parameter to ensure this overload has lower priority than
                 the others. Its value is ignored.
 
         Args:
-            value: The PythonObject to convert.
+            obj: The PythonObject to convert.
 
         Raises:
             If the conversion to double fails.
         """
-        # TODO(MSTDL-1587): Remove the dummy parameter.
-        var float_obj = value.__float__()
-        var cpython = Python().cpython()
-        self = Float64(cpython.PyFloat_AsDouble(float_obj.py_object))
-        if self == -1.0 and cpython.PyErr_Occurred():
-            # Note that -1.0 does not guarantee an error, it just means we need
-            # to check if there was an exception. This is also very unlikely,
-            # since the __float__ call above will throw if the underlying Python
-            # method fails. Therefore this can only happen if a custom __float__
-            # implementation is incorrect, and returns a non-double value.
-            raise cpython.get_error()
 
-        _ = float_obj
+        @parameter
+        if dtype.is_floating_point():
+            ref cpy = Python().cpython()
+            var float_value = cpy.PyFloat_AsDouble(obj._obj_ptr)
+            if float_value == -1.0 and cpy.PyErr_Occurred():
+                # Note that -1.0 does not guarantee an error, it just means we
+                # need to check if there was an exception.
+                raise cpy.unsafe_get_error()
+            # NOTE: if dtype is not float64, we truncate.
+            self = Scalar[dtype](float_value)
+        elif dtype.is_integral() and dtype.bitwidth() <= 64:
+            self = Int(obj)
+        else:
+            self = Scalar[dtype]()
+            constrained[False, "unsupported dtype"]()
 
     @always_inline("nodebug")
     @implicit
@@ -1956,9 +1948,10 @@ struct SIMD[dtype: DType, size: Int](
 
     @staticmethod
     fn from_bytes[
-        big_endian: Bool = is_big_endian()
-    ](bytes: InlineArray[Byte, dtype.sizeof()]) -> Scalar[dtype]:
-        """Converts a byte array to an scalar integer.
+        *,
+        big_endian: Bool = is_big_endian(),
+    ](bytes: InlineArray[Byte, sizeof[Self]()]) -> SIMD[dtype, size]:
+        """Converts a byte array to a vector.
 
         Args:
             bytes: The byte array to convert.
@@ -1969,7 +1962,7 @@ struct SIMD[dtype: DType, size: Int](
         Returns:
             The integer value.
         """
-        var ptr = bytes.unsafe_ptr().bitcast[Scalar[dtype]]()
+        var ptr = bytes.unsafe_ptr().bitcast[Self]()
         var value = ptr[]
 
         @parameter
@@ -1979,9 +1972,10 @@ struct SIMD[dtype: DType, size: Int](
         return value
 
     fn as_bytes[
-        big_endian: Bool = is_big_endian()
-    ](self) -> InlineArray[Byte, dtype.sizeof()]:
-        """Convert the scalar integer to a byte array.
+        *,
+        big_endian: Bool = is_big_endian(),
+    ](self) -> InlineArray[Byte, sizeof[Self]()]:
+        """Convert the vector to a byte array.
 
         Parameters:
             big_endian: Whether the byte array should be big-endian.
@@ -1996,8 +1990,8 @@ struct SIMD[dtype: DType, size: Int](
             value = byte_swap(value)
 
         var ptr = UnsafePointer(to=value)
-        var array = InlineArray[Byte, dtype.sizeof()](uninitialized=True)
-        memcpy(array.unsafe_ptr(), ptr.bitcast[Byte](), dtype.sizeof())
+        var array = InlineArray[Byte, sizeof[Self]()](uninitialized=True)
+        memcpy(array.unsafe_ptr(), ptr.bitcast[Byte](), sizeof[Self]())
         return array^
 
     fn _floor_ceil_trunc_impl[intrinsic: StaticString](self) -> Self:

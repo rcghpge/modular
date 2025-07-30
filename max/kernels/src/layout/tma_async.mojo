@@ -58,7 +58,6 @@ from gpu.sync import (
     mbarrier_arrive_expect_tx_shared,
     mbarrier_arrive_expect_tx_relaxed,
     mbarrier_init,
-    mbarrier_try_wait_parity_shared,
 )
 from layout import IntTuple, Layout, LayoutTensor
 from memory.pointer import _GPUAddressSpace
@@ -226,7 +225,7 @@ struct SharedMemBarrier(Copyable, Movable):
         Args:
             bytes: Number of bytes expected to be transferred.
             cta_id: The CTA ID in a cluster to configure an arrival.
-            pred: Predication on the arrival configuration instruction.
+            pred: Predication on the arrival configuration instruction. Use UInt32 to match `selp.u32` in ptx.
         """
 
         alias asm = """
@@ -526,6 +525,19 @@ struct PipelineState[num_stages: Int](Copyable, Defaultable, Movable):
             if self._index == num_stages:
                 self._index = 0
                 self._phase ^= 1
+
+    @always_inline
+    fn next(mut self) -> Self:
+        """Advance the pipeline state to the next stage and return the new state.
+
+        This function is used to move to the next buffer in a multi-buffer
+        pipeline, implementing circular buffer semantics.
+
+        Returns:
+            The new pipeline state after advancing to the next stage.
+        """
+        self.step()
+        return self
 
 
 # TMATensorTile is created on the host with specific memory and tile sizes.
@@ -1514,6 +1526,61 @@ def create_tma_tile[
                 __desc_layout.shape[2].value(),
             ),
         )
+
+
+@always_inline
+def create_tma_tile_template[
+    type: DType,
+    rank: Int,
+    tile_shape: IndexList[rank],
+    /,
+    is_k_major: Bool = True,
+    swizzle_mode: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_NONE,
+    *,
+    __tile_layout: Layout = Layout.row_major(tile_shape[0], tile_shape[1]),
+    __desc_layout: Layout = _tma_desc_tile_layout[
+        type, rank, tile_shape, is_k_major, swizzle_mode
+    ](),
+]() -> TMATensorTile[type, __tile_layout, __desc_layout]:
+    """
+    Same as create_tma_tile expect the descriptor is only a placeholder or a template for later replacement.
+
+    specification of data type, rank, and layout orientation. It supports both 2D and 3D
+    tensors and provides fine-grained control over the memory access patterns.
+
+    Parameters:
+        type: DType
+            The data type of the tensor elements.
+        rank: Int
+            The dimensionality of the tensor (must be 2 or 3).
+        tile_shape: IndexList[rank]
+            The shape of the tile to be transferred.
+        is_k_major: Bool = True
+            Whether the tensor layout is K-major (True) or MN-major (False).
+            K-major is typically used for weight matrices, while MN-major is used for
+            activation matrices in matrix multiplication operations.
+        swizzle_mode: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_NONE
+            The swizzling mode to use for memory access optimization.
+        __tile_layout: Layout = Layout.row_major(tile_shape[0], tile_shape[1])
+            Internal parameter for the tile layout in shared memory.
+        __desc_layout: Layout = _tma_desc_tile_layout[...]
+            Internal parameter for the descriptor layout, which may differ from the
+            tile layout to accommodate hardware requirements.
+
+    Returns:
+        A `TMATensorTile` configured with the specified parameters, ready for use in
+        asynchronous data transfer operations.
+
+    Constraints:
+
+        - Only supports 2D and 3D tensors (rank must be 2 or 3).
+        - For non-SWIZZLE_NONE modes, the K dimension size in bytes must be a multiple
+          of the swizzle mode's byte size.
+        - For MN-major layout, only SWIZZLE_128B is supported.
+        - For 3D tensors, only K-major layout is supported.
+    """
+
+    return TMATensorTile[type, __tile_layout, __desc_layout](TMADescriptor())
 
 
 @register_passable("trivial")

@@ -10,17 +10,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# REQUIRES: NVIDIA-GPU
 
-from sys import env_get_int
 
-from benchmark import Bench, Bencher, BenchId, BenchMetric, ThroughputMeasure
-from builtin._closure import __ownership_keepalive
 from gpu import *
-from gpu.host import DeviceContext, DeviceBuffer
-from buffer import DimList, NDBuffer
+from gpu.host import DeviceContext
+from buffer import DimList
 from internal_utils import (
-    update_bench_config_args,
     Timer,
     initialize,
     InitializationType,
@@ -30,7 +25,6 @@ from internal_utils import (
 from testing import assert_equal
 
 from random import seed
-from buffer import NDBuffer
 
 
 @no_inline

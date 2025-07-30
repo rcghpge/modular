@@ -23,7 +23,7 @@ from gpu.comm.allreduce import (
     allreduce,
 )
 from gpu.host import DeviceBuffer, DeviceContext
-from testing import assert_almost_equal
+from testing import assert_almost_equal, assert_true
 
 from utils import IndexList, StaticTuple
 
@@ -70,9 +70,7 @@ fn allreduce_test[
 
     # Create signal buffers for synchronization
     var signal_buffers = List[DeviceBuffer[DType.uint8]](capacity=ngpus)
-    var rank_sigs = InlineArray[UnsafePointer[Signal], MAX_GPUS](
-        UnsafePointer[Signal]()
-    )
+    var rank_sigs = InlineArray[UnsafePointer[Signal], MAX_GPUS](fill={})
 
     # Set up temp buffers for GPUs to reduce-scatter into / all-gather from.
     var temp_buffer_num_bytes = ngpus * sizeof[dtype]() * length
@@ -108,10 +106,10 @@ fn allreduce_test[
 
     # Create and initialize input and output buffers.
     var in_bufs = InlineArray[NDBuffer[dtype, rank, MutableAnyOrigin], ngpus](
-        NDBuffer[dtype, rank, MutableAnyOrigin]()
+        fill={}
     )
     var out_bufs = InlineArray[NDBuffer[dtype, rank, MutableAnyOrigin], ngpus](
-        NDBuffer[dtype, rank, MutableAnyOrigin]()
+        fill={}
     )
 
     @parameter
@@ -236,6 +234,10 @@ def main():
     # Test hyperparameters.
     alias test_dtypes = (DType.bfloat16, DType.float32)
     alias test_gpu_counts = (2, 4, 8)
+
+    assert_true(
+        DeviceContext.number_of_devices() > 1, "must have multiple GPUs"
+    )
 
     # Run tests for each configuration.
     @parameter

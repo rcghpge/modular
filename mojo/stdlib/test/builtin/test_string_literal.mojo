@@ -10,14 +10,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo %s
 
 from sys.ffi import c_char
 
 from testing import (
     assert_equal,
     assert_false,
-    assert_not_equal,
     assert_raises,
     assert_true,
 )

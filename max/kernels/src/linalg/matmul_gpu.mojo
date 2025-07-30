@@ -14,13 +14,10 @@ from collections import OptionalReg
 from math import align_down, ceildiv
 from sys import (
     alignof,
-    bitwidthof,
     env_get_bool,
     env_get_int,
     has_accelerator,
     has_amd_gpu_accelerator,
-    has_nvidia_gpu_accelerator,
-    is_defined,
     llvm_intrinsic,
     simdwidthof,
 )
@@ -29,56 +26,39 @@ from algorithm.functional import elementwise, tile_and_unswitch
 from buffer.buffer import NDBuffer
 from buffer.dimlist import DimList
 from gpu import (
-    WARP_SIZE,
     barrier,
     block_dim,
-    block_idx,
     global_idx,
-    lane_id,
     thread_idx,
 )
 from gpu.grid_controls import PDLLevel
 from gpu.host import DeviceContext, FuncAttribute
 from gpu.host import get_gpu_target
-from gpu.host.info import A100, H100
+from gpu.host.info import A100, H100, B200
 from gpu.memory import AddressSpace
 from layout._ndbuffer_stub import (
-    copy_from_nd_buffer,
-    distribute,
     from_ndbuffer_row_major,
-    vectorize,
 )
 from layout.layout import *
-from layout.layout_tensor import (
-    LayoutTensor,
-    _swizzle_signature,
-    copy_dram_to_sram_async,
-    copy_local_to_dram,
-    copy_sram_to_local,
-)
-from linalg.matmul_tile_scheduler import MatmulSchedule
+from logger import Logger
 from memory import bitcast, stack_allocation
 
 from utils import IndexList
 from utils.index import Index
 from utils.numerics import get_accum_type
 
-from ._amd_gemm_gpu import gemm_kernel as amd_gemm_kernel
+from .matmul_amd import gemm_kernel_amd
 from ._multistage_gemm_gpu import (
     multistage_gemm_kernel,
     multistage_gemm_split_k_kernel,
 )
 from .dispatch_table_a100_gpu import create_matmul_configs_ampere
 from .gemv import gemv_gpu
-from .matmul_sm90 import (
-    hopper_matmul_tma_wgmma,
-    warp_specialize_gemm_with_multicasting,
-)
 from .matmul_vendor import matmul as matmul_vendor
 from .matmul_dispatch_sm90 import matmul_dispatch_sm90
+from .matmul_sm100 import matmul_sm100_fallback
 from .utils import (
     GemmShape,
-    apply_epilogue,
     elementwise_compute_lambda_type,
     elementwise_epilogue_type,
 )
@@ -193,11 +173,11 @@ fn matmul_kernel[
 
         @parameter
         if not full_tile:
-            a_val = a[row, offset + localCol] if (
+            a_val = a[Int(row), Int(offset + localCol)] if (
                 row < m and offset + localCol < k
             ) else 0.0
         else:
-            a_val = a[row, offset + localCol] if row < m else 0.0
+            a_val = a[Int(row), Int(offset + localCol)] if row < m else 0.0
         a_shared[localRow * tile_size + localCol] = a_val
 
         # Load B tile into shared memory.
@@ -205,11 +185,11 @@ fn matmul_kernel[
 
         @parameter
         if not full_tile:
-            b_val = b[offset + localRow, col] if (
+            b_val = b[Int(offset + localRow), Int(col)] if (
                 col < n and offset + localRow < k
             ) else 0.0
         else:
-            b_val = b[offset + localRow, col] if col < n else 0.0
+            b_val = b[Int(offset + localRow), Int(col)] if col < n else 0.0
         b_shared[localRow * tile_size + localCol] = b_val
 
         barrier()
@@ -254,8 +234,8 @@ fn matmul_kernel_naive[
     n: Int,
     k: Int,
 ):
-    var x = global_idx.x
-    var y = global_idx.y
+    var x = Int(global_idx.x)
+    var y = Int(global_idx.y)
 
     if x >= m or y >= n:
         return
@@ -319,6 +299,9 @@ fn _matmul_sm100[
     var n = shape.N
     var k = shape.K
 
+    var logger = Logger()
+    logger.info("------ Dispatching to SM100 (B200+) ------")
+
     try:
         # On B200 our gemv matmul is faster than cublas for skinny bfloat16 matmuls
         @parameter
@@ -329,6 +312,7 @@ fn _matmul_sm100[
                     elementwise_lambda_fn=elementwise_lambda_fn,
                 ](c, a, b, ctx)
 
+        logger.info("Executing vendor BLAS (cuBLAS)")
         return matmul_vendor[
             use_tensor_core=use_tensor_core,
             transpose_b=transpose_b,
@@ -339,6 +323,8 @@ fn _matmul_sm100[
 
     except:
         # fallback to multistage/naive gemms if the cublas failed. This is a workaround for now for KERN-1812
+        logger.warning("Vendor BLAS failed")
+
         @parameter
         if not a_type.is_float8() and K * sizeof[a_type]() >= 8 * 16:
             alias kernels = MatmulKernels[a_type, b_type, c_type, transpose_b]()
@@ -356,6 +342,9 @@ fn _matmul_sm100[
             )
         else:
             alias BLOCK_DIM = 16
+            logger.info(
+                "Executing: Naive MATMUL kernel (BLOCK_DIM=", BLOCK_DIM, ")"
+            )
             ctx.enqueue_function[
                 matmul_kernel_naive[
                     c_type,
@@ -408,6 +397,15 @@ fn _matmul_gpu[
     var n = shape.N
     var k = shape.K
 
+    var logger = Logger()
+    logger.info("---- MATMUL GPU execution started ----")
+    logger.info("MxNxK: ", m, "x", n, "x", k)
+    logger.info("Data types: A=", a_type, " B=", b_type, " C=", c_type)
+    logger.info("Device: ", ctx.name())
+    logger.info(
+        "Transpose B: ", transpose_b, " Use Tensor Core: ", use_tensor_core
+    )
+
     alias s_type = DType.float32 if (
         a_type is DType.bfloat16 or a_type is DType.float16
     ) else c_type
@@ -448,7 +446,9 @@ fn _matmul_gpu[
     # NOTE: k has to be a multiple of BK * num_stages. Hard coded this condition to 128 for now.
     # TODO: Need to find a better dispatch strategy.
     var h100_matmul_cond = (
-        ctx.device_info is H100 and n % 8 == 0 and a_type is DType.bfloat16
+        ctx.default_device_info is H100
+        and n % 8 == 0
+        and a_type is DType.bfloat16
     )
     var amdgpu_matmul_cond = has_amd_gpu_accelerator() and n % 4 == 0
     var multi_gemm_cond = (
@@ -462,10 +462,13 @@ fn _matmul_gpu[
     alias has_static_NK = b_shape.all_known[2]() \
                       and a_shape.has_value[1]() \
                       and c_shape.has_value[1]()
+
+    logger.info("Static shapes available: N=", b_shape.has_value[1](), " K=", a_shape.has_value[1]())
     # fmt: on
 
     @parameter
     if env_get_bool["MODULE_USE_VENDOR_BLAS", False]():
+        logger.info("Executing: Vendor BLAS")
         return matmul_vendor[
             use_tensor_core=use_tensor_core,
             transpose_b=transpose_b,
@@ -474,8 +477,39 @@ fn _matmul_gpu[
             _trace_description=_trace_description,
         ](c, a, b, ctx)
 
+    alias use_experimental_kernels = Bool(
+        env_get_int["USE_EXPERIMENTAL_KERNELS", 0]()
+    )
+
+    alias bf16_or_fp16 = (DType.bfloat16, DType.float16)
+    alias bf16_or_fp16_fp32 = (DType.bfloat16, DType.float16, DType.float32)
+
     @parameter
-    if ctx.device_info > H100:
+    if (
+        ctx.default_device_info is B200
+        and use_experimental_kernels
+        and transpose_b
+        and (
+            a_type in bf16_or_fp16
+            and b_type in bf16_or_fp16
+            and c_type in bf16_or_fp16_fp32
+        )
+    ):
+        var a_layout_tensor = from_ndbuffer_row_major(a)
+        var b_layout_tensor = from_ndbuffer_row_major(b)
+        var c_layout_tensor = from_ndbuffer_row_major(c)
+        alias umma_shape = Index(64, 128, 16)
+        alias BK = 64
+        alias block_tile_shape = Index(umma_shape[0], umma_shape[1], BK)
+        return matmul_sm100_fallback[
+            transpose_b=transpose_b,
+            umma_shape=umma_shape,
+            block_tile_shape=block_tile_shape,
+            elementwise_lambda_fn=elementwise_lambda_wrapper,
+        ](c_layout_tensor, a_layout_tensor, b_layout_tensor, ctx)
+
+    @parameter
+    if ctx.default_device_info > H100:
         return _matmul_sm100[
             c_type,
             a_type,
@@ -488,12 +522,8 @@ fn _matmul_gpu[
             pdl_level=pdl_level,
         ](c, a, b, ctx)
 
-    alias use_A100_kernels_on_H100 = env_get_int[
-        "USE_EXPERIMENTAL_KERNELS", 0
-    ]()
-
     @parameter
-    if ctx.device_info is H100 and not use_A100_kernels_on_H100:
+    if ctx.default_device_info is H100:
         var status = matmul_dispatch_sm90[
             c_type,
             a_type,
@@ -516,6 +546,22 @@ fn _matmul_gpu[
     ):
         if multi_gemm_cond:
             alias kernels = MatmulKernels[a_type, b_type, c_type, transpose_b]()
+
+            # Allow caller to overwrite dispatch heuristic with their own config.
+            @parameter
+            if config:
+                multistage_gemm[
+                    transpose_b=transpose_b,
+                    config = config.value(),
+                    elementwise_lambda_fn=elementwise_lambda_wrapper,
+                ](
+                    rebind[NDBuffer[c_type, 2, c.origin, c_shape]](c),
+                    rebind[NDBuffer[a_type, 2, a.origin, a_shape]](a),
+                    rebind[NDBuffer[b_type, 2, b.origin, b_shape]](b),
+                    config.value(),
+                    ctx,
+                )
+                return
 
             @parameter
             if has_amd_gpu_accelerator():
@@ -857,25 +903,7 @@ fn _matmul_gpu[
                         return kernel_helper[32, 64, num_k_partitions=4]()
                 return kernel_helper[128, 128]()
 
-            # Allow caller to overwrite dispatch heuristic with their own config.
-            @parameter
-            if config:
-                multistage_gemm[
-                    transpose_b=transpose_b,
-                    config = config.value(),
-                    elementwise_lambda_fn=elementwise_lambda_wrapper,
-                ](
-                    rebind[NDBuffer[c_type, 2, c.origin, c_shape]](c),
-                    rebind[NDBuffer[a_type, 2, a.origin, a_shape]](a),
-                    rebind[NDBuffer[b_type, 2, b.origin, b_shape]](b),
-                    config.value(),
-                    ctx,
-                )
-                return
-
-            alias use_A100_kernels = ctx.device_info is A100 or (
-                ctx.device_info is H100 and use_A100_kernels_on_H100 != 0
-            )
+            alias use_A100_kernels = ctx.default_device_info is A100
 
             @parameter
             if (
@@ -1049,6 +1077,7 @@ fn _matmul_gpu[
         # to disable vendor fallback, run export MODULAR_DISABLE_VENDOR_FALLBACK=1 in the environment
         and not env_get_bool["MODULAR_DISABLE_VENDOR_FALLBACK", False]()
     ):
+        logger.info("Executing: vendor BLAS fallback")
         try:
             return matmul_vendor[
                 use_tensor_core=use_tensor_core,
@@ -1058,6 +1087,7 @@ fn _matmul_gpu[
                 _trace_description=_trace_description,
             ](c, a, b, ctx)
         except:
+            logger.warning("Vendor BLAS failed")
             alias BLOCK_DIM = 16
             ctx.enqueue_function[
                 matmul_kernel_naive[
@@ -1081,7 +1111,11 @@ fn _matmul_gpu[
             return
     else:
         # For unsupported dtypes like FP8, directly use the naive implementation
+        logger.info("Unsupported dtypes or vendor disabled")
         alias BLOCK_DIM = 16
+        logger.info(
+            "Executing: Naive MATMUL kernel (BLOCK_DIM=", BLOCK_DIM, ")"
+        )
         ctx.enqueue_function[
             matmul_kernel_naive[
                 c_type,
@@ -1170,6 +1204,12 @@ fn multistage_gemm[
     var M = c.dim[0]()
     var N = c.dim[1]()
 
+    var logger = Logger()
+    logger.info("------ Dispatching to Multistage GEMM ------")
+    logger.info(String(config))
+    logger.info("K partitions: ", runtime_config.num_k_partitions)
+    logger.info("Serial reduction: ", serial_reduction)
+
     var tensor_c = from_ndbuffer_row_major(c)
     var tensor_a = from_ndbuffer_row_major(a)
     var tensor_b = from_ndbuffer_row_major(b)
@@ -1178,6 +1218,7 @@ fn multistage_gemm[
 
         @parameter
         if serial_reduction:
+            logger.info("Executing: split-K with serial reduction (lock-based)")
             constrained[
                 c_type is DType.bfloat16,
                 "serial reduction is unsupported for this config",
@@ -1231,9 +1272,12 @@ fn multistage_gemm[
             return
 
         else:
+            logger.info(
+                "Executing: split-K with parallel reduction (workspace-based)"
+            )
             alias work_space_type = config.split_k_reduction_type
             var work_space_data = ctx.enqueue_create_buffer[work_space_type](
-                runtime_config.num_k_partitions * M * N
+                Int(runtime_config.num_k_partitions * M * N)
             )
             var work_space = NDBuffer[work_space_type, 3](
                 work_space_data._unsafe_ptr(),
@@ -1296,7 +1340,8 @@ fn multistage_gemm[
     # Dispatch w/o split K
     @parameter
     if has_amd_gpu_accelerator() and transpose_b:
-        alias gemm_kernel_type = amd_gemm_kernel[
+        logger.info("Executing: AMD standard GEMM (no split-K)")
+        alias gemm_kernel_type = gemm_kernel_amd[
             c_type,
             tensor_c.layout,
             a_type,
@@ -1322,6 +1367,7 @@ fn multistage_gemm[
         )
 
     else:
+        logger.info("Executing: standard GEMM (no split-K)")
         alias gemm_kernel_type = multistage_gemm_kernel[
             c_type,
             tensor_c.layout,

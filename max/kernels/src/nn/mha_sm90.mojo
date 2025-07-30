@@ -23,7 +23,6 @@ from gpu import (
     WARP_SIZE,
     barrier,
     block_dim,
-    global_idx,
     lane_id,
     thread_idx,
 )
@@ -39,27 +38,20 @@ from layout.layout_tensor import (
     LayoutTensor,
     LayoutTensorIter,
     copy_local_to_shared,
-    copy_dram_to_sram_async,
-    copy_local_to_dram,
     copy_sram_to_dram,
     cp_async_k_major,
-    cp_async_mn_major,
 )
-from layout.runtime_layout import RuntimeLayout, RuntimeTuple
 from layout.swizzle import make_swizzle
-from layout.tensor_core import get_fragment_size
 from layout.tensor_core_async import (
     TensorCoreAsync,
     tile_layout_k_major,
     tile_layout_mn_major,
-    tile_to_descriptor,
 )
 from layout.tma_async import PipelineState, SharedMemBarrier
 from nn.mha_mask import MHAMask, TileMaskStatus
 from nn.mha_operand import MHAOperand
 from nn.mha_score_mod import ScoreModTrait
 from nn.mha_tile_scheduler import (
-    MHASchedule,
     MHASchedulerSynchronization,
     MHATileScheduler,
     MHATileState,
@@ -68,20 +60,13 @@ from nn.mha_tile_scheduler import (
     SeqInfo,
     TileScheduler,
     TransientScheduler,
-    WorkInfo,
 )
 from nn.mha_utils import (
-    DynamicInt,
     FlashAttentionAlgorithm,
     MHAConfig,
     MHAPartitionScheme,
-    NoPartition,
     OptionallyStaticInt,
-    SplitKPartition,
-    StaticInt,
-    _copy_frag_to_smem,
     _is_decoding,
-    _kernel_mask,
     get_start_and_end_for_partitions,
 )
 from nn.mha_fa3_utils import (
@@ -98,7 +83,7 @@ from nn.softmax import (
 )
 from tensor_internal import ManagedTensorSlice
 
-from utils.index import Index, IndexList
+from utils.index import Index
 from utils.numerics import get_accum_type, min_or_neg_inf
 from utils.static_tuple import StaticTuple
 
@@ -1282,11 +1267,13 @@ fn _mha_sm90[
             # otherwise, the branch requires synchronization
             @parameter
             for row in range(num_rows_per_warp):
-                c = correction._get[row, size = element_layout.size()]()
+                c = SIMD[accum_type, element_layout.size()](
+                    rebind[Scalar[accum_type]](correction[row])
+                )
 
                 @parameter
                 for col in range(num_cols_output):
-                    vout._set[row, col](vout._get[row, col]() * c)
+                    vout[row, col] = vout[row, col] * c
 
         @always_inline
         fn elementwise_reciprocal(
@@ -1295,10 +1282,10 @@ fn _mha_sm90[
             # new_rowsum, old_rowsum = 1/old_rowsum, new_rowsum
             @parameter
             for row in range(num_rows_per_warp):
-                old = old_rowsum._get[row]()
-                new = new_rowsum._get[row]()
-                new_rowsum._set[row](recip(old)[0])
-                old_rowsum._set[row](new)
+                old = old_rowsum[row]
+                new = new_rowsum[row]
+                new_rowsum[row] = recip(old)[0]
+                old_rowsum[row] = new
 
         @parameter
         @always_inline
@@ -1312,11 +1299,11 @@ fn _mha_sm90[
             # Apply softmax denumerator.
             @parameter
             for row in range(num_rows_per_warp):
-                rs_inv = vout.element_type(rowsum_inv._get[row]()[0])
+                rs_inv = vout.element_type(rowsum_inv[row][0])
 
                 @parameter
                 for col in range(num_cols_output):
-                    vout._set[row, col](vout._get[row, col]() * rs_inv)
+                    vout[row, col] = vout[row, col] * rs_inv
 
             var output_ptr: UnsafePointer[Scalar[output_type]] = output_ptr_arg
 
@@ -1564,11 +1551,9 @@ fn _mha_sm90[
 
                     @parameter
                     for i in range(num_rows_per_warp):
-                        rowsum._set[i](
-                            rowsum._get[i]() * score_frag_rowmax._get[i]()
-                            + rebind[Scalar[accum_type]](
-                                score_frag_rowsum._get[i]()
-                            )
+                        rowsum[i] = (
+                            rowsum[i] * score_frag_rowmax[i]
+                            + score_frag_rowsum[i]
                         )
 
                     wait_for_p_mul_v(read_idx_v)  # can rw output and pfrag
@@ -1621,7 +1606,7 @@ fn _mha_sm90[
 
         @parameter
         for row in range(num_rows_per_warp):
-            rowsum._set[row](recip(rowsum._get[row]())[0])
+            rowsum[row] = recip(rowsum[row])[0]
         wgmma_1.wait_group()
         write_output(position, q_pipeline_state.index(), rowsum)
         # don't arrive

@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 from max.driver import Tensor
 from max.dtype import DType
+from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, Shape, TensorType, ops
 
 
@@ -28,7 +29,10 @@ from max.graph import DeviceRef, Graph, Shape, TensorType, ops
     ],
 )
 def test_split(
-    session, input_shape: Shape, split_sizes: list[int], axis: int
+    session: InferenceSession,
+    input_shape: Shape,
+    split_sizes: list[int],
+    axis: int,
 ) -> None:
     input = np.random.uniform(size=input_shape).astype(np.float32)
 
@@ -52,4 +56,5 @@ def test_split(
     expected_results = np.split(input, np_split_indices, axis)
     assert len(result) == len(expected_results)
     for actual, expected in zip(result, expected_results):
+        assert isinstance(actual, Tensor)
         np.testing.assert_equal(actual.to_numpy(), expected)

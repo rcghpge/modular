@@ -34,6 +34,8 @@ from max.graph import (
     ops,
 )
 from max.graph.weights import Weights, WeightsAdapter
+from max.interfaces import InputContext
+from max.interfaces.request import RequestID
 from max.nn import LinearV1, ReturnLogits
 from max.nn.kv_cache import (
     ContinuousBatchingKVCacheManager,
@@ -51,7 +53,7 @@ from max.nn.kv_cache import (
     load_kv_manager,
 )
 from max.nn.layer import Layer
-from max.pipelines.core import InputContext, TextAndVisionContext
+from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
     KVCacheConfig,
     ModelInputs,
@@ -318,8 +320,20 @@ class MultimodalKVCacheManager(KVCacheManager):
         # This is batch_size x max_num_pages.
         # Note that each page is enough to fit up to vision_max_seq_len so there
         # is at most one page per sequence.
+
         lookup_table_tensor_vision = Tensor.from_numpy(
-            np.array([[ctx.cache_seq_id, 1] for ctx in batch], np.uint32)
+            np.array(
+                [
+                    [
+                        self.vision_kv_manager.request_to_seq_id[
+                            ctx.request_id
+                        ],
+                        1,
+                    ]
+                    for ctx in batch
+                ],
+                np.uint32,
+            )
         )
 
         vision_fetch_results = RaggedKVCacheInputs(
@@ -380,35 +394,35 @@ class MultimodalKVCacheManager(KVCacheManager):
         # Keep the base class's state in sync with the text KV manager's.
         super().step(batch)
 
-    def external_claim(self, seq_ids: list[int]) -> None:
-        """Reserves the same sequence ids for both modalities' KV caches."""
-        self.text_kv_manager.external_claim(seq_ids)
-        self.vision_kv_manager.external_claim(seq_ids)
+    def external_claim(self, request_id: RequestID) -> None:
+        """Reserves sequence IDs for the given request ID in both modalities' KV caches."""
+        self.text_kv_manager.external_claim(request_id)
+        self.vision_kv_manager.external_claim(request_id)
 
         # Keep the base class's state in sync with the text KV manager's.
-        super().external_claim(seq_ids)
+        super().external_claim(request_id)
 
-    def release(self, seq_id: int) -> None:
+    def release(self, request_id: RequestID) -> None:
         """Marks the sequence complete for both modalities' KV caches."""
-        self.text_kv_manager.release(seq_id)
-        self.vision_kv_manager.release(seq_id)
-        super().release(seq_id)
+        self.text_kv_manager.release(request_id)
+        self.vision_kv_manager.release(request_id)
+        super().release(request_id)
 
-    def contains(self, seq_id: int) -> bool:
-        """Returns whether `seq_id` is in the KV cache."""
-        text_kv_contains = self.text_kv_manager.contains(seq_id)
+    def contains(self, request_id: RequestID) -> bool:
+        """Returns whether `request_id` is in the KV cache."""
+        text_kv_contains = self.text_kv_manager.contains(request_id)
 
-        # Assume that the modalities' KV caches have consistent sequence ids.
-        assert text_kv_contains == self.vision_kv_manager.contains(seq_id)
+        # Assume that the modalities' KV caches have consistent request ids.
+        assert text_kv_contains == self.vision_kv_manager.contains(request_id)
 
         return text_kv_contains
 
     def num_kv_inputs(self) -> int:
-        """Returns the sum of the KV input lengths for both modalities."""
-        return (
-            self.text_kv_manager.num_kv_inputs()
-            + self.vision_kv_manager.num_kv_inputs()
-        )
+        """Returns the sum of the KV input lengths for both modalities.
+
+        Each KV manager (text and vision) returns 4 inputs, so the total is 8.
+        """
+        return 8
 
     def increment_cache_lengths(
         self,
@@ -683,7 +697,7 @@ class LlamaVisionLanguageModel(Layer):
         return ops.cast(logits, DType.float32)
 
 
-class LlamaVision(PipelineModel[TextAndVisionContext]):
+class LlamaVision(PipelineModel[TextAndVisionContext]):  # type: ignore
     """The entire (multimodal) Llama3.2 vision model.
 
     A note on multi-step and vision inputs:
@@ -979,12 +993,9 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
             msg = "Llama Vision only supports paged cache strategy"
             raise ValueError(msg)
 
-        def has_image(pixel_values: Sequence[np.ndarray]) -> bool:
-            return pixel_values is not None and len(pixel_values) > 0
-
-        has_images = any(has_image(ctx.pixel_values) for ctx in context_batch)
+        has_images = any(ctx.needs_vision_encoding for ctx in context_batch)
         if has_images and not all(
-            has_image(ctx.pixel_values) for ctx in context_batch
+            ctx.needs_vision_encoding for ctx in context_batch
         ):
             msg = (
                 "expected context batch to all have images, or no images at all"
@@ -992,7 +1003,7 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
             raise RuntimeError(msg)
 
         def initial_prompt_missing_image(ctx: TextAndVisionContext) -> bool:
-            return ctx.is_initial_prompt and not has_image(ctx.pixel_values)
+            return ctx.is_initial_prompt and not ctx.pixel_values
 
         if any(initial_prompt_missing_image(ctx) for ctx in context_batch):
             msg = "The Llama Vision model currently requires a prompt with an image. Consider using the regular text-only models for non-image prompts"
@@ -1020,9 +1031,7 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
                 [0]
                 + [
                     # Use an input row offset of 0 to mean no image.
-                    self.vision_max_seq_len
-                    if has_image(ctx.pixel_values)
-                    else 0
+                    self.vision_max_seq_len if ctx.needs_vision_encoding else 0
                     for ctx in context_batch
                 ],
                 dtype=np.uint32,
@@ -1042,10 +1051,10 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
             )
         )
 
-        # Unset the context's pixel values so that subsequent next_token
-        # calls reusing the same context won't run the vision encoder.
+        # Mark that vision encoding is complete for all contexts in the batch
+        # This prevents re-encoding on subsequent calls before update() is called
         for ctx in context_batch:
-            ctx.pixel_values = tuple()
+            ctx.needs_vision_encoding = False
 
         return LlamaVisionInputs(
             input_id_values=input_id_values,

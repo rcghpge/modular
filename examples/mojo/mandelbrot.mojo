@@ -11,14 +11,12 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# RUN: %mojo %s | FileCheck %s
-
 from math import iota
 from sys import num_physical_cores, simdwidthof
 
 import benchmark
 from algorithm import parallelize, vectorize
-from complex import ComplexFloat64, ComplexSIMD
+from complex import ComplexSIMD
 
 alias float_type = DType.float32
 alias int_type = DType.int32
@@ -102,7 +100,6 @@ fn main() raises:
     var parallelized = benchmark.run[bench_parallel]().mean(unit)
     print("Parallelized:", parallelized, unit)
 
-    # CHECK: Parallel speedup
     print("Parallel speedup:", vectorized / parallelized)
 
     matrix.data.free()

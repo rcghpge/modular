@@ -12,13 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 from collections import OptionalReg
 from math import ceildiv
-from sys import (
-    CompilationTarget,
-    alignof,
-    is_apple_silicon,
-    simdwidthof,
-    sizeof,
-)
+from sys import CompilationTarget, alignof, simdwidthof, sizeof
 
 from algorithm import sync_parallelize, tile
 from buffer import NDBuffer
@@ -211,7 +205,7 @@ fn _unpack_weights[
         b_packed_ptr += sizeof[DType.float16]() * tile_n * simd_width
 
         var b_column_sums = InlineArray[SIMD[DType.int32, simd_width], tile_n](
-            0
+            fill=0
         )
 
         for k in range(0, group_size, 8):
@@ -315,7 +309,9 @@ fn _scale_and_accumulate[
     mut c_int32: _Accumulator[DType.int32, tile_m, tile_n, simd_width],
     mut c_float: _Accumulator[DType.float32, tile_m, tile_n, simd_width],
 ):
-    var b_scale = InlineArray[SIMD[DType.float32, simd_width], tile_n](0)
+    var b_scale = InlineArray[SIMD[DType.float32, simd_width], tile_n](
+        uninitialized=True
+    )
 
     # Load the per-column scale values for the B matrix.
     @parameter
@@ -456,7 +452,7 @@ struct _MatmulQInt4Kernel_x86_vnni(_MatmulQInt4Kernel):
         var b_offset = sizeof[DType.float16]() * tile_n * simd_width
 
         var b_column_sums = InlineArray[SIMD[DType.int32, simd_width], tile_n](
-            0
+            fill=0
         )
 
         @parameter
@@ -600,7 +596,7 @@ struct _MatmulQInt4Kernel_x86_avx(_MatmulQInt4Kernel):
         var b_offset = sizeof[DType.float16]() * tile_n * simd_width
 
         var b_column_sums = InlineArray[SIMD[DType.int32, simd_width], tile_n](
-            0
+            fill=0
         )
 
         @parameter
@@ -822,7 +818,9 @@ struct _MatmulQInt4Kernel_neon_dotprod(_MatmulQInt4Kernel):
 
         @parameter
         for k in range(0, group_size, 16):
-            var a_tile = InlineArray[SIMD[DType.int8, 16], tile_m](0)
+            var a_tile = InlineArray[SIMD[DType.int8, 16], tile_m](
+                uninitialized=True
+            )
 
             @parameter
             for row in range(tile_m):
@@ -912,7 +910,7 @@ struct _MatmulQInt4Kernel_neon_i8mm(_MatmulQInt4Kernel):
         @parameter
         for k in range(0, group_size, 8):
             var a_tile = InlineArray[SIMD[DType.int8, simd_width * 4], block_m](
-                0
+                fill=0
             )
 
             @parameter
@@ -1266,7 +1264,10 @@ fn matmul_qint4[
         kernel_dispatch[_MatmulQInt4Kernel_x86_vnni]()
     elif CompilationTarget.has_avx2():
         kernel_dispatch[_MatmulQInt4Kernel_x86_avx]()
-    elif CompilationTarget.has_neon_int8_matmul() and not is_apple_silicon():
+    elif (
+        CompilationTarget.has_neon_int8_matmul()
+        and not CompilationTarget.is_apple_silicon()
+    ):
         kernel_dispatch[_MatmulQInt4Kernel_neon_i8mm]()
     elif CompilationTarget.has_neon_int8_dotprod():
         kernel_dispatch[_MatmulQInt4Kernel_neon_dotprod]()

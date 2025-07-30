@@ -14,8 +14,9 @@
 """Speculative Decoding Text Generation Pipeline"""
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Optional, TypeVar, cast
+from typing import Any, Optional, Union
 
 import numpy as np
 from max.driver import Tensor, load_devices, scan_available_devices
@@ -28,15 +29,16 @@ from max.graph.weights import (
     load_weights,
     weights_format,
 )
-from max.nn import ReturnLogits
-from max.nn.kv_cache import KVCacheInputsSequence
-from max.pipelines.core import (
-    InputContext,
-    TextGenerationResponse,
-    TextGenerationStatus,
-    TextResponse,
+from max.interfaces import (
+    GenerationStatus,
+    RequestID,
+    TextGenerationInputs,
+    TextGenerationOutput,
     TokenGenerator,
 )
+from max.nn import ReturnLogits
+from max.nn.kv_cache import KVCacheInputs, KVCacheInputsSequence
+from max.pipelines.core import TextAndVisionContext, TextContext
 from max.profiler import traced
 from transformers import AutoConfig
 
@@ -50,8 +52,6 @@ from .pipeline import (
 )
 from .ragged_token_merger import ragged_token_merger
 from .sampling import rejection_sampler_with_residuals, token_sampler
-
-T = TypeVar("T", bound=InputContext)
 
 logger = logging.getLogger("max.pipelines")
 
@@ -127,7 +127,9 @@ class SpeculativeDecodingMetrics:
         )
 
 
-class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
+class SpeculativeDecodingTextGenerationPipeline(
+    TokenGenerator[Union[TextContext, TextAndVisionContext]]
+):
     """Generalized token generator pipeline with speculative decoding."""
 
     def __init__(
@@ -217,18 +219,9 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
             devices=self.target_devices,
             kv_cache_config=self.pipeline_config.model_config.kv_cache_config,
             weights=target_weights,
-            adapter=weight_adapters.get(_target_weights_format, None),
+            adapter=weight_adapters.get(_target_weights_format),
             return_logits=ReturnLogits.VARIABLE,
         )
-        # TODO: We only support Llama3 for spec decoding since we haven't worked out
-        # a general API for the prepare next token with draft inputs yet.
-        from ..architectures.llama3.model import Llama3Model
-
-        # Now check if the instantiated model is a Llama3Model
-        if not isinstance(self._target_model, Llama3Model):
-            raise ValueError(
-                "Speculative decoding only supported for Llama3 models"
-            )
 
         # Calculate Max Length
         self._max_length = self._target_model.calculate_max_seq_len(
@@ -248,9 +241,29 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
             self.pipeline_config.draft_model_config.huggingface_config
         )
 
-        self.vocab_size = (
-            self.pipeline_config.model_config._huggingface_config.vocab_size
-        )
+        if hasattr(
+            self.pipeline_config.model_config.huggingface_config, "vocab_size"
+        ):
+            self.vocab_size = (
+                self.pipeline_config.model_config.huggingface_config.vocab_size
+            )
+        elif hasattr(
+            self.pipeline_config.model_config.huggingface_config, "text_config"
+        ):
+            if hasattr(
+                self.pipeline_config.model_config.huggingface_config.text_config,
+                "vocab_size",
+            ):
+                self.vocab_size = self.pipeline_config.model_config.huggingface_config.text_config.vocab_size
+            else:
+                raise ValueError(
+                    "MAXModelConfig's HuggingFace config must have a 'vocab_size' or 'text_config.vocab_size' param for Speculative Decoding"
+                )
+
+        else:
+            raise ValueError(
+                "MAXModelConfig's HuggingFace config must have a 'vocab_size' or 'text_config.vocab_size' param for Speculative Decoding"
+            )
 
         # Retrieve Encoding, and Files for Draft Model
         if self.pipeline_config.draft_model_config is None:
@@ -309,7 +322,7 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
             devices=self.draft_devices,
             kv_cache_config=self.pipeline_config.draft_model_config.kv_cache_config,
             weights=draft_weights,
-            adapter=weight_adapters.get(_draft_weights_format, None),
+            adapter=weight_adapters.get(_draft_weights_format),
             return_logits=ReturnLogits.LAST_TOKEN,
         )
 
@@ -357,7 +370,7 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
         model: PipelineModel,
         huggingface_config: AutoConfig,
         num_steps: int,
-        context: T,
+        context: Union[TextContext, TextAndVisionContext],
         is_draft: bool = False,
     ) -> int:
         max_seq_len = model.calculate_max_seq_len(
@@ -369,60 +382,34 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
 
         if num_available_steps <= 0:
             raise ValueError(
-                f"Request {context.cache_seq_id} length ({context.current_length}) is larger than or equal to the configured max_length ({max_seq_len})"
+                f"Request {context.request_id} length ({context.current_length}) is larger than or equal to the configured max_length ({max_seq_len})"
             )
 
-        return (
-            num_steps
-            if num_available_steps > num_steps
-            else num_available_steps
-        )
-
-    def _prepare_llama3_batch(
-        self,
-        model: PipelineModel,
-        num_steps: int,
-        return_n_logits: int,
-        merged_draft_tokens: Tensor,
-        merged_draft_offsets: Tensor,
-        kv_cache_inputs: KVCacheInputsSequence,
-    ) -> "Llama3Inputs":  # type: ignore
-        from ..architectures.llama3.model import Llama3Inputs
-
-        return Llama3Inputs(
-            tokens=merged_draft_tokens,
-            input_row_offsets=merged_draft_offsets,
-            signal_buffers=[],
-            kv_cache_inputs=kv_cache_inputs,
-            return_n_logits=Tensor.from_numpy(
-                np.array([return_n_logits], dtype=np.int64)
-            ),
-        )
+        return min(num_available_steps, num_steps)
 
     @traced
     def prepare_batch(
         self,
         model: PipelineModel,
-        batch: list[T],
+        batch: list[Union[TextContext, TextAndVisionContext]],
         num_steps: int,
         return_n_logits: int,
         is_draft: bool = False,
+        draft_inputs: Optional[ModelInputs] = None,
         merged_draft_tokens: Optional[Tensor] = None,
         merged_draft_offsets: Optional[Tensor] = None,
     ) -> tuple[ModelInputs, int]:
         # Claim cache rows
-        for i, context in enumerate(batch):
-            if not model.kv_manager.contains(context.cache_seq_id):
-                model.kv_manager.external_claim([context.cache_seq_id])
+        for i, context in enumerate(batch):  # noqa: B007
+            if not model.kv_manager.contains(context.request_id):
+                model.kv_manager.external_claim(context.request_id)
 
             # Calculate num_steps.
             num_steps = self.calculate_num_steps(
                 model, model.huggingface_config, num_steps, context, is_draft
             )
 
-        kv_cache_inputs = model.kv_manager.fetch(
-            cast(list[InputContext], batch), num_steps
-        )
+        kv_cache_inputs = model.kv_manager.fetch(batch, num_steps)
         if is_draft:
             return (
                 model.prepare_initial_token_inputs(
@@ -437,24 +424,29 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
         else:
             assert merged_draft_tokens is not None
             assert merged_draft_offsets is not None
-            return (
-                self._prepare_llama3_batch(
-                    model,
-                    num_steps,
-                    return_n_logits,
-                    merged_draft_tokens,
-                    merged_draft_offsets,
-                    kv_cache_inputs=KVCacheInputsSequence(
-                        kv_cache_inputs=kv_cache_inputs
-                    ),
+            assert draft_inputs is not None
+            kv_cache_updated_inputs: KVCacheInputs
+            if isinstance(kv_cache_inputs, Sequence):
+                kv_cache_updated_inputs = KVCacheInputsSequence(
+                    kv_cache_inputs=kv_cache_inputs,
+                )
+            else:
+                kv_cache_updated_inputs = kv_cache_inputs
+            draft_inputs.update(
+                tokens=merged_draft_tokens,
+                input_row_offsets=merged_draft_offsets,
+                signal_buffers=[],
+                kv_cache_inputs=kv_cache_updated_inputs,
+                return_n_logits=Tensor.from_numpy(
+                    np.array([return_n_logits], dtype=np.int64)
                 ),
-                num_steps,
             )
+            return (draft_inputs, num_steps)
 
     @traced
     def sample_draft_logits(
         self,
-        batch: list[T],
+        batch: list[Union[TextContext, TextAndVisionContext]],
         model_outputs: ModelOutputs,
         prev_tokens: Tensor,
         prev_logits: Tensor,
@@ -482,17 +474,11 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
 
     @traced
     def generate_draft_tokens(
-        self, batch: list[T], num_steps: int
+        self,
+        batch: list[Union[TextContext, TextAndVisionContext]],
+        num_steps: int,
+        model_inputs: ModelInputs,
     ) -> tuple[int, Tensor, Tensor, ModelInputs, Tensor]:
-        # Prepare the Batch
-        model_inputs, num_steps = self.prepare_batch(
-            self._draft_model,
-            batch,
-            num_steps,
-            return_n_logits=1,
-            is_draft=True,
-        )
-
         # Create sampling parameters once for the entire batch
         top_k_np = np.array(
             [context.sampling_params.top_k for context in batch], dtype=np.int64
@@ -583,7 +569,7 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
             )
 
         # The kv cache manager for the target model uses these indices to set the lengths of the cache. We bump them manually here even though the tokens array has not been filled. They are reset when doing the final update of the contexts after both draft and target models have run
-        for i, context in enumerate(batch):
+        for i, context in enumerate(batch):  # noqa: B007
             context.bump_token_indices(active_idx=num_steps, end_idx=num_steps)
         return (
             num_steps,
@@ -596,7 +582,8 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
     @traced
     def verify_draft_tokens_with_target_model(
         self,
-        context_batch: list[T],
+        draft_inputs: ModelInputs,
+        context_batch: list[Union[TextContext, TextAndVisionContext]],
         num_draft_tokens_generated: int,
         draft_tokens: Tensor,
         draft_logits: Tensor,
@@ -611,6 +598,7 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
             # I believe, num steps in this scenario is 1, as we are only
             # generating one token beyond the draft tokens.
             num_steps=1,
+            draft_inputs=draft_inputs,
             return_n_logits=num_draft_tokens_generated + 1,
             is_draft=False,
             merged_draft_tokens=merged_draft_tokens,
@@ -639,21 +627,31 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
 
     @traced
     def next_token(
-        self, batch: dict[str, T], num_steps: int
-    ) -> dict[str, TextGenerationResponse]:
+        self,
+        inputs: TextGenerationInputs[Union[TextContext, TextAndVisionContext]],
+    ) -> dict[RequestID, TextGenerationOutput]:
         """Provided a batch, execute both the draft model for num_steps and the target model for num_steps + 1 tokens, accepting final tokens via rejection sampling, returning the variable list of token integers."""
 
         # Flatten our batch for consistent indexing.
-        context_batch = list(batch.values())
+        context_batch = list(inputs.batch.values())
 
         # Generate draft tokens.
+        draft_inputs, draft_num_steps = self.prepare_batch(
+            self._draft_model,
+            context_batch,
+            inputs.num_steps,
+            return_n_logits=1,
+            is_draft=True,
+        )
         (
             num_draft_tokens_generated,
             draft_tokens,
             draft_logits,
             model_inputs,
             all_draft_logits,
-        ) = self.generate_draft_tokens(context_batch, num_steps)
+        ) = self.generate_draft_tokens(
+            context_batch, draft_num_steps, draft_inputs
+        )
 
         # Merge draft tokens with target tokens
         merged_tokens, merged_offsets = self._ragged_token_merger(
@@ -667,6 +665,7 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
         # Verify draft tokens with target model
         first_rejected_tokens, recovered_tokens, bonus_tokens = (
             self.verify_draft_tokens_with_target_model(
+                draft_inputs,
                 context_batch,
                 num_draft_tokens_generated,
                 draft_tokens,
@@ -686,15 +685,13 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
             num_draft_tokens_generated=num_draft_tokens_generated,
         )
 
-        res = self.build_response(batch=batch, context_batch=context_batch)
+        res = self.build_response(
+            batch=inputs.batch, context_batch=context_batch
+        )
 
         # Maybe commit blocks into prefix cache
-        self._target_model.kv_manager.step(
-            cast(list[InputContext], context_batch)
-        )
-        self._draft_model.kv_manager.step(
-            cast(list[InputContext], context_batch)
-        )
+        self._target_model.kv_manager.step(context_batch)
+        self._draft_model.kv_manager.step(context_batch)
 
         return res
 
@@ -717,7 +714,7 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
 
     def update_contexts(
         self,
-        context_batch: list[T],
+        context_batch: list[Union[TextContext, TextAndVisionContext]],
         first_rejected_tokens: np.ndarray,
         recovered_tokens: np.ndarray,
         bonus_tokens: np.ndarray,
@@ -779,9 +776,9 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
 
     def build_response(
         self,
-        batch: dict[str, T],
-        context_batch: list[T],
-    ) -> dict[str, TextGenerationResponse]:
+        batch: dict[RequestID, Union[TextContext, TextAndVisionContext]],
+        context_batch: list[Union[TextContext, TextAndVisionContext]],
+    ) -> dict[RequestID, TextGenerationOutput]:
         """Build response from updated contexts.
 
         Args:
@@ -789,13 +786,15 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
             context_batch: The list of context objects
 
         Returns:
-            Dictionary mapping request IDs to TextGenerationResponse objects
+            Dictionary mapping request IDs to TextGenerationOutput objects
         """
-        res: dict[str, TextGenerationResponse] = {}
+        res: dict[RequestID, TextGenerationOutput] = {}
         request_ids = list(batch.keys())
 
-        for idx, context in enumerate(context_batch):
-            res[request_ids[idx]] = TextGenerationResponse([], context.status)
+        for _, context in enumerate(context_batch):
+            tokens = []
+            log_probabilities = []
+            final_status = context.status
 
             # Identify the Max Length
             context_max_length = upper_bounded_default(
@@ -804,34 +803,43 @@ class SpeculativeDecodingTextGenerationPipeline(TokenGenerator[T]):
 
             # TODO: This resets the context object for a new sequence.
             # We may want to make this more explicit
-            for i, (token, log_probs) in enumerate(
+            for i, (token, log_probs) in enumerate(  # noqa: B007
                 context.outstanding_completion_tokens()
             ):
                 # Break early if beyond max length
                 current_length = context.start_idx + 1
 
                 if current_length >= context_max_length:
-                    context.update_status(TextGenerationStatus.MAXIMUM_LENGTH)
-                    res[request_ids[idx]].update_status(context.status)
-
-                    res[request_ids[idx]].append_token(
-                        TextResponse(token, log_probs)
-                    )
+                    context.update_status(GenerationStatus.MAXIMUM_LENGTH)
+                    final_status = context.status
+                    tokens.append(token)
+                    if log_probs is not None:
+                        log_probabilities.append(log_probs)
                     break
                 else:
-                    res[request_ids[idx]].append_token(
-                        TextResponse(token, log_probs)
-                    )
+                    tokens.append(token)
+                    if log_probs is not None:
+                        log_probabilities.append(log_probs)
+
+            # Create TextGenerationOutput
+            res[context.request_id] = TextGenerationOutput(
+                request_id=context.request_id,
+                tokens=tokens,
+                final_status=final_status,
+                log_probabilities=log_probabilities
+                if log_probabilities
+                else None,
+            )
 
         return res
 
     @traced
-    def release(self, context: T) -> None:
-        """Releases resources associated with this context.
+    def release(self, request_id: RequestID) -> None:
+        """Releases resources associated with this request ID.
 
         Args:
-            context (TokenGeneratorContext): Finished context.
+            request_id: Unique identifier for the finished request.
 
         """
-        self._draft_model.kv_manager.release(context.cache_seq_id)
-        self._target_model.kv_manager.release(context.cache_seq_id)
+        self._draft_model.kv_manager.release(request_id)
+        self._target_model.kv_manager.release(request_id)

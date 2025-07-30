@@ -77,17 +77,10 @@ from collections import KeyElement
 from collections._index_normalization import normalize_index
 from collections.string import CodepointsIter
 from collections.string._parsing_numbers.parsing_floats import _atof
-from collections.string._unicode import (
-    is_lowercase,
-    is_uppercase,
-    to_lowercase,
-    to_uppercase,
-)
 from collections.string.format import _CurlyEntryFormattable, _FormatCurlyEntry
 from collections.string.string_slice import (
     CodepointSliceIter,
     _to_string_list,
-    _utf8_byte_type,
 )
 from hashlib.hasher import Hasher
 from os import PathLike, abort
@@ -98,11 +91,14 @@ from sys.ffi import c_char
 
 from bit import count_leading_zeros
 from memory import memcpy, memset, memcmp
-from python import PythonConvertible, PythonObject, ConvertibleFromPython
+from python import PythonObject, ConvertibleFromPython, ConvertibleToPython
 
-from utils import IndexList, Variant
-from utils._select import _select_register_value as select
-from utils.write import _WriteBufferStack
+from io.write import (
+    _TotalWritableBytes,
+    _WriteBufferStack,
+    STACK_BUFFER_BYTES,
+)
+from io.write import _WriteBufferStack
 
 
 # ===----------------------------------------------------------------------=== #
@@ -114,13 +110,13 @@ struct String(
     Boolable,
     Comparable,
     ConvertibleFromPython,
+    ConvertibleToPython,
     Defaultable,
     ExplicitlyCopyable,
     FloatableRaising,
     IntableRaising,
     KeyElement,
     PathLike,
-    PythonConvertible,
     Representable,
     Sized,
     Stringable,
@@ -278,8 +274,15 @@ struct String(
         """
         self = value.__str__()
 
+    # ===------------------------------------------------------------------=== #
+    # Writables
+    # ===------------------------------------------------------------------=== #
+    # There is duplication here to avoid passing around variadic packs in such
+    # a common callsite, as that isn't free for both compilation speed and
+    # register pressure.
+
     fn __init__[
-        *Ts: Writable
+        *Ts: Writable,
     ](out self, *args: *Ts, sep: StaticString = "", end: StaticString = ""):
         """
         Construct a string by concatenating a sequence of Writable arguments.
@@ -290,8 +293,7 @@ struct String(
             end: The String to write after printing the elements.
 
         Parameters:
-            Ts: The types of the arguments to format. Each type must be satisfy
-                `Writable`.
+            Ts: Types of the provided argument sequence.
 
         Examples:
 
@@ -302,25 +304,46 @@ struct String(
         print(string) # "1, 2.0, three"
         ```
         """
-        self = String()
-        var buffer = _WriteBufferStack(self)
         alias length = args.__len__()
+        var total_bytes = _TotalWritableBytes()
 
         @parameter
         for i in range(length):
-            args[i].write_to(buffer)
+            args[i].write_to(total_bytes)
 
+            @parameter
             if i < length - 1:
-                sep.write_to(buffer)
+                sep.write_to(total_bytes)
+        end.write_to(total_bytes)
 
-        end.write_to(buffer)
-        buffer.flush()
+        if total_bytes.size == 0:
+            return String()
+
+        @parameter
+        fn _write[W: Writer](mut writer: W):
+            @parameter
+            for i in range(args.__len__()):
+                args[i].write_to(writer)
+
+                @parameter
+                if i < length - 1:
+                    sep.write_to(writer)
+            end.write_to(writer)
+
+        if total_bytes.size <= Self.INLINE_CAPACITY:
+            self = String()
+            _write(self)
+        else:
+            self = String(capacity=total_bytes.size)
+            var buffer = _WriteBufferStack[STACK_BUFFER_BYTES](self)
+            _write(buffer)
+            buffer.flush()
 
     # TODO(MOCO-1791): Default arguments and param inference aren't powerful
     # to declare sep/end as StringSlice.
     @staticmethod
     fn __init__[
-        *Ts: Writable
+        *Ts: Writable,
     ](
         out self,
         args: VariadicPack[_, _, Writable, *Ts],
@@ -336,8 +359,7 @@ struct String(
             end: The String to write after printing the elements.
 
         Parameters:
-            Ts: The types of the arguments to format. Each type must be satisfy
-                `Writable`.
+            Ts: Types of the provided argument sequence.
 
         Examples:
 
@@ -353,19 +375,144 @@ struct String(
         ```
         .
         """
-        self = String()
-        var buffer = _WriteBufferStack(self)
         alias length = args.__len__()
+        var total_bytes = _TotalWritableBytes()
 
         @parameter
         for i in range(length):
-            args[i].write_to(buffer)
+            args[i].write_to(total_bytes)
 
+            @parameter
             if i < length - 1:
-                sep.write_to(buffer)
+                sep.write_to(total_bytes)
+        end.write_to(total_bytes)
 
-        end.write_to(buffer)
-        buffer.flush()
+        if total_bytes.size == 0:
+            return String()
+
+        @parameter
+        fn _write[W: Writer](mut writer: W):
+            @parameter
+            for i in range(length):
+                args[i].write_to(writer)
+
+                @parameter
+                if i < length - 1:
+                    sep.write_to(writer)
+            end.write_to(writer)
+
+        if total_bytes.size <= Self.INLINE_CAPACITY:
+            self = String()
+            _write(self)
+        else:
+            self = String(capacity=total_bytes.size)
+            var buffer = _WriteBufferStack[STACK_BUFFER_BYTES](self)
+            _write(buffer)
+            buffer.flush()
+
+    @staticmethod
+    fn write[
+        *Ts: Writable,
+    ](*args: *Ts, sep: StaticString = "", end: StaticString = "") -> Self:
+        """Construct a string by concatenating a sequence of Writable arguments.
+
+        Args:
+            args: A sequence of Writable arguments.
+            sep: The separator used between elements.
+            end: The String to write after printing the elements.
+
+        Parameters:
+            Ts: Types of the provided argument sequence.
+
+        Returns:
+            A string formed by formatting the argument sequence.
+        """
+        alias length = args.__len__()
+        var total_bytes = _TotalWritableBytes()
+
+        @parameter
+        for i in range(length):
+            args[i].write_to(total_bytes)
+
+            @parameter
+            if i < length - 1:
+                sep.write_to(total_bytes)
+        end.write_to(total_bytes)
+
+        if total_bytes.size == 0:
+            return String()
+
+        @parameter
+        fn _write[W: Writer](mut writer: W):
+            @parameter
+            for i in range(length):
+                args[i].write_to(writer)
+
+                @parameter
+                if i < length - 1:
+                    sep.write_to(writer)
+            end.write_to(writer)
+
+        if total_bytes.size <= Self.INLINE_CAPACITY:
+            var result = String()
+            _write(result)
+            return result^
+        else:
+            var result = String(capacity=total_bytes.size)
+            var buffer = _WriteBufferStack[STACK_BUFFER_BYTES](result)
+            _write(buffer)
+            buffer.flush()
+            return result^
+
+    fn write[*Ts: Writable](mut self, *args: *Ts):
+        """Write a sequence of Writable arguments to the provided Writer.
+
+        Parameters:
+            Ts: Types of the provided argument sequence.
+
+        Args:
+            args: Sequence of arguments to write to this Writer.
+        """
+        alias length = args.__len__()
+        var total_bytes = _TotalWritableBytes()
+        total_bytes.size += self.byte_length()
+
+        @parameter
+        for i in range(length):
+            args[i].write_to(total_bytes)
+
+        @parameter
+        fn _write[W: Writer](mut writer: W):
+            @parameter
+            for i in range(length):
+                args[i].write_to(writer)
+
+        if total_bytes.size <= Self.INLINE_CAPACITY:
+            _write(self)
+        else:
+            self.reserve(total_bytes.size)
+            var buffer = _WriteBufferStack[STACK_BUFFER_BYTES](self)
+            _write(buffer)
+            buffer.flush()
+
+    fn write[T: Writable](mut self, value: T):
+        """Write a single Writable argument to the provided Writer.
+
+        Args:
+            value: The Writable argument to write.
+        """
+        value.write_to(self)
+
+    @staticmethod
+    fn write[T: Writable](value: T) -> Self:
+        """Write a single Writable argument to the provided Writer.
+
+        Args:
+            value: The Writable argument to write.
+        """
+        var result = String()
+        value.write_to(result)
+        return result^
 
     @always_inline("nodebug")
     fn copy(self) -> Self:
@@ -386,8 +533,8 @@ struct String(
         Args:
             unsafe_uninit_length: The number of bytes to allocate.
         """
-        self = Self(capacity=unsafe_uninit_length)
-        self.set_byte_length(unsafe_uninit_length)
+        self = Self(capacity=Int(unsafe_uninit_length))
+        self.set_byte_length(Int(unsafe_uninit_length))
 
     fn __init__(
         out self,
@@ -524,9 +671,9 @@ struct String(
                 ptr.free()
 
     @staticmethod
-    fn _alloc(capacity: Int) -> UnsafePointer[Byte]:
+    fn _alloc(capacity: UInt) -> UnsafePointer[Byte]:
         """Allocate space for a new out-of-line string buffer."""
-        var ptr = UnsafePointer[Byte].alloc(capacity + Self.REF_COUNT_SIZE)
+        var ptr = UnsafePointer[Byte].alloc(Int(capacity) + Self.REF_COUNT_SIZE)
 
         # Initialize the Atomic refcount into the header.
         __get_address_as_uninit_lvalue(
@@ -550,62 +697,11 @@ struct String(
         """
         self._iadd(bytes)
 
-    fn write[*Ts: Writable](mut self, *args: *Ts):
-        """Write a sequence of Writable arguments to the provided Writer.
-
-        Parameters:
-            Ts: Types of the provided argument sequence.
-
-        Args:
-            args: Sequence of arguments to write to this Writer.
-        """
-
-        @parameter
-        for i in range(args.__len__()):
-            args[i].write_to(self)
-
-    @staticmethod
-    fn write[
-        *Ts: Writable
-    ](*args: *Ts, sep: StaticString = "", end: StaticString = "") -> Self:
-        """Construct a string by concatenating a sequence of Writable arguments.
-
-        Args:
-            args: A sequence of Writable arguments.
-            sep: The separator used between elements.
-            end: The String to write after printing the elements.
-
-        Parameters:
-            Ts: The types of the arguments to format. Each type must be satisfy
-                `Writable`.
-
-        Returns:
-            A string formed by formatting the argument sequence.
-
-        This is used only when reusing the `write_to` method for
-        `__str__` in order to avoid an endless loop recalling
-        the constructor.
-        """
-        var string = String()
-        var buffer = _WriteBufferStack(string)
-        alias length = args.__len__()
-
-        @parameter
-        for i in range(length):
-            args[i].write_to(buffer)
-
-            if i < length - 1:
-                sep.write_to(buffer)
-
-        end.write_to(buffer)
-        buffer.flush()
-        return string^
-
     # ===------------------------------------------------------------------=== #
     # Operator dunders
     # ===------------------------------------------------------------------=== #
 
-    fn __getitem__[I: Indexer](self, idx: I) -> String:
+    fn __getitem__[I: Indexer](self, idx: I) -> StringSlice[__origin_of(self)]:
         """Gets the character at the specified position.
 
         Parameters:
@@ -615,13 +711,11 @@ struct String(
             idx: The index value.
 
         Returns:
-            A new string containing the character at the specified position.
+            A StringSlice view containing the character at the specified position.
         """
         # TODO(#933): implement this for unicode when we support llvm intrinsic evaluation at compile time
         var normalized_idx = normalize_index["String"](idx, len(self))
-        var result = String(capacity=1)
-        result.append_byte(self.unsafe_ptr()[normalized_idx])
-        return result^
+        return StringSlice(ptr=self.unsafe_ptr() + normalized_idx, length=1)
 
     fn __getitem__(self, span: Slice) -> String:
         """Gets the sequence of characters at the specified positions.
@@ -789,7 +883,7 @@ struct String(
         var len = self.byte_length()
         self.reserve(len + 1)
         self.unsafe_ptr_mut()[len] = byte
-        self.set_byte_length(len + 1)
+        self.set_byte_length(Int(len + 1))
 
     fn __radd__(self, other: StringSlice[mut=False]) -> String:
         """Creates a string by prepending another string slice to the start.
@@ -1190,9 +1284,10 @@ struct String(
             The length of this string in bytes.
         """
         if self._is_inline():
-            return (
-                self._capacity_or_data & Self.INLINE_LENGTH_MASK
-            ) >> Self.INLINE_LENGTH_START
+            return Int(
+                (self._capacity_or_data & Self.INLINE_LENGTH_MASK)
+                >> Self.INLINE_LENGTH_START
+            )
         else:
             return self._len_or_data
 
@@ -1271,7 +1366,9 @@ struct String(
         """
         return self.as_string_slice().isspace()
 
-    fn split(self, sep: StringSlice, maxsplit: Int = -1) -> List[String]:
+    fn split(
+        self, sep: StringSlice, maxsplit: Int = -1
+    ) -> List[StringSlice[__origin_of(self)]]:
         """Split the string by a separator.
 
         Args:
@@ -1295,11 +1392,11 @@ struct String(
         _ = "123".split("") # ["", "1", "2", "3", ""]
         ```
         """
-        return _to_string_list(
-            self.as_string_slice().split(sep, maxsplit=maxsplit)
-        )
+        return self.as_string_slice().split(sep, maxsplit=maxsplit)
 
-    fn split(self, sep: NoneType = None, maxsplit: Int = -1) -> List[String]:
+    fn split(
+        self, sep: NoneType = None, maxsplit: Int = -1
+    ) -> List[StringSlice[__origin_of(self)]]:
         """Split the string by every Whitespace separator.
 
         Args:
@@ -1323,9 +1420,7 @@ struct String(
         _ = "hello \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e\\x85\\u2028\\u2029world".split()  # ["hello", "world"]
         ```
         """
-        return _to_string_list(
-            self.as_string_slice().split(sep, maxsplit=maxsplit)
-        )
+        return self.as_string_slice().split(sep, maxsplit=maxsplit)
 
     fn splitlines(self, keepends: Bool = False) -> List[String]:
         """Split the string at line boundaries. This corresponds to Python's
@@ -1698,7 +1793,7 @@ struct String(
             unsafe_uninit_length: The new size.
         """
         self._clear_nul_terminator()
-        if unsafe_uninit_length > self.capacity():
+        if UInt(unsafe_uninit_length) > self.capacity():
             self.reserve(unsafe_uninit_length)
         self.set_byte_length(unsafe_uninit_length)
 
@@ -1872,9 +1967,10 @@ fn ascii(value: StringSlice) -> String:
     alias ord_squote = ord("'")
     var result = String()
     var use_dquote = False
+    var data = value.as_bytes()
 
-    for idx in range(len(value._slice)):
-        var char = value._slice[idx]
+    for idx in range(len(data)):
+        var char = data[idx]
         result += _repr_ascii(char)
         use_dquote = use_dquote or (char == ord_squote)
 

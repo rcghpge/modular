@@ -18,7 +18,7 @@ These are Mojo built-ins, so you don't need to import them.
 
 from hashlib.hasher import Hasher
 from os import abort
-from sys import bitwidthof, os_is_windows, sizeof
+from sys import CompilationTarget, bitwidthof, sizeof
 from sys.intrinsics import _type_is_eq
 
 
@@ -187,13 +187,6 @@ struct DType(
 
     alias float32 = DType(__mlir_attr.`#kgen.dtype.constant<f32> : !kgen.dtype`)
     """Represents an IEEE754-2008 `binary32` floating point value."""
-    alias tensor_float32 = DType(
-        __mlir_attr.`#kgen.dtype.constant<tf32> : !kgen.dtype`
-    )
-    """Represents a special floating point format supported by NVIDIA Tensor
-    Cores, with the same range as float32 and reduced precision (>=10 bits).
-    Note that this dtype is only available on NVIDIA GPUs.
-    """
 
     alias float64 = DType(__mlir_attr.`#kgen.dtype.constant<f64> : !kgen.dtype`)
     """Represents an IEEE754-2008 `binary64` floating point value."""
@@ -274,8 +267,6 @@ struct DType(
 
         elif str == "float32":
             return DType.float32
-        elif str == "tensor_float32":
-            return DType.tensor_float32
 
         elif str == "float64":
             return DType.float64
@@ -353,8 +344,6 @@ struct DType(
 
         elif self is DType.float32:
             return writer.write("float32")
-        elif self is DType.tensor_float32:
-            return writer.write("tensor_float32")
 
         elif self is DType.float64:
             return writer.write("float64")
@@ -604,8 +593,6 @@ struct DType(
 
         elif self is DType.float32:
             return sizeof[DType.float32]()
-        elif self is DType.tensor_float32:
-            return sizeof[DType.tensor_float32]()
 
         elif self is DType.float64:
             return sizeof[DType.float64]()
@@ -620,6 +607,98 @@ struct DType(
             Returns the size in bits of the current DType.
         """
         return 8 * self.sizeof()
+
+    # ===-------------------------------------------------------------------===#
+    # Floating point generics
+    # ===-------------------------------------------------------------------===#
+
+    @staticmethod
+    @always_inline("nodebug")
+    fn mantissa_width[dtype: DType]() -> Int:
+        """Returns the mantissa width of a floating point type.
+
+        Parameters:
+            dtype: The DType.
+
+        Returns:
+            The mantissa width.
+        """
+        constrained[dtype.is_floating_point(), "dtype must be floating point"]()
+        return bitwidthof[dtype]() - DType.exponent_width[dtype]() - 1
+
+    @staticmethod
+    @always_inline("nodebug")
+    fn max_exponent[dtype: DType]() -> Int:
+        """Returns the max exponent of a floating point dtype without accounting
+        for inf representations. This is not the maximum representable exponent,
+        which is generally equal to the exponent_bias.
+
+        Parameters:
+            dtype: The DType.
+
+        Returns:
+            The max exponent.
+        """
+        constrained[dtype.is_floating_point(), "dtype must be floating point"]()
+
+        @parameter
+        if dtype is DType.float8_e4m3fnuz:
+            return 7
+        elif dtype is DType.float8_e4m3fn:
+            return 8
+        elif dtype in (DType.float8_e5m2, DType.float8_e5m2fnuz, DType.float16):
+            return 16
+        elif dtype in (DType.bfloat16, DType.float32):
+            return 128
+        elif dtype is DType.float64:
+            return 1024
+        else:
+            constrained[False, "unsupported float type"]()
+            return {}
+
+    @staticmethod
+    @always_inline("nodebug")
+    fn exponent_width[dtype: DType]() -> Int:
+        """Returns the exponent width of a floating point type.
+
+        Parameters:
+            dtype: The DType.
+
+        Returns:
+            The exponent width.
+        """
+        constrained[dtype.is_floating_point(), "dtype must be floating point"]()
+
+        @parameter
+        if dtype in (DType.float8_e4m3fn, DType.float8_e4m3fnuz):
+            return 4
+        elif dtype in (DType.float8_e5m2, DType.float8_e5m2fnuz, DType.float16):
+            return 5
+        elif dtype in (DType.float32, DType.bfloat16):
+            return 8
+        elif dtype is DType.float64:
+            return 11
+        else:
+            constrained[False, "unsupported float type"]()
+            return {}
+
+    @staticmethod
+    @always_inline
+    fn exponent_bias[dtype: DType]() -> Int:
+        """Returns the exponent bias of a floating point type.
+
+        Parameters:
+            dtype: The DType.
+
+        Returns:
+            The exponent bias.
+        """
+
+        @parameter
+        if dtype in (DType.float8_e4m3fnuz, DType.float8_e5m2fnuz):
+            return DType.max_exponent[dtype]()
+        else:
+            return DType.max_exponent[dtype]() - 1
 
     # ===-------------------------------------------------------------------===#
     # dispatch_integral
@@ -679,8 +758,6 @@ struct DType(
         #     func[DType.bfloat16]()
         elif self is DType.float32:
             func[DType.float32]()
-        elif self is DType.tensor_float32:
-            func[DType.tensor_float32]()
         elif self is DType.float64:
             func[DType.float64]()
         else:
@@ -817,8 +894,6 @@ struct DType(
 
         if self is DType.float32:
             return __mlir_attr.f32
-        if self is DType.tensor_float32:
-            return __mlir_attr.tf32
 
         if self is DType.float64:
             return __mlir_attr.f64
@@ -890,8 +965,6 @@ struct DType(
 
         elif _type_is_eq[T, SIMD[DType.float32, size]]():
             return DType.float32
-        elif _type_is_eq[T, SIMD[DType.tensor_float32, size]]():
-            return DType.tensor_float32
 
         elif _type_is_eq[T, SIMD[DType.float64, size]]():
             return DType.float64
@@ -929,7 +1002,7 @@ fn _integral_type_of[dtype: DType]() -> DType:
         return DType.int8
     elif dtype.is_half_float():
         return DType.int16
-    elif dtype in (DType.float32, DType.tensor_float32):
+    elif dtype is DType.float32:
         return DType.int32
     elif dtype is DType.float64:
         return DType.int64
@@ -957,7 +1030,7 @@ fn _unsigned_integral_type_of[dtype: DType]() -> DType:
         return DType.uint8
     elif dtype.is_half_float():
         return DType.uint16
-    elif dtype in (DType.float32, DType.tensor_float32):
+    elif dtype is DType.float32:
         return DType.uint32
     elif dtype is DType.float64:
         return DType.uint64
@@ -981,7 +1054,7 @@ fn _scientific_notation_digits[dtype: DType]() -> StaticString:
         return "2"
     elif dtype.is_half_float():
         return "4"
-    elif dtype is DType.float32 or dtype is DType.tensor_float32:
+    elif dtype is DType.float32:
         return "8"
     else:
         return "16"
@@ -1051,7 +1124,7 @@ fn _index_printf_format() -> StaticString:
     @parameter
     if bitwidthof[Int]() == 32:
         return "%d"
-    elif os_is_windows():
+    elif CompilationTarget.is_windows():
         return "%lld"
     else:
         return "%ld"
@@ -1080,14 +1153,14 @@ fn _get_dtype_printf_format[dtype: DType]() -> StaticString:
     elif dtype is DType.int64:
 
         @parameter
-        if os_is_windows():
+        if CompilationTarget.is_windows():
             return "%lld"
         else:
             return "%ld"
     elif dtype is DType.uint64:
 
         @parameter
-        if os_is_windows():
+        if CompilationTarget.is_windows():
             return "%llu"
         else:
             return "%lu"

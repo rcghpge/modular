@@ -54,6 +54,14 @@ struct _ListIter[
     var index: Int
     var src: Pointer[Self.list_type, list_origin]
 
+    @always_inline
+    fn __has_next__(self) -> Bool:
+        @parameter
+        if forward:
+            return self.index < len(self.src[])
+        else:
+            return self.index > 0
+
     fn __next_ref__(mut self) -> ref [list_origin] T:
         @parameter
         if forward:
@@ -68,19 +76,8 @@ struct _ListIter[
         return self.__next_ref__()
 
     @always_inline
-    fn __has_next__(self) -> Bool:
-        return self.__len__() > 0
-
-    @always_inline
     fn __iter__(self) -> Self:
         return self
-
-    fn __len__(self) -> Int:
-        @parameter
-        if forward:
-            return len(self.src[]) - self.index
-        else:
-            return self.index
 
 
 struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
@@ -99,7 +96,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
     """
 
     # Fields
-    var data: UnsafePointer[T]
+    var _data: UnsafePointer[T]
     """The underlying storage for the list."""
     var _len: Int
     """The number of elements in the list."""
@@ -112,7 +109,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
 
     fn __init__(out self):
         """Constructs an empty list."""
-        self.data = UnsafePointer[T]()
+        self._data = UnsafePointer[T]()
         self._len = 0
         self.capacity = 0
 
@@ -134,9 +131,9 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             capacity: The requested capacity of the list.
         """
         if capacity:
-            self.data = UnsafePointer[T].alloc(capacity)
+            self._data = UnsafePointer[T].alloc(capacity)
         else:
-            self.data = UnsafePointer[T]()
+            self._data = UnsafePointer[T]()
         self._len = 0
         self.capacity = capacity
 
@@ -148,7 +145,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             fill: The element to fill each element of the list.
         """
         self = Self()
-        self.resize(length, fill)
+        self.resize(Int(length), fill)
 
     @always_inline
     fn __init__(out self, var *values: T, __list_literal__: () = ()):
@@ -172,7 +169,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
 
         for i in range(length):
             var src = UnsafePointer(to=elements[i])
-            var dest = self.data + i
+            var dest = self._data + i
 
             src.move_pointee_into(dest)
 
@@ -211,8 +208,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             existing: The list to copy.
         """
         self = Self(capacity=existing.capacity)
-        for i in range(len(existing)):
-            self.append(existing[i])
+        self.extend(Span(existing))
 
     fn __del__(owned self):
         """Destroy all elements in the list and free its memory."""
@@ -220,8 +216,8 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         @parameter
         if not hint_trivial_type:
             for i in range(len(self)):
-                (self.data + i).destroy_pointee()
-        self.data.free()
+                (self._data + i).destroy_pointee()
+        self._data.free()
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -509,14 +505,14 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
 
         @parameter
         if hint_trivial_type:
-            memcpy(new_data, self.data, len(self))
+            memcpy(new_data, self._data, len(self))
         else:
             for i in range(len(self)):
-                (self.data + i).move_pointee_into(new_data + i)
+                (self._data + i).move_pointee_into(new_data + i)
 
-        if self.data:
-            self.data.free()
-        self.data = new_data
+        if self._data:
+            self._data.free()
+        self._data = new_data
         self.capacity = new_capacity
 
     fn append(mut self, var value: T):
@@ -533,29 +529,6 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             self._realloc(self.capacity * 2 | Int(self.capacity == 0))
         self._unsafe_next_uninit_ptr().init_pointee_move(value^)
         self._len += 1
-
-    fn append(mut self, elements: Span[T, _]):
-        """Appends elements to this list.
-
-        Args:
-            elements: The elements to append.
-        """
-        var elements_len = len(elements)
-        var new_num_elts = self._len + elements_len
-        if new_num_elts > self.capacity:
-            # Make sure our capacity at least doubles to avoid O(n^2) behavior.
-            self._realloc(max(self.capacity * 2, new_num_elts))
-
-        var i = self._len
-        self._len = new_num_elts
-
-        @parameter
-        if hint_trivial_type:
-            memcpy(self.data + i, elements.unsafe_ptr(), elements_len)
-        else:
-            for elt in elements:
-                UnsafePointer(to=self[i]).init_pointee_copy(elt)
-                i += 1
 
     fn insert(mut self, i: Int, var value: T):
         """Inserts a value to the list at the given index.
@@ -576,8 +549,8 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         self.append(value^)
 
         for _ in range(normalized_idx, len(self) - 1):
-            var earlier_ptr = self.data + earlier_idx
-            var later_ptr = self.data + later_idx
+            var earlier_ptr = self._data + earlier_idx
+            var later_ptr = self._data + later_idx
 
             var tmp = earlier_ptr.take_pointee()
             later_ptr.move_pointee_into(earlier_ptr)
@@ -598,7 +571,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         var final_size = len(self) + other_len
         self.reserve(final_size)
 
-        var dest_ptr = self.data + self._len
+        var dest_ptr = self._data + self._len
         var src_ptr = other.unsafe_ptr()
 
         @parameter
@@ -619,6 +592,31 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         # The elements of `other` are now consumed, so we mark it as empty so
         # they don't get destroyed when it goes out of scope.
         other._len = 0
+
+    fn extend(mut self, elements: Span[T, _]):
+        """Extend this list by copying elements from a `Span`.
+
+        The resulting list will have the length `len(self) + len(elements)`.
+
+        Args:
+            elements: The elements to copy into this list.
+        """
+        var elements_len = len(elements)
+        var new_num_elts = self._len + elements_len
+        if new_num_elts > self.capacity:
+            # Make sure our capacity at least doubles to avoid O(n^2) behavior.
+            self._realloc(max(self.capacity * 2, new_num_elts))
+
+        var i = self._len
+        self._len = new_num_elts
+
+        @parameter
+        if hint_trivial_type:
+            memcpy(self.unsafe_ptr() + i, elements.unsafe_ptr(), elements_len)
+        else:
+            for elt in elements:
+                UnsafePointer(to=self[i]).init_pointee_copy(elt)
+                i += 1
 
     fn extend[
         dtype: DType, //
@@ -698,9 +696,9 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         if i < 0:
             normalized_idx += self._len
 
-        var ret_val = (self.data + normalized_idx).take_pointee()
+        var ret_val = (self._data + normalized_idx).take_pointee()
         for j in range(normalized_idx + 1, self._len):
-            (self.data + j).move_pointee_into(self.data + j - 1)
+            (self._data + j).move_pointee_into(self._data + j - 1)
         self._len -= 1
 
         return ret_val^
@@ -736,7 +734,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         else:
             self.reserve(new_size)
             for i in range(self._len, new_size):
-                (self.data + i).init_pointee_copy(value)
+                (self._data + i).init_pointee_copy(value)
             self._len = new_size
 
     fn resize(mut self, *, unsafe_uninit_length: Int):
@@ -777,7 +775,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         @parameter
         if not hint_trivial_type:
             for i in range(new_size, len(self)):
-                (self.data + i).destroy_pointee()
+                (self._data + i).destroy_pointee()
         self._len = new_size
         self.reserve(new_size)
 
@@ -791,8 +789,8 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         var half_len = effective_len // 2
 
         for _ in range(half_len):
-            var earlier_ptr = self.data + earlier_idx
-            var later_ptr = self.data + later_idx
+            var earlier_ptr = self._data + earlier_idx
+            var later_ptr = self._data + later_idx
 
             var tmp = earlier_ptr.take_pointee()
             later_ptr.move_pointee_into(earlier_ptr)
@@ -876,7 +874,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             sorted in ascending order.
         """
         var cursor = UInt(0)
-        var b = self.data
+        var b = self._data
         var length = len(self)
         while length > 1:
             var half = length >> 1
@@ -888,7 +886,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
     fn clear(mut self):
         """Clears the elements in the list."""
         for i in range(self._len):
-            (self.data + i).destroy_pointee()
+            (self._data + i).destroy_pointee()
         self._len = 0
 
     fn steal_data(mut self) -> UnsafePointer[T]:
@@ -897,8 +895,8 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         Returns:
             The underlying data.
         """
-        var ptr = self.data
-        self.data = UnsafePointer[T]()
+        var ptr = self._data
+        self._data = UnsafePointer[T]()
         self._len = 0
         self.capacity = 0
         return ptr
@@ -947,7 +945,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
                 " is out of bounds for `List` of length: ",
                 self._len,
             )
-            return (self.data + idx)[]
+            return (self._data + idx)[]
         else:
             var normalized_idx = Int(idx)
             debug_assert(
@@ -960,7 +958,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             if normalized_idx < 0:
                 normalized_idx += len(self)
 
-            return (self.data + normalized_idx)[]
+            return (self._data + normalized_idx)[]
 
     @always_inline
     fn unsafe_get(ref self, idx: Int) -> ref [self] Self.T:
@@ -989,7 +987,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
                 " when using List.unsafe_get()"
             ),
         )
-        return (self.data + idx)[]
+        return (self._data + idx)[]
 
     @always_inline
     fn unsafe_set(mut self, idx: Int, var value: T):
@@ -1016,8 +1014,8 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
                 " when using List.unsafe_set()"
             ),
         )
-        (self.data + idx).destroy_pointee()
-        (self.data + idx).init_pointee_move(value^)
+        (self._data + idx).destroy_pointee()
+        (self._data + idx).init_pointee_move(value^)
 
     fn count[
         T: EqualityComparable & Copyable & Movable, //
@@ -1067,7 +1065,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             ),
         )
         if elt_idx_1 != elt_idx_2:
-            swap((self.data + elt_idx_1)[], (self.data + elt_idx_2)[])
+            swap((self._data + elt_idx_1)[], (self._data + elt_idx_2)[])
 
     fn unsafe_ptr[
         origin: Origin, address_space: AddressSpace, //
@@ -1083,7 +1081,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         Returns:
             The pointer to the underlying memory.
         """
-        return self.data.origin_cast[origin.mut, origin]().address_space_cast[
+        return self._data.origin_cast[origin.mut, origin]().address_space_cast[
             address_space
         ]()
 
@@ -1128,7 +1126,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         hint_trivial_type: Bool
     ](var self) -> List[T, hint_trivial_type]:
         var result = List[T, hint_trivial_type]()
-        result.data = self.data
+        result._data = self._data
         result._len = self._len
         result.capacity = self.capacity
 

@@ -89,13 +89,9 @@ struct _LinkedListIter[
     ElementType: Copyable & Movable,
     origin: Origin[mut],
     forward: Bool = True,
-](Copyable, Iterator, Movable, Sized):
+](Copyable, Iterator, Movable):
     var src: Pointer[LinkedList[ElementType], origin]
     var curr: UnsafePointer[Node[ElementType]]
-
-    # Used to calculate remaining length of iterator in
-    # _LinkedListIter.__len__()
-    var seen: Int
 
     alias Element = ElementType  # FIXME(MOCO-2068): shouldn't be needed.
 
@@ -107,10 +103,12 @@ struct _LinkedListIter[
             self.curr = self.src[]._head
         else:
             self.curr = self.src[]._tail
-        self.seen = 0
 
     fn __iter__(self) -> Self:
         return self
+
+    fn __has_next__(self) -> Bool:
+        return Bool(self.curr)
 
     fn __next_ref__(mut self) -> ref [origin] Self.Element:
         var old = self.curr
@@ -120,19 +118,12 @@ struct _LinkedListIter[
             self.curr = self.curr[].next
         else:
             self.curr = self.curr[].prev
-        self.seen += 1
 
         return old[].value
 
     @always_inline
     fn __next__(mut self) -> Self.Element:
         return self.__next_ref__()
-
-    fn __has_next__(self) -> Bool:
-        return Bool(self.curr)
-
-    fn __len__(self) -> Int:
-        return len(self.src[]) - self.seen
 
 
 struct LinkedList[
@@ -240,9 +231,6 @@ struct LinkedList[
         self._head = other._head
         self._tail = other._tail
         self._size = other._size
-        other._head = Self._NodePointer()
-        other._tail = Self._NodePointer()
-        other._size = 0
 
     fn __del__(owned self):
         """Clean up the list by freeing all nodes.
@@ -379,7 +367,7 @@ struct LinkedList[
             self._size -= 1
             return data^
 
-        raise String("Invalid index for pop: ", Int(i))
+        raise Error("Invalid index for pop: ", Int(i))
 
     fn maybe_pop(mut self) -> Optional[ElementType]:
         """Removes the tail of the list and returns it, if it exists.
@@ -538,7 +526,7 @@ struct LinkedList[
                 self._head = node
             self._size += 1
         else:
-            raise String("Index ", i, " out of bounds")
+            raise Error("Index ", i, " out of bounds")
 
     fn extend(mut self, var other: Self):
         """Extends the list with another.

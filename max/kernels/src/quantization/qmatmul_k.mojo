@@ -15,7 +15,6 @@ from math import ceildiv
 from sys import (
     CompilationTarget,
     alignof,
-    is_apple_silicon,
     simdwidthof,
     sizeof,
 )
@@ -25,7 +24,7 @@ from algorithm import sync_parallelize, tile
 from buffer import NDBuffer
 from linalg.accumulate import _Accumulator
 from linalg.matmul import elementwise_epilogue_type
-from linalg.neon_intrinsics import _neon_dotprod_lane, _neon_matmul
+from linalg.neon_intrinsics import _neon_dotprod_lane
 from linalg.utils import partition_work
 from linalg.vnni_intrinsics import (
     dot_i8_to_i32_saturated_x86,
@@ -650,7 +649,7 @@ fn _matmul_group_stream_x86[
 ):
     var b_vals = InlineArray[
         SIMD[DType.uint8, simd_width * 4], tile_n * tile_k
-    ](0)
+    ](fill=0)
 
     @parameter
     for k in range(0, group_size, tile_k * 4):
@@ -698,11 +697,13 @@ fn _matmul_group_stream_neon_dotprod[
 ):
     var b_vals = InlineArray[
         SIMD[DType.uint8, simd_width * 4], tile_n * tile_k
-    ](0)
+    ](fill=0)
 
     @parameter
     for k in range(0, group_size, 16):
-        var a_tile = InlineArray[SIMD[DType.int8, 16], tile_m](0)
+        var a_tile = InlineArray[SIMD[DType.int8, 16], tile_m](
+            uninitialized=True
+        )
 
         @parameter
         for row in range(tile_m):

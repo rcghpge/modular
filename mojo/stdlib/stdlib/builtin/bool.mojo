@@ -20,9 +20,9 @@ from hashlib.hasher import Hasher
 
 from python import (
     Python,
-    PythonConvertible,
     PythonObject,
     ConvertibleFromPython,
+    ConvertibleToPython,
 )
 
 from utils._select import _select_register_value as select
@@ -106,6 +106,7 @@ trait ImplicitlyBoolable(Boolable):
 struct Bool(
     Comparable,
     ConvertibleFromPython,
+    ConvertibleToPython,
     Copyable,
     Defaultable,
     ExplicitlyCopyable,
@@ -115,7 +116,6 @@ struct Bool(
     ImplicitlyIntable,
     Indexer,
     Movable,
-    PythonConvertible,
     Representable,
     Stringable,
     Writable,
@@ -520,15 +520,6 @@ struct Bool(
             `lhs ^ self`.
         """
         return lhs ^ self
-
-    @always_inline("builtin")
-    fn __neg__(self) -> Int:
-        """Defines the unary `-` operation.
-
-        Returns:
-            0 for False and -1 for True.
-        """
-        return select[Int](self, -1, 0)
 
     fn __hash__[H: Hasher](self, mut hasher: H):
         """Updates hasher with the underlying bytes.

@@ -10,9 +10,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo-no-debug %s -t
-# NOTE: to test changes on the current branch using run-benchmarks.sh, remove
-# the -t flag. Remember to replace it again before pushing any code.
 
 from hashlib import Hasher
 from hashlib._ahash import AHasher
@@ -20,7 +17,6 @@ from hashlib._fnv1a import Fnv1a
 from hashlib._djbx33a import DJBX33A
 
 from benchmark import Bench, BenchConfig, Bencher, BenchId, keep
-from bit import byte_swap, rotate_bits_left
 
 # Source: https://www.101languages.net/arabic/most-common-arabic-words/
 alias words_ar: String = """

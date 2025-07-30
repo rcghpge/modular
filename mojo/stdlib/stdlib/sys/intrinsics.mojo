@@ -24,7 +24,6 @@ from collections.string.string_slice import _get_kgen_string
 from sys import is_compile_time
 from sys.info import _is_sm_9x_or_newer, is_gpu
 
-from memory import AddressSpace
 from memory.pointer import _GPUAddressSpace
 
 from ._assembly import inlined_assembly
@@ -905,7 +904,7 @@ fn lane_id() -> UInt:
             )
         )
 
-    else:
+    elif is_amd_gpu():
         alias none = Scalar[DType.int32](-1)
         alias zero = Scalar[DType.int32](0)
         var t = llvm_intrinsic[
@@ -918,6 +917,12 @@ fn lane_id() -> UInt:
                 ](none, t).cast[DType.uint32]()
             )
         )
+
+    else:
+        return CompilationTarget.unsupported_target_error[
+            UInt,
+            operation="lane_id",
+        ]()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1067,8 +1072,13 @@ struct _ThreadIdx(Defaultable):
         @parameter
         if is_nvidia_gpu():
             return "llvm.nvvm.read.ptx.sreg.tid." + dim
-        else:
+        elif is_amd_gpu():
             return "llvm.amdgcn.workitem.id." + dim
+        else:
+            return CompilationTarget.unsupported_target_error[
+                StaticString,
+                operation="thread_idx field access",
+            ]()
 
     @always_inline("nodebug")
     fn __getattr__[dim: StringLiteral](self) -> UInt:
@@ -1080,7 +1090,7 @@ struct _ThreadIdx(Defaultable):
         _verify_xyz[dim]()
         alias intrinsic_name = Self._get_intrinsic_name[dim]()
         return UInt(
-            Int(llvm_intrinsic[intrinsic_name, Int32, has_side_effect=False]())
+            llvm_intrinsic[intrinsic_name, UInt32, has_side_effect=False]()
         )
 
 
@@ -1107,8 +1117,13 @@ struct _BlockIdx(Defaultable):
         @parameter
         if is_nvidia_gpu():
             return "llvm.nvvm.read.ptx.sreg.ctaid." + dim
-        else:
+        elif is_amd_gpu():
             return "llvm.amdgcn.workgroup.id." + dim
+        else:
+            return CompilationTarget.unsupported_target_error[
+                StaticString,
+                operation="block_idx field access",
+            ]()
 
     @always_inline("nodebug")
     fn __getattr__[dim: StringLiteral](self) -> UInt:
@@ -1120,7 +1135,7 @@ struct _BlockIdx(Defaultable):
         _verify_xyz[dim]()
         alias intrinsic_name = Self._get_intrinsic_name[dim]()
         return UInt(
-            Int(llvm_intrinsic[intrinsic_name, Int32, has_side_effect=False]())
+            llvm_intrinsic[intrinsic_name, UInt32, has_side_effect=False]()
         )
 
 
@@ -1169,7 +1184,7 @@ struct _BlockDim(Defaultable):
                     ]()
                 )
             )
-        else:
+        elif is_amd_gpu():
 
             @parameter
             fn _get_offset() -> Int:
@@ -1183,6 +1198,12 @@ struct _BlockDim(Defaultable):
                     return 8
 
             return _get_gcn_idx[_get_offset(), DType.uint16]()
+
+        else:
+            return CompilationTarget.unsupported_target_error[
+                UInt,
+                operation="block_dim field access",
+            ]()
 
 
 alias block_dim = _BlockDim()
@@ -1220,7 +1241,7 @@ struct _GridDim(Defaultable):
                     ]()
                 )
             )
-        else:
+        elif is_amd_gpu():
 
             @parameter
             fn _get_offset() -> Int:
@@ -1234,6 +1255,11 @@ struct _GridDim(Defaultable):
                     return 2
 
             return _get_gcn_idx[_get_offset(), DType.uint32]()
+        else:
+            return CompilationTarget.unsupported_target_error[
+                UInt,
+                operation="grid_dim field access",
+            ]()
 
 
 alias grid_dim = _GridDim()
