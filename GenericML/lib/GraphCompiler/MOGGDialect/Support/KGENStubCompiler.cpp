@@ -51,8 +51,8 @@ public:
 
   /// Compile to binary object. Tell the jit all of the given symbols as symbols
   /// within it that can be executed at runtime.
-  CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
-  compile(const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded);
+  CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>> compile(
+      const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded);
 
 private:
   StubCompiler(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
@@ -351,8 +351,8 @@ CompileDiagnosticOr<DenseResourceElementsAttr> StubCompiler::compileToLLVM() {
 }
 
 CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
-StubCompiler::compile(
-    const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsToCompile) {
+StubCompiler::compile(const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp>
+                          &symbolsToCompile) {
 
   // Algorithm:
   // 1. For the GeneratorOp instances in symbolsAdded, check if the cache has
@@ -511,11 +511,11 @@ StubCompiler::compile(
   return results;
 }
 
-CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
-compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
-             std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-             const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
-             bool enableTiming /*= false*/, bool debugKGENStubs /*= false*/) {
+CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>> compileStubs(
+    OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
+    std::string saveTempsPrefix, KernelBuildType kernelBuildType,
+    const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
+    bool enableTiming /*= false*/, bool debugKGENStubs /*= false*/) {
   initLLVM();
   CompileDiagnosticOr<StubCompiler> compilerOr =
       StubCompiler::create(std::move(kgenStubs), graph, saveTempsPrefix,

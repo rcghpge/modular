@@ -17,11 +17,11 @@ namespace M::MOGG {
 
 /// Compile to binary object. Tell the jit all of the given symbols as symbols
 /// within it that can be executed at runtime.
-CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>>
-compileStubs(OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
-             std::string saveTempsPrefix, KernelBuildType kernelBuildType,
-             const DenseMap<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
-             bool enableTiming = false, bool debugKGENStubs = false);
+CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>> compileStubs(
+    OwningOpRef<ModuleOp> kgenStubs, Operation *graph,
+    std::string saveTempsPrefix, KernelBuildType kernelBuildType,
+    const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
+    bool enableTiming = false, bool debugKGENStubs = false);
 
 } // namespace M::MOGG
 
