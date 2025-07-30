@@ -44,7 +44,7 @@ def LowerMOGGRegionCompiles: Pass<"lower-mogg-region-compile", "ModuleOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def LowerPrimitives: Pass<"lower-primitives", "ModuleOp"> {
+def LowerPrimitives: Pass<"lower-primitives", "MGP::ModelOp"> {
   let summary = "Lower MGP operations to primitives";
   let description = [{
     Using the loaded kernel library this looks for implementations for all

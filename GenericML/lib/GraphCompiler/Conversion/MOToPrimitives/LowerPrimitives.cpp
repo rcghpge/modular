@@ -21,7 +21,6 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "Support/MDialect/MAttrs.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/IR/IRMapping.h"
 
@@ -356,8 +355,8 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
 };
 
 void LowerPrimitivesPass::runOnOperation() {
-  ModuleOp mod = getOperation();
-  MLIRContext *ctx = mod->getContext();
+  ModelOp model = getOperation();
+  MLIRContext *ctx = model->getContext();
 
   auto analysisOr = getLibraryAnalysis();
   if (analysisOr.isError())
@@ -429,35 +428,13 @@ void LowerPrimitivesPass::runOnOperation() {
     return newOp->getResults();
   };
 
-  mod.walk([&](Operation *op) {
+  model.walk</*Order=*/mlir::WalkOrder::PreOrder>([&](Operation *op) {
     Location opLoc = op->getLoc();
     OpBuilder builder{op};
 
     // Skip any operations nested within a region.
-    if (op->getParentOfType<MOGG::GenericCompiledRegionOp>() ||
-        op->getParentOfType<KGEN::GeneratorOp>())
-      return;
-
-    // `arith.constant` might be created after constant folding, canonicalize
-    // them into `index.constant/index.bool.constant` accordingly.
-    if (auto arithConstOp = dyn_cast<mlir::arith::ConstantOp>(op)) {
-      Operation *indexConstOp = nullptr;
-      auto intAttr = dyn_cast<mlir::IntegerAttr>(arithConstOp.getValue());
-      if (arithConstOp.getType() == builder.getIndexType()) {
-        indexConstOp =
-            builder.create<mlir::index::ConstantOp>(opLoc, intAttr.getValue());
-      } else if (arithConstOp.getType() == builder.getI1Type()) {
-        indexConstOp = builder.create<mlir::index::BoolConstantOp>(
-            opLoc, builder.getBoolAttr(intAttr.getValue().getBoolValue()));
-      }
-      if (indexConstOp) {
-        op->replaceAllUsesWith(indexConstOp);
-        op->erase();
-        op = indexConstOp;
-        builder.setInsertionPoint(indexConstOp);
-      }
-      // else unhandled constant type
-    }
+    if (op->getParentOfType<MOGG::GenericCompiledRegionOp>())
+      return mlir::WalkResult::skip();
 
     CompiledRegionBodyBuilder bodyBuilder(nullptr);
     if ((isa_and_nonnull<mlir::index::IndexDialect>(op->getDialect()) ||
@@ -476,12 +453,15 @@ void LowerPrimitivesPass::runOnOperation() {
       if (newKernel.isError()) {
         op->emitError(newKernel.takeError().get());
         signalPassFailure();
-        return;
+        return mlir::WalkResult::interrupt();
       }
 
       op->replaceAllUsesWith(newKernel.takeValue());
       op->erase();
+      return mlir::WalkResult::skip();
     }
+
+    return mlir::WalkResult::advance();
   });
 }
 
