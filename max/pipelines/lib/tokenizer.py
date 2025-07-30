@@ -21,19 +21,16 @@ import io
 import json
 import logging
 from collections.abc import Sequence
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, TypeVar, Union, cast
 
 import numpy as np
-import torch
-from max.pipelines.core import (
+from max.interfaces import (
     PipelineTokenizer,
-    TextAndVisionContext,
-    TextContext,
-    TokenGeneratorContext,
-    TokenGeneratorRequest,
-    TokenGeneratorRequestMessage,
-    TokenGeneratorRequestTool,
+    TextGenerationRequest,
+    TextGenerationRequestMessage,
+    TextGenerationRequestTool,
 )
+from max.pipelines.core import TextAndVisionContext, TextContext
 from PIL import Image
 from transformers import (
     AutoProcessor,
@@ -48,9 +45,11 @@ from transformers import (
 
 logger = logging.getLogger("max.pipelines")
 
+TokenGeneratorContext = TypeVar("TokenGeneratorContext")
+
 
 class IdentityPipelineTokenizer(
-    PipelineTokenizer[TokenGeneratorContext, str, TokenGeneratorRequest],
+    PipelineTokenizer[TokenGeneratorContext, str, TextGenerationRequest],
 ):
     @property
     def eos(self) -> int:
@@ -67,7 +66,6 @@ class IdentityPipelineTokenizer(
 
     async def decode(
         self,
-        context: TokenGeneratorContext,
         encoded: str,
         **kwargs,
     ) -> str:
@@ -77,7 +75,7 @@ class IdentityPipelineTokenizer(
 
 
 class PreTrainedPipelineTokenizer(
-    PipelineTokenizer[TokenGeneratorContext, np.ndarray, TokenGeneratorRequest],
+    PipelineTokenizer[TokenGeneratorContext, np.ndarray, TextGenerationRequest],
 ):
     def __init__(
         self,
@@ -89,7 +87,7 @@ class PreTrainedPipelineTokenizer(
         self.delegate = delegate
 
     def apply_chat_template(
-        self, messages: list[TokenGeneratorRequestMessage]
+        self, messages: list[TextGenerationRequestMessage]
     ) -> str:
         try:
             templated_message = self.delegate.apply_chat_template(
@@ -119,7 +117,6 @@ class PreTrainedPipelineTokenizer(
 
     async def decode(
         self,
-        context: TokenGeneratorContext,
         encoded: np.ndarray,
         **kwargs,
     ) -> str:
@@ -140,13 +137,13 @@ def max_tokens_to_generate(
     return min(max_new_tokens, _difference_between_max_and_prompt)
 
 
-async def run_with_default_executor(fn, *args):
+async def run_with_default_executor(fn, *args):  # noqa: ANN001
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, fn, *args)
 
 
 class TextTokenizer(
-    PipelineTokenizer[TextContext, np.ndarray, TokenGeneratorRequest]
+    PipelineTokenizer[TextContext, np.ndarray, TextGenerationRequest]
 ):
     """Encapsulates creation of TextContext and specific token encode/decode logic."""
 
@@ -208,8 +205,8 @@ class TextTokenizer(
 
     def apply_chat_template(
         self,
-        messages: list[TokenGeneratorRequestMessage],
-        tools: Optional[list[TokenGeneratorRequestTool]],
+        messages: list[TextGenerationRequestMessage],
+        tools: Optional[list[TextGenerationRequestTool]],
         chat_template_options: Optional[dict[str, Any]] = None,
     ) -> str:
         chat_template_options = chat_template_options or {
@@ -265,9 +262,7 @@ class TextTokenizer(
 
         return encoded_prompt
 
-    async def decode(
-        self, context: TextContext, encoded: np.ndarray, **kwargs
-    ) -> str:
+    async def decode(self, encoded: np.ndarray, **kwargs) -> str:
         """Transformer a provided encoded token array, back into readable text."""
         # Sometimes, encoded comes in as an int so, make it np array
         if isinstance(encoded, int):
@@ -287,8 +282,8 @@ class TextTokenizer(
     async def _generate_prompt_and_token_ids(
         self,
         prompt: Optional[Union[Sequence[int], str]],
-        messages: Optional[list[TokenGeneratorRequestMessage]],
-        tools: Optional[list[TokenGeneratorRequestTool]] = None,
+        messages: Optional[list[TextGenerationRequestMessage]],
+        tools: Optional[list[TextGenerationRequestTool]] = None,
         chat_template_options: Optional[dict[str, Any]] = None,
     ) -> tuple[Union[str, list[int]], np.ndarray]:
         if prompt and messages:
@@ -305,7 +300,7 @@ class TextTokenizer(
             return prompt, await self.encode(prompt, add_special_tokens=False)
         else:
             raise ValueError(
-                "either prompt must be provided as a list[int] or str, or messages must be provided as a list[TokenGeneratorRequestMessage]"
+                "either prompt must be provided as a list[int] or str, or messages must be provided as a list[TextGenerationRequestMessage]"
             )
 
     async def _get_eos_variables(
@@ -326,10 +321,9 @@ class TextTokenizer(
 
         return eos_token_ids, eos_sequences
 
-    async def new_context(self, request: TokenGeneratorRequest) -> TextContext:
+    async def new_context(self, request: TextGenerationRequest) -> TextContext:
         """Create a new TextContext object, leveraging necessary information like
-        cache_seq_id and prompt from TokenGeneratorRequest."""
-
+        cache_seq_id and prompt from TextGenerationRequest."""
         # Encode Prompt / Messages
         prompt, token_ids = await self._generate_prompt_and_token_ids(
             prompt=request.prompt,
@@ -362,8 +356,7 @@ class TextTokenizer(
         )
 
         context = TextContext(
-            request_id=request.id,
-            prompt=prompt,
+            request_id=request.request_id,
             eos_token_ids=eos_token_ids,
             eos_sequences=eos_sequences,
             max_length=len(token_ids) + max_gen_tokens
@@ -374,6 +367,8 @@ class TextTokenizer(
             log_probabilities_echo=request.echo,
             json_schema=json_schema,
             sampling_params=request.sampling_params,
+            model_name=request.model_name,
+            lora_name=request.lora_name,
         )
         context.assign_to_cache(request.index)
         return context
@@ -421,7 +416,7 @@ class TextTokenizer(
 
 
 class TextAndVisionTokenizer(
-    PipelineTokenizer[TextAndVisionContext, np.ndarray, TokenGeneratorRequest],
+    PipelineTokenizer[TextAndVisionContext, np.ndarray, TextGenerationRequest],
 ):
     """Encapsulates creation of TextContext and specific token encode/decode logic."""
 
@@ -462,8 +457,8 @@ class TextAndVisionTokenizer(
         self._default_eos_token_ids = set([self.eos])
 
     def _wrap_str_message_content(
-        self, messages: list[TokenGeneratorRequestMessage]
-    ) -> list[TokenGeneratorRequestMessage]:
+        self, messages: list[TextGenerationRequestMessage]
+    ) -> list[TextGenerationRequestMessage]:
         # Wrap string type values of "content" key with "type": "text" and its
         # value. For example, if the message is {"content": "Hello, world!"},
         # it will be wrapped with {"type": "text", "text": "Hello, world!"}.
@@ -481,7 +476,7 @@ class TextAndVisionTokenizer(
         return messages
 
     def apply_chat_template(
-        self, messages: list[TokenGeneratorRequestMessage]
+        self, messages: list[TextGenerationRequestMessage]
     ) -> str:
         # TODO: Refactor this.
         if self.model_path == "meta-llama/Llama-3.2-11B-Vision-Instruct":
@@ -544,17 +539,15 @@ class TextAndVisionTokenizer(
 
         return encoded_prompt
 
-    async def decode(
-        self, context: TextAndVisionContext, encoded: np.ndarray, **kwargs
-    ) -> str:
+    async def decode(self, encoded: np.ndarray, **kwargs) -> str:
         """Transformer a provided encoded token array, back into readable text."""
         return self.delegate.decode(encoded, **kwargs)
 
     async def new_context(
-        self, request: TokenGeneratorRequest
+        self, request: TextGenerationRequest
     ) -> TextAndVisionContext:
         """Create a new TextAndVisionContext object, leveraging necessary information like
-        cache_seq_id and prompt from TokenGeneratorRequest."""
+        cache_seq_id and prompt from TextGenerationRequest."""
         prompt: Union[str, Sequence[int]]
         add_special_tokens = True
         if request.prompt is not None:
@@ -575,10 +568,12 @@ class TextAndVisionTokenizer(
             if request.images
             else None
         )
-        # PixtralProcessor returns a torch tensor or a list of torch tensors.
         # LlamaVision & InternVL returns a python list
         processed_inputs = self.processor(
-            text=prompt, images=images, add_special_tokens=add_special_tokens
+            text=prompt,
+            images=images,
+            add_special_tokens=add_special_tokens,
+            return_tensors="np",
         )
 
         if "input_ids" not in processed_inputs:
@@ -611,14 +606,13 @@ class TextAndVisionTokenizer(
                 raise ValueError(msg)
             pixel_values = processed_inputs["pixel_values"][0]
             if isinstance(pixel_values, list):
-                pixel_values = tuple(
-                    tensor.numpy() if torch.is_tensor(tensor) else tensor
-                    for tensor in pixel_values
-                )
-            elif torch.is_tensor(pixel_values):
-                pixel_values = (pixel_values.numpy(),)
+                pixel_values = tuple(pixel_values)
             elif isinstance(pixel_values, np.ndarray):
                 pixel_values = (pixel_values,)
+            else:
+                raise ValueError(
+                    f"pixel_values is not a numpy array but it is {type(pixel_values)}"
+                )
 
             if "aspect_ratio_ids" in processed_inputs:
                 extra_model_args["aspect_ratio_ids"] = (
@@ -649,8 +643,7 @@ class TextAndVisionTokenizer(
             eos_token_ids = self._default_eos_token_ids
 
         context = TextAndVisionContext(
-            request_id=request.id,
-            prompt=prompt,
+            request_id=request.request_id,
             eos_token_ids=eos_token_ids,
             pixel_values=pixel_values,
             extra_model_args=extra_model_args,
@@ -665,7 +658,8 @@ class TextAndVisionTokenizer(
 
 
 def _rgba_to_rgb(
-    image: Image.Image, background_color=(255, 255, 255)
+    image: Image.Image,
+    background_color=(255, 255, 255),  # noqa: ANN001
 ) -> Image.Image:
     """Convert an RGBA image to RGB with filled background color."""
     assert image.mode == "RGBA"

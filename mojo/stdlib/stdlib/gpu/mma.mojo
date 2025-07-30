@@ -17,7 +17,7 @@ from collections import InlineArray
 from collections.string.string_slice import _get_kgen_string
 from sys import _RegisterPackType, is_nvidia_gpu, llvm_intrinsic, sizeof
 from sys._assembly import inlined_assembly
-from sys.info import _is_amd_rdna
+from sys.info import is_amd_gpu, _is_amd_rdna, CompilationTarget
 
 from gpu.host._nvidia_cuda import TensorMapSwizzle
 from gpu.mma_operand_descriptor import MMAOperandDescriptor
@@ -490,6 +490,8 @@ fn _dtype_to_nvvm_wgmma_type[
         return __mlir_attr[`#nvvm.wgmma_type<s8>`]
     elif out_type is DType.uint8:
         return __mlir_attr[`#nvvm.wgmma_type<u8>`]
+    elif out_type is DType.float32:
+        return __mlir_attr[`#nvvm.wgmma_type<tf32>`]
     else:
         return __mlir_deferred_attr[
             `#nvvm.wgmma_type<`, +_dtype_to_nvvm_type[out_type, in_type](), `>`
@@ -562,8 +564,10 @@ fn mma[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
     @parameter
     if is_nvidia_gpu():
         _mma_nvidia(d, a, b, c)
-    else:
+    elif is_amd_gpu():
         _mma_amd[block_size](d, a, b, c)
+    else:
+        return CompilationTarget.unsupported_target_error[operation="mma"]()
 
 
 # ===------------------------------------------------------------------===#
@@ -1061,17 +1065,17 @@ fn wgmma_async[
     alias layout_a_value = _get_kgen_string[layout_a]()
     alias layout_b_value = _get_kgen_string[layout_b]()
 
-    # tensor core will interpret fp32 as tf32
-    alias a_type_value = DType.tensor_float32 if a_type is DType.float32 else a_type
-    alias b_type_value = DType.tensor_float32 if b_type is DType.float32 else b_type
+    alias type_d_value = __mlir_attr.`#nvvm.wgmma_type<f32>` if c_dtype is DType.float32 else _dtype_to_nvvm_wgmma_type[
+        c_dtype, a_type
+    ]()
 
     var llvmst = array_to_llvm_struct[c_dtype, width](c_reg)
     # TODO: Simplify with parametric alias
     var llvmres = __mlir_op.`nvvm.wgmma.mma_async`[
         shape = _get_shape[m, n, k](),
-        typeA = _dtype_to_nvvm_wgmma_type[a_type_value](),
-        typeB = _dtype_to_nvvm_wgmma_type[b_type_value](),
-        typeD = _dtype_to_nvvm_wgmma_type[c_dtype, a_type_value](),
+        typeA = _dtype_to_nvvm_wgmma_type[a_type](),
+        typeB = _dtype_to_nvvm_wgmma_type[b_type](),
+        typeD=type_d_value,
         scaleD = _to_nvvm_scale_out[scale_d](),
         scaleA = _to_nvvm_scale_in[scale_a](),
         scaleB = _to_nvvm_scale_in[scale_b](),
@@ -1196,6 +1200,9 @@ fn wgmma_async[
 
     alias layout_a_value = _get_kgen_string[layout_a]()
     alias layout_b_value = _get_kgen_string[layout_b]()
+    alias type_d_value = __mlir_attr.`#nvvm.wgmma_type<f32>` if c_dtype is DType.float32 else _dtype_to_nvvm_wgmma_type[
+        c_dtype, a_type
+    ]()
 
     var llvmst = simd_to_llvm_struct[c_dtype, width](c_reg)
     # TODO: Simplify with parametric alias
@@ -1203,7 +1210,7 @@ fn wgmma_async[
         shape = _get_shape[m, n, k](),
         typeA = _dtype_to_nvvm_wgmma_type[a_type](),
         typeB = _dtype_to_nvvm_wgmma_type[b_type](),
-        typeD = _dtype_to_nvvm_wgmma_type[c_dtype, a_type](),
+        typeD=type_d_value,
         scaleD = _to_nvvm_scale_out[scale_d](),
         scaleA = _to_nvvm_scale_in[scale_a](),
         scaleB = _to_nvvm_scale_in[scale_b](),

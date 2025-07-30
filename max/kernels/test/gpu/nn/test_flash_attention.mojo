@@ -19,7 +19,7 @@ from buffer import NDBuffer
 from buffer.dimlist import Dim, DimList
 from gpu import *
 from gpu.host import DeviceContext
-from gpu.host.info import A100, H100, Info, Vendor
+from gpu.host.info import A100, H100, GPUInfo, Vendor
 from nn.mha import (
     _naive_attention_with_transpose,
     flash_attention,
@@ -39,7 +39,7 @@ fn is_benchmark() -> Bool:
     return False
 
 
-fn is_sm8(info: Info) -> Bool:
+fn is_sm8(info: GPUInfo) -> Bool:
     return (
         info.vendor == Vendor.NVIDIA_GPU
         and info.compute >= 8
@@ -506,7 +506,7 @@ fn test_decoding[
             decoding_warp_split_k=split_k,
         ](1, 11, ctx, use_index_input=use_index_input)
         if (
-            not is_sm8(ctx.device_info)
+            not is_sm8(ctx.default_device_info)
             or num_partitions
             and num_partitions.value() == 1
         ):
@@ -692,7 +692,10 @@ def main():
                     )
 
                 @parameter
-                if ctx.device_info is A100 or ctx.device_info is H100:
+                if (
+                    ctx.default_device_info is A100
+                    or ctx.default_device_info is H100
+                ):
                     test_decoding_large_group[batch_size, 1](ctx)
 
                 test_decoding[batch_size, 2, split_k](ctx, False)

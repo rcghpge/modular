@@ -88,7 +88,6 @@ Highlights include:
 - MAX inference server: [/max/serve](max/serve) (OpenAI-compatible endpoint)
 - MAX model pipelines: [/max/pipelines](max/pipelines) (Python-based graphs)
 - Code example: [/examples](examples)
-- Tutorials: [/tutorials](tutorials)
 
 This repo has two major branches:
 

@@ -10,7 +10,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo-no-debug %s
 
 from math.math import _Expable, exp
 from random import randn_float64, seed
@@ -56,8 +55,7 @@ def test_exp_float64():
 def exp_libm[
     dtype: DType, simd_width: Int
 ](arg: SIMD[dtype, simd_width]) -> SIMD[dtype, simd_width]:
-    var eval = libm_call[dtype, simd_width, "expf", "exp"](arg)
-    return eval
+    return libm_call["expf", "exp"](arg)
 
 
 def test_exp_libm[dtype: DType]():

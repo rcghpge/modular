@@ -22,14 +22,9 @@ from typing import Any, Optional
 
 import numpy as np
 import numpy.typing as npt
-from max.graph import DeviceRef
-
-try:
-    import torch  # type: ignore
-except ImportError:
-    torch = None
-
+import torch  # type: ignore
 from max.dtype import DType
+from max.graph import DeviceRef
 
 from ..quantization import QuantizationEncoding
 from ..type import Shape, ShapeLike
@@ -39,33 +34,33 @@ from .weights import WeightData
 
 @dataclass
 class TensorInfo:
-    dtype: Any  # torch.dtype
+    dtype: torch.dtype
     offset: int
     shape: tuple[int, ...]
 
 
 class WeightUnpickler(pickle.Unpickler):
-    def __init__(self, pkl_file, zip_file) -> None:
+    def __init__(self, pkl_file, zip_file) -> None:  # noqa: ANN001
         super().__init__(pkl_file)
         self.zip_file = zip_file
 
     def build_tensor(
         self,
-        zip_info,
-        unused_storage_offset,
-        size,
+        zip_info,  # noqa: ANN001
+        unused_storage_offset,  # noqa: ANN001
+        size,  # noqa: ANN001
         *unused_args,
         **unused_kwargs,
     ):
         zip_info.shape = size
         return zip_info
 
-    def find_class(self, module, name):
+    def find_class(self, module, name):  # noqa: ANN001
         if module == "torch._utils" and name == "_rebuild_tensor_v2":
             return self.build_tensor
         return super().find_class(module, name)
 
-    def persistent_load(self, pid):
+    def persistent_load(self, pid):  # noqa: ANN001
         data = pid[1:]
         storage_type, key, unused_location, unused_num_elements = data
 
@@ -80,6 +75,43 @@ class WeightUnpickler(pickle.Unpickler):
 
 
 class PytorchWeights:
+    """Implementation for loading weights from PyTorch checkpoint files.
+
+    ``PytorchWeights`` provides an interface to load model weights from PyTorch
+    checkpoint files (.bin or .pt format). These files contain serialized
+    PyTorch tensors using Python's pickle protocol, making them widely compatible
+    with the PyTorch ecosystem.
+
+    .. code-block:: python
+
+        from pathlib import Path
+        from max.graph.weights import PytorchWeights
+        from max.dtype import DType
+
+        # Load weights from PyTorch checkpoint
+        checkpoint_path = Path("pytorch_model.bin")
+        weights = PytorchWeights(checkpoint_path)
+
+        # Check if a weight exists before allocation
+        if weights.model.decoder.layers[0].self_attn.q_proj.weight.exists():
+            # Allocate the attention weight
+            q_weight = weights.model.decoder.layers[0].self_attn.q_proj.weight.allocate(
+                dtype=DType.float32,
+                device=DeviceRef.CPU()
+            )
+
+        # Access weight properties
+        if weights.embeddings.weight.exists():
+            print(f"Embedding shape: {weights.embeddings.weight.shape}")
+            print(f"Embedding dtype: {weights.embeddings.weight.dtype}")
+
+        # Allocate with validation
+        embedding_weight = weights.embeddings.weight.allocate(
+            dtype=DType.float16,
+            shape=(50257, 768)  # Validate expected shape
+        )
+    """
+
     _filepath: PathLike
     _tensor_infos: dict[str, Any]
     _prefix: str
@@ -90,13 +122,8 @@ class PytorchWeights:
         filepath: PathLike,
         tensor_infos: Optional[dict[str, Any]] = None,
         prefix: str = "",
-        allocated=None,
+        allocated=None,  # noqa: ANN001
     ) -> None:
-        if torch is None:
-            raise ImportError(
-                "Unable to import torch. Please make sure that PyTorch is"
-                " installed on your system."
-            )
         self._filepath = filepath
         if tensor_infos is not None:
             self._tensor_infos = tensor_infos
@@ -142,7 +169,7 @@ class PytorchWeights:
                     ),
                 )
 
-    def __getattr__(self, attr) -> PytorchWeights:
+    def __getattr__(self, attr) -> PytorchWeights:  # noqa: ANN001
         if self._prefix:
             full_path = f"{self._prefix}.{attr}"
         else:
@@ -159,22 +186,7 @@ class PytorchWeights:
     def __getitem__(self, idx: int | str) -> PytorchWeights:
         return self.__getattr__(str(idx))
 
-    def raw_tensor(self) -> npt.NDArray[Any]:
-        """Returns the tensor corresponding to this weights object.
-
-        Raises:
-            KeyError if this weights object isn't a tensor.
-        """
-        if self._prefix not in self._tensor_infos:
-            raise KeyError(
-                f"Could not find weight named {self._prefix}. Please check that"
-                " the name is correct."
-            )
-
-        return self._tensor_infos[self._prefix]
-
     def data(self) -> WeightData:
-        assert torch is not None
         tensor_info = self._tensor_infos[self._prefix]
         dtype = DType.from_torch(self._tensor_infos[self._prefix].dtype)
         return WeightData(

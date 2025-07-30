@@ -26,8 +26,7 @@ from typing import Any, Optional, get_type_hints
 from max.driver import DeviceSpec, load_devices
 from max.graph.quantization import QuantizationEncoding
 
-from .config_enums import PipelineEngine, PipelineRole
-from .lora import LoRAManager
+from .config_enums import PipelineRole
 from .max_config import (
     KVCacheConfig,
     LoRAConfig,
@@ -41,6 +40,9 @@ from .registry import PIPELINE_REGISTRY
 
 logger = logging.getLogger("max.pipelines")
 
+# Default target number of tokens for chunked prefill and memory estimation.
+DEFAULT_TARGET_NUM_NEW_TOKENS = 8192
+
 
 @dataclass(frozen=False)
 class PipelineConfig(MAXConfig):
@@ -52,9 +54,6 @@ class PipelineConfig(MAXConfig):
     flag, config file, environment variable, or internally set to a reasonable
     default.
     """
-
-    engine: Optional[PipelineEngine] = None
-    """Engine backend to use for serving, 'max' for the max engine, or 'huggingface' as fallback option for improved model coverage."""
 
     max_length: Optional[int] = None
     """Maximum sequence length of the model."""
@@ -120,7 +119,7 @@ class PipelineConfig(MAXConfig):
     pad_to_multiple_of: int = 2
     """Pad input tensors to be a multiple of value provided."""
 
-    target_num_new_tokens: int = 8192
+    target_num_new_tokens: int = DEFAULT_TARGET_NUM_NEW_TOKENS
     """The target number of un-encoded tokens to include in each batch.
     This value is used for chunked prefill and memory estimation."""
 
@@ -161,9 +160,6 @@ class PipelineConfig(MAXConfig):
 
     _lora_config: Optional[LoRAConfig] = None
     """The LoRA config."""
-
-    _lora_manager: Optional[LoRAManager] = None
-    """The LoRA Manager"""
 
     @staticmethod
     def _extract_kwargs_for_config(
@@ -361,9 +357,7 @@ class PipelineConfig(MAXConfig):
         for module_spec in self.custom_architectures:
             module_parts = module_spec.split(":")
             if len(module_parts) > 2:
-                msg = (
-                    "Custom module spec contains too many colons: {module_spec}"
-                )
+                msg = f"Custom module spec contains too many colons: {module_spec}"
                 raise ValueError(msg)
             elif len(module_parts) == 2:
                 module_path, module_name = module_parts
@@ -458,13 +452,6 @@ class PipelineConfig(MAXConfig):
         """
         assert self.draft_model_config is not None  # keep mypy happy
 
-        # We don't support running speculative decoding with the HuggingFace backend.
-        if self.engine == PipelineEngine.HUGGINGFACE:
-            msg = (
-                "Speculative Decoding not supported with the HuggingFace Engine"
-            )
-            raise ValueError(msg)
-
         # Validate that both the `draft_model` and target model `model_path` have the same
         # architecture
         draft_arch = PIPELINE_REGISTRY.retrieve_architecture(
@@ -534,22 +521,12 @@ class PipelineConfig(MAXConfig):
         )
 
         # If nothing is provided, we should not update any more params.
-        # Instead, fall back to the HuggingFace engine.
-        if not arch and self.engine == PipelineEngine.MAX:
-            raise ValueError(
-                "MAX-optimized architecture not available, failing as engine is provided as 'MAX'"
-            )
-        elif not arch:
+        if not arch:
             msg = (
-                "MAX-optimized architecture not available for"
-                f" '{model_config.model_path}' falling back to"
-                " HuggingFace."
+                f"MAX-optimized architecture not available for '{model_config.model_path}'. "
+                "Please file a request at https://modul.ar/request to add this model architecture to MAX."
             )
-            logger.warning(msg)
-            msg = "Please file a request at https://modul.ar/request to add this model architecture to MAX."
-            logger.warning(msg)
-            self.engine = PipelineEngine.HUGGINGFACE
-            return
+            raise ValueError(msg)
 
         # TODO(E2EOPT-28): remove this constraint.
         # Gemma has a MHA head size of 256.
@@ -576,15 +553,8 @@ class PipelineConfig(MAXConfig):
 
         # by this point, the quantization_encoding must be provided. verify it is supported.
         if model_config.quantization_encoding not in arch.supported_encodings:
-            if self.engine == PipelineEngine.MAX:
-                msg = f"quantization_encoding of '{model_config.quantization_encoding}' not supported by MAX engine, unable to run with engine = 'max'."
-                raise ValueError(msg)
-
-            else:
-                msg = f"quantization_encoding of '{model_config.quantization_encoding}' not supported by MAX engine, falling back to HuggingFace."
-                logger.warning(msg)
-                self.engine = PipelineEngine.HUGGINGFACE
-                return
+            msg = f"quantization_encoding of '{model_config.quantization_encoding}' not supported by MAX engine."
+            raise ValueError(msg)
 
         model_config.validate_and_resolve_with_resolved_quantization_encoding(
             supported_encodings=arch.supported_encodings,
@@ -595,11 +565,6 @@ class PipelineConfig(MAXConfig):
         MEMORY_ESTIMATOR.estimate_memory_footprint(
             self, arch.pipeline_model, model_config, devices
         )
-
-        # If we pass validation ensure and the engine is not set, just set it
-        # to MAX.
-        if self.engine is None:
-            self.engine = PipelineEngine.MAX
 
     def __getstate__(self) -> dict[str, Any]:
         """Override `__getstate__` to exclude the Hugging Face config."""
@@ -618,7 +583,7 @@ class PipelineConfig(MAXConfig):
     @staticmethod
     def help() -> dict[str, str]:
         pipeline_help = {
-            "engine": "Specify the engine backend to use for serving the model. Options include `max` for the MAX engine, or `huggingface` as a fallback option that provides improved model coverage.",
+            "engine": "Specify the engine backend to use for serving the model. Currently only 'max' engine is supported.",
             "weight_path": "Provide an optional local path or path relative to the root of a Hugging Face repo to the model weights you want to use. This allows you to specify custom weights instead of using defaults. You may pass multiple, ie. `--weight-path=model-00001-of-00002.safetensors --weight-path=model-00002-of-00002.safetensors`",
             "max_length": "Set the maximum sequence length for input data processed by the model. This must be less than the value specified in the Hugging Face configuration file. The default is derived from the Hugging Face configuration value. Larger values may consume more memory.",
             "max_new_tokens": "Specify the maximum number of new tokens to generate during a single inference pass of the model. Default is -1, which means the model will generate until the maximum sequence length is hit, or and eos token is generated.",
@@ -667,10 +632,6 @@ class PipelineConfig(MAXConfig):
     def lora_config(self) -> Optional[LoRAConfig]:
         return self._lora_config
 
-    @property
-    def lora_manager(self) -> Optional[LoRAManager]:
-        return self._lora_manager
-
 
 def _parse_flag_bool(value: str, flag_name: str) -> bool:
     if value.lower() == "true":
@@ -699,6 +660,10 @@ class PrependPromptSpeechTokens(str, Enum):
     ONCE = "once"
     """Prepend the prompt speech tokens to the first block of the audio decoder."""
 
+    ROLLING = "rolling"
+    """Prepend the prompt speech tokens to the first block of the audio decoder,
+    and to later blocks to reach the requested buffer size."""
+
 
 class PrometheusMetricsMode(str, Enum):
     INSTRUMENT_ONLY = "instrument_only"
@@ -720,10 +685,10 @@ class AudioGenerationConfig(PipelineConfig):
     audio_decoder_weights: str = ""
     """The path to the audio decoder weights file."""
 
-    block_sizes: list[int] | None = None
-    """The block sizes to use for streaming.
-    If this is an int, then fixed-size blocks of the given size are used
-    If this is a list, then variable block sizes are used."""
+    chunk_size: list[int] | None = None
+    """The chunk sizes to use for streaming.
+    If this is an int, then fixed-size chunks of the given size are used
+    If this is a list, then variable chunk sizes are used."""
 
     buffer: int = 0
     """The number of previous speech tokens to pass to the audio decoder on
@@ -767,7 +732,7 @@ class AudioGenerationConfig(PipelineConfig):
         self,
         audio_decoder: str,
         audio_decoder_weights: str = "",
-        block_sizes: list[int] | None = None,
+        chunk_size: list[int] | None = None,
         buffer: int = 0,
         block_causal: bool = False,
         prepend_prompt_speech_tokens: PrependPromptSpeechTokens = PrependPromptSpeechTokens.NEVER,
@@ -788,7 +753,7 @@ class AudioGenerationConfig(PipelineConfig):
 
         self.audio_decoder = audio_decoder
         self.audio_decoder_weights = audio_decoder_weights
-        self.block_sizes = block_sizes
+        self.chunk_size = chunk_size
         self.buffer = buffer
         self.block_causal = block_causal
         self.prepend_prompt_speech_tokens = prepend_prompt_speech_tokens
@@ -810,11 +775,11 @@ class AudioGenerationConfig(PipelineConfig):
         audio_decoder_weights = audio_flags.pop("audio_decoder_weights", "")
 
         # Configuration for audio generation streaming.
-        block_sizes_str = audio_flags.pop("block_sizes", "")
-        if not block_sizes_str:
-            block_sizes = None
+        chunk_size_str = audio_flags.pop("chunk_size", "")
+        if not chunk_size_str:
+            chunk_size = None
         else:
-            block_sizes = [int(size) for size in block_sizes_str.split(",")]
+            chunk_size = [int(size) for size in chunk_size_str.split(",")]
 
         buffer = _parse_flag_int(audio_flags.pop("buffer", "0"), "buffer")
 
@@ -848,7 +813,7 @@ class AudioGenerationConfig(PipelineConfig):
         return cls(
             audio_decoder=audio_decoder,
             audio_decoder_weights=audio_decoder_weights,
-            block_sizes=block_sizes,
+            chunk_size=chunk_size,
             buffer=buffer,
             block_causal=block_causal,
             prepend_prompt_speech_tokens=prepend_prompt_speech_tokens,

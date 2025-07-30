@@ -22,7 +22,7 @@ from algorithm import map
 from collections.string.string_slice import get_static_string
 from math import align_down, ceildiv
 from os import abort
-from sys import bitwidthof, is_nvidia_gpu, num_physical_cores, simdwidthof
+from sys import is_nvidia_gpu, simdwidthof
 
 from gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -38,7 +38,7 @@ from gpu.grid_controls import (
     wait_on_dependent_grids,
 )
 from gpu.host import DeviceContext
-from gpu.host.info import Info, is_cpu, is_gpu, is_valid_target
+from gpu.host.info import is_cpu, is_gpu
 from runtime import tracing
 from runtime.asyncrt import DeviceContextPtr, TaskGroup, parallelism_level
 from runtime.tracing import Trace, TraceLevel, trace_arg
@@ -1588,7 +1588,7 @@ fn _elementwise_impl_gpu[
 
     # optimized implementation inspired by https://archive.md/Tye9y#selection-1101.2-1151.3
 
-    alias hw_info = ctx.device_info
+    alias hw_info = ctx.default_device_info
 
     alias registers_per_thread = 255
     alias num_waves = 32
@@ -1658,9 +1658,9 @@ fn _elementwise_impl_gpu[
                             ).canonicalize()
                         )
                 else:
-                    func[simd_width, rank](start_indices.canonicalize())
+                    func[Int(simd_width), rank](start_indices.canonicalize())
             else:
-                func[simd_width, rank](start_indices.canonicalize())
+                func[Int(simd_width), rank](start_indices.canonicalize())
 
         # process the tail region
         if tid < unpacked_tail_length:
@@ -1994,7 +1994,7 @@ fn _stencil_impl_gpu[
 
         # Create output point indices with computed batch and channel
         var indices = IndexList[rank, element_type=shape_element_type](
-            batch_idx, y, x, channel
+            Int(batch_idx), Int(y), Int(x), Int(channel)
         )
 
         # Process stencil for this point

@@ -16,12 +16,8 @@ from __future__ import annotations
 from typing import Any, Callable, Literal, Optional
 
 from max.driver import Tensor
-from max.engine import Model
-from max.graph import (
-    DeviceRef,
-    Graph,
-    TensorValue,
-)
+from max.engine import InferenceSession, Model
+from max.graph import DeviceRef, Graph, TensorValue
 from max.graph.weights import Weights, WeightsAdapter
 
 from ..llama3.model import LlamaModelBase
@@ -51,7 +47,10 @@ class Olmo2Model(LlamaModelBase):
     """Weights to load into the model."""
 
     def _build_graph(
-        self, weights: Weights, adapter: Optional[WeightsAdapter] = None
+        self,
+        weights: Weights,
+        adapter: Optional[WeightsAdapter] = None,
+        session: Optional[InferenceSession] = None,
     ) -> Graph:
         """Override to use Olmo2Config and Olmo2 model instead of Llama3."""
 

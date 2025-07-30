@@ -15,12 +15,11 @@
 import subprocess
 import tempfile
 from pathlib import Path
-from sys.info import _get_arch
+from sys.info import _accelerator_arch, _TargetType, CompilationTarget
 
-from compile import Info, compile_info
+from compile import CompiledFunctionInfo, compile_info
 
-from .info import A100, DEFAULT_GPU_ARCH
-from .info import Info as HardwareInfo
+from .info import A100, GPUInfo
 
 # ===-----------------------------------------------------------------------===#
 # Targets
@@ -30,9 +29,9 @@ from .info import Info as HardwareInfo
 @always_inline
 fn get_gpu_target[
     # TODO: Ideally this is an Optional[StaticString] but blocked by MOCO-1039
-    target_arch: StaticString = DEFAULT_GPU_ARCH,
-]() -> __mlir_type.`!kgen.target`:
-    alias info = HardwareInfo.from_name[target_arch]() if target_arch else A100
+    target_arch: StaticString = _accelerator_arch(),
+]() -> _TargetType:
+    alias info = GPUInfo.from_name[target_arch]() if target_arch else A100
     return info.target()
 
 
@@ -53,38 +52,17 @@ fn _compile_code[
     /,
     *,
     emission_kind: StaticString = "asm",
-    target: __mlir_type.`!kgen.target` = get_gpu_target(),
-    compile_options: StaticString = HardwareInfo.from_target[
+    target: _TargetType = get_gpu_target(),
+    compile_options: StaticString = CompilationTarget[
         target
-    ]().compile_options,
-]() -> Info[func_type, func, target]:
+    ].default_compile_options(),
+]() -> CompiledFunctionInfo[func_type, func, target]:
     return compile_info[
         func,
         emission_kind=emission_kind,
         compile_options=compile_options,
         target=target,
     ]()
-
-
-@always_inline
-fn _compile_code_asm[
-    func_type: AnyTrivialRegType, //,
-    func: func_type,
-    /,
-    *,
-    emission_kind: StaticString = "asm",
-    target: __mlir_type.`!kgen.target` = get_gpu_target(),
-    compile_options: StaticString = HardwareInfo.from_target[
-        target
-    ]().compile_options,
-]() -> StaticString:
-    var asm = compile_info[
-        func,
-        emission_kind=emission_kind,
-        compile_options=compile_options,
-        target=target,
-    ]().asm
-    return asm
 
 
 # ===-----------------------------------------------------------------------===#
@@ -94,11 +72,11 @@ fn _compile_code_asm[
 
 @no_inline
 fn _to_sass[
-    target: __mlir_type.`!kgen.target` = get_gpu_target()
+    target: _TargetType = get_gpu_target()
 ](asm: String, *, nvdisasm_opts: String = "") raises -> String:
     alias nvdisasm_path = Path("/usr/local/cuda/bin/nvdisasm")
     if not nvdisasm_path.exists():
-        raise String(
+        raise Error(
             "the `nvdisasm` binary does not exist in '", nvdisasm_path, "'"
         )
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
@@ -120,13 +98,13 @@ fn _to_sass[
 
 @no_inline
 fn _ptxas_compile[
-    target: __mlir_type.`!kgen.target` = get_gpu_target()
+    target: _TargetType = get_gpu_target()
 ](
     asm: String, *, options: String = "", output_file: Optional[Path] = None
 ) raises -> String:
     alias ptxas_path = Path("/usr/local/cuda/bin/ptxas")
     if not ptxas_path.exists():
-        raise String("the `ptxas` binary does not exist in '", ptxas_path, "'")
+        raise Error("the `ptxas` binary does not exist in '", ptxas_path, "'")
     # Compile the PTX code to an ELF file. Here we care about the diagnostics.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         var ptx_file = Path(tmpdir) / "output.ptx"
@@ -136,7 +114,7 @@ fn _ptxas_compile[
             String(
                 ptxas_path,
                 " --gpu-name ",
-                _get_arch[target](),
+                CompilationTarget[target]._arch(),
                 " -O4 ",
                 ptx_file,
                 " ",

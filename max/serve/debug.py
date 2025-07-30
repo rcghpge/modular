@@ -58,7 +58,7 @@ class ProfileFormat(ProfileFormatMetadata, Enum):
         return {member.label: member for member in ProfileFormat}
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value):  # noqa: ANN001
         members = cls.members()
         if isinstance(value, str) and value in members:
             return members[value]
@@ -85,11 +85,11 @@ class ProfileSession:
         )
 
 
-PROFILE_SESSION_VAR = ContextVar("profile_session", default=ProfileSession())
+PROFILE_SESSION_VAR = ContextVar("profile_session", default=ProfileSession())  # noqa: B039
 
 
 def profile_in_session():
-    return PROFILE_SESSION_VAR.get().request_id != None
+    return PROFILE_SESSION_VAR.get().request_id is not None
 
 
 def write_profile(profiler: Profiler, session: ProfileSession) -> None:

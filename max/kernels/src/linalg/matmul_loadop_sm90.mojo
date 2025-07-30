@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 from math import ceildiv
-from sys import alignof, simdwidthof, sizeof
+from sys import simdwidthof, sizeof
 from gpu import thread_idx
 from gpu.memory import AddressSpace, async_copy
 from gpu.sync import async_copy_arrive
@@ -70,6 +70,7 @@ fn async_load_AB[
     ],
     m_coord: UInt,
     n_coord: UInt,
+    k_coord: UInt,
     rank_n: UInt,
     rank_m: UInt,
     mut write_pipeline_states: PipelineState[pipeline_stages],
@@ -100,7 +101,7 @@ fn async_load_AB[
 
     @parameter
     for i in range(CLUSTER_M):
-        multicast_column_mask |= 1 << (i * CLUSTER_N)
+        multicast_column_mask |= Int(1 << (i * CLUSTER_N))
 
     var multicast_row_mask = ((1 << CLUSTER_N) - 1) << (rank_m * CLUSTER_N)
 
@@ -139,7 +140,7 @@ fn async_load_AB[
                         a_smem_slice,
                         full_mbar[write_idx],
                         (
-                            UInt(k_iter * pipeline_stages + j) * BK,
+                            UInt(k_coord + k_iter * pipeline_stages + j) * BK,
                             a_gmem_slice_coord,
                         ),
                         UInt16(multicast_row_mask),
@@ -150,7 +151,11 @@ fn async_load_AB[
                         a_tma_op.async_multicast_load(
                             a_smem_tile,
                             full_mbar[write_idx],
-                            (UInt(k_iter * pipeline_stages + j) * BK, m_coord),
+                            (
+                                UInt(k_coord + k_iter * pipeline_stages + j)
+                                * BK,
+                                m_coord,
+                            ),
                             UInt16(multicast_row_mask),
                         )
 
@@ -158,7 +163,10 @@ fn async_load_AB[
                 a_tma_op.async_copy(
                     a_smem_tile,
                     full_mbar[write_idx],
-                    (UInt(k_iter * pipeline_stages + j) * BK, m_coord),
+                    (
+                        UInt(k_coord + k_iter * pipeline_stages + j) * BK,
+                        m_coord,
+                    ),
                 )
 
             @parameter
@@ -175,7 +183,7 @@ fn async_load_AB[
                         b_smem_slice,
                         full_mbar[write_idx],
                         (
-                            UInt(k_iter * pipeline_stages + j) * BK,
+                            UInt(k_coord + k_iter * pipeline_stages + j) * BK,
                             b_gmem_slice_coord,
                         ),
                         UInt16(multicast_column_mask << rank_n),
@@ -186,7 +194,11 @@ fn async_load_AB[
                         b_tma_op.async_multicast_load(
                             b_smem_tile,
                             full_mbar[write_idx],
-                            (UInt(k_iter * pipeline_stages + j) * BK, n_coord),
+                            (
+                                UInt(k_coord + k_iter * pipeline_stages + j)
+                                * BK,
+                                n_coord,
+                            ),
                             UInt16(multicast_column_mask << rank_n),
                         )
 
@@ -194,16 +206,12 @@ fn async_load_AB[
                 b_tma_op.async_copy(
                     b_smem_tile,
                     full_mbar[write_idx],
-                    (UInt(k_iter * pipeline_stages + j) * BK, n_coord),
+                    (
+                        UInt(k_coord + k_iter * pipeline_stages + j) * BK,
+                        n_coord,
+                    ),
                 )
 
-            write_pipeline_states.step()
-
-        @parameter
-        for j in range(num_pipeline_stages_to_unroll, pipeline_stages):
-            var write_idx = write_pipeline_states.index()
-            empty_mbar[write_idx].wait(write_pipeline_states.phase())
-            _ = full_mbar[write_idx].arrive()
             write_pipeline_states.step()
 
     @parameter
@@ -302,10 +310,10 @@ fn async_load_AB[
             ]()
 
             var a_gmem_tile = a.tile[BM, BK](
-                block_idx_m, k_iter * pipeline_stages + j
+                Int(block_idx_m), k_iter * pipeline_stages + j
             ).vectorize[1, cp_size]()
             var b_gmem_tile = b.tile[BN, BK](
-                block_idx_n, k_iter * pipeline_stages + j
+                Int(block_idx_n), k_iter * pipeline_stages + j
             ).vectorize[1, cp_size]()
 
             async_copy_with_bound_check[thread_layout, swizzle_mode](
@@ -317,13 +325,6 @@ fn async_load_AB[
             )
 
             async_copy_arrive(full_mbar[write_idx].unsafe_ptr())
-            _ = full_mbar[write_idx].arrive()
-            write_pipeline_states.step()
-
-        @parameter
-        for j in range(num_pipeline_stages_to_unroll, pipeline_stages):
-            var write_idx = write_pipeline_states.index()
-            empty_mbar[write_idx].wait(write_pipeline_states.phase())
             _ = full_mbar[write_idx].arrive()
             write_pipeline_states.step()
 

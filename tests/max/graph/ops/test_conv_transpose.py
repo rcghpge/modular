@@ -16,11 +16,7 @@ from math import sqrt
 
 import numpy as np
 import pytest
-from conftest import (
-    MAX_INT32,
-    static_dims,
-    tensor_types,
-)
+from conftest import MAX_INT32, static_dims, tensor_types
 from hypothesis import assume, given, reject
 from hypothesis import strategies as st
 from max.dtype import DType
@@ -54,7 +50,11 @@ output_padding_type = st.tuples(sized_int, sized_int)
     output_padding=output_padding_type,
 )
 def test_conv_transpose_valid(
-    x_type: TensorType, filter_type: TensorType, stride, padding, output_padding
+    x_type: TensorType,
+    filter_type: TensorType,
+    stride,  # noqa: ANN001
+    padding,  # noqa: ANN001
+    output_padding,  # noqa: ANN001
 ) -> None:
     assume(filter_type.shape[0] <= x_type.shape[1])
     assume(filter_type.shape[1] <= x_type.shape[2])

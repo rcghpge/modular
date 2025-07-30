@@ -16,22 +16,25 @@ import queue
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Union, cast
+from typing import Union
 
 import zmq
+from max.interfaces import (
+    RequestID,
+    SchedulerResult,
+    TextGenerationInputs,
+    TextGenerationOutput,
+    TokenGenerator,
+    msgpack_numpy_decoder,
+    msgpack_numpy_encoder,
+)
 from max.nn.kv_cache import (
     KVTransferEngine,
     KVTransferEngineMetadata,
     PagedKVCacheManager,
 )
-from max.pipelines.core import (
-    TextAndVisionContext,
-    TextContext,
-    TextGenerationResponse,
-    TextResponse,
-    TokenGenerator,
-    msgpack_numpy_decoder,
-)
+from max.pipelines.core import TextAndVisionContext, TextContext
+from max.pipelines.lib import PipelineConfig
 from max.pipelines.lib.pipeline import get_paged_manager
 from max.profiler import traced
 from max.serve.config import Settings
@@ -41,7 +44,6 @@ from max.serve.queue.zmq_queue import ZmqPullSocket, ZmqPushSocket
 from max.serve.scheduler.base import PrefillRequest, PrefillResponse
 
 from .base import Scheduler
-from .queues import STOP_STREAM
 
 logger = logging.getLogger("max.serve")
 
@@ -87,8 +89,12 @@ class DecodeScheduler(Scheduler):
                 tuple[str, Union[TextContext, TextAndVisionContext]]
             ),
         )
-        self.response_push_socket = ZmqPushSocket[tuple[str, TextResponse]](
-            zmq_ctx=zmq_ctx, zmq_endpoint=response_zmq_endpoint
+        self.response_push_socket = ZmqPushSocket[
+            dict[str, SchedulerResult[TextGenerationOutput]]
+        ](
+            zmq_ctx=zmq_ctx,
+            zmq_endpoint=response_zmq_endpoint,
+            serialize=msgpack_numpy_encoder(),
         )
         self.cancel_pull_socket = ZmqPullSocket[
             tuple[str, Union[TextContext, TextAndVisionContext]]
@@ -119,10 +125,7 @@ class DecodeScheduler(Scheduler):
         self.active_batch: OrderedDict[
             str, Union[TextContext, TextAndVisionContext]
         ] = OrderedDict()
-        self.available_cache_indices = set(
-            range(self.scheduler_config.max_batch_size_tg)
-        )
-        self.reserved_cache_indices: dict[str, int] = {}
+        self.pending_prefill_requests: list[RequestID] = []
 
         # Create Transfer Engine
         self.transfer_engine = KVTransferEngine(
@@ -168,12 +171,12 @@ class DecodeScheduler(Scheduler):
         self.prefill_responses[message.transfer_metadata.xfer_name] = message
 
     def push_to_response_socket(
-        self, responses: list[dict[str, TextResponse]] = [{}]
+        self, responses: dict[RequestID, SchedulerResult[TextGenerationOutput]]
     ) -> None:
         """Pushes response messages to the response socket.
 
         Args:
-            responses: List of response dictionaries to send, defaults to empty dict.
+            responses: Dictionary of request_id, response of generation results.
 
         Raises:
             zmq.ZMQError: If there is an error sending on the socket.
@@ -183,7 +186,7 @@ class DecodeScheduler(Scheduler):
     @traced
     def send_prefill_request(
         self,
-        request_id: str,
+        request_id: RequestID,
         data: Union[TextContext, TextAndVisionContext],
         dst_idx: list[int],
     ) -> None:
@@ -218,24 +221,20 @@ class DecodeScheduler(Scheduler):
 
         Breaks when the request queue is empty. Memory reservation is pending implementation.
         """
-        while self.available_cache_indices:
+        while (
+            len(self.active_batch) + len(self.pending_prefill_requests)
+        ) < self.scheduler_config.max_batch_size_tg:
             try:
                 # Pop off request queue
                 request_id, request_context = self.pull_from_request_socket()
                 logger.info("request received from api worker.")
 
-                # Try and Prefetch Memory Eagerly
-                #
+                # Claim the slot with the paged manager
+                if not self.paged_manager.contains(request_id):
+                    self.paged_manager.external_claim(request_id)
 
-                # If we pop off a request successfully.
-                # Grab new cache index, claim the slot with the paged manager
-                # and add it to the reserved_cache_indices.
-                cache_seq_id = self.available_cache_indices.pop()
-                self.paged_manager.external_claim([cache_seq_id])
-
-                # Ensure request_context uses the appropriate cache seq id
+                # Ensure request_context is unassigned from cache
                 request_context.unassign_from_cache()
-                request_context.assign_to_cache(cache_seq_id)
 
                 # TODO: E2EOPT-269
 
@@ -245,64 +244,30 @@ class DecodeScheduler(Scheduler):
                     # If we don't have enough space in the paged manager
                     # return this to the request queue.
                     self.preempted_request.put((request_id, request_context))
-                    self.available_cache_indices.add(cache_seq_id)
-                    self.paged_manager.release(cache_seq_id)
+                    self.paged_manager.release(request_id)
 
-                    # Error out here, if we cant prefetch and have no outstanding reserved_cache_indices.
-                    # This means it will not be possible to fulfill this request.
-                    if not self.reserved_cache_indices:
-                        raise RuntimeError(
-                            "no cache space reserved, and prefetch is failing. This indicates that the cache does not have enough pages to hold a single request."
-                        )
-
-                    # Break out of the loop, we cant add this to our reserved cache indices
+                    # Break out of the loop, we cant add this to our batch
                     # or send for prefilling.
                     break
 
-                # If successful, mark as reserved and send to prefill socket.
-                self.reserved_cache_indices[request_id] = cache_seq_id
-
                 dst_idx = self.paged_manager.block_manager.get_req_blocks(
-                    cache_seq_id
+                    request_id
                 )
 
                 # Send to the Prefill Node
+                self.pending_prefill_requests.append(request_id)
                 self.send_prefill_request(request_id, request_context, dst_idx)
 
             except queue.Empty:
                 # Break loop when no items in queue
                 break
 
-            except Exception as e:
-                logger.error(e)
-                raise e
-
     def update_batch(self) -> None:
         """Updates the active batch by adding new requests from the decode queue and managing memory prefetching.
 
-        Adds new requests to the batch while cache indices are available. For each request, attempts to prefetch
+        Adds new requests to the batch up to the maximum batch size. For each request, attempts to prefetch
         required memory. If prefetch fails, handles preemption by returning newer requests to the decode queue.
         """
-
-        # Walk the active batch, and prefetch for all existing items.
-        candidate_request_ids = list(self.active_batch.keys())
-        for candidate_request_id in candidate_request_ids:
-            # If we have already removed the candidate_request, move on
-            if candidate_request_id not in self.active_batch:
-                break
-
-            # If the request_id is in the active batch, try and prefetch.
-            request_context = self.active_batch[candidate_request_id]
-
-            # TODO: Shrink num_steps appropriately.
-            num_steps = self.scheduler_config.max_forward_steps_tg
-            # If prefetch fails, pre-empt the request and continue evaluating
-            # the batch
-            if not self.paged_manager.prefetch(request_context, num_steps):
-                raise RuntimeError("""
-                    Prefetching memory failed for new decode request.
-                    This is likely due to memory contention concerns among the batch.
-                    Please decrease the batch size and try again.""")
 
         # Walk all outstanding prefill responses
         # Notifications provides a list of completed XferReqData.xfer_name
@@ -325,38 +290,32 @@ class DecodeScheduler(Scheduler):
                 completed_transfer_name
             )
 
-            prefill_response.context.unassign_from_cache()
-            prefill_response.context.assign_to_cache(
-                self.reserved_cache_indices[prefill_response.id]
-            )
-
-            # Calculate num_steps
-            num_available_steps = (
-                prefill_response.context.compute_num_available_steps(
-                    prefill_response.context.max_length
-                )
-            )
-            num_steps = (
-                self.scheduler_config.max_forward_steps_tg
-                if self.scheduler_config.max_forward_steps_tg
-                < num_available_steps
-                else num_available_steps
-            )
-
-            # Prefetch data early, only add to batch if we can prefetch successfully.
-            if not self.paged_manager.prefetch(
-                prefill_response.context, num_steps
-            ):
-                self.prefill_responses[completed_transfer_name] = (
-                    prefill_response
-                )
-                continue
-
             # Add to active batch.
             self.active_batch[prefill_response.id] = prefill_response.context
+            self.pending_prefill_requests.remove(prefill_response.id)
 
             # Remove from completed transfers.
             self.completed_transfers.remove(completed_transfer_name)
+
+        # Walk the active batch, and prefetch for all existing items.
+        candidate_request_ids = list(self.active_batch.keys())
+        for candidate_request_id in candidate_request_ids:
+            # If we have already removed the candidate_request, move on
+            if candidate_request_id not in self.active_batch:
+                break
+
+            # If the request_id is in the active batch, try and prefetch.
+            request_context = self.active_batch[candidate_request_id]
+
+            # TODO: Shrink num_steps appropriately.
+            num_steps = self.scheduler_config.max_forward_steps_tg
+            # If prefetch fails, pre-empt the request and continue evaluating
+            # the batch
+            if not self.paged_manager.prefetch(request_context, num_steps):
+                raise RuntimeError("""
+                    Prefetching memory failed for new decode request.
+                    This is likely due to memory contention concerns among the batch.
+                    Please decrease the batch size and try again.""")
 
     @traced
     def calculate_batch_num_steps(self) -> int:
@@ -398,7 +357,7 @@ class DecodeScheduler(Scheduler):
 
     @traced
     def stream_responses_to_frontend(
-        self, responses: dict[str, TextGenerationResponse]
+        self, responses: dict[str, TextGenerationOutput]
     ) -> None:
         """Streams text generation responses to the frontend by converting them into a format suitable for streaming.
 
@@ -408,44 +367,28 @@ class DecodeScheduler(Scheduler):
         if not responses:
             return
 
-        # Convert this to list[dict[str, Any]]
-        stream_responses: list[dict[str, TextResponse]] = [{}]
+        stream_responses: dict[str, SchedulerResult[TextGenerationOutput]] = {}
         for request_id, response in responses.items():
-            # This will just ensure that there is always a response for each token
-            # We add one here, as we need to send a stop sentinel
-            while (len(response.tokens) + (1 if response.is_done else 0)) > len(
-                stream_responses
-            ):
-                stream_responses.append({})
-
-            for token_idx, text_response in enumerate(response.tokens):
-                stream_responses[token_idx][request_id] = text_response
-
             if response.is_done:
-                stream_responses[len(response.tokens)][request_id] = cast(
-                    TextResponse, STOP_STREAM
+                stream_responses[request_id] = SchedulerResult.complete(
+                    response
                 )
+            else:
+                stream_responses[request_id] = SchedulerResult.active(response)
 
         self.push_to_response_socket(stream_responses)
 
     def _handle_terminated_responses(
-        self, responses: dict[str, TextGenerationResponse]
+        self, responses: dict[str, TextGenerationOutput]
     ) -> None:
-        """Handles cleanup for completed text generation responses by releasing cache and removing from active batch.
+        """Handles cleanup for completed text generation responses by releasing pipeline resources and removing from active batch.
 
         Args:
             responses: Dictionary mapping request IDs to their text generation responses.
         """
-        if responses is None:
-            return
-
         for request_id, response in responses.items():
             if response.is_done:
-                # Release from cache, and active batch.
-                cache_id = self.active_batch[request_id].cache_seq_id
-                self.pipeline.release(self.active_batch[request_id])
-                self.available_cache_indices.add(cache_id)
-                del self.reserved_cache_indices[request_id]
+                self.pipeline.release(request_id)
                 del self.active_batch[request_id]
 
     @traced
@@ -456,7 +399,7 @@ class DecodeScheduler(Scheduler):
             num_steps: Number of tokens to generate for this batch.
         """
         responses = self.pipeline.next_token(
-            self.active_batch, num_steps=num_steps
+            TextGenerationInputs(self.active_batch, num_steps=num_steps)
         )
 
         self._handle_terminated_responses(responses)
@@ -484,22 +427,22 @@ class DecodeScheduler(Scheduler):
         # Schedule Batch
         self.schedule(num_steps)
 
-    def needs_dispatcher_client(self) -> bool:
-        return True
-
 
 def load_decode_scheduler(
     zmq_ctx: zmq.Context,
     settings: Settings,
     pipeline: TokenGenerator,
-    max_batch_size_tg: int,
-    max_forward_steps_tg: int,
+    pipeline_config: PipelineConfig,
     dispatcher_client: DispatcherClient,
 ) -> DecodeScheduler:
     # Create Scheduler Config
     scheduler_config = DecodeSchedulerConfig(
-        max_batch_size_tg=max_batch_size_tg,
-        max_forward_steps_tg=max_forward_steps_tg,
+        max_batch_size_tg=pipeline_config.max_batch_size
+        if pipeline_config.max_batch_size is not None
+        else 1,
+        max_forward_steps_tg=pipeline_config.max_num_steps
+        if pipeline_config.max_num_steps != -1
+        else 1,
     )
 
     # Retrieve Paged Manager

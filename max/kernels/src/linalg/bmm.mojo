@@ -14,7 +14,7 @@
 from collections import OptionalReg
 from math import align_up, ceildiv, gcd
 from sys import alignof
-from sys.info import simdwidthof
+from sys.info import simdwidthof, has_nvidia_gpu_accelerator
 
 from algorithm import sync_parallelize, vectorize
 from algorithm.functional import _get_start_indices_of_nth_subvolume_uint
@@ -22,15 +22,14 @@ from algorithm.reduction import _reduce_generator
 from buffer import NDBuffer
 from buffer.dimlist import DimList
 from gpu import block_idx, global_idx
-from gpu.host import DeviceContext
-from gpu.host.info import is_cpu, is_valid_target
+from gpu.host import DeviceContext, FuncAttribute
+from gpu.host.info import is_cpu, is_valid_target, A100
 from memory import memset_zero
 from runtime.asyncrt import DeviceContextPtr, parallelism_level
 from runtime.tracing import Trace, TraceLevel, trace_arg
 
 from utils.index import Index, IndexList
 from utils.numerics import get_accum_type
-
 from .apple_accelerate import apple_batched_matmul, use_apple_accelerate_lib
 from .matmul import _submatmul_sequential_sync
 from .matmul_gpu import _matmul_gpu
@@ -45,6 +44,16 @@ from .utils import (
     partition_work,
     use_i8mm_fn,
 )
+
+from ._multistage_gemm_gpu import multistage_gemm_kernel
+from layout import Layout, LayoutTensor, UNKNOWN_VALUE, RuntimeLayout, IntTuple
+from buffer import Dim
+from .utils_gpu import (
+    MatmulConfig,
+    MatmulKernels,
+)
+
+from layout._ndbuffer_stub import from_ndbuffer_row_major
 
 alias elementwise_epilogue_type = fn[
     c_type: DType,
@@ -80,9 +89,17 @@ fn _get_batch_dims[
 # A utility to reshape NDBuffer with rank > 3 to rank-3.
 @always_inline
 fn _reshape_nd_buffer_with_batch_to_3d(
-    buffer: NDBuffer,
+    buffer: NDBuffer[*_, **_],
 ) -> NDBuffer[
-    buffer.type, 3, buffer.origin, address_space = buffer.address_space
+    buffer.type,
+    3,
+    buffer.origin,
+    DimList(
+        Dim(),
+        buffer.shape.get[buffer.rank - 2](),
+        buffer.shape.get[buffer.rank - 1](),
+    ),
+    address_space = buffer.address_space,
 ]:
     alias rank = buffer.rank
     constrained[rank >= 3, "expecting at least rank-3 NDBuffer"]()
@@ -97,8 +114,89 @@ fn _reshape_nd_buffer_with_batch_to_3d(
         batch_size, buffer.dim[rank - 2](), buffer.dim[rank - 1]()
     )
 
-    return NDBuffer[buffer.type, 3, address_space = buffer.address_space](
-        buffer.data.bitcast[Scalar[buffer.type]](), matrix_shape
+    alias static_shape = DimList(
+        Dim(),
+        buffer.shape.get[buffer.rank - 2](),
+        buffer.shape.get[buffer.rank - 1](),
+    )
+
+    return NDBuffer[
+        buffer.type,
+        3,
+        buffer.origin,
+        static_shape,
+        address_space = buffer.address_space,
+    ](buffer.data.bitcast[Scalar[buffer.type]](), matrix_shape)
+
+
+@parameter
+fn _reshape_to_3d[layout: Layout]() -> Layout:
+    alias rank = len(layout.shape)
+
+    # NOTE: need to cast becasue int tuple returns comptime int
+    alias last = Int(layout.shape[rank - 1])
+    alias second_last = Int(layout.shape[rank - 2])
+
+    return Layout(
+        IntTuple(
+            UNKNOWN_VALUE,
+            second_last,
+            last,
+        ),
+        IntTuple(
+            second_last * last if last != UNKNOWN_VALUE
+            and second_last != UNKNOWN_VALUE else UNKNOWN_VALUE,
+            last,
+            1,
+        ),
+    )
+
+
+# A utility to reshape LayoutTensor with rank > 3 to rank-3.
+@always_inline
+fn _reshape_layout_tensor_with_batch_to_3d[
+    c_type: DType,
+    c_layout: Layout,
+    reshape_layout: Layout = _reshape_to_3d[c_layout](),
+](
+    tensor: LayoutTensor[c_type, c_layout, *_, **_],
+) -> LayoutTensor[
+    tensor.dtype,
+    reshape_layout,
+    tensor.origin,
+    address_space = tensor.address_space,
+]:
+    alias rank = tensor.rank
+    constrained[rank >= 3, "expecting at least rank-3 NDBuffer"]()
+
+    var batch_size = 1
+
+    @parameter
+    for i in range(rank - 2):
+        batch_size *= tensor.dim(i)
+
+    # NOTE: using layout.row_major triggers a debug assert in the indexlist struct, but
+    # only for certain shapes
+
+    return LayoutTensor[
+        tensor.dtype,
+        reshape_layout,
+        tensor.origin,
+        address_space = tensor.address_space,
+    ](
+        tensor.ptr,
+        RuntimeLayout[reshape_layout](
+            {
+                batch_size,
+                tensor.dim(tensor.rank - 2),
+                tensor.dim(tensor.rank - 1),
+            },
+            {
+                tensor.dim(tensor.rank - 2) * tensor.dim(tensor.rank - 1),
+                tensor.dim(tensor.rank - 1),
+                1,
+            },
+        ),
     )
 
 
@@ -270,9 +368,9 @@ fn batched_matmul[
     single_thread_blocking_override: Bool = False,
     target: StaticString = "cpu",
 ](
-    c_buf: NDBuffer[mut=True, c_type, rank],
-    a_buf: NDBuffer[a_type, rank],
-    b_buf: NDBuffer[b_type, rank],
+    c_buf: NDBuffer[mut=True, c_type, rank, *_],
+    a_buf: NDBuffer[a_type, rank, *_],
+    b_buf: NDBuffer[b_type, rank, *_],
     *,
     context: DeviceContextPtr = DeviceContextPtr(),
 ) raises:
@@ -500,39 +598,40 @@ fn _batched_matmul_cpu[
     sync_parallelize[task_func](num_tasks)
 
 
-fn batched_matmul_kernel[
+fn naive_batched_matmul_kernel[
     rank: Int,
     c_type: DType,
-    c_shape: DimList,
     a_type: DType,
-    a_shape: DimList,
     b_type: DType,
-    b_shape: DimList,
+    c_layout: Layout,
+    a_layout: Layout,
+    b_layout: Layout,
     elementwise_lambda_fn: OptionalReg[elementwise_epilogue_type] = None,
     accum_type: DType = get_accum_type[c_type](),
 ](
-    c_buff: NDBuffer[mut=True, c_type, 3, MutableAnyOrigin, c_shape],
-    a_buff: NDBuffer[a_type, 3, MutableAnyOrigin, a_shape],
-    b_buff: NDBuffer[b_type, 3, MutableAnyOrigin, b_shape],
+    c_tensor: LayoutTensor[c_type, c_layout, MutableAnyOrigin],  # m
+    a_tensor: LayoutTensor[a_type, a_layout, MutableAnyOrigin],  # m * k
+    b_tensor: LayoutTensor[b_type, b_layout, MutableAnyOrigin],  # 1 * k
     c_buff_nd_shape: IndexList[rank],
 ) -> None:
-    var batch_size: UInt = c_buff.dim(0)
-    var m: UInt = c_buff.dim(1)
-    var n: UInt = c_buff.dim(2)
-    var k: UInt = a_buff.dim(2)
+    var batch_size: UInt = c_tensor.dim(0)
+    var m: UInt = c_tensor.dim(1)
+    var n: UInt = c_tensor.dim(2)
+    var k: UInt = a_tensor.dim(2)
 
-    var x = global_idx.x
-    var y = global_idx.y
-    var z = block_idx.z
+    var x = Int(global_idx.x)
+    var y = Int(global_idx.y)
+    var z = Int(block_idx.z)
 
-    if z >= batch_size or x >= n or y >= m:
+    if UInt(z) >= batch_size or UInt(x) >= n or UInt(y) >= m:
         return
     var val = Scalar[accum_type](0)
+
+    alias acc_type = Scalar[accum_type]
     for ki in range(k):
-        val += (
-            a_buff[z, y, ki].cast[accum_type]()
-            * b_buff[z, ki, x].cast[accum_type]()
-        )
+        val += rebind[acc_type](a_tensor[z, y, ki].cast[accum_type]()) * rebind[
+            acc_type
+        ](b_tensor[z, ki, x].cast[accum_type]())
 
     @parameter
     if elementwise_lambda_fn:
@@ -544,7 +643,99 @@ fn batched_matmul_kernel[
         nd_corrds[rank - 2] = y
         elementwise_lambda[c_type, 1, rank](nd_corrds, val.cast[c_type]())
     else:
-        c_buff[Index(Int(z), Int(y), Int(x))] = val.cast[c_type]()
+        c_tensor[z, y, x] = val.cast[c_type]()
+
+
+fn batched_matmul_kernel_gpu[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    layout_c: Layout,
+    layout_a: Layout,
+    layout_b: Layout,
+    transpose_b: Bool,
+    config: MatmulConfig[a_type, b_type, c_type, transpose_b],
+    elementwise_lambda_fn: OptionalReg[elementwise_epilogue_type] = None,
+](
+    c_tensor: LayoutTensor[c_type, layout_c, MutableAnyOrigin],  # m
+    a_tensor: LayoutTensor[a_type, layout_a, MutableAnyOrigin],  # m * k
+    b_tensor: LayoutTensor[b_type, layout_b, MutableAnyOrigin],  # 1 * k
+    m: Int,
+    n: Int,
+    k: Int,
+):
+    var a_ptr = a_tensor.ptr + block_idx.z * (m * k)
+    var b_ptr = b_tensor.ptr + block_idx.z * (n * k)
+    var c_ptr = c_tensor.ptr + block_idx.z * (m * n)
+
+    alias static_n = b_tensor.shape[1]() if transpose_b else b_tensor.shape[2]()
+    alias static_k = b_tensor.shape[2]() if transpose_b else b_tensor.shape[1]()
+
+    alias c_layout = Layout.row_major(UNKNOWN_VALUE, static_n)
+    alias a_layout = Layout.row_major(UNKNOWN_VALUE, static_k)
+    alias b_layout = Layout.row_major(
+        static_n, static_k
+    ) if transpose_b else Layout.row_major(static_k, static_n)
+
+    var c = LayoutTensor[
+        c_type,
+        c_layout,
+        MutableAnyOrigin,
+        address_space = c_ptr.address_space,
+    ](c_ptr, RuntimeLayout[c_layout]({m, n}, {n, 1}))
+
+    var a = LayoutTensor[
+        a_type,
+        a_layout,
+        MutableAnyOrigin,
+        address_space = a_ptr.address_space,
+    ](a_ptr, RuntimeLayout[a_layout]({m, k}, {k, 1}))
+
+    var b = LayoutTensor[b_type, b_layout](b_ptr)
+
+    @parameter
+    fn elementwise_epilogue_fn_wrapper[
+        dtype: DType, width: Int, *, alignment: Int = 1
+    ](out_coords: IndexList[2], val: SIMD[dtype, width]) capturing -> None:
+        @parameter
+        if elementwise_lambda_fn:
+            alias elementwise_epilogue = elementwise_lambda_fn.value()
+            var batch_coords = IndexList[3](Int(block_idx.z))
+            batch_coords[2] = out_coords[1]
+            batch_coords[1] = out_coords[0]
+            elementwise_epilogue(batch_coords, val)
+
+    multistage_gemm_kernel[
+        c_type,
+        c.layout,
+        a_type,
+        a.layout,
+        b_type,
+        b.layout,
+        transpose_b,
+        c.layout_int_type,
+        a.layout_int_type,
+        b.layout_int_type,
+        c.linear_idx_type,
+        a.linear_idx_type,
+        b.linear_idx_type,
+        config,
+        OptionalReg[matmul_elementwise_epilogue_type](
+            elementwise_epilogue_fn_wrapper
+        ) if elementwise_lambda_fn else None,
+    ](c, a, b, UnsafePointer[Int32]())
+
+
+@always_inline
+fn get_shape_index_list[
+    rank: Int, dtype: DType, layout: Layout
+](tensor: LayoutTensor[dtype, layout, *_, **_]) -> IndexList[rank]:
+    var index_list = IndexList[rank](0)
+
+    @parameter
+    for i in range(rank):
+        index_list[i] = tensor.dim(i)
+    return index_list
 
 
 @always_inline
@@ -557,18 +748,33 @@ fn _batched_matmul_gpu[
     transpose_b: Bool = False,
     elementwise_epilogue_fn: OptionalReg[elementwise_epilogue_type] = None,
 ](
-    c_buf: NDBuffer[mut=True, c_type, rank],
-    a_buf: NDBuffer[a_type, rank],
-    b_buf: NDBuffer[b_type, rank],
+    c_buf: NDBuffer[mut=True, c_type, rank, *_, **_],
+    a_buf: NDBuffer[a_type, rank, *_, **_],
+    b_buf: NDBuffer[b_type, rank, *_, **_],
     ctx: DeviceContext,
 ) raises:
-    constrained[not transpose_b, "transpose_b not supported on GPU yet"]()
+    var c_tensor = from_ndbuffer_row_major(c_buf)
+    var a_tensor = from_ndbuffer_row_major(a_buf)
+    var b_tensor = from_ndbuffer_row_major(b_buf)
 
-    var a_buf_reshaped = _reshape_nd_buffer_with_batch_to_3d(a_buf)
-    var b_buf_reshaped = _reshape_nd_buffer_with_batch_to_3d(b_buf)
-    var c_buf_reshaped = _reshape_nd_buffer_with_batch_to_3d(c_buf)
+    var c_tensor_reshaped = _reshape_layout_tensor_with_batch_to_3d(c_tensor)
+    var a_tensor_reshaped = _reshape_layout_tensor_with_batch_to_3d(a_tensor)
+    var b_tensor_reshaped = _reshape_layout_tensor_with_batch_to_3d(b_tensor)
 
-    var batch_size = a_buf_reshaped.dim[0]()
+    var batch_size = c_tensor_reshaped.dim(0)
+    var m = c_tensor_reshaped.dim(1)
+    var n = c_tensor_reshaped.dim(2)
+    var k = a_tensor_reshaped.dim(2)
+
+    alias has_static_NK = b_tensor_reshaped.shape[
+        1
+    ]() != UNKNOWN_VALUE and b_tensor_reshaped.shape[
+        2
+    ]() != UNKNOWN_VALUE and a_tensor_reshaped.shape[
+        2
+    ]() != UNKNOWN_VALUE and c_tensor_reshaped.shape[
+        2
+    ]() != UNKNOWN_VALUE
 
     if batch_size == 1:
         with Trace[TraceLevel.OP]("batched_matmul_via_matmul"):
@@ -596,49 +802,94 @@ fn _batched_matmul_gpu[
                     transpose_b=transpose_b,
                     elementwise_lambda_fn=elementwise_epilogue_fn_wrapper,
                 ](
-                    _reshape_nd_buffer_with_batch_to_2d(c_buf_reshaped),
-                    _reshape_nd_buffer_with_batch_to_2d(a_buf_reshaped),
-                    _reshape_nd_buffer_with_batch_to_2d(b_buf_reshaped),
+                    _reshape_nd_buffer_with_batch_to_2d(c_buf),
+                    _reshape_nd_buffer_with_batch_to_2d(a_buf),
+                    _reshape_nd_buffer_with_batch_to_2d(b_buf),
                     ctx=ctx,
                 )
             else:
                 _matmul_gpu[transpose_b=transpose_b](
-                    _reshape_nd_buffer_with_batch_to_2d(c_buf_reshaped),
-                    _reshape_nd_buffer_with_batch_to_2d(a_buf_reshaped),
-                    _reshape_nd_buffer_with_batch_to_2d(b_buf_reshaped),
+                    _reshape_nd_buffer_with_batch_to_2d(c_buf),
+                    _reshape_nd_buffer_with_batch_to_2d(a_buf),
+                    _reshape_nd_buffer_with_batch_to_2d(b_buf),
                     ctx=ctx,
                 )
 
             return
 
-    alias BLOCK_DIM = 16
-    alias unknown_shape = DimList.create_unknown[3]()
+    alias a_k = a_tensor_reshaped.shape[2]()
+    alias c_n = c_tensor_reshaped.shape[2]()
 
-    var m = a_buf_reshaped.dim[1]()
-    var n = b_buf_reshaped.dim[2]()
-
-    alias bmm = batched_matmul_kernel[
-        rank,
-        c_type,
-        unknown_shape,
-        a_type,
-        unknown_shape,
-        b_type,
-        unknown_shape,
-        elementwise_epilogue_fn,
-    ]
-    ctx.enqueue_function[bmm](
-        c_buf_reshaped,
-        a_buf_reshaped,
-        b_buf_reshaped,
-        c_buf.get_shape(),
-        grid_dim=(
-            ceildiv(n, BLOCK_DIM),
-            ceildiv(m, BLOCK_DIM),
-            batch_size,
-        ),
-        block_dim=(BLOCK_DIM, BLOCK_DIM, 1),
+    alias multistage_gemm_cond = (
+        c_n % 128 == 0 and a_k % 32 == 0 and a_k >= 128
     )
+
+    alias use_A100_kernels = ctx.default_device_info >= A100 and has_nvidia_gpu_accelerator()
+
+    @parameter
+    if has_static_NK and use_A100_kernels and multistage_gemm_cond:
+        alias kernels = MatmulKernels[a_type, b_type, c_type, transpose_b]()
+
+        alias batched_matmul_type = batched_matmul_kernel_gpu[
+            c_tensor_reshaped.dtype,
+            a_tensor_reshaped.dtype,
+            b_tensor_reshaped.dtype,
+            c_tensor_reshaped.layout,
+            a_tensor_reshaped.layout,
+            b_tensor_reshaped.layout,
+            transpose_b,
+            kernels.ampere_128x128_4,
+            elementwise_epilogue_fn,
+        ]
+
+        var grid_dim = kernels.ampere_128x128_4.grid_dim(m, n)
+
+        ctx.enqueue_function[batched_matmul_type](
+            c_tensor_reshaped,
+            a_tensor_reshaped,
+            b_tensor_reshaped,
+            m,
+            n,
+            k,
+            grid_dim=(grid_dim[0], grid_dim[1], batch_size),
+            block_dim=kernels.ampere_128x128_4.block_dim(),
+            shared_mem_bytes=kernels.ampere_128x128_4.shared_mem_usage(),
+            func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
+                kernels.ampere_128x128_4.shared_mem_usage()
+            ),
+        )
+    else:
+        # TODO: support non-A100 transposed kernels
+        constrained[
+            not transpose_b,
+            "transpose b is not supported on non-A100 capable GPUs",
+        ]()
+
+        c_shape = get_shape_index_list[rank, c_type, c_tensor.layout](c_tensor)
+
+        alias BLOCK_DIM = 16
+        alias bmm = naive_batched_matmul_kernel[
+            rank,
+            c_type,
+            a_type,
+            b_type,
+            c_tensor_reshaped.layout,
+            a_tensor_reshaped.layout,
+            b_tensor_reshaped.layout,
+            elementwise_epilogue_fn,
+        ]
+        ctx.enqueue_function[bmm](
+            c_tensor_reshaped,
+            a_tensor_reshaped,
+            b_tensor_reshaped,
+            c_shape,
+            grid_dim=(
+                ceildiv(n, BLOCK_DIM),
+                ceildiv(m, BLOCK_DIM),
+                batch_size,
+            ),
+            block_dim=(BLOCK_DIM, BLOCK_DIM, 1),
+        )
 
 
 @always_inline
@@ -653,9 +904,9 @@ fn batched_matmul[
     saturated_vnni: Bool = False,
     target: StaticString = "cpu",
 ](
-    c_buf: NDBuffer[mut=True, c_type, rank],
-    a_buf: NDBuffer[a_type, rank],
-    b_buf: NDBuffer[b_type, rank],
+    c_buf: NDBuffer[mut=True, c_type, rank, *_],
+    a_buf: NDBuffer[a_type, rank, *_],
+    b_buf: NDBuffer[b_type, rank, *_],
     *,
     context: DeviceContextPtr = DeviceContextPtr(),
 ) raises:

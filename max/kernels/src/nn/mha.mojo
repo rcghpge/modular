@@ -15,10 +15,8 @@ from collections import OptionalReg
 from math import ceildiv, recip
 from math.constants import log2e
 from sys import (
+    CompilationTarget,
     alignof,
-    bitwidthof,
-    env_get_bool,
-    env_get_int,
     has_amd_gpu_accelerator,
     has_nvidia_gpu_accelerator,
     is_amd_gpu,
@@ -26,7 +24,6 @@ from sys import (
     simdwidthof,
     sizeof,
 )
-from sys.intrinsics import _type_is_eq
 
 import gpu.warp as warp
 from algorithm import elementwise
@@ -47,7 +44,7 @@ from gpu import (
 from gpu.host import DeviceContext
 from gpu.host import Dim as LaunchDim
 from gpu.host import FuncAttribute
-from gpu.host.info import A100, H100, B200, _get_info_from_target
+from gpu.host.info import A100, H100, B200
 from gpu.memory import (
     AddressSpace,
     async_copy_commit_group,
@@ -64,7 +61,6 @@ from layout.layout_tensor import (
     copy_local_to_shared,
     copy_dram_to_sram_async,
     copy_local_to_dram,
-    copy_local_to_local,
     copy_sram_to_dram,
 )
 from layout.runtime_layout import RuntimeLayout, RuntimeTuple
@@ -76,11 +72,10 @@ from linalg._multistage_gemm_gpu import multistage_mma
 from linalg.bmm import batched_matmul
 from linalg.transpose import transpose
 from memory import stack_allocation
-from memory.pointer import AddressSpace as _AddressSpace
-from nn._amd_flash_attention_gpu import (
-    mha_decoding_single_batch as amd_mha_decoding_single_batch,
+from nn.mha_amd import (
+    mha_decoding_single_batch_amd,
+    mha_single_batch_amd,
 )
-from nn._amd_flash_attention_gpu import mha_single_batch as amd_mha_single_batch
 from nn.mha_mask import MaterializedMask, MHAMask, TileMaskStatus
 from nn.mha_operand import KVCacheMHAOperand, MHAOperand, NDBufferMHAOperand
 from nn.mha_score_mod import IdentityScoreMod, ScoreModTrait
@@ -106,11 +101,6 @@ from utils.index import Index, IndexList
 from utils.numerics import get_accum_type, min_or_neg_inf
 from utils.static_tuple import StaticTuple
 
-from .mha_tile_scheduler import (
-    QueuedTileScheduler,
-    TileScheduler,
-    TransientScheduler,
-)
 from .softmax import (
     _exp2_concrete,
     _exp_concrete,
@@ -156,11 +146,11 @@ fn flash_attention[
 
     var ctx = context.get_device_context()
 
-    with Trace[TraceLevel.OP, target = ctx.device_info.api](
+    with Trace[TraceLevel.OP, target = ctx.default_device_info.api](
         "flash_attention",
-        Trace[TraceLevel.OP, target = ctx.device_info.api]._get_detail_str[
-            description_fn
-        ](),
+        Trace[
+            TraceLevel.OP, target = ctx.default_device_info.api
+        ]._get_detail_str[description_fn](),
     ):
         return flash_attention[
             use_score_mod=use_score_mod,
@@ -183,7 +173,7 @@ fn flash_attention[
 fn get_mha_decoding_num_partitions[
     num_heads: Int, group: Int
 ](batch_size: Int, num_keys: Int, ctx: DeviceContext) -> Int:
-    alias sm_count = ctx.device_info.sm_count
+    alias sm_count = ctx.default_device_info.sm_count
     # TODO: This is dumb, make it more granular as a follow up
     if num_keys > 512 and group <= 8:
         return min(
@@ -199,10 +189,8 @@ fn get_mha_decoding_num_partitions[
 
 
 fn flash_attention_hw_supported[qkv_type: DType]() -> Bool:
-    return (
-        has_nvidia_gpu_accelerator()
-        or env_get_bool["FLASH_ATTENTION_HW_SUPPORTED", False]()
-        or (has_amd_gpu_accelerator() and qkv_type is DType.bfloat16)
+    return has_nvidia_gpu_accelerator() or (
+        has_amd_gpu_accelerator() and qkv_type is DType.bfloat16
     )
 
 
@@ -286,11 +274,11 @@ fn flash_attention[
             trace_arg("output", output),
         )
 
-    with Trace[TraceLevel.OP, target = ctx.device_info.api](
+    with Trace[TraceLevel.OP, target = ctx.default_device_info.api](
         "flash_attention",
-        Trace[TraceLevel.OP, target = ctx.device_info.api]._get_detail_str[
-            description_fn
-        ](),
+        Trace[
+            TraceLevel.OP, target = ctx.default_device_info.api
+        ]._get_detail_str[description_fn](),
     ):
         # TODO: This helps differentiate between CE/TG. Not batch-specific.
         #       We'll just implement a flag on the cache object which is true
@@ -312,8 +300,8 @@ fn flash_attention[
         # H and D are always known for opaque KVCache types, we only check Q.
         # fmt: off
         alias head_depth_known = q.shape.all_known[rank-2, rank]()
-        alias is_sm90or100 = (ctx.device_info is H100) or (ctx.device_info is B200)
-        alias head_depth_supported = q.shape.get[rank-1]() == 128 or (q.shape.get[rank-1]() == 64 and (is_sm90or100 or ctx.device_info is A100)) or (q.shape.get[rank-1]() == 256 and (has_amd_gpu_accelerator() or (is_sm90or100 and mask_t.mask_safe_out_of_bounds)))
+        alias is_sm90or100 = (ctx.default_device_info is H100) or (ctx.default_device_info is B200)
+        alias head_depth_supported = q.shape.get[rank-1]() == 128 or (q.shape.get[rank-1]() == 64 and (is_sm90or100 or ctx.default_device_info is A100)) or (q.shape.get[rank-1]() == 256 and (has_amd_gpu_accelerator() or (is_sm90or100 and mask_t.mask_safe_out_of_bounds)))
         alias flash_attention_applicable = flash_attention_hw_supported[type]() and head_depth_known and head_depth_supported and not naive_kernel
         # fmt: on
         alias kv_num_heads = cache_t.kv_params.num_heads
@@ -396,7 +384,7 @@ fn flash_attention_dispatch[
     alias group = config.num_heads // kv_num_heads
 
     # K V smem is only separate for GPUs with shared memory greater or equal to A100's.
-    alias is_shared_kv = ctx.device_info.shared_memory_per_multiprocessor < A100.shared_memory_per_multiprocessor
+    alias is_shared_kv = ctx.default_device_info.shared_memory_per_multiprocessor < A100.shared_memory_per_multiprocessor
 
     constrained[depth == q.shape.get[rank - 1]()]()
     constrained[num_heads == q.shape.get[rank - 2]()]()
@@ -415,8 +403,8 @@ fn flash_attention_dispatch[
 
     @parameter
     if _is_flash_attention_applicable:
-        alias is_sm90 = ctx.device_info is H100
-        alias is_sm100 = ctx.device_info is B200
+        alias is_sm90 = ctx.default_device_info is H100
+        alias is_sm100 = ctx.default_device_info is B200
         if not is_token_generation:
             # TODO note that we have to handle mask tensor alignment here.
             # Choose matmul parameters based on dtype.
@@ -671,7 +659,7 @@ fn flash_attention_dispatch[
                         shared_mem_bytes=shared_mem_bytes if has_nvidia_gpu_accelerator() else 0,
                         func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
                             (
-                                ctx.device_info.shared_memory_per_multiprocessor
+                                ctx.default_device_info.shared_memory_per_multiprocessor
                                 - 4096
                             ) if has_nvidia_gpu_accelerator() else 0
                         ),
@@ -793,7 +781,7 @@ fn flash_attention_dispatch[
                         block_dim=(num_threads, 1, 1),
                         shared_mem_bytes=shared_mem_bytes if has_nvidia_gpu_accelerator() else 0,
                         func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
-                            ctx.device_info.shared_memory_per_multiprocessor
+                            ctx.default_device_info.shared_memory_per_multiprocessor
                             - 4096 if has_nvidia_gpu_accelerator() else 0
                         ),
                     )
@@ -916,8 +904,8 @@ fn flash_attention[
     # H and D are always known.
     # fmt: off
     alias head_depth_known = q.shape.all_known[2, 4]() and k.shape.has_value[2]()
-    alias is_sm90or100 = (ctx.device_info is H100) or (ctx.device_info is B200)
-    alias head_depth_supported = q.shape.get[rank-1]() == 128 or (q.shape.get[rank-1]() == 64 and (is_sm90or100 or ctx.device_info is A100)) or (q.shape.get[rank-1]() == 256 and (has_amd_gpu_accelerator() or (is_sm90or100 and mask_t.mask_safe_out_of_bounds)))
+    alias is_sm90or100 = (ctx.default_device_info is H100) or (ctx.default_device_info is B200)
+    alias head_depth_supported = q.shape.get[rank-1]() == 128 or (q.shape.get[rank-1]() == 64 and (is_sm90or100 or ctx.default_device_info is A100)) or (q.shape.get[rank-1]() == 256 and (has_amd_gpu_accelerator() or (is_sm90or100 and mask_t.mask_safe_out_of_bounds)))
     alias flash_attention_applicable = flash_attention_hw_supported[type]() and head_depth_known and head_depth_supported and not naive_kernel
 
     alias q_half_float = q.dtype in (DType.float16, DType.bfloat16)
@@ -1117,12 +1105,12 @@ fn mha[
                 score_mod,
                 batch_idx,
             )
-    else:
+    elif is_amd_gpu():
         constrained[
             use_score_mod == False,
             "use_score_mod must be False for AMD flash attention",
         ]()
-        amd_mha_single_batch[group=group, config=config](
+        mha_single_batch_amd[group=group, config=config](
             output_ptr.offset(q_batch_offset),
             q_ptr.offset(q_batch_offset),
             k,
@@ -1134,6 +1122,8 @@ fn mha[
             Int(start_pos),
             mask,
         )
+    else:
+        return CompilationTarget.unsupported_target_error[operation="mha"]()
 
 
 @__llvm_metadata(
@@ -1295,13 +1285,14 @@ fn mha_single_batch[
     alias frag_size = get_fragment_size[mma_shape]()
     alias p_frag_size = frag_size[2]
     alias p_frag_simdwidth = p_frag_size // 2
+    alias p_frag_align = alignof[SIMD[accum_type, p_frag_size]]()
 
     var p_reg_tile = LayoutTensor[
         accum_type,
         Layout.row_major(num_m_mmas * num_n_mmas, p_frag_size),
         MutableAnyOrigin,
         address_space = AddressSpace.LOCAL,
-    ].stack_allocation()
+    ].stack_allocation[alignment=p_frag_align]()
 
     var output_reg_tile = (
         LayoutTensor[
@@ -1310,7 +1301,7 @@ fn mha_single_batch[
             MutableAnyOrigin,
             address_space = AddressSpace.LOCAL,
         ]
-        .stack_allocation()
+        .stack_allocation[alignment=p_frag_align]()
         .fill(0)
     )
 
@@ -1413,15 +1404,9 @@ fn mha_single_batch[
         var kv_tile_num_rows = min(Int(tile_size), end - kv_tile_start_row)
 
         # kv cache gmem has to clip num rows as runtime layout
-        var kv_runtime_layout = RuntimeLayout[
-            element_type = DType.int32, linear_idx_type = DType.int32
-        ](
-            RuntimeTuple[kv_gmem_layout.shape, element_type = DType.int32](
-                kv_tile_num_rows, depth
-            ),
-            RuntimeTuple[kv_gmem_layout.stride, element_type = DType.int32](
-                kv_num_heads * depth, 1
-            ),
+        var kv_runtime_layout = RuntimeLayout[kv_gmem_layout](
+            {kv_tile_num_rows, depth},
+            {kv_num_heads * depth, 1},
         )
 
         var k_gmem_block = LayoutTensor[
@@ -1977,13 +1962,14 @@ fn mha_single_batch_pipelined[
     alias frag_size = get_fragment_size[mma_shape]()
     alias p_frag_size = frag_size[2]
     alias p_frag_simdwidth = p_frag_size // 2 if is_nvidia_gpu() else p_frag_size
+    alias p_frag_align = alignof[SIMD[accum_type, p_frag_size]]()
 
     var p_reg_tile = LayoutTensor[
         accum_type,
         Layout.row_major(num_m_mmas * num_n_mmas, p_frag_size),
         MutableAnyOrigin,
         address_space = AddressSpace.LOCAL,
-    ].stack_allocation()
+    ].stack_allocation[alignment=p_frag_align]()
 
     var output_reg_tile = (
         LayoutTensor[
@@ -1992,7 +1978,7 @@ fn mha_single_batch_pipelined[
             MutableAnyOrigin,
             address_space = AddressSpace.LOCAL,
         ]
-        .stack_allocation()
+        .stack_allocation[alignment=p_frag_align]()
         .fill(0)
     )
 
@@ -2722,7 +2708,7 @@ fn mha_decoding[
                 score_mod,
                 batch_idx,
             )
-    else:
+    elif is_amd_gpu():
         alias config = MHAConfig(
             q_type,
             num_heads,
@@ -2739,7 +2725,7 @@ fn mha_decoding[
             use_score_mod == False,
             "use_score_mod must be False for AMD flash attention",
         ]()
-        amd_mha_decoding_single_batch[group=group, config=config](
+        mha_decoding_single_batch_amd[group=group, config=config](
             output_ptr.offset(output_batch_offset),
             q_ptr.offset(q_batch_offset),
             k,
@@ -2754,6 +2740,11 @@ fn mha_decoding[
             Int(0),
             mask,
         )
+
+    else:
+        return CompilationTarget.unsupported_target_error[
+            operation="mha_decoding",
+        ]()
 
 
 @always_inline
@@ -3016,7 +3007,7 @@ fn scale_and_mask_helper[
             mask_stride,
             max_seq_len,
         )
-    else:
+    elif is_amd_gpu():
         _scale_and_mask_helper_amd[
             p_type,
             p_layout,
@@ -3041,6 +3032,10 @@ fn scale_and_mask_helper[
             mask_stride,
             max_seq_len,
         )
+    else:
+        return CompilationTarget.unsupported_target_error[
+            operation="scale_and_mask_helper",
+        ]()
 
 
 fn mha_decoding_single_batch[
@@ -3169,13 +3164,14 @@ fn mha_decoding_single_batch[
     alias frag_size = get_fragment_size[mma_shape]()
     alias p_frag_size = frag_size[2]
     alias p_frag_simdwidth = p_frag_size // 2
+    alias p_frag_align = alignof[SIMD[accum_type, p_frag_size]]()
 
     var p_reg_tile = LayoutTensor[
         accum_type,
         Layout.row_major(num_m_mmas * num_n_mmas, p_frag_size),
         MutableAnyOrigin,
         address_space = AddressSpace.LOCAL,
-    ].stack_allocation()
+    ].stack_allocation[alignment=p_frag_align]()
 
     # Note that
     # num_warps_n * num_n_mmas == BN // WN * num_n_mmas
@@ -3190,13 +3186,14 @@ fn mha_decoding_single_batch[
             MutableAnyOrigin,
             address_space = AddressSpace.LOCAL,
         ]
-        .stack_allocation()
+        .stack_allocation[alignment=p_frag_align]()
         .fill(0.0)
     )
 
     # Rowwise max and sum for online softmax
-    var rowmax = stack_allocation[WM, accum_type]()
-    var rowsum = stack_allocation[WM, accum_type]()
+    alias row_align = alignof[SIMD[accum_type, simdwidthof[accum_type]()]]()
+    var rowmax = stack_allocation[WM, accum_type, alignment=row_align]()
+    var rowsum = stack_allocation[WM, accum_type, alignment=row_align]()
 
     @parameter
     for i in range(WM):
@@ -3663,21 +3660,14 @@ fn mha_decoding_single_batch[
     # Guard writing to shared memory.
     barrier()
 
+    # FIXME: Using RuntimeLayout to override the layout of the output tensor.
     alias output_gmem_layout = Layout.row_major(BM, depth)
     var output_gmem_runtime_layout = RuntimeLayout[
-        element_type = DType.int32,
-        linear_idx_type = DType.int32,
-    ](
-        RuntimeTuple[output_gmem_layout.shape, element_type = DType.int32](
-            group, depth
-        ),
-        RuntimeTuple[output_gmem_layout.stride, element_type = DType.int32](
-            depth, 1
-        ),
-    )
+        output_gmem_layout
+    ].row_major(Index(group, depth))
     var output_gmem_tile = LayoutTensor[
         output_type,
-        Layout.row_major(BM, depth),
+        output_gmem_layout,
         layout_int_type = DType.int32,
         linear_idx_type = DType.int32,
         masked=True,
@@ -3817,13 +3807,14 @@ fn mha_decoding_single_batch_pipelined[
     alias frag_size = get_fragment_size[mma_shape]()
     alias p_frag_size = frag_size[2]
     alias p_frag_simdwidth = p_frag_size // 2 if is_nvidia_gpu() else p_frag_size
+    alias p_frag_align = alignof[SIMD[accum_type, p_frag_size]]()
 
     var p_reg_tile = LayoutTensor[
         accum_type,
         Layout.row_major(num_m_mmas * num_n_mmas, p_frag_size),
         MutableAnyOrigin,
         address_space = AddressSpace.LOCAL,
-    ].stack_allocation()
+    ].stack_allocation[alignment=p_frag_align]()
 
     var output_reg_tile = (
         LayoutTensor[
@@ -3832,13 +3823,14 @@ fn mha_decoding_single_batch_pipelined[
             MutableAnyOrigin,
             address_space = AddressSpace.LOCAL,
         ]
-        .stack_allocation()
+        .stack_allocation[alignment=p_frag_align]()
         .fill(0.0)
     )
 
     # Rowwise max and sum for online softmax
-    var rowmax = stack_allocation[WM, accum_type]()
-    var rowsum = stack_allocation[WM, accum_type]()
+    alias row_align = alignof[SIMD[accum_type, simdwidthof[accum_type]()]]()
+    var rowmax = stack_allocation[WM, accum_type, alignment=row_align]()
+    var rowsum = stack_allocation[WM, accum_type, alignment=row_align]()
 
     @parameter
     for i in range(WM):

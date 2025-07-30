@@ -22,12 +22,12 @@ from max.engine.api import InferenceSession, Model
 from max.graph import DeviceRef, Graph, TensorType, _OpaqueType, ops
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def counter_ops_path() -> Path:
     return Path(os.environ["MODULAR_COUNTER_OPS_PATH"])
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def maker_model(session: InferenceSession, counter_ops_path: Path) -> Model:
     counter_type = _OpaqueType("Counter")
     maker_graph = Graph(
@@ -50,7 +50,7 @@ def maker_model(session: InferenceSession, counter_ops_path: Path) -> Model:
     return maker_compiled
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def bumper_model(session: InferenceSession, counter_ops_path: Path) -> Model:
     counter_type = _OpaqueType("Counter")
     bumper_graph = Graph(
@@ -72,7 +72,7 @@ def bumper_model(session: InferenceSession, counter_ops_path: Path) -> Model:
     return bumper_compiled
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def reader_model(session: InferenceSession, counter_ops_path: Path) -> Model:
     counter_type = _OpaqueType("Counter")
     reader_graph = Graph(
@@ -107,56 +107,21 @@ def test_opaque_simple(
     assert (result == [5, 15]).all()
 
 
-class PythonCounter:
-    def __init__(self, a=0, b=0) -> None:
-        self.a = a
-        self.b = b
-
-    def bump(self) -> None:
-        self.a += 1
-        self.b += self.a
-
-    def copy(self):
-        return PythonCounter(self.a, self.b)
-
-
-def test_pyobject_opaque(
-    session: InferenceSession, counter_ops_path: Path
+def test_opaque_introspection(
+    maker_model: Model, bumper_model: Model, reader_model: Model
 ) -> None:
-    python_type = _OpaqueType("PythonObject")
-
-    bumper_graph = Graph(
-        "bumper",
-        input_types=[python_type],
-        output_types=[python_type],
-        custom_extensions=[counter_ops_path],
-    )
-    with bumper_graph:
-        x = ops.inplace_custom(
-            "bump_python_counter",
-            device=DeviceRef.CPU(),
-            values=[bumper_graph.inputs[0]],
-            out_types=[python_type],
-        )[0]
-        y = ops.inplace_custom(
-            "bump_python_counter",
-            device=DeviceRef.CPU(),
-            values=[x],
-            out_types=[python_type],
-        )[0]
-        bumper_graph.output(y)
-    bumper_compiled = session.load(bumper_graph)
-
-    counter = PythonCounter()
-    for _ in range(5):
-        counter = bumper_compiled.execute(counter)[0]  # type: ignore
-    assert counter.a == 10 and counter.b == 55
+    assert len(maker_model.input_metadata) == 0
+    assert len(maker_model.output_metadata) == 1
+    assert len(bumper_model.input_metadata) == 1
+    assert len(bumper_model.output_metadata) == 0
+    assert len(reader_model.input_metadata) == 1
+    assert len(reader_model.output_metadata) == 1
 
 
 def test_opaque_type_parameterization(
     session: InferenceSession,
     custom_ops_mojopkg: Path,
-    monkeypatch,
+    monkeypatch,  # noqa: ANN001
 ) -> None:
     # Opaque parameterization is only supported using the new MOGG dialect based
     # compilation path.

@@ -62,7 +62,9 @@ def test_compile_config_split_k_reduction_scheme(
 
 
 def test_compile_config_use_logger(
-    capfd, session: InferenceSession, compile_config_ops_path: Path
+    capfd: pytest.CaptureFixture,
+    session: InferenceSession,
+    compile_config_ops_path: Path,
 ) -> None:
     tensor_type = TensorType(
         dtype=DType.int32, shape=[1], device=DeviceRef.CPU()

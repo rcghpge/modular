@@ -19,13 +19,11 @@ import logging
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import Enum
 from functools import reduce
 from operator import mul
 from typing import Any, TypeVar, cast
 
 import numpy as np
-import torch
 from max.driver import Device, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession
@@ -37,13 +35,13 @@ from max.graph import (
     _OpaqueValue,
     ops,
 )
+from max.interfaces.request import RequestID
 from max.profiler import traced
 from max.serve.kvcache_agent.kvcache_agent_service_v1_pb2 import (  # type: ignore
     MemoryTier,
 )
 from max.support.human_readable_formatter import to_human_readable_bytes
 from max.support.math import ceildiv
-from torch.utils.dlpack import from_dlpack
 
 from ..cache_params import KVCacheParams
 from ..context import KVCacheAwareContext
@@ -60,11 +58,6 @@ from .block_manager import BlockManager, SwappingStrategy
 logger = logging.getLogger("max.pipelines")
 
 T = TypeVar("T", bound=KVCacheAwareContext)
-
-
-class KeyOrValue(Enum):
-    KEY = 0
-    VALUE = 1
 
 
 @dataclass
@@ -491,10 +484,10 @@ class PagedKVCacheManager(KVCacheManager):
             params.head_dim,
         ]
 
-    def _get_num_req_slots(self, seq_id: int) -> int:
+    def _get_num_req_slots(self, request_id: RequestID) -> int:
         """Get the number of KV slots available for a request."""
         return (
-            len(self.block_manager.current_blocks_per_request[seq_id])
+            len(self.block_manager.current_blocks_per_request[request_id])
             * self.page_size
         )
 
@@ -502,7 +495,7 @@ class PagedKVCacheManager(KVCacheManager):
     def _does_req_need_more_blocks(self, ctx: T, num_steps: int) -> bool:
         """Determines if a request needs additional blocks."""
         seq_len = ctx.current_length + num_steps - 1
-        return seq_len > self._get_num_req_slots(ctx.cache_seq_id)
+        return seq_len > self._get_num_req_slots(ctx.request_id)
 
     @traced
     def prefetch(self, data: T, num_steps: int = 1) -> bool:
@@ -538,9 +531,7 @@ class PagedKVCacheManager(KVCacheManager):
             self.block_copy_engine.wait_for_completion()
 
         max_seq_len = -1
-        for batch_idx, ctx in enumerate(batch):
-            seq_id = ctx.cache_seq_id
-
+        for batch_idx, ctx in enumerate(batch):  # noqa: B007
             # Allocate blocks for request if we need more.
             if self._does_req_need_more_blocks(ctx, num_steps):
                 self.block_manager.reuse_blocks_from_prefix_cache(ctx)
@@ -568,10 +559,8 @@ class PagedKVCacheManager(KVCacheManager):
         max_prompt_len = 0
         max_cached_len = 0
         for batch_idx, ctx in enumerate(batch):
-            seq_id = ctx.cache_seq_id
-
             # Get the blocks for this request.
-            blocks = self.block_manager.get_req_blocks(seq_id)
+            blocks = self.block_manager.get_req_blocks(ctx.request_id)
 
             # Sanity check that we have enough blocks.
             seq_len = ctx.current_length + num_steps - 1
@@ -649,28 +638,21 @@ class PagedKVCacheManager(KVCacheManager):
             for i in range(len(self.devices))
         ]
 
-    def claim(self, n: int) -> list[int]:
-        """Claims `n` blocks of memory in the cache for incoming requests.
-
-        This returns a list of sequence ids, which identify a sequence's
-        location within the cache. This sequence id can then be passed
-        in the fetch function to return the ContinuousBatchingKVCacheCollection
-        for those sequences.
-        """
-        seq_ids = super().claim(n)
-        return seq_ids
-
-    def external_claim(self, seq_ids: list[int]) -> None:
-        """Variant of the above where sequence ids are reserved externally."""
-        super().external_claim(seq_ids)
-
-    def release(self, seq_id: int) -> None:
-        """Release `seq_id` provided, marking this sequence as complete.
-        This returns the seq_id back to the available pool of cache memory,
+    def release(self, request_id: RequestID) -> None:
+        """Release the sequence associated with :obj:`request_id`, marking this sequence as complete.
+        This returns the sequence ID back to the available pool of cache memory,
         allowing it to be reused when a new sequence is claimed.
         """
-        super().release(seq_id)
-        self.block_manager.release(seq_id)
+        # Get the sequence ID from the request ID for internal use
+        if request_id not in self.request_to_seq_id:
+            raise ValueError(
+                f"Attempted to release request ID {request_id} but it is not claimed"
+            )
+
+        # Call the base class release method with the request_id
+        super().release(request_id)
+        # Call the block manager release method with the request_id
+        self.block_manager.release(request_id)
 
     @traced
     def step(
@@ -725,9 +707,9 @@ class PagedKVCacheManager(KVCacheManager):
         assert 0 <= pct <= 1
         return pct
 
-    def get_req_blocks(self, seq_id: int) -> list[int]:
+    def get_req_blocks(self, request_id: RequestID) -> list[int]:
         """Get the block ids for a request."""
-        return self.block_manager.get_req_blocks(seq_id)
+        return self.block_manager.get_req_blocks(request_id)
 
     @property
     def num_blocks_copied(self) -> BlockCopyMetrics:
@@ -741,79 +723,3 @@ class PagedKVCacheManager(KVCacheManager):
         if self.block_copy_engine is None:
             return
         self.block_copy_engine.blocks_copied.reset()
-
-    def _dump_k_cache_to_torch_tensor(
-        self, ctx: T, device_id: int = 0
-    ) -> torch.Tensor:
-        """
-        Returns a torch tensor of the shape [seq_len, num_layers, n_heads, head_dim]
-
-        This should only be used for testing purposes.
-        """
-        return self._dump_k_or_v_cache_to_torch_tensor(
-            ctx, device_id, KeyOrValue.KEY
-        )
-
-    def _dump_v_cache_to_torch_tensor(
-        self, ctx: T, device_id: int = 0
-    ) -> torch.Tensor:
-        """
-        Returns a torch tensor of the shape [seq_len, num_layers, n_heads, head_dim]
-
-        This should only be used for testing purposes.
-        """
-        return self._dump_k_or_v_cache_to_torch_tensor(
-            ctx, device_id, KeyOrValue.VALUE
-        )
-
-    def _dump_k_or_v_cache_to_torch_tensor(
-        self,
-        ctx: T,
-        device_id: int = 0,
-        key_or_value: KeyOrValue = KeyOrValue.KEY,
-    ) -> torch.Tensor:
-        """
-        Returns a torch tensor of the shape [seq_len, num_layers, n_heads, head_dim]
-
-        This should only be used for testing purposes.
-        """
-        seq_id = ctx.cache_seq_id
-        req_blocks = self.block_manager.get_req_blocks(seq_id)
-
-        torch_dtype = self.params.dtype.to_torch()
-
-        # [total_num_pages, kv_dim, num_layers, page_size, n_heads, head_dim]
-        device_tensor = self.device_tensors[device_id]
-        device_tensor_torch = from_dlpack(device_tensor).to(torch_dtype).cpu()
-
-        # [total_num_pages, num_layers, page_size, n_heads, head_dim]
-        device_tensor_torch = device_tensor_torch[
-            :, key_or_value.value, :, :, :, :
-        ]
-
-        # [seq_len, num_layers, n_heads, head_dim]
-        seq_len = ctx.start_idx
-        res = torch.empty(
-            (
-                seq_len,
-                self.num_layers,
-                self.params.n_kv_heads_per_device,
-                self.params.head_dim,
-            ),
-            dtype=torch_dtype,
-        )
-
-        for start_idx in range(0, seq_len, self.page_size):
-            end_idx = min(start_idx + self.page_size, seq_len)
-
-            block_id = req_blocks[start_idx // self.page_size]
-
-            # [num_layers, page_size, n_heads, head_dim]
-            block_torch = device_tensor_torch[block_id, :]
-
-            for token_idx in range(start_idx, end_idx):
-                res[token_idx, :, :, :] = block_torch[
-                    :, token_idx % self.page_size, :, :
-                ]
-
-        return res

@@ -22,14 +22,16 @@ are used to optimize code generation and ensure hardware compatibility.
 """
 
 from sys.info import (
+    CompilationTarget,
     has_amd_gpu_accelerator,
     has_nvidia_gpu_accelerator,
     _is_amd_rdna,
     is_amd_gpu,
     is_nvidia_gpu,
+    _accelerator_arch,
 )
 
-from .host.info import DEFAULT_GPU, DEFAULT_GPU_ARCH
+from .host.info import GPUInfo
 
 # ===-----------------------------------------------------------------------===#
 # WARP_SIZE
@@ -62,10 +64,10 @@ fn _resolve_warp_size() -> Int:
         return 32
     elif is_amd_gpu():
         return 64
-    elif DEFAULT_GPU_ARCH == "":
+    elif _accelerator_arch() == "":
         return 0
     else:
-        return DEFAULT_GPU.warp_size
+        return GPUInfo.from_name[_accelerator_arch()]().warp_size
 
 
 # ===-----------------------------------------------------------------------===#
@@ -107,5 +109,7 @@ fn _resolve_max_threads_per_block_metadata() -> __mlir_type.`!kgen.string`:
     elif is_amd_gpu() or has_amd_gpu_accelerator():
         return "rocdl.flat_work_group_size".value
     else:
-        constrained[False, "no accelerator detected"]()
-        return "".value
+        return CompilationTarget.unsupported_target_error[
+            __mlir_type.`!kgen.string`,
+            operation="MAX_THREADS_PER_BLOCK_METADATA",
+        ]()

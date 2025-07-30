@@ -10,17 +10,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo-no-debug %s -t
-# NOTE: to test changes on the current branch using run-benchmarks.sh, remove
-# the -t flag. Remember to replace it again before pushing any code.
 
 from collections import BitSet
-from math import ceil
 from random import *
-from sys import sizeof
 
-from benchmark import Bench, BenchConfig, Bencher, BenchId, Unit, keep, run
-from bit import next_power_of_two
+from benchmark import Bench, BenchConfig, Bencher, BenchId, keep
 
 
 alias INIT_LOOP_SIZE: UInt = 1000000

@@ -63,7 +63,7 @@ def get_window_index(
     Args:
 
         grid_thw: spatial and temporal coordinated of patches in images.
-        window_size: Size of attention window. E.g.  window size of 112×112 corresponds to 8×8 patches of size 14.
+        window_size: Size of attention window. E.g.  window size of 112x112 corresponds to 8x8 patches of size 14.
         spatial_merge_size: number of patches to merge together.
         patch_size: Size of each patch in the image.
         spatial_merge_unit:
@@ -351,7 +351,7 @@ def get_rope_index(
             max_position_ids = position_ids.max(axis=1, keepdims=True).max(
                 axis=-1, keepdims=True
             )
-            mrope_position_deltas = (
+            mrope_position_deltas_array = (
                 max_position_ids + 1 - attention_mask.shape[-1]
             )
         else:

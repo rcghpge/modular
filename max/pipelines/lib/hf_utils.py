@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import Any, Optional, Union, cast
 
 import huggingface_hub
-import torch
 from huggingface_hub import errors as hf_hub_errors
 from huggingface_hub.utils import tqdm as hf_tqdm
 from max.graph.weights import WeightsFormat
@@ -39,10 +38,7 @@ from tqdm.contrib.concurrent import thread_map
 from tqdm.std import TqdmDefaultWriteLock
 from transformers import AutoConfig
 
-from .config_enums import (
-    RepoType,
-    SupportedEncoding,
-)
+from .config_enums import RepoType, SupportedEncoding
 
 logger = logging.getLogger("max.pipelines")
 
@@ -181,7 +177,7 @@ def _hf_tqdm_using_threading_only_lock():
     if hasattr(hf_tqdm, "_lock"):
         yield
         return
-    setattr(hf_tqdm, "_lock", _ThreadingOnlyTqdmLock())
+    setattr(hf_tqdm, "_lock", _ThreadingOnlyTqdmLock())  # noqa: B010
     try:
         yield
     finally:
@@ -304,7 +300,7 @@ def _repo_exists_with_retry(repo_id: str, revision: str) -> bool:
             )
             time.sleep(delay_in_seconds)
 
-    assert False, (
+    assert False, (  # noqa: B011
         "This should never be reached due to the raise in the last attempt"
     )
 
@@ -515,6 +511,9 @@ class HuggingFaceRepo:
             )
 
             if torch_dtype := getattr(cfg, "torch_dtype", None):
+                # It's a torch tensor, so this import is guaranteed to work
+                import torch  # type: ignore
+
                 if torch_dtype == torch.float32:
                     supported_encodings.add(SupportedEncoding.float32)
                 elif torch_dtype == torch.bfloat16:

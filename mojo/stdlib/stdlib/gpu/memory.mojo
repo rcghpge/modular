@@ -39,7 +39,7 @@ from sys import (
     sizeof,
 )
 from sys._assembly import inlined_assembly
-from sys.info import _is_sm_9x_or_newer
+from sys.info import _is_sm_9x_or_newer, CompilationTarget
 from sys.intrinsics import _RegisterPackType
 
 from builtin.dtype import _uint_type_of_width
@@ -51,7 +51,7 @@ from memory.unsafe import bitcast
 from utils import IndexList, StaticTuple
 from utils.numerics import get_accum_type
 
-from ._utils import to_i16, to_i32, to_i64, to_llvm_ptr, to_llvm_shared_mem_ptr
+from ._utils import to_i16, to_i32, to_llvm_ptr, to_llvm_shared_mem_ptr
 from .intrinsics import Scope
 
 # ===-----------------------------------------------------------------------===#
@@ -901,6 +901,13 @@ fn async_copy_commit_group():
     @parameter
     if is_nvidia_gpu():
         llvm_intrinsic["llvm.nvvm.cp.async.commit.group", NoneType]()
+    elif is_amd_gpu() or not is_gpu():
+        # This operation is a no-op on AMD and CPU.
+        pass
+    else:
+        return CompilationTarget.unsupported_target_error[
+            operation="async_copy_commit_group"
+        ]()
 
 
 @always_inline
@@ -924,6 +931,13 @@ fn async_copy_wait_group(n: Int32):
     @parameter
     if is_nvidia_gpu():
         llvm_intrinsic["llvm.nvvm.cp.async.wait.group", NoneType](n)
+    elif is_amd_gpu() or not is_gpu():
+        # This operation is a no-op on AMD and CPU.
+        pass
+    else:
+        return CompilationTarget.unsupported_target_error[
+            operation="async_copy_wait_group"
+        ]()
 
 
 @always_inline
@@ -945,6 +959,13 @@ fn async_copy_wait_all():
     @parameter
     if is_nvidia_gpu():
         llvm_intrinsic["llvm.nvvm.cp.async.wait.all", NoneType]()
+    elif is_amd_gpu() or not is_gpu():
+        # This operation is a no-op on AMD and CPU.
+        pass
+    else:
+        return CompilationTarget.unsupported_target_error[
+            operation="async_copy_wait_all"
+        ]()
 
 
 @always_inline
@@ -1049,12 +1070,12 @@ fn fence_proxy_tensormap_generic_sys_release():
 
 
 @always_inline
-fn tma_store_fence():
-    """Establishes a memory fence for shared memory stores in TMA operations.
+fn fence_async_view_proxy():
+    """Establishes a memory fence for shared memory view operations.
 
     This function creates a memory barrier that ensures all previous shared memory
-    stores are completed before subsequent TMA (Tensor Memory Access) store operations
-    begin. This is crucial for maintaining memory consistency in tensor operations.
+    stores are completed before subsequent shared memory view operations begin.
+    This is crucial for maintaining memory consistency.
 
     Note:
 

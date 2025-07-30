@@ -16,7 +16,6 @@ custom_op_example_py_binary(
         ":operations",
         "//GenericML:MGPRT",
         "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
     ],
     extra_deps = [
         "//SDK/lib/API/python/max/torch",
@@ -32,7 +31,6 @@ custom_op_example_py_binary(
         ":operations",
         "//GenericML:MGPRT",
         "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
     ],
     extra_deps = [
         "//SDK/lib/API/python/max/torch",
@@ -49,7 +47,6 @@ custom_op_example_py_binary(
         ":operations",
         "//GenericML:MGPRT",
         "//KGEN:CompilerRT",
-        "@llvm-project//compiler-rt:orc_rt",
     ],
     extra_deps = [
         "//SDK/lib/API/python/max/torch",
@@ -57,6 +54,20 @@ custom_op_example_py_binary(
         requirement("transformers"),
         requirement("datasets"),
         requirement("librosa"),
+    ],
+)
+
+custom_op_example_py_binary(
+    name = "graph",
+    srcs = ["graph.py"],
+    create_test = False,
+    extra_data = [
+        "//GenericML:MGPRT",
+        "//KGEN:CompilerRT",
+    ],
+    extra_deps = [
+        "//SDK/lib/API/python/max/torch",
+        requirement("torch"),
     ],
 )
 

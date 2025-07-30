@@ -70,7 +70,7 @@ class KernelLibrary:
     _context: mlir.Context
     _analysis: _graph.Analysis
 
-    def __init__(self, context: mlir.Context, paths: list[Path] = []) -> None:
+    def __init__(self, context: mlir.Context, paths: list[Path] = []) -> None:  # noqa: B006
         # TODO(GEX-1846): This is a terrible workaround to initialize M::Context on the Graph API.
         # Get rid of this and properly setup the context instead.
         mock_session = InferenceSession()
@@ -151,10 +151,10 @@ class KernelLibrary:
 
 # From https://stackoverflow.com/a/76301341
 class _classproperty:
-    def __init__(self, func) -> None:
+    def __init__(self, func) -> None:  # noqa: ANN001
         self.fget = func
 
-    def __get__(self, instance, owner):
+    def __get__(self, instance, owner):  # noqa: ANN001
         return self.fget(owner)
 
 
@@ -181,7 +181,7 @@ def _location(ignore_frames: int = 1):
     return _graph.frame_loc(mlir.Context.current, tb)
 
 
-def _to_mlir(o):
+def _to_mlir(o):  # noqa: ANN001
     # Convert args from instances of Python graph-api Value() to mlir.Value
     if hasattr(o, "to_mlir"):
         return o.to_mlir()
@@ -192,7 +192,7 @@ def _to_mlir(o):
     return o
 
 
-def _set_output_param_decls(op: Operation, params: dict[str, None]):
+def _set_output_param_decls(op: Operation, params: dict[str, None]) -> None:
     # Interfaces don't yet support isinstance checks, so this is a cheap proxy.
     # - nanobind doesn't allow custom metaclasses, but __instancecheck__
     #   must be defined on a metaclass
@@ -306,7 +306,7 @@ class Graph:
         input_types: Iterable[Type] = (),
         path: Optional[Path] = None,
         *args,
-        custom_extensions: list[Path] = [],
+        custom_extensions: list[Path] = [],  # noqa: B006
         context: Optional[mlir.Context] = None,
         kernel_library: Optional[KernelLibrary] = None,
         module: Optional[mlir.Module] = None,
@@ -353,7 +353,7 @@ class Graph:
 
             si64 = builtin.IntegerType(64, builtin.SignednessSemantics.signed)
             # TODO(MAXPLAT-306): Type annotations are wrong here
-            op.input_parameters = kgen.ParamDeclArrayAttr(  # type: ignore
+            op.input_parameters = kgen.ParamDeclArrayAttr(
                 [kgen.ParamDeclAttr(p, si64) for p in self._params]
             )
 
@@ -425,7 +425,7 @@ class Graph:
         forward: Optional[Callable] = None,
         input_types: Iterable[Type] = (),
         path: Optional[Path] = None,
-        custom_extensions: list[Path] = [],
+        custom_extensions: list[Path] = [],  # noqa: B006
     ) -> Graph:
         """Creates and adds a subgraph to the current graph.
 
@@ -539,7 +539,7 @@ class Graph:
     def _capturing_mlir_diagnostics(self):
         diagnostics = []
 
-        def handler(d) -> bool:
+        def handler(d) -> bool:  # noqa: ANN001
             diagnostics.append(str(d))
             return True
 
@@ -591,16 +591,20 @@ class Graph:
         _set_output_param_decls(op, self._params)
         return [Value.from_mlir(result) for result in op.results]
 
-    def _add_op(self, op, *args, **kwargs) -> list[Value]:
+    def _add_op(self, op, *args, **kwargs) -> list[Value]:  # noqa: ANN001
         """Wrapper for clients that only require the op results."""
         results, _ = self._add_op_get_op_with_results(op, *args, **kwargs)
         return results
 
     def _add_op_get_op_with_results(
-        self, op, *args, _ip: Optional[mlir.InsertionPoint] = None, **kwargs
+        self,
+        op,  # noqa: ANN001
+        *args,
+        _ip: Optional[mlir.InsertionPoint] = None,
+        **kwargs,
     ) -> tuple[list[Value], mlir.OpView]:
         # Convert args from instances of Python graph-api Value() to mlir.Value
-        def unwrap(arg):
+        def unwrap(arg):  # noqa: ANN001
             if isinstance(arg, Value):
                 return mlir.Value._CAPICreate(arg._mlir_value._CAPIPtr)  # type: ignore
             elif isinstance(arg, Type):
@@ -640,7 +644,7 @@ class Graph:
                                 staged_op = ops[idx - 1]
                                 break
                         else:
-                            assert False, (
+                            assert False, (  # noqa: B011
                                 "Could not find constructed operation in current block"
                             )
                     self._verify_op(staged_op)

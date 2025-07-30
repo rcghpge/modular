@@ -21,12 +21,8 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from max.driver import load_devices
 from max.engine import InferenceSession
 from max.graph.weights import load_weights
+from max.interfaces import EmbeddingsGenerator, EmbeddingsOutput, InputContext
 from max.nn import ReturnLogits
-from max.pipelines.core import (
-    EmbeddingsGenerator,
-    EmbeddingsResponse,
-    InputContext,
-)
 from max.profiler import Tracer, traced
 
 if TYPE_CHECKING:
@@ -89,7 +85,7 @@ class EmbeddingsPipeline(EmbeddingsGenerator[T]):
         )
 
     @traced
-    def encode(self, batch: dict[str, T]) -> dict[str, EmbeddingsResponse]:
+    def encode(self, batch: dict[str, T]) -> dict[str, EmbeddingsOutput]:
         """Provided a batch, process batch inputs, execute the graph for num_steps in a multi-step scenario,
         then decode the tokens holistically and return the list of decoded tokens.
         """
@@ -122,5 +118,5 @@ class EmbeddingsPipeline(EmbeddingsGenerator[T]):
                 request_embeddings = request_embeddings[
                     : context_batch[batch_index].active_length, :
                 ]
-            res[request_id] = EmbeddingsResponse(request_embeddings)
+            res[request_id] = EmbeddingsOutput(request_embeddings)
         return res

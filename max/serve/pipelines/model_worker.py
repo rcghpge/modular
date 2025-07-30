@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+from __future__ import annotations
 
 import asyncio
 import ctypes
@@ -25,13 +26,14 @@ from typing import Callable
 
 import uvloop
 import zmq
-from max.pipelines.core import PipelinesFactory
+from max.interfaces import PipelinesFactory, PipelineTask
+from max.pipelines.lib import PipelineConfig
 from max.profiler import Tracer, traced
 from max.serve.config import MetricRecordingMethod, Settings
 from max.serve.kvcache_agent.dispatcher_factory import DispatcherFactory
 from max.serve.pipelines.telemetry_worker import MetricClient
 from max.serve.process_control import ProcessControl, ProcessMonitor
-from max.serve.scheduler import TokenGeneratorSchedulerConfig, load_scheduler
+from max.serve.scheduler import load_scheduler
 from max.serve.scheduler.queues import EngineQueue
 from max.serve.telemetry.common import configure_logging, configure_metrics
 from max.serve.telemetry.metrics import METRICS
@@ -88,12 +90,12 @@ class ModelWorker:
     async def run(
         pc: ProcessControl,
         model_factory: PipelinesFactory,
-        scheduler_config: TokenGeneratorSchedulerConfig,
+        pipeline_config: PipelineConfig,
         settings: Settings,
         metric_client_factory: Callable[
             [], AbstractAsyncContextManager[MetricClient]
         ],
-        dispatcher_factory: DispatcherFactory,
+        dispatcher_factory: DispatcherFactory | None = None,
     ) -> None:
         """Runs a model worker process.
 
@@ -103,7 +105,7 @@ class ModelWorker:
         Args:
             pc: Process control for managing worker lifecycle
             model_factory: Factory function to create the model pipeline
-            scheduler_config: Configuration for the token generation pipeline
+            pipeline_config: The config for the pipeline
             settings: Global server settings
             metric_client_factory: Factory function to create metric client
             dispatcher_factory: Factory for creating dispatcher client instances
@@ -126,23 +128,35 @@ class ModelWorker:
             zmq_ctx = zmq.Context(io_threads=2)
 
             # create dispatcher client
-            dispatcher_client = dispatcher_factory.create_client(zmq_ctx)
+            pipeline_role = pipeline_config.pipeline_role
+
+            if (
+                not pipeline_role.needs_dispatcher_client()
+                and dispatcher_factory is not None
+            ):
+                logger.info(
+                    f"Dispatcher factory is not required for {pipeline_role}. Overriding with None."
+                )
+                dispatcher_factory = None
+
+            dispatcher_client = None
+            if pipeline_role.needs_dispatcher_client():
+                if dispatcher_factory is None:
+                    raise ValueError(
+                        f"Dispatcher factory is required for {pipeline_role} but was not provided"
+                    )
+                logger.debug(f"Starting dispatcher client for {pipeline_role}")
+                dispatcher_client = dispatcher_factory.create_client(zmq_ctx)
+                dispatcher_client.start()
 
             # Retrieve Scheduler.
             scheduler = load_scheduler(
                 pipeline,
                 zmq_ctx,
+                pipeline_config,
                 settings,
-                scheduler_config,
                 dispatcher_client,
             )
-
-            if scheduler.needs_dispatcher_client():
-                # Create a dispatcher client
-                logger.debug(
-                    "Scheduler needs dispatcher client, starting dispatcher client"
-                )
-                dispatcher_client.start()
 
             # Mark the start of the process, and run the scheduler.
             pc.set_started()
@@ -169,7 +183,7 @@ class ModelWorker:
     def __call__(
         pc: ProcessControl,
         model_factory: PipelinesFactory,
-        scheduler_config: TokenGeneratorSchedulerConfig,
+        pipeline_config: PipelineConfig,
         settings: Settings,
         metric_client_factory: Callable[
             [], AbstractAsyncContextManager[MetricClient]
@@ -185,11 +199,10 @@ class ModelWorker:
         Args:
             pc: Process control for managing worker lifecycle
             model_factory: Factory for creating model pipeline instances
-            scheduler_config: Configuration for the token generation pipeline
+            pipeline_config: The config for the pipeline
             settings: Global server settings
             metric_client_factory: Factory for creating metric client instances
             dispatcher_factory: Factory for creating dispatcher client instances
-            ctx: Multiprocessing context for worker process
         """
         try:
             _set_pdeathsig(signal.SIGTERM)
@@ -197,7 +210,7 @@ class ModelWorker:
                 ModelWorker.run(
                     pc,
                     model_factory,
-                    scheduler_config,
+                    pipeline_config,
                     settings,
                     metric_client_factory,
                     dispatcher_factory,
@@ -214,17 +227,23 @@ class ModelWorker:
 @asynccontextmanager
 async def start_model_worker(
     model_factory: PipelinesFactory,
-    batch_config: TokenGeneratorSchedulerConfig,
+    pipeline_config: PipelineConfig,
     settings: Settings,
     metric_client: MetricClient,
-    dispatcher_factory: DispatcherFactory,
+    pipeline_task: PipelineTask,
     zmq_io_threads: int = 1,
+    dispatcher_factory: DispatcherFactory | None = None,
 ) -> AsyncGenerator[EngineQueue, None]:
     """Starts a model worker and associated process.
 
     Args:
-        factories (PipelinesFactory): Token generator factory functions.
-        name (str, optional): Worker name. Defaults to "MODEL_<uuid>".
+        model_factory: Factory for creating model pipeline instances
+        pipeline_config: The config for the pipeline
+        settings: Global server settings
+        metric_client: Metric client for recording metrics
+        pipeline_task: The task for the pipeline
+        zmq_io_threads: Number of IO threads for ZMQ
+        dispatcher_factory: Factory for creating dispatcher client instances
 
     Returns:
         AsyncIterator[Worker]: Iterator to model worker.
@@ -246,6 +265,7 @@ async def start_model_worker(
         response_zmq_endpoint=settings.response_zmq_endpoint,
         cancel_zmq_endpoint=settings.cancel_zmq_endpoint,
         zmq_ctx=zmq_ctx,
+        pipeline_task=pipeline_task,
     )
 
     logger.debug("Starting worker: %s", worker_name)
@@ -256,7 +276,7 @@ async def start_model_worker(
         args=(
             pc,
             model_factory,
-            batch_config,
+            pipeline_config,
             settings,
             metric_client.cross_process_factory(),
             dispatcher_factory,

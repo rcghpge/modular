@@ -16,9 +16,11 @@ from __future__ import annotations
 import difflib
 from collections.abc import Mapping, Sequence, Set
 from os import PathLike
-from typing import Any, Optional
+from typing import Optional
 
 import numpy.typing as npt
+from max._core.safetensors import SafeTensor, safe_open
+from max.driver import Tensor
 from max.dtype import DType
 from max.graph import DeviceRef
 
@@ -27,37 +29,48 @@ from ..type import Shape, ShapeLike
 from ..weight import Weight
 from .weights import WeightData, Weights
 
-try:
-    from safetensors import safe_open  # type: ignore
-except ImportError:
-    safe_open = None
-
-try:
-    import torch  # type: ignore
-except ImportError:
-    torch = None
-
 
 class SafetensorWeights(Weights):
-    """Helper for loading weights into a graph.
+    """Implementation for loading weights from safetensors files.
 
-    A weight (`max.graph.Weight`) is tensors in a graph which are backed by an
-    external buffer or mmap. Generally weights are used to avoid recompiling
-    the graph when new weights are used (like from finetuning). For large-enough
-    constants, it might be worth using weights for fast compilation times but
-    the graph may be less optimized.
+    SafetensorWeights provides a secure and efficient way to load model weights
+    from safetensors format files. Safetensors is designed by Hugging Face for
+    safe serialization that prevents arbitrary code execution and supports
+    memory-mapped loading for fast access.
 
-    `Weight` classes can be used to help with graph weight allocation and
-    naming. This protocol defines getter methods `__getattr__` and `__getitem__`
-    to assist with defining names. For example, `weights.a.b[1].c.allocate(...)`
-    creates a weight with the name "a.b.1.c".
+    .. code-block:: python
+
+        from pathlib import Path
+        from max.graph.weights import SafetensorWeights
+        from max.dtype import DType
+
+        # Load weights from safetensors files
+        weight_files = [Path("model.safetensors")]
+        weights = SafetensorWeights(weight_files)
+
+        # Check if a weight exists
+        if weights.model.embeddings.weight.exists():
+            # Allocate the embedding weight
+            embedding_weight = weights.model.embeddings.weight.allocate(
+                dtype=DType.float32,
+                device=DeviceRef.CPU()
+            )
+
+        # Access weights with hierarchical naming
+        attn_weight = weights.transformer.layers[0].attention.weight.allocate(
+            dtype=DType.float16
+        )
     """
 
     _filepaths: Sequence[PathLike]
     _tensors: Set[str]
     _tensors_to_file_idx: Mapping[str, int]
     _allocated: dict[str, npt.NDArray]
-    _st_weight_map: dict[str, torch.Tensor]
+    _st_weight_map: dict[str, Tensor]
+    # This is a mapping of filepaths to SafeTensor handles. This is used to
+    # avoid opening and mapping the same file to virtual memory multiple times,
+    # which can use up all virtual memory.
+    _st_file_handles: dict[PathLike, SafeTensor]
 
     def __init__(
         self,
@@ -66,20 +79,10 @@ class SafetensorWeights(Weights):
         tensors: Optional[Set[str]] = None,
         tensors_to_file_idx: Mapping[str, int] | None = None,
         prefix: str = "",
-        allocated=None,
-        _st_weight_map: dict[str, torch.Tensor] | None = None,
+        allocated=None,  # noqa: ANN001
+        _st_weight_map: dict[str, Tensor] | None = None,
+        _st_file_handles: dict[PathLike, SafeTensor] | None = None,
     ) -> None:
-        if safe_open is None:
-            raise ImportError(
-                "Could not import safetensors package. Please install it with"
-                " `pip install safetensors`."
-            )
-        # TODO(MSDK-1199): Torch is required in order to import bfloat16.
-        if torch is None:
-            raise ImportError(
-                "Unable to import torch. Please make sure that PyTorch is"
-                " installed on your system."
-            )
         self._filepaths = filepaths
         if tensors is not None:
             self._tensors = tensors
@@ -89,12 +92,19 @@ class SafetensorWeights(Weights):
             self._tensors_to_file_idx = {}
             self._tensors = set()
             for idx, filepath in enumerate(self._filepaths):
-                with safe_open(filepath, framework="numpy") as f:
+                with safe_open(filepath) as f:
                     self._tensors |= set(f.keys())
-                    self._tensors_to_file_idx |= {k: idx for k in f.keys()}
+                    self._tensors_to_file_idx |= {k: idx for k in f.keys()}  # noqa: SIM118
         self._prefix = prefix
         self._allocated = {} if allocated is None else allocated
         self._st_weight_map = {} if _st_weight_map is None else _st_weight_map
+        if _st_file_handles is not None:
+            self._st_file_handles = _st_file_handles
+        else:
+            file_handles: dict[PathLike, SafeTensor] = {}
+            for filepath in self._filepaths:
+                file_handles[filepath] = safe_open(filepath)
+            self._st_file_handles = file_handles
 
     @property
     def name(self) -> str:
@@ -114,10 +124,11 @@ class SafetensorWeights(Weights):
                         prefix=name,
                         allocated=self._allocated,
                         _st_weight_map=self._st_weight_map,
+                        _st_file_handles=self._st_file_handles,
                     ),
                 )
 
-    def __getattr__(self, attr) -> SafetensorWeights:
+    def __getattr__(self, attr) -> SafetensorWeights:  # noqa: ANN001
         if self._prefix:
             full_path = f"{self._prefix}.{attr}"
         else:
@@ -129,12 +140,13 @@ class SafetensorWeights(Weights):
             prefix=full_path,
             allocated=self._allocated,
             _st_weight_map=self._st_weight_map,
+            _st_file_handles=self._st_file_handles,
         )
 
     def __getitem__(self, idx: int | str) -> SafetensorWeights:
         return self.__getattr__(str(idx))
 
-    def _load_tensor(self, dtype: DType | None = None):
+    def _load_tensor(self, dtype: DType | None = None) -> Tensor:
         if self._prefix in self._st_weight_map:
             return self._st_weight_map[self._prefix]
 
@@ -147,42 +159,23 @@ class SafetensorWeights(Weights):
             raise KeyError(msg)
 
         filepath = self._filepaths[self._tensors_to_file_idx[self.name]]
-        assert safe_open is not None
-        with safe_open(filepath, framework="pt") as f:
-            tensor = f.get_tensor(self.name)
+        tensor = self._st_file_handles[filepath].get_tensor(self.name)
 
         self._st_weight_map[self._prefix] = tensor
         return tensor
 
-    def raw_tensor(self) -> npt.NDArray[Any]:
-        """Returns the numpy tensor corresponding to this weights object.
-
-        Raises:
-            KeyError if this weights object isn't a tensor.
-        """
-        assert torch is not None
-        tensor = self._load_tensor()
-        if tensor.dtype == torch.bfloat16:
-            np_array = tensor.view(torch.float16).numpy()
-        elif tensor.dtype in [torch.float8_e4m3fn, torch.float8_e5m2]:
-            np_array = tensor.view(torch.uint8).numpy()
-        else:
-            np_array = tensor.numpy()
-        return np_array
-
     def data(self) -> WeightData:
-        assert torch is not None
         tensor = self._load_tensor()
-        if tensor.dtype == torch.bfloat16:
-            np_array = tensor.view(torch.float16).numpy()
-        elif tensor.dtype in [torch.float8_e4m3fn, torch.float8_e5m2]:
-            np_array = tensor.view(torch.uint8).numpy()
+        if tensor.dtype == DType.bfloat16:
+            np_array = tensor.view(DType.float16).to_numpy()
+        elif tensor.dtype in [DType.float8_e4m3fn, DType.float8_e5m2]:
+            np_array = tensor.view(DType.uint8).to_numpy()
         else:
-            np_array = tensor.numpy()
+            np_array = tensor.to_numpy()
         return WeightData(
             np_array,
             self.name,
-            DType.from_torch(tensor.dtype),
+            tensor.dtype,
             Shape(tensor.shape),
         )
 
@@ -197,25 +190,21 @@ class SafetensorWeights(Weights):
         device: DeviceRef = DeviceRef.CPU(),
     ) -> Weight:
         """Creates a Weight that can be added to a graph."""
-        assert torch is not None
         if quantization_encoding is not None:
             raise ValueError(
                 "Quantization encodings are not supported in safetensor"
                 f" format. Got: {quantization_encoding}"
             )
         tensor = self._load_tensor(dtype)
-        weight_dtype = DType.from_torch(tensor.dtype)
-        if tensor.dtype == torch.bfloat16:
-            np_tensor = tensor.view(torch.float16).numpy()
-            weight_dtype = DType.bfloat16
-        elif tensor.dtype == torch.float8_e4m3fn:
-            np_tensor = tensor.view(torch.uint8).numpy()
-            weight_dtype = DType.float8_e4m3fn
-        elif tensor.dtype == torch.float8_e5m2:
-            np_tensor = tensor.view(torch.uint8).numpy()
-            weight_dtype = DType.float8_e5m2
+        weight_dtype = tensor.dtype
+        if tensor.dtype == DType.bfloat16:
+            np_tensor = tensor.view(DType.float16).to_numpy()
+        elif tensor.dtype == DType.float8_e4m3fn:
+            np_tensor = tensor.view(DType.uint8).to_numpy()
+        elif tensor.dtype == DType.float8_e5m2:
+            np_tensor = tensor.view(DType.uint8).to_numpy()
         else:
-            np_tensor = tensor.numpy()
+            np_tensor = tensor.to_numpy()
 
         weight = Weight(
             name=self._prefix,
@@ -253,12 +242,11 @@ class SafetensorWeights(Weights):
         original data type. For example, [512, 256] float32 weights become
         [512, 1024] uint8 weights. Scalar weights will be interpreted as
         weights with shape [1]."""
-        assert torch is not None
         tensor = self._load_tensor(dtype)
-        if tensor.ndim == 0:
-            tensor = tensor.view([1])
-        tensor = tensor.view(torch.uint8)
-        np_tensor = tensor.numpy()
+        if len(tensor.shape) == 0:
+            tensor = tensor.view(tensor.dtype, [1])
+        tensor = tensor.view(DType.uint8)
+        np_tensor = tensor.to_numpy()
         weight_dtype = DType.from_numpy(np_tensor.dtype)
 
         weight = Weight(

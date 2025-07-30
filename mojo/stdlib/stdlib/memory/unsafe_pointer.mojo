@@ -17,8 +17,6 @@ These APIs are imported automatically, just like builtins.
 
 from sys import alignof, is_gpu, is_nvidia_gpu, sizeof
 from sys.intrinsics import (
-    _mlirtype_is_eq,
-    _type_is_eq,
     gather,
     scatter,
     strided_load,
@@ -184,31 +182,6 @@ struct UnsafePointer[
     # ===-------------------------------------------------------------------===#
     # Factory methods
     # ===-------------------------------------------------------------------===#
-
-    @staticmethod
-    @always_inline("nodebug")
-    @deprecated("Use UnsafePointer(to=...) constructor instead.")
-    fn address_of(
-        ref [address_space]arg: type,
-        out result: UnsafePointer[
-            type,
-            address_space=address_space,
-            alignment=1,
-            mut = Origin(__origin_of(arg)).mut,
-            origin = __origin_of(arg),
-        ],
-    ):
-        """Gets the address of the argument.
-
-        Args:
-            arg: The value to get the address of.
-
-        Returns:
-            An UnsafePointer which contains the address of the argument.
-        """
-        return __type_of(result)(
-            __mlir_op.`lit.ref.to_pointer`(__get_mvalue_as_litref(arg))
-        )
 
     @staticmethod
     @always_inline

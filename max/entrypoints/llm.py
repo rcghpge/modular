@@ -25,16 +25,12 @@ from threading import Thread
 from typing import Callable, NewType, TypeVar, Union, cast
 
 import tqdm
-from max.pipelines.core import SamplingParams
+from max.interfaces import SamplingParams, TextGenerationRequest
 from max.pipelines.lib import PIPELINE_REGISTRY, PipelineConfig
 from max.serve.config import Settings
 from max.serve.kvcache_agent.dispatcher_factory import DispatcherFactory
 from max.serve.kvcache_agent.dispatcher_transport import TransportMessage
-from max.serve.pipelines.llm import (
-    TokenGeneratorPipeline,
-    TokenGeneratorRequest,
-    batch_config_from_pipeline_config,
-)
+from max.serve.pipelines.llm import TokenGeneratorPipeline
 from max.serve.pipelines.model_worker import start_model_worker
 from max.serve.pipelines.telemetry_worker import start_telemetry_consumer
 from max.serve.process_control import ProcessControl
@@ -183,7 +179,6 @@ async def _async_worker(
     tokenizer, model_factory = PIPELINE_REGISTRY.retrieve_factory(
         pipeline_config
     )
-    batch_config = batch_config_from_pipeline_config(pipeline_config)
     model_name = pipeline_config.model_config.model_path
     dispatcher_factory = DispatcherFactory[
         Union[PrefillRequest, PrefillResponse]
@@ -197,13 +192,15 @@ async def _async_worker(
     # Start the model worker process.
     # Create dynamic and continuous batching workers and associated queues
     # to feed the model worker process.
+    pipeline_task = PIPELINE_REGISTRY.retrieve_pipeline_task(pipeline_config)
     async with (
         start_telemetry_consumer(settings) as metric_client,
         start_model_worker(
             model_factory=model_factory,
-            batch_config=batch_config,
+            pipeline_config=pipeline_config,
             settings=settings,
             metric_client=metric_client,
+            pipeline_task=pipeline_task,
             dispatcher_factory=dispatcher_factory,
         ) as engine_queue,
         TokenGeneratorPipeline(
@@ -225,10 +222,10 @@ async def _async_worker(
             # Lambda to do a full text generation for a request.
             async def all_tokens(prompt: str) -> str:
                 sampling_params = SamplingParams(
-                    max_new_tokens=request.max_new_tokens
+                    max_new_tokens=request.max_new_tokens  # noqa: B023
                 )
-                gen_request = TokenGeneratorRequest(
-                    id=str(uuid.uuid4()),
+                gen_request = TextGenerationRequest(
+                    request_id=str(uuid.uuid4()),
                     index=0,
                     model_name=model_name,
                     prompt=prompt,
