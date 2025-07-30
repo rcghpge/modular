@@ -660,22 +660,25 @@ ErrorOrSuccess DeviceContext::checkPendingWork() const {
         // walk through the pending events.
         break;
       }
-      // The handler at the head of the queue is ready to run. Before calling
-      // the handler we need to release the lock in case there are pending
-      // errors to be enqueued or there are other effects by the handler code
-      // (e.g. causing dead lock or contention).
-      mu_.unlock();
-      pendingEvents_->runHandler();
-      mu_.lock();
-
-      // Advance to the next handler and delete the current entry.
+      // The handler at the head of the queue is ready to run. Remove the head
+      // of the queue from the list of pending handlers.
+      // Important: The head of the queue needs to be removed before the lock is
+      // released below to avoid racing threads triggering the current handler
+      // multiple times.
       PendingEventHandler *curHandler = pendingEvents_;
       pendingEvents_ = pendingEvents_->next_;
       if (pendingEvents_ == nullptr) {
         // We reached the end of the queue.
         pendingEventsLast_ = nullptr;
       }
+
+      // Before calling the handler we need to release the lock in case there
+      // are pending errors to be enqueued or there are other effects by the
+      // handler code (e.g. causing dead lock or contention).
+      mu_.unlock();
+      curHandler->runHandler();
       delete curHandler;
+      mu_.lock();
     }
 
     // Check if we have a pending error recorded.
