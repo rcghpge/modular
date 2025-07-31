@@ -2,7 +2,7 @@ name: Upstream
 
 on:
   schedule:
-    - cron: '0 0 * * 5'  # Runs every Friday at 00:00 UTC (adjust as needed)
+    - cron: '0 0 * * 5'  # Runs every Friday at 00:00 UTC (Adjust as needed)
   workflow_dispatch: {}
 
 permissions:
@@ -36,32 +36,81 @@ jobs:
           echo "✅ No workflow changes detected."
         fi
 
-    - name: Set GitHub Actions authentication (GH requirements)
+    - name: Set GitHub Actions authenticaions (GH requirements)
       if: env.WORKFLOWS_CHANGED == 'true'
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-    - name: Merge from upstream Modular to `upstream` on fork 
+    - name: Merge from upstream Modular to `upstream` on fork
       if: env.WORKFLOWS_CHANGED == 'true'
       run: |
         git checkout -b upstream
         git merge upstream/main --no-edit
+
+    - name: Authenticate Git remote with GitHub token
+      if: env.WORKFLOWS_CHANGED == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+
+    - name: Push sync to `upstream` branch on fork
+      if: env.WORKFLOWS_CHANGED == 'true'
+      run: |
         git push origin upstream
 
+    - name: Get latest upstream commit hash
+      id: get_upstream_commit
+      if: env.WORKFLOWS_CHANGED == 'true'
+      run: |
+        echo "hash=$(git rev-parse upstream/main)" >> $GITHUB_OUTPUT
+
     - name: Generate a pull request to sync with origin/main on fork
+      id: create_pull_request
       if: env.WORKFLOWS_CHANGED == 'true'
       uses: peter-evans/create-pull-request@v5
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         commit-message: "Sync: workflow updates from upstream"
         title: "🔄 Sync upstream workflows"
-        body: "This PR contains updated GitHub Actions workflows from upstream.\nPlease review carefully before merging."
+        body: |
+          This PR contains updated GitHub Actions workflows from upstream.
+          Please review carefully before merging.
+
+          ---
+          _Triggered by GitHub Actions workflow: `upstream-sync.yml`_
         base: main
         branch: upstream
         labels: sync
 
-    - name: Auto-merge upstream/main to origin/main
+    - name: Set comment with upstream commit hash
+      if: env.WORKFLOWS_CHANGED == 'true'
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        issue-number: ${{ steps.create_pull_request.outputs.pull-request-number }}
+        body: |
+          📦 This pull request includes changes synced from **upstream commit**:
+          ```
+          ${{ steps.get_upstream_commit.outputs.hash }}
+          ```
+
+    - name: Auto-approve pull request from Modular upstream
+      if: env.WORKFLOWS_CHANGED == 'true'
+      uses: hmarr/auto-approve-action@v3
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Enable auto-merge for pull request from upstream
+      if: env.WORKFLOWS_CHANGED == 'true'
+      uses: peter-evans/enable-pull-request-automerge@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        pull-request-number: ${{ steps.create_pull_request.outputs.pull-request-number }}
+        merge-method: squash
+
+    - name: Auto-merge upstream/main to origin/main on fork
       if: env.WORKFLOWS_CHANGED == 'false'
       run: |
         git config user.name "github-actions[bot]"
