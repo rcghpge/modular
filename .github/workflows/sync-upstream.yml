@@ -36,6 +36,12 @@ jobs:
           echo "✅ No workflow changes detected."
         fi
 
+    - name: Set GitHub Actions authentication (GH requirements)
+      if: env.WORKFLOWS_CHANGED == 'true'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
     - name: Merge from upstream Modular to `upstream` on fork 
       if: env.WORKFLOWS_CHANGED == 'true'
       run: |
