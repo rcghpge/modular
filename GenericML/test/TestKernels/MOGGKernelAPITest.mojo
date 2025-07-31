@@ -375,6 +375,34 @@ struct PrintTensorSpecFusedOp:
         return x.shape()
 
 
+@compiler.register("print_output_shape_strides_fused")
+struct PrintOutputShapeStridesFusedOp:
+    @staticmethod
+    fn execute[
+        target: StaticString,
+    ](output: FusedOutputTensor, x: FusedInputTensor) capturing raises:
+        print("output._static_shape = ", output._static_shape)
+        print("output._static_strides = ", output._static_strides)
+        print("output._runtime_shape = ", output._spec.shape)
+        print("output._runtime_strides = ", output._runtime_strides)
+
+        @parameter
+        @always_inline
+        fn func[
+            width: Int
+        ](idx: IndexList[output.rank]) -> SIMD[output.dtype, width]:
+            return (
+                rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
+                * 2.0
+            )
+
+        foreach[func](output)
+
+    @staticmethod
+    fn shape(x: InputTensor) -> IndexList[x.rank]:
+        return x.shape()
+
+
 @compiler.register("imposter_add_elementwise")
 struct AddElementwise:
     @staticmethod
