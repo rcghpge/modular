@@ -118,7 +118,25 @@ nixlPluginManager::loadPluginFromPath(const std::string &plugin_path) {
 
 // PluginManager implementation
 nixlPluginManager::nixlPluginManager() {
-  // The only NIXL plugin we support is UCX
+  // The only NIXL plugin we support is UCX.
+
+  // libibverbs.so and libmlx5.so are needed for the verbs UCX backend. We
+  // decide whether to load libplugin_ucx.so or libplugin_ucx_verbs.so based on
+  // the presence of these libraries. Verbs support is needed for fast
+  // inter-node transfers over RDMA. If it is not provided, inter-node transfers
+  // will likely fall back to host and transfer data over TCP. This is pretty
+  // slow.
+  //
+  // Exactly one of these plugin files should be loaded. Loading both of them
+  // will cause issues as both of them have the same plugin name "ucx".
+  void *dlLibIbverbs = dlopen("libibverbs.so.1", RTLD_NOW | RTLD_GLOBAL);
+  void *dlLibMlx5 = dlopen("libmlx5.so", RTLD_NOW | RTLD_GLOBAL);
+
+  if (dlLibIbverbs != nullptr && dlLibMlx5 != nullptr &&
+      loadPlugin("ucx_verbs") != nullptr) {
+    return;
+  }
+
   loadPlugin("ucx");
 }
 
@@ -150,7 +168,7 @@ nixlPluginManager::loadPlugin(const std::string &pluginName) {
     return nullptr;
   }
   std::string pluginDir = std::string(pluginDirEnv);
-  NIXL_DEBUG << "MODULAR_NIXL_PLUGIN_DIR=\"" << pluginDir << "\"\n";
+  NIXL_DEBUG << "MODULAR_NIXL_PLUGIN_DIR=\"" << pluginDir << "\"";
   // Clean up `.`s and `..`s
   const auto dirPath = std::filesystem::path(pluginDir).lexically_normal();
   std::string dir = dirPath.string();
@@ -166,7 +184,7 @@ nixlPluginManager::loadPlugin(const std::string &pluginName) {
             .str();
   }
 
-  NIXL_DEBUG << "Loading plugin from path: " << pluginPath << "\n";
+  NIXL_DEBUG << "Loading plugin from path: " << pluginPath;
 
   // Check if the plugin file exists before attempting to load it
   if (!std::filesystem::exists(pluginPath)) {
@@ -177,13 +195,16 @@ nixlPluginManager::loadPlugin(const std::string &pluginName) {
   std::shared_ptr<const nixlPluginHandle> pluginHandle =
       loadPluginFromPath(pluginPath);
   if (pluginHandle) {
-    loaded_plugins_[canonPlugName] = pluginHandle;
+    // Even though the plugin file may be "libplugin_ucx_verbs.so", the plugin
+    // is still "ucx" and not "ucx_verbs".
+    auto loadedPluginName = StringRef(pluginHandle->getName()).trim().lower();
+    loaded_plugins_[loadedPluginName] = pluginHandle;
     return pluginHandle;
   }
 
   // Failed to load the plugin
   NIXL_ERROR << "Failed to load plugin '" << canonPlugName
-             << "' from any directory\n";
+             << "' from any directory";
   return nullptr;
 }
 
