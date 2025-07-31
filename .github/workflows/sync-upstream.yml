@@ -100,6 +100,11 @@ jobs:
         branch: upstream
         labels: sync
 
+    - name: Debug PR and workflow env at runtime
+      run: |
+        echo "WORKFLOWS_CHANGED=${{ env.WORKFLOWS_CHANGED }}"
+        echo "PR #: ${{ steps.create_pull_request.outputs.pull-request-number }}"
+
     - name: Auto-approve pull request from Modular upstream
       if: env.WORKFLOWS_CHANGED == 'true' && steps.create_pull_request.outputs.pull-request-number != ''
       uses: hmarr/auto-approve-action@v3
