@@ -9,6 +9,8 @@
 
 #include <string>
 
+#include "mlir/Pass/PassInstrumentation.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -185,9 +187,6 @@ private:
   std::optional<SymbolTable> rawMojoKernelTable;
 
   mlir::ParserConfig config;
-
-  /// Cached value that results from hashing the Mojo module.
-  mutable std::string kgenModuleHash;
 };
 
 /// A Pass mixin which supplements an MLIR pass with an optional
@@ -220,11 +219,28 @@ public:
   MojoLibraryAnalysisPass(MojoLibraryAnalysisPass &&other) = default;
   ~MojoLibraryAnalysisPass() = default;
 
+  static StringRef getAnalysisName() {
+    return llvm::getTypeName<MOGG::MojoLibraryAnalysis>();
+  }
+
   ErrorOr<MOGG::MojoLibraryAnalysis *> getLibraryAnalysis() {
     if (status.isError())
       return status.copy().takeError();
 
+    mlir::TypeID id = mlir::TypeID::get<MOGG::MojoLibraryAnalysis>();
+
+    mlir::PassInstrumentor *pi =
+        PassBaseT::getAnalysisManager().getPassInstrumentor();
+
     if (!mojoLibraryAnalysis) {
+      if (pi)
+        pi->runBeforeAnalysis(getAnalysisName(), id, this->getOperation());
+
+      auto guard = llvm::make_scope_exit([&] {
+        if (pi)
+          pi->runAfterAnalysis(getAnalysisName(), id, this->getOperation());
+      });
+
       auto libraryPaths =
           llvm::to_vector_of<std::string>(this->kernelLibraryPaths);
 
