@@ -2,11 +2,12 @@ name: Upstream
 
 on:
   schedule:
-    - cron: '0 3 1 * *'  # Runs monthly, adjust as needed
+    - cron: '0 0 * * 5'  # Runs every Friday at 00:00 UTC (adjust as needed)
   workflow_dispatch: {}
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   sync:
@@ -24,25 +25,40 @@ jobs:
         git remote add upstream https://github.com/modular/modular.git
         git fetch upstream
 
-    - name: Check for workflow file changes
+    - name: Check diffs for workflow file changes
       id: check_workflows
       run: |
         if git diff --name-only upstream/main | grep '^.github/workflows/'; then
           echo "WORKFLOWS_CHANGED=true" >> $GITHUB_ENV
-          echo "⚠️ Detected workflow file changes in upstream. You may need to handle this manually later."
+          echo "⚠️ Detected workflow file changes in upstream."
         else
           echo "WORKFLOWS_CHANGED=false" >> $GITHUB_ENV
-          echo "✅ No workflow file changes detected. Proceeding with merge."
+          echo "✅ No workflow changes detected."
         fi
 
-    - name: Merge upstream changes
+    - name: Merge from upstream Modular to `upstream` on fork 
+      if: env.WORKFLOWS_CHANGED == 'true'
+      run: |
+        git checkout -b upstream
+        git merge upstream/main --no-edit
+        git push origin upstream
+
+    - name: Generate a pull request to sync with origin/main on fork
+      if: env.WORKFLOWS_CHANGED == 'true'
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "Sync: workflow updates from upstream"
+        title: "🔄 Sync upstream workflows"
+        body: "This PR contains updated GitHub Actions workflows from upstream.\nPlease review carefully before merging."
+        base: main
+        branch: upstream
+        labels: sync
+
+    - name: Auto-merge upstream/main to origin/main
       if: env.WORKFLOWS_CHANGED == 'false'
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git merge upstream/main || echo "No upstream changes to merge"
-
-    - name: Push updates to fork
-      if: env.WORKFLOWS_CHANGED == 'false'
-      run: |
+        git merge upstream/main --no-edit || echo "No upstream changes to merge"
         git push origin main
