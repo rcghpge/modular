@@ -23,8 +23,13 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include <cstring>
 #include <numeric>
 using namespace M;
+
+// MEF requires 64-byte aligned buffers for parsing
+static constexpr size_t kMEFBufferAlignment = 64;
+static constexpr size_t kMEFBufferAlignmentMask = kMEFBufferAlignment - 1;
 
 //===----------------------------------------------------------------------===//
 // MEFToMLIRConverter
@@ -1037,16 +1042,42 @@ bool MEFToMLIRConverter::parseRegionBody(Region *region, size_t numResults,
 ModuleOp M::translateMEFToMLIR(ArrayRef<uint8_t> buffer, Location loc) {
   loc.getContext()->loadDialect<MEF::MEFDialect>();
 
+  // Check if the buffer is already 64-byte aligned
+  bool isAligned = (uintptr_t(buffer.data()) & kMEFBufferAlignmentMask) == 0;
+
+  // Only create an aligned copy if necessary
+  std::unique_ptr<uint8_t[]> alignedStorage;
+  ArrayRef<uint8_t> alignedBuffer = buffer;
+
+  if (!isAligned) {
+    // Create a 64-byte aligned copy of the buffer
+    // Allocate extra space to allow for alignment adjustment
+    alignedStorage =
+        std::make_unique<uint8_t[]>(buffer.size() + kMEFBufferAlignmentMask);
+
+    // Calculate the aligned start address (64-byte aligned)
+    uint8_t *alignedStart = reinterpret_cast<uint8_t *>(
+        (uintptr_t(alignedStorage.get()) + kMEFBufferAlignmentMask) &
+        ~uintptr_t(kMEFBufferAlignmentMask));
+
+    // Copy the buffer data to the aligned location
+    std::memcpy(alignedStart, buffer.data(), buffer.size());
+
+    // Create a new ArrayRef pointing to the aligned copy
+    alignedBuffer = ArrayRef<uint8_t>(alignedStart, buffer.size());
+  }
+
   // We currently always get our buffer out of a SourceMgr so we know it is
   // aligned.  This allows alignTo to be efficient and simple.  If we care about
   // supporting non-aligned inputs in the future, we can either copy the input
   // buffer to realign it when necessary or make alignTo more complicated by
   // tracking the amount we're offset from natural alignment.
-  assert((uintptr_t(buffer.data()) & 7) == 0 &&
-         "Input buffer pointer must be 8-byte aligned for this logic to work");
+  assert((uintptr_t(alignedBuffer.data()) & kMEFBufferAlignmentMask) == 0 &&
+         "Input buffer pointer must be 64-byte aligned for this logic to work");
 
   MEFToMLIRConverter converter(loc);
-  MEFReader reader = converter.getReaderFor(buffer);
+  MEFReader reader = converter.getReaderFor(alignedBuffer);
+
   // Read/validate the header and section table.
   if (converter.parseHeader(reader) || converter.findSections(reader) ||
       // Parse sections in a specific order, unbound by their order in the file.
