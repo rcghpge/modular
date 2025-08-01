@@ -36,8 +36,7 @@ static FailureOr<Type> builtinTypeToDType(mlir::MLIRContext *ctx, Type type) {
   return KGEN::POP::SIMDType::get(ctx, 1, dtype);
 }
 
-static Value popScalarToBuitltinType(OpBuilder &builder, Location loc,
-                                     Value v) {
+static Value popScalarToBuiltinType(OpBuilder &builder, Location loc, Value v) {
   auto type = cast<KGEN::POP::SIMDType>(v.getType());
   auto maybeDtype = type.getResolvedDType();
   assert(maybeDtype && "unable to resolve dtype");
@@ -144,7 +143,7 @@ static Value assertSymbolicDimensionMatchesPreviousValue(
       builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
                                                          newValue));
 
-  isEqual = popScalarToBuitltinType(builder, loc, isEqual);
+  isEqual = popScalarToBuiltinType(builder, loc, isEqual);
 
   auto errorMessage = llvm::formatv(
       "symbolic dimension '{}' for input {} does not match prior uses "
@@ -432,7 +431,7 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
     return maybeResult;
 
   // Convert the !pop.scalar value back to the corresponding builtin type.
-  return popScalarToBuitltinType(builder, loc, maybeResult.takeValue());
+  return popScalarToBuiltinType(builder, loc, maybeResult.takeValue());
 }
 
 Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
