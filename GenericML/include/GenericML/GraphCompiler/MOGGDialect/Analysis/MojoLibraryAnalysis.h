@@ -99,10 +99,6 @@ public:
   KGEN::GeneratorOp
   getRegisteredMojoUpdateViewFunctionFor(StringRef name) const;
 
-  /// Looks up a registered outlined function using the name that was used
-  /// for registration.
-  KGEN::GeneratorOp getRegisteredMojoOutlinedFunctionFor(StringRef name) const;
-
   /// Looks up a registered elementwise function using the name that was used
   /// for registration.
   KGEN::GeneratorOp
