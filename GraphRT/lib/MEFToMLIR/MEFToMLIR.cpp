@@ -847,14 +847,14 @@ bool RegionParser::parsePrimitiveList() {
 
     bool isOpaqueOp = false;
     uint32_t primitiveID, locOffset;
-    uint16_t numOperands, numAttrs, numInvokables, numResults;
+    uint32_t numOperands, numAttrs, numInvokables, numResults;
     StringAttr primitiveName;
     uint32_t resultRegisterNo = ~0U;
     if (bodyReader.parseInt4(primitiveID) || bodyReader.parseInt4(locOffset) ||
         converter.resolveLocation(locOffset, loc) ||
         converter.resolvePrimitiveName(primitiveID, loc, primitiveName) ||
-        bodyReader.parseInt2(numOperands) || bodyReader.parseInt2(numAttrs) ||
-        bodyReader.parseInt2(numInvokables) || bodyReader.parseInt2(numResults))
+        bodyReader.parseInt4(numOperands) || bodyReader.parseInt4(numAttrs) ||
+        bodyReader.parseInt4(numInvokables) || bodyReader.parseInt4(numResults))
       return true;
 
     // We read and ignore the # users for each result.

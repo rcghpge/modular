@@ -109,7 +109,7 @@ protected:
 
   /// numResults is set to ~0 so we can check that addArgument() is called
   /// before setNumResults.
-  uint16_t numArguments = 0, numResults = uint16_t(~0U);
+  uint32_t numArguments = 0, numResults = uint32_t(~0U);
 
   /// This is all of the invokable references used by the invocation.
   SmallVector<MEFInvokable *, 2> invokables;
@@ -130,7 +130,7 @@ public:
   void reset() {
     locationData = ~intptr_t(0);
     numArguments = 0;
-    numResults = uint16_t(~0U);
+    numResults = uint32_t(~0U);
     attrOffsets = {};
     invokables.clear();
   }
@@ -249,7 +249,7 @@ public:
   void reset() {
     locationData = ~intptr_t(0);
     numArguments = 0;
-    numResults = uint16_t(~0U);
+    numResults = uint32_t(~0U);
     attrOffsets = {};
     invokables.clear();
     argsAndResults.clear();
@@ -271,7 +271,7 @@ public:
 
   /// Add a new argument.
   void addArg(AnyAsyncValueRef value) {
-    assert(numResults == uint16_t(~0U) &&
+    assert(numResults == uint32_t(~0U) &&
            "Must call AddArg before calling SetNumResults");
     argsAndResults.push_back(std::move(value));
     ++numArguments;
@@ -280,7 +280,7 @@ public:
   /// Set the number of results expected, and allocate space to capture them.
   void setNumResults(size_t n) {
     assert(numArguments == argsAndResults.size() &&
-           numResults == uint16_t(~0U));
+           numResults == uint32_t(~0U));
     numResults = n;
     argsAndResults.resize(argsAndResults.size() + n);
   }

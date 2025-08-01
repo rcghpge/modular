@@ -145,14 +145,6 @@ public:
     requiredAlignment = std::max(requiredAlignment, alignment);
   }
 
-  // Emit a guaranteed 2-byte integer aligned to 2 bytes, allowing this to be
-  // directly mapped into the target process in little-endian form.
-  void emitInt2(uint16_t value) {
-    alignTo(2);
-    emitByte(value & 0xFF);
-    emitByte(value >> 8);
-  }
-
   // Emit a guaranteed 4-byte integer aligned to 4 bytes, allowing this to be
   // directly mapped into the target process in little-endian form.
   void emitInt4(uint32_t value) {
@@ -1525,10 +1517,10 @@ void RegionEmitter::emitArgumentsPseudoOp(Block *block,
   // primitive only has results and UsedBys in its body.
   primitiveList.emitInt4(0);                        // code
   primitiveList.emitInt4(0);                        // location
-  primitiveList.emitInt2(0);                        // # operands
-  primitiveList.emitInt2(0);                        // # attributes
-  primitiveList.emitInt2(0);                        // # invokables
-  primitiveList.emitInt2(block->getNumArguments()); // # results
+  primitiveList.emitInt4(0);                        // # operands
+  primitiveList.emitInt4(0);                        // # attributes
+  primitiveList.emitInt4(0);                        // # invokables
+  primitiveList.emitInt4(block->getNumArguments()); // # results
 
   // Only emit a single register number for the decoder for consistency.  It
   // should always be zero since this is the first result of the first
@@ -1589,18 +1581,13 @@ void RegionEmitter::emitPrimitive(Operation *op,
   for (auto &region : op->getRegions())
     regionsToEmit.push_back(entities.getRegionID(region));
 
-  // Ensure this primitive isn't too big to encode.
-  if (op->getNumOperands() > 65535 || attributesToEmit.size() > 65535 ||
-      regionsToEmit.size() > 65535 || op->getNumResults() > 65535)
-    entities.emitError(op->getLoc()) << "operation too large to encode in MEF";
-
   // Emit the PRIMITIVE_HEADER records.
   primitiveList.emitInt4(entities.getPrimitiveID(op));
   primitiveList.emitInt4(entities.getLocationOffset(op->getLoc()).value);
-  primitiveList.emitInt2(op->getNumOperands());
-  primitiveList.emitInt2(attributesToEmit.size());
-  primitiveList.emitInt2(regionsToEmit.size());
-  primitiveList.emitInt2(op->getNumResults());
+  primitiveList.emitInt4(op->getNumOperands());
+  primitiveList.emitInt4(attributesToEmit.size());
+  primitiveList.emitInt4(regionsToEmit.size());
+  primitiveList.emitInt4(op->getNumResults());
 
   // Emit the PRIMITIVE_BODY contents.
   for (auto attrOffset : attributesToEmit)

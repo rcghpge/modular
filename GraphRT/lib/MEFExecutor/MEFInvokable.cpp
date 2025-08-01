@@ -463,8 +463,8 @@ struct PrimitiveDecoder {
   const uint32_t *dataPtr;
 
   uint32_t opcode, locOffset;
-  uint16_t numOperands, numAttrs;
-  uint16_t numInvokables, numResults;
+  uint32_t numOperands, numAttrs;
+  uint32_t numInvokables, numResults;
   ArrayRef<uint32_t> perResultUsersCount;
   ArrayRef<uint32_t> operandIndices;
   ArrayRef<uint64_t> attrOffsets;
@@ -475,12 +475,10 @@ struct PrimitiveDecoder {
     // Decode the fixed header.
     opcode = *dataPtr++;
     locOffset = *dataPtr++;
-    uint32_t numOperandsAndAttrs = *dataPtr++;
-    numOperands = uint16_t(numOperandsAndAttrs);
-    numAttrs = uint16_t(numOperandsAndAttrs >> 16);
-    uint32_t numInvokablesAndResults = *dataPtr++;
-    numInvokables = uint16_t(numInvokablesAndResults);
-    numResults = uint16_t(numInvokablesAndResults >> 16);
+    numOperands = *dataPtr++;
+    numAttrs = *dataPtr++;
+    numInvokables = *dataPtr++;
+    numResults = *dataPtr++;
 
     // Decode the variable size fields.
     assert(reinterpret_cast<uintptr_t>(dataPtr) % sizeof(uint64_t) == 0 &&
