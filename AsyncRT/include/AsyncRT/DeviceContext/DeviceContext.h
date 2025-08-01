@@ -424,6 +424,9 @@ public:
   virtual ErrorOrSuccess
   enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const = 0;
 
+  virtual ErrorOrSuccess enqueueCopyFromDeviceSized(void *dst, void *src,
+                                                    size_t byteSize) const = 0;
+
   ErrorOrSuccess enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
                                            const DeviceBuffer &src) const;
 
@@ -484,6 +487,9 @@ public:
   virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
+
+  // Set this device context as the current driver context
+  ErrorOrSuccess setAsCurrent() const;
 
   BufferCacheFreeList &freeList() const;
   BufferCacheFreeList &hostFreeList() const;

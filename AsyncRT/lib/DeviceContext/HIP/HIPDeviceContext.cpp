@@ -944,6 +944,17 @@ HIPDeviceContext::enqueueCopyFromDevice(void *dst,
   return success();
 }
 
+ErrorOrSuccess
+HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
+                                             size_t byteSize) const {
+  HIP_WITH_CTX_ERR(*this);
+
+  hipDeviceptr_t srcPtr = src;
+  HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
+  MAYBE_SYNC(*this);
+  return success();
+}
+
 ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                              const DeviceBuffer &src) const {
   CHECK_IS_HIP_ERR(src.context().device());

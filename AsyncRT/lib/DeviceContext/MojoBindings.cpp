@@ -113,6 +113,12 @@ AsyncRT_DeviceContextScope_create(const DeviceContextScope **result,
   return errMsg;
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_setAsCurrent(const DeviceContext *ctx) {
+  ErrorOrSuccess err = ctx->setAsCurrent();
+  return checkSuccess(std::move(err));
+}
+
 MODULAR_EXPORT void
 AsyncRT_DeviceContextScope_release(const DeviceContextScope *scope) {
   delete scope;
@@ -255,6 +261,12 @@ AsyncRT_DeviceContext_DtoH_async(const DeviceContext *ctx, void *dst,
                                  const DeviceBuffer *src) {
   assert((ctx == &src->context()) && "ctx not matching src");
   return checkSuccess(ctx->enqueueCopyFromDevice(dst, *src));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_DtoH_async_sized(const DeviceContext *ctx, void *dst,
+                                       void *src, size_t size) {
+  return checkSuccess(ctx->enqueueCopyFromDeviceSized(dst, src, size));
 }
 
 MODULAR_EXPORT const char *
@@ -464,6 +476,19 @@ AsyncRT_DeviceStream_cuda_stream(CUstream *result, const DeviceStream *stream) {
     return strdup("Not a CUDAStream");
   }
   *result = verifiedStream->cudaStream();
+  return nullptr;
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceFunction_cuda_module(CUmodule *result,
+                                   const DeviceFunction *func) {
+  // Check if the device context is CUDA
+  if (func->context().device().api() != Device::cudaAPI) {
+    return strdup("Not a CUDA DeviceFunction");
+  }
+
+  const CUDADeviceFunction &cudaFunc = CUDADeviceFunction::cast(*func);
+  *result = cudaFunc.cudaModule();
   return nullptr;
 }
 

@@ -582,6 +582,10 @@ MODULAR_CXX_EXPORT const Device &DeviceContext::device() const {
   return *device_;
 }
 
+ErrorOrSuccess DeviceContext::setAsCurrent() const {
+  return device().setCurrentDriverContext(driverContext());
+}
+
 void DeviceContext::setPendingError(Error err) const {
   {
     std::lock_guard<std::mutex> lock(mu_);

@@ -105,6 +105,8 @@ public:
                                      const void *src) const override;
   ErrorOrSuccess enqueueCopyFromDevice(void *dst,
                                        const DeviceBuffer &src) const override;
+  ErrorOrSuccess enqueueCopyFromDeviceSized(void *dst, void *src,
+                                            size_t byteSize) const override;
   ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
                              const DeviceBuffer &src) const override;
 

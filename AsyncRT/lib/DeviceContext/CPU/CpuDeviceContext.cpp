@@ -230,6 +230,14 @@ CpuDeviceContext::enqueueCopyFromDevice(void *dst,
   return success();
 }
 
+ErrorOrSuccess
+CpuDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
+                                             size_t byteSize) const {
+  void *srcPtr = src;
+  memcpy(dst, srcPtr, byteSize);
+  return success();
+}
+
 ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                              const DeviceBuffer &src) const {
   CHECK_IS_CPU_ERR(src.context().device());

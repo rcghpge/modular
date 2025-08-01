@@ -270,6 +270,8 @@ public:
                        uint32_t sharedMemBytes, CUlaunchAttribute *attrs,
                        uint32_t numAttrs, void **args, CUstream stream) const;
 
+  CUmodule cudaModule() const;
+
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
 
 private:
@@ -307,6 +309,8 @@ public:
                                      const void *src) const override;
   ErrorOrSuccess enqueueCopyFromDevice(void *dst,
                                        const DeviceBuffer &src) const override;
+  ErrorOrSuccess enqueueCopyFromDeviceSized(void *dst, void *src,
+                                            size_t byteSize) const override;
   ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
                              const DeviceBuffer &src) const override;
 

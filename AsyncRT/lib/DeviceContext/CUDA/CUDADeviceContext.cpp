@@ -890,6 +890,10 @@ ErrorOr<int32_t> CUDADeviceFunction::getAttribute(int32_t code) const {
   return result;
 }
 
+CUmodule CUDADeviceFunction::cudaModule() const {
+  return moduleFunction_->cudaModule();
+}
+
 const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const CUDADeviceFunction &>(func);
 }
@@ -993,6 +997,16 @@ CUDADeviceContext::enqueueCopyFromDevice(void *dst,
   CUdeviceptr srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
   CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
+  MAYBE_SYNC(*this);
+  return success();
+}
+
+ErrorOrSuccess
+CUDADeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
+                                              size_t byteSize) const {
+  CUDA_WITH_CTX_ERR(*this);
+
+  CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src, byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }
