@@ -2608,6 +2608,113 @@ struct MultiHeadAttentionPattern
   }
 };
 
+struct RMSNormFusedResidualAddPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::CustomOp> {
+  RMSNormFusedResidualAddPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 3) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::CustomOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    // Match the pattern: rms_norm(rms_norm(input) + residual_input)
+    // This means we're looking for a CustomOp with symbol "rms_norm" that takes
+    // as input the result of (rms_norm(input) + residual_input)
+
+    if (op.getSymbol() != "rms_norm")
+      return rewriter.notifyMatchFailure(op, "not an rms_norm operation");
+
+    // Check that we have the right number of operands for rms_norm
+    if (op.getOperands().size() != 4)
+      return rewriter.notifyMatchFailure(op, "rms_norm expects 4 operands");
+
+    // The first operand should be the result of (rms_norm(input) +
+    // residual_input)
+    Value firstOperand = op.getOperand(0);
+
+    // Look for an add operation
+    auto addOp = firstOperand.getDefiningOp<MO::AddOp>();
+    if (!addOp)
+      return rewriter.notifyMatchFailure(
+          op, "first operand not from add operation");
+
+    // One of the add operands should be the original input
+    if (addOp.getOperands().size() != 2)
+      return rewriter.notifyMatchFailure(op,
+                                         "add operation expects 2 operands");
+
+    Value innerRmsNormResult = addOp.getOperand(0);
+    Value residualInput = addOp.getOperand(1);
+    auto innerRmsNorm = innerRmsNormResult.getDefiningOp<MO::CustomOp>();
+    if (!innerRmsNorm || innerRmsNorm.getSymbol() != "rms_norm") {
+      innerRmsNormResult = addOp.getOperand(1);
+      residualInput = addOp.getOperand(0);
+      innerRmsNorm = innerRmsNormResult.getDefiningOp<MO::CustomOp>();
+      if (!innerRmsNorm || innerRmsNorm.getSymbol() != "rms_norm")
+        return rewriter.notifyMatchFailure(op, "inner rms_norm not found");
+    }
+
+    // Check that we have the right number of operands for inner rms_norm
+    if (innerRmsNorm.getOperands().size() != 4)
+      return rewriter.notifyMatchFailure(op,
+                                         "inner rms_norm expects 4 operands");
+
+    // Now we have the pattern: rms_norm(rms_norm(input, gamma1, eps1,
+    // weight_offset1) + residual_input) We need to extract the parameters from
+    // both rms_norm operations
+    Value originalInput = innerRmsNorm.getOperand(0);
+
+    // Extract parameters from outer rms_norm (gamma2, eps2, weight_offset2)
+    Value gamma2 = op.getOperand(1);
+    Value eps2 = op.getOperand(2);
+    Value weightOffset2 = op.getOperand(3);
+
+    // Extract parameters from inner rms_norm (gamma1, eps1, weight_offset1)
+    Value gamma1 = innerRmsNorm.getOperand(1);
+    Value eps1 = innerRmsNorm.getOperand(2);
+    Value weightOffset1 = innerRmsNorm.getOperand(3);
+
+    // Check device consistency
+    if (!rewriter.addOps({addOp, innerRmsNorm})) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
+    // Create the fused operation
+    SmallVector<Value> fusedOperands = {
+        originalInput, // input
+        residualInput, // residual_input
+        gamma1,        // gamma1
+        gamma2,        // gamma2
+        eps1,          // epsilon1
+        eps2,          // epsilon2
+        weightOffset1, // weight_offset1
+        weightOffset2  // weight_offset2
+    };
+
+    // The fused operation returns two outputs: [output, intermediate]
+    // where output = rms_norm(rms_norm(input) + residual)
+    // and intermediate = rms_norm(input) + residual
+    SmallVector<Type> fusedResultTypes = {
+        op.getResultTypes()[0],    // output type (same as outer rms_norm)
+        addOp->getResultTypes()[0] // intermediate type (same as add result)
+    };
+
+    auto fusedOp = rewriter.create<MO::CustomOp>(
+        op.getLoc(), fusedResultTypes, fusedOperands,
+        StringAttr::get(getContext(), "rms_norm_fused_residual_add"),
+        op.getDevice(), op.getParameters(), op.getOutputParamDecls());
+
+    // Replace the outer rms_norm with the first output of the fused operation
+    rewriter.replaceOp(op, fusedOp.getResult(0));
+
+    // Replace all consumers of the add operation with the second output of the
+    // fused operation
+    rewriter.replaceAllUsesWith(addOp.getResult(), fusedOp.getResult(1));
+
+    return mlir::success();
+  }
+};
+
 } // namespace
 
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
@@ -2630,7 +2737,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     patterns.add<GatherSumPattern, MatmulTranspBPattern, ConcatZeroAxisPattern,
                  ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
-                 LayerNormPattern>(ctx);
+                 LayerNormPattern, RMSNormFusedResidualAddPattern>(ctx);
 
     patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern>(
         ctx, targetDeviceRef);
