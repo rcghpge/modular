@@ -498,7 +498,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
   // Run for a fixed amount of iterations. This avoids unexpected infinite
   // recursion within a graphop.
   size_t iter = 0;
-  size_t boundForMaximumIterations = 100000;
+  size_t boundForMaximumIterations = 1000000;
   for (; iter < boundForMaximumIterations; iter++) {
     if (workQueue.empty())
       break;
