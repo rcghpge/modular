@@ -1857,10 +1857,102 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
   return success();
 }
 
+// level-wise topological sort
+static LogicalResult levelwiseTopologicalSort(Block *block) {
+  llvm::iterator_range<Block::iterator> ops = *block;
+  // If the block has a terminator, we need to exclude it from the sort.
+  if (block->back().hasTrait<OpTrait::IsTerminator>())
+    ops = block->without_terminator();
+
+  if (ops.empty())
+    return success();
+
+  llvm::SmallVector<Operation *> allOps;
+  llvm::DenseMap<Operation *, unsigned> inDegree;
+  llvm::DenseMap<Operation *, llvm::SmallVector<Operation *>> dependents;
+
+  // Collect all operations and find their dependents
+  for (Operation &op : ops) {
+    allOps.push_back(&op);
+    inDegree[&op] = 0;
+  }
+
+  for (Operation *op : allOps) {
+    llvm::DenseSet<Operation *> dependencies;
+
+    // Walk through operands of all nested operations to find dependencies
+    op->walk([&](Operation *nestedOp) {
+      for (Value operand : nestedOp->getOperands()) {
+        Operation *parent = operand.getDefiningOp();
+        if (!parent)
+          continue; // Block argument
+
+        while (parent->getParentOp() &&
+               parent->getParentOp() != block->getParentOp()) {
+          parent = parent->getParentOp();
+        }
+
+        // Only consider dependencies within the same block
+        if (parent->getBlock() == block && parent != op) {
+          dependencies.insert(parent);
+        }
+      }
+    });
+
+    // Update in-degrees and dependent lists
+    for (Operation *dep : dependencies) {
+      dependents[dep].push_back(op);
+      inDegree[op]++;
+    }
+  }
+
+  Block::iterator nextScheduledOp = block->begin();
+  unsigned sortedOps = 0;
+
+  // Initialize queue with operations that have no dependencies
+  llvm::SmallVector<Operation *> readyQueue;
+  for (Operation *op : allOps) {
+    if (inDegree[op] == 0) {
+      readyQueue.push_back(op);
+    }
+  }
+
+  // Process operations level by level
+  while (!readyQueue.empty()) {
+    llvm::SmallVector<Operation *> currentLevel = std::move(readyQueue);
+    readyQueue.clear();
+
+    // Schedule all operations at current level
+    for (Operation *op : currentLevel) {
+      sortedOps++;
+      op->moveBefore(block, nextScheduledOp);
+
+      if (op == &*nextScheduledOp) {
+        ++nextScheduledOp;
+      }
+
+      // Update in-degrees of dependent operations
+      for (Operation *dependent : dependents[op]) {
+        inDegree[dependent]--;
+        if (inDegree[dependent] == 0) {
+          readyQueue.push_back(dependent);
+        }
+      }
+    }
+  }
+
+  // Check if all operations were scheduled
+  ASSERT_STREAM(sortedOps == allOps.size(),
+                << "Failed to sort the MO operations topologically.");
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerBlock(Block *block) {
   // Ensure the block is sorted with operands to operations appearing before
   // their use.
-  mlir::sortTopologically(block);
+  if (failed(levelwiseTopologicalSort(block)))
+    return failure();
 
   for (Operation &op : *block) {
     if (llvm::isa_and_nonnull<mlir::index::IndexDialect>(op.getDialect())) {
