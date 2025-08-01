@@ -103,6 +103,11 @@ public:
   /// for registration.
   KGEN::GeneratorOp getRegisteredMojoOutlinedFunctionFor(StringRef name) const;
 
+  /// Looks up a registered elementwise function using the name that was used
+  /// for registration.
+  KGEN::GeneratorOp
+  getRegisteredMojoElementwiseFunctionFor(StringRef name) const;
+
   /// Looks up the Mojo symbol of a registered, labeled kernel function
   /// using the name that was used for registration and the function label.
   KGEN::GeneratorOp getRegisteredMojoFunctionFor(StringRef name,

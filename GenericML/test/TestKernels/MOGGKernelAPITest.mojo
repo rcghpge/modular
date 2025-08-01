@@ -406,6 +406,15 @@ struct PrintOutputShapeStridesFusedOp:
 @compiler.register("imposter_add_elementwise")
 struct AddElementwise:
     @staticmethod
+    fn elementwise[
+        dtype: DType,
+        width: Int,
+    ](
+        lhs: SIMD[dtype, width], rhs: SIMD[dtype, width], _idx: IndexList
+    ) -> SIMD[dtype, width]:
+        return lhs + rhs
+
+    @staticmethod
     fn execute[
         target: StaticString,
     ](
@@ -414,9 +423,11 @@ struct AddElementwise:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
-            return rebind[SIMD[z.dtype, width]](
-                x._fused_load[width](idx)
-            ) + rebind[SIMD[z.dtype, width]](y._fused_load[width](idx))
+            return Self.elementwise(
+                rebind[SIMD[z.dtype, width]](x._fused_load[width](idx)),
+                rebind[SIMD[z.dtype, width]](y._fused_load[width](idx)),
+                idx,
+            )
 
         foreach[func](z)
 
@@ -434,12 +445,7 @@ struct AddFuseLHS:
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y.load[width](idx))
 
-        # Wrapper to hide the foreach call from MOGGPreElab.
-        # Otherwise it would still be detected as an elementwise kernel.
-        fn foo() raises:
-            foreach[func](z)
-
-        foo()
+        foreach[func](z)
 
 
 @compiler.register("imposter_add_fuse_inputs")
@@ -457,12 +463,7 @@ struct AddFuseInputs:
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y._fused_load[width](idx))
 
-        # Wrapper to hide the foreach call from MOGGPreElab.
-        # Otherwise it would still be detected as an elementwise kernel.
-        fn foo() raises:
-            foreach[func](z)
-
-        foo()
+        foreach[func](z)
 
 
 # c = a @ b, should support CPU and GPU
@@ -594,12 +595,7 @@ struct VariadicAdd:
 
             return acc
 
-        # Wrapper to hide the foreach call from MOGGPreElab.
-        # Otherwise it would still be detected as an elementwise kernel.
-        fn foo() raises:
-            foreach[func](output)
-
-        foo()
+        foreach[func](output)
 
 
 @compiler.register("transpose_2d")
@@ -957,23 +953,13 @@ struct VariadicDeviceContext:
 @compiler.register("imposter_cast_elementwise")
 struct CastElementwise:
     @staticmethod
-    fn execute[
-        target: StaticString,
-    ](
-        y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.dtype, width]:
-            return rebind[SIMD[y.dtype, width]](
-                x._fused_load[width](idx).cast[y.dtype]()
-            )
+    fn elementwise[
+        dtype: DType,
+        out_dtype: DType,
+        width: Int,
+    ](x: SIMD[dtype, width], _idx: IndexList) -> SIMD[out_dtype, width]:
+        return x.cast[out_dtype]()
 
-        foreach[func, target=target](y, ctx)
-
-
-@compiler.register("print_vector_size")
-struct PrintVectorSize:
     @staticmethod
     fn execute[
         target: StaticString,
@@ -983,19 +969,45 @@ struct PrintVectorSize:
         @parameter
         @always_inline
         fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.dtype, width]:
-            if idx[0] == 0:
-                # Only print once
-                # We can't directly print `width` as it's HW-dependent.
-                # Instead compare it with the width of i8 / f32.
-                print(
-                    "width == simdwidthof[DType.int8]():",
-                    width == simdwidthof[DType.int8](),
-                )
-                print(
-                    "width == simdwidthof[DType.float32]():",
-                    width == simdwidthof[DType.float32](),
-                )
-            return rebind[SIMD[y.dtype, width]](x._fused_load[width](idx))
+            return Self.elementwise[out_dtype = y.dtype](
+                x._fused_load[width](idx), idx
+            )
+
+        foreach[func, target=target](y, ctx)
+
+
+@compiler.register("print_vector_size")
+struct PrintVectorSize:
+    @staticmethod
+    fn elementwise[
+        dtype: DType,
+        width: Int,
+    ](x: SIMD[dtype, width], idx: IndexList) -> SIMD[dtype, width]:
+        if idx[0] == 0:
+            # Only print once
+            # We can't directly print `width` as it's HW-dependent.
+            # Instead compare it with the width of i8 / f32.
+            print(
+                "width == simdwidthof[DType.int8]():",
+                width == simdwidthof[DType.int8](),
+            )
+            print(
+                "width == simdwidthof[DType.float32]():",
+                width == simdwidthof[DType.float32](),
+            )
+        return x
+
+    @staticmethod
+    fn execute[
+        target: StaticString,
+    ](
+        y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
+    ) capturing raises:
+        @parameter
+        @always_inline
+        fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.dtype, width]:
+            var val = rebind[SIMD[y.dtype, width]](x._fused_load[width](idx))
+            return Self.elementwise(val, idx)
 
         foreach[func, target=target](y, ctx)
 

@@ -478,6 +478,11 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
     registerKernelFunction(outlinedFrom,
                            KGEN::MOGGPreElab::OUTLINED_ELEMW_ATTR);
   }
+  if (auto name = generator->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel)) {
+    registerKernelFunction(name,
+                           KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
+  }
   return success();
 }
 
@@ -550,6 +555,12 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoOutlinedFunctionFor(
     StringRef name) const {
   return getRegisteredMojoFunctionFor(name,
                                       KGEN::MOGGPreElab::OUTLINED_ELEMW_ATTR);
+}
+
+KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoElementwiseFunctionFor(
+    StringRef name) const {
+  return getRegisteredMojoFunctionFor(
+      name, KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
 }
 
 //===----------------------------------------------------------------------===//
