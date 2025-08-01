@@ -3,13 +3,13 @@
 // CHECK-LABEL: mo.graph @input_output_fusion
 // CHECK: mogg.experimental.kernel
 // CHECK: mogg.bind {{.*}} elemwise_lambda
-// CHECK: mogg.call.outlined["mo.ceil"]
+// CHECK: mogg.call.elementwise["mo.ceil"]
 // CHECK: mogg.call.foreach
 // CHECK: mogg.experimental.kernel
 // CHECK: mogg.call.execute["test_custom_op"]
 // CHECK: mogg.experimental.kernel
 // CHECK: mogg.bind {{.*}} elemwise_lambda
-// CHECK: mogg.call.outlined["mo.relu"]
+// CHECK: mogg.call.elementwise["mo.relu"]
 // CHECK: mogg.call.foreach
 
 mo.graph @input_output_fusion(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {

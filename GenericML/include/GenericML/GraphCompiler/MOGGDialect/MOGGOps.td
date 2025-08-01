@@ -242,21 +242,20 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", []>  {
 }
 
 
-def MOGG_CallOutlinedOp : MOGG_Op<"call.outlined", [
+def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
     Pure,
     HasParent<"MOGG::BindLambdaOp">]> {
-  let summary = "Call the registered `_OUTLINED` function for a particular kernel";
+  let summary = "Call the registered `::elementwise` function for a particular kernel";
   let description = [{
-    This represents a call to outlined function (extracted by the graph compiler
-    during pre-elaboration).
+    This represents a call to the `elementwise` method.
 
     Example:
     ```mlir
-    mogg.call.outlined["mo.add"](...)
+    mogg.call.elementwise["mo.add"](...)
 
     // Lowered to
-    kgen.call "Add::execute_OUTLINED"(...)
+    kgen.call "Add::elementwise"(...)
     ```
   }];
   let arguments = (ins StrAttr: $kernelName, Variadic<AnyType>: $inputs);
@@ -434,7 +433,7 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">]
      %a = bind (%out) output_lambda (%out_v, %indices) {
        // The unfused lhs need a concrete tensor load.
        %lhs = tensor.load(%add_lhs, %indices);
-       %fused_add = mogg.call.outlined["mo.add"](%lhs, %out_v)
+       %fused_add = mogg.call.elementwise["mo.add"](%lhs, %out_v)
        mogg.output %fused_add, %indices
      }
      ```

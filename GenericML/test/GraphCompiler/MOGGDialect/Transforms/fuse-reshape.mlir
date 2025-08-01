@@ -15,7 +15,7 @@ mo.graph @basicReshapeFuse(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5
 // CHECK: %[[NEW_1:.*]] = mogg.call.view["mo.static.reshape"] (%[[ARG1]], %[[ARR]])
 
 // CHECK: mogg.bind (%[[NEW_0]], %[[NEW_1]]) elemwise_lambda
-// CHECK: mogg.call.outlined["mo.add"]
+// CHECK: mogg.call.elementwise["mo.add"]
 
 
 mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tensor<[5, 10], ui32>) -> (!mo.tensor<[N, 5, L], ui32>) {
@@ -33,7 +33,7 @@ mo.graph @basicReshapeDyn<N, L>(%arg0 : !mo.tensor<[50], ui32>, %arg1 : !mo.tens
 // CHECK: %[[NEW_1:.*]] = mogg.call.view["mo.static.reshape"] (%[[ARG1]], %[[ARR]])
 
 // CHECK: mogg.bind (%[[NEW_0]], %[[NEW_1]]) elemwise_lambda
-// CHECK: mogg.call.outlined["mo.add"]
+// CHECK: mogg.call.elementwise["mo.add"]
 
 
 

@@ -42,7 +42,7 @@ template <typename KernelTy>
 static bool containsMutableStore(KernelTy kernel) {
   StringRef summary = kernel.getSummaryAttr().strref();
   // TODO: we have a better way to check this under the new representation (by
-  // looking for call.outlined["mo.mutable.store"]).
+  // looking for call.elementwise["mo.mutable.store"]).
   return summary.contains(MO::MutableStoreOp::getOperationName());
 }
 

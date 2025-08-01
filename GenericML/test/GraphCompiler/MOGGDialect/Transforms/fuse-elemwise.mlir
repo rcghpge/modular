@@ -8,8 +8,8 @@ mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3],
 
 // CHECK-LABEL: mo.graph @simpleDoubleUse
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.add"]
+// CHECK: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.add"]
 // CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
@@ -24,12 +24,12 @@ mo.graph @rightmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<
 
 // CHECK-LABEL: mo.graph @rightmostTreeFusion
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sub"]
-// CHECK-NEXT: mogg.call.outlined["mo.add"]
+// CHECK: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
+// CHECK-NEXT: mogg.call.elementwise["mo.add"]
 // CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
@@ -44,12 +44,12 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 
 // CHECK-LABEL: mo.graph @leftmostTreeFusion
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sub"]
-// CHECK-NEXT: mogg.call.outlined["mo.add"]
+// CHECK: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
+// CHECK-NEXT: mogg.call.elementwise["mo.add"]
 // CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
@@ -71,19 +71,19 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 
 // CHECK-LABEL: mo.graph @multipleDiamondPattern
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.tanh"]
-// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sub"]
-// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.add"]
-// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.mul"]
-// CHECK-NEXT: mogg.call.outlined["mo.isqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.mul"]
+// CHECK: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.tanh"]
+// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
+// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.add"]
+// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.mul"]
+// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.mul"]
 // CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
@@ -112,21 +112,21 @@ mo.graph @inversePyramid(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[4, 3
 
 // CHECK-LABEL: mo.graph @inversePyramid
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.tanh"]
-// CHECK-NEXT: mogg.call.outlined["mo.div"]
-// CHECK-NEXT: mogg.call.outlined["mo.sub"]
-// CHECK-NEXT: mogg.call.outlined["mo.mul"]
-// CHECK-NEXT: mogg.call.outlined["mo.relu"]
-// CHECK-NEXT: mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT: mogg.call.outlined["mo.relu"]
-// CHECK-NEXT:  mogg.call.outlined["mo.sqrt"]
-// CHECK-NEXT:  mogg.call.outlined["mo.add"]
-// CHECK-NEXT:  mogg.call.outlined["mo.add"]
-// CHECK-NEXT:  mogg.call.outlined["mo.add"]
-// CHECK-NEXT:  mogg.call.outlined["mo.add"]
-// CHECK-NEXT:  mogg.call.outlined["mo.add"]
-// CHECK-NEXT:  mogg.call.outlined["mo.add"]
-// CHECK-NEXT:  mogg.call.outlined["mo.mul"]
+// CHECK: mogg.call.elementwise["mo.tanh"]
+// CHECK-NEXT: mogg.call.elementwise["mo.div"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sub"]
+// CHECK-NEXT: mogg.call.elementwise["mo.mul"]
+// CHECK-NEXT: mogg.call.elementwise["mo.relu"]
+// CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.relu"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.sqrt"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"]
+// CHECK-NEXT:  mogg.call.elementwise["mo.mul"]
 // CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @controlFlow<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[N, M], f32>) -> (!mo.tensor<[N, M], f32>) {
@@ -146,14 +146,14 @@ mo.graph @controlFlow<N, M>(%cond : !mo.tensor<[], bool>, %arg0: !mo.tensor<[N, 
 // Check all kernels are compiled but unfused.
 // CHECK-LABEL: mo.graph @controlFlow
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.relu"]
+// CHECK: mogg.call.elementwise["mo.relu"]
 // CHECK: mo.if
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.add"]
-// CHECK-NEXT: mogg.call.outlined["mo.tanh"]
+// CHECK: mogg.call.elementwise["mo.add"]
+// CHECK-NEXT: mogg.call.elementwise["mo.tanh"]
 // CHECK: else
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.mul"]
+// CHECK: mogg.call.elementwise["mo.mul"]
 
 
 mo.graph @noDuplicationOfCompute() -> (!mo.tensor<[5], f32>,!mo.tensor<[5], f32>) {
@@ -167,11 +167,11 @@ mo.graph @noDuplicationOfCompute() -> (!mo.tensor<[5], f32>,!mo.tensor<[5], f32>
 
 // CHECK-LABEL: mo.graph @noDuplicationOfCompute
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.add"]
+// CHECK: mogg.call.elementwise["mo.add"]
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.tanh"]
+// CHECK: mogg.call.elementwise["mo.tanh"]
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.relu"]
+// CHECK: mogg.call.elementwise["mo.relu"]
 // CHECK-NOT: mogg.experimental.kernel
 
 mo.graph @withDuplicationOfCompute() -> (!mo.tensor<[5], f32, gpu:0>,!mo.tensor<[5], f32, gpu:0>) {
@@ -185,9 +185,9 @@ mo.graph @withDuplicationOfCompute() -> (!mo.tensor<[5], f32, gpu:0>,!mo.tensor<
 
 // CHECK-LABEL: mo.graph @withDuplicationOfCompute
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.add"]
-// CHECK-NEXT: mogg.call.outlined["mo.tanh"]
+// CHECK: mogg.call.elementwise["mo.add"]
+// CHECK-NEXT: mogg.call.elementwise["mo.tanh"]
 // CHECK: mogg.experimental.kernel
-// CHECK: mogg.call.outlined["mo.add"]
-// CHECK-NEXT: mogg.call.outlined["mo.relu"]
+// CHECK: mogg.call.elementwise["mo.add"]
+// CHECK-NEXT: mogg.call.elementwise["mo.relu"]
 // CHECK-NOT: mogg.experimental.kernel

@@ -7,7 +7,7 @@
 // CHECK: mogg.experimental.kernel
 // CHECK: mogg.output_placeholders
 // CHECK: mogg.bind {{.*}} elemwise_lambda
-// CHECK: mogg.call.outlined["imposter_add_elementwise"]
+// CHECK: mogg.call.elementwise["imposter_add_elementwise"]
 // CHECK: mogg.call.foreach
 
 mo.graph @add_elemwise() -> !mo.tensor<[2, 3], f32> {

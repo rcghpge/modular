@@ -1,8 +1,8 @@
 // RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg --fuse-elementwise | FileCheck %s
 
 // CHECK:  mogg.bind
-// CHECK:    mogg.call.outlined["mo.add"]
-// CHECK:    mogg.call.outlined["mo.relu"]
+// CHECK:    mogg.call.elementwise["mo.add"]
+// CHECK:    mogg.call.elementwise["mo.relu"]
 // CHECK:    mogg.output
 // CHECK:  }
 // CHECK:  mogg.call.foreach

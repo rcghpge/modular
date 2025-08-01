@@ -194,9 +194,9 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
   outlinedArgs.push_back(bindOp.getIndicesArg());
 
   builder.setInsertionPointToStart(elemwiseBody);
-  auto callOutlined = builder.create<CallOutlinedOp>(
+  auto callElementwise = builder.create<CallElementwiseOp>(
       loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
-  builder.create<OutputOp>(loc, callOutlined->getResults());
+  builder.create<OutputOp>(loc, callElementwise->getResults());
   builder.setInsertionPointAfter(bindOp);
 
   SmallVector<Value> contextValue;
