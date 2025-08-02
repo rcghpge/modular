@@ -2,6 +2,7 @@
 :type: package
 :lang: python
 :wrapper_class: rst-index
+:source: max/nn/norm/
 
 transformer
 -----------
