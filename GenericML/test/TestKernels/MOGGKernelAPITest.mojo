@@ -58,6 +58,25 @@ fn export():
 # ===-----------------------------------------------------------------------===#
 
 
+@register_passable("trivial")
+struct MyCustomScalarRegTrivialSI32(Copyable, Movable):
+    var val: Int32
+
+    @implicit
+    fn __init__(out self, val: Int32):
+        print("MyCustomScalarRegTrivialSI32.__init__", val)
+        self.val = val
+
+
+@compiler.register("tensor_to_custom_scalar_si32_reg_trivial")
+struct OpaqueToCustomScalarSI32RegTrivial:
+    @staticmethod
+    fn execute(
+        x: InputTensor[dtype = DType.int32, rank=1]
+    ) -> MyCustomScalarRegTrivialSI32:
+        return MyCustomScalarRegTrivialSI32(x[0])
+
+
 @register_passable
 struct MyCustomScalarRegSI32(Copyable, Movable):
     var val: Int32
