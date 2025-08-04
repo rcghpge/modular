@@ -107,13 +107,15 @@ AsyncDataflowDependencies::strictUpwardsImpliesReadySet(Value lhs) const {
 
 void AsyncDataflowDependencies::simplify(ValueSet &values) const {
   // No need to wait for values which are always ready.
-  values.reset(getAlwaysReady());
+  // values.reset(getAlwaysReady());
+  values.intersectWithComplement(getAlwaysReady());
 
   // For every value...
   for (auto value : valueAnalysis.index->values(values)) {
     // No need to also wait for values which are known to be ready if the
     // current value is ready.
-    values.reset(strictUpwardsImpliesReadySet(value));
+    // values.reset(strictUpwardsImpliesReadySet(value));
+    values.intersectWithComplement(strictUpwardsImpliesReadySet(value));
   }
 }
 
@@ -766,18 +768,16 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
   // unit -- it is not sound to just expand candidates by the above equivalence
   // and filter each one.
   ValueSet result = valueAnalysis.index->emptySet();
-  for (auto candidateItr = candidates.set_bits_begin(),
-            endCandidateItr = candidates.set_bits_end();
-       candidateItr != endCandidateItr; ++candidateItr) {
+  for (auto candidate : candidates) {
     ValueSet maybeSameValues = valueAnalysis.index->emptySet();
-    for (auto equivItr = equivalence->findLeader(*candidateItr),
+    for (auto equivItr = equivalence->findLeader(candidate),
               endEquivItr = equivalence->member_end();
          equivItr != endEquivItr; ++equivItr)
       maybeSameValues.set(*equivItr);
     LLVM_DEBUG({
       llvm::dbgs() << "considering candidate ";
       valueAnalysis.index->printV(llvm::dbgs(),
-                                  valueAnalysis.index->getV(*candidateItr));
+                                  valueAnalysis.index->getV(candidate));
       llvm::dbgs() << " which is equivalent to ";
       valueAnalysis.index->printVs(
           llvm::dbgs(), valueAnalysis.index->setToVector(maybeSameValues));

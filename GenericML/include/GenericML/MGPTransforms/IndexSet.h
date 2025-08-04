@@ -12,6 +12,7 @@
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/EquivalenceClasses.h"
+#include "llvm/ADT/SparseBitVector.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace M::MGP {
@@ -83,7 +84,7 @@ public:
   // Representing sets of Vs using bitvectors.
   //===--------------------------------------------------------------------===//
 
-  using Set = llvm::BitVector;
+  using Set = llvm::SparseBitVector<>;
 
   /// Add v to set.
   void addToSet(Set &set, V v) const { set.set(getIndex(v)); }
@@ -95,31 +96,33 @@ public:
   bool setContains(const Set &set, V v) const { return set.test(getIndex(v)); }
 
   /// Returns empty set.
-  Set emptySet() const { return Set(allVs.size()); }
+  Set emptySet() const { return Set(); }
 
   /// Returns the set containing all Vs.
-  Set fullSet() const { return Set(allVs.size(), true); }
+  Set fullSet() const {
+    auto result = emptySet();
+    for (unsigned idx : llvm::seq(allVs.size()))
+      result.set(idx);
+    return result;
+  }
 
   /// Return set containing only v.
   Set unitSet(V v) const {
-    Set set(allVs.size());
+    Set set;
     set.set(getIndex(v));
     return set;
   }
 
   /// Iterate over the values in the index set.
   auto values(const Set &set) const {
-    return llvm::map_range(set.set_bits(),
-                           [this](size_t index) { return allVs[index]; });
+    SmallVector<V> result;
+    for (auto idx : set)
+      result.push_back(allVs[idx]);
+    return result;
   }
 
   /// Returns set as vector of Vs. Entries will always be in index order.
-  SmallVector<V> setToVector(const Set &set) const {
-    SmallVector<V> result;
-    result.reserve(set.count());
-    llvm::append_range(result, values(set));
-    return result;
-  }
+  SmallVector<V> setToVector(const Set &set) const { return values(set); }
 
   //===--------------------------------------------------------------------===//
   // Representing equivalence relations over Vs using indexes.
@@ -204,8 +207,8 @@ public:
   /// Returns copy of set closed under the given equivalence.
   [[nodiscard]] Set closeSetUnderEquivalence(const Equivalence &equivalence,
                                              const Set &set) const {
-    Set result(set.size());
-    for (auto index : set.set_bits()) {
+    Set result;
+    for (auto index : set) {
       for (auto equivItr = equivalence.findLeader(index);
            equivItr != equivalence.member_end(); ++equivItr)
         result.set(*equivItr);
@@ -216,8 +219,8 @@ public:
   /// Returns copy of set using only canonical Vs w.r.t. equivalence.
   [[nodiscard]] Set toCanonicalForm(const Equivalence &equivalence,
                                     const Set &set) const {
-    Set result(set.size());
-    for (auto index : set.set_bits())
+    Set result;
+    for (auto index : set)
       result.set(equivalence.getLeaderValue(index));
     return result;
   }

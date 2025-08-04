@@ -18,9 +18,12 @@ void M::MGP::visitValues(IndexSet<Value> &indexSet, Block *block) {
   for (Value arg : block->getArguments())
     indexSet.addV(arg);
   for (Operation &op : block->getOperations()) {
-    if (isa<GRT::GRTControlFlowInterface>(op))
+    if (isa<GRT::GRTControlFlowInterface>(op)) {
+      ASSERT_STREAM(op.hasTrait<mlir::OpTrait::IsIsolatedFromAbove>(),
+                    "can only descend into isolated from above regions");
       for (Region &region : op.getRegions())
         visitValues(indexSet, &region.front());
+    }
     for (Value result : op.getResults())
       indexSet.addV(result);
   }
