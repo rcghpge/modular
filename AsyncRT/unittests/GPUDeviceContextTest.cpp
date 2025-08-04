@@ -18,6 +18,19 @@ namespace M::AsyncRT {
 // Test fixture is needed to enable testing of private methods in DeviceContext.
 class GPUDeviceContextTest : public ::testing::Test {
 protected:
+  static void SetUpTestSuite() {
+    // Print information about the device to make it easier to debug the
+    // environment.
+    ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
+    if (device.isError())
+      // Have the tests deal with device errors.
+      return;
+
+    std::cerr << "##### GPUDeviceContextTest running on "
+              << Device::numberOfDevices(Device::gpuAPI) << " x "
+              << (*device)->name() << "\n";
+  }
+
   void SetUp() override {
     // No common setup needed.
   }

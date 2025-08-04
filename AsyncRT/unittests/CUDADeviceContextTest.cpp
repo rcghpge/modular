@@ -94,6 +94,19 @@ $L__BB0_2:
 
 class CUDADeviceContextTest : public ::testing::Test {
 protected:
+  static void SetUpTestSuite() {
+    // Print information about the device to make it easier to debug the
+    // environment.
+    ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
+    if (device.isError())
+      // Have the tests deal with device errors.
+      return;
+
+    std::cerr << "##### CUDADeviceContextTest running on "
+              << Device::numberOfDevices(Device::gpuAPI) << " x "
+              << (*device)->name() << "\n";
+  }
+
   void SetUp() override {
     // Allocate the GPU device for this platform. Then check that we are running
     // on a CUDA enabled platform, if not skip the CUDA specific tests in this
