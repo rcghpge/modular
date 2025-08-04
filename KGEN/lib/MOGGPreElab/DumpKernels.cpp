@@ -40,11 +40,11 @@ public:
       if (isa<LIT::FnOp>(execute)) {
         llvm::errs() << MojoKernelAdaptor<LIT::FnOp>(
             structName.strref(), dyn_cast_or_null<LIT::FnOp>(execute),
-            dyn_cast_or_null<LIT::FnOp>(shape));
+            dyn_cast_or_null<LIT::FnOp>(shape), nullptr);
       } else {
         llvm::errs() << MojoKernelAdaptor<KGEN::GeneratorOp>(
             structName.strref(), dyn_cast_or_null<KGEN::GeneratorOp>(execute),
-            dyn_cast_or_null<KGEN::GeneratorOp>(shape));
+            dyn_cast_or_null<KGEN::GeneratorOp>(shape), nullptr);
       }
       llvm::errs() << "\n";
     }

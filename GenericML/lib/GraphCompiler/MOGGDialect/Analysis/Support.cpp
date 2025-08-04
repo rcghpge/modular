@@ -95,11 +95,21 @@ ErrorOr<KernelAdaptor>
 getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                      Operation *op) {
   // Find the kernel from the library.
-  auto maybeExecuteFunc = getMojoKernelTarget(mojoLibraryAnalysis, op);
-  if (maybeExecuteFunc.isError())
+  MojoOperationInfo info = getMojoOperationInfo(op);
+  ErrorOr<KGEN::GeneratorOp> maybeExecuteFunc = getMojoKernelTarget(
+      mojoLibraryAnalysis, info.operationName, info.functionLabel);
+  KGEN::GeneratorOp executeFunc =
+      maybeExecuteFunc.isError() ? nullptr : *maybeExecuteFunc;
+  KGEN::GeneratorOp elemtwiseFunc =
+      mojoLibraryAnalysis.getRegisteredMojoElementwiseFunctionFor(
+          info.operationName);
+  // We either need an execute or an elementwise function.
+  if (!executeFunc && !elemtwiseFunc) {
     return maybeExecuteFunc.takeError();
+  }
 
-  return KernelAdaptor("", /*execute=*/*maybeExecuteFunc, /*shape=*/nullptr);
+  return KernelAdaptor("", /*execute=*/executeFunc, /*shape=*/nullptr,
+                       /*elementwise=*/elemtwiseFunc);
 }
 
 } // namespace M::MOGG

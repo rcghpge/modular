@@ -464,17 +464,8 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   if (forwardedParametersOr.isError())
     return forwardedParametersOr.takeError();
 
-  // This is a generic way of catching mo.range. At this time, we do not support
-  // elementwise kernels that do not have at least one fusible input tensor.
-  // Until we amend the elementwise kernel identification, this check must be
-  // maintained.
-  bool hasAtLeastOneFusedInputTensor = llvm::any_of(
-      adaptor.executeFunction->inputArguments,
-      [](const auto &operand) { return operand.isFusedTensorType(); });
-
   ErrorOr<KernelCallInterface> kernelCallingOperation = nullptr;
-  if (adaptor.executeFunction->isElementwise() &&
-      hasAtLeastOneFusedInputTensor) {
+  if (adaptor.isElementwise()) {
     kernelCallingOperation =
         lowerToElementwiseKernel(kernelOp, operandMapping, adaptor);
   } else if (adaptor.executeFunction->isView()) {

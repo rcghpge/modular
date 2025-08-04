@@ -433,23 +433,6 @@ struct AddElementwise:
     ) -> SIMD[dtype, width]:
         return lhs + rhs
 
-    @staticmethod
-    fn execute[
-        target: StaticString,
-    ](
-        z: FusedOutputTensor, x: FusedInputTensor, y: FusedInputTensor
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
-            return Self.elementwise(
-                rebind[SIMD[z.dtype, width]](x._fused_load[width](idx)),
-                rebind[SIMD[z.dtype, width]](y._fused_load[width](idx)),
-                idx,
-            )
-
-        foreach[func](z)
-
 
 @compiler.register("imposter_add_lhs")
 struct AddFuseLHS:
@@ -979,21 +962,6 @@ struct CastElementwise:
     ](x: SIMD[dtype, width], _idx: IndexList) -> SIMD[out_dtype, width]:
         return x.cast[out_dtype]()
 
-    @staticmethod
-    fn execute[
-        target: StaticString,
-    ](
-        y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.dtype, width]:
-            return Self.elementwise[out_dtype = y.dtype](
-                x._fused_load[width](idx), idx
-            )
-
-        foreach[func, target=target](y, ctx)
-
 
 @compiler.register("print_vector_size")
 struct PrintVectorSize:
@@ -1015,20 +983,6 @@ struct PrintVectorSize:
                 width == simdwidthof[DType.float32](),
             )
         return x
-
-    @staticmethod
-    fn execute[
-        target: StaticString,
-    ](
-        y: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContextPtr
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn func[width: Int](idx: IndexList[y.rank]) -> SIMD[y.dtype, width]:
-            var val = rebind[SIMD[y.dtype, width]](x._fused_load[width](idx))
-            return Self.elementwise(val, idx)
-
-        foreach[func, target=target](y, ctx)
 
 
 @compiler.register("tensor_opaque_tensor_kernel")

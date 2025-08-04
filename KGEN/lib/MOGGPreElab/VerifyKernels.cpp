@@ -386,7 +386,7 @@ public:
 
       MojoKernelAdaptor<LIT::FnOp> adaptor(
           structDeclOp.getSourceName().value().getName().strref(), execute,
-          shape);
+          shape, nullptr);
 
       if (setFlagIfFailed(failed, verifyAllOperandTypesAreSupported, adaptor)
               .failed())

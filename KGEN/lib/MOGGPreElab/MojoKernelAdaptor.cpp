@@ -12,7 +12,8 @@ namespace M::KGEN::MOGGPreElab {
 
 MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
     std::optional<uint64_t> positionInFunction, StringAttr typeName,
-    ArrayAttr argumentSourceNames, ArrayAttr argsIoSpecs, bool isByRefResult) {
+    ArrayAttr argumentSourceNames, ArrayAttr argsIoSpecs, bool isByRefResult,
+    bool promoteSIMDToFusedTensor) {
   if (positionInFunction.has_value()) {
     sourceDescriptor = MojoKernelOperandSourceDescriptor{
         cast<StringAttr>(argumentSourceNames[*positionInFunction]).strref(),
@@ -21,7 +22,9 @@ MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
 
   auto getIOSpec = [&]() -> KGEN::MOGGPreElab::IOSpec {
     // Default to InputTensor if no spec info available.
-    auto defaultSpec = KGEN::MOGGPreElab::IOSpec::InputTensor;
+    auto defaultSpec = promoteSIMDToFusedTensor
+                           ? KGEN::MOGGPreElab::IOSpec::FusedInputTensor
+                           : KGEN::MOGGPreElab::IOSpec::InputTensor;
     if (!positionInFunction.has_value() || argsIoSpecs == nullptr ||
         *positionInFunction >= argsIoSpecs.size())
       return defaultSpec;
@@ -55,8 +58,13 @@ MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
             })
       .Case(ScalarOperandAdaptor::typeName,
             [&]() {
-              underlyingType.emplace<ScalarOperandAdaptor>(
-                  ScalarOperandAdaptor{});
+              if (promoteSIMDToFusedTensor) {
+                underlyingType.emplace<TensorOperandAdaptor>(
+                    TensorOperandAdaptor{getIOSpec()});
+              } else {
+                underlyingType.emplace<ScalarOperandAdaptor>(
+                    ScalarOperandAdaptor{});
+              }
             })
       .Case(DevicesContextPtrOperandAdaptor::typeName,
             [&]() {
@@ -72,6 +80,16 @@ MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
         underlyingType.emplace<OpaqueOperandAdaptor>(
             OpaqueOperandAdaptor{typeName});
       })();
+}
+
+MojoKernelOperandAdaptor
+MojoKernelOperandAdaptor::buildElementwiseOutputOperand() {
+  MojoKernelOperandAdaptor res;
+  res.sourceDescriptor = MojoKernelOperandSourceDescriptor{
+      "out", /*position=*/0, /*isByRefResult=*/false};
+  res.underlyingType.emplace<TensorOperandAdaptor>(
+      TensorOperandAdaptor{KGEN::MOGGPreElab::IOSpec::FusedOutputTensor});
+  return res;
 }
 
 } // namespace M::KGEN::MOGGPreElab
