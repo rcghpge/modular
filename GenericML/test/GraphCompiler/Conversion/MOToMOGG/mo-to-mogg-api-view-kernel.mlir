@@ -1,6 +1,6 @@
-// RUN: mo-opt %s --mo-to-mogg | FileCheck %s
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
-// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg
+
+// RUN: mo-opt %s --mo-to-mogg | FileCheck %s
 
 // Check mo-to-mogg correctly lowers a view KernelAPI
 

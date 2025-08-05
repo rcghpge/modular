@@ -1,6 +1,5 @@
 // RUN: mo-opt %s --infer-layouts --mo-to-mogg | FileCheck %s
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
-// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --infer-layouts --mo-to-mogg
 
 mo.graph @conv_const_params(
   %input: !mo.tensor<[4, 3, 3, 1], f32>,

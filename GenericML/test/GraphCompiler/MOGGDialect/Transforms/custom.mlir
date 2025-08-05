@@ -1,4 +1,4 @@
-// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-prologues-epilogues --cse | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-prologues-epilogues --cse | FileCheck %s
 
 // CHECK-LABEL: mo.graph @input_output_fusion
 // CHECK: mogg.experimental.kernel

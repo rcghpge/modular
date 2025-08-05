@@ -1,4 +1,4 @@
-// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg --fuse-elementwise | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --fuse-elementwise | FileCheck %s
 
 // CHECK:  mogg.bind
 // CHECK:    mogg.call.elementwise["mo.add"]

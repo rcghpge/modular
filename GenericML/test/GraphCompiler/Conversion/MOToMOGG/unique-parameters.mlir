@@ -1,5 +1,4 @@
 // RUN: mo-opt -mo-to-mogg %s | FileCheck %s
-// RUN: MOGG_USE_EXP_KERNELS=1 mo-opt %s --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
 
 // Expecting `head_dim` not to collide with mo.custom's `head_dim` attribute.
 mo.graph @create_collection<num_blocks, num_layers, max_seq_len, num_kv_heads, head_dim, batch_size, steps_remaining>(%arg0: !mo.tensor<[num_blocks, 2, num_layers, max_seq_len, num_kv_heads, head_dim], f32>, %arg1: !mo.tensor<[batch_size], ui32>, %arg2: !mo.tensor<[batch_size], ui32>, %arg3: !mo.tensor<[steps_remaining, 2], ui32>) -> !mo.opaque<"ContinuousBatchingKVCacheCollection"> attributes {argument_names = ["input0", "input1", "input2", "input3"], result_names = ["output0"]} {
