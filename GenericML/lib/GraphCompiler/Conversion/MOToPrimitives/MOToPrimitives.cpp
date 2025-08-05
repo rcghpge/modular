@@ -1878,10 +1878,10 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
   }
 
   for (Operation *op : allOps) {
-    llvm::DenseSet<Operation *> dependencies;
+    llvm::SetVector<Operation *> dependencies;
 
     // Walk through operands of all nested operations to find dependencies
-    op->walk([&](Operation *nestedOp) {
+    op->walk</*Order=*/mlir::WalkOrder::PreOrder>([&](Operation *nestedOp) {
       for (Value operand : nestedOp->getOperands()) {
         Operation *parent = operand.getDefiningOp();
         if (!parent)
@@ -1897,6 +1897,13 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
           dependencies.insert(parent);
         }
       }
+
+      // If the operation IsIsolatedFromAbove, then we can skip any child
+      // regions since we know they cannot refer to values defined outside
+      // their bodies.
+      if (nestedOp->hasTrait<mlir::OpTrait::IsIsolatedFromAbove>())
+        return WalkResult::skip();
+      return WalkResult::advance();
     });
 
     // Update in-degrees and dependent lists
