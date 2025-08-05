@@ -5,29 +5,20 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-import multiprocessing
+from typing import Any
 
-import pytest
-import zmq
 from max.interfaces import GenerationStatus, TextGenerationOutput
-from max.serve.process_control import ProcessControl
 from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
     TokenGenerationSchedulerConfig,
 )
 
 
-@pytest.fixture
-def zmq_ctx():
-    return zmq.Context(io_threads=2)
-
-
-def test_stream_responses_to_frontend(benchmark, zmq_ctx) -> None:  # noqa: ANN001
+def test_stream_responses_to_frontend(benchmark: Any) -> None:
     """Benchmark stream_responses_to_frontend performance."""
     batch_size_to_test = 512
 
     # Create a minimal scheduler instance for testing
-    ctx = multiprocessing.get_context()
     # the values below are arbitrary, we are not using them in this test
     config = TokenGenerationSchedulerConfig(
         max_batch_size_tg=4,
@@ -37,7 +28,6 @@ def test_stream_responses_to_frontend(benchmark, zmq_ctx) -> None:  # noqa: ANN0
     )
 
     scheduler = TokenGenerationScheduler(
-        process_control=ProcessControl(ctx=ctx, name="test"),
         scheduler_config=config,
         pipeline=None,  # type: ignore
     )
