@@ -379,7 +379,8 @@ MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
     ASSERT_STREAM(oldName == newName, "no renaming should occur at this point");
 
     if (auto gen = dyn_cast<KGEN::GeneratorOp>(op.getOperation())) {
-      if (auto updateErr = updateRegisteredKernelsMap(gen))
+      if (auto updateErr = updateRegisteredKernelsMap(
+              gen, /*isGeneratorFromStandardLibrary*/ false))
         return updateErr;
     }
   }
@@ -387,8 +388,16 @@ MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
   return success();
 }
 
-ErrorOrSuccess
-MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
+// If the generator is from the standard library and it has a default priority
+// level, then we want to give it a higher priority, because it should be used
+// instead of a pre-built kernel library. This allows the user to modify the
+// open source standard library code and have it used by the graph compiler.
+static bool shouldIncreasePriority(bool isStandardLibrary, int priority) {
+  return isStandardLibrary && priority == -1;
+}
+
+ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
+    KGEN::GeneratorOp generator, bool isGeneratorFromStandardLibrary) {
   auto registerKernelFunction = [&](StringRef name, StringRef label,
                                     bool override = true) {
     auto [it, _] = registeredKernelFunctionSymbols.try_emplace(
@@ -401,6 +410,9 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
 
   auto registerKernelCandidate = [&](StringRef name,
                                      int64_t priority) -> ErrorOrSuccess {
+    if (shouldIncreasePriority(isGeneratorFromStandardLibrary, priority))
+      priority = 1;
+
     auto [it, inserted] = registeredMojoKernelSymbol.try_emplace(
         name, KernelCandidate(generator, priority));
     if (inserted) {
@@ -420,23 +432,45 @@ MojoLibraryAnalysis::updateRegisteredKernelsMap(KGEN::GeneratorOp generator) {
 
     // Replace it if the new kernel has an higher priority.
     if (priority > oldPriority)
-      it->getValue().priority = priority;
+      it->getValue() = KernelCandidate(generator, priority);
     return success();
   };
 
   // Detect foreach kernel, treat it specially.
   if (generator->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_ELEMWISE_FOR_EACH)) {
-    if (foreachKernel)
-      return Error("more than one elemwise_foreach kernels detected");
-
-    foreachKernel = generator;
+    if (!foreachKernel) {
+      foreachKernel = generator;
+    } else if (foreachKernel.getLoc() == generator.getLoc()) {
+      return Error(
+          llvm::formatv("Multiple elementwise foreach kernels detected.\n"
+                        "  Previous: {0} at {1}\n"
+                        "  New: {2} at {3}",
+                        foreachKernel.getSymName(), foreachKernel.getLoc(),
+                        generator.getSymName(), generator.getLoc())
+              .str());
+    } else if (isGeneratorFromStandardLibrary) {
+      // There is an existing kernel, but this one is a different location.
+      // Favor the one from the standard library then.
+      foreachKernel = generator;
+    }
   }
 
   if (generator->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_VIEW_MATERIALIZE)) {
-    if (viewMaterializeKernel)
-      return Error("more than one materialize_view kernels detected");
-
-    viewMaterializeKernel = generator;
+    if (!viewMaterializeKernel) {
+      viewMaterializeKernel = generator;
+    } else if (viewMaterializeKernel.getLoc() == generator.getLoc()) {
+      return Error(llvm::formatv("Multiple materialize view kernels detected.\n"
+                                 "  Previous: {0} at {1}\n"
+                                 "  New: {2} at {3}",
+                                 viewMaterializeKernel.getSymName(),
+                                 viewMaterializeKernel.getLoc(),
+                                 generator.getSymName(), generator.getLoc())
+                       .str());
+    } else if (isGeneratorFromStandardLibrary) {
+      // There is an existing kernel, but this one is a different location.
+      // Favor the one from the standard library then.
+      viewMaterializeKernel = generator;
+    }
   }
 
   // Skipping functions that aren't exported.
@@ -500,9 +534,12 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   // Initialize the symbol table over the standard library module.
   rawMojoKernelTable.emplace(*module);
 
-  for (auto generator : getRawMojoKernels())
-    if (auto updateErr = updateRegisteredKernelsMap(generator))
+  for (auto generator : getRawMojoKernels()) {
+    // Mark standard library generators
+    if (auto updateErr = updateRegisteredKernelsMap(
+            generator, /*isGeneratorFromStandardLibrary*/ true))
       return updateErr;
+  }
 
   // Process all remaining modules.
   for (auto [index, loadedModule] : llvm::enumerate(loadedModules)) {

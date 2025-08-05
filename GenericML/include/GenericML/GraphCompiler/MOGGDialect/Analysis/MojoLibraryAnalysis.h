@@ -153,7 +153,9 @@ private:
 
   /// Helper functionn to add `generator` to the maps of registered kernels if
   /// needed.
-  ErrorOrSuccess updateRegisteredKernelsMap(KGEN::GeneratorOp generator);
+  ErrorOrSuccess
+  updateRegisteredKernelsMap(KGEN::GeneratorOp generator,
+                             bool isGeneratorFromStandardLibrary);
 
   /// Load and process kernels from an MLIR buffer.
   ErrorOr<OwningOpRef<ModuleOp>>
