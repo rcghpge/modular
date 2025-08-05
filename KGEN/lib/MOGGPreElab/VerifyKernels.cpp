@@ -17,6 +17,8 @@ namespace M::KGEN::MOGGPreElab {
 #include "KGEN/MOGGPreElab/MOGGPreElabPasses.h.inc"
 } // namespace M::KGEN::MOGGPreElab
 
+namespace {
+
 LogicalResult
 verifyHasExecuteFunction(LIT::StructDeclOp structDeclOp,
                          const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
@@ -348,6 +350,57 @@ verifyAllOperandTypesAreSupported(const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
   return noUnsupportedArgument(adaptor.shapeFunction);
 }
 
+LogicalResult
+verifyElementwiseFunction(const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+
+  if (!adaptor.elementwiseFunction.has_value())
+    return success();
+
+  const MojoKernelFunctionAdaptor<LIT::FnOp> &elemwiseFn =
+      *adaptor.elementwiseFunction;
+
+  // The elementwise must only take SIMD in / outs and the IndexList operand.
+  // TODO: Check if the scalars I/Os are properly parametrized SIMD values.
+
+  if (elemwiseFn.mojoCode.isThrows())
+    return elemwiseFn.mojoCode->emitError()
+           << "Elementwise kernels can't throw";
+
+  if (!elemwiseFn.outputArguments.empty())
+    return elemwiseFn.mojoCode->emitError()
+           << "Elementwise kernels must return an SIMD value";
+  if (!elemwiseFn.outputResult.has_value() ||
+      !elemwiseFn.outputResult->isScalarType())
+    return elemwiseFn.mojoCode->emitError()
+           << "Elementwise kernels must return an SIMD value";
+
+  size_t operandsCount = 0;
+  for (size_t i = 0, inputsCount = elemwiseFn.inputArguments.size();
+       i < inputsCount; ++i) {
+    if (i + 1 == inputsCount) {
+      // The last argument must be the IndexList operand.
+      // Since only elementwise kernels use them, no need to create a special
+      // type, just check the opaque typename.
+      if (!elemwiseFn.inputArguments[i].isOpaqueWithTypeName(
+              KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_INDEX_LIST_TYPE_NAME))
+        return elemwiseFn.mojoCode->emitError()
+               << "Elementwise kernels last operand must be an IndexList";
+    } else {
+      // All other operands must be SIMD.
+      ++operandsCount;
+      if (!elemwiseFn.inputArguments[i].isScalarType())
+        return elemwiseFn.mojoCode->emitError()
+               << "Elementwise kernels must have SIMD operands";
+    }
+  }
+
+  if (!operandsCount)
+    return elemwiseFn.mojoCode->emitError()
+           << "Elementwise kernels must have at least one operand";
+
+  return success();
+}
+
 template <typename Func, typename... Args>
 [[nodiscard]] LogicalResult setFlagIfFailed(bool &flag, Func &&func,
                                             Args &&...args) {
@@ -358,6 +411,13 @@ template <typename Func, typename... Args>
   return ret;
 }
 
+struct KernelFuncs {
+  LIT::FnOp execute;
+  LIT::FnOp shape;
+  LIT::FnOp elementwise;
+};
+} // namespace
+
 class VerifyKernelsPass
     : public M::KGEN::MOGGPreElab::impl::VerifyKernelsBase<VerifyKernelsPass> {
 public:
@@ -365,7 +425,7 @@ public:
     ModuleOp moduleOp = getOperation();
 
     // Walk over the IR and grab all execute and shape functions.
-    llvm::DenseMap<LIT::StructDeclOp, std::pair<LIT::FnOp, LIT::FnOp>> kernels;
+    llvm::DenseMap<LIT::StructDeclOp, KernelFuncs> kernels;
     moduleOp.walk([&](LIT::FnOp fnOp) {
       auto structName = fnOp->getAttrOfType<StringAttr>(kMOGGKernelStructName);
       if (!structName)
@@ -373,20 +433,20 @@ public:
 
       auto structDeclOp = fnOp->getParentOfType<LIT::StructDeclOp>();
       if (fnOp->hasAttr(kMOGGExecuteFunctionLabel)) {
-        kernels[structDeclOp].first = fnOp;
+        kernels[structDeclOp].execute = fnOp;
       } else if (fnOp->hasAttr(kMOGGShapeFunctionLabel)) {
-        kernels[structDeclOp].second = fnOp;
+        kernels[structDeclOp].shape = fnOp;
+      } else if (fnOp->hasAttr(kMOGGElementwiseFunctionLabel)) {
+        kernels[structDeclOp].elementwise = fnOp;
       }
     });
 
     // Iterate over all existing kernels and apply the verification.
     bool failed = false;
     for (auto &[structDeclOp, entry] : kernels) {
-      auto &[execute, shape] = entry;
-
       MojoKernelAdaptor<LIT::FnOp> adaptor(
-          structDeclOp.getSourceName().value().getName().strref(), execute,
-          shape, nullptr);
+          structDeclOp.getSourceName().value().getName().strref(),
+          entry.execute, entry.shape, entry.elementwise);
 
       if (setFlagIfFailed(failed, verifyAllOperandTypesAreSupported, adaptor)
               .failed())
@@ -432,6 +492,9 @@ public:
       if (setFlagIfFailed(failed, verifyExecuteNotReturningOpaqueAndThrows,
                           adaptor)
               .failed())
+        continue;
+
+      if (setFlagIfFailed(failed, verifyElementwiseFunction, adaptor).failed())
         continue;
     }
 

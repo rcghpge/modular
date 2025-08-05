@@ -17,34 +17,46 @@ namespace M::KGEN::MOGGPreElab {
 #include "KGEN/MOGGPreElab/MOGGPreElabPasses.h.inc"
 } // namespace M::KGEN::MOGGPreElab
 
+namespace {
+struct KernelFuncs {
+  Operation *execute;
+  Operation *shape;
+  Operation *elementwise;
+};
+} // namespace
+
 class DumpKernelsPass
     : public M::KGEN::MOGGPreElab::impl::DumpKernelsBase<DumpKernelsPass> {
 public:
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
-    llvm::DenseMap<StringAttr, std::pair<Operation *, Operation *>> kernels;
+    llvm::DenseMap<StringAttr, KernelFuncs> kernels;
     moduleOp.walk([&](Operation *op) {
       auto structName = op->getAttrOfType<StringAttr>(kMOGGKernelStructName);
       if (!structName)
         return;
 
       if (op->hasAttr(kMOGGExecuteFunctionLabel))
-        kernels[structName].first = op;
+        kernels[structName].execute = op;
       else if (op->hasAttr(kMOGGShapeFunctionLabel))
-        kernels[structName].second = op;
+        kernels[structName].shape = op;
+      else if (op->hasAttr(kMOGGElementwiseFunctionLabel))
+        kernels[structName].elementwise = op;
     });
 
     for (auto &[structName, entry] : kernels) {
-      auto &[execute, shape] = entry;
-      if (isa<LIT::FnOp>(execute)) {
+      if (isa<LIT::FnOp>(entry.execute)) {
         llvm::errs() << MojoKernelAdaptor<LIT::FnOp>(
-            structName.strref(), dyn_cast_or_null<LIT::FnOp>(execute),
-            dyn_cast_or_null<LIT::FnOp>(shape), nullptr);
+            structName.strref(), dyn_cast_or_null<LIT::FnOp>(entry.execute),
+            dyn_cast_or_null<LIT::FnOp>(entry.shape),
+            dyn_cast_or_null<LIT::FnOp>(entry.elementwise));
       } else {
         llvm::errs() << MojoKernelAdaptor<KGEN::GeneratorOp>(
-            structName.strref(), dyn_cast_or_null<KGEN::GeneratorOp>(execute),
-            dyn_cast_or_null<KGEN::GeneratorOp>(shape), nullptr);
+            structName.strref(),
+            dyn_cast_or_null<KGEN::GeneratorOp>(entry.execute),
+            dyn_cast_or_null<KGEN::GeneratorOp>(entry.shape),
+            dyn_cast_or_null<KGEN::GeneratorOp>(entry.elementwise));
       }
       llvm::errs() << "\n";
     }
