@@ -120,20 +120,15 @@ nixlPluginManager::loadPluginFromPath(const std::string &plugin_path) {
 nixlPluginManager::nixlPluginManager() {
   // The only NIXL plugin we support is UCX.
 
-  // libibverbs.so and libmlx5.so are needed for the verbs UCX backend. We
-  // decide whether to load libplugin_ucx.so or libplugin_ucx_verbs.so based on
-  // the presence of these libraries. Verbs support is needed for fast
-  // inter-node transfers over RDMA. If it is not provided, inter-node transfers
-  // will likely fall back to host and transfer data over TCP. This is pretty
-  // slow.
+  // libplugin_ucx_verbs.so depends on libibverbs.so and libmlx5.so.
+  // libibverbs.so is dynamically linked at build time. libmlx5.so must be
+  // dlopen'ed at runtime prior to dlopen'ing libplugin_ucx_verbs.so.
   //
-  // Exactly one of these plugin files should be loaded. Loading both of them
-  // will cause issues as both of them have the same plugin name "ucx".
-  void *dlLibIbverbs = dlopen("libibverbs.so.1", RTLD_NOW | RTLD_GLOBAL);
+  // Exactly one of these UCX plugin files should be loaded. Loading both of
+  // them will cause issues.
   void *dlLibMlx5 = dlopen("libmlx5.so", RTLD_NOW | RTLD_GLOBAL);
 
-  if (dlLibIbverbs != nullptr && dlLibMlx5 != nullptr &&
-      loadPlugin("ucx_verbs") != nullptr) {
+  if (dlLibMlx5 != nullptr && loadPlugin("ucx_verbs") != nullptr) {
     return;
   }
 
