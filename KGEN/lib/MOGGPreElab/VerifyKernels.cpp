@@ -377,21 +377,20 @@ verifyElementwiseFunction(const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
   size_t operandsCount = 0;
   for (size_t i = 0, inputsCount = elemwiseFn.inputArguments.size();
        i < inputsCount; ++i) {
-    if (i + 1 == inputsCount) {
-      // The last argument must be the IndexList operand.
-      // Since only elementwise kernels use them, no need to create a special
-      // type, just check the opaque typename.
-      if (!elemwiseFn.inputArguments[i].isOpaqueWithTypeName(
-              KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_INDEX_LIST_TYPE_NAME))
-        return elemwiseFn.mojoCode->emitError()
-               << "Elementwise kernels last operand must be an IndexList";
-    } else {
-      // All other operands must be SIMD.
-      ++operandsCount;
-      if (!elemwiseFn.inputArguments[i].isScalarType())
-        return elemwiseFn.mojoCode->emitError()
-               << "Elementwise kernels must have SIMD operands";
+    // The last argument might be an IndexList.
+    // Since only elementwise kernels use them, no need to create a special
+    // type, just check the opaque typename.
+    if (i + 1 == inputsCount &&
+        elemwiseFn.inputArguments[i].isOpaqueWithTypeName(
+            KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_INDEX_LIST_TYPE_NAME)) {
+      continue;
     }
+
+    // All other operands must be SIMD.
+    ++operandsCount;
+    if (!elemwiseFn.inputArguments[i].isScalarType())
+      return elemwiseFn.mojoCode->emitError()
+             << "Elementwise kernels must have SIMD operands";
   }
 
   if (!operandsCount)

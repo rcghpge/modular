@@ -16,16 +16,16 @@ mo.graph @simpleTwoKernels(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3]
 // CHECK-NEXT: %[[KERNEL_1:.*]] = mogg.experimental.kernel(%[[ARG0]] as %{{.*}}: !mo.tensor<[4, 3], f32>, %[[ARG0]] as %{{.*}}: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32> {
 // CHECK: mogg.output_placeholders : !mo.tensor<[4, 3], f32>
 // CHECK: mogg.bind (%{{.*}}, %{{.*}}) elemwise_lambda (%{{.*}}: f32, %{{.*}}: f32, %{{.*}}: !pop.array<2, index>) {
-// CHECK: mogg.call.elementwise["mo.sqrt"] (%{{.*}}, %{{.*}}) : f32, !pop.array<2, index> -> f32
-// CHECK: mogg.call.elementwise["mo.sqrt"] (%{{.*}}, %{{.*}}) : f32, !pop.array<2, index> -> f32
-// CHECK: mogg.call.elementwise["mo.tanh"] (%{{.*}}, %{{.*}}) : f32, !pop.array<2, index> -> f32
-// CHECK: mogg.call.elementwise["mo.add"] (%{{.*}}, %{{.*}}, %{{.*}}) : f32, f32, !pop.array<2, index> -> f32
+// CHECK: mogg.call.elementwise["mo.sqrt"] (%{{.*}}) : f32 -> f32
+// CHECK: mogg.call.elementwise["mo.sqrt"] (%{{.*}}) : f32 -> f32
+// CHECK: mogg.call.elementwise["mo.tanh"] (%{{.*}}) : f32 -> f32
+// CHECK: mogg.call.elementwise["mo.add"] (%{{.*}}, %{{.*}}) : f32, f32 -> f32
 // CHECK: mogg.output
 
 
 // CHECK: %[[KERNEL_2:.*]] = mogg.experimental.kernel(%[[KERNEL_1]]: !mo.tensor<[4, 3], f32>, %[[ARG0]]: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32> {
 // CHECK: mogg.output_placeholders : !mo.tensor<[4, 3], f32>
 // CHECK: mogg.bind (%[[KERNEL_1]], %[[ARG0]]) elemwise_lambda (%{{.*}}: f32, %{{.*}}: f32, %{{.*}}: !pop.array<2, index>) {
-// CHECK: mogg.call.elementwise["mo.sub"] (%{{.*}}, %{{.*}}, %{{.*}}) : f32, f32, !pop.array<2, index> -> f32
+// CHECK: mogg.call.elementwise["mo.sub"] (%{{.*}}, %{{.*}}) : f32, f32 -> f32
 // CHECK: mogg.output
 // CHECK: mo.output %[[KERNEL_1]], %[[KERNEL_2]] : !mo.tensor<[4, 3], f32>, !mo.tensor<[4, 3], f32>

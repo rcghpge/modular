@@ -190,8 +190,11 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
       convertScalarsIfNeeded(outlinedArgs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
 
-  // The outlined function always has an indices at the end.
-  outlinedArgs.push_back(bindOp.getIndicesArg());
+  // The elementwise function might have an indices argument at the end.
+  if (!adaptor.elementwiseFunction->inputArguments.empty() &&
+      adaptor.elementwiseFunction->inputArguments.back().isOpaqueWithTypeName(
+          KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_INDEX_LIST_TYPE_NAME))
+    outlinedArgs.push_back(bindOp.getIndicesArg());
 
   builder.setInsertionPointToStart(elemwiseBody);
   auto callElementwise = builder.create<CallElementwiseOp>(

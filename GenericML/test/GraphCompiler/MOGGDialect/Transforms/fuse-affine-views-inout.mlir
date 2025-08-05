@@ -8,7 +8,7 @@
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[PLACEHOLDER]]) output_lambda (%[[ARG6:.*]]: f32, %[[ARG7:.*]]: !pop.array<2, index>)
 // CHECK: %[[INSERT_IDX:.*]] = mogg.call "insert_index"(%[[ARG7]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK: %[[LOAD:.*]] = "mogg.tensor.load"(%[[ARG2]], %[[INSERT_IDX]]) : (!mo.tensor<[1, seq_len, 4096], f32>, !pop.array<3, index>) -> f32
-// CHECK: %[[ADD:.*]] = mogg.call.elementwise["mo.add"] (%[[ARG6]], %[[LOAD]], %[[INSERT_IDX]]) : f32, f32, !pop.array<3, index> -> f32
+// CHECK: %[[ADD:.*]] = mogg.call.elementwise["mo.add"] (%[[ARG6]], %[[LOAD]]) : f32, f32 -> f32
 // CHECK: mogg.output %[[ADD]], %[[INSERT_IDX]] : f32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]], {{.*}}
@@ -31,7 +31,7 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 // CHECK: %[[SCRATCH:.*]] = mogg.scratch_placeholders : !mo.tensor<[seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PLACEHOLDER]]) output_lambda (%[[ARG4:.*]]: f32, %[[ARG5:.*]]: !pop.array<2, index>)
 // CHECK: %[[INSERT_IDX:.*]] = mogg.call "insert_index"(%[[ARG5]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
-// CHECK: %[[CAST:.*]] = mogg.call.elementwise["mo.cast"] (%[[ARG4]], %[[INSERT_IDX]]) : f32, !pop.array<3, index> -> si32
+// CHECK: %[[CAST:.*]] = mogg.call.elementwise["mo.cast"] (%[[ARG4]]) : f32 -> si32
 // CHECK: mogg.output %[[CAST]], %[[INSERT_IDX]] : si32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], si32>) -> !mo.tensor<[seq_len, 4096], f32>
 // CHECK: %[[CONCRETIZE:.*]] = "mogg.concretize"(%[[SCRATCH]], %[[BIND]]) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
