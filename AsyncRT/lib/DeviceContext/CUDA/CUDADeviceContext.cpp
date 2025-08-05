@@ -42,7 +42,11 @@ public:
   }
 
   ~CUDAContextScope() {
-    if ((prevCtx_ == ctx_) || (status_ != CUDADriver::SUCCESS))
+    // No need to restore the previous context if no previous context is to be
+    // restored, if the context was already the desired context or if there was
+    // an error setting the context.
+    if ((prevCtx_ == ctx_) || (prevCtx_ == nullptr) ||
+        (status_ != CUDADriver::SUCCESS))
       return;
 
     // Only pop the context if push was necessary and successful.
