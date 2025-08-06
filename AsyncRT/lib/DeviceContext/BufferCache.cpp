@@ -571,9 +571,9 @@ void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
   }
 }
 
-static constexpr size_t KB = 1024;      // NOLINT
-static constexpr size_t MB = 1024 * KB; // NOLINT
-static constexpr size_t GB = 1024 * MB; // NOLINT
+static constexpr size_t KB = 1024;                       // NOLINT
+static constexpr size_t MB = 1024 * KB;                  // NOLINT
+[[maybe_unused]] static constexpr size_t GB = 1024 * MB; // NOLINT
 
 BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
                          size_t alignment, bool isHost)
