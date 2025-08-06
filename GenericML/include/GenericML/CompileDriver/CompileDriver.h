@@ -22,9 +22,6 @@ std::optional<std::filesystem::path> getMaxCacheDir();
 /// Gets the location for storing externalized weights.
 std::optional<std::filesystem::path> getWeightsCacheDir();
 
-/// Checks if compilation progress bar is enabled.
-bool isCompileProgressEnabled();
-
 /// Checks if caching is enabled to IR.
 bool isModelIRCacheEnabled();
 

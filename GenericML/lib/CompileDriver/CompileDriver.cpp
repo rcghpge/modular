@@ -42,20 +42,6 @@ std::optional<std::filesystem::path> M::getMaxCacheDir() {
   return dataDirOr.takeValue() / ".max_cache";
 }
 
-bool M::isCompileProgressEnabled() {
-  auto configOr = Config::open();
-
-  if (configOr.isError())
-    return false;
-
-  // If this is an error, we now return true instead of false.
-  // We could have a second param to specify default value in case of error, but
-  // this is probably better for consistency.
-  return configOr->getValueAsBool(
-      STRINGIFY_MAX_CONFIG(".enable_compile_progress"),
-      /*defaultValue=*/true);
-}
-
 bool M::isModelIRCacheEnabled() {
   auto configOr = Config::open();
 
