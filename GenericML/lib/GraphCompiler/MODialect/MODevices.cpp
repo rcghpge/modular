@@ -83,21 +83,6 @@ bool MO::isOnHost(Type type) {
   return getDeviceOrDefaultAny(type) == getHostDevice(type.getContext());
 }
 
-ErrorOr<DeviceSpecCollectionAttr> MO::getDeviceSpecsOrDefault(GraphOp graphOp) {
-  // Check the device specs annotation.
-  DeviceSpecCollectionAttr deviceSpecs = graphOp.getDeviceSpecs();
-  if (deviceSpecs)
-    return deviceSpecs;
-
-  // Fallback to a description of the host CPU.
-  // This is to support unit tests which don't want to deal with devices.
-  ErrorOr<std::unique_ptr<DeviceSpecCollection>> runtimeDeviceSpecsOr =
-      GML::getHostCPUDeviceSpecs();
-  if (runtimeDeviceSpecsOr)
-    return runtimeDeviceSpecsOr.takeError();
-  return fromRuntimeDeviceSpecs(graphOp.getContext(), **runtimeDeviceSpecsOr);
-}
-
 //===----------------------------------------------------------------------===//
 // DeviceAnnots
 //===----------------------------------------------------------------------===//

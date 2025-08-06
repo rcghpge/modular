@@ -213,9 +213,6 @@ public:
   /// Return the graph being lowered.
   MO::GraphOp &getGraph() { return graph; }
 
-  /// Returns the graph's device_specs annotation.
-  CompileDiagnosticOr<DeviceSpecCollectionAttr> getDeviceSpecs();
-
   /// Return type converter for lowering known MO types into MGP ones.
   TypeConverter &getTypeConverter() { return typeConverter; }
 

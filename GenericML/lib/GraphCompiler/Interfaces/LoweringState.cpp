@@ -57,17 +57,6 @@ static Value popScalarToBuiltinType(OpBuilder &builder, Location loc, Value v) {
 // MOGraphLoweringState
 //===----------------------------------------------------------------------===//
 
-CompileDiagnosticOr<DeviceSpecCollectionAttr>
-MOGraphLoweringState::getDeviceSpecs() {
-  ErrorOr<DeviceSpecCollectionAttr> deviceSpecsOr =
-      MO::getDeviceSpecsOrDefault(graph);
-  if (deviceSpecsOr)
-    return graph.emitOpError(
-               "unable to determine the devices specs for graph: ")
-           << llvm::Twine(deviceSpecsOr.getError()) << "\n";
-  return *deviceSpecsOr;
-}
-
 TypedValue<MGP::TensorSpecType>
 MOGraphLoweringState::getShape(Location loc, Value loweredTensor,
                                DeviceRefAttr device) {

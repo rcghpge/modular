@@ -43,11 +43,6 @@ bool isOnHost(Operation *op);
 /// Return true if a value of type should be stored on the 'host'.
 bool isOnHost(Type type);
 
-/// Returns the #M.device_spec_collection annotation for graphOp, or a
-/// description of just the current CPU device (ignoring any other device types)
-/// if it has no such annotation.
-ErrorOr<DeviceSpecCollectionAttr> getDeviceSpecsOrDefault(GraphOp graphOp);
-
 //===----------------------------------------------------------------------===//
 // DeviceAnnots
 //===----------------------------------------------------------------------===//

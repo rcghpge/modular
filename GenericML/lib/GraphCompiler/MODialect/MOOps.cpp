@@ -870,11 +870,6 @@ std::string GraphOp::getNewParamName(const Twine &prefix) {
   return (prefix + Twine(newCounter)).str();
 }
 
-DeviceSpecCollectionAttr GraphOp::getDeviceSpecs() {
-  return dyn_cast_if_present<DeviceSpecCollectionAttr>(
-      getOperation()->getAttr(kGraphDeviceSpecCollectionAttrName));
-}
-
 void GraphOp::setDeviceSpecs(DeviceSpecCollectionAttr deviceSpecs) {
   getOperation()->setAttr(kGraphDeviceSpecCollectionAttrName, deviceSpecs);
 }
