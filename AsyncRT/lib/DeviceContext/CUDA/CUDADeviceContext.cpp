@@ -538,22 +538,23 @@ void CUDADevice::eventCachePush(CUevent event) const {
 
 // ===== CUDADeviceMulticastBuffer ===== //
 CUDADeviceMulticastBuffer::CUDADeviceMulticastBuffer(
-    size_t byteSize, const CUDADriver &driver,
+    size_t byteSize, size_t paddedByteSize, const CUDADriver &driver,
     CUmemGenericAllocationHandle multicastHandle, CUdeviceptr multicastPtr,
     std::vector<CUDADeviceMulticastBuffer::DeviceToBuffer> unicastBuffers)
     : DeviceMulticastBuffer(byteSize), driver_(driver),
       multicastHandle_(multicastHandle), multicastPtr_(multicastPtr),
+      paddedByteSize_(paddedByteSize),
       unicastBuffers_(std::move(unicastBuffers)) {}
 
 CUDADeviceMulticastBuffer::~CUDADeviceMulticastBuffer() {
-  CUDA_CHECK(driver_.MemUnmap(multicastPtr_, byteSize()));
-  CUDA_CHECK(driver_.MemAddressFree(multicastPtr_, byteSize()));
+  CUDA_CHECK(driver_.MemUnmap(multicastPtr_, paddedByteSize_));
+  CUDA_CHECK(driver_.MemAddressFree(multicastPtr_, paddedByteSize_));
 
   for (const auto &it : unicastBuffers_) {
-    CUDA_CHECK(
-        driver_.MulticastUnbind(multicastHandle_, it.device_, 0, byteSize()));
-    CUDA_CHECK(driver_.MemUnmap(it.ptr_, byteSize()));
-    CUDA_CHECK(driver_.MemAddressFree(it.ptr_, byteSize()));
+    CUDA_CHECK(driver_.MulticastUnbind(multicastHandle_, it.device_, 0,
+                                       paddedByteSize_));
+    CUDA_CHECK(driver_.MemUnmap(it.ptr_, paddedByteSize_));
+    CUDA_CHECK(driver_.MemAddressFree(it.ptr_, paddedByteSize_));
     CUDA_CHECK(driver_.MemRelease(it.handle_));
   }
   CUDA_CHECK(driver_.MemRelease(multicastHandle_));
@@ -681,8 +682,9 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
     CUDA_CHECK_ERR(driver.MemSetAccess(multiPtr, paddedByteSize, &memDesc, 1));
   }
 
-  return CUDADeviceMulticastBufferRef::create(
-      paddedByteSize, driver, multiHandle, multiPtr, std::move(unicastBuffers));
+  return CUDADeviceMulticastBufferRef::create(byteSize, paddedByteSize, driver,
+                                              multiHandle, multiPtr,
+                                              std::move(unicastBuffers));
 }
 
 // ===== CUDADeviceEvent ===== //

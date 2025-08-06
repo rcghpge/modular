@@ -576,12 +576,9 @@ static constexpr size_t MB = 1024 * KB; // NOLINT
 static constexpr size_t GB = 1024 * MB; // NOLINT
 
 BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
-                         size_t alignment, bool isHost, bool isBazelTest)
-    : device_(device), isHost_(isHost),
-      // Determine whether we are running as part of a `bazel test` to
-      // appropriately scale the cache sizes allowing for other tests to execute
-      // concurrently on the device.
-      isBazelTest_(isBazelTest), maxCacheSize_(maxSize), chunkSize_(chunkSize),
+                         size_t alignment, bool isHost)
+    : device_(device), isHost_(isHost), maxCacheSize_(maxSize),
+      chunkSize_(chunkSize),
       // A minimum of 64 byte alignment for allocations from the buffer cache.
       alignmentOffset_(std::max(64UL, alignment) - 1),
       alignmentMask_(~(std::max(64UL, alignment) - 1)),
@@ -823,12 +820,9 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
           // indication that a large amount of memory will be necessary during
           // the execution of a model.
           //
-          // Avoid aggressive growth if running in Bazel to avoid consuming all
-          // of memory of a GPU shared amongst multiple tests.
           // Avoid aggressive growth if the allocation will not fit within the
           // maximum buffer cache size to start.
-          if (!bufferCache_.isBazelTest_ &&
-              (size <= bufferCache_.maxCacheSize_)) {
+          if (size <= bufferCache_.maxCacheSize_) {
             assert(bufferCache_.cacheSize_ == 0);
             BufferCache::enableUseMaxSize();
           } else {
@@ -1008,41 +1002,24 @@ void BufferCacheFreeList::freeDesc(BufferCache::Desc *desc) {
 
 BufferCache *BufferCache::onDevice(const Device &device,
                                    Device::MemInfo memInfo, size_t alignment) {
-  bool isBazelTest = std::getenv("BAZEL_TEST") != nullptr;
   if (memInfo.free == 0) {
     // Do not use buffer cache if buffer cache has been disabled by the calling
     // code (empty memInfo).
     // This is for example the case for CPU Device: We are relying on malloc
     // optimizations instead.
-    return new BufferCache(device, 0, 0, alignment, false, isBazelTest);
+    return new BufferCache(device, 0, 0, alignment, false);
   }
 
   bool isDefault = false;
   size_t maxCacheSize = llvm::alignToPowerOf2(
-      DeviceContext::configAsInt("buffer_cache_size", 1 * GB, &isDefault),
-      256 * KB);
+      DeviceContext::configAsInt("buffer_cache_size", 0, &isDefault), 256 * KB);
   // If buffer_cache_size was not set, use a percentage of the available memory.
   if (isDefault) {
     maxCacheSize = llvm::alignToPowerOf2(
-        (memInfo.free * DeviceContext::configAsInt("buffer_cache_size_percent",
-                                                   isBazelTest ? 10 : 0)) /
+        (memInfo.free *
+         DeviceContext::configAsInt("buffer_cache_size_percent", 0)) /
             100,
         256 * KB);
-  }
-
-  // If we are running as part of a Bazel test we attempt to run in a degraded
-  // mode if the requested buffer cache size does not fit into the available
-  // device.
-  if (isBazelTest && (maxCacheSize > memInfo.total)) {
-    size_t adjustedMaxCacheSize =
-        llvm::alignToPowerOf2((memInfo.total * 98) / 100, 256 * KB);
-    llvm::errs()
-        << "DeviceContext.BufferCache: Requested maximum buffer cache size ("
-        << maxCacheSize << ") does not fit into total available memory ("
-        << memInfo.total
-        << "). Adjusted maximum buffer cache size: " << adjustedMaxCacheSize
-        << "\n";
-    maxCacheSize = adjustedMaxCacheSize;
   }
 
   if (maxCacheSize > memInfo.free) {
@@ -1063,15 +1040,8 @@ BufferCache *BufferCache::onDevice(const Device &device,
       maxCacheSize,
       llvm::alignToPowerOf2((maxCacheSize * chunkSizePercent) / 100, 256 * KB));
 
-  // When running as part of a Bazel test and chunk percentage is not set as a
-  // test variable, limit the chunk size to allow for multiple tests executing
-  // on the same GPU.
-  if (isDefault && isBazelTest) {
-    chunkSize = std::min(chunkSize, 200 * MB);
-  }
-
   auto result = new BufferCache(device, maxCacheSize, chunkSize, alignment,
-                                /* isHost = */ false, isBazelTest);
+                                /* isHost = */ false);
   if (result->doLog_) {
     result->logErr("initial memInfo(free: " + TWINE(memInfo.free) +
                    ", total: " + TWINE(memInfo.total) + ")");
@@ -1079,12 +1049,8 @@ BufferCache *BufferCache::onDevice(const Device &device,
   return result;
 }
 BufferCache *BufferCache::onHost(const Device &device, size_t alignment) {
-  bool isBazelTest = std::getenv("BAZEL_TEST") != nullptr;
-
   size_t maxCacheSize = llvm::alignToPowerOf2(
-      DeviceContext::configAsInt("buffer_cache_size_host",
-                                 isBazelTest ? (4 * GB) : 0),
-      256 * KB);
+      DeviceContext::configAsInt("buffer_cache_size_host", 0), 256 * KB);
   size_t chunkSize =
       std::min(maxCacheSize,
                static_cast<size_t>(llvm::alignToPowerOf2(
@@ -1094,7 +1060,7 @@ BufferCache *BufferCache::onHost(const Device &device, size_t alignment) {
                    256 * KB)));
 
   return new BufferCache(device, maxCacheSize, chunkSize, alignment,
-                         /* isHost = */ true, isBazelTest);
+                         /* isHost = */ true);
 }
 
 } // namespace M::AsyncRT

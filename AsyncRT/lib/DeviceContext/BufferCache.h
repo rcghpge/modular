@@ -66,7 +66,7 @@ private:
   friend class BufferCacheFreeList;
 
   BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
-              size_t alignment, bool isHost, bool isBazelTest);
+              size_t alignment, bool isHost);
 
   const Device &device() const;
 
@@ -101,9 +101,6 @@ private:
 
   // This buffer cache is managing "pinned" host memory.
   const bool isHost_;
-
-  // Does this buffer cache need to allow for other concurrently running tests.
-  const bool isBazelTest_;
 
   const size_t maxCacheSize_;
   size_t chunkSize_;

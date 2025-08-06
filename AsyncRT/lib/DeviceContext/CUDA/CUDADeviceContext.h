@@ -145,7 +145,7 @@ public:
   };
 
   CUDADeviceMulticastBuffer(
-      size_t byteSize, const CUDADriver &driver,
+      size_t byteSize, size_t paddedByteSize, const CUDADriver &driver,
       CUmemGenericAllocationHandle multicastHandle, CUdeviceptr multicastPtr,
       std::vector<CUDADeviceMulticastBuffer::DeviceToBuffer> unicastBuffers);
 
@@ -165,6 +165,7 @@ private:
   const CUDADriver &driver_;
   CUmemGenericAllocationHandle multicastHandle_;
   CUdeviceptr multicastPtr_;
+  size_t paddedByteSize_;
   std::vector<DeviceToBuffer> unicastBuffers_;
 };
 
