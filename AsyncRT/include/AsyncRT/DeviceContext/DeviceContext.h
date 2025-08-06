@@ -312,6 +312,8 @@ public:
 
   virtual ErrorOr<int32_t> getAttribute(int32_t code) const = 0;
 
+  size_t argumentCount() const;
+
   template <typename... Ts>
   ArgumentsRef buildArguments(const Ts &...ts) const;
 

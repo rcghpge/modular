@@ -484,6 +484,8 @@ DeviceFunction::DeviceFunction(
 
 const DeviceContext &DeviceFunction::context() const { return *context_; }
 
+size_t DeviceFunction::argumentCount() const { return signature_.size(); }
+
 ErrorOrSuccess DeviceFunction::checkSignatureAt(int index,
                                                 ArgumentType argType) const {
   int expectedSize = signature_.size();
