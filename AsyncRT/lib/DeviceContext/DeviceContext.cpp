@@ -649,7 +649,7 @@ ErrorOrSuccess DeviceContext::checkPendingWork() const {
 
   // We can safely remove the flag indicating that the pending error should be
   // checked. We will unconditionally acquire the lock below and check the
-  // pending error while protected by the lock.
+  // pending event handlers and errors while protected by the lock.
   hasPendingWork_.store(0, std::memory_order_release);
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -659,11 +659,17 @@ ErrorOrSuccess DeviceContext::checkPendingWork() const {
     while (pendingEvents_ != nullptr) {
       ErrorOr<bool> isReadyOr = pendingEvents_->isReady();
       if (isReadyOr.isError()) {
+        // Since there is at least one pending event handler in the queue we
+        // also ensure that we do continue checking for the events to be ready.
+        hasPendingWork_.store(1, std::memory_order_release);
         return isReadyOr.takeError();
       }
       if (!*isReadyOr) {
         // First element in the queue is not ready, so we can abort the
         // walk through the pending events.
+        // Since there is at least one pending event handler in the queue we
+        // also ensure that we do continue checking for the events to be ready.
+        hasPendingWork_.store(1, std::memory_order_release);
         break;
       }
       // The handler at the head of the queue is ready to run. Remove the head
