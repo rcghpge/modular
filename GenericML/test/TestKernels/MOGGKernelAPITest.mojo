@@ -86,7 +86,7 @@ struct MyCustomScalarRegSI32(Copyable, Movable):
         print("MyCustomScalarRegSI32.__init__", val)
         self.val = val
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         print("MyCustomScalarRegSI32.__del__", self.val)
 
 
@@ -101,7 +101,7 @@ struct MyCustomScalarRegF32(Copyable, Movable):
         print("MyCustomScalarRegF32.__init__", val)
         self.val = val
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         print("MyCustomScalarRegF32.__del__", self.val)
 
 
@@ -155,7 +155,7 @@ struct MyCustomScalarSI32(Copyable, Movable):
         print("MyCustomScalarSI32.__init__", val)
         self.val = val
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         print("MyCustomScalarSI32.__del__", self.val)
 
 
@@ -845,7 +845,7 @@ struct MyCustomScalarReg[dtype: DType](Copyable, Movable):
         print("MyCustomScalarReg.__init__", val)
         self.val = val
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         print("MyCustomScalarReg.__del__", self.val)
 
 
