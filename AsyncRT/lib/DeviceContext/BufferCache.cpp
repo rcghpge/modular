@@ -855,7 +855,7 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
     // this point, printing as much debugging information as needed.
     static bool useOnlyBufferCache =
         DeviceContext::configAsBool("buffer_cache_only", false);
-    if (!bufferCache_.isHost() && useOnlyBufferCache) {
+    if (useOnlyBufferCache) {
       if (bufferCache_.doLog_) {
         bufferCache_.logErr("allocate_buffer(" + TWINE(size) + ") - OOM", 0, 0);
         // Print more debugging information about the largest available blocks.
@@ -1050,12 +1050,12 @@ BufferCache *BufferCache::onDevice(const Device &device,
 }
 BufferCache *BufferCache::onHost(const Device &device, size_t alignment) {
   size_t maxCacheSize = llvm::alignToPowerOf2(
-      DeviceContext::configAsInt("buffer_cache_size_host", 0), 256 * KB);
+      DeviceContext::configAsInt("host_buffer_cache_size", 0), 256 * KB);
   size_t chunkSize =
       std::min(maxCacheSize,
                static_cast<size_t>(llvm::alignToPowerOf2(
                    (maxCacheSize * DeviceContext::configAsInt(
-                                       "buffer_cache_host_chunk_percent", 2)) /
+                                       "host_buffer_cache_chunk_percent", 2)) /
                        100,
                    256 * KB)));
 
