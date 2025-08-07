@@ -1,14 +1,14 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-kgen --mo-to-primitives --allow-unregistered-dialect --cse --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --mogg-to-kgen --mo-to-primitives --cse | FileCheck %s
 
 // CHECK-LABEL: mgp.model @static_ranks_int_to_unknown : mof
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
 // CHECK: %[[ARG2:[a-z0-9]*]]: !mgp.tensor<42x?xf32>)
-// CHECK:   %[[CDIM:.*]] = index.constant 42
-// CHECK:   %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <42x?xf32>
-// CHECK:   %[[DYNDIM:.*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <42x?xf32>
-// CHECK:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]] : <42x?xf32>
-// CHECK:   %[[NEWSPEC:.*]] = mgp.tensor_spec.create %[[CDIM]], %[[DYNDIM]] : !mgp.tensor_spec<?x?xf32>
-// CHECK:   %[[RES:.*]] = mgp.tensor.create %[[CH0]], %[[BUF]], %[[NEWSPEC]] : !mgp.tensor<?x?xf32>
+// CHECK-DAG:   %[[CDIM:.*]] = index.constant 42
+// CHECK-DAG:   %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[ARG2]] : <42x?xf32>
+// CHECK-DAG:   %[[DYNDIM:.*]] = mgp.tensor_spec.get_dim[1] %[[SPEC]] : <42x?xf32>
+// CHECK-DAG:   %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG2]] : <42x?xf32>
+// CHECK-DAG:   %[[NEWSPEC:.*]] = mgp.tensor_spec.create %[[CDIM]], %[[DYNDIM]] : !mgp.tensor_spec<?x?xf32>
+// CHECK-DAG:   %[[RES:.*]] = mgp.tensor.create %[[CH0]], %[[BUF]], %[[NEWSPEC]] : !mgp.tensor<?x?xf32>
 // CHECK:   mef.output %[[CH0]], %[[RES]] : !mef.chain, !mgp.tensor<?x?xf32>
 // CHECK: }
 mo.graph @static_ranks_int_to_unknown<D0, D1>(
@@ -57,11 +57,11 @@ mo.graph @static_ranks_unknown_to_static<D0, D1>(
 
 // CHECK: %[[CH_M1:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
 
-// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH1]], %[[CH0]]
+// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M1]],
 
 // CHECK: %[[CH_M2:.*]] = grt.chain.create (%[[CH3]], %[[CH0]])
 
-// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH3]], %[[CH0]]
+// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M2]]
 
 
 mo.graph @multiple_rebind<D0, D1>(

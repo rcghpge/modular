@@ -50,6 +50,50 @@ void ChainCreateOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
 }
 
+static LogicalResult eliminateImpliedByChains(ChainCreateOp createOp,
+                                              PatternRewriter &rewriter) {
+  auto isGatingOperand = [](const OpOperand *opOperand) {
+    Operation *op = opOperand->getOwner();
+
+    if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op)) {
+      // Only the extra strict operands are gating for control flow ops.
+      auto extraOperands = cfOp.getStrictExtraOperands();
+      return llvm::is_contained(extraOperands, opOperand->get());
+    }
+
+    return !isa<MEF::NonStrictInterface>(op);
+  };
+
+  llvm::SmallDenseSet<Value> impliedByOperand;
+
+  for (auto chain : createOp.getInputChains()) {
+    auto producer = chain.getDefiningOp();
+    if (!producer)
+      continue;
+
+    for (OpOperand &operand : producer->getOpOperands()) {
+      if (isGatingOperand(&operand))
+        impliedByOperand.insert(operand.get());
+    }
+  }
+
+  SmallVector<Value> minimizedOperands;
+  minimizedOperands.reserve(createOp.getInputChains().size());
+
+  for (auto chain : createOp.getInputChains()) {
+    if (!impliedByOperand.contains(chain))
+      minimizedOperands.push_back(chain);
+  }
+
+  if (minimizedOperands.size() == createOp.getNumOperands())
+    return failure();
+
+  rewriter.modifyOpInPlace(createOp,
+                           [&] { createOp.setInputChains(minimizedOperands); });
+
+  return success();
+}
+
 LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
                                           PatternRewriter &rewriter) {
   llvm::SetVector<Value> operands;
@@ -75,7 +119,7 @@ LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
     return success();
   }
 
-  return failure();
+  return eliminateImpliedByChains(createOp, rewriter);
 }
 
 //===----------------------------------------------------------------------===//
