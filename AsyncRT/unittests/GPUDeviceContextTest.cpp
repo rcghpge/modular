@@ -37,17 +37,12 @@ protected:
 };
 
 TEST_F(GPUDeviceContextTest, Smoke) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   std::string deviceName = ctx->device().name();
   if (ctx->device().api() == Device::cudaAPI) {
     EXPECT_NE(deviceName.find("NVIDIA"), std::string::npos) << deviceName;
     std::cerr << "Name of default CUDA device: " << deviceName << "\n";
-  } else if (ctx->device().api() == Device::metalAPI) {
-    EXPECT_NE(deviceName.find("Apple"), std::string::npos) << deviceName;
-    std::cerr << "Name of default Metal device: " << deviceName << "\n";
   } else {
     EXPECT_NE(deviceName.find("AMD"), std::string::npos) << deviceName;
     std::cerr << "Name of default HIP device: " << deviceName << "\n";
@@ -69,12 +64,7 @@ TEST_F(GPUDeviceContextTest, ComputeCapability) {
   ASSIGN_NO_ERR(DeviceRef, dev, Device::create(Device::gpuAPI));
 
   ASSIGN_NO_ERR(int, cap, dev->computeCapability());
-  if (dev->api() == Device::metalAPI) {
-    // Metal returns 300 for compute capability (placeholder value)
-    EXPECT_EQ(cap, 30);
-  } else {
-    EXPECT_GE(cap, 75);
-  }
+  EXPECT_GE(cap, 75);
   std::cerr << "Compute capability of GPU[0]: " << cap << "\n";
 }
 
@@ -84,10 +74,6 @@ TEST_F(GPUDeviceContextTest, MAXCompatibility) {
 }
 
 TEST_F(GPUDeviceContextTest, DefaultContext) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal device context not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, ctx0, DeviceContext::create(Device::gpuAPI));
   ASSIGN_NO_ERR(DeviceContextRef, ctx1,
                 DeviceContext::getOrCreate(Device::gpuAPI));
@@ -114,11 +100,6 @@ TEST_F(GPUDeviceContextTest, DefaultContext) {
 }
 
 TEST_F(GPUDeviceContextTest, DeviceContextScope) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal device context not yet implemented";
-  }
-
   // Create two different device contexts
   ASSIGN_NO_ERR(DeviceContextRef, ctx1,
                 DeviceContext::create(Device::gpuAPI, 0));
@@ -224,10 +205,6 @@ static void compareWithData(const void *dst, size_t dstLen,
 }
 
 TEST_F(GPUDeviceContextTest, DeviceBuffers) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal device buffers not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
                 DeviceContext::create(Device::gpuAPI, 0));
 
@@ -292,10 +269,6 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
 }
 
 TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal device buffers not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen = 256;
@@ -334,10 +307,6 @@ TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
 }
 
 TEST_F(GPUDeviceContextTest, SubBuffer) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal device buffers not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen = 256;
@@ -399,10 +368,6 @@ TEST_F(GPUDeviceContextTest, SubBuffer) {
   free(aPtr);
 }
 TEST_F(GPUDeviceContextTest, OverlappingCopies) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal device operations not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen =
@@ -440,10 +405,6 @@ TEST_F(GPUDeviceContextTest, OverlappingCopies) {
 }
 
 TEST_F(GPUDeviceContextTest, SetMemory) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal device operations not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen = 256;
@@ -502,10 +463,6 @@ TEST_F(GPUDeviceContextTest, SetMemory) {
 }
 
 TEST_F(GPUDeviceContextTest, Timers) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal timers not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   ASSIGN_NO_ERR(DeviceTimerRef, timer, ctx->startTimer());
@@ -530,10 +487,6 @@ TEST_F(GPUDeviceContextTest, Timers) {
 }
 
 TEST_F(GPUDeviceContextTest, MultiContextCopies) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal multi-context operations not yet implemented";
-  }
   int numDevices = Device::numberOfDevices(Device::gpuAPI);
   std::cerr << "Number of GPU devices: " << numDevices << "\n";
 
@@ -612,10 +565,6 @@ TEST_F(GPUDeviceContextTest, MultiContextCopies) {
 }
 
 TEST_F(GPUDeviceContextTest, CrossContextEvent) {
-  ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-  if (!device.isError() && (*device)->api() == Device::metalAPI) {
-    GTEST_SKIP() << "Metal events not yet implemented";
-  }
   ASSIGN_NO_ERR(DeviceContextRef, srcCtx,
                 DeviceContext::create(Device::gpuAPI));
   ASSIGN_NO_ERR(DeviceContextRef, dstCtx,
