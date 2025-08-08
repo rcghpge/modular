@@ -43,8 +43,7 @@ namespace M::AsyncRT {
 MetalDevice::MetalDevice(int id, MTL::Device *device, std::string name,
                          Device::MemInfo memInfo, size_t allocAlignment)
     : Device(api, name, id, memInfo, allocAlignment), device_(device),
-      memInfo_(memInfo), allocAlignment_(allocAlignment),
-      driverVersion_("0.0.0") {}
+      memInfo_(memInfo), driverVersion_("0.0.0") {}
 
 MetalDevice::~MetalDevice() {
   if (device_) {

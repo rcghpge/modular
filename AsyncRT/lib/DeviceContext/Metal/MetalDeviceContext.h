@@ -68,7 +68,6 @@ private:
   MTL::Device *device_;
   std::string name_;
   Device::MemInfo memInfo_;
-  size_t allocAlignment_;
   mutable DriverVersion driverVersion_;
 };
 
