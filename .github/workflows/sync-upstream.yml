@@ -26,13 +26,12 @@ jobs:
         git fetch upstream
         git checkout main
 
-    # 🚧 Safety rails: never push to upstream; bail if not on your fork
-    - name: Safety: ensure repository is my fork
+    - name: Checks at fork
       run: |
         if [ "${{ github.repository_owner }}" != "rcghpge" ]; then
           echo "🚫 Not running on rcghpge's fork. Aborting."; exit 1; fi
 
-    - name: Safety: make upstream fetch-only and verify
+    - name: Set source tree checks
       run: |
         git remote set-url --push upstream DISABLED
         git remote -v
@@ -67,7 +66,7 @@ jobs:
         git remote set-url origin https://x-access-token:${PAT}@github.com/${{ github.repository }}.git
         git remote -v
 
-    - name: Safety: block any upstream pushes
+    - name: Set source tree checks
       if: env.WORKFLOWS_CHANGED == 'true'
       run: |
         if git remote -v | grep -E 'upstream\s+https://github.com/modular/modular\.git\s+\(push\)'; then
