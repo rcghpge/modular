@@ -18,9 +18,8 @@ from collections.abc import Mapping, Sequence, Set
 from os import PathLike
 from typing import Optional
 
-import numpy.typing as npt
 from max._core.safetensors import SafeTensor, safe_open
-from max.driver import Tensor
+from max.driver import DLPackArray, Tensor
 from max.dtype import DType
 from max.graph import DeviceRef
 
@@ -65,7 +64,7 @@ class SafetensorWeights(Weights):
     _filepaths: Sequence[PathLike]
     _tensors: Set[str]
     _tensors_to_file_idx: Mapping[str, int]
-    _allocated: dict[str, npt.NDArray]
+    _allocated: dict[str, DLPackArray]
     _st_weight_map: dict[str, Tensor]
     # This is a mapping of filepaths to SafeTensor handles. This is used to
     # avoid opening and mapping the same file to virtual memory multiple times,
@@ -166,14 +165,8 @@ class SafetensorWeights(Weights):
 
     def data(self) -> WeightData:
         tensor = self._load_tensor()
-        if tensor.dtype == DType.bfloat16:
-            np_array = tensor.view(DType.float16).to_numpy()
-        elif tensor.dtype in [DType.float8_e4m3fn, DType.float8_e5m2]:
-            np_array = tensor.view(DType.uint8).to_numpy()
-        else:
-            np_array = tensor.to_numpy()
         return WeightData(
-            np_array,
+            tensor,
             self.name,
             tensor.dtype,
             Shape(tensor.shape),
@@ -197,14 +190,6 @@ class SafetensorWeights(Weights):
             )
         tensor = self._load_tensor(dtype)
         weight_dtype = tensor.dtype
-        if tensor.dtype == DType.bfloat16:
-            np_tensor = tensor.view(DType.float16).to_numpy()
-        elif tensor.dtype == DType.float8_e4m3fn:
-            np_tensor = tensor.view(DType.uint8).to_numpy()
-        elif tensor.dtype == DType.float8_e5m2:
-            np_tensor = tensor.view(DType.uint8).to_numpy()
-        else:
-            np_tensor = tensor.to_numpy()
 
         weight = Weight(
             name=self._prefix,
@@ -216,7 +201,7 @@ class SafetensorWeights(Weights):
             align=1,
             device=device,
         )
-        self._allocated[self._prefix] = np_tensor
+        self._allocated[self._prefix] = tensor
 
         # Validate the loaded weight.
         weight_shape = tuple(dim for dim in weight.shape)
@@ -246,19 +231,17 @@ class SafetensorWeights(Weights):
         if len(tensor.shape) == 0:
             tensor = tensor.view(tensor.dtype, [1])
         tensor = tensor.view(DType.uint8)
-        np_tensor = tensor.to_numpy()
-        weight_dtype = DType.from_numpy(np_tensor.dtype)
 
         weight = Weight(
             name=self._prefix,
-            dtype=weight_dtype,
+            dtype=DType.uint8,
             shape=tensor.shape,
             device=DeviceRef.CPU(),
         )
-        self._allocated[self._prefix] = np_tensor
+        self._allocated[self._prefix] = tensor
         return weight
 
     @property
-    def allocated_weights(self) -> dict[str, npt.NDArray]:
+    def allocated_weights(self) -> dict[str, DLPackArray]:
         """Gets the values of all weights that were allocated previously."""
         return self._allocated

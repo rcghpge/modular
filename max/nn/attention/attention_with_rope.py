@@ -24,6 +24,7 @@ from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
+    Graph,
     ShardingStrategy,
     TensorValue,
     Weight,
@@ -84,6 +85,7 @@ class AttentionWithRopeV1(AttentionImpl):
         kv_collection: Union[
             ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
         ],
+        freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
         # Get attributes from input.
@@ -119,17 +121,17 @@ class AttentionWithRopeV1(AttentionImpl):
         xq = xq.reshape((-1, self.n_heads, self.kv_params.head_dim))
 
         if xq.device is not None:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype).to(xq.device)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype).to(xq.device)
         else:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype)
 
         xq = fused_qk_ragged_rope(
             self.kv_params,
             xq,
             input_row_offsets,
             kv_collection,
-            freqs_cis,
-            layer_idx,
+            freqs_cis=freqs_cis,
+            layer_idx=layer_idx,
             interleaved=self.rope.interleaved,
         )
 
@@ -396,7 +398,9 @@ class AttentionWithRope(Module):
         kv_collection: Union[
             ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
         ],
+        freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
+        chain: ops._ChainObject | None = None,
     ) -> TensorValue:
         # Get attributes from input.
         total_seq_len = x.shape[0]
@@ -434,6 +438,7 @@ class AttentionWithRope(Module):
                 n_heads=self.n_heads,
                 input_scale=x_scales.to(x.device),
                 weight_scale=weight_scale.to(x.device),
+                chain=chain,
             )
         else:
             # Call into fused qkv ragged matmul.
@@ -446,15 +451,16 @@ class AttentionWithRope(Module):
                 kv_collection=kv_collection,
                 layer_idx=layer_idx,
                 n_heads=self.n_heads,
+                chain=chain,
             )
 
         # Apply rope.
         xq = xq.reshape((-1, self.n_heads, self.kv_params.head_dim))
 
         if xq.device is not None:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype).to(xq.device)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype).to(xq.device)
         else:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype)
 
         xq = fused_qk_ragged_rope(
             self.kv_params,
@@ -464,6 +470,7 @@ class AttentionWithRope(Module):
             freqs_cis,
             layer_idx,
             interleaved=self.rope.interleaved,
+            chain=chain,
         )
         # Calculate Flash Attention.
         attn_out = flash_attention_ragged(
@@ -474,6 +481,7 @@ class AttentionWithRope(Module):
             input_row_offsets=input_row_offsets,
             mask_variant=MHAMaskVariant.CAUSAL_MASK,
             scale=self.scale,
+            chain=chain,
         )
 
         attn_out = ops.reshape(attn_out, shape=[total_seq_len, -1])
@@ -615,7 +623,9 @@ class GGUFQAttentionWithRope(AttentionWithRope):
         kv_collection: Union[
             ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
         ],
+        freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
+        chain: ops._ChainObject | None = None,
     ) -> TensorValue:
         # Get attributes from input.
         total_seq_len = x.shape[0]
@@ -642,7 +652,7 @@ class GGUFQAttentionWithRope(AttentionWithRope):
 
         # Apply rope.
         xq = xq.reshape((-1, self.n_heads, self.kv_params.head_dim))
-        freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype)
+        freqs_cis = ops.cast(freqs_cis, xq.dtype)
 
         xq = fused_qk_ragged_rope(
             self.kv_params,
@@ -802,7 +812,9 @@ class GPTQAttentionWithRope(AttentionWithRope):
         kv_collection: Union[
             ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
         ],
+        freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
+        chain: ops._ChainObject | None = None,
     ) -> TensorValue:
         # Get attributes from input.
         total_seq_len = x.shape[0]
@@ -828,9 +840,9 @@ class GPTQAttentionWithRope(AttentionWithRope):
         xq = xq.reshape((-1, self.n_heads, self.kv_params.head_dim))
 
         if xq.device is not None:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype).to(xq.device)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype).to(xq.device)
         else:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype)
 
         xq = fused_qk_ragged_rope(
             self.kv_params,
@@ -993,6 +1005,7 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
             Sequence[ContinuousBatchingKVCacheCollection]
             | Sequence[PagedKVCacheCollection]
         ),
+        freqs_cis: Sequence[TensorValue],
         input_row_offsets: Sequence[TensorValue],
     ) -> list[TensorValue]:
         if not self.devices:
@@ -1005,14 +1018,32 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
             raise TypeError(
                 "All elements in input_row_offsets must be TensorValue instances"
             )
+        if not all(isinstance(x, TensorValue) for x in freqs_cis):
+            raise TypeError(
+                "All elements in freqs_cis must be TensorValue instances"
+            )
+
+        attn_outputs = []
+        chains = [
+            ops._ChainObject(Graph.current._current_chain)
+            for _ in range(len(self.devices))
+        ]
+        for i in range(len(self.devices)):
+            attn_outputs.append(
+                self.list_of_attentions[i](
+                    layer_idx,
+                    x[i],
+                    kv_collections[i],
+                    freqs_cis[i],
+                    input_row_offsets[i],
+                    chains[i],
+                )
+            )
+
+        Graph.current._merge_chains([c._val for c in chains])
 
         return self.allreduce(
-            inputs=[
-                self.list_of_attentions[i](
-                    layer_idx, x[i], kv_collections[i], input_row_offsets[i]
-                )
-                for i in range(len(self.devices))
-            ],
+            inputs=attn_outputs,
             signal_buffers=signal_buffers,
         )
 
@@ -1031,6 +1062,7 @@ class AttentionWithRopeQKV(AttentionImplQKV):
         kv_collection: Union[
             ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
         ],
+        freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
         # Get attributes from input.
@@ -1053,7 +1085,7 @@ class AttentionWithRopeQKV(AttentionImplQKV):
         xq = xq.reshape((-1, self.n_heads, self.kv_params.head_dim))
 
         # Cast freqs_cis to xq's dtype to match the fused_qk_ragged_rope kernel.
-        freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype)
+        freqs_cis = ops.cast(freqs_cis, xq.dtype)
 
         xq = fused_qk_ragged_rope(
             self.kv_params,

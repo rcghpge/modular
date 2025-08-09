@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+
 """Build a Mistral model that runs on multiple devices."""
 
 from __future__ import annotations
@@ -18,12 +19,12 @@ import functools
 import logging
 
 from max.nn import (
+    MLP,
     ColumnParallelLinear,
     DistributedAttentionWithRope,
-    DistributedMLP,
-    DistributedRMSNorm,
     DistributedTransformer,
     DistributedTransformerBlock,
+    RMSNorm,
     RotaryEmbedding,
     VocabParallelEmbedding,
 )
@@ -51,11 +52,10 @@ class DistributedMistral(DistributedTransformer):
         )
 
         distributed_norm = functools.partial(
-            DistributedRMSNorm,
+            RMSNorm,
             dim=config.hidden_size,
             dtype=config.dtype,
             eps=config.rms_norm_eps,
-            devices=config.devices,
         )
 
         layers = [
@@ -74,7 +74,7 @@ class DistributedMistral(DistributedTransformer):
                     has_bias=False,
                     clip_qkv=False,
                 ),
-                mlp=DistributedMLP(
+                mlp=MLP(
                     dtype=config.dtype,
                     quantization_encoding=None,
                     hidden_dim=config.hidden_size,
@@ -83,6 +83,7 @@ class DistributedMistral(DistributedTransformer):
                 ),
                 attention_norm=distributed_norm(),
                 mlp_norm=distributed_norm(),
+                distributed_gemm_config=None,
             )
             for i in range(config.num_hidden_layers)
         ]
@@ -122,5 +123,6 @@ class DistributedMistral(DistributedTransformer):
                 config.kv_params, num_layers=config.num_hidden_layers
             ),
             devices=config.devices,
+            rope=rope,
             return_logits=config.return_logits,
         )

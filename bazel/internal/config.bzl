@@ -1,6 +1,7 @@
 """Private bazel configuration used internally by rules and macros."""
 
 load("@with_cfg.bzl//with_cfg/private:select.bzl", "decompose_select_elements")  # buildifier: disable=bzl-visibility
+load("//bazel:config.bzl", "DEFAULT_GPU_MEMORY")  # buildifier: disable=bzl-visibility
 
 GPU_TEST_ENV = {
     "ASAN_OPTIONS": "$(GPU_ASAN_OPTIONS),suppressions=$(execpath //bazel/internal:asan-suppressions.txt)",
@@ -63,12 +64,40 @@ def get_default_exec_properties(tags, target_compatible_with):
         exec_properties["test.dockerNetwork"] = "bridge"
 
     if "@//:has_multi_gpu" in gpu_constraints or "//:has_multi_gpu" in gpu_constraints:
+        exec_properties["test.resources:gpu-1"] = "0"
         exec_properties["test.resources:gpu-2"] = "0.01"
 
     if "@//:has_4_gpus" in gpu_constraints or "//:has_4_gpus" in gpu_constraints:
+        exec_properties["test.resources:gpu-1"] = "0"
+        exec_properties["test.resources:gpu-2"] = "0.01"
         exec_properties["test.resources:gpu-4"] = "0.01"
 
     return exec_properties
+
+def get_default_test_env(exec_properties):
+    """Get environment variables that should be shared between different test target types.
+
+    Args:
+        exec_properties: The target's 'exec_properties'
+
+    Returns:
+        A dictionary that should be added to the test target's 'env'
+    """
+
+    # TODO(MOTO-1278): 0.6 accounts for unknown overhead
+    gpu_memory_limit = float(exec_properties.get("test.resources:gpu-memory", DEFAULT_GPU_MEMORY))
+    adjusted_gpu_memory_limit = gpu_memory_limit - 0.6
+    if adjusted_gpu_memory_limit < 0.0:
+        fail("GPU memory limit must be at least 1 GiB, got: {}".format(gpu_memory_limit))
+
+    return select({
+        "@//:has_gpu": {
+            "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY": "true",
+            "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE": "{}".format(int(adjusted_gpu_memory_limit * 1073741824.0)),
+            "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT": "100",
+        },
+        "//conditions:default": {},
+    })
 
 def env_for_available_tools(
         *,

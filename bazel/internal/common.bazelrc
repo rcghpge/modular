@@ -12,9 +12,6 @@ build --enable_platform_specific_config=true
 # Retry dependency download flakes
 common --experimental_repository_downloader_retries=5
 
-# Make --action_env changes not invalidate repository rules
-common --incompatible_repo_env_ignores_action_env
-
 # Make globs that don't match anything fail
 common --incompatible_disallow_empty_glob
 
@@ -46,6 +43,9 @@ common --experimental_ui_max_stdouterr_bytes=4000000
 # Disable legacy duplicate runfiles creation
 common --legacy_external_runfiles=false
 common --build_runfile_links=false
+
+# Generate a smaller manifest which is nicer for remote exec
+common --incompatible_compact_repo_mapping_manifest
 
 # Make sure test outputs exist without having to unarchive
 common --zip_undeclared_test_outputs=false
@@ -91,6 +91,11 @@ run --run_env=MODULAR_TELEMETRY_ENABLED=false
 # Differentiate between accidental 'bazel run' vs 'bazel test'
 test --test_env=MODULAR_RUNNING_TESTS=true
 
+# Default GPU memory restrictions to 0, all tests must override this
+build --test_env=MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY=true
+build --test_env=MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE=0
+build --test_env=MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT=100
+
 # Allow --modify_execution_info to be passed any number of times
 common --incompatible_modify_execution_info_additive
 
@@ -134,6 +139,9 @@ build:remote --repo_env=MODULAR_REMOTE_EXEC=1
 build --internal_spawn_scheduler
 build:linux --spawn_strategy=dynamic,remote,worker,sandboxed,standalone
 build:macos --spawn_strategy=remote,worker,sandboxed,standalone
+
+# TODO: Remove when https://github.com/bazelbuild/bazel/pull/26724 is fixed
+build --strategy=UvLock=sandboxed,standalone
 
 # https://github.com/bazelbuild/bazel/issues/25221
 build --strategy=TestRunner=remote,worker,sandboxed,standalone

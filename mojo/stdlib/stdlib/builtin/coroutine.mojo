@@ -127,13 +127,17 @@ struct Coroutine[type: AnyType, origins: OriginSet]:
         self._handle = handle
 
     @always_inline
-    fn force_destroy(var self):
+    fn force_destroy(deinit self):
         """Destroy the coroutine object."""
         __mlir_op.`co.destroy`(self._handle)
-        __disable_del self
 
     @always_inline
-    fn __await__(var self, out result: type):
+    fn _take_handle(deinit self) -> AnyCoroutine:
+        """Take ownership of the raw handle."""
+        return self._handle
+
+    @always_inline
+    fn __await__(deinit self, out result: type):
         """Suspends the current coroutine until the coroutine is complete.
 
         Returns:
@@ -143,7 +147,6 @@ struct Coroutine[type: AnyType, origins: OriginSet]:
         # Black magic! Internal implementation detail!
         # Don't you dare copy this code! 😤
         var handle = self._handle
-        __disable_del self
         __mlir_op.`co.await`[_type=NoneType](
             handle,
             __mlir_op.`lit.ref.to_pointer`(__get_mvalue_as_litref(result)),
@@ -214,10 +217,14 @@ struct RaisingCoroutine[type: AnyType, origins: OriginSet]:
         self._handle = handle
 
     @always_inline
-    fn force_destroy(var self):
+    fn _take_handle(deinit self) -> AnyCoroutine:
+        """Take ownership of the raw handle."""
+        return self._handle
+
+    @always_inline
+    fn force_destroy(deinit self):
         """Destroy the coroutine object."""
         __mlir_op.`co.destroy`(self._handle)
-        __disable_del self
 
     @always_inline
     fn __await__(var self, out result: type) raises:
@@ -229,8 +236,7 @@ struct RaisingCoroutine[type: AnyType, origins: OriginSet]:
 
         # Black magic! Internal implementation detail!
         # Don't you dare copy this code! 😤
-        var handle = self._handle
-        __disable_del self
+        var handle = self^._take_handle()
         if __mlir_op.`co.await`[_type = __mlir_type.i1](
             handle,
             __mlir_op.`lit.ref.to_pointer`(__get_mvalue_as_litref(result)),

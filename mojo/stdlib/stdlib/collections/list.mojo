@@ -20,6 +20,7 @@ from os import abort
 from sys import sizeof
 from sys.intrinsics import _type_is_eq
 
+from collections._index_normalization import normalize_index
 from memory import Pointer, memcpy
 
 from .optional import Optional
@@ -31,28 +32,31 @@ from .optional import Optional
 
 @fieldwise_init
 struct _ListIter[
-    list_mutability: Bool, //,
+    mut: Bool, //,
     T: Copyable & Movable,
     hint_trivial_type: Bool,
-    list_origin: Origin[list_mutability],
+    origin: Origin[mut],
     forward: Bool = True,
 ](Copyable, Iterator, Movable):
     """Iterator for List.
 
     Parameters:
-        list_mutability: Whether the reference to the list is mutable.
+        mut: Whether the reference to the list is mutable.
         T: The type of the elements in the list.
         hint_trivial_type: Set to `True` if the type `T` is trivial, this is not
             mandatory, but it helps performance. Will go away in the future.
-        list_origin: The origin of the List
+        origin: The origin of the List
         forward: The iteration direction. `False` is backwards.
     """
 
     alias Element = T  # FIXME(MOCO-2068): shouldn't be needed.
-    alias list_type = List[T, hint_trivial_type]
 
     var index: Int
-    var src: Pointer[Self.list_type, list_origin]
+    var src: Pointer[List[Self.Element, hint_trivial_type], origin]
+
+    @always_inline
+    fn __iter__(self) -> Self:
+        return self
 
     @always_inline
     fn __has_next__(self) -> Bool:
@@ -62,7 +66,7 @@ struct _ListIter[
         else:
             return self.index > 0
 
-    fn __next_ref__(mut self) -> ref [list_origin] T:
+    fn __next_ref__(mut self) -> ref [origin] Self.Element:
         @parameter
         if forward:
             self.index += 1
@@ -72,12 +76,8 @@ struct _ListIter[
             return self.src[][self.index]
 
     @always_inline
-    fn __next__(mut self) -> T:
+    fn __next__(mut self) -> Self.Element:
         return self.__next_ref__()
-
-    @always_inline
-    fn __iter__(self) -> Self:
-        return self
 
 
 struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
@@ -167,15 +167,14 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
 
         self = Self(capacity=length)
 
-        for i in range(length):
-            var src = UnsafePointer(to=elements[i])
-            var dest = self._data + i
+        # Transfer all of the elements into the List.
+        @parameter
+        fn init_elt(idx: Int, var elt: T):
+            (self._data + idx).init_pointee_move(elt^)
 
-            src.move_pointee_into(dest)
+        elements^.consume_elements[init_elt]()
 
-        # Do not destroy the elements when their backing storage goes away.
-        __disable_del elements
-
+        # Remember how many elements we have.
         self._len = length
 
     fn __init__(out self, span: Span[T]):
@@ -210,7 +209,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
         self = Self(capacity=existing.capacity)
         self.extend(Span(existing))
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         """Destroy all elements in the list and free its memory."""
 
         @parameter
@@ -922,7 +921,7 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
 
         return res^
 
-    fn __getitem__[I: Indexer](ref self, idx: I) -> ref [self] T:
+    fn __getitem__[I: Indexer, //](ref self, idx: I) -> ref [self] T:
         """Gets the list element at the given index.
 
         Args:
@@ -935,30 +934,10 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
             A reference to the element at the given index.
         """
 
-        @parameter
-        if _type_is_eq[I, UInt]():
-            var idx = UInt(idx)
-            debug_assert(
-                idx < self._len,
-                "index: ",
-                idx,
-                " is out of bounds for `List` of length: ",
-                self._len,
-            )
-            return (self._data + idx)[]
-        else:
-            var normalized_idx = Int(idx)
-            debug_assert(
-                -self._len <= normalized_idx < self._len,
-                "index: ",
-                normalized_idx,
-                " is out of bounds for `List` of length: ",
-                self._len,
-            )
-            if normalized_idx < 0:
-                normalized_idx += len(self)
-
-            return (self._data + normalized_idx)[]
+        var normalized_idx = normalize_index["List", assert_always=False](
+            idx, len(self)
+        )
+        return (self._data + normalized_idx)[]
 
     @always_inline
     fn unsafe_get(ref self, idx: Int) -> ref [self] Self.T:
@@ -1124,15 +1103,11 @@ struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
 
     fn _cast_hint_trivial_type[
         hint_trivial_type: Bool
-    ](var self) -> List[T, hint_trivial_type]:
+    ](deinit self) -> List[T, hint_trivial_type]:
         var result = List[T, hint_trivial_type]()
         result._data = self._data
         result._len = self._len
         result.capacity = self.capacity
-
-        # We stole the elements, don't destroy them.
-        __disable_del self
-
         return result^
 
 

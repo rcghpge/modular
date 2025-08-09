@@ -123,7 +123,9 @@ class AttentionWithRopeAndLoRA(AttentionWithRope):
         kv_collection: Union[
             ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
         ],
+        freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
+        chain: ops._ChainObject | None = None,
     ) -> TensorValue:
         # Get attributes from input.
         total_seq_len = x.shape[0]
@@ -150,9 +152,9 @@ class AttentionWithRopeAndLoRA(AttentionWithRope):
         xq = xq.reshape((-1, self.n_heads, self.kv_params.head_dim))
 
         if xq.device is not None:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype).to(xq.device)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype).to(xq.device)
         else:
-            freqs_cis = ops.cast(self.rope.freqs_cis, xq.dtype)
+            freqs_cis = ops.cast(freqs_cis, xq.dtype)
 
         xq = fused_qk_ragged_rope(
             self.kv_params,

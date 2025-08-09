@@ -374,6 +374,45 @@ struct CompilationTarget[value: _TargetType = _current_target()]:
         return Self._os() == "windows"
 
 
+fn platform_map[
+    T: Copyable & Movable, //,
+    operation: Optional[String] = None,
+    *,
+    linux: Optional[T] = None,
+    macos: Optional[T] = None,
+    windows: Optional[T] = None,
+]() -> T:
+    """Helper for defining a compile time value depending
+    on the current compilation target, raising a compilation
+    error if trying to access the value on an unsupported target.
+
+    Example:
+
+    ```mojo
+    alias EDEADLK = platform_alias["EDEADLK", linux=35, macos=11]()
+    ```
+
+    Parameters:
+        T: The type of the value.
+        operation: The operation to show in the compilation error.
+        linux: Optional support for linux targets.
+        macos: Optional support for macos targets.
+        windows: Optional support for windows targets.
+    """
+
+    @parameter
+    if CompilationTarget.is_macos() and macos:
+        return macos.value()
+    elif CompilationTarget.is_linux() and linux:
+        return linux.value()
+    elif CompilationTarget.is_windows() and windows:
+        return windows.value()
+    else:
+        return CompilationTarget.unsupported_target_error[
+            T, operation=operation
+        ]()
+
+
 @always_inline("nodebug")
 fn _accelerator_arch() -> StaticString:
     """Returns the accelerator architecture string for the current target
@@ -537,7 +576,7 @@ fn _is_amd_mi355x() -> Bool:
 
 
 @always_inline("nodebug")
-fn _cnda_version() -> Int:
+fn _cdna_version() -> Int:
     constrained[
         _is_amd_mi300x() or _is_amd_mi355x(),
         "querying the cdna version is only supported on AMD hardware",
@@ -551,13 +590,13 @@ fn _cnda_version() -> Int:
 
 
 @always_inline("nodebug")
-fn _cnda_3_or_newer() -> Bool:
-    return _cnda_version() >= 3
+fn _cdna_3_or_newer() -> Bool:
+    return _cdna_version() >= 3
 
 
 @always_inline("nodebug")
-fn _cnda_4_or_newer() -> Bool:
-    return _cnda_version() >= 4
+fn _cdna_4_or_newer() -> Bool:
+    return _cdna_version() >= 4
 
 
 @always_inline("nodebug")

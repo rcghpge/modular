@@ -22,11 +22,10 @@ import sys
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from typing import Callable
+from typing import Any, Callable
 
 import uvloop
-import zmq
-from max.interfaces import PipelinesFactory, PipelineTask
+from max.interfaces import BaseContext, PipelinesFactory, PipelineTask
 from max.pipelines.lib import PipelineConfig
 from max.profiler import Tracer, traced
 from max.serve.config import MetricRecordingMethod, Settings
@@ -123,15 +122,11 @@ class ModelWorker:
             with record_ms(METRICS.model_load_time), Tracer("model_factory"):
                 pipeline = model_factory()
 
-            # Initialize ZeroMQ Context.
-            # This should only be done once per process.
-            zmq_ctx = zmq.Context(io_threads=2)
-
             # create dispatcher client
             pipeline_role = pipeline_config.pipeline_role
 
             if (
-                not pipeline_role.needs_dispatcher_client()
+                not pipeline_role.uses_dispatch_service
                 and dispatcher_factory is not None
             ):
                 logger.info(
@@ -140,19 +135,18 @@ class ModelWorker:
                 dispatcher_factory = None
 
             dispatcher_client = None
-            if pipeline_role.needs_dispatcher_client():
+            if pipeline_role.uses_dispatch_service:
                 if dispatcher_factory is None:
                     raise ValueError(
                         f"Dispatcher factory is required for {pipeline_role} but was not provided"
                     )
                 logger.debug(f"Starting dispatcher client for {pipeline_role}")
-                dispatcher_client = dispatcher_factory.create_client(zmq_ctx)
+                dispatcher_client = dispatcher_factory.create_client()
                 dispatcher_client.start()
 
             # Retrieve Scheduler.
             scheduler = load_scheduler(
                 pipeline,
-                zmq_ctx,
                 pipeline_config,
                 settings,
                 dispatcher_client,
@@ -231,7 +225,6 @@ async def start_model_worker(
     settings: Settings,
     metric_client: MetricClient,
     pipeline_task: PipelineTask,
-    zmq_io_threads: int = 1,
     dispatcher_factory: DispatcherFactory | None = None,
 ) -> AsyncGenerator[EngineQueue, None]:
     """Starts a model worker and associated process.
@@ -242,7 +235,6 @@ async def start_model_worker(
         settings: Global server settings
         metric_client: Metric client for recording metrics
         pipeline_task: The task for the pipeline
-        zmq_io_threads: Number of IO threads for ZMQ
         dispatcher_factory: Factory for creating dispatcher client instances
 
     Returns:
@@ -257,14 +249,12 @@ async def start_model_worker(
     pc = ProcessControl(
         mp_context, "model-worker", health_fail_s=settings.mw_health_fail_s
     )
-    zmq_ctx = zmq.Context(io_threads=zmq_io_threads)
-    engine_queue: EngineQueue = EngineQueue(
+    engine_queue: EngineQueue[BaseContext, Any] = EngineQueue[BaseContext, Any](
         mp_context,
         worker_pc=pc,
         request_zmq_endpoint=settings.request_zmq_endpoint,
         response_zmq_endpoint=settings.response_zmq_endpoint,
         cancel_zmq_endpoint=settings.cancel_zmq_endpoint,
-        zmq_ctx=zmq_ctx,
         pipeline_task=pipeline_task,
     )
 
@@ -291,13 +281,12 @@ async def start_model_worker(
         unhealthy_poll_s=200e-3,
     )
 
-    use_heartbeat = settings.use_heartbeat
-    if not use_heartbeat:
+    if not settings.use_heartbeat:
         engine_queue.use_process_healthcheck(worker)
 
     # before progressing, observe the worker process to be healthy or dead
     dt = asyncio.create_task(monitor.until_dead())
-    if use_heartbeat:
+    if settings.use_heartbeat:
         ht = asyncio.create_task(monitor.until_healthy())
     else:
         ht = asyncio.create_task(monitor.until_started())
@@ -346,7 +335,7 @@ async def start_model_worker(
     logger.debug("Model worker task is alive and healthy")
 
     try:
-        if use_heartbeat:
+        if settings.use_heartbeat:
             worker_task = asyncio.create_task(monitor.shutdown_if_unhealthy())
         else:
             worker_task = asyncio.create_task(monitor.shutdown_if_dead())

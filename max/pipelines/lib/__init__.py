@@ -24,6 +24,7 @@ from .hf_utils import (
     validate_hf_repo_access,
 )
 from .lora import LoRAManager
+from .lora_request_processor import LoRARequestProcessor
 from .max_config import (
     KVCacheConfig,
     LoRAConfig,
@@ -55,6 +56,7 @@ from .tokenizer import (
     PreTrainedPipelineTokenizer,
     TextAndVisionTokenizer,
     TextTokenizer,
+    max_tokens_to_generate,
 )
 from .weight_path_parser import WeightPathParser
 
@@ -69,6 +71,7 @@ __all__ = [
     "KVCacheMixin",
     "LoRAConfig",
     "LoRAManager",
+    "LoRARequestProcessor",
     "MAXModelConfig",
     "MAXModelConfigBase",
     "ModelInputs",
@@ -92,6 +95,7 @@ __all__ = [
     "download_weight_files",
     "generate_local_model_path",
     "get_paged_manager",
+    "max_tokens_to_generate",
     "ragged_token_merger",
     "rejection_sampler",
     "rejection_sampler_with_residuals",

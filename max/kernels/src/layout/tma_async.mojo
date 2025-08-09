@@ -620,9 +620,7 @@ struct TMATensorTile[
         cta_group: Int = 1
     ](
         self,
-        dst: LayoutTensor[
-            dtype, _, address_space = AddressSpace.SHARED, *_, **_
-        ],
+        dst: LayoutTensor[_, _, address_space = AddressSpace.SHARED, *_, **_],
         ref [AddressSpace.SHARED]mem_barrier: SharedMemBarrier,
         coords: Tuple[UInt, UInt],
     ):
@@ -654,6 +652,11 @@ struct TMATensorTile[
         constrained[
             __type_of(dst).alignment % 128 == 0,
             "TMA requires 128B alignment in shared memory",
+        ]()
+
+        constrained[
+            __type_of(dst).dtype == dtype,
+            "Input tensor has a different type than the TMA op",
         ]()
 
         # The descriptor layout i.e. data per copy can be smaller than the shared memory
@@ -1379,8 +1382,8 @@ def create_tma_tile[
             1,
             owning=False,
         ),
-        (tensor.dim[0](), tensor.dim[1]()),
-        (tensor.stride[0](), tensor.stride[1]()),
+        (tensor.dim(0), tensor.dim(1)),
+        (tensor.stride(0), tensor.stride(1)),
         (tile_sizes[0], tile_sizes[1]),
     )
 
@@ -1492,8 +1495,8 @@ def create_tma_tile[
                 1,
                 owning=False,
             ),
-            (tensor.dim[0](), tensor.dim[1]()),
-            (tensor.stride[0](), tensor.stride[1]()),
+            (tensor.dim(0), tensor.dim(1)),
+            (tensor.stride(0), tensor.stride(1)),
             (__desc_layout.shape[0].value(), __desc_layout.shape[1].value()),
         )
 
@@ -1518,8 +1521,8 @@ def create_tma_tile[
                 1,
                 owning=False,
             ),
-            (tensor.dim[0](), tensor.dim[1](), tensor.dim[2]()),
-            (tensor.stride[0](), tensor.stride[1](), tensor.stride[2]()),
+            (tensor.dim(0), tensor.dim(1), tensor.dim(2)),
+            (tensor.stride(0), tensor.stride(1), tensor.stride(2)),
             (
                 __desc_layout.shape[0].value(),
                 __desc_layout.shape[1].value(),

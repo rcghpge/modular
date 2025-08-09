@@ -29,13 +29,14 @@ from max.pipelines.lib import PipelineConfig
 from max.serve.config import APIType, MetricRecordingMethod, Settings
 from max.serve.kvcache_agent.dispatcher_factory import DispatcherFactory
 from max.serve.kvcache_agent.dispatcher_transport import TransportMessage
-from max.serve.pipelines.kvcache_worker import start_kvcache_agent
+from max.serve.pipelines.kvcache_worker import start_dispatch_service
 from max.serve.pipelines.llm import (
     AudioGeneratorPipeline,
     TokenGeneratorPipeline,
 )
 from max.serve.pipelines.model_worker import start_model_worker
 from max.serve.pipelines.telemetry_worker import start_telemetry_consumer
+from max.serve.queue.lora_queue import LoRAQueue
 from max.serve.recordreplay.jsonl import JSONLFileRecorder
 from max.serve.recordreplay.middleware import RecorderMiddleware
 from max.serve.request import register_request
@@ -84,26 +85,32 @@ async def lifespan(
     logger.info("Starting server...")
     try:
         async with AsyncExitStack() as exit_stack:
-            # create dispatcher factory
-            dispatcher_factory = DispatcherFactory[
-                Union[PrefillRequest, PrefillResponse, KVTransferEngineMetadata]
-            ](
-                settings.dispatcher_config,
-                transport_payload_type=TransportMessage[
+            if serving_settings.pipeline_config.pipeline_role.uses_dispatch_service:
+                # create dispatcher factory
+                dispatcher_factory = DispatcherFactory[
                     Union[
                         PrefillRequest,
                         PrefillResponse,
                         KVTransferEngineMetadata,
                     ]
-                ],
-            )
+                ](
+                    settings.dispatcher_config,
+                    transport_payload_type=TransportMessage[
+                        Union[
+                            PrefillRequest,
+                            PrefillResponse,
+                            KVTransferEngineMetadata,
+                        ]
+                    ],
+                )
 
-            if settings.experimental_enable_kvcache_agent:
-                logger.info("Starting KV Cache Agent...")
+                logger.info("Starting Dispatch Service...")
                 await exit_stack.enter_async_context(
-                    start_kvcache_agent(settings, dispatcher_factory)
+                    start_dispatch_service(settings, dispatcher_factory)
                 )
                 logger.info("KV Cache Agent started.")
+            else:
+                dispatcher_factory = None
 
             # start telemetry worker and configure Metrics to use it
             metric_client = await exit_stack.enter_async_context(
@@ -123,6 +130,15 @@ async def lifespan(
                 )
             )
 
+            lora_queue: LoRAQueue | None = (
+                LoRAQueue(
+                    serving_settings.pipeline_config.lora_config.lora_request_endpoint,
+                    serving_settings.pipeline_config.lora_config.lora_response_endpoint,
+                )
+                if serving_settings.pipeline_config.lora_config
+                else None
+            )
+
             METRICS.pipeline_load(serving_settings.model_name)
             pipeline: TokenGeneratorPipeline | AudioGeneratorPipeline
             if serving_settings.pipeline_task in (
@@ -133,6 +149,7 @@ async def lifespan(
                     model_name=serving_settings.model_name,
                     tokenizer=serving_settings.tokenizer,
                     engine_queue=engine_queue,
+                    lora_queue=lora_queue,
                 )
             elif (
                 serving_settings.pipeline_task == PipelineTask.AUDIO_GENERATION
@@ -141,6 +158,7 @@ async def lifespan(
                     model_name=serving_settings.model_name,
                     tokenizer=serving_settings.tokenizer,
                     engine_queue=engine_queue,
+                    lora_queue=lora_queue,
                 )
             else:
                 raise ValueError(
@@ -148,6 +166,7 @@ async def lifespan(
                 )
 
             app.state.pipeline = pipeline
+
             await exit_stack.enter_async_context(pipeline)
             logger.info(
                 f"\n\n**********\nServer ready on http://{settings.host}:{settings.port} (Press CTRL+C to quit)\n**********\n"

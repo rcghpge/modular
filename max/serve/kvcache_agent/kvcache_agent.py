@@ -13,6 +13,7 @@
 
 import concurrent.futures
 import logging
+import pickle
 import queue
 import threading
 from collections.abc import Iterator
@@ -20,7 +21,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import grpc
-import zmq
 from max.serve.kvcache_agent.kvcache_agent_service_v1_pb2 import (  # type: ignore
     KVCacheStateUpdate,
     MemoryTier,
@@ -205,7 +205,6 @@ class KVCacheAgentServer:
     def __init__(
         self,
         config: KVCacheAgentServerConfig,
-        zmq_ctx: zmq.Context,
         kv_cache_events_zmq_endpoint: str,
     ) -> None:
         """
@@ -215,8 +214,12 @@ class KVCacheAgentServer:
             config: Configuration for the server.
         """
         self.config = config
+        # This remains the only use of pickle in the current codebase.
+        # As the KVCacheChangeMessage contains Protobuf Enum's it cannot be
+        # serialized by msgspec/msgpack.
         self._kv_cache_events_pull_socket = ZmqPullSocket[KVCacheChangeMessage](
-            zmq_ctx, kv_cache_events_zmq_endpoint
+            zmq_endpoint=kv_cache_events_zmq_endpoint,
+            deserialize=pickle.loads,
         )
         self.server = grpc.server(
             concurrent.futures.ThreadPoolExecutor(
@@ -314,7 +317,6 @@ class KVCacheAgentServer:
 
 def start_kvcache_agent_service(
     kv_cache_events_zmq_endpoint: str,
-    zmq_ctx: zmq.Context,
     host: str = "0.0.0.0",
     port: int = 50051,
     num_workers: int = 10,
@@ -324,7 +326,6 @@ def start_kvcache_agent_service(
 
     Args:
         kv_cache_events_zmq_endpoint: The ZMQ endpoint for the agent to listen for kv cache events.
-        zmq_ctx: An optional ZMQ context. One will be created if not provided.
         host: The server address to bind to.
         port: The port to listen on.
         num_workers: Number of worker threads for handling requests.
@@ -336,6 +337,6 @@ def start_kvcache_agent_service(
     config = KVCacheAgentServerConfig(
         host=host, port=port, num_workers=num_workers
     )
-    server = KVCacheAgentServer(config, zmq_ctx, kv_cache_events_zmq_endpoint)
+    server = KVCacheAgentServer(config, kv_cache_events_zmq_endpoint)
     server.start()
     return server

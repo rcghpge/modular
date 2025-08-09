@@ -1,16 +1,24 @@
 """Define bazel dependencies common to the internal and external repos."""
 
-bazel_dep(name = "apple_support", version = "1.22.1", repo_name = "build_bazel_apple_support")
 bazel_dep(name = "abseil-cpp", version = "20250127.1")
+bazel_dep(name = "apple_support", version = "1.22.1", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "gazelle", version = "0.43.0")
+bazel_dep(name = "rules_go", version = "0.55.0", repo_name = "io_bazel_rules_go")
+bazel_dep(name = "rules_java", version = "8.14.0")
 bazel_dep(name = "aspect_bazel_lib", version = "2.19.2")
 bazel_dep(name = "aspect_rules_js", version = "2.4.1")
 bazel_dep(name = "aspect_rules_py", version = "1.4.0")  # TODO: Upgrade when https://github.com/aspect-build/rules_py/issues/595 is fixed
 bazel_dep(name = "bazel_skylib", version = "1.8.0")
+bazel_dep(name = "curl", version = "8.8.0")
+bazel_dep(name = "google_benchmark", version = "1.8.5")
 bazel_dep(name = "grpc", version = "1.73.1", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "grpc-java", version = "1.67.1")
+bazel_dep(name = "opentelemetry-cpp", version = "1.19.0")
+bazel_dep(name = "opentelemetry-proto", version = "1.5.0")
 bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "protobuf", version = "31.1")
-bazel_dep(name = "rules_cc", version = "0.0.17")
+bazel_dep(name = "rules_cc", version = "0.1.4")
+bazel_dep(name = "rules_foreign_cc", version = "0.13.0")
 bazel_dep(name = "rules_mojo", version = "0.5.0")
 bazel_dep(name = "rules_multirun", version = "0.12.0")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
@@ -27,13 +35,24 @@ bazel_dep(name = "rules_nodejs", version = "6.4.0")
 bazel_dep(name = "rules_swift", version = "2.8.2")
 bazel_dep(name = "protoc-gen-validate", version = "1.2.1.bcr.1")
 
+bazel_dep(name = "buildifier_prebuilt", version = "8.2.0.2", dev_dependency = True)
+
 # Manually pull in https://github.com/bazel-contrib/rules_jvm_external/pull/1265
 single_version_override(
     module_name = "rules_jvm_external",
     version = "6.7",
 )
 
-bazel_dep(name = "rules_mypy", version = "0.36.0", dev_dependency = True)
+bazel_dep(name = "rules_mypy", version = "0.39.0", dev_dependency = True)
+single_version_override(
+    module_name = "rules_mypy",
+    patch_strip = 1,
+    patches = [
+        # TODO: Should we submit this upstream or force our deps to directly
+        # depend on the things that provide their pyi files?
+        "//bazel/public-patches:rules_mypy_pyi_files.patch",
+    ],
+)
 
 archive_override(
     module_name = "rules_pycross",
@@ -50,11 +69,38 @@ archive_override(
 )
 
 single_version_override(
-    module_name = "aspect_rules_py",
+    module_name = "rules_foreign_cc",
     patch_strip = 1,
     patches = [
-        # https://github.com/aspect-build/rules_py/pull/463
-        "//bazel/public-patches:rules_py_main.patch",
+        # https://github.com/bazel-contrib/rules_foreign_cc/pull/1361
+        "//bazel/public-patches:rules_foreign_cc_sysroot.patch",
+    ],
+)
+
+single_version_override(
+    module_name = "opentelemetry-cpp",
+    patch_strip = 1,
+    patches = [
+        "//bazel/public-patches:opentelemetry.patch",
+    ],
+)
+
+single_version_override(
+    module_name = "rules_go",
+    patch_strip = 1,
+    patches = [
+        # https://github.com/bazel-contrib/rules_go/pull/4368
+        "//bazel/public-patches:rules_go.patch",
+    ],
+)
+
+single_version_override(
+    module_name = "protobuf",
+    patch_strip = 1,
+    patches = [
+        # TODO: Remove when this patch is in a release
+        # https://github.com/protocolbuffers/protobuf/pull/22633
+        "//bazel/public-patches:protobuf-platforms.patch",
     ],
 )
 
@@ -63,19 +109,6 @@ single_version_override(
     patch_strip = 1,
     patches = [
         "//bazel/public-patches:with_cfg_visibility.patch",
-    ],
-)
-
-single_version_override(
-    module_name = "rules_mypy",
-    patch_strip = 1,
-    patches = [
-        # https://github.com/theoremlp/rules_mypy/pull/105
-        "//bazel/public-patches:rules_mypy_mojo_srcs.patch",
-        # https://github.com/theoremlp/rules_mypy/pull/106
-        "//bazel/public-patches:rules_mypy_pycross.patch",
-        # https://github.com/theoremlp/rules_mypy/pull/104
-        "//bazel/public-patches:rules_mypy_user_site.patch",
     ],
 )
 
@@ -97,6 +130,15 @@ single_version_override(
         "//bazel/public-patches:grpc-java.patch",
     ],
     version = "1.67.1",
+)
+
+single_version_override(
+    module_name = "rules_python",
+    patch_strip = 1,
+    patches = [
+        # https://github.com/bazelbuild/bazel/issues/26561
+        "//bazel/public-patches:rules_python_warning.patch",
+    ],
 )
 
 DEFAULT_PYTHON_VERSION = "3.12"
@@ -169,6 +211,22 @@ RUFF_VERSION = "0.11.13"
     ]
 ]
 
+NVSHMEM_VERSION = "3.3.9_cuda12"
+
+http_archive(
+    name = "libnvshmem_device_bc",
+    build_file_content = """
+filegroup(
+    name = "libnvshmem_device_bc",
+    srcs = ["lib/libnvshmem_device.bc"],
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "72a788ef5723a30d8882b193f0a513f454ecaee3ab5a225a5c43db79d433ef66",
+    strip_prefix = "libnvshmem-linux-x86_64-{}-archive".format(NVSHMEM_VERSION),
+    urls = ["https://developer.download.nvidia.com/compute/nvshmem/redist/libnvshmem/linux-x86_64/libnvshmem-linux-x86_64-{}-archive.tar.xz".format(NVSHMEM_VERSION)],
+)
+
 mojo = use_extension("@rules_mojo//mojo:extensions.bzl", "mojo")
 mojo.gpu_toolchains(
     # nvidia-smi / amd-smi output -> GPU name, empty string to ignore GPU
@@ -193,6 +251,7 @@ mojo.gpu_toolchains(
         "MI355": "mi355",
         "Navi": "radeon",
         "AMD Radeon Graphics": "radeon",
+        "AMD Radeon RX 6900 XT": "rx6900xt",
         "Apple M1": "m1",
         "Apple M2": "m2",
         "Apple M3": "m3",
@@ -215,6 +274,7 @@ mojo.gpu_toolchains(
         "rtx3090": "nvidia:86",
         "rtx4090": "nvidia:89",
         "rtx5090": "nvidia:120a",
+        "rx6900xt": "amdgpu:gfx1030",
         "m1": "metal:10",
         "m2": "metal:20",
         "m3": "metal:30",
@@ -250,17 +310,17 @@ http_archive(
 bazel_dep(name = "sysroot-jammy-aarch64")
 archive_override(
     module_name = "sysroot-jammy-aarch64",
-    integrity = "sha256-v5qAjOEKEE/JknXfG/cmYOPcJY20dCjSqVqI0ZaAE5g=",
+    integrity = "sha256-nq0vgIPVwMmExFFXd5UgmbLxYMnUbZ72s8oTJrwNYvY=",
     urls = [
-        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-aarch64/2/bf9a808ce10a104fc99275df1bf72660e3dc258db47428d2a95a88d196801398/sysroot-jammy-aarch64.tar.xz",
+        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-aarch64/4/9ead2f8083d5c0c984c4515777952099b2f160c9d46d9ef6b3ca1326bc0d62f6/sysroot-jammy-aarch64.tar.xz",
     ],
 )
 
 bazel_dep(name = "sysroot-jammy-x86_64")
 archive_override(
     module_name = "sysroot-jammy-x86_64",
-    integrity = "sha256-wqmIjd+G/q4gbakYTVLokn0TwCaw59kROGXgPcA47jA=",
+    integrity = "sha256-NyQeusV/yls9rw+uDrqs3E3zn1xGjQbXtWw3ClaHXQA=",
     urls = [
-        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-x86_64/2/c2a9888ddf86feae206da9184d52e8927d13c026b0e7d9113865e03dc038ee30/sysroot-jammy-x86_64.tar.xz",
+        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-x86_64/4/37241ebac57fca5b3daf0fae0ebaacdc4df39f5c468d06d7b56c370a56875d00/sysroot-jammy-x86_64.tar.xz",
     ],
 )

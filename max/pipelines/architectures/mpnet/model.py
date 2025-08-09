@@ -73,7 +73,7 @@ class MPNetInputs(ModelInputs):
         self.kv_cache_inputs = None
 
 
-class MPNetPipelineModel(PipelineModel[TextContext]):  # type: ignore
+class MPNetPipelineModel(PipelineModel[TextContext]):
     def __init__(
         self,
         pipeline_config: PipelineConfig,
@@ -159,7 +159,6 @@ class MPNetPipelineModel(PipelineModel[TextContext]):  # type: ignore
             tokens,
             pad_value=pad_value,
             batch_size=len(tokens),
-            pad_to_multiple_of=self.pipeline_config.pad_to_multiple_of,
         )
 
         # Compute attention mask.
@@ -196,10 +195,20 @@ class MPNetPipelineModel(PipelineModel[TextContext]):  # type: ignore
             self.dtype,
             DeviceRef.from_device(self.devices[0]),
         )
+        after_build = time.perf_counter()
+
+        logger.info(f"Building graph took {after_build - before:.6f} seconds")
+
+        before_compile = time.perf_counter()
         model = session.load(
             graph, weights_registry=self.weights.allocated_weights
         )
         after = time.perf_counter()
+
+        logger.info(
+            f"Compiling model took {after - before_compile:.6f} seconds"
+        )
+
         logger.info(
             f"Building and compiling model took {after - before:.6f} seconds"
         )

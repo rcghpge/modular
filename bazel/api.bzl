@@ -1,12 +1,12 @@
 """Public API accessors to reduce the number of load statements needed in BUILD.bazel files."""
 
-load("@aspect_rules_py//py:defs.bzl", "py_library")
 load("@com_github_grpc_grpc//bazel:python_rules.bzl", _py_grpc_library = "py_grpc_library")
 load("@rules_pkg//pkg:mappings.bzl", _strip_prefix = "strip_prefix")
 load("@rules_proto//proto:defs.bzl", _proto_library = "proto_library")
-load("//bazel/internal:binary_test.bzl", "binary_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:lit.bzl", _lit_tests = "lit_tests")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_py_binary.bzl", _modular_py_binary = "modular_py_binary")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:modular_py_library.bzl", _modular_py_library = "modular_py_library")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:modular_run_binary_test.bzl", _modular_run_binary_test = "modular_run_binary_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_binary.bzl", _mojo_binary = "mojo_binary")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_filecheck_test.bzl", _mojo_filecheck_test = "mojo_filecheck_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_library.bzl", _mojo_library = "mojo_library")  # buildifier: disable=bzl-visibility
@@ -72,7 +72,7 @@ def modular_py_library(
     if _has_internal_reference(deps):
         return
 
-    py_library(
+    _modular_py_library(
         data = _remove_internal_data(data),
         deps = _rewrite_deps(deps),
         visibility = visibility,
@@ -91,6 +91,9 @@ def modular_py_binary(
         deps.append("//max/entrypoints:mojo")
         data = []
         env = {}
+    if native.package_name().endswith("/custom_ops"):
+        # TODO: Fix this hack, it's part of the custom repo but it's transitively depended on by things that are in the wheel
+        deps.append("//max/entrypoints:mojo")
 
     # TODO: There is some data we can fix by pulling from the wheel
     if _has_internal_reference(deps) or _has_internal_reference(data):
@@ -129,9 +132,8 @@ def mojo_binary(
 def modular_run_binary_test(name, external_noop = False, **kwargs):
     if external_noop:
         return
-    if name.endswith(".example-test"):
-        return  # TODO: Fix custom_ops python examples
-    binary_test(
+
+    _modular_run_binary_test(
         name = name,
         **kwargs
     )

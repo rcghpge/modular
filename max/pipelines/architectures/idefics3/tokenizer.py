@@ -141,23 +141,16 @@ class Idefics3Tokenizer(TextAndVisionTokenizer):
 
             text_messages.append(text_message)
 
-        try:
-            templated_prompt = self.delegate.apply_chat_template(
-                text_messages, tokenize=False, add_generation_prompt=True
-            )
+        templated_prompt = self.delegate.apply_chat_template(
+            text_messages, tokenize=False, add_generation_prompt=True
+        )
 
-            return templated_prompt
-
-        except Exception as e:
-            raise ValueError(
-                f"Failed to apply chat template for idefics3: {e}"
-            ) from e
+        return templated_prompt
 
     async def new_context(
         self, request: TextGenerationRequest
     ) -> TextAndVisionContext:
-        """Create a new TextAndVisionContext object, leveraging necessary information like
-        cache_seq_id and prompt from TextGenerationRequest."""
+        """Create a new TextAndVisionContext object, leveraging necessary information from TextGenerationRequest."""
 
         prompt: Union[str, Sequence[int]]
         add_special_tokens = True
@@ -269,7 +262,6 @@ class Idefics3Tokenizer(TextAndVisionTokenizer):
             else self.max_length,
             json_schema=json_schema,
         )
-        context.assign_to_cache(request.index)
         return context
 
 

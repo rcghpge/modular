@@ -140,7 +140,7 @@ class Llama3Inputs(ModelInputs):
         self.lora_ranks = lora_ranks
 
 
-class LlamaModelBase(PipelineModel[TextContext]):  # type: ignore
+class LlamaModelBase(PipelineModel[TextContext]):
     """Base Llama pipeline model implementation."""
 
     model: Model
@@ -360,12 +360,12 @@ class LlamaModelBase(PipelineModel[TextContext]):  # type: ignore
 
         # Map model names to LoRA graph inputs
         if self._lora_manager:
-            lora_names: list[str | None] = [
-                ctx.lora_name if ctx.lora_name else None
+            model_names: list[str | None] = [
+                ctx.model_name if ctx.model_name else None
                 for ctx in context_batch
             ]
             lora_ids, lora_ranks = self._lora_manager.get_lora_graph_inputs(
-                lora_names, self.devices[0]
+                model_names, self.devices[0]
             )
             inputs.lora_ids = lora_ids
             inputs.lora_ranks = lora_ranks
@@ -488,6 +488,9 @@ class LlamaModelBase(PipelineModel[TextContext]):  # type: ignore
         logger.info("Building and compiling model...")
         before = time.perf_counter()
         graph = self._build_graph(self.weights, self.adapter, session)
+        after_build = time.perf_counter()
+
+        logger.info(f"Building graph took {after_build - before:.6f} seconds")
 
         # Debug: Check for potential weight registry issues before loading
         logger.debug(
@@ -519,8 +522,14 @@ class LlamaModelBase(PipelineModel[TextContext]):  # type: ignore
                     "[DEBUG] This will cause 'Weight not in weights registry' error"
                 )
 
+        before_compile = time.perf_counter()
         model = session.load(graph, weights_registry=self.state_dict)
         after = time.perf_counter()
+
+        logger.info(
+            f"Compiling model took {after - before_compile:.6f} seconds"
+        )
+
         logger.info(
             f"Building and compiling model took {after - before:.6f} seconds"
         )

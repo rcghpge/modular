@@ -38,6 +38,8 @@ from math import ceildiv
 from gpu import *
 from gpu.random import Random
 
+from collections import OptionalReg
+
 
 struct ValOrDim[dim: Dim = Dim()](Defaultable):
     var value: Int
@@ -103,7 +105,7 @@ struct HostNDBuffer[
         self = Self(_make_tuple[rank](dynamic_shape))
 
     @always_inline
-    fn __del__(owned self):
+    fn __del__(deinit self):
         self.tensor.data.free()
 
     def copy_to_device(
@@ -269,7 +271,7 @@ struct TestTensor[dtype: DType, rank: Int](Copyable, Movable):
         for i in range(self.num_elements):
             self.ndbuffer.data[i] = other.ndbuffer.data[i]
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         self.ndbuffer.data.free()
 
     fn to_managed_tensor_slice(self) -> DynamicTensor[dtype, rank]:
@@ -282,6 +284,7 @@ struct InitializationType(Copyable, EqualityComparable, Movable):
     alias one = InitializationType(1)
     alias uniform_distribution = InitializationType(2)
     alias arange = InitializationType(3)
+    alias fill = InitializationType(4)
 
     fn __init__(out self, value: Int):
         self._value = value
@@ -305,6 +308,8 @@ struct InitializationType(Copyable, EqualityComparable, Movable):
             return InitializationType.uniform_distribution
         elif str == "arange":
             return InitializationType.arange
+        elif str == "fill":
+            return InitializationType.fill
         else:
             raise Error("Invalid initialization type")
 
@@ -345,6 +350,7 @@ fn fill(buffer: NDBuffer[mut=True, *_], val: Scalar):
     buffer.fill(val.cast[buffer.type]())
 
 
+# TODO: refactor the following to run exactly once.
 fn bench_compile_time[
     func_type: AnyTrivialRegType, //,
     func: func_type,
@@ -736,7 +742,12 @@ struct Timer:
 # TODO: limited support for 1D, generalize to nD
 fn init_vector_gpu[
     dtype: DType
-](x: UnsafePointer[Scalar[dtype]], len: Int, mode: InitializationType,):
+](
+    x: UnsafePointer[Scalar[dtype]],
+    len: Int,
+    mode: InitializationType,
+    value: Scalar[dtype],
+):
     var tid = global_idx.x
     var stride = grid_dim.x * block_dim.x
 
@@ -757,6 +768,8 @@ fn init_vector_gpu[
         values = SIMD[dtype, 4](0)
     elif mode == InitializationType.one:
         values = SIMD[dtype, 4](1)
+    elif mode == InitializationType.fill:
+        values = SIMD[dtype, 4](value)
     elif mode == InitializationType.uniform_distribution:
         var rng = Random(offset=tid)
         values = SIMD[dtype, 4](rng.step_uniform())
@@ -777,6 +790,7 @@ fn init_vector_launch[
     length: Int,
     init_type: InitializationType,
     context: DeviceContext,
+    value: OptionalReg[Scalar[dtype]] = None,
 ) raises:
     var num_blocks = ceildiv(ceildiv(length, 4), block_dim)
     # using num-threads = 1/4th of length to initialize the array
@@ -785,6 +799,7 @@ fn init_vector_launch[
         out_device,
         length,
         init_type,
+        value.or_else(0),
         grid_dim=(num_blocks),
         block_dim=(block_dim),
     )

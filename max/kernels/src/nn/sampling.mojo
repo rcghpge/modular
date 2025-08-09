@@ -139,11 +139,11 @@ fn update_frequency_data_kernel[
             else:
                 val[i] = Int32.MAX_FINITE
 
-        var if_found = (val == new_token).select(
+        var if_found = val.eq(new_token).select(
             iota[DType.int32, simd_width](tok_idx),
             SIMD[DType.int32, simd_width](Int32.MIN_FINITE),
         )
-        var first_padding_idx = (val == PADDING_TOKEN).select(
+        var first_padding_idx = val.eq(PADDING_TOKEN).select(
             iota[DType.int32, simd_width](tok_idx),
             SIMD[DType.int32, simd_width](Int32.MAX_FINITE),
         )
@@ -189,15 +189,14 @@ fn update_frequency_data[
         alias block_size = 128
 
         dev_ctx = ctx.get_device_context()
-        dev_ctx.enqueue_function[
-            update_frequency_data_kernel[
-                token_type,
-                block_size,
-                compressed_frequency_data.layout,
-                frequency_offsets.layout,
-                new_tokens.layout,
-            ]
-        ](
+        alias kernel = update_frequency_data_kernel[
+            token_type,
+            block_size,
+            compressed_frequency_data.layout,
+            frequency_offsets.layout,
+            new_tokens.layout,
+        ]
+        dev_ctx.enqueue_function_checked[kernel, kernel](
             compressed_frequency_data,
             frequency_offsets,
             new_tokens,

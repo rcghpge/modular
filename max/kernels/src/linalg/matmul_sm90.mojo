@@ -994,7 +994,7 @@ fn tma_wgmma_warp_specialized_gemm_kernel[
     var a_smem = smem.bitcast[Scalar[a_type]]()
     var b_smem = (smem + a_smem_bytes).bitcast[Scalar[b_type]]()
     var c_smem = (smem + a_smem_bytes + b_smem_bytes).bitcast[Scalar[c_type]]()
-    var smem_poll = (smem + a_smem_bytes + b_smem_bytes + c_smem_bytes).bitcast[
+    var smem_pool = (smem + a_smem_bytes + b_smem_bytes + c_smem_bytes).bitcast[
         Int64
     ]()
 
@@ -1020,8 +1020,8 @@ fn tma_wgmma_warp_specialized_gemm_kernel[
         alignment=128,
     ](c_smem.static_alignment_cast[128]())
 
-    var a_mbars_ptr = smem_poll.bitcast[Int64]()
-    var b_mbars_ptr = smem_poll.bitcast[Int64]() + pipeline_stages
+    var a_mbars_ptr = smem_pool.bitcast[Int64]()
+    var b_mbars_ptr = smem_pool.bitcast[Int64]() + pipeline_stages
 
     full = a_mbars_ptr.bitcast[SharedMemBarrier]()
     empty = b_mbars_ptr.bitcast[SharedMemBarrier]()
@@ -1303,7 +1303,7 @@ fn tma_wgmma_warp_specialized_gemm_kernel_persistent[
     var a_smem = smem.bitcast[Scalar[a_type]]()
     var b_smem = (smem + a_smem_bytes).bitcast[Scalar[b_type]]()
     var c_smem = (smem + a_smem_bytes + b_smem_bytes).bitcast[Scalar[c_type]]()
-    var smem_poll = (smem + a_smem_bytes + b_smem_bytes + c_smem_bytes).bitcast[
+    var smem_pool = (smem + a_smem_bytes + b_smem_bytes + c_smem_bytes).bitcast[
         Int64
     ]()
 
@@ -1329,8 +1329,8 @@ fn tma_wgmma_warp_specialized_gemm_kernel_persistent[
         alignment=128,
     ](c_smem.static_alignment_cast[128]())
 
-    var a_mbars_ptr = smem_poll.bitcast[Int64]()
-    var b_mbars_ptr = smem_poll.bitcast[Int64]() + pipeline_stages
+    var a_mbars_ptr = smem_pool.bitcast[Int64]()
+    var b_mbars_ptr = smem_pool.bitcast[Int64]() + pipeline_stages
 
     full = a_mbars_ptr.bitcast[SharedMemBarrier]()
     empty = b_mbars_ptr.bitcast[SharedMemBarrier]()
@@ -1678,72 +1678,6 @@ fn hopper_matmul_tma_wgmma_kernel[
             )
 
 
-fn hopper_matmul_tma_wgmma[
-    c_type: DType,
-    c_shape: DimList,
-    a_type: DType,
-    a_shape: DimList,
-    b_type: DType,
-    b_shape: DimList, //,
-    *,
-    transpose_b: Bool,
-    wgmma_shape: IndexList[3],
-    block_tile_shape: IndexList[3],
-](
-    c_device: NDBuffer[c_type, 2, _, c_shape],
-    a_device: NDBuffer[a_type, 2, _, a_shape],
-    b_device: NDBuffer[b_type, 2, _, b_shape],
-    M: Int,
-    N: Int,
-    K: Int,
-    ctx: DeviceContext,
-) raises:
-    var a = from_ndbuffer_row_major(a_device)
-    var b = from_ndbuffer_row_major(b_device)
-    var c = from_ndbuffer_row_major(c_device)
-
-    constrained[
-        transpose_b,
-        "Only support transposed B",
-    ]()
-
-    constrained[
-        (a_type == b_type is DType.float8_e4m3fn)
-        or (a_type == b_type is DType.bfloat16),
-        "Unsupported input dtype",
-    ]()
-
-    alias BM = block_tile_shape[0]
-    alias BN = block_tile_shape[1]
-    alias BK = block_tile_shape[2]
-
-    a_tma_op = create_tma_tile[a_type, 2, Index(BM, BK)](ctx, a)
-    b_tma_op = create_tma_tile[b_type, 2, Index(BN, BK)](ctx, b)
-
-    alias kernel = hopper_matmul_tma_wgmma_kernel[
-        a_type,
-        b_type,
-        c_type,
-        __type_of(a).layout,
-        __type_of(b).layout,
-        Layout.row_major(BM, BK),
-        Layout.row_major(BN, BK),
-        __type_of(c).layout,
-        block_tile_shape,
-        wgmma_shape,
-        __type_of(a_tma_op).desc_layout,
-        __type_of(b_tma_op).desc_layout,
-        transpose_b=True,
-    ]
-    ctx.enqueue_function[kernel](
-        a_tma_op,
-        b_tma_op,
-        c,
-        grid_dim=(ceildiv(N, BN), ceildiv(M, BM)),
-        block_dim=(128),
-    )
-
-
 fn _is_valid_cluster_shape[
     cluster_shape: IndexList[3]
 ](grid_shape: IndexList[2], num_tiles_n: Int) -> Bool:
@@ -1979,7 +1913,7 @@ fn cpasync_wgmma_kernel[
     var a_smem = smem.bitcast[Scalar[a_type]]()
     var b_smem = (smem + a_smem_bytes).bitcast[Scalar[b_type]]()
     var c_smem = (smem + a_smem_bytes + b_smem_bytes).bitcast[Scalar[c_type]]()
-    var smem_poll = (smem + a_smem_bytes + b_smem_bytes + c_smem_bytes).bitcast[
+    var smem_pool = (smem + a_smem_bytes + b_smem_bytes + c_smem_bytes).bitcast[
         Int64
     ]()
 
@@ -2005,8 +1939,8 @@ fn cpasync_wgmma_kernel[
         alignment=128,
     ](c_smem.static_alignment_cast[128]())
 
-    var a_mbars_ptr = smem_poll.bitcast[Int64]()
-    var b_mbars_ptr = smem_poll.bitcast[Int64]() + pipeline_stages
+    var a_mbars_ptr = smem_pool.bitcast[Int64]()
+    var b_mbars_ptr = smem_pool.bitcast[Int64]() + pipeline_stages
 
     alias k_align = find_K_alignment_upto_16B(K * sizeof[a_type]())
     full = a_mbars_ptr.bitcast[SharedMemBarrier]()

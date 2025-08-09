@@ -129,6 +129,9 @@ dependencies = [
   # tts
   "zhon",
   "zhconv",
+
+  # Testing video processing for qwen2.5vl
+  "opencv-python",
 ]
 
 [dependency-groups]
@@ -141,12 +144,13 @@ amd = [
   "pytorch-triton-rocm; sys_platform == 'linux' and platform_machine == 'x86_64'",
 
   "accelerate",
-  "lm-eval[api,ifeval,math]",
+  "lm-eval[api,ifeval,math]>=0.4.7",
   "mteb",
   "optimum",
   "sentence-transformers",
   "timm",
   "torchmetrics",
+  "qwen-vl-utils",
 ]
 
 cpu = [
@@ -155,12 +159,13 @@ cpu = [
   "torchvision==0.22.0",
 
   "accelerate",
-  "lm-eval[api,ifeval,math]",
+  "lm-eval[api,ifeval,math]>=0.4.7",
   "mteb",
   "optimum",
   "sentence-transformers",
   "timm",
   "torchmetrics",
+  "qwen-vl-utils",
 ]
 
 nvidia = [
@@ -171,12 +176,13 @@ nvidia = [
   "gptqmodel; sys_platform == 'linux' and platform_machine == 'x86_64'",
 
   "accelerate",
-  "lm-eval[api,ifeval,math]",
+  "lm-eval[api,ifeval,math]>=0.4.7",
   "mteb",
   "optimum",
   "sentence-transformers",
   "timm",
   "torchmetrics",
+  "qwen-vl-utils",
 ]
 
 [tool.uv]

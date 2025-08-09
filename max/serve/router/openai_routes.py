@@ -11,6 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -25,7 +27,7 @@ from json.decoder import JSONDecodeError
 from pathlib import Path
 from random import randint
 from time import perf_counter_ns
-from typing import Any, Literal, Optional, Union, cast
+from typing import Any, Generic, Literal, Optional, TypeVar, Union, cast
 from urllib.parse import unquote, urlparse
 
 import aiofiles
@@ -34,8 +36,12 @@ from fastapi.responses import JSONResponse, Response
 from httpx import AsyncClient
 from max.interfaces import (
     AudioGenerationRequest,
+    LoRAOperation,
+    LoRARequest,
+    LoRAStatus,
     PipelineTokenizer,
     SamplingParams,
+    SamplingParamsInput,
     TextGenerationRequest,
     TextGenerationRequestFunction,
     TextGenerationRequestMessage,
@@ -50,7 +56,7 @@ from max.serve.pipelines.llm import (
     TokenGeneratorPipeline,
 )
 from max.serve.router.json_utils import parse_json_from_text
-from max.serve.schemas.openai import (  # type: ignore
+from max.serve.schemas.openai import (
     ChatCompletionMessageToolCall,
     ChatCompletionMessageToolCalls,
     ChatCompletionResponseMessage,
@@ -73,7 +79,9 @@ from max.serve.schemas.openai import (  # type: ignore
     Error,
     ErrorResponse,
     Function1,
+    InputItem,
     ListModelsResponse,
+    LoadLoraRequest,
     Logprobs,
     Logprobs2,
     Model,
@@ -81,6 +89,7 @@ from max.serve.schemas.openai import (  # type: ignore
     ResponseFormatJsonObject,
     ResponseFormatJsonSchema,
     ResponseFormatText,
+    UnloadLoraRequest,
     Usage,
 )
 from max.serve.telemetry.metrics import METRICS
@@ -88,6 +97,9 @@ from max.serve.telemetry.stopwatch import StopWatch
 from pydantic import AnyUrl, BaseModel, Field, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from starlette.datastructures import State
+from typing_extensions import TypeGuard
+
+_T = TypeVar("_T")
 
 router = APIRouter(prefix="/v1")
 logger = logging.getLogger("max.serve")
@@ -117,7 +129,7 @@ def record_request_end(
     METRICS.output_tokens(n_tokens)
 
 
-class OpenAIResponseGenerator(ABC):
+class OpenAIResponseGenerator(ABC, Generic[_T]):
     def __init__(
         self,
         pipeline: TokenGeneratorPipeline,
@@ -134,20 +146,29 @@ class OpenAIResponseGenerator(ABC):
         pass
 
     @abstractmethod
-    async def complete(self, requests: list[TextGenerationRequest]) -> str:
+    async def complete(self, requests: list[TextGenerationRequest]) -> _T:
         pass
 
 
-def get_pipeline(
+async def get_pipeline(
     request: Request, model_name: str
 ) -> Union[TokenGeneratorPipeline, AudioGeneratorPipeline]:
     app_state: State = request.app.state
     pipeline: Union[TokenGeneratorPipeline, AudioGeneratorPipeline] = (
         app_state.pipeline
     )
-    if pipeline.model_name != model_name:
+
+    models = [pipeline.model_name]
+
+    if lora_queue := app_state.pipeline.lora_queue:
+        lora_response = await lora_queue.get_response(
+            request.state.request_id, LoRARequest(LoRAOperation.LIST)
+        )
+        models += lora_response.message
+
+    if model_name not in models:
         raise ValueError(
-            f"Unknown model '{model_name}', currently serving '{pipeline.model_name}'."
+            f"Unknown model '{model_name}', currently serving '{models}'."
         )
     if not isinstance(pipeline.tokenizer, PipelineTokenizer):
         raise ValueError(
@@ -156,7 +177,9 @@ def get_pipeline(
     return pipeline
 
 
-class OpenAIChatResponseGenerator(OpenAIResponseGenerator):
+class OpenAIChatResponseGenerator(
+    OpenAIResponseGenerator[CreateChatCompletionResponse]
+):
     async def stream(self, request: TextGenerationRequest):
         self.logger.debug("Streaming: Start: %s", request)
         record_request_start()
@@ -201,12 +224,11 @@ class OpenAIChatResponseGenerator(OpenAIResponseGenerator):
                     id=request.request_id,
                     choices=choices,
                     created=int(datetime.now().timestamp()),
-                    model=self.pipeline.model_name,
+                    model=request.model_name,
                     object="chat.completion.chunk",
                     system_fingerprint=None,
                     usage=usage,
                     service_tier=None,
-                    lora=request.lora_name,
                 )
                 n_tokens += 1
                 payload = response.model_dump_json()
@@ -284,6 +306,8 @@ class OpenAIChatResponseGenerator(OpenAIResponseGenerator):
                                 tool_calls=ChatCompletionMessageToolCalls(
                                     root=tool_calls
                                 ),
+                                function_call=None,
+                                refusal=None,
                             ),
                             finish_reason="tool_calls",
                             logprobs=Logprobs2(content=[], refusal=[]),
@@ -311,12 +335,11 @@ class OpenAIChatResponseGenerator(OpenAIResponseGenerator):
                 id=request.request_id,
                 choices=response_choices,
                 created=int(datetime.now().timestamp()),
-                model=self.pipeline.model_name,
+                model=request.model_name,
                 object="chat.completion",
                 system_fingerprint=None,
                 service_tier=None,
                 usage=usage,
-                lora=request.lora_name,
             )
             return response
         finally:
@@ -411,6 +434,7 @@ class OpenAIEmbeddingsResponseGenerator:
                 data=embeddings_data,
                 model=self.pipeline.model_name,
                 object="list",
+                usage=None,
             )
             return response
         finally:
@@ -436,10 +460,12 @@ class OpenAISpeechResponseGenerator:
         self, request: AudioGenerationRequest
     ) -> CreateAudioGenerationResponse:
         self.logger.debug("Streaming: Start: %s", request)
-        response = await self.pipeline.generate_full_audio(request)
-        audio_data = response.audio_data.tobytes()
+        output = await self.pipeline.generate_full_audio(request)
+        assert output.audio_data is not None
+        audio_data = output.audio_data.tobytes()
         response = CreateAudioGenerationResponse(
-            audio_data=base64.b64encode(audio_data), metadata=response.metadata
+            audio_data=base64.b64encode(audio_data),
+            metadata=output.metadata.to_dict(),
         )
         return response
 
@@ -571,6 +597,14 @@ async def resolve_image_from_url(
     raise ValueError(f"Invalid image ref '{image_ref}'")
 
 
+def _convert_stop(stop: Union[str, list[str], None]) -> Optional[list[str]]:
+    if stop is None:
+        return None
+    if isinstance(stop, str):
+        return [stop]
+    return stop
+
+
 @router.post("/chat/completions", response_model=None)
 async def openai_create_chat_completion(
     request: Request,
@@ -582,7 +616,7 @@ async def openai_create_chat_completion(
         completion_request = CreateChatCompletionRequest.model_validate(
             request_json
         )
-        pipeline = get_pipeline(request, completion_request.model)
+        pipeline = await get_pipeline(request, completion_request.model)
         assert isinstance(pipeline, TokenGeneratorPipeline)
 
         logger.debug(
@@ -622,25 +656,25 @@ async def openai_create_chat_completion(
         )
 
         response_generator = OpenAIChatResponseGenerator(pipeline)
-        sampling_params = SamplingParams(
-            top_k=completion_request.top_k,
-            top_p=completion_request.top_p,
-            temperature=completion_request.temperature,
-            frequency_penalty=completion_request.frequency_penalty,
-            presence_penalty=completion_request.presence_penalty,
-            repetition_penalty=completion_request.repetition_penalty,
-            max_new_tokens=completion_request.max_tokens,
-            min_new_tokens=completion_request.min_tokens,
-            ignore_eos=completion_request.ignore_eos,
-            seed=completion_request.seed or randint(0, 2**63 - 1),
-            stop_token_ids=completion_request.stop_token_ids,
-            stop=completion_request.stop,
+        sampling_params = SamplingParams.from_input(
+            SamplingParamsInput(
+                top_k=completion_request.top_k,
+                top_p=completion_request.top_p,
+                temperature=completion_request.temperature,
+                frequency_penalty=completion_request.frequency_penalty,
+                presence_penalty=completion_request.presence_penalty,
+                repetition_penalty=completion_request.repetition_penalty,
+                max_new_tokens=completion_request.max_tokens,
+                min_new_tokens=completion_request.min_tokens,
+                ignore_eos=completion_request.ignore_eos,
+                seed=completion_request.seed or randint(0, 2**63 - 1),
+                stop_token_ids=completion_request.stop_token_ids,
+                stop=_convert_stop(completion_request.stop),
+            )
         )
         token_request = TextGenerationRequest(
             request_id=request_id,
-            index=0,
             model_name=completion_request.model,
-            lora_name=completion_request.lora,
             messages=request_messages,
             images=request_images,
             tools=tools,
@@ -721,20 +755,22 @@ def _create_response_format(
     if not response_format:
         return None
 
-    response_type = response_format.type
     # We don't have llguidance grammar for generic JSON output.
     # Only json_schema is supported for structured output.
-    if response_type == "json_object":
+    if response_format.type == "json_object":
         raise ValueError(
             "'json_object' response format is not supported. Use 'json_schema' instead for structured output."
         )
 
-    json_schema = {}
-    if response_type == "json_schema":
+    json_schema: dict[Any, Any] = {}
+    if (
+        response_format.type == "json_schema"
+        and response_format.json_schema.schema_ is not None
+    ):
         json_schema = response_format.json_schema.schema_.model_dump()
 
     return TextGenerationResponseFormat(
-        type=response_type, json_schema=json_schema
+        type=response_format.type, json_schema=json_schema
     )
 
 
@@ -748,7 +784,7 @@ async def openai_create_embeddings(
         async with _request_parsing_semaphore:
             request_json = await request.json()
         embeddings_request = CreateEmbeddingRequest.model_validate(request_json)
-        pipeline = get_pipeline(request, embeddings_request.model)
+        pipeline = await get_pipeline(request, embeddings_request.model)
         assert isinstance(pipeline, TokenGeneratorPipeline)
 
         logger.debug(
@@ -767,16 +803,13 @@ async def openai_create_embeddings(
             )
 
         response_generator = OpenAIEmbeddingsResponseGenerator(pipeline)
-        embedding_inputs = (
-            embeddings_request.input
-            if isinstance(embeddings_request.input, list)
-            else [embeddings_request.input]
+        embedding_inputs: Sequence[StringPrompt | IntPrompt] = (
+            get_prompts_from_openai_request(embeddings_request.input)
         )
 
         embedding_requests = [
             TextGenerationRequest(
                 request_id=f"{request_id}_{idx}",
-                index=idx,
                 model_name=embeddings_request.model,
                 prompt=input_text,
                 timestamp_ns=request.state.request_timer.start_ns,
@@ -815,7 +848,6 @@ class CompletionStreamResponse(BaseModel):
     choices: list[CompletionResponseStreamChoice]
     object: Literal["text_completion"]
     usage: Optional[CompletionUsage] = Field(default=None)
-    lora: Optional[str] = Field(default=None)
 
 
 def _process_log_probabilities(
@@ -835,7 +867,9 @@ def _process_log_probabilities(
     )
 
 
-class OpenAICompletionResponseGenerator(OpenAIResponseGenerator):
+class OpenAICompletionResponseGenerator(
+    OpenAIResponseGenerator[CreateCompletionResponse]
+):
     async def stream(self, request: TextGenerationRequest):
         logger.debug("Streaming: Start: %s", request)
         record_request_start()
@@ -870,9 +904,8 @@ class OpenAICompletionResponseGenerator(OpenAIResponseGenerator):
                     id=request.request_id,
                     choices=choices,
                     created=int(datetime.now().timestamp()),
-                    model=self.pipeline.model_name,
+                    model=request.model_name,
                     object="text_completion",
-                    lora=request.lora_name,
                 )
                 n_tokens += 1
                 del tracer  # create_completion_stream_response
@@ -946,10 +979,9 @@ class OpenAICompletionResponseGenerator(OpenAIResponseGenerator):
                 id=requests[0].request_id,
                 choices=response_choices,
                 created=int(datetime.now().timestamp()),
-                model=self.pipeline.model_name,
+                model=requests[0].model_name,
                 object="text_completion",
                 system_fingerprint=None,
-                lora=requests[0].lora_name,
             )
             return response
         except:
@@ -969,26 +1001,48 @@ StringPrompt = str
 IntPrompt = Sequence[int]
 
 
-def openai_get_prompts_from_completion_request(
-    request: CreateCompletionRequest,
+def _is_sequence_of(
+    items: Sequence[Any], item_type: type[_T]
+) -> TypeGuard[Sequence[_T]]:
+    return all(isinstance(item, item_type) for item in items)
+
+
+def _is_seq_of_seq_of_int(
+    items: Sequence[Any],
+) -> TypeGuard[Sequence[Sequence[int]]]:
+    return _is_sequence_of(items, list) and all(
+        _is_sequence_of(item, int) for item in items
+    )
+
+
+def get_prompts_from_openai_request(
+    prompt: str
+    | list[str]
+    | list[PromptItem]
+    | list[InputItem]
+    | list[int]
+    | list[list[int]],
 ) -> Union[Sequence[StringPrompt], Sequence[IntPrompt]]:
     """Extract the prompts from a CreateCompletionRequest
 
     Prompts can encoded as str or list-of-int. Within a given requests, there
     can be only one encoding.
     """
-    prompt = request.prompt
     if isinstance(prompt, str):
         return [prompt]
     if len(prompt) == 0:
         return []
-    if isinstance(prompt[0], str):
+    if _is_sequence_of(prompt, str):
         return prompt
-    if isinstance(prompt[0], PromptItem):
+    if _is_sequence_of(prompt, PromptItem):
         return [p.root for p in prompt]
-    if isinstance(prompt[0], int):
+    if _is_sequence_of(prompt, InputItem):
+        return [p.root for p in prompt]
+    if _is_sequence_of(prompt, int):
         return [prompt]
-    raise Exception("unknown element type {type(prompt[0])}")
+    if _is_seq_of_seq_of_int(prompt):
+        return prompt
+    raise Exception(f"unknown element type {type(prompt[0])}")
 
 
 @router.post("/completions", response_model=None)
@@ -1023,7 +1077,7 @@ async def openai_create_completion(
                 request_json_ns - request_timestamp_ns
             ) / 1e6
 
-        pipeline = get_pipeline(request, completion_request.model)
+        pipeline = await get_pipeline(request, completion_request.model)
         assert isinstance(pipeline, TokenGeneratorPipeline)
 
         logger.debug(
@@ -1036,36 +1090,40 @@ async def openai_create_completion(
         )
 
         response_generator = OpenAICompletionResponseGenerator(pipeline)
-        prompts = openai_get_prompts_from_completion_request(completion_request)
+        prompts = get_prompts_from_openai_request(completion_request.prompt)
         token_requests = []
         for i, prompt in enumerate(prompts):
             prompt = cast(Union[str, Sequence[int]], prompt)
-            sampling_params = SamplingParams(
-                top_k=completion_request.top_k,
-                top_p=completion_request.top_p,
-                temperature=completion_request.temperature,
-                frequency_penalty=completion_request.frequency_penalty,
-                presence_penalty=completion_request.presence_penalty,
-                repetition_penalty=completion_request.repetition_penalty,
-                max_new_tokens=completion_request.max_tokens,
-                min_new_tokens=completion_request.min_tokens,
-                ignore_eos=completion_request.ignore_eos,
-                seed=completion_request.seed or randint(0, 2**63 - 1),
-                stop_token_ids=completion_request.stop_token_ids,
-                stop=completion_request.stop,
+            sampling_params = SamplingParams.from_input(
+                SamplingParamsInput(
+                    top_k=completion_request.top_k,
+                    top_p=completion_request.top_p,
+                    temperature=completion_request.temperature,
+                    frequency_penalty=completion_request.frequency_penalty,
+                    presence_penalty=completion_request.presence_penalty,
+                    repetition_penalty=completion_request.repetition_penalty,
+                    max_new_tokens=completion_request.max_tokens,
+                    min_new_tokens=completion_request.min_tokens,
+                    ignore_eos=completion_request.ignore_eos,
+                    seed=completion_request.seed or randint(0, 2**63 - 1),
+                    stop_token_ids=completion_request.stop_token_ids,
+                    stop=_convert_stop(completion_request.stop),
+                )
             )
             tgr = TextGenerationRequest(
                 # Generate a unique request_id for each prompt in the request
                 request_id=f"{http_req_id}_{i}",
-                index=i,
                 model_name=completion_request.model,
                 prompt=prompt,
                 timestamp_ns=request.state.request_timer.start_ns,
                 request_path=request.url.path,
-                logprobs=completion_request.logprobs,
-                echo=completion_request.echo,
+                logprobs=(
+                    completion_request.logprobs
+                    if completion_request.logprobs is not None
+                    else 0
+                ),
+                echo=completion_request.echo or False,
                 sampling_params=sampling_params,
-                lora_name=completion_request.lora,
             )
             token_requests.append(tgr)
 
@@ -1112,6 +1170,15 @@ async def openai_get_models(request: Request) -> ListModelsResponse:
         Model(id=pipeline.model_name, object="model", created=None, owned_by="")
     ]
 
+    if lora_queue := request.app.state.pipeline.lora_queue:
+        loras = await lora_queue.get_response(
+            request.state.request_id, LoRARequest(LoRAOperation.LIST)
+        )
+        model_list += [
+            Model(id=lora, object="model", created=None, owned_by="")
+            for lora in loras.message
+        ]
+
     return ListModelsResponse(object="list", data=model_list)
 
 
@@ -1147,7 +1214,7 @@ async def create_streaming_audio_speech(
         audio_generation_request = CreateAudioGenerationRequest.model_validate(
             request_json
         )
-        pipeline = get_pipeline(request, audio_generation_request.model)
+        pipeline = await get_pipeline(request, audio_generation_request.model)
         assert isinstance(pipeline, AudioGeneratorPipeline)
         sampling_params = SamplingParams(
             min_new_tokens=audio_generation_request.min_tokens
@@ -1155,12 +1222,10 @@ async def create_streaming_audio_speech(
         audio_request = AudioGenerationRequest(
             request_id=request_id,
             input=audio_generation_request.input,
-            index=audio_generation_request.index,
             model=audio_generation_request.model,
             sampling_params=sampling_params,
             audio_prompt_tokens=audio_generation_request.audio_prompt_tokens,
             audio_prompt_transcription=audio_generation_request.audio_prompt_transcription,
-            lora=audio_generation_request.lora,
             # TODO: Add support for these options.
             # instructions=audio_generation_request.instructions,
             # response_format=audio_generation_request.response_format,
@@ -1183,3 +1248,138 @@ async def create_streaming_audio_speech(
         # but we don't necessarily want to expose the full error description
         # to the user. There are many different ValueErrors that can be raised.
         raise HTTPException(status_code=400, detail="Value error.") from e
+
+
+@router.post("/load_lora_adapter", response_model=None)
+async def load_lora_adapter(
+    request: Request,
+) -> JSONResponse:
+    """Load a LoRA adapter into the pipeline."""
+    request_id = request.state.request_id
+    try:
+        async with _request_parsing_semaphore:
+            request_json = await request.json()
+        load_request = LoadLoraRequest.model_validate(request_json)
+
+        app_state: State = request.app.state
+
+        # Check if LoRA is enabled
+        if app_state.pipeline.lora_queue is None:
+            raise HTTPException(
+                status_code=501,
+                detail="LoRA functionality is not enabled on this server. Please restart the server with LoRA enabled.",
+            )
+
+        response = await app_state.pipeline.lora_queue.get_response(
+            request_id,
+            LoRARequest(
+                LoRAOperation.LOAD,
+                load_request.lora_name,
+                load_request.lora_path,
+            ),
+        )
+
+        # Map LoRA status to appropriate HTTP status codes
+        if response.status == LoRAStatus.SUCCESS:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": response.status.value,
+                    "message": response.message,
+                },
+            )
+        elif response.status == LoRAStatus.LOAD_NAME_EXISTS:
+            raise HTTPException(
+                status_code=409, detail=response.message
+            )  # Conflict
+        elif response.status == LoRAStatus.LOAD_INVALID_PATH:
+            raise HTTPException(
+                status_code=400, detail=response.message
+            )  # Bad Request
+        elif response.status == LoRAStatus.LOAD_INVALID_ADAPTER:
+            raise HTTPException(
+                status_code=400, detail=response.message
+            )  # Bad Request
+        else:
+            raise HTTPException(
+                status_code=500, detail=response.message
+            )  # Internal Server Error
+
+    except JSONDecodeError as e:
+        logger.exception("JSONDecodeError in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Missing JSON.") from e
+    except (TypeError, ValidationError) as e:
+        logger.exception("Validation error in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValueError as e:
+        logger.exception("ValueError in request %s", request_id)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error loading LoRA adapter in request %s", request_id)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load LoRA adapter: {str(e)}"
+        ) from e
+
+
+@router.post("/unload_lora_adapter", response_model=None)
+async def unload_lora_adapter(
+    request: Request,
+) -> JSONResponse:
+    """Unload a LoRA adapter from the pipeline."""
+    request_id = request.state.request_id
+    try:
+        async with _request_parsing_semaphore:
+            request_json = await request.json()
+        unload_request = UnloadLoraRequest.model_validate(request_json)
+
+        app_state: State = request.app.state
+
+        if app_state.pipeline.lora_queue is None:
+            raise HTTPException(
+                status_code=501,
+                detail="LoRA functionality is not enabled on this server. Please restart the server with LoRA enabled.",
+            )
+
+        response = await app_state.pipeline.lora_queue.get_response(
+            request_id,
+            LoRARequest(LoRAOperation.UNLOAD, unload_request.lora_name),
+        )
+
+        # Map LoRA status to appropriate HTTP status codes
+        if response.status == LoRAStatus.SUCCESS:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": response.status.value,
+                    "message": response.message,
+                },
+            )
+        elif response.status == LoRAStatus.UNLOAD_NAME_NONEXISTENT:
+            raise HTTPException(
+                status_code=404, detail=response.message
+            )  # Not Found
+        else:
+            raise HTTPException(
+                status_code=500, detail=response.message
+            )  # Internal Server Error
+
+    except JSONDecodeError as e:
+        logger.exception("JSONDecodeError in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Missing JSON.") from e
+    except (TypeError, ValidationError) as e:
+        logger.exception("Validation error in request %s", request_id)
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except ValueError as e:
+        logger.exception("ValueError in request %s", request_id)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            "Error unloading LoRA adapter in request %s", request_id
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to unload LoRA adapter: {str(e)}"
+        ) from e

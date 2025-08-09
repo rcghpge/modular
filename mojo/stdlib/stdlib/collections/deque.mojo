@@ -85,7 +85,7 @@ struct Deque[ElementType: Copyable & Movable](
     fn __init__(
         out self,
         *,
-        owned elements: Optional[List[ElementType]] = None,
+        var elements: Optional[List[ElementType]] = None,
         capacity: Int = Self.default_capacity,
         min_capacity: Int = Self.default_capacity,
         maxlen: Int = -1,
@@ -154,13 +154,14 @@ struct Deque[ElementType: Copyable & Movable](
 
         self = Self(capacity=capacity)
 
-        for i in range(args_length):
-            dst = self._data + i
-            UnsafePointer(to=elements[i]).move_pointee_into(dst)
+        # Transfer all of the elements into the deque.
+        @parameter
+        fn init_elt(idx: Int, var elt: ElementType):
+            (self._data + idx).init_pointee_move(elt^)
 
-        # Do not destroy the elements when their backing storage goes away.
-        __disable_del elements
+        elements^.consume_elements[init_elt]()
 
+        # Remember how many elements we have.
         self._tail = args_length
 
     fn copy(self) -> Self:
@@ -183,7 +184,7 @@ struct Deque[ElementType: Copyable & Movable](
 
         return copy^
 
-    fn __moveinit__(out self, owned existing: Self):
+    fn __moveinit__(out self, deinit existing: Self):
         """Moves data of an existing deque into a new one.
 
         Args:
@@ -197,7 +198,7 @@ struct Deque[ElementType: Copyable & Movable](
         self._maxlen = existing._maxlen
         self._shrink = existing._shrink
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         """Destroys all elements in the deque and free its memory."""
         for i in range(len(self)):
             offset = self._physical_index(self._head + i)
@@ -981,25 +982,24 @@ struct Deque[ElementType: Copyable & Movable](
 
 @fieldwise_init
 struct _DequeIter[
-    deque_mutability: Bool, //,
-    ElementType: Copyable & Movable,
-    deque_lifetime: Origin[deque_mutability],
+    mut: Bool, //,
+    T: Copyable & Movable,
+    origin: Origin[mut],
     forward: Bool = True,
 ](Copyable, Iterator, Movable):
     """Iterator for Deque.
 
     Parameters:
-        deque_mutability: Whether the reference to the deque is mutable.
-        ElementType: The type of the elements in the deque.
-        deque_lifetime: The lifetime of the Deque.
+        mut: Whether the reference to the deque is mutable.
+        T: The type of the elements in the deque.
+        origin: The lifetime of the Deque.
         forward: The iteration direction. `False` is backwards.
     """
 
-    alias deque_type = Deque[ElementType]
-    alias Element = ElementType
+    alias Element = T
 
     var index: Int
-    var src: Pointer[Self.deque_type, deque_lifetime]
+    var src: Pointer[Deque[T], origin]
 
     fn __iter__(self) -> Self:
         return self
@@ -1012,7 +1012,7 @@ struct _DequeIter[
         else:
             return self.index > 0
 
-    fn __next_ref__(mut self) -> ref [deque_lifetime] ElementType:
+    fn __next_ref__(mut self) -> ref [origin] Self.Element:
         @parameter
         if forward:
             var idx = self.index
@@ -1022,5 +1022,5 @@ struct _DequeIter[
             self.index -= 1
             return self.src[][self.index]
 
-    fn __next__(mut self) -> ElementType:
+    fn __next__(mut self) -> Self.Element:
         return self.__next_ref__()

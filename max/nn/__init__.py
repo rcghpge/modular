@@ -34,7 +34,6 @@ from .linear import (
     MLPV1,
     ColumnParallelLinear,
     DistributedGemmConfig,
-    DistributedMLP,
     Float8Config,
     Float8InputScaleSpec,
     Float8ScaleGranularity,
@@ -46,7 +45,6 @@ from .linear import (
 )
 from .lora import AttentionWithRopeAndLoRA, LinearLoRA, SupportsLoRA
 from .norm import (
-    DistributedRMSNorm,
     GroupNorm,
     LayerNorm,
     LayerNormV1,
@@ -91,8 +89,6 @@ __all__ = [
     "ConvTranspose1d",
     "DistributedAttentionImpl",
     "DistributedAttentionWithRope",
-    "DistributedMLP",
-    "DistributedRMSNorm",
     "DistributedTransformer",
     "DistributedTransformerBlock",
     "Embedding",

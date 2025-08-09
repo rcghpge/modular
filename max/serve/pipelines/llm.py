@@ -20,18 +20,22 @@ import signal
 from collections.abc import AsyncGenerator, Coroutine
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Generic, Optional, TypeVar
+from typing import Any, Callable, Generic
 
 import numpy as np
 from max.interfaces import (
-    AudioGenerationMetadata,
     AudioGenerationRequest,
+    AudioGeneratorContext,
     AudioGeneratorOutput,
+    BaseContextType,
+    GenerationStatus,
+    LogProbabilities,
     PipelineTokenizer,
     TextGenerationRequest,
 )
 from max.profiler import Tracer
 from max.serve.pipelines.stop_detection import StopDetector
+from max.serve.queue.lora_queue import LoRAQueue
 from max.serve.scheduler.queues import EngineQueue
 from max.serve.telemetry.metrics import METRICS
 from max.serve.telemetry.stopwatch import StopWatch, record_ms
@@ -42,10 +46,10 @@ logger = logging.getLogger("max.serve")
 @dataclass(frozen=True)
 class TokenGeneratorOutput:
     decoded_token: str
-    token_log_probabilities: Optional[list[float]] = None
-    top_log_probabilities: Optional[list[dict[str, float]]] = None
-    prompt_token_count: Optional[int] = None
-    stop_sequence: Optional[str] = None
+    token_log_probabilities: list[float] | None = None
+    top_log_probabilities: list[dict[str, float]] | None = None
+    prompt_token_count: int | None = None
+    stop_sequence: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,39 +57,34 @@ class EmbeddingsGeneratorOutput:
     embeddings: np.ndarray
 
 
-@dataclass
-class TokenGeneratorStats:
-    token_gen_batch_size: int = 0
-    token_gen_batch_calls: int = 0
-
-
-TokenGeneratorContext = TypeVar("TokenGeneratorContext")
-
-
-class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
+class TokenGeneratorPipeline(Generic[BaseContextType]):
     """Base class for LLM text generation pipelines."""
 
     def __init__(
         self,
         model_name: str,
         tokenizer: PipelineTokenizer,
-        engine_queue: EngineQueue,
+        engine_queue: EngineQueue[BaseContextType, Any],
+        lora_queue: LoRAQueue | None = None,
     ) -> None:
         self.logger = logging.getLogger(
             "max.serve.pipelines.TokenGeneratorPipeline"
         )
         # This logger is too verbose to expose to end users. Disable propagation to the root logger by default.
-        self.logger.info("%s: Constructed", model_name)
         self.debug_logging = self.logger.isEnabledFor(logging.DEBUG)
 
         self.model_name = model_name
         self.tokenizer = tokenizer
         self.engine_queue = engine_queue
-        self.stats = TokenGeneratorStats()
+        self.lora_queue = lora_queue
 
         self._background_tasks: set[asyncio.Task] = set()
 
-    async def _collect_log_probs(self, log_prob, context, skip_special_tokens):  # noqa: ANN001
+    async def _collect_log_probs(
+        self,
+        log_prob: LogProbabilities,
+        skip_special_tokens: bool,
+    ) -> tuple[list[float], list[dict[str, float]]]:
         token_log_probabilities = log_prob.token_log_probabilities
         top_log_probabilities = []
         for top_log_probs in log_prob.top_log_probabilities:
@@ -108,9 +107,8 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
         itl = StopWatch()
         total_sw = StopWatch()
         self.logger.debug(
-            "%s [%d]: Started: Elapsed: %0.2f ms",
+            "%s: Started: Elapsed: %0.2f ms",
             request.request_id,
-            request.index,
             total_sw.elapsed_ms,
         )
 
@@ -122,9 +120,7 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
             with record_ms(METRICS.input_time):
                 context = await self.tokenizer.new_context(request)
 
-            # TODO(AITLIB-319): Remove hashattr check
-            if hasattr(context, "active_length"):
-                METRICS.input_tokens(context.active_length)
+            METRICS.input_tokens(context.active_length)
 
             with record_ms(METRICS.output_time):
                 # stop detector is stateful, so new it up here for
@@ -172,7 +168,7 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
                                 token_log_probabilities,
                                 top_log_probabilities,
                             ) = await self._collect_log_probs(
-                                log_prob, context, skip_special_tokens
+                                log_prob, skip_special_tokens
                             )
                             del tracer  # collect_log_probs
 
@@ -196,9 +192,8 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
         finally:
             if self.debug_logging:
                 self.logger.debug(
-                    "%s [%d]: Completed: Elapsed: %0.2f ms",
+                    "%s: Completed: Elapsed: %0.2f ms",
                     request.request_id,
-                    request.index,
                     total_sw.elapsed_ms,
                 )
 
@@ -210,13 +205,12 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
 
     async def encode(
         self, request: TextGenerationRequest
-    ) -> Optional[EmbeddingsGeneratorOutput]:
+    ) -> EmbeddingsGeneratorOutput:
         """Generates embedded outputs for the provided request."""
         total_sw = StopWatch()
         self.logger.debug(
             "%s [%d]: Started: Elapsed: %0.2f ms",
             request.request_id,
-            request.index,
             total_sw.elapsed_ms,
         )
 
@@ -231,15 +225,16 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
                     return EmbeddingsGeneratorOutput(
                         embeddings=response.embeddings
                     )
+                raise RuntimeError(
+                    f"No embeddings were generated for request {request.request_id}"
+                )
         finally:
             if self.debug_logging:
                 self.logger.debug(
-                    "%s [%d]: Completed: Elapsed: %0.2f ms",
+                    "%s: Completed: Elapsed: %0.2f ms",
                     request.request_id,
-                    request.index,
                     total_sw.elapsed_ms,
                 )
-        return None
 
     async def __aenter__(self) -> TokenGeneratorPipeline:
         self.logger.info("%s: Starting workers:", self.model_name)
@@ -249,6 +244,9 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
 
         # Add global fanout worker.
         self.create_background_task(self.engine_queue.response_worker)
+
+        if self.lora_queue:
+            self.create_background_task(self.lora_queue.response_worker)
 
         if not self.engine_queue.is_worker_healthy():
             raise RuntimeError(
@@ -262,7 +260,9 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
         )
         return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback) -> None:  # noqa: ANN001
+    async def __aexit__(
+        self, exc_type: Any, exc_value: Any, traceback: Any
+    ) -> None:
         self.logger.info("%s: Stopping workers", self.model_name)
         for task in self._background_tasks:
             task.cancel()
@@ -307,9 +307,6 @@ class TokenGeneratorPipeline(Generic[TokenGeneratorContext]):
             os.kill(os.getpid(), signal.SIGTERM)
 
 
-AudioGeneratorContext = TypeVar("AudioGeneratorContext")
-
-
 class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
     """Base class for LLM audio generation pipelines."""
 
@@ -317,28 +314,20 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
         self,
         model_name: str,
         tokenizer: PipelineTokenizer,
-        engine_queue: EngineQueue,
+        engine_queue: EngineQueue[AudioGeneratorContext, Any],
+        lora_queue: LoRAQueue | None = None,
     ) -> None:
         self.logger = logging.getLogger(
             "max.serve.pipelines.AudioGeneratorPipeline"
         )
-        self.logger.info("%s: Constructed", model_name)
         self.debug_logging = self.logger.isEnabledFor(logging.DEBUG)
 
         self.model_name = model_name
         self.tokenizer = tokenizer
         self.engine_queue = engine_queue
-        self.stats = TokenGeneratorStats()
+        self.lora_queue = lora_queue
 
         self._background_tasks: set[asyncio.Task] = set()
-
-    async def _collect_audio_metadata(self, response, context):  # noqa: ANN001
-        # Collect metadata about generated audio like duration, sample rate etc.
-        sample_rate = getattr(response, "sample_rate", None)
-        duration = getattr(response, "duration", None)
-        return AudioGenerationMetadata(
-            sample_rate=sample_rate, duration=duration
-        )
 
     async def next_chunk(
         self, request: AudioGenerationRequest
@@ -346,9 +335,8 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
         """Generates and streams audio for the provided request."""
         total_sw = StopWatch()
         self.logger.debug(
-            "%s [%d]: Started: Elapsed: %0.2f ms",
+            "%s: Started: Elapsed: %0.2f ms",
             request.request_id,
-            request.index,
             total_sw.elapsed_ms,
         )
 
@@ -360,23 +348,12 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
                 async for response in self.engine_queue.stream(
                     request.request_id, context
                 ):
-                    audio_metadata = await self._collect_audio_metadata(
-                        response, context
-                    )
-
-                    output = AudioGeneratorOutput(
-                        audio_data=response.audio_data,
-                        metadata=audio_metadata,
-                        is_done=response.is_done,
-                    )
-
-                    yield output
+                    yield response
         finally:
             if self.debug_logging:
                 self.logger.debug(
-                    "%s [%d]: Completed: Elapsed: %0.2f ms",
+                    "%s: Completed: Elapsed: %0.2f ms",
                     request.request_id,
-                    request.index,
                     total_sw.elapsed_ms,
                 )
 
@@ -385,9 +362,11 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
     ) -> AudioGeneratorOutput:
         """Generates complete audio for the provided request."""
         audio_chunks: list[AudioGeneratorOutput] = []
+        np_chunks: list[np.ndarray] = []
         async for chunk in self.next_chunk(request):
-            if not chunk.audio_data.size:
+            if chunk.audio_data.size == 0 or chunk.audio_data.size == 0:
                 continue
+            np_chunks.append(chunk.audio_data)
             audio_chunks.append(chunk)
 
         # We import torch here so that only folks that use the
@@ -396,14 +375,11 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
 
         if len(audio_chunks) == 0:
             return AudioGeneratorOutput(
-                audio_data=np.array([], dtype=np.float32),
-                metadata=AudioGenerationMetadata(),
-                is_done=True,
+                final_status=GenerationStatus.END_OF_SEQUENCE
             )
 
         # Combine audio chunks and metadata.
         # Convert numpy arrays to torch tensors for concatenation, then back to numpy
-        np_chunks = [chunk.audio_data for chunk in audio_chunks]
         combined_audio = np.concatenate(np_chunks, axis=-1)
 
         # We should only return from the next_chunk loop when the last chunk
@@ -414,7 +390,7 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
         return AudioGeneratorOutput(
             audio_data=combined_audio,
             metadata=last_chunk.metadata,
-            is_done=True,
+            final_status=GenerationStatus.END_OF_SEQUENCE,
         )
 
     async def __aenter__(self):
@@ -425,6 +401,9 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
 
         # Add global fanout worker.
         self.create_background_task(self.engine_queue.response_worker)
+
+        if self.lora_queue:
+            self.create_background_task(self.lora_queue.response_worker)
 
         if not self.engine_queue.is_worker_healthy():
             raise RuntimeError(
@@ -438,7 +417,9 @@ class AudioGeneratorPipeline(Generic[AudioGeneratorContext]):
         )
         return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback):  # noqa: ANN001
+    async def __aexit__(
+        self, exc_type: Any, exc_value: Any, traceback: Any
+    ) -> None:
         self.logger.info("%s: Stopping workers", self.model_name)
         for task in self._background_tasks:
             task.cancel()

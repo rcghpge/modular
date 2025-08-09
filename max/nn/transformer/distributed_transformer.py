@@ -13,19 +13,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from itertools import islice
+from typing import Callable, Protocol
 
 from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
+    ShardingStrategy,
     TensorType,
     TensorValue,
     TensorValueLike,
+    Type,
     Value,
     ops,
 )
+from max.graph.ops.allreduce import matmul_allreduce
+from max.nn.comm.allreduce import Allreduce
 
 from ..embedding import VocabParallelEmbedding
 from ..kv_cache import (
@@ -35,9 +40,9 @@ from ..kv_cache import (
     KVCacheParams,
     PagedKVCacheCollection,
 )
-from ..layer import LayerList, Module
-from ..linear import ColumnParallelLinear
-from ..norm import DistributedRMSNorm
+from ..layer import LayerList, Module, Shardable
+from ..linear import ColumnParallelLinear, DistributedGemmConfig
+from ..rotary_embedding import RotaryEmbedding
 from .transformer import ReturnLogits
 
 
@@ -52,23 +57,72 @@ def distribute_value(v, devices: list[DeviceRef]):  # noqa: ANN001
     return [v.to(device) for device in devices]
 
 
+# NOTE: This should eventually be deleted once Weight & Linear are refactored to assume
+# distributed by default.
+class ShardableCallable(Shardable, Protocol):
+    def __call__(self, x: TensorValue) -> TensorValue: ...
+
+
+def forward_sharded_layers(
+    layers: Sequence[Callable[[TensorValue], TensorValue]],
+    xs: Sequence[TensorValue],
+) -> list[TensorValue]:
+    """Forward pass through sharded layers.
+
+    Args:
+        layers: Sequence of callable layers that return TensorValue
+        xs: Input tensors, one per layer
+
+    Returns:
+        List of output tensors from each layer
+
+    Raises:
+        AssertionError: If the number of layers and input tensors don't match
+    """
+    assert len(xs) == len(layers), (
+        f"Number of layers ({len(layers)}) must match number of inputs ({len(xs)})"
+    )
+    return [layer(x) for layer, x in zip(layers, xs)]
+
+
 class DistributedTransformerBlock(Module):
     """Stack of Attention, FeedForward, and RMSNorm layers."""
 
     def __init__(
         self,
         attention: Module,
-        mlp: Module,
-        attention_norm: DistributedRMSNorm,
-        mlp_norm: DistributedRMSNorm,
+        mlp: ShardableCallable,
+        attention_norm: ShardableCallable,
+        mlp_norm: ShardableCallable,
         devices: list[DeviceRef],
+        distributed_gemm_config: DistributedGemmConfig | None = None,
     ) -> None:
         super().__init__()
+
         self.self_attn = attention
         self.mlp = mlp
+        self.mlp.sharding_strategy = ShardingStrategy.tensor_parallel(
+            len(devices)
+        )
+        self.mlp_shards = mlp.shard(devices)
+
+        # Shard the norm layers
         self.input_layernorm = attention_norm
+        self.input_layernorm.sharding_strategy = ShardingStrategy.replicate(
+            len(devices)
+        )
+        self.input_layernorm_shards = attention_norm.shard(devices)
+
         self.post_attention_layernorm = mlp_norm
+        self.post_attention_layernorm.sharding_strategy = (
+            ShardingStrategy.replicate(len(devices))
+        )
+        self.post_attention_layernorm_shards = mlp_norm.shard(devices)
+
         self.devices = devices
+
+        self.distributed_gemm_config = distributed_gemm_config
+        self.allreduce = Allreduce(num_accelerators=len(devices))
 
     def __call__(
         self,
@@ -78,18 +132,44 @@ class DistributedTransformerBlock(Module):
         kv_collections: list[
             ContinuousBatchingKVCacheCollection | PagedKVCacheCollection
         ],
+        freqs_cis: list[TensorValue],
         input_row_offsets: list[TensorValue],
     ) -> list[TensorValue]:
+        # Apply input layer norm to each shard
+        norm_xs = forward_sharded_layers(self.input_layernorm_shards, xs)
+
         attn_outs = self.self_attn(
             layer_idx,
-            self.input_layernorm(xs),
+            norm_xs,
             signal_buffers,
             kv_collections,
-            input_row_offsets,
+            freqs_cis=freqs_cis,
+            input_row_offsets=input_row_offsets,
         )
 
         hs = [x + attn_out for x, attn_out in zip(xs, attn_outs)]
-        mlp_outs = self.mlp(self.post_attention_layernorm(hs), signal_buffers)
+
+        # Apply post attention layer norm to each shard
+        norm_outs = forward_sharded_layers(
+            self.post_attention_layernorm_shards, hs
+        )
+        mlp_outs = forward_sharded_layers(self.mlp_shards, norm_outs)
+
+        if (
+            self.distributed_gemm_config is None
+            or not self.distributed_gemm_config.enable_matmul_allreduce
+        ):
+            mlp_outs = self.allreduce(mlp_outs, signal_buffers)
+        else:
+            # Special matmul + allreduce split version
+            # extract the sharded weights from the last linear layers
+            weights = [layer.down_proj.weight for layer in self.mlp_shards]  # type: ignore[attr-defined]
+            mlp_outs = matmul_allreduce(
+                mlp_outs,
+                weights,
+                signal_buffers,
+            )
+
         hs = [h + mlp_out for h, mlp_out in zip(hs, mlp_outs)]
 
         return hs
@@ -103,7 +183,7 @@ class DistributedTransformer(Module):
         dim: int,
         n_heads: int,
         layers: list[DistributedTransformerBlock],
-        norm: DistributedRMSNorm,
+        norm: ShardableCallable,
         output: ColumnParallelLinear,
         embedding: VocabParallelEmbedding,
         kv_params: KVCacheParams,
@@ -112,21 +192,32 @@ class DistributedTransformer(Module):
             | FetchPagedKVCacheCollection
         ),
         devices: list[DeviceRef],
+        rope: RotaryEmbedding,
         return_logits: ReturnLogits = ReturnLogits.LAST_TOKEN,
         use_subgraphs: bool = False,
+        subgraph_layer_groups: list[list[int]] | None = None,
     ) -> None:
         super().__init__()
         self.dim = dim
         self.n_heads = n_heads
         self.layers = LayerList(layers)
         self.norm = norm
+        # Shard the final norm layer
+        self.norm.sharding_strategy = ShardingStrategy.replicate(len(devices))
+        self.norm_shards = norm.shard(devices)
         self.lm_head = output
         self.embed_tokens = embedding
         self.kv_params = kv_params
         self.kv_collection_constructor = kv_collection_constructor
         self.return_logits = return_logits
         self.devices = devices
+        self.rope = rope
         self.use_subgraphs = use_subgraphs
+        if subgraph_layer_groups is None:
+            # If no subgraph layer groups are provided, assume that all layers
+            # are in a single group.
+            subgraph_layer_groups = [[i for i in range(len(layers))]]
+        self.subgraph_layer_groups = subgraph_layer_groups
         if self.return_logits == ReturnLogits.VARIABLE:
             raise ValueError(
                 "DistributedTransformer does not support variable logits."
@@ -147,39 +238,72 @@ class DistributedTransformer(Module):
             for kv_cache_inputs in kv_cache_inputs_per_dev
         ]
 
+        freqs_cis = distribute_value(self.rope.freqs_cis, self.devices)
+
         input_row_offsets_ = distribute_value(input_row_offsets, self.devices)
 
         if self.use_subgraphs:
-            subgraph_input_types = [
+            subgraph_input_types: Sequence[Type | list[Type]] = [
                 TensorType(DType.uint32, shape=(), device=DeviceRef.CPU()),
                 [hidden.type for hidden in h],
                 [signal_buffer.type for signal_buffer in signal_buffers],
                 [kv_collection.type for kv_collection in kv_collections],
+                [freq.type for freq in freqs_cis],
                 [offset.type for offset in input_row_offsets_],
             ]
-            subgraph_layer = self.layers[0]
-            subgraph_weight_prefix = "layers.0."
 
-            assert isinstance(subgraph_layer, DistributedTransformerBlock)
-            subgraph = subgraph_layer.build_subgraph(
-                "dist_transformer_block",
-                subgraph_input_types,
-                subgraph_weight_prefix,
-            )
-
-            for idx in range(len(self.layers)):
-                h = [
-                    x.tensor
-                    for x in ops.call(
-                        subgraph,
-                        ops.constant(idx, DType.uint32, device=DeviceRef.CPU()),
-                        *h,
-                        *signal_buffers,
-                        *kv_collections,
-                        *input_row_offsets_,
-                        prefix=f"layers.{idx}.",
+            # First, we need to build the subgraphs for each layer group.
+            subgraphs = []
+            for group_idx, layer_group in enumerate(self.subgraph_layer_groups):
+                assert len(layer_group) > 0, (
+                    "Subgraph layer groups must contain at least one layer"
+                )
+                subgraph_layer = self.layers[layer_group[0]]
+                assert isinstance(
+                    subgraph_layer, DistributedTransformerBlock
+                ), "Subgraph layer must be a DistributedTransformerBlock"
+                subgraphs.append(
+                    subgraph_layer.build_subgraph(
+                        f"dist_transformer_block_{group_idx}",
+                        subgraph_input_types,
+                        f"layers.{layer_group[0]}.",
                     )
-                ]
+                )
+
+            # Then, we need to call the subgraphs for each layer group.
+            for idx, layer in enumerate(self.layers):
+                has_subgraph = False
+                for group_idx, layer_group in enumerate(
+                    self.subgraph_layer_groups
+                ):
+                    if idx in layer_group:
+                        has_subgraph = True
+                        h = [
+                            x.tensor
+                            for x in ops.call(
+                                subgraphs[group_idx],
+                                ops.constant(
+                                    idx, DType.uint32, device=DeviceRef.CPU()
+                                ),
+                                *h,
+                                *signal_buffers,
+                                *kv_collections,
+                                *freqs_cis,
+                                *input_row_offsets_,
+                                prefix=f"layers.{idx}.",
+                            )
+                        ]
+                        break
+                if not has_subgraph:
+                    # If no subgraph was found, call the layer directly.
+                    h = layer(
+                        ops.constant(idx, DType.uint32, device=DeviceRef.CPU()),
+                        h,
+                        signal_buffers,
+                        kv_collections,
+                        freqs_cis=freqs_cis,
+                        input_row_offsets=input_row_offsets_,
+                    )
         else:
             for idx, layer in enumerate(self.layers):
                 h = layer(
@@ -187,14 +311,19 @@ class DistributedTransformer(Module):
                     h,
                     signal_buffers,
                     kv_collections,
-                    input_row_offsets_,
+                    freqs_cis=freqs_cis,
+                    input_row_offsets=input_row_offsets_,
                 )
         h0 = h[0]
         last_token_indices = input_row_offsets[1:] - 1
         last_token_h = ops.gather(h0, last_token_indices, axis=0)
         last_token_distributed = distribute_value(last_token_h, self.devices)
+        # Apply norm to each shard
+        norm_last_token = forward_sharded_layers(
+            self.norm_shards, last_token_distributed
+        )
         last_logits = ops.cast(
-            self.lm_head(self.norm(last_token_distributed), signal_buffers)[0],
+            self.lm_head(norm_last_token, signal_buffers)[0],
             DType.float32,
         )
 
@@ -215,7 +344,11 @@ class DistributedTransformer(Module):
             last_indices = ops.reshape(offsets, shape=(-1,))
             logits = ops.gather(
                 ops.cast(
-                    self.lm_head(self.norm(h), signal_buffers)[0], DType.float32
+                    self.lm_head(
+                        forward_sharded_layers(self.norm_shards, h),
+                        signal_buffers,
+                    )[0],
+                    DType.float32,
                 ),
                 last_indices,
                 axis=0,
@@ -229,7 +362,11 @@ class DistributedTransformer(Module):
             )
         elif self.return_logits == ReturnLogits.ALL:
             logits = ops.cast(
-                self.lm_head(self.norm(h), signal_buffers)[0], DType.float32
+                self.lm_head(
+                    forward_sharded_layers(self.norm_shards, h),
+                    signal_buffers,
+                )[0],
+                DType.float32,
             )
             offsets = input_row_offsets
 

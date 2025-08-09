@@ -52,6 +52,7 @@ from sys import (
     bitwidthof,
     is_amd_gpu,
     is_big_endian,
+    is_compile_time,
     is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
@@ -59,9 +60,10 @@ from sys import (
     sizeof,
 )
 from sys._assembly import inlined_assembly
-from sys.info import _is_sm_9x_or_newer
+from sys.info import _is_sm_9x_or_newer, _is_sm_100x_or_newer
+from sys.intrinsics import _type_is_eq
 
-from bit import byte_swap, pop_count
+from bit import bit_width, byte_swap, pop_count
 from builtin._format_float import _write_float
 from builtin.device_passable import DevicePassable
 from builtin.format_int import _try_write_int
@@ -73,6 +75,7 @@ from python import ConvertibleToPython, PythonObject, Python
 from utils import IndexList, StaticTuple
 from utils._visualizers import lldb_formatter_wrapping_type
 from utils.numerics import FPUtils
+from utils.numerics import inf as _inf
 from utils.numerics import isinf as _isinf
 from utils.numerics import isnan as _isnan
 from utils.numerics import max_finite as _max_finite
@@ -245,6 +248,7 @@ struct SIMD[dtype: DType, size: Int](
     Boolable,
     CeilDivable,
     Ceilable,
+    Comparable,
     ConvertibleToPython,
     Copyable,
     Defaultable,
@@ -328,7 +332,6 @@ struct SIMD[dtype: DType, size: Int](
     """Returns the minimum (lowest) finite value of SIMD value."""
 
     alias _Mask = SIMD[DType.bool, size]
-    alias _default_alignment = alignof[Scalar[dtype]]() if is_gpu() else 1
 
     # ===-------------------------------------------------------------------===#
     # Life cycle methods
@@ -463,6 +466,9 @@ struct SIMD[dtype: DType, size: Int](
         Args:
             value: The object to get the float point representation of.
         """
+
+        # TODO(MOCO-2186): remove when the parser ensures this for constructors.
+        constrained[_type_is_eq[__type_of(self), Self]()]()
         self = value.__float__()
 
     @always_inline
@@ -478,6 +484,8 @@ struct SIMD[dtype: DType, size: Int](
         Raises:
             If the type does not have a float point representation.
         """
+        # TODO(MOCO-2186): remove when the parser ensures this for constructors.
+        constrained[_type_is_eq[__type_of(self), Self]()]()
         self = value.__float__()
 
     # TODO(MSTDL-1587): Remove the dummy parameter.
@@ -550,6 +558,11 @@ struct SIMD[dtype: DType, size: Int](
         Args:
             value: The bool value.
         """
+        # TODO(MOCO-2186): remove when the parser ensures this for constructors.
+        constrained[
+            _type_is_eq[__type_of(self), Self](),
+            "Target type doesn't support conversion from `Bool`",
+        ]()
         _simd_construction_checks[dtype, size]()
         var s = __mlir_op.`pop.cast_from_builtin`[
             _type = __mlir_type.`!pop.scalar<bool>`
@@ -661,7 +674,7 @@ struct SIMD[dtype: DType, size: Int](
 
         @parameter
         if dtype is DType.bool and int_dtype in (DType.uint8, DType.int8):
-            return (value != 0)._refine[dtype]()
+            return value.ne(0)._refine[dtype]()
         else:
             return bitcast[dtype, size](value)
 
@@ -702,7 +715,7 @@ struct SIMD[dtype: DType, size: Int](
         Returns:
             Whether the vector contains the value.
         """
-        return (self == value).reduce_or()
+        return self.eq(value).reduce_or()
 
     @always_inline("nodebug")
     fn __add__(self, rhs: Self) -> Self:
@@ -793,11 +806,11 @@ struct SIMD[dtype: DType, size: Int](
         elif dtype.is_unsigned():
             return div
         else:
-            if all((self > 0) & (rhs > 0)):
+            if all(self.gt(0) & rhs.gt(0)):
                 return div
 
             var mod = self - div * rhs
-            var mask = ((rhs < 0) ^ (self < 0)) & (mod != 0)
+            var mask = (rhs.lt(0) ^ self.lt(0)) & mod.ne(0)
             return div - mask.cast[dtype]()
 
     @always_inline("nodebug")
@@ -829,7 +842,7 @@ struct SIMD[dtype: DType, size: Int](
                 )
 
             var mod = self - div * rhs
-            var mask = ((rhs < 0) ^ (self < 0)) & (mod != 0)
+            var mask = (rhs.lt(0) ^ self.lt(0)) & mod.ne(0)
             return mod + mask.select(rhs, Self(0))
 
     @always_inline("nodebug")
@@ -860,120 +873,6 @@ struct SIMD[dtype: DType, size: Int](
         """
         constrained[dtype.is_numeric(), "the SIMD type must be numeric"]()
         return _pow(self, exp)
-
-    @always_inline("nodebug")
-    fn __lt__(self, rhs: Self) -> Self._Mask:
-        """Compares two SIMD vectors using less-than comparison.
-
-        Args:
-            rhs: The rhs of the operation.
-
-        Returns:
-            A new bool SIMD vector of the same size whose element at position
-            `i` is True or False depending on the expression
-            `self[i] < rhs[i]`.
-        """
-
-        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred lt>`](
-            self.value, rhs.value
-        )
-
-    @always_inline("nodebug")
-    fn __le__(self, rhs: Self) -> Self._Mask:
-        """Compares two SIMD vectors using less-than-or-equal comparison.
-
-        Args:
-            rhs: The rhs of the operation.
-
-        Returns:
-            A new bool SIMD vector of the same size whose element at position
-            `i` is True or False depending on the expression
-            `self[i] <= rhs[i]`.
-        """
-
-        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred le>`](
-            self.value, rhs.value
-        )
-
-    @always_inline("nodebug")
-    fn __eq__(self, rhs: Self) -> Self._Mask:
-        """Compares two SIMD vectors using equal-to comparison.
-
-        Args:
-            rhs: The rhs of the operation.
-
-        Returns:
-            A new bool SIMD vector of the same size whose element at position
-            `i` is True or False depending on the expression
-            `self[i] == rhs[i]`.
-        """
-
-        # TODO(KERN-228): support BF16 on neon systems.
-        # As a workaround, we roll our own implementation
-        @parameter
-        if CompilationTarget.has_neon() and dtype is DType.bfloat16:
-            return self.to_bits() == rhs.to_bits()
-        else:
-            return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred eq>`](
-                self.value, rhs.value
-            )
-
-    @always_inline("nodebug")
-    fn __ne__(self, rhs: Self) -> Self._Mask:
-        """Compares two SIMD vectors using not-equal comparison.
-
-        Args:
-            rhs: The rhs of the operation.
-
-        Returns:
-            A new bool SIMD vector of the same size whose element at position
-            `i` is True or False depending on the expression
-            `self[i] != rhs[i]`.
-        """
-
-        # TODO(KERN-228): support BF16 on neon systems.
-        # As a workaround, we roll our own implementation.
-        @parameter
-        if CompilationTarget.has_neon() and dtype is DType.bfloat16:
-            return self.to_bits() != rhs.to_bits()
-        else:
-            return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred ne>`](
-                self.value, rhs.value
-            )
-
-    @always_inline("nodebug")
-    fn __gt__(self, rhs: Self) -> Self._Mask:
-        """Compares two SIMD vectors using greater-than comparison.
-
-        Args:
-            rhs: The rhs of the operation.
-
-        Returns:
-            A new bool SIMD vector of the same size whose element at position
-            `i` is True or False depending on the expression
-            `self[i] > rhs[i]`.
-        """
-
-        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred gt>`](
-            self.value, rhs.value
-        )
-
-    @always_inline("nodebug")
-    fn __ge__(self, rhs: Self) -> Self._Mask:
-        """Compares two SIMD vectors using greater-than-or-equal comparison.
-
-        Args:
-            rhs: The rhs of the operation.
-
-        Returns:
-            A new bool SIMD vector of the same size whose element at position
-            `i` is True or False depending on the expression
-            `self[i] >= rhs[i]`.
-        """
-
-        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred ge>`](
-            self.value, rhs.value
-        )
 
     @always_inline("nodebug")
     fn __pos__(self) -> Self:
@@ -1066,9 +965,10 @@ struct SIMD[dtype: DType, size: Int](
             `self << rhs`.
         """
         constrained[dtype.is_integral(), "must be an integral type"]()
-        debug_assert(all(rhs >= 0), "unhandled negative value")
+        debug_assert(all(rhs.ge(0)), "unhandled negative value")
         debug_assert(
-            all(rhs < bitwidthof[dtype]()), "unhandled value greater than size"
+            all(rhs.lt(bitwidthof[dtype]())),
+            "unhandled value greater than size",
         )
         return __mlir_op.`pop.shl`(self.value, rhs.value)
 
@@ -1086,9 +986,10 @@ struct SIMD[dtype: DType, size: Int](
             `self >> rhs`.
         """
         constrained[dtype.is_integral(), "must be an integral type"]()
-        debug_assert(all(rhs >= 0), "unhandled negative value")
+        debug_assert(all(rhs.ge(0)), "unhandled negative value")
         debug_assert(
-            all(rhs < bitwidthof[dtype]()), "unhandled value greater than size"
+            all(rhs.lt(bitwidthof[dtype]())),
+            "unhandled value greater than size",
         )
         return __mlir_op.`pop.shr`(self.value, rhs.value)
 
@@ -1112,6 +1013,226 @@ struct SIMD[dtype: DType, size: Int](
             return self.select(False, True)._refine[dtype]()
         else:
             return self ^ -1
+
+    # ===------------------------------------------------------------------=== #
+    # Boolean comparison operations.
+    # ===------------------------------------------------------------------=== #
+
+    @always_inline
+    fn __eq__(self, rhs: Self) -> Bool:
+        """Compares two SIMD vectors for equality.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            True if all elements of the SIMD vectors are equal, False otherwise.
+        """
+        return Bool(self.eq(rhs).reduce_and())
+
+    @always_inline
+    fn __ne__(self, rhs: Self) -> Bool:
+        """Compares two SIMD vectors for inequality.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            True if any elements of the SIMD vectors are not equal, False
+            otherwise.
+        """
+        # TODO: remove this implementation once we have default traits methods.
+        return not self == rhs
+
+    @always_inline
+    fn __gt__(self, rhs: Self) -> Bool:
+        """Compares two Scalars using greater-than comparison.
+
+        Args:
+            rhs: The Scalar to compare with.
+
+        Returns:
+            True if `self` is greater than `rhs`, False otherwise.
+        """
+        constrained[
+            size == 1,
+            (
+                "Strict inequality is only defined for `Scalar`s; "
+                "did you mean to use `SIMD.gt(...)?"
+            ),
+        ]()
+        return Bool(self.gt(rhs))
+
+    @always_inline
+    fn __ge__(self, rhs: Self) -> Bool:
+        """Compares two Scalars using greater-than-or-equal comparison.
+
+        Args:
+            rhs: The Scalar to compare with.
+
+        Returns:
+            True if `self` is greater than or equal to `rhs`, False otherwise.
+        """
+        constrained[
+            size == 1,
+            (
+                "Greater than or equal is only defined for `Scalar`s; "
+                "did you mean to use `SIMD.ge(...)?"
+            ),
+        ]()
+        return Bool(self.ge(rhs))
+
+    @always_inline
+    fn __lt__(self, rhs: Self) -> Bool:
+        """Compares two Scalars using less-than comparison.
+
+        Args:
+            rhs: The Scalar to compare with.
+
+        Returns:
+            True if `self` is less than `rhs`, False otherwise.
+        """
+        constrained[
+            size == 1,
+            (
+                "Strict inequality is only defined for `Scalar`s; "
+                "did you mean to use `SIMD.lt(...)?"
+            ),
+        ]()
+        return Bool(self.lt(rhs))
+
+    @always_inline
+    fn __le__(self, rhs: Self) -> Bool:
+        """Compares two Scalars using less-than-or-equal comparison.
+
+        Args:
+            rhs: The Scalar to compare with.
+
+        Returns:
+            True if `self` is less than or equal to `rhs`, False otherwise.
+        """
+        constrained[
+            size == 1,
+            (
+                "Less than or equal is only defined for `Scalar`s; "
+                "did you mean to use `SIMD.le(...)?"
+            ),
+        ]()
+        return Bool(self.le(rhs))
+
+    # ===------------------------------------------------------------------=== #
+    # Elementwise comparison operations.
+    # ===------------------------------------------------------------------=== #
+
+    @always_inline("nodebug")
+    fn eq(self, rhs: Self) -> Self._Mask:
+        """Compares two SIMD vectors using elementwise equality.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            A new bool SIMD vector of the same size whose element at position
+            `i` is the value of `self[i] == rhs[i]`.
+        """
+
+        # TODO(KERN-228): support BF16 on neon systems.
+        # As a workaround, we roll our own implementation
+        @parameter
+        if CompilationTarget.has_neon() and dtype is DType.bfloat16:
+            return self.to_bits() == rhs.to_bits()
+        else:
+            return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred eq>`](
+                self.value, rhs.value
+            )
+
+    @always_inline("nodebug")
+    fn ne(self, rhs: Self) -> Self._Mask:
+        """Compares two SIMD vectors using elementwise inequality.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            A new bool SIMD vector of the same size whose element at position
+            `i` is the value of `self[i] != rhs[i]`.
+        """
+
+        # TODO(KERN-228): support BF16 on neon systems.
+        # As a workaround, we roll our own implementation.
+        @parameter
+        if CompilationTarget.has_neon() and dtype is DType.bfloat16:
+            return self.to_bits() != rhs.to_bits()
+        else:
+            return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred ne>`](
+                self.value, rhs.value
+            )
+
+    @always_inline("nodebug")
+    fn gt(self, rhs: Self) -> Self._Mask:
+        """Compares two SIMD vectors using elementwise greater-than comparison.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            A new bool SIMD vector of the same size whose element at position
+            `i` is the value of `self[i] > rhs[i]`.
+        """
+
+        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred gt>`](
+            self.value, rhs.value
+        )
+
+    @always_inline("nodebug")
+    fn ge(self, rhs: Self) -> Self._Mask:
+        """Compares two SIMD vectors using elementwise greater-than-or-equal
+        comparison.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            A new bool SIMD vector of the same size whose element at position
+            `i` is the value of `self[i] >= rhs[i]`.
+        """
+
+        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred ge>`](
+            self.value, rhs.value
+        )
+
+    @always_inline("nodebug")
+    fn lt(self, rhs: Self) -> Self._Mask:
+        """Compares two SIMD vectors using elementwise less-than comparison.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            A new bool SIMD vector of the same size whose element at position
+            `i` is the value of `self[i] < rhs[i]`.
+        """
+
+        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred lt>`](
+            self.value, rhs.value
+        )
+
+    @always_inline("nodebug")
+    fn le(self, rhs: Self) -> Self._Mask:
+        """Compares two SIMD vectors using elementwise less-than-or-equal
+        comparison.
+
+        Args:
+            rhs: The SIMD vector to compare with.
+
+        Returns:
+            A new bool SIMD vector of the same size whose element at position
+            `i` is the value of `self[i] <= rhs[i]`.
+        """
+
+        return __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred le>`](
+            self.value, rhs.value
+        )
 
     # ===------------------------------------------------------------------=== #
     # In place operations.
@@ -1503,15 +1624,12 @@ struct SIMD[dtype: DType, size: Int](
         Returns:
             True if the SIMD scalar is non-zero and False otherwise.
         """
-        constrained[
-            size == 1,
-            (
-                "The truth value of a SIMD vector with more than one element is"
-                " ambiguous. Use the builtin `any()` or `all()` functions"
-                " instead."
-            ),
-        ]()
-        return self._refine[size=1]().cast[DType.bool]().value
+
+        @parameter
+        if size == 1:
+            return self._refine[size=1]().cast[DType.bool]().value
+        else:
+            return Bool(self.reduce_or())
 
     @always_inline("nodebug")
     fn __int__(self) -> Int:
@@ -1547,7 +1665,8 @@ struct SIMD[dtype: DType, size: Int](
         constrained[
             dtype.is_integral(), "cannot index using a floating point type"
         ]()
-        return Int(self).value
+        # NOTE: using Int(self) here would cause an infinite recursion.
+        return self.__int__().value
 
     @always_inline("nodebug")
     fn __float__(self) -> Float64:
@@ -1630,7 +1749,7 @@ struct SIMD[dtype: DType, size: Int](
         if dtype.is_unsigned() or dtype is DType.bool:
             return self
         elif dtype.is_integral():
-            return (self < 0).select(-self, self)
+            return self.lt(0).select(-self, self)
         else:
 
             @parameter
@@ -1793,14 +1912,22 @@ struct SIMD[dtype: DType, size: Int](
                 return self.cast[DType.float32]().cast[target]()
 
         @parameter
-        if target in (DType.float8_e4m3fn, DType.float8_e5m2):
+        if target in (
+            DType.float8_e4m3fn,
+            DType.float8_e4m3fnuz,
+            DType.float8_e5m2,
+            DType.float8_e5m2fnuz,
+        ):
             # TODO(KERN-1488): use gpu (H100) instruction to convert from fp16 to fp8
-            return _convert_f32_to_float8[target=target, size=size](
-                self.cast[DType.float32]()
-            )
+            return _convert_f32_to_float8[target](self.cast[DType.float32]())
 
         @parameter
-        if dtype in (DType.float8_e4m3fn, DType.float8_e5m2):
+        if dtype in (
+            DType.float8_e4m3fn,
+            DType.float8_e4m3fnuz,
+            DType.float8_e5m2,
+            DType.float8_e5m2fnuz,
+        ):
             constrained[
                 target
                 in (
@@ -1838,7 +1965,7 @@ struct SIMD[dtype: DType, size: Int](
         if dtype is DType.bool:
             return self.select[target](1, 0)
         elif target is DType.bool:
-            return (self != 0)._refine[target]()
+            return self.ne(0)._refine[target]()
 
         @parameter
         if dtype is DType.bfloat16 and (
@@ -1880,9 +2007,9 @@ struct SIMD[dtype: DType, size: Int](
 
         @parameter
         if dtype.is_unsigned():
-            return pop_count(self) == 1
+            return pop_count(self).eq(1)
         else:
-            return (self > 0) & (self & (self - 1) == 0)
+            return self.gt(0) & (self & (self - 1)).eq(0)
 
     @no_inline
     fn write_to[W: Writer](self, mut writer: W):
@@ -2311,18 +2438,24 @@ struct SIMD[dtype: DType, size: Int](
             "output width must be a positive integer less than simd size",
         ]()
 
+        @always_inline
         @parameter
-        if output_width == 1:
-            return self[offset]
-
-        @parameter
-        if offset % simdwidthof[dtype]():
-            var res = SIMD[dtype, output_width]()
+        fn slice_body() -> SIMD[dtype, output_width]:
+            var tmp = SIMD[dtype, output_width]()
 
             @parameter
             for i in range(output_width):
-                res[i] = self[i + offset]
-            return res
+                tmp[i] = self[i + offset]
+            return tmp
+
+        @parameter
+        if output_width == 1:
+            return self[offset]
+        elif offset % simdwidthof[dtype]():
+            return slice_body()
+
+        if is_compile_time():
+            return slice_body()
 
         return llvm_intrinsic[
             "llvm.vector.extract",
@@ -2977,9 +3110,9 @@ fn _pow[
         return _powf(base, exp)
     elif exp.dtype.is_integral():
         # Common cases
-        if all(exp == 2):
+        if all(exp.eq(2)):
             return base * base
-        if all(exp == 3):
+        if all(exp.eq(3)):
             return base * base * base
 
         var result = __type_of(base)()
@@ -3057,63 +3190,65 @@ fn _powi(base: Scalar, exp: Int32) -> __type_of(base):
 
 
 @always_inline
-fn _convert_float8_to_f32_scaler[
-    dtype: DType,
-](x: Scalar[dtype]) -> Float32:
-    var kF32_NaN: UInt32 = 0x7FFFFFFF
-    var FP8_NUM_BITS = 8
-    var IS_E4M3 = dtype is DType.float8_e4m3fn
-    var FP8_NUM_MANTISSA_BITS = FPUtils[dtype].mantissa_width()
-    var FP8_NUM_EXPONENT_BITS = FPUtils[dtype].exponent_width()
-    var FP32_NUM_BITS = 32
-    var FP8_EXPONENT_MASK: UInt8 = (1 << FP8_NUM_EXPONENT_BITS) - 1
-    var FP8_MANTISSA_MASK: UInt8 = (1 << FP8_NUM_MANTISSA_BITS) - 1
-    var FP8_MAX_EXPONENT = 7 if IS_E4M3 else 15
-    var FP8_EXPONENT_BIAS = 7 if IS_E4M3 else 15
-    var FP32_EXPONENT_BIAS = 127
-    var FP32_NUM_MANTISSA_BITS = 23
+fn _convert_float8_to_f32_scalar[
+    dtype: DType, //,
+    result_dtype: DType,
+](x: Scalar[dtype]) -> Scalar[result_dtype]:
+    alias FP8_EXPONENT_BIAS = FPUtils[dtype].exponent_bias()
+    alias FP8_NUM_MANTISSA_BITS = FPUtils[dtype].mantissa_width()
+    alias FP32_EXPONENT_BIAS = FPUtils[result_dtype].exponent_bias()
+    alias FP32_NUM_MANTISSA_BITS = FPUtils[result_dtype].mantissa_width()
 
-    var f8: UInt8 = bitcast[DType.uint8](x)
+    var exp = FPUtils.get_exponent_biased(x)
+    var mantissa = FPUtils.get_mantissa(x)
 
-    var sign: UInt32 = (f8.cast[DType.uint32]() >> (FP8_NUM_BITS - 1)) & 1
-    var exp: UInt32 = ((f8 >> FP8_NUM_MANTISSA_BITS) & FP8_EXPONENT_MASK).cast[
-        DType.uint32
-    ]()
-    var mantissa: UInt32 = (f8 & FP8_MANTISSA_MASK).cast[DType.uint32]()
+    if exp == 0 and mantissa != 0:
+        var subnormal_shift = FP8_NUM_MANTISSA_BITS - bit_width(mantissa)
+        exp -= subnormal_shift
+        mantissa <<= subnormal_shift + 1
+        mantissa &= FPUtils[dtype].mantissa_mask()
 
-    var f: UInt32 = sign << (FP32_NUM_BITS - 1)
+    # TODO: To generalize this routine for float16, logic needs to be added
+    # to convert float8 numbers that are in the normal exponent range to
+    # float16 numbers that are in the subnormal exponent range. This is not
+    # a problem for float32/bfloat16 as the exponent range is wider than any
+    # currently supported float8 types.
+    constrained[result_dtype != DType.float16]()
 
-    if IS_E4M3 and exp == 15 and mantissa == 0x7:
-        f = kF32_NaN
-    elif exp > 0 and (
-        IS_E4M3 or exp < (FP8_MAX_EXPONENT + FP8_EXPONENT_BIAS + 1)
-    ):
-        # normal
-        exp += FP32_EXPONENT_BIAS - FP8_EXPONENT_BIAS
-        f |= exp << FP32_NUM_MANTISSA_BITS
-        f |= mantissa << (FP32_NUM_MANTISSA_BITS - FP8_NUM_MANTISSA_BITS)
-    elif exp == 0:
-        if mantissa:
-            # subnormal
-            exp += (FP32_EXPONENT_BIAS - FP8_EXPONENT_BIAS) + 1
-            while (mantissa & (1 << FP8_NUM_MANTISSA_BITS)) == 0:
-                mantissa <<= 1
-                exp -= 1
-            mantissa = mantissa & FP8_MANTISSA_MASK.cast[DType.uint32]()
-            f |= exp << FP32_NUM_MANTISSA_BITS
-            f |= mantissa << (FP32_NUM_MANTISSA_BITS - FP8_NUM_MANTISSA_BITS)
+    exp += FP32_EXPONENT_BIAS - FP8_EXPONENT_BIAS
+    mantissa <<= FP32_NUM_MANTISSA_BITS - FP8_NUM_MANTISSA_BITS
+
+    var result = Scalar[result_dtype](0)
+    result = FPUtils.set_exponent(result, exp)
+    result = FPUtils.set_mantissa(result, mantissa)
+
+    var x_bits = FPUtils.bitcast_to_uint(x)
+    var exp_mantissa = x_bits & FPUtils[dtype].exponent_mantissa_mask()
+
+    if exp_mantissa == 0x00:
+        result = Scalar[result_dtype](0)
+
+    @parameter
+    if dtype in (DType.float8_e4m3fn, DType.float8_e5m2):
+
+        @parameter
+        if dtype is DType.float8_e4m3fn:
+            if exp_mantissa == 0x7F:
+                result = _nan[result_dtype]()
         else:
-            # sign-preserving zero
-            pass
-    else:
-        if mantissa == 0:
-            # Sign-preserving infinity
-            f |= 0x7F800000
-        else:
-            # Canonical NaN
-            f = kF32_NaN
+            if exp_mantissa == 0x7C:
+                result = _inf[result_dtype]()
+            elif exp_mantissa > 0x7C:
+                result = _nan[result_dtype]()
 
-    return bitcast[DType.float32](f)
+    result = FPUtils.set_sign(result, FPUtils.get_sign(x))
+
+    @parameter
+    if dtype in (DType.float8_e4m3fnuz, DType.float8_e5m2fnuz):
+        if x_bits == 0x80:
+            result = _nan[result_dtype]()
+
+    return result
 
 
 @always_inline
@@ -3122,7 +3257,10 @@ fn _convert_float8_to_f32[
     size: Int,
 ](val: SIMD[dtype, size]) -> SIMD[DType.float32, size]:
     @parameter
-    if _is_sm_9x_or_newer():
+    if _is_sm_9x_or_newer() and dtype in (
+        DType.float8_e4m3fn,
+        DType.float8_e5m2,
+    ):
         return _convert_float8_to_f16(val).cast[DType.float32]()
     else:
 
@@ -3131,9 +3269,7 @@ fn _convert_float8_to_f32[
         fn wrapper_fn[
             input_dtype: DType, result_dtype: DType
         ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
-            return _convert_float8_to_f32_scaler(
-                val._refine[dtype](),
-            )._refine[result_dtype]()
+            return _convert_float8_to_f32_scalar[result_dtype](val)
 
         return _simd_apply[wrapper_fn, DType.float32, size](val)
 
@@ -3144,7 +3280,10 @@ fn _convert_float8_to_f16[
     size: Int,
 ](val: SIMD[dtype, size]) -> SIMD[DType.float16, size]:
     @parameter
-    if _is_sm_9x_or_newer():
+    if _is_sm_9x_or_newer() and dtype in (
+        DType.float8_e4m3fn,
+        DType.float8_e5m2,
+    ):
         # do not call `SIMD.cast` here; the inliner will diverge
         return __mlir_op.`pop.cast`[
             _type = SIMD[DType.float16, size]._mlir_type
@@ -3156,11 +3295,14 @@ fn _convert_float8_to_f16[
 @always_inline
 fn _convert_f32_to_float8[
     dtype: DType,
+    size: Int, //,
     target: DType,
-    size: Int,
 ](val: SIMD[dtype, size]) -> SIMD[target, size]:
     @parameter
-    if _is_sm_9x_or_newer():
+    if _is_sm_9x_or_newer() and target in (
+        DType.float8_e4m3fn,
+        DType.float8_e5m2,
+    ):
         # do not call `SIMD.cast` here; the inliner will diverge
         return __mlir_op.`pop.cast`[_type = SIMD[target, size]._mlir_type](
             val.value
@@ -3172,69 +3314,71 @@ fn _convert_f32_to_float8[
         fn wrapper_fn[
             input_dtype: DType, result_dtype: DType
         ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
-            return _convert_f32_to_float8_scaler[dtype, result_dtype](
-                val._refine[dtype]()
-            )
+            return _convert_f32_to_float8_scalar[result_dtype](val)
 
         return _simd_apply[wrapper_fn, target, size](val)
 
 
 @always_inline
-fn _convert_f32_to_float8_scaler[
-    dtype: DType,
+fn _convert_f32_to_float8_scalar[
+    dtype: DType, //,
     target: DType,
 ](x: Scalar[dtype]) -> Scalar[target]:
     # software implementation rounds toward nearest even
 
-    alias IS_E4M3 = target is DType.float8_e4m3fn
+    @parameter
+    fn max_finite_byte() -> UInt8:
+        @parameter
+        if target is DType.float8_e4m3fn:
+            return UInt8(0x7E)
+        elif target in (DType.float8_e4m3fnuz, DType.float8_e5m2fnuz):
+            return UInt8(0x7F)
+        else:
+            constrained[target is DType.float8_e5m2]()
+            return UInt8(0x7B)
+
     alias FP8_NUM_MANTISSA_BITS = FPUtils[target].mantissa_width()
     alias FP8_NUM_EXPONENT_BITS = FPUtils[target].exponent_width()
     alias FP32_NUM_BITS = bitwidthof[dtype]()
     alias FP8_EXPONENT_MASK: UInt8 = (1 << FP8_NUM_EXPONENT_BITS) - 1
     alias FP8_MANTISSA_MASK: UInt8 = (1 << FP8_NUM_MANTISSA_BITS) - 1
-    alias FP8_MAX_EXPONENT = FPUtils[target].exponent_bias()
-    var FP8_MIN_EXPONENT = -6 if IS_E4M3 else -14
     alias FP8_EXPONENT_BIAS = FPUtils[target].exponent_bias()
+    alias FP8_MIN_EXPONENT = 1 - FP8_EXPONENT_BIAS
     alias FP32_EXPONENT_BIAS = FPUtils[dtype].exponent_bias()
     alias FP32_NUM_MANTISSA_BITS = FPUtils[dtype].mantissa_width()
-    alias FP8_MAX_FLT = UInt8(0x7E) if IS_E4M3 else UInt8(0x7B)
+    alias FP8_MAX_FLT = max_finite_byte()
 
     # Extract the bits in the FP32 type
     var sign: UInt8 = 0x80 if FPUtils[dtype].get_sign(x) else 0x00
     var exp = Int32(FPUtils[dtype].get_exponent_biased(x)) - FP32_EXPONENT_BIAS
     var mantissa = Int32(FPUtils[dtype].get_mantissa(x))
 
-    var kF8_NaN: UInt8 = 0x7F
-
     # NaN => NaN
     if _isnan(x):
-        return bitcast[target](kF8_NaN)
+
+        @parameter
+        if target in (DType.float8_e4m3fn, DType.float8_e5m2):
+            return bitcast[target](UInt8(0x7F))
+        else:
+            constrained[
+                target in (DType.float8_e4m3fnuz, DType.float8_e5m2fnuz)
+            ]()
+            return bitcast[target](UInt8(0x80))
 
     # Inf => MAX_FLT (satfinite)
     if _isinf(x):
         return bitcast[target](sign | FP8_MAX_FLT)
 
-    # Special handling
-    if exp == -128:
-        # int8 range is from -128 to 127
-        # So 255(inf) - 127(bias) = 128 - will show up as -128
-
-        # satfinite
-        return bitcast[target](sign | FP8_MAX_FLT)
-
     var sticky_bit: Int32 = 0
 
-    var skip_sign = False
-    var may_be_nan = False
-
-    if exp >= FP8_MIN_EXPONENT and exp <= FP8_MAX_EXPONENT:
+    if abs(x) >= Scalar[dtype](_max_finite[target]()):
+        # satfinite
+        return bitcast[target](sign | FP8_MAX_FLT)
+    elif exp >= FP8_MIN_EXPONENT:
         # normal fp32 to normal fp8
         exp += FP8_EXPONENT_BIAS
         u = (
-            (
-                (exp).cast[DType.uint32]()
-                & FP8_EXPONENT_MASK.cast[DType.uint32]()
-            )
+            (exp.cast[DType.uint32]() & FP8_EXPONENT_MASK.cast[DType.uint32]())
             << FP8_NUM_MANTISSA_BITS
         ).cast[DType.uint8]()
         u = (
@@ -3243,14 +3387,14 @@ fn _convert_f32_to_float8_scaler[
                 mantissa >> (FP32_NUM_MANTISSA_BITS - FP8_NUM_MANTISSA_BITS)
             ).cast[DType.uint8]()
         )
-    elif exp < FP8_MIN_EXPONENT:
+    else:
         # normal single-precision to subnormal float8-precision representation
         var rshift: Int32 = FP8_MIN_EXPONENT - exp
         if rshift < FP32_NUM_BITS:
             mantissa |= 1 << FP32_NUM_MANTISSA_BITS
-            sticky_bit = ((mantissa & ((1 << rshift) - 1)) != 0).cast[
-                DType.int32
-            ]()
+            sticky_bit = (
+                (mantissa & ((1 << rshift) - 1)).ne(0).cast[DType.int32]()
+            )
             mantissa = mantissa >> rshift
             u = (
                 mantissa >> (FP32_NUM_MANTISSA_BITS - FP8_NUM_MANTISSA_BITS)
@@ -3258,48 +3402,94 @@ fn _convert_f32_to_float8_scaler[
         else:
             mantissa = 0
             u = 0
-    # Exponent > FP8_MAX_EXPONENT - this is a special case done to match HW
-    # 0x4380_0000 to 0x43e0_0000 - maps from 256 to 448, and does not saturate / inf.
-    else:
-        if exp == (FP8_MAX_EXPONENT + 1):
-            var mantissa_tmp: UInt8 = (
-                mantissa >> (FP32_NUM_MANTISSA_BITS - FP8_NUM_MANTISSA_BITS)
-            ).cast[DType.uint8]()
-            if mantissa_tmp < FP8_MANTISSA_MASK:
-                exp = exp + FP8_EXPONENT_BIAS
-                u = ((exp).cast[DType.uint32]() << FP8_NUM_MANTISSA_BITS).cast[
-                    DType.uint8
-                ]() | mantissa_tmp
-                may_be_nan = mantissa_tmp == (FP8_MANTISSA_MASK - 1)
-            else:
-                # satfinite
-                return bitcast[target](sign | FP8_MAX_FLT)
-        else:
-            # satfinite
-            return bitcast[target](sign | FP8_MAX_FLT)
 
     # round to nearest even
     var NUM_BITS_SHIFT: Int32 = FP32_NUM_MANTISSA_BITS - (
         FP8_NUM_MANTISSA_BITS + 1
     )
     var round_bit: Int32 = (mantissa >> NUM_BITS_SHIFT) & 1
-    sticky_bit |= ((mantissa & ((1 << NUM_BITS_SHIFT) - 1)) != 0).cast[
-        DType.int32
-    ]()
+    sticky_bit |= (
+        (mantissa & ((1 << NUM_BITS_SHIFT) - 1)).ne(0).cast[DType.int32]()
+    )
 
     if (round_bit and sticky_bit) or (round_bit and (u & 1)):
         u = (u + 1).cast[DType.uint8]()
-        if may_be_nan:
-            skip_sign = True
 
-    if u > FP8_MAX_FLT:
-        # satfinite
-        u = sign | FP8_MAX_FLT
+    # Special case for dtypes that lack a representation for signed zero.
+    @parameter
+    if target in (DType.float8_e4m3fnuz, DType.float8_e5m2fnuz):
+        if u == 0:
+            return bitcast[target](UInt8(0))
 
-    if not skip_sign:
-        u |= sign
+    return bitcast[target](sign | u)
 
-    return bitcast[target](u)
+
+@always_inline
+fn _convert_f32_to_float8_ue8m0_scalar[
+    dtype: DType, //,
+    target: DType,
+](x: Scalar[dtype]) -> Scalar[target]:
+    if _isnan(x) or _isinf(x):
+        return Scalar[target](0xFF)
+
+    var x_uint32: UInt32 = bitcast[DType.uint32, 1](x)
+    var exp: UInt8 = UInt8(
+        (x_uint32 >> 23) & 0xFF
+    )  # Extract the 8 bit exponent
+    var mant: UInt32 = x_uint32 & 0x7FFFFF  # Extract the 23 bit mantissa
+
+    if (mant > 0) and (exp != 0xFE) and (not (exp == 0 and mant <= 0x00400000)):
+        exp = exp + 1
+
+    return bitcast[target, 1](exp)
+
+
+@always_inline
+fn _convert_f32_to_float8_ue8m0[
+    dtype: DType,
+    size: Int, //,
+    target: DType,
+](val: SIMD[dtype, size],) -> SIMD[target, size]:
+    constrained[target == DType.uint8, "target must be uint8"]()
+
+    @parameter
+    if is_nvidia_gpu() and _is_sm_100x_or_newer():
+        alias asm_prefix = "cvt.rp.satfinite.ue8m0x2.f32"
+
+        @parameter
+        if size > 1:
+            var res = SIMD[target, size]()
+
+            @parameter
+            for i in range(0, size, 2):
+                var f8x2_f32x2 = inlined_assembly[
+                    asm_prefix + " $0, $1, $2;",
+                    Scalar[DType.uint16],
+                    constraints="=h,f,f",
+                    has_side_effect=False,
+                ](val[i + 1], val[i])
+                var ui8x2 = bitcast[target, 2](f8x2_f32x2)
+                res = res.insert[offset=i](ui8x2)
+            return res
+        else:
+            var f8x2_f32x2 = inlined_assembly[
+                asm_prefix + " $0, $1, $2;",
+                Scalar[DType.uint16],
+                constraints="=h,f,f",
+                has_side_effect=False,
+            ](Float32(0.0), val[0])
+            var ui8x2 = bitcast[target, 2](f8x2_f32x2)
+            return ui8x2[0]
+    else:
+
+        @always_inline
+        @parameter
+        fn wrapper_fn[
+            input_dtype: DType, result_dtype: DType
+        ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
+            return _convert_f32_to_float8_ue8m0_scalar[result_dtype](val)
+
+        return _simd_apply[wrapper_fn, target, size](val)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -3507,7 +3697,7 @@ fn _floor(x: SIMD) -> __type_of(x):
 
     var bits = x._to_bits_signed()
     var e = ((bits & mask) >> mantissa_width) - bias
-    bits = (e < shift_factor).select(
+    bits = e.lt(shift_factor).select(
         bits & ~((1 << (shift_factor - e)) - 1),
         bits,
     )

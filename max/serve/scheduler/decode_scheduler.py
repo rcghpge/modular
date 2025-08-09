@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+from __future__ import annotations
 
 import logging
 import queue
@@ -18,13 +19,12 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Union
 
-import zmq
 from max.interfaces import (
+    Pipeline,
     RequestID,
     SchedulerResult,
     TextGenerationInputs,
     TextGenerationOutput,
-    TokenGenerator,
     msgpack_numpy_decoder,
     msgpack_numpy_encoder,
 )
@@ -62,28 +62,28 @@ class DecodeSchedulerConfig:
 class DecodeScheduler(Scheduler):
     def __init__(
         self,
-        pipeline: TokenGenerator,
+        pipeline: Pipeline[
+            TextGenerationInputs[Union[TextContext, TextAndVisionContext]],
+            TextGenerationOutput,
+        ],
         scheduler_config: DecodeSchedulerConfig,
         paged_manager: PagedKVCacheManager,
         *,
         request_zmq_endpoint: str,
         response_zmq_endpoint: str,
         cancel_zmq_endpoint: str,
-        zmq_ctx: zmq.Context,
         dispatcher_client: DispatcherClient,
     ) -> None:
         # Initialize Pipeline and Config
         self.scheduler_config = scheduler_config
         self.pipeline = pipeline
         self.paged_manager = paged_manager
-        self.zmq_ctx = zmq_ctx
         self.dispatcher_client = dispatcher_client
 
         # Initialize Queues
         self.request_pull_socket = ZmqPullSocket[
             tuple[str, Union[TextContext, TextAndVisionContext]]
         ](
-            zmq_ctx,
             zmq_endpoint=request_zmq_endpoint,
             deserialize=msgpack_numpy_decoder(
                 tuple[str, Union[TextContext, TextAndVisionContext]]
@@ -92,14 +92,12 @@ class DecodeScheduler(Scheduler):
         self.response_push_socket = ZmqPushSocket[
             dict[str, SchedulerResult[TextGenerationOutput]]
         ](
-            zmq_ctx=zmq_ctx,
             zmq_endpoint=response_zmq_endpoint,
             serialize=msgpack_numpy_encoder(),
         )
         self.cancel_pull_socket = ZmqPullSocket[
             tuple[str, Union[TextContext, TextAndVisionContext]]
         ](
-            zmq_ctx=zmq_ctx,
             zmq_endpoint=cancel_zmq_endpoint,
             deserialize=msgpack_numpy_decoder(
                 tuple[str, Union[TextContext, TextAndVisionContext]]
@@ -134,12 +132,6 @@ class DecodeScheduler(Scheduler):
             tensor=self.paged_manager.device_tensors[0],
             total_num_pages=self.paged_manager.total_num_pages,
         )
-
-        # Ensure that prefix caching is enabled.
-        if not self.paged_manager.enable_prefix_caching:
-            raise ValueError(
-                "Prefix Caching must be enabled on the Paged Manager for Decode Scheduling."
-            )
 
     def pull_from_request_socket(
         self,
@@ -232,9 +224,6 @@ class DecodeScheduler(Scheduler):
                 # Claim the slot with the paged manager
                 if not self.paged_manager.contains(request_id):
                     self.paged_manager.external_claim(request_id)
-
-                # Ensure request_context is unassigned from cache
-                request_context.unassign_from_cache()
 
                 # TODO: E2EOPT-269
 
@@ -398,7 +387,7 @@ class DecodeScheduler(Scheduler):
         Args:
             num_steps: Number of tokens to generate for this batch.
         """
-        responses = self.pipeline.next_token(
+        responses = self.pipeline.execute(
             TextGenerationInputs(self.active_batch, num_steps=num_steps)
         )
 
@@ -429,9 +418,11 @@ class DecodeScheduler(Scheduler):
 
 
 def load_decode_scheduler(
-    zmq_ctx: zmq.Context,
     settings: Settings,
-    pipeline: TokenGenerator,
+    pipeline: Pipeline[
+        TextGenerationInputs[Union[TextContext, TextAndVisionContext]],
+        TextGenerationOutput,
+    ],
     pipeline_config: PipelineConfig,
     dispatcher_client: DispatcherClient,
 ) -> DecodeScheduler:
@@ -460,6 +451,5 @@ def load_decode_scheduler(
         request_zmq_endpoint=settings.request_zmq_endpoint,
         response_zmq_endpoint=settings.response_zmq_endpoint,
         cancel_zmq_endpoint=settings.cancel_zmq_endpoint,
-        zmq_ctx=zmq_ctx,
         dispatcher_client=dispatcher_client,
     )

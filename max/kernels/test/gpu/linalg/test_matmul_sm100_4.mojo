@@ -27,6 +27,8 @@ from gpu.id import warp_id as get_warp_id
 from gpu.memory import AddressSpace, fence_async_view_proxy
 from gpu.mma_sm100 import *
 from gpu.tcgen05 import *
+from internal_utils import ndbuffer_to_str
+from bit import next_power_of_two, prev_power_of_two
 
 from gpu.mma import st_matrix
 from layout import (
@@ -142,7 +144,7 @@ fn load_AB[
         MutableAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
-        circular=True,
+        circular=False,
     ],
     b_smem: LayoutTensorIter[
         b_type,
@@ -150,7 +152,7 @@ fn load_AB[
         MutableAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
-        circular=True,
+        circular=False,
     ],
     mma_mbar: UnsafePointer[
         SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=16
@@ -250,7 +252,7 @@ fn consumer_main_loop[
         MutableAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
-        circular=True,
+        circular=False,
     ],
     b_smem_iter: LayoutTensorIter[
         b_type,
@@ -258,7 +260,7 @@ fn consumer_main_loop[
         MutableAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
-        circular=True,
+        circular=False,
     ],
     mma_mbar: UnsafePointer[
         SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=16
@@ -288,8 +290,8 @@ fn consumer_main_loop[
 
     tma_mbar[stage].wait(phase)
 
-    var a_smem_tile = a_smem_iter.next(stage)[]
-    var b_smem_tile = b_smem_iter.next(stage)[]
+    var a_smem_tile = a_smem_iter.next_unsafe(stage)[]
+    var b_smem_tile = b_smem_iter.next_unsafe(stage)[]
 
     if elect_one_sync():
         mma_op.mma(
@@ -305,13 +307,12 @@ fn consumer_main_loop[
 @always_inline
 fn store_C[
     c_type: DType,
-    accum_type: DType,
-    c_frag_size: Int,
     c_smem_layout: Layout,
     c_layout: Layout,
     c_desc_layout: Layout,
     /,
     *,
+    accum_type: DType,
     block_tile_shape: IndexList[3],
     mma_shape: IndexList[3],
     c_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
@@ -319,7 +320,6 @@ fn store_C[
     num_output_warps: UInt = 4,
     max_tmem_cols: UInt = 512,
 ](
-    c_frag: SIMD[accum_type, c_frag_size],
     c_smem_tile: LayoutTensor[
         c_type,
         c_smem_layout,
@@ -342,53 +342,128 @@ fn store_C[
     alias num_n_mmas = BN // (mma_shape[1] // cta_group)
 
     alias TMA_BN = c_layout.shape[1].value()
-
     var warp_id = get_warp_id()
 
-    c_frag_upper, c_frag_lower = c_frag.split()
+    # Rows each warp is responsible for:
+    # warp_id 0 -> 0-15 upper, 16-31 lower
+    # warp_id 1 -> 32-47 upper, 48-63 lower
+    # warp_id 2 -> 64-79 upper, 80-95 lower
+    # warp_id 3 -> 96-111 upper, 112-127 lower
 
-    # warp_id 0 -> 0, 16
-    # warp_id 1 -> 32, 48
-    # warp_id 2 -> 64, 80
-    # warp_id 3 -> 96, 112
-    c_frag_upper = tcgen05_ld[
-        datapaths=16,
-        bits=256,
-        repeat = BN // 8 if MMA_M == 128 else MMA_N // 8,
+    # Calculate how many elements we need to load based on MMA_N
+    alias elements_per_row = BN if MMA_M == 128 else MMA_N
+    # this is the main load, most cases use this, power of 2
+    alias main_load_elements = prev_power_of_two(elements_per_row)
+    # this is remainder load, executed only if MMA_N is not power of 2
+    alias remainder_elements = elements_per_row - main_load_elements
+
+    # if i do have non-power of 2, then remainder_elements must be divisible by 32 (can extend to support more values later)
+    constrained[
+        remainder_elements % 32 == 0,
+        "remainder_elements must be divisible by 32",
+    ]()
+
+    alias main_repetition = main_load_elements // 8
+    alias remainder_repetitions = remainder_elements // 8
+
+    alias data_paths = 16
+    alias bits = 256
+    alias num_elements_per_load = bits // 32  # each element in tmem is 4 bytes, 32 bits
+    alias num_regs_per_thread = (
+        data_paths * num_elements_per_load
+    ) // WARP_SIZE
+
+    alias NUM_TMA_TILES = MMA_N // TMA_BN
+    alias NUM_ST_MATRIX = BN // TMA_BN if MMA_M == 128 else MMA_N // TMA_BN
+    alias C_SPLIT_ROWS = BM * NUM_TMA_TILES // 2 if MMA_M == 128 else BM * NUM_TMA_TILES
+
+    # NOTE: Every load is 8 elements (256 bits), repetitions is row size / 8
+    # We load 16 lanes by 8 elements so 128 elements total
+    # 1 warp or 32 threads does this, each thread storing 128/32=4 elements on every load
+    # and total number of register usage is num_regs_per_thread * main_repetition
+
+    # Load c_frag_upper
+    # Load once if MMA_N is power of 2, otherwise load twice
+
+    var c_upper_pow_2_main = SIMD[
+        accum_type, main_repetition * num_regs_per_thread
+    ](0)
+
+    var c_lower_pow_2_main = SIMD[
+        accum_type, main_repetition * num_regs_per_thread
+    ](0)
+
+    # dummy registers in case there's no remainder. We still need to
+    # satisfy power-of-2 when using SIMD.
+    alias remainder_reg_size = max(
+        2, remainder_repetitions * num_regs_per_thread
+    )
+
+    var c_upper_pow_2_rem = SIMD[accum_type, remainder_reg_size](0)
+    var c_lower_pow_2_rem = SIMD[accum_type, remainder_reg_size](0)
+
+    # Primary Load
+    c_upper_pow_2_main = tcgen05_ld[
+        datapaths=data_paths,
+        bits=bits,
+        repeat=main_repetition,
         dtype=accum_type,
         pack=False,
-        width = c_frag_upper.size,
+        width = c_upper_pow_2_main.size,
     ](tmem_addr | ((warp_id * 32) << 16))
 
-    c_frag_lower = tcgen05_ld[
-        datapaths=16,
-        bits=256,
-        repeat = BN // 8 if MMA_M == 128 else MMA_N // 8,
+    # Load c_frag_lower
+    # Primary load
+    c_lower_pow_2_main = tcgen05_ld[
+        datapaths=data_paths,
+        bits=bits,
+        repeat=main_repetition,
         dtype=accum_type,
         pack=False,
-        width = c_frag_lower.size,
+        width = c_lower_pow_2_main.size,
     ](tmem_addr | ((warp_id * 32 + 16) << 16))
+
+    @parameter
+    if MMA_N != prev_power_of_two(MMA_N):
+        # no mma_n can be larger than 256, so if there's a remainder,
+        # we've loaded the smallest power of 2, 128, and the rem is after
+        # 128. this is why tmem address is offset by 128
+        c_upper_pow_2_rem = tcgen05_ld[
+            datapaths=data_paths,
+            bits=bits,
+            repeat=remainder_repetitions,
+            dtype=accum_type,
+            pack=False,
+            width = c_upper_pow_2_rem.size,
+        ](tmem_addr + 128 | ((warp_id * WARP_SIZE) << 16))
+
+        c_lower_pow_2_rem = tcgen05_ld[
+            datapaths=data_paths,
+            bits=bits,
+            repeat=remainder_repetitions,
+            dtype=accum_type,
+            pack=False,
+            width = c_lower_pow_2_rem.size,
+        ](tmem_addr + 128 | ((warp_id * WARP_SIZE + 16) << 16))
+
+    # Remainder load happens later, only if needed
     tcgen05_load_wait()
 
-    alias C_WBM = BM // 2 if MMA_M == 128 else BM // 4
-    alias C_WBN = BN if MMA_M == 128 else MMA_N
-    var c_coord_x = warp_id % 2 if MMA_M == 128 else warp_id
-    var c_coord_y = warp_id // 2 if MMA_M == 128 else 0
-
-    # 32 x BN
-    c_warp_tile = c_smem_tile.tile[C_WBM, C_WBN](c_coord_x, c_coord_y)
-
+    # Create a layout for everything
     var st_matrix_rt_layout = RuntimeLayout[
         st_matrix_n_layout[c_type, TMA_BN, num_m_mmas, 1](),
         element_type = DType.int32,
         linear_idx_type = DType.int32,
     ]()
 
-    alias st_matrix_swizzle = make_swizzle[c_type, c_swizzle]()
-    alias NUM_TMA_TILES = MMA_N // TMA_BN
-    alias NUM_ST_MATRIX = BN // TMA_BN if MMA_M == 128 else MMA_N // TMA_BN
-    alias C_SPLIT_ROWS = BM * NUM_TMA_TILES // 2 if MMA_M == 128 else BM * NUM_TMA_TILES
+    # For 32-column tiles, we need a different swizzle pattern
+    alias st_matrix_swizzle = make_swizzle[
+        c_type,
+        TensorMapSwizzle.SWIZZLE_64B if TMA_BN
+        == 32 else TensorMapSwizzle.SWIZZLE_128B,
+    ]()
 
+    # 128*160 = 20,480 and is same as (128 * 5) * 32 = 20,480
     var c_smem_tile_reshaped = c_smem_tile.reshape[
         Layout.row_major(BM * NUM_TMA_TILES, TMA_BN)
     ]()
@@ -407,18 +482,14 @@ fn store_C[
         var upper = c_smem_warp_tile.tile[16, TMA_BN](0, 0)
         var lower = c_smem_warp_tile.tile[16, TMA_BN](1, 0)
 
+        var d_reg_upper: SIMD[DType.bfloat16, 8]
+        var d_reg_lower: SIMD[DType.bfloat16, 8]
+
         @parameter
         for m_mma in range(num_m_mmas):
 
             @parameter
-            for i in range(TMA_BN // 16):
-                var d_reg_upper = c_frag_upper.slice[
-                    8, offset = (i + tma_n * (TMA_BN // 16)) * 8
-                ]().cast[DType.bfloat16]()
-                var d_reg_lower = c_frag_lower.slice[
-                    8, offset = (i + tma_n * (TMA_BN // 16)) * 8
-                ]().cast[DType.bfloat16]()
-
+            for i in range((TMA_BN // 16)):
                 var st_matrix_args = RuntimeTuple[
                     IntTuple(
                         UNKNOWN_VALUE,
@@ -429,6 +500,34 @@ fn store_C[
                         ),
                     )
                 ](lane_id(), i, m_mma, 0)
+                # i,0,0
+
+                var d_reg_upper = SIMD[DType.bfloat16, 8](0)
+                var d_reg_lower = SIMD[DType.bfloat16, 8](0)
+
+                # if MMA_N is a power of 2, then just use the main load for all iterations
+                # if it's not a power of 2, then go till NUM_ST_MATRIX -1 using the main regists
+                # and for last iteration we load remainder registers (for the remainder 32 )
+                @parameter
+                if (
+                    MMA_N == prev_power_of_two(MMA_N)
+                    or tma_n < NUM_ST_MATRIX - 1
+                ):
+                    # every iteration of tma_n is a motion across BM * 32 elements
+                    # and we agree that each of those has 2 rows * 8 elements in the register
+                    d_reg_upper = c_upper_pow_2_main.slice[
+                        8, offset = (i * 8) + tma_n * (TMA_BN // 16) * 8
+                    ]().cast[DType.bfloat16]()
+                    d_reg_lower = c_lower_pow_2_main.slice[
+                        8, offset = (i * 8) + tma_n * (TMA_BN // 16) * 8
+                    ]().cast[DType.bfloat16]()
+                else:
+                    d_reg_upper = c_upper_pow_2_rem.slice[
+                        8, offset = (i * 8)
+                    ]().cast[DType.bfloat16]()
+                    d_reg_lower = c_lower_pow_2_rem.slice[
+                        8, offset = (i * 8)
+                    ]().cast[DType.bfloat16]()
 
                 var d_reg_upper_packed = bitcast[DType.float32, 4](d_reg_upper)
                 var d_reg_lower_packed = bitcast[DType.float32, 4](d_reg_lower)
@@ -450,10 +549,10 @@ fn store_C[
 
     # SMEM -> GMEM: Direct TMA store
     # UMMA (tensor memory) → registers → shared memory → global memory
-    #           c_frag                   c_smem_tile      c_tma_op
+    # #           c_frag                   c_smem_tile      c_tma_op
+
     if elect_one_warp and thread_idx.x < NUM_TMA_TILES:
         var row_start = block_idx.x * BM
-
         var col_start = block_idx.y * MMA_N + thread_idx.x * TMA_BN
 
         fence_async_view_proxy()
@@ -520,7 +619,6 @@ fn blackwell_tma_pair_umma_kernel[
     alias CLUSTER_M = Int(cluster_shape[0])
     alias CLUSTER_N = Int(cluster_shape[1])
 
-    alias TMA_BN = c_layout.shape[1].value()
     alias a_tma_load_size = a_desc_layout.size()
     alias b_tma_load_size = b_desc_layout.size()
     alias a_tma_rows = a_desc_layout.shape[0].value()
@@ -560,7 +658,6 @@ fn blackwell_tma_pair_umma_kernel[
 
     alias a_smem_size = a_smem_layout.size()
     alias b_smem_size = b_smem_layout.size()
-    # TODO: breaking C tile out and increasing pipeline stages to 8
     alias c_smem_size = c_smem_layout.size()
 
     var a_smem_base = base_ptr_smem  # need space for 4096 (64 x 64) elements by 2 bytes or 8192 total, which is 0x2000
@@ -579,7 +676,7 @@ fn blackwell_tma_pair_umma_kernel[
         MutableAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
-        circular=True,
+        circular=False,
     ](
         a_smem_base.static_alignment_cast[128](),
         a_smem_size * num_pipeline_stages,
@@ -591,7 +688,7 @@ fn blackwell_tma_pair_umma_kernel[
         MutableAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
-        circular=True,
+        circular=False,
     ](
         b_smem_base.static_alignment_cast[128](),
         b_smem_size * num_pipeline_stages,
@@ -599,19 +696,17 @@ fn blackwell_tma_pair_umma_kernel[
 
     var c_smem_tile = c_smem_tile_t(c_smem_base)
 
-    var smem_poll = (c_smem_base + c_smem_size).bitcast[Int64]()
+    var smem_pool = (c_smem_base + c_smem_size).bitcast[Int64]()
 
     alias accum_type = get_accum_type[a_type]()
 
-    alias c_frag_size = MMA_M * MMA_N // 128 // cta_group
-    var c_frag = SIMD[accum_type, c_frag_size]()
-
     # this gets 16 bytes of space
-    var ptr_tmem_addr = smem_poll.bitcast[UInt32]()
-    var tma_mbar_ptr = smem_poll + 2  # adding 8 bytes for ptr_tmem_addr
-    # +1 is addition of 8 bytes, each barrier is 8 bytes
-    var mma_mbar_ptr = tma_mbar_ptr + (2 * num_pipeline_stages)
-    var math_barrier_base = mma_mbar_ptr + (2 * num_pipeline_stages)
+    var ptr_tmem_addr = smem_pool.bitcast[UInt32]()
+    # adding 8 bytes for ptr_tmem_addr (smem poll is 8 byte casted)
+    var tma_mbar_ptr = smem_pool + 1
+    # + num_pipeline_stages is 1 * num_pipeline_stage so 8 bytes for each barrier at each stage
+    var mma_mbar_ptr = tma_mbar_ptr + (num_pipeline_stages)
+    var math_barrier_base = mma_mbar_ptr + (num_pipeline_stages)
 
     tma_mbar = tma_mbar_ptr.bitcast[SharedMemBarrier]()
     mma_mbar = mma_mbar_ptr.bitcast[SharedMemBarrier]()
@@ -677,7 +772,6 @@ fn blackwell_tma_pair_umma_kernel[
     var a_multicast_mask: UInt16 = 0x0
     var b_multicast_mask: UInt16 = 0x0
 
-    # TODO: find a generic way to calculate multicast mask
     @parameter
     for i in range(CLUSTER_N):
         a_multicast_mask |= 1 << (i * CLUSTER_M)
@@ -749,13 +843,19 @@ fn blackwell_tma_pair_umma_kernel[
         math_barrier[].wait()
 
         store_C[
+            accum_type=accum_type,
             block_tile_shape=block_tile_shape,
             mma_shape=mma_shape,
             c_swizzle=c_swizzle,
             cta_group=cta_group,
             num_output_warps=num_output_warps,
             max_tmem_cols=max_tmem_cols,
-        ](c_frag, c_smem_tile, c_tma_op, tmem_addr, elect_one_warp)
+        ](
+            c_smem_tile,
+            c_tma_op,
+            tmem_addr,
+            elect_one_warp,
+        )
 
 
 fn blackwell_matmul_tma_pair_mma[
@@ -774,7 +874,6 @@ fn blackwell_matmul_tma_pair_mma[
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     c_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     cta_group: Int = 1,
-    num_pipeline_stages: UInt = 5,
 ](
     c_device: NDBuffer[c_type, 2, _, c_shape],
     a_device: NDBuffer[a_type, 2, _, a_shape],
@@ -815,24 +914,48 @@ fn blackwell_matmul_tma_pair_mma[
         swizzle_mode=b_swizzle,
     ](ctx, b)
 
-    c_tma_op = create_tma_tile[BM, 64, swizzle_mode=c_swizzle](ctx, c)
+    # Create a separate TMA descriptor for the 32-column leftover tile
+    # Using SWIZZLE_64B to match the swizzle pattern used in st_matrix for leftover
+    c_tma_op = create_tma_tile[
+        BM,
+        64 if MMA_N == prev_power_of_two(MMA_N) else 32,
+        swizzle_mode = TensorMapSwizzle.SWIZZLE_128B if MMA_N
+        == prev_power_of_two(MMA_N) else TensorMapSwizzle.SWIZZLE_64B,
+    ](ctx, c)
+
+    # ctx.default_device_info.shared_memory_per_multiprocessor gives this magic number on B200
+    alias total_smem_size_available = 233472
+    alias smem_available_after_c = total_smem_size_available - (
+        BM * MMA_N * sizeof[c_type]()
+    )
+    alias smem_per_stage_no_c = (BM * BK * sizeof[a_type]()) + (
+        BN * BK * sizeof[b_type]()
+    ) + (32)
+    alias max_pipeline_stages = smem_available_after_c // smem_per_stage_no_c
+
+    # - ptr_tmem_addr: 4 bytes → 8 bytes (padded)
+    # - tma_mbar_ptr: 8 bytes
+    # - mma_mbar_ptr: 8 bytes
+    # - math_barrier: 8 bytes (padded)
+    # Total with alignment: 32 bytes
+    # This is why we pad 32 bytes * num_pipeline_stages to the smem size
 
     alias smem_size = (
-        (BM * BK * sizeof[a_type]()) * num_pipeline_stages
-        + (BN * BK * sizeof[b_type]()) * num_pipeline_stages
+        (BM * BK * sizeof[a_type]()) * max_pipeline_stages
+        + (BN * BK * sizeof[b_type]()) * max_pipeline_stages
         + (BM * MMA_N * sizeof[c_type]())
-    ) + (16 + 16 + 16 + 16) * num_pipeline_stages
+    ) + (32) * max_pipeline_stages
 
     alias kernel = blackwell_tma_pair_umma_kernel[
         a_type,
         b_type,
         c_type,
-        __type_of(a_tma_op).layout,
-        __type_of(b_tma_op).layout,
-        __type_of(c_tma_op).layout,
-        __type_of(a_tma_op).desc_layout,
-        __type_of(b_tma_op).desc_layout,
-        __type_of(c_tma_op).desc_layout,
+        a_tma_op.layout,
+        b_tma_op.layout,
+        c_tma_op.layout,
+        a_tma_op.desc_layout,
+        b_tma_op.desc_layout,
+        c_tma_op.desc_layout,
         block_tile_shape,
         umma_shape,
         transpose_b=transpose_b,
@@ -841,7 +964,7 @@ fn blackwell_matmul_tma_pair_mma[
         b_swizzle=b_swizzle,
         c_swizzle=c_swizzle,
         cta_group=cta_group,
-        num_pipeline_stages=num_pipeline_stages,
+        num_pipeline_stages=max_pipeline_stages,
     ]
 
     ctx.enqueue_function[kernel](
@@ -854,6 +977,7 @@ fn blackwell_matmul_tma_pair_mma[
             align_up(N // BN // cta_group, Int(cluster_shape[1])),
             1,
         ),
+        # 1 TMA, 1 MMA, 4 EPILOGUE warps
         block_dim=(32 * 6),
         shared_mem_bytes=smem_size,
         func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(smem_size),
@@ -1007,6 +1131,9 @@ def test_blackwell_matmul_tma_pair_mma[
         ctx.enqueue_copy(c_host_ref.tensor.data, c_device_ref.buffer)
         ctx.synchronize()
 
+        # print(ndbuffer_to_str(c_host.tensor))
+        # print(ndbuffer_to_str(c_host_ref.tensor))
+
         alias rtol = 1e-2
         assert_almost_equal(
             c_host.tensor,
@@ -1059,10 +1186,10 @@ fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
     alias a_type = DType.bfloat16
     alias b_type = DType.bfloat16
     alias c_type = DType.bfloat16
-    alias umma_shape = Index(64, 128, 16)
-    alias transpose_b = True
-    alias BK = 64
-
+    alias block_tile_shape = Index(128, 80, 64)
+    alias umma_shape = Index(
+        block_tile_shape[0] * 2, block_tile_shape[1] * 2, 16
+    )
     alias dic_of_shapes = make_dic_of_shapes()
 
     print("Benchmarking blackwell_matmul_tma_umma_kernel")
@@ -1074,11 +1201,11 @@ fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
         alias shape = get_dic_of_shapes(i, dic_of_shapes)
         try:
             test_blackwell_matmul_tma_pair_mma[
-                DType.bfloat16,
-                DType.bfloat16,
-                DType.bfloat16,
-                Index(128, 128, 64),
-                Index(256, 256, 16),
+                a_type,
+                b_type,
+                c_type,
+                block_tile_shape,
+                umma_shape,
                 cluster_shape = StaticTuple[Int32, 3](2, 1, 1),
                 a_swizzle = TensorMapSwizzle.SWIZZLE_128B,
                 b_swizzle = TensorMapSwizzle.SWIZZLE_128B,
@@ -1168,6 +1295,22 @@ def main():
                     a_swizzle = TensorMapSwizzle.SWIZZLE_128B,
                     b_swizzle = TensorMapSwizzle.SWIZZLE_128B,
                 ](ctx, dynamic(8192), static[2560](), static[8192]())
+
+        print("Testing Nvidia specific, non power of 2, MMA_N parameter")
+        alias block_tile_shape = Index(128, 80, 64)
+        alias umma_shape = Index(
+            block_tile_shape[0] * 2, block_tile_shape[1] * 2, 16
+        )
+        test_blackwell_matmul_tma_pair_mma[
+            DType.bfloat16,
+            DType.bfloat16,
+            DType.bfloat16,
+            block_tile_shape,
+            umma_shape,
+            cluster_shape = StaticTuple[Int32, 3](2, 1, 1),
+            a_swizzle = TensorMapSwizzle.SWIZZLE_128B,
+            b_swizzle = TensorMapSwizzle.SWIZZLE_128B,
+        ](ctx, dynamic(512), static[2560](), static[8192]())
 
         # Run the benchmark
         print("\n\n========== Running Benchmarks ==========\n")

@@ -15,6 +15,8 @@
 Placeholder file for any configs (runtime, models, pipelines, etc)
 """
 
+from __future__ import annotations
+
 import socket
 from enum import Enum, IntEnum
 from pathlib import Path
@@ -233,12 +235,6 @@ class Settings(BaseSettings):
         default=False,
         description="When recording HTTP transactions, whether to include responses",
         alias="MAX_SERVE_TRANSACTION_RECORDING_INCLUDE_RESPONSES",
-    )
-
-    experimental_enable_kvcache_agent: bool = Field(
-        default=False,
-        description="Experimental: Enable KV Cache Agent support.",
-        alias="MAX_SERVE_EXPERIMENTAL_ENABLE_KVCACHE_AGENT",
     )
 
     request_zmq_endpoint: str = Field(

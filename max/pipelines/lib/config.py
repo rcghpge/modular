@@ -116,9 +116,6 @@ class PipelineConfig(MAXConfig):
     configuration and platform. Ignored for models which are not auto-regressive (e.g. embedding
     models)."""
 
-    pad_to_multiple_of: int = 2
-    """Pad input tensors to be a multiple of value provided."""
-
     target_num_new_tokens: int = DEFAULT_TARGET_NUM_NEW_TOKENS
     """The target number of un-encoded tokens to include in each batch.
     This value is used for chunked prefill and memory estimation."""
@@ -205,15 +202,15 @@ class PipelineConfig(MAXConfig):
         return extracted
 
     def _create_lora_config_if_needed(self, kwargs: dict[str, Any]) -> None:
-        """Extract LoRA kwargs and create LoRAConfig if lora_paths provided."""
+        """Extract LoRA kwargs and create valid LoRAConfig if enable_lora provided."""
         lora_kwargs = PipelineConfig._extract_kwargs_for_config(
             kwargs, LoRAConfig
         )
 
-        if lora_kwargs.get("lora_paths", []):
+        if lora_kwargs.get("enable_lora", False):
             self._lora_config = LoRAConfig(**lora_kwargs)
         # TODO: We should add an elif to check / error out if other LoRA params
-        # are provided, but lora_paths is not. We can't do this today as our
+        # are provided, but enable_lora is not. We can't do this today as our
         # click PipelineConfig autogenerates defaults for all fields, including
         # required ones.
 
@@ -594,7 +591,6 @@ class PipelineConfig(MAXConfig):
             "enable_in_flight_batching": "When enabled, prioritizes token generation by batching it with context encoding requests.",
             "rope_type": "Force using a specific rope type, `none` | `normal' | `nexo`. Only matters for GGUF weights.",
             "max_num_steps": "Specify the number of steps to run for multi-step scheduling during inference. Default is set to 1.",
-            "pad_to_multiple_of": "Pad input tensors to be a multiple of value provided. Default is set to 2.",
             "enable_echo": "Whether the model should be built with echo capabilities. This defaults to false.",
             "ignore_eos": "Ignore EOS and continue generating tokens, even when an EOS variable is hit.",
         }

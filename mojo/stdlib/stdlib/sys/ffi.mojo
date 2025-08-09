@@ -16,7 +16,7 @@ from collections.string.string_slice import _get_kgen_string, get_static_string
 from os import PathLike, abort
 from pathlib import Path
 from sys._libc import dlclose, dlerror, dlopen, dlsym
-
+from sys._libc_errno import get_errno, set_errno, ErrNo
 
 from .info import CompilationTarget, is_64bit
 from .intrinsics import _mlirtype_is_eq
@@ -70,6 +70,21 @@ alias c_float = Float32
 
 alias c_double = Float64
 """C `double` type."""
+
+alias MAX_PATH = _get_max_path()
+
+
+fn _get_max_path() -> Int:
+    @parameter
+    if CompilationTarget.is_linux():
+        return 4096
+    elif CompilationTarget.is_macos():
+        return 1024
+    elif CompilationTarget.is_windows():
+        return 260
+    # Default POSIX limit
+    else:
+        return 256
 
 
 fn _c_long_dtype() -> DType:
@@ -148,10 +163,10 @@ struct _OwnedDLHandle(Movable):
     fn __init__(out self, path: String, flags: Int = DEFAULT_RTLD) raises:
         self._handle = DLHandle(path, flags)
 
-    fn __moveinit__(out self, owned other: Self):
+    fn __moveinit__(out self, deinit other: Self):
         self._handle = other._handle
 
-    fn __del__(owned self):
+    fn __del__(deinit self):
         """Delete the DLHandle object unloading the associated dynamic library.
         """
         self._handle.close()
