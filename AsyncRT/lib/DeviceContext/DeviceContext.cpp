@@ -14,11 +14,13 @@
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
+#include "Metal/MetalDeviceContext.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
 
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Process.h"
 
 #include <atomic>
 #include <cstdio>
@@ -59,6 +61,12 @@
                                       _err_or_##var.getError());               \
   }                                                                            \
   type var = _err_or_##var.takeValue()
+
+#ifdef MODULAR_MACOS
+
+constexpr const char *kEnvKey = "MOJO_ENABLE_HAS_GPU_FOR_APPLE";
+std::optional<std::string> hasGpuForApple = llvm::sys::Process::GetEnv(kEnvKey);
+#endif
 
 namespace M::AsyncRT {
 
@@ -157,6 +165,8 @@ MODULAR_CXX_EXPORT StringRef Device::vendor() const {
     return "amdgpu";
   if (api() == cpuAPI)
     return "cpu";
+  if (api() == metalAPI)
+    return "metal";
   return "";
 }
 
@@ -220,6 +230,21 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
     hipError = device.getError();
   }
 
+  std::string metalError;
+  if ((api == gpuAPI) || (api == metalAPI)) {
+#ifdef MODULAR_MACOS
+
+    if (hasGpuForApple.has_value()) {
+      ErrorOr<const MetalDevice &> device = MetalDevice::get(id);
+      if (!device.isError()) {
+        return DeviceRef::copy(&device.get());
+      } else if (api == metalAPI)
+        return device.takeError();
+      metalError = device.getError();
+    }
+#endif
+  }
+
   if (api == cpuAPI) {
     ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
     if (device.isError())
@@ -230,7 +255,8 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   if (api == gpuAPI) {
     return Error(llvm::Twine("No supported \"gpu\" device available.\n") +
                  "  CUDA information: " + cudaError + "\n" +
-                 "  HIP information:  " + hipError);
+                 "  HIP information:  " + hipError + "\n" +
+                 "  Metal information: " + metalError);
   }
   return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
 }
@@ -894,6 +920,17 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
     ErrorOr<int> count = HIPDevice::numberOfGPUs();
     if (!count.isError())
       return *count;
+  }
+  if ((api == gpuAPI) || (api == metalAPI)) {
+#ifdef MODULAR_MACOS
+
+    if (hasGpuForApple.has_value()) {
+      ErrorOr<int> count = MetalDevice::numberOfGPUs();
+      if (!count.isError())
+        return *count;
+    }
+
+#endif
   }
   if (api == cpuAPI) {
     // For CPU we go back to the device to get the number of supported devices.
