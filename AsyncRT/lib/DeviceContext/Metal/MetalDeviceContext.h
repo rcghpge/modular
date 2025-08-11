@@ -15,6 +15,9 @@
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 
+#include <mutex>
+#include <unordered_map>
+
 #ifdef MODULAR_MACOS
 #include "MetalImpl.hpp"
 
@@ -22,9 +25,13 @@ namespace M::AsyncRT {
 
 class MetalDevice;
 class MetalDeviceContext;
+class MetalDeviceEvent;
+class MetalDeviceTimer;
 
 using MetalDeviceRef = RCRef<const MetalDevice>;
 using MetalDeviceContextRef = RCRef<const MetalDeviceContext>;
+using MetalDeviceEventRef = RCRef<const MetalDeviceEvent>;
+using MetalDeviceTimerRef = RCRef<const MetalDeviceTimer>;
 
 class MetalDevice : public Device {
 public:
@@ -64,11 +71,21 @@ public:
 
   MTL::Device *metalDevice() const { return device_; }
 
+  // Buffer tracking methods
+  void trackBuffer(void *ptr, MTL::Buffer *buffer) const;
+  void untrackBuffer(void *ptr) const;
+  MTL::Buffer *getTrackedBuffer(const void *ptr) const;
+  bool isTrackedBuffer(const void *ptr) const;
+
 private:
   MTL::Device *device_;
   std::string name_;
   Device::MemInfo memInfo_;
   mutable DriverVersion driverVersion_;
+
+  // Device-level buffer tracking
+  mutable std::mutex bufferMapMutex_;
+  mutable std::unordered_map<void *, MTL::Buffer *> ptrToBuffer_;
 };
 
 class MetalDeviceContext : public DeviceContext {
@@ -131,11 +148,6 @@ public:
   // Memory info
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
-  // Memory allocation
-  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                          Device::AllocMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
-
   // File mapping
   ErrorOr<std::tuple<void *, size_t,
                      std::optional<llvm::sys::fs::mapped_file_region>>>
@@ -150,6 +162,43 @@ public:
 
 private:
   MTL::CommandQueue *commandQueue_;
+  // Memory allocation
+  ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
+                          Device::AllocMode mode) const override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
+  // Helper methods for buffer management
+  bool isMetalBuffer(const void *ptr) const;
+  MTL::Buffer *getMetalBuffer(const void *ptr) const;
+  MTL::StorageMode getStorageMode(Device::AllocMode mode) const;
+  MTL::ResourceOptions getResourceOptions(Device::AllocMode mode) const;
+};
+
+class MetalDeviceEvent : public DeviceEvent {
+public:
+  MetalDeviceEvent(const MetalDevice &device, MTL::CommandBuffer *buffer);
+  ~MetalDeviceEvent() override;
+
+  ErrorOrSuccess synchronize() const override;
+  ErrorOr<bool> isReady() const override;
+
+  static const MetalDeviceEvent &cast(const DeviceEvent &event);
+
+private:
+  MTL::CommandBuffer *buffer_;
+};
+
+class MetalDeviceTimer : public DeviceTimer {
+public:
+  MetalDeviceTimer(const MetalDeviceContext &context,
+                   std::chrono::time_point<std::chrono::steady_clock> start);
+  ~MetalDeviceTimer() override = default;
+
+  std::chrono::time_point<std::chrono::steady_clock> cpu_start() const;
+
+  static const MetalDeviceTimer &cast(const DeviceTimer &timer);
+
+private:
+  const std::chrono::time_point<std::chrono::steady_clock> start_;
 };
 
 } // namespace M::AsyncRT
