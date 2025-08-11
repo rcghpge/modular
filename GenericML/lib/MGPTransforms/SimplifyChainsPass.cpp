@@ -16,7 +16,10 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
+
+#include <queue>
 
 using namespace mlir;
 
@@ -38,116 +41,136 @@ class SimplifyChainsPass
     : public impl::SimplifyChainsPassBase<SimplifyChainsPass> {
   using SimplifyChainsPassBase::SimplifyChainsPassBase;
 
-  /// Returns the 'root' block containing op, which is either the 'init' or
-  /// 'execute' block of the model.
-  Block *getRootBlock(ModelOp modelOp, Operation *op) {
-    while (op->getBlock() != modelOp.getInitBlock() &&
-           op->getBlock() != modelOp.getExecuteBlock())
-      op = op->getParentOp();
-    return op->getBlock();
+  static ValueRange getGatingOperands(Operation *op) {
+    if (!op)
+      return ValueRange{};
+
+    if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op))
+      // Only the extra strict operands are gating for control flow ops.
+      return cfOp.getStrictExtraOperands();
+
+    if (isa<MEF::NonStrictInterface>(op))
+      return ValueRange{};
+    return op->getOperands();
   }
 
-  /// Returns a block argument in block which is equivalent to value, or null
-  /// if no such argument exists.
-  Value getEquivArgument(const AsyncDataflowDependencies &dependencies,
-                         Block *block, Value value) {
-    for (Value arg : block->getArguments()) {
-      if (dependencies.sameAs(arg, value))
-        return arg;
+  static SmallVector<Value> accumulatePrimitiveChains(Value chain) {
+    SmallVector<Value> result;
+
+    std::queue<Value> stack;
+    stack.push(chain);
+
+    DenseSet<Value> visited;
+
+    // Depth-first walk through grt.chain.create ops.
+    while (!stack.empty()) {
+      auto top = stack.front();
+      stack.pop();
+
+      if (!visited.insert(top).second)
+        continue;
+
+      // Walk through chain create ops.
+      if (auto chain = top.getDefiningOp<GRT::ChainCreateOp>()) {
+        for (auto input : chain.getInputChains())
+          stack.push(input);
+
+        continue;
+      }
+
+      result.push_back(top);
     }
-    return {};
+
+    return result;
   }
 
-  // Returns a value representing the always ready 'root chain', ie %arg0 of
-  // the 'execute' block or its local equivalent, provided we have
-  // dependencies.isAlwaysReady for that value. Returns null if no such value
-  // can be found.
-  Value getAlwaysReadyRootChain(const AsyncDataflowDependencies &dependencies,
-                                ModelOp modelOp, Operation *op) {
-    Block *rootBlock = getRootBlock(modelOp, op);
-    if (rootBlock == modelOp.getExecuteBlock()) {
-      Value rootChain = rootBlock->getArgument(0);
-      if (dependencies.isAlwaysReady(rootChain))
-        return getEquivArgument(dependencies, op->getBlock(), rootChain);
-    }
-    return {};
-  }
+  /// Eliminate inputs to `grt.chain.create` operations that are implied ready
+  /// by other inputs. Given a chain create op:
+  ///
+  /// %X = grt.chain.create(%0, %1, %2)
+  ///
+  /// The algorithm works by walking through the transitive inputs of
+  /// the produces of %0, %1, and %2 looking for the values %0, %1, and %2.
+  /// The query this search is answering is:
+  ///
+  /// * is %0 reachable from %1,
+  /// * is %1 reachable from %2,
+  /// * ...
+  ///
+  /// i.e. is any input to the `grt.chain.create` reachable from any other
+  /// operands. Those that are reachable are deleted.
+  SmallVector<Value>
+  eliminateImpliedByOperands(GRT::ChainCreateOp chainCreate) {
+    // Maintain an association between the values we are interested in and
+    // a bool indicating whether they were found while walking the implied-by
+    // relation.
+    llvm::MapVector<Value, bool> needles;
 
-  /// If chain is defined by a grt.chain.create operation then accumulate
-  /// all of its operands into primitiveChains. Otherwise adds chain directly
-  /// to primitiveChains.
-  void accumulatePrimitiveChains(IndexSet<Value> &valueIndex,
-                                 IndexSet<Value>::Set &primitiveChains,
-                                 Value chain) {
-    // Only use chains where the input is settable. These ops assume that the
-    // input and output chains have the same type.
-    if (auto chainCreateOp =
-            chain.getDefiningOp<GRT::GRTGatedOnChainOpInterface>()) {
-      for (auto operand :
-           cast<GRT::GRTChainCreateOpInterface>(chainCreateOp.getOperation())
-               .getInputChains())
-        accumulatePrimitiveChains(valueIndex, primitiveChains, operand);
-    } else {
-      valueIndex.addToSet(primitiveChains, chain);
+    // Initialize all values we're searching for to false.
+    for (auto arg : chainCreate.getInputChains()) {
+      for (auto needle : accumulatePrimitiveChains(arg))
+        needles[needle] = false;
     }
+
+    DenseSet<Value> visited;
+    SetVector<Value> currentGeneration;
+
+    // Seed the search with the immediate implied-by set of needles.
+    for (auto [needle, _] : needles)
+      currentGeneration.insert_range(getGatingOperands(needle.getDefiningOp()));
+
+    // Iteratively walk the implied by relation, looking for any of the needles.
+    while (!currentGeneration.empty()) {
+      // Mark the current generation as visited
+      visited.insert_range(currentGeneration);
+
+      // See if any value in the current generation is one of the needles we're
+      // searching for.
+      for (auto &[needle, found] : needles)
+        found |= currentGeneration.contains(needle);
+
+      // takeVector has the effect of clearing currentGeneration
+      auto oldGeneration = currentGeneration.takeVector();
+
+      // Determine the next generation by following the implied-by relation one
+      // step.
+      for (auto val : oldGeneration) {
+        for (auto next : getGatingOperands(val.getDefiningOp())) {
+          if (!visited.contains(next))
+            currentGeneration.insert(next);
+        }
+      }
+    }
+
+    SmallVector<Value> result;
+    for (auto [value, found] : needles) {
+      if (!found)
+        result.push_back(value);
+    }
+
+    return result;
   }
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
 
-    // Construct the dependencies from the model. The transforms we
-    // do below will preserve these dependencies since we never introduce
-    // new bound values or add new dependencies.
-    IndexSet<Value> valueIndex = createValueIndexSet(modelOp);
-    IndexSet<Operation *> operationIndex = createOperationIndexSet(modelOp);
+    int64_t removed = 0;
+    modelOp->walk([&](GRT::ChainCreateOp chainOp) {
+      int64_t before = chainOp->getNumOperands();
 
-    LLVM_DEBUG(llvm::dbgs()
-               << "SimplifyChainsPass: analyzing " << valueIndex.size()
-               << " values and " << operationIndex.size() << " operations\n");
+      auto values = eliminateImpliedByOperands(chainOp);
+      chainOp.setInputChains(values);
 
-    AsyncDataflowDependencies dependencies(
-        &valueIndex, &operationIndex, AsyncDataflowDependencies::kImpliesReady);
-
-    // CAUTION: We'll be making in-place updates as we go. However, since
-    // we don't update the dependencies analysis results, we must be careful
-    // to only do rewrites which are invariant w.r.t. that.
-
-    LLVM_DEBUG(llvm::dbgs() << "SimplifyChainsPass: rewriting\n");
-
-    modelOp.walk([&](GRT::GRTChainCreateOpInterface chainCreateOp) {
-      IndexSet<Value>::Set valuesSet = valueIndex.emptySet();
-      accumulatePrimitiveChains(valueIndex, valuesSet,
-                                chainCreateOp.getChainResult());
-      dependencies.simplify(valuesSet);
-      SmallVector<Value> values = valueIndex.setToVector(valuesSet);
-      if (values.empty() &&
-          isa<GRT::ChainCreateOp>(chainCreateOp.getOperation())) {
-        // Instead of creating a fresh chain, try to reuse the 'execute'
-        // block's %arg0 if it is also always ready.
-        Value replacementValue =
-            getAlwaysReadyRootChain(dependencies, modelOp, chainCreateOp);
-        if (replacementValue) {
-          chainCreateOp.getChainResult().replaceAllUsesWith(replacementValue);
-          chainCreateOp.erase();
-        } else {
-          chainCreateOp->setOperands({});
-        }
-      } else if (values.size() == 1 &&
-                 values[0].getType() ==
-                     chainCreateOp.getChainResult().getType()) {
-        // We can only replace %x = <chain create op>(%y) with %y if %y and
-        // %x have the same type. This is because chain create ops may accept
-        // arbitrary values and/or chains of different types.
-        chainCreateOp.getChainResult().replaceAllUsesWith(values.front());
-        chainCreateOp.erase();
-      } else {
-        if (auto chainSetOp = dyn_cast<GRT::GRTGatedOnChainOpInterface>(
-                chainCreateOp.getOperation()))
-          chainSetOp.setInputChains(values);
-      }
+      removed += before - (int64_t)values.size();
     });
 
-    LLVM_DEBUG(llvm::dbgs() << "SimplifyChainsPass: done\n");
+    numEliminatedChains = removed;
+
+    RewritePatternSet patterns(&getContext());
+    GRT::ChainCreateOp::getCanonicalizationPatterns(patterns, &getContext());
+
+    if (failed(mlir::applyPatternsGreedily(modelOp, std::move(patterns))))
+      signalPassFailure();
   }
 };
 

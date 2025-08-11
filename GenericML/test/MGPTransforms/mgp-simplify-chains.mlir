@@ -23,26 +23,25 @@ mgp.model @chains : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
   %ch7 = "some.op4"(%ch4) : (!mef.chain) -> !mef.chain
   // Dead
   %ch8 = grt.chain.create (%ch5, %ch6)
-  // %ch9 -> grt.chain.create(%ch5, %ch6, %ch7)
+  // %ch9 -> grt.chain.create(%[[CH5]], %[[CH6]], %[[CH7]])
   // Dead
   %ch9 = grt.chain.create (%ch4, %ch8, %ch7)
-  // %ch10 -> %ch0
+  // CHECK: %[[CH10:.*]] = grt.chain.create ()
   %ch10 = grt.chain.create ()
   // Dead
   %ch11 = grt.chain.create (%ch10, %ch9)
   %c = "some.op5"() : () -> i1
-  // %ch12 is always ready
-  // CHECK: %[[CH12:.*]] = grt.if %{{.*}} (%[[CH0]]: !mef.chain) -> !mef.chain {
+  // CHECK: %[[CH12:.*]] = grt.if %{{.*}} (%[[CH10]]: !mef.chain) -> !mef.chain {
   %ch12 = grt.if %c (%ch10 : !mef.chain) -> !mef.chain {
     mef.output %ch10 : !mef.chain
   } else {
-    // %ch13 is always ready
     // CHECK: %[[CH13:.*]] = grt.chain.create ()
     %ch13 = grt.chain.create ()
+    // CHECK: mef.output %[[CH13]]
     mef.output %ch13 : !mef.chain
   }
   // %ch14 -> expansion of %ch11
-  // CHECK: %[[CH14:.*]] = grt.chain.create (%[[CH5]], %[[CH6]], %[[CH7]])
+  // CHECK: %[[CH14:.*]] = grt.chain.create (%[[CH5]], %[[CH6]], %[[CH7]], %[[CH12]])
   %ch14 = grt.chain.create (%ch10, %ch11, %ch12)
   // CHECK: mef.output %[[CH14]]
   mef.output %ch14 : !mef.chain
@@ -89,10 +88,11 @@ mgp.model @chain_merge_fold_empty_operands : mof devices [#M.device_ref<"cpu", 0
   %0 = grt.chain.create ()
   %1 = mgp.context.create 0
   mef.output %0, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
-// CHECK: execute (%[[CH0:.*]]: !mef.chain
+  // CHECK: execute (%[[CH0:.*]]: !mef.chain
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> !mef.chain {
+  // CHECK: %[[CH1:.*]] = grt.chain.create ()
   %ch1 = grt.chain.create ()
-  // CHECK-NEXT: mef.output %[[CH0]] : !mef.chain
+  // CHECK-NEXT: mef.output %[[CH1]] : !mef.chain
   mef.output %ch1 : !mef.chain
 }
 
@@ -145,7 +145,7 @@ mgp.model @chain_singletons : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
   %ch1 = grt.chain.create (%arg0)
   // CHECK-NEXT: %[[X:.*]] = "some.op"() : () -> tensor<1xf32>
   %x = "some.op"() : () -> tensor<1xf32>
-  // CHECK-NEXT: %[[CH2:.*]] = grt.chain.create (%[[X]]: tensor<1xf32>)
+  // CHECK-NEXT: %[[CH2:.*]] = grt.chain.create (%[[ARG0]], %[[X]]: tensor<1xf32>)
   %ch2 = grt.chain.create (%x : tensor<1xf32>)
   %ch3 = grt.chain.create (%ch1, %ch2)
   // CHECK-NEXT: mef.output %[[CH2]] : !mef.chain

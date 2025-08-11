@@ -77,6 +77,11 @@ def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
 
     If any operand is known to be isAlwaysReady then it can be removed.
   }];
+
+  let statistics = [
+    Statistic<"numEliminatedChains", "num-eliminated-chains",
+              "the number of chain operands eliminated">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

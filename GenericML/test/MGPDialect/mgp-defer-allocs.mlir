@@ -86,7 +86,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 // CHECK-NEXT: %[[OUT_BUF_2:.*]] = mgp.buffer.alloc %[[CH7]]
 // CHECK-NEXT: %[[CH8:.*]] = "sub"(%[[CH7]], %[[OUT_BUF_1]], %{{.*}}, %[[OUT_BUF_2]])
 
-// CHECK: %[[CH9:.*]] = grt.chain.create (%[[CH2]], %[[CH8]])
+// CHECK: %[[CH9:.*]] = grt.chain.create (%[[CH8]], %[[CH2]])
 // CHECK-NEXT: %[[OUT_BUF_3:.*]] = mgp.buffer.alloc %[[CH9]]
 // CHECK-NEXT: %[[CH10:.*]] = "add"(%[[CH9]], %[[OUT_BUF_2]], %[[OUT_BUF_1]], %[[OUT_BUF_3]])
 // CHECK-NEXT: %[[OUT_TENSOR:.*]] = mgp.tensor.create %[[CH10]], %[[OUT_BUF_3]], %{{.*}}
