@@ -12,13 +12,59 @@
 #include "gtest/gtest.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
+#include <string>
 
 using namespace M::AsyncRT;
 using M::ErrorOr;
 
 namespace {
+
+// RAII wrapper for environment variable management.
+class ScopedEnvVar {
+public:
+  ScopedEnvVar(llvm::StringRef name, llvm::StringRef value) : varName(name) {
+    originalValue = nullptr;
+
+    // Attempt to save the existing variable if it exists.
+    for (char **it = environ; *it != nullptr; it++) {
+      auto str = llvm::StringRef(*it);
+      auto [prefix, _] = str.split('=');
+
+      if (prefix == name) {
+        originalValue = *it;
+        break;
+      }
+    }
+
+    // Set the new value
+    newVar = std::string(name) + "=" + std::string(value);
+    putenv(newVar.data());
+  }
+
+  ~ScopedEnvVar() {
+    // Restore the original value or unset if it didn't exist
+    if (originalValue) {
+      putenv(originalValue);
+    } else {
+      unsetenv(varName.c_str());
+    }
+  }
+
+  // Disable copy and move.
+  ScopedEnvVar(const ScopedEnvVar &) = delete;
+  ScopedEnvVar &operator=(const ScopedEnvVar &) = delete;
+  ScopedEnvVar(ScopedEnvVar &&) = delete;
+  ScopedEnvVar &operator=(ScopedEnvVar &&) = delete;
+
+private:
+  std::string varName;
+  std::string newVar;
+  char *originalValue;
+};
 
 TEST(DeviceContextTest, Smoke) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
@@ -395,6 +441,20 @@ TEST(DeviceContextTest, Timers) {
   EXPECT_LT(elapsedNanos, 60 * 1000ll * 1000ll * 1000ll); // less than a minute
 }
 
+TEST(DeviceContextTest, SyncMode) {
+  {
+    ScopedEnvVar env("MODULAR_DEVICE_CONTEXT_SYNC_MODE", "0");
+    ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+    EXPECT_FALSE(ctx->syncMode());
+  }
+
+  {
+    ScopedEnvVar env("MODULAR_DEVICE_CONTEXT_SYNC_MODE", "1");
+    ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+    EXPECT_TRUE(ctx->syncMode());
+  }
+}
+
 TEST(DeviceContextTest, BufferCache) {
   constexpr size_t chunkSize = 1024;
   constexpr size_t maxCacheSize = 4 * chunkSize;
@@ -403,14 +463,15 @@ TEST(DeviceContextTest, BufferCache) {
   memInfo.free = 128 * maxCacheSize;  // Needs to be larger than 256 * KB.
   memInfo.total = 256 * maxCacheSize; // Needs to be larger than 256 * KB.
 
-  // Ensure that maxCacheSize is all of memInfo.free.
-  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE=25"));
-  // Ensure that chunkSize is a 1/4th of maxCacheSize.
-  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT=25"));
-  // Ensure that selfCheck() is enabled.
-  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK=True"));
-  // Ensure that logging is enabled.
-  putenv(strdup("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG=True"));
+  ScopedEnvVar env[] = {
+      // Ensure that maxCacheSize is all of memInfo.free.
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25"),
+      // Ensure that chunkSize is a 1/4th of maxCacheSize.
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "25"),
+      // Ensure that selfCheck() is enabled.
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK", "True"),
+      // Ensure that logging is enabled.
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG", "True")};
 
   // Create a CPU device that is associated with a BufferCache by passing in a
   // non-empty memInfo.
