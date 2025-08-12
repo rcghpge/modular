@@ -75,6 +75,8 @@ struct Node : public KGEN::SCCNode<Node, KGEN::GeneratorOp, KGEN::CallOp> {
 };
 
 struct Graph : public KGEN::SCCGraph<Graph, Node> {
+  void build(ModuleOp module, const SymbolTable &symtab);
+
   bool doAnalysis(Node *node);
   void doRewrite(const Node *node);
 
@@ -83,6 +85,62 @@ struct Graph : public KGEN::SCCGraph<Graph, Node> {
   bool setFinalHash(Node *node);
   bool setSccHash(Node *node);
 };
+
+void Graph::build(ModuleOp module, const SymbolTable &symtab) {
+  // This is a custom build method for the graph type. The callgraph normally
+  // built by KGEN::SCCGraph uses call operations as the edges in the graph.
+  //
+  // Before Elaboration, KGEN IR can refer to functions through
+  // FlatSymbolRefAttrs that appear in arbitrary attributes and types. We need
+  // to account for those references when computing the module hash, so this
+  // code overrides the CallGraphBase::build method in the parent class to get
+  // the desired callgraph structure.
+  //
+  // The end result of this algorithm is a callgraph that is a superset of the
+  // callgraph normally built by CallGraphBase::build.
+
+  // Create a callgraph node for each GeneratorOp in the module.
+  // This logic is the same as in the parent class' build method.
+  for (auto func : module.getOps<FuncOpT>())
+    nodes.try_emplace(func, Node(func));
+
+  // Populate the callers and callees lists for each node in the graph.
+  for (auto &[caller, callerNode] : nodes) {
+    // Rather than creating edges for each GeneratorOp, we scan each Operation
+    // for any FlatSymbolRefAttr that points to a GeneratorOp and create edges
+    // for those attributes.
+    caller.walk([&](Operation *op) {
+      // Walker to collect all FlatSymbolRefAttrs and add an edge to the graph.
+      mlir::AttrTypeWalker walker;
+      walker.addWalk([&](FlatSymbolRefAttr symbol) {
+        auto callee = dyn_cast<Node::FuncOpT>(symtab.lookup(symbol.getAttr()));
+        if (!callee)
+          return;
+
+        Node *calleeNode = &nodes.find(callee)->second;
+        callerNode.callsites.emplace_back(dyn_cast<CallOpT>(op), calleeNode);
+
+        calleeNode->callers.push_back(&callerNode);
+      });
+
+      // Walk operation attributes.
+      walker.walk(op->getAttrDictionary());
+
+      // Walk operation result types.
+      for (auto type : op->getResultTypes())
+        walker.walk(type);
+
+      // Walk types of block arguments.
+      for (Region &region : op->getRegions()) {
+        for (Block &block : region) {
+          for (BlockArgument &arg : block.getArguments()) {
+            walker.walk(arg.getType());
+          }
+        }
+      }
+    });
+  }
+}
 
 bool Graph::setGeneratorHash(Node *node) {
   node->hasher = std::make_unique<raw_xxhash_stream>();
