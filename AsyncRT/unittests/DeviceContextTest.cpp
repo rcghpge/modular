@@ -21,6 +21,8 @@
 using namespace M::AsyncRT;
 using M::ErrorOr;
 
+extern char **environ;
+
 namespace {
 
 // RAII wrapper for environment variable management.
