@@ -5075,9 +5075,12 @@ def MO_GuardOp : MO_Op<"guard", [
 }
 
 def MO_ChainCreateOp : MO_Op<"chain.create", [
-  Pure, MO_HasDeviceInterface, MO_PreservedDuringKernelLowering, MO_ExecutesOnHost
-]>
-{
+  Commutative,
+  Pure,
+  MO_HasDeviceInterface,
+  MO_PreservedDuringKernelLowering,
+  MO_ExecutesOnHost
+]> {
   let summary = "Create a new chain conditioned on a variadic number of inputs";
   let description = [{
     This operation consumes an arbitrary number of values and produces a chain.
