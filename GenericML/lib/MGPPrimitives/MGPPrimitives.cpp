@@ -5,10 +5,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/AsyncValue.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "AsyncRT/Runtime/Runtime.h"
+#include "AsyncRT/Runtime/WorkQueue.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
 #include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/List.h"
@@ -97,6 +99,21 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
   return kernelInputs;
 }
 
+/// Extract device hint from DeviceContext if present in operands.
+static int deviceHintFor(const RemainingArguments &operands) {
+  for (const AnyAsyncValueRef &operand : operands) {
+    // Check for DeviceContextRef.
+    if (operand.isType<AsyncRT::DeviceContextRef>()) {
+      // getPointerToData() returns a pointer to the payload (DeviceContextRef).
+      const auto &deviceCtxRef =
+          *static_cast<const AsyncRT::DeviceContextRef *>(
+              operand.getPointerToData());
+      return deviceCtxRef->device().id();
+    }
+  }
+  return kNoDevicePreference;
+}
+
 static void mgp_generic_execute(
     StateContext &ctx, RemainingArguments operands, RemainingResults outResults,
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
@@ -108,10 +125,8 @@ static void mgp_generic_execute(
   CompiledKernelAsyncABIFn *kernelPtr = kernelExecutionState.getKernelAsyncABI(
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
-  // Wrapper to run a kernel without extending any lifetimes.
-  auto runKernel = [kernelPtr](llvm::SmallVector<void *> &kernelInputs) {
-    kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
-  };
+  // Extract device hint from DeviceContext if present in operands.
+  int deviceHint = deviceHintFor(operands);
 
   if (eIsAsync.get()) {
     // Allocate indirect results as GraphRT is expecting result async values to
@@ -121,28 +136,29 @@ static void mgp_generic_execute(
 
     // Run the kernel and extend the lifetime of the input and output async
     // values until it completes by capturing them.
-    auto runKernelAndExtendLifetimes = [outResults = outResults.copyAsVector(),
-                                        takenOperands = operands.takeAsVector(),
-                                        constantResources =
-                                            std::move(fConstantResources),
-                                        runKernel = std::move(runKernel)]() {
-      llvm::SmallVector<void *> kernelInputs =
-          getKernelInputs(takenOperands, outResults, constantResources);
-      runKernel(kernelInputs);
+    auto runKernelAndExtendLifetimes =
+        [outResults = outResults.copyAsVector(),
+         takenOperands = operands.takeAsVector(),
+         constantResources = std::move(fConstantResources), kernelPtr]() {
+          llvm::SmallVector<void *> kernelInputs =
+              getKernelInputs(takenOperands, outResults, constantResources);
+          kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
 
-      // Must have all been released/reset by the compiled kernel.
-      assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
-        return !ref.getPointer();
-      }));
-    };
+          // Must have all been released/reset by the compiled kernel.
+          assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
+            return !ref.getPointer();
+          }));
+        };
 
-    // Launch the kernel on a new thread.
-    runtime.getWorkQueue()->addTask(std::move(runKernelAndExtendLifetimes));
+    // Launch the kernel on a new thread with device hint.
+    AsyncRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
+    workItem.deviceHint = deviceHint;
+    runtime.getWorkQueue()->addTask(std::move(workItem));
   } else {
     // Run the kernel on this thread.
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
-    runKernel(kernelInputs);
+    kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
     // Must have all been released/reset by the compiled kernel.
     assert(llvm::all_of(operands, [](const AnyAsyncValueRef &ref) {
       return !ref.getPointer();
