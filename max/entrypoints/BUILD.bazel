@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_py_binary", "modular_py_library", "pkg_filegroup", "pkg_files", "requirement")
+load("//bazel:api.bzl", "NIXL_ENV_VAR", "NIXL_PLUGINS_DATA", "modular_py_binary", "modular_py_library", "pkg_filegroup", "pkg_files", "requirement")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -7,8 +7,6 @@ modular_py_library(
     srcs = glob(
         ["**/*.py"],
         exclude = [
-            "_package_root.py",
-            "mojo.py",
             "gpu_query.py",
             "pipelines.py",
             "replay_recording.py",
@@ -39,23 +37,6 @@ modular_py_library(
 )
 
 modular_py_library(
-    name = "_package_root",
-    srcs = ["_package_root.py"],
-    visibility = ["//visibility:public"],
-)
-
-modular_py_library(
-    name = "mojo",
-    srcs = ["mojo.py"],
-    data = [
-        "//KGEN/tools/mojo",
-        "@mojo//:stdlib",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [":_package_root"],
-)
-
-modular_py_library(
     name = "_pipelines",
     srcs = [
         "pipelines.py",
@@ -80,19 +61,13 @@ modular_py_binary(
     srcs = [
         "pipelines.py",
     ],
-    data = [
+    data = NIXL_PLUGINS_DATA + [
         "@daolabs_flash_attn",
-    ] + select({
-        "//:linux_x86_64": ["//AsyncRT:plugin_ucx"],
-        "//conditions:default": [],
-    }),
-    env = {
+    ],
+    env = NIXL_ENV_VAR | {
         "OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION": "base2_exponential_bucket_histogram",
         "DAOLABS_FLASH_ATTENTION_LIBRARY": "$(location @daolabs_flash_attn)",
-    } | select({
-        "//:linux_x86_64": {"MODULAR_NIXL_PLUGIN_DIR": "$(location //AsyncRT:plugin_ucx)/../"},
-        "//conditions:default": {},
-    }),
+    },
     deps = [
         ":_pipelines",
         requirement("click"),
@@ -132,5 +107,5 @@ modular_py_library(
     name = "gpu-query",
     srcs = ["gpu_query.py"],
     visibility = ["//visibility:public"],
-    deps = [":_package_root"],
+    deps = ["//open-source/max/mojo/python/mojo"],
 )

@@ -20,7 +20,7 @@ from algorithm import map
 """
 
 from collections.string.string_slice import get_static_string
-from math import align_down, ceildiv
+from math import align_down, ceildiv, clamp
 from os import abort
 from sys import is_nvidia_gpu, simdwidthof
 
@@ -46,6 +46,9 @@ from runtime.tracing import Trace, TraceLevel, trace_arg
 from utils.index import Index, IndexList
 from utils.numerics import FlushDenormals
 from utils.static_tuple import StaticTuple
+from pathlib import Path
+
+from gpu.host.info import B200
 
 # ===-----------------------------------------------------------------------===#
 # Map
@@ -1183,7 +1186,9 @@ fn _get_start_indices_of_nth_subvolume_uint[
 
 @always_inline
 fn elementwise[
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     *,
     use_blocking_impl: Bool = False,
@@ -1217,7 +1222,9 @@ fn elementwise[
 @always_inline
 fn elementwise[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     *,
     use_blocking_impl: Bool = False,
@@ -1255,7 +1262,9 @@ fn elementwise[
 
 @always_inline
 fn elementwise[
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     *,
     use_blocking_impl: Bool = False,
@@ -1289,7 +1298,9 @@ fn elementwise[
 @always_inline
 fn elementwise[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     *,
     use_blocking_impl: Bool = False,
@@ -1321,7 +1332,9 @@ fn elementwise[
 @always_inline
 fn elementwise[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     *,
     use_blocking_impl: Bool = False,
@@ -1379,7 +1392,9 @@ fn elementwise[
 @always_inline
 fn _elementwise_impl[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     /,
     *,
@@ -1401,7 +1416,9 @@ fn _elementwise_impl[
 @always_inline
 fn _elementwise_impl_cpu[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     /,
     *,
@@ -1414,7 +1431,9 @@ fn _elementwise_impl_cpu[
 @always_inline
 fn _elementwise_impl_cpu_1d[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     *,
     use_blocking_impl: Bool,
@@ -1475,7 +1494,9 @@ fn _elementwise_impl_cpu_1d[
 @always_inline
 fn _elementwise_impl_cpu_nd[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: Int,
     *,
     use_blocking_impl: Bool,
@@ -1570,7 +1591,9 @@ fn _elementwise_impl_cpu_nd[
 @always_inline
 fn _elementwise_impl_gpu[
     rank: Int, //,
-    func: fn[width: Int, rank: Int] (IndexList[rank]) capturing [_] -> None,
+    func: fn[width: Int, rank: Int, alignment: Int = 1] (
+        IndexList[rank]
+    ) capturing [_] -> None,
     simd_width: UInt,
 ](shape: IndexList[rank, **_], ctx: DeviceContext) raises:
     """Executes `func[width, rank](indices)` as sub-tasks for a suitable
@@ -1608,13 +1631,16 @@ fn _elementwise_impl_gpu[
     var packed_region_length = length - unpacked_tail_length
 
     alias block_size_unrounded = registers_per_block // registers_per_thread
-    alias block_size: UInt = block_size_unrounded - (block_size_unrounded % 2)
-    var num_blocks = max(
+
+    # when testing other elementwise kernels, they appear to also use 128 as the block size on blackwell specifcally
+    alias block_size = 128 if ctx.default_device_info is B200 else block_size_unrounded - (
+        block_size_unrounded % 2
+    )
+
+    var num_blocks = clamp(
+        ceildiv(num_packed_elems, block_size),
         1,
-        min(
-            ceildiv(num_packed_elems, block_size),
-            sm_count * threads_per_sm // block_size * num_waves,
-        ),
+        sm_count * threads_per_sm // block_size * num_waves,
     )
 
     @__copy_capture(
@@ -1660,7 +1686,11 @@ fn _elementwise_impl_gpu[
                 else:
                     func[Int(simd_width), rank](start_indices.canonicalize())
             else:
-                func[Int(simd_width), rank](start_indices.canonicalize())
+                # The alignment is by number of elements, which will be converted to
+                # number of bytes by graph compiler.
+                func[Int(simd_width), rank, Int(simd_width)](
+                    start_indices.canonicalize()
+                )
 
         # process the tail region
         if tid < unpacked_tail_length:

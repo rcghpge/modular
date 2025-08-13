@@ -66,7 +66,9 @@ fn quantize_static_scaled_fp8[
     @always_inline
     @parameter
     @__copy_capture(out_buffer, in_buffer, scale)
-    fn scaled_fp8_quant[width: Int, rank: Int](idx_arg: IndexList[rank]):
+    fn scaled_fp8_quant[
+        width: Int, rank: Int, alignment: Int = 1
+    ](idx_arg: IndexList[rank]):
         constrained[
             _is_sm_9x_or_newer(),
             "this kernel is only supported on sm90 or newer",
@@ -147,7 +149,7 @@ fn quantize_dynamic_scaled_fp8[
         scaled_output,
         scales,
         input,
-        scale_ub,
+        scale_ub.cast[scales_dtype](),
         grid_dim=(input.dim[0](), n_groups, 1),
         block_dim=warps_per_block * WARP_SIZE,
         attributes=pdl_launch_attributes(),
@@ -189,7 +191,7 @@ fn quantize_fp8_kernel[
         )
 
         var scale_factor = (
-            max(group_max.cast[scales_type](), scale_ub)
+            min(group_max.cast[scales_type](), scale_ub)
             / fp8_max.cast[scales_type]()
         )
 

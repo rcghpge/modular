@@ -411,8 +411,8 @@ def test_dict_update_empty_new():
 struct DummyKey(KeyElement):
     var value: Int
 
-    fn __init__(out self, *, other: Self):
-        self = other
+    fn __copyinit__(out self, other: Self):
+        self.value = other.value
 
     fn __hash__[H: Hasher](self, mut hasher: H):
         return hasher.update(self.value)

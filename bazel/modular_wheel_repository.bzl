@@ -21,9 +21,11 @@ alias(
 _OPEN_SOURCE_GLOBS = [
     "*/platlib/max/lib/mojo/*",
     "max/entrypoints/*",
+    "max/graph/*",
     "max/nn/*",
     "max/pipelines/*",
     "max/serve/*",
+    "mojo/*",
 ]
 
 pycross_wheel_library(

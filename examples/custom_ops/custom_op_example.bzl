@@ -7,7 +7,8 @@ def custom_op_example_py_binary(
         srcs,
         extra_data = [],
         extra_deps = [],
-        target_compatible_with = None):
+        target_compatible_with = None,
+        tags = []):
     modular_py_binary(
         name = name,
         srcs = srcs,
@@ -25,6 +26,7 @@ def custom_op_example_py_binary(
             "//SDK/lib/API/python/max/driver",
             "//SDK/lib/API/python/max/engine",
             "//SDK/lib/API/python/max/graph",
+            "//open-source/max/mojo/python/mojo",
             requirement("numpy"),
         ] + extra_deps,
         target_compatible_with = target_compatible_with,
@@ -35,5 +37,5 @@ def custom_op_example_py_binary(
         name = name + ".example-test",
         args = [],
         binary = name,
-        tags = ["gpu"],
+        tags = ["gpu"] + tags,
     )

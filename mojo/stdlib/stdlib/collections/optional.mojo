@@ -40,9 +40,6 @@ from utils import Variant
 # TODO(27780): NoneType can't currently conform to traits
 @fieldwise_init
 struct _NoneType(Copyable, ExplicitlyCopyable, Movable):
-    fn __init__(out self, *, other: Self):
-        pass
-
     fn __copyinit__(out self, other: Self):
         pass
 
@@ -55,7 +52,7 @@ struct _NoneType(Copyable, ExplicitlyCopyable, Movable):
 # ===-----------------------------------------------------------------------===#
 
 
-struct Optional[T: Copyable & Movable](
+struct Optional[T: ExplicitlyCopyable & Movable](
     Boolable, Copyable, Defaultable, ExplicitlyCopyable, Movable
 ):
     """A type modeling a value which may or may not be present.
@@ -416,13 +413,13 @@ struct Optional[T: Copyable & Movable](
             The underlying value contained in the `Optional` or a default value.
         """
         if self.__bool__():
-            return self._value[T]
-        return default
+            return self._value[T].copy()
+        return default.copy()
 
     fn copied[
         mut: Bool,
         origin: Origin[mut], //,
-        T: Copyable & Movable,
+        T: ExplicitlyCopyable & Movable,
     ](self: Optional[Pointer[T, origin]]) -> Optional[T]:
         """Converts an `Optional` containing a Pointer to an `Optional` of an
         owned value by copying.
@@ -452,7 +449,7 @@ struct Optional[T: Copyable & Movable](
         if self:
             # SAFETY: We just checked that `self` is populated.
             # Perform an implicit copy
-            return self.unsafe_value()[]
+            return self.unsafe_value()[].copy()
         else:
             return None
 

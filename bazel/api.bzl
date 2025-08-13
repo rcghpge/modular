@@ -12,6 +12,7 @@ load("//bazel/internal:mojo_filecheck_test.bzl", _mojo_filecheck_test = "mojo_fi
 load("//bazel/internal:mojo_library.bzl", _mojo_library = "mojo_library")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_test.bzl", _mojo_test = "mojo_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_test_environment.bzl", _mojo_test_environment = "mojo_test_environment")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:nixl_plugin.bzl", _NIXL_ENV_VAR = "NIXL_ENV_VAR", _NIXL_PLUGINS = "NIXL_PLUGINS", _NIXL_PLUGINS_DATA = "NIXL_PLUGINS_DATA")  # buildifier: disable=bzl-visibility
 load("//bazel/pip:pip_requirement.bzl", _requirement = "pip_requirement")
 
 mojo_filecheck_test = _mojo_filecheck_test
@@ -28,9 +29,8 @@ _DEPS_FROM_WHEEL = [
     "//max/driver",
     "//max/dtype",
     "//max/engine",
-    "//max/graph",
     "//max/interfaces",
-    "//max/mojo",
+    "//max/mlir",
     "//max/profiler",
     "//max/support",
     "//max:_core",
@@ -39,7 +39,13 @@ _DEPS_FROM_WHEEL = [
 
 def _is_internal_reference(dep):
     """Check if a dependency is an internal reference."""
-    return dep.startswith(("//GenericML", "//KGEN/", "//Kernels/", "//SDK/integration-test/pipelines/python", "//SDK/lib/API/python/max/mlir", "//SDK:max"))
+    return dep.startswith((
+        "//GenericML",
+        "//KGEN/",
+        "//Kernels/",
+        "//SDK/integration-test/pipelines/python",
+        "//SDK:max",
+    )) or "base_max_config_yaml_files" in dep
 
 def _has_internal_reference(deps):
     return any([_is_internal_reference(dep) for dep in deps])
@@ -60,6 +66,9 @@ def _rewrite_deps(deps):
                 replaced_dep = "@modular_wheel//:wheel"
             if replaced_dep not in new_deps:
                 new_deps.append(replaced_dep)
+        elif dep.startswith("//open-source/max/mojo"):
+            replaced_dep = dep.replace("//open-source/max/mojo", "//mojo")
+            new_deps.append(replaced_dep)
         else:
             new_deps.append(dep)
     return new_deps
@@ -88,12 +97,9 @@ def modular_py_binary(
         **kwargs):
     if name == "pipelines":
         # TODO: Fix this hack, there is a layering issue with what is open source right now
-        deps.append("//max/entrypoints:mojo")
+        deps.append("//mojo/python/mojo")
         data = []
         env = {}
-    if native.package_name().endswith("/custom_ops"):
-        # TODO: Fix this hack, it's part of the custom repo but it's transitively depended on by things that are in the wheel
-        deps.append("//max/entrypoints:mojo")
 
     # TODO: There is some data we can fix by pulling from the wheel
     if _has_internal_reference(deps) or _has_internal_reference(data):
@@ -156,3 +162,6 @@ mojo_kgen_lib = _noop
 pkg_attributes = _noop
 pkg_filegroup = _noop
 pkg_files = _noop
+NIXL_PLUGINS_DATA = _NIXL_PLUGINS_DATA
+NIXL_ENV_VAR = _NIXL_ENV_VAR
+NIXL_PLUGINS = _NIXL_PLUGINS
