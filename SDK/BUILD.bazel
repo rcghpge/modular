@@ -140,6 +140,7 @@ mlir_nanobind(
 
 py_repl(
     name = "python",
+    testonly = True,
     data = [
         ":max",
         "//GenericML:MGPRT",
