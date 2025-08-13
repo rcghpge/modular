@@ -5033,11 +5033,10 @@ def MO_AssertOp : MO_Op<"assert"> {
 }
 
 def MO_GuardOp : MO_Op<"guard", [
-  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+  InferTypeOpAdaptor,
   Pure,
   MO_PreservedDuringKernelLowering
-]>
-{
+]> {
   let summary = "SSA-value guard operation";
   let description = [{
     Consumes a mo.chain operation and a variadic number of inputs and is

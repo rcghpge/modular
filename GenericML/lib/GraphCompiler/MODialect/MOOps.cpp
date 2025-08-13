@@ -4465,15 +4465,11 @@ LogicalResult GuardOp::verify() {
   return success();
 }
 
-LogicalResult GuardOp::inferReturnTypes(
-    ::mlir::MLIRContext *context, ::std::optional<::mlir::Location> location,
-    ::mlir::ValueRange operands, ::mlir::DictionaryAttr attributes,
-    ::mlir::OpaqueProperties properties, ::mlir::RegionRange regions,
-    ::llvm::SmallVectorImpl<::mlir::Type> &inferredReturnTypes) {
-
-  for (Value val : llvm::drop_begin(operands))
-    inferredReturnTypes.push_back(val.getType());
-
+LogicalResult
+GuardOp::inferReturnTypes(MLIRContext *context,
+                          std::optional<Location> location, Adaptor adaptor,
+                          SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes = llvm::to_vector(TypeRange(adaptor.getInputs()));
   return success();
 }
 
