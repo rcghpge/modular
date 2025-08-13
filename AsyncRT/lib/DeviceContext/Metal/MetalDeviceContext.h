@@ -27,11 +27,14 @@ class MetalDevice;
 class MetalDeviceContext;
 class MetalDeviceEvent;
 class MetalDeviceTimer;
+class MetalDeviceFunction;
+class MetalDeviceFunctionArguments;
 
 using MetalDeviceRef = RCRef<const MetalDevice>;
 using MetalDeviceContextRef = RCRef<const MetalDeviceContext>;
 using MetalDeviceEventRef = RCRef<const MetalDeviceEvent>;
 using MetalDeviceTimerRef = RCRef<const MetalDeviceTimer>;
+using MetalDeviceFunctionRef = RCRef<const MetalDeviceFunction>;
 
 class MetalDevice : public Device {
 public:
@@ -199,6 +202,54 @@ public:
 
 private:
   const std::chrono::time_point<std::chrono::steady_clock> start_;
+};
+
+class MetalDeviceFunctionArguments : public DeviceFunction::Arguments {
+public:
+  explicit MetalDeviceFunctionArguments(const MetalDeviceFunction &fn);
+  ~MetalDeviceFunctionArguments() override = default;
+
+  void pushArg(int index, const uint64_t &val) override;
+  void pushArg(int index, const DeviceBuffer &val) override;
+
+  const std::vector<void *> &metalArgs() const;
+
+  static const MetalDeviceFunctionArguments &
+  cast(const DeviceFunction::Arguments &args);
+
+  const MetalDeviceFunction *getFunction() const { return metalFnPtr_; }
+
+private:
+  std::vector<void *> argValues_;
+  std::vector<DeviceBufferRef> refs_;
+  const MetalDeviceFunction *metalFnPtr_ = nullptr;
+};
+
+class MetalDeviceFunction : public DeviceFunction {
+public:
+  MetalDeviceFunction(const MetalDeviceContext &context, StringRef moduleName,
+                      StringRef functionName,
+                      const DeviceFunction::SignatureBuilder &signature,
+                      MTL::ComputePipelineState &pipelineState);
+  ~MetalDeviceFunction() override;
+
+  const std::string &name() const override;
+
+  ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
+                                     size_t byteSize) const override;
+
+  ErrorOr<int32_t> getAttribute(int32_t code) const override;
+
+  DeviceFunction::Arguments *
+  allocateArguments(const DeviceFunction &fn) const override;
+
+  MTL::ComputePipelineState &getPipelineState() const { return pipelineState_; }
+
+  static const MetalDeviceFunction &cast(const DeviceFunction &func);
+
+private:
+  std::string name_;
+  MTL::ComputePipelineState &pipelineState_;
 };
 
 } // namespace M::AsyncRT
