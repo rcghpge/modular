@@ -70,8 +70,8 @@ TEST_F(GPUDeviceContextTest, ComputeCapability) {
 
   ASSIGN_NO_ERR(int, cap, dev->computeCapability());
   if (dev->api() == Device::metalAPI) {
-    // Metal returns 300 for compute capability (placeholder value)
-    EXPECT_EQ(cap, 30);
+    // Metal returns 1,2,3,4 for compute capability (chip #)
+    EXPECT_GE(cap, 0);
   } else {
     EXPECT_GE(cap, 75);
   }

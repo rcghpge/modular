@@ -120,8 +120,9 @@ ErrorOr<Device::MemInfo> MetalDevice::getMemoryInfo() const {
 ErrorOrSuccess MetalDevice::isCompatible() const { return success(); }
 
 ErrorOr<int> MetalDevice::computeCapability() const {
-  // TODO(Amir): this is a placeholder value. We need to get the actual compute
-  return 30;
+  // Use the major compute capability as the compute capability.
+  // This allows to get something like apple-m1 as arch name.
+  return getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MAJOR);
 }
 
 ErrorOr<bool> MetalDevice::canAccess(const Device &peer) const { return false; }

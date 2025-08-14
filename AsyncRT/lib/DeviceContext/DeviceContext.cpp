@@ -1055,6 +1055,12 @@ MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
       return std::string();
     }
 
+    // For metal only return the major compute capability
+    if ((*device)->api() == Device::metalAPI) {
+      return (llvm::Twine((*device)->vendor()) + ":" + llvm::Twine(*major))
+          .str();
+    }
+    // For CUDA and HIP return the major and minor compute capability
     return (llvm::Twine((*device)->vendor()) + ":" + llvm::Twine(*major) +
             llvm::Twine(*minor))
         .str();
