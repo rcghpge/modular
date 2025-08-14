@@ -4495,6 +4495,40 @@ LogicalResult GuardOp::fold(FoldAdaptor adaptor,
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// FenceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult FenceOp::verify() {
+  if (getInputs().empty())
+    return emitError() << "fence must have at least one input";
+
+  if (getInputs().size() != getResults().size())
+    return emitError() << "expected the number of inputs and outputs to be "
+                          "exactly the same";
+
+  // Check exact type equality per position.
+  for (auto [idx, types] :
+       llvm::enumerate(llvm::zip(getInputs(), getResults()))) {
+    auto [input, result] = types;
+    if (input.getType() != result.getType())
+      return emitError() << "input and result types at position " << idx
+                         << " must match exactly, but got " << input.getType()
+                         << " and " << result.getType();
+  }
+
+  return success();
+}
+
+LogicalResult
+FenceOp::inferReturnTypes(MLIRContext *context,
+                          std::optional<Location> location, Adaptor adaptor,
+                          SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes = llvm::to_vector(TypeRange(adaptor.getInputs()));
+
+  return success();
+}
+
 /// Remove inputs that are the results of mosh.param.to_value on constant
 /// mo.chains (i.e. #mo.chain).
 ///
