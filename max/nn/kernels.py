@@ -39,7 +39,6 @@ from .attention.mask_config import (
     PositionalEncodingVariant,
 )
 from .kv_cache import (
-    ContinuousBatchingKVCacheCollection,
     KVCacheParams,
     KVCacheStrategy,
     PagedKVCacheCollection,
@@ -74,11 +73,10 @@ def fused_qkv_ragged_matmul(
     input: TensorValue,
     input_row_offsets: TensorValue,
     wqkv: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection | PagedKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     layer_idx: TensorValue,
     n_heads: int,
     bias: TensorValue | None = None,
-    chain: ops._ChainObject | None = None,
 ) -> TensorValue:
     """Computes fused query, key, and value projections with ragged input.
 
@@ -113,7 +111,6 @@ def fused_qkv_ragged_matmul(
         raise ValueError(msg)
 
     if kv_params.cache_strategy not in {
-        KVCacheStrategy.CONTINUOUS,
         KVCacheStrategy.PAGED,
     }:
         msg = f"unsupported cache strategy for fused_qkv_ragged_matmul: {kv_params.cache_strategy}"
@@ -135,10 +132,10 @@ def fused_qkv_ragged_matmul(
         op_name += ".bias"
         values.append(bias)
 
-    return ops._inplace_custom_explicit_chains(
+    return ops.inplace_custom(
         op_name,
         device=input.device,
-        values=values,
+        values=values,  # type: ignore
         out_types=[
             TensorType(
                 dtype=input.dtype,
@@ -147,7 +144,6 @@ def fused_qkv_ragged_matmul(
             )
         ],
         parameters=parameters,
-        chain=chain,
     )[0].tensor
 
 
@@ -162,7 +158,6 @@ def fused_qkv_ragged_matmul_scaled_float8(
     input_scale: TensorValue,
     weight_scale: TensorValue,
     bias: TensorValue | None = None,
-    chain: ops._ChainObject | None = None,
 ) -> TensorValue:
     """Computes fused query, key, and value projections with ragged input.
 
@@ -235,7 +230,7 @@ def fused_qkv_ragged_matmul_scaled_float8(
 
     op_name = "mo.fused_qkv_matmul.ragged.paged.scale"
 
-    return ops._inplace_custom_explicit_chains(
+    return ops.inplace_custom(
         op_name,
         device=input.device,
         values=[
@@ -255,7 +250,6 @@ def fused_qkv_ragged_matmul_scaled_float8(
             )
         ],
         parameters=parameters,
-        chain=chain,
     )[0].tensor
 
 
@@ -270,7 +264,7 @@ def unfused_qkv_ragged_matmul_gguf_quantized(
     quantization_encoding_q: QuantizationEncoding,
     quantization_encoding_k: QuantizationEncoding,
     quantization_encoding_v: QuantizationEncoding,
-    kv_collection: ContinuousBatchingKVCacheCollection | PagedKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     layer_idx: TensorValue,
 ) -> TensorValue:
     """Computes fused query, key, and value projections with ragged input and
@@ -356,7 +350,7 @@ def fused_qkv_ragged_matmul_quantized(
     input: TensorValue,
     input_row_offsets: TensorValue,
     wqkv: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection | PagedKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     layer_idx: TensorValue,
     n_heads: int,
     quantization_config: QuantizationConfig,
@@ -391,7 +385,6 @@ def fused_qkv_ragged_matmul_quantized(
         raise ValueError(msg)
 
     if kv_params.cache_strategy not in {
-        KVCacheStrategy.CONTINUOUS,
         KVCacheStrategy.PAGED,
     }:
         msg = f"unsupported cache strategy for fused_qkv_ragged_matmul: {kv_params.cache_strategy}"
@@ -456,7 +449,7 @@ def fused_qkv_ragged_matmul_quantized(
     return ops.inplace_custom(
         op_name,
         device=input.device,
-        values=args,
+        values=args,  # type: ignore
         out_types=[
             TensorType(
                 dtype=input.dtype,
@@ -465,63 +458,6 @@ def fused_qkv_ragged_matmul_quantized(
             )
         ],
         parameters=parameters,
-    )[0].tensor
-
-
-def fused_qkv_matmul(
-    kv_params: KVCacheParams,
-    input: TensorValue,
-    wqkv: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    layer_idx: TensorValue,
-    n_heads: int,
-) -> TensorValue:
-    """Computes fused query, key and value projections."""
-    if input.dtype != wqkv.dtype:
-        msg = (
-            "expected input and wqkv to have the same dtype, but got"
-            f" {input.dtype} and {wqkv.dtype}, respectively."
-        )
-        raise ValueError(msg)
-
-    input_rank_expected = 3
-    if input.rank != input_rank_expected:
-        msg = f"expected input to have rank {input_rank_expected}, was {input.rank}"
-        raise ValueError(msg)
-
-    wqkv_rank_expected = 2
-    if wqkv.rank != wqkv_rank_expected:
-        msg = (
-            f"expected wqkv to have rank {wqkv_rank_expected}, was {wqkv.rank}"
-        )
-        raise ValueError(msg)
-
-    if layer_idx.dtype != DType.uint32:
-        msg = f"expected layer_idx to have dtype uint32, was {layer_idx.dtype}"
-        raise ValueError(msg)
-
-    if kv_params.cache_strategy != KVCacheStrategy.CONTINUOUS:
-        msg = f"unsupported cache strategy for fused_qkv_matmul: {kv_params.cache_strategy}"
-        raise ValueError(msg)
-
-    cache_strategy_str = kv_params.cache_strategy.kernel_substring()
-    op_name = f"mo.fused_qkv_matmul.padded.{cache_strategy_str}"
-
-    return ops.inplace_custom(
-        op_name,
-        device=input.device,
-        values=[input, wqkv, kv_collection, layer_idx],
-        out_types=[
-            TensorType(
-                dtype=input.dtype,
-                shape=input.shape[:-1] + [n_heads * kv_params.head_dim],
-                device=input.device,
-            )
-        ],
-        parameters={
-            "num_heads": kv_params.n_kv_heads_per_device,
-            "head_dim": kv_params.head_dim,
-        },
     )[0].tensor
 
 
@@ -659,13 +595,12 @@ def fused_qk_ragged_rope(
     kv_params: KVCacheParams,
     input: TensorValue,
     input_row_offsets: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection | PagedKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     freqs_cis: TensorValue,
     layer_idx: TensorValue,
     interleaved: bool = True,
     position_ids: TensorValue | None = None,
     mrope_section: list[int] | None = None,
-    chain: ops._ChainObject | None = None,
 ) -> TensorValue:
     """Computes fused query-key attention with rotary positional encodings and ragged inputs.
 
@@ -707,7 +642,6 @@ def fused_qk_ragged_rope(
         raise ValueError(msg)
 
     if kv_params.cache_strategy not in {
-        KVCacheStrategy.CONTINUOUS,
         KVCacheStrategy.PAGED,
     }:
         msg = f"unsupported cache strategy for fused_qk_ragged_rope: {kv_params.cache_strategy}"
@@ -767,198 +701,10 @@ def fused_qk_ragged_rope(
         op_name = f"mo.fused_qk_rope.ragged.{cache_strategy_str}"
         values = [input, input_row_offsets, kv_collection, freqs_cis, layer_idx]
 
-    return ops._inplace_custom_explicit_chains(
-        op_name,
-        device=input.device,
-        values=values,
-        out_types=[
-            TensorType(
-                dtype=input.dtype, shape=input.shape, device=input.device
-            )
-        ],
-        parameters=parameters,
-        chain=chain,
-    )[0].tensor
-
-
-def fused_qk_rope(
-    kv_params: KVCacheParams,
-    input: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    freqs_cis_2d: TensorValue,
-    layer_idx: TensorValue,
-    interleaved: bool = True,
-) -> TensorValue:
-    """Computes fused query-key attention with rotary positional encodings."""
-    input_rank_expected = 4
-    if input.rank != input_rank_expected:
-        msg = (
-            f"expected input of rank {input_rank_expected} but got {input.rank}"
-        )
-        raise ValueError(msg)
-
-    freqs_cis_rank_expected = 2
-    if freqs_cis_2d.rank != freqs_cis_rank_expected:
-        msg = (
-            f"expected freqs_cis_2d of rank {freqs_cis_rank_expected} but got "
-            f"{freqs_cis_2d.rank}"
-        )
-        raise ValueError(msg)
-
-    if layer_idx.dtype != DType.uint32:
-        msg = f"expected uint32 layer_idx but got {layer_idx.dtype}"
-        raise ValueError(msg)
-
-    if kv_params.cache_strategy != KVCacheStrategy.CONTINUOUS:
-        msg = f"unsupported cache strategy for fused_qk_rope: {kv_params.cache_strategy}"
-        raise ValueError(msg)
-
-    parameters: dict[str, bool | int | str | DType] = {
-        "num_heads": kv_params.n_kv_heads_per_device,
-        "head_dim": kv_params.head_dim,
-        "interleaved": interleaved,
-    }
-    if kv_params.cache_strategy == KVCacheStrategy.PAGED:
-        assert kv_params.page_size is not None
-        parameters["page_size"] = kv_params.page_size
-
-    cache_strategy_str = kv_params.cache_strategy.kernel_substring()
-    op_name = f"mo.fused_qk_rope.padded.{cache_strategy_str}"
-
     return ops.inplace_custom(
         op_name,
         device=input.device,
-        values=[input, kv_collection, freqs_cis_2d, layer_idx],
-        out_types=[
-            TensorType(
-                dtype=input.dtype, shape=input.shape, device=input.device
-            )
-        ],
-        parameters=parameters,
-    )[0].tensor
-
-
-def flash_attention(
-    kv_params: KVCacheParams,
-    input: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    layer_idx: TensorValue,
-    attention_mask: TensorValue,
-    valid_lengths: TensorValue,
-    scale: float,
-) -> TensorValue:
-    """Computes flash attention provided the mo.opaque KV Cache."""
-    input_rank_expected = 4
-    if input.rank != input_rank_expected:
-        msg = (
-            f"expected input of rank {input_rank_expected} but got {input.rank}"
-        )
-        raise ValueError(msg)
-
-    if layer_idx.dtype != DType.uint32:
-        msg = f"expected uint32 layer_idx but got {layer_idx.dtype}"
-        raise ValueError(msg)
-
-    if attention_mask.dtype != input.dtype:
-        msg = (
-            f"expected attention mask dtype {attention_mask.dtype} to match "
-            f"the input's dtype {input.dtype}"
-        )
-        raise ValueError(msg)
-
-    if valid_lengths.dtype != DType.uint32:
-        msg = f"expected uint32 valid_lengths but got {valid_lengths.dtype}"
-        raise ValueError(msg)
-
-    if kv_params.cache_strategy != KVCacheStrategy.CONTINUOUS:
-        msg = f"unsupported cache strategy for flash_attention: {kv_params.cache_strategy}"
-        raise ValueError(msg)
-
-    cache_strategy_str = kv_params.cache_strategy.kernel_substring()
-    op_name = f"mo.mha.padded.{cache_strategy_str}.tensor_mask"
-    parameters: dict[str, bool | int | str | DType] = {
-        "num_heads": kv_params.n_kv_heads_per_device,
-        "head_dim": kv_params.head_dim,
-        "score_mod_str": PositionalEncodingVariant.NO_POS.value,
-    }
-    return ops.inplace_custom(
-        op_name,
-        device=input.device,
-        values=[
-            input,
-            kv_collection,
-            layer_idx,
-            attention_mask,
-            valid_lengths,
-            # NOTE: The scale argument to the flash attention kernel is
-            # constrained to float32.
-            ops.constant(scale, dtype=DType.float32, device=DeviceRef.CPU()),
-        ],
-        out_types=[
-            TensorType(
-                dtype=input.dtype, shape=input.shape, device=input.device
-            )
-        ],
-        parameters=parameters,
-    )[0].tensor
-
-
-def flash_attention_with_causal_mask(
-    kv_params: KVCacheParams,
-    input: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    layer_idx: TensorValue,
-    valid_lengths: TensorValue,
-    scale: float,
-) -> TensorValue:
-    """Computes flash attention provided the mo.opaque KV Cache.
-    Notably, materializes the causal mask within the kernel."""
-
-    if input.shape[0] != valid_lengths.shape[0]:
-        msg = (
-            "expected batch size of input, to equal length of valid_lengths"
-            f" got batch size of input ({input.shape[0]}), length of"
-            f" valid_lengths ({valid_lengths.shape[0]})"
-        )
-        raise ValueError(msg)
-
-    if input.dtype != kv_params.dtype:
-        msg = (
-            f"expected input to be dtype: {kv_params.dtype}, got {input.dtype}"
-        )
-        raise ValueError(msg)
-
-    if layer_idx.dtype != DType.uint32:
-        msg = f"expected uint32 layer_idx but got {layer_idx.dtype}"
-        raise ValueError(msg)
-
-    if valid_lengths.dtype != DType.uint32:
-        msg = f"expected uint32 valid_lengths but got {valid_lengths.dtype}"
-        raise ValueError(msg)
-
-    if kv_params.cache_strategy != KVCacheStrategy.CONTINUOUS:
-        msg = f"unsupported cache strategy for flash_attention_with_causal_mask: {kv_params.cache_strategy}"
-        raise ValueError(msg)
-
-    cache_strategy_str = kv_params.cache_strategy.kernel_substring()
-    op_name = f"mo.mha.padded.{cache_strategy_str}"
-    parameters: dict[str, bool | int | str | DType] = {
-        "num_heads": kv_params.n_kv_heads_per_device,
-        "head_dim": kv_params.head_dim,
-        "mask_str": MHAMaskVariant.CAUSAL_MASK.value,
-        "score_mod_str": PositionalEncodingVariant.NO_POS.value,
-    }
-    return ops.inplace_custom(
-        op_name,
-        device=input.device,
-        values=[
-            input,
-            kv_collection,
-            layer_idx,
-            valid_lengths,
-            # NOTE: The scale argument to flash attention is constrained to float32.
-            ops.constant(scale, dtype=DType.float32, device=DeviceRef.CPU()),
-        ],
+        values=values,  # type: ignore
         out_types=[
             TensorType(
                 dtype=input.dtype, shape=input.shape, device=input.device
@@ -1064,12 +810,11 @@ def flash_attention_ragged(
     kv_params: KVCacheParams,
     input: TensorValue,
     input_row_offsets: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection | PagedKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     layer_idx: TensorValue,
     mask_variant: MHAMaskVariant,
     scale: float,
     local_window_size: int = -1,
-    chain: ops._ChainObject | None = None,
 ) -> TensorValue:
     """Computes flash (self) attention provided the `!mo.opaque` KV Cache.
 
@@ -1105,7 +850,6 @@ def flash_attention_ragged(
         raise ValueError(msg)
 
     if kv_params.cache_strategy not in {
-        KVCacheStrategy.CONTINUOUS,
         KVCacheStrategy.PAGED,
     }:
         msg = f"unsupported cache strategy for flash_attention_ragged: {kv_params.cache_strategy}"
@@ -1129,7 +873,7 @@ def flash_attention_ragged(
     )
     parameters["local_window_size"] = local_window_size
 
-    return ops._inplace_custom_explicit_chains(
+    return ops.inplace_custom(
         op_name,
         device=input.device,
         values=[
@@ -1146,7 +890,6 @@ def flash_attention_ragged(
             )
         ],
         parameters=parameters,
-        chain=chain,
     )[0].tensor
 
 
@@ -1543,7 +1286,7 @@ def cross_attention_ragged(
     kv_params: KVCacheParams,
     input: TensorValue,
     input_row_offsets: TensorValue,
-    kv_collection: ContinuousBatchingKVCacheCollection | PagedKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     layer_idx: TensorValue,
     mask_variant: MHAMaskVariant,
     kv_input_row_offsets: TensorValue,
@@ -1583,7 +1326,6 @@ def cross_attention_ragged(
         raise ValueError(msg)
 
     if kv_params.cache_strategy not in {
-        KVCacheStrategy.CONTINUOUS,
         KVCacheStrategy.PAGED,
     }:
         msg = f"unsupported cache strategy for cross_attention_ragged: {kv_params.cache_strategy}"
@@ -1748,7 +1490,7 @@ def kv_cache_ragged_radd(
 
 def rms_norm_key_cache(
     kv_params: KVCacheParams,
-    kv_collection: ContinuousBatchingKVCacheCollection | PagedKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     gamma: TensorValue,
     epsilon: float | np.floating,
     layer_idx: TensorValue,
@@ -2026,11 +1768,13 @@ def quantize_dynamic_scaled_float8(
         else input.shape[1]
     )
 
-    # pad the a_scales to 16B. This is required by NVIDIA SM90+ TMA instructions
-    padding_size = 16 // scales_type.size_in_bytes
-    scales_dim1_padded = (
-        (input.shape[0] + padding_size - 1) // padding_size
-    ) * padding_size
+    a_scales_dim1 = input.shape[0]
+    if group_size_or_per_token != -1:
+        # For blockwise scaling pad the a_scales to 16Bytes. This is required by NVIDIA SM90+ TMA instructions
+        padding_size = 16 // scales_type.size_in_bytes
+        a_scales_dim1 = (
+            (input.shape[0] + padding_size - 1) // padding_size
+        ) * padding_size
 
     result = ops.custom(
         "mo.quantize_dynamic_scaled_float8",
@@ -2047,7 +1791,7 @@ def quantize_dynamic_scaled_float8(
             ),
             TensorType(
                 dtype=scales_type,
-                shape=[input.shape[1] // group_size, Dim(scales_dim1_padded)],
+                shape=[input.shape[1] // group_size, Dim(a_scales_dim1)],
                 device=input.device,
             ),
         ],
@@ -2086,14 +1830,6 @@ def dynamic_scaled_matmul(
 
     if a.shape[1] != b.shape[1]:
         msg = "The second dimension of b must match the second dimension of a"
-        raise ValueError(msg)
-
-    if a_scales.shape[0] != 1:
-        msg = "only per-token scaling is supported for a"
-        raise ValueError(msg)
-
-    if b_scales.shape[1] != 1:
-        msg = "only channel-wise scaling is supported for b"
         raise ValueError(msg)
 
     if (a.dtype != b.dtype) or (a_scales.dtype != b_scales.dtype):
@@ -2641,7 +2377,7 @@ def sgmv_qkv_lora_kernel(
     lora_ids: TensorValue,
     lora_ranks: TensorValue,
     input_row_offsets: TensorValue,
-    kv_collection: PagedKVCacheCollection | ContinuousBatchingKVCacheCollection,
+    kv_collection: PagedKVCacheCollection,
     kv_params: KVCacheParams,
     layer_idx: TensorValue,
     max_lora_seq_len: int,

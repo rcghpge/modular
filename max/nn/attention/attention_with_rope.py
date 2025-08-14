@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 from max.dtype import DType
 from max.graph import (
@@ -47,7 +47,6 @@ from ..kernels import (
     unfused_qkv_ragged_matmul_gguf_quantized,
 )
 from ..kv_cache import (
-    ContinuousBatchingKVCacheCollection,
     KVCacheParams,
     PagedKVCacheCollection,
 )
@@ -82,9 +81,7 @@ class AttentionWithRopeV1(AttentionImpl):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: Union[
-            ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
-        ],
+        kv_collection: PagedKVCacheCollection,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
@@ -395,12 +392,9 @@ class AttentionWithRope(Module):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: Union[
-            ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
-        ],
+        kv_collection: PagedKVCacheCollection,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
-        chain: ops._ChainObject | None = None,
     ) -> TensorValue:
         # Get attributes from input.
         total_seq_len = x.shape[0]
@@ -433,12 +427,11 @@ class AttentionWithRope(Module):
                 wqkv=self.wqkv,
                 bias=self.wqkv_bias,
                 input_row_offsets=input_row_offsets,
-                kv_collection=kv_collection,  # type: ignore
+                kv_collection=kv_collection,
                 layer_idx=layer_idx,
                 n_heads=self.n_heads,
                 input_scale=x_scales.to(x.device),
                 weight_scale=weight_scale.to(x.device),
-                chain=chain,
             )
         else:
             # Call into fused qkv ragged matmul.
@@ -451,7 +444,6 @@ class AttentionWithRope(Module):
                 kv_collection=kv_collection,
                 layer_idx=layer_idx,
                 n_heads=self.n_heads,
-                chain=chain,
             )
 
         # Apply rope.
@@ -470,7 +462,6 @@ class AttentionWithRope(Module):
             freqs_cis,
             layer_idx,
             interleaved=self.rope.interleaved,
-            chain=chain,
         )
         # Calculate Flash Attention.
         attn_out = flash_attention_ragged(
@@ -481,7 +472,6 @@ class AttentionWithRope(Module):
             input_row_offsets=input_row_offsets,
             mask_variant=MHAMaskVariant.CAUSAL_MASK,
             scale=self.scale,
-            chain=chain,
         )
 
         attn_out = ops.reshape(attn_out, shape=[total_seq_len, -1])
@@ -620,12 +610,9 @@ class GGUFQAttentionWithRope(AttentionWithRope):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: Union[
-            ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
-        ],
+        kv_collection: PagedKVCacheCollection,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
-        chain: ops._ChainObject | None = None,
     ) -> TensorValue:
         # Get attributes from input.
         total_seq_len = x.shape[0]
@@ -809,12 +796,9 @@ class GPTQAttentionWithRope(AttentionWithRope):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: Union[
-            ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
-        ],
+        kv_collection: PagedKVCacheCollection,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
-        chain: ops._ChainObject | None = None,
     ) -> TensorValue:
         # Get attributes from input.
         total_seq_len = x.shape[0]
@@ -1001,10 +985,7 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
         layer_idx: TensorValue,
         x: Sequence[TensorValue],
         signal_buffers: Sequence[BufferValue],
-        kv_collections: (
-            Sequence[ContinuousBatchingKVCacheCollection]
-            | Sequence[PagedKVCacheCollection]
-        ),
+        kv_collections: Sequence[PagedKVCacheCollection],
         freqs_cis: Sequence[TensorValue],
         input_row_offsets: Sequence[TensorValue],
     ) -> list[TensorValue]:
@@ -1024,23 +1005,17 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
             )
 
         attn_outputs = []
-        chains = [
-            ops._ChainObject(Graph.current._current_chain)
-            for _ in range(len(self.devices))
-        ]
-        for i in range(len(self.devices)):
-            attn_outputs.append(
-                self.list_of_attentions[i](
-                    layer_idx,
-                    x[i],
-                    kv_collections[i],
-                    freqs_cis[i],
-                    input_row_offsets[i],
-                    chains[i],
+        with Graph._async_region() as fork:
+            for i in fork.each(range(len(self.devices))):
+                attn_outputs.append(
+                    self.list_of_attentions[i](
+                        layer_idx,
+                        x[i],
+                        kv_collections[i],
+                        freqs_cis[i],
+                        input_row_offsets[i],
+                    )
                 )
-            )
-
-        Graph.current._merge_chains([c._val for c in chains])
 
         return self.allreduce(
             inputs=attn_outputs,
@@ -1059,9 +1034,7 @@ class AttentionWithRopeQKV(AttentionImplQKV):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: Union[
-            ContinuousBatchingKVCacheCollection, PagedKVCacheCollection
-        ],
+        kv_collection: PagedKVCacheCollection,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:

@@ -12,7 +12,7 @@ load("//bazel/internal:mojo_filecheck_test.bzl", _mojo_filecheck_test = "mojo_fi
 load("//bazel/internal:mojo_library.bzl", _mojo_library = "mojo_library")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_test.bzl", _mojo_test = "mojo_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_test_environment.bzl", _mojo_test_environment = "mojo_test_environment")  # buildifier: disable=bzl-visibility
-load("//bazel/internal:nixl_plugin.bzl", _NIXL_ENV_VAR = "NIXL_ENV_VAR", _NIXL_PLUGINS = "NIXL_PLUGINS", _NIXL_PLUGINS_DATA = "NIXL_PLUGINS_DATA")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:nixl_plugin.bzl", _NIXL_PLUGINS = "NIXL_PLUGINS", _NIXL_PLUGINS_DATA = "NIXL_PLUGINS_DATA")  # buildifier: disable=bzl-visibility
 load("//bazel/pip:pip_requirement.bzl", _requirement = "pip_requirement")
 
 mojo_filecheck_test = _mojo_filecheck_test
@@ -26,6 +26,7 @@ strip_prefix = _strip_prefix
 # Deps that aren't open source so we need to remap to pull from the wheel instead.
 _DEPS_FROM_WHEEL = [
     "//max",
+    "//max/_core_mojo",
     "//max/driver",
     "//max/dtype",
     "//max/engine",
@@ -33,8 +34,8 @@ _DEPS_FROM_WHEEL = [
     "//max/mlir",
     "//max/profiler",
     "//max/support",
+    "//max/torch",
     "//max:_core",
-    "//max/_core_mojo",
 ]
 
 def _is_internal_reference(dep):
@@ -45,7 +46,7 @@ def _is_internal_reference(dep):
         "//Kernels/",
         "//SDK/integration-test/pipelines/python",
         "//SDK:max",
-    )) or "base_max_config_yaml_files" in dep
+    )) or "base_max_config_yaml_files" in dep or "benchmark_config_yaml" in dep
 
 def _has_internal_reference(deps):
     return any([_is_internal_reference(dep) for dep in deps])
@@ -163,5 +164,4 @@ pkg_attributes = _noop
 pkg_filegroup = _noop
 pkg_files = _noop
 NIXL_PLUGINS_DATA = _NIXL_PLUGINS_DATA
-NIXL_ENV_VAR = _NIXL_ENV_VAR
 NIXL_PLUGINS = _NIXL_PLUGINS
