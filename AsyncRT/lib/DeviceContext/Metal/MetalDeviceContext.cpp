@@ -808,12 +808,10 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     }
 
     MTL::Buffer *buf = nullptr;
-
-    // For buffer arguments, args[i] is a direct pointer to the device buffer
-    // For scalar arguments, args[i] is a pointer to the value
-    // First, try to get the Metal buffer directly using args[i] as a buffer
-    // pointer
-    buf = getMetalBuffer(args[i]);
+    uint64_t *argData = static_cast<uint64_t *>(args[i]);
+    uint64_t originalPtr = argData[0];
+    void *ptrValue = reinterpret_cast<void *>(originalPtr);
+    buf = getMetalBuffer(ptrValue);
 
     if (buf != nullptr) {
       encoder->setBuffer(buf, 0, i);
