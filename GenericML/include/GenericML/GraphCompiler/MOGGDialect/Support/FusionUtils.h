@@ -18,6 +18,11 @@ enum class FusionType {
   HARD  // e.g. use lambda fusion interface
 };
 
+inline bool useExperimentalMojoPath() {
+  auto var = llvm::sys::Process::GetEnv("EMIT_MOJO");
+  return var.has_value() && var.value() == "1";
+}
+
 /// Returns a compact, human readable 'summary' of op, which can be used
 /// at runtime for debugging and profiling.
 StringAttr getSummaryString(Operation *op);

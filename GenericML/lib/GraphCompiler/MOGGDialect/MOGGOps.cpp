@@ -592,9 +592,304 @@ Type CallExecuteOp::getKernelReturnOutput() {
   return getRegRetTypeAttr() ? getRegRetTypeAttr().getValue() : nullptr;
 }
 
+ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
+  StringAttr name;
+  if (failed(parser.parseSymbolName(name)))
+    return failure();
+  state.addAttribute("name", name);
+
+  SmallVector<Type> resTypes;
+  SmallVector<OpAsmParser::Argument> args;
+  if (failed(parseRegionArguments(parser, resTypes, args)))
+    return failure();
+
+  if (!resTypes.empty())
+    state.addAttribute("returnType", TypeAttr::get(resTypes.front()));
+
+  if (failed(parser.parseRegion(*state.addRegion(), args)))
+    return failure();
+
+  return success();
+}
+
+void KernelStubOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printSymbolName(getName());
+  p << " ";
+  printRegionArguments(p, getReturnType() ? *getReturnType() : TypeRange{},
+                       getBody().getArguments());
+  p << " ";
+  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
+}
+
 //===----------------------------------------------------------------------===//
 // MOGG ExpKernelOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, *this);
+  auto &builder = opLoweringState.builder;
+  mlir::MLIRContext *ctx = getContext();
+  auto loc = getLoc();
+
+  // Outline the kernel into a stub by creating the op and taking the body of
+  // the kernel op we are lowering. Output and scratch placeholders are part of
+  // the MGP memory management analysis which means they will come from the
+  // outside.
+  Block *kernelBody = &getExecBody().front();
+  auto outputPlaceholdersOp = getOutputPlaceholder();
+  if (outputPlaceholdersOp) {
+    for (auto value : outputPlaceholdersOp.getResults())
+      value.replaceAllUsesWith(kernelBody->addArgument(value.getType(), loc));
+  }
+
+  auto scratchPlaceholdersOp = getScratchPlaceholder();
+  if (scratchPlaceholdersOp) {
+    for (auto value : scratchPlaceholdersOp.getResults())
+      value.replaceAllUsesWith(kernelBody->addArgument(value.getType(), loc));
+  }
+
+  // If the kernel returns opaque types, they must be part of the stub's
+  // signature.
+  uint64_t resultTypeIndex;
+  SmallVector<MO::OpaqueType> resultTypes;
+  for (auto [i, resultType] : llvm::enumerate(getResultTypes())) {
+    if (auto opaqueType = dyn_cast<MO::OpaqueType>(resultType)) {
+      resultTypeIndex = i;
+      resultTypes.push_back(opaqueType);
+    }
+  }
+
+  if (resultTypes.size() > 1) {
+    this->emitError(
+        "MGP lowering does not support multiple returned opaque types");
+    return failure();
+  }
+
+  // Create the stub op at the top of the module.
+  /// TODO: Find a better way of naming stubs.
+  static int stubCounter = 0;
+  auto stubName =
+      StringAttr::get(ctx, llvm::formatv("stub_{}", stubCounter++).str());
+  auto kernelStub = builder.create<MOGG::KernelStubOp>(
+      loc, stubName,
+      resultTypes.empty() ? nullptr : TypeAttr::get(resultTypes.front()));
+  kernelStub.getBody().takeBody(getExecBody());
+
+  // This is a list of input operands in MGP but without the chain.
+  auto loweredInputOperands = opLoweringState.getLoweredOperands();
+  Value chain = loweringState.getCurrentExecuteChain();
+  if (maybeGetInChain()) {
+    chain = loweringState.lookupExecuteLoweredValue(*maybeGetInChain());
+    loweredInputOperands.pop_back();
+  }
+  chain = opLoweringState.getGuardChain(chain);
+
+  // This is a list of all the outputs of the kernel but lowered to MGP.
+  SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
+  auto loweredOutputsStorageOr = opLoweringState.createOutputStorage(chain);
+  if (failed(loweredOutputsStorageOr))
+    return failure();
+  loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
+
+  // Scratch output placeholders turn into DPS kernel inputs. This makes it
+  // possible to do memory scheduling on temporary storage. Lower the output of
+  // the scratch placeholders into MGP types.
+  SmallVector<MGP::MOOutputStorage> scratchOutputsStorage;
+  if (scratchPlaceholdersOp) {
+    for (Type t : scratchPlaceholdersOp.getResultTypes()) {
+      auto specResult =
+          opLoweringState.createTensorSpec(cast<MO::TensorType>(t));
+      if (failed(specResult))
+        return failure();
+
+      auto bufOr = opLoweringState.createBuffer(chain, *specResult, t);
+      if (failed(bufOr))
+        return failure();
+      scratchOutputsStorage.emplace_back(*bufOr);
+    }
+  }
+
+  // Staging all the necessary inputs to create the mgp.generic.compiled.region
+  // op.
+  SmallVector<Value> operands;
+  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
+  SmallVector<mlir::Type> newKernelResTypes;
+
+  // This maps an outside SSA value into its position in the operand list of the
+  // mogg.generic.compiled.region.
+  DenseMap<Value, uint64_t> outsideValueToOperandIndex;
+  auto addOperandAndMapToIndex = [&](Value operand,
+                                     InOutSignatureAttr::InOutSemantics sig) {
+    outsideValueToOperandIndex[operand] = operands.size();
+    operands.emplace_back(operand);
+    operandSemantics.emplace_back(sig);
+  };
+
+  // 1. Add the chain with the input signature.
+  addOperandAndMapToIndex(chain, InOutSignatureAttr::kIn);
+
+  // 2. Add the inputs with the input or mutable input signature.
+  // Use zip_first because we removed the original chain from the list.
+  for (auto &&[origOperand, loweredInputOperand] :
+       llvm::zip_first(getOperands(), loweredInputOperands)) {
+    auto sig = isa<MO::BufferType>(origOperand.getType())
+                   ? InOutSignatureAttr::kMut
+                   : InOutSignatureAttr::kIn;
+    addOperandAndMapToIndex(loweredInputOperand, sig);
+  }
+
+  // 3. Add the outputs with the output signature.
+  for (auto &&outputStorage : loweredOutputsStorage)
+    addOperandAndMapToIndex(outputStorage.buffer, InOutSignatureAttr::kOut);
+
+  // 4. Add scratch buffers with the none signature because it is only used
+  // internally.
+  for (auto &&scratchStorage : scratchOutputsStorage)
+    addOperandAndMapToIndex(scratchStorage.buffer, InOutSignatureAttr::kNone);
+
+  // 5. In MGP, parameters turn into values. Add the values of input parameters
+  // with the input signature. The following maps between a parameter to a
+  // lowered SSA value. We use TypedAttr instead of ParamDeclRefAttr to make it
+  // possible to search integers (they won't be present obviously).
+  DenseMap<TypedAttr, Value> parameterToOutsideSSAValue;
+  for (auto param : getKernelUsedParameters(*this)) {
+    auto symbolicDimOr = loweringState.lowerExpression(
+        opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
+        param);
+    Value symbol = symbolicDimOr.takeValue();
+    addOperandAndMapToIndex(symbol, InOutSignatureAttr::kIn);
+    parameterToOutsideSSAValue[param] = symbol;
+  }
+
+  // 6. Add a chain to the result types.
+  newKernelResTypes.push_back(chain.getType());
+
+  // 7. The original kernel could also return an opaque type which is allocated
+  // inside of its own body. If that's the case, add it to the output of the
+  // mogg.generic.compiled.region op since it is not in DPS form. The current
+  // contract is that if a kernel op returns an opaque type, it must have been
+  // allocated internally. Tensors can't be returned in a non-DPS form.
+  DeviceRefAttr device = MO::getDeviceOrDefaultAny(*this);
+  if (!resultTypes.empty()) {
+    newKernelResTypes.push_back(MGP::OpaqueType::get(
+        ctx, resultTypes.front().getSymbol(), std::nullopt));
+  }
+
+  // 8. The original kernel may be setting some parameters (shape functions do
+  // just that). These will returned from the mogg.generic.compiled.region.
+  for (size_t i = 0; i < getOutputParamDecls().size(); i++)
+    newKernelResTypes.push_back(getOutputParamDecls()[i].getType());
+
+  auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
+      getLoc(), TypeRange{newKernelResTypes}, operands,
+      getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
+      getSummaryAttr(),        // summary
+      getIsAsyncAttr(),        // isAsync
+      ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
+      BoolAttr::get(ctx, getAllocIndices().empty() &&
+                             !getIsAsync()), // canFuseIntoOther
+      BoolAttr::get(ctx, true),              // canBeFusedInto
+      BoolAttr::get(ctx, false)              // canDuplicate
+  );
+  newKernel.setDeviceRef(device);
+
+  // Add a body to the created operation and mirror its operands with block
+  // arguments.
+  mlir::Block &regionBody = newKernel.getBody().emplaceBlock();
+  builder.setInsertionPoint(&regionBody, regionBody.begin());
+  SmallVector<Location> locs =
+      llvm::map_to_vector(operands, [](Value v) { return v.getLoc(); });
+  regionBody.addArguments(ValueRange(operands).getTypes(), locs);
+
+  // Call the previously created kernel stub by creating ops that bridge the gap
+  // between MGP and MO/MOGG. We can safely zip_first iterate through the stub's
+  // arguments and the regions operands (minus the chain that is always first)
+  // because the stub and the region have the same arguments (except for the
+  // added dimensions). Remember that we added them in the same order: inputs,
+  // outputs then scratch.
+  SmallVector<Value> stubCallOperands;
+  builder.setInsertionPointToStart(&regionBody);
+  for (auto &&[stubArgument, regionArgument] :
+       llvm::zip_first(kernelStub.getBody().front().getArguments(),
+                       regionBody.getArguments().drop_front())) {
+    if (auto asTensor = MO::dynCastFromTensorLike(stubArgument.getType())) {
+      SmallVector<Value> dynamicDimensions;
+      for (auto dim : asTensor.getDims()) {
+        auto outsideSSAValue = parameterToOutsideSSAValue.lookup(dim);
+        if (outsideSSAValue) {
+          dynamicDimensions.emplace_back(regionBody.getArgument(
+              outsideValueToOperandIndex[outsideSSAValue]));
+        }
+      }
+      auto tensorInitOp = builder.create<MOGG::TensorInitOp>(
+          loc, stubArgument.getType(), regionArgument, dynamicDimensions);
+      stubCallOperands.emplace_back(tensorInitOp);
+    } else {
+      emitError("Type not yet support in the lowering");
+      return failure();
+    }
+  }
+  assert(stubCallOperands.size() ==
+         (kernelStub.getBody().front().getNumArguments()));
+
+  // Create the call to the outlined kernel stub and use whatever return value
+  // (if any) in the output op of the new kernel.
+  auto callStubOp = builder.create<MOGG::CallStubOp>(
+      loc, resultTypes.empty() ? TypeRange{} : resultTypes.front(),
+      SymbolRefAttr::get(stubName), stubCallOperands);
+  auto readyChain = builder.create<MOGG::AsyncReadyOp>(getLoc());
+  auto outputs = llvm::map_to_vector(callStubOp.getResults(),
+                                     [](Value val) { return val; });
+  outputs.push_back(readyChain);
+  builder.create<MOGG::OutputOp>(getLoc(), outputs);
+
+  // The following is to inform the lowering state of the values we have
+  // created.
+  builder.setInsertionPointAfter(newKernel);
+  if (!resultTypes.empty()) {
+    Value oldResult = getResult(resultTypeIndex);
+    Value newResult = newKernel.getResult(1);
+    loweringState.emplaceExecuteLoweredValue(oldResult, newResult);
+  }
+
+  opLoweringState.createOutputs(newKernel->getResult(0), loweredOutputsStorage);
+  if (maybeGetOutChain()) {
+    loweringState.emplaceExecuteLoweredValue(*maybeGetOutChain(),
+                                             newKernel.getResult(0));
+  }
+
+  // Remove the placeholder ops that we replaced with DPS operands.
+  outputPlaceholdersOp.erase();
+  if (scratchPlaceholdersOp)
+    scratchPlaceholdersOp.erase();
+
+  kernelStub.walk([&](MOGG::DeviceContextPlaceholderOp moggContext) {
+    Value moggContextArg = kernelStub.getBody().front().addArgument(
+        moggContext.getType(), moggContext.getLoc());
+    moggContext.replaceAllUsesWith(moggContextArg);
+
+    Value mgpContext = loweringState.getExecuteDevice(moggContext.getDevice());
+    newKernel->insertOperands(newKernel.getNumOperands(), {mgpContext});
+    Value mgpContextArg =
+        regionBody.addArgument(mgpContext.getType(), mgpContext.getLoc());
+    // The MGP context to MOGG context conversion happens at the stub (no need
+    // for a conversion op since it's 1:1).
+    callStubOp->insertOperands(callStubOp.getNumOperands(), mgpContextArg);
+
+    // Update the kernel InOut semantics if needed.
+    if (newKernel.getInOutSignature().size() != 0) {
+      SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
+          1, InOutSignatureAttr::InOutSemantics::kNone);
+      InOutSignatureAttr oldSemantics = newKernel.getInOutSignature();
+      newKernel.setInOutSignatureAttr(oldSemantics.append(newSemantics));
+    }
+
+    moggContext.erase();
+  });
+
+  return success();
+}
 
 void ExpKernelOp::insertInputsAt(unsigned idx, ValueRange vals) {
   SmallVector<Value> ops = getInputs();
@@ -917,6 +1212,17 @@ CreateEmptyTensorsOp ExpKernelOp::getCreateEmptyTensor() {
   assert(llvm::hasSingleElement(createEmpty));
 
   return *createEmpty.begin();
+}
+
+ScratchPlaceholdersOp ExpKernelOp::getScratchPlaceholder() {
+  auto scratch = this->getOps<MOGG::ScratchPlaceholdersOp>();
+
+  if (scratch.empty())
+    return nullptr;
+
+  assert(llvm::hasSingleElement(scratch));
+
+  return *scratch.begin();
 }
 
 OutputOp ExpKernelOp::getOutputOp() {

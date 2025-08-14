@@ -44,7 +44,6 @@ class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []>
 class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []>
     : MOGG_Op<mnemonic, traits # [
               Terminator,
-              HasParent<"MOGG::ExpKernelOp">,
               DeclareOpInterfaceMethods<MOGG_KernelTerminator>
             ]>;
 
@@ -166,6 +165,14 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
+def MOGG_CallStubOp : MOGG_Op<"call.stub", []>  {
+  let summary = "Calls into an outlined stub";
+  let description = [{}];
+  let arguments = (ins SymbolRefAttr:$name, Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyType>: $outputs);
+  let assemblyFormat = "$name ($inputs^ `:` type($inputs))? (`->` type($outputs)^)? attr-dict";
+}
+
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>]>  {
   let summary = "call the registered foreach kernel";
@@ -269,8 +276,7 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
 
 def MOGG_CallViewOp : MOGG_Op<"call.view", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    Pure,
-    HasParent<"MOGG::ExpKernelOp">]> {
+    Pure]> {
   let summary = "Call the corresponding `update_input_view` function for a particular kernel";
   let description = [{
     This represents a call to `update_input_view` functions for a corresponding
@@ -305,7 +311,7 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
+def MOGG_ExpKernelOp : MOGG_LowerableOp<"experimental.kernel", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
     AttrSizedOperandSegments,
     IsolatedFromAbove,
@@ -373,6 +379,10 @@ def MOGG_ExpKernelOp : MOGG_Op<"experimental.kernel", [
     // Returns the CreateEmptyTensorsOp for this operation or null if it does
     // not exist.
     CreateEmptyTensorsOp getCreateEmptyTensor();
+
+    // Returns the ScratchPlaceholderOp for this operation or null if it does
+    // not exist.
+    ScratchPlaceholdersOp getScratchPlaceholder();
 
     // Returns the OutputOp for this operation or null if it does not exist.
     OutputOp getOutputOp();
@@ -451,8 +461,7 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">]
 
 
 def MOGG_BindLambdaOp : MOGG_Op<"bind", [
-    SingleBlock,
-    HasParent<"MOGG::ExpKernelOp">]> {
+    SingleBlock]> {
   let summary = "Bind a fusion interface to a tensor";
   let description = [{
      This operation exposes a fusion interface to a tensor. It build the connection
@@ -1606,6 +1615,50 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
                        ArrayAttr:$constantResources
                        );
   let results = (outs Variadic<AnyType>:$results);
+}
+
+def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
+  IsolatedFromAbove,
+  SymbolTable,
+  SingleBlock
+]> {
+  let summary = "Op that outlines a kernel";
+  let description = [{
+    This op defines a kernel that will eventually be compiled to Mojo text.
+  }];
+  let arguments = (ins SymbolNameAttr:$name, OptionalAttr<TypeAttr>:$returnType);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+}
+
+def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [Pure]> {
+  let summary = "Represents the construction of a tensor";
+  let description = [{
+    Takes a data pointer and a list of dimensions. Will lower this into a call
+    to the constructor of a ManagedTensorSlice.
+  }];
+
+  let arguments = (ins MGP_DeviceBufferType:$buffer, Variadic<AnyInteger>:$dims);
+  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [Pure]> {
+  let results = (outs ChainType:$output);
+
+  let summary = "Represents a chain output placeholder";
+  let description = [{
+    This is to help resolve any chain dependencies for data-dependent operations
+    and help elide chains during fusion when lowering down to a compiled region.
+  }];
+
+  let assemblyFormat = [{
+    attr-dict `:` type(results)
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD
