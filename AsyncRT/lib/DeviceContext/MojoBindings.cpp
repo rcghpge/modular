@@ -346,6 +346,16 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
       numAttrs, args));
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceStream_enqueueFunctionDirect(
+    const DeviceStream *stream, const DeviceFunction *func, uint32_t gridX,
+    uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,
+    uint32_t blockZ, uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs,
+    void **args) {
+  return checkSuccess(stream->enqueueFunctionExecDirect(
+      *func, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
+      reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args));
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceFunction_getAttribute(int32_t *result, const DeviceFunction *func,
                                     int32_t attrCode) {

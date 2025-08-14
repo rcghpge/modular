@@ -714,6 +714,19 @@ HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   return success();
 }
 
+ErrorOrSuccess HIPDeviceStream::enqueueFunctionExecDirect(
+    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    void *attrs, uint32_t numAttrs, void **args) const {
+  const auto &hipFunc = HIPDeviceFunction::cast(func);
+  const auto &hipDevice = HIPDevice::cast(device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  if (numAttrs > 0)
+    RAISE_ERROR("Function launch attributes not supported;");
+  return hipFunc.hipCallKernelDirect(gridX, gridY, gridZ, blockX, blockY,
+                                     blockZ, sharedMemBytes, args, stream_);
+}
+
 void *HIPDeviceStream::ptr() const { return hipStream(); }
 
 hipStream_t HIPDeviceStream::hipStream() const { return stream_; }

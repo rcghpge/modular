@@ -755,6 +755,18 @@ CUDADeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   return success();
 }
 
+ErrorOrSuccess CUDADeviceStream::enqueueFunctionExecDirect(
+    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    void *attrs, uint32_t numAttrs, void **args) const {
+  const auto &cudaFunc = CUDADeviceFunction::cast(func);
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  return cudaFunc.cudaCallKernelDirect(
+      gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
+      reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args, stream_);
+}
+
 void *CUDADeviceStream::ptr() const { return cudaStream(); }
 
 CUstream CUDADeviceStream::cudaStream() const { return stream_; }
