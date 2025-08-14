@@ -1198,3 +1198,144 @@ All commits have been successfully ported with appropriate adaptations for Async
 5. Fixed critical architectural divergence in nixlUcxContext
 
 The backporting effort for Week 10 and Week 11+ (July 1-18, 2025) is now complete.
+
+## Week 12+ (July 19-31, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| c71a913 | 2025-07-20 | TEST/GTEST: TestTransfer/RandomSizes - use correct memory type instead of just DRAM | Skip | - | Test framework changes, AsyncRT has own test patterns |
+| 0780842 | 2025-07-20 | ci: Add direct links to child jobs in dispatcher build description | Skip | - | CI configuration |
+| 6f09815 | 2025-07-22 | fix: use `etcd_lib_path` path for etcd-cpp-api search | Skip | - | Build system/ETCD |
+| 20fa6e7 | 2025-07-22 | obj: Add request checksum config toggle | Skip | - | OBJ backend not included |
+| f6b87ba | 2025-07-22 | CODEOWNERS: Set default code owners to maintainers team | Skip | - | Repository maintenance |
+| fc19589 | 2025-07-21 | plugins/ucx: Remove leftover cufile header | **Port** | ✅ Completed | Already handled - AsyncRT uses DeviceContext instead |
+| 98d836f | 2025-07-22 | HF3FS: Add iterations option to the test | Skip | - | HF3FS backend not included |
+| 2065788 | 2025-07-22 | fix: don't assume on library path construction in meson build file | Skip | - | Build system differences |
+| 851b306 | 2025-07-22 | Fix issue in registerMem for OBJ plugin | Skip | - | OBJ backend not included |
+| 3916a07 | 2025-07-22 | AGENT/TEST/GTEST: Fix build on redhat8 | Skip | - | Build system specific |
+| bb0c22c | 2025-07-22 | CI: added liburing installation to .gitlab/build.sh | Skip | - | CI infrastructure |
+| 18c58dd | 2025-07-22 | CI: gtest: add etcd gtests etcd CI support | Skip | - | CI infrastructure |
+| 697ab91 | 2025-07-23 | CI: avoid running partial_md_example.py twice | Skip | - | CI configuration |
+| 99d3ed9 | 2025-07-23 | obj: Fix obj plugin and tests code style | Skip | - | OBJ backend not included |
+| f289726 | 2025-07-23 | DOCS: Add Backend Developer Guide | Skip | - | Documentation |
+| 91fc319 | 2025-07-23 | Add xfer time telemetry. | Skip | - | Telemetry infrastructure - removed to focus on essential changes |
+| 45e8dab | 2025-07-23 | Added is_contiguous check to tensors. | Skip | - | Python tensor handling |
+| 0a0ceed | 2025-07-24 | Reduce wheel size | Skip | - | Python packaging |
+| 9b92499 | 2025-07-24 | testing: Add plugin gtests infrastructure | Skip | - | Test infrastructure for other backends |
+| 7525106 | 2025-07-24 | queryMem API | Skip | - | Major API addition - deferred for future work |
+| 67a12b2 | 2025-07-26 | obj: Implement queryMem API | Skip | - | OBJ backend not included |
+| bd5e304 | 2025-07-27 | Nixlbench OBJ Support | Skip | - | Benchmarking tool |
+| 29ae0ad | 2025-07-28 | PYTHON-PROJECT-WIDE: replaced print() calls with proper logging | Skip | - | Python changes |
+| 22326a6 | 2025-07-28 | Add nixlbench OBJ plugin README section | Skip | - | Documentation |
+| ed5cd86 | 2025-07-29 | [HF3FS] use shared memory to avoid memcpy to improve performance | Skip | - | HF3FS backend not included |
+| 919f019 | 2025-07-29 | Revert "PYTHON-PROJECT-WIDE: replaced print() calls with proper logging" | Skip | - | Python changes |
+| b9954d6 | 2025-07-29 | CI: Fix intermittent "file not found" errors in GPU tests | Skip | - | CI configuration |
+| c73f29e | 2025-07-29 | Update release version for 0.5.0 | Skip | - | Version management |
+| 1e658e2 | 2025-07-29 | Fix: set aws-cpp-sdk-s3 dependency as optional | Skip | - | Build dependencies |
+| 446aaef | 2025-07-29 | CODEOWNERS: Update owners to help with availability | Skip | - | Repository maintenance |
+| f4e2c3a | 2025-07-30 | NIXLBENCH: Fix memory allocation for non OBJ/storage use case | Skip | - | Benchmarking tool |
+| f56509a | 2025-07-30 | Plugins should set rpath so that they can load their dependencies | Skip | - | Plugin loading behavior |
+| d744784 | 2025-07-30 | EXAMPLES/PYTHON: partial md example - fix test logic and warnings | Skip | - | Python examples |
+| 94eb1d4 | 2025-07-30 | Add env variable that is used during the build | Skip | - | Build configuration |
+| 7288fd8 | 2025-07-31 | OBJ: Add missing backend options | Skip | - | OBJ backend not included |
+| 1cbbef0 | 2025-08-01 | Agent: Fix thread safety issue in (and optimize) genNotif(). | **Port** | ✅ Completed | Critical thread safety fix |
+| 54294d2 | 2025-08-01 | Download arch specific AWS CLI | Skip | - | CI infrastructure |
+
+### Commits to Port (2 total)
+
+1. **fc19589** - plugins/ucx: Remove leftover cufile header (✅ Completed -
+   already handled)
+2. **1cbbef0** - Agent: Fix thread safety issue in genNotif() (✅ Completed)
+
+### Summary
+
+- **Total commits reviewed**: 37
+- **Commits to port**: 2 (UCX cleanup, thread safety fix)
+- **Commits ported**: 2 ✅
+- **Commits skipped**: 35
+
+### Implementation Notes
+
+Week 12+ contains mostly infrastructure changes, documentation updates, and
+backend-specific features for backends not included in AsyncRT. The two ported
+commits represent important core improvements:
+
+1. **UCX header cleanup** - AsyncRT already uses proper DeviceContext abstractions
+2. **Thread safety fixes** - critical concurrency improvements in genNotif()
+
+### Changes Made
+
+#### 1. fc19589 - UCX cufile header cleanup (✅ Completed - already handled)
+
+**Status**: AsyncRT already properly adapted this change. The upstream commit
+removes `#include <cufile.h>` and adds `#include <cuda.h>`, but AsyncRT uses its
+own DeviceContext abstraction:
+
+- AsyncRT includes: `AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h` and
+  `AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h`
+- No direct CUDA headers needed in UCX backend
+- Change already properly implemented in AsyncRT's architecture
+
+#### 2. 1cbbef0 - Agent thread safety fix in genNotif() (✅ Completed)
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Updated genNotif() method for better thread
+   safety
+
+**Key changes**:
+
+- Moved backend list validation outside the lock scope to minimize lock contention
+- Changed exclusive lock to shared lock using `NIXL_SHARED_LOCK_GUARD`
+- Optimized local vs remote notification logic with early returns
+- Improved error handling for missing remote agents
+
+**Technical details**:
+
+- Reduces lock scope to only protect shared data access
+- Uses `find()` instead of `count()` + `[]` access for better performance
+- Separates local and remote notification logic for clearer code paths
+- Maintains backward compatibility with existing AsyncRT patterns
+
+**Testing**:
+
+- All existing UCX tests continue to pass
+- Thread safety improvements verified through existing concurrent test patterns
+
+### Testing
+
+All changes were built and tested successfully:
+
+- `./bazelw build //AsyncRT:plugin_ucx` - Build successful
+- `./bazelw test //AsyncRT/unittests:NixlTestUcx` - All tests pass
+- No regressions in existing functionality
+
+### Reasons for skipping commits
+
+- CI/build infrastructure differences (Meson vs Bazel)
+- Backend-specific changes for backends not in AsyncRT (OBJ, HF3FS, GDS, etc.)
+- Python bindings and examples
+- Documentation and version management
+- Benchmarking tool changes
+- Repository maintenance (CODEOWNERS, etc.)
+
+### Notes
+
+Week 12+ represents a more mature phase of NIXL development with focus on:
+
+- Infrastructure improvements and telemetry
+- Backend-specific optimizations for storage backends not in AsyncRT
+- Build system and packaging improvements
+- Documentation and testing infrastructure
+
+The two commits ported represent the most critical improvements for AsyncRT's
+use case:
+
+- Thread safety improvements for concurrent usage
+- Proper abstraction of CUDA dependencies
+
+The queryMem API (commit 7525106) was noted but deferred as it represents a
+major API addition that would require significant integration work across
+AsyncRT's memory management systems.
