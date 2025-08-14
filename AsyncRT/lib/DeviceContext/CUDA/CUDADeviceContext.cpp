@@ -1410,6 +1410,33 @@ ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
   return CUDADeviceStreamRef::create(CUDADevice::cast(this->device()), stream_);
 }
 
+ErrorOr<DeviceStreamRef>
+CUDADeviceContext::streamCreate(unsigned int flags) const {
+  CUstream stream;
+  CUDA_CHECK_ERR(this->cudaDriver().StreamCreate(&stream, flags));
+
+  return CUDADeviceStreamRef::create(CUDADevice::cast(this->device()), stream);
+}
+
+ErrorOr<DeviceStreamRef>
+CUDADeviceContext::streamCreateWithPriority(unsigned int flags,
+                                            int priority) const {
+  CUstream stream;
+  CUDA_CHECK_ERR(
+      this->cudaDriver().StreamCreateWithPriority(&stream, flags, priority));
+
+  return CUDADeviceStreamRef::create(CUDADevice::cast(this->device()), stream);
+}
+
+ErrorOrSuccess
+CUDADeviceContext::streamPriorityRange(int *leastPriority,
+                                       int *greatestPriority) const {
+  CUDA_WITH_CTX_ERR(*this);
+  CUDA_CHECK_ERR(
+      driver_.CtxGetStreamPriorityRange(leastPriority, greatestPriority));
+  return success();
+}
+
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));

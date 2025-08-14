@@ -365,6 +365,11 @@ public:
     CUDA_DRIVER_CALL_LOG();
     return cuStreamCreate_(phStream, flags);
   }
+  Result StreamCreateWithPriority(CUstream *phStream, unsigned int flags,
+                                  int priority) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuStreamCreateWithPriority_(phStream, flags, priority);
+  }
   Result StreamDestroy(CUstream hStream) const {
     CUDA_DRIVER_CALL_LOG();
     return cuStreamDestroy_(hStream);
@@ -377,6 +382,11 @@ public:
                          unsigned int flags) const {
     CUDA_DRIVER_CALL_LOG();
     return cuStreamWaitEvent_(hStream, hEvent, flags);
+  }
+  Result CtxGetStreamPriorityRange(int *leastPriority,
+                                   int *greatestPriority) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuCtxGetStreamPriorityRange_(leastPriority, greatestPriority);
   }
 
   Result MemAllocHost(void **pp, size_t bytesize) const {
@@ -887,6 +897,12 @@ private:
 
   using tcuStreamWaitEvent = Result(CUstream, CUevent, unsigned int);
   tcuStreamWaitEvent *cuStreamWaitEvent_;
+
+  using tcuStreamCreateWithPriority = Result(CUstream *, unsigned int, int);
+  tcuStreamCreateWithPriority *cuStreamCreateWithPriority_;
+
+  using tcuCtxGetStreamPriorityRange = Result(int *, int *);
+  tcuCtxGetStreamPriorityRange *cuCtxGetStreamPriorityRange_;
 
   using tcuMemAllocHost_v2 = Result(void **, size_t);
   tcuMemAllocHost_v2 *cuMemAllocHost_v2_;

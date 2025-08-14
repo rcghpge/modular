@@ -83,8 +83,10 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuCtxPushCurrent);
   GET_FUNC(cuCtxPopCurrent);
   GET_FUNC(cuCtxEnablePeerAccess);
+  GET_FUNC(cuCtxGetStreamPriorityRange);
 
   GET_FUNC(cuStreamCreate);
+  GET_FUNC(cuStreamCreateWithPriority);
   GET_FUNC(cuStreamDestroy);
   GET_FUNC(cuStreamSynchronize);
   GET_FUNC(cuStreamWaitEvent);

@@ -1129,6 +1129,30 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
   return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream_);
 }
 
+ErrorOr<DeviceStreamRef>
+HIPDeviceContext::streamCreate(unsigned int flags) const {
+  hipStream_t stream;
+  HIP_CHECK_ERR(this->hipDriver().StreamCreate(&stream, flags));
+  return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream);
+}
+
+ErrorOr<DeviceStreamRef>
+HIPDeviceContext::streamCreateWithPriority(unsigned int flags,
+                                           int priority) const {
+  hipStream_t stream;
+  HIP_CHECK_ERR(
+      this->hipDriver().StreamCreateWithPriority(&stream, flags, priority));
+  return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream);
+}
+
+ErrorOrSuccess
+HIPDeviceContext::streamPriorityRange(int *leastPriority,
+                                      int *greatestPriority) const {
+  HIP_WITH_CTX_ERR(*this);
+  HIP_CHECK_ERR(driver_.StreamPriorityRange(leastPriority, greatestPriority));
+  return success();
+}
+
 ErrorOrSuccess HIPDeviceContext::synchronize() const {
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));

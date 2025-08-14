@@ -588,6 +588,13 @@ public:
   Result StreamCreate(hipStream_t *phStream, unsigned int flags) const {
     return hipStreamCreate_(phStream, flags);
   }
+  Result StreamPriorityRange(int *leastPriority, int *greatestPriority) const {
+    return hipDeviceGetStreamPriorityRange_(leastPriority, greatestPriority);
+  }
+  Result StreamCreateWithPriority(hipStream_t *phStream, unsigned int flags,
+                                  int priority) const {
+    return hipStreamCreateWithPriority_(phStream, flags, priority);
+  }
   Result StreamDestroy(hipStream_t hStream) const {
     return hipStreamDestroy_(hStream);
   }
@@ -817,6 +824,13 @@ private:
 
   using thipStreamCreate = Result(hipStream_t *, unsigned int);
   thipStreamCreate *hipStreamCreate_;
+
+  using thipDeviceGetStreamPriorityRange = Result(int *, int *);
+  thipDeviceGetStreamPriorityRange *hipDeviceGetStreamPriorityRange_;
+
+  using thipStreamCreateWithPriority = Result(hipStream_t *, unsigned int,
+                                              int priority);
+  thipStreamCreateWithPriority *hipStreamCreateWithPriority_;
 
   using thipStreamDestroy = Result(hipStream_t);
   thipStreamDestroy *hipStreamDestroy_;

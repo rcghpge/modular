@@ -344,6 +344,25 @@ ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
   return CpuDeviceStreamRef::create(CpuDevice::cast(this->device()));
 }
 
+ErrorOr<DeviceStreamRef>
+CpuDeviceContext::streamCreate(unsigned int flags) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOr<DeviceStreamRef>
+CpuDeviceContext::streamCreateWithPriority(unsigned int flags,
+                                           int priority) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOrSuccess
+CpuDeviceContext::streamPriorityRange(int *leastPriority,
+                                      int *greatestPriority) const {
+  *leastPriority = 0;
+  *greatestPriority = 0;
+  return success();
+}
+
 ErrorOrSuccess CpuDeviceContext::synchronize() const {
   // Currently we do not schedule asynchronous work.
   return success();
