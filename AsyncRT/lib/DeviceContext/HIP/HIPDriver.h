@@ -738,6 +738,13 @@ public:
     return hipMemGetInfo_(free, total);
   }
 
+  Result ModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+      int *numBlocks, hipFunction_t func, int blockSize,
+      size_t dynamicSharedMemSize) const {
+    return hipModuleOccupancyMaxActiveBlocksPerMultiprocessor_(
+        numBlocks, func, blockSize, dynamicSharedMemSize);
+  }
+
   // HSA Runtime methods for getting device architecture info
   hsaStatus_t HsaInit() const {
     return hsa_init_ ? hsa_init_() : 1; // Return error if not available
@@ -958,6 +965,11 @@ private:
 
   using thipMemGetInfo = Result(size_t *, size_t *);
   thipMemGetInfo *hipMemGetInfo_;
+
+  using thipModuleOccupancyMaxActiveBlocksPerMultiprocessor =
+      Result(int *, hipFunction_t, int, size_t);
+  thipModuleOccupancyMaxActiveBlocksPerMultiprocessor
+      *hipModuleOccupancyMaxActiveBlocksPerMultiprocessor_;
 
   // HSA Runtime function pointers (optional - may not be available).
   using thsa_init = hsaStatus_t();

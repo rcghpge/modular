@@ -282,6 +282,10 @@ public:
                        uint32_t sharedMemBytes, CUlaunchAttribute *attrs,
                        uint32_t numAttrs, void **args, CUstream stream) const;
 
+  ErrorOrSuccess
+  occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, int blockSize,
+                                            size_t dynamicSharedMemSize) const;
+
   CUmodule cudaModule() const;
 
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
@@ -385,6 +389,10 @@ public:
   const CUDADriver &cudaDriver() const;
   CUcontext cudaContext() const;
   CUstream cudaStream() const;
+
+  ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
+      int *numBlocks, const DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) const override;
 
   ErrorOrSuccess cudaTensorMapEncodeTiled(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,

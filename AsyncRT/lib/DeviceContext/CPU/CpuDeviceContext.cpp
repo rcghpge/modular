@@ -403,6 +403,12 @@ CpuDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
+ErrorOrSuccess CpuDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, const DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
 ErrorOr<DeviceTimerRef> CpuDeviceContext::startTimer() const {
   return CpuDeviceTimerRef::create(*this, std::chrono::steady_clock::now());
 }

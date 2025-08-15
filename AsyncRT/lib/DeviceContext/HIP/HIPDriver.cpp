@@ -110,6 +110,8 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
 
   GET_FUNC(hipMemGetInfo);
 
+  GET_FUNC(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor);
+
   // Try to load HSA Runtime symbols (optional - for getting device
   // architecture)
   void *hsa_lib = dlopen(hsa_lib_name, RTLD_NOW);

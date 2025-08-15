@@ -879,6 +879,19 @@ ErrorOr<int32_t> HIPDeviceFunction::getAttribute(int32_t code) const {
   return result;
 }
 
+ErrorOrSuccess HIPDeviceFunction::occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, int blockSize, size_t dynamicSharedMemSize) const {
+  const auto &hipContext = HIPDeviceContext::cast(context());
+
+  HIP_WITH_CTX_ERR(hipContext);
+  HIP_CHECK_ERR(
+      hipContext.hipDriver().ModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+          numBlocks, moduleFunction_->hipFunction(), blockSize,
+          dynamicSharedMemSize));
+
+  return success();
+}
+
 const HIPDeviceFunction &HIPDeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const HIPDeviceFunction &>(func);
 }
@@ -1142,6 +1155,15 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExec(
   return hipFunc.hipCallKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,
                                sharedMemBytes,
                                HIPDeviceFunctionArguments::cast(args), stream_);
+}
+
+ErrorOrSuccess HIPDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, const DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) const {
+  const auto &hipFunc = HIPDeviceFunction::cast(func);
+  HIP_WITH_CTX_ERR(*this);
+  return (hipFunc.occupancyMaxActiveBlocksPerMultiprocessor(
+      numBlocks, blockSize, dynamicSharedMemSize));
 }
 
 ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(

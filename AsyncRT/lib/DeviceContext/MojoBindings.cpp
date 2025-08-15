@@ -468,6 +468,14 @@ AsyncRT_DeviceContext_getMemoryInfo(const DeviceContext *ctx, size_t *free,
   return errMsg;
 }
 
+MODULAR_EXPORT const char *AsyncRT_occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, const DeviceFunction *func, int blockSize,
+    size_t dynamicSharedMemSize) {
+  auto ctx = &func->context();
+  return checkSuccess(ctx->occupancyMaxActiveBlocksPerMultiprocessor(
+      numBlocks, *func, blockSize, dynamicSharedMemSize));
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_canAccess(bool *result, const DeviceContext *ctx,
                                 const DeviceContext *peer) {

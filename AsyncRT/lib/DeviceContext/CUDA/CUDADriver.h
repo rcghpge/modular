@@ -582,6 +582,15 @@ public:
   }
 
   Result
+  OccupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, CUfunction f,
+                                            int blockSize,
+                                            size_t dynamicSharedMemSize) const {
+    CUDA_DRIVER_CALL_LOG();
+    return cuOccupancyMaxActiveBlocksPerMultiprocessor_(numBlocks, f, blockSize,
+                                                        dynamicSharedMemSize);
+  }
+
+  Result
   EventCreate(CUevent *phEvent,
               CUevent_flags flags = CUevent_flags::CU_EVENT_DEFAULT) const {
     CUDA_DRIVER_CALL_LOG();
@@ -1117,6 +1126,11 @@ private:
                                          CUpointer_attribute *attributes,
                                          void **data, CUdeviceptr ptr);
   tcuPointerGetAttributes *cuPointerGetAttributes_;
+
+  using tcuOccupancyMaxActiveBlocksPerMultiprocessor = Result(int *, CUfunction,
+                                                              int, size_t);
+  tcuOccupancyMaxActiveBlocksPerMultiprocessor
+      *cuOccupancyMaxActiveBlocksPerMultiprocessor_;
 
   using tcuTensorMapEncodeTiled = Result(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,

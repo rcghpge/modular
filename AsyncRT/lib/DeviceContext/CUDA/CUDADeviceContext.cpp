@@ -935,6 +935,17 @@ const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const CUDADeviceFunction &>(func);
 }
 
+ErrorOrSuccess CUDADeviceFunction::occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, int blockSize, size_t dynamicSharedMemSize) const {
+  const auto &cudaContext = CUDADeviceContext::cast(context());
+  CUDA_WITH_CTX_ERR(cudaContext);
+  CUDA_CHECK_ERR(
+      moduleFunction_->cudaDriver().OccupancyMaxActiveBlocksPerMultiprocessor(
+          numBlocks, moduleFunction_->cudaFunction(), blockSize,
+          dynamicSharedMemSize));
+  return success();
+}
+
 // ===== CUDADeviceTimer ===== //
 CUDADeviceTimer::CUDADeviceTimer(const CUDADeviceContext &context,
                                  CUevent start, CUevent stop)
@@ -1566,6 +1577,15 @@ ErrorOr<Device::MemInfo> CUDADeviceContext::getMemoryInfo() const {
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
 
   return device().getMemoryInfo();
+}
+
+ErrorOrSuccess CUDADeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, const DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) const {
+  const auto &cudaFunc = CUDADeviceFunction::cast(func);
+  CUDA_WITH_CTX_ERR(*this);
+  return cudaFunc.occupancyMaxActiveBlocksPerMultiprocessor(
+      numBlocks, blockSize, dynamicSharedMemSize);
 }
 
 const CUDADriver &CUDADeviceContext::cudaDriver() const { return driver_; }

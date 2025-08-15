@@ -158,6 +158,9 @@ public:
   ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
+  ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
+      int *numBlocks, const DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) const override;
 
   ErrorOr<DeviceTimerRef> startTimer() const override;
   ErrorOr<std::chrono::nanoseconds>

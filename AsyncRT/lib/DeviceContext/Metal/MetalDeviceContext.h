@@ -157,6 +157,10 @@ public:
   // Memory info
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
+  ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
+      int *numBlocks, const DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) const override;
+
   // File mapping
   ErrorOr<std::tuple<void *, size_t,
                      std::optional<llvm::sys::fs::mapped_file_region>>>

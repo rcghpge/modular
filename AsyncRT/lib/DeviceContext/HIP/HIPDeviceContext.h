@@ -217,6 +217,10 @@ public:
 
   static const HIPDeviceFunction &cast(const DeviceFunction &func);
 
+  ErrorOrSuccess
+  occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, int blockSize,
+                                            size_t dynamicSharedMemSize) const;
+
 private:
   // The moduleFunction_ holds the HIP specific implementation. Methods on
   // HIPDeviceFunction forward to moduleFunction_ as needed.
@@ -301,6 +305,10 @@ public:
   ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
+
+  ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
+      int *numBlocks, const DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) const override;
 
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;

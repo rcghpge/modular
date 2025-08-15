@@ -507,6 +507,10 @@ public:
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
+  virtual ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
+      int *numBlocks, const DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) const = 0;
+
   // Set this device context as the current driver context
   ErrorOrSuccess setAsCurrent() const;
 

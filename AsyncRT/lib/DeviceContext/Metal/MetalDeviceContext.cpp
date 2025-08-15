@@ -948,6 +948,12 @@ ErrorOr<Device::MemInfo> MetalDeviceContext::getMemoryInfo() const {
   return device().getMemoryInfo();
 }
 
+ErrorOrSuccess MetalDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
+    int *numBlocks, const DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) const {
+  RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
+}
+
 ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                             Device::AllocMode mode) const {
   if (ptr == nullptr)

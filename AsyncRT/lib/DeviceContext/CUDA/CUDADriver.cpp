@@ -161,6 +161,8 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuTensorMapEncodeTiled);
   GET_FUNC(cuPointerGetAttributes);
 
+  GET_FUNC(cuOccupancyMaxActiveBlocksPerMultiprocessor);
+
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
   if (err != SUCCESS) {
