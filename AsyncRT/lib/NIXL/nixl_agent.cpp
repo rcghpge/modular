@@ -730,7 +730,6 @@ nixl_status_t nixlAgent::createXferReq(
 
       if ((ret1 == nixl_status_t::NIXL_SUCCESS) &&
           (ret2 == nixl_status_t::NIXL_SUCCESS)) {
-        NIXL_INFO << "Selected backend: " << backend->getType();
         handle->engine = backend;
         break;
       }
