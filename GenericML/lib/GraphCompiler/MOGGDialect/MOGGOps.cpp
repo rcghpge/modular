@@ -808,6 +808,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // because the stub and the region have the same arguments (except for the
   // added dimensions). Remember that we added them in the same order: inputs,
   // outputs then scratch.
+  const uint64_t endOfInputArguments = getNumOperands();
+  uint64_t idx = 0;
   SmallVector<Value> stubCallOperands;
   builder.setInsertionPointToStart(&regionBody);
   for (auto &&[stubArgument, regionArgument] :
@@ -822,13 +824,19 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
               outsideValueToOperandIndex[outsideSSAValue]));
         }
       }
+      /// TODO: Support fusion enums
+      IOKind io = (idx < endOfInputArguments) ? IOKind::Input : IOKind::Output;
+      bool mut = idx >= endOfInputArguments ||
+                 isa<MO::BufferType>(stubArgument.getType());
       auto tensorInitOp = builder.create<MOGG::TensorInitOp>(
-          loc, stubArgument.getType(), regionArgument, dynamicDimensions);
+          loc, stubArgument.getType(), regionArgument, dynamicDimensions,
+          BoolAttr::get(ctx, mut), IOKindAttr::get(ctx, io));
       stubCallOperands.emplace_back(tensorInitOp);
     } else {
       emitError("Type not yet support in the lowering");
       return failure();
     }
+    ++idx;
   }
   assert(stubCallOperands.size() ==
          (kernelStub.getBody().front().getNumArguments()));

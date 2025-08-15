@@ -1639,7 +1639,11 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [Pure]> {
     to the constructor of a ManagedTensorSlice.
   }];
 
-  let arguments = (ins MGP_DeviceBufferType:$buffer, Variadic<AnyInteger>:$dims);
+  let arguments = (ins MGP_DeviceBufferType:$buffer,
+                       Variadic<AnyInteger>:$dims,
+                       BoolAttr:$mut,
+                       MOGG_IOKind:$io
+                  );
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
 
   let assemblyFormat = [{
