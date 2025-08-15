@@ -490,6 +490,12 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst,
 }
 
 ErrorOrSuccess
+MetalDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
+                                             size_t byteSize) const {
+  RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
+}
+
+ErrorOrSuccess
 MetalDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                                size_t byteSize) const {
   RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");

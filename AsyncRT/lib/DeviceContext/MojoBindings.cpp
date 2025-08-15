@@ -321,6 +321,12 @@ AsyncRT_DeviceContext_DtoH_async(const DeviceContext *ctx, void *dst,
 }
 
 MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_HtoD_async_sized(const DeviceContext *ctx, void *dst,
+                                       void *src, size_t size) {
+  return checkSuccess(ctx->enqueueCopyToDeviceSized(dst, src, size));
+}
+
+MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_DtoH_async_sized(const DeviceContext *ctx, void *dst,
                                        void *src, size_t size) {
   return checkSuccess(ctx->enqueueCopyFromDeviceSized(dst, src, size));

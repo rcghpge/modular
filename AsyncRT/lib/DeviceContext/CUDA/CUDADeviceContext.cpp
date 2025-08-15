@@ -1050,6 +1050,16 @@ CUDADeviceContext::enqueueCopyFromDevice(void *dst,
 }
 
 ErrorOrSuccess
+CUDADeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
+                                            size_t byteSize) const {
+  CUDA_WITH_CTX_ERR(*this);
+
+  CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst, src, byteSize, stream_));
+  MAYBE_SYNC(*this);
+  return success();
+}
+
+ErrorOrSuccess
 CUDADeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                               size_t byteSize) const {
   CUDA_WITH_CTX_ERR(*this);

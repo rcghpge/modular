@@ -437,6 +437,9 @@ public:
   virtual ErrorOrSuccess
   enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const = 0;
 
+  virtual ErrorOrSuccess enqueueCopyToDeviceSized(void *dst, void *src,
+                                                  size_t byteSize) const = 0;
+
   virtual ErrorOrSuccess enqueueCopyFromDeviceSized(void *dst, void *src,
                                                     size_t byteSize) const = 0;
 

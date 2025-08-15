@@ -990,6 +990,16 @@ HIPDeviceContext::enqueueCopyFromDevice(void *dst,
 }
 
 ErrorOrSuccess
+HIPDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
+                                           size_t byteSize) const {
+  HIP_WITH_CTX_ERR(*this);
+
+  HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dst, src, byteSize, stream_));
+  MAYBE_SYNC(*this);
+  return success();
+}
+
+ErrorOrSuccess
 HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                              size_t byteSize) const {
   HIP_WITH_CTX_ERR(*this);
