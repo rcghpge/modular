@@ -2839,7 +2839,8 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   auto tensorTy = MO::dynCastFromTensorLike(getType());
   bool isScalar = getDims().empty();
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
-  MojoValue rankParam = MojoValue(tensorTy.getRankNonZero());
+  MojoValue rankParam =
+      MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
   auto mutParam = getMut();
   auto ioParam = MojoValue(HardcodedMojoSymbols::struct_IO)
                      .get(MOGG::stringifyIOKind(getIo()));
@@ -2847,8 +2848,8 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       state.builder.alias(state.getStaticShapeAsMojoValue(tensorTy));
   auto stridesParam =
       state.builder.alias(state.getStaticStridesAsMojoValue(tensorTy));
-  MojoValue alignmentParam(AsyncRT::getPreferredAlignment(
-      MO::getDeviceOrDefaultAny(tensorTy).getLabel().str()));
+  MojoValue alignmentParam(static_cast<uint64_t>(AsyncRT::getPreferredAlignment(
+      MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
   auto shapeVar =
       state.builder.var(MojoValue(HardcodedMojoSymbols::struct_IndexList)(
           {rankParam}, isScalar ? ArrayRef(MojoValue("1"))
