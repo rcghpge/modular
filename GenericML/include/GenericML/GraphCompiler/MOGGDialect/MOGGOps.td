@@ -1665,4 +1665,55 @@ def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [Pure]> {
   }];
 }
 
+/// TODO(GEX-2434): Wrap kernel body arguments in a mogg.async<T> to fully model
+/// the fact that they are not values but pointers that must be unpacked.
+def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [Pure, SameOperandsAndResultType]> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$output);
+  let summary = "Unpacks an async value and returns it as sync";
+  let description = [{
+    The values outside of a `mogg.generic.compiled.region` are asynchronous.
+    This operation unpacks them and returns values of the same type. This could
+    have been an implicit behaviour but this op is meant to formalize the
+    process of unpacking which will actually happen.
+
+    Note: The real types of the kernel operands should be pointers but this is
+    not reflected in the IR. This is why this operation has the same input and
+    output types.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
+  let arguments = (ins AnyType:$input);
+  let summary = "Decrements the async reference of the underlying object";
+  let description = [{
+    This is the 1:1 mirror of mogg.async.unpack. It must be deref an async value
+    after its last use.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [Pure, SameOperandsAndResultType]> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$output);
+  let summary = "Packs an sync value and returns it as async";
+  let description = [{
+    This is the opposite of the unpacking operation. It packs synchronous values
+    into asynchronous values.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD
