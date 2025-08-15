@@ -146,6 +146,9 @@ struct FuseGenericCompiledRegions
   using FuseGenericCompiledRegionsBase::FuseGenericCompiledRegionsBase;
 
   void runOnOperation() override {
+    if (MOGG::useExperimentalMojoPath())
+      return;
+
     MGP::ModelOp model = getOperation();
     // TODO(GEX-784): NOTE: all generic regions should not allow duplication.
     // Fuse in any op that can be duplicated.
