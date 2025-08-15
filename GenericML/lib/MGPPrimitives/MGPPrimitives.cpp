@@ -27,6 +27,7 @@
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Threading/SpinWaiter.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
@@ -101,6 +102,8 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
 
 /// Extract device hint from DeviceContext if present in operands.
 static int deviceHintFor(const RemainingArguments &operands) {
+  llvm::SmallSet<int, 8> acceleratorIds;
+
   for (const AnyAsyncValueRef &operand : operands) {
     // Check for DeviceContextRef.
     if (operand.isType<AsyncRT::DeviceContextRef>()) {
@@ -108,9 +111,18 @@ static int deviceHintFor(const RemainingArguments &operands) {
       const auto &deviceCtxRef =
           *static_cast<const AsyncRT::DeviceContextRef *>(
               operand.getPointerToData());
-      return deviceCtxRef->device().id();
+      if (deviceCtxRef->device().api() != AsyncRT::Device::cpuAPI) {
+        // Track only accelerator device IDs.
+        acceleratorIds.insert(deviceCtxRef->device().id());
+      }
     }
   }
+
+  // Return valid ID only if there's exactly one accelerator DeviceContextRef.
+  if (acceleratorIds.size() == 1)
+    return *acceleratorIds.begin();
+
+  // Multiple contexts or CPU context -> no preference.
   return kNoDevicePreference;
 }
 
