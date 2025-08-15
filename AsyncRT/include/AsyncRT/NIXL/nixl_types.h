@@ -14,6 +14,7 @@
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/STLExtras.h"
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -142,6 +143,13 @@ using nixl_b_params_t = std::unordered_map<std::string, std::string>;
  * std::vector<nixl_blob_t>> to hold nixl_notifs_t (nixl notifications)
  */
 using nixl_notifs_t = std::unordered_map<std::string, std::vector<nixl_blob_t>>;
+
+/**
+ * @brief A typedef for std::optional<nixl_b_params_t> for querying memory
+ * results Validity of a nixl_query_resp_t can be checked by has_value() method,
+ *        and if true, the dictionary can be accessed by value() method.
+ */
+using nixl_query_resp_t = std::optional<nixl_b_params_t>;
 
 /**
  * @brief A constant to define the default communication port.

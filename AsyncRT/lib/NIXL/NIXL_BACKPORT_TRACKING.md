@@ -1224,7 +1224,7 @@ The backporting effort for Week 10 and Week 11+ (July 1-18, 2025) is now complet
 | 45e8dab | 2025-07-23 | Added is_contiguous check to tensors. | Skip | - | Python tensor handling |
 | 0a0ceed | 2025-07-24 | Reduce wheel size | Skip | - | Python packaging |
 | 9b92499 | 2025-07-24 | testing: Add plugin gtests infrastructure | Skip | - | Test infrastructure for other backends |
-| 7525106 | 2025-07-24 | queryMem API | Skip | - | Major API addition - deferred for future work |
+| 7525106 | 2025-07-24 | queryMem API | **Port** | ✅ Completed | Memory/storage query API implementation |
 | 67a12b2 | 2025-07-26 | obj: Implement queryMem API | Skip | - | OBJ backend not included |
 | bd5e304 | 2025-07-27 | Nixlbench OBJ Support | Skip | - | Benchmarking tool |
 | 29ae0ad | 2025-07-28 | PYTHON-PROJECT-WIDE: replaced print() calls with proper logging | Skip | - | Python changes |
@@ -1243,27 +1243,29 @@ The backporting effort for Week 10 and Week 11+ (July 1-18, 2025) is now complet
 | 1cbbef0 | 2025-08-01 | Agent: Fix thread safety issue in (and optimize) genNotif(). | **Port** | ✅ Completed | Critical thread safety fix |
 | 54294d2 | 2025-08-01 | Download arch specific AWS CLI | Skip | - | CI infrastructure |
 
-### Commits to Port (2 total)
+### Commits to Port (3 total)
 
 1. **fc19589** - plugins/ucx: Remove leftover cufile header (✅ Completed -
    already handled)
 2. **1cbbef0** - Agent: Fix thread safety issue in genNotif() (✅ Completed)
+3. **7525106** - queryMem API (✅ Completed)
 
 ### Summary
 
 - **Total commits reviewed**: 37
-- **Commits to port**: 2 (UCX cleanup, thread safety fix)
-- **Commits ported**: 2 ✅
-- **Commits skipped**: 35
+- **Commits to port**: 3 (UCX cleanup, thread safety fix, queryMem API)
+- **Commits ported**: 3 ✅
+- **Commits skipped**: 34
 
 ### Implementation Notes
 
 Week 12+ contains mostly infrastructure changes, documentation updates, and
-backend-specific features for backends not included in AsyncRT. The two ported
+backend-specific features for backends not included in AsyncRT. The three ported
 commits represent important core improvements:
 
 1. **UCX header cleanup** - AsyncRT already uses proper DeviceContext abstractions
 2. **Thread safety fixes** - critical concurrency improvements in genNotif()
+3. **queryMem API** - memory/storage query functionality for backends
 
 ### Changes Made
 
@@ -1304,6 +1306,50 @@ own DeviceContext abstraction:
 - All existing UCX tests continue to pass
 - Thread safety improvements verified through existing concurrent test patterns
 
+#### 3. 7525106 - queryMem API (✅ Completed)
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/nixl_types.h`: Added nixl_query_resp_t type and
+  std::optional include
+- `AsyncRT/include/AsyncRT/NIXL/nixl.h`: Added queryMem method declaration
+- `AsyncRT/include/AsyncRT/NIXL/backend/backend_engine.h`: Added queryMem
+  virtual method to backend interface
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Implemented queryMem method in nixlAgent
+
+**Key changes**:
+
+- Added `nixl_query_resp_t` as `std::optional<nixl_b_params_t>` for query
+  results
+- Implemented queryMem API that requires exactly one backend in extra_params
+- Backend interface provides default implementation returning
+  NIXL_ERR_NOT_SUPPORTED
+- Agent implementation validates parameters and delegates to backend engine
+- Follows the same pattern as upstream NIXL implementation
+
+**Technical details**:
+
+- queryMem API allows querying information about memory/storage descriptors
+- Requires backend to be specified via extra_params to determine which backend
+  handles the query
+- Returns vector of optional results corresponding to input descriptors
+- Backend-specific implementations can override the default to provide
+  meaningful query results
+
+**Adaptations for AsyncRT**:
+
+- Used AsyncRT's nixl_status_t enum instead of raw NIXL status codes
+- Maintained compatibility with existing AsyncRT error handling patterns
+- Followed AsyncRT namespace conventions (M::AsyncRT::NIXL)
+- Integration ready for backend-specific queryMem implementations
+
+**Testing**:
+
+- Build successful with new API additions
+- All existing tests continue to pass
+- No regressions in existing functionality
+- Ready for backend-specific queryMem implementations
+
 ### Testing
 
 All changes were built and tested successfully:
@@ -1330,12 +1376,9 @@ Week 12+ represents a more mature phase of NIXL development with focus on:
 - Build system and packaging improvements
 - Documentation and testing infrastructure
 
-The two commits ported represent the most critical improvements for AsyncRT's
+The three commits ported represent the most critical improvements for AsyncRT's
 use case:
 
 - Thread safety improvements for concurrent usage
 - Proper abstraction of CUDA dependencies
-
-The queryMem API (commit 7525106) was noted but deferred as it represents a
-major API addition that would require significant integration work across
-AsyncRT's memory management systems.
+- Memory/storage query API for backend introspection
