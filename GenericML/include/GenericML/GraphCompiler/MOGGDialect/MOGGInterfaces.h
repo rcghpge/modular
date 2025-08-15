@@ -7,6 +7,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGINTERFACES_H
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGINTERFACES_H
 
+#include "GenericML/GraphCompiler/MOGGDialect/Support/EmitMojoState.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 

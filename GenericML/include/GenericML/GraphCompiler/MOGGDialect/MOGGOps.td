@@ -165,12 +165,13 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_CallStubOp : MOGG_Op<"call.stub", []>  {
+def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]>  {
   let summary = "Calls into an outlined stub";
   let description = [{}];
   let arguments = (ins SymbolRefAttr:$name, Variadic<AnyType>:$inputs);
   let results = (outs Variadic<AnyType>: $outputs);
   let assemblyFormat = "$name ($inputs^ `:` type($inputs))? (`->` type($outputs)^)? attr-dict";
+  /// TODO: Add verifier for at most 1 output.
 }
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
@@ -223,7 +224,9 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 }
 
 
-def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", []>  {
+def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+]>  {
   let summary = "Call the registered `view_copy_impl` function for materializing a view kernel";
   let description = [{
     This represents a call to the mojo implementation of `view_copy_impl`
@@ -276,6 +279,7 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
 
 def MOGG_CallViewOp : MOGG_Op<"call.view", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
     Pure]> {
   let summary = "Call the corresponding `update_input_view` function for a particular kernel";
   let description = [{
@@ -1536,7 +1540,10 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
   let hasCanonicalizeMethod = 1;
 }
 
-def MOGG_TensorGetShapeOp: MOGG_Op<"tensor.shape", [Pure]> {
+def MOGG_TensorGetShapeOp: MOGG_Op<"tensor.shape", [
+  Pure,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+]> {
   let summary = "Gets the shape of a tensor";
   let arguments = (ins TypeAttr:$tensor);
   let results = (outs MOGG_Shape:$shape);
@@ -1632,7 +1639,24 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   let hasCustomAssemblyFormat = 1;
 }
 
-def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [Pure]> {
+def MOGG_MojoModuleOp : MOGG_Op<"mojo.module", []> {
+  let summary = "Module containing all the emitted Mojo code";
+  let description = [{
+    The Mojo text that was emitted from the EmitMojo pass will be an attribute
+    of this operation. It is stored in a hex format, as a dialect resource.
+  }];
+  let arguments = (ins
+    ConfinedAttr<
+      ElementsAttr,
+      [AnyAttrOf<[Builtin_DenseResourceElementsAttr]>]
+    >:$module);
+  let assemblyFormat = [{ attr-dict }];
+}
+
+def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
+  Pure,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+]> {
   let summary = "Represents the construction of a tensor";
   let description = [{
     Takes a data pointer and a list of dimensions. Will lower this into a call
@@ -1651,7 +1675,11 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [Pure]> {
   }];
 }
 
-def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [Pure]> {
+def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
+  Pure,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
   let results = (outs ChainType:$output);
 
   let summary = "Represents a chain output placeholder";
@@ -1667,7 +1695,12 @@ def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [Pure]> {
 
 /// TODO(GEX-2434): Wrap kernel body arguments in a mogg.async<T> to fully model
 /// the fact that they are not values but pointers that must be unpacked.
-def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [Pure, SameOperandsAndResultType]> {
+def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
+  Pure,
+  SameOperandsAndResultType,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
   let summary = "Unpacks an async value and returns it as sync";
@@ -1688,6 +1721,7 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [Pure, SameOperandsAndResultTyp
 }
 
 def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
   HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let arguments = (ins AnyType:$input);
@@ -1702,7 +1736,11 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
   }];
 }
 
-def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [Pure, SameOperandsAndResultType]> {
+def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
+  Pure,
+  SameOperandsAndResultType,
+  HasParent<"MOGG::GenericCompiledRegionOp">
+]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
   let summary = "Packs an sync value and returns it as async";

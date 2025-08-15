@@ -73,6 +73,20 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   ];
 }
 
+def MOGG_EmitsMojoInterface : OpInterface<"EmitsMojoInterface"> {
+  let description = [{
+  }];
+
+  let cppNamespace = "::M::MOGG";
+
+  let methods = [
+    InterfaceMethod<
+      "Return the body of the kernel, which should be the code we will compile",
+      "mlir::LogicalResult", "emitMojo", (ins "M::MOGG::EmitMojoState&":$state)
+    >,
+  ];
+}
+
 def MOGG_CompilableKernel : OpInterface<"CompilableKernel"> {
   let description = [{
     Implemented by operations which represent a compilable kernel so multiple

@@ -34,6 +34,7 @@ namespace M::MGP {
 #define GEN_PASS_DECL_FUSEGENERICCOMPILEDREGIONS
 #define GEN_PASS_DECL_LEGALIZEASYNCREFDEALLOCATIONS
 #define GEN_PASS_DECL_LOWERASYNCREFS
+#define GEN_PASS_DECL_EMITMOJO
 #define GEN_PASS_DECL_LOWERPRIMITIVES
 #define GEN_PASS_DECL_LOWERMOGGABI
 #define GEN_PASS_DECL_POSTABIFUSEGENERICREGIONS
@@ -59,6 +60,10 @@ std::unique_ptr<mlir::Pass> createLowerPrimitives(
 std::unique_ptr<mlir::Pass> createLowerAsyncRefs(
     const LowerAsyncRefsOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
+
+std::unique_ptr<mlir::Pass>
+createEmitMojo(const EmitMojoOptions &opts,
+               std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
 
 } // namespace M::MGP
 

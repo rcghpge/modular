@@ -18,6 +18,12 @@ enum class FusionType {
   HARD  // e.g. use lambda fusion interface
 };
 
+inline bool willUltimatelyEmitMojo(MOGG::GenericCompiledRegionOp kernel) {
+  return llvm::any_of(kernel.getOps(), [](auto &op) {
+    return isa<MOGG::EmitsMojoInterface>(op);
+  });
+}
+
 inline bool useExperimentalMojoPath() {
   auto var = llvm::sys::Process::GetEnv("EMIT_MOJO");
   return var.has_value() && var.value() == "1";

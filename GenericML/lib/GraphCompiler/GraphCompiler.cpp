@@ -86,6 +86,7 @@ void M::MO::registerPasses() {
   MGP::registerCoalesceAsyncRefsPass();
   MGP::registerMOToPrimitives();
   MGP::registerLowerAsyncRefs();
+  MGP::registerEmitMojo();
   MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
@@ -359,6 +360,10 @@ void M::MO::buildMoToMgpPipeline(
   lowerAsyncopt.kernelLibraryPaths = kernelLibraryPaths;
   pm.addPass(MGP::createLowerAsyncRefs(lowerAsyncopt, libraryAnalysis));
   pm.addPass(MGP::createCoalesceAsyncRefs());
+
+  MGP::EmitMojoOptions emitMojoOptions;
+  emitMojoOptions.kernelLibraryPaths = kernelLibraryPaths;
+  pm.addPass(MGP::createEmitMojo(emitMojoOptions));
 
   // If we are jitting then we need to compile the jit kernels as well.
   MOGG::JitCompileKernelsOptions jitOpts;

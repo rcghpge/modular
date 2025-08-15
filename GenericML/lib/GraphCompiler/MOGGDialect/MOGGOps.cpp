@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
@@ -546,6 +547,39 @@ SmallVector<Value> CallMaterializeOp::getKernelDPSOutputs() {
 }
 
 Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
+
+LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
+  /// TODO: Look it up in the MojoLibraryAnalysis instead.
+  static const MojoValue targetParamName = "target";
+  SmallVector<MojoValue> mojoOperands = {state.getMojoValuesFor(getOperands())};
+  std::swap(mojoOperands[0], mojoOperands[1]);
+  // Rebind the tensor to ensure that all parameters are deduced.
+  mojoOperands[0] = state.builder.var(mojoOperands[0].rebind(MojoValue(
+      HardcodedMojoSymbols::alias_OutputTensor)[MojoValue("static_spec")
+                                                    .equal(mojoOperands[1].get(
+                                                        "static_spec"))]));
+  MojoValue targetParamValue =
+      MO::getDeviceOrDefaultAny(getOperation()).getLabel();
+  auto mojoSymbolName =
+      state.getOriginalMojoNameFor(state.analysis.getViewMaterializeKernel());
+
+  /// TODO: It's okay to assume it always raises because we control the Mojo but
+  /// it would be better if we checked the function's signature instead. This
+  /// information is lost in KGEN and it's not worth adding an annotation for
+  /// it. When we move off of KGEN, we should do it.
+  state.builder
+      .try_([&]() {
+        state.builder.call(mojoSymbolName,
+                           {targetParamName.equal(targetParamValue.quote())},
+                           mojoOperands);
+      })
+      .except([&](const MojoValue &e) {
+        /// TODO: Set an error on the context.
+        state.builder.pass();
+      });
+
+  return success();
+}
 
 LogicalResult CallExecuteOp::verify() {
   uint64_t numberOfContexts = llvm::count_if(getOperandTypes(), [](auto ty) {
@@ -2769,6 +2803,139 @@ LogicalResult AsTupleOp::verify() {
            << "Number of operands does not match number of types in tuple";
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncUnpackOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
+  auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+  state.mlirValueToMojoValue[getResult()] = state.builder.var(
+      moggAsyncUnpackFunc({state.mlirTypeToMojoType(getType())},
+                          state.mlirValueToMojoValue[getInput()]));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncDelOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncDelOp::emitMojo(EmitMojoState &state) {
+  auto moggAsyncDelFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+  state.builder.call(moggAsyncDelFunc, {},
+                     state.mlirValueToMojoValue[getInput()]);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorInitOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
+  auto tensorTy = MO::dynCastFromTensorLike(getType());
+  bool isScalar = getDims().empty();
+  MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
+  MojoValue rankParam = MojoValue(tensorTy.getRankNonZero());
+  auto mutParam = getMut();
+  auto ioParam = MojoValue(HardcodedMojoSymbols::struct_IO)
+                     .get(MOGG::stringifyIOKind(getIo()));
+  auto shapeParam =
+      state.builder.alias(state.getStaticShapeAsMojoValue(tensorTy));
+  auto stridesParam =
+      state.builder.alias(state.getStaticStridesAsMojoValue(tensorTy));
+  MojoValue alignmentParam(AsyncRT::getPreferredAlignment(
+      MO::getDeviceOrDefaultAny(tensorTy).getLabel().str()));
+  auto shapeVar =
+      state.builder.var(MojoValue(HardcodedMojoSymbols::struct_IndexList)(
+          {rankParam}, isScalar ? ArrayRef(MojoValue("1"))
+                                : state.getMojoValuesFor(getDims())));
+  auto moggTensorInit = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+  state.mlirValueToMojoValue[getResult()] = state.builder.var(
+      moggTensorInit({dTypeParam, rankParam, mutParam, ioParam, shapeParam,
+                      stridesParam, alignmentParam},
+                     {state.mlirValueToMojoValue[getBuffer()], shapeVar}));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CallStubOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
+  state.builder.newline();
+  MojoValue func(getName().getLeafReference().str());
+  if (getNumResults()) {
+    state.mlirValueToMojoValue[getResult(0)] =
+        state.builder.var(func({}, state.getMojoValuesFor(getOperands())));
+  } else {
+    state.builder.call(func, {}, state.getMojoValuesFor(getOperands()));
+  }
+  state.builder.newline();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncReadyOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
+  auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorGetShapeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorGetShapeOp::emitMojo(EmitMojoState &state) {
+  /// TODO: Look it up in the MojoLibraryAnalysis instead.
+  auto stubOp = getOperation()->getParentOfType<KernelStubOp>();
+  for (auto arg : stubOp.getBody().getArguments()) {
+    if (arg.getType() == getTensor()) {
+      auto tensorMojoValue = state.mlirValueToMojoValue[arg];
+      state.mlirValueToMojoValue[getResult()] = tensorMojoValue.get(
+          HardcodedMojoSymbols::func_ManagedTensorslice_shape)();
+
+      return success();
+    }
+  }
+
+  emitError("Could not find a tensor to get the shape");
+
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// CallViewOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
+  // First operand is always a tensor.
+  auto tensorMojoValue = state.mlirValueToMojoValue[getOperand(0)];
+  // Rebind the tensor to ensure that all parameters are deduced.
+  auto inputTensorMojoValue = state.builder.var(tensorMojoValue.rebind(
+      MojoValue(HardcodedMojoSymbols::alias_InputTensor)
+          [MojoValue("static_spec")
+               .equal(tensorMojoValue.get("static_spec"))]));
+  auto inputMojoValues = state.getMojoValuesFor(getInputs());
+  inputMojoValues.front() = inputTensorMojoValue;
+
+  auto outputShapeParameter = state.builder.alias(
+      state.getStaticShapeAsMojoValue(getResult().getType()));
+  auto mojoSymbolName = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredMojoUpdateViewFunctionFor(getKernelName()));
+  state.mlirValueToMojoValue[getResult()] = state.builder.var(
+      mojoSymbolName({outputShapeParameter}, inputMojoValues));
   return success();
 }
 

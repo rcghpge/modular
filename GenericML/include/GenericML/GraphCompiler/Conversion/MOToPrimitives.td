@@ -202,5 +202,23 @@ def CoalesceAsyncRefs: Pass<"coalesce-async-refs", "ModuleOp"> {
                            "MGP::MGPDialect"];
 }
 
+def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
+  let summary = "Emit Mojo text";
+  let description = [{
+    Emit Mojo text from kernel stubs and `mogg.generic.compiled.region`. The
+    Mojo is put in a stub that will be held until JIT compilation.
+  }];
+
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"dumpAsText", "dump-as-text", "bool", "false",
+       "Flag to dump the emitted mojo as text">
+  ];
+
+  let dependentDialects = ["MOGG::MOGGDialect",
+                           "MGP::MGPDialect"];
+}
+
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
