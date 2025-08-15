@@ -258,6 +258,33 @@ MODULAR_EXPORT void AsyncRT_DeviceStream_release(const DeviceStream *stream) {
 }
 
 MODULAR_EXPORT const char *
+AsyncRT_DeviceStream_waitForEvent(const DeviceStream *stream,
+                                  const DeviceEvent *event) {
+  return checkSuccess(stream->enqueueWaitForEvent(*event));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceStream_eventRecord(const DeviceStream *stream,
+                                 const DeviceEvent *event) {
+  return checkSuccess(stream->eventRecord(*event));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceEvent_synchronize(const DeviceEvent *event) {
+  return checkSuccess(event->synchronize());
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceEvent_retain(const DeviceEvent *event) {
+  // Increment the low-level reference count.
+  DeviceEventRef::lowLevelAddRef(event);
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceEvent_release(const DeviceEvent *event) {
+  // Decrement the low-level reference count.
+  DeviceEventRef::lowLevelDropRef(event);
+}
+
+MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_synchronize(const DeviceContext *ctx) {
   return checkSuccess(ctx->synchronize());
 }
@@ -266,6 +293,17 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_enqueue_wait_for_context(const DeviceContext *ctx,
                                                const DeviceContext *other) {
   return checkSuccess(ctx->enqueueWaitFor(*other));
+}
+
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_eventCreate(
+    const DeviceEvent **result, const DeviceContext *ctx, unsigned int flags) {
+  return checkRef(result, ctx->eventCreate(flags));
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_waitForEvent(const DeviceContext *ctx,
+                                   const DeviceEvent *event) {
+  return checkSuccess(ctx->enqueueWaitFor(*event));
 }
 
 MODULAR_EXPORT const char *

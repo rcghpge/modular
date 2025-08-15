@@ -714,6 +714,25 @@ HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   return success();
 }
 
+ErrorOrSuccess HIPDeviceStream::eventRecord(const DeviceEvent &event) const {
+  const auto &hipEvent = HIPDeviceEvent::cast(event);
+  const auto &hipDevice = HIPDevice::cast(device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  HIP_CHECK_ERR(
+      hipDevice.hipDriver().EventRecord(hipEvent.hipEvent(), stream_));
+  return success();
+}
+
+ErrorOrSuccess HIPDeviceStream::waitEvent(const DeviceEvent &event,
+                                          unsigned int flags) const {
+  const auto &hipEvent = HIPDeviceEvent::cast(event);
+  const auto &hipDevice = HIPDevice::cast(device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  HIP_CHECK_ERR(hipDevice.hipDriver().StreamWaitEvent(
+      stream_, hipEvent.hipEvent(), flags));
+  return success();
+}
+
 ErrorOrSuccess HIPDeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
@@ -1177,6 +1196,14 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.EventCreate(&event, 0));
   HIP_CHECK_ERR(driver_.EventRecord(event, stream_));
+  return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
+}
+
+ErrorOr<DeviceEventRef>
+HIPDeviceContext::eventCreate(unsigned int flags) const {
+  hipEvent_t event;
+  HIP_WITH_CTX_ERR(*this);
+  HIP_CHECK_ERR(driver_.EventCreate(&event, flags));
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
 }
 

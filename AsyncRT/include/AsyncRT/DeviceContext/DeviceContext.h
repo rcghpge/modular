@@ -287,6 +287,9 @@ public:
                             uint32_t blockY, uint32_t blockZ,
                             uint32_t sharedMemBytes, void *attrs,
                             uint32_t numAttrs, void **args) const = 0;
+  virtual ErrorOrSuccess eventRecord(const DeviceEvent &event) const = 0;
+  virtual ErrorOrSuccess waitEvent(const DeviceEvent &event,
+                                   unsigned int flags) const = 0;
 
   virtual ErrorOrSuccess
   enqueueWaitForEvent(const DeviceEvent &event) const = 0;
@@ -487,6 +490,7 @@ public:
   virtual ErrorOrSuccess synchronize() const = 0;
 
   virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
+  virtual ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const = 0;
   virtual ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const = 0;
   virtual ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const = 0;
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const {

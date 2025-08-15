@@ -173,6 +173,15 @@ CpuDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
+ErrorOrSuccess CpuDeviceStream::eventRecord(const DeviceEvent &event) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOrSuccess CpuDeviceStream::waitEvent(const DeviceEvent &event,
+                                          unsigned int flags) const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
 ErrorOrSuccess CpuDeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
@@ -376,6 +385,11 @@ ErrorOrSuccess CpuDeviceContext::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() const {
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
+ErrorOr<DeviceEventRef>
+CpuDeviceContext::eventCreate(unsigned int flags) const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 

@@ -76,6 +76,10 @@ public:
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
 
+  ErrorOrSuccess eventRecord(const DeviceEvent &event) const override;
+  ErrorOrSuccess waitEvent(const DeviceEvent &event,
+                           unsigned int flags) const override;
+
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(const DeviceFunction &func,
@@ -151,6 +155,7 @@ public:
   ErrorOrSuccess synchronize() const override;
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
+  ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
 

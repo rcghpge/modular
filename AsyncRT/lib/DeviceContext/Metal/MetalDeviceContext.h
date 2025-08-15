@@ -142,6 +142,7 @@ public:
 
   // Event management
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
+  ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
 

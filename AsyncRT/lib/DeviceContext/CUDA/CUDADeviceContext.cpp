@@ -755,6 +755,25 @@ CUDADeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   return success();
 }
 
+ErrorOrSuccess CUDADeviceStream::eventRecord(const DeviceEvent &event) const {
+  const auto &cudaEvent = CUDADeviceEvent::cast(event);
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(
+      cudaDevice.cudaDriver().EventRecord(cudaEvent.cudaEvent(), stream_));
+  return success();
+}
+
+ErrorOrSuccess CUDADeviceStream::waitEvent(const DeviceEvent &event,
+                                           unsigned int flags) const {
+  const auto &cudaEvent = CUDADeviceEvent::cast(event);
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().StreamWaitEvent(
+      stream_, cudaEvent.cudaEvent(), flags));
+  return success();
+}
+
 ErrorOrSuccess CUDADeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
@@ -1459,6 +1478,13 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   CUDA_WITH_CTX_ERR(*this);
   DEFINE_OR_RAISE(CUevent, event, CUDADevice::cast(device()).eventCachePop());
   CUDA_CHECK_ERR(driver_.EventRecord(event, stream_));
+  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
+}
+
+ErrorOr<DeviceEventRef>
+CUDADeviceContext::eventCreate(unsigned int flags) const {
+  CUDA_WITH_CTX_ERR(*this);
+  DEFINE_OR_RAISE(CUevent, event, CUDADevice::cast(device()).eventCachePop());
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
 }
 

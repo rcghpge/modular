@@ -893,6 +893,11 @@ ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
   return MetalDeviceEventRef::create(MetalDevice::cast(device()), cmdBuffer);
 }
 
+ErrorOr<DeviceEventRef>
+MetalDeviceContext::eventCreate(unsigned int flags) const {
+  RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
+}
+
 ErrorOrSuccess
 MetalDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
