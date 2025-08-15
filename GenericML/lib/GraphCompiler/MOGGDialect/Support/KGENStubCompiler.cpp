@@ -120,21 +120,6 @@ struct SemanticHashKey {
 
 } // namespace
 
-static void initLLVM() {
-  static std::once_flag initLLVMFlag;
-  std::call_once(initLLVMFlag, []() {
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmParser();
-    llvm::InitializeNativeTargetAsmPrinter();
-
-    llvm::InitializeAllTargets();
-    llvm::InitializeAllTargetInfos();
-    llvm::InitializeAllTargetMCs();
-    llvm::InitializeAllAsmParsers();
-    llvm::InitializeAllAsmPrinters();
-  });
-}
-
 static KGEN::CompilationOptions
 createCompilationOptions(TargetInfoAttr target, KernelBuildType kernelBuildType,
                          bool debugKGENStubs, StringRef saveTempsPrefix) {
@@ -178,7 +163,7 @@ createObjectCompiler(ModuleOp kgenModule,
   return compilerOr.takeValue();
 }
 
-static ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
+ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
   ErrorOr<TargetInfoAttr> targetOr = getTargetInfoFor(
       ctx, llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName(),
       getHostCPUFeatures(), /*tuneCpu=*/"",
@@ -294,8 +279,8 @@ CompileDiagnosticOrSuccess StubCompiler::elaborateKGEN() {
   return res;
 }
 
-static DenseResourceElementsAttr
-createArchiveAttr(MLIRContext *ctx, BufferRef buffer, StringRef name) {
+DenseResourceElementsAttr createArchiveAttr(MLIRContext *ctx, BufferRef buffer,
+                                            StringRef name) {
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
 
   // Pretend this is a "tensor" of data.
@@ -516,7 +501,6 @@ CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>> compileStubs(
     std::string saveTempsPrefix, KernelBuildType kernelBuildType,
     const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
     bool enableTiming /*= false*/, bool debugKGENStubs /*= false*/) {
-  initLLVM();
   CompileDiagnosticOr<StubCompiler> compilerOr =
       StubCompiler::create(std::move(kgenStubs), graph, saveTempsPrefix,
                            kernelBuildType, enableTiming, debugKGENStubs);

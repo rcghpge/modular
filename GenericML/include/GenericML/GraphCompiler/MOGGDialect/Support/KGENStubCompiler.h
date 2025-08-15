@@ -11,6 +11,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "Support/Buffer.h"
 #include "Support/LLVMForwardDecls.h"
 
 namespace M::MOGG {
@@ -22,6 +23,10 @@ CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>> compileStubs(
     std::string saveTempsPrefix, KernelBuildType kernelBuildType,
     const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp> &symbolsAdded,
     bool enableTiming = false, bool debugKGENStubs = false);
+
+DenseResourceElementsAttr createArchiveAttr(MLIRContext *ctx, BufferRef buffer,
+                                            StringRef name);
+ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx);
 
 } // namespace M::MOGG
 

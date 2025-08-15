@@ -5,28 +5,32 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Threading.h"
 #include "mlir/Pass/PassManager.h"
+#include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetSelect.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "Kernels/mojo/Mogg/MOGGLoader.h"
 
-#include "Runtime/Tensor/Tensor.h"
-
+#include "AsyncRT/CompilerSupport/Context.h"
+#include "AsyncRT/Runtime/Runtime.h"
+#include "Cache/CacheTelemetryContext.h"
 #include "KGEN/Compiler/KGENCompiler.h"
+#include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/Support/CompilerProfiling.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
-#include "mlir/IR/IRMapping.h"
+#include "Support/Telemetry/Telemetry.h"
 
 using namespace M;
 
@@ -42,6 +46,21 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
                                impl::JitCompileKernelsBase<JitCompileKernels>> {
   using Base::Base;
 
+  static void initLLVM() {
+    static std::once_flag initLLVMFlag;
+    std::call_once(initLLVMFlag, []() {
+      llvm::InitializeNativeTarget();
+      llvm::InitializeNativeTargetAsmParser();
+      llvm::InitializeNativeTargetAsmPrinter();
+
+      llvm::InitializeAllTargets();
+      llvm::InitializeAllTargetInfos();
+      llvm::InitializeAllTargetMCs();
+      llvm::InitializeAllAsmParsers();
+      llvm::InitializeAllAsmPrinters();
+    });
+  }
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
@@ -53,36 +72,136 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
       return signalPassFailure();
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
 
-    for (auto model : module.getOps<MGP::ModelOp>()) {
-      if (CompileDiagnosticOrSuccess errOr =
-              runPass(model, mojoLibraryAnalysis)) {
+    initLLVM();
+
+    if (MOGG::useExperimentalMojoPath()) {
+      if (compileMojoToBinary(module, mojoLibraryAnalysis).isError())
         signalPassFailure();
-        return;
-      }
     }
 
-    for (Operation &op : llvm::make_early_inc_range(module.getOps()))
-      if (isa<KGEN::GeneratorOp, KGEN::ExternGeneratorOp,
-              KGEN::StructGeneratorOp>(op))
-        op.erase();
+    if (compileKGENToBinary(module, mojoLibraryAnalysis).isError())
+      signalPassFailure();
   }
 
   CompileDiagnosticOrSuccess
-  runPass(MGP::ModelOp graph, MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-    KGEN::CompilerTimeTraceScope traceScope("jit-compile-kernels-run-on-pass",
-                                            graph->getName().getStringRef());
+  compileKGENToBinary(ModuleOp module,
+                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+    for (auto modelOp : module.getOps<MGP::ModelOp>()) {
+      CompileDiagnosticOrSuccess err;
+      KernelBuildType bt = KernelBuildType::kRelease;
+      auto errOr = compileToBinary(
+          modelOp, mojoLibraryAnalysis, dumpStub.getValue(),
+          createMOGGReproducers.getValue(), saveTempPrefix.getValue(),
+          minimumCpuAlignment.getValue(), timeMOGGCompile.getValue(),
+          dryRun.getValue(), debugKGENStubs.getValue(), bt);
+      if (errOr.isError())
+        return errOr.takeError();
+    }
 
-    KernelBuildType bt = KernelBuildType::kRelease;
+    for (Operation &op : llvm::make_early_inc_range(module.getOps())) {
+      if (isa<KGEN::GeneratorOp, KGEN::ExternGeneratorOp,
+              KGEN::StructGeneratorOp>(op)) {
+        op.erase();
+      }
+    }
 
-    // For each (virtual) device used by the graph...
-    auto err = compileToBinary(
-        graph, mojoLibraryAnalysis, dumpStub.getValue(),
-        createMOGGReproducers.getValue(), saveTempPrefix.getValue(),
-        minimumCpuAlignment.getValue(), timeMOGGCompile.getValue(),
-        dryRun.getValue(), debugKGENStubs.getValue(), bt);
+    return success();
+  }
 
-    if (err.isError())
-      return err.takeError();
+  CompileDiagnosticOrSuccess
+  compileMojoToBinary(ModuleOp module,
+                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+    auto ctx = module.getContext();
+    auto targetInfoAttr = getTargetInfo(ctx);
+    if (targetInfoAttr.isError()) {
+      return module->emitError("Could not retrieve target info: ")
+             << targetInfoAttr.getError();
+    }
+
+    for (auto modelOp : module.getOps<MGP::ModelOp>()) {
+      auto mojoModuleRange =
+          modelOp.getInitBlock()->getOps<MOGG::MojoModuleOp>();
+      if (mojoModuleRange.empty())
+        continue;
+
+      /// TODO: This makes no sense as an op. Turn this op and
+      /// LoadCompiledKernelOp into attributes of the MGP::ModelOp.
+      ASSERT_STREAM(llvm::range_size(mojoModuleRange) == 1,
+                    << "Expected at most one mojo module per model op");
+      auto mojoModule = *mojoModuleRange.begin();
+      auto loadkernels =
+          *modelOp.getInitBlock()->getOps<MOGG::LoadCompiledKernelOp>().begin();
+
+      auto mojoTextAttr =
+          cast<DenseResourceElementsAttr>(mojoModule.getModule());
+      auto mojoText =
+          StringRef(mojoTextAttr.getData().data(), mojoTextAttr.size());
+      auto mojoTextBuffer = llvm::MemoryBuffer::getMemBufferCopy(mojoText);
+      llvm::SourceMgr src;
+      src.AddNewSourceBuffer(std::move(mojoTextBuffer), llvm::SMLoc());
+      AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
+      KGEN::CompilationOptions kgenOpts;
+      KGEN::LIT::ParserConfig config(ctx, kgenOpts);
+      mlir::TimingScope ts;
+      auto parsedMojoModule =
+          KGEN::LIT::importMojoFile(runtime, src, config, ts);
+      if (!parsedMojoModule) {
+        return module->emitError(
+            "The graph compiler could not parse its Mojo generated code");
+      }
+
+      // LITToKGEN
+      KGEN::CompilationOptions opts;
+      opts.runMOGGPreElab = false;
+      KGEN::KGENCompiler compiler(*ctx, opts);
+      if (compiler.runGenerateLibraryPipeline(*parsedMojoModule).isError()) {
+        return module->emitError(
+            "The graph compiler could not lower LIT to KGEN");
+      }
+
+      // KGENToElaboratedKGEN
+      if (compiler
+              .runElaborationPipeline(
+                  *parsedMojoModule, *targetInfoAttr, runtime,
+                  runtime.getReadyChain().copy(),
+                  Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
+                      "JitCompileKernels::elaborateKGEN",
+                      "mogg.elaborate.kgen.cache.miss.time",
+                      {{"pipeline", "JitCompileKernels::elaborateKGEN"}}),
+                  Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
+                      "JitCompileKernels::elaborateKGEN"))
+              .isError()) {
+        return module->emitError(
+            "The graph compiler could not elaborate the generated KGEN");
+      }
+
+      // KGENToLLVM
+      auto objectCompiler = KGEN::ObjectCompiler::create(
+          ".mojo_cache", opts, /*isJit=*/true, *ctx, {});
+      if (objectCompiler.isError()) {
+        return module->emitError("The graph compiler could not create an "
+                                 "object compiler for KGEN to LLVM lowering");
+      }
+      std::string outKeyHash;
+      ErrorOr<BufferRef> bufferOr = objectCompiler.get()->emitArchive(
+          std::move(parsedMojoModule), /*emitAssembly=*/false, &outKeyHash);
+      if (bufferOr.isError()) {
+        return module->emitError("An error occured while lowering KGEN to LLVM "
+                                 "in the graph compiler");
+      }
+
+      // Archiving the compiled code and storing it as a dense resource.
+      BufferRef buffer = bufferOr.takeValue();
+      auto compiledBlob = createArchiveAttr(ctx, std::move(buffer), outKeyHash);
+      DenseResourceElementsHandle binaryBlobHandle =
+          compiledBlob.getRawHandle();
+      StringRef binaryBlobKey = binaryBlobHandle.getKey();
+      binaryBlobKey.consume_front("archive_");
+      loadkernels.setValueAttr(compiledBlob);
+
+      mojoModule.erase();
+    }
+
     return success();
   }
 };
