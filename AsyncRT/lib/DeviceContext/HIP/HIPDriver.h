@@ -523,6 +523,39 @@ enum class hipDeviceAttribute_t {
     // Extended attributes for vendors
 };
 
+ /**
+ * hipMemoryType (for pointer attributes)
+ *
+ * @note hipMemoryType enum values are combination of cudaMemoryType and cuMemoryType and AMD specific enum values.
+ *
+ */
+enum class hipMemoryType {
+    hipMemoryTypeUnregistered = 0,  ///< Unregistered memory
+    hipMemoryTypeHost         = 1,  ///< Memory is physically located on host
+    hipMemoryTypeDevice       = 2,  ///< Memory is physically located on device. (see deviceId for
+                                    ///< specific device)
+    hipMemoryTypeManaged      = 3,  ///< Managed memory, automaticallly managed by the unified
+                                    ///< memory system
+                                    ///< place holder for new values.
+    hipMemoryTypeArray        = 10, ///< Array memory, physically located on device. (see deviceId for
+                                    ///< specific device)
+    hipMemoryTypeUnified      = 11  ///< unified address space
+
+};
+
+/**
+ * Pointer attributes
+ */
+using hipPointerAttribute_t = struct hipPointerAttribute_t {
+    enum hipMemoryType type;
+    int device;
+    void* devicePointer;
+    void* hostPointer;
+    int isManaged;
+    unsigned allocationFlags; /* flags specified when memory was allocated*/
+    /* peers? */
+};
+
 // clang-format on
 
 enum class hipJitOption {
@@ -680,6 +713,11 @@ public:
   Result Memset2D(void *dst, size_t pitch, int value, size_t width,
                   size_t height) const {
     return hipMemset2D_(dst, pitch, value, width, height);
+  }
+
+  Result PointerGetAttributes(hipPointerAttribute_t *attrs,
+                              const void *ptr) const {
+    return hipPointerGetAttributes_(attrs, ptr);
   }
 
   Result ModuleLoadData(hipModule_t *module, const void *image) const {
@@ -865,6 +903,9 @@ private:
   using thipFree = Result(hipDeviceptr_t);
   thipFree *hipFree_;
 
+  using thipPointerGetAttributes = Result(hipPointerAttribute_t *,
+                                          const void *);
+  thipPointerGetAttributes *hipPointerGetAttributes_;
   using thipMemcpyHtoDAsync = Result(hipDeviceptr_t, const void *, size_t,
                                      hipStream_t);
   thipMemcpyHtoDAsync *hipMemcpyHtoDAsync_;

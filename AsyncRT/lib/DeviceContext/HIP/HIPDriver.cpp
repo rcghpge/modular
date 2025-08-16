@@ -40,7 +40,8 @@ const char hsa_lib_name[] = "";
 
 ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   // Attempt to open the shared library of the HIP driver.
-  void *dl_lib = dlopen(lib_name, RTLD_NOW);
+  // RTLD_GLOBAL allows UCX ROCm backend to also use these loaded symbols.
+  void *dl_lib = dlopen(lib_name, RTLD_NOW | RTLD_GLOBAL);
   if (dl_lib == nullptr) {
     return Error(llvm::Twine("Failed to open library \"") + lib_name +
                  "\": " + dlerror());
@@ -110,11 +111,14 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
 
   GET_FUNC(hipMemGetInfo);
 
+  GET_FUNC(hipPointerGetAttributes);
+
   GET_FUNC(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor);
 
   // Try to load HSA Runtime symbols (optional - for getting device
-  // architecture)
-  void *hsa_lib = dlopen(hsa_lib_name, RTLD_NOW);
+  // architecture).
+  // RTLD_GLOBAL allows UCX ROCm backend to also use these loaded symbols.
+  void *hsa_lib = dlopen(hsa_lib_name, RTLD_NOW | RTLD_GLOBAL);
   if (hsa_lib != nullptr) {
     GET_HSA_FUNC(hsa_init);
     GET_HSA_FUNC(hsa_shut_down);

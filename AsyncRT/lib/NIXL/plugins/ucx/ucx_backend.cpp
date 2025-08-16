@@ -15,8 +15,6 @@
 #include "AsyncRT/NIXL/utils/common/nixl_log.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
-#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "Support/ErrorOr.h"
 #include "Support/LogicalResult.h"
 #include "Support/STLExtras.h"
@@ -39,8 +37,13 @@ static void moveNotifList(notif_list_t &src, notif_list_t &tgt) {
 }
 
 /****************************************
- * CUDA related code
+ * Device-specific code
  *****************************************/
+
+#if defined(PLUGIN_UCX_CUDA)
+
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 
 static int cudaQueryAddr(void *address, bool &is_dev, CUdevice &dev,
                          CUcontext &ctx) {
@@ -113,6 +116,53 @@ M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
   }
   return success();
 }
+
+#elif defined(PLUGIN_UCX_ROCM)
+
+#include "AsyncRT/lib/DeviceContext/HIP/HIPDriver.h"
+
+M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
+                                                          int addrDeviceId) {
+  /* TODO: proper error codes and log outputs through this method */
+  if (addrDeviceId == -1)
+    return failure();
+
+  // Incorrect dev id from first registration?
+  int myDevId = deviceCtx ? deviceCtx->device().id() : -1;
+  if (myDevId != -1 && addrDeviceId != myDevId)
+    return failure();
+
+  auto hipDriverOr = HIPDriver::get();
+  if (hipDriverOr.isError()) {
+    return failure();
+  }
+  HIPDriver const &hipDriver = hipDriverOr.get();
+  hipPointerAttribute_t addressAttr;
+  if (HIPDriver::Result::SUCCESS !=
+      hipDriver.PointerGetAttributes(&addressAttr, address)) {
+    return failure();
+  }
+  bool const isDevicePointer =
+      (addressAttr.type == hipMemoryType::hipMemoryTypeDevice) ||
+      (addressAttr.type == hipMemoryType::hipMemoryTypeArray);
+  // We don't care about device for host pointers.
+  if (!isDevicePointer) {
+    return success();
+  }
+
+  if (addressAttr.device != addrDeviceId) {
+    // User provided address that does not match dev_id
+    return failure();
+  }
+
+  return success();
+}
+
+#else
+
+#error "Must pick one of CUDA or ROCm for UCX GPU transport. Neither picked."
+
+#endif
 
 /****************************************
  * UCX request management

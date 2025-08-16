@@ -120,19 +120,40 @@ nixlPluginManager::loadPluginFromPath(const std::string &plugin_path) {
 nixlPluginManager::nixlPluginManager() {
   // The only NIXL plugin we support is UCX.
 
-  // libplugin_ucx_verbs.so depends on libibverbs.so and libmlx5.so.
+  // libplugin_ucx_(cuda|rocm)_verbs.so depend on libibverbs.so and libmlx5.so.
   // libibverbs.so is dynamically linked at build time. libmlx5.so must be
-  // dlopen'ed at runtime prior to dlopen'ing libplugin_ucx_verbs.so.
+  // dlopen'ed at runtime prior to dlopen'ing libplugin_ucx_*_verbs.so.
   //
   // Exactly one of these UCX plugin files should be loaded. Loading both of
   // them will cause issues.
   void *dlLibMlx5 = dlopen("libmlx5.so", RTLD_NOW | RTLD_GLOBAL);
 
-  if (dlLibMlx5 != nullptr && loadPlugin("ucx_verbs") != nullptr) {
+  void *dlLibHsaRuntime64 =
+      dlopen("libhsa-runtime64.so.1", RTLD_NOW | RTLD_GLOBAL);
+  // void *dlLibHsaRuntime64 = (void*) (0x1);
+  // It fields an indirect call to hsa_init() by
+  if (dlLibHsaRuntime64 != nullptr) {
+    if (dlLibMlx5 != nullptr && loadPlugin("ucx_rocm_verbs") != nullptr) {
+      NIXL_INFO << "Loaded NIXL plugin_ucx_rocm_verbs";
+      return;
+    }
+    if (loadPlugin("ucx_rocm") != nullptr) {
+      NIXL_INFO << "Loaded NIXL plugin_ucx_rocm";
+      return;
+    }
+  }
+
+  if (dlLibMlx5 != nullptr && loadPlugin("ucx_cuda_verbs") != nullptr) {
+    NIXL_INFO << "Loaded NIXL plugin_ucx_cuda_verbs";
     return;
   }
 
-  loadPlugin("ucx");
+  if (loadPlugin("ucx_cuda") != nullptr) {
+    NIXL_INFO << "Loaded NIXL plugin_ucx_cuda";
+    return;
+  }
+
+  NIXL_FATAL << "Unable to load CUDA or ROCm UCX backend";
 }
 
 nixlPluginManager &nixlPluginManager::getInstance() {
@@ -190,8 +211,9 @@ nixlPluginManager::loadPlugin(const std::string &pluginName) {
   std::shared_ptr<const nixlPluginHandle> pluginHandle =
       loadPluginFromPath(pluginPath);
   if (pluginHandle) {
-    // Even though the plugin file may be "libplugin_ucx_verbs.so", the plugin
-    // is still "ucx" and not "ucx_verbs".
+    // Even though the plugin file may be
+    // "libplugin_ucx_(cuda|rocm)(_verbs)?.so", the plugin is "ucx" and not
+    // "ucx_..." .
     auto loadedPluginName = StringRef(pluginHandle->getName()).trim().lower();
     loaded_plugins_[loadedPluginName] = pluginHandle;
     return pluginHandle;
