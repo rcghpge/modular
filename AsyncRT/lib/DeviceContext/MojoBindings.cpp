@@ -383,11 +383,11 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
     const DeviceContext *ctx, const DeviceFunction *func, uint32_t gridX,
     uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,
     uint32_t blockZ, uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs,
-    void **args) {
+    void **args, const size_t *argSizes) {
   assert((ctx == &func->context()) && "ctx not matching func");
   return checkSuccess(ctx->enqueueFunctionExecDirect(
       *func, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes, attrs,
-      numAttrs, args));
+      numAttrs, args, argSizes));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceStream_enqueueFunctionDirect(

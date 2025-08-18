@@ -804,7 +804,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExec(
 ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void * /*attrs*/, uint32_t numAttrs, void **args) const {
+    void * /*attrs*/, uint32_t numAttrs, void **args,
+    const size_t *argSizes) const {
 
   // 1) Validate pipeline
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
@@ -846,7 +847,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
       // For now, assume all scalars are uint64_t
       // TODO(amir): This is a hack to handle scalar arguments, fix to work with
       // complex types
-      encoder->setBytes(args[i], sizeof(uint64_t), i);
+      size_t argSize = argSizes[i];
+      encoder->setBytes(args[i], argSize, i);
     }
   }
 
