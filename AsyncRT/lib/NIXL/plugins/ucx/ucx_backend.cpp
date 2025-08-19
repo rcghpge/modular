@@ -20,8 +20,10 @@
 #include "Support/STLExtras.h"
 
 #include "AsyncRT/NIXL/utils/common/str_tools.h"
+#include <algorithm>
 #include <chrono>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <string.h>
 #include <unistd.h>
@@ -341,6 +343,19 @@ void nixlUcxEngine::progressFunc() {
       if (made_progress && !wid)
         notifProgress();
     }
+
+    // Check active transfers for completion and send out notifs to receiver
+    // promptly when they are complete.
+    std::set<nixlBackendReqH *> handlesCopy;
+    {
+      std::lock_guard<std::mutex> lock(inflightSendXfersMtx);
+      // TODO: get rid of this copy.
+      handlesCopy = inflightSendXfers;
+    }
+    // checkXfer will send out notifs if the transfer is complete.
+    for (auto *handle : handlesCopy)
+      checkXfer(handle);
+
     timeout = false;
 
     int ret;
@@ -976,6 +991,12 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
     }
   }
 
+  // Track active handle for progress thread monitoring
+  {
+    std::lock_guard<std::mutex> lock(inflightSendXfersMtx);
+    inflightSendXfers.insert((nixlBackendReqH *)intHandle);
+  }
+
   return ret;
 }
 
@@ -992,6 +1013,7 @@ nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) const {
   auto &notif = intHandle->notification();
   if (status == nixl_status_t::NIXL_SUCCESS && notif.has_value()) {
     nixlUcxReq req;
+    // Sends notifs to receiver when transfer is complete.
     status = notifSendPriv(notif->agent, notif->payload, req, workerId);
     notif.reset();
     if (_retHelper(status, intHandle, req) != nixl_status_t::NIXL_SUCCESS) {
@@ -1012,6 +1034,12 @@ nixl_status_t nixlUcxEngine::releaseReqH(nixlBackendReqH *handle) const {
 
   nixlUcxBackendH *intHandle = (nixlUcxBackendH *)handle;
   nixl_status_t status = intHandle->release();
+
+  // Remove from active handles
+  {
+    std::lock_guard<std::mutex> lock(inflightSendXfersMtx);
+    inflightSendXfers.erase(intHandle);
+  }
 
   /* TODO: return to a pool instead. */
   delete intHandle;

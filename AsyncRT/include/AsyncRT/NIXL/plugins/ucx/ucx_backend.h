@@ -28,6 +28,7 @@
 #include <cstring>
 #include <mutex>
 #include <poll.h>
+#include <set>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -113,6 +114,11 @@ private:
   notif_list_t notifMainList;
   std::mutex notifMtx;
   notif_list_t notifPthrPriv, notifPthr;
+
+  /* Inflight send transfers */
+  // These are mutable as they are accessed in const methods.
+  mutable std::set<nixlBackendReqH *> inflightSendXfers;
+  mutable std::mutex inflightSendXfersMtx;
 
   // Map of agent name to saved nixlUcxConnection info
   std::unordered_map<std::string, ucx_connection_ptr_t, std::hash<std::string>,
