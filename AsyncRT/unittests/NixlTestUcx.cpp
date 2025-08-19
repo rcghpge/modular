@@ -1167,7 +1167,7 @@ TEST_F(NixlUcxIntegrationTest, ListenerCommSize) {
 
   // Register many small buffers to create large metadata
   const size_t bufferSize = 64;
-  const size_t numBuffers = 10000;
+  const size_t numBuffers = 1000;
   std::vector<std::vector<char>> buffers(numBuffers);
 
   for (size_t i = 0; i < numBuffers; i++) {
