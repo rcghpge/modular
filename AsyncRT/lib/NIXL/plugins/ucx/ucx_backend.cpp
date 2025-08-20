@@ -352,9 +352,10 @@ void nixlUcxEngine::progressFunc() {
       // TODO: get rid of this copy.
       handlesCopy = inflightSendXfers;
     }
+    // TODO: reenable this once we figure out why it causes a segfault!
     // checkXfer will send out notifs if the transfer is complete.
-    for (auto *handle : handlesCopy)
-      checkXfer(handle);
+    // for (auto *handle : handlesCopy)
+    //   checkXfer(handle);
 
     timeout = false;
 
