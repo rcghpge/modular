@@ -4503,20 +4503,6 @@ LogicalResult FenceOp::verify() {
   if (getInputs().empty())
     return emitError() << "fence must have at least one input";
 
-  if (getInputs().size() != getResults().size())
-    return emitError() << "expected the number of inputs and outputs to be "
-                          "exactly the same";
-
-  // Check exact type equality per position.
-  for (auto [idx, types] :
-       llvm::enumerate(llvm::zip(getInputs(), getResults()))) {
-    auto [input, result] = types;
-    if (input.getType() != result.getType())
-      return emitError() << "input and result types at position " << idx
-                         << " must match exactly, but got " << input.getType()
-                         << " and " << result.getType();
-  }
-
   return success();
 }
 
@@ -4527,6 +4513,64 @@ FenceOp::inferReturnTypes(MLIRContext *context,
   inferredReturnTypes = llvm::to_vector(TypeRange(adaptor.getInputs()));
 
   return success();
+}
+
+LogicalResult FenceOp::fold(FoldAdaptor adaptor,
+                            SmallVectorImpl<OpFoldResult> &results) {
+  if (adaptor.getInputs().size() == 1) {
+    results.push_back(getInputs()[0]);
+    return success();
+  }
+
+  return failure();
+}
+
+namespace {
+/// Canonicalization pattern that removes duplicate operands from fence
+/// operations.
+///
+/// For example, transforms:
+///   %r0, %r1, %r2, %r3 = mo.fence(%a, %b, %a, %b)
+/// Into:
+///   %f0, %f1 = mo.fence(%a, %b)
+struct DedupeFenceOperands : public OpRewritePattern<FenceOp> {
+  using OpRewritePattern<FenceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(FenceOp fence,
+                                PatternRewriter &rewriter) const override {
+    // Map each unique operand to the index of its first occurrence.
+    llvm::MapVector<Value, size_t> uniqueOperands;
+
+    for (auto [index, operand] : llvm::enumerate(fence.getInputs()))
+      uniqueOperands.try_emplace(operand, index);
+
+    // If all operands are already unique, nothing to do.
+    if (uniqueOperands.size() == fence.getInputs().size())
+      return failure();
+
+    // Create a new fence with only the unique operands.
+    auto newOperands = llvm::to_vector(llvm::make_first_range(uniqueOperands));
+    auto newFence = FenceOp::create(rewriter, fence.getLoc(), newOperands);
+
+    // Map each original result to the corresponding result from the new fence.
+    // For duplicate operands, multiple results will map to the same new result.
+    SmallVector<Value> newResults;
+    newResults.reserve(fence.getNumResults());
+
+    for (Value operand : fence.getInputs()) {
+      size_t index = uniqueOperands[operand];
+      newResults.push_back(newFence.getResults()[index]);
+    }
+
+    rewriter.replaceOp(fence, newResults);
+    return success();
+  }
+};
+} // namespace
+
+void FenceOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                          MLIRContext *ctx) {
+  patterns.add<DedupeFenceOperands>(ctx);
 }
 
 /// Remove inputs that are the results of mosh.param.to_value on constant

@@ -5106,10 +5106,11 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [
 //===----------------------------------------------------------------------===//
 
 def MO_FenceOp : MO_DeviceAgnosticTensorOp<"fence", [
+  AllTypesMatch<["inputs", "results"]>,
+  Commutative,
   InferTypeOpAdaptor,
-  Pure,
-  MO_SameOperandsAndResultShape,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  Pure
 ]> {
   let summary = "Value-semantics fence (identity on values)";
   let description = [{
@@ -5143,6 +5144,8 @@ def MO_FenceOp : MO_DeviceAgnosticTensorOp<"fence", [
     `(` $inputs `)` attr-dict `:` type($inputs)
   }];
 
+  let hasCanonicalizer = 1;
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
