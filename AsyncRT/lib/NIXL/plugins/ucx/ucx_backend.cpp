@@ -8,6 +8,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
+// ai-dynamo provides a good description of each of these APIs here:
+// https://github.com/ai-dynamo/nixl/blob/main/docs/BackendGuide.md#the-south-bound-api
+//
+// The nixlUcxEngine is NOT thread-safe. You must ensure that you use the
+// appropriate locking when using the engine from multiple threads. The
+// nixlUcxEngine has its own internal locking due to its optional use of a
+// progress thread.
+//
+// nixlUcxEngine is an implementation of the nixlBackendEngine interface.
+// The nixlBackendEngine is used by nixlAgent which has its own locking.
+
 #include "AsyncRT/NIXL/plugins/ucx/ucx_backend.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/NIXL/nixl_types.h"
@@ -1004,6 +1015,8 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
   return ret;
 }
 
+// This is a private method. Use checkXfer() instead unless you know for sure
+// that you do not want to grab the lock.
 nixl_status_t
 nixlUcxEngine::checkXferWithoutLock(nixlBackendReqH *handle) const {
   auto deviceCtxScope = activateContext();
