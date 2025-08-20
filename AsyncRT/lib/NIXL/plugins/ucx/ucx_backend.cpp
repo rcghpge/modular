@@ -346,16 +346,19 @@ void nixlUcxEngine::progressFunc() {
 
     // Check active transfers for completion and send out notifs to receiver
     // promptly when they are complete.
-    std::set<nixlBackendReqH *> handlesCopy;
     {
       std::lock_guard<std::mutex> lock(inflightSendXfersMtx);
-      // TODO: get rid of this copy.
-      handlesCopy = inflightSendXfers;
+      std::set<nixlBackendReqH *> handlesToDelete;
+      for (auto *handle : inflightSendXfers) {
+        if (checkXferWithoutLock(handle) == nixl_status_t::NIXL_SUCCESS) {
+          handlesToDelete.insert(handle);
+        }
+      }
+      // Remove completed transfers from the set.
+      for (auto *handle : handlesToDelete) {
+        inflightSendXfers.erase(handle);
+      }
     }
-    // TODO: reenable this once we figure out why it causes a segfault!
-    // checkXfer will send out notifs if the transfer is complete.
-    // for (auto *handle : handlesCopy)
-    //   checkXfer(handle);
 
     timeout = false;
 
@@ -1001,7 +1004,8 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
   return ret;
 }
 
-nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) const {
+nixl_status_t
+nixlUcxEngine::checkXferWithoutLock(nixlBackendReqH *handle) const {
   auto deviceCtxScope = activateContext();
   if (deviceCtxScope && deviceCtxScope->err().isError()) {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
@@ -1025,6 +1029,11 @@ nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) const {
   }
 
   return status;
+}
+
+nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) const {
+  std::lock_guard<std::mutex> lock(inflightSendXfersMtx);
+  return checkXferWithoutLock(handle);
 }
 
 nixl_status_t nixlUcxEngine::releaseReqH(nixlBackendReqH *handle) const {

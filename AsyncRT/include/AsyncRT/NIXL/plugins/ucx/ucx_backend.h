@@ -162,6 +162,7 @@ private:
                                  nixlBackendMD *&output);
 
   // Notifications
+  nixl_status_t checkXferWithoutLock(nixlBackendReqH *handle) const;
   static ucs_status_t notifAmCb(void *arg, const void *header,
                                 size_t header_length, void *data, size_t length,
                                 const ucp_am_recv_param_t *param);
