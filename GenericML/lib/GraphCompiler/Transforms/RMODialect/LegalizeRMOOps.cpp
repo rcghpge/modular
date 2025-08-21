@@ -181,7 +181,7 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
     if (!tensorVal) {
       ASSERT_STREAM(targetType == val.getType(),
                     << "Disagreement on type for non-tensor argument.");
-      newOperands.push_back(tensorVal);
+      newOperands.push_back(val);
       continue;
     }
     SmallVector<KGEN::ParamDeclAttr> &curInputDecls = moInputParamDecls[i];
