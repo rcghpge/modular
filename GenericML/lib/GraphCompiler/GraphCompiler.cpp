@@ -159,6 +159,7 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(MO::createCanonicalizeChainSequences());
+  pm.addPass(MO::createFloatConsumersThroughFence());
 
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
