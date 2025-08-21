@@ -79,6 +79,9 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_retain(const DeviceContext *ctx) {
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceContext_release(const DeviceContext *ctx) {
+  // Give the event handlers opportunity to run, which can decrement the
+  // reference count.
+  [[maybe_unused]] ErrorOrSuccess ignored = ctx->checkPendingWork();
   // Decrement the low-level reference count.
   DeviceContextRef::lowLevelDropRef(ctx);
 }

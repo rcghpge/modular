@@ -421,6 +421,28 @@ TEST_F(GPUDeviceContextTest, OverlappingCopies) {
   }
 }
 
+TEST_F(GPUDeviceContextTest, RecycleBuffers) {
+  ASSIGN_NO_ERR(DeviceContextRef, allocCtx,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, freeCtx,
+                DeviceContext::create(Device::gpuAPI));
+
+  constexpr size_t kb = 1024;
+  constexpr size_t mb = 1024 * kb;
+  constexpr size_t sizes[8] = {3 * kb,  2 * kb,   1 * mb,  511 * kb,
+                               32 * kb, 128 * mb, 32 * mb, 78 * mb};
+  // When run with MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY=true this will move
+  // all free buffers from allocCtx to freeCtx unless we regularly flush
+  // buffers from freeCtx to the parent.
+  for (int i = 0; i < 1000; i++) {
+    size_t allocSize = sizes[i & 7];
+    ASSIGN_NO_ERR(DeviceBufferRef, buf,
+                  allocCtx->enqueueCreateBuffer(allocSize));
+    EXPECT_NO_ERR(buf->reassignOwnershipTo(*freeCtx));
+    // buf goes out of scope here and is freed by freeCtx.
+  }
+}
+
 TEST_F(GPUDeviceContextTest, SetMemory) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 

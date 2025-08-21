@@ -1220,6 +1220,8 @@ HIPDeviceContext::streamPriorityRange(int *leastPriority,
 ErrorOrSuccess HIPDeviceContext::synchronize() const {
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
+  // Handle any pending events after synchronization.
+  ERR_CHECK_ERR(checkPendingWork());
   return success();
 }
 

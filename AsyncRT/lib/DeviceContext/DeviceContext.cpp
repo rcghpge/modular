@@ -325,6 +325,10 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   // memory. Host memory can only be released once the stream of execution on
   // the corresponding device has completed all currently pending events.
   const DeviceContext &ctx = context();
+  // DEBUGGING AID
+  // ERR_CHECK(ctx, ctx.enqueueSetMemory(*this, 0xf3, 1));
+  // \DEBUGGING AID
+  ERR_CHECK(ctx, ctx.checkPendingWork());
   if (!isHost()) {
     ERR_CHECK(ctx, ctx.freeList().free(ptr_));
   } else {

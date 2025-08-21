@@ -160,6 +160,11 @@ private:
   friend class BufferCache;
   friend class BufferCache::Chunk;
 
+  // Define the number of "double-buffered freelists" used to implement the
+  // BufferCacheFreeList. The oldest list will be flushed to the parent once the
+  // pending event handler fires.
+  static constexpr int kNumFreeBufferLists = 2; // Must be a power of 2.
+
   void selfCheck() const;
   bool contains(BufferCache::Desc *desc) const;
 
@@ -171,12 +176,16 @@ private:
   void addToFreeList(BufferCache::Desc *desc);
   void removeFromFreeList(BufferCache::Desc *desc);
 
+  void flushFreeBuffersToParent(int id);
+
   const DeviceContext *ctx_;
 
   BufferCache &bufferCache_;
   BufferCacheFreeList *parent_;
 
-  BufferCache::Desc *freeBuffers_ = nullptr;
+  BufferCache::Desc *freeBuffers_[kNumFreeBufferLists];
+  int primaryFreeBuffers_ = 0;
+  bool handlerPending_ = false;
 };
 
 } // namespace M::AsyncRT

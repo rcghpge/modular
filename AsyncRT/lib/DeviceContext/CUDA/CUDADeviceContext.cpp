@@ -1492,6 +1492,8 @@ CUDADeviceContext::streamPriorityRange(int *leastPriority,
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
+  // Handle any pending events after synchronization.
+  ERR_CHECK_ERR(checkPendingWork());
   return success();
 }
 
