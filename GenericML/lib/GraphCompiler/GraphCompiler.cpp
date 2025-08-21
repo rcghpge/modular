@@ -37,14 +37,8 @@
 #include "mlir/Transforms/Passes.h"
 
 // All the KGEN dependent passes
-#include "KGEN/HLCFDialect/HLCFDialect.h"
-#include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/ToolCommon/InitAllDialects.h"
 #include "Support/Compiler/PassTimingUtils.h"
-#include "Support/DebugInfoDialect/IR/DebugInfoDialect.h"
-#include "Support/FileSystemExtras.h"
-#include "mlir/Dialect/Index/IR/IndexDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
