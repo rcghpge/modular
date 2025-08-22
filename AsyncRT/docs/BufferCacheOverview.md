@@ -155,7 +155,7 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
 - **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE`**: Maximum cache size in KB
   (default: uses percentage)
 - **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE_PERCENT`**: Percentage of GPU
-  memory to use, after the driver has taken its memory (default: 100%)
+  memory to use, after the driver has taken its memory (default: 99%)
 - **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT`**: Chunk size as
   percentage of max cache size (default: 2%)
 
