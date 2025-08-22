@@ -12,6 +12,7 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_BUFFERCACHE_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <cstdint>
 #include <mutex>
@@ -163,7 +164,9 @@ private:
   // Define the number of "double-buffered freelists" used to implement the
   // BufferCacheFreeList. The oldest list will be flushed to the parent once the
   // pending event handler fires.
-  static constexpr int kNumFreeBufferLists = 2; // Must be a power of 2.
+  static constexpr int kNumFreeBufferLists = 2;
+  static_assert(llvm::isPowerOf2_64(kNumFreeBufferLists),
+                "Must be a non-zero power of two.");
 
   void selfCheck() const;
   bool contains(BufferCache::Desc *desc) const;
