@@ -104,7 +104,7 @@ class DeviceKind(str, Enum):
         return self.value
 
     @staticmethod
-    def from_string(txt) -> DeviceKind:  # noqa: ANN001
+    def from_string(txt: str) -> DeviceKind:
         if txt == str(DeviceKind.CPU):
             return DeviceKind.CPU
         elif txt == str(DeviceKind.GPU):
@@ -229,7 +229,7 @@ class Type(Generic[MlirType]):
         raise NotImplementedError
 
     @staticmethod
-    def from_mlir(t: MlirType) -> Type:
+    def from_mlir(t: MlirType) -> Type[Any]:
         """Constructs a type from an MLIR type.
 
         Args:

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from itertools import islice
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 from max.dtype import DType
 from max.graph import (
@@ -44,14 +44,16 @@ from ..rotary_embedding import RotaryEmbedding
 from .transformer import ReturnLogits
 
 
-def take(it: Iterable[Value], n: int) -> list[Value]:
+def take(it: Iterable[Value[Any]], n: int) -> list[Value[Any]]:
     """Return the next *n* items from *it* as a list."""
     return list(islice(it, n))
 
 
 # TODO (pavan): clean up duplicate instances of distribute_value, shard_col_value,
 # shard_row_value across the codebase into a multi gpu utils file
-def distribute_value(v, devices: list[DeviceRef]):  # noqa: ANN001
+def distribute_value(
+    v: TensorValue, devices: list[DeviceRef]
+) -> list[TensorValue]:
     return [v.to(device) for device in devices]
 
 
@@ -211,10 +213,6 @@ class DistributedTransformer(Module):
             # are in a single group.
             subgraph_layer_groups = [[i for i in range(len(layers))]]
         self.subgraph_layer_groups = subgraph_layer_groups
-        if self.return_logits == ReturnLogits.VARIABLE:
-            raise ValueError(
-                "DistributedTransformer does not support variable logits."
-            )
 
     def __call__(
         self,
@@ -236,7 +234,7 @@ class DistributedTransformer(Module):
         input_row_offsets_ = distribute_value(input_row_offsets, self.devices)
 
         if self.use_subgraphs:
-            subgraph_input_types: Sequence[Type | list[Type]] = [
+            subgraph_input_types: Sequence[Type[Any] | list[Type[Any]]] = [
                 TensorType(DType.uint32, shape=(), device=DeviceRef.CPU()),
                 [hidden.type for hidden in h],
                 [signal_buffer.type for signal_buffer in signal_buffers],
@@ -325,10 +323,11 @@ class DistributedTransformer(Module):
 
         if self.return_logits == ReturnLogits.VARIABLE:
             return_n_logits_range = ops.range(
-                return_n_logits[0],
-                ops.constant(0, DType.int64, device=DeviceRef.CPU()),
-                ops.constant(-1, DType.int64, device=DeviceRef.CPU()),
+                start=return_n_logits[0],
+                stop=0,
+                step=-1,
                 out_dim="return_n_logits_range",
+                dtype=DType.int64,
                 device=self.devices[0],
             )
             offsets = (
@@ -347,10 +346,11 @@ class DistributedTransformer(Module):
                 axis=0,
             )
             offsets = ops.range(
-                ops.constant(0, DType.int64, device=DeviceRef.CPU()),
-                last_indices.shape[0] + return_n_logits[0],
+                0,
+                TensorValue(last_indices.shape[0]) + return_n_logits[0],
                 return_n_logits[0],
                 out_dim="logit_offsets",
+                dtype=DType.int64,
                 device=self.devices[0],
             )
         elif self.return_logits == ReturnLogits.ALL:

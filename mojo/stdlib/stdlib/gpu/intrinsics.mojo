@@ -904,7 +904,6 @@ fn make_buffer_resource[
         var resource = make_buffer_resource[DType.float32](ptr, 1024)
         # Use resource with buffer_load/buffer_store operations
         ```
-        .
     """
 
     constrained[
@@ -933,20 +932,6 @@ fn make_buffer_resource[
 
 
 @always_inline
-fn _waitcnt():
-    constrained[
-        is_amd_gpu(),
-        "The _waitcnt function is only applicable on AMDGPU hardware.",
-    ]()
-    inlined_assembly[
-        "s_waitcnt vmcnt(0)",
-        NoneType,
-        constraints="",
-        has_side_effect=True,
-    ]()
-
-
-@always_inline
 fn _raw_buffer_load_lds[
     dtype: DType
 ](
@@ -968,59 +953,6 @@ fn _raw_buffer_load_lds[
     llvm_intrinsic[
         "llvm.amdgcn.raw.buffer.load.lds", NoneType, has_side_effect=True
     ](rsrc, lds_ptr, size, voffset, soffset, offset, aux)
-
-
-@always_inline
-fn _buffer_load_store_lds_nowait[
-    dtype: DType
-](
-    src_resource: _buffer_resource,
-    gds_offset: Int32,
-    lds_ptr_base: UnsafePointer[
-        Scalar[dtype], address_space = AddressSpace.SHARED
-    ],
-    lds_offset: Int32,
-):
-    """Loads four bytes from global memory and writes them to shared memory.
-
-    Copies from global memory to shared memory (aka LDS) bypassing storing to
-    register without waiting for the copy to finish. A call to wait_cnt_amd()
-    is necessary to ensure the copy is finished.
-
-    Parameters:
-        dtype: The dtype of the data to be loaded.
-
-    Arg:
-        src_resource: Buffer resource descriptor from make_buffer_resource.
-        gds_offset: Global memory offset.
-        lds_ptr_base: LDS base address.
-        lds_offset: LDS offset.
-    """
-
-    constrained[
-        is_amd_gpu(),
-        (
-            "The _buffer_load_store_lds_nowait  function is only applicable on"
-            " AMDGPU hardware."
-        ),
-    ]()
-
-    var lds_ptr = lds_ptr_base + lds_offset
-    var lds_ptr_sgpr = readfirstlane(SIMD[DType.int32, 1](Int(lds_ptr)))
-    inlined_assembly[
-        "s_mov_b32 m0, $0",
-        NoneType,
-        constraints="s,~{memory}",
-        has_side_effect=True,
-    ](lds_ptr_sgpr)
-
-    var global_offset_bytes = Int32(sizeof[dtype]() * gds_offset)
-    inlined_assembly[
-        "buffer_load_dword $0, $1, 0 offen lds",
-        NoneType,
-        constraints="v,s,~{memory}",
-        has_side_effect=True,
-    ](global_offset_bytes, src_resource)
 
 
 @always_inline
@@ -1122,7 +1054,12 @@ fn buffer_load[
     width: Int,
     *,
     cache_policy: CacheOperation = CacheOperation.ALWAYS,
-](src_resource: _buffer_resource, gds_offset: Int32,) -> SIMD[dtype, width]:
+](
+    src_resource: _buffer_resource,
+    vector_offset: Int32,
+    *,
+    scalar_offset: Int32 = 0,
+) -> SIMD[dtype, width]:
     """Loads data from global memory into a SIMD register with cache operation control.
 
     This function provides a hardware-accelerated global memory load operation
@@ -1136,7 +1073,8 @@ fn buffer_load[
 
     Args:
         src_resource: Buffer resource descriptor created by make_buffer_resource().
-        gds_offset: Offset in elements (not bytes) from the base address in the resource.
+        vector_offset: Vector memory offset in elements (per thread).
+        scalar_offset: Scalar memory offset in elements (shared across wave).
 
     Returns:
         SIMD vector containing the loaded data.
@@ -1156,10 +1094,10 @@ fn buffer_load[
     ]()
 
     alias bytes = sizeof[dtype]() * width
+    alias aux = _cache_operation_to_amd_aux[cache_policy]()
 
-    var global_offset_bytes: Int32 = Int32(sizeof[dtype]() * gds_offset)
-    alias aux: Int32 = _cache_operation_to_amd_aux[cache_policy]()
-    var src_wave_addr_offset: Int32 = 0
+    var vector_offset_bytes = vector_offset * sizeof[dtype]()
+    var scalar_offset_bytes = scalar_offset * sizeof[dtype]()
 
     var load_val = llvm_intrinsic[
         "llvm.amdgcn.raw.buffer.load",
@@ -1167,8 +1105,8 @@ fn buffer_load[
             _get_buffer_intrinsic_simd_dtype[bytes](),
             _get_buffer_intrinsic_simd_width[bytes](),
         ],
-        has_side_effect=True,
-    ](src_resource, global_offset_bytes, src_wave_addr_offset, aux)
+        has_side_effect=False,
+    ](src_resource, vector_offset_bytes, scalar_offset_bytes, aux)
 
     return bitcast[dtype, width](load_val)
 
@@ -1179,7 +1117,13 @@ fn buffer_store[
     width: Int,
     *,
     cache_policy: CacheOperation = CacheOperation.ALWAYS,
-](src_resource: _buffer_resource, gds_offset: Int32, val: SIMD[dtype, width],):
+](
+    dst_resource: _buffer_resource,
+    vector_offset: Int32,
+    val: SIMD[dtype, width],
+    *,
+    scalar_offset: Int32 = 0,
+):
     """Stores a register variable to global memory with cache operation control.
 
     Writes to global memory from a register with high-level cache control.
@@ -1190,9 +1134,10 @@ fn buffer_store[
         cache_policy: Cache operation policy controlling cache behavior at all levels.
 
     Args:
-        src_resource: Buffer resource descriptor.
-        gds_offset: Global memory offset.
+        dst_resource: Buffer resource descriptor.
+        vector_offset: Vector memory offset in elements (per thread).
         val: Value to write.
+        scalar_offset: Scalar memory offset in elements (shared across wave).
 
     Note:
         - Only supported on AMD GPUs.
@@ -1207,11 +1152,11 @@ fn buffer_store[
         "The buffer_store function is only applicable on AMDGPU hardware.",
     ]()
 
-    alias bytes = sizeof[dtype]() * width
-
-    var global_offset_bytes: Int32 = Int32(sizeof[dtype]() * gds_offset)
+    alias bytes = width * sizeof[dtype]()
     alias aux: Int32 = _cache_operation_to_amd_aux[cache_policy]()
-    var src_wave_addr_offset: Int32 = 0
+
+    var vector_offset_bytes = vector_offset * sizeof[dtype]()
+    var scalar_offset_bytes = scalar_offset * sizeof[dtype]()
 
     var store_val = bitcast[
         _get_buffer_intrinsic_simd_dtype[bytes](),
@@ -1220,4 +1165,4 @@ fn buffer_store[
 
     llvm_intrinsic[
         "llvm.amdgcn.raw.buffer.store", NoneType, has_side_effect=True
-    ](store_val, src_resource, global_offset_bytes, src_wave_addr_offset, aux)
+    ](store_val, dst_resource, vector_offset_bytes, scalar_offset_bytes, aux)

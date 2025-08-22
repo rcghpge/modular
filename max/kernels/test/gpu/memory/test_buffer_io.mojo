@@ -11,15 +11,13 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from math import ceildiv
+from math import align_down, ceildiv
 
 from gpu import barrier, block_dim, block_idx, grid_dim, thread_idx
 from gpu.host import DeviceContext
 from gpu.host.compile import _compile_code
 from gpu.host import get_gpu_target
 from gpu.intrinsics import (
-    _buffer_load_store_lds_nowait,
-    _waitcnt,
     buffer_load,
     buffer_load_store_lds,
     buffer_store,
@@ -34,18 +32,17 @@ alias size_clip = size - 5
 
 
 fn kernel[dtype: DType, width: Int](a: UnsafePointer[Scalar[dtype]]):
-    var t0 = block_idx.x * block_dim.x + thread_idx.x
-    var size2 = size // width
+    var aligned_size = align_down(size, width)
     var bc = make_buffer_resource(a, size_clip)
-    for i in range(t0, size2, block_dim.x * grid_dim.x):
-        var v = buffer_load[dtype, width](bc, width * i)
-        buffer_store[dtype, width](bc, width * i, 2 * v)
-    for i in range(width * size2, size, block_dim.x * grid_dim.x):
-        var v = buffer_load[dtype, 1](bc, i)
+    for i in range(0, aligned_size, width):
+        var v = buffer_load[dtype, width](bc, i)
+        buffer_store[dtype, width](bc, 0, 2 * v, scalar_offset=i)
+    for i in range(aligned_size, size):
+        var v = buffer_load[dtype, 1](bc, 0, scalar_offset=i)
         buffer_store[dtype, 1](bc, i, 2 * v)
 
 
-fn kernel_lds[dtype: DType, nowait: Bool](a: UnsafePointer[Scalar[dtype]]):
+fn kernel_lds[dtype: DType](a: UnsafePointer[Scalar[dtype]]):
     var a_shared = stack_allocation[
         size, dtype, address_space = AddressSpace.SHARED
     ]()
@@ -58,17 +55,10 @@ fn kernel_lds[dtype: DType, nowait: Bool](a: UnsafePointer[Scalar[dtype]]):
         a_shared[i] = 0
     barrier()
 
-    @parameter
-    if nowait:
-        for i in range(t0, size, block_dim.x * grid_dim.x):
-            _buffer_load_store_lds_nowait[dtype](bc, i, a_shared, i)
-        _waitcnt()
-        for i in range(t0, size, block_dim.x * grid_dim.x):
-            a[i] = 2 * a_shared[i]
-    else:
-        for i in range(t0, size, block_dim.x * grid_dim.x):
-            buffer_load_store_lds[dtype](bc, i, a_shared, i)
-            a[i] = 2 * a_shared[i]
+    for i in range(t0, size, block_dim.x * grid_dim.x):
+        buffer_load_store_lds(bc, i, a_shared, i)
+    for i in range(t0, size, block_dim.x * grid_dim.x):
+        a[i] = 2 * a_shared[i]
 
 
 # Assembly test kernels for different cache policies
@@ -205,10 +195,8 @@ def test_buffer[dtype: DType, width: Int](ctx: DeviceContext):
 
     ctx.enqueue_copy(a_device_buf, a_host_buf)
 
-    ctx.enqueue_function[kernel[dtype, width], dump_asm=False](
-        a_device_buf,
-        grid_dim=(1, 1),
-        block_dim=(64),
+    ctx.enqueue_function[kernel[dtype, width]](
+        a_device_buf, grid_dim=1, block_dim=1
     )
     ctx.enqueue_copy(a_host_buf, a_device_buf)
 
@@ -221,7 +209,7 @@ def test_buffer[dtype: DType, width: Int](ctx: DeviceContext):
     a_host_buf.free()
 
 
-def test_buffer_lds[nowait: Bool](ctx: DeviceContext):
+def test_buffer_lds(ctx: DeviceContext):
     alias dtype = DType.float32
     a_host_buf = UnsafePointer[Scalar[dtype]].alloc(size)
     a_device_buf = ctx.enqueue_create_buffer[dtype](size)
@@ -231,7 +219,7 @@ def test_buffer_lds[nowait: Bool](ctx: DeviceContext):
 
     ctx.enqueue_copy(a_device_buf, a_host_buf)
 
-    ctx.enqueue_function[kernel_lds[dtype, nowait], dump_asm=False](
+    ctx.enqueue_function[kernel_lds[dtype]](
         a_device_buf,
         grid_dim=ceildiv(size, 256),
         block_dim=256,
@@ -263,5 +251,4 @@ def main():
         @parameter
         for width in [1, 2, 4, 8, 16]:
             test_buffer[DType.int8, width](ctx)
-        test_buffer_lds[nowait=False](ctx)
-        test_buffer_lds[nowait=True](ctx)
+        test_buffer_lds(ctx)

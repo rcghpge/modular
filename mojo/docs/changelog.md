@@ -79,9 +79,9 @@ what we publish.
     of implicit `Copyable`:
     `KeyElement`
 
-- A new `InstanceOf` utility is introduced to reduce the syntactic load of
-  declaring function arguments of a type that implements a given trait. For
-  example, instead of writing
+- A new `Some` utility is introduced to reduce the syntactic load of declaring
+  function arguments of a type that implements a given trait or trait
+  composition. For example, instead of writing
 
   ```mojo
   fn foo[T: Intable, //](x: T) -> Int:
@@ -91,7 +91,7 @@ what we publish.
   one can now write:
 
   ```mojo
-  fn foo(x: InstanceOf[Intable]) -> Int:
+  fn foo(x: Some[Intable]) -> Int:
       return x.__int__()
   ```
 
@@ -105,6 +105,14 @@ what we publish.
     i.e. `SIMD` conforms to `Comparable` when the size is 1.
   - As a consequence, `SIMD.__bool__` no longer needs to be restricted to
     scalars, and instead performs an `any` reduction on the elements of vectors.
+
+- `SIMD` constructors no longer allow implicit splatting of `Bool` values. This
+  could lead to subtle bugs that cannot be caught at compile time, for example:
+
+  ```mojo
+  fn foo[w: Int](v: SIMD[_, w]) -> SIMD[DType.bool, w]:
+    return v == 42  # this silently reduced to a single bool, and then splat
+  ```
 
 - Added `os.path.realpath` to resolve symbolic links to an absolute path and
   remove relative path components (`.`, `..`, etc.). Behaves the same as the
@@ -142,11 +150,31 @@ added for AMD Radeon 860M, 880M, and 8060S GPUs.
 - Updated `layout_tensor` copy related functions to support 2D and 3D
   threadblock dimensions.
 
+- The `compile.reflection.get_type_name` utility now has limited capability to
+  print parametric types, e.g. `SIMD[DType.float32, 4]` instead of just `SIMD`.
+  If the parameter is not printable, an `<unprintable>` placeholder is printed
+  instead. A new `qualified_builtins` flag also allows users to control the
+  verbosity for the most common (but not all) builtin types.
+
+- Add `repr` support for `List`, `Deque`, `Dict`, `LinkedList`, `Optional`, `Set`.
+  [PR #5189](https://github.com/modular/modular/pull/5189) by rd4com.
+
+- `InlineArray` now automatically detects whether its element types are
+  trivially destructible to not invoke the destructors in its `__del__`
+  function.  This improves performance for trivially destructible types
+  (such as `Int` and friends).
+
 ### Tooling changes
 
 - `mojo test` now ignores folders with a leading `.` in the name. This will
   exclude hidden folders on Unix systems ([#4686](https://github.com/modular/modular/issues/4686))
 
+### Kernels changes
+
+- A fast matmul for SM100 is available in Mojo. Please check it out in `matmul_sm100.mojo`.
+
 ### ❌ Removed
 
 ### 🛠️ Fixed
+
+- Fixed <https://github.com/modular/modular/issues/5190>

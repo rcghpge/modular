@@ -18,7 +18,7 @@ from os import abort
 from sys.intrinsics import _type_is_eq
 
 
-trait MixedIntTupleLike(Copyable, Movable):
+trait MixedTupleLike(Copyable, Movable, Representable):
     """Trait for unified layout handling of compile-time and runtime indices."""
 
     # Note that unlike the __len__() from Sized, this is a static method.
@@ -39,6 +39,10 @@ trait MixedIntTupleLike(Copyable, Movable):
     @staticmethod
     fn is_value() -> Bool:
         """Check if this type is a value."""
+        ...
+
+    fn __repr__(self) -> String:
+        """Get the string representation of this type."""
         ...
 
     fn value(self) -> Int:
@@ -63,16 +67,16 @@ trait MixedIntTupleLike(Copyable, Movable):
         """
         ...
 
-    # TODO(MOCO-2274): This method allows rebinding from MixedIntTupleLike to a
-    # MixedIntTuple by retrieving the variadic pack. It is a workaround for
+    # TODO(MOCO-2274): This method allows rebinding from MixedTupleLike to a
+    # MixedTuple by retrieving the variadic pack. It is a workaround for
     # rebind causing variadic parameters to be erased.
     @staticmethod
-    fn _get_variadic_pack() -> VariadicOf[MixedIntTupleLike]:
+    fn _get_variadic_pack() -> VariadicOf[MixedTupleLike]:
         ...
 
 
 @register_passable("trivial")
-struct ComptimeInt[val: Int](MixedIntTupleLike):
+struct ComptimeInt[val: Int](MixedTupleLike):
     """Compile-time known index value.
 
     Parameters:
@@ -87,6 +91,9 @@ struct ComptimeInt[val: Int](MixedIntTupleLike):
     @always_inline("nodebug")
     fn __len__() -> Int:
         return 1
+
+    fn __repr__(self) -> String:
+        return String("ComptimeInt[", self.value(), "]()")
 
     @always_inline("nodebug")
     fn product(self) -> Int:
@@ -111,13 +118,13 @@ struct ComptimeInt[val: Int](MixedIntTupleLike):
         return val
 
     @staticmethod
-    fn _get_variadic_pack() -> VariadicOf[MixedIntTupleLike]:
+    fn _get_variadic_pack() -> VariadicOf[MixedTupleLike]:
         constrained[False, "ComptimeInt does not have a variadic pack"]()
-        return abort[VariadicOf[MixedIntTupleLike]]()
+        return abort[VariadicOf[MixedTupleLike]]()
 
 
 @register_passable("trivial")
-struct RuntimeInt[dtype: DType = DType.index](MixedIntTupleLike):
+struct RuntimeInt[dtype: DType = DType.index](MixedTupleLike):
     """Runtime index value with configurable precision.
 
     Parameters:
@@ -139,6 +146,10 @@ struct RuntimeInt[dtype: DType = DType.index](MixedIntTupleLike):
     @always_inline("nodebug")
     fn __len__() -> Int:
         return 1
+
+    @always_inline("nodebug")
+    fn __repr__(self) -> String:
+        return String("RuntimeInt(", self.value(), ")")
 
     @always_inline("nodebug")
     fn product(self) -> Int:
@@ -163,30 +174,35 @@ struct RuntimeInt[dtype: DType = DType.index](MixedIntTupleLike):
         return Int(self.val)
 
     @staticmethod
-    fn _get_variadic_pack() -> VariadicOf[MixedIntTupleLike]:
+    fn _get_variadic_pack() -> VariadicOf[MixedTupleLike]:
         constrained[False, "RuntimeInt does not have a variadic pack"]()
-        return abort[VariadicOf[MixedIntTupleLike]]()
+        return abort[VariadicOf[MixedTupleLike]]()
+
+
+# Note that `to_mixed_int_tuple` isn't a method on MixedTupleLike because it
+# calls T._get_variadic_pack(). Putting this in the return type for Compile and
+# RuntimeInt be illegal, since the function is constrained False for those types.
 
 
 @always_inline("nodebug")
 fn to_mixed_int_tuple[
-    T: MixedIntTupleLike
-](value: T) -> MixedIntTuple[*T._get_variadic_pack()]:
-    """Convert a MixedIntTupleLike value to its corresponding MixedIntTuple type.
+    T: MixedTupleLike
+](value: T) -> MixedTuple[*T._get_variadic_pack()]:
+    """Convert a MixedTupleLike value to its corresponding MixedTuple type.
 
     This is a convenience function that performs rebind internally, making the code cleaner
-    when working with nested MixedIntTuple types.
+    when working with nested MixedTuple types.
 
     Parameters:
-        T: The MixedIntTupleLike type to convert.
+        T: The MixedTupleLike type to convert.
 
     Args:
         value: The value to convert.
 
     Returns:
-        The value rebound as a MixedIntTuple with the appropriate variadic pack.
+        The value rebound as a MixedTuple with the appropriate variadic pack.
     """
-    return rebind[MixedIntTuple[*T._get_variadic_pack()]](value)
+    return rebind[MixedTuple[*T._get_variadic_pack()]](value)
 
 
 fn Idx(value: Int) -> RuntimeInt[DType.index]:
@@ -217,13 +233,11 @@ fn Idx[value: Int]() -> ComptimeInt[value]:
     return ComptimeInt[value]()
 
 
-struct MixedIntTuple[*element_types: MixedIntTupleLike](
-    MixedIntTupleLike, Sized
-):
+struct MixedTuple[*element_types: MixedTupleLike](MixedTupleLike, Sized):
     """A struct representing tuple-like data with compile-time and runtime elements.
 
     Parameters:
-        element_types: The variadic pack of element types that implement `MixedIntTupleLike`.
+        element_types: The variadic pack of element types that implement `MixedTupleLike`.
     """
 
     # TODO(MOCO-1565): Use a Tuple[*element_types] instead of directly using a variadic pack,
@@ -231,7 +245,7 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
 
     alias _mlir_type = __mlir_type[
         `!kgen.pack<:`,
-        VariadicOf[MixedIntTupleLike],
+        VariadicOf[MixedTupleLike],
         element_types,
         `>`,
     ]
@@ -240,8 +254,25 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
     """The underlying MLIR storage for the tuple elements."""
 
     @staticmethod
-    fn _get_variadic_pack() -> VariadicOf[MixedIntTupleLike]:
+    fn _get_variadic_pack() -> VariadicOf[MixedTupleLike]:
         return element_types
+
+    @staticmethod
+    @always_inline("nodebug")
+    fn size() -> Int:
+        """Get the total number of elements including nested ones.
+
+        Returns:
+            The total count of all elements.
+        """
+        var count = 0
+
+        @parameter
+        for i in range(Self.__len__()):
+            alias T = element_types[i]
+            count += T.__len__()
+
+        return count
 
     @staticmethod
     fn __len__() -> Int:
@@ -251,11 +282,19 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
             The number of elements in the tuple.
         """
 
-        @parameter
-        fn variadic_size(x: VariadicOf[MixedIntTupleLike]) -> Int:
-            return __mlir_op.`pop.variadic.size`(x)
+        alias result = stdlib.builtin.variadic_size(element_types)
+        return result
 
-        return variadic_size(element_types)
+    @always_inline("nodebug")
+    fn __repr__(self) -> String:
+        var result = String("MixedTuple(")
+
+        @parameter
+        for i in range(Self.__len__()):
+            result += self[i].__repr__()
+            if i < Self.__len__() - 1:
+                result += String(", ")
+        return result + String(")")
 
     fn __len__(self) -> Int:
         """Get the length of the tuple.
@@ -279,7 +318,7 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
     fn __init__(
         out self,
         *,
-        var storage: VariadicPack[_, _, MixedIntTupleLike, *element_types],
+        var storage: VariadicPack[_, _, MixedTupleLike, *element_types],
     ):
         """Construct from a low-level variadic pack.
 
@@ -354,24 +393,8 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
 
     @always_inline("nodebug")
     fn value(self) -> Int:
-        constrained[False, "MixedIntTuple is not a value type"]()
+        constrained[False, "MixedTuple is not a value type"]()
         return abort[Int]()
-
-    @always_inline("nodebug")
-    fn size(self) -> Int:
-        """Get the total number of elements including nested ones.
-
-        Returns:
-            The total count of all elements.
-        """
-        var count = 0
-
-        @parameter
-        for i in range(Self.__len__()):
-            alias T = element_types[i]
-            count += T.__len__()
-
-        return count
 
     @always_inline("nodebug")
     fn inner_product(self, t: IntTuple) -> Int:
@@ -387,7 +410,7 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
         var result = 0
         debug_assert(
             Self.__len__() == t.__len__(),
-            "Length of MixedIntTuple (",
+            "Length of MixedTuple (",
             Self.__len__(),
             ") and IntTuple (",
             t.__len__(),
@@ -420,9 +443,9 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
 
     @always_inline("nodebug")
     fn inner_product[
-        *other_types: MixedIntTupleLike
-    ](self, other: MixedIntTuple[*other_types]) -> Int:
-        """Calculate the inner product with another MixedIntTupleLike.
+        *other_types: MixedTupleLike
+    ](self, other: MixedTuple[*other_types]) -> Int:
+        """Calculate the inner product with another MixedTupleLike.
 
         Parameters:
             other_types: The types of the other value.
@@ -434,11 +457,11 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
             The inner product of the two values.
         """
         constrained[
-            Self.__len__() == MixedIntTuple[*other_types].__len__(),
-            "Length of MixedIntTuple (",
+            Self.__len__() == MixedTuple[*other_types].__len__(),
+            "Length of MixedTuple (",
             String(Self.__len__()),
-            ") and MixedIntTuple[*other_types] (",
-            String(MixedIntTuple[*other_types].__len__()),
+            ") and MixedTuple[*other_types] (",
+            String(MixedTuple[*other_types].__len__()),
             ") must match",
         ]()
         var result = 0
@@ -462,7 +485,7 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
                         "Element ",
                         i,
                         (
-                            " of MixedIntTuple must both be a tuple or both be"
+                            " of MixedTuple must both be a tuple or both be"
                             " a value"
                         ),
                     ),
@@ -472,17 +495,17 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
 
     @always_inline("nodebug")
     fn __eq__[
-        *other_types: MixedIntTupleLike
-    ](self, other: MixedIntTuple[*other_types]) -> Bool:
+        *other_types: MixedTupleLike
+    ](self, other: MixedTuple[*other_types]) -> Bool:
         """Check if this tuple's elements are equal to the other tuple's elements.
         """
 
         constrained[
-            Self.__len__() == MixedIntTuple[*other_types].__len__(),
-            "Length of MixedIntTuple (",
+            Self.__len__() == MixedTuple[*other_types].__len__(),
+            "Length of MixedTuple (",
             String(Self.__len__()),
-            ") and MixedIntTuple[*other_types] (",
-            String(MixedIntTuple[*other_types].__len__()),
+            ") and MixedTuple[*other_types] (",
+            String(MixedTuple[*other_types].__len__()),
             ") must match",
         ]()
 
@@ -504,7 +527,7 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
                     String(
                         "Element ",
                         i,
-                        " of MixedIntTuple must both be a tuple or both be",
+                        " of MixedTuple must both be a tuple or both be",
                         " a value",
                     ),
                 ]()
@@ -513,144 +536,98 @@ struct MixedIntTuple[*element_types: MixedIntTupleLike](
 
     @always_inline("nodebug")
     fn __ne__[
-        *other_types: MixedIntTupleLike
-    ](self, other: MixedIntTuple[*other_types]) -> Bool:
+        *other_types: MixedTupleLike
+    ](self, other: MixedTuple[*other_types]) -> Bool:
         return not self == other
 
 
 # Implementation based off runtime_tuple.mojo's crd2idx.
 fn crd2idx[
-    Index: MixedIntTupleLike,
-    Shape: MixedIntTupleLike,
-    Stride: MixedIntTupleLike,
+    Index: MixedTupleLike,
+    Shape: MixedTupleLike,
+    Stride: MixedTupleLike,
     out_type: DType = DType.index,
 ](crd: Index, shape: Shape, stride: Stride) -> Scalar[out_type]:
     """Calculate the index from a coordinate tuple."""
     alias shape_len = Shape.__len__()
     alias stride_len = Stride.__len__()
-    alias index_len = Index.__len__()
+    alias crd_len = Index.__len__()
 
     @parameter
     if Shape.is_tuple() and Stride.is_tuple() and shape_len == stride_len:
+        var shape_t = to_mixed_int_tuple(shape)
+        var stride_t = to_mixed_int_tuple(stride)
+
         var result: Scalar[out_type] = 0
 
         @parameter
-        if index_len > 1:  # tuple tuple tuple
-            var index_t = to_mixed_int_tuple(crd)
-            var shape_t = to_mixed_int_tuple(shape)
-            var stride_t = to_mixed_int_tuple(stride)
+        if crd_len > 1:  # tuple tuple tuple
+            var crd_t = to_mixed_int_tuple(crd)
 
             @parameter
             for i in range(shape_len):
                 result += crd2idx[out_type=out_type](
-                    index_t[i], shape_t[i], stride_t[i]
+                    crd_t[i], shape_t[i], stride_t[i]
                 )
 
             return result
         else:  # "int" tuple tuple
-            var int_crd: Scalar[out_type] = 0 if index_len == 0 else crd.value()
-
-            var shape_t = to_mixed_int_tuple(shape)
-            var stride_t = to_mixed_int_tuple(stride)
+            var crd_int = 0 if crd_len == 0 else crd.value()
 
             alias last_elem_idx = shape_len - 1
 
             @parameter
             for i in range(last_elem_idx):
-                var quotient, remainder = divmod(
-                    Int(int_crd), shape_t[i].product()
-                )
+                var quotient, remainder = divmod(crd_int, shape_t[i].product())
                 result += crd2idx[out_type=out_type](
-                    remainder, shape_t[i], stride_t[i]
+                    Idx(remainder), shape_t[i], stride_t[i]
                 )
-                int_crd = quotient
+                crd_int = quotient
             return result + crd2idx[out_type=out_type](
-                Int(int_crd), shape_t[last_elem_idx], stride_t[last_elem_idx]
+                Idx(crd_int), shape_t[last_elem_idx], stride_t[last_elem_idx]
             )
     else:
 
         @parameter
-        if index_len > 1:
+        if crd_len > 1:
             constrained[False, "crd is a tuple but shape and stride are not"]()
             return abort[Scalar[out_type]]()
         else:
             return crd.value() * stride.value()
 
 
-fn crd2idx[
-    Shape: MixedIntTupleLike,
-    Stride: MixedIntTupleLike,
-    out_type: DType = DType.index,
-](crd: IntTuple, shape: Shape, stride: Stride) -> Scalar[out_type]:
-    """Calculate the index from a coordinate tuple."""
-    alias shape_len = Shape.__len__()
-    alias stride_len = Stride.__len__()
+fn mixed_int_tuple_to_int_tuple[
+    *element_types: MixedTupleLike
+](value: MixedTuple[*element_types]) -> IntTuple:
+    """Convert a MixedTuple to an IntTuple, preserving the nested structure.
 
-    if crd.is_tuple():
-        var result: Scalar[out_type] = 0
+    This function recursively traverses the MixedTuple and converts each element:
+    - Value elements (ComptimeInt, RuntimeInt) become integer values in the IntTuple
+    - Tuple elements (nested MixedTuple) become nested IntTuples
 
-        @parameter  # tuple tuple tuple
-        if Shape.is_tuple() and Stride.is_tuple() and shape_len == stride_len:
-            var shape_t = to_mixed_int_tuple(shape)
-            var stride_t = to_mixed_int_tuple(stride)
+    Parameters:
+        element_types: The variadic pack of element types in the MixedTuple.
 
-            @parameter
-            for i in range(shape_len):
-                result += crd2idx[out_type=out_type](
-                    crd[i], shape_t[i], stride_t[i]
-                )
+    Args:
+        value: The MixedTuple to convert.
 
-            return result
-        else:
-            return abort[Scalar[out_type]](
-                String(
-                    (
-                        "Shape and stride tuple must have same length and have"
-                        " length greater than 1 but got shape with length: "
-                    ),
-                    shape_len,
-                    " and stride with length: ",
-                    stride_len,
-                )
-            )
-    else:
-        var int_crd: Scalar[out_type] = 0 if len(crd) == 0 else crd.value()
+    Returns:
+        An IntTuple with the same structure and values as the input MixedTuple.
+    """
+    var result = IntTuple()
+
+    @parameter
+    for i in range(MixedTuple[*element_types].__len__()):
+        alias T = element_types[i]
 
         @parameter
-        if Shape.is_tuple() and Stride.is_tuple() and shape_len == stride_len:
-            # "int" tuple tuple
-            var result: Scalar[out_type] = 0
-
-            var shape_t = to_mixed_int_tuple(shape)
-            var stride_t = to_mixed_int_tuple(stride)
-
-            alias last_elem_idx = shape_len - 1
-
-            @parameter
-            for i in range(last_elem_idx):
-                var quotient, remainder = divmod(
-                    Int(int_crd), shape_t[i].product()
-                )
-                result += crd2idx[out_type=out_type](
-                    remainder, shape_t[i], stride_t[i]
-                )
-                int_crd = quotient
-            return result + crd2idx[out_type=out_type](
-                Int(int_crd), shape_t[last_elem_idx], stride_t[last_elem_idx]
+        if T.is_tuple():
+            # Recursively convert nested tuples
+            result.append(
+                mixed_int_tuple_to_int_tuple(to_mixed_int_tuple(value[i]))
             )
-        elif Shape.is_tuple() or Stride.is_tuple():
-            constrained[
-                False,
-                String(
-                    (
-                        "Shape and stride must both be tuples with same length"
-                        " but got shape with length: "
-                    ),
-                    shape_len,
-                    " and stride with length: ",
-                    stride_len,
-                ),
-            ]()
-            return abort[Scalar[out_type]]()
-        else:  # "int" "int" "int"
-            return int_crd * stride.value()
+        else:
+            # Convert value elements to integers
+            result.append(IntTuple(value[i].value()))
+
+    return result
