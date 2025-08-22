@@ -31,7 +31,7 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
       typeManager(
           MOGG::TypeManager::get(ctx, mojoLibraryAnalysis).takeValue()) {
 
-  isAsync = !forceSync && !isa<MO::LayoutTransformOp>(op);
+  isAsync = MO::isOnHost(op) && !forceSync && !isa<MO::LayoutTransformOp>(op);
 
   // Get ready for building ops.
   builder.setInsertionPoint(op);
