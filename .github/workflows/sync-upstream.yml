@@ -12,131 +12,84 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout fork
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        persist-credentials: false
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-    - name: Add upstream remote
-      run: |
-        git remote add upstream https://github.com/modular/modular.git
-        git fetch upstream
-        git checkout main
+      - name: Guard repo
+        run: |
+          if [ "${{ github.repository }}" != "rcghpge/modular" ]; then
+            exit 1
+          fi
 
-    - name: Checks at fork
-      run: |
-        if [ "${{ github.repository_owner }}" != "rcghpge" ]; then
-          echo "🚫 Not running on rcghpge's fork. Aborting."; exit 1; fi
+      - name: Add upstream
+        run: |
+          git remote add upstream https://github.com/modular/modular.git || true
+          git fetch --prune --tags upstream
+          git checkout main
 
-    - name: Set source tree checks
-      run: |
-        git remote set-url --push upstream DISABLED
-        git remote -v
+      - name: Identify deltas
+        id: delta
+        run: |
+          BASE=$(git merge-base HEAD upstream/main)
+          BEHIND=$(git rev-list --right-only --count "${BASE}..upstream/main")
+          AHEAD=$(git rev-list --left-only  --count "${BASE}..HEAD")
+          echo "behind=${BEHIND}" >> "$GITHUB_OUTPUT"
+          echo "ahead=${AHEAD}"   >> "$GITHUB_OUTPUT"
 
-    - name: Check diffs for workflow file changes
-      id: check_workflows
-      run: |
-        if git diff --name-only HEAD..upstream/main | grep -q '^\.github/workflows/'; then
-          echo "WORKFLOWS_CHANGED=true" >> $GITHUB_ENV
-          echo "⚠️ Detected workflow file changes in upstream."
-        else
-          echo "WORKFLOWS_CHANGED=false" >> $GITHUB_ENV
-          echo "✅ No workflow changes detected."
-        fi
+      - name: Configure author
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-    - name: Set GitHub Actions identity
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Try rebase on upstream
+        id: try_ff
+        if: ${{ steps.delta.outputs.behind != '0' }}
+        continue-on-error: true
+        run: |
+          git rebase --rebase-merges upstream/main
 
-    - name: Prepare staging branch with upstream merge (only when workflows changed)
-      if: env.WORKFLOWS_CHANGED == 'true'
-      run: |
-        git checkout -B upstream main
-        git merge --no-edit upstream/main
+      - name: Push rebase result
+        if: ${{ steps.try_ff.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+          git push origin HEAD:main
 
-    - name: Authenticate Git remote with PAT (required for workflow file changes)
-      if: env.WORKFLOWS_CHANGED == 'true'
-      env:
-        PAT: ${{ secrets.PAT_WORKFLOW }}   # classic PAT with repo + workflow
-      run: |
-        git remote set-url origin https://x-access-token:${PAT}@github.com/${{ github.repository }}.git
-        git remote -v
+      - name: Set PR branch (fallbacks)
+        if: ${{ steps.delta.outputs.behind != '0' && steps.try_ff.outcome == 'failure' }}
+        run: |
+          git rebase --abort || true
+          git checkout -B chore/sync-upstream-${GITHUB_RUN_ID} main
+          git merge --no-ff --no-edit upstream/main || true
 
-    - name: Set source tree checks
-      if: env.WORKFLOWS_CHANGED == 'true'
-      run: |
-        if git remote -v | grep -E 'upstream\s+https://github.com/modular/modular\.git\s+\(push\)'; then
-          echo "🚫 Upstream has a push URL set — aborting."; exit 1; fi
+      - name: Generate PR
+        id: cpr
+        if: ${{ steps.delta.outputs.behind != '0' && steps.try_ff.outcome == 'failure' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.PAT_WORKFLOW }}
+          base: main
+          branch: chore/sync-upstream-${{ github.run_id }}
+          title: "Sync upstream → main"
+          commit-message: "chore: sync upstream → main"
+          labels: automerge,sync
 
-    - name: Push sync to `upstream` branch on fork
-      if: env.WORKFLOWS_CHANGED == 'true'
-      run: git push -f origin upstream
+      - name: Auto-approve
+        if: ${{ steps.cpr.outputs.pull-request-number != '' }}
+        uses: hmarr/auto-approve-action@v3
+        with:
+          github-token: ${{ secrets.PAT_WORKFLOW }}
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
 
-    - name: Get latest upstream commit hash
-      id: get_upstream_commit
-      if: env.WORKFLOWS_CHANGED == 'true'
-      run: echo "hash=$(git rev-parse upstream/main)" >> $GITHUB_OUTPUT
-
-    - name: Get diff summary
-      id: get_diff
-      if: env.WORKFLOWS_CHANGED == 'true'
-      run: |
-        files_changed=$(git diff --name-only HEAD..upstream/main | wc -l)
-        lines_changed=$(git diff --shortstat HEAD..upstream/main | grep -oE '[0-9]+' | paste -sd+ | bc)
-        echo "files=$files_changed" >> $GITHUB_OUTPUT
-        echo "lines=$lines_changed" >> $GITHUB_OUTPUT
-
-    - name: Generate a pull request to sync with origin/main on fork
-      id: create_pull_request
-      if: env.WORKFLOWS_CHANGED == 'true'
-      uses: peter-evans/create-pull-request@v6
-      with:
-        token: ${{ secrets.PAT_WORKFLOW }}   # use PAT (workflow scope)
-        commit-message: "Sync: workflow updates from upstream"
-        title: "🔄 Sync upstream workflows"
-        body: |
-          ✅ Auto-generated to sync workflow updates from upstream Modular AI.
-
-          📦 **Upstream Commit Hash:**
-          ```
-          ${{ steps.get_upstream_commit.outputs.hash }}
-          ```
-
-          🧮 **Diff Summary:**
-          - Files changed: `${{ steps.get_diff.outputs.files }}`
-          - Estimated lines changed: `${{ steps.get_diff.outputs.lines }}`
-
-          🔄 Auto-generated by `sync-upstream.yml` (Fridays 00:00 UTC).
-        base: main
-        branch: upstream
-        labels: sync
-
-    - name: Debug PR and workflow env at runtime
-      run: |
-        echo "WORKFLOWS_CHANGED=${{ env.WORKFLOWS_CHANGED }}"
-        echo "PR #: ${{ steps.create_pull_request.outputs.pull-request-number }}"
-
-    - name: Auto-approve pull request from Modular upstream
-      if: env.WORKFLOWS_CHANGED == 'true' && steps.create_pull_request.outputs.pull-request-number != ''
-      uses: hmarr/auto-approve-action@v3
-      with:
-        github-token: ${{ secrets.PAT_WORKFLOW }}
-        pull-request-number: ${{ steps.create_pull_request.outputs.pull-request-number }}
-
-    - name: Enable auto-merge for pull request from upstream
-      if: env.WORKFLOWS_CHANGED == 'true' && steps.create_pull_request.outputs.pull-request-number != '' && steps.create_pull_request.outputs.pull-request-number != '0'
-      uses: peter-evans/enable-pull-request-automerge@v2
-      with:
-        token: ${{ secrets.PAT_WORKFLOW }}
-        pull-request-number: ${{ steps.create_pull_request.outputs.pull-request-number }}
-        merge-method: squash
-
-    - name: "Fast-path: rebase when no workflow changes"
-      if: env.WORKFLOWS_CHANGED == 'false'
-      run: |
-        git rebase upstream/main || echo "No upstream changes to rebase"
-        git push origin main
+      - name: Enable auto-merge
+        if: ${{ steps.cpr.outputs.pull-request-number != '' }}
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.PAT_WORKFLOW }}
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: squash
