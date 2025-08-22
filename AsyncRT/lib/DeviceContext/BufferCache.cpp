@@ -1117,7 +1117,7 @@ BufferCache *BufferCache::onDevice(const Device &device,
   if (isDefault) {
     maxCacheSize = llvm::alignToPowerOf2(
         (memInfo.free *
-         DeviceContext::configAsInt("buffer_cache_size_percent", 0)) /
+         DeviceContext::configAsInt("buffer_cache_size_percent", 99)) /
             100,
         256 * KB);
   }
