@@ -19,41 +19,41 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Guard repo
+      - name: Fork configs
         run: |
           if [ "${{ github.repository }}" != "rcghpge/modular" ]; then
             exit 1
           fi
 
-      - name: Add upstream
+      - name: Add remotes and fetch
         run: |
           git remote add upstream https://github.com/modular/modular.git || true
+          git fetch --prune --tags origin
           git fetch --prune --tags upstream
           git checkout main
 
-      - name: Identify deltas
+      - name: Compute any diffs
         id: delta
         run: |
           BASE=$(git merge-base HEAD upstream/main)
           BEHIND=$(git rev-list --right-only --count "${BASE}..upstream/main")
-          AHEAD=$(git rev-list --left-only  --count "${BASE}..HEAD")
           echo "behind=${BEHIND}" >> "$GITHUB_OUTPUT"
-          echo "ahead=${AHEAD}"   >> "$GITHUB_OUTPUT"
 
-      - name: Configure author
+      - name: GH configs
+        if: ${{ steps.delta.outputs.behind != '0' }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Try rebase on upstream
-        id: try_ff
+      - name: Merge upstream/main to main
+        id: do_merge
         if: ${{ steps.delta.outputs.behind != '0' }}
         continue-on-error: true
         run: |
-          git rebase --rebase-merges upstream/main
+          git merge --no-ff --no-edit upstream/main
 
-      - name: Push rebase result
-        if: ${{ steps.try_ff.outcome == 'success' }}
+      - name: Push merge to main
+        if: ${{ steps.do_merge.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -61,23 +61,23 @@ jobs:
           git push origin HEAD:main
 
       - name: Set PR branch (fallbacks)
-        if: ${{ steps.delta.outputs.behind != '0' && steps.try_ff.outcome == 'failure' }}
+        if: ${{ steps.delta.outputs.behind != '0' && steps.do_merge.outcome == 'failure' }}
         run: |
-          git rebase --abort || true
+          git merge --abort || true
           git checkout -B chore/sync-upstream-${GITHUB_RUN_ID} main
           git merge --no-ff --no-edit upstream/main || true
 
       - name: Generate PR
         id: cpr
-        if: ${{ steps.delta.outputs.behind != '0' && steps.try_ff.outcome == 'failure' }}
+        if: ${{ steps.delta.outputs.behind != '0' && steps.do_merge.outcome == 'failure' }}
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PAT_WORKFLOW }}
           base: main
           branch: chore/sync-upstream-${{ github.run_id }}
-          title: "Sync upstream → main"
+          title: "Sync upstream → main (merge fallback)"
           commit-message: "chore: sync upstream → main"
-          labels: automerge,sync
+          labels: sync, automerge
 
       - name: Auto-approve
         if: ${{ steps.cpr.outputs.pull-request-number != '' }}
