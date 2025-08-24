@@ -374,15 +374,6 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
                           bool checkResults) {
   auto results = executableModel.execute(args);
 
-#if MODULAR_PARANOID
-  // NOTE: Sleeping here would give the model a chance to attempt to
-  // emplace it's final output results before we have called await.
-  // This is rare, and can trigger bugs since under the common case
-  // an emplace on the final output result won't trigger the await
-  // until the emplacing task has returned all the way out to the AsyncRT
-  // run items loop.
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
-#endif
   if (checkResults) {
     auto unitOr = awaitAndCheck(results);
     if (unitOr.isError())

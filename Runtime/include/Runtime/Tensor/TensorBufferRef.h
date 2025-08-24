@@ -45,12 +45,15 @@ public:
   TensorBufferRef() = default;
 
   /// Deallocates the underlying buffer if an owning reference.
-  ~TensorBufferRef();
+  ~TensorBufferRef() = default;
 
   // Move is allowed for buffer references. The moved-from reference is
   // returned to the default 'null' state.
-  TensorBufferRef(TensorBufferRef &&rhs);
-  TensorBufferRef &operator=(TensorBufferRef &&rhs);
+  TensorBufferRef(TensorBufferRef &&rhs) { swap(rhs); }
+  TensorBufferRef &operator=(TensorBufferRef &&rhs) {
+    swap(rhs);
+    return *this;
+  }
 
   //===--------------------------------------------------------------------===//
   // Creation methods.
@@ -122,37 +125,13 @@ public:
   void printDebug(raw_ostream &os) const;
   void swap(TensorBufferRef &rhs);
 
-#if MODULAR_PARANOID
-  /// Adds to uses a fresh use capturing that this buffer reference is being
-  /// read, written or mutated. If this buffer reference is itself a borrow
-  /// of some other buffer reference, then uses will be added for the
-  /// transitive read/write/mutate, and so on to closure. All these uses should
-  /// be held for the duration of the kernel which is performing the access,
-  /// but no longer.
-  void collectAccessUses(SmallVectorImpl<AsyncRT::ResourceUse> &uses,
-                         StringRef name, AsyncRT::ResourceUseType useType,
-                         const AsyncRT::ResourceSection &section =
-                             AsyncRT::allResourceSection()) const;
-#endif
-
 private:
   /// Constructs a kOwned or kBorrowed reference.
   TensorBufferRef(void *buffer, size_t size, AnyAsyncValueRef storageRef,
                   llvm::MaybeAlign alignment,
-                  BufferRefLifetimeProfilerEntry profilerEntry
-#if MODULAR_PARANOID
-                  ,
-                  AsyncRT::ResourceRef resource, AsyncRT::ResourceUse use
-#endif
-                  )
+                  BufferRefLifetimeProfilerEntry profilerEntry)
       : data(buffer), size(size), storageRef(std::move(storageRef)),
-        profilerEntry(std::move(profilerEntry))
-#if MODULAR_PARANOID
-        ,
-        resource(std::move(resource)), use(std::move(use))
-#endif
-  {
-  }
+        profilerEntry(std::move(profilerEntry)) {}
 
   // Implicit copying is not allowed.
   TensorBufferRef(const TensorBufferRef &rhs) = delete;
@@ -172,15 +151,6 @@ private:
   AnyAsyncValueRef storageRef;
 
   BufferRefLifetimeProfilerEntry profilerEntry;
-
-#if MODULAR_PARANOID
-  /// An abstract 'resource' to represent this buffer. May be 'used' by
-  /// borrows from this buffer.
-  AsyncRT::ResourceRef resource;
-
-  /// If the buffer is kBorrowed, an abstract 'use' of borrowee. Otherwise null.
-  AsyncRT::ResourceUse use;
-#endif
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const TensorBufferRef &value) {

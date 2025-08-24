@@ -26,56 +26,7 @@ using namespace M::GML;
 
 ErrorOrSuccess CompiledKernelABI::CompiledKernelCall::pushObject(
     AnyAsyncValueRef input, char inOutType, StringRef summary,
-    const EncodedLocation &loc
-#if MODULAR_PARANOID
-    ,
-    SmallVectorImpl<AsyncRT::ResourceUse> &uses
-#endif
-) {
-#if MODULAR_PARANOID
-  switch (inOutType) {
-  case 'i': {
-    if (input.isType<TensorBufferRef>()) {
-      auto &buffer = input.get<TensorBufferRef>();
-      // Record that we'll be reading this buffer while the kernel is
-      // in-flight.
-      buffer.collectAccessUses(
-          uses, (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
-          AsyncRT::kReadingResourceUse);
-
-    } else if (input.isType<List>()) {
-      auto &list = input.get<List>();
-      for (Variant &v : list.getElements()) {
-        const AnyAsyncValueRef &ref = v.getValue();
-        // Record that we'll be reading the buffer of this tensor while the
-        // kernel is in-flight.
-        if (ref.isType<Tensor>()) {
-          auto &tensor = ref.get<Tensor>();
-          tensor.getBufferRef().collectAccessUses(
-              uses,
-              (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
-              AsyncRT::kReadingResourceUse);
-        }
-      }
-    }
-    break;
-  }
-  case 'o': {
-    if (input.isType<TensorBufferRef>()) {
-      auto &buffer = input.get<TensorBufferRef>();
-      // Record that we'll be writing this buffers while the kernel is
-      // in-flight.
-      buffer.collectAccessUses(
-          uses, (Twine("kernel(line=") + Twine(loc.decode().line) + ")").str(),
-          AsyncRT::kWritingResourceUse);
-    }
-    break;
-  }
-  default:
-    llvm::llvm_unreachable_internal("invalid in/out signature");
-  }
-#endif // MODULAR_PARANOID
-
+    const EncodedLocation &loc) {
   if (input.isType<TensorBufferRef>()) {
     const void *ptr = input.get<TensorBufferRef>().getBuffer();
     // Forget the const here since the ABI mixes input and output.

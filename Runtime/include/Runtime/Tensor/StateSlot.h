@@ -11,6 +11,7 @@
 #include "Runtime/Tensor/TensorBufferRef.h"
 #include "Support/ADT/GenericRCRef.h"
 #include "Support/ErrorOr.h"
+#include "Support/ReferenceCounted.h"
 #include "Support/TypeID.h"
 
 namespace M {

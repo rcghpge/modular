@@ -55,11 +55,6 @@ TensorBufferRef TensorBufferRef::createOwned(AsyncRT::CompactRuntimePtr runtime,
   storageRef = storageRef.createReady<OwnedMemoryBlock>(runtime, size,
                                                         alignment, runtime);
   void *buffer = storageRef.get<OwnedMemoryBlock>().data;
-#if MODULAR_PARANOID
-  // Set the buffer contents to a value which will more obviously
-  // upset tests if used before initialized.
-  memset(buffer, 0xad, size);
-#endif
   return TensorBufferRef::create(buffer, size, std::move(storageRef),
                                  makeMaybeAlign(alignment));
 }
@@ -75,21 +70,6 @@ TensorBufferRef TensorBufferRef::take(AsyncRT::CompactRuntimePtr runtime,
   return TensorBufferRef::create(buffer, size, std::move(storageRef));
 }
 
-TensorBufferRef::~TensorBufferRef() {
-#if MODULAR_PARANOID
-  // This buffer should have no active uses.
-  if (resource)
-    resource->markFreed();
-#endif
-}
-
-TensorBufferRef::TensorBufferRef(TensorBufferRef &&rhs) { swap(rhs); }
-
-TensorBufferRef &TensorBufferRef::operator=(TensorBufferRef &&rhs) {
-  swap(rhs);
-  return *this;
-}
-
 TensorBufferRef TensorBufferRef::borrow() const {
   return TensorBufferRef::create(
       data, size, storageRef ? storageRef.copy() : AnyAsyncValueRef{});
@@ -101,15 +81,6 @@ void TensorBufferRef::reset() {
   // Though the underlying buffer has not been freed, stop the profiling
   // entry since we can no longer track its lifetime.
   std::move(profilerEntry).record();
-#if MODULAR_PARANOID
-  // Since the lifetime of the underlying buffer can no longer be tracked,
-  // we must consider it freed from the pov of any other borrows.
-  if (resource) {
-    resource->markFreed();
-    resource.reset();
-  }
-  use.reset();
-#endif
 }
 
 void TensorBufferRef::printDebug(raw_ostream &os) const {
@@ -130,36 +101,7 @@ void TensorBufferRef::swap(TensorBufferRef &rhs) {
   std::swap(size, rhs.size);
   std::swap(storageRef, rhs.storageRef);
   std::swap(profilerEntry, rhs.profilerEntry);
-#if MODULAR_PARANOID
-  std::swap(resource, rhs.resource);
-  std::swap(use, rhs.use);
-#endif
 }
-
-#if MODULAR_PARANOID
-void TensorBufferRef::collectAccessUses(
-    SmallVectorImpl<AsyncRT::ResourceUse> &uses, StringRef name,
-    AsyncRT::ResourceUseType useType,
-    const AsyncRT::ResourceSection &section) const {
-  if (!resource)
-    return;
-  // We are using this reference.
-  uses.emplace_back(resource->beginUse(name.str(), useType, section));
-  if (storageRef && storageRef.isType<TensorBufferRef>()) {
-    // By transitivity, we are using (a section of) the storageRef's buffer.
-    // Account for any (offset, size), which will have been captured by our
-    // use.
-    const TensorBufferRef &owningBufferRef = storageRef.get<TensorBufferRef>();
-    AsyncRT::ResourceSection parentSection =
-        AsyncRT::isAllResourceSection(section)
-            ? use.getSection()
-            : AsyncRT::ResourceSection(
-                  section.start() + use.getSection().start(),
-                  section.end() + use.getSection().start());
-    owningBufferRef.collectAccessUses(uses, name, useType, parentSection);
-  }
-}
-#endif
 
 OwnedMemoryBlock::OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
                                    AsyncRT::CompactRuntimePtr rt, void *takePtr)
