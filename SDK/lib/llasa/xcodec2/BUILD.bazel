@@ -7,6 +7,7 @@ modular_py_library(
         "config.py",
         "decoder.py",
         "istft.py",
+        "layers.py",
         "residual_fsq.py",
         "transformer.py",
         "vocosbackbone.py",
