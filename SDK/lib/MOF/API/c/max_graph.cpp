@@ -95,13 +95,14 @@ MAXG_attrNewTensorFromFile(StringRef name, StringRef fileName, MlirType t) {
                  unwrap(t), /*owned=*/false, *runtime));
 }
 
-MODULAR_API_EXPORT MlirLocation
-MAXG_opaqueFrameLocNew(MlirContext context, void *frame_ptr,
-                       char *(*to_str_fn)(void *), void (*decref_fn)(void *)) {
-  auto frameAttr = RMO::PythonFrameAttr::get(unwrap(context),
-                                             {frame_ptr, to_str_fn, decref_fn});
+MODULAR_API_EXPORT MlirLocation MAXG_opaqueFrameLocNew(
+    MlirContext context, void *frame_ptr, char *(*to_str_fn)(void *),
+    void (*incref_fn)(void *), void (*decref_fn)(void *)) {
   mlir::Location loc =
-      mlir::OpaqueLoc::get(frameAttr.getImpl(), unwrap(context));
+      RMO::PythonFrameAttr::getOpaque(unwrap(context), {.ptr = frame_ptr,
+                                                        .to_str = to_str_fn,
+                                                        .incref = incref_fn,
+                                                        .decref = decref_fn});
   return wrap(loc);
 }
 

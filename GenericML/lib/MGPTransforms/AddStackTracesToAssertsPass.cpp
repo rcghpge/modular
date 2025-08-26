@@ -39,17 +39,9 @@ struct AddStackTracesToAssertsPass
 
     WalkResult result = getOperation()->walk([&ctx](AssertOp op) {
       Location loc = op.getLoc();
-      auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
-      if (!opaqueLoc)
+      auto attr = RMO::PythonFrameAttr::fromLocation(loc);
+      if (!attr)
         return WalkResult::advance();
-
-      // Grab the python frame from location.
-      void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
-          RMO::PythonFrameAttr::ImplType *>(opaqueLoc);
-      if (!attrPtr)
-        return WalkResult::advance();
-
-      auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
 
       std::string fullMsg = "\nBuild Time Traceback (most recent call last):\n";
       llvm::raw_string_ostream ss(fullMsg);

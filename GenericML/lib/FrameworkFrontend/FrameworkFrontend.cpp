@@ -258,19 +258,12 @@ private:
       //      done.
       //
       // 3. When an error occurs, this diagnostic handler retrieves the stack.
-      if (auto opaqueLoc = dyn_cast<mlir::OpaqueLoc>(diag.getLocation())) {
-        // Extract the PythonFrameAttr from the opaque location.
-        // This contains the Python stack frame pointer and formatting
-        // callbacks.
-        if (void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
-                RMO::PythonFrameAttr::ImplType *>(opaqueLoc)) {
-          auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
-          os << "\nBuild Time Traceback (most recent call last):\n"
-             // attr.stack_trace() calls the frame_traceback() function that
-             // uses Python's traceback.format_list to convert the frames to a
-             // human-readable form.
-             << attr.stack_trace() << "\nMAX Compile Error: " << diag << "\n";
-        }
+      if (auto attr = RMO::PythonFrameAttr::fromLocation(diag.getLocation())) {
+        os << "\nBuild Time Traceback (most recent call last):\n"
+           // attr.stack_trace() calls the frame_traceback() function that
+           // uses Python's traceback.format_list to convert the frames to a
+           // human-readable form.
+           << attr.stack_trace() << "\nMAX Compile Error: " << diag << "\n";
       } else {
         // First emit the formatted diag itself before processing notes.
         FormatScopedDiagnosticHandler::emitDiagLocSeverity(os, diag);

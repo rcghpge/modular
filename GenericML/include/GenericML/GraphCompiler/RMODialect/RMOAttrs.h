@@ -12,12 +12,14 @@
 #define GENERICML_GRAPHCOMPILER_RMODIALECT_RMOATTRS_H
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Location.h"
 
 namespace M::RMO {
 
 struct PythonFrame {
   void *ptr;
   char *(*to_str)(void *);
+  void (*incref)(void *);
   void (*decref)(void *);
   char *cached_output = nullptr;
 };
@@ -26,7 +28,10 @@ class PythonFrameAttrStorage : public mlir::AttributeStorage {
 public:
   using KeyTy = PythonFrame;
 
-  PythonFrameAttrStorage(PythonFrame frame) : frame(frame) {}
+  PythonFrameAttrStorage(PythonFrame frame) : frame(frame) {
+    // Frame object must live as long as the new storage object.
+    frame.incref(frame.ptr);
+  }
 
   ~PythonFrameAttrStorage() {
     frame.decref(frame.ptr);
@@ -44,7 +49,7 @@ public:
 
   bool operator==(const KeyTy &key) const {
     return key.ptr == frame.ptr && key.to_str == frame.to_str &&
-           key.decref == frame.decref;
+           key.incref == frame.incref && key.decref == frame.decref;
   }
 
   static KeyTy getKey(PythonFrame frame) { return frame; }
@@ -75,6 +80,24 @@ public:
 
   static PythonFrameAttr get(mlir::MLIRContext *context, PythonFrame frame) {
     return Base::get(context, frame);
+  }
+
+  static mlir::OpaqueLoc getOpaque(mlir::MLIRContext *context,
+                                   PythonFrame frame) {
+    PythonFrameAttr frameAttr = get(context, frame);
+    return mlir::OpaqueLoc::get(frameAttr.getImpl(), context);
+  }
+
+  static PythonFrameAttr fromOpaque(mlir::OpaqueLoc opaque) {
+    auto ptr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
+        RMO::PythonFrameAttr::ImplType *>(opaque);
+    return PythonFrameAttr(ptr);
+  }
+
+  static PythonFrameAttr fromLocation(mlir::Location loc) {
+    if (auto opaque = dyn_cast<mlir::OpaqueLoc>(loc))
+      return fromOpaque(opaque);
+    return {};
   }
 
   void *frame() { return getImpl()->frame.ptr; }
