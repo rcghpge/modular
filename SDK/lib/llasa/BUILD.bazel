@@ -1,0 +1,23 @@
+load("//bazel:api.bzl", "modular_py_binary", "modular_py_library", "requirement")
+
+modular_py_library(
+    name = "llasa_lib",
+    srcs = [
+        "__init__.py",
+        "config.py",
+    ],
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)
+
+modular_py_binary(
+    name = "llasa",
+    srcs = ["entrypoint.py"],
+    imports = ["."],
+    main = "entrypoint.py",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":llasa_lib",
+        requirement("click"),
+    ],
+)
