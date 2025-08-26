@@ -4,7 +4,15 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+import enum
 from dataclasses import dataclass
+
+
+class AudioType(enum.Enum):
+    """Audio types for stub XCodec2 decoder."""
+
+    WHITE_NOISE = "white_noise"  # Random static - tests duration/volume
+    SINE_WAVE = "sine_wave"  # Pure 440Hz tone - tests pitch/quality
 
 
 @dataclass(frozen=True)

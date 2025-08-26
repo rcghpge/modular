@@ -4,7 +4,9 @@ modular_py_library(
     name = "llasa_lib",
     srcs = [
         "__init__.py",
+        "audio_decoder.py",
         "config.py",
+        "model.py",
         "prompt_template.py",
         "speech_lm.py",
     ],
@@ -14,6 +16,7 @@ modular_py_library(
         requirement("transformers"),
         requirement("numpy"),
         requirement("jinja2"),
+        requirement("soundfile"),
         "//SDK/lib/API/python/max/driver",
         "//SDK/lib/API/python/max/interfaces",
         "//SDK/lib/API/python/max/pipelines",
