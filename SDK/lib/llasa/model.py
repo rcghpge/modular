@@ -12,7 +12,7 @@ import numpy as np
 from max import driver
 
 from .audio_decoder import AudioDecoder
-from .config import AudioType, LlasaConfig
+from .config import LlasaConfig
 from .speech_lm import SpeechLM
 
 
@@ -45,14 +45,12 @@ class LlasaTTS:
         self,
         text: str,
         max_tokens: int | None = None,
-        audio_type: AudioType = AudioType.WHITE_NOISE,
     ) -> np.ndarray:
         """Generate audio from input text.
 
         Args:
             text: Input text to convert to speech
             max_tokens: Maximum number of speech tokens to generate
-            audio_type: Type of stub audio to generate
 
         Returns:
             Audio waveform as numpy array
@@ -60,7 +58,7 @@ class LlasaTTS:
         speech_tokens = await self.speech_lm.generate_speech_tokens(
             text, max_tokens
         )
-        audio = self.audio_decoder.decode(speech_tokens, audio_type)
+        audio = self.audio_decoder.decode(speech_tokens)
         return audio
 
     def save_audio(self, audio: np.ndarray, output_path: str) -> None:
@@ -88,7 +86,6 @@ class LlasaTTS:
         text: str,
         output_path: str,
         max_tokens: int | None = None,
-        audio_type: AudioType = AudioType.WHITE_NOISE,
     ) -> str:
         """Generate audio from text and save to file.
 
@@ -96,11 +93,10 @@ class LlasaTTS:
             text: Input text to convert to speech
             output_path: Path to save the generated audio
             max_tokens: Maximum number of speech tokens to generate
-            audio_type: Type of stub audio to generate
 
         Returns:
             Path to the saved audio file
         """
-        audio = await self.generate_audio(text, max_tokens, audio_type)
+        audio = await self.generate_audio(text, max_tokens)
         self.save_audio(audio, output_path)
         return output_path

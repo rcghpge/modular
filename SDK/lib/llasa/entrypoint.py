@@ -12,7 +12,7 @@ import asyncio
 import click
 from max import driver
 
-from llasa.config import AudioType, LlasaConfig
+from llasa.config import LlasaConfig
 from llasa.model import LlasaTTS
 from llasa.prompt_template import create_llasa_prompt
 from llasa.speech_lm import SpeechLM
@@ -77,12 +77,6 @@ def strip_repetitive_silence(
     default="generated_audio.wav",
     help="Output audio file path",
 )
-@click.option(
-    "--audio-type",
-    type=click.Choice(["white_noise", "sine_wave"]),
-    default="white_noise",
-    help="Type of stub audio to generate",
-)
 @click.help_option("--help", "-h")
 def main(
     text: str,
@@ -92,7 +86,6 @@ def main(
     print_raw_text: bool,
     generate: bool,
     output: str,
-    audio_type: str,
 ) -> None:
     """Llasa TTS - Text-to-Speech using Llama + XCodec2."""
     config = LlasaConfig()
@@ -102,10 +95,8 @@ def main(
             "Error: --strip-silence and --print-raw-text can only be used with --generate-tokens"
         )
         return
-    if (output or audio_type) and not generate:
-        click.echo(
-            "Error: --output and --audio-type can only be used with --generate"
-        )
+    if output and not generate:
+        click.echo("Error: --output can only be used with --generate")
         return
 
     if format_prompt and text:
@@ -146,12 +137,9 @@ def main(
         device_specs = [driver.DeviceSpec(id=0, device_type="gpu")]
         tts = LlasaTTS(config, device_specs=device_specs)
 
-        audio_type_enum = AudioType(audio_type)
-
+        click.echo("Generating audio with XCodec2...")
         try:
-            output_path = asyncio.run(
-                tts.generate_and_save(text, output, audio_type=audio_type_enum)
-            )
+            output_path = asyncio.run(tts.generate_and_save(text, output))
             click.echo(f"Audio generated successfully: {output_path}")
         except Exception as e:
             click.echo(f"Error generating audio: {e}")

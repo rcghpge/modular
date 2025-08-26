@@ -1,0 +1,23 @@
+load("//bazel:api.bzl", "modular_py_library", "requirement")
+
+modular_py_library(
+    name = "xcodec2",
+    srcs = [
+        "__init__.py",
+        "config.py",
+        "decoder.py",
+        "istft.py",
+        "residual_fsq.py",
+        "transformer.py",
+        "vocosbackbone.py",
+        "xcodec2.py",
+    ],
+    imports = ["../.."],
+    visibility = ["//visibility:public"],
+    deps = [
+        requirement("numpy"),
+        "//SDK/lib/API/python/max/dtype",
+        "//SDK/lib/API/python/max/graph",
+        "//SDK/lib/API/python/max/nn",
+    ],
+)

@@ -4,15 +4,9 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-
-class AudioType(enum.Enum):
-    """Audio types for stub XCodec2 decoder."""
-
-    WHITE_NOISE = "white_noise"  # Random static - tests duration/volume
-    SINE_WAVE = "sine_wave"  # Pure 440Hz tone - tests pitch/quality
+from .xcodec2.config import XCodec2Config
 
 
 @dataclass(frozen=True)
@@ -36,3 +30,6 @@ class LlasaConfig:
     max_new_tokens: int = 200  # Shorter to see natural patterns
     temperature: float = 1.0
     top_p: float = 1.0
+
+    # XCodec2 configuration
+    xcodec2_config: XCodec2Config = field(default_factory=XCodec2Config)

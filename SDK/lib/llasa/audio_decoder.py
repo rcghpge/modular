@@ -4,21 +4,20 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-"""XCodec2 wrapper for Llasa TTS (stub implementation)."""
+"""XCodec2 wrapper for Llasa TTS."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from .config import AudioType, LlasaConfig
+from .config import LlasaConfig
+from .xcodec2.decoder import XCodec2Decoder
 
 
 class AudioDecoder:
-    """Audio decoder for Llasa TTS.
+    """Audio decoder for Llasa TTS using XCodec2.
 
-    This is a temporary implementation that generates white noise or sine waves
-    instead of an actual audio decoding. It will be replaced with the real
-    XCodec2 model in a future PR.
+    Converts speech token sequences to audio waveforms using the XCodec2 model.
     """
 
     def __init__(self, config: LlasaConfig) -> None:
@@ -28,37 +27,30 @@ class AudioDecoder:
             config: Llasa configuration
         """
         self.config = config
-        self.sample_rate = 16000  # From `modeling_xcodec2.py` reference on HF
-        self.codec_tokens_per_sec = 50  # From HF model card
-        self.duration_per_token = (
-            1.0 / self.codec_tokens_per_sec
-        )  # 0.02 seconds per token
+        self.xcodec2_decoder = XCodec2Decoder(config.xcodec2_config)
 
-    def decode(
-        self,
-        speech_tokens: np.ndarray,
-        output_type: AudioType = AudioType.WHITE_NOISE,
-    ) -> np.ndarray:
-        """Decode speech tokens to audio waveform (stub implementation).
+    @property
+    def sample_rate(self) -> int:
+        """Audio sample rate from XCodec2 config."""
+        return self.xcodec2_decoder.sample_rate
+
+    @property
+    def codec_tokens_per_sec(self) -> int:
+        """Number of codec tokens per second from XCodec2 config."""
+        return self.xcodec2_decoder.codec_tokens_per_sec
+
+    @property
+    def duration_per_token(self) -> float:
+        """Duration per token in seconds (1/50 = 0.02 seconds)."""
+        return 1.0 / self.codec_tokens_per_sec
+
+    def decode(self, speech_tokens: np.ndarray) -> np.ndarray:
+        """Decode speech tokens to audio waveform using XCodec2.
 
         Args:
             speech_tokens: Array of speech token indices
-            output_type: Type of stub audio to generate
 
         Returns:
             Audio waveform as numpy array (shape: [num_samples])
         """
-        num_tokens = len(speech_tokens)
-        duration_seconds = num_tokens * self.duration_per_token
-        num_samples = int(duration_seconds * self.sample_rate)
-
-        if output_type == AudioType.SINE_WAVE:
-            # Generate a simple sine wave (440 Hz - A4 note)
-            t = np.linspace(0, duration_seconds, num_samples, False)
-            frequency = 440.0  # Hz
-            audio = 0.3 * np.sin(2 * np.pi * frequency * t)
-        else:
-            # Generate white noise (default)
-            audio = 0.1 * np.random.normal(0, 1, num_samples)
-
-        return audio.astype(np.float32)
+        return self.xcodec2_decoder.decode_numpy(speech_tokens)
