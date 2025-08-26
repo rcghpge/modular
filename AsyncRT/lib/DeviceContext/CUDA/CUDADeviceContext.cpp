@@ -1507,7 +1507,9 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
 ErrorOr<DeviceEventRef>
 CUDADeviceContext::eventCreate(unsigned int flags) const {
   CUDA_WITH_CTX_ERR(*this);
-  DEFINE_OR_RAISE(CUevent, event, CUDADevice::cast(device()).eventCachePop());
+  CUevent event;
+  CUDA_CHECK_ERR(
+      driver_.EventCreate(&event, static_cast<CUevent_flags>(flags)));
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
 }
 
