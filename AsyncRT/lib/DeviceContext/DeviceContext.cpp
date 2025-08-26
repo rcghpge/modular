@@ -120,12 +120,20 @@ const std::string &DeviceFunctionCacheEntry::name() const { return name_; }
 
 Error DeviceContext::formatError(const char *file, int line, const char *func,
                                  const llvm::Twine &msg) {
+  static bool syncModeEnabled = DeviceContext::configAsBool("sync-mode", false);
+
+  llvm::StringLiteral kErrorMessage = "";
+
+  if (!syncModeEnabled)
+    kErrorMessage = "\nTo get more accurate error information, set "
+                    "MODULAR_DEVICE_CONTEXT_SYNC_MODE=true.";
+
   static bool logVerbose = DeviceContext::configAsBool("log_verbose", false);
   if (logVerbose) {
     return Error(llvm::Twine(file) + ":" + llvm::Twine(line) + " - " + func +
-                 " failed: " + msg);
+                 " failed: " + msg + kErrorMessage);
   }
-  return Error(msg);
+  return Error(msg + kErrorMessage);
 }
 
 // TODO: Remove once users have been updated to use
