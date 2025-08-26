@@ -5,9 +5,19 @@ modular_py_library(
     srcs = [
         "__init__.py",
         "config.py",
+        "prompt_template.py",
+        "speech_lm.py",
     ],
     imports = [".."],
     visibility = ["//visibility:public"],
+    deps = [
+        requirement("transformers"),
+        requirement("numpy"),
+        requirement("jinja2"),
+        "//SDK/lib/API/python/max/driver",
+        "//SDK/lib/API/python/max/interfaces",
+        "//SDK/lib/API/python/max/pipelines",
+    ],
 )
 
 modular_py_binary(
