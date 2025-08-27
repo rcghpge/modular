@@ -27,13 +27,59 @@
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Threading/SpinWaiter.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
 
 #define DEBUG_TYPE "mgp"
+
+/// Check if kernel logging is enabled via MAX_LOG_KERNELS environment variable
+static bool isKernelLoggingEnabled() {
+  // Use compiler's built-in support for static locals to ensure thread safety
+  static bool enabled = []() {
+    if (const char *env = std::getenv("MAX_LOG_KERNELS")) {
+      std::string value(env);
+      return (value == "1" || value == "true" || value == "True" ||
+              value == "yes" || value == "Yes");
+    }
+    return false;
+  }();
+  return enabled;
+}
+
+/// Get relative timestamp in milliseconds since first kernel launch
+static double getRelativeTimestampMs() {
+  static auto startTime = std::chrono::high_resolution_clock::now();
+  auto now = std::chrono::high_resolution_clock::now();
+  auto duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(now - startTime);
+  return duration.count() / 1000.0; // Convert microseconds to milliseconds
+}
+
+/// Check if a kernel should be logged (includes enabled check and filtering)
+static bool shouldLogKernel(llvm::StringRef kernelName) {
+  // Early return if kernel logging is disabled
+  if (!isKernelLoggingEnabled())
+    return false;
+
+  // Filter out low-level primitives that don't correspond to graph operations
+  static const llvm::DenseSet<llvm::StringRef> filteredKernels = {
+      "index.constant",      "mgp.buffer.alloc",       "mgp.buffer.free",
+      "mgp.buffer.constant", "mgp.tensor.from_buffer", "mgp.tensor.to_buffer"};
+
+  return !filteredKernels.contains(kernelName);
+}
 
 using namespace M;
 using namespace M::GML;
@@ -100,21 +146,31 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
   return kernelInputs;
 }
 
+/// Extract device contexts from operands
+template <typename OperandContainer>
+static llvm::SmallVector<AsyncRT::DeviceContextRef>
+extractDeviceContexts(const OperandContainer &operands) {
+  llvm::SmallVector<AsyncRT::DeviceContextRef> deviceContexts;
+
+  for (const AnyAsyncValueRef &operand : operands) {
+    if (auto deviceCtxRef =
+            llvm::dyn_cast<AsyncRT::DeviceContextRef>(operand)) {
+      deviceContexts.push_back(*deviceCtxRef);
+    }
+  }
+
+  return deviceContexts;
+}
+
 /// Extract device hint from DeviceContext if present in operands.
 static int deviceHintFor(const RemainingArguments &operands) {
   llvm::SmallSet<int, 8> acceleratorIds;
 
-  for (const AnyAsyncValueRef &operand : operands) {
-    // Check for DeviceContextRef.
-    if (operand.isType<AsyncRT::DeviceContextRef>()) {
-      // getPointerToData() returns a pointer to the payload (DeviceContextRef).
-      const auto &deviceCtxRef =
-          *static_cast<const AsyncRT::DeviceContextRef *>(
-              operand.getPointerToData());
-      if (deviceCtxRef->device().api() != AsyncRT::Device::cpuAPI) {
-        // Track only accelerator device IDs.
-        acceleratorIds.insert(deviceCtxRef->device().id());
-      }
+  auto deviceContexts = extractDeviceContexts(operands);
+  for (const auto &deviceCtxRef : deviceContexts) {
+    if (deviceCtxRef->device().api() != AsyncRT::Device::cpuAPI) {
+      // Track only accelerator device IDs.
+      acceleratorIds.insert(deviceCtxRef->device().id());
     }
   }
 
@@ -124,6 +180,46 @@ static int deviceHintFor(const RemainingArguments &operands) {
 
   // Multiple contexts or CPU context -> no preference.
   return kNoDevicePreference;
+}
+
+/// Get device information string for logging (CPU vs GPU:id)
+template <typename OperandContainer>
+static std::string getDeviceInfoStringImpl(const OperandContainer &operands) {
+  llvm::SmallVector<std::string> deviceInfos;
+
+  auto deviceContexts = extractDeviceContexts(operands);
+  for (const auto &deviceCtxRef : deviceContexts) {
+    const auto &device = deviceCtxRef->device();
+    std::string deviceInfo;
+
+    if (device.api() == AsyncRT::Device::cpuAPI)
+      deviceInfo = "CPU";
+    else
+      // All non-CPU devices are considered GPU with device ID
+      deviceInfo = "GPU:" + std::to_string(device.id());
+
+    deviceInfos.push_back(std::move(deviceInfo));
+  }
+
+  if (deviceInfos.empty())
+    return "CPU"; // Default assumption if no device contexts found
+  if (deviceInfos.size() == 1)
+    return deviceInfos[0];
+  // Multiple devices - join with comma
+  std::string result = "Multi(";
+  llvm::raw_string_ostream os(result);
+  llvm::interleaveComma(deviceInfos, os);
+  result += ")";
+  return result;
+}
+
+static std::string getDeviceInfoString(const RemainingArguments &operands) {
+  return getDeviceInfoStringImpl(operands);
+}
+
+static std::string
+getDeviceInfoString(const llvm::SmallVector<AnyAsyncValueRef> &operands) {
+  return getDeviceInfoStringImpl(operands);
 }
 
 static void mgp_generic_execute(
@@ -140,6 +236,14 @@ static void mgp_generic_execute(
   // Extract device hint from DeviceContext if present in operands.
   int deviceHint = deviceHintFor(operands);
 
+  // Log kernel launch if enabled
+  if (shouldLogKernel(*dSummary)) {
+    double timestampMs = getRelativeTimestampMs();
+    std::string deviceInfo = getDeviceInfoString(operands);
+    llvm::errs() << "[KERNEL] LAUNCH " << *dSummary << " on " << deviceInfo
+                 << " at +" << llvm::format("%.3f", timestampMs) << "ms\n";
+  }
+
   if (eIsAsync.get()) {
     // Allocate indirect results as GraphRT is expecting result async values to
     // be allocated. The kernel will set them to ready when it is finished. We
@@ -148,19 +252,30 @@ static void mgp_generic_execute(
 
     // Run the kernel and extend the lifetime of the input and output async
     // values until it completes by capturing them.
-    auto runKernelAndExtendLifetimes =
-        [outResults = outResults.copyAsVector(),
-         takenOperands = operands.takeAsVector(),
-         constantResources = std::move(fConstantResources), kernelPtr]() {
-          llvm::SmallVector<void *> kernelInputs =
-              getKernelInputs(takenOperands, outResults, constantResources);
-          kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
+    bool logKernels = shouldLogKernel(*dSummary);
+    auto runKernelAndExtendLifetimes = [outResults = outResults.copyAsVector(),
+                                        takenOperands = operands.takeAsVector(),
+                                        constantResources =
+                                            std::move(fConstantResources),
+                                        kernelPtr, dSummary, logKernels]() {
+      llvm::SmallVector<void *> kernelInputs =
+          getKernelInputs(takenOperands, outResults, constantResources);
+      kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
 
-          // Must have all been released/reset by the compiled kernel.
-          assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
-            return !ref.getPointer();
-          }));
-        };
+      // Log kernel completion if enabled
+      if (logKernels) {
+        double timestampMs = getRelativeTimestampMs();
+        std::string deviceInfo = getDeviceInfoString(takenOperands);
+        llvm::errs() << "[KERNEL] COMPLETE " << *dSummary << " on "
+                     << deviceInfo << " at +"
+                     << llvm::format("%.3f", timestampMs) << "ms\n";
+      }
+
+      // Must have all been released/reset by the compiled kernel.
+      assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
+        return !ref.getPointer();
+      }));
+    };
 
     // Launch the kernel on a new thread with device hint.
     AsyncRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
@@ -171,6 +286,15 @@ static void mgp_generic_execute(
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
+
+    // Log kernel completion if enabled
+    if (shouldLogKernel(*dSummary)) {
+      double timestampMs = getRelativeTimestampMs();
+      std::string deviceInfo = getDeviceInfoString(operands);
+      llvm::errs() << "[KERNEL] COMPLETE " << *dSummary << " on " << deviceInfo
+                   << " at +" << llvm::format("%.3f", timestampMs) << "ms\n";
+    }
+
     // Must have all been released/reset by the compiled kernel.
     assert(llvm::all_of(operands, [](const AnyAsyncValueRef &ref) {
       return !ref.getPointer();
