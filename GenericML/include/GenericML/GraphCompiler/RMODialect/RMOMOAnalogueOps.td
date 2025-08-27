@@ -2389,7 +2389,7 @@ def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
 }
 
 def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal",
-  [AllDTypesMatch<["mean", "variance"]>, MO_HostOnly]> {
+  [AllDTypesMatch<["mean", "variance"]>]> {
   let summary = "Normal distribution operation";
   let description = [{
     Returns a tensor with shape `shape` populated with random

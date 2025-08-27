@@ -3851,9 +3851,9 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
 
 def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+  MO_SingleDeviceWithHostOperands<["shape", "mean", "variance", "seed"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["mean", "variance"]>,
-  MO_HostOnly
 ]> {
   let summary = "Normal distribution operation";
   let description = [{
@@ -3882,7 +3882,8 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
     MO_RankedScalarFloatTensor:$mean,
     MO_RankedScalarFloatTensor:$variance,
     MO_RankedScalarIndexTensor:$seed,
-    MO_ParamDecls:$outputParamDecls);
+    MO_ParamDecls:$outputParamDecls
+  );
 
   let results = (outs MO_Tensor:$result);
 
@@ -3898,7 +3899,6 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
 //===----------------------------------------------------------------------===//
 
 def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
-  Pure,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_SingleDeviceWithHostOperands<["shape", "lowerBound", "upperBound", "seed"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
