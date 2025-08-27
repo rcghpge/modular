@@ -825,6 +825,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
 
   encoder->setComputePipelineState(&pipeline);
   size_t numArgs = func.argumentCount();
+  const MetalDevice &metalDevice = MetalDevice::cast(device());
+  MTL::Device *mtlDevice = metalDevice.metalDevice();
+  SmallVector<MTL::Buffer *, 8> buffers;
 
   // 4) Bind all buffer arguments
   for (uint32_t i = 0; i < numArgs; ++i) {
@@ -834,21 +837,36 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
       RAISE_ERROR_MESSAGE("Null argument at index " + std::to_string(i));
     }
 
+    const size_t argSize = argSizes[i];
     MTL::Buffer *buf = nullptr;
-    uint64_t *argData = static_cast<uint64_t *>(args[i]);
-    uint64_t originalPtr = argData[0];
-    void *ptrValue = reinterpret_cast<void *>(originalPtr);
-    buf = getMetalBuffer(ptrValue);
-
-    if (buf != nullptr) {
-      encoder->setBuffer(buf, 0, i);
+    if (argSize == sizeof(void *)) {
+      // For simple pointers argument, try to either get a cached MTLBuffer or
+      // just set an argument using given bytes
+      uint64_t *argData = static_cast<uint64_t *>(args[i]);
+      uint64_t originalPtr = argData[0];
+      void *ptrValue = reinterpret_cast<void *>(originalPtr);
+      // FIXME: There's a possible bug here: if the argument is an integer that
+      // has a value of a cached buffer, we will use that buffer instead of
+      // encoding the integer.
+      // That can result to flaky behavior. To address it, we should be able to
+      // distinguish integer vs pointer arguments here.
+      // Because integer arguments are currently converted to pointers (Metal
+      // only accepts its `uint` type by value`), the issue is not likely to
+      // happen.
+      buf = getMetalBuffer(ptrValue);
+      if (buf != nullptr)
+        encoder->setBuffer(buf, 0, i);
+      else
+        encoder->setBytes(args[i], argSize, i);
     } else {
-      // For scalar values, we need to determine the size appropriately
-      // For now, assume all scalars are uint64_t
-      // TODO(amir): This is a hack to handle scalar arguments, fix to work with
-      // complex types
-      size_t argSize = argSizes[i];
-      encoder->setBytes(args[i], argSize, i);
+      // We have more complex argument, such as pointer to a struct. Allocate
+      // new MTLBuffer and set it.
+      MTL::ResourceOptions options =
+          getResourceOptions(Device::AllocMode::ASYNC);
+      MTL::Buffer *buf = mtlDevice->newBuffer(args[i], argSize, options);
+      buf->retain();
+      metalDevice.trackBuffer(buf->contents(), buf);
+      encoder->setBuffer(buf, 0, i);
     }
   }
 
@@ -863,6 +881,10 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
 
   // 7) Commit and release
   cmdBuffer->commit();
+
+  // 8) Wait until completion. This is a blocking call therefore we have no pure
+  // asynchronous execution. Remove it with GEX-2503 fixed.
+  cmdBuffer->waitUntilCompleted();
 
   return success();
 }
