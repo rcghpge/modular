@@ -27,7 +27,9 @@ class AudioDecoder:
             config: Llasa configuration
         """
         self.config = config
-        self.xcodec2_decoder = XCodec2Decoder(config.xcodec2_config)
+        self.xcodec2_decoder = XCodec2Decoder(
+            config.xcodec2_config, model_path=config.xcodec2_model_path
+        )
 
     @property
     def sample_rate(self) -> int:

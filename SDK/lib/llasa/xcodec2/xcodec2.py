@@ -18,20 +18,17 @@ from .vocosbackbone import VocosBackbone
 
 
 class CodecDecoderVocos(nn.Module):
-    """CodecDecoderVocos implementation for XCodec2.
+    """CodecDecoderVocos implementation for Llasa TTS.
 
-    This matches the structure from the original CodecDecoderVocos class,
-    but uses stub implementations for complex components.
+    Implements the decoder path of XCodec2: token embeddings → audio generation.
+    Optimized for Llasa's use case where Llama provides speech tokens directly.
     """
 
     def __init__(self, config: XCodec2Config) -> None:
         super().__init__()
         self.config = config
         self.hop_length = config.hop_length
-
-        # Quantizer for token embedding lookup
         self.quantizer = ResidualFSQ(config)
-
         self.backbone = VocosBackbone(config)
         self.head = ISTFTHead(config)
 
@@ -65,10 +62,10 @@ class CodecDecoderVocos(nn.Module):
 
 
 class XCodec2Model(nn.Module):
-    """Main XCodec2 model class.
+    """XCodec2 model for Llasa TTS.
 
-    This provides the interface matching the original modeling_xcodec2.py,
-    but only implements the decode_code method needed for Llasa TTS.
+    Implements only the decode_code functionality needed by Llama-based TTS.
+    Converts speech tokens from Llama into audio waveforms.
     """
 
     def __init__(self, config: XCodec2Config) -> None:

@@ -8,24 +8,45 @@
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
 import numpy as np
 from max.graph import TensorValue
 
 from .config import XCodec2Config
+from .weight_loader import load_xcodec2_weights
 from .xcodec2 import XCodec2Model
+
+logger = logging.getLogger(__name__)
 
 
 class XCodec2Decoder:
-    """High-level wrapper for XCodec2 audio decoder."""
+    """XCodec2 decoder wrapper for Llasa TTS.
 
-    def __init__(self, config: XCodec2Config) -> None:
+    Provides speech token to audio conversion using XCodec2's decoder components.
+    Optimized for Llama-generated speech tokens.
+    """
+
+    def __init__(self, config: XCodec2Config, model_path: str | Path) -> None:
         """Initialize the XCodec2 decoder.
 
         Args:
             config: XCodec2 configuration
+            model_path: HuggingFace model ID or path to model weights
         """
         self.config = config
         self.xcodec2_model = XCodec2Model(config)
+
+        logger.info(f"Loading XCodec2 weights from: {model_path}")
+        weights = load_xcodec2_weights(str(model_path))
+        self.xcodec2_model.load_state_dict(
+            weights,
+            override_quantization_encoding=True,
+            weight_alignment=1,
+            strict=True,
+        )
+        logger.info("Successfully loaded XCodec2 weights")
 
     def decode_code(self, vq_code: TensorValue) -> TensorValue:
         """Decode speech token codes to audio waveform.
