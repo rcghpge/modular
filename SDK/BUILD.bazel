@@ -150,6 +150,7 @@ py_repl(
         requirement("hypothesis"),
         requirement("notebook"),
         requirement("nvitop"),
+        requirement("rich"),
         requirement("pytest"),
     ],
 )
