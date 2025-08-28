@@ -7,7 +7,7 @@ from collections import Optional
 from collections.string import StaticString
 from math import iota
 from sys import external_call
-from sys.info import simdwidthof
+from sys.info import simd_width_of
 
 import compiler_internal as compiler
 from buffer import NDBuffer
@@ -975,12 +975,12 @@ struct PrintVectorSize:
             # We can't directly print `width` as it's HW-dependent.
             # Instead compare it with the width of i8 / f32.
             print(
-                "width == simdwidthof[DType.int8]():",
-                width == simdwidthof[DType.int8](),
+                "width == simd_width_of[DType.int8]():",
+                width == simd_width_of[DType.int8](),
             )
             print(
-                "width == simdwidthof[DType.float32]():",
-                width == simdwidthof[DType.float32](),
+                "width == simd_width_of[DType.float32]():",
+                width == simd_width_of[DType.float32](),
             )
         return x
 
