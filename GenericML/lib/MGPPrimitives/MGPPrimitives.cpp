@@ -213,14 +213,47 @@ static std::string getDeviceInfoStringImpl(const OperandContainer &operands) {
   return result;
 }
 
-static std::string getDeviceInfoString(const RemainingArguments &operands) {
-  return getDeviceInfoStringImpl(operands);
-}
+/// RAII helper for kernel logging - logs launch on construction, completion on
+/// destruction
+template <typename OperandContainer>
+class KernelLogger {
+public:
+  KernelLogger(llvm::StringRef kernelName, const OperandContainer &operands)
+      : shouldLog(shouldLogKernel(kernelName)) {
+    if (shouldLog) {
+      this->kernelName = kernelName.str();
+      this->deviceInfo = getDeviceInfoStringImpl(operands);
+      double timestampMs = getRelativeTimestampMs();
+      llvm::errs() << "[KERNEL] LAUNCH " << this->kernelName << " on "
+                   << this->deviceInfo << " at +"
+                   << llvm::format("%.3f", timestampMs) << "ms\n";
+    }
+  }
 
-static std::string
-getDeviceInfoString(const llvm::SmallVector<AnyAsyncValueRef> &operands) {
-  return getDeviceInfoStringImpl(operands);
-}
+  ~KernelLogger() {
+    if (shouldLog) {
+      double timestampMs = getRelativeTimestampMs();
+      llvm::errs() << "[KERNEL] COMPLETE " << kernelName << " on " << deviceInfo
+                   << " at +" << llvm::format("%.3f", timestampMs) << "ms\n";
+    }
+  }
+
+  // Non-copyable, non-movable
+  KernelLogger(const KernelLogger &) = delete;
+  KernelLogger &operator=(const KernelLogger &) = delete;
+  KernelLogger(KernelLogger &&) = delete;
+  KernelLogger &operator=(KernelLogger &&) = delete;
+
+private:
+  std::string kernelName;
+  std::string deviceInfo;
+  bool shouldLog;
+};
+
+// Template argument deduction guide
+template <typename OperandContainer>
+KernelLogger(llvm::StringRef, const OperandContainer &)
+    -> KernelLogger<OperandContainer>;
 
 static void mgp_generic_execute(
     StateContext &ctx, RemainingArguments operands, RemainingResults outResults,
@@ -236,14 +269,6 @@ static void mgp_generic_execute(
   // Extract device hint from DeviceContext if present in operands.
   int deviceHint = deviceHintFor(operands);
 
-  // Log kernel launch if enabled
-  if (shouldLogKernel(*dSummary)) {
-    double timestampMs = getRelativeTimestampMs();
-    std::string deviceInfo = getDeviceInfoString(operands);
-    llvm::errs() << "[KERNEL] LAUNCH " << *dSummary << " on " << deviceInfo
-                 << " at +" << llvm::format("%.3f", timestampMs) << "ms\n";
-  }
-
   if (eIsAsync.get()) {
     // Allocate indirect results as GraphRT is expecting result async values to
     // be allocated. The kernel will set them to ready when it is finished. We
@@ -252,24 +277,15 @@ static void mgp_generic_execute(
 
     // Run the kernel and extend the lifetime of the input and output async
     // values until it completes by capturing them.
-    bool logKernels = shouldLogKernel(*dSummary);
     auto runKernelAndExtendLifetimes = [outResults = outResults.copyAsVector(),
                                         takenOperands = operands.takeAsVector(),
                                         constantResources =
                                             std::move(fConstantResources),
-                                        kernelPtr, dSummary, logKernels]() {
+                                        kernelPtr, dSummary]() {
+      KernelLogger logger(*dSummary, takenOperands);
       llvm::SmallVector<void *> kernelInputs =
           getKernelInputs(takenOperands, outResults, constantResources);
       kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
-
-      // Log kernel completion if enabled
-      if (logKernels) {
-        double timestampMs = getRelativeTimestampMs();
-        std::string deviceInfo = getDeviceInfoString(takenOperands);
-        llvm::errs() << "[KERNEL] COMPLETE " << *dSummary << " on "
-                     << deviceInfo << " at +"
-                     << llvm::format("%.3f", timestampMs) << "ms\n";
-      }
 
       // Must have all been released/reset by the compiled kernel.
       assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
@@ -283,17 +299,10 @@ static void mgp_generic_execute(
     runtime.getWorkQueue()->addTask(std::move(workItem));
   } else {
     // Run the kernel on this thread.
+    KernelLogger logger(*dSummary, operands);
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
-
-    // Log kernel completion if enabled
-    if (shouldLogKernel(*dSummary)) {
-      double timestampMs = getRelativeTimestampMs();
-      std::string deviceInfo = getDeviceInfoString(operands);
-      llvm::errs() << "[KERNEL] COMPLETE " << *dSummary << " on " << deviceInfo
-                   << " at +" << llvm::format("%.3f", timestampMs) << "ms\n";
-    }
 
     // Must have all been released/reset by the compiled kernel.
     assert(llvm::all_of(operands, [](const AnyAsyncValueRef &ref) {
