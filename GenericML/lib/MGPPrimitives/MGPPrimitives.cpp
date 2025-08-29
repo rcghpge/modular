@@ -44,9 +44,14 @@
 
 #define DEBUG_TYPE "mgp"
 
-/// Check if kernel logging is enabled via MAX_LOG_KERNELS environment variable
-static bool isKernelLoggingEnabled() {
-  // Use compiler's built-in support for static locals to ensure thread safety
+/// Check if kernel logging is enabled via Runtime or MAX_LOG_KERNELS
+/// environment variable
+static bool isKernelLoggingEnabled(M::AsyncRT::Runtime &runtime) {
+  // Check the Runtime first if available
+  if (runtime.isKernelLoggingEnabled())
+    return true;
+
+  // Fall back to environment variable
   static bool enabled = []() {
     if (const char *env = std::getenv("MAX_LOG_KERNELS")) {
       std::string value(env);
@@ -68,9 +73,10 @@ static double getRelativeTimestampMs() {
 }
 
 /// Check if a kernel should be logged (includes enabled check and filtering)
-static bool shouldLogKernel(llvm::StringRef kernelName) {
+static bool shouldLogKernel(llvm::StringRef kernelName,
+                            M::AsyncRT::Runtime &runtime) {
   // Early return if kernel logging is disabled
-  if (!isKernelLoggingEnabled())
+  if (!isKernelLoggingEnabled(runtime))
     return false;
 
   // Filter out low-level primitives that don't correspond to graph operations
@@ -218,8 +224,9 @@ static std::string getDeviceInfoStringImpl(const OperandContainer &operands) {
 template <typename OperandContainer>
 class KernelLogger {
 public:
-  KernelLogger(llvm::StringRef kernelName, const OperandContainer &operands)
-      : shouldLog(shouldLogKernel(kernelName)) {
+  KernelLogger(llvm::StringRef kernelName, const OperandContainer &operands,
+               M::AsyncRT::Runtime &runtime)
+      : shouldLog(shouldLogKernel(kernelName, runtime)) {
     if (shouldLog) {
       this->kernelName = kernelName.str();
       this->deviceInfo = getDeviceInfoStringImpl(operands);
@@ -252,7 +259,7 @@ private:
 
 // Template argument deduction guide
 template <typename OperandContainer>
-KernelLogger(llvm::StringRef, const OperandContainer &)
+KernelLogger(llvm::StringRef, const OperandContainer &, M::AsyncRT::Runtime &)
     -> KernelLogger<OperandContainer>;
 
 static void mgp_generic_execute(
@@ -281,8 +288,8 @@ static void mgp_generic_execute(
                                         takenOperands = operands.takeAsVector(),
                                         constantResources =
                                             std::move(fConstantResources),
-                                        kernelPtr, dSummary]() {
-      KernelLogger logger(*dSummary, takenOperands);
+                                        kernelPtr, dSummary, &runtime]() {
+      KernelLogger logger(*dSummary, takenOperands, runtime);
       llvm::SmallVector<void *> kernelInputs =
           getKernelInputs(takenOperands, outResults, constantResources);
       kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
@@ -299,7 +306,7 @@ static void mgp_generic_execute(
     runtime.getWorkQueue()->addTask(std::move(workItem));
   } else {
     // Run the kernel on this thread.
-    KernelLogger logger(*dSummary, operands);
+    KernelLogger logger(*dSummary, operands, runtime);
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
