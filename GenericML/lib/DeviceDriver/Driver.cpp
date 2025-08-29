@@ -139,6 +139,10 @@ MODULAR_DRIVER_EXPORT ErrorOr<std::string> Device::getApi() {
   return ctx->device().api().str();
 }
 
+MODULAR_DRIVER_EXPORT ErrorOr<std::string> Device::getArchName() {
+  return ctx->device().getArchName();
+}
+
 MODULAR_DRIVER_EXPORT ErrorOrSuccess Device::isCompatible() const {
   return ctx->device().isCompatible();
 }

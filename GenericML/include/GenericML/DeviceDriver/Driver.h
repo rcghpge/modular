@@ -146,6 +146,9 @@ struct Device : M::ReferenceCounted<Device> {
   // Gets the programming API of the device.
   ErrorOr<std::string> getApi();
 
+  // Gets the architecture name of the device.
+  ErrorOr<std::string> getArchName();
+
   /// Returns whether or not the device is compatible with MAX.
   ErrorOrSuccess isCompatible() const;
 
