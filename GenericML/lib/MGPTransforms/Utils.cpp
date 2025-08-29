@@ -123,7 +123,7 @@ static void startVisiting(DenseSet<Operation *> &visited,
 
 /// Records that currOp has been fully visited.
 static void finishVisiting(DenseSet<Operation *> &visited, Operation *currOp) {
-  auto [_, inserted] = visited.insert(currOp);
+  [[maybe_unused]] auto [_, inserted] = visited.insert(currOp);
   ASSERT_STREAM(inserted, "operation already finished");
 }
 

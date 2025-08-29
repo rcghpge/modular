@@ -650,7 +650,7 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (isa<KGEN::StringType>(kgenParamTy)) {
-      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
       ASSERT_STREAM(asString != nullptr,
                     "failed to convert custom op attribute "
                         << mlirParamAttr
@@ -667,7 +667,7 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
     } else if (typeName &&
                typeName ==
                    KGEN::MOGGPreElab::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
-      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
       if (asString == nullptr) {
         return Error(llvm::formatv(
             "failed to convert custom op '{}' attribute '{}' with value '{}' "

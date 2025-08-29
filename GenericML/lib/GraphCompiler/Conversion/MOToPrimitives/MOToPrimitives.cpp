@@ -1950,7 +1950,7 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
   }
 
   Block::iterator nextScheduledOp = block->begin();
-  unsigned sortedOps = 0;
+  [[maybe_unused]] unsigned sortedOps = 0;
 
   // Initialize queue with operations that have no dependencies
   llvm::SmallVector<Operation *> readyQueue;
