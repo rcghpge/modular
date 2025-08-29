@@ -138,10 +138,9 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
     ctx.enqueue_copy(a_device.buffer, a_host.tensor.data)
     ctx.enqueue_copy(b_device.buffer, b_host.tensor.data)
 
-    alias matmul_config = MatmulConfig[
-        a_type, b_type, c_type, transpose_b, mma_shape=mma_shape
-    ](
+    alias matmul_config = MatmulConfig[a_type, b_type, c_type, transpose_b](
         block_tile_shape=block_tile_shape,
+        mma_shape=mma_shape,
         cluster_shape=Index(
             cluster_shape[0], cluster_shape[1], cluster_shape[2]
         ),
@@ -149,7 +148,6 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
 
     blackwell_matmul_tma_umma_warp_specialized[
         transpose_b=transpose_b,
-        mma_shape=mma_shape,
         config=matmul_config,
         cta_group=2,
     ](
@@ -168,7 +166,6 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
         fn run_kernel(ctx: DeviceContext) raises:
             blackwell_matmul_tma_umma_warp_specialized[
                 transpose_b=transpose_b,
-                mma_shape=mma_shape,
                 config=matmul_config,
                 cta_group=2,
             ](
@@ -237,17 +234,17 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
     _ = b_device
 
 
-fn get_dic_of_shapes(
-    index: Int, dic_bro: Dict[Int, Tuple[Int, Int, Int], *_, **_]
+fn get_shapes_dict(
+    index: Int, shapes_dict: Dict[Int, Tuple[Int, Int, Int], *_, **_]
 ) -> Tuple[Int, Int, Int]:
     try:
-        return dic_bro[index]
+        return shapes_dict[index]
     except error:
         print("error")
         return (128, 128, 128)
 
 
-fn make_dic_of_shapes() -> (
+fn make_shapes_dict() -> (
     Dict[Int, Tuple[Int, Int, Int], default_comp_time_hasher]
 ):
     var dic: Dict[Int, Tuple[Int, Int, Int], default_comp_time_hasher] = {
@@ -286,11 +283,11 @@ fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
             )
 
             alias c_type = DType.bfloat16
-            alias dic_of_shapes = make_dic_of_shapes()
+            alias shapes_dict = make_shapes_dict()
 
             @parameter
-            for i in range(len(dic_of_shapes)):
-                alias shape = get_dic_of_shapes(i, dic_of_shapes)
+            for i in range(len(shapes_dict)):
+                alias shape = get_shapes_dict(i, shapes_dict)
                 with vendor_blas.Handle[
                     vendor_blas.Backend.CUBLAS
                 ]() as cublas_handle:
@@ -326,46 +323,31 @@ def main():
 
             @parameter
             for swizzle in [TensorMapSwizzle.SWIZZLE_128B]:
-                # Testing Nvidia specific, non power of 2, MMA_N parameter
-                print(
-                    "Testing Nvidia specific, non power of 2, MMA_N parameter"
-                )
-
                 alias BK = (swizzle.bytes() // sizeof[dtype]())
-                alias block_tile_shape = Index(128, 80, BK)
                 alias MMA_K = 32 if dtype == DType.float8_e4m3fn else 16
-                alias umma_shape = Index(
-                    block_tile_shape[0] * 2, block_tile_shape[1] * 2, MMA_K
-                )
-
-                test_blackwell_matmul_tma_umma_warp_specialized[
-                    dtype,
-                    dtype,
-                    DType.bfloat16,
-                    block_tile_shape,
-                    umma_shape,
-                    cluster_shape = StaticTuple[Int32, 3](2, 1, 1),
-                    a_swizzle=swizzle,
-                    b_swizzle=swizzle,
-                ](
-                    ctx,
-                    dynamic(512),
-                    static[2560](),
-                    static[8192](),
-                )
-
-                print("Testing remaining cases")
 
                 @parameter
                 for mma_m_scale in range(1, 3):
 
                     @parameter
-                    for mma_n_scale in range(1, 3):
+                    for mma_n_scale in range(1, 17):
+                        # from 16*1 till 16*16 which is 256
+                        # basically, if MMA_M is 64, then BN must be multiple of 16 (mma_n_scale must be even)
+                        @parameter
+                        if mma_m_scale == 1 and mma_n_scale % 2 != 0:
+                            continue
+                        # TODO: support the increments of 8 for float 8 dtype at a later point
+                        # currently it works with increments of BN = 32
+                        if (
+                            dtype == DType.float8_e4m3fn
+                            and mma_n_scale % 4 != 0
+                        ):
+                            continue
                         alias block_tile_shape = Index(
-                            64 * mma_m_scale, 64 * mma_n_scale, BK
+                            64 * mma_m_scale, 8 * mma_n_scale, BK
                         )
                         alias umma_shape = Index(
-                            128 * mma_m_scale, 128 * mma_n_scale, MMA_K
+                            128 * mma_m_scale, 16 * mma_n_scale, MMA_K
                         )
 
                         test_blackwell_matmul_tma_umma_warp_specialized[

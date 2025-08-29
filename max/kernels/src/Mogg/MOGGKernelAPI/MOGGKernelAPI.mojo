@@ -51,8 +51,8 @@ from buffer import NDBuffer
 from buffer.dimlist import Dim, DimList
 from builtin.simd import _pow
 from compiler_internal import StaticTensorSpec
-from gpu.comm.allgather import allgather
-from gpu.comm.allreduce import MAX_GPUS, Signal, allreduce
+from comm.allgather import allgather
+from comm.allreduce import MAX_GPUS, Signal, allreduce
 from gpu.host import DeviceContext
 from gpu.host.info import is_cpu, is_gpu, is_valid_target
 from kv_cache.types import (
@@ -184,7 +184,12 @@ from nn.pool import avg_pool, max_pool, pool_shape, pool_shape_ceil
 from nn.rand_uniform import random_uniform
 from nn.repeat_interleave import repeat_interleave, repeat_interleave_shape
 from nn.reshape import reshape, reshape_shape
-from nn.resize import resize_linear, resize_nearest_neighbor
+from nn.resize import (
+    CoordinateTransformationMode,
+    RoundMode,
+    resize_linear,
+    resize_nearest_neighbor,
+)
 
 from nn.bicubic import resize_bicubic
 from nn.roi_align import roi_align_nhwc
@@ -3807,7 +3812,10 @@ struct ResizeNearest:
         input: InputTensor[dtype=dtype, rank=rank],
         size: InputTensor[rank=1],
     ) raises:
-        resize_nearest_neighbor[coordinate_transform_mode, round_mode](
+        resize_nearest_neighbor[
+            CoordinateTransformationMode(coordinate_transform_mode),
+            RoundMode(round_mode),
+        ](
             managed_tensor_slice_to_ndbuffer(input),
             managed_tensor_slice_to_ndbuffer(output),
         )
@@ -3841,7 +3849,9 @@ struct ResizeLinear:
         input: InputTensor[dtype=dtype, rank=rank],
         size: InputTensor[rank=1],
     ):
-        resize_linear[coordinate_transform_mode, antialias](
+        resize_linear[
+            CoordinateTransformationMode(coordinate_transform_mode), antialias
+        ](
             managed_tensor_slice_to_ndbuffer(input),
             managed_tensor_slice_to_ndbuffer(output),
         )

@@ -608,3 +608,111 @@ struct Span[
             ptr=self._data.origin_cast[result.mut, result.origin](),
             length=self._len,
         )
+
+    fn reverse[
+        dtype: DType, O: MutableOrigin, //
+    ](self: Span[Scalar[dtype], O]):
+        """Reverse the elements of the `Span` inplace.
+
+        Parameters:
+            dtype: The DType of the scalars the `Span` stores.
+            O: The origin of the `Span`.
+        """
+
+        alias widths = (256, 128, 64, 32, 16, 8, 4, 2)
+        var ptr = self.unsafe_ptr()
+        var length = len(self)
+        var middle = length // 2
+        var is_odd = length % 2 != 0
+        var processed = 0
+
+        @parameter
+        for i in range(len(widths)):
+            alias w = widths[i]
+
+            @parameter
+            if simdwidthof[dtype]() >= w:
+                for _ in range((middle - processed) // w):
+                    var lhs_ptr = ptr + processed
+                    var rhs_ptr = ptr + length - (processed + w)
+                    var lhs_v = lhs_ptr.load[width=w]().reversed()
+                    var rhs_v = rhs_ptr.load[width=w]().reversed()
+                    lhs_ptr.store(rhs_v)
+                    rhs_ptr.store(lhs_v)
+                    processed += w
+
+        if is_odd:
+            var value = ptr[middle + 1]
+            (ptr + middle - 1).move_pointee_into(ptr + middle + 1)
+            (ptr + middle - 1).init_pointee_move(value)
+
+    fn apply[
+        dtype: DType,
+        O: MutableOrigin, //,
+        func: fn[w: Int] (SIMD[dtype, w]) capturing -> SIMD[dtype, w],
+    ](self: Span[Scalar[dtype], O]):
+        """Apply the function to the `Span` inplace.
+
+        Parameters:
+            dtype: The DType.
+            O: The origin of the `Span`.
+            func: The function to evaluate.
+        """
+
+        alias widths = (256, 128, 64, 32, 16, 8, 4)
+        var ptr = self.unsafe_ptr()
+        var length = len(self)
+        var processed = 0
+
+        @parameter
+        for i in range(len(widths)):
+            alias w = widths[i]
+
+            @parameter
+            if simdwidthof[dtype]() >= w:
+                for _ in range((length - processed) // w):
+                    var p_curr = ptr + processed
+                    p_curr.store(func(p_curr.load[width=w]()))
+                    processed += w
+
+        for i in range(length - processed):
+            (ptr + processed + i).init_pointee_move(func(ptr[processed + i]))
+
+    fn apply[
+        dtype: DType,
+        O: MutableOrigin, //,
+        func: fn[w: Int] (SIMD[dtype, w]) capturing -> SIMD[dtype, w],
+        *,
+        where: fn[w: Int] (SIMD[dtype, w]) capturing -> SIMD[DType.bool, w],
+    ](self: Span[Scalar[dtype], O]):
+        """Apply the function to the `Span` inplace where the condition is
+        `True`.
+
+        Parameters:
+            dtype: The DType.
+            O: The origin of the `Span`.
+            func: The function to evaluate.
+            where: The condition to apply the function.
+        """
+
+        alias widths = (256, 128, 64, 32, 16, 8, 4)
+        var ptr = self.unsafe_ptr()
+        var length = len(self)
+        var processed = 0
+
+        @parameter
+        for i in range(len(widths)):
+            alias w = widths[i]
+
+            @parameter
+            if simdwidthof[dtype]() >= w:
+                for _ in range((length - processed) // w):
+                    var p_curr = ptr + processed
+                    var vec = p_curr.load[width=w]()
+                    p_curr.store(where(vec).select(func(vec), vec))
+                    processed += w
+
+        for i in range(length - processed):
+            var vec = ptr[processed + i]
+            if where(vec):
+                (ptr + processed + i).init_pointee_move(func(vec))

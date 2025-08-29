@@ -81,6 +81,7 @@ from utils.numerics import get_accum_type
 from utils.static_tuple import StaticTuple
 from .utils import elementwise_epilogue_type
 from .utils_gpu import MatmulConfig
+from bit import next_power_of_two, prev_power_of_two
 
 
 @fieldwise_init
@@ -415,7 +416,8 @@ fn multi_stage_store_C[
     alias stsmx4N_bytes = 32
     alias stsmx4N = stsmx4N_bytes // sizeof[c_type]()  # 16
     alias stsmx4_size_per_lane = (16 * stsmx4N) // WARP_SIZE  # 8
-    alias swizzle = make_swizzle[c_type, TensorMapSwizzle.SWIZZLE_64B]()
+    alias st_matrix_swizzle = TensorMapSwizzle.SWIZZLE_64B if stageN == 32 else TensorMapSwizzle.SWIZZLE_32B
+    alias swizzle = make_swizzle[c_type, st_matrix_swizzle]()
 
     var warp_id = get_warp_id()
 
@@ -432,9 +434,7 @@ fn multi_stage_store_C[
         # column offset, moving right by 32 columns each time, since each num_stage stores two, 16 column submatrices
         # MMA has result in 32 rows per warp's data paths.
         # upper_frag is for rows 0-15, lower is for 16-31.
-        var stage_tmem_addr = (
-            (tmem_addr | (warp_id * 32 << 16)) + (stage * stageN) + tmem_offset
-        )
+        var stage_tmem_addr = tmem_addr + (stage * stageN) + tmem_offset
         var upper_frag = tcgen05_ld[
             datapaths=data_paths,
             bits=bits,
@@ -608,9 +608,9 @@ fn store_C[
     var phase = accum_pipeline_consumer_state.phase()
     accum_full_mbar[index].wait(phase)
 
-    var c_upper_pow_2_main = SIMD[accum_type, main_repeats * fragment_size](0)
+    var c_upper_pow_2_main: SIMD[accum_type, main_repeats * fragment_size]
 
-    var c_lower_pow_2_main = SIMD[accum_type, main_repeats * fragment_size](0)
+    var c_lower_pow_2_main: SIMD[accum_type, main_repeats * fragment_size]
 
     # dummy registers in case there's no remainder. We still need to
     # satisfy power-of-2 when using SIMD.
@@ -1256,9 +1256,8 @@ fn blackwell_matmul_tma_umma_warp_specialized[
     b_type: DType,
     b_shape: DimList,
     transpose_b: Bool,
-    mma_shape: IndexList[3],
     *,
-    config: MatmulConfig[a_type, b_type, c_type, transpose_b, mma_shape],
+    config: MatmulConfig[a_type, b_type, c_type, transpose_b],
     cta_group: Int = 1,
     num_clc_pipeline_stages: UInt = 2,
 ](
@@ -1276,9 +1275,9 @@ fn blackwell_matmul_tma_umma_warp_specialized[
         "Only support transposed B",
     ]()
 
-    alias MMA_M = mma_shape[0]
-    alias MMA_N = mma_shape[1]
-    alias MMA_K = mma_shape[2]
+    alias MMA_M = config.mma_shape[0]
+    alias MMA_N = config.mma_shape[1]
+    alias MMA_K = config.mma_shape[2]
 
     alias BM = MMA_M // cta_group
     alias BN = MMA_N // cta_group
@@ -1307,11 +1306,17 @@ fn blackwell_matmul_tma_umma_warp_specialized[
         swizzle_mode=b_swizzle,
     ](ctx, b)
 
-    alias output_tile_shape = Index(128, 32)
-    alias c_tma_tile_shape = output_tile_shape if MMA_M == 256 else Index(
-        64, 32
-    )
-    alias c_swizzle = TensorMapSwizzle.SWIZZLE_64B
+    # If MMA_M is 256, the warps read the entire MMA_N.
+    # That MMA_N to be multiple of 32 for me to use large N dim on C buf write out
+    # If MMA_M is 128, the warps read 1/2 of MMA_N (BN), so now *that* has to be multiple of 32
+    # Otherwise, we just use 16
+    alias width = 32 if (MMA_M == 256 and MMA_N % 32 == 0) or (
+        MMA_M == 128 and BN % 32 == 0
+    ) else 16
+    alias output_tile_shape = Index(128, width)
+    alias split_tile_shape = Index(64, width)
+    alias c_tma_tile_shape = output_tile_shape if MMA_M == 256 else split_tile_shape
+    alias c_swizzle = TensorMapSwizzle.SWIZZLE_64B if width == 32 else TensorMapSwizzle.SWIZZLE_32B
     var c_tma_op = create_tma_tile[
         c_type,
         2,
@@ -1340,7 +1345,7 @@ fn blackwell_matmul_tma_umma_warp_specialized[
     # the 'N' dimension of tensor memory is 512
     alias TMEM_N = 512
     # the maximum different number of mma's that can be run in parallel is TMEM_N/MMA_N
-    alias max_accum_pipeline_stages = TMEM_N // MMA_N
+    alias max_accum_pipeline_stages = TMEM_N // next_power_of_two(MMA_N)
     # Mainloop barrier
     alias accum_full_mbar_bytes = MBAR_BYTES * max_accum_pipeline_stages
     alias accum_empty_mbar_bytes = MBAR_BYTES * max_accum_pipeline_stages
@@ -1400,7 +1405,6 @@ fn blackwell_matmul_tma_umma_warp_specialized[
         ),
         a_swizzle=a_swizzle,
         b_swizzle=b_swizzle,
-        c_swizzle=c_swizzle,
         cta_group=cta_group,
         num_pipeline_stages=max_pipeline_stages,
         num_clc_pipeline_stages=num_clc_pipeline_stages,
@@ -1410,8 +1414,8 @@ fn blackwell_matmul_tma_umma_warp_specialized[
     ]
 
     var grid_dim = (
-        align_up(M // BM, Int(cluster_shape[0])),
-        align_up(N // BN // cta_group, Int(cluster_shape[1])),
+        align_up(ceildiv(M, BM), Int(cluster_shape[0])),
+        align_up(ceildiv(N, MMA_N), Int(cluster_shape[1])),
         1,
     )
 

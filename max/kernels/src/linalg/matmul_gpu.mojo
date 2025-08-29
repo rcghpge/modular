@@ -19,8 +19,8 @@ from sys import (
     has_accelerator,
     has_amd_gpu_accelerator,
     simdwidthof,
+    sizeof,
 )
-from sys import sizeof
 from algorithm.functional import elementwise, tile_and_unswitch
 from buffer.buffer import NDBuffer
 from buffer.dimlist import DimList
@@ -33,17 +33,18 @@ from gpu import (
 from gpu.grid_controls import PDLLevel
 from gpu.host import DeviceContext, FuncAttribute
 from gpu.host import get_gpu_target
-from gpu.host.info import A100, H100, B200
+from gpu.host.info import A100, H100, B200, MI355X
 from gpu.memory import AddressSpace
 from layout._ndbuffer_stub import (
     from_ndbuffer_row_major,
 )
+from layout import LayoutTensor
 from layout.layout import *
+from layout.tensor_core import get_mma_shape
 from logger import Logger
 from memory import bitcast, stack_allocation
 
-from utils import IndexList
-from utils.index import Index
+from utils import Index, IndexList
 from utils.numerics import get_accum_type
 
 from .matmul_amd import gemm_kernel_amd
@@ -55,6 +56,7 @@ from .dispatch_table_a100_gpu import create_matmul_configs_ampere
 from .gemv import gemv_gpu
 from .matmul_vendor import matmul as matmul_vendor
 from .matmul_dispatch_sm90 import matmul_dispatch_sm90
+from .matmul_dispatch_sm100 import matmul_dispatch_sm100
 from .matmul_sm100 import matmul_sm100_fallback
 from .utils import (
     GemmShape,
@@ -67,8 +69,6 @@ from .utils_gpu import (
     _bk_base,
     select_config,
 )
-
-from layout import LayoutTensor
 
 
 fn matmul_kernel[
@@ -386,8 +386,16 @@ fn _matmul_gpu[
         and c_type in (DType.float32, DType.bfloat16)
     )
 
+    alias amd_float8_dtypes = (
+        DType.float8_e4m3fn,
+        DType.float8_e5m2,
+    ) if ctx.default_device_info is MI355X else (
+        DType.float8_e4m3fnuz,
+        DType.float8_e5m2fnuz,
+    )
+
     alias matmul_supported_format_amd = (
-        a_type in (DType.bfloat16, DType.float8_e4m3fnuz, DType.float8_e5m2fnuz)
+        (a_type is DType.bfloat16 or a_type in amd_float8_dtypes)
         and b_type == a_type
         and c_type in (DType.float32, DType.bfloat16)
     )
@@ -422,7 +430,13 @@ fn _matmul_gpu[
     )
     var amdgpu_matmul_cond = has_amd_gpu_accelerator() and n % 4 == 0
     var multi_gemm_cond = (
-        (m > 1 or (has_amd_gpu_accelerator() and transpose_b == False))
+        (
+            m > 1
+            or (
+                has_amd_gpu_accelerator()
+                and (transpose_b == False or a_type.is_float8())
+            )
+        )
         and (n % 128 == 0 or h100_matmul_cond or amdgpu_matmul_cond)
         and k % 32 == 0
         and k >= 128
@@ -446,7 +460,7 @@ fn _matmul_gpu[
         ](c, a, b, ctx)
 
     alias use_experimental_kernels = Bool(
-        env_get_int["USE_EXPERIMENTAL_KERNELS", 0]()
+        env_get_int["USE_EXPERIMENTAL_KERNELS", 1]()
     )
 
     alias bf16_or_fp16 = (DType.bfloat16, DType.float16)
@@ -463,18 +477,17 @@ fn _matmul_gpu[
             and c_type in bf16_or_fp16_fp32
         )
     ):
-        var a_layout_tensor = from_ndbuffer_row_major(a)
-        var b_layout_tensor = from_ndbuffer_row_major(b)
-        var c_layout_tensor = from_ndbuffer_row_major(c)
-        alias umma_shape = Index(64, 128, 16)
-        alias BK = 64
-        alias block_tile_shape = Index(umma_shape[0], umma_shape[1], BK)
-        return matmul_sm100_fallback[
-            transpose_b=transpose_b,
-            umma_shape=umma_shape,
-            block_tile_shape=block_tile_shape,
+        var status = matmul_dispatch_sm100[
+            c_type,
+            a_type,
+            b_type,
+            transpose_b,
             elementwise_lambda_fn=elementwise_lambda_wrapper,
-        ](c_layout_tensor, a_layout_tensor, b_layout_tensor, ctx)
+            pdl_level=pdl_level,
+        ](c, a, b, ctx)
+
+        if status:
+            return
 
     @parameter
     if ctx.default_device_info > H100:
@@ -645,6 +658,18 @@ fn _matmul_gpu[
 
                 @always_inline
                 @parameter
+                fn mma_shape_helper() -> IndexList[3]:
+                    @parameter
+                    if transpose_b and ctx.default_device_info is MI355X:
+
+                        @parameter
+                        if a_type.is_half_float():
+                            return Index(16, 16, 32)
+
+                    return get_mma_shape[a_type, DType.float32]()
+
+                @always_inline
+                @parameter
                 fn kernel_helper[
                     block_m: Int,
                     block_n: Int,
@@ -661,6 +686,7 @@ fn _matmul_gpu[
                         warp_tile_shape=Index(
                             block_m // 2, block_n // 2, _bk_base[a_type, True]()
                         ),
+                        mma_shape=mma_shape_helper(),
                         num_pipeline_stages=num_pipeline_stages,
                         scheduler_hint=scheduler_hint_helper[
                             block_m, block_n
