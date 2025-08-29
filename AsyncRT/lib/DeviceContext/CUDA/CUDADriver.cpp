@@ -23,11 +23,9 @@ namespace M::AsyncRT {
 #ifdef MODULAR_LINUX
 const char CUDADriver::lib_name[] = "libcuda.so.1";
 const char CUDADriver::lib_nvptx_name[] = "libnvptxcompiler.so";
-const char CUDADriver::lib_nvml_name[] = "libnvidia-ml.so.1";
 #else
 const char CUDADriver::lib_name[] = "";
 const char CUDADriver::lib_nvptx_name[] = "";
-const char CUDADriver::lib_nvml_name[] = "";
 #endif
 
 #define GET_FUNC(name)                                                         \
@@ -45,16 +43,6 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   if (dlLib == nullptr) {
     return Error(llvm::Twine("Failed to open library \"") + lib_name + "\"");
   }
-
-  // NVML is unused by DeviceContext, but its symbols must be available at
-  // runtime by UCX CUDA backend.
-  void *dlLibNvml = dlopen(lib_nvml_name, RTLD_NOW | RTLD_GLOBAL);
-  if (dlLibNvml == nullptr) {
-    return Error(llvm::Twine("Failed to open library \"") + lib_nvml_name +
-                 "\"");
-  }
-  // Suppress unused variable warning.
-  (void)dlLibNvml;
 
   // Allocate a driver and register all of the used shared library entry points.
   CUDADriver *driver = new CUDADriver();

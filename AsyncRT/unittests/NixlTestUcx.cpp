@@ -287,16 +287,6 @@ TEST_F(NixlUcxIntegrationTest, DramTransfer) {
   // If a test passes locally but fails in CI, it lets us see logs in CI.
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
-  // Instantiating NIXL loads the UCX backend. Currently the only UCX backend
-  // we have is the one that has CUDA/HIP enabled. This plugin's shared object
-  // assumes that symbols from libcuda.so.1 & libnvidia-ml.so.1 (nvml) for CUDA,
-  // and from libamdhip.so.1 and libhsa-runtime64.so.1 for ROCm, are available
-  // at runtime globally (w/ RTLD_GLOBAL). In order to ensure apriori loading
-  // of such linker symbols, we create a GPU DeviceContext because related
-  // `dlopen`-s are done in its constructors.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
-
   // Create two NIXL agents on separate ports with 1KB host buffers
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
@@ -457,10 +447,6 @@ TEST_F(NixlUcxIntegrationTest, ReceiverFailure) {
   // Test remote disconnection error handling
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
-
   // Create two NIXL agents.
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
@@ -518,10 +504,6 @@ TEST_F(NixlUcxIntegrationTest, XferThenFail_Write) {
   // Test scenario where first transfer succeeds, then receiver fails before
   // second transfer
   setenv("UCX_LOG_LEVEL", "debug", 1);
-
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
 
   // Create two NIXL agents with peer error handling mode.
   size_t bufferSize = 1024;
@@ -588,10 +570,6 @@ TEST_F(NixlUcxIntegrationTest, XferThenFail_Read) {
   // Test scenario where first READ transfer succeeds, then receiver fails
   // before second transfer
   setenv("UCX_LOG_LEVEL", "debug", 1);
-
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
 
   // Create two NIXL agents with peer error handling mode.
   size_t bufferSize = 1024;
@@ -660,9 +638,6 @@ TEST_F(NixlUcxIntegrationTest, BasicXfer_Read) {
   // Test basic successful READ operation.
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
-
   // Create two NIXL agents
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
@@ -727,9 +702,6 @@ TEST_F(NixlUcxIntegrationTest, BasicXfer_Read) {
 TEST_F(NixlUcxIntegrationTest, ErrorHandling_PeerMode) {
   // Test explicit peer error handling mode configuration
   setenv("UCX_LOG_LEVEL", "debug", 1);
-
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
 
   // Create agents with explicit peer error handling mode
   size_t bufferSize = 1024;
@@ -798,10 +770,6 @@ TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
   // Test multi-worker UCX support with concurrent transfers from multiple
   // threads.
   setenv("UCX_LOG_LEVEL", "debug", 1);
-
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
 
   // Number of workers and threads for testing
   const int numWorkers = 4;
@@ -1036,10 +1004,6 @@ TEST_F(NixlUcxIntegrationTest, SelfNotification) {
   // Test self notification support
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
-
   // Create a single NIXL agent that will send notifications to itself.
   NixlAgentWithUCXBackend nixl1;
   NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Self", available_port(),
@@ -1097,10 +1061,6 @@ TEST_F(NixlUcxIntegrationTest, MetadataInvalidation) {
   // Test socket-based metadata invalidation functionality
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
-
   // Create two NIXL agents with listener threads enabled
   size_t bufferSize = 1024;
   NixlAgentWithUCXBackend nixl1;
@@ -1152,10 +1112,6 @@ TEST_F(NixlUcxIntegrationTest, ListenerCommSize) {
   // Test large metadata exchange to verify segmented message handling
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
-
   // Create two NIXL agents with listener threads enabled
   NixlAgentWithUCXBackend nixl1;
   NixlAgentWithUCXBackend::create(nixl1, "TestAgent_LargeSource",
@@ -1204,10 +1160,6 @@ TEST_F(NixlUcxIntegrationTest, ListenerCommSize) {
 TEST_F(NixlUcxIntegrationTest, ConcurrentNotifications) {
   // Test concurrent genNotif calls with RW sync mode.
   setenv("UCX_LOG_LEVEL", "debug", 1);
-
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
 
   // Create two NIXL agents configured with RW sync mode.
   NixlAgentWithUCXBackend nixl1;
@@ -1310,10 +1262,6 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteWithErrors) {
   // Test error handling when loading metadata fails
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
-
   // Create source agent with backend
   NixlAgentWithUCXBackend nixl1;
   NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Source", available_port(),
@@ -1358,10 +1306,6 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteWithErrors) {
 TEST_F(NixlUcxIntegrationTest, GetLocalPartialAndLoadRemote) {
   // Test partial metadata exchange functionality
   setenv("UCX_LOG_LEVEL", "debug", 1);
-
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
 
   // Create two NIXL agents
   NixlAgentWithUCXBackend nixl1;
@@ -1435,10 +1379,6 @@ TEST_F(NixlUcxIntegrationTest, GetLocalPartialAndLoadRemote) {
 TEST_F(NixlUcxIntegrationTest, SocketFetchRemote) {
   // Test socket-based metadata fetching
   setenv("UCX_LOG_LEVEL", "debug", 1);
-
-  // Create CUDA device context to ensure UCX plugin loads properly.
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1,
-                DeviceContext::create(Device::gpuAPI, 0));
 
   // Create two NIXL agents with listener threads
   size_t bufferSize = 1024;

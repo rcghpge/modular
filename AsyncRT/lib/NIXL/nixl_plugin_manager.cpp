@@ -128,10 +128,14 @@ nixlPluginManager::nixlPluginManager() {
   // them will cause issues.
   void *dlLibMlx5 = dlopen("libmlx5.so", RTLD_NOW | RTLD_GLOBAL);
 
+  // CUDA Driver + NVML is needed for CUDA.
+  void *dlLibCuda = dlopen("libcuda.so.1", RTLD_NOW | RTLD_GLOBAL);
+  void *dlLibNvml = dlopen("libnvidia-ml.so.1", RTLD_NOW | RTLD_GLOBAL);
+
+  // AMD HSA Runtime is needed for ROCm.
   void *dlLibHsaRuntime64 =
       dlopen("libhsa-runtime64.so.1", RTLD_NOW | RTLD_GLOBAL);
-  // void *dlLibHsaRuntime64 = (void*) (0x1);
-  // It fields an indirect call to hsa_init() by
+
   if (dlLibHsaRuntime64 != nullptr) {
     if (dlLibMlx5 != nullptr && loadPlugin("ucx_rocm_verbs") != nullptr) {
       NIXL_INFO << "Loaded NIXL plugin_ucx_rocm_verbs";
@@ -143,14 +147,16 @@ nixlPluginManager::nixlPluginManager() {
     }
   }
 
-  if (dlLibMlx5 != nullptr && loadPlugin("ucx_cuda_verbs") != nullptr) {
-    NIXL_INFO << "Loaded NIXL plugin_ucx_cuda_verbs";
-    return;
-  }
+  if (dlLibCuda != nullptr && dlLibNvml != nullptr) {
+    if (dlLibMlx5 != nullptr && loadPlugin("ucx_cuda_verbs") != nullptr) {
+      NIXL_INFO << "Loaded NIXL plugin_ucx_cuda_verbs";
+      return;
+    }
 
-  if (loadPlugin("ucx_cuda") != nullptr) {
-    NIXL_INFO << "Loaded NIXL plugin_ucx_cuda";
-    return;
+    if (loadPlugin("ucx_cuda") != nullptr) {
+      NIXL_INFO << "Loaded NIXL plugin_ucx_cuda";
+      return;
+    }
   }
 
   NIXL_FATAL << "Unable to load CUDA or ROCm UCX backend";
