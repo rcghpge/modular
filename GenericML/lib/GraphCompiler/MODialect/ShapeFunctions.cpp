@@ -643,10 +643,8 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
             "[broadcast_to] input dimension at index {0} ({1}) must be either "
             "1 or equal to "
             "corresponding output dimension at index {2} ({3})",
-            inputAxis,
-            KGEN::getParamAsString(inputShape[inputAxis], /*forDiag=*/true),
-            outputAxis,
-            KGEN::getParamAsString(outputDim.getAttr(), /*forDiag=*/true))
+            inputAxis, KGEN::getParamAsString(inputShape[inputAxis]),
+            outputAxis, KGEN::getParamAsString(outputDim.getAttr()))
             .str();
 
     // Insert assertions
