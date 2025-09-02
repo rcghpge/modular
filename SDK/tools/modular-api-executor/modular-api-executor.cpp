@@ -89,7 +89,6 @@ public:
                    modelSpecificationFile + " does not exist.");
     }
 
-    std::string errorMsg;
     auto fileOrErr = llvm::MemoryBuffer::getFile(modelSpecificationFile, true);
     if (std::error_code error = fileOrErr.getError()) {
       return Error(Twine("cannot open input file ") + modelSpecificationFile +
