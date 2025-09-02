@@ -4,6 +4,7 @@ modular_cc_test(
     name = "BaseTests",
     srcs = glob(["*.cpp"]),
     deps = [
+        "//GenericML:MGPPrimitives",
         "//GenericML:SafeTensor",
         "//GenericML:Support",
         "//Support:Globals",
