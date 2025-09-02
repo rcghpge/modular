@@ -78,17 +78,29 @@ struct EmitMojoState {
       return HardcodedMojoSymbols::struct_DeviceContextPtr;
     } else if (isa<IntegerType>(mlirType)) {
       return HardcodedMojoSymbols::struct_Int;
-    } else if (isa<MO::TensorType>(mlirType)) {
-      return HardcodedMojoSymbols::struct_ManagedTensorSlice;
+    } else if (auto tensorType = dyn_cast<MO::TensorType>(mlirType)) {
+      return mlirTensorTypeToMojoType(tensorType);
+    } else {
+      ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
     }
-    llvm_unreachable("Unsupported type");
   }
 
   static MojoValue mlirDTypeToMojoType(DType dtype) {
-    /// TODO: This is obviously incomplete. We can convert the type to a KGEN
-    /// dtype and then use
-    /// https://github.com/modularml/modular/pull/67233/files#diff-13759a9b85eda495bbfc9d6f45d6ed79f167c44679337ce5069de687eed4bd50R25
-    return MojoValue(HardcodedMojoSymbols::struct_DType).get("uint32");
+    KGEN::KGENDType kgenDtype(dtype);
+    return MojoValue(HardcodedMojoSymbols::struct_DType)
+        .get(kgenDtype.getAsString(/*libForm*/ true));
+  }
+
+  static MojoValue mlirTensorTypeToMojoType(MO::TensorType tensorType) {
+    auto rank = tensorType.getRank();
+    // Always use rank 1 for scalar tensors.
+    if (rank == 0)
+      rank = 1;
+    auto dtype = mlirDTypeToMojoType(tensorType.getDtype()).text;
+    return llvm::formatv("{}[dtype = {}, rank = {}]",
+                         HardcodedMojoSymbols::struct_ManagedTensorSlice, dtype,
+                         rank)
+        .str();
   }
 
   /// Given an array of dimensions, represent it in Mojo using `DimList`.

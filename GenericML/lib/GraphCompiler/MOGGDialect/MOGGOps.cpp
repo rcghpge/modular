@@ -556,7 +556,7 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   // Rebind the tensor to ensure that all parameters are deduced.
   mojoOperands[0] = state.builder.var(mojoOperands[0].rebind(MojoValue(
       HardcodedMojoSymbols::alias_OutputTensor)[MojoValue("static_spec")
-                                                    .equal(mojoOperands[1].get(
+                                                    .equal(mojoOperands[0].get(
                                                         "static_spec"))]));
   MojoValue targetParamValue =
       MO::getDeviceOrDefaultAny(getOperation()).getLabel();
