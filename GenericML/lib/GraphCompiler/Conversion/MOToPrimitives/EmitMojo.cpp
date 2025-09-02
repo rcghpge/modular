@@ -54,8 +54,10 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
   static constexpr StringLiteral kernelName = "foo_wrapper";
   bool errOccurred = false;
   state.builder.fn(
-      kernelName, {}, {vUnsafePointer[vOpaquePointer], vOpaquePointer}, true,
-      [&](const MOGG::FunctionBody &functionBody) {
+      kernelName, {},
+      {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
+       MOGG::NamedMojoDef("arg", vOpaquePointer)},
+      std::nullopt, true, [&](const MOGG::FunctionBody &functionBody) {
         state.builder.comment(
             "This is the entry point of the kernel. The first argument is a "
             "pointer to a list of inputs and outputs. The second is a pointer "
@@ -111,13 +113,14 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
 
 LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
                                 MOGG::EmitMojoState &state) {
-  SmallVector<MOGG::MojoValue> inputTypes;
+  SmallVector<MOGG::NamedMojoDef> inputTypes;
   for (auto arg : kernelStub.getBody().getArguments())
-    inputTypes.push_back(state.mlirTypeToMojoType(arg.getType()));
+    inputTypes.push_back(
+        MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
 
   bool errOccurred = false;
   state.builder.fn(
-      kernelStub.getNameAttr().str(), {}, inputTypes, false,
+      kernelStub.getNameAttr().str(), {}, inputTypes, std::nullopt, false,
       [&](const MOGG::FunctionBody &functionBody) {
         for (auto &&[mlirArg, mojoArg] : llvm::zip(
                  kernelStub.getBody().getArguments(), functionBody.arguments)) {

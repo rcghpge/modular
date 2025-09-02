@@ -27,7 +27,6 @@ MojoValue MojoValue::operator()(ArrayRef<MojoValue> parameters,
       stream << operand << ", ";
     stream << operands.back() << ")";
   }
-
   return stream.str();
 }
 
@@ -49,30 +48,78 @@ public:
   MojoBuilder *emitter;
 };
 
-void MojoBuilder::fn(const MojoValue &name, ArrayRef<MojoValue> parameterTypes,
-                     ArrayRef<MojoValue> argumentTypes, bool exported,
+std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
+                                     ArrayRef<NamedMojoDef> operands,
+                                     std::optional<MojoValue> retType,
+                                     FunctionBody &body) {
+  std::stringstream stream;
+  if (!parameters.empty()) {
+    stream << "[";
+    for (auto [idx, param] : llvm::enumerate(parameters)) {
+      if (idx > 0)
+        stream << ", ";
+      MojoValue paramName = newVar(param.name);
+      stream << paramName << " : " << param.type;
+      if (param.defaultValue.has_value())
+        stream << " = " << *param.defaultValue;
+      body.parameters.push_back(paramName);
+    }
+    stream << "]";
+  }
+
+  stream << "(";
+  for (auto [idx, operand] : llvm::enumerate(operands)) {
+    if (idx > 0)
+      stream << ", ";
+    MojoValue operandName = newVar(operand.name);
+    stream << operandName << ": " << operand.type;
+    if (operand.defaultValue.has_value())
+      stream << " = " << *operand.defaultValue;
+    body.arguments.push_back(operandName);
+  }
+  stream << ")";
+
+  if (retType.has_value())
+    stream << " - > " << *retType;
+  stream << ":";
+  return stream.str();
+}
+
+void MojoBuilder::fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
+                     ArrayRef<NamedMojoDef> arguments,
+                     std::optional<MojoValue> returnType, bool exported,
                      std::function<void(const FunctionBody &)> &&funcBody) {
   newline();
 
   FunctionBody body;
-  SmallVector<MojoValue> typedParameters;
-  for (auto &&type : parameterTypes) {
-    body.parameters.push_back(newVar("arg"));
-    typedParameters.push_back(createTypedVar(body.parameters.back(), type));
-  }
-
-  SmallVector<MojoValue> typedArguments;
-  for (auto &&type : argumentTypes) {
-    body.arguments.push_back(newVar("arg"));
-    typedArguments.push_back(createTypedVar(body.arguments.back(), type));
-  }
 
   if (exported)
     statement("@export");
-  statement("fn ", name(typedParameters, typedArguments), ":");
+  statement("fn ", name, funcDefBase(parameters, arguments, returnType, body));
 
   MojoBuilderScopeGuard guard(this);
   funcBody(body);
+}
+
+MojoValue
+MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
+                    ArrayRef<NamedMojoDef> arguments,
+                    std::optional<MojoValue> returnType, bool isInline,
+                    bool isParameter,
+                    std::function<void(const FunctionBody &)> &&lambdaBody) {
+  MojoValue lambdaParam = newVar(lambdaName);
+  FunctionBody body;
+
+  if (isParameter)
+    statement("@parameter");
+  if (isInline)
+    statement("@always_inline");
+  statement("fn ", lambdaName,
+            funcDefBase(parameters, arguments, returnType, body));
+
+  MojoBuilderScopeGuard guard(this);
+  lambdaBody(body);
+  return lambdaParam;
 }
 
 MojoBuilder &MojoBuilder::try_(std::function<void()> &&tryBlock) {

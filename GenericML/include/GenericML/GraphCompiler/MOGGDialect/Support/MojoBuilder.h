@@ -12,11 +12,14 @@
 #define GENERICML_GRAPHCOMPILER_SUPPORT_MOJOEMITTER_H
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "Support/AssertStream.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <iostream>
 
 namespace M::MOGG {
+
+class MojoBuilder;
 
 /// A MojoValue is essentially a string that represents a value in Mojo. That
 /// can be a variable (equivalent of lvalue) or a value (rvalue). This class
@@ -63,6 +66,46 @@ struct FunctionBody {
   SmallVector<MojoValue> arguments;
 };
 
+// Class used to represent a unique mojo identifier.
+// It contains a static prefix, followed by a unique index `bar_45`
+// In most cases the MojoBuilder takes care of handling unique names so we don't
+// need to manipulate it.
+class UniqueMojoIdentifier {
+  StringLiteral prefix;
+  std::optional<uint32_t> idx;
+
+public:
+  UniqueMojoIdentifier(StringLiteral prefix)
+      : prefix(prefix), idx(std::nullopt) {}
+
+private:
+  UniqueMojoIdentifier(StringLiteral prefix, std::optional<uint32_t> idx)
+      : prefix(prefix), idx(idx) {}
+
+  // Get the corresponding identifier.
+  std::string str() const {
+    ASSERT_STREAM(idx.has_value(), << "UniqueMojoIdentifier must be resolved");
+    return llvm::formatv("{}_{}", prefix, *idx).str();
+  }
+
+  friend class MojoBuilder;
+};
+
+// Represent a parameter / operand definition for a function / lambda.
+struct NamedMojoDef {
+  UniqueMojoIdentifier name;
+  MojoValue type;
+  std::optional<MojoValue> defaultValue;
+
+  NamedMojoDef(UniqueMojoIdentifier name, MojoValue type,
+               std::optional<MojoValue> defaultValue = std::nullopt)
+      : name(name), type(type), defaultValue(defaultValue) {}
+
+  NamedMojoDef(StringLiteral name, MojoValue type,
+               std::optional<MojoValue> defaultValue = std::nullopt)
+      : NamedMojoDef(UniqueMojoIdentifier(name), type, defaultValue) {}
+};
+
 /// This is the equivalent of mlir::OpBuilder but for MojoValue instead of
 /// mlir::Operation and mlir::Value.
 class MojoBuilder {
@@ -73,9 +116,19 @@ public:
   /// Creates a function with the specified parameter and argument types. The
   /// returned object is a RAII guard that will recover the original indentation
   /// level when it goes out of scope.
-  void fn(const MojoValue &name, ArrayRef<MojoValue> parameterTypes,
-          ArrayRef<MojoValue> argumentTypes, bool exported,
-          std::function<void(const FunctionBody &)> &&funcBody);
+  void fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
+          ArrayRef<NamedMojoDef> arguments, std::optional<MojoValue> returnType,
+          bool exported, std::function<void(const FunctionBody &)> &&funcBody);
+
+  /// Creates a lambda with the specified parameter and argument types. The
+  /// returned object is a RAII guard that will recover the original indentation
+  /// level when it goes out of scope.
+  /// Returns the parameter name for the newly defined lambda.
+  MojoValue lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
+                   ArrayRef<NamedMojoDef> arguments,
+                   std::optional<MojoValue> returnType, bool isInline,
+                   bool isParameter,
+                   std::function<void(const FunctionBody &)> &&lambdaBody);
 
   [[nodiscard]] MojoBuilder &try_(std::function<void()> &&tryBlock);
   void except(std::function<void(const MojoValue &)> &&exceptBlock);
@@ -126,8 +179,24 @@ public:
   }
 
   void decreaseIdentation() { indentation.erase(indentation.size() - 4, 4); }
-  MojoValue newVar(StringLiteral prefix = "val") {
-    return llvm::formatv("{}_{}", prefix, variableCounter++).str();
+
+  UniqueMojoIdentifier getIdentifier(StringLiteral prefix = "val") {
+    return UniqueMojoIdentifier(prefix, variableCounter++);
+  }
+
+  UniqueMojoIdentifier resolveIdentifier(UniqueMojoIdentifier name) {
+    if (name.idx.has_value())
+      return name;
+    else
+      return getIdentifier(name.prefix);
+  }
+
+  MojoValue newVar(StringLiteral name = "val") {
+    return resolveIdentifier(name).str();
+  }
+
+  MojoValue newVar(UniqueMojoIdentifier name) {
+    return resolveIdentifier(name).str();
   }
 
 private:
@@ -138,6 +207,10 @@ private:
     (ss << ... << args);
     newline();
   }
+
+  std::string funcDefBase(ArrayRef<NamedMojoDef> parameters,
+                          ArrayRef<NamedMojoDef> operands,
+                          std::optional<MojoValue> retType, FunctionBody &body);
 
   std::stringstream ss;
   std::string indentation;
