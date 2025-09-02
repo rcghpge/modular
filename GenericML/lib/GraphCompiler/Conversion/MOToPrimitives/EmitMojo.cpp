@@ -81,6 +81,7 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
         errOccurred |= llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {
           return lowerOpToMojo(state, &op).failed();
         });
+        state.genAllKeepAliveStatements();
       });
 
   if (errOccurred)
@@ -127,6 +128,7 @@ LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
             llvm::any_of(kernelStub.getOps(), [&](mlir::Operation &op) {
               return lowerOpToMojo(state, &op).failed();
             });
+        state.genAllKeepAliveStatements();
       });
 
   if (errOccurred)

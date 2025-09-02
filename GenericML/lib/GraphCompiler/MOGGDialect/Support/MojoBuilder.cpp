@@ -116,6 +116,10 @@ void MojoBuilder::comment(const std::string &text) { statement("# ", text); }
 
 void MojoBuilder::pass() { statement("pass"); }
 
+void MojoBuilder::keepAlive(const MojoValue &value) {
+  statement("_ = ", value);
+}
+
 void MojoBuilder::import(const MojoValue &mod) {
   statement("import ", mod.text);
 }

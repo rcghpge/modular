@@ -109,6 +109,9 @@ public:
   /// Emits the keyword `pass`.
   void pass();
 
+  /// Keep the value alive longer `_ = value`
+  void keepAlive(const MojoValue &value);
+
   /// Imports the specified module.
   void import(const MojoValue &mod);
 

@@ -74,6 +74,24 @@ struct EmitMojoState {
   SmallVector<MojoValue> mojoReturnValues;
   MojoLibraryAnalysis &analysis;
 
+  /// In some cases values must be kept alive using `_ = someVar` at the end of
+  /// the function. This is because mojo Compiler isn't smart enough in some
+  /// cases to detect the right lifetime. This is mostly around lambdas, and
+  /// should be fixed by the new closures work.
+  SmallVector<MojoValue> keepAliveValues;
+
+  /// Mark a value as being kept alive.
+  /// Will generate `_ = value` at the end of the function.
+  void markAsKeepAlive(MojoValue value) { keepAliveValues.push_back(value); }
+
+  /// Generate all keep alive statements for the previous calls to
+  /// `markAsKeepAlive`.
+  void genAllKeepAliveStatements() {
+    for (const MojoValue &val : keepAliveValues)
+      builder.keepAlive(val);
+    keepAliveValues.clear();
+  }
+
   /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
     if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
