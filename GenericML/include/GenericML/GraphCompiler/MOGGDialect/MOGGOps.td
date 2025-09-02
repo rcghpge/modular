@@ -175,7 +175,8 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<MOGG_Emits
 }
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
-    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>]>  {
+    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]>  {
   let summary = "call the registered foreach kernel";
   let description = [{
     This represents a call to the mojo implementation of `foreach` function. If
@@ -254,6 +255,7 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
 
 def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
     Pure,
     HasParent<"MOGG::BindLambdaOp">]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";
@@ -465,7 +467,8 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">]
 
 
 def MOGG_BindLambdaOp : MOGG_Op<"bind", [
-    SingleBlock]> {
+    SingleBlock,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
   let summary = "Bind a fusion interface to a tensor";
   let description = [{
      This operation exposes a fusion interface to a tensor. It build the connection

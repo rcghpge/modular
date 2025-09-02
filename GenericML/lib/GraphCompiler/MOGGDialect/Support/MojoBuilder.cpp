@@ -8,6 +8,19 @@
 
 namespace M::MOGG {
 
+MojoValue MojoValue::operator[](ArrayRef<MojoValue> values) const {
+  std::stringstream stream;
+  stream << text;
+  if (!values.empty()) {
+    stream << "[";
+    for (auto parameter : values.drop_back())
+      stream << parameter << ", ";
+    stream << values.back() << "]";
+  }
+
+  return stream.str();
+}
+
 MojoValue MojoValue::operator()(ArrayRef<MojoValue> parameters,
                                 ArrayRef<MojoValue> operands) const {
   std::stringstream stream;
@@ -80,7 +93,7 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
   stream << ")";
 
   if (retType.has_value())
-    stream << " - > " << *retType;
+    stream << " -> " << *retType;
   stream << ":";
   return stream.str();
 }
@@ -114,7 +127,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
     statement("@parameter");
   if (isInline)
     statement("@always_inline");
-  statement("fn ", lambdaName,
+  statement("fn ", lambdaParam,
             funcDefBase(parameters, arguments, returnType, body));
 
   MojoBuilderScopeGuard guard(this);
@@ -162,6 +175,10 @@ void MojoBuilder::assign(const MojoValue &dst, const MojoValue &value) {
 void MojoBuilder::comment(const std::string &text) { statement("# ", text); }
 
 void MojoBuilder::pass() { statement("pass"); }
+
+void MojoBuilder::returnsValue(const MojoValue &value) {
+  statement("return ", value);
+}
 
 void MojoBuilder::keepAlive(const MojoValue &value) {
   statement("_ = ", value);

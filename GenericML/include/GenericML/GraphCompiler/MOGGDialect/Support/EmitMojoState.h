@@ -36,6 +36,7 @@ constexpr StringLiteral struct_DimList = "dimlist.DimList";
 constexpr StringLiteral struct_Dim = "Dim";
 constexpr StringLiteral struct_AddressSpace = "pointer.AddressSpace";
 constexpr StringLiteral struct_DType = "DType";
+constexpr StringLiteral struct_SIMD = "SIMD";
 
 constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
 
@@ -45,6 +46,8 @@ constexpr StringLiteral func_stack_allocation = "stack_allocation";
 constexpr StringLiteral func_to_managed_tensor_slice =
     "MOGGPrimitives.to_managed_tensor_slice";
 constexpr StringLiteral func_UnsafePointer_bitcast = "bitcast";
+constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
+    "managed_tensor_slice.simd_load_from_managed_tensor_slice";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
@@ -91,6 +94,10 @@ struct EmitMojoState {
       builder.keepAlive(val);
     keepAliveValues.clear();
   }
+
+  /// Try to lower `op` to Mojo using the EmitMojoInterface.
+  /// Returns an error if lowering failed.
+  LogicalResult lowerOpToMojo(Operation *op);
 
   /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
@@ -176,6 +183,12 @@ struct EmitMojoState {
     ASSERT_STREAM(nameAttr,
                   "Could not find original mojo symbol name attribute");
     return nameAttr.str();
+  }
+
+  // Returns the corresponding SIMD type given its dtpype and its width
+  static MojoValue getSIMDType(DType dtype, MojoValue width) {
+    return MojoValue(
+        HardcodedMojoSymbols::struct_SIMD)[{mlirDTypeToMojoType(dtype), width}];
   }
 };
 } // namespace M::MOGG

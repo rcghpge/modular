@@ -38,7 +38,7 @@ public:
   ~MojoValue() = default;
 
   static MojoValue None() { return MojoValue("None"); }
-  MojoValue rebind(const MojoValue &type) {
+  MojoValue rebind(const MojoValue &type) const {
     return llvm::formatv("rebind[{}]({})", type.text, text).str();
   }
   MojoValue get(const MojoValue &member) const {
@@ -47,6 +47,7 @@ public:
   MojoValue operator[](const MojoValue &idx) const {
     return llvm::formatv("{}[{}]", text, idx.text).str();
   }
+  MojoValue operator[](ArrayRef<MojoValue> values) const;
   MojoValue operator()(ArrayRef<MojoValue> parameters = {},
                        ArrayRef<MojoValue> operands = {}) const;
   MojoValue equal(const MojoValue &value) const {
@@ -161,6 +162,9 @@ public:
 
   /// Emits the keyword `pass`.
   void pass();
+
+  /// Returns a mojo value
+  void returnsValue(const MojoValue &value);
 
   /// Keep the value alive longer `_ = value`
   void keepAlive(const MojoValue &value);
