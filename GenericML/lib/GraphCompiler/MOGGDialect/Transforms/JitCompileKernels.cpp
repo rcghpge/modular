@@ -152,6 +152,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 
       // LITToKGEN
       KGEN::CompilationOptions opts;
+      opts.saveTempsPrefix = saveTempPrefix.getValue();
       opts.runMOGGPreElab = false;
       KGEN::KGENCompiler compiler(*ctx, opts);
       if (compiler.runGenerateLibraryPipeline(*parsedMojoModule).isError()) {

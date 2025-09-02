@@ -212,8 +212,11 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-    Option<"dumpAsText", "dump-as-text", "bool", "false",
-       "Flag to dump the emitted mojo as text">
+    Option<"dumpMojoText", "dump-mojo-text", "bool", "false",
+       "Flag to dump the emitted mojo as text">,
+    Option<"saveTempPrefix", "save-temp-prefix", "std::string", /*default=*/"",
+            "The prefix to use when saving temporary files. Setting this "
+            "option toggles on saveTemps.">
   ];
 
   let dependentDialects = ["MOGG::MOGGDialect",

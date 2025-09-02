@@ -358,6 +358,8 @@ void M::MO::buildMoToMgpPipeline(
 
   MGP::EmitMojoOptions emitMojoOptions;
   emitMojoOptions.kernelLibraryPaths = kernelLibraryPaths;
+  emitMojoOptions.dumpMojoText = opts.dumpMojoText;
+  emitMojoOptions.saveTempPrefix = opts.saveTempPrefix;
   pm.addPass(MGP::createEmitMojo(emitMojoOptions));
 
   // If we are jitting then we need to compile the jit kernels as well.

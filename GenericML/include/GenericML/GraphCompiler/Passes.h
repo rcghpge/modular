@@ -203,6 +203,10 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc(
           "Folder in which MLIR pass timing in JSON files will be saved."),
   };
+  Option<bool> dumpMojoText{
+      *this, "dump-mojo-text",
+      llvm::cl::desc("Dump generated mojo code of the kernels as text"),
+      llvm::cl::init(false)};
 };
 
 /// Registers the MO-to-MGP pipeline for use by testing tools.

@@ -4,6 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Support/FileUtilities.h"
+#include "llvm/Support/ToolOutputFile.h"
+
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
@@ -213,8 +216,22 @@ struct EmitMojo
           builder.getArrayAttr(llvm::to_vector_of<Attribute>(kernelsToLoad)),
           mojoTextAttr, /*debug*/ false);
 
-      if (dumpAsText)
+      if (dumpMojoText)
         llvm::errs() << mojoText << "\n";
+
+      if (!saveTempPrefix.empty()) {
+        std::string outPath = saveTempPrefix + ".kernels.mojo";
+        auto outFile = mlir::openOutputFile(outPath);
+        if (!outFile) {
+          modelOp->emitError()
+              << "Could not open pre-elaboration dump file named " << outPath;
+          signalPassFailure();
+          return;
+        }
+
+        outFile->os() << mojoText << "\n";
+        outFile->keep();
+      }
     }
   }
 };
