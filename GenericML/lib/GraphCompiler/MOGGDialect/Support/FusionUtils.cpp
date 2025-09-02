@@ -193,7 +193,7 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
     mlir::AttrTypeReplacer walker;
     walker.addReplacement([&](KGEN::ParamDeclAttr oldDecl) {
       std::string oldName =
-          KGEN::LIT::demangleIfNeeded(oldDecl).getName().str();
+          KGEN::LIT::demangleParameterName(oldDecl.getName()).str();
 
       StringAttr newName = StringAttr::get(ctx, oldName);
       while (parameters.contains(newName))

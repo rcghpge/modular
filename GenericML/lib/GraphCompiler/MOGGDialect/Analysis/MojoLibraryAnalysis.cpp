@@ -174,7 +174,7 @@ MojoLibraryAnalysis::buildParameterCall(llvm::StringLiteral callee,
 bool MojoLibraryAnalysis::kernelHasInputParameter(
     KGEN::GeneratorOp kernel, StringRef parameterName) const {
   return llvm::any_of(kernel.getInputParams(), [&](auto param) {
-    return KGEN::LIT::demangleIfNeeded(param).getName() == parameterName;
+    return KGEN::LIT::demangleParameterName(param.getName()) == parameterName;
   });
 }
 
