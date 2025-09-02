@@ -2864,8 +2864,31 @@ LogicalResult AsyncDelOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
+
+  auto convertShapeOperand =
+      [](MO::TensorType tensorTy,
+         ArrayRef<MojoValue> dynamicDims) -> SmallVector<MojoValue> {
+    if (tensorTy.getRank() == 0)
+      return {MojoValue(static_cast<int64_t>(1))};
+
+    // TODO: Make sure this is actually valid for dynamic cases.
+    // The dimensions operand only contains the dynamic ones in
+    // MOGGTensorInitOp. So instead we get the static ones from the type
+    // directly.
+
+    SmallVector<MojoValue> mojoDims;
+    unsigned nextDymDim = 0;
+    for (TypedAttr dim : tensorTy.getDims()) {
+      if (auto staticDim = dyn_cast<IntegerAttr>(dim)) {
+        mojoDims.push_back(MojoValue(staticDim.getSInt()));
+      } else {
+        mojoDims.push_back(dynamicDims[nextDymDim++]);
+      }
+    }
+    return mojoDims;
+  };
+
   auto tensorTy = MO::dynCastFromTensorLike(getType());
-  bool isScalar = getDims().empty();
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
@@ -2880,8 +2903,8 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
   auto shapeVar =
       state.builder.var(MojoValue(HardcodedMojoSymbols::struct_IndexList)(
-          {rankParam}, isScalar ? ArrayRef(MojoValue("1"))
-                                : state.getMojoValuesFor(getDims())));
+          {rankParam},
+          convertShapeOperand(tensorTy, state.getMojoValuesFor(getDims()))));
   auto moggTensorInit = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
   state.mlirValueToMojoValue[getResult()] = state.builder.var(
