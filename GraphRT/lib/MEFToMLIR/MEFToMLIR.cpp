@@ -919,8 +919,9 @@ bool RegionParser::parsePrimitiveList() {
       size_t argNo = 0;
       assert(block.getNumArguments() == numResults);
       for (auto arg : block.getArguments()) {
-        assert(resultRegisterNo++ == registerValues.size() &&
+        assert(resultRegisterNo == registerValues.size() &&
                "result register mismatch");
+        ++resultRegisterNo;
         registerValues.push_back(arg);
         arg.setType(resultTypes[argNo++]);
       }
@@ -1004,8 +1005,9 @@ bool RegionParser::parsePrimitiveList() {
 
     // Add all the results to the register table so subsequent ops may use it.
     for (auto result : resultOp->getResults()) {
-      assert(resultRegisterNo++ == registerValues.size() &&
+      assert(resultRegisterNo == registerValues.size() &&
              "result register mismatch");
+      ++resultRegisterNo;
       registerValues.push_back(result);
     }
   }
