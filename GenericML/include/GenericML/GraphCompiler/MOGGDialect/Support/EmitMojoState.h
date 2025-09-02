@@ -41,6 +41,10 @@ constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
 
 constexpr StringLiteral func_DimList_create_unknown = "create_unknown";
 constexpr StringLiteral func_ManagedTensorslice_shape = "shape";
+constexpr StringLiteral func_stack_allocation = "stack_allocation";
+constexpr StringLiteral func_to_managed_tensor_slice =
+    "MOGGPrimitives.to_managed_tensor_slice";
+constexpr StringLiteral func_UnsafePointer_bitcast = "bitcast";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";

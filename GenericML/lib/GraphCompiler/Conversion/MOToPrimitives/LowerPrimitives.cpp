@@ -433,7 +433,7 @@ void LowerPrimitivesPass::runOnOperation() {
     OpBuilder builder{op};
 
     // Skip any operations nested within a region.
-    if (op->getParentOfType<MOGG::GenericCompiledRegionOp>())
+    if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
       return mlir::WalkResult::skip();
 
     CompiledRegionBodyBuilder bodyBuilder(nullptr);

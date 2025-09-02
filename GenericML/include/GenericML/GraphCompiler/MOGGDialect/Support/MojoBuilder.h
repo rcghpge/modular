@@ -94,6 +94,12 @@ public:
   void call(const MojoValue &funcName, ArrayRef<MojoValue> parameters = {},
             ArrayRef<MojoValue> operands = {});
 
+  /// Apply the assign operator `=` to a specific value.
+  /// This is different from `var`, here assign doesn't declare anything.
+  /// It can be used to set field / array entries for example.
+  /// eg: `foo[idx] = 42`.
+  void assign(const MojoValue &dst, const MojoValue &value);
+
   /// Adds a Mojo comment.
   void comment(const std::string &text);
 

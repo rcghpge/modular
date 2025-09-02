@@ -108,6 +108,10 @@ void MojoBuilder::call(const MojoValue &funcName,
   statement(funcName(parameters, operands));
 }
 
+void MojoBuilder::assign(const MojoValue &dst, const MojoValue &value) {
+  statement(dst, " = ", value);
+}
+
 void MojoBuilder::comment(const std::string &text) { statement("# ", text); }
 
 void MojoBuilder::pass() { statement("pass"); }

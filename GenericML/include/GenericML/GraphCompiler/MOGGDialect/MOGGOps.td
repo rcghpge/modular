@@ -1754,4 +1754,25 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   }];
 }
 
+def MOGG_InlineConstantBufferOp : MOGG_Op<"inline_constant_buffer", [
+  Pure,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+]> {
+  let summary = "Represents a constant buffer value inlined inside the kernel";
+  let description = [{
+    Takes a the raw elements attrs and returns a buffer (pointer) to the constant.
+  }];
+
+  let arguments = (ins
+    ConfinedAttr<
+      ElementsAttr,
+      [AnyAttrOf<[M_ArrayElementsAttr,
+                  Builtin_DenseResourceElementsAttr,
+                  M_AlignedBytesAttr]>]
+    >:$value);
+  let results = (outs MGP_DeviceBufferType:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

@@ -27,6 +27,21 @@ namespace M::MGP {
 
 namespace {
 
+LogicalResult lowerOpToMojo(MOGG::EmitMojoState &state, Operation *op) {
+  if (auto emitMojoInterface = dyn_cast<MOGG::EmitsMojoInterface>(op)) {
+    if (emitMojoInterface.emitMojo(state).failed()) {
+      return emitMojoInterface->emitError(
+          "Could not lower this operation to Mojo");
+    }
+    return success();
+  } else if (isa<MOGG::OutputOp>(op)) {
+    // These ops don't need to be converted.
+    return success();
+  } else {
+    return op->emitError("This operation doesn't implement EmitsMojoInterface");
+  }
+}
+
 StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
                                         MOGG::EmitMojoState &state,
                                         OpBuilder &builder) {
@@ -63,18 +78,9 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
               runtimeArgument[std::to_string(i + kernel->getNumOperands())]);
         }
 
-        errOccurred |=
-            kernel
-                .walk([&](MOGG::EmitsMojoInterface emitMojoInterface) {
-                  if (emitMojoInterface.emitMojo(state).failed()) {
-                    emitMojoInterface->emitError(
-                        "Could not lower this operation to Mojo");
-                    return mlir::WalkResult::interrupt();
-                  }
-
-                  return mlir::WalkResult::advance();
-                })
-                .wasInterrupted();
+        errOccurred |= llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {
+          return lowerOpToMojo(state, &op).failed();
+        });
       });
 
   if (errOccurred)
@@ -118,17 +124,9 @@ LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
         }
 
         errOccurred |=
-            kernelStub
-                .walk([&](MOGG::EmitsMojoInterface emitMojoInterface) {
-                  if (emitMojoInterface.emitMojo(state).failed()) {
-                    emitMojoInterface->emitError(
-                        "Could not lower this operation to Mojo");
-                    return mlir::WalkResult::interrupt();
-                  }
-
-                  return mlir::WalkResult::advance();
-                })
-                .wasInterrupted();
+            llvm::any_of(kernelStub.getOps(), [&](mlir::Operation &op) {
+              return lowerOpToMojo(state, &op).failed();
+            });
       });
 
   if (errOccurred)

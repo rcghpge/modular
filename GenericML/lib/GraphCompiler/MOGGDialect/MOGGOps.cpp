@@ -930,6 +930,34 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     moggContext.erase();
   });
 
+  auto mgpBufferType = MGP::DeviceBufferType::get(device);
+
+  // Collect and  replace all inline MO::ConstantOp with InlineBuffer +
+  // MOGGTensorInitOp.
+  SmallVector<MO::ConstantOp> constantsToReplace;
+  kernelStub.walk([&](MO::ConstantOp constantOp) {
+    constantsToReplace.push_back(constantOp);
+  });
+
+  for (MO::ConstantOp constantOp : constantsToReplace) {
+    builder.setInsertionPoint(constantOp);
+    Value bufferValue =
+        builder
+            .create<MOGG::InlineConstantBufferOp>(
+                constantOp->getLoc(), mgpBufferType, constantOp.getValue())
+            .getResult();
+    SmallVector<Value> dynamicDimensions;
+    Value constantValue = builder.create<MOGG::TensorInitOp>(
+        loc, constantOp.getResult().getType(), bufferValue,
+        /*dynamicDimensions=*/ArrayRef<Value>{},
+        /*mut=*/BoolAttr::get(ctx, false),
+        /*io=*/IOKindAttr::get(ctx, IOKind::Input));
+    constantOp.getResult().replaceAllUsesWith(constantValue);
+    constantOp->erase();
+  }
+
+  builder.setInsertionPointAfter(newKernel);
+
   return success();
 }
 
@@ -2937,6 +2965,40 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
       state.analysis.getRegisteredMojoUpdateViewFunctionFor(getKernelName()));
   state.mlirValueToMojoValue[getResult()] = state.builder.var(
       mojoSymbolName({outputShapeParameter}, inputMojoValues));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// InlineConstantBufferOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
+  // Get the raw value.
+  ArrayRef<uint8_t> rawValue;
+  if (auto arrayAttr = dyn_cast<M::ArrayElementsAttr>(getValue())) {
+    rawValue = arrayAttr.getRawData();
+  } else if (auto resourceAttr =
+                 dyn_cast<DenseResourceElementsAttr>(getValue())) {
+    DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
+    mlir::AsmResourceBlob *blob = handle.getBlob();
+    rawValue = blob->getDataAs<uint8_t>();
+  } else {
+    return failure();
+  }
+
+  // Build the data array.
+  // TODO: Find a more efficient way to build the constant / avoid using the
+  // stack.
+  MOGG::MojoValue dataU8 = state.builder.var(
+      MOGG::MojoValue(MOGG::HardcodedMojoSymbols::func_stack_allocation)(
+          {/*size=*/MOGG::MojoValue(uint64_t(rawValue.size())),
+           /*dtype=*/state.mlirDTypeToMojoType(DType::ui8)}));
+  for (uint64_t i = 0, e = rawValue.size(); i < e; ++i)
+    state.builder.assign(dataU8[i], uint64_t(rawValue[i]));
+
+  // Cast to NoneType (expected dtype for the buffers).
+  state.mlirValueToMojoValue[getResult()] = state.builder.var(dataU8.get(
+      MOGG::HardcodedMojoSymbols::func_UnsafePointer_bitcast)({"NoneType"}));
   return success();
 }
 
