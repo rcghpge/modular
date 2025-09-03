@@ -9,9 +9,11 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "AsyncRT/Runtime/Runtime.h"
+#include "Kernels/MotrTrace.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace M {
@@ -83,6 +85,7 @@ private:
   llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults;
   llvm::raw_ostream &outputStream;
   bool shouldLog = false;
+  std::unique_ptr<M::MotrTrace> motrTrace;
 };
 
 // Type aliases for clean usage

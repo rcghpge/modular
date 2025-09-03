@@ -1123,6 +1123,7 @@ modular_cc_library(
     deps = [
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
+        "//Kernels:Tracing",
     ],
 )
 
