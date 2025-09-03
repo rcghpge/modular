@@ -284,7 +284,7 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
   if (compute.isError())
     return compute.takeError();
   if (*compute < MIN_COMPUTE_CAPABILITY) {
-    RAISE_ERROR("MAX only supports CUDA Turing architectures or higher");
+    RAISE_ERROR("MAX only supports CUDA Pascal architectures or higher");
   }
 
   int driverVersion = 0;

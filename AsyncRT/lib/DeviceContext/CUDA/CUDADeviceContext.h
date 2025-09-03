@@ -101,8 +101,8 @@ public:
 private:
   void eventCacheClear() const;
 
-  // We only support CUDA architectures sm_75 and above.
-  static constexpr int MIN_COMPUTE_CAPABILITY = 75;
+  // We only support CUDA architectures sm_60 and above.
+  static constexpr int MIN_COMPUTE_CAPABILITY = 60;
 
   // We only support CUDA 12.5 and NVIDIA driver 555 and above.
   // We should support CUDA 12.0 and later, but some users reported problems
