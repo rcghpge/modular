@@ -111,6 +111,7 @@ struct EmitMojoState {
       return mlirTensorTypeToMojoType(tensorType);
     } else {
       ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
+      llvm_unreachable("Unsupported mlir type");
     }
   }
 
