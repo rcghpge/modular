@@ -4994,27 +4994,42 @@ LogicalResult MutableStoreSliceOp::verify() {
 //===----------------------------------------------------------------------===//
 
 /// Common verify logic for any AllReduceSum variant.
-/// Checks input/output counts and that corresponding device types match.
+/// Checks that all inputs have same shape and output matches, and device is
+/// valid.
 template <typename ConcreteOp>
 static LogicalResult verifyAllReduceSum(ConcreteOp op) {
-  // Verify we have the same number of inputs/outputs.
+  // Verify we have inputs.
   auto inputs = op.getInputs();
-  auto outputs = op.getOutputs();
-  if (inputs.size() != outputs.size())
-    return op->emitError(
-        "number of inputs and outputs should match for all-reduce");
+  if (inputs.empty())
+    return op->emitError("allreduce requires at least one input");
 
-  // Verify that input/output types match.
-  auto inputTypes = TypeRange(inputs);
-  auto outputTypes = TypeRange(outputs);
-  auto mismatch = llvm::mismatch(inputTypes, outputTypes);
-
-  if (mismatch.first != inputTypes.end()) {
-    auto index = std::distance(inputTypes.begin(), mismatch.first);
-    return op->emitError() << "input type " << *mismatch.first
-                           << " does not match corresponding output type "
-                           << *mismatch.second << " at position " << index;
+  // Verify that all inputs have the same shape and element type.
+  auto firstInputType = cast<TensorType>(inputs[0].getType());
+  for (size_t i = 1; i < inputs.size(); ++i) {
+    auto inputType = cast<TensorType>(inputs[i].getType());
+    if (inputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
+      return op->emitError("all inputs must have the same shape");
+    if (inputType.getElementType() != firstInputType.getElementType())
+      return op->emitError("all inputs must have the same element type");
   }
+
+  // Verify that output type matches input type (shape and element type).
+  auto outputType = cast<TensorType>(op.getOutput().getType());
+  if (outputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
+    return op->emitError("output shape must match input shape");
+  if (outputType.getElementType() != firstInputType.getElementType())
+    return op->emitError("output element type must match input element type");
+
+  // Verify that the device attribute matches the output device.
+  auto deviceAttr = op.getDeviceAttr();
+  auto outputDevice = outputType.getDeviceRef();
+  if (outputDevice && deviceAttr != outputDevice)
+    return op->emitError("device attribute must match output device");
+
+  // Verify signal buffers match input count
+  if (op.getSignalBuffers().size() != inputs.size())
+    return op->emitError(
+        "number of signal buffers must match number of inputs");
 
   return success();
 }
@@ -5024,8 +5039,8 @@ LogicalResult AllReduceSumOp::verify() { return verifyAllReduceSum(*this); }
 LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult> &results) {
   // If the all-reduce has 1 input, return the input (identity op).
-  if (getOutputs().size() == 1 &&
-      getInputs()[0].getType() == getOutputs()[0].getType()) {
+  if (getInputs().size() == 1 &&
+      getInputs()[0].getType() == getOutput().getType()) {
     results.push_back(getInputs()[0]);
     results.push_back(getInChain());
     return success();
