@@ -30,6 +30,9 @@ def test_stream_responses_to_frontend(benchmark: Any) -> None:
     scheduler = TokenGenerationScheduler(
         scheduler_config=config,
         pipeline=None,  # type: ignore
+        request_queue=None,  # type: ignore
+        response_queue=None,  # type: ignore
+        cancel_queue=None,  # type: ignore
     )
 
     # Create test data - simulate multiple responses with tokens
@@ -44,7 +47,7 @@ def test_stream_responses_to_frontend(benchmark: Any) -> None:
         )
 
     # Run the benchmark
-    result = benchmark.pedantic(
+    _ = benchmark.pedantic(
         scheduler._stream_responses_to_frontend,
         args=(batch_responses,),
         warmup_rounds=1,
