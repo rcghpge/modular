@@ -102,7 +102,7 @@ class XCodec2Model(nn.Module):
             vq_code = ops.unsqueeze(vq_code, 1)  # (batch, 1, seq_len)
 
         vq_post_emb = self.generator._embed_tokens(
-            ops.squeeze(vq_code.transpose(1, 2), 1)  # (batch, seq_len)
+            ops.squeeze(vq_code.transpose(1, 2), 2)  # (batch, seq_len)
         )  # Returns (batch, seq_len, vq_dim)
 
         # Step 2: Apply linear transformation (fc_post_a)

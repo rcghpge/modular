@@ -8,17 +8,17 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 import numpy as np
-from max.graph import TensorValue
+from max.driver import Tensor
+from max.dtype import DType
+from max.engine.api import InferenceSession
+from max.graph import Graph, TensorType, TensorValue
 
 from .config import XCodec2Config
 from .weight_loader import load_xcodec2_weights
 from .xcodec2 import XCodec2Model
-
-logger = logging.getLogger(__name__)
 
 
 class XCodec2Decoder:
@@ -38,7 +38,6 @@ class XCodec2Decoder:
         self.config = config
         self.xcodec2_model = XCodec2Model(config)
 
-        logger.info(f"Loading XCodec2 weights from: {model_path}")
         weights = load_xcodec2_weights(str(model_path))
         self.xcodec2_model.load_state_dict(
             weights,
@@ -46,7 +45,31 @@ class XCodec2Decoder:
             weight_alignment=1,
             strict=True,
         )
-        logger.info("Successfully loaded XCodec2 weights")
+
+        self._build_decode_graph()
+
+    def _build_decode_graph(self) -> None:
+        """Build and compile the decoding graph for numpy interface."""
+        device = self.config.device
+        self.session = InferenceSession(devices=[device.to_device()])
+
+        speech_tokens_type = TensorType(
+            DType.int32,
+            ("batch_size", "seq_length"),
+            device=self.config.device,
+        )
+
+        with Graph(
+            "xcodec2_decoder",
+            input_types=(speech_tokens_type,),
+        ) as graph:
+            speech_tokens = graph.inputs[0].tensor
+            audio_output = self.xcodec2_model.decode_code(speech_tokens)
+            graph.output(audio_output)
+
+        self.compiled_model = self.session.load(
+            graph, weights_registry=self.xcodec2_model.state_dict()
+        )
 
     def decode_code(self, vq_code: TensorValue) -> TensorValue:
         """Decode speech token codes to audio waveform.
@@ -80,22 +103,25 @@ class XCodec2Decoder:
         Returns:
             Audio waveform as NumPy array, shape (num_samples,) or (batch, num_samples)
         """
-        # TODO: For now, return dummy audio matching expected shape
-        # In a real implementation, this would need to execute the graph
-        # and convert the results back to numpy
-
-        num_tokens = speech_tokens.shape[
-            -1
-        ]  # Last dimension is sequence length
-        duration_seconds = num_tokens * (
-            1.0 / self.config.codec_tokens_per_sec
-        )  # 50 tokens/sec
-        num_samples = int(duration_seconds * self.config.sample_rate)  # 16kHz
-
         if speech_tokens.ndim == 1:
-            dummy_audio = np.zeros(num_samples, dtype=np.float32)
+            speech_tokens_batched = speech_tokens[np.newaxis, :]
+            is_batched = False
         else:
-            batch_size = speech_tokens.shape[0]
-            dummy_audio = np.zeros((batch_size, num_samples), dtype=np.float32)
+            speech_tokens_batched = speech_tokens
+            is_batched = True
 
-        return dummy_audio
+        input_tensor = Tensor.from_numpy(speech_tokens_batched.astype(np.int32))
+        input_tensor = input_tensor.to(self.config.device.to_device())
+
+        output_tensors = self.compiled_model.execute(input_tensor)
+
+        audio_tensor = output_tensors[0]
+        assert isinstance(audio_tensor, Tensor), (
+            f"Expected Tensor, got {type(audio_tensor)}"
+        )
+        audio_numpy = audio_tensor.to_numpy()
+
+        if not is_batched and audio_numpy.shape[0] == 1:
+            audio_numpy = audio_numpy[0]
+
+        return audio_numpy

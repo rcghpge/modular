@@ -57,7 +57,7 @@ def _map_xcodec2_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
             tensor_np = tensor_value.to_numpy()
 
             if "embed" in weight_name:
-                transposed_np = np.transpose(tensor_np, (2, 0, 1))
+                transposed_np = np.transpose(tensor_np, (2, 1, 0))
                 processed_tensor = Tensor.from_numpy(transposed_np)
 
             elif "conv" in weight_name:
@@ -84,7 +84,6 @@ def load_xcodec2_weights(model_path: str) -> dict[str, Any]:
             filename="model.safetensors",
             cache_dir=None,
         )
-        logger.info(f"Downloaded model.safetensors to: {weight_file}")
     except Exception as e:
         logger.error(
             f"Failed to download model.safetensors from {model_path}: {e}"

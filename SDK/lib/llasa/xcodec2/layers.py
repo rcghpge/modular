@@ -71,12 +71,18 @@ class ResnetBlock(nn.Module):
         h = x
 
         # First block: norm → swish → conv
-        h = self.norm1(h)
+        # GroupNorm expects (batch, channels, seq_len), so transpose
+        h = self.norm1(h.transpose(1, 2)).transpose(
+            1, 2
+        )  # (batch, seq_len, channels)
         h = h * ops.sigmoid(h)
         h = self.conv1(h)
 
         # Second block: norm → swish → conv
-        h = self.norm2(h)
+        # GroupNorm expects (batch, channels, seq_len), so transpose
+        h = self.norm2(h.transpose(1, 2)).transpose(
+            1, 2
+        )  # (batch, seq_len, channels)
         h = h * ops.sigmoid(h)
         h = self.conv2(h)
 
