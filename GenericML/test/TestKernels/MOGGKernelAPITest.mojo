@@ -59,7 +59,7 @@ fn export():
 
 
 @register_passable("trivial")
-struct MyCustomScalarRegTrivialSI32(Copyable, Movable):
+struct MyCustomScalarRegTrivialSI32(ImplicitlyCopyable, Movable):
     var val: Int32
 
     @implicit
@@ -78,7 +78,7 @@ struct OpaqueToCustomScalarSI32RegTrivial:
 
 
 @register_passable
-struct MyCustomScalarRegSI32(Copyable, Movable):
+struct MyCustomScalarRegSI32(ImplicitlyCopyable, Movable):
     var val: Int32
 
     @implicit
@@ -93,7 +93,7 @@ struct MyCustomScalarRegSI32(Copyable, Movable):
 # It is intentional there are no methods which consume this.
 # It is here to support some level of type checking.
 @register_passable
-struct MyCustomScalarRegF32(Copyable, Movable):
+struct MyCustomScalarRegF32(ImplicitlyCopyable, Movable):
     var val: Float32
 
     @implicit
@@ -147,7 +147,7 @@ struct OpaqueAddToTensorF32:
 # ===-----------------------------------------------------------------------===#
 
 
-struct MyCustomScalarSI32(Copyable, Movable):
+struct MyCustomScalarSI32(ImplicitlyCopyable, Movable):
     var val: Int32
 
     @implicit
@@ -837,7 +837,7 @@ struct BasicTarget:
 
 
 @register_passable
-struct MyCustomScalarReg[dtype: DType](Copyable, Movable):
+struct MyCustomScalarReg[dtype: DType](ImplicitlyCopyable, Movable):
     var val: Scalar[dtype]
 
     @implicit
@@ -1082,7 +1082,7 @@ struct CustomOpWithStaticStringParams:
 
 @fieldwise_init
 @register_passable
-struct TensorWrapper(Copyable, Movable):
+struct TensorWrapper(ImplicitlyCopyable, Movable):
     var buffer: NDBuffer[DType.float32, 2, MutableAnyOrigin]
 
 
@@ -1202,7 +1202,7 @@ struct InplaceNoOutFunc:
 
 @fieldwise_init
 @register_passable
-struct SIMDPair[S0: Int, S1: Int](Copyable, Movable):
+struct SIMDPair[S0: Int, S1: Int](ImplicitlyCopyable, Movable):
     var x: SIMD[DType.int32, S0]
     var y: SIMD[DType.int32, S1]
 
