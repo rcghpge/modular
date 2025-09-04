@@ -136,8 +136,12 @@ nixlPluginManager::nixlPluginManager() {
   void *dlLibHsaRuntime64 =
       dlopen("libhsa-runtime64.so.1", RTLD_NOW | RTLD_GLOBAL);
 
+  // Check whether IB network devices are specified in the environment variable
+  const char *ibDevices = getenv("UCX_NET_DEVICES");
+
   if (dlLibHsaRuntime64 != nullptr) {
-    if (dlLibMlx5 != nullptr && loadPlugin("ucx_rocm_verbs") != nullptr) {
+    if (ibDevices != nullptr && dlLibMlx5 != nullptr &&
+        loadPlugin("ucx_rocm_verbs") != nullptr) {
       NIXL_INFO << "Loaded NIXL plugin_ucx_rocm_verbs";
       return;
     }
@@ -148,7 +152,8 @@ nixlPluginManager::nixlPluginManager() {
   }
 
   if (dlLibCuda != nullptr && dlLibNvml != nullptr) {
-    if (dlLibMlx5 != nullptr && loadPlugin("ucx_cuda_verbs") != nullptr) {
+    if (ibDevices != nullptr && dlLibMlx5 != nullptr &&
+        loadPlugin("ucx_cuda_verbs") != nullptr) {
       NIXL_INFO << "Loaded NIXL plugin_ucx_cuda_verbs";
       return;
     }
