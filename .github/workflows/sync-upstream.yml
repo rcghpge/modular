@@ -2,8 +2,7 @@ name: Upstream
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   schedule:
     - cron: '0 0 * * 5'
   workflow_dispatch: {}
@@ -14,7 +13,9 @@ permissions:
 
 jobs:
   sync:
+    if: ${{ github.repository == 'rcghpge/modular' }}
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,74 +23,85 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Fork configs
+      - name: Add upstream and fetch
         run: |
-          if [ "${{ github.repository }}" != "rcghpge/modular" ]; then
-            exit 1
-          fi
-
-      - name: Add upstream and sync
-        run: |
-          git remote add upstream https://github.com/modular/modular.git || true
+          set -eo pipefail
+          git remote add upstream https://github.com/modular/modular.git 2>/dev/null || true
           git fetch --prune --tags origin
           git fetch --prune --tags upstream
           git checkout main
           git remote set-url --push upstream DISABLED
 
-      - name: Check diffs and workflow changes
+      - name: Check diffs and workflow changes 
         id: detect
         run: |
-          BASE=$(git merge-base HEAD upstream/main)
-          BEHIND=$(git rev-list --right-only --count "${BASE}..upstream/main")
-          if git diff --name-only "${BASE}..upstream/main" | grep -qE '^\.github/workflows/'; then
+          set -eo pipefail
+          if BASE=$(git merge-base HEAD upstream/main 2>/dev/null); then
+            :
+          else
+            BASE=
+          fi
+          if [ -n "$BASE" ]; then
+            BEHIND=$(git rev-list --right-only --count "${BASE}..upstream/main")
+          else
+            BEHIND=$(git rev-list --count upstream/main)
+          fi
+          if git diff --name-only ${BASE:+$BASE..}upstream/main | grep -qE '^\.github/workflows/'; then
             WF_CHANGED=true
           else
             WF_CHANGED=false
           fi
-          echo "behind=${BEHIND}"     >> "$GITHUB_OUTPUT"
+          echo "behind=${BEHIND}"       >> "$GITHUB_OUTPUT"
           echo "wf_changed=${WF_CHANGED}" >> "$GITHUB_OUTPUT"
 
-      - name: GH configs
+      - name: Configure git (only if behind)
         if: ${{ steps.detect.outputs.behind != '0' }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Merge upstream/main to main
+      - name: Merge upstream/main → main no-ff
         id: do_merge
         if: ${{ steps.detect.outputs.behind != '0' }}
         continue-on-error: true
         run: |
+          set -eo pipefail
           git merge --no-ff --no-edit upstream/main
 
-      - name: Push with GH configs (no workflow changes)
+      - name: Push with GITHUB_TOKEN (no workflow changes)
+        id: push_gh
         if: ${{ steps.do_merge.outcome == 'success' && steps.detect.outputs.wf_changed != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+          set -eo pipefail
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
           git push origin HEAD:main
 
-      - name: Push with pat token configs (workflow changes)
+      - name: Push with PAT (workflow changes)
         id: push_pat
-        if: ${{ steps.do_merge.outcome == 'success' && steps.detect.outputs.wf_changed == 'true' }}
+        if: ${{ steps.do_merge.outcome == 'success' && steps.detect.outputs.wf_changed == 'true' && secrets.PAT_WORKFLOW != '' }}
         continue-on-error: true
         env:
           PAT: ${{ secrets.PAT_WORKFLOW }}
         run: |
-          git remote set-url origin https://x-access-token:${PAT}@github.com/${{ github.repository }}.git
+          set -eo pipefail
+          git remote set-url origin "https://x-access-token:${PAT}@github.com/${{ github.repository }}.git"
           git push origin HEAD:main
 
-      - name: Set PR branch (fallbacks)
+      - name: Generate PR branch (fallback 1)
         if: ${{ steps.detect.outputs.behind != '0' && steps.do_merge.outcome == 'failure' }}
         run: |
+          set -eo pipefail
           git merge --abort || true
           git checkout -B chore/sync-upstream-${GITHUB_RUN_ID} main
           git merge --no-ff --no-edit upstream/main || true
 
-      - name: Generate PR branch (pat fallbacks)
-        if: ${{ steps.do_merge.outcome == 'success' && steps.detect.outputs.wf_changed == 'true' && steps.push_pat.outcome == 'failure' }}
+      - name: Generate PR branch (fallback 2)
+        if: ${{ steps.do_merge.outcome == 'success' && steps.detect.outputs.wf_changed == 'true' && (steps.push_pat.outcome == 'failure' || secrets.PAT_WORKFLOW == '') }}
         run: |
+          set -eo pipefail
           git checkout -B chore/sync-upstream-${GITHUB_RUN_ID} main
           git merge --no-ff --no-edit upstream/main || true
 
@@ -97,7 +109,7 @@ jobs:
         id: cpr
         if: |
           (steps.detect.outputs.behind != '0' && steps.do_merge.outcome == 'failure') ||
-          (steps.do_merge.outcome == 'success' && steps.detect.outputs.wf_changed == 'true' && steps.push_pat.outcome == 'failure')
+          (steps.do_merge.outcome == 'success' && steps.detect.outputs.wf_changed == 'true' && (steps.push_pat.outcome == 'failure' || secrets.PAT_WORKFLOW == ''))
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PAT_WORKFLOW }}
@@ -108,14 +120,14 @@ jobs:
           labels: sync, automerge
 
       - name: Auto-approve
-        if: ${{ steps.cpr.outputs.pull-request-number != '' }}
+        if: ${{ steps.cpr.outputs.pull-request-number }}
         uses: hmarr/auto-approve-action@v3
         with:
           github-token: ${{ secrets.PAT_WORKFLOW }}
           pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
 
       - name: Enable auto-merge
-        if: ${{ steps.cpr.outputs.pull-request-number != '' }}
+        if: ${{ steps.cpr.outputs.pull-request-number }}
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           token: ${{ secrets.PAT_WORKFLOW }}
@@ -125,8 +137,9 @@ jobs:
       - name: Debug
         if: always()
         run: |
-          echo "behind=${{ steps.detect.outputs.behind }}"
-          echo "wf_changed=${{ steps.detect.outputs.wf_changed }}"
-          echo "merge_outcome=${{ steps.do_merge.outcome }}"
-          echo "push_pat_outcome=${{ steps.push_pat.outcome || 'n/a' }}"
-          echo "pr_number=${{ steps.cpr.outputs.pull-request-number || 'n/a' }}"
+          echo "behind=${{ steps.detect.outputs.behind || 'n/a' }}"
+          echo "wf_changed=${{ steps.detect.outputs.wf_changed || 'n/a' }}"
+          echo "merge_outcome=${{ steps.do_merge.outcome || 'n/a' }}"
+          echo "push_gh_outcome=${{ steps.push_gh.outcome || 'skipped' }}"
+          echo "push_pat_outcome=${{ steps.push_pat.outcome || 'skipped' }}"
+          echo "pr_number=${{ steps.cpr.outputs['pull-request-number'] || 'n/a' }}"
