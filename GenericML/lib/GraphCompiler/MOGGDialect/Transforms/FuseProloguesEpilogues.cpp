@@ -285,7 +285,7 @@ struct FuseProloguesEpilogues
         MOGG::OutputPlaceholdersOp outHolderOp = dst.getOutputPlaceholder();
         if (containsMatmulOrConvOrConcat(dst) &&
             !dataTypesMatch(outputLambda.getOutput().getType(),
-                            fusedResultTp)) {
+                            src.getElemwiseBodyLambda().getType())) {
           rewriter.setInsertionPointAfter(outHolderOp);
           auto scratchPlaceholder =
               rewriter
