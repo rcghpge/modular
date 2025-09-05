@@ -42,6 +42,21 @@
 
 #define DEBUG_TYPE "mgp"
 
+// Uncomment the line below to log each MGP kernel launch and completion to
+// stderr.
+// #define ENABLE_MGP_KERNEL_LOGGING
+
+#ifdef ENABLE_MGP_KERNEL_LOGGING
+#define MAYBE_LOG_ASYNC_KERNEL(summary, operands, results)                     \
+  MGP::KernelAsyncLogger<decltype(operands)> asyncLogger(summary, operands,    \
+                                                         results)
+#define MAYBE_LOG_SYNC_KERNEL(summary, operands, results)                      \
+  MGP::KernelSyncLogger<RemainingArguments> logger(summary, operands, results)
+#else
+#define MAYBE_LOG_ASYNC_KERNEL(summary, operands, results) ((void)(summary))
+#define MAYBE_LOG_SYNC_KERNEL(summary, operands, results) ((void)(summary))
+#endif
+
 using namespace M;
 using namespace M::GML;
 using namespace M::MGP;
@@ -111,18 +126,23 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
 static int deviceHintFor(const RemainingArguments &operands) {
   llvm::SmallSet<int, 8> acceleratorIds;
 
-  auto deviceContexts = MGP::extractDeviceContexts(operands);
-  for (const auto &deviceCtxRef : deviceContexts) {
-    if (deviceCtxRef->device().api() != AsyncRT::Device::cpuAPI) {
-      // Track only accelerator device IDs.
-      acceleratorIds.insert(deviceCtxRef->device().id());
+  for (const AnyAsyncValueRef &operand : operands) {
+    // Check for DeviceContextRef.
+    if (operand.isType<AsyncRT::DeviceContextRef>()) {
+      // getPointerToData() returns a pointer to the payload (DeviceContextRef).
+      const auto &deviceCtxRef =
+          *static_cast<const AsyncRT::DeviceContextRef *>(
+              operand.getPointerToData());
+      if (deviceCtxRef->device().api() != AsyncRT::Device::cpuAPI) {
+        // Track only accelerator device IDs.
+        acceleratorIds.insert(deviceCtxRef->device().id());
+      }
     }
   }
 
   // Return valid ID only if there's exactly one accelerator DeviceContextRef.
   if (acceleratorIds.size() == 1)
     return *acceleratorIds.begin();
-
   // Multiple contexts or CPU context -> no preference.
   return kNoDevicePreference;
 }
@@ -153,11 +173,10 @@ static void mgp_generic_execute(
                                         takenOperands = operands.takeAsVector(),
                                         constantResources =
                                             std::move(fConstantResources),
-                                        kernelPtr, dSummary, &runtime]() {
+                                        kernelPtr, dSummary]() {
       llvm::SmallVector<void *> kernelInputs =
           getKernelInputs(takenOperands, outResults, constantResources);
-      MGP::KernelAsyncLogger<decltype(takenOperands)> asyncLogger(
-          *dSummary, takenOperands, outResults, runtime);
+      MAYBE_LOG_ASYNC_KERNEL(*dSummary, takenOperands, outResults);
       kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
 
       // Must have all been released/reset by the compiled kernel.
@@ -174,8 +193,7 @@ static void mgp_generic_execute(
     // Run the kernel on this thread.
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
-    MGP::KernelSyncLogger<RemainingArguments> logger(*dSummary, operands,
-                                                     outResults.get(), runtime);
+    MAYBE_LOG_SYNC_KERNEL(*dSummary, operands, outResults.get());
     kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
 
     // Must have all been released/reset by the compiled kernel.

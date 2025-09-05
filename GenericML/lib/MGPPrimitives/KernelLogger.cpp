@@ -20,25 +20,6 @@
 namespace M {
 namespace MGP {
 
-/// Check if kernel logging is enabled via Runtime or MAX_LOG_KERNELS
-/// environment variable
-bool isKernelLoggingEnabled(AsyncRT::Runtime &runtime) {
-  // Check the Runtime first if available
-  if (runtime.isKernelLoggingEnabled())
-    return true;
-
-  // Fall back to environment variable
-  static bool enabled = []() {
-    if (const char *env = std::getenv("MAX_LOG_KERNELS")) {
-      std::string value(env);
-      return (value == "1" || value == "true" || value == "True" ||
-              value == "yes" || value == "Yes");
-    }
-    return false;
-  }();
-  return enabled;
-}
-
 /// Generate unique kernel ID to correlate async launches and completions for
 /// logging
 uint64_t generateKernelId() {
@@ -65,20 +46,6 @@ void logKernelEvent(llvm::StringRef eventType, llvm::StringRef kernelName,
   os << "[KERNEL] " << eventType << " " << kernelName << " on " << deviceInfo
      << " [id=" << kernelId << "] at +" << llvm::format("%.3f", timestampMs)
      << "ms\n";
-}
-
-/// Check if a kernel should be logged (includes enabled check and filtering)
-bool shouldLogKernel(llvm::StringRef kernelName, AsyncRT::Runtime &runtime) {
-  // Early return if kernel logging is disabled
-  if (!isKernelLoggingEnabled(runtime))
-    return false;
-
-  // Filter out low-level primitives that don't correspond to graph operations
-  static const llvm::DenseSet<llvm::StringRef> filteredKernels = {
-      "index.constant",      "mgp.buffer.alloc",       "mgp.buffer.free",
-      "mgp.buffer.constant", "mgp.tensor.from_buffer", "mgp.tensor.to_buffer"};
-
-  return !filteredKernels.contains(kernelName);
 }
 
 /// Extract device contexts from operands
@@ -156,39 +123,33 @@ template std::string getDeviceInfoString<M::RemainingArguments>(
 template <typename OperandContainer, typename LoggingPolicy>
 KernelLogger<OperandContainer, LoggingPolicy>::KernelLogger(
     llvm::StringRef kernelName, const OperandContainer &operands,
-    llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults,
-    AsyncRT::Runtime &runtime, llvm::raw_ostream &os)
-    : outResults(outResults), outputStream(os),
-      shouldLog(shouldLogKernel(kernelName, runtime)) {
-  if (shouldLog) {
-    this->kernelId = generateKernelId();
-    this->kernelName = kernelName.str();
-    this->deviceInfo = getDeviceInfoString(operands);
-    double timestampMs = getRelativeTimestampMs();
-    logKernelEvent(LoggingPolicy::launchEvent(), this->kernelName,
-                   this->deviceInfo, this->kernelId, timestampMs, outputStream);
+    llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults, llvm::raw_ostream &os)
+    : outResults(outResults), outputStream(os) {
+  this->kernelId = generateKernelId();
+  this->kernelName = kernelName.str();
+  this->deviceInfo = getDeviceInfoString(operands);
+  double timestampMs = getRelativeTimestampMs();
+  logKernelEvent(LoggingPolicy::launchEvent(), this->kernelName,
+                 this->deviceInfo, this->kernelId, timestampMs, outputStream);
 
-    if (M::MotrTrace::getMotrEnabled()) {
-      std::string spanName = this->kernelName + " [" + this->deviceInfo + "]";
-      motrTrace =
-          std::make_unique<M::MotrTrace>(spanName, "kernel_execution", 0, true);
-    }
+  if (M::MotrTrace::getMotrEnabled()) {
+    std::string spanName = this->kernelName + " [" + this->deviceInfo + "]";
+    motrTrace =
+        std::make_unique<M::MotrTrace>(spanName, "kernel_execution", 0, true);
   }
 }
 
 template <typename OperandContainer, typename LoggingPolicy>
 KernelLogger<OperandContainer, LoggingPolicy>::~KernelLogger() {
-  if (shouldLog) {
-    double timestampMs = getRelativeTimestampMs();
-    if (llvm::any_of(outResults, [](const AsyncRT::AnyAsyncValueRef &result) {
-          return result.isError();
-        })) {
-      logKernelEvent(LoggingPolicy::errorEvent(), kernelName, deviceInfo,
-                     kernelId, timestampMs, outputStream);
-    } else {
-      logKernelEvent(LoggingPolicy::completeEvent(), kernelName, deviceInfo,
-                     kernelId, timestampMs, outputStream);
-    }
+  double timestampMs = getRelativeTimestampMs();
+  if (llvm::any_of(outResults, [](const AsyncRT::AnyAsyncValueRef &result) {
+        return result.isError();
+      })) {
+    logKernelEvent(LoggingPolicy::errorEvent(), kernelName, deviceInfo,
+                   kernelId, timestampMs, outputStream);
+  } else {
+    logKernelEvent(LoggingPolicy::completeEvent(), kernelName, deviceInfo,
+                   kernelId, timestampMs, outputStream);
   }
 }
 

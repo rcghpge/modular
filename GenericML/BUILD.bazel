@@ -1127,6 +1127,22 @@ modular_cc_library(
     ],
 )
 
+# MGPPrimitives library with kernel logging always enabled (for testing)
+modular_cc_library(
+    name = "MGPPrimitivesWithLogging",
+    srcs = glob(["lib/MGPPrimitives/*.cpp"]),
+    hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
+    copts = ["-DENABLE_MGP_KERNEL_LOGGING"],
+    data = [
+        ":MGPRT",
+    ],
+    deps = [
+        ":MGPDialect",
+        "//AsyncRT:RuntimeGlobals",
+        "//Kernels:Tracing",
+    ],
+)
+
 modular_cc_library(
     name = "Support",
     srcs = glob(["lib/Support/*.cpp"]),

@@ -32,9 +32,6 @@ protected:
 };
 
 TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
-  // Set up environment for logging
-  setenv("MAX_LOG_KERNELS", "1", 1);
-
   // Create empty operands and results for basic testing
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
@@ -47,7 +44,7 @@ TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
   // Test that logger correctly logs sync events
   {
     KernelSyncLogger<decltype(operands)> logger("test_kernel", operands,
-                                                results, *runtime, logStream);
+                                                results, logStream);
     // Logger destructor will trigger completion log
   }
 
@@ -57,13 +54,9 @@ TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
   EXPECT_THAT(logOutput, ::testing::HasSubstr(
                              "[KERNEL] SYNC COMPLETE test_kernel on CPU [id="));
   EXPECT_THAT(logOutput, ::testing::HasSubstr("ms"));
-
-  unsetenv("MAX_LOG_KERNELS");
 }
 
 TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
-  setenv("MAX_LOG_KERNELS", "1", 1);
-
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
   results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
@@ -75,7 +68,7 @@ TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
   // Test that async logger works correctly
   {
     KernelAsyncLogger<decltype(operands)> logger("async_kernel", operands,
-                                                 results, *runtime, logStream);
+                                                 results, logStream);
     // Logger destructor will trigger completion log
   }
 
@@ -86,13 +79,9 @@ TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
   EXPECT_THAT(
       logOutput,
       ::testing::HasSubstr("[KERNEL] ASYNC COMPLETE async_kernel on CPU [id="));
-
-  unsetenv("MAX_LOG_KERNELS");
 }
 
 TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
-  setenv("MAX_LOG_KERNELS", "1", 1);
-
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
   results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
@@ -104,7 +93,7 @@ TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
   // Test normal completion logging
   {
     KernelSyncLogger<decltype(operands)> logger("normal_kernel", operands,
-                                                results, *runtime, logStream);
+                                                results, logStream);
     // Logger destructor will trigger completion log
   }
 
@@ -115,77 +104,9 @@ TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
       logOutput,
       ::testing::HasSubstr("[KERNEL] SYNC COMPLETE normal_kernel on CPU [id="));
   EXPECT_THAT(logOutput, ::testing::Not(::testing::HasSubstr("SYNC ERROR")));
-
-  unsetenv("MAX_LOG_KERNELS");
-}
-
-TEST_F(KernelLoggerTest, EnvironmentVariableEnablesLogging) {
-  // Set environment variable explicitly for this test
-  setenv("MAX_LOG_KERNELS", "1", 1);
-
-  // Runtime disable setting doesn't override environment variable
-  runtime->setKernelLogging(false);
-
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
-
-  // Capture log output
-  std::string logOutput;
-  llvm::raw_string_ostream logStream(logOutput);
-
-  // Environment variable should enable logging even when runtime logging is
-  // disabled
-  {
-    KernelSyncLogger<decltype(operands)> logger("env_enabled_kernel", operands,
-                                                results, *runtime, logStream);
-  }
-
-  // Validate that logging occurred despite runtime being disabled
-  EXPECT_THAT(logOutput,
-              ::testing::HasSubstr(
-                  "[KERNEL] SYNC LAUNCH env_enabled_kernel on CPU [id="));
-  EXPECT_THAT(logOutput,
-              ::testing::HasSubstr(
-                  "[KERNEL] SYNC COMPLETE env_enabled_kernel on CPU [id="));
-
-  unsetenv("MAX_LOG_KERNELS");
-}
-
-TEST_F(KernelLoggerTest, FiltersLowLevelKernels) {
-  setenv("MAX_LOG_KERNELS", "1", 1);
-
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
-
-  // Test filtered kernel names
-  std::vector<std::string> filteredKernels = {
-      "index.constant",      "mgp.buffer.alloc",       "mgp.buffer.free",
-      "mgp.buffer.constant", "mgp.tensor.from_buffer", "mgp.tensor.to_buffer"};
-
-  for (const auto &kernelName : filteredKernels) {
-    // Capture log output
-    std::string logOutput;
-    llvm::raw_string_ostream logStream(logOutput);
-
-    {
-      KernelSyncLogger<decltype(operands)> logger(kernelName, operands, results,
-                                                  *runtime, logStream);
-    }
-
-    // Filtered kernels should not produce any log output
-    EXPECT_TRUE(logOutput.empty())
-        << "Kernel " << kernelName
-        << " should be filtered but produced: " << logOutput;
-  }
-
-  unsetenv("MAX_LOG_KERNELS");
 }
 
 TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
-  setenv("MAX_LOG_KERNELS", "1", 1);
-
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results1;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results2;
@@ -198,12 +119,12 @@ TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
 
   {
     KernelSyncLogger<decltype(operands)> logger1("kernel1", operands, results1,
-                                                 *runtime, logStream);
+                                                 logStream);
   }
 
   {
     KernelSyncLogger<decltype(operands)> logger2("kernel2", operands, results2,
-                                                 *runtime, logStream);
+                                                 logStream);
   }
 
   // Parse kernel IDs from LAUNCH events to verify they are unique
@@ -226,43 +147,9 @@ TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
 
   // Kernel IDs should be different
   EXPECT_NE(id1Str, id2Str);
-
-  unsetenv("MAX_LOG_KERNELS");
-}
-
-TEST_F(KernelLoggerTest, RuntimeEnableOverridesEnvDisable) {
-  // Ensure environment is disabled
-  unsetenv("MAX_LOG_KERNELS");
-
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
-
-  // Capture log output
-  std::string logOutput;
-  llvm::raw_string_ostream logStream(logOutput);
-
-  // Test runtime enable overrides environment disable
-  runtime->setKernelLogging(true);
-  {
-    KernelSyncLogger<decltype(operands)> logger("runtime_override", operands,
-                                                results, *runtime, logStream);
-  }
-
-  // Validate that logging occurred when runtime is enabled
-  EXPECT_THAT(logOutput,
-              ::testing::HasSubstr(
-                  "[KERNEL] SYNC LAUNCH runtime_override on CPU [id="));
-  EXPECT_THAT(logOutput,
-              ::testing::HasSubstr(
-                  "[KERNEL] SYNC COMPLETE runtime_override on CPU [id="));
-
-  runtime->setKernelLogging(false);
 }
 
 TEST_F(KernelLoggerTest, LogsCorrectKernelAndDeviceInfo) {
-  setenv("MAX_LOG_KERNELS", "1", 1);
-
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
   results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
@@ -273,44 +160,13 @@ TEST_F(KernelLoggerTest, LogsCorrectKernelAndDeviceInfo) {
 
   {
     KernelSyncLogger<decltype(operands)> logger("my_kernel", operands, results,
-                                                *runtime, logStream);
+                                                logStream);
   }
 
   // Validate kernel name and device info appear in log output
   EXPECT_THAT(logOutput, ::testing::HasSubstr("my_kernel"));
   EXPECT_THAT(logOutput, ::testing::HasSubstr("on CPU"));
   EXPECT_THAT(logOutput, ::testing::HasSubstr("[id="));
-
-  unsetenv("MAX_LOG_KERNELS");
-}
-
-TEST_F(KernelLoggerTest, RuntimeKernelLoggingOverridesEnv) {
-  // Disable via environment but enable via runtime
-  unsetenv("MAX_LOG_KERNELS");
-  runtime->setKernelLogging(true);
-
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
-
-  // Capture log output
-  std::string logOutput;
-  llvm::raw_string_ostream logStream(logOutput);
-
-  {
-    KernelSyncLogger<decltype(operands)> logger("runtime_enabled", operands,
-                                                results, *runtime, logStream);
-  }
-
-  // Should log because runtime logging is enabled
-  EXPECT_THAT(
-      logOutput,
-      ::testing::HasSubstr("[KERNEL] SYNC LAUNCH runtime_enabled on CPU [id="));
-  EXPECT_THAT(logOutput,
-              ::testing::HasSubstr(
-                  "[KERNEL] SYNC COMPLETE runtime_enabled on CPU [id="));
-
-  runtime->setKernelLogging(false);
 }
 
 } // namespace
