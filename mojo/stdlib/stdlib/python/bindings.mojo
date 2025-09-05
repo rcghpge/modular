@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from sys.ffi import c_int, _Global
-from sys.info import sizeof
+from sys.info import size_of
 from compile.reflection import get_type_name
 from memory import stack_allocation
 
@@ -209,7 +209,7 @@ fn _tp_repr_wrapper[T: Representable](py_self: PyObjectPtr) -> PyObjectPtr:
     if self.is_initialized:
         repr_str = repr(self.mojo_value)
     else:
-        repr_str = "<uninitialized " + get_type_name[T]() + ">"
+        repr_str = String("<uninitialized ", get_type_name[T](), ">")
 
     return cpython.PyUnicode_DecodeUTF8(repr_str)
 
@@ -592,7 +592,7 @@ struct PythonTypeBuilder(Copyable, Movable):
         """
         var b = PythonTypeBuilder(
             type_name,
-            basicsize=sizeof[PyMojoObject[T]](),
+            basicsize=size_of[PyMojoObject[T]](),
         )
         b._insert_slot(PyType_Slot.tp_new(_py_new_function_wrapper[T]))
         b._insert_slot(PyType_Slot.tp_init(_py_init_function_nonregistered))

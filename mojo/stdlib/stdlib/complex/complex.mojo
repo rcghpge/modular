@@ -83,12 +83,9 @@ struct ComplexSIMD[dtype: DType, size: Int](
         """
         return String.write(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats this complex value to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -266,20 +263,6 @@ struct ComplexSIMD[dtype: DType, size: Int](
             True if all elements of the ComplexSIMD are equal, False otherwise.
         """
         return Bool((self.re.eq(rhs.re) & self.im.eq(rhs.im)).reduce_and())
-
-    # TODO: remove this implementation once we have default trait methods.
-    @always_inline
-    fn __ne__(self, rhs: Self) -> Bool:
-        """Compares two ComplexSIMD for inequality.
-
-        Args:
-            rhs: The ComplexSIMD to compare with.
-
-        Returns:
-            True if any elements of the ComplexSIMD are not equal, False
-            otherwise.
-        """
-        return not self == rhs
 
     # ===-------------------------------------------------------------------===#
     # Methods

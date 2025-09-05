@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from sys import sizeof
+from sys import size_of
 
 from utils.index import Index, IndexList
 from gpu.memory import AddressSpace, fence_async_view_proxy
@@ -29,6 +29,9 @@ from utils.fast_div import FastDiv
 from utils.static_tuple import StaticTuple
 
 from linalg.matmul_tile_scheduler import RasterOrder
+
+from gpu.cluster import block_rank_in_cluster
+from gpu.id import warp_id
 
 
 @fieldwise_init
@@ -51,7 +54,7 @@ struct WorkInfo(Copyable, Movable, Stringable, Writable):
         return String.write(self)
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         writer.write(
             "(",
             self.m,
@@ -71,7 +74,8 @@ struct TileScheduler[
     cluster_shape: IndexList[3, element_type = DType.uint32] = Index[
         dtype = DType.uint32
     ](1, 1, 1),
-    rasterize_order: RasterOrder = RasterOrder.AlongN,
+    rasterize_order: RasterOrder = RasterOrder.AlongM,
+    block_swizzle_size: Int = 8,
 ]:
     alias cluster_size = cluster_shape[0] * cluster_shape[1] * cluster_shape[2]
     alias log_cluster_m = FastDiv[DType.uint32](cluster_shape[0])
@@ -107,6 +111,11 @@ struct TileScheduler[
             SharedMemBarrier, address_space = AddressSpace.SHARED
         ],
     ):
+        constrained[
+            block_swizzle_size in [0, 1, 2, 4, 8],
+            "block_swizzle_size must be 0, 1, 2, 4, or 8",
+        ]()
+
         self.cluster_dim = cluster_dim
         self.log_cluster_dim_m = FastDiv[DType.uint32](Int(cluster_dim[0]))
         self.log_cluster_dim_n = FastDiv[DType.uint32](Int(cluster_dim[1]))
@@ -155,9 +164,12 @@ struct TileScheduler[
         var normalized_m = Int(work_info.m) / Self.log_cluster_m
         var normalized_n = Int(work_info.n) / Self.log_cluster_n
         var normalized_k = Int(work_info.k_start) / Self.log_cluster_k
+        alias log_block_swizzle_size = FastDiv[DType.uint32](
+            Self.block_swizzle_size
+        )
 
-        var linear_cluster_id = Int(normalized_m) * cluster_dim[1] + Int(
-            normalized_n
+        var linear_cluster_id = (
+            normalized_m * Int(cluster_dim[1]) + normalized_n
         )
 
         # CLC rasterize along M by default.
@@ -166,14 +178,49 @@ struct TileScheduler[
             new_normalized_m = normalized_m
             new_normalized_n = normalized_n
         else:
-            new_normalized_m = Int(linear_cluster_id) % log_cluster_dim_m
-            new_normalized_n = Int(linear_cluster_id) / log_cluster_dim_m
+            new_normalized_m = linear_cluster_id % log_cluster_dim_m
+            new_normalized_n = linear_cluster_id / log_cluster_dim_m
+
+        @parameter
+        if Self.block_swizzle_size != 0:
+            var m_bound = (
+                Int(cluster_dim[0])
+                / log_block_swizzle_size
+                * Self.block_swizzle_size
+            )
+            var n_bound = (
+                Int(cluster_dim[1])
+                / log_block_swizzle_size
+                * Self.block_swizzle_size
+            )
+            var m_local = (new_normalized_m / log_block_swizzle_size) + (
+                (Int(cluster_dim[0]) / log_block_swizzle_size)
+                * (new_normalized_n % log_block_swizzle_size)
+            )
+            var n_local = new_normalized_m % log_block_swizzle_size
+
+            var is_even_subtile = Int(
+                (new_normalized_n / log_block_swizzle_size) % 2 == 0
+            )
+
+            if new_normalized_m < m_bound and new_normalized_n < n_bound:
+                new_m_global = is_even_subtile * m_local + (
+                    1 - is_even_subtile
+                ) * (Int(cluster_dim[0]) - m_local - 1)
+                new_n_global = n_local + (
+                    Int(new_normalized_n / log_block_swizzle_size)
+                    * Self.block_swizzle_size
+                )
+            else:
+                new_m_global = new_normalized_m
+                new_n_global = new_normalized_n
+        else:
+            new_m_global = new_normalized_m
+            new_n_global = new_normalized_n
 
         return WorkInfo(
-            m=Int(new_normalized_m) * Self.cluster_shape[0]
-            + block_id_in_cluster.x,
-            n=Int(new_normalized_n) * Self.cluster_shape[1]
-            + block_id_in_cluster.y,
+            m=Int(new_m_global) * Self.cluster_shape[0] + block_id_in_cluster.x,
+            n=Int(new_n_global) * Self.cluster_shape[1] + block_id_in_cluster.y,
             k_start=Int(normalized_k) * Self.cluster_shape[2]
             + block_id_in_cluster.z,
             is_valid_tile=work_info.is_valid_tile,
@@ -219,10 +266,10 @@ struct TileScheduler[
     ) -> PipelineState[num_stages]:
         alias multicast = True if Self.cluster_size > 1 else False
         var lane_id = lane_id()
-        var pred: UInt32 = 1 if lane_id < Self.cluster_size else 0
+        var pred: UInt32 = 1 if lane_id < UInt(Self.cluster_size) else 0
         self.empty_mbar[clc_state.index()].wait(clc_state.phase())
         self.full_mbar[clc_state.index()].arrive_and_expect_bytes(
-            sizeof[UInt128](),
+            size_of[UInt128](),
             UInt32(lane_id),
             pred,
         )

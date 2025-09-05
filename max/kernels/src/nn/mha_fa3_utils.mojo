@@ -14,9 +14,11 @@
 from algorithm.functional import unswitch
 from buffer import NDBuffer
 from collections import OptionalReg
-from gpu import thread_idx
+from gpu import thread_idx, block_idx
+from gpu.globals import WARPGROUP_SIZE
+from gpu.mma import st_matrix
 from gpu.host import DeviceContext
-from gpu.memory import AddressSpace
+from gpu.memory import AddressSpace, bitcast
 from gpu.sync import async_copy_arrive
 import gpu.warp as warp
 from layout.int_tuple import IntTuple
@@ -25,8 +27,10 @@ from layout.layout_tensor import (
     LayoutTensor,
     cp_async_k_major,
     cp_async_mn_major,
+    copy_local_to_shared,
 )
 from gpu.host._nvidia_cuda import TensorMapSwizzle
+from layout.swizzle import Swizzle
 from layout.runtime_layout import RuntimeLayout, RuntimeTuple
 from layout.tma_async import (
     PipelineState,
@@ -34,7 +38,7 @@ from layout.tma_async import (
     TMANestedTensorTile,
     create_nested_tma_tile,
 )
-from layout.tensor_core_async import tile_layout_k_major
+from layout.tensor_core_async import tile_layout_k_major, st_matrix_n_layout
 from math import ceildiv
 from math.constants import log2e
 from nn.mha_mask import MHAMask, TileMaskStatus
@@ -57,12 +61,18 @@ from nn.mha_utils import (
 )
 from tensor_internal import ManagedTensorSlice
 from utils.index import Index, IndexList
-from sys import sizeof
+from sys import size_of
 
 
 @register_passable("trivial")
 struct MHAPosition[
-    BM: Int, BN: Int, depth: Int, q_num_heads: Int, group: Int, decoding: Bool
+    BM: Int,
+    BN: Int,
+    depth: Int,
+    padded_depth: Int,
+    q_num_heads: Int,
+    group: Int,
+    decoding: Bool,
 ](Copyable, Movable):
     """
     Position of the MHA-kernel.
@@ -122,7 +132,7 @@ struct MHAPosition[
             return self.head_idx // Self.group
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         writer.write(
             "(",
             self.q_out_offset,
@@ -257,6 +267,7 @@ fn _get_position[
     BM: Int,
     BN: Int,
     depth: Int,
+    padded_depth: Int,
     q_num_heads: Int,
     group: Int,
     ragged: Bool,
@@ -266,6 +277,7 @@ fn _get_position[
         BM,
         BN,
         depth,
+        padded_depth,
         q_num_heads,
         group,
         _is_decoding[MaxSeqLenType](),
@@ -345,6 +357,7 @@ fn q_out_tma[
     dtype: DType, //,
     BM: Int,
     depth: Int,
+    padded_depth: Int,
     swizzle_mode: TensorMapSwizzle,
     *,
     q_num_heads: Int,
@@ -356,12 +369,12 @@ fn q_out_tma[
     out res: TMANestedTensorTile[
         dtype,
         max(8, BM),
-        64 if decoding else depth,
+        64 if decoding else padded_depth,
         swizzle_mode,
         is_k_major=True,
     ],
 ) raises:
-    alias tile_cols: Int = 64 if decoding else depth
+    alias tile_cols: Int = 64 if decoding else padded_depth
     alias matrix_cols: Int = depth if decoding else depth * q_num_heads
 
     alias layout = Layout.row_major(UNKNOWN_VALUE, matrix_cols)
@@ -380,6 +393,7 @@ fn _produce[
     BM: Int,
     BN: Int,
     depth: Int,
+    padded_depth: Int,
     num_heads: Int,
     group: Int,
     decoding: Bool,
@@ -392,7 +406,9 @@ fn _produce[
     write_idx: UInt32,
     write_phase: UInt32,
     kv_tile_start_row: UInt32,
-    position: MHAPosition[BM, BN, depth, num_heads, group, decoding],
+    position: MHAPosition[
+        BM, BN, depth, padded_depth, num_heads, group, decoding
+    ],
     consumed_mbar: UnsafePointer[
         SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
@@ -401,7 +417,7 @@ fn _produce[
     ],
     kv: kv_t,
     tma_tile: TMANestedTensorTile[
-        kv_t.dtype, BN, depth, swizzle_mode, is_k_major=is_k_major
+        kv_t.dtype, BN, padded_depth, swizzle_mode, is_k_major=is_k_major
     ],
     smem_tile: LayoutTensor[
         kv_t.dtype,
@@ -420,7 +436,7 @@ fn _produce[
         consumed_mbar[write_idx].wait(write_phase)
 
     p_mbar = produced_mbar + write_idx
-    p_mbar[0].expect_bytes(BN * depth * sizeof[kv_t.dtype]())
+    p_mbar[0].expect_bytes(BN * padded_depth * size_of[kv_t.dtype]())
     tma_tile.async_copy(smem_tile, p_mbar[0], (UInt(src_col), UInt(src_row)))
 
 
@@ -429,6 +445,7 @@ fn _apply_mask[
     BM: Int,
     BN: Int,
     depth: Int,
+    padded_depth: Int,
     num_heads: Int,
     group: Int,
     decoding: Bool,
@@ -445,7 +462,9 @@ fn _apply_mask[
     use_score_mod: Bool,
 ](
     mask_warp_row_arg: UInt32,
-    position: MHAPosition[BM, BN, depth, num_heads, group, decoding],
+    position: MHAPosition[
+        BM, BN, depth, padded_depth, num_heads, group, decoding
+    ],
     lane: UInt32,
     max_seq_len: UInt32,
     scale_log2e: Scalar[accum_type],
@@ -466,7 +485,7 @@ fn _apply_mask[
 
     @parameter
     if decoding:
-        if warp.broadcast((thread_idx.x - 128) // 32) > ((group - 1) // 16):
+        if warp.broadcast((thread_idx.x - 128) // 32) > UInt((group - 1) // 16):
             return
         if lane >= 4 * group:
             return
@@ -621,6 +640,7 @@ fn produce[
     BM: Int,
     BN: Int,
     depth: Int,
+    padded_depth: Int,
     num_heads: Int,
     group: Int,
     PartitionType: MHAPartitionScheme,
@@ -646,14 +666,14 @@ fn produce[
     k_tma_op: TMANestedTensorTile[
         qkv_type,
         BN,
-        depth,
+        padded_depth,
         swizzle_mode,
         is_k_major=True,
     ],
     v_tma_op: TMANestedTensorTile[
         qkv_type,
         BN,
-        depth,
+        padded_depth,
         swizzle_mode,
         is_k_major=False,
     ],
@@ -677,7 +697,13 @@ fn produce[
     ],
     kv_lut: KVLUTType,
     initial_position: MHAPosition[
-        BM, BN, depth, num_heads, group, _is_decoding[MaxSeqLenType]()
+        BM,
+        BN,
+        depth,
+        padded_depth,
+        num_heads,
+        group,
+        _is_decoding[MaxSeqLenType](),
     ],
     partition: PartitionType,
     scheduler: SchedulerType,
@@ -691,12 +717,14 @@ fn produce[
     ],
 ):
     alias decoding: Bool = _is_decoding[MaxSeqLenType]()
-    alias PositionType = MHAPosition[BM, BN, depth, num_heads, group, decoding]
+    alias PositionType = MHAPosition[
+        BM, BN, depth, padded_depth, num_heads, group, decoding
+    ]
     alias persistent = SchedulerType.may_advance
 
     alias q_smem_layout_producer = q_tma_op.layout
     alias q_smem_layout_consumer = tile_layout_k_major[
-        DType.bfloat16, BM, depth, swizzle_mode=swizzle_mode
+        DType.bfloat16, BM, padded_depth, swizzle_mode=swizzle_mode
     ]()
     alias k_smem_layout = k_tma_op.layout
     alias v_smem_layout = v_tma_op.layout
@@ -705,7 +733,7 @@ fn produce[
     alias q_smem_size = (2 * q_size if persistent else q_size)
 
     alias q_copy_rows = max(group, 8) if decoding else Int(BM)
-    alias qk_bytes = (q_copy_rows + BN) * depth * sizeof[qkv_type]()
+    alias qk_bytes = (q_copy_rows + BN) * padded_depth * size_of[qkv_type]()
 
     tile_state = tile_state_arg
     position = initial_position
@@ -744,7 +772,7 @@ fn produce[
             alignment=128,
         ],
     ):
-        alias sz = BN * depth
+        alias sz = BN * padded_depth
         k_smem = __type_of(k_smem)(kv_smem + sz * idx)
 
     @parameter
@@ -761,7 +789,7 @@ fn produce[
             alignment=128,
         ],
     ):
-        alias sz = BN * depth
+        alias sz = BN * padded_depth
         v_smem = __type_of(v_smem)(kv_smem + sz * idx)
 
     @parameter
@@ -778,7 +806,7 @@ fn produce[
         @parameter
         if wait:
             consumed_mbar_kv[write_idx].wait(write_phase)
-            alias bytes = BN * depth * sizeof[qkv_type]()
+            alias bytes = BN * padded_depth * size_of[qkv_type]()
             p_mbar.expect_bytes(bytes)
         k_tma_op.async_copy(k_sub, p_mbar, (UInt(col), UInt(row)))
         state.step()
@@ -794,7 +822,7 @@ fn produce[
         ref p_mbar = produced_mbar_kv[write_idx]
         v_sub = v_tile(write_idx)
         consumed_mbar_kv[write_idx].wait(write_phase)
-        alias bytes = BN * depth * sizeof[qkv_type]()
+        alias bytes = BN * padded_depth * size_of[qkv_type]()
         p_mbar.expect_bytes(bytes)
         v_tma_op.async_copy(v_sub, p_mbar, (UInt(col), UInt(row)))
         state.step()
@@ -803,7 +831,14 @@ fn produce[
     @always_inline
     fn get_position(seq_info: SeqInfo) -> PositionType:
         return _get_position[
-            BM, BN, depth, num_heads, group, ragged, _is_cache_length_accurate
+            BM,
+            BN,
+            depth,
+            padded_depth,
+            num_heads,
+            group,
+            ragged,
+            _is_cache_length_accurate,
         ](
             seq_info,
             kv_lut,
@@ -830,7 +865,7 @@ fn produce[
     produced_mbar_kv[0].expect_bytes(qk_bytes)
 
     @parameter
-    for d in range((depth // 64) if decoding else 1):
+    for d in range((padded_depth // 64) if decoding else 1):
         q_tma_op.async_copy(
             q_producer[d](q_pipeline_state.index()),
             produced_mbar_kv[0],
@@ -894,10 +929,12 @@ fn produce[
                     break
                 ref pq_mbar = produced_mbar_q[q_idx_old]
                 position = get_position(docontinue.value())
-                pq_mbar.expect_bytes(q_copy_rows * depth * sizeof[qkv_type]())
+                pq_mbar.expect_bytes(
+                    q_copy_rows * padded_depth * size_of[qkv_type]()
+                )
 
                 @parameter
-                for d in range((depth // 64) if decoding else 1):
+                for d in range((padded_depth // 64) if decoding else 1):
                     q_tma_op.async_copy(
                         q_producer[d](q_idx),
                         pq_mbar,
@@ -927,3 +964,94 @@ fn produce[
         kv_col_prev = kv_col
 
     produce_v(write_pipeline_states, kv_row_prev, kv_col_prev)
+
+
+fn output_reg_to_smem[
+    BM: Int,
+    BN: Int,
+    WM: Int,
+    padded_depth: Int,
+    kv_type: DType,
+    output_type: DType,
+    accum_type: DType,
+    reg_layout: Layout,
+    o_frag_size: Int,
+    num_consumer_threads: Int,
+    simd_size: Int,
+    swizzle: Swizzle,
+    num_m_mmas: Int,
+    num_consumer: Int,
+    mma_thread_layout: Layout,
+](
+    tid: UInt32,
+    local_warp_group_idx: UInt32,
+    warp_x: UInt32,
+    warp_y: UInt32,
+    q_smem: UnsafePointer[
+        Scalar[kv_type], address_space = AddressSpace.SHARED, alignment=128
+    ],
+    output_reg_tile: LayoutTensor[
+        accum_type,
+        reg_layout,
+        MutableAnyOrigin,
+        address_space = AddressSpace.LOCAL,
+    ],
+) -> LayoutTensor[
+    output_type,
+    Layout.row_major(BM, padded_depth),
+    MutableAnyOrigin,
+    address_space = AddressSpace.SHARED,
+]:
+    accum_smem_tile = LayoutTensor[
+        output_type,
+        Layout.row_major(BM, padded_depth),
+        address_space = AddressSpace.SHARED,
+    ](q_smem.bitcast[Scalar[output_type]]())
+    alias use_stmatrix = accum_type is DType.float32 and padded_depth % 16 == 0 and size_of[
+        output_type
+    ]() == 2 and o_frag_size % 8 == 0
+    if use_stmatrix:
+        var st_matrix_rt_layout = RuntimeLayout[
+            st_matrix_n_layout[
+                output_type, padded_depth, num_m_mmas, num_consumer
+            ](),
+            element_type = DType.int32,
+            linear_idx_type = DType.int32,
+        ]()
+
+        @parameter
+        for m_mma in range(num_m_mmas):
+
+            @parameter
+            for i in range(padded_depth // 16):
+                var warp_group_thread_idx = tid % WARPGROUP_SIZE
+                var st_matrix_args = RuntimeTuple[
+                    IntTuple(UNKNOWN_VALUE, IntTuple(i, m_mma, UNKNOWN_VALUE))
+                ](
+                    Int(warp_group_thread_idx),
+                    i,
+                    m_mma,
+                    Int(local_warp_group_idx),
+                )
+                var accum_smem_idx = swizzle(
+                    st_matrix_rt_layout(st_matrix_args)
+                )
+                var offset = accum_smem_tile.ptr.offset(accum_smem_idx)
+                var output_frag = (
+                    output_reg_tile.tile[1, 8](m_mma, i)
+                    .load[8](0, 0)
+                    .cast[output_type]()
+                )
+                var output_frag_f32_packed = bitcast[DType.float32, 4](
+                    output_frag
+                )
+                st_matrix[simd_width=4](offset, output_frag_f32_packed)
+    else:
+        accum_smem_warp_tile = accum_smem_tile.tile[WM, BN](
+            Int(warp_y), Int(warp_x)
+        )
+        copy_local_to_shared[thread_layout=mma_thread_layout, swizzle=swizzle](
+            accum_smem_warp_tile.vectorize[1, 2](),
+            output_reg_tile.vectorize[1, 2]().transpose(),
+        )
+    return accum_smem_tile

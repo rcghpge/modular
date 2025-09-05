@@ -14,7 +14,7 @@
 """Tests for quantized operations."""
 
 import pytest
-from conftest import shapes, static_dims, tensor_types
+from conftest import GraphBuilder, shapes, static_dims, tensor_types
 from hypothesis import assume, given
 from hypothesis import strategies as st
 from max.driver import accelerator_count
@@ -50,7 +50,7 @@ def tensor_types_with_dtype(dtype: DType, **kwargs):
     ),
 )
 def test_qmatmul(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     base_type: TensorType,
     encoding: QuantizationEncoding,
 ) -> None:
@@ -96,7 +96,7 @@ def test_qmatmul(
     ),
 )
 def test_dequantize(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     base_type: TensorType,
     encoding: QuantizationEncoding,
 ) -> None:
@@ -129,7 +129,9 @@ def test_dequantize(
                 (int(n) // encoding.block_size) * encoding.elements_per_block,
             )
             assert out.type == TensorType(
-                DType.float32, expected_shape, base_type.device
+                DType.float32,
+                expected_shape,  # type: ignore
+                base_type.device,
             )
         graph.output(out)
 
@@ -155,7 +157,7 @@ def test_dequantize(
     ),
 )
 def test_dequantize__error__nondivisible_block_size(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     base_type: TensorType,
     encoding: QuantizationEncoding,
 ) -> None:
@@ -197,7 +199,7 @@ def test_dequantize__error__nondivisible_block_size(
     ),
 )
 def test_dequantize__error__nonstatic_last_dim(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     base_type: TensorType,
     encoding: QuantizationEncoding,
 ) -> None:

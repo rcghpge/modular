@@ -83,18 +83,6 @@ struct _GPUAddressSpace(Copyable, EqualityComparable, Movable):
         return self is other
 
     @always_inline("nodebug")
-    fn __ne__(self, other: Self) -> Bool:
-        """Checks if the two address spaces are not equal.
-
-        Args:
-          other: The other address space value.
-
-        Returns:
-          True if the two address spaces are inequal and False otherwise.
-        """
-        return self is not other
-
-    @always_inline("nodebug")
     fn __ne__(self, other: AddressSpace) -> Bool:
         """Checks if the two address spaces are not equal.
 
@@ -209,7 +197,7 @@ struct AddressSpace(
         Returns:
             The corresponding __mlir_type.index value.
         """
-        return self._value.value
+        return self._value._mlir_value
 
     @always_inline("nodebug")
     fn __eq__(self, other: Self) -> Bool:
@@ -222,18 +210,6 @@ struct AddressSpace(
           True if the two address spaces are equal and False otherwise.
         """
         return self is other
-
-    @always_inline("nodebug")
-    fn __ne__(self, other: Self) -> Bool:
-        """Checks if the two address spaces are not equal.
-
-        Args:
-          other: The other address space value.
-
-        Returns:
-          True if the two address spaces are inequal and False otherwise.
-        """
-        return self is not other
 
     @always_inline("nodebug")
     fn __is__(self, other: Self) -> Bool:
@@ -269,11 +245,8 @@ struct AddressSpace(
         return String.write(self)
 
     @always_inline("nodebug")
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Formats the address space to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -315,7 +288,7 @@ struct Pointer[
         `, `,
         origin._mlir_origin,
         `, `,
-        address_space._value.value,
+        address_space._value._mlir_value,
         `>`,
     ]
     alias _with_origin = Pointer[type, _, address_space]
@@ -357,7 +330,9 @@ struct Pointer[
         self._value = _mlir_value
 
     @always_inline("nodebug")
-    fn __init__(out self, *, ref [origin, address_space._value.value]to: type):
+    fn __init__(
+        out self, *, ref [origin, address_space._value._mlir_value]to: type
+    ):
         """Constructs a Pointer from a reference to a value.
 
         Args:

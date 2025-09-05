@@ -17,7 +17,7 @@ These are Mojo built-ins, so you don't need to import them.
 
 from hashlib.hasher import Hasher
 from math import CeilDivable
-from sys import bitwidthof
+from sys import bit_width_of
 
 from builtin.math import Absable, DivModable
 
@@ -52,18 +52,12 @@ struct UInt(
     `UInt8`, `UInt16`, `UInt32`, or `UInt64`.
     """
 
-    alias BITWIDTH = Int(bitwidthof[DType.index]())
-    """The bit width of the integer type."""
+    # ===-------------------------------------------------------------------===#
+    # Fields
+    # ===-------------------------------------------------------------------===#
 
-    alias MAX = UInt((1 << Self.BITWIDTH) - 1)
-    """Returns the maximum integer value."""
-
-    alias MIN = UInt(0)
-    """Returns the minimum value of type."""
-
-    var value: __mlir_type.index
+    var _mlir_value: __mlir_type.index
     """The underlying storage for the integer value.
-
 
     Note that it is the same type as the `Int.value` field.
     MLIR doesn't differentiate between signed and unsigned integers
@@ -72,6 +66,19 @@ struct UInt(
     which have signed and unsigned variants.
     """
 
+    # ===-------------------------------------------------------------------===#
+    # Aliases
+    # ===-------------------------------------------------------------------===#
+
+    alias BITWIDTH = Int(bit_width_of[DType.index]())
+    """The bit width of the integer type."""
+
+    alias MAX = UInt((1 << Self.BITWIDTH) - 1)
+    """Returns the maximum integer value."""
+
+    alias MIN = UInt(0)
+    """Returns the minimum value of type."""
+
     # ===------------------------------------------------------------------=== #
     # Life cycle methods
     # ===------------------------------------------------------------------=== #
@@ -79,30 +86,29 @@ struct UInt(
     @always_inline("builtin")
     fn __init__(out self):
         """Default constructor that produces zero."""
-        self.value = __mlir_attr.`0 : index`
+        self._mlir_value = __mlir_attr.`0 : index`
 
     @doc_private
     @always_inline("builtin")
-    @implicit
-    fn __init__(out self, value: __mlir_type.index):
+    fn __init__(out self, *, mlir_value: __mlir_type.index):
         """Construct UInt from the given index value.
 
         Args:
-            value: The init value.
+            mlir_value: The init value.
         """
-        self.value = value
+        self._mlir_value = mlir_value
 
     @doc_private
     @always_inline("nodebug")
-    fn __init__(out self, value: __mlir_type.`!pop.scalar<index>`):
+    fn __init__(out self, *, mlir_value: __mlir_type.`!pop.scalar<index>`):
         """Construct UInt from the given Index value.
 
         Args:
-            value: The init value.
+            mlir_value: The init value.
         """
-        self.value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.index](
-            value
-        )
+        self._mlir_value = __mlir_op.`pop.cast_to_builtin`[
+            _type = __mlir_type.index
+        ](mlir_value)
 
     @always_inline("builtin")
     @implicit
@@ -122,7 +128,7 @@ struct UInt(
         Args:
             value: The init value.
         """
-        self.value = value.value
+        self._mlir_value = value._mlir_value
 
     @always_inline("nodebug")
     fn __init__[T: Indexer](out self, value: T):
@@ -134,7 +140,7 @@ struct UInt(
         Args:
             value: The init value.
         """
-        self = value.__index__()
+        self = UInt(mlir_value=value.__index__())
 
     # ===------------------------------------------------------------------=== #
     # Operator dunders
@@ -152,7 +158,7 @@ struct UInt(
         """
         return __mlir_op.`index.cmp`[
             pred = __mlir_attr.`#index<cmp_predicate ult>`
-        ](self.value, rhs.value)
+        ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("nodebug")  # TODO: should be "builtin"
     fn __le__(self, rhs: UInt) -> Bool:
@@ -167,7 +173,7 @@ struct UInt(
         """
         return __mlir_op.`index.cmp`[
             pred = __mlir_attr.`#index<cmp_predicate ule>`
-        ](self.value, rhs.value)
+        ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
     fn __eq__(self, rhs: UInt) -> Bool:
@@ -181,7 +187,7 @@ struct UInt(
         """
         return __mlir_op.`index.cmp`[
             pred = __mlir_attr.`#index<cmp_predicate eq>`
-        ](self.value, rhs.value)
+        ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
     fn __ne__(self, rhs: UInt) -> Bool:
@@ -195,7 +201,7 @@ struct UInt(
         """
         return __mlir_op.`index.cmp`[
             pred = __mlir_attr.`#index<cmp_predicate ne>`
-        ](self.value, rhs.value)
+        ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("nodebug")  # TODO: should be "builtin"
     fn __gt__(self, rhs: UInt) -> Bool:
@@ -210,7 +216,7 @@ struct UInt(
         """
         return __mlir_op.`index.cmp`[
             pred = __mlir_attr.`#index<cmp_predicate ugt>`
-        ](self.value, rhs.value)
+        ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("nodebug")  # TODO: should be "builtin"
     fn __ge__(self, rhs: UInt) -> Bool:
@@ -225,7 +231,7 @@ struct UInt(
         """
         return __mlir_op.`index.cmp`[
             pred = __mlir_attr.`#index<cmp_predicate uge>`
-        ](self.value, rhs.value)
+        ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
     fn __pos__(self) -> UInt:
@@ -255,7 +261,9 @@ struct UInt(
         Returns:
             `self + rhs` value.
         """
-        return __mlir_op.`index.add`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.add`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("builtin")
     fn __sub__(self, rhs: UInt) -> UInt:
@@ -267,7 +275,9 @@ struct UInt(
         Returns:
             `self - rhs` value.
         """
-        return __mlir_op.`index.sub`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.sub`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("builtin")
     fn __mul__(self, rhs: UInt) -> UInt:
@@ -279,7 +289,9 @@ struct UInt(
         Returns:
             `self * rhs` value.
         """
-        return __mlir_op.`index.mul`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.mul`(self._mlir_value, rhs._mlir_value)
+        )
 
     fn __truediv__(self, rhs: UInt) -> Float64:
         """Return the floating point division of `self` and `rhs`.
@@ -306,7 +318,9 @@ struct UInt(
         if rhs == 0:
             # this should raise an exception.
             return 0
-        return __mlir_op.`index.divu`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.divu`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("nodebug")
     fn __mod__(self, rhs: UInt) -> UInt:
@@ -321,7 +335,9 @@ struct UInt(
         if rhs == 0:
             # this should raise an exception
             return 0
-        return __mlir_op.`index.remu`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.remu`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("nodebug")
     fn __divmod__(self, rhs: UInt) -> Tuple[UInt, UInt]:
@@ -370,7 +386,9 @@ struct UInt(
         Returns:
             `self << rhs`.
         """
-        return __mlir_op.`index.shl`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.shl`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("nodebug")  # TODO: should be "builtin"
     fn __rshift__(self, rhs: UInt) -> UInt:
@@ -382,7 +400,9 @@ struct UInt(
         Returns:
             `self >> rhs`.
         """
-        return __mlir_op.`index.shru`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.shru`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("builtin")
     fn __and__(self, rhs: UInt) -> UInt:
@@ -394,7 +414,9 @@ struct UInt(
         Returns:
             `self & rhs`.
         """
-        return __mlir_op.`index.and`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.and`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("builtin")
     fn __xor__(self, rhs: UInt) -> UInt:
@@ -406,7 +428,9 @@ struct UInt(
         Returns:
             `self ^ rhs`.
         """
-        return __mlir_op.`index.xor`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.xor`(self._mlir_value, rhs._mlir_value)
+        )
 
     @always_inline("builtin")
     fn __or__(self, rhs: UInt) -> UInt:
@@ -418,7 +442,9 @@ struct UInt(
         Returns:
             `self | rhs`.
         """
-        return __mlir_op.`index.or`(self.value, rhs.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.or`(self._mlir_value, rhs._mlir_value)
+        )
 
     # ===-------------------------------------------------------------------===#
     # In place operations.
@@ -691,7 +717,7 @@ struct UInt(
         Returns:
             The corresponding __mlir_type.index value.
         """
-        return self.value
+        return self._mlir_value
 
     @always_inline("builtin")
     fn __int__(self) -> Int:
@@ -700,7 +726,7 @@ struct UInt(
         Returns:
             The value as an integer.
         """
-        return self.value
+        return Int(mlir_value=self._mlir_value)
 
     @always_inline("builtin")
     fn __abs__(self) -> Self:
@@ -770,7 +796,11 @@ struct UInt(
         Returns:
             The ceiling of dividing numerator by denominator.
         """
-        return __mlir_op.`index.ceildivu`(self.value, denominator.value)
+        return UInt(
+            mlir_value=__mlir_op.`index.ceildivu`(
+                self._mlir_value, denominator._mlir_value
+            )
+        )
 
     @always_inline("builtin")
     fn is_power_of_two(self) -> Bool:
@@ -782,11 +812,8 @@ struct UInt(
         return (self & (self - 1) == 0) & (self != 0)
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Formats this integer to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.

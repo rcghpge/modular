@@ -10,22 +10,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+def func2() -> None:
+    raise Error("Intentional error")
 
-from gpu.host.info import *
-from testing import *
 
-
-def a100_occupancy_test():
-    assert_equal(
-        A100.occupancy(threads_per_block=256, registers_per_thread=32), 1
-    )
-    assert_equal(
-        A100.occupancy(threads_per_block=128, registers_per_thread=33), 0.75
-    )
-    assert_equal(
-        A100.occupancy(threads_per_block=256, registers_per_thread=41), 0.625
-    )
+def func1() -> None:
+    func2()
 
 
 def main():
-    a100_occupancy_test()
+    func1()

@@ -52,11 +52,8 @@ struct BenchMetric(Copyable, Movable, Stringable, Writable):
             The string representation."""
         return String.write(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Formats this BenchMetric to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -118,11 +115,13 @@ struct BenchMetric(Copyable, Movable, Stringable, Writable):
             "\n",
             sep,
             sep,
-            "Couldn't match metric [" + name + "]\n",
+            "Couldn't match metric [",
+            name,
+            "]\n",
             "Available throughput metrics (case-insensitive) in the list:\n",
         )
         for m in metric_list:
-            err += String("    metric: [" + m.name.lower(), "]\n")
+            err += String("    metric: [", m.name.lower(), "]\n")
         err += String(
             sep, sep, "[ERROR]: metric [", name, "] is NOT supported!\n"
         )
@@ -170,11 +169,8 @@ struct ThroughputMeasure(Copyable, Movable):
         """
         return String(self.metric)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Formats this ThroughputMeasure to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -242,11 +238,8 @@ struct Format(Copyable, Movable, Stringable, Writable):
         """
         return String(self.value)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes the format to a writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The writer to write the `Format` to.
@@ -917,7 +910,7 @@ struct Bench(Stringable, Writable):
 
         var full_name = bench_id.func_name
         if bench_id.input_id:
-            full_name += "/" + bench_id.input_id.value()
+            full_name.write("/", bench_id.input_id.value())
 
         if self.config.show_progress:
             print("Running", full_name)
@@ -986,11 +979,8 @@ struct Bench(Stringable, Writable):
         """
         return String.write(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes the benchmark results to a writer.
-
-        Parameters:
-            W: A type conforming to the Writer trait.
 
         Args:
             writer: The writer to write to.
@@ -1010,11 +1000,8 @@ struct Bench(Stringable, Writable):
         # Calculate the total width of the table for line separators
         # +3 for " | " characters
         if self.config.format == Format.table and len(self.info_vec) > 0:
-            for metric in metrics:
-                try:
-                    total_width += metrics[metric].max_width + 3
-                except e:
-                    abort(String(e))
+            for metric in metrics.items():
+                total_width += metric.value.max_width + 3
             if self.config.verbose_timing:
                 for timing_width in timing_widths:
                     total_width += timing_width + 3
@@ -1045,12 +1032,9 @@ struct Bench(Stringable, Writable):
             return
 
         # Write the metrics labels
-        for name in metrics:
-            writer.write(sep, name)
-            try:
-                writer.write(self.pad(metrics[name].max_width, name))
-            except e:
-                abort(String(e))
+        for metric in metrics.items():
+            writer.write(sep, metric.key)
+            writer.write(self.pad(metric.value.max_width, metric.key))
 
         # Write the timing labels
         if self.config.verbose_timing:
@@ -1070,12 +1054,9 @@ struct Bench(Stringable, Writable):
             writer.write(sep)
             writer.write(self.pad["-"](iters_width, ""))
 
-            for name in metrics:
+            for metric in metrics.items():
                 writer.write(sep)
-                try:
-                    writer.write(self.pad["-"](metrics[name].max_width, ""))
-                except e:
-                    abort(String(e))
+                writer.write(self.pad["-"](metric.value.max_width, ""))
 
             if self.config.verbose_timing:
                 var labels = self.config.VERBOSE_TIMING_LABELS
@@ -1110,10 +1091,10 @@ struct Bench(Stringable, Writable):
             var iters_pad = self.pad(iters_width, String(run.result.iters()))
             writer.write(sep, run.result.iters(), iters_pad)
 
-            for name in metrics:
+            for metric in metrics.items():
                 try:
-                    var rates = metrics[name].rates
-                    var max_width = metrics[name].max_width
+                    var rates = metric.value.rates
+                    var max_width = metric.value.max_width
                     if i not in rates:
                         writer.write(sep, "N/A", self.pad(max_width, "N/A"))
                     else:

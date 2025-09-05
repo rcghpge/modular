@@ -24,6 +24,7 @@ from sys.param_env import env_get_string
 from io.write import _WriteBufferHeap
 from io.io import _printf
 from sys import is_compile_time
+from sys._amdgpu import printf_begin, printf_append_string_n, printf_append_args
 
 from builtin._location import __call_location, _SourceLocation
 
@@ -109,7 +110,7 @@ fn debug_assert[
     ```mojo
     person = "name: john, age: 50"
     name = "john"
-    debug_assert("name: " + name in person, "unexpected name")
+    debug_assert(String("name: ", name) in person, "unexpected name")
     ```
 
     This will have a run-time penalty due to allocating a `String` in the
@@ -119,7 +120,7 @@ fn debug_assert[
 
     ```mojo
     fn check_name() capturing -> Bool:
-        return "name: " + name in person
+        return String("name: ", name) in person
 
     debug_assert[check_name]("unexpected name")
     ```
@@ -152,21 +153,15 @@ fn debug_assert[
         if cond():
             return
 
-        # TODO(KERN-1738): Resolve stack usage for AMDGPU target.
+        var message = _WriteBufferHeap()
+
         @parameter
-        if is_amd_gpu():
-            _debug_assert_msg(
-                "".unsafe_cstr_ptr().bitcast[Byte](), __call_location()
-            )
-        else:
-            var message = _WriteBufferHeap()
+        for i in range(messages.__len__()):
+            messages[i].write_to(message)
 
-            @parameter
-            for i in range(messages.__len__()):
-                messages[i].write_to(message)
+        message.nul_terminate()
 
-            message.data[message.pos] = 0
-            _debug_assert_msg(message.data, __call_location())
+        _debug_assert_msg(message.data, message.pos, __call_location())
 
 
 @always_inline
@@ -220,7 +215,7 @@ fn debug_assert[
     ```mojo
     person = "name: john, age: 50"
     name = "john"
-    debug_assert("name: " + name in person, "unexpected name")
+    debug_assert(String("name: ", name) in person, "unexpected name")
     ```
 
     This will have a run-time penalty due to allocating a `String` in the
@@ -230,7 +225,7 @@ fn debug_assert[
 
     ```mojo
     fn check_name() capturing -> Bool:
-        return "name: " + name in person
+        return String("name: ", name) in person
 
     debug_assert[check_name]("unexpected name")
     ```
@@ -266,21 +261,15 @@ fn debug_assert[
         if cond:
             return
 
-        # TODO(KERN-1738): Resolve stack usage for AMDGPU target.
+        var message = _WriteBufferHeap()
+
         @parameter
-        if is_amd_gpu():
-            _debug_assert_msg(
-                "".unsafe_cstr_ptr().bitcast[Byte](), __call_location()
-            )
-        else:
-            var message = _WriteBufferHeap()
+        for i in range(messages.__len__()):
+            messages[i].write_to(message)
 
-            @parameter
-            for i in range(messages.__len__()):
-                messages[i].write_to(message)
+        message.nul_terminate()
 
-            message.data[message.pos] = 0
-            _debug_assert_msg(message.data, __call_location())
+        _debug_assert_msg(message.data, message.pos, __call_location())
 
     elif _use_compiler_assume:
         assume(cond)
@@ -336,7 +325,7 @@ fn debug_assert[
     ```mojo
     person = "name: john, age: 50"
     name = "john"
-    debug_assert("name: " + name in person, "unexpected name")
+    debug_assert(String("name: ", name) in person, "unexpected name")
     ```
 
     This will have a run-time penalty due to allocating a `String` in the
@@ -346,7 +335,7 @@ fn debug_assert[
 
     ```mojo
     fn check_name() capturing -> Bool:
-        return "name: " + name in person
+        return String("name: ", name) in person
 
     debug_assert[check_name]("unexpected name")
     ```
@@ -378,16 +367,19 @@ fn debug_assert[
     if _assert_enabled[assert_mode, cpu_only]():
         if cond:
             return
-
         _debug_assert_msg(
-            message.unsafe_cstr_ptr().bitcast[Byte](), __call_location()
+            message.unsafe_cstr_ptr().bitcast[Byte](),
+            len(message) + 1,  # include null terminator
+            __call_location(),
         )
     elif _use_compiler_assume:
         assume(cond)
 
 
 @no_inline
-fn _debug_assert_msg(message: UnsafePointer[Byte], loc: _SourceLocation):
+fn _debug_assert_msg(
+    message: UnsafePointer[Byte], length: Int, loc: _SourceLocation
+):
     """Aborts with (or prints) the given message and location.
 
     This function is intentionally marked as no_inline to reduce binary size.
@@ -405,15 +397,11 @@ fn _debug_assert_msg(message: UnsafePointer[Byte], loc: _SourceLocation):
             abort()
         return
 
-    # TODO(KERN-1738): Fix _printf elaborator error on AMDGPU target.
+    alias fmt = "At: %s:%llu:%llu: block: [%llu,%llu,%llu] thread: [%llu,%llu,%llu] Assert Error: %s\n"
+
     @parameter
-    if is_amd_gpu():
-        _printf["Assert Error\n"]()
-    elif is_nvidia_gpu():
-        _printf[
-            "At: %s:%llu:%llu: block: [%llu,%llu,%llu] thread: [%llu,%llu,%llu]"
-            " Assert Error: %s\n"
-        ](
+    if is_nvidia_gpu():
+        _printf[fmt](
             loc.file_name.unsafe_ptr(),
             loc.line,
             loc.col,
@@ -424,6 +412,31 @@ fn _debug_assert_msg(message: UnsafePointer[Byte], loc: _SourceLocation):
             thread_idx.y,
             thread_idx.z,
             message,
+        )
+    # TODO(MSTDL-1783): fix `_printf` not working on AMDGPU with %s args
+    elif is_amd_gpu():
+        var fd = printf_begin()
+        _ = printf_append_string_n(fd, fmt.as_bytes(), False)
+        # Runtime %s types must be passed as separate append_string calls
+        _ = printf_append_string_n(fd, loc.file_name.as_bytes(), False)
+        # Can only pass 7 args at a time
+        _ = printf_append_args(
+            fd,
+            7,
+            UInt64(loc.line),
+            UInt64(loc.col),
+            UInt64(block_idx.x),
+            UInt64(block_idx.y),
+            UInt64(block_idx.z),
+            UInt64(thread_idx.x),
+            UInt64(thread_idx.y),
+            0,
+        )
+        # Pass last arg
+        _ = printf_append_args(fd, 1, UInt64(thread_idx.z), 0, 0, 0, 0, 0, 0, 0)
+        # Append message and finalize
+        _ = printf_append_string_n(
+            fd, Span(ptr=message, length=UInt(length)), True
         )
     else:
         _printf["At: %s:%llu:%llu: Assert Error: %s\n"](

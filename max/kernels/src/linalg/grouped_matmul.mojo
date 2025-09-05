@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 from collections import OptionalReg
 from math import ceildiv
-from sys import simdwidthof, sizeof, alignof
+from sys import simd_width_of, size_of, align_of
 
 from buffer.buffer import NDBuffer
 from buffer.dimlist import DimList
@@ -23,7 +23,7 @@ from gpu.cluster import (
     elect_one_sync,
 )
 from gpu.globals import WARPGROUP_SIZE
-from gpu.host import DeviceContext, FuncAttribute
+from gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from gpu.host._nvidia_cuda import TensorMapSwizzle
 from gpu.host.info import H100, B200
 from gpu.id import (
@@ -59,6 +59,7 @@ from linalg.matmul_sm90 import (
 )
 from linalg.matmul_dispatch_sm90 import _find_largest_bn_for_sm90_matmul
 from linalg.matmul_loadop_sm90 import async_load_AB
+from linalg.vendor_blas import matmul as vendor_matmul
 
 from utils.index import Index, IndexList
 from utils.numerics import get_accum_type
@@ -156,7 +157,7 @@ fn naive_grouped_matmul_kernel[
     n = global_idx.x
     m = global_idx.y
 
-    if n >= N or m >= M:
+    if n >= UInt(N) or m >= UInt(M):
         return
 
     alias accum_type = get_accum_type[a_type]()
@@ -298,10 +299,10 @@ fn grouped_matmul_sm90[
 
     alias num_threads = WARPGROUP_SIZE * config.num_consumer + WARPGROUP_SIZE
     alias smem_size = Int(config.num_pipeline_stages) * (
-        BM * BK * sizeof[a_type]()
-        + BN * BK * sizeof[b_type]()
-        + (sizeof[Int64]() * 2)
-    ) + c_smem_layout.size() * sizeof[c_type]()
+        BM * BK * size_of[a_type]()
+        + BN * BK * size_of[b_type]()
+        + (size_of[Int64]() * 2)
+    ) + c_smem_layout.size() * size_of[c_type]()
 
     alias kernel = grouped_matmul_kernel[
         a_type,
@@ -400,7 +401,7 @@ fn grouped_matmul_kernel[
     alias a_smem_layout = tile_layout_k_major[a_type, BM, BK, a_swizzle]()
     alias b_smem_layout = tile_layout_k_major[b_type, BN, BK, b_swizzle]()
 
-    alias simd_size = simdwidthof[c_type]()
+    alias simd_size = simd_width_of[c_type]()
 
     alias num_m_mmas = BM // wgmma_shape[0] // num_consumer
     alias num_n_mmas = BN // wgmma_shape[1]
@@ -450,11 +451,11 @@ fn grouped_matmul_kernel[
     alias a_smem_size = a_smem_layout.size() * pipeline_stages
     alias b_smem_size = b_smem_layout.size() * pipeline_stages
 
-    alias a_smem_bytes = a_smem_size * sizeof[a_type]()
-    alias b_smem_bytes = b_smem_size * sizeof[b_type]()
+    alias a_smem_bytes = a_smem_size * size_of[a_type]()
+    alias b_smem_bytes = b_smem_size * size_of[b_type]()
 
     alias c_smem_size = c_smem_layout.size()
-    alias c_smem_bytes = c_smem_size * sizeof[c_type]()
+    alias c_smem_bytes = c_smem_size * size_of[c_type]()
 
     var a_smem = smem.bitcast[Scalar[a_type]]()
     var b_smem = (smem + a_smem_bytes).bitcast[Scalar[b_type]]()
@@ -547,8 +548,8 @@ fn grouped_matmul_kernel[
                 b_tma_op,
                 a_smem_iter,
                 b_smem_iter,
-                m_coord,
-                n_coord,
+                UInt(m_coord),
+                UInt(n_coord),
                 0,
                 rank_n,
                 rank_m,
@@ -612,8 +613,8 @@ fn grouped_matmul_kernel[
                 full,
                 empty,
                 wgmma_op,
-                local_warp_group_idx,
-                warp_group_thread_idx,
+                UInt(local_warp_group_idx),
+                UInt(warp_group_thread_idx),
             )
 
         # C layout for current expert
@@ -660,9 +661,9 @@ fn grouped_matmul_kernel[
             c_by_expert,
             c_smem_tile,
             c_reg_tile,
-            warp_group_thread_idx,
-            local_warp_group_idx,
-            thread_idx.x - WARPGROUP_SIZE,
+            UInt(warp_group_thread_idx),
+            UInt(local_warp_group_idx),
+            UInt(thread_idx.x - WARPGROUP_SIZE),
             block_idx_swizzle[1],
             block_idx_swizzle[0],
         )
@@ -795,9 +796,11 @@ fn grouped_matmul_kernel_sm100[
     alias b_size = b_smem_layout.size()
 
     constrained[
-        ((a_size * sizeof[a_type]()) % 128) == 0, "preserve alignment"
+        ((a_size * size_of[a_type]()) % 128) == 0, "preserve alignment"
     ]()
-    constrained[((b_size * sizeof[b_type]()) % 16) == 0, "preserve alignment"]()
+    constrained[
+        ((b_size * size_of[b_type]()) % 16) == 0, "preserve alignment"
+    ]()
     var b_smem = (a_smem + a_size).bitcast[Scalar[b_type]]()
 
     var a_smem_tile = a_smem_tile_t(a_smem)
@@ -817,8 +820,8 @@ fn grouped_matmul_kernel_sm100[
         accum_type, c_frag_size
     ]()  # array of accumulator elements
 
-    alias a_expected_bytes = a_size * sizeof[a_type]()
-    alias b_expected_bytes = b_size * sizeof[b_type]()
+    alias a_expected_bytes = a_size * size_of[a_type]()
+    alias b_expected_bytes = b_size * size_of[b_type]()
     alias expected_bytes = a_expected_bytes + b_expected_bytes
 
     tma_mbar = (
@@ -877,8 +880,8 @@ fn grouped_matmul_kernel_sm100[
                 alias k = 64 * j
                 alias a_offset = a_smem_layout(IntTuple(0, k))
                 alias b_offset = b_smem_layout(IntTuple(0, k))
-                constrained[((a_offset * sizeof[a_type]()) % 128) == 0]()
-                constrained[((b_offset * sizeof[b_type]()) % 128) == 0]()
+                constrained[((a_offset * size_of[a_type]()) % 128) == 0]()
+                constrained[((b_offset * size_of[b_type]()) % 128) == 0]()
                 sub_a_smem_tile = sub_a_smem_tile_t(a_smem + a_offset)
                 # the answer to the above comment. # The descriptor layout i.e. data per copy can be smaller than the shared memory
                 # tile shape due to WGMMA requirement. E.g. k-major no swizzle WGMMA BM x 16B to be
@@ -888,13 +891,13 @@ fn grouped_matmul_kernel_sm100[
                 a_tma_op.async_copy(
                     sub_a_smem_tile,
                     tma_mbar[0],
-                    (k_start, a_m_start),
+                    (UInt(k_start), UInt(a_m_start)),
                 )
                 sub_b_smem_tile = sub_b_smem_tile_t(b_smem + b_offset)
                 b_tma_op.async_copy(
                     sub_b_smem_tile,
                     tma_mbar[0],
-                    (k_start, b_n_start),
+                    (UInt(k_start), UInt(b_n_start)),
                 )
         # wait for the copy to finish
         tma_mbar[0].wait(tma_phase)
@@ -1006,7 +1009,7 @@ fn grouped_matmul_kernel_sm100[
 
                         @parameter
                         if elementwise_lambda_fn:
-                            alias alignment = alignof[SIMD[c_type, 2]]()
+                            alias alignment = align_of[SIMD[c_type, 2]]()
                             alias epilogue = elementwise_lambda_fn.value()
                             epilogue[alignment=alignment](
                                 (Int(a_start_row + m), Int(n)), c_mn
@@ -1075,7 +1078,7 @@ fn grouped_matmul_sm100[
     c_tensor = from_ndbuffer_row_major(c)
 
     alias block_dim = 128
-    alias smem_use = (BM * sizeof[a_type]() + BN * sizeof[b_type]()) * BK + 24
+    alias smem_use = (BM * size_of[a_type]() + BN * size_of[b_type]()) * BK + 24
 
     alias kernel = grouped_matmul_kernel_sm100[
         a_type,
@@ -1185,3 +1188,82 @@ fn grouped_matmul[
             num_active_experts,
             ctx,
         )
+
+
+# ===----------------------------------------------------------------------===#
+# Vendor Grouped GEMM for LoRA
+# ===----------------------------------------------------------------------===#
+
+
+fn grouped_matmul_vendor[
+    c_type: DType,
+    c_shape: DimList,
+    a_type: DType,
+    a_shape: DimList,
+    b_type: DType,
+    b_shape: DimList,
+    *,
+    transpose_b: Bool = True,
+    use_tf32: Bool = False,
+](
+    c: NDBuffer[mut=True, c_type, 2, MutableAnyOrigin, c_shape],
+    a: NDBuffer[a_type, 2, MutableAnyOrigin, a_shape],
+    b: NDBuffer[b_type, 3, MutableAnyOrigin, b_shape],
+    a_offsets: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
+    expert_ids: NDBuffer[DType.int32, 1, MutableAnyOrigin],
+    max_num_tokens_per_expert: Int,
+    num_active_experts: Int,
+    ctx: DeviceContext,
+) raises:
+    constrained[transpose_b, "Only support transposed B in grouped matmul."]()
+    constrained[
+        a_type == b_type, "A and B must have the same dtype for vendor BLAS"
+    ]()
+    # Push the device context to ensure correct CUDA context
+    with ctx.push_context() as cur_ctx:
+        for i in range(num_active_experts):
+            var expert_id = expert_ids[i]
+
+            var token_start = a_offsets[i]
+            var token_end = a_offsets[i + 1]
+            var num_tokens = token_end - token_start
+
+            # Skip if no tokens for this expert
+            if num_tokens <= 0:
+                continue
+
+            # Handle experts with expert_id = -1 by writing zeros
+            if expert_id < 0:
+                # Create output slice and zero it out
+                var c_slice = NDBuffer[c_type, 2, MutableAnyOrigin](
+                    c.data + token_start * c.dim[1](),
+                    DimList(num_tokens, c.dim[1]()),
+                )
+                var buff = DeviceBuffer(
+                    ctx, c_slice.data, c_slice.num_elements(), owning=False
+                )
+                ctx.enqueue_memset(buff, 0)
+                continue
+
+            # Create views into the tensors for this expert
+            var a_slice = NDBuffer[a_type, 2, MutableAnyOrigin](
+                a.data + token_start * a.dim[1](),
+                DimList(num_tokens, a.dim[1]()),
+            )
+            var b_slice = NDBuffer[b_type, 2, MutableAnyOrigin](
+                b.data + expert_id * b.dim[1]() * b.dim[2](),
+                DimList(b.dim[1](), b.dim[2]()),
+            )
+            var c_slice = NDBuffer[c_type, 2, MutableAnyOrigin](
+                c.data + token_start * c.dim[1](),
+                DimList(num_tokens, c.dim[1]()),
+            )
+
+            vendor_matmul[use_tf32](
+                ctx,
+                c_slice,
+                a_slice,
+                b_slice,
+                c_row_major=True,
+                transpose_b=transpose_b,
+            )

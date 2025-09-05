@@ -13,7 +13,7 @@
 """The module implements Transpose functions."""
 
 from math import ceildiv
-from sys.info import simdwidthof
+from sys.info import simd_width_of
 from sys.intrinsics import strided_load, strided_store
 
 from algorithm import parallel_memcpy, sync_parallelize, tile, vectorize
@@ -581,7 +581,7 @@ fn _convert_transpose_perms_to_static_int_tuple[
     var simplified_perms = IndexList[rank]()
     # TODO: unroll
     for j in range(rank):
-        simplified_perms[j] = Int(perms.load(j)[0].value)
+        simplified_perms[j] = Int(perms.load(j)[0]._mlir_value)
     return simplified_perms
 
 
@@ -633,7 +633,7 @@ fn _transpose_2d_serial_tiled[
     simplified_rank: Int,
     offset: Int,
 ):
-    alias simd_width = simdwidthof[dtype]()
+    alias simd_width = simd_width_of[dtype]()
 
     @parameter
     if rank < 2:
@@ -701,7 +701,7 @@ fn _transpose_2d_parallel_tiled[
     if rank < 2:
         return
 
-    alias simd_width = simdwidthof[dtype]()
+    alias simd_width = simd_width_of[dtype]()
     var N = simplified_input_shape[simplified_rank - 2]
     var M = simplified_input_shape[simplified_rank - 1]
     alias min_work_per_task = 1024
@@ -768,7 +768,7 @@ fn transpose_2d[
     if rank < 2:
         return
 
-    alias simd_width = simdwidthof[dtype]()
+    alias simd_width = simd_width_of[dtype]()
     var N = simplified_input_shape[simplified_rank - 2]
     var M = simplified_input_shape[simplified_rank - 1]
     alias min_work_per_task = 1024
@@ -1011,8 +1011,8 @@ fn _copy_with_strides[
         raise Error("out of range")
 
     var axis_dim = output.dim(axis)
-    var input_axis_stride: Int = Int(input_strides.load(axis)[0].value)
-    var output_axis_stride: Int = Int(output_strides.load(axis)[0].value)
+    var input_axis_stride: Int = Int(input_strides.load(axis)[0]._mlir_value)
+    var output_axis_stride: Int = Int(output_strides.load(axis)[0]._mlir_value)
 
     if axis + 1 == rank:
         var src_ptr = input.offset(input_offset)
@@ -1033,7 +1033,7 @@ fn _copy_with_strides[
                 src_ptr = src_ptr.offset(simd_width * input_axis_stride)
                 dst_ptr = dst_ptr.offset(simd_width * output_axis_stride)
 
-            vectorize[_copy, simdwidthof[dtype]()](axis_dim)
+            vectorize[_copy, simd_width_of[dtype]()](axis_dim)
 
         return
 

@@ -76,7 +76,7 @@ def test_fused_qk_rope[rope_dim: Int, dtype: DType]() -> None:
 
     # Construct backing buffer and the KV cache itself.
     kv_cache_block_buffer = List[Scalar[dtype]](
-        length=block_shape.flattened_length(), fill=0
+        length=UInt(block_shape.flattened_length()), fill=0
     )
     kv_cache_block = NDBuffer(kv_cache_block_buffer.unsafe_ptr(), block_shape)
 
@@ -123,7 +123,7 @@ def test_fused_qk_rope[rope_dim: Int, dtype: DType]() -> None:
     )
 
     # Create query tensor as a view of the query buffer.
-    input_row_offsets = HostNDBuffer[DType.uint32, 1]((batch_size + 1,))
+    input_row_offsets = HostNDBuffer[DType.uint32, 1](DimList(batch_size + 1))
     for i in range(batch_size):
         input_row_offsets.tensor[i] = i * seq_len
     input_row_offsets.tensor[batch_size] = batch_size * seq_len
@@ -175,7 +175,7 @@ def test_fused_qk_rope[rope_dim: Int, dtype: DType]() -> None:
     )
 
     # Create output buffer.
-    q_out_buffer = List[Scalar[dtype]](length=len(q_buffer), fill=0)
+    q_out_buffer = List[Scalar[dtype]](length=UInt(len(q_buffer)), fill=0)
     q_out = NDBuffer[dtype, rank=3](q_out_buffer.unsafe_ptr(), q.dynamic_shape)
     fused_qk_rope_ragged[
         kv_collection.CacheType, interleaved=True, target = StaticString("cpu")

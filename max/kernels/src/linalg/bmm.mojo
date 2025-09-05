@@ -13,8 +13,8 @@
 
 from collections import OptionalReg
 from math import align_up, ceildiv, gcd
-from sys import alignof
-from sys.info import simdwidthof, has_nvidia_gpu_accelerator
+from sys import align_of
+from sys.info import simd_width_of, has_nvidia_gpu_accelerator
 
 from algorithm import sync_parallelize, vectorize
 from algorithm.functional import _get_start_indices_of_nth_subvolume_uint
@@ -35,6 +35,7 @@ from .matmul import _submatmul_sequential_sync
 from .matmul_gpu import _matmul_gpu
 from .utils import elementwise_epilogue_type as matmul_elementwise_epilogue_type
 from .utils import (
+    GemmShape,
     get_kernel_config,
     get_kernel_type,
     get_matmul_num_tasks,
@@ -56,7 +57,7 @@ from .utils_gpu import (
 )
 from utils.static_tuple import StaticTuple
 from layout._ndbuffer_stub import from_ndbuffer_row_major
-from sys import sizeof
+from sys import size_of
 from logger import Logger
 from gpu.host._nvidia_cuda import TensorMapSwizzle
 from layout.tma_async import (
@@ -244,7 +245,7 @@ fn _small_batched_matmul[
     a_buf: NDBuffer[a_type, rank],
     b_buf: NDBuffer[b_type, rank],
 ) raises:
-    alias simd_width = simdwidthof[c_type]()
+    alias simd_width = simd_width_of[c_type]()
 
     # Get the flattened batch.
     var batch_shape = c_buf.get_shape()
@@ -468,11 +469,11 @@ fn _batched_matmul_cpu[
     )
     # Prevent parallelizing matmul with too many threads.
     var max_num_tasks_matmul = get_matmul_num_tasks[
-        a_type, b_type, c_type, simdwidthof[c_type](), True
+        a_type, b_type, c_type, simd_width_of[c_type](), True
     ](m, n, k, num_threads) if get_kernel_type(
         m, n, k
     ) else get_matmul_num_tasks[
-        a_type, b_type, c_type, simdwidthof[c_type](), False
+        a_type, b_type, c_type, simd_width_of[c_type](), False
     ](
         m, n, k, num_threads
     )
@@ -540,7 +541,7 @@ fn _batched_matmul_cpu[
             alias config = get_kernel_config[a_type, b_type, c_type]()
             alias use_i8mm = use_i8mm_fn[a_type, b_type, c_type]()
             alias simd_size = config.simd_size
-            alias alignment = alignof[SIMD[c_type, simd_size]]()
+            alias alignment = align_of[SIMD[c_type, simd_size]]()
             var kh = align_up(k, 8)
             var mh = align_up(m, 2)
             var a_packed_ptr = UnsafePointer[Scalar[a_type]]()
@@ -559,7 +560,7 @@ fn _batched_matmul_cpu[
             )
 
             var batch_coords = _get_start_indices_of_nth_subvolume_uint[2](
-                batch, c_buf.get_shape()
+                UInt(batch), c_buf.get_shape()
             )
 
             @parameter
@@ -598,8 +599,8 @@ fn _batched_matmul_cpu[
                 c_view,
                 a_packed if use_i8mm else a_view,
                 b_view,
-                sub_matmul_config.shape,
-                sub_matmul_config.offset,
+                GemmShape(sub_matmul_config.shape),
+                GemmShape(sub_matmul_config.offset),
             )
             a_packed_ptr.free()
             _ = batch_coords
@@ -623,10 +624,10 @@ fn naive_batched_matmul_kernel[
     b_tensor: LayoutTensor[b_type, b_layout, MutableAnyOrigin],  # 1 * k
     c_buff_nd_shape: IndexList[rank],
 ) -> None:
-    var batch_size: UInt = c_tensor.dim(0)
-    var m: UInt = c_tensor.dim(1)
-    var n: UInt = c_tensor.dim(2)
-    var k: UInt = a_tensor.dim(2)
+    var batch_size: UInt = UInt(c_tensor.dim(0))
+    var m: UInt = UInt(c_tensor.dim(1))
+    var n: UInt = UInt(c_tensor.dim(2))
+    var k: UInt = UInt(a_tensor.dim(2))
 
     var x = Int(global_idx.x)
     var y = Int(global_idx.y)
@@ -646,7 +647,7 @@ fn naive_batched_matmul_kernel[
     if elementwise_lambda_fn:
         alias elementwise_lambda = elementwise_lambda_fn.value()
         var nd_corrds = _get_start_indices_of_nth_subvolume_uint[2](
-            z, c_buff_nd_shape
+            UInt(z), c_buff_nd_shape
         )
         nd_corrds[rank - 1] = x
         nd_corrds[rank - 2] = y
@@ -851,7 +852,7 @@ fn _batched_matmul_gpu[
             elementwise_epilogue_fn,
         ]
 
-        var grid_dim = kernels.ampere_128x128_4.grid_dim(m, n)
+        var grid_dim = kernels.ampere_128x128_4.grid_dim(UInt(m), UInt(n))
 
         ctx.enqueue_function[batched_matmul_type](
             c_tensor_reshaped,
@@ -1194,7 +1195,7 @@ fn bmm_sm100_blockwise_scaled_fp8[
             " must be equal to 128"
         )
 
-    var padding_size = 16 // sizeof[a_scales_type]()
+    var padding_size = 16 // size_of[a_scales_type]()
     if a_scales_dim1 % padding_size != 0:
         raise Error(
             "a_scales_3D.dim(2) must be divisible by 16 bytes. This is required"
@@ -1253,8 +1254,8 @@ fn bmm_sm100_blockwise_scaled_fp8[
     # NOTE: desc layout must be specified otherwise a constraint fails
 
     alias smem_use = (
-        BM * sizeof[a_type]() + BN * sizeof[b_type]()
-    ) * BK + 24 + sizeof[a_scales_type]() * BM
+        BM * size_of[a_type]() + BN * size_of[b_type]()
+    ) * BK + 24 + size_of[a_scales_type]() * BM
 
     alias block_dim = 128
 

@@ -15,7 +15,7 @@ from math import align_up, ceildiv
 from sys import (
     has_amd_gpu_accelerator,
     has_nvidia_gpu_accelerator,
-    simdwidthof,
+    simd_width_of,
 )
 
 import gpu.warp as warp
@@ -34,7 +34,7 @@ from gpu import (
 )
 from gpu import warp_id as get_warp_id
 from gpu.host import DeviceAttribute, DeviceContext, LaunchAttribute
-from gpu.host import get_gpu_target
+from gpu.host import get_gpu_target, DeviceBuffer
 from gpu.host.launch_attribute import AccessPolicyWindow, AccessProperty
 from gpu.memory import AddressSpace, load
 from logger import Logger
@@ -105,7 +105,7 @@ struct GEMVAlgorithm(Copyable, Movable, Stringable, Writable):
         else:
             return String("UNKNOWN_GEMV_ALGORITHM(", self._value, ")")
 
-    fn write_to[W: Writer](self, mut writer: W) -> None:
+    fn write_to(self, mut writer: Some[Writer]):
         writer.write(String(self))
 
 
@@ -206,7 +206,7 @@ fn gemv_kernel_vector[
         var a_tile = a.tile[1, Int(WARP_SIZE * simd_width)](warp_id, i)
         var b_tile = b.tile[1, Int(WARP_SIZE * simd_width)](0, i)
 
-        if idx >= k:
+        if idx >= UInt(k):
             continue
 
         var a_vec = a_tile.vectorize[1, Int(simd_width)]()[0, Int(lane_id())]
@@ -215,7 +215,7 @@ fn gemv_kernel_vector[
             local_accum_type
         ](b_vec.cast[s_type]())
 
-        idx += step
+        idx += UInt(step)
 
     var accum = warp.sum[
         a_type, reduction_method=reduction_method, output_type=s_type
@@ -260,9 +260,9 @@ fn gemv_split_k[
     output: LayoutTensor[c_type, c_layout, MutableAnyOrigin],
     act: LayoutTensor[a_type, a_layout, MutableAnyOrigin],
     weight: LayoutTensor[b_type, b_layout, MutableAnyOrigin],
-    m: UInt,
-    n: UInt,
-    k: UInt,
+    m: Int,
+    n: Int,
+    k: Int,
 ):
     """GEMV with tiling in K dimension.
     Assuming the B (weight) matrix is transposed i.e. row major N x K, this kernel
@@ -415,7 +415,7 @@ fn gevm_kernel[
     ]()
 
     # Every block computes warp size length of output values
-    for i in range(ceildiv(UInt(k), warps_per_block)):
+    for i in range(ceildiv(UInt(k), UInt(warps_per_block))):
         var row = i * warps_per_block + warp_id
         var lhs = a.load(row)
         var rhs = b.load(row * n + col)
@@ -458,11 +458,30 @@ fn gemv_gpu_dispatch[
     var k = shape.K
 
     alias WARPS_PER_BLOCK = 1024 // WARP_SIZE
-    alias simd_width = simdwidthof[a.type, target = get_gpu_target()]()
+    alias simd_width = simd_width_of[a.type, target = get_gpu_target()]()
 
     var c_tensor = from_ndbuffer_row_major(c)
     var b_tensor = from_ndbuffer_row_major(b)
     var a_tensor = from_ndbuffer_row_major(a)
+
+    var a_buffer = DeviceBuffer[a.type](
+        ctx,
+        rebind[UnsafePointer[Scalar[a.type]]](a.data),
+        a.size(),
+        owning=False,
+    )
+    var b_buffer = DeviceBuffer[b.type](
+        ctx,
+        rebind[UnsafePointer[Scalar[b.type]]](b.data),
+        b.size(),
+        owning=False,
+    )
+    var c_buffer = DeviceBuffer[c.type](
+        ctx,
+        rebind[UnsafePointer[Scalar[c.type]]](c.data),
+        c.size(),
+        owning=False,
+    )
 
     alias has_N = c.shape.has_value[1]()
     alias static_N = c.shape.get[1]() if has_N else UNKNOWN_VALUE
@@ -481,14 +500,14 @@ fn gemv_gpu_dispatch[
             c_tensor.layout,
             a_tensor.layout,
             b_tensor.layout,
-            simd_width=simd_width,
-            tile_m=tile_m,
-            tile_n=tile_n,
-            num_threads=num_threads,
+            simd_width = UInt(simd_width),
+            tile_m = UInt(tile_m),
+            tile_n = UInt(tile_n),
+            num_threads = UInt(num_threads),
             elementwise_lambda_fn=elementwise_lambda_fn,
             check_bounds=check_bounds,
         ]
-        ctx.enqueue_function[kernel](
+        ctx.enqueue_function_checked[kernel, kernel](
             c_tensor,
             a_tensor,
             b_tensor,
@@ -507,6 +526,8 @@ fn gemv_gpu_dispatch[
             WARP_SIZE * WARPS_PER_BLOCK,
         )
         if n == 1:
+
+            @parameter
             if transpose_b:
                 alias kernel = gemv_kernel_vector[
                     c.type,
@@ -515,12 +536,12 @@ fn gemv_gpu_dispatch[
                     c_tensor.layout,
                     a_tensor.layout,
                     b_tensor.layout,
-                    simd_width=simd_width,
+                    simd_width = UInt(simd_width),
                     reduction_method = warp.ReductionMethod.WARP,
                     transpose_b=False,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                 ]
-                ctx.enqueue_function[kernel](
+                ctx.enqueue_function_checked[kernel, kernel](
                     c_tensor,
                     a_tensor,
                     b_tensor,
@@ -567,12 +588,16 @@ fn gemv_gpu_dispatch[
                         DeviceAttribute.MAX_ACCESS_POLICY_WINDOW_SIZE
                     )
                     var launch_attributes = List[LaunchAttribute](
-                        AccessPolicyWindow(
-                            base_ptr=a.data,
-                            count=min(a.size(), max_access_policy_window_size),
-                            hit_ratio=1,
-                            hit_prop=AccessProperty.PERSISTING,
-                            miss_prop=AccessProperty.STREAMING,
+                        LaunchAttribute(
+                            AccessPolicyWindow(
+                                base_ptr=a.data,
+                                count=min(
+                                    a.size(), max_access_policy_window_size
+                                ),
+                                hit_ratio=1,
+                                hit_prop=AccessProperty.PERSISTING,
+                                miss_prop=AccessProperty.STREAMING,
+                            )
                         ),
                     )
                     alias kernel = gemv_kernel_vector[
@@ -581,8 +606,8 @@ fn gemv_gpu_dispatch[
                         b.type,
                         c_tensor.layout,
                         a_tensor.layout,
-                        b_layout_template,
-                        simd_width=simd_width,
+                        b_tensor_n_major.layout,
+                        simd_width = UInt(simd_width),
                         reduction_method = warp.ReductionMethod.WARP,
                         transpose_b=transpose_b,
                         elementwise_lambda_fn=elementwise_lambda_fn,
@@ -606,7 +631,7 @@ fn gemv_gpu_dispatch[
                         c_tensor.layout,
                         a_tensor.layout,
                         b_layout_template,
-                        simd_width=simd_width,
+                        simd_width = UInt(simd_width),
                         reduction_method = warp.ReductionMethod.WARP,
                         transpose_b=transpose_b,
                         elementwise_lambda_fn=elementwise_lambda_fn,
@@ -629,12 +654,12 @@ fn gemv_gpu_dispatch[
                 c_tensor.layout,
                 b_tensor.layout,
                 a_tensor.layout,
-                simd_width=simd_width,
+                simd_width = UInt(simd_width),
                 reduction_method=reduction_method,
                 transpose_b=transpose_b,
                 elementwise_lambda_fn=elementwise_lambda_fn,
             ]
-            ctx.enqueue_function[kernel](
+            ctx.enqueue_function_checked[kernel, kernel](
                 c_tensor,
                 b_tensor,
                 a_tensor,
@@ -647,18 +672,19 @@ fn gemv_gpu_dispatch[
 
     elif kernel_func is GEMVAlgorithm.GEMV_KERNEL and transpose_b == False:
         logger.info("Executing: GEMV_KERNEL (no transpose)")
-        ctx.enqueue_function[
-            gemv_kernel[
-                c.type,
-                a.type,
-                b.type,
-                reduction_method = warp.ReductionMethod.WARP,
-                elementwise_lambda_fn=elementwise_lambda_fn,
-            ]
-        ](
-            c.data,
-            a.data,
-            b.data,
+
+        alias kernel = gemv_kernel[
+            c.type,
+            a.type,
+            b.type,
+            reduction_method = warp.ReductionMethod.WARP,
+            elementwise_lambda_fn=elementwise_lambda_fn,
+        ]
+
+        ctx.enqueue_function_checked[kernel, kernel](
+            c_buffer,
+            a_buffer,
+            b_buffer,
             m,
             n,
             k,
@@ -668,19 +694,19 @@ fn gemv_gpu_dispatch[
 
     elif kernel_func is GEMVAlgorithm.GEMV_KERNEL and transpose_b == True:
         logger.info("Executing: GEMV_KERNEL (with transpose)")
-        ctx.enqueue_function[
-            gemv_kernel[
-                c.type,
-                b.type,
-                a.type,
-                reduction_method = warp.ReductionMethod.WARP,
-                transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
-            ]
-        ](
-            c.data,
-            b.data,
-            a.data,
+
+        alias kernel = gemv_kernel[
+            c.type,
+            b.type,
+            a.type,
+            reduction_method = warp.ReductionMethod.WARP,
+            transpose_b=transpose_b,
+            elementwise_lambda_fn=elementwise_lambda_fn,
+        ]
+        ctx.enqueue_function_checked[kernel, kernel](
+            c_buffer,
+            b_buffer,
+            a_buffer,
             n,
             m,
             k,
@@ -689,18 +715,17 @@ fn gemv_gpu_dispatch[
         )
     elif kernel_func is GEMVAlgorithm.GEVM_KERNEL:
         logger.info("Executing: GEVM_KERNEL")
-        ctx.enqueue_function[
-            gevm_kernel[
-                c.type,
-                a.type,
-                b.type,
-                tile_size = WARP_SIZE * WARPS_PER_BLOCK,
-                elementwise_lambda_fn=elementwise_lambda_fn,
-            ]
-        ](
-            c.data,
-            a.data,
-            b.data,
+        alias kernel = gevm_kernel[
+            c.type,
+            a.type,
+            b.type,
+            tile_size = WARP_SIZE * WARPS_PER_BLOCK,
+            elementwise_lambda_fn=elementwise_lambda_fn,
+        ]
+        ctx.enqueue_function_checked[kernel, kernel](
+            c_buffer,
+            a_buffer,
+            b_buffer,
             m,
             n,
             k,
@@ -711,19 +736,19 @@ fn gemv_gpu_dispatch[
     else:
         logger.info("Executing: MATMUL_NAIVE kernel")
         alias BLOCK_DIM = 16
-        ctx.enqueue_function[
-            matmul_kernel_naive[
-                c.type,
-                a.type,
-                b.type,
-                c_tensor.layout,
-                a_tensor.layout,
-                b_tensor.layout,
-                BLOCK_DIM,
-                transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
-            ]
-        ](
+
+        alias kernel = matmul_kernel_naive[
+            c.type,
+            a.type,
+            b.type,
+            c_tensor.layout,
+            a_tensor.layout,
+            b_tensor.layout,
+            BLOCK_DIM,
+            transpose_b,
+            elementwise_lambda_fn=elementwise_lambda_fn,
+        ]
+        ctx.enqueue_function_checked[kernel, kernel](
             c_tensor,
             a_tensor,
             b_tensor,
@@ -766,7 +791,7 @@ fn gemv_gpu[
     var m = shape.M
     var n = shape.N
     var k = shape.K
-    alias simd_width = simdwidthof[a.type, target = get_gpu_target()]()
+    alias simd_width = simd_width_of[a.type, target = get_gpu_target()]()
 
     alias has_M = c.shape.has_value[0]()
     alias has_N = c.shape.has_value[1]()
@@ -848,7 +873,7 @@ fn gemv[
     a_buf: NDBuffer[a_type, 2, _, a_shape],
     b_buf: NDBuffer[b_type, 1, _, b_size],
 ) raises:
-    alias simd_width = simdwidthof[c_type]()
+    alias simd_width = simd_width_of[c_type]()
 
     var M = a_buf.dim[0]()
     var K = a_buf.dim[1]()

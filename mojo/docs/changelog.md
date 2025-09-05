@@ -19,6 +19,68 @@ what we publish.
 
 ### ✨ Highlights
 
+### 🔥 Legendary
+
+- Mojo now has support for default trait methods, allowing traits to provide
+  reusable behavior without requiring every conforming struct to re-implement it.
+  Default methods are automatically inherited by conforming structs unless
+  explicitly overridden. For example:
+
+  ```mojo
+  # Any struct conforming to EqualityComparable now only needs to define one of
+  # __ne__ ~or~ __eq__ and will get a definition of the other with no
+  # additional code!
+
+  # For instance:
+  trait EqualityComparable:
+      fn __eq__(self, other: Self) -> Bool:
+          ...
+
+      fn __ne__(self, other: Self) -> Bool:
+          return not self == other
+
+  @value
+  struct Point(EqualityComparable):
+      var x: Int
+      var y: Int
+
+      fn __eq__(self, other: Self) -> Bool:
+          # Since __eq__ is implemented we now get __ne__ defined for free!
+          return self.x == other.x and self.y == other.y
+
+      # Defaulted methods can also be overriden if we want different behavior.
+      # fn __ne__(self, other: Self) -> Bool:
+      #     return self.x != other.x or self.y != other.y
+  ```
+
+  Currently a trait method is considered to be non-defaulted if the first thing in
+  it's body is either a '...' or a 'pass' i.e.
+
+  ```mojo
+
+  trait Foo:
+    # Either of the following are non-defaulted
+    # fn foo(self):
+    #   ...
+    #
+    # fn foo(self):
+    #   pass
+
+    # While this is not:
+    fn foo(self):
+      print("Foo.foo")
+  ```
+
+  Note that in the future only '...' will mark a trait method as not defaulted.
+
+### Documentation
+
+- New [Mojo vision](/mojo/vision) doc explains our motivations and design
+decisions for the Mojo language.
+
+- New [Mojo roadmap](/mojo/roadmap) provides a high-level roadmap for the
+language across multiple phases.
+
 ### Language enhancements
 
 - Methods on structs may now declare their `self` argument with a `deinit`
@@ -54,6 +116,25 @@ what we publish.
   environment variable, use `mojo build` with debug info enabled, e.g.
   `-debug-level=line-tables`, and then run the resulting binary.
 
+- Mojo now allows the use of keywords in function names (after `def` and `fn`)
+  and in attribute references after a `.`. This notably allows the use of the
+  `match` method in regex libraries even though Mojo takes this as a hard
+  keyword.  Uses in other locations can still use backticks:
+
+  ```mojo
+  struct MatchExample:
+      fn match(self): # This is ok now.
+          pass
+
+  fn test_match(a: MatchExample):
+      a.match() # This is ok now.
+      a.`match`() # This is still valid.
+  ```
+
+- When generating error messages for complex types involving parameter calls,
+  the Mojo compiler now prints functions parameter values correctly, eliminating
+  a large class of `T != T` errors that happen with GPU layouts.
+
 ### Language changes
 
 - The `__del__` and `__moveinit__` methods should now take their `self` and
@@ -65,7 +146,37 @@ what we publish.
 - The `__disable_del` keyword and statement has been removed, use `deinit`
   methods instead.
 
+- The previously deprecated `@value` decorator has been removed.
+
+- Accesses to associated aliases and methods within a trait now require
+  qualified references (prepended with `Self.`), making it consistent with how
+  accesses to member aliases and methods in a struct require `self.`.
+
 ### Standard library changes
+
+- Added `Path(...).parts()` method to the `Path` type, for example instead of
+  writing:
+
+  ```mojo
+  var path = Path("path/to/file")
+  var parts = path.path.split(DIR_SEPARATOR)
+  ```
+
+  you can now write:
+
+  ```mojo
+  var path = Path("path/to/file")
+  var parts = path.parts()
+  ```
+
+- Added `Path(..).name()` method to the `Path` type, which returns the name of
+  the file or directory.
+
+- The `index()` free function now returns an `Int`, instead of a raw MLIR
+  `__mlir_type.index` value.
+
+- There is now an `iter` module which exposes the `next`, `iter`,
+  and `enumerate` methods.
 
 - The `Copyable` trait now requires `ExplicitlyCopyable`, ensuring that all
   all types that can be implicitly copied may also be copied using an explicit
@@ -134,6 +245,18 @@ what we publish.
     return v == 42
   ```
 
+- Several types that wrap MLIR types have been changed to further
+  encapsulate their behavior, hiding this low-level behavior from non-advanced
+  users.
+
+  - Types that can be constructed from raw MLIR values now require the use
+    of an `mlir_value` keyword-only argument initializer.
+    Affected types include: `SIMD`, `UInt`.
+
+  - Types with raw MLIR type fields have had their `value` fields renamed to
+    `_mlir_value`.
+    Affected types include: `Bool`, `DType`.
+
 - Added `os.path.realpath` to resolve symbolic links to an absolute path and
 
   remove relative path components (`.`, `..`, etc.). Behaves the same as the
@@ -162,11 +285,31 @@ what we publish.
   alias EDEADLK = platform_map["EDEADLK", linux = 35, macos = 11]()
   ```
 
+- Deprecated the following functions with `flatcase` names in `sys.info`:
+  - `alignof`
+  - `bitwidthof`
+  - `simdbitwidth`
+  - `simdbytewidth`
+  - `simdwidthof`
+  - `sizeof`
+
+  in favor of `snake_case` counterparts, respectively:
+  - `align_of`
+  - `bit_width_of`
+  - `simd_bit_width`
+  - `simd_byte_width`
+  - `simd_width_of`
+  - `size_of`
+
 - Added support for AMD RX 6900 XT consumer-grade GPU.
 
 - Added support for AMD RDNA3.5 consumer-grade GPUs in the `gfx1150`,
 `gfx1151`, and `gfx1152` architectures. Representative configurations have been
 added for AMD Radeon 860M, 880M, and 8060S GPUs.
+
+- Added support for NVIDIA GTX 1080 Ti consumer-grade GPUs.
+
+- Added support for NVIDIA Tesla P100 datacenter GPUs.
 
 - Updated `layout_tensor` copy related functions to support 2D and 3D
   threadblock dimensions.
@@ -185,10 +328,42 @@ added for AMD Radeon 860M, 880M, and 8060S GPUs.
   function.  This improves performance for trivially destructible types
   (such as `Int` and friends).
 
+- The `SIMD.from_bits` factory method is now a constructor, use
+  `SIMD(from_bits=...)` instead.
+
+- `StringSlice.from_utf8` factory method is now a constructor, use
+  `StringSlice(from_utf8=...)` instead.
+
+- Added `os.atomic.fence` for creating atomic memory fences.
+  ([#5216](https://github.com/modular/modular/pull/5216) by
+  [@nate](https://github.com/NathanSWard))
+
+  ```mojo
+    from os.atomic import Atomic, Consistency, fence
+
+    fn decrease_ref_count(ref_count: Atomic[DType.uint64]):
+      if atomic.fetch_sub[ordering = Consistency.MONOTONIC](1) == 1:
+        fence[Consistency.ACQUIRE]()
+        # ...
+  ```
+
+- `Span` now implements a generic `.count()` method which can be passed a
+  function that returns a boolean SIMD vector. The function counts how many
+  times it returns `True` evaluating it in a vectorized manner. This works for
+  any `Span[Scalar[D]]` e.g. `Span[Byte]`. PR
+  [#3792](https://github.com/modularml/mojo/pull/3792) by [@martinvuyk](https://github.com/martinvuyk).
+
 ### Tooling changes
 
 - `mojo test` now ignores folders with a leading `.` in the name. This will
   exclude hidden folders on Unix systems ([#4686](https://github.com/modular/modular/issues/4686))
+
+- `mojo doc --validate-doc-strings` now emits a warning when an `fn` function
+is declared to raise an error (`raises`) and it has no [`Raises`
+docstring](https://github.com/modular/modular/blob/main/mojo/stdlib/docs/docstring-style-guide.md#errors).
+However, because Mojo automatically treats all `def` functions as [raising
+functions](/mojo/manual/functions#raising-and-non-raising-functions), we do not
+enforce `Raises` docs for `def` functions (to avoid noisy false positives).
 
 - Nightly `mojo` Python wheels are now available. To install everything needed
   for Mojo development in a Python virtual environment, you can use
@@ -196,6 +371,11 @@ added for AMD Radeon 860M, 880M, and 8060S GPUs.
   ```sh
   pip install mojo --index-url https://dl.modular.com/public/nightly/python/simple/
   ```
+
+- In preparation for a future Mojo 1.0, the `mojo` and `mojo-compiler` packages
+now have a `0.` prefixed to the version. Until the previous nightly packages
+and 25.5 on Conda have been removed or yanked, we recommend specifying `<1.0.0`
+as the version for these packages.
 
 ### Kernels changes
 
@@ -207,5 +387,14 @@ added for AMD Radeon 860M, 880M, and 8060S GPUs.
 
 ### 🛠️ Fixed
 
+- Fixed <https://github.com/modular/modular/issues/4695> - `Dict.__getitem__`
+  always returns immutable references.
+- Fixed <https://github.com/modular/modular/issues/4705> - Wrong mutability
+  inferred for `__getitem__` if `[]` operator is used and `__setitem__` is present.
 - Fixed <https://github.com/modular/modular/issues/5190>
 - Fixed <https://github.com/modular/modular/issues/5139> - Crash on malformed initializer.
+- Fixed <https://github.com/modular/modular/issues/5183> - Log1p not working on GPUs.
+- Fixed <https://github.com/modular/modular/issues/5105> - Outdated `CLAUDE.md`
+  docs.
+- Fixed <https://github.com/modular/modular/issues/5239> - Contextual type not
+  detected inside an inline if-else.

@@ -13,7 +13,7 @@
 
 from collections import OptionalReg
 from math import ceildiv
-from sys import alignof
+from sys import align_of
 import linalg.vendor_blas
 from linalg.vendor_blas import Backend
 from buffer.dimlist import DimList
@@ -176,7 +176,7 @@ fn test_matmul_sm90[
         _dtype: DType,
         width: Int,
         *,
-        alignment: Int = alignof[SIMD[_dtype, width]](),
+        alignment: Int = align_of[SIMD[_dtype, width]](),
     ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
         c_tensor.store[alignment=alignment](
             idx, rebind[SIMD[c_type, width]](val)
@@ -190,8 +190,8 @@ fn test_matmul_sm90[
         block_tile_shape=block_tile_shape,
         mma_shape=wgmma_shape,
         cluster_shape=cluster_shape,
-        num_pipeline_stages=num_pipeline_stages,
-        num_consumer=num_consumer,
+        num_pipeline_stages=UInt(num_pipeline_stages),
+        num_consumer=UInt(num_consumer),
         partitioned_multicast=partitioned_multicast,
     )
 

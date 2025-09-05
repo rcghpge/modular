@@ -104,7 +104,7 @@ from nn.softmax import (
     _rowmax_online_softmax,
     _rowsum,
 )
-from sys import alignof, simdwidthof, sizeof
+from sys import align_of, simd_width_of, size_of
 from tensor_internal import ManagedTensorSlice
 from utils.index import Index
 from utils.numerics import get_accum_type, min_or_neg_inf
@@ -186,7 +186,7 @@ struct MMAOperandOffsetFn[
     ]() if is_k_major else tile_layout_mn_major[dtype, BMN, BK, swizzle]()
     alias layout_size: Int = Self.layout.size()
 
-    alias canonical_K = swizzle.bytes() // sizeof[
+    alias canonical_K = swizzle.bytes() // size_of[
         dtype
     ]() if swizzle != TensorMapSwizzle.SWIZZLE_NONE else BK
     alias canonical_layout_flat = tile_layout_k_major[
@@ -208,11 +208,11 @@ trait DescriptorPair:
     alias b_t: MMAOperandDescriptor
 
     @always_inline
-    fn get_a(self) -> a_t:
+    fn get_a(self) -> Self.a_t:
         ...
 
     @always_inline
-    fn get_b(self) -> b_t:
+    fn get_b(self) -> Self.b_t:
         ...
 
 
@@ -240,11 +240,11 @@ trait DescriptorPairTS:
     alias b_t: MMAOperandDescriptor
 
     @always_inline
-    fn get_a(self) -> a_t:
+    fn get_a(self) -> Self.a_t:
         ...
 
     @always_inline
-    fn get_b(self) -> b_t:
+    fn get_b(self) -> Self.b_t:
         ...
 
 
@@ -274,7 +274,11 @@ trait AccumulatorTile(Copyable, Movable):
     @staticmethod
     @always_inline
     fn _empty_tensor() -> (
-        __type_of(local_tensor_type[dtype, vec_output_layout, element_layout]())
+        __type_of(
+            local_tensor_type[
+                Self.dtype, Self.vec_output_layout, Self.element_layout
+            ]()
+        )
     ):
         ...
 
@@ -346,7 +350,7 @@ fn _tmem_offset(dtype_size: Int, *, MMA_N: Int, m_mma: Int, n_mma: Int) -> Int:
 @always_inline
 fn _tmem_offset[dtype: DType, *, MMA_N: Int, m_mma: Int, n_mma: Int]() -> Int:
     alias linear = _tmem_offset(
-        dtype.sizeof(), MMA_N=MMA_N, m_mma=m_mma, n_mma=n_mma
+        dtype.size_of(), MMA_N=MMA_N, m_mma=m_mma, n_mma=n_mma
     )
     return linear
 
@@ -498,7 +502,7 @@ struct TMemAccumulator[
         src: __type_of(Self._empty_tensor()),
     ):
         frags = Self.rows_of_frags(src).vectorize[1, Self.frag_size]()
-        alias dtype_size = sizeof[Self.dtype]()
+        alias dtype_size = size_of[Self.dtype]()
         constrained[dtype_size == 4]()
         alias frag_size_b32 = Self.frag_size * dtype_size // 4
         # 16 x 256b results in repeated 8x4<1x2> pattern
@@ -536,7 +540,7 @@ struct TMemAccumulator[
         dst: __type_of(Self._empty_tensor()),
     ):
         frags = Self.rows_of_frags(dst).vectorize[1, Self.frag_size]()
-        alias dtype_size = sizeof[Self.dtype]()
+        alias dtype_size = size_of[Self.dtype]()
         constrained[dtype_size == 4]()
         alias frag_size_b32 = (Self.frag_size * dtype_size) // 4
         # 16 x 256b results in repeated 8x4<1x2> pattern
@@ -647,8 +651,8 @@ struct TMemOperand[
             + String(src_layout),
         ]()
         constrained[src_element_layout.size() == 1]()
-        alias src_size = sizeof[src_type]()
-        alias dst_size = sizeof[dtype]()
+        alias src_size = size_of[src_type]()
+        alias dst_size = size_of[dtype]()
         alias frag_size_b32 = (Self.frag_size * dst_size) // 4
         # 16 x 256b results in repeated 8x4<1xN> pattern, where
         alias N = 32 // (4 * src_size)
@@ -715,12 +719,12 @@ struct TMemOperand[
         constrained[num_frags == num_m_mmas * num_n_mmas]()
         constrained[Self.frag_size == dst_layout[1].size()]()
         constrained[dst_element_layout.size() == 1]()
-        constrained[sizeof[dst_type]() == 4]()
+        constrained[size_of[dst_type]() == 4]()
         # 16 x 256b results in repeated 8x4<1x2> pattern
         # each repetition thus loads 8 columns
         # and loads 4 values per thread.
-        alias src_size = sizeof[dtype]()
-        alias dst_size = sizeof[dst_type]()
+        alias src_size = size_of[dtype]()
+        alias dst_size = size_of[dst_type]()
         alias frag_size_b32 = (Self.frag_size * src_size) // 4
         # 16 x 256b results in repeated 8x4<1xN> pattern, where
         alias N = 32 // (4 * dst_size)
@@ -808,6 +812,7 @@ struct SM100TensorAccumulatorSS[
     BM: Int,
     BN: Int,
     BK: Int,
+    compute_BK: Int,
     num_softmax_threads: Int,
     swizzle_a: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     swizzle_b: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
@@ -823,7 +828,7 @@ struct SM100TensorAccumulatorSS[
 
     alias num_m_mmas = BM // MMA_M
     alias num_n_mmas = BN // MMA_N
-    alias num_k_mmas = BK // Self.MMA_K
+    alias num_k_mmas = compute_BK // Self.MMA_K
 
     alias num_m_blocks_per_warp = 2 * BM // num_softmax_threads
 
@@ -875,8 +880,11 @@ struct SM100TensorAccumulatorSS[
             "BN, MMA_N = " + String(BN) + ", " + String(MMA_N),
         ]()
         constrained[
-            ((BK % Self.MMA_K) == 0) and (Self.num_k_mmas > 0),
-            "BK, MMA_K = " + String(BK) + ", " + String(Self.MMA_K),
+            ((compute_BK % Self.MMA_K) == 0) and (Self.num_k_mmas > 0),
+            "compute_BK, MMA_K = "
+            + String(compute_BK)
+            + ", "
+            + String(Self.MMA_K),
         ]()
 
     @always_inline
@@ -912,18 +920,18 @@ struct SM100TensorAccumulatorSS[
         Self.check_constraints()
         alias a_canonical_layout = Self.a_offset.canonical_layout
         alias a_type = Self.operand_t
-        alias aSBO = a_canonical_layout[0].stride[1].value() * sizeof[a_type]()
-        alias aLBO = a_canonical_layout[1].stride[1].value() * sizeof[a_type]()
+        alias aSBO = a_canonical_layout[0].stride[1].value() * size_of[a_type]()
+        alias aLBO = a_canonical_layout[1].stride[1].value() * size_of[a_type]()
         adesc_base = MMASmemDescriptor.create[aSBO, aLBO, swizzle_a](p_a)
 
         alias b_canonical_layout = Self.b_offset.canonical_layout
         alias b_type = Self.operand_t
         alias b_stride01 = b_canonical_layout[0].stride[1].value()
         alias b_stride11 = b_canonical_layout[1].stride[1].value()
-        alias bSBO = (b_stride01 if transpose_b else b_stride11) * sizeof[
+        alias bSBO = (b_stride01 if transpose_b else b_stride11) * size_of[
             b_type
         ]()
-        alias bLBO = (b_stride11 if transpose_b else b_stride01) * sizeof[
+        alias bLBO = (b_stride11 if transpose_b else b_stride01) * size_of[
             b_type
         ]()
         bdesc_base = MMASmemDescriptor.create[bSBO, bLBO, swizzle_b](p_b)
@@ -948,7 +956,7 @@ struct SM100TensorAccumulatorSS[
                 alias a_offset = Self.a_offset.layout(
                     IntTuple(Self.MMA_M * m_mma, Self.MMA_K * k_mma)
                 )
-                alias a_offset_bytes = a_offset * sizeof[Self.operand_t]()
+                alias a_offset_bytes = a_offset * size_of[Self.operand_t]()
                 a_desc = a + a_offset_bytes
 
                 @parameter
@@ -957,7 +965,7 @@ struct SM100TensorAccumulatorSS[
 
                     alias b_offset = Self.b_offset.layout(
                         IntTuple(Self.MMA_N * n_mma, Self.MMA_K * k_mma)
-                    ) * sizeof[Self.operand_t]()
+                    ) * size_of[Self.operand_t]()
                     b_desc = b + b_offset
 
                     @parameter
@@ -1140,10 +1148,10 @@ struct SM100TensorAccumulatorTS[
         alias b_type = Self.operand_t
         alias b_stride01 = b_canonical_layout[0].stride[1].value()
         alias b_stride11 = b_canonical_layout[1].stride[1].value()
-        alias bSBO = (b_stride01 if transpose_b else b_stride11) * sizeof[
+        alias bSBO = (b_stride01 if transpose_b else b_stride11) * size_of[
             b_type
         ]()
-        alias bLBO = (b_stride11 if transpose_b else b_stride01) * sizeof[
+        alias bLBO = (b_stride11 if transpose_b else b_stride01) * size_of[
             b_type
         ]()
 
@@ -1169,7 +1177,7 @@ struct SM100TensorAccumulatorTS[
                     c_tmem = c.offset[m_mma=m_mma, n_mma=n_mma]()
                     alias b_offset = Self.b_offset.layout(
                         IntTuple(Self.MMA_N * n_mma, Self.MMA_K * k_mma)
-                    ) * sizeof[Self.operand_t]()
+                    ) * size_of[Self.operand_t]()
                     b_desc = b + b_offset
 
                     @parameter
@@ -1269,12 +1277,12 @@ fn mha_sm100_dispatch[
         config.type,
         config.num_heads,
         config.depth,
-        OptionalReg[UInt](64),
-        OptionalReg[UInt](config.num_keys_per_block),
-        OptionalReg[UInt](config.BK),
+        num_queries_per_block=OptionalReg[UInt](64),
+        num_keys_per_block=OptionalReg[UInt](config.num_keys_per_block),
+        BK=OptionalReg[UInt](config.BK),
     ) if decoding else config
     alias BM = new_config.block_m()
-    alias BK = new_config.depth
+    alias BK = new_config.padded_depth
     constrained[
         BM % 64 == 0,
         "SM90 requires BM%64==0, but BM==",
@@ -1287,7 +1295,7 @@ fn mha_sm100_dispatch[
     ]()
     alias BN = new_config.block_n()
     alias max_tmem_cols = 512
-    alias num_s = (max_tmem_cols - (BN // 2) - config.depth) // BN
+    alias num_s = (max_tmem_cols - (BN // 2) - config.padded_depth) // BN
     # we add smem use for SharedMemBarrier synchronization
     # 2*8 for mma mbars
     #
@@ -1326,16 +1334,17 @@ fn mha_sm100_dispatch[
     q_tma = q_out_tma[
         group if decoding else Int(BM),
         config.depth,
+        config.padded_depth,
         swizzle_mode,
         q_num_heads = config.num_heads,
         decoding=decoding,
     ](ctx, q, num_rows_q)
-    k_tma = k.create_tma_tile[BN, config.depth, swizzle_mode, is_k_major=True](
-        ctx
-    )
-    v_tma = v.create_tma_tile[BN, config.depth, swizzle_mode, is_k_major=False](
-        ctx
-    )
+    k_tma = k.create_tma_tile[
+        BN, config.padded_depth, swizzle_mode, is_k_major=True
+    ](ctx)
+    v_tma = v.create_tma_tile[
+        BN, config.padded_depth, swizzle_mode, is_k_major=False
+    ](ctx)
 
     alias SchedulerType = TransientScheduler[
         scheduler_tile_shape, num_scheduler_heads
@@ -1491,21 +1500,21 @@ fn _mha_sm100[
         max(group, 8) if _is_decoding[MaxSeqLenType]() else Int(
             config.block_m()
         ),
-        64 if _is_decoding[MaxSeqLenType]() else config.depth,
+        64 if _is_decoding[MaxSeqLenType]() else config.padded_depth,
         swizzle_mode,
         is_k_major=True,
     ],
     k_tma_op: TMANestedTensorTile[
         KVLUTType.dtype,
         config.block_n(),
-        config.depth,
+        config.padded_depth,
         swizzle_mode,
         is_k_major=True,
     ],
     v_tma_op: TMANestedTensorTile[
         KVLUTType.dtype,
         config.block_n(),
-        config.depth,
+        config.padded_depth,
         swizzle_mode,
         is_k_major=False,
     ],
@@ -1539,7 +1548,7 @@ fn _mha_sm100[
     constrained[kv_type == config.type]()
     alias decoding: Bool = _is_decoding[MaxSeqLenType]()
 
-    alias simd_size: Int = simdwidthof[kv_type]()
+    alias simd_size: Int = simd_width_of[kv_type]()
 
     alias num_softmax_threads: Int = config.num_consumer_threads()
     alias num_softmax_warps = num_softmax_threads // 32
@@ -1547,7 +1556,7 @@ fn _mha_sm100[
     alias cta_group = 1
     alias BM: Int = config.block_m()
     alias BN: Int = config.block_n()
-    alias BK: Int = config.depth
+    alias BK: Int = config.padded_depth
     alias depth = config.depth
     # alias mma_shape = Index(64, depth, 16)
     # alias mma_shape = Index(128 if (BM % 128) == 0 else 64, depth, 16)
@@ -1555,7 +1564,7 @@ fn _mha_sm100[
     # alias MMA_M = 64
     alias MMA_M = 128 if (BM % 128) == 0 else 64
     alias MMA_N0 = BN
-    alias MMA_N1 = depth
+    alias MMA_N1 = config.padded_depth
     alias MMA_K = 16
     # alias WM = BM // num_softmax_warps
     # alias WN = BN
@@ -1621,6 +1630,7 @@ fn _mha_sm100[
         BM=BM,  # 128
         BN=BN,  # BN
         BK=BK,  # depth
+        compute_BK = config.depth,
         num_softmax_threads=num_softmax_threads,
         swizzle_a=swizzle_mode,
         swizzle_b=swizzle_mode,
@@ -1646,7 +1656,7 @@ fn _mha_sm100[
 
     # first umma is BM x BK @ BK x BN
     # The entire query block (BM x depth) is tiled in shared memory.
-    alias q_smem_size = BM * depth
+    alias q_smem_size = BM * config.padded_depth
     q_smem = external_memory[
         Scalar[kv_type],
         address_space = AddressSpace.SHARED,
@@ -1756,8 +1766,8 @@ fn _mha_sm100[
     alias num_cols_output = o_vec_output_layout[1].size()
 
     # Rowwise max and sum for online softmax
-    alias accum_simd_width = simdwidthof[accum_type]()
-    alias row_alignment = alignof[SIMD[accum_type, accum_simd_width]]()
+    alias accum_simd_width = simd_width_of[accum_type]()
+    alias row_alignment = align_of[SIMD[accum_type, accum_simd_width]]()
     # Account for group query.
     alias kv_num_heads = num_heads // group
 
@@ -1831,13 +1841,22 @@ fn _mha_sm100[
         umma_0.init()
         umma_1.init()
 
-    alias PositionType = MHAPosition[BM, BN, depth, num_heads, group, decoding]
+    alias PositionType = MHAPosition[
+        BM, BN, depth, config.padded_depth, num_heads, group, decoding
+    ]
 
     @parameter
     @always_inline
     fn get_position(seq_info: SeqInfo) -> PositionType:
         return _get_position[
-            BM, BN, depth, num_heads, group, ragged, _is_cache_length_accurate
+            BM,
+            BN,
+            depth,
+            config.padded_depth,
+            num_heads,
+            group,
+            ragged,
+            _is_cache_length_accurate,
         ](
             seq_info,
             kv_lut,
@@ -1922,7 +1941,9 @@ fn _mha_sm100[
             @always_inline
             fn q_mul_k(read_idx: UInt32, read_phase: UInt32):
                 q = q_desc
-                k = k_desc + Int(BN * depth * sizeof[kv_type]() * read_idx)
+                k = k_desc + Int(
+                    BN * config.padded_depth * size_of[kv_type]() * read_idx
+                )
                 umma_0.wait_for_tmem()
                 produced_mbar_kv[read_idx].wait(read_phase)
 
@@ -1996,7 +2017,9 @@ fn _mha_sm100[
                 fn p_mul_v(
                     read_idx: UInt32, read_phase: UInt32, scale_c: UInt32
                 ):
-                    v = v_desc + Int(BN * depth * sizeof[kv_type]() * read_idx)
+                    v = v_desc + Int(
+                        BN * config.padded_depth * size_of[kv_type]() * read_idx
+                    )
                     produced_mbar_kv[read_idx].wait(read_phase)
                     umma_1.wait_for_tmem()
                     umma_1.mma(
@@ -2213,7 +2236,7 @@ fn _mha_sm100[
             constrained[
                 output_type.is_half_float(), "we don't support Float32 output"
             ]()
-            constrained[sizeof[kv_type]() == sizeof[output_type]()]()
+            constrained[size_of[kv_type]() == size_of[output_type]()]()
             alias swizzle = make_swizzle[
                 num_rows = WM // 2, row_size=BN, access_size=8
             ]()
@@ -2221,7 +2244,7 @@ fn _mha_sm100[
             alias q_tile_size: UInt32 = q_smem_size // 2
             accum_smem_tile = LayoutTensor[
                 output_type,
-                Layout.row_major(BM, depth),
+                Layout.row_major(BM, config.padded_depth),
                 address_space = AddressSpace.SHARED,
             ]((q_smem).bitcast[Scalar[output_type]]())
             accum_smem_warp_tile = accum_smem_tile.tile[WM, BN](
@@ -2259,7 +2282,9 @@ fn _mha_sm100[
             decoding and PartitionType.do_partition
         ):  # we may have an empty partition
             if kv_tile_start_row >= end:
-                if thread_idx.x % 4 == 0 and thread_idx.x < 4 * group + 128:
+                if thread_idx.x % 4 == 0 and thread_idx.x < UInt(
+                    4 * group + 128
+                ):
                     exp_sum_ptr, qk_max_ptr = position.exp_sum_qk_max_ptr(
                         partition, batch_size
                     )
@@ -2464,7 +2489,7 @@ fn _mha_sm100[
 
         @parameter
         if decoding and PartitionType.do_partition:
-            if thread_idx.x % 4 == 0 and thread_idx.x < 4 * group + 128:
+            if thread_idx.x % 4 == 0 and thread_idx.x < UInt(4 * group + 128):
                 exp_sum_ptr, qk_max_ptr = position.exp_sum_qk_max_ptr(
                     partition, batch_size
                 )

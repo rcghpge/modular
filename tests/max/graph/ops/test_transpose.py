@@ -15,7 +15,7 @@
 import re
 
 import pytest
-from conftest import axes, shapes, tensor_types
+from conftest import GraphBuilder, axes, shapes, tensor_types
 from hypothesis import assume, given
 from hypothesis import strategies as st
 from max.dtype import DType
@@ -28,7 +28,7 @@ shared_types = st.shared(tensor_types())
 def test_transpose_output_shape(input_type: TensorType, a: int, b: int) -> None:
     assume(input_type.rank > 0)
     with Graph("transpose", input_types=[input_type]) as graph:
-        out = graph.inputs[0].transpose(a, b)
+        out = graph.inputs[0].transpose(a, b)  # type: ignore
         target_shape = list(input_type.shape)
         target_shape[a], target_shape[b] = target_shape[b], target_shape[a]
         assert out.shape == target_shape
@@ -45,7 +45,7 @@ def test_transpose_input_with_rank_zero() -> None:
             TensorType(shape=[], dtype=DType.float32, device=DeviceRef.CPU())
         ],
     ) as graph:
-        out = graph.inputs[0].transpose(0, 0)
+        out = graph.inputs[0].transpose(0, 0)  # type: ignore
         assert out.shape == []
         graph.output(out)
 
@@ -63,7 +63,7 @@ def test_transpose_error_axis_1_out_of_bounds_input_with_rank_zero() -> None:
                 "Axis axis_1 out of range (expected to be in range of [-1, 0], but got 1)"
             ),
         ):
-            out = graph.inputs[0].transpose(1, 0)
+            out = graph.inputs[0].transpose(1, 0)  # type: ignore
             graph.output(out)
 
 
@@ -80,7 +80,7 @@ def test_transpose_error_axis_2_out_of_bounds_input_with_rank_zero() -> None:
                 "Axis axis_2 out of range (expected to be in range of [-1, 0], but got 1)"
             ),
         ):
-            out = graph.inputs[0].transpose(0, 1)
+            out = graph.inputs[0].transpose(0, 1)  # type: ignore
             graph.output(out)
 
 
@@ -99,7 +99,7 @@ def test_transpose_error_axis_1_out_of_bounds() -> None:
                 "Axis axis_1 out of range (expected to be in range of [-2, 1], but got 2)"
             ),
         ):
-            out = graph.inputs[0].transpose(2, 0)
+            out = graph.inputs[0].transpose(2, 0)  # type: ignore
             graph.output(out)
 
 
@@ -118,7 +118,7 @@ def test_transpose_error_axis_2_out_of_bounds() -> None:
                 "Axis axis_2 out of range (expected to be in range of [-2, 1], but got 2)"
             ),
         ):
-            out = graph.inputs[0].transpose(0, 2)
+            out = graph.inputs[0].transpose(0, 2)  # type: ignore
             graph.output(out)
 
 
@@ -139,7 +139,7 @@ def invalid_axes(rank: int):
     valid_axis=axes(shared_shapes_rank_gt_0),
 )
 def test_transpose_error_out_of_bounds_axis_rank_gt_zero(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     base_type: TensorType,
     valid_axis: int,
     invalid_axis: int,
@@ -147,11 +147,11 @@ def test_transpose_error_out_of_bounds_axis_rank_gt_zero(
     """Test that transpose raises an error when an axis is out of bounds."""
     with graph_builder(input_types=[base_type]) as graph:
         with pytest.raises(IndexError, match="out of range"):
-            graph.inputs[0].transpose(valid_axis, invalid_axis)
+            graph.inputs[0].transpose(valid_axis, invalid_axis)  # type: ignore
         with pytest.raises(IndexError, match="out of range"):
-            graph.inputs[0].transpose(invalid_axis, valid_axis)
+            graph.inputs[0].transpose(invalid_axis, valid_axis)  # type: ignore
         with pytest.raises(IndexError, match="out of range"):
-            graph.inputs[0].transpose(invalid_axis, invalid_axis)
+            graph.inputs[0].transpose(invalid_axis, invalid_axis)  # type: ignore
 
 
 @given(
@@ -159,7 +159,7 @@ def test_transpose_error_out_of_bounds_axis_rank_gt_zero(
     axis=st.integers().filter(lambda x: x != 0 and x != -1),
 )
 def test_transpose_error_out_of_bounds_rank_zero(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     base_type: TensorType,
     axis: int,
 ) -> None:
@@ -168,8 +168,8 @@ def test_transpose_error_out_of_bounds_rank_zero(
     assume(axis not in (0, -1))
     with graph_builder(input_types=[base_type]) as graph:
         with pytest.raises(IndexError, match="out of range"):
-            graph.inputs[0].transpose(0, axis)
+            graph.inputs[0].transpose(0, axis)  # type: ignore
         with pytest.raises(IndexError, match="out of range"):
-            graph.inputs[0].transpose(axis, 0)
+            graph.inputs[0].transpose(axis, 0)  # type: ignore
         with pytest.raises(IndexError, match="out of range"):
-            graph.inputs[0].transpose(axis, axis)
+            graph.inputs[0].transpose(axis, axis)  # type: ignore

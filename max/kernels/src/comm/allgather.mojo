@@ -30,7 +30,7 @@ hardware capabilities:
 
 from collections import InlineArray
 from math import ceildiv
-from sys import simdwidthof
+from sys import simd_width_of
 
 from buffer import NDBuffer
 from gpu import (
@@ -110,7 +110,7 @@ fn _allgather_p2p_kernel[
 ](
     outputs: StaticTuple[UnsafePointer[Scalar[dtype]], ngpus],
     src_ptrs: StaticTuple[UnsafePointer[Scalar[dtype]], ngpus],
-    rank_sigs: StaticTuple[UnsafePointer[Signal], MAX_GPUS],
+    rank_sigs: InlineArray[UnsafePointer[Signal], MAX_GPUS],
     lengths: StaticTuple[Int, ngpus],
     max_num_blocks: Int,
 ):
@@ -119,7 +119,7 @@ fn _allgather_p2p_kernel[
     Each GPU directly reads from all other GPUs and writes to its output buffers.
     Uses round-robin access pattern to balance NVLink traffic.
     """
-    alias simd_width = simdwidthof[dtype, target = get_gpu_target()]()
+    alias simd_width = simd_width_of[dtype, target = get_gpu_target()]()
 
     var global_tid = global_idx.x
     var stride = grid_dim.x * BLOCK_SIZE
@@ -148,7 +148,7 @@ fn _allgather_p2p_kernel[
         if remainder > 0:
             var tail_start = num_simd_vectors * simd_width
             # Use first warp to handle tail to minimize divergence.
-            if global_tid < WARP_SIZE:
+            if global_tid < UInt(WARP_SIZE):
                 for i in range(global_tid, remainder, WARP_SIZE):
                     var elem_idx = tail_start + i
                     outputs[src_gpu][elem_idx] = src_ptrs[src_gpu][elem_idx]
@@ -211,7 +211,7 @@ fn _allgather_p2p[
         for i in range(ngpus):
             max_length = max(max_length, lengths[i])
 
-        alias simd_width = simdwidthof[dtype, target = get_gpu_target()]()
+        alias simd_width = simd_width_of[dtype, target = get_gpu_target()]()
         # Use ceildiv for max_length to ensure we have enough threads.
         var grid_size = min(
             max_num_blocks,
@@ -275,7 +275,7 @@ fn allgather[
         _max_num_blocks: Maximum number of blocks for kernel launch (optional).
     """
 
-    # Default max blocks if not specified
+    # Default max blocks if not specified.
     var max_num_blocks = _max_num_blocks.or_else(216)
 
     # Check P2P availability.

@@ -87,7 +87,7 @@ struct Variant[*Ts: ExplicitlyCopyable & Movable](
     fn process_data(data: String) -> Result:
         if len(data) == 0:
             return Result(Error("Empty data"))
-        return Result("Processed: " + data)
+        return Result(String("Processed: ", data))
 
     var result = process_data("Hello")
     if result.isa[String]():
@@ -247,7 +247,7 @@ struct Variant[*Ts: ExplicitlyCopyable & Movable](
         constrained[idx != Self._sentinel, "not a union element type"]()
         var ptr = UnsafePointer(to=self._impl).address
         var discr_ptr = __mlir_op.`pop.variant.bitcast`[
-            _type = UnsafePointer[T]._mlir_type, index = idx.value
+            _type = UnsafePointer[T]._mlir_type, index = idx._mlir_value
         ](ptr)
         return discr_ptr
 

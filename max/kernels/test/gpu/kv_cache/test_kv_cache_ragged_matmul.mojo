@@ -87,10 +87,10 @@ def _initialize_ragged_inputs[
         ragged_start_idx = Int(input_row_offsets_host.tensor[bs])
         for s in range(unpadded_seq_len):
             padded_ptr = hidden_state_padded_host.tensor._offset(
-                (bs * max_seq_length_batch + s, 0)
+                IndexList[2](bs * max_seq_length_batch + s, 0)
             )
             ragged_ptr = hidden_state_ragged_host.tensor._offset(
-                (ragged_start_idx + s, 0)
+                IndexList[2](ragged_start_idx + s, 0)
             )
             memcpy(padded_ptr, ragged_ptr, hidden_size)
 
@@ -155,7 +155,9 @@ def execute_matmul_kv_cache_ragged[
     )
 
     # Initialize input row offsets and hidden states.
-    input_row_offsets_host = HostNDBuffer[DType.uint32, 1]((batch_size + 1,))
+    input_row_offsets_host = HostNDBuffer[DType.uint32, 1](
+        DimList(batch_size + 1)
+    )
     input_row_offsets_device, hidden_state_ragged_device, hidden_state_padded_device = _initialize_ragged_inputs[
         dtype, hidden_size
     ](
@@ -179,7 +181,7 @@ def execute_matmul_kv_cache_ragged[
     ref_output_device = ref_output_host.copy_to_device(ctx)
 
     # Initialize our KVCache.
-    cache_lengths_host = HostNDBuffer[DType.uint32, 1]((batch_size,))
+    cache_lengths_host = HostNDBuffer[DType.uint32, 1](DimList(batch_size))
     max_prompt_len = 0
     max_context_len = 0
     for i in range(batch_size):
@@ -405,7 +407,9 @@ def execute_matmul_k_cache_ragged[
     k_cache_host = kv_collection_host.get_key_cache(layer_idx)
 
     # Initialize input row offsets and hidden states.
-    input_row_offsets_host = HostNDBuffer[DType.uint32, 1]((batch_size + 1,))
+    input_row_offsets_host = HostNDBuffer[DType.uint32, 1](
+        DimList(batch_size + 1)
+    )
     input_row_offsets_device, hidden_state_ragged_device, hidden_state_padded_device = _initialize_ragged_inputs[
         dtype, hidden_size
     ](
@@ -637,7 +641,9 @@ def generic_execute_fused_qkv_cache_ragged[
     )
 
     # Initialize input row offsets and hidden states.
-    input_row_offsets_host = HostNDBuffer[DType.uint32, 1]((batch_size + 1,))
+    input_row_offsets_host = HostNDBuffer[DType.uint32, 1](
+        DimList(batch_size + 1)
+    )
     input_row_offsets_device, hidden_state_ragged_device, hidden_state_padded_device = _initialize_ragged_inputs[
         dtype, hidden_size
     ](
@@ -854,7 +860,7 @@ def execute_cont_batch_fused_qkv_matmul[
 
     # initialize our KVCache
     var batch_size = len(cache_sizes)
-    var cache_lengths_host = HostNDBuffer[DType.uint32, 1]((batch_size,))
+    var cache_lengths_host = HostNDBuffer[DType.uint32, 1](DimList(batch_size))
     var max_seq_length_batch = -1
     var max_context_length = 0
 

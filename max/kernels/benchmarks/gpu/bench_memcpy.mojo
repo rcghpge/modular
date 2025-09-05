@@ -13,7 +13,7 @@
 
 from math import floor, iota
 from os import abort
-from sys import sizeof
+from sys import size_of
 
 from algorithm.functional import parallelize_over_rows
 from benchmark import Bench, Bencher, BenchId, BenchMetric, ThroughputMeasure
@@ -101,7 +101,7 @@ struct Config(Copyable, Movable, Writable):
             )
             return Self.UNDEFINED
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         if self.direction == Self.DToD:
             writer.write("device_to_device")
             return
@@ -127,7 +127,7 @@ fn bench_memcpy(
     context: DeviceContext,
 ) raises:
     alias dtype = DType.float32
-    length_in_elements = length_in_bytes // sizeof[dtype]()
+    length_in_elements = length_in_bytes // size_of[dtype]()
     var mem_host: HostBuffer[dtype] = context.enqueue_create_host_buffer[dtype](
         length_in_elements
     ) if config.pinned_memory else DeviceContext(
@@ -197,7 +197,7 @@ fn bench_p2p(
     ctx2: DeviceContext,
 ) raises:
     alias dtype = DType.float32
-    length_in_elements = length_in_bytes // sizeof[dtype]()
+    length_in_elements = length_in_bytes // size_of[dtype]()
 
     # Create host buffers for verification
     var host_ptr = UnsafePointer[Scalar[dtype]].alloc(length_in_elements)

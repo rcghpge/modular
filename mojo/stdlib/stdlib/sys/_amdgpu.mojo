@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import InlineArray
-from os.atomic import Atomic, Consistency, _compare_exchange_weak_integral_impl
+from os import Atomic
 from sys.intrinsics import (
     ballot,
     implicitarg_ptr,
@@ -222,7 +222,7 @@ fn message_append_bytes(
         var prev_len = len(data_)
         # We can only send 7 packed UInt64s per message
         # Therefore, if the length is greater than 56,
-        # we need to take a 56 byte == (7 * sizeof[UInt64]())
+        # we need to take a 56 byte == (7 * size_of[UInt64]())
         # chunk to process.
         if len(data_) > 56:
             prev_len = 56
@@ -661,11 +661,7 @@ struct Buffer(Copyable, Movable):
                 UnsafePointer(to=p._handle[].next),
                 0,
             )
-            if _compare_exchange_weak_integral_impl[
-                scope="",
-                failure_ordering = Consistency.SEQUENTIAL,
-                success_ordering = Consistency.SEQUENTIAL,
-            ](top, f, n):
+            if Atomic.compare_exchange(top, f, n):
                 break
 
             sleep(UInt(1))
@@ -698,11 +694,7 @@ struct Buffer(Copyable, Movable):
         var p = self.get_header(ptr)
         while True:
             p._handle[].next = f
-            if _compare_exchange_weak_integral_impl[
-                scope="",
-                failure_ordering = Consistency.SEQUENTIAL,
-                success_ordering = Consistency.SEQUENTIAL,
-            ](top, f, ptr):
+            if Atomic.compare_exchange(top, f, ptr):
                 break
             sleep(UInt(1))
 

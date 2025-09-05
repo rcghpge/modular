@@ -709,7 +709,7 @@ struct Dict[
     # ===-------------------------------------------------------------------===#
 
     fn __getitem__(
-        self, key: K
+        ref self, key: K
     ) raises -> ref [self._entries[0].value().value] Self.V:
         """Retrieve a value out of the dictionary.
 
@@ -844,7 +844,7 @@ struct Dict[
 
         var i = 0
         for key_value in self.items():
-            result += repr(key_value.key) + ": " + repr(key_value.value)
+            result.write(repr(key_value.key), ": ", repr(key_value.value))
             if i < len(self) - 1:
                 result += ", "
             i += 1

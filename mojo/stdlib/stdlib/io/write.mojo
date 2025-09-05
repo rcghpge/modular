@@ -17,7 +17,7 @@ from io.io import _printf
 from sys.info import is_gpu
 from memory import memcpy, bitcast
 from os import abort
-from sys import alignof
+from sys import align_of
 from memory import Span, memcpy
 from sys.param_env import env_get_int
 
@@ -26,7 +26,7 @@ from sys.param_env import env_get_int
 
 alias HEAP_BUFFER_BYTES = env_get_int["HEAP_BUFFER_BYTES", 2048]()
 """How much memory to pre-allocate for the heap buffer, will abort if exceeded."""
-alias STACK_BUFFER_BYTES = env_get_int["STACK_BUFFER_BYTES", 4096]()
+alias STACK_BUFFER_BYTES: UInt = UInt(env_get_int["STACK_BUFFER_BYTES", 4096]())
 """The size of the stack buffer for IO operations from CPU."""
 
 
@@ -60,7 +60,7 @@ trait Writer:
                 args[i].write_to(self)
 
         # Also make it Writable to allow `print` to write the inner String
-        fn write_to[W: Writer](self, mut writer: W):
+        fn write_to(self, mut writer: Some[Writer]):
             writer.write(self.s)
 
 
@@ -71,7 +71,7 @@ trait Writer:
 
         # Pass multiple args to the Writer. The Int and StaticString types
         # call `writer.write_bytes` in their own `write_to` implementations.
-        fn write_to[W: Writer](self, mut writer: W):
+        fn write_to(self, mut writer: Some[Writer]):
             writer.write("Point(", self.x, ", ", self.y, ")")
 
         # Enable conversion to a String using `String(point)`
@@ -139,7 +139,7 @@ trait Writable:
         var x: Float64
         var y: Float64
 
-        fn write_to[W: Writer](self, mut writer: W):
+        fn write_to(self, mut writer: Some[Writer]):
             var string = "Point"
             # Write a single `Span[Byte]`:
             writer.write_bytes(string.as_bytes())
@@ -148,12 +148,9 @@ trait Writable:
     ```
     """
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats the string representation of this type to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The type conforming to `Writable`.
@@ -171,11 +168,11 @@ struct _WriteBufferHeap(Writable, Writer):
     var pos: Int
 
     fn __init__(out self):
-        alias alignment: Int = alignof[Byte]() if is_gpu() else 1
+        alias alignment: Int = align_of[Byte]() if is_gpu() else 1
         self.data = __mlir_op.`pop.stack_allocation`[
-            count = HEAP_BUFFER_BYTES.value,
+            count = HEAP_BUFFER_BYTES._mlir_value,
             _type = UnsafePointer[Byte]._mlir_type,
-            alignment = alignment.value,
+            alignment = alignment._mlir_value,
         ]()
         self.pos = 0
 
@@ -207,9 +204,9 @@ struct _WriteBufferHeap(Writable, Writer):
         for i in range(args.__len__()):
             args[i].write_to(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         writer.write_bytes(
-            Span[Byte, __origin_of(self)](ptr=self.data, length=self.pos)
+            Span[Byte, __origin_of(self)](ptr=self.data, length=UInt(self.pos))
         )
 
     fn nul_terminate(mut self):
@@ -252,7 +249,7 @@ struct _WriteBufferStack[
 
     fn flush(mut self):
         self.writer[].write_bytes(
-            Span(ptr=self.data.unsafe_ptr(), length=self.pos)
+            Span(ptr=self.data.unsafe_ptr(), length=UInt(self.pos))
         )
         self.pos = 0
 
@@ -342,7 +339,7 @@ fn _hex_digits_to_hex_chars(ptr: UnsafePointer[Byte], decimal: Scalar):
     assert_equal("d6", S(ptr=ptr, length=2))
     ```
     """
-    alias size = decimal.dtype.sizeof()
+    alias size = decimal.dtype.size_of()
     var bytes = bitcast[DType.uint8, size](byte_swap(decimal))
     var nibbles = (bytes >> 4).interleave(bytes & 0xF)
     ptr.store(_hex_table._dynamic_shuffle(nibbles))

@@ -17,7 +17,7 @@ These APIs are imported automatically, just like builtins.
 
 
 from os import abort
-from sys import sizeof
+from sys import size_of
 from sys.intrinsics import _type_is_eq
 
 from collections._index_normalization import normalize_index
@@ -37,7 +37,7 @@ struct _ListIter[
     hint_trivial_type: Bool,
     origin: Origin[mut],
     forward: Bool = True,
-](Copyable, Iterator, Movable):
+](Copyable, Iterable, Iterator, Movable):
     """Iterator for List.
 
     Parameters:
@@ -51,11 +51,13 @@ struct _ListIter[
 
     alias Element = T  # FIXME(MOCO-2068): shouldn't be needed.
 
+    alias IteratorType[mut: Bool, //, origin: Origin[mut]]: Iterator = Self
+
     var index: Int
     var src: Pointer[List[Self.Element, hint_trivial_type], origin]
 
     @always_inline
-    fn __iter__(self) -> Self:
+    fn __iter__(ref self) -> Self.IteratorType[__origin_of(self)]:
         return self
 
     @always_inline
@@ -81,7 +83,13 @@ struct _ListIter[
 
 
 struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
-    Boolable, Copyable, Defaultable, ExplicitlyCopyable, Movable, Sized
+    Boolable,
+    Copyable,
+    Defaultable,
+    ExplicitlyCopyable,
+    Iterable,
+    Movable,
+    Sized,
 ):
     """A dynamically-allocated and resizable list.
 
@@ -241,6 +249,10 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
     """The number of elements in the list."""
     var capacity: Int
     """The amount of elements that can fit in the list without resizing it."""
+
+    alias IteratorType[
+        mut: Bool, //, origin: Origin[mut]
+    ]: Iterator = _ListIter[T, hint_trivial_type, origin, True]
 
     # ===-------------------------------------------------------------------===#
     # Life cycle methods
@@ -494,13 +506,13 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
         """
         self.extend(other^)
 
-    fn __iter__(ref self) -> _ListIter[T, hint_trivial_type, __origin_of(self)]:
+    fn __iter__(ref self) -> Self.IteratorType[__origin_of(self)]:
         """Iterate over elements of the list, returning immutable references.
 
         Returns:
             An iterator of immutable references to the list elements.
         """
-        return _ListIter(0, Pointer(to=self))
+        return {0, Pointer(to=self)}
 
     fn __reversed__(
         ref self,
@@ -568,12 +580,11 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
 
     @no_inline
     fn write_to[
-        W: Writer, U: Representable & Copyable & Movable, //
-    ](self: List[U, *_], mut writer: W):
+        U: Representable & Copyable & Movable, //
+    ](self: List[U, *_], mut writer: Some[Writer]):
         """Write `my_list.__str__()` to a `Writer`.
 
         Parameters:
-            W: A type conforming to the Writable trait.
             U: The type of the List elements. Must have the trait
                 `Representable`.
 
@@ -619,12 +630,12 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
     # ===-------------------------------------------------------------------===#
 
     fn byte_length(self) -> Int:
-        """Gets the byte length of the List (`len(self) * sizeof[T]()`).
+        """Gets the byte length of the List (`len(self) * size_of[T]()`).
 
         Returns:
-            The byte length of the List (`len(self) * sizeof[T]()`).
+            The byte length of the List (`len(self) * size_of[T]()`).
         """
-        return len(self) * sizeof[T]()
+        return len(self) * size_of[T]()
 
     @no_inline
     fn _realloc(mut self, new_capacity: Int):
@@ -1006,7 +1017,7 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
         while length > 1:
             var half = length >> 1
             length -= half
-            cursor += Int(b[cursor + half - 1] < needle) * half
+            cursor += UInt(Int(b[cursor + half - 1] < needle) * half)
 
         return Optional(cursor) if b[cursor] == needle else None
 
@@ -1063,7 +1074,7 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
         """
 
         var normalized_idx = normalize_index["List", assert_always=False](
-            idx, len(self)
+            idx, UInt(len(self))
         )
         return (self._data + normalized_idx)[]
 

@@ -102,11 +102,8 @@ struct Vendor(Writable):
         return self != other
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes vendor information to a writer.
-
-        Parameters:
-            W: The type of writer to use for output. Must implement the Writer trait.
 
         Args:
             writer: The writer to output vendor information to.
@@ -167,19 +164,8 @@ alias NoGPU = GPUInfo(
     sm_count=0,
     warp_size=0,
     threads_per_sm=0,
-    threads_per_warp=0,
-    warps_per_multiprocessor=0,
-    threads_per_multiprocessor=0,
-    thread_blocks_per_multiprocessor=0,
     shared_memory_per_multiprocessor=0,
-    register_file_size=0,
-    register_allocation_unit_size=0,
-    allocation_granularity="none",
-    max_registers_per_thread=0,
     max_registers_per_block=0,
-    max_blocks_per_multiprocessor=0,
-    shared_memory_allocation_unit_size=0,
-    warp_allocation_granularity=0,
     max_thread_block_size=0,
 )
 
@@ -265,19 +251,8 @@ alias MetalM1 = GPUInfo(
     sm_count=8,  # M1 has 8 GPU cores
     warp_size=32,  # Metal uses 32-thread SIMD groups (like warps)
     threads_per_sm=1024,  # Threads per compute unit
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 / 32 = 32
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=8,  # Threadgroups per compute unit
     shared_memory_per_multiprocessor=32768,  # 32KB shared memory per compute unit
-    register_file_size=65536,  # Register file size
-    register_allocation_unit_size=256,
-    allocation_granularity="simdgroup",  # Metal uses SIMD groups
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=8,
-    shared_memory_allocation_unit_size=16,  # Metal threadgroup memory allocation unit
-    warp_allocation_granularity=1,  # Metal SIMD group allocation
     max_thread_block_size=1024,  # Max threads per threadgroup
 )
 
@@ -291,19 +266,8 @@ alias MetalM2 = GPUInfo(
     sm_count=10,  # M2 has 10 GPU cores
     warp_size=32,  # Metal uses 32-thread SIMD groups (like warps)
     threads_per_sm=1024,  # Threads per compute unit
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 / 32 = 32
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=8,  # Threadgroups per compute unit
     shared_memory_per_multiprocessor=32768,  # 32KB shared memory per compute unit
-    register_file_size=65536,  # Register file size
-    register_allocation_unit_size=256,
-    allocation_granularity="simdgroup",  # Metal uses SIMD groups
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=8,
-    shared_memory_allocation_unit_size=16,  # Metal threadgroup memory allocation unit
-    warp_allocation_granularity=1,  # Metal SIMD group allocation
     max_thread_block_size=1024,  # Max threads per threadgroup
 )
 
@@ -317,19 +281,8 @@ alias MetalM3 = GPUInfo(
     sm_count=10,  # M3 has 10 GPU cores
     warp_size=32,  # Metal uses 32-thread SIMD groups (like warps)
     threads_per_sm=1024,  # Threads per compute unit
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 / 32 = 32
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=8,  # Threadgroups per compute unit
     shared_memory_per_multiprocessor=32768,  # 32KB shared memory per compute unit
-    register_file_size=65536,  # Register file size
-    register_allocation_unit_size=256,
-    allocation_granularity="simdgroup",  # Metal uses SIMD groups
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=8,
-    shared_memory_allocation_unit_size=16,  # Metal threadgroup memory allocation unit
-    warp_allocation_granularity=1,  # Metal SIMD group allocation
     max_thread_block_size=1024,  # Max threads per threadgroup
 )
 
@@ -343,19 +296,8 @@ alias MetalM4 = GPUInfo(
     sm_count=10,  # M4 has 10 GPU cores
     warp_size=32,  # Metal uses 32-thread SIMD groups (like warps)
     threads_per_sm=1024,  # Threads per compute unit
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 / 32 = 32
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=8,  # Threadgroups per compute unit
     shared_memory_per_multiprocessor=32768,  # 32KB shared memory per compute unit
-    register_file_size=65536,  # Register file size
-    register_allocation_unit_size=256,
-    allocation_granularity="simdgroup",  # Metal uses SIMD groups
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=8,
-    shared_memory_allocation_unit_size=16,  # Metal threadgroup memory allocation unit
-    warp_allocation_granularity=1,  # Metal SIMD group allocation
     max_thread_block_size=1024,  # Max threads per threadgroup
 )
 
@@ -386,7 +328,7 @@ fn _get_a100_target() -> _TargetType:
         `arch = "sm_80", `,
         `features = "+ptx81,+sm_80", `,
         `tune_cpu = "sm_80", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `simd_bit_width = 128,`,
         `index_bit_width = 64`,
         `> : !kgen.target`,
@@ -403,19 +345,8 @@ alias A100 = GPUInfo(
     sm_count=108,
     warp_size=32,
     threads_per_sm=2048,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=167936,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=32,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -437,7 +368,7 @@ fn _get_a10_target() -> _TargetType:
         `arch = "sm_86", `,
         `features = "+ptx81,+sm_86", `,
         `tune_cpu = "sm_86", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `simd_bit_width = 128,`,
         `index_bit_width = 64`,
         `> : !kgen.target`,
@@ -454,19 +385,8 @@ alias A10 = GPUInfo(
     sm_count=72,
     warp_size=32,
     threads_per_sm=1536,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=102400,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=16,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -488,7 +408,7 @@ fn _get_orin_nano_target() -> _TargetType:
         `arch = "sm_87", `,
         `features = "+ptx81,+sm_87", `,
         `tune_cpu = "sm_87", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `simd_bit_width = 128,`,
         `index_bit_width = 64`,
         `> : !kgen.target`,
@@ -505,19 +425,8 @@ alias OrinNano = GPUInfo(
     sm_count=8,
     warp_size=32,
     threads_per_sm=1536,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=167936,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=16,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -540,7 +449,7 @@ fn _get_l4_target() -> _TargetType:
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
         `tune_cpu = "sm_89", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `simd_bit_width = 128,`,
         `index_bit_width = 64`,
         `> : !kgen.target`,
@@ -557,19 +466,8 @@ alias L4 = GPUInfo(
     sm_count=58,
     warp_size=32,
     threads_per_sm=1536,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=102400,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=24,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -591,7 +489,7 @@ fn _get_rtx4090m_target() -> _TargetType:
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
         `tune_cpu = "sm_90a", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
         `simd_bit_width = 128`,
         `> : !kgen.target`,
@@ -608,19 +506,8 @@ alias RTX4090m = GPUInfo(
     sm_count=76,
     warp_size=32,
     threads_per_sm=-1,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=1536,
-    thread_blocks_per_multiprocessor=24,
     shared_memory_per_multiprocessor=102400,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=24,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -642,7 +529,7 @@ fn _get_rtx4090_target() -> _TargetType:
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
         `tune_cpu = "sm_90a", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
         `simd_bit_width = 128`,
         `> : !kgen.target`,
@@ -659,19 +546,8 @@ alias RTX4090 = GPUInfo(
     sm_count=128,
     warp_size=32,
     threads_per_sm=-1,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=1536,
-    thread_blocks_per_multiprocessor=24,
     shared_memory_per_multiprocessor=102400,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=24,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -694,7 +570,7 @@ fn _get_h100_target() -> _TargetType:
         `arch = "sm_90a", `,
         `features = "+ptx85,+sm_90a", `,
         `tune_cpu = "sm_90a", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
         `simd_bit_width = 128`,
         `> : !kgen.target`,
@@ -712,19 +588,8 @@ alias H100 = GPUInfo(
     sm_count=132,
     warp_size=32,
     threads_per_sm=2048,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=228 * _KB,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=32,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -747,7 +612,7 @@ fn _get_b100_target() -> _TargetType:
         `arch = "sm_100a", `,
         `features = "+ptx86,+sm_100a", `,
         `tune_cpu = "sm_100a", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
         `simd_bit_width = 128`,
         `> : !kgen.target`,
@@ -766,19 +631,8 @@ alias B100 = GPUInfo(
     sm_count=132,
     warp_size=32,
     threads_per_sm=-1,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=1536,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=256 * _KB,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=32,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -792,19 +646,8 @@ alias B200 = GPUInfo(
     sm_count=148,
     warp_size=32,
     threads_per_sm=-1,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=228 * _KB,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=32,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -826,7 +669,7 @@ fn _get_rtx5090_target() -> _TargetType:
         `arch = "sm_120a", `,
         `features = "+ptx86,+sm_120a", `,
         `tune_cpu = "sm_120a", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
         `simd_bit_width = 128`,
         `> : !kgen.target`,
@@ -844,19 +687,8 @@ alias RTX5090 = GPUInfo(
     sm_count=170,
     warp_size=32,
     threads_per_sm=-1,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=1536,
-    thread_blocks_per_multiprocessor=32,
     shared_memory_per_multiprocessor=58 * _KB,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=32,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -879,7 +711,7 @@ fn _get_rtx3090_target() -> _TargetType:
         `arch = "sm_86", `,
         `features = "+ptx63,+sm_86", `,
         `tune_cpu = "sm_86", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
         `simd_bit_width = 128`,
         `> : !kgen.target`,
@@ -897,19 +729,85 @@ alias RTX3090 = GPUInfo(
     sm_count=82,
     warp_size=32,
     threads_per_sm=-1,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=1536,
-    thread_blocks_per_multiprocessor=16,
     shared_memory_per_multiprocessor=102400,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=16,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
+    max_thread_block_size=1024,
+)
+
+
+# ===-----------------------------------------------------------------------===#
+# GTX1080Ti
+# ===-----------------------------------------------------------------------===#
+
+
+fn _get_gtx1080ti_target() -> _TargetType:
+    """
+    Creates an MLIR target configuration for NVIDIA GTX 1080 Ti GPU.
+    Returns:
+        MLIR target configuration for GTX 1080 Ti.
+    """
+    return __mlir_attr[
+        `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
+        `arch = "sm_61", `,
+        `features = "+ptx50,+sm_61", `,
+        `simd_bit_width = 128`,
+        `> : !kgen.target`,
+    ]
+
+
+alias GTX1080Ti = GPUInfo(
+    name="NVIDIA GeForce GTX 1080 Ti",
+    vendor=Vendor.NVIDIA_GPU,
+    api="cuda",
+    arch_name="pascal",
+    compute=6.1,
+    version="sm_61",
+    sm_count=28,
+    warp_size=32,
+    threads_per_sm=2048,
+    shared_memory_per_multiprocessor=98304,
+    max_registers_per_block=65536,
+    max_thread_block_size=1024,
+)
+
+
+# ===-----------------------------------------------------------------------===#
+# Tesla P100
+# ===-----------------------------------------------------------------------===#
+
+
+fn _get_teslap100_target() -> _TargetType:
+    """
+    Creates an MLIR target configuration for NVIDIA Tesla P100 GPU.
+
+    Returns:
+        MLIR target configuration for Tesla P100.
+    """
+
+    return __mlir_attr[
+        `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
+        `arch = "sm_60", `,
+        `features = "+ptx50,+sm_60", `,
+        `tune_cpu = "sm_60", `,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
+        `index_bit_width = 64,`,
+        `simd_bit_width = 128`,
+        `> : !kgen.target`,
+    ]
+
+
+alias TeslaP100 = GPUInfo(
+    name="NVIDIA Tesla P100",
+    vendor=Vendor.NVIDIA_GPU,
+    api="cuda",
+    arch_name="pascal",
+    compute=6.0,
+    version="sm_60",
+    sm_count=56,
+    warp_size=32,
+    threads_per_sm=2048,
+    shared_memory_per_multiprocessor=64 * _KB,
+    max_registers_per_block=65536,
     max_thread_block_size=1024,
 )
 
@@ -932,7 +830,7 @@ fn _get_rtx2060_target() -> _TargetType:
         `arch = "sm_75", `,
         `features = "+ptx63,+sm_75", `,
         `tune_cpu = "sm_75", `,
-        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64",`,
+        `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
         `simd_bit_width = 128`,
         `> : !kgen.target`,
@@ -949,19 +847,8 @@ alias RTX2060 = GPUInfo(
     sm_count=30,
     warp_size=32,
     threads_per_sm=2048,
-    threads_per_warp=32,
-    warps_per_multiprocessor=64,
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=16,
     shared_memory_per_multiprocessor=64 * _KB,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=16,
-    shared_memory_allocation_unit_size=32,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1000,19 +887,8 @@ alias MI300X = GPUInfo(
     sm_count=304,
     warp_size=64,
     threads_per_sm=2048,
-    threads_per_warp=64,
-    warps_per_multiprocessor=32,  # 2048 threads per sm / 64 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=65536,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1051,19 +927,8 @@ alias MI355X = GPUInfo(
     sm_count=256,
     warp_size=64,
     threads_per_sm=2048,
-    threads_per_warp=64,
-    warps_per_multiprocessor=32,  # 2048 threads per sm / 64 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=2048,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=160 * _KB,
-    register_file_size=65536,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=65536,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1273,19 +1138,8 @@ alias Radeon9070 = GPUInfo(
     sm_count=64,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1299,19 +1153,8 @@ alias Radeon9060 = GPUInfo(
     sm_count=32,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1325,19 +1168,8 @@ alias Radeon7900 = GPUInfo(
     sm_count=96,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1351,19 +1183,8 @@ alias Radeon7800 = GPUInfo(
     sm_count=60,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1377,19 +1198,8 @@ alias Radeon7600 = GPUInfo(
     sm_count=32,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1403,19 +1213,8 @@ alias Radeon6900 = GPUInfo(
     sm_count=60,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1430,19 +1229,8 @@ alias Radeon780m = GPUInfo(
     sm_count=12,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1456,19 +1244,8 @@ alias Radeon880m = GPUInfo(
     sm_count=12,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1482,19 +1259,8 @@ alias Radeon8060s = GPUInfo(
     sm_count=40,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1508,19 +1274,8 @@ alias Radeon860m = GPUInfo(
     sm_count=8,
     warp_size=32,
     threads_per_sm=1024,
-    threads_per_warp=32,
-    warps_per_multiprocessor=32,  # 1024 threads per sm / 32 threads per warp = 32 warps per sm
-    threads_per_multiprocessor=1024,
-    thread_blocks_per_multiprocessor=2,
     shared_memory_per_multiprocessor=32768,
-    register_file_size=32768,
-    register_allocation_unit_size=256,
-    allocation_granularity="warp",
-    max_registers_per_thread=255,
     max_registers_per_block=32768,
-    max_blocks_per_multiprocessor=2,
-    shared_memory_allocation_unit_size=128,
-    warp_allocation_granularity=4,
     max_thread_block_size=1024,
 )
 
@@ -1568,44 +1323,11 @@ struct GPUInfo(Stringable, Writable):
     var threads_per_sm: Int
     """Maximum number of threads per streaming multiprocessor."""
 
-    var threads_per_warp: Int
-    """Number of threads that execute together in a warp/wavefront."""
-
-    var warps_per_multiprocessor: Int
-    """Maximum number of warps that can be active on a multiprocessor."""
-
-    var threads_per_multiprocessor: Int
-    """Maximum number of threads that can be active on a multiprocessor."""
-
-    var thread_blocks_per_multiprocessor: Int
-    """Maximum number of thread blocks that can be active on a multiprocessor."""
-
     var shared_memory_per_multiprocessor: Int
     """Size of shared memory available per multiprocessor in bytes."""
 
-    var register_file_size: Int
-    """Total size of the register file per multiprocessor in bytes."""
-
-    var register_allocation_unit_size: Int
-    """Minimum allocation size for registers in bytes."""
-
-    var allocation_granularity: StaticString
-    """Description of how resources are allocated on the GPU."""
-
-    var max_registers_per_thread: Int
-    """Maximum number of registers that can be allocated to a single thread."""
-
     var max_registers_per_block: Int
     """Maximum number of registers that can be allocated to a thread block."""
-
-    var max_blocks_per_multiprocessor: Int
-    """Maximum number of blocks that can be scheduled on a multiprocessor."""
-
-    var shared_memory_allocation_unit_size: Int
-    """Minimum allocation size for shared memory in bytes."""
-
-    var warp_allocation_granularity: Int
-    """Granularity at which warps are allocated resources."""
 
     var max_thread_block_size: Int
     """Maximum number of threads allowed in a thread block."""
@@ -1617,6 +1339,10 @@ struct GPUInfo(Stringable, Writable):
         Returns:
             MLIR target configuration for the GPU.
         """
+        if self.name == "NVIDIA Tesla P100":
+            return _get_teslap100_target()
+        if self.name == "NVIDIA GeForce GTX 1080 Ti":
+            return _get_gtx1080ti_target()
         if self.name == "RTX2060":
             return _get_rtx2060_target()
         if self.name == "NVIDIA GeForce RTX 3090":
@@ -1699,214 +1425,6 @@ struct GPUInfo(Stringable, Writable):
             GPU info corresponding to the architecture name.
         """
         return _get_info_from_target[name]()
-
-    fn _warps_per_block(self, threads_per_block: Int) -> Int:
-        """
-        Calculates the number of warps per thread block.
-
-        Args:
-            threads_per_block: Number of threads in a block.
-
-        Returns:
-            Number of warps needed for the specified threads.
-        """
-        return ceildiv(threads_per_block, self.threads_per_warp)
-
-    fn _registers_per_warp(self, registers_per_thread: Int) -> Int:
-        """
-        Calculates the total registers used by a warp.
-
-        Args:
-            registers_per_thread: Number of registers per thread.
-
-        Returns:
-            Total registers used by a warp, aligned to allocation unit.
-        """
-        return _quantized_ceil(
-            registers_per_thread * self.threads_per_warp,
-            self.register_allocation_unit_size,
-        )
-
-    fn _registers_per_block(
-        self, threads_per_block: Int, registers_per_thread: Int
-    ) -> Int:
-        """
-        Calculates the total registers used by a thread block.
-
-        Args:
-            threads_per_block: Number of threads in a block.
-            registers_per_thread: Number of registers per thread.
-
-        Returns:
-            Total registers used by the thread block.
-        """
-        return self._registers_per_warp(
-            registers_per_thread
-        ) * self._warps_per_block(threads_per_block)
-
-    fn _warps_per_multiprocessor_register_limited(
-        self, registers_per_thread: Int
-    ) -> Int:
-        """
-        Calculates max warps per SM based on register constraints.
-
-        Args:
-            registers_per_thread: Number of registers per thread.
-
-        Returns:
-            Maximum number of warps per SM limited by register usage.
-        """
-        return _quantized_floor(
-            self.max_registers_per_block
-            / self._registers_per_warp(registers_per_thread),
-            self.warp_allocation_granularity,
-        )
-
-    fn _blocks_per_multiprocessor_register_limited(
-        self, *, threads_per_block: Int, registers_per_thread: Int
-    ) -> Int:
-        """
-        Calculates max blocks per SM based on register constraints.
-
-        Args:
-            threads_per_block: Number of threads in a block.
-            registers_per_thread: Number of registers per thread.
-
-        Returns:
-            Maximum number of blocks per SM limited by register usage.
-        """
-        return Int(
-            self._warps_per_multiprocessor_register_limited(
-                registers_per_thread
-            )
-            / self._warps_per_block(threads_per_block)
-        ) * Int(self.register_file_size / self.max_registers_per_block)
-
-    fn _block_runtime_shared_memory(self) -> Int:
-        """
-        Calculates shared memory used by the CUDA runtime per block.
-
-        Returns:
-            Amount of shared memory used by the runtime in bytes.
-        """
-        if self.compute > 8:
-            # starting with Compute Capability 8.x, the CUDA runtime consumes
-            # 1KB of shared memory the amount might change depending on the
-            # CUDA runtime version in the future.
-            return 1024
-        return 0
-
-    fn _block_shared_memory(self, *, shared_memory_per_block: Int) -> Int:
-        """
-        Calculates total shared memory needed per block.
-
-        Args:
-            shared_memory_per_block: User-requested shared memory per block.
-
-        Returns:
-            Total shared memory needed per block, aligned to allocation unit.
-        """
-        return ceildiv(
-            shared_memory_per_block + self._block_runtime_shared_memory(),
-            self.shared_memory_allocation_unit_size,
-        )
-
-    fn _thread_blocks_per_multiprocessor_limited_by_warps_or_blocks_per_multiprocessor(
-        self, threads_per_block: Int
-    ) -> Float64:
-        """
-        Calculates max blocks per SM based on warp and block limits.
-
-        Args:
-            threads_per_block: Number of threads in a block.
-
-        Returns:
-            Maximum number of blocks per SM, limited by either warps or blocks.
-        """
-        return min(
-            self.thread_blocks_per_multiprocessor,
-            floor(
-                self.warps_per_multiprocessor
-                / self._warps_per_block(threads_per_block),
-            ),
-        )
-
-    fn _warps_per_multiprocessor_limited_by_registers(
-        self, registers_per_thread: Int
-    ) -> Int:
-        """
-        Calculates maximum warps per multiprocessor limited by register usage.
-
-        Determines how many warps can fit in a multiprocessor based on the
-        register requirements, quantized to allocation granularity.
-
-        Args:
-            registers_per_thread: Number of registers used by each thread.
-
-        Returns:
-            Maximum number of warps per multiprocessor limited by registers.
-        """
-        return _quantized_floor(
-            self.max_registers_per_block
-            / self._registers_per_warp(registers_per_thread),
-            self.warp_allocation_granularity,
-        )
-
-    fn _thread_blocks_per_multiprocessor_limited_by_registers_per_multiprocessor(
-        self, *, threads_per_block: Int, registers_per_thread: Int
-    ) -> Float64:
-        """
-        Calculates maximum blocks per SM limited by register availability.
-
-        Determines how many thread blocks can fit in a streaming multiprocessor
-        based on register usage constraints.
-
-        Args:
-            threads_per_block: Number of threads in each block.
-            registers_per_thread: Number of registers used by each thread.
-
-        Returns:
-            Maximum number of blocks per SM limited by register constraints.
-        """
-        if registers_per_thread > self.max_registers_per_thread:
-            return 0
-        if registers_per_thread > 0:
-            return floor(
-                self._warps_per_multiprocessor_limited_by_registers(
-                    registers_per_thread
-                )
-                / self._warps_per_block(threads_per_block)
-            ) * floor(self.register_file_size / self.max_registers_per_block)
-        return self.thread_blocks_per_multiprocessor
-
-    fn occupancy(
-        self, *, threads_per_block: Int, registers_per_thread: Int
-    ) -> Float64:
-        """
-        Calculates theoretical occupancy for given thread and register config.
-
-        Occupancy represents the ratio of active warps to the maximum possible
-        warps on a streaming multiprocessor.
-
-        Args:
-            threads_per_block: Number of threads in each block.
-            registers_per_thread: Number of registers used by each thread.
-
-        Returns:
-            Occupancy as a ratio between 0.0 and 1.0.
-
-        Note:
-            TODO (KERN-795): Add occupancy calculation based on shared memory
-            usage and thread block size and take use the minimum value.
-        """
-        return (
-            self._blocks_per_multiprocessor_register_limited(
-                threads_per_block=threads_per_block,
-                registers_per_thread=registers_per_thread,
-            )
-            * self._warps_per_block(threads_per_block)
-            / self.warps_per_multiprocessor
-        )
 
     fn __lt__(self, other: Self) -> Bool:
         """
@@ -2017,15 +1535,12 @@ struct GPUInfo(Stringable, Writable):
         return self != other
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Writes GPU information to a writer.
 
         Outputs all GPU specifications and capabilities to the provided writer
         in a human-readable format.
-
-        Parameters:
-            W: The type of writer to use for output. Must implement the Writer trait.
 
         Args:
             writer: A Writer instance to output the GPU information.
@@ -2039,58 +1554,13 @@ struct GPUInfo(Stringable, Writable):
         writer.write("sm_count: ", self.sm_count, "\n")
         writer.write("warp_size: ", self.warp_size, "\n")
         writer.write("threads_per_sm: ", self.threads_per_sm, "\n")
-        writer.write("threads_per_warp: ", self.threads_per_warp, "\n")
-        writer.write(
-            "warps_per_multiprocessor: ", self.warps_per_multiprocessor, "\n"
-        )
-        writer.write(
-            "threads_per_multiprocessor: ",
-            self.threads_per_multiprocessor,
-            "\n",
-        )
-        writer.write(
-            "thread_blocks_per_multiprocessor: ",
-            self.thread_blocks_per_multiprocessor,
-            "\n",
-        )
         writer.write(
             "shared_memory_per_multiprocessor: ",
             self.shared_memory_per_multiprocessor,
             "\n",
         )
         writer.write(
-            "register_file_size: ",
-            self.register_file_size,
-            "\n",
-        )
-        writer.write(
-            "register_allocation_unit_size: ",
-            self.register_allocation_unit_size,
-            "\n",
-        )
-        writer.write(
-            "allocation_granularity: ", self.allocation_granularity, "\n"
-        )
-        writer.write(
-            "max_registers_per_thread: ", self.max_registers_per_thread, "\n"
-        )
-        writer.write(
             "max_registers_per_block: ", self.max_registers_per_block, "\n"
-        )
-        writer.write(
-            "max_blocks_per_multiprocessor: ",
-            self.max_blocks_per_multiprocessor,
-            "\n",
-        )
-        writer.write(
-            "shared_memory_allocation_unit_size: ",
-            self.shared_memory_allocation_unit_size,
-            "\n",
-        )
-        writer.write(
-            "warp_allocation_granularity: ",
-            self.warp_allocation_granularity,
-            "\n",
         )
         writer.write(
             "max_thread_block_size: ", self.max_thread_block_size, "\n"
@@ -2116,111 +1586,6 @@ struct GPUInfo(Stringable, Writable):
 
 
 @always_inline
-fn _get_info_from_compute_capability[compute_capability: Int]() -> GPUInfo:
-    """
-    Gets `GPUInfo` for a specific compute capability (compile-time version).
-
-    Maps compute capability numbers to corresponding `GPUInfo` instances at
-    compile time.
-
-    Parameters:
-        compute_capability: The compute capability as an integer.
-
-    Returns:
-        `GPUInfo` instance for the specified compute capability.
-    """
-    constrained[
-        compute_capability
-        in (0, 1, 2, 3, 4, 75, 80, 86, 87, 89, 90, 94, 95, 100, 110, 120),
-        "invalid compute capability",
-    ]()
-
-    @parameter
-    if compute_capability == 0:
-        return NoGPU
-    if compute_capability == 75:
-        return RTX2060
-    elif compute_capability == 80:
-        return A100
-    elif compute_capability == 86:
-        return A10
-    elif compute_capability == 87:
-        return OrinNano
-    elif compute_capability == 89:
-        return L4
-    elif compute_capability == 90:
-        return H100
-    elif compute_capability == 100:
-        return B100
-    elif compute_capability == 110:
-        return Radeon780m
-    elif compute_capability == 120:
-        return RTX5090
-    elif compute_capability == 94:
-        return MI300X
-    elif compute_capability == 95:
-        return MI355X
-    elif compute_capability == 1:
-        return MetalM1
-    elif compute_capability == 2:
-        return MetalM2
-    elif compute_capability == 3:
-        return MetalM3
-    elif compute_capability == 4:
-        return MetalM4
-    return abort[GPUInfo]("invalid compute capability")
-
-
-@always_inline
-fn _get_info_from_compute_capability(compute_capability: Int) raises -> GPUInfo:
-    """
-    Gets `GPUInfo` for a specific compute capability (runtime version).
-
-    Maps compute capability numbers to corresponding `GPUInfo` instances at
-    runtime.
-
-    Args:
-        compute_capability: The compute capability as an integer.
-
-    Returns:
-        `GPUInfo` instance for the specified compute capability.
-    """
-    if compute_capability == 0:
-        return _get_info_from_compute_capability[0]()
-    if compute_capability == 75:
-        return _get_info_from_compute_capability[75]()
-    if compute_capability == 80:
-        return _get_info_from_compute_capability[80]()
-    if compute_capability == 86:
-        return _get_info_from_compute_capability[86]()
-    if compute_capability == 87:
-        return _get_info_from_compute_capability[87]()
-    if compute_capability == 89:
-        return _get_info_from_compute_capability[89]()
-    if compute_capability == 90:
-        return _get_info_from_compute_capability[90]()
-    if compute_capability == 94:
-        return _get_info_from_compute_capability[94]()
-    if compute_capability == 95:
-        return _get_info_from_compute_capability[95]()
-    if compute_capability == 100:
-        return _get_info_from_compute_capability[100]()
-    if compute_capability == 110:
-        return _get_info_from_compute_capability[110]()
-    if compute_capability == 120:
-        return _get_info_from_compute_capability[120]()
-    if compute_capability == 1:
-        return _get_info_from_compute_capability[1]()
-    if compute_capability == 2:
-        return _get_info_from_compute_capability[2]()
-    if compute_capability == 3:
-        return _get_info_from_compute_capability[3]()
-    if compute_capability == 4:
-        return _get_info_from_compute_capability[4]()
-    raise "invalid compute capability"
-
-
-@always_inline
 fn _get_info_from_target[target_arch0: StaticString]() -> GPUInfo:
     """
     Gets `GPUInfo` for a specific target architecture.
@@ -2242,6 +1607,8 @@ fn _get_info_from_target[target_arch0: StaticString]() -> GPUInfo:
         in (
             # NVIDIA
             StaticString("cuda"),
+            StaticString("60"),
+            StaticString("61"),
             StaticString("75"),
             StaticString("80"),
             StaticString("86"),
@@ -2280,7 +1647,9 @@ fn _get_info_from_target[target_arch0: StaticString]() -> GPUInfo:
     ]()
 
     @parameter
-    if target_arch == "75":
+    if target_arch == "61":
+        return GTX1080Ti
+    elif target_arch == "75":
         return RTX2060
     elif target_arch == "80":
         return A100
@@ -2339,34 +1708,6 @@ fn _get_info_from_target[target_arch0: StaticString]() -> GPUInfo:
 # ===-----------------------------------------------------------------------===#
 # Utilities
 # ===-----------------------------------------------------------------------===#
-
-
-fn _quantized_ceil(a: Float64, b: Int) -> Int:
-    """
-    Rounds up a value to the nearest multiple of another value.
-
-    Args:
-        a: Value to round up.
-        b: Quantization factor.
-
-    Returns:
-        Rounded up value that is a multiple of b.
-    """
-    return Int(ceildiv(a, b) * b)
-
-
-fn _quantized_floor(a: Float64, b: Int) -> Int:
-    """
-    Rounds down a value to the nearest multiple of another value.
-
-    Args:
-        a: Value to round down.
-        b: Quantization factor.
-
-    Returns:
-        Rounded down value that is a multiple of b.
-    """
-    return Int(floor(a / b) * b)
 
 
 fn is_gpu[target: StringSlice]() -> Bool:

@@ -40,12 +40,12 @@ struct _POpenHandle:
         ]()
 
         if mode != "r" and mode != "w":
-            raise "the mode specified `" + mode + "` is not valid"
+            raise Error("the mode specified `", mode, "` is not valid")
 
         self._handle = popen(cmd.unsafe_cstr_ptr(), mode.unsafe_cstr_ptr())
 
         if not self._handle:
-            raise "unable to execute the command `" + cmd + "`"
+            raise Error("unable to execute the command `", cmd, "`")
 
     fn __del__(deinit self):
         """Closes the handle opened via popen."""
@@ -68,20 +68,15 @@ struct _POpenHandle:
 
         while True:
             var read = external_call["getline", Int](
-                Pointer(to=line),
-                Pointer(to=len),
-                self._handle,
+                Pointer(to=line), Pointer(to=len), self._handle
             )
             if read == -1:
                 break
 
-            var span = Span[Byte, MutableAnyOrigin](
-                ptr=line.bitcast[Byte](),
-                length=read,
-            )
-
             # Note: This will raise if the subprocess yields non-UTF-8 bytes.
-            res += StringSlice.from_utf8(span)
+            res += StringSlice(
+                from_utf8=Span(ptr=line.bitcast[Byte](), length=UInt(read))
+            )
 
         if line:
             libc.free(line.bitcast[NoneType]())

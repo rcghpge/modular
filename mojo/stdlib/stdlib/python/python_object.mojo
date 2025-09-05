@@ -268,10 +268,10 @@ struct PythonObject(
             var val = c_long(Int(value))
             self = Self(from_owned=cpy.PyBool_FromLong(val))
         elif dtype.is_unsigned():
-            var val = c_size_t(value.cast[DType.index]().value)
+            var val = c_size_t(mlir_value=value.cast[DType.index]()._mlir_value)
             self = Self(from_owned=cpy.PyLong_FromSize_t(val))
         elif dtype.is_integral():
-            var val = c_ssize_t(value.cast[DType.index]().value)
+            var val = c_ssize_t(value.cast[DType.index]()._mlir_value)
             self = Self(from_owned=cpy.PyLong_FromSsize_t(val))
         else:
             var val = c_double(value.cast[DType.float64]())
@@ -604,7 +604,7 @@ struct PythonObject(
     ) raises:
         var callable_obj: PythonObject
         try:
-            callable_obj = self.__getattr__("__i" + method_name[2:])
+            callable_obj = self.__getattr__(String("__i", method_name[2:]))
         except:
             self = self.__getattr__(method_name^)(rhs)
             return
@@ -1254,12 +1254,9 @@ struct PythonObject(
         """
         return Python.str(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats this Python object to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.

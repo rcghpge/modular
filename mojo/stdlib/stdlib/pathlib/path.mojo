@@ -162,12 +162,9 @@ struct Path(
         """
         return self.path.byte_length() > 0
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats this path to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -213,17 +210,6 @@ struct Path(
           True if the String and Path are equal, and False otherwise.
         """
         return self.path.as_string_slice() == other
-
-    fn __ne__(self, other: Self) -> Bool:
-        """Returns True if the two paths are not equal.
-
-        Args:
-          other: The other path to compare against.
-
-        Returns:
-          True if the paths are not equal and False otherwise.
-        """
-        return not self == other
 
     fn __hash__[H: Hasher](self, mut hasher: H):
         """Updates hasher with the path string value.
@@ -393,3 +379,25 @@ struct Path(
             res.append(ls[i])
 
         return res
+
+    fn name(self) -> String:
+        """Returns the name of the path.
+
+        ```mojo
+        from pathlib import Path
+
+        Path("a/path/foo.txt").name()  # returns "foo.txt"
+        ```
+
+        Returns:
+            The name of the path.
+        """
+        return os.path.basename(self)
+
+    fn parts(self) -> List[StringSlice[__origin_of(self.path)]]:
+        """Returns the parts of the path separated by `DIR_SEPARATOR`.
+
+        Returns:
+            The parts of the path separated by `DIR_SEPARATOR`.
+        """
+        return self.path.split(DIR_SEPARATOR)

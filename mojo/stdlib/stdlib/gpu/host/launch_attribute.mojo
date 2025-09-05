@@ -29,7 +29,7 @@ These structures enable optimizing GPU kernel performance by controlling executi
 at a granular level, similar to CUDA's native launch attribute system.
 """
 
-from sys import sizeof
+from sys import size_of
 
 
 from utils import StaticTuple
@@ -219,11 +219,8 @@ struct LaunchAttributeID(Writable):
         return String.write(self)
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes the string representation of the attribute to a writer.
-
-        Parameters:
-            W: The type of writer to use for output. Must implement the Writer interface.
 
         Args:
             writer: The writer to write to.
@@ -253,7 +250,6 @@ struct LaunchAttributeValue(Defaultable):
         """Initializes a new `LaunchAttributeValue` with zeroed storage."""
         self._storage = StaticTuple[UInt8, 64](0)
 
-    @implicit
     fn __init__(out self, policy: AccessPolicyWindow):
         """Initializes a `LaunchAttributeValue` from an `AccessPolicyWindow`.
 
@@ -264,7 +260,6 @@ struct LaunchAttributeValue(Defaultable):
         var ptr = UnsafePointer(to=tmp)
         self._storage = ptr.bitcast[Self._storage_type]()[]
 
-    @implicit
     fn __init__(out self, dim: Dim):
         """Initializes a LaunchAttributeValue from a Dim (dimension) object.
 
@@ -275,7 +270,6 @@ struct LaunchAttributeValue(Defaultable):
         var ptr = UnsafePointer(to=tmp)
         self._storage = ptr.bitcast[Self._storage_type]()[]
 
-    @implicit
     fn __init__(out self, value: Bool):
         """Initializes a LaunchAttributeValue from a boolean object..
 
@@ -367,11 +361,8 @@ struct AccessProperty(Writable):
         return String.write(self)
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes a string representation of the `AccessProperty` to a writer.
-
-        Parameters:
-            W: The type of writer to use for output. Must implement the Writer trait.
 
         Args:
             writer: The writer instance to write the formatted string to.
@@ -396,7 +387,7 @@ struct LaunchAttribute(Copyable, Defaultable, Movable):
     var id: LaunchAttributeID
     """The identifier specifying the type of this launch attribute."""
 
-    var __pad: StaticTuple[UInt8, 8 - sizeof[LaunchAttributeID]()]
+    var __pad: StaticTuple[UInt8, 8 - size_of[LaunchAttributeID]()]
     """Padding to ensure proper alignment of the structure."""
 
     var value: LaunchAttributeValue
@@ -419,7 +410,6 @@ struct LaunchAttribute(Copyable, Defaultable, Movable):
         self.__pad = {}
         self.value = value
 
-    @implicit
     fn __init__(out self, policy: AccessPolicyWindow):
         """Initializes a `LaunchAttribute` from an `AccessPolicyWindow`.
 
@@ -522,7 +512,7 @@ struct AccessPolicyWindow(Defaultable, Writable):
             .address_space_cast[AddressSpace.GENERIC]()
             .address
         )
-        self.num_bytes = count * sizeof[T]()
+        self.num_bytes = count * size_of[T]()
         self.hit_ratio = hit_ratio
         self.hit_prop = hit_prop
         self.miss_prop = miss_prop
@@ -537,14 +527,11 @@ struct AccessPolicyWindow(Defaultable, Writable):
         return String.write(self)
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes a string representation of the `AccessPolicyWindow` to a writer.
 
         This method formats all the fields of the AccessPolicyWindow into a human-readable
         string representation and writes it to the provided writer.
-
-        Parameters:
-            W: The type of writer to use for output. Must implement the Writer trait.
 
         Args:
             writer: The writer instance to write the formatted string to.

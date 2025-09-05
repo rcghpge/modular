@@ -65,11 +65,12 @@ from collections.string.format import _CurlyEntryFormattable, _FormatCurlyEntry
 from hashlib.hasher import Hasher
 from math import align_down
 from os import PathLike, abort
-from sys import is_compile_time, simdwidthof
+from sys import is_compile_time, simd_width_of
 from sys.ffi import c_char
 from sys.intrinsics import likely, unlikely
 
 from bit import count_trailing_zeros
+from bit._mask import splat, is_negative
 from memory import Span, memcmp, memcpy, pack_bits
 from memory.memory import _memcmp_impl_unconstrained
 from python import Python, ConvertibleToPython, PythonObject
@@ -257,7 +258,7 @@ struct CodepointSliceIter[
                 byte_len += 1
                 back_ptr -= 1
 
-            return StringSlice[origin](ptr=back_ptr, length=byte_len)
+            return StringSlice[origin](ptr=back_ptr, length=UInt(byte_len))
         else:
             return None
 
@@ -521,11 +522,13 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
     fn __init__(out self: StaticString, _kgen: __mlir_type.`!kgen.string`):
         # FIXME(MSTDL-160): !kgen.string's are not guaranteed to be UTF-8
         # encoded, they can be arbitrary binary data.
-        var length: Int = __mlir_op.`pop.string.size`(_kgen)
+        var length: Int = Int(mlir_value=__mlir_op.`pop.string.size`(_kgen))
         var ptr = UnsafePointer(__mlir_op.`pop.string.address`(_kgen)).bitcast[
             Byte
         ]()
-        self._slice = Span[Byte, StaticConstantOrigin](ptr=ptr, length=length)
+        self._slice = Span[Byte, StaticConstantOrigin](
+            ptr=ptr, length=UInt(length)
+        )
 
     @always_inline
     @implicit
@@ -566,7 +569,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
             ptr=unsafe_from_utf8.unsafe_ptr()
             .address_space_cast[Span[Byte, origin].address_space]()
             .static_alignment_cast[Span[Byte, origin].alignment](),
-            length=unsafe_from_utf8.__len__(),
+            length=UInt(unsafe_from_utf8.__len__()),
         )
 
     fn __init__(
@@ -593,6 +596,22 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
             length=_unsafe_strlen(unsafe_from_utf8_ptr),
         )
         self = Self(unsafe_from_utf8=byte_slice)
+
+    fn __init__(out self, *, from_utf8: Span[Byte, origin, **_]) raises:
+        """Construct a new `StringSlice` from a buffer containing UTF-8 encoded
+        data.
+
+        Args:
+            from_utf8: A span of bytes containing UTF-8 encoded data.
+
+        Raises:
+            An exception is raised if the provided buffer byte values do not
+            form valid UTF-8 encoded codepoints.
+        """
+        if not _is_valid_utf8(from_utf8.get_immutable()):
+            raise Error("StringSlice: buffer is not valid UTF-8")
+
+        self = Self(unsafe_from_utf8=from_utf8)
 
     fn __init__(
         out self,
@@ -664,33 +683,6 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         """
         self = value.as_string_slice_mut()
 
-    # ===-------------------------------------------------------------------===#
-    # Factory methods
-    # ===-------------------------------------------------------------------===#
-
-    # TODO: Change to `__init__(out self, *, from_utf8: Span[..])` once ambiguity
-    #   with existing `unsafe_from_utf8` overload is fixed. Would require
-    #   signature comparison to take into account required named arguments.
-    @staticmethod
-    fn from_utf8(from_utf8: Span[Byte, origin]) raises -> StringSlice[origin]:
-        """Construct a new `StringSlice` from a buffer containing UTF-8 encoded
-        data.
-
-        Args:
-            from_utf8: A span of bytes containing UTF-8 encoded data.
-
-        Returns:
-            A new validated `StringSlice` pointing to the provided buffer.
-
-        Raises:
-            An exception is raised if the provided buffer byte values do not
-            form valid UTF-8 encoded codepoints.
-        """
-        if not _is_valid_utf8(from_utf8):
-            raise Error("StringSlice: buffer is not valid UTF-8")
-
-        return StringSlice[origin](unsafe_from_utf8=from_utf8)
-
     # ===------------------------------------------------------------------===#
     # Trait implementations
     # ===------------------------------------------------------------------===#
@@ -707,7 +699,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
             the provided string slice.
         """
         var len = self.byte_length()
-        var result = String(unsafe_uninit_length=len)
+        var result = String(unsafe_uninit_length=UInt(len))
         memcpy(result.unsafe_ptr_mut(), self.unsafe_ptr(), len)
         return result^
 
@@ -743,9 +735,9 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
                     result += s
 
         if use_dquote:
-            return '"' + result + '"'
+            return String('"', result, '"')
         else:
-            return "'" + result + "'"
+            return String("'", result, "'")
 
     @always_inline
     fn __len__(self) -> Int:
@@ -789,11 +781,8 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         """
         return self.byte_length()
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Formats this string slice to the provided `Writer`.
-
-        Parameters:
-            W: A type conforming to the `Writable` trait.
 
         Args:
             writer: The object to write to.
@@ -1104,7 +1093,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         """
         return __type_of(result)(
             ptr=self.unsafe_ptr().origin_cast[result.mut, result.origin](),
-            length=len(self),
+            length=UInt(len(self)),
         )
 
     # ===------------------------------------------------------------------===#
@@ -1460,8 +1449,8 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         # overall length in bytes.
         # For a visual explanation of how this UTF-8 codepoint counting works:
         #   https://connorgray.com/ephemera/project-log#2025-01-13
-        var continuation_count = _count_utf8_continuation_bytes(self)
-        return self.byte_length() - continuation_count
+        var continuation_count = _count_utf8_continuation_bytes(self.as_bytes())
+        return UInt(self.byte_length() - continuation_count)
 
     fn is_codepoint_boundary(self, index: UInt) -> Bool:
         """Returns True if `index` is the position of the first byte in a UTF-8
@@ -1550,8 +1539,8 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         """
         # TODO: Example: Print the byte indices that are codepoints boundaries:
 
-        if index >= len(self):
-            return index == len(self)
+        if index >= UInt(len(self)):
+            return index == UInt(len(self))
 
         var byte = self.as_bytes()[index]
         # If this is not a continuation byte, then it must be a start byte.
@@ -1578,7 +1567,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
             return self.find(prefix, start) == start
         # FIXME: use normalize_index
         return StringSlice[origin](
-            ptr=self.unsafe_ptr() + start, length=end - start
+            ptr=self.unsafe_ptr() + start, length=UInt(end - start)
         ).startswith(prefix)
 
     fn endswith(
@@ -1604,7 +1593,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
             return self.rfind(suffix, start) + len(suffix) == len(self)
         # FIXME: use normalize_index
         return StringSlice[origin](
-            ptr=self.unsafe_ptr() + start, length=end - start
+            ptr=self.unsafe_ptr() + start, length=UInt(end - start)
         ).endswith(suffix)
 
     fn removeprefix(self, prefix: StringSlice, /) -> Self:
@@ -1991,27 +1980,24 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         @parameter
         if single_character:
             return length != 0 and _is_newline_char_utf8[include_r_n=True](
-                ptr, 0, ptr[0], length
+                ptr, 0, ptr[0], UInt(length)
             )
         else:
             var offset = 0
             for s in self.codepoint_slices():
                 var b_len = s.byte_length()
-                if not _is_newline_char_utf8(ptr, offset, ptr[offset], b_len):
+                if not _is_newline_char_utf8(
+                    ptr, UInt(offset), ptr[offset], UInt(b_len)
+                ):
                     return False
                 offset += b_len
             return length != 0
 
-    fn splitlines[
-        O: ImmutableOrigin, //
-    ](self: StringSlice[O], keepends: Bool = False) -> List[StringSlice[O]]:
+    fn splitlines(self, keepends: Bool = False) -> List[Self.Immutable]:
         """Split the string at line boundaries. This corresponds to Python's
         [universal newlines:](
         https://docs.python.org/3/library/stdtypes.html#str.splitlines)
         `"\\r\\n"` and `"\\t\\n\\v\\f\\r\\x1c\\x1d\\x1e\\x85\\u2028\\u2029"`.
-
-        Parameters:
-            O: The immutable origin.
 
         Args:
             keepends: If True, line breaks are kept in the resulting strings.
@@ -2024,39 +2010,66 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         alias `\r` = UInt8(ord("\r"))
         alias `\n` = UInt8(ord("\n"))
 
-        var output = List[StringSlice[O]](capacity=128)  # guessing
-        var ptr = self.unsafe_ptr()
+        var output = List[Self.Immutable](capacity=128)  # guessing
+        var ptr = self.get_immutable().unsafe_ptr()
         var length = self.byte_length()
-        var offset = 0
+        var line_start = UInt(0)
+        var prev_b0 = Byte(0)
 
-        while offset < length:
-            var eol_start = offset
-            var eol_length = 0
+        @always_inline
+        @parameter
+        fn _splitlines[keep: Bool]():
+            while line_start < UInt(length):
+                var line_end = line_start
+                var is_new_line = False
+                var b0 = Byte(0)
+                var char_len = UInt(0)
 
-            while eol_start < length:
-                var b0 = ptr[eol_start]
-                var char_len = _utf8_first_byte_sequence_length(b0)
-                debug_assert(
-                    eol_start + char_len <= length,
-                    "corrupted sequence causing unsafe memory access",
-                )
-                var isnewline = unlikely(
-                    _is_newline_char_utf8(ptr, eol_start, b0, char_len)
-                )
-                var char_end = Int(isnewline) * (eol_start + char_len)
-                var next_idx = char_end * Int(char_end < length)
-                var is_r_n = (
-                    b0 == `\r` and next_idx != 0 and ptr[next_idx] == `\n`
-                )
-                eol_length = Int(isnewline) * char_len + Int(is_r_n)
-                if isnewline:
-                    break
-                eol_start += char_len
+                while not is_new_line and line_end < UInt(length):
+                    b0 = ptr[line_end]
+                    char_len = _utf8_first_byte_sequence_length(b0)
+                    debug_assert(
+                        line_end + char_len <= UInt(length),
+                        "corrupted sequence causing unsafe memory access",
+                    )
+                    # percentage-wise a newline is uncommon compared to a normal byte
+                    is_new_line = unlikely(
+                        _is_newline_char_utf8(ptr, line_end, b0, char_len)
+                    )
+                    line_end += char_len
 
-            var str_len = eol_start - offset + Int(keepends) * eol_length
-            var s = StringSlice[O](ptr=ptr + offset, length=str_len)
-            output.append(s)
-            offset = eol_start + eol_length
+                var str_len = line_end - line_start
+
+                # NOTE: when keep=True the algorithm needs to check the next
+                # character to see whether it is \r\n due to having to store the
+                # full line + the line ending.
+                # When keep=False it is much faster because the previous
+                # character is stored in a variable instead of having to deref a
+                # pointer
+                @parameter
+                if keep:
+                    var is_r = unlikely(b0 == `\r`)
+                    var may_be_r_n = is_r and likely(line_end < UInt(length))
+                    var is_r_n = UInt(
+                        unlikely(may_be_r_n and ptr[line_end] == `\n`)
+                    )
+                    line_end += is_r_n
+                    str_len += is_r_n
+                else:
+                    str_len -= UInt(splat(likely(is_new_line))) & char_len
+                    var is_r_n = unlikely(prev_b0 == `\r` and b0 == `\n`)
+                    prev_b0 = b0
+                    if is_r_n:  # the line was already appended
+                        line_start = line_end
+                        continue
+                var s = Self.Immutable(ptr=ptr + line_start, length=str_len)
+                output.append(s)
+                line_start = line_end
+
+        if keepends:
+            _splitlines[keep=True]()
+        else:
+            _splitlines[keep=False]()
 
         return output^
 
@@ -2234,7 +2247,9 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
         if len(elems) == 0:
             return String()
 
-        var sep = StaticString(ptr=self.unsafe_ptr(), length=self.byte_length())
+        var sep = StaticString(
+            ptr=self.unsafe_ptr(), length=UInt(self.byte_length())
+        )
         var total_bytes = _TotalWritableBytes(elems, sep=sep).size
         var result = String(capacity=total_bytes)
 
@@ -2347,7 +2362,7 @@ fn _to_string_list[
         var elt_ptr = Pointer(to=items[i])
         var og_len = len_fn(elt_ptr[])
         var og_ptr = unsafe_ptr_fn(elt_ptr[])
-        out_list.append(String(StringSlice(ptr=og_ptr, length=og_len)))
+        out_list.append(String(StringSlice(ptr=og_ptr, length=UInt(og_len))))
     return out_list^
 
 
@@ -2429,7 +2444,7 @@ fn _memchr[
 ](
     source: Span[mut=False, Scalar[dtype], **_], char: Scalar[dtype]
 ) -> source.UnsafePointerType:
-    if is_compile_time() or len(source) < simdwidthof[Scalar[dtype]]():
+    if is_compile_time() or len(source) < simd_width_of[Scalar[dtype]]():
         var ptr = source.unsafe_ptr()
 
         for i in range(len(source)):
@@ -2450,7 +2465,7 @@ fn _memchr_impl[
 ):
     var haystack = source.unsafe_ptr()
     var length = len(source)
-    alias bool_mask_width = simdwidthof[DType.bool]()
+    alias bool_mask_width = simd_width_of[DType.bool]()
     var first_needle = SIMD[dtype, bool_mask_width](char)
     var vectorized_end = align_down(length, bool_mask_width)
 
@@ -2480,7 +2495,7 @@ fn _memmem[
         address_space = haystack_span.address_space, **_,
     ],
 ) -> haystack_span.UnsafePointerType:
-    if is_compile_time() or len(haystack_span) < simdwidthof[Scalar[dtype]]():
+    if is_compile_time() or len(haystack_span) < simd_width_of[Scalar[dtype]]():
         var haystack = haystack_span.unsafe_ptr()
         var haystack_len = len(haystack_span)
         var needle = needle_span.unsafe_ptr()
@@ -2522,7 +2537,7 @@ fn _memmem_impl[
         output = {}
         return
 
-    alias bool_mask_width = simdwidthof[DType.bool]()
+    alias bool_mask_width = simd_width_of[DType.bool]()
     var vectorized_end = align_down(
         haystack_len - needle_len + 1, bool_mask_width
     )
@@ -2640,14 +2655,14 @@ fn _split[
         # FIXME(#3526): use str_span and sep_span
         rhs = src_str.find(sep, lhs)
         # if not found go to the end
-        rhs += -Int(rhs == -1) & (str_byte_len + 1)
+        rhs += is_negative(rhs) & (str_byte_len + 1)
 
         @parameter
         if has_maxsplit:
-            rhs += -Int(items == maxsplit) & (str_byte_len - rhs)
+            rhs += splat(items == maxsplit) & (str_byte_len - rhs)
             items += 1
 
-        output.append(S(ptr=ptr + lhs, length=rhs - lhs))
+        output.append(S(ptr=ptr + lhs, length=UInt(rhs - lhs)))
         lhs = rhs + sep_len
 
 
@@ -2675,7 +2690,7 @@ fn _split[
 
     @always_inline("nodebug")
     fn _build_slice(p: __type_of(ptr), start: Int, end: Int) -> S:
-        return S(ptr=p + start, length=end - start)
+        return S(ptr=p + start, length=UInt(end - start))
 
     while lhs <= str_byte_len:
         # Python adds all "whitespace chars" as one separator
@@ -2696,8 +2711,8 @@ fn _split[
 
         @parameter
         if has_maxsplit:
-            rhs += -Int(items == maxsplit) & (str_byte_len - rhs)
+            rhs += splat(items == maxsplit) & (str_byte_len - rhs)
             items += 1
 
-        output.append(S(ptr=ptr + lhs, length=rhs - lhs))
+        output.append(S(ptr=ptr + lhs, length=UInt(rhs - lhs)))
         lhs = rhs

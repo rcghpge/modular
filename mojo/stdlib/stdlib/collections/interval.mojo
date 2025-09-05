@@ -226,17 +226,6 @@ struct Interval[T: IntervalElement](
         """
         return self.start == other.start and self.end == other.end
 
-    fn __ne__(self, other: Self) -> Bool:
-        """Returns whether this interval is not equal to another interval.
-
-        Args:
-            other: The interval to compare with.
-
-        Returns:
-            True if the intervals are not equal, False if they are equal.
-        """
-        return not (self == other)
-
     fn __le__(self, other: Self) -> Bool:
         """Returns whether this interval is less than or equal to another
         interval.
@@ -301,11 +290,8 @@ struct Interval[T: IntervalElement](
         return self.start < self.end
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes this interval to a writer in the format '(start, end)'.
-
-        Parameters:
-            W: The writer type that implements the Writer trait.
 
         Args:
             writer: The writer to write the interval to.
@@ -327,7 +313,7 @@ struct Interval[T: IntervalElement](
         Returns:
             A string in the format '(start, end)' representing this interval.
         """
-        return "Interval" + String.write(self) + ""
+        return String("Interval", self, "")
 
 
 struct _IntervalNode[
@@ -453,12 +439,9 @@ struct _IntervalNode[
         self._is_red = existing._is_red
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes this interval node to a writer in the format
         '(start, end): data'.
-
-        Parameters:
-            W: The writer type that implements the Writer trait.
 
         Args:
             writer: The writer to write the interval node to.
@@ -483,7 +466,7 @@ struct _IntervalNode[
             A string in the format '(start, end): data' representing this
             interval node.
         """
-        return "IntervalNode(" + String.write(self) + ")"
+        return String("IntervalNode(", String.write(self), ")")
 
     fn depth(self) -> Int:
         """Returns the depth of this interval node.
@@ -798,11 +781,8 @@ struct IntervalTree[
         """
         return String.write(self)
 
-    fn write_to[w: Writer](self, mut writer: w):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes the interval tree to a writer.
-
-        Parameters:
-            w: The writer type that implements the Writer trait.
 
         Args:
             writer: The writer to write the interval tree to.

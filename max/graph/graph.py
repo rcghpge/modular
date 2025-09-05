@@ -35,6 +35,7 @@ from max._core.dialects import builtin, kgen
 from max._core.dialects import mo as _mo
 
 # TODO(GEX-1846): Get rid of this include.
+from max.driver import CPU
 from max.engine import InferenceSession  # type: ignore
 from max.mlir.dialects import mo
 from mojo.paths import (
@@ -51,7 +52,7 @@ from .type import (
     Type,
     _ChainType,
 )
-from .value import BufferValue, TensorValue, Value, _ChainValue
+from .value import BufferValue, TensorValue, TensorValueLike, Value, _ChainValue
 from .weight import Weight
 
 CURRENT_GRAPH: ContextVar[Graph] = ContextVar("CURRENT_GRAPH")
@@ -75,7 +76,7 @@ class KernelLibrary:
     def __init__(self, context: mlir.Context, paths: list[Path] = []) -> None:  # noqa: B006
         # TODO(GEX-1846): This is a terrible workaround to initialize M::Context on the Graph API.
         # Get rid of this and properly setup the context instead.
-        mock_session = InferenceSession()
+        mock_session = InferenceSession(devices=[CPU()])
         mock_session._impl.register_runtime_context(context)
 
         self._context = context
@@ -289,7 +290,7 @@ class Graph:
     _mlir_op: mlir.Operation | mlir.OpView
     _graph_body: mlir.Block
     _module: mlir.Module
-    _context_state: list
+    _context_state: list[contextlib.AbstractContextManager[Graph]]
     _weights: dict[str, _GraphWeight]
     # A global sequence of chains that is updated by side-effecting ops.
     _current_chain: _ChainValue
@@ -537,11 +538,11 @@ class Graph:
         self._context_state.append(state := self._enter())
         return state.__enter__()
 
-    def __exit__(self, *exc):
+    def __exit__(self, *exc) -> None:
         self._context_state.pop().__exit__(*exc)
 
     @contextlib.contextmanager
-    def _enter(self):
+    def _enter(self) -> Generator[Graph]:
         token = CURRENT_GRAPH.set(self)
         try:
             with self._context:
@@ -648,7 +649,7 @@ class Graph:
             op = builder.create(op_type, location)(
                 *_to_mlir(args), **_to_mlir(kwargs)
             )
-            assert op.verify()
+            op.verify()
         _set_output_param_decls(op, self._params)
         return [Value.from_mlir(result) for result in op.results]
 
@@ -748,7 +749,7 @@ class Graph:
     def _build_block(
         self,
         block: mlir.Block,
-        block_fn: Callable[[], Iterable[TensorValue] | TensorValue | None],
+        block_fn: Callable[[], Iterable[Value[Any]] | Value[Any] | None],
         block_terminator_op: mlir.Operation | mlir.OpView,
         block_name: str,
         expected_output_types: list[Type[Any]] | None,
@@ -792,8 +793,12 @@ class Graph:
                 block_terminator_op, results + [self._current_chain]
             )
 
-    def output(self, *outputs: Value[Any]) -> None:
+    def output(self, *outputs: Value[Any] | TensorValueLike) -> None:
         """Sets the output nodes of the :obj:`Graph`."""
+        outputs = tuple(
+            o if isinstance(o, Value) else TensorValue(o) for o in outputs
+        )
+        outputs = cast(tuple[Value[Any], ...], outputs)
         # mo.output doesn't support infer_type
         graph_body_args = self._graph_body.arguments
         mlir_values = [o._mlir_value for o in outputs]

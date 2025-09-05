@@ -15,7 +15,7 @@ from collections import OptionalReg
 
 from buffer.dimlist import DimList
 from layout import IntTuple, Layout
-from sys import alignof
+from sys import align_of
 
 from utils import IndexList
 
@@ -45,9 +45,9 @@ fn _row_major_strides[rank: Int](shape: DimList) -> DimList:
     if rank == 1:
         return 1
     elif rank == 2:
-        return (shape.get[1](), 1)
+        return DimList(shape.get[1](), 1)
     elif rank == 3:
-        return (shape.get[2]() * shape.get[1](), shape.get[2](), 1)
+        return DimList(shape.get[2]() * shape.get[1](), shape.get[2](), 1)
     else:
         return -1
 
@@ -120,7 +120,7 @@ struct StaticTensorSpec[
         )
         self.shape = shape
         self.strides = _row_major_strides[rank](shape)
-        self.alignment = alignof[dtype]()
+        self.alignment = align_of[dtype]()
         self.address_space = AddressSpace.GENERIC
         self.exclusive = False
         self.in_lambda = None

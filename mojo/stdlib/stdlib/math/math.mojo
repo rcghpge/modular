@@ -21,13 +21,13 @@ from math import floor
 
 from sys import (
     CompilationTarget,
-    bitwidthof,
+    bit_width_of,
     is_amd_gpu,
     is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
-    simdwidthof,
-    sizeof,
+    simd_width_of,
+    size_of,
     is_compile_time,
 )
 from sys._assembly import inlined_assembly
@@ -189,7 +189,7 @@ fn sqrt(x: Int) -> Int:
     var r2 = 0
 
     @parameter
-    for p in reversed(range(bitwidthof[Int]() // 2)):
+    for p in reversed(range(bit_width_of[Int]() // 2)):
         var dr2 = (r << (p + 1)) + (1 << (p + p))
         if r2 <= x - dr2:
             r2 += dr2
@@ -306,7 +306,7 @@ fn isqrt[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
         @parameter
         if dtype in (DType.float16, DType.float32, DType.float64):
             return _call_amdgcn_intrinsic[
-                "llvm.amdgcn.rsq." + _get_amdgcn_type_suffix[dtype]()
+                String("llvm.amdgcn.rsq.", _get_amdgcn_type_suffix[dtype]())
             ](x)
 
         return isqrt(x.cast[DType.float32]()).cast[dtype]()
@@ -365,7 +365,7 @@ fn recip[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
         @parameter
         if dtype in (DType.float16, DType.float32, DType.float64):
             return _call_amdgcn_intrinsic[
-                "llvm.amdgcn.rcp." + _get_amdgcn_type_suffix[dtype]()
+                String("llvm.amdgcn.rcp.", _get_amdgcn_type_suffix[dtype]())
             ](x)
 
         return recip(x.cast[DType.float32]()).cast[dtype]()
@@ -430,7 +430,7 @@ fn exp2[
     @parameter
     if is_amd_gpu() and dtype in (DType.float16, DType.float32):
         return _call_amdgcn_intrinsic[
-            "llvm.amdgcn.exp2." + _get_amdgcn_type_suffix[dtype]()
+            String("llvm.amdgcn.exp2.", _get_amdgcn_type_suffix[dtype]())
         ](x)
 
     @parameter
@@ -459,8 +459,8 @@ fn _exp2_float32(x: SIMD[DType.float32, _]) -> __type_of(x):
             1.33336498402e-3,
         ),
     ](xc)
-    return __type_of(x).from_bits(
-        r.to_bits[u32]()
+    return __type_of(x)(
+        from_bits=r.to_bits[u32]()
         + (m.cast[u32]() << FPUtils[DType.float32].mantissa_width())
     )
 
@@ -492,7 +492,7 @@ fn _ldexp_impl[
         Vector containing elementwise result of ldexp on x and exp.
     """
 
-    alias hardware_width = simdwidthof[dtype]()
+    alias hardware_width = simd_width_of[dtype]()
 
     @parameter
     if (
@@ -526,7 +526,7 @@ fn _ldexp_impl[
     alias integral_type = FPUtils[dtype].integral_type
     var m = exp.cast[integral_type]() + FPUtils[dtype].exponent_bias()
 
-    return x * __type_of(x).from_bits(m << FPUtils[dtype].mantissa_width())
+    return x * __type_of(x)(from_bits=m << FPUtils[dtype].mantissa_width())
 
 
 @always_inline
@@ -739,7 +739,7 @@ fn frexp[
         (((mask1 & x_int) >> mantissa_width) - exponent_bias).cast[dtype](),
         zero,
     )
-    var frac = selector.select(T.from_bits(x_int & ~mask1 | mask2), zero)
+    var frac = selector.select(T(from_bits=x_int & ~mask1 | mask2), zero)
     return StaticTuple[size=2](frac, exp)
 
 
@@ -827,7 +827,7 @@ fn log[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
         alias ln2 = 0.69314718055966295651160180568695068359375
 
         @parameter
-        if sizeof[dtype]() < sizeof[DType.float32]():
+        if size_of[dtype]() < size_of[DType.float32]():
             return log(x.cast[DType.float32]()).cast[dtype]()
         elif dtype is DType.float32:
             return (
@@ -866,7 +866,7 @@ fn log2[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
         if is_nvidia_gpu():
 
             @parameter
-            if sizeof[dtype]() < sizeof[DType.float32]():
+            if size_of[dtype]() < size_of[DType.float32]():
                 return log2(x.cast[DType.float32]()).cast[dtype]()
             elif dtype is DType.float32:
                 return _call_ptx_intrinsic[
@@ -1196,7 +1196,7 @@ fn iota[
     fn fill[width: Int](i: Int):
         buff.store(i, iota[dtype, width](offset + i))
 
-    vectorize[fill, simdwidthof[dtype]()](len)
+    vectorize[fill, simd_width_of[dtype]()](len)
 
 
 fn iota[dtype: DType, //](mut v: List[Scalar[dtype], *_], offset: Int = 0):
@@ -1517,10 +1517,10 @@ fn cos[
     """
 
     @parameter
-    if is_nvidia_gpu() and sizeof[dtype]() <= sizeof[DType.float32]():
+    if is_nvidia_gpu() and size_of[dtype]() <= size_of[DType.float32]():
 
         @parameter
-        if sizeof[dtype]() < sizeof[DType.float32]():
+        if size_of[dtype]() < size_of[DType.float32]():
             return cos(x.cast[DType.float32]()).cast[dtype]()
 
         return _call_ptx_intrinsic[
@@ -1559,10 +1559,10 @@ fn sin[
     """
 
     @parameter
-    if is_nvidia_gpu() and sizeof[dtype]() <= sizeof[DType.float32]():
+    if is_nvidia_gpu() and size_of[dtype]() <= size_of[DType.float32]():
 
         @parameter
-        if sizeof[dtype]() < sizeof[DType.float32]():
+        if size_of[dtype]() < size_of[DType.float32]():
             return sin(x.cast[DType.float32]()).cast[dtype]()
 
         return _call_ptx_intrinsic[
@@ -1718,7 +1718,7 @@ fn atanh[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
     ]()
 
     @parameter
-    if bitwidthof[dtype]() <= 16:
+    if bit_width_of[dtype]() <= 16:
         # We promote the input to float32 and then cast back to the original
         # type. This is done to avoid precision issues that can occur when
         # using the lower-precision floating-point types.
@@ -1830,7 +1830,7 @@ fn log10[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
         alias log10_2 = 0.301029995663981195213738894724493027
 
         @parameter
-        if sizeof[dtype]() < sizeof[DType.float32]():
+        if size_of[dtype]() < size_of[DType.float32]():
             return log10(x.cast[DType.float32]()).cast[dtype]()
         elif dtype is DType.float32:
             return (
@@ -1852,8 +1852,54 @@ fn log10[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
 # ===----------------------------------------------------------------------=== #
 
 
+@always_inline
+fn _log1p_f64[width: Int, //](x: SIMD[DType.float64, width]) -> __type_of(x):
+    # This uses the approximation from cephes to compute log1p via the approximation
+    # log(1+x) = x - x**2/2 + x**3 P(x)/Q(x)
+    # in the domain 1/sqrt(2) <= x < sqrt(2)
+
+    alias P = [
+        2.0039553499201281259648e1,
+        5.7112963590585538103336e1,
+        6.0949667980987787057556e1,
+        2.9911919328553073277375e1,
+        6.5787325942061044846969e0,
+        4.9854102823193375972212e-1,
+        4.5270000862445199635215e-5,
+    ]
+    alias Q = [
+        6.0118660497603843919306e1,
+        2.1642788614495947685003e2,
+        3.0909872225312059774938e2,
+        2.2176239823732856465394e2,
+        8.3047565967967209469434e1,
+        1.5062909083469192043167e1,
+    ]
+
+    # Sqrt(1/2)
+    alias sqrt2_div_2 = 0.70710678118654752440
+    # Sqrt(2)
+    alias sqrt2 = 1.41421356237309504880
+
+    var z = 1 + x
+    var log1x = log(z)
+
+    var in_domain_mask = z.lt(sqrt2_div_2) | z.gt(sqrt2)
+    if all(in_domain_mask):
+        return log1x
+
+    z = x * x
+    z = -0.5 * z + x * (
+        z * polynomial_evaluate[P](x) / polynomial_evaluate[Q](x)
+    )
+
+    return in_domain_mask.select(log1x, x + z)
+
+
 fn log1p[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
     """Computes the `log1p` of the inputs.
+
+    The `log1p(x)` is equivalent to `log(1+x)`.
 
     Constraints:
         The input must be a floating-point type.
@@ -1868,7 +1914,12 @@ fn log1p[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
     Returns:
         The `log1p` of the input.
     """
-    return _call_libm["log1p"](x)
+
+    constrained[
+        dtype.is_floating_point(), "input type must be floating point"
+    ]()
+
+    return _log1p_f64(x.cast[DType.float64]()).cast[dtype]()
 
 
 # ===----------------------------------------------------------------------=== #

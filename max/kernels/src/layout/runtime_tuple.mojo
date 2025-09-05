@@ -119,7 +119,7 @@ struct RuntimeTuple[
         Args:
             values: Variadic number of integer values to initialize the tuple with.
         """
-        self.value = values
+        self.value = __type_of(self.value)(values)
 
     @always_inline
     @implicit
@@ -292,15 +292,12 @@ struct RuntimeTuple[
         """
         return __type_of(result)(self.value)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes the RuntimeTuple to a Writer object.
 
         This method is used by the string conversion system to generate a string
         representation of the RuntimeTuple. It handles both scalar values and
         nested tuple structures, producing a properly formatted output.
-
-        Parameters:
-            W: The Writer type to use for output.
 
         Args:
             writer: The Writer object to write the string representation to.

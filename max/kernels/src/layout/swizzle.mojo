@@ -34,7 +34,7 @@ optimizes memory access patterns for higher throughput.
 """
 
 from collections import OptionalReg
-from sys import is_compile_time, simdwidthof, sizeof
+from sys import is_compile_time, simd_width_of, size_of
 
 from bit import log2_floor
 from gpu.host._nvidia_cuda import TensorMapSwizzle
@@ -448,14 +448,11 @@ struct Swizzle(LayoutTrait, Movable, Stringable, Writable):
         """
         return self.size()
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Write the swizzle parameters to a writer.
 
         Outputs the swizzle parameters (bits, base, shift) in a
         tuple format.
-
-        Parameters:
-            W: The writer type that implements the Writer trait.
 
         Args:
             writer: The writer to write to.
@@ -491,7 +488,7 @@ fn make_ldmatrix_swizzle[
     """
     # For Nvidia GPU, 32 banks of 4B each.
     alias bytes_32_banks = 128
-    alias type_size = sizeof[dtype]()
+    alias type_size = size_of[dtype]()
     alias bytes_row = row_size * type_size
 
     constrained[
@@ -511,7 +508,7 @@ fn make_ldmatrix_swizzle[
 
     # Apply one swizzle bit pattern (^01) to same row if row > 32 banks
     # or multiple rows fit in 32 banks.
-    alias simd_size = simdwidthof[dtype]()
+    alias simd_size = simd_width_of[dtype]()
     alias shifts = log2_floor(max(row_size // simd_size, 8))
 
     return Swizzle(bits, log2_vector_width, shifts)
@@ -555,7 +552,7 @@ fn make_swizzle[dtype: DType, mode: TensorMapSwizzle]() -> Swizzle:
     Returns:
         A `Swizzle` object configured by the specified mode.
     """
-    alias type_size = sizeof[dtype]()
+    alias type_size = size_of[dtype]()
 
     @parameter
     if mode in (
@@ -740,4 +737,4 @@ fn eval_composed[
     # # swizzle
     # else:
     alias layout_b = composed_layout.layout_b
-    return layout_b(b_idx)
+    return UInt(layout_b(b_idx))

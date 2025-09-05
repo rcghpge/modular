@@ -78,14 +78,13 @@ struct Node[
 
     @no_inline
     fn write_to[
-        ElementType: ExplicitlyCopyable & Movable & Writable, W: Writer
-    ](self: Node[ElementType], mut writer: W):
+        ElementType: ExplicitlyCopyable & Movable & Writable
+    ](self: Node[ElementType], mut writer: Some[Writer]):
         """Write this node's value to the given writer.
 
         Parameters:
             ElementType: Used to conditionally enable this function if
                 `ElementType` is `Writable`.
-            W: The type of writer to write the value to.
 
         Args:
             writer: The writer to write the value to.
@@ -338,7 +337,7 @@ struct LinkedList[
         Notes:
             Time Complexity: O(n) in len(self).
         """
-        var idx = Int(index(i))
+        var idx = index(i)
         var current = self._get_node_ptr(idx)
 
         if current:
@@ -479,7 +478,7 @@ struct LinkedList[
         """
 
         # TODO: use normalize_index
-        var i = Int(index(idx))
+        var i = index(idx)
         i = max(0, i if i >= 0 else i + len(self))
 
         if i == 0:
@@ -578,7 +577,7 @@ struct LinkedList[
 
             current = current[].next
 
-        return count
+        return UInt(count)
 
     fn __contains__[
         ElementType: EqualityComparable & ExplicitlyCopyable & Movable, //
@@ -821,12 +820,11 @@ struct LinkedList[
         return writer
 
     fn write_to[
-        W: Writer, ElementType: ExplicitlyCopyable & Movable & Writable
-    ](self: LinkedList[ElementType], mut writer: W):
+        ElementType: ExplicitlyCopyable & Movable & Writable
+    ](self: LinkedList[ElementType], mut writer: Some[Writer]):
         """Write the list to the given writer.
 
         Parameters:
-            W: The type of writer to write the list to.
             ElementType: Used to conditionally enable this function when
                 `ElementType` is `Writable`.
 

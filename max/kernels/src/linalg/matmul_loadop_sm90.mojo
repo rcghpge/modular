@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 from math import ceildiv
-from sys import simdwidthof, sizeof
+from sys import simd_width_of, size_of
 from gpu import thread_idx
 from gpu.memory import AddressSpace, async_copy
 from gpu.sync import async_copy_arrive
@@ -81,8 +81,8 @@ fn async_load_AB[
         SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=8
     ],
 ):
-    alias a_expected_bytes = a_smem_layout.size() * sizeof[a_type]()
-    alias b_expected_bytes = b_smem_layout.size() * sizeof[b_type]()
+    alias a_expected_bytes = a_smem_layout.size() * size_of[a_type]()
+    alias b_expected_bytes = b_smem_layout.size() * size_of[b_type]()
     alias expected_bytes = a_expected_bytes + b_expected_bytes
 
     alias a_tma_load_size = a_desc_layout.size()
@@ -140,8 +140,9 @@ fn async_load_AB[
                         a_smem_slice,
                         full_mbar[write_idx],
                         (
-                            UInt(k_coord + k_iter * pipeline_stages + j) * BK,
-                            a_gmem_slice_coord,
+                            UInt(k_coord + k_iter * pipeline_stages + j)
+                            * UInt(BK),
+                            UInt(a_gmem_slice_coord),
                         ),
                         UInt16(multicast_row_mask),
                     )
@@ -153,7 +154,7 @@ fn async_load_AB[
                             full_mbar[write_idx],
                             (
                                 UInt(k_coord + k_iter * pipeline_stages + j)
-                                * BK,
+                                * UInt(BK),
                                 m_coord,
                             ),
                             UInt16(multicast_row_mask),
@@ -164,7 +165,7 @@ fn async_load_AB[
                     a_smem_tile,
                     full_mbar[write_idx],
                     (
-                        UInt(k_coord + k_iter * pipeline_stages + j) * BK,
+                        UInt(k_coord + k_iter * pipeline_stages + j) * UInt(BK),
                         m_coord,
                     ),
                 )
@@ -183,8 +184,9 @@ fn async_load_AB[
                         b_smem_slice,
                         full_mbar[write_idx],
                         (
-                            UInt(k_coord + k_iter * pipeline_stages + j) * BK,
-                            b_gmem_slice_coord,
+                            UInt(k_coord + k_iter * pipeline_stages + j)
+                            * UInt(BK),
+                            UInt(b_gmem_slice_coord),
                         ),
                         UInt16(multicast_column_mask << rank_n),
                     )
@@ -196,7 +198,7 @@ fn async_load_AB[
                             full_mbar[write_idx],
                             (
                                 UInt(k_coord + k_iter * pipeline_stages + j)
-                                * BK,
+                                * UInt(BK),
                                 n_coord,
                             ),
                             UInt16(multicast_column_mask << rank_n),
@@ -207,7 +209,7 @@ fn async_load_AB[
                     b_smem_tile,
                     full_mbar[write_idx],
                     (
-                        UInt(k_coord + k_iter * pipeline_stages + j) * BK,
+                        UInt(k_coord + k_iter * pipeline_stages + j) * UInt(BK),
                         n_coord,
                     ),
                 )
@@ -356,7 +358,7 @@ fn async_copy_with_bound_check[
     alias src_shape1 = src.layout.shape[1].value()
     alias swizzle_bytes = swizzle_mode.bytes()
     constrained[
-        src_shape1 * src.element_size * sizeof[src.dtype]() == swizzle_bytes,
+        src_shape1 * src.element_size * size_of[src.dtype]() == swizzle_bytes,
         String(
             "Global memory tile shape-1 ",
             src_shape1 * src.element_size,
@@ -378,8 +380,8 @@ fn async_copy_with_bound_check[
     var dst_frag_base_coord1 = Int32(dst_frag_offset % dst_stride0)
     alias swizzle = make_swizzle[
         8,
-        Int(swizzle_bytes // sizeof[dst.dtype]()),
-        Int(simdwidthof[dst.dtype]()),
+        Int(swizzle_bytes // size_of[dst.dtype]()),
+        Int(simd_width_of[dst.dtype]()),
     ]()
 
     alias num_vecs = dst_frag.layout.size()
@@ -400,7 +402,7 @@ fn async_copy_with_bound_check[
         var dst_coord0 = dst_shifted_coord0 + dst_frag_base_coord0
         var dst_coord1 = dst_shifted_coord1 + dst_frag_base_coord1
 
-        alias cp_size = dst.element_size * sizeof[dst.dtype]()
+        alias cp_size = dst.element_size * size_of[dst.dtype]()
 
         var src_ptr = (
             src.ptr.address_space_cast[AddressSpace.GLOBAL]()

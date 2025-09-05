@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from sys.info import _current_target, simdwidthof
+from sys.info import _current_target, simd_width_of
 
 from algorithm.functional import elementwise
 from buffer import NDBuffer
@@ -37,7 +37,7 @@ fn get_batch_from_row_offsets(
     )
 
     var low: UInt = 0
-    var high: UInt = row_offsets_size - 1
+    var high: UInt = UInt(row_offsets_size - 1)
     while low + 1 != high:
         var mid = (low + high) // 2
 
@@ -63,7 +63,7 @@ fn get_batch_from_row_offsets(
     )
 
     var low: UInt = 0
-    var high: UInt = row_offsets_size - 1
+    var high: UInt = UInt(row_offsets_size - 1)
     while low + 1 != high:
         var mid = (low + high) // 2
 
@@ -148,7 +148,7 @@ fn merge_ragged_tensors[
     alias compile_target = _current_target() if is_cpu[
         target
     ]() else get_gpu_target()
-    alias target_simd_width = simdwidthof[dtype, target=compile_target]()
+    alias target_simd_width = simd_width_of[dtype, target=compile_target]()
     alias kernel_simd_width = 1 if rank == 1 else target_simd_width
 
     elementwise[

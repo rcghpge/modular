@@ -27,9 +27,9 @@ underlying GPU architecture.
 
 from collections.string.string_slice import get_static_string
 from os.atomic import Consistency
-from sys import is_amd_gpu, is_gpu, is_nvidia_gpu, sizeof
+from sys import is_amd_gpu, is_gpu, is_nvidia_gpu, size_of
 from sys._assembly import inlined_assembly
-from sys.info import _is_sm_9x, alignof, bitwidthof, CompilationTarget
+from sys.info import _is_sm_9x, align_of, bit_width_of, CompilationTarget
 from sys.intrinsics import llvm_intrinsic, readfirstlane
 from memory.unsafe import bitcast
 
@@ -45,7 +45,7 @@ fn ldg[
     dtype: DType, //,
     width: Int = 1,
     *,
-    alignment: Int = alignof[SIMD[dtype, width]](),
+    alignment: Int = align_of[SIMD[dtype, width]](),
 ](x: UnsafePointer[Scalar[dtype]]) -> SIMD[dtype, width]:
     """Load data from global memory through the non-coherent cache.
 
@@ -499,17 +499,6 @@ struct Scope(Copyable, EqualityComparable, Movable, Writable):
         """
         return self is other
 
-    fn __ne__(self, other: Self) -> Bool:
-        """Checks if two `Scope` instances are not equal.
-
-        Args:
-            other: The other `Scope` instance to compare with.
-
-        Returns:
-            True if the instances are different, False otherwise.
-        """
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         """Checks if two `Scope` instances have the same value.
 
@@ -535,11 +524,8 @@ struct Scope(Copyable, EqualityComparable, Movable, Writable):
         return not (self is other)
 
     @no_inline
-    fn write_to[W: Writer](self, mut w: W):
+    fn write_to(self, mut w: Some[Writer]):
         """Writes the string representation of the scope to a writer.
-
-        Parameters:
-            W: The dtype of writer to use for output. Must implement the Writer interface.
 
         Args:
             w: The writer to write to.
@@ -636,7 +622,7 @@ fn threadfence[scope: Scope = Scope.GPU]():
 
 
 fn _get_type_suffix[dtype: DType]() -> StaticString:
-    alias str = get_static_string["u", _int_to_str[bitwidthof[dtype]()]()]()
+    alias str = get_static_string["u", _int_to_str[bit_width_of[dtype]()]()]()
     return str
 
 
@@ -646,7 +632,7 @@ fn _get_register_constraint[dtype: DType]() -> StaticString:
     if dtype.is_half_float():
         return "h"
     if dtype.is_integral():
-        alias width = bitwidthof[dtype]()
+        alias width = bit_width_of[dtype]()
         if width == 16:
             return "c"
         if width == 32:
@@ -710,7 +696,7 @@ fn store_release[
         ](value, ptr)
     elif is_amd_gpu():
         __mlir_op.`pop.store`[
-            alignment = ptr.alignment.value,
+            alignment = ptr.alignment._mlir_value,
             ordering = Consistency.RELEASE.__mlir_attr(),
         ](value, ptr.address)
     else:
@@ -766,7 +752,7 @@ fn load_acquire[
         ](ptr.address_space_cast[AddressSpace.GENERIC]())
     elif is_amd_gpu():
         return __mlir_op.`pop.load`[
-            alignment = ptr.alignment.value,
+            alignment = ptr.alignment._mlir_value,
             ordering = Consistency.ACQUIRE.__mlir_attr(),
         ](ptr.address)
     else:
@@ -925,80 +911,10 @@ fn make_buffer_resource[
     resource_constant[0] = address[0]
     # assuming 0 stride currently
     resource_constant[1] = address[1]
-    resource_constant[2] = sizeof[dtype]() * num_records
+    resource_constant[2] = size_of[dtype]() * num_records
     # https://github.com/ROCm/composable_kernel/blob/3b2302081eab4975370e29752343058392578bcb/include/ck/ck.hpp#L84
     resource_constant[3] = 0x00020000
     return resource_constant
-
-
-@always_inline
-fn _raw_buffer_load_lds[
-    dtype: DType
-](
-    rsrc: _buffer_resource,
-    lds_ptr: UnsafePointer[Scalar[dtype], address_space = AddressSpace.SHARED],
-    size: Int32,
-    voffset: Int32,
-    soffset: Int32,
-    offset: Int32,
-    aux: Int32,
-):
-    constrained[
-        is_amd_gpu(),
-        (
-            "The _raw_buffer_load_lds function is only applicable on AMDGPU"
-            " hardware."
-        ),
-    ]()
-    llvm_intrinsic[
-        "llvm.amdgcn.raw.buffer.load.lds", NoneType, has_side_effect=True
-    ](rsrc, lds_ptr, size, voffset, soffset, offset, aux)
-
-
-@always_inline
-fn buffer_load_store_lds[
-    dtype: DType
-](
-    src_resource: _buffer_resource,
-    gds_offset: Int32,
-    lds_ptr_base: UnsafePointer[
-        Scalar[dtype], address_space = AddressSpace.SHARED
-    ],
-    lds_offset: Int32,
-):
-    """Loads four bytes from global memory and writes them to shared memory.
-
-    Copies from global memory to shared memory (aka LDS) bypassing storing to
-    register.
-
-    Parameters:
-        dtype: The dtype of the data to be loaded.
-
-    Args:
-        src_resource: Buffer resource descriptor from make_buffer_resource.
-        gds_offset: Global memory offset.
-        lds_ptr_base: LDS base address.
-        lds_offset: LDS offset.
-    """
-    constrained[
-        is_amd_gpu(),
-        (
-            "The buffer_load_store_lds  function is only applicable on AMDGPU"
-            " hardware."
-        ),
-    ]()
-
-    var lds_ptr = lds_ptr_base + lds_offset
-    var global_offset_bytes = Int32(sizeof[dtype]() * gds_offset)
-    _raw_buffer_load_lds(
-        src_resource,
-        lds_ptr,
-        sizeof[DType.uint32](),
-        global_offset_bytes,
-        0,
-        0,
-        0,
-    )
 
 
 @parameter
@@ -1045,7 +961,7 @@ fn _get_buffer_intrinsic_simd_dtype[bytes: Int]() -> DType:
 
 @parameter
 fn _get_buffer_intrinsic_simd_width[bytes: Int]() -> Int:
-    return bytes // sizeof[DType.uint32]() if bytes >= 4 else 1
+    return bytes // size_of[DType.uint32]() if bytes >= 4 else 1
 
 
 @always_inline
@@ -1093,11 +1009,11 @@ fn buffer_load[
         "The buffer_load function is only applicable on AMDGPU hardware.",
     ]()
 
-    alias bytes = sizeof[dtype]() * width
+    alias bytes = size_of[dtype]() * width
     alias aux = _cache_operation_to_amd_aux[cache_policy]()
 
-    var vector_offset_bytes = vector_offset * sizeof[dtype]()
-    var scalar_offset_bytes = scalar_offset * sizeof[dtype]()
+    var vector_offset_bytes = vector_offset * size_of[dtype]()
+    var scalar_offset_bytes = scalar_offset * size_of[dtype]()
 
     var load_val = llvm_intrinsic[
         "llvm.amdgcn.raw.buffer.load",
@@ -1109,6 +1025,61 @@ fn buffer_load[
     ](src_resource, vector_offset_bytes, scalar_offset_bytes, aux)
 
     return bitcast[dtype, width](load_val)
+
+
+@always_inline
+fn buffer_load_lds[
+    dtype: DType,
+    *,
+    width: Int = 1,
+    cache_policy: CacheOperation = CacheOperation.ALWAYS,
+](
+    src_resource: _buffer_resource,
+    vector_offset: Int32,
+    shared_ptr: UnsafePointer[
+        Scalar[dtype], address_space = AddressSpace.SHARED
+    ],
+    *,
+    scalar_offset: Int32 = 0,
+):
+    """Loads data from global memory and stores to shared memory.
+
+    Copies from global memory to shared memory (aka LDS) bypassing storing to
+    register.
+
+    Parameters:
+        dtype: The dtype of the data to be loaded.
+        width: The SIMD vector width.
+        cache_policy: Cache operation policy controlling cache behavior at all levels.
+
+    Args:
+        src_resource: Buffer resource descriptor from make_buffer_resource.
+        vector_offset: Vector memory offset in elements (per thread).
+        shared_ptr: Shared memory address.
+        scalar_offset: Scalar memory offset in elements (shared across wave).
+    """
+    constrained[
+        is_amd_gpu(),
+        "The buffer_load_lds function is only applicable on AMDGPU hardware.",
+    ]()
+
+    alias bytes = size_of[dtype]() * width
+    alias aux = _cache_operation_to_amd_aux[cache_policy]()
+
+    var vector_offset_bytes = vector_offset * size_of[dtype]()
+    var scalar_offset_bytes = scalar_offset * size_of[dtype]()
+
+    llvm_intrinsic[
+        "llvm.amdgcn.raw.buffer.load.lds", NoneType, has_side_effect=True
+    ](
+        src_resource,
+        shared_ptr,
+        Int32(bytes),
+        vector_offset_bytes,
+        scalar_offset_bytes,
+        Int32(0),
+        aux,
+    )
 
 
 @always_inline
@@ -1152,11 +1123,11 @@ fn buffer_store[
         "The buffer_store function is only applicable on AMDGPU hardware.",
     ]()
 
-    alias bytes = width * sizeof[dtype]()
+    alias bytes = width * size_of[dtype]()
     alias aux: Int32 = _cache_operation_to_amd_aux[cache_policy]()
 
-    var vector_offset_bytes = vector_offset * sizeof[dtype]()
-    var scalar_offset_bytes = scalar_offset * sizeof[dtype]()
+    var vector_offset_bytes = vector_offset * size_of[dtype]()
+    var scalar_offset_bytes = scalar_offset * size_of[dtype]()
 
     var store_val = bitcast[
         _get_buffer_intrinsic_simd_dtype[bytes](),

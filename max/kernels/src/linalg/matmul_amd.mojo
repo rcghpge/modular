@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import OptionalReg
-from sys import alignof, simdwidthof
+from sys import align_of, simd_width_of
 
 from gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -49,50 +49,6 @@ from .utils import elementwise_epilogue_type
 from .utils_gpu import MatmulConfig
 
 
-# Function to handle AMD-specific scheduling
-@always_inline
-fn amd_scheduling_hints[
-    BM: Int,
-    BN: Int,
-    BK: Int,
-    num_m_mmas: Int,
-    num_n_mmas: Int,
-    num_k_tiles: Int,
-    simd_width: Int,
-    num_threads: Int,
-    scheduler_hint: IndexList[3],
-]():
-    alias threads_per_row = BK // simd_width
-    alias rows_per_thread_block = num_threads // threads_per_row
-    alias a_loads_per_thread = BM // rows_per_thread_block
-    alias b_loads_per_thread = BN // rows_per_thread_block
-
-    @parameter
-    for i in range((num_m_mmas + num_n_mmas) * (num_k_tiles - 1)):
-        schedule_group_barrier(AMDScheduleBarrierMask.DS_READ, 1, 0)
-        schedule_group_barrier(
-            AMDScheduleBarrierMask.MFMA, scheduler_hint[2], 0
-        )
-
-    @parameter
-    for i in range(a_loads_per_thread + b_loads_per_thread):
-        schedule_group_barrier(AMDScheduleBarrierMask.DS_WRITE, 1, 0)
-        schedule_group_barrier(
-            AMDScheduleBarrierMask.MFMA, scheduler_hint[0], 0
-        )
-        schedule_group_barrier(AMDScheduleBarrierMask.VMEM_READ, 1, 0)
-        schedule_group_barrier(
-            AMDScheduleBarrierMask.MFMA, scheduler_hint[1], 0
-        )
-
-    @parameter
-    for i in range(num_m_mmas + num_n_mmas):
-        schedule_group_barrier(AMDScheduleBarrierMask.DS_READ, 1, 0)
-        schedule_group_barrier(
-            AMDScheduleBarrierMask.MFMA, scheduler_hint[2], 0
-        )
-
-
 struct AMD_MMA[
     out_type: DType,
     in_type: DType,
@@ -107,7 +63,7 @@ struct AMD_MMA[
     BK: Int,
     WK: Int,
 ]:
-    alias type_alignment = alignof[SIMD[in_type, Self.simd_width]]()
+    alias type_alignment = align_of[SIMD[in_type, Self.simd_width]]()
     alias tensor_core_mma = TensorCoreKGroup[
         out_type,
         in_type,
@@ -232,7 +188,7 @@ struct MMATileBuffers[
         self.gmem_iter = tensor.tile[block_rows, stride](
             block_idx, 0
         ).tiled_iterator[block_rows, mma_type.BK, axis=1](0, 0)
-        self.global_offset = stride * (block_rows * block_idx)
+        self.global_offset = UInt(stride * (block_rows * block_idx))
         # TODO: remove rebind once MOCO-1905 is fixed
         self.tensor = rebind[Pointer[tensor_type, tensor_origin]](
             Pointer(to=tensor)
@@ -266,7 +222,7 @@ struct MMATileBuffers[
             self.tensor[],
             self.global_offset,
         )
-        self.global_offset += mma_type.BK
+        self.global_offset += UInt(mma_type.BK)
         self.gmem_iter._incr()
 
     @always_inline
@@ -292,7 +248,7 @@ struct MMATileBuffers[
                 self.mma_reg_tile[k_tile_idx]
                 .tile[num_mmas, mma_type.simd_width](k_tile_idx, 0)
                 .vectorize[1, mma_type.simd_width](),
-                k_tile_idx,
+                UInt(k_tile_idx),
             )
         else:
             mma_type.tensor_core_mma.mma_op.load_b[swizzle = mma_type.swizzle](
@@ -300,7 +256,7 @@ struct MMATileBuffers[
                 self.mma_reg_tile[k_tile_idx]
                 .tile[num_mmas, mma_type.simd_width](k_tile_idx, 0)
                 .vectorize[1, mma_type.simd_width](),
-                k_tile_idx,
+                UInt(k_tile_idx),
             )
 
 
@@ -396,7 +352,7 @@ fn gemm_kernel_amd[
     alias MMA_K = config.mma_shape[2]
 
     # SIMD and vectorization parameters
-    alias simd_width = simdwidthof[a_type]()
+    alias simd_width = simd_width_of[a_type]()
 
     # Warp organization
     alias num_warps_m = UInt(BM // WM)
@@ -406,6 +362,7 @@ fn gemm_kernel_amd[
     # MMA instruction tiling
     alias num_m_mmas = WM // MMA_M
     alias num_n_mmas = WN // MMA_N
+    alias num_k_mmas = WK // MMA_K
 
     # K dimension tiling
     alias frag_size = MMA_M * MMA_K // WARP_SIZE
@@ -555,6 +512,67 @@ fn gemm_kernel_amd[
         a_tiles.load_tile_from_shared[k_tile_idx, is_a=True]()
         b_tiles.load_tile_from_shared[k_tile_idx, is_a=False]()
 
+    @always_inline
+    @parameter
+    fn schedule_loop_body():
+        alias threads_per_row = BK // simd_width
+        alias rows_per_thread_block = config.num_threads() // threads_per_row
+        alias a_loads_per_thread = BM // rows_per_thread_block
+        alias b_loads_per_thread = BN // rows_per_thread_block
+
+        alias num_mn_mmas = num_m_mmas + num_n_mmas
+
+        # Compute the number of MMA and shared load/store operations for the loop body.
+        alias num_mma_ops = num_m_mmas * num_n_mmas * num_k_mmas
+        alias num_shared_store_ops = a_loads_per_thread + b_loads_per_thread
+        alias num_shared_load_ops = num_mn_mmas * num_k_tiles
+
+        # Compute the number of MMA operations to distribute across the shared loads.
+        # The distribution is dependent on the latency of the MMA operation: MMA operations
+        # that have a shape 32x32x8 execute in twice the cycles of 16x16x16, so account
+        # for that here. Also defensively guard against underflow of the remaining MMA
+        # operations.
+        alias mmas_per_shared_load = min(
+            1 if MMA_M == MMA_N == 32 else 2, num_mma_ops // num_shared_load_ops
+        )
+        alias num_remaining_mma_ops = num_mma_ops - num_shared_load_ops * mmas_per_shared_load
+
+        # Distribute the remaining MMA operations across the shared stores and global
+        # memory loads.
+        alias mmas_per_shared_store = num_remaining_mma_ops // num_shared_store_ops
+        alias mmas_per_shared_store_extra = num_remaining_mma_ops % num_shared_store_ops
+
+        @parameter
+        for i in range(num_mn_mmas * (num_k_tiles - 1)):
+            schedule_group_barrier(AMDScheduleBarrierMask.DS_READ, 1, 0)
+            schedule_group_barrier(
+                AMDScheduleBarrierMask.MFMA, mmas_per_shared_load, 0
+            )
+
+        @parameter
+        for i in range(num_shared_store_ops):
+            alias mmas_this_shared_store = (
+                mmas_per_shared_store + 1
+            ) if i < mmas_per_shared_store_extra else mmas_per_shared_store
+
+            schedule_group_barrier(AMDScheduleBarrierMask.DS_WRITE, 1, 0)
+            schedule_group_barrier(
+                AMDScheduleBarrierMask.MFMA, mmas_this_shared_store // 2, 0
+            )
+            schedule_group_barrier(AMDScheduleBarrierMask.VMEM_READ, 1, 0)
+            schedule_group_barrier(
+                AMDScheduleBarrierMask.MFMA,
+                mmas_this_shared_store - mmas_this_shared_store // 2,
+                0,
+            )
+
+        @parameter
+        for i in range(num_mn_mmas):
+            schedule_group_barrier(AMDScheduleBarrierMask.DS_READ, 1, 0)
+            schedule_group_barrier(
+                AMDScheduleBarrierMask.MFMA, mmas_per_shared_load, 0
+            )
+
     # GEMM Computation Pipeline
     # This kernel implements a pipelined approach optimized for AMD GPUs:
     # 1. Load: Transfer first tiles from global to shared memory
@@ -596,17 +614,7 @@ fn gemm_kernel_amd[
 
         load_tiles_from_shared[0]()
 
-        amd_scheduling_hints[
-            BM=BM,
-            BN=BN,
-            BK = Int(BK),
-            num_m_mmas=num_m_mmas,
-            num_n_mmas=num_n_mmas,
-            num_k_tiles=num_k_tiles,
-            simd_width=simd_width,
-            num_threads = Int(config.num_threads()),
-            scheduler_hint = config.scheduler_hint,
-        ]()
+        schedule_loop_body()
 
     schedule_barrier()
 
@@ -643,7 +651,7 @@ fn gemm_kernel_amd[
             Int(BM * BN * (num_warps_k // 2)),
             accum_type,
             address_space = AddressSpace.SHARED,
-            alignment = alignof[SIMD[accum_type, 4]](),
+            alignment = align_of[SIMD[accum_type, 4]](),
         ]()
 
         warp_split_k_reduction[
@@ -677,7 +685,7 @@ fn gemm_kernel_amd[
         @parameter
         for i in range(c_gmem_fragment.layout.size()):
             alias src_idx = c_reg_fragment.layout(i)
-            alias dst_static_idx: UInt = c_gmem_fragment.layout(i)
+            alias dst_static_idx: UInt = UInt(c_gmem_fragment.layout(i))
             var dst_idx: Int
 
             @parameter
@@ -706,12 +714,12 @@ fn gemm_kernel_amd[
                     c_reg_fragment.ptr.offset(src_idx)
                     .load[
                         width=4,
-                        alignment = alignof[SIMD[c_type, 4]](),
+                        alignment = align_of[SIMD[c_type, 4]](),
                     ]()
                     .cast[c_type]()
                 )
 
-                alias alignment = alignof[SIMD[c_type, 4]]()
+                alias alignment = align_of[SIMD[c_type, 4]]()
 
                 @parameter
                 if elementwise_lambda_fn:
@@ -722,7 +730,7 @@ fn gemm_kernel_amd[
                     ]()
                     alias epilogue_fn = elementwise_lambda_fn.value()
 
-                    epilogue_fn[alignment = alignof[SIMD[c_type, 4]]()](
+                    epilogue_fn[alignment = align_of[SIMD[c_type, 4]]()](
                         (Int(m), Int(n)), result_vec
                     )
                 else:

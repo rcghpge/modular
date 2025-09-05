@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from math import align_down, ceildiv, exp, exp2, log
-from sys import alignof, is_amd_gpu, is_nvidia_gpu, simdwidthof
+from sys import align_of, is_amd_gpu, is_nvidia_gpu, simd_width_of
 
 import gpu.warp as warp
 from algorithm import sync_parallelize, vectorize
@@ -1011,7 +1011,7 @@ fn _online_softmax_kernel[
     alias frag_num_rows = 2 if is_nvidia_gpu() else (
         1 if fragment_transpose else 4
     )
-    alias row_alignment = alignof[SIMD[dtype, simdwidthof[dtype]()]]()
+    alias row_alignment = align_of[SIMD[dtype, simd_width_of[dtype]()]]()
     var rowmax = stack_allocation[
         num_m_mmas * frag_num_rows, dtype, alignment=row_alignment
     ]()
@@ -1556,7 +1556,7 @@ fn _online_softmax_iter_for_mma_output_split_warp_reduce[
     # ](0, 0).vectorize[1, p_frag_size // 2]()
     alias frag_size = output_reg_tile.element_layout.size()
     constrained[
-        WM * WN == (2 * frag_size) * WARP_SIZE * num_m_mmas * num_n_mmas
+        WM * WN == UInt((2 * frag_size) * WARP_SIZE * num_m_mmas * num_n_mmas)
     ]()
     # alias num_m_mmas = WM // MMA_M
     # alias num_n_mmas = WN // MMA_N

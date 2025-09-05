@@ -22,7 +22,7 @@ from algorithm import map
 from collections.string.string_slice import get_static_string
 from math import align_down, ceildiv, clamp
 from os import abort
-from sys import is_nvidia_gpu, simdwidthof
+import sys
 
 from gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -105,12 +105,12 @@ fn vectorize[
 
     ```mojo
     from algorithm.functional import vectorize
-    from sys import simdwidthof
+    from sys import simd_width_of
 
     # The amount of elements to loop through
     alias size = 10
     # How many Dtype.int32 elements fit into the SIMD register (4 on 128bit)
-    alias simd_width = simdwidthof[DType.int32]()  # assumed to be 4 in this example
+    alias simd_width = simd_width_of[DType.int32]()  # assumed to be 4 in this example
 
     fn main():
         var p = UnsafePointer[Int32].alloc(size)
@@ -194,7 +194,7 @@ fn vectorize[
     /,
     *,
     size: Int,
-    unroll_factor: Int = size if is_nvidia_gpu() else 1,
+    unroll_factor: Int = size if sys.is_gpu() else 1,
 ]():
     """Simplifies SIMD optimized loops by mapping a function across a range from
     0 to `size`, incrementing by `simd_width` at each step. The remainder of
@@ -214,12 +214,12 @@ fn vectorize[
 
     ```mojo
     from algorithm.functional import vectorize
-    from sys import simdwidthof
+    from sys import simd_width_of
 
     # The amount of elements to loop through
     alias size = 10
     # How many Dtype.int32 elements fit into the SIMD register (4 on 128bit)
-    alias simd_width = simdwidthof[DType.int32]()  # assumed to be 4 in this example
+    alias simd_width = simd_width_of[DType.int32]()  # assumed to be 4 in this example
 
     fn main():
         var p = UnsafePointer[Int32].alloc(size)
@@ -1370,10 +1370,9 @@ fn elementwise[
         )
 
     # Intern the kind string as a static string so we don't allocate.
-    alias kind = get_static_string[
-        "elementwise",
-        ("(" + _trace_description + ")" if _trace_description else ""),
-    ]()
+    alias d = _trace_description
+    alias desc = String("(", d, ")") if d else ""
+    alias kind = get_static_string["elementwise", desc]()
 
     with Trace[TraceLevel.OP, target=target](
         kind,
@@ -1382,7 +1381,9 @@ fn elementwise[
 
         @parameter
         if is_gpu[target]():
-            _elementwise_impl_gpu[func, simd_width=simd_width](shape, context[])
+            _elementwise_impl_gpu[func, simd_width = UInt(simd_width)](
+                shape, context[]
+            )
         else:
             _elementwise_impl_cpu[
                 func, simd_width, use_blocking_impl=use_blocking_impl
@@ -1407,7 +1408,7 @@ fn _elementwise_impl[
             func, simd_width, use_blocking_impl=use_blocking_impl
         ](shape)
     else:
-        _elementwise_impl_gpu[func, simd_width](
+        _elementwise_impl_gpu[func, UInt(simd_width)](
             shape,
             context,
         )
@@ -1616,8 +1617,8 @@ fn _elementwise_impl_gpu[
     alias registers_per_thread = 255
     alias num_waves = 32
     alias registers_per_block = hw_info.max_registers_per_block
-    alias sm_count: UInt = hw_info.sm_count
-    alias threads_per_sm: UInt = hw_info.threads_per_sm
+    alias sm_count: UInt = UInt(hw_info.sm_count)
+    alias threads_per_sm: UInt = UInt(hw_info.threads_per_sm)
 
     constrained[
         sm_count > 0 and threads_per_sm > 0,
@@ -1625,7 +1626,7 @@ fn _elementwise_impl_gpu[
     ]()
 
     # split between packed and tail regions of input
-    var length: UInt = shape.flattened_length()
+    var length: UInt = UInt(shape.flattened_length())
     var num_packed_elems = length // simd_width
     var unpacked_tail_length = length % simd_width
     var packed_region_length = length - unpacked_tail_length
@@ -1638,7 +1639,7 @@ fn _elementwise_impl_gpu[
     )
 
     var num_blocks = clamp(
-        ceildiv(num_packed_elems, block_size),
+        ceildiv(num_packed_elems, UInt(block_size)),
         1,
         sm_count * threads_per_sm // block_size * num_waves,
     )
@@ -1679,7 +1680,7 @@ fn _elementwise_impl_gpu[
                     for off in range(Int(simd_width)):
                         func[1, rank](
                             _get_start_indices_of_nth_subvolume_uint[0](
-                                idx * simd_width + off,
+                                UInt(idx * simd_width + off),
                                 shape,
                             ).canonicalize()
                         )
@@ -1706,7 +1707,7 @@ fn _elementwise_impl_gpu[
     if shape[rank - 1] % simd_width == 0:
         ctx.enqueue_function[
             _elementwise_gpu_kernel[
-                block_size=block_size, handle_uneven_simd=False
+                block_size = UInt(block_size), handle_uneven_simd=False
             ]
         ](
             grid_dim=Int(num_blocks),
@@ -1716,7 +1717,7 @@ fn _elementwise_impl_gpu[
     else:
         ctx.enqueue_function[
             _elementwise_gpu_kernel[
-                block_size=block_size, handle_uneven_simd=True
+                block_size = UInt(block_size), handle_uneven_simd=True
             ]
         ](
             grid_dim=Int(num_blocks),
@@ -2019,7 +2020,7 @@ fn _stencil_impl_gpu[
         var channel = bid_z % shape[3]
 
         # Early exit if outside bounds
-        if x >= shape[2] or y >= shape[1]:
+        if x >= UInt(shape[2]) or y >= UInt(shape[1]):
             return
 
         # Create output point indices with computed batch and channel

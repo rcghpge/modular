@@ -15,7 +15,7 @@ warp-matrix-matrix-multiplication (wmma) instructions."""
 
 from collections import InlineArray
 from collections.string.string_slice import _get_kgen_string
-from sys import _RegisterPackType, is_nvidia_gpu, llvm_intrinsic, sizeof
+from sys import _RegisterPackType, is_nvidia_gpu, llvm_intrinsic, size_of
 from sys._assembly import inlined_assembly
 from sys.info import (
     is_amd_gpu,
@@ -129,6 +129,24 @@ fn _mma_wmma_rdna(mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
     d = rebind[__type_of(d)](r)
 
 
+@fieldwise_init
+@register_passable("trivial")
+struct _AMD_F8F6F4_MATRIX_FORMAT:
+    """Represents the matrix format value to control the type and shape for the inputs
+    of the llvm.amdgcn.mfma.scale.f8f6f4 intrinsics.
+    """
+
+    var _value: Int32
+    alias float8_e4m3 = Self(0)
+    alias float8_e5m2 = Self(1)
+    alias float6_e2m3 = Self(2)
+    alias float6_e3m2 = Self(3)
+    alias float4_e2m1 = Self(4)
+
+    fn __init__(out self, value: Int):
+        self._value = value
+
+
 @always_inline
 fn _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
     @parameter
@@ -143,6 +161,35 @@ fn _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
     # Compute Project (OCP) float8 dtypes.
     alias fp8_dtype = get_amd_fp8_dtype()
     alias bf8_dtype = get_amd_bf8_dtype()
+
+    @parameter
+    fn _f8f6f4_intrinsic() -> SIMD[d.dtype, d.size]:
+        constrained[_cdna_4_or_newer(), "MMA shape requires CDNA4 or newer"]()
+
+        alias intrinsic_name = "llvm.amdgcn.mfma.scale.f32.16x16x128.f8f6f4" if _has_shape[
+            (32, 32, 4, 4)
+        ](
+            a.size, b.size, c.size, d.size
+        ) else "llvm.amdgcn.mfma.scale.f32.32x32x64.f8f6f4"
+
+        @parameter
+        fn _matrix_format[dtype: DType]() -> _AMD_F8F6F4_MATRIX_FORMAT:
+            return (
+                _AMD_F8F6F4_MATRIX_FORMAT.float8_e4m3 if dtype
+                == fp8_dtype else _AMD_F8F6F4_MATRIX_FORMAT.float8_e5m2
+            )
+
+        return llvm_intrinsic[intrinsic_name, SIMD[d.dtype, d.size]](
+            bitcast[DType.int32, 8](a),
+            bitcast[DType.int32, 8](b),
+            c,
+            _matrix_format[a.dtype](),
+            _matrix_format[b.dtype](),
+            zero,
+            zero,
+            zero,
+            zero,
+        )
 
     # ===------------------------------------------------------------------===#
     # F16 = F16 * F16 + F16
@@ -292,6 +339,14 @@ fn _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
             zero,
             zero,
         )
+    elif _has_type[(fp8_dtype, fp8_dtype, DType.float32, DType.float32)](
+        a.dtype, b.dtype, c.dtype, d.dtype
+    ) and _has_shape[(32, 32, 4, 4)](a.size, b.size, c.size, d.size):
+        d = _f8f6f4_intrinsic()
+    elif _has_type[(fp8_dtype, fp8_dtype, DType.float32, DType.float32)](
+        a.dtype, b.dtype, c.dtype, d.dtype
+    ) and _has_shape[(32, 32, 16, 16)](a.size, b.size, c.size, d.size):
+        d = _f8f6f4_intrinsic()
 
     # ===------------------------------------------------------------------===#
     # F32 = BF8 * BF8 + F32
@@ -309,6 +364,14 @@ fn _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
             zero,
             zero,
         )
+    elif _has_type[(bf8_dtype, bf8_dtype, DType.float32, DType.float32)](
+        a.dtype, b.dtype, c.dtype, d.dtype
+    ) and _has_shape[(32, 32, 4, 4)](a.size, b.size, c.size, d.size):
+        d = _f8f6f4_intrinsic()
+    elif _has_type[(bf8_dtype, bf8_dtype, DType.float32, DType.float32)](
+        a.dtype, b.dtype, c.dtype, d.dtype
+    ) and _has_shape[(32, 32, 16, 16)](a.size, b.size, c.size, d.size):
+        d = _f8f6f4_intrinsic()
 
     else:
         _unsupported_mma_op(d, a, b, c)
@@ -583,11 +646,11 @@ fn _dtype_to_nvvm_wgmma_type[
 fn _get_shape[m: Int, n: Int, k: Int]() -> __mlir_type.`!kgen.deferred`:
     return __mlir_deferred_attr[
         `#nvvm.shape<m =`,
-        +m.value,
+        +m._mlir_value,
         `, n =`,
-        +n.value,
+        +n._mlir_value,
         `, k =`,
-        +k.value,
+        +k._mlir_value,
         `>`,
     ]
 
@@ -706,7 +769,7 @@ fn ld_matrix[
 
     # The register width is fixed at 4 Bytes (32 bits)
     alias register_btypes = 4
-    alias register_width = register_btypes // sizeof[dtype]()
+    alias register_width = register_btypes // size_of[dtype]()
     alias num_registers = simd_width // register_width
 
     # Full intrinsic is base + suffix
@@ -894,7 +957,6 @@ struct WGMMADescriptor[dtype: DType](MMAOperandDescriptor):
     to efficiently access shared memory with the appropriate layout and access patterns.
     """
 
-    @implicit
     fn __init__(out self, val: Int64):
         """Initialize descriptor with raw 64-bit value.
 
@@ -909,7 +971,7 @@ struct WGMMADescriptor[dtype: DType](MMAOperandDescriptor):
         self.desc = val
 
     @always_inline
-    fn _insert_bit[start_bit: Int](self, val: Int64) -> Int64:
+    fn _insert_bit[start_bit: Int](self, val: Int64) -> Self:
         """Insert bits at specified position in descriptor.
 
         Parameters:
@@ -921,7 +983,7 @@ struct WGMMADescriptor[dtype: DType](MMAOperandDescriptor):
         Returns:
             Updated descriptor value with inserted bits.
         """
-        return self.desc | (val << start_bit)
+        return Self(self.desc | (val << start_bit))
 
     @staticmethod
     fn create[
@@ -967,21 +1029,21 @@ struct WGMMADescriptor[dtype: DType](MMAOperandDescriptor):
         var start_address = (base_ptr & 0x3FFFF) >> 4
 
         # Start from LSB in case updated higher bits gets overwritten.
-        var desc = Int64(0)
+        var desc = Self(0)
         # bits [48 .. 32]
         # bits  0:14 address in share memory
-        desc = Self._insert_bit[0](desc, start_address)
+        desc = desc._insert_bit[0](start_address)
         # bits 14:16 unused
         # bits 16:30 leading dim byte offset
-        desc = Self._insert_bit[16](desc, lead_dim)
+        desc = desc._insert_bit[16](lead_dim)
         # bits 30:32 unused
         # bits 32:46 stride dim byte offset
-        desc = Self._insert_bit[32](desc, stride_dim)
+        desc = desc._insert_bit[32](stride_dim)
         # bits 49:52 offset
-        desc = Self._insert_bit[49](desc, offset)
+        desc = desc._insert_bit[49](offset)
         # bits 53:62 unused
         # bits 62:64 swizzle type
-        desc = Self._insert_bit[62](desc, swizzle)
+        desc = desc._insert_bit[62](swizzle)
 
         return desc
 
@@ -1004,7 +1066,7 @@ struct WGMMADescriptor[dtype: DType](MMAOperandDescriptor):
         Returns:
             New descriptor with updated base address.
         """
-        return self.desc + ((offset & 0x3FFFF) >> 4)
+        return Self(self.desc + ((offset & 0x3FFFF) >> 4))
 
 
 @always_inline
@@ -1094,12 +1156,12 @@ fn wgmma_async[
 
     Constraints:
         - The number of output registers must match the instruction shape:
-          `(m * n // 128) * sizeof(accum_type) == width * sizeof(c_dtype)`.
+          `(m * n // 128) * size_of(accum_type) == width * size_of(c_dtype)`.
         - Data type combinations must be compatible with hardware WGMMA instructions.
     """
 
     constrained[
-        (m * n // 128) * sizeof[accum_type]() == width * sizeof[c_dtype](),
+        (m * n // 128) * size_of[accum_type]() == width * size_of[c_dtype](),
         "Number of output registers ",
         String(width),
         " don't match the instruction shape ",
@@ -1137,10 +1199,10 @@ fn wgmma_async[
     ]()
 
     var desc_a_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
-        mat_a_desc.desc.value
+        mat_a_desc.desc._mlir_value
     )
     var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
-        mat_b_desc.desc.value
+        mat_b_desc.desc._mlir_value
     )
 
     alias layout_a_value = _get_kgen_string[layout_a]()
@@ -1168,7 +1230,7 @@ fn wgmma_async[
                 `!kgen.variadic_splat<`,
                 dtype_to_llvm_type[c_dtype],
                 `, `,
-                width.value,
+                width._mlir_value,
                 `>`,
             ],
             `)>`,
@@ -1230,12 +1292,12 @@ fn wgmma_async[
 
     Constraints:
         - The number of output registers must match the instruction shape:
-          `(m * n // 128) * sizeof(accum_type) == width * sizeof(c_dtype)`.
+          `(m * n // 128) * size_of(accum_type) == width * size_of(c_dtype)`.
         - Data type combinations must be compatible with hardware WGMMA instructions.
     """
 
     constrained[
-        (m * n // 128) * sizeof[accum_type]() == width * sizeof[c_dtype](),
+        (m * n // 128) * size_of[accum_type]() == width * size_of[c_dtype](),
         "Number of output registers ",
         String(width),
         " don't match the instruction shape ",
@@ -1273,10 +1335,10 @@ fn wgmma_async[
     ]()
 
     var desc_a_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
-        mat_a_desc.desc.value
+        mat_a_desc.desc._mlir_value
     )
     var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
-        mat_b_desc.desc.value
+        mat_b_desc.desc._mlir_value
     )
 
     alias layout_a_value = _get_kgen_string[layout_a]()
@@ -1303,7 +1365,7 @@ fn wgmma_async[
                 `!kgen.variadic_splat<`,
                 dtype_to_llvm_type[c_dtype],
                 `, `,
-                width.value,
+                width._mlir_value,
                 `>`,
             ],
             `)>`,
@@ -1372,8 +1434,8 @@ fn wgmma_async[
     - Column major matrix B (or row major for BF16).
     """
     constrained[
-        (m * n // 128) * sizeof[accum_type]()
-        == frag_c_width * sizeof[c_dtype](),
+        (m * n // 128) * size_of[accum_type]()
+        == frag_c_width * size_of[c_dtype](),
         "Number of output registers ",
         String(frag_c_width),
         " don't match the instruction shape ",
@@ -1381,7 +1443,7 @@ fn wgmma_async[
     ]()
 
     constrained[
-        (m * k // 128) * sizeof[a_type]() == frag_a_width * sizeof[a_dtype](),
+        (m * k // 128) * size_of[a_type]() == frag_a_width * size_of[a_dtype](),
         "Number of input a registers ",
         String(frag_a_width),
         " don't match the instruction shape ",
@@ -1400,7 +1462,7 @@ fn wgmma_async[
     ]()
 
     var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
-        mat_b_desc.desc.value
+        mat_b_desc.desc._mlir_value
     )
     alias trans_b = 1 if layout_b == "row" else 0
 

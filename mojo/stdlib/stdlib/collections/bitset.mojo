@@ -36,7 +36,7 @@ from algorithm import vectorize
 from bit import log2_floor, pop_count
 from math import ceildiv
 from memory import pack_bits
-from sys import bitwidthof, simdwidthof
+from sys import bit_width_of, simd_width_of
 
 from .inline_array import InlineArray
 
@@ -44,14 +44,14 @@ from .inline_array import InlineArray
 # Utilities
 # ===-----------------------------------------------------------------------===#
 
-alias _WORD_BITS = bitwidthof[UInt64]()
+alias _WORD_BITS = bit_width_of[UInt64]()
 alias _WORD_BITS_LOG2 = log2_floor(_WORD_BITS)
 
 
 @always_inline
 fn _word_index(idx: UInt) -> UInt:
     """Computes the 0-based index of the 64-bit word containing bit `idx`."""
-    return Int(idx >> _WORD_BITS_LOG2)
+    return UInt(idx >> _WORD_BITS_LOG2)
 
 
 @always_inline
@@ -72,7 +72,7 @@ fn _check_index_bounds[operation_name: StaticString](idx: UInt, max_size: Int):
         max_size: The maximum size of the BitSet.
     """
     debug_assert(
-        idx < max_size,
+        idx < UInt(max_size),
         "BitSet index out of bounds when ",
         operation_name,
         " bit: ",
@@ -107,7 +107,7 @@ struct BitSet[size: UInt](
     lookup speed are critical.
     """
 
-    alias _words_size: Int = Int(max(1, ceildiv(size, _WORD_BITS)))
+    alias _words_size: Int = Int(max(1, ceildiv(size, UInt(_WORD_BITS))))
     var _words: InlineArray[UInt64, Self._words_size]  # Payload storage.
 
     # --------------------------------------------------------------------- #
@@ -292,7 +292,7 @@ struct BitSet[size: UInt](
             A new bitset containing the result of applying the function to each
             corresponding pair of words from the input bitsets.
         """
-        alias simd_width = simdwidthof[UInt64]()
+        alias simd_width = simd_width_of[UInt64]()
         var res = Self()
 
         # Define a vectorized operation that processes multiple words at once
@@ -406,15 +406,12 @@ struct BitSet[size: UInt](
     # --------------------------------------------------------------------- #
 
     @no_inline
-    fn write_to[W: Writer, //](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Writes a string representation of the set bits to the given writer.
         Outputs the indices of the set bits in ascending order, enclosed in
         curly braces and separated by commas (e.g., "{1, 5, 42}"). Uses
         efficient bitwise operations to find set bits without iterating
         through every possible bit.
-
-        Parameters:
-            W: The type of the writer, conforming to the `Writer` trait.
 
         Args:
             writer: The writer instance to output the representation to.

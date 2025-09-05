@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 from logger import Logger
 from collections import OptionalReg
-from sys import sizeof, alignof
+from sys import size_of, align_of
 from math import ceildiv, gcd
 from buffer.buffer import NDBuffer
 from buffer.dimlist import DimList
@@ -221,13 +221,13 @@ fn matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     alias a_scales_size = a_scales_smem_layout.size()
 
     constrained[
-        ((a_size * sizeof[a_type]()) % 128) == 0, "preserve alignment"
+        ((a_size * size_of[a_type]()) % 128) == 0, "preserve alignment"
     ]()
     constrained[
-        ((b_size * sizeof[b_type]()) % 128) == 0, "preserve alignment"
+        ((b_size * size_of[b_type]()) % 128) == 0, "preserve alignment"
     ]()
     constrained[
-        ((a_scales_size * sizeof[a_scales_type]()) % 16) == 0,
+        ((a_scales_size * size_of[a_scales_type]()) % 16) == 0,
         "preserve alignment",
     ]()
 
@@ -251,9 +251,9 @@ fn matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
         .static_alignment_cast[alignment=16]()
     )
 
-    alias a_expected_bytes = a_size * sizeof[a_type]()
-    alias b_expected_bytes = b_size * sizeof[b_type]()
-    alias a_scales_expected_bytes = a_scales_size * sizeof[a_scales_type]()
+    alias a_expected_bytes = a_size * size_of[a_type]()
+    alias b_expected_bytes = b_size * size_of[b_type]()
+    alias a_scales_expected_bytes = a_scales_size * size_of[a_scales_type]()
     alias expected_bytes = a_expected_bytes + b_expected_bytes + a_scales_expected_bytes
 
     tma_mbar = (
@@ -319,26 +319,30 @@ fn matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
             a_tma_op.async_copy_3d(
                 a_smem_tile_3D_view,
                 tma_mbar[0],
-                (UInt(k_iter) * BK, block_idx.y * BM, UInt(block_idx.z)),
+                (
+                    UInt(k_iter) * UInt(BK),
+                    block_idx.y * UInt(BM),
+                    UInt(block_idx.z),
+                ),
             )
 
             a_scales_tma_op.async_copy_3d(
                 a_scales_smem_tile_3D_view,
                 tma_mbar[0],
-                (block_idx.y * BM, UInt(k_iter), UInt(block_idx.z)),
+                (block_idx.y * UInt(BM), UInt(k_iter), UInt(block_idx.z)),
             )
 
             b_tma_op.async_copy_3d(
                 b_smem_tile_3D_view,
                 tma_mbar[0],
                 (
-                    UInt(k_iter) * BK,
-                    block_idx.x * BN,
-                    UInt(block_idx.z),
+                    UInt(k_iter) * UInt(BK),
+                    block_idx.x * UInt(BN),
+                    block_idx.z,
                 ) if transpose_b else (
-                    block_idx.x * BN,
-                    UInt(k_iter) * BK,
-                    UInt(block_idx.z),
+                    block_idx.x * UInt(BN),
+                    UInt(k_iter) * UInt(BK),
+                    block_idx.z,
                 ),
             )
 
@@ -420,7 +424,7 @@ fn matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
         tcgen05_dealloc[1](tmem_addr, max_tmem_cols)
 
     alias num_warps = num_threads // WARP_SIZE
-    warp_id = thread_idx.x // WARP_SIZE
+    warp_id = UInt(thread_idx.x // WARP_SIZE)
 
     ctile, ctile_coords, _ = c.tile_with_offset[BM, BN](
         block_idx.y, block_idx.x
@@ -476,7 +480,7 @@ fn matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
 
                         @parameter
                         if elementwise_lambda_fn:
-                            alias alignment = alignof[SIMD[c_type, 2]]()
+                            alias alignment = align_of[SIMD[c_type, 2]]()
                             alias epilogue = elementwise_lambda_fn.value()
                             epilogue[alignment=alignment](
                                 (Int(m), Int(n)), c_mn
@@ -693,7 +697,7 @@ fn matmul_sm100_blockwise_scaled_fp8[
             " must be equal to 128"
         )
 
-    var padding_size = 16 // sizeof[a_scales_type]()
+    var padding_size = 16 // size_of[a_scales_type]()
     if a_scales_dim1 % padding_size != 0:
         raise Error(
             "a_scales_3D.dim(2) must be divisible by 16 bytes. This is required"
@@ -750,8 +754,8 @@ fn matmul_sm100_blockwise_scaled_fp8[
     # NOTE: desc layout must be specified otherwise a constraint fails
 
     alias smem_use = (
-        BM * sizeof[a_type]() + BN * sizeof[b_type]()
-    ) * BK + 24 + sizeof[a_scales_type]() * BM
+        BM * size_of[a_type]() + BN * size_of[b_type]()
+    ) * BK + 24 + size_of[a_scales_type]() * BM
 
     alias block_dim = 128
 

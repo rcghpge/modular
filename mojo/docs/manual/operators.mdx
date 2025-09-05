@@ -1250,7 +1250,7 @@ struct Complex(
     fn __str__(self) -> String:
         return String.write(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         writer.write("(", self.re)
         if self.im < 0:
             writer.write(" - ", -self.im)
@@ -1595,7 +1595,6 @@ representing floating point numbers when performing arithmetic operations. But
 we'll go ahead and implement the operators for completeness.)
 
 ```mojo
-@value
 struct Complex(
     EqualityComparable,
     Formattable,

@@ -106,11 +106,8 @@ struct Slice(
         return self.__str__()
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """Write Slice string representation to a `Writer`.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -147,19 +144,6 @@ struct Slice(
             and self.end == other.end
             and self.step == other.step
         )
-
-    @always_inline
-    fn __ne__(self, other: Self) -> Bool:
-        """Compare this slice to the other.
-
-        Args:
-            other: The slice to compare to.
-
-        Returns:
-            False if start, end, and step values of this slice match the
-            corresponding values of the other slice and True otherwise.
-        """
-        return not (self == other)
 
     fn indices(self, length: Int) -> (Int, Int, Int):
         """Returns a tuple of 3 integers representing the start, end, and step

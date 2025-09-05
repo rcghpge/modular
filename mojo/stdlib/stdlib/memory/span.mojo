@@ -20,8 +20,9 @@ from memory import Span
 ```
 """
 
-from sys import alignof
-from sys.info import simdwidthof
+from algorithm import vectorize
+from sys import align_of
+from sys.info import simd_width_of
 
 from collections._index_normalization import normalize_index
 from memory import Pointer
@@ -34,7 +35,7 @@ struct _SpanIter[
     origin: Origin[mut],
     forward: Bool = True,
     address_space: AddressSpace = AddressSpace.GENERIC,
-    alignment: Int = alignof[T](),
+    alignment: Int = align_of[T](),
 ](Copyable, Movable):
     """Iterator for Span.
 
@@ -83,7 +84,7 @@ struct Span[
     origin: Origin[mut],
     *,
     address_space: AddressSpace = AddressSpace.GENERIC,
-    alignment: Int = alignof[T](),
+    alignment: Int = align_of[T](),
 ](ExplicitlyCopyable, Copyable, Movable, Sized, Boolable, Defaultable):
     """A non-owning view of contiguous data.
 
@@ -204,7 +205,7 @@ struct Span[
             An element reference.
         """
         var normalized_idx = normalize_index["Span", assert_always=False](
-            idx, len(self)
+            idx, UInt(len(self))
         )
         return self._data[normalized_idx]
 
@@ -230,7 +231,7 @@ struct Span[
         debug_assert(step == 1, "Slice step must be 1")
 
         return Self(
-            ptr=(self._data + start), length=len(range(start, end, step))
+            ptr=(self._data + start), length=UInt(len(range(start, end, step)))
         )
 
     @always_inline
@@ -317,7 +318,7 @@ struct Span[
             alias width = widths[i]
 
             @parameter
-            if simdwidthof[dtype]() >= width:
+            if simd_width_of[dtype]() >= width:
                 for _ in range((length - processed) // width):
                     if value in (ptr + processed).load[width=width]():
                         return True
@@ -363,12 +364,11 @@ struct Span[
 
     @no_inline
     fn write_to[
-        W: Writer, U: Representable & Copyable & Movable, //
-    ](self: Span[U, *_], mut writer: W):
+        U: Representable & Copyable & Movable, //
+    ](self: Span[U, *_], mut writer: Some[Writer]):
         """Write `my_span.__str__()` to a `Writer`.
 
         Parameters:
-            W: A type conforming to the Writable trait.
             U: The type of the Span elements. Must have the trait
                 `Representable`.
 
@@ -563,7 +563,7 @@ struct Span[
         Raises:
             If a or b are larger than the length of the span.
         """
-        var length = len(self)
+        var length = UInt(len(self))
         if a > length or b > length:
             raise Error(
                 "index out of bounds (length: ",
@@ -606,7 +606,7 @@ struct Span[
         """
         return __type_of(result)(
             ptr=self._data.origin_cast[result.mut, result.origin](),
-            length=self._len,
+            length=UInt(self._len),
         )
 
     fn reverse[
@@ -631,7 +631,7 @@ struct Span[
             alias w = widths[i]
 
             @parameter
-            if simdwidthof[dtype]() >= w:
+            if simd_width_of[dtype]() >= w:
                 for _ in range((middle - processed) // w):
                     var lhs_ptr = ptr + processed
                     var rhs_ptr = ptr + length - (processed + w)
@@ -669,7 +669,7 @@ struct Span[
             alias w = widths[i]
 
             @parameter
-            if simdwidthof[dtype]() >= w:
+            if simd_width_of[dtype]() >= w:
                 for _ in range((length - processed) // w):
                     var p_curr = ptr + processed
                     p_curr.store(func(p_curr.load[width=w]()))
@@ -705,7 +705,7 @@ struct Span[
             alias w = widths[i]
 
             @parameter
-            if simdwidthof[dtype]() >= w:
+            if simd_width_of[dtype]() >= w:
                 for _ in range((length - processed) // w):
                     var p_curr = ptr + processed
                     var vec = p_curr.load[width=w]()
@@ -716,3 +716,37 @@ struct Span[
             var vec = ptr[processed + i]
             if where(vec):
                 (ptr + processed + i).init_pointee_move(func(vec))
+
+    fn count[
+        dtype: DType, //,
+        func: fn[w: Int] (SIMD[dtype, w]) capturing -> SIMD[DType.bool, w],
+    ](self: Span[Scalar[dtype]]) -> UInt:
+        """Count the amount of times the function returns `True`.
+
+        Parameters:
+            dtype: The DType.
+            func: The function to evaluate.
+
+        Returns:
+            The amount of times the function returns `True`.
+        """
+
+        alias simdwidth = simd_width_of[DType.index]()
+        var ptr = self.unsafe_ptr()
+        var length = len(self)
+        var countv = SIMD[DType.index, simdwidth](0)
+        var count = Scalar[DType.index](0)
+
+        @parameter
+        fn do_count[width: Int](idx: Int):
+            var vec = func(ptr.load[width=width](idx)).cast[DType.index]()
+
+            @parameter
+            if width == 1:
+                count += rebind[__type_of(count)](vec)
+            else:
+                countv += rebind[__type_of(countv)](vec)
+
+        vectorize[do_count, simdwidth](length)
+
+        return UInt(countv.reduce_add() + count)

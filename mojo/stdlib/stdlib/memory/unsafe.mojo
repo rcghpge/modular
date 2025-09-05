@@ -19,7 +19,7 @@ from memory import bitcast
 ```
 """
 
-from sys import bitwidthof
+from sys import bit_width_of
 from sys import (
     is_amd_gpu,
     is_nvidia_gpu,
@@ -73,7 +73,7 @@ fn bitcast[
         source SIMD value.
     """
     constrained[
-        bitwidthof[SIMD[dtype, width]]() == bitwidthof[__type_of(val)](),
+        bit_width_of[SIMD[dtype, width]]() == bit_width_of[__type_of(val)](),
         "the source and destination types must have the same bitwidth",
     ]()
 
@@ -123,9 +123,9 @@ fn bitcast[
     if dtype == src_dtype:
         return val._refine[dtype, width]()
     var res = __mlir_op.`pop.bitcast`[_type = SIMD[dtype, width]._mlir_type](
-        val.value
+        val._mlir_value
     )
-    return SIMD(res)
+    return SIMD(mlir_value=res)
 
 
 @always_inline("builtin")
@@ -207,6 +207,6 @@ fn pack_bits[
     ]()
 
     var res = __mlir_op.`pop.bitcast`[_type = SIMD[dtype, width]._mlir_type](
-        val.value
+        val._mlir_value
     )
-    return SIMD(res)
+    return SIMD(mlir_value=res)

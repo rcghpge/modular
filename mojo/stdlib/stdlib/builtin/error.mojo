@@ -258,12 +258,9 @@ struct Error(
         return String.write(self)
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats this error to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -317,7 +314,7 @@ struct Error(
             resulting StringSlice is given an ImmutableAnyOrigin.
         """
         return StringSlice[ImmutableAnyOrigin](
-            ptr=self.data, length=self.byte_length()
+            ptr=self.data, length=UInt(self.byte_length())
         )
 
     fn get_stack_trace(self) -> StackTrace:

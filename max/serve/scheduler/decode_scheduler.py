@@ -145,6 +145,12 @@ class DecodeScheduler(Scheduler):
         """Handles a prefill response from the dispatcher."""
         # Send singular token to the API process
         context = message.context
+        assert not context.needs_ce, (
+            f"Invalid Context: Expected needs_ce to be False. Found: {context}"
+        )
+        assert context.start_idx > 0, (
+            f"Invalid Context: Expected start_idx to be greater than 0. Found: {context}"
+        )
         output = context.to_generation_output()
         self.response_push_socket.put_nowait(
             {message.id: SchedulerResult.create(output)}
@@ -158,7 +164,7 @@ class DecodeScheduler(Scheduler):
         self,
         request_id: RequestID,
         data: Union[TextContext, TextAndVisionContext],
-        dst_idx: list[int],
+        dst_idxs: list[int],
     ) -> None:
         """Pushes a request to the prefill socket.
 
@@ -178,22 +184,28 @@ class DecodeScheduler(Scheduler):
             )
             self.remote_endpoints.add(data.target_endpoint)
 
+        assert data.needs_ce, (
+            f"Invalid Context: Expected needs_ce to be True. Found: {data}"
+        )
+
+        # Set dst_idx to -1 to denote pages which the decode already has due to
+        # prefix caching.
+        for i in range(data.start_idx // self.paged_manager.page_size):
+            dst_idxs[i] = -1
+
         self.dispatcher_client.send(
             MessageType.PREFILL_REQUEST,
             PrefillRequest(
                 id=request_id,
                 context=data,
                 transfer_engine_name=self.transfer_engine.name,
-                block_ids=dst_idx,
+                block_ids=dst_idxs,
             ),
             destination_address=data.target_endpoint,
         )
 
     def reserve_memory_and_send_to_prefill(self) -> None:
-        """Continuously pulls requests from the request queue and forwards them to the prefill node.
-
-        Breaks when the request queue is empty. Memory reservation is pending implementation.
-        """
+        """Continuously pulls requests from the request queue and forwards them to the prefill node."""
         self.pending_reqs |= dict(self.request_pull_socket.drain_nowait())
 
         while (
@@ -203,6 +215,10 @@ class DecodeScheduler(Scheduler):
                 + len(self.pending_prefill_requests)
             )
             < self.scheduler_config.max_batch_size_tg
+            and (
+                self.paged_manager is None
+                or self.paged_manager.free_blocks_pct > 0.1
+            )
         ):
             # Pop off request queue
             req_id, context = self.pending_reqs.popitem(last=False)

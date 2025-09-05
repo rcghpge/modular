@@ -15,7 +15,7 @@
 These APIs are imported automatically, just like builtins.
 """
 
-from sys import alignof, is_gpu, is_nvidia_gpu, sizeof
+from sys import align_of, is_gpu, is_nvidia_gpu, size_of
 from sys.intrinsics import (
     gather,
     scatter,
@@ -46,7 +46,7 @@ struct UnsafePointer[
     type: AnyType,
     *,
     address_space: AddressSpace = AddressSpace.GENERIC,
-    alignment: Int = alignof[type](),
+    alignment: Int = align_of[type](),
     mut: Bool = True,
     origin: Origin[mut] = Origin[mut].cast_from[MutableAnyOrigin],
 ](
@@ -167,7 +167,7 @@ struct UnsafePointer[
         `!kgen.pointer<`,
         type,
         `, `,
-        address_space._value.value,
+        address_space._value._mlir_value,
         `>`,
     ]
     """The underlying pointer type."""
@@ -200,7 +200,9 @@ struct UnsafePointer[
         self.address = value
 
     @always_inline("nodebug")
-    fn __init__(out self, *, ref [origin, address_space._value.value]to: type):
+    fn __init__(
+        out self, *, ref [origin, address_space._value._mlir_value]to: type
+    ):
         """Constructs a Pointer from a reference to a value.
 
         Args:
@@ -260,7 +262,7 @@ struct UnsafePointer[
         - The returned memory is uninitialized; reading before writing is undefined.
         - The returned pointer has an empty mutable origin; you must call `free()`
           to release it.
-        - `count` must be positive and `sizeof[type]()` must be > 0.
+        - `count` must be positive and `size_of[type]()` must be > 0.
 
         Example:
 
@@ -280,9 +282,9 @@ struct UnsafePointer[
         Returns:
             Pointer to the newly allocated uninitialized array.
         """
-        alias sizeof_t = sizeof[type]()
-        constrained[sizeof_t > 0, "size must be greater than zero"]()
-        return _malloc[type, alignment=alignment](sizeof_t * count)
+        alias size_of_t = size_of[type]()
+        constrained[size_of_t > 0, "size must be greater than zero"]()
+        return _malloc[type, alignment=alignment](size_of_t * count)
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -317,7 +319,7 @@ struct UnsafePointer[
         Returns:
             The new constructed UnsafePointer.
         """
-        return __mlir_op.`pop.offset`(self.address, index(idx))
+        return __mlir_op.`pop.offset`(self.address, index(idx)._mlir_value)
 
     @always_inline("nodebug")
     fn __getitem__[
@@ -533,7 +535,7 @@ struct UnsafePointer[
         Returns:
           The address of the pointer as an Int.
         """
-        return __mlir_op.`pop.pointer_to_index`(self.address)
+        return Int(mlir_value=__mlir_op.`pop.pointer_to_index`(self.address))
 
     @no_inline
     fn __str__(self) -> String:
@@ -545,12 +547,9 @@ struct UnsafePointer[
         return hex(Int(self))
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats this pointer address to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -582,7 +581,7 @@ struct UnsafePointer[
         dtype: DType, //,
         width: Int = 1,
         *,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
         volatile: Bool = False,
         invariant: Bool = _default_invariant[mut](),
     ](self: UnsafePointer[Scalar[dtype], **_]) -> SIMD[dtype, width]:
@@ -626,7 +625,7 @@ struct UnsafePointer[
         ]()
 
         @parameter
-        if is_nvidia_gpu() and sizeof[dtype]() == 1 and alignment == 1:
+        if is_nvidia_gpu() and size_of[dtype]() == 1 and alignment == 1:
             # LLVM lowering to PTX incorrectly vectorizes loads for 1-byte types
             # regardless of the alignment that is passed. This causes issues if
             # this method is called on an unaligned pointer.
@@ -637,18 +636,18 @@ struct UnsafePointer[
             # intentionally don't unroll, otherwise the compiler vectorizes
             for i in range(width):
                 v[i] = __mlir_op.`pop.load`[
-                    alignment = alignment.value,
-                    isVolatile = volatile.value,
-                    isInvariant = invariant.value,
+                    alignment = alignment._mlir_value,
+                    isVolatile = volatile._mlir_value,
+                    isInvariant = invariant._mlir_value,
                 ]((self + i).address)
             return v
 
         var address = self.bitcast[SIMD[dtype, width]]().address
 
         return __mlir_op.`pop.load`[
-            alignment = alignment.value,
-            isVolatile = volatile.value,
-            isInvariant = invariant.value,
+            alignment = alignment._mlir_value,
+            isVolatile = volatile._mlir_value,
+            isInvariant = invariant._mlir_value,
         ](address)
 
     @always_inline("nodebug")
@@ -656,7 +655,7 @@ struct UnsafePointer[
         dtype: DType, //,
         width: Int = 1,
         *,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
         volatile: Bool = False,
         invariant: Bool = _default_invariant[mut](),
     ](self: UnsafePointer[Scalar[dtype], **_], offset: Scalar) -> SIMD[
@@ -695,7 +694,7 @@ struct UnsafePointer[
         dtype: DType, //,
         width: Int = 1,
         *,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
         volatile: Bool = False,
         invariant: Bool = _default_invariant[mut](),
     ](self: UnsafePointer[Scalar[dtype], **_], offset: I) -> SIMD[dtype, width]:
@@ -731,7 +730,7 @@ struct UnsafePointer[
         dtype: DType, //,
         width: Int = 1,
         *,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
         volatile: Bool = False,
     ](
         self: UnsafePointer[Scalar[dtype], **_],
@@ -764,7 +763,7 @@ struct UnsafePointer[
         offset_type: DType, //,
         width: Int = 1,
         *,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
         volatile: Bool = False,
     ](
         self: UnsafePointer[Scalar[dtype], **_],
@@ -798,7 +797,7 @@ struct UnsafePointer[
         dtype: DType, //,
         width: Int = 1,
         *,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
         volatile: Bool = False,
     ](self: UnsafePointer[Scalar[dtype], **_], val: SIMD[dtype, width]):
         """Stores a single element value `val` at element offset 0.
@@ -838,7 +837,7 @@ struct UnsafePointer[
         dtype: DType,
         width: Int,
         *,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
         volatile: Bool = False,
     ](self: UnsafePointer[Scalar[dtype], **_], val: SIMD[dtype, width]):
         constrained[mut, _must_be_mut_err]()
@@ -848,7 +847,8 @@ struct UnsafePointer[
         ]()
 
         __mlir_op.`pop.store`[
-            alignment = alignment.value, isVolatile = volatile.value
+            alignment = alignment._mlir_value,
+            isVolatile = volatile._mlir_value,
         ](val, self.bitcast[SIMD[dtype, width]]().address)
 
     @always_inline("nodebug")
@@ -903,7 +903,7 @@ struct UnsafePointer[
         dtype: DType, //,
         *,
         width: Int = 1,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
     ](
         self: UnsafePointer[Scalar[dtype], **_],
         offset: SIMD[_, width],
@@ -950,7 +950,7 @@ struct UnsafePointer[
             "alignment must be a power of two integer value",
         ]()
 
-        var base = offset.cast[DType.index]().fma(sizeof[dtype](), Int(self))
+        var base = offset.cast[DType.index]().fma(size_of[dtype](), Int(self))
         return gather(base, mask, default, alignment)
 
     @always_inline("nodebug")
@@ -958,7 +958,7 @@ struct UnsafePointer[
         dtype: DType, //,
         *,
         width: Int = 1,
-        alignment: Int = alignof[dtype](),
+        alignment: Int = align_of[dtype](),
     ](
         self: UnsafePointer[Scalar[dtype], **_],
         offset: SIMD[_, width],
@@ -1005,7 +1005,7 @@ struct UnsafePointer[
             "alignment must be a power of two integer value",
         ]()
 
-        var base = offset.cast[DType.index]().fma(sizeof[dtype](), Int(self))
+        var base = offset.cast[DType.index]().fma(size_of[dtype](), Int(self))
         scatter(val, base, mask, alignment)
 
     @always_inline

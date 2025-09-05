@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
 import itertools
 import json
 import logging
 import os
+import platform
 import random
 import resource
 import sys
@@ -42,6 +44,7 @@ from benchmark_datasets import (
     AxolotlBenchmarkDataset,
     BenchmarkDataset,
     CodeDebugBenchmarkDataset,
+    ObfuscatedConversationsBenchmarkDataset,
     RandomBenchmarkDataset,
     ShareGPTBenchmarkDataset,
     SonnetBenchmarkDataset,
@@ -65,6 +68,38 @@ from transformers import (
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=30 * 60)
 
 logger = logging.getLogger("benchmark_serving")
+
+
+# TODO: This should be refactored into a common utility lib so it can be reused
+# in other internal benchmarking tools.
+def is_nvml_available() -> bool:
+    """Check if NVML (NVIDIA Management Library) is available on the system.
+
+    Returns:
+        bool: True if NVML is available, False otherwise.
+    """
+    try:
+        if platform.system() == "Linux":
+            # Try to load libnvidia-ml.so.1
+            try:
+                ctypes.CDLL("libnvidia-ml.so.1")
+                return True
+            except OSError:
+                return False
+        elif platform.system() == "Windows":
+            # Try to load nvml.dll
+            try:
+                ctypes.CDLL("nvml.dll")
+                return True
+            except OSError:
+                return False
+        elif platform.system() == "Darwin":
+            # macOS doesn't support NVML
+            return False
+        else:
+            return False
+    except Exception:
+        return False
 
 
 @dataclass
@@ -464,6 +499,7 @@ def set_ulimit(target_soft_limit: int = 65535) -> None:
 async def get_request(
     input_requests: Sequence[SampledRequest],
     request_rate: float,
+    timing_data: dict[str, list[float]],
     burstiness: float = 1.0,
 ) -> AsyncGenerator[SampledRequest, None]:
     """
@@ -483,6 +519,9 @@ async def get_request(
             A lower burstiness value (0 < burstiness < 1) results
             in more bursty requests, while a higher burstiness value
             (burstiness > 1) results in a more uniform arrival of requests.
+        timing_data:
+            Dictionary where timing data will be collected with keys:
+            - 'intervals': List of actual time intervals between requests
     """
 
     # Calculate scale parameter theta to maintain the desired request_rate.
@@ -491,8 +530,26 @@ async def get_request(
     )
     theta = 1.0 / (request_rate * burstiness)
 
+    # Initialize timing data collection - always enabled
+    if timing_data is None:
+        timing_data = {}
+    timing_data.setdefault("intervals", [])
+
+    start_time = time.perf_counter()
+    last_request_time = start_time
+
     for request in input_requests:
+        current_time = time.perf_counter()
+
+        # Record timestamp when request is yielded
+        if last_request_time != start_time:
+            actual_interval = current_time - last_request_time
+            timing_data["intervals"].append(actual_interval)
+
         yield request
+
+        # Update last_request_time for next iteration
+        last_request_time = current_time
 
         if request_rate == float("inf"):
             # If the request rate is infinity, then we don't need to wait.
@@ -605,16 +662,12 @@ def calculate_metrics(
     available_gpu_memory_mib = []
     gpu_utilization = []
     if collect_gpu_stats:
-        from nvitop import Device
-        from nvitop.libnvml import NVMLError  # type: ignore
+        if is_nvml_available():
+            from nvitop import Device
 
-        try:
             device_count = Device.count()
-        except NVMLError as e:
-            logging.warning(f"Failed to get GPU device count: {e}")
-            logging.warning(
-                "GPU stats collection is only supported on NVIDIA GPUs."
-            )
+        else:
+            logger.warning("NVML not available, skipping GPU stats collection")
             device_count = 0
 
         for i in range(device_count):
@@ -676,15 +729,15 @@ async def chat_session_driver(
     lora_id: str,
     api_url: str,
     request_func: Callable[
-        [RequestFuncInput, Optional[tqdm]],
+        [RequestFuncInput],
         Awaitable[RequestFuncOutput],
     ],
     request_counter: RequestCounter,
     chat_session: ChatSession,
     max_chat_len: int,
     delay_between_chat_turns: Optional[int],
-    pbar: Optional[tqdm] = None,
     skip_session_count: Optional[int] = None,
+    ignore_first_turn_stats: bool = False,
 ) -> list[RequestFuncOutput]:
     request_func_input = RequestFuncInput(
         model=model_id,
@@ -727,18 +780,19 @@ async def chat_session_driver(
         request_func_input.prompt = message_history
         request_func_input.prompt_len = chat_len
         request_func_input.max_tokens = output_len
-        response = await request_func(request_func_input, pbar)
+        response = await request_func(request_func_input)
         if (
             skip_session_count is None
             or chat_session.id is None
             or chat_session.id >= skip_session_count
-        ):
+        ) and not (ignore_first_turn_stats and content_idx == 0):
             session_outputs.append(response)
 
         if not response.success:
-            logger.error(
-                f"Ending chat session {chat_session.id} due to server error response: {response.error}"
-            )
+            if not response.cancelled:
+                logger.error(
+                    f"Ending chat session {chat_session.id} due to server error response: {response.error}"
+                )
             break
 
         content_idx += 2
@@ -787,7 +841,15 @@ async def benchmark(
     top_p: float,
     max_benchmark_duration_s: Optional[int],
     warmup_delay_ms: float = 0,
+    ignore_first_turn_stats: bool = False,
+    timing_data: Optional[dict[str, list[float]]] = None,
 ):
+    if ignore_first_turn_stats and ttft_skip_requests:
+        logger.warning(
+            "--ignore-first-turn-stats and --ttft-skip-requests both set. Ignoring --ttft-skip-requests due to first turn in each chat already being ignored."
+        )
+        ttft_skip_requests = 0
+
     full_backend = backend + ("-chat" if chat else "")
     if full_backend in ASYNC_REQUEST_FUNCS:
         request_func = ASYNC_REQUEST_FUNCS[full_backend]
@@ -862,10 +924,14 @@ async def benchmark(
     semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
 
     if collect_gpu_stats:
-        from nvitop import ResourceMetricCollector
+        if is_nvml_available():
+            from nvitop import ResourceMetricCollector
 
-        collector = ResourceMetricCollector()
-        collector.start("benchmark")
+            collector = ResourceMetricCollector()
+            collector.start("benchmark")
+        else:
+            logger.warning("NVML not available, skipping GPU stats collection")
+            collector = None
 
     benchmark_start_time = time.perf_counter_ns()
     if max_benchmark_duration_s is None:
@@ -878,6 +944,8 @@ async def benchmark(
     outputs: list[RequestFuncOutput] = []
     if not num_chat_sessions:
         # single-turn chat scenario
+        if timing_data is None:
+            timing_data = {}
         pbar = None if disable_tqdm else tqdm(total=len(input_requests))
 
         async def limited_request_func(
@@ -896,7 +964,7 @@ async def benchmark(
                 )
 
         async for request in get_request(
-            input_requests, request_rate, burstiness
+            input_requests, request_rate, timing_data, burstiness
         ):
             # If the request length is pinned, then we use ignore_eos+max_tokens
             # to force the model's hand into the given request length. Otherwise,
@@ -942,6 +1010,17 @@ async def benchmark(
             total_sent_requests=0,
         )
 
+        # Limit the request function only to deal with timeouts.
+        async def limited_request_func(
+            request_func_input: RequestFuncInput,
+        ) -> RequestFuncOutput:
+            if benchmark_should_end_time is not None:
+                if time.perf_counter_ns() >= benchmark_should_end_time:
+                    return RequestFuncOutput(cancelled=True)
+            return await request_func(
+                request_func_input=request_func_input, pbar=pbar
+            )
+
         # apply the semaphore at the session level
         # ex: with max_concurrency = 1,
         # the first session finishes before the second session starts
@@ -953,26 +1032,26 @@ async def benchmark(
                     model_id,
                     lora_id,
                     api_url,
-                    request_func,
+                    limited_request_func,
                     request_counter,
                     chat_session,
                     tokenizer.model_max_length,
                     delay_between_chat_turns,
-                    pbar,
                     ttft_skip_requests,
+                    ignore_first_turn_stats,
                 )
             async with semaphore:
                 return await chat_session_driver(
                     model_id,
                     lora_id,
                     api_url,
-                    request_func,
+                    limited_request_func,
                     request_counter,
                     chat_session,
                     tokenizer.model_max_length,
                     delay_between_chat_turns,
-                    pbar,
                     ttft_skip_requests,
+                    ignore_first_turn_stats,
                 )
 
         for idx, chat_session in enumerate(chat_sessions):
@@ -1006,9 +1085,12 @@ async def benchmark(
                 }
             )
 
-    if collect_gpu_stats:
+    if collect_gpu_stats and collector is not None:
         gpu_metrics = collector.collect()
         collector.stop()
+        # Delete the collector.
+        # Leaving it to be cleaned up later can lead to segfaults.
+        del collector
     else:
         gpu_metrics = {}
 
@@ -1021,6 +1103,14 @@ async def benchmark(
         max_concurrency=max_concurrency,
         collect_gpu_stats=collect_gpu_stats,
     )
+    achieved_request_rate = 0.0
+    if timing_data and timing_data.get("intervals"):
+        mean_interval = sum(timing_data["intervals"]) / len(
+            timing_data["intervals"]
+        )
+        achieved_request_rate = (
+            round(1.0 / mean_interval, 3) if mean_interval > 0 else 0.0
+        )
 
     print_section(title=" Serving Benchmark Result ", char="=")
     print("{:<40} {:<10}".format("Successful requests:", metrics.completed))
@@ -1041,6 +1131,11 @@ async def benchmark(
         "{:<40} {:<10}".format(
             "Total nonempty serving response chunks:",
             metrics.nonempty_response_chunks,
+        )
+    )
+    print(
+        "{:<40} {:<10.5f}".format(
+            "Request rate (req/s):", achieved_request_rate
         )
     )
     print(
@@ -1329,6 +1424,28 @@ def main(args: argparse.Namespace) -> None:
                 args.output_lengths is None and not args.record_output_lengths
             ),
         )
+    elif isinstance(benchmark_dataset, ObfuscatedConversationsBenchmarkDataset):
+        if output_lengths is None:
+            output_scale = (
+                args.obfuscated_conversations_average_output_len
+                * args.obfuscated_conversations_coefficient_of_variation
+            )
+            output_lengths = np.random.normal(
+                loc=args.obfuscated_conversations_average_output_len,
+                scale=output_scale,
+                size=num_requests,
+            ).tolist()
+            output_lengths = np.round(output_lengths).astype(int).tolist()
+            output_lengths = [
+                max(output_len, 1) for output_len in output_lengths
+            ]
+        input_requests = benchmark_dataset.sample_requests(
+            num_requests=args.num_prompts,
+            tokenizer=tokenizer,
+            output_lengths=output_lengths,
+            seed=args.seed,
+            shuffle=args.obfuscated_conversations_shuffle,
+        )
     else:
         raise ValueError(f"Unknown / unsupported dataset: {benchmark_dataset}")
 
@@ -1377,6 +1494,7 @@ def main(args: argparse.Namespace) -> None:
             top_p=args.top_p,
             max_benchmark_duration_s=args.max_benchmark_duration_s,
             warmup_delay_ms=args.chat_warmup_delay_ms,
+            ignore_first_turn_stats=args.ignore_first_turn_stats,
         )
     )
 

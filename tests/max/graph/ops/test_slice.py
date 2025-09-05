@@ -20,26 +20,26 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import tensor_types
+from conftest import GraphBuilder, tensor_types
 from hypothesis import assume, given
 from hypothesis import strategies as st
 from max.dtype import DType
 from max.graph import DeviceRef, Dim, Graph, Shape, StaticDim, TensorType, ops
 
 
-def test_slice_basic(graph_builder) -> None:  # noqa: ANN001
+def test_slice_basic(graph_builder: GraphBuilder) -> None:
     with graph_builder(
         input_types=[
             TensorType(DType.int32, [1, 2, 3, 4, 5], device=DeviceRef.CPU())
         ],
     ) as graph:
-        out = graph.inputs[0][:, 1, ..., 3]
+        out = graph.inputs[0][:, 1, ..., 3]  # type: ignore
 
         assert out.shape == [1, 3, 4]
         graph.output(out)
 
 
-def test_slice_with_tensor_value(graph_builder) -> None:  # noqa: ANN001
+def test_slice_with_tensor_value(graph_builder: GraphBuilder) -> None:
     with graph_builder(
         input_types=[
             TensorType(DType.int32, [5, "in_dim"], device=DeviceRef.CPU())
@@ -48,7 +48,7 @@ def test_slice_with_tensor_value(graph_builder) -> None:  # noqa: ANN001
         start = ops.constant(2, DType.int64, device=DeviceRef.CPU())
         out = graph.inputs[0][
             (slice(start, None), 3), (slice(start, None), "out_dim")
-        ]
+        ]  # type: ignore
 
         assert out.shape == [3, "out_dim"]
         graph.output(out)
@@ -121,7 +121,7 @@ def expected_slice_shape(shape, index):  # noqa: ANN001
     index=shared_shapes.flatmap(shape_indexes),
 )
 def test_slice_valid_ints(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     index,  # noqa: ANN001
 ) -> None:
@@ -139,7 +139,7 @@ def test_slice_valid_ints(
     index=shared_shapes.flatmap(shape_indexes),
 )
 def test_slice_valid_tensorvalues(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     index,  # noqa: ANN001
 ) -> None:
@@ -208,7 +208,7 @@ static_tensor_type = tensor_types(
 
 @given(tensor_type=static_tensor_type, rand=...)
 def test_slice_static_dims(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     rand: random.Random,
 ) -> None:
@@ -296,7 +296,7 @@ def test_slice_static_dims(
     ],
 )
 def test_slice_symbolic_tensor(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     indices: list[slice],
 ) -> None:
@@ -319,7 +319,7 @@ def test_slice_symbolic_tensor(
     ],
 )
 def test_slice_dim_overflow(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     indices: list[slice],
 ) -> None:
@@ -367,7 +367,7 @@ def test_slice_dim_overflow(
     ],
 )
 def test_slice_none_dims(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     indices: list[slice],
     expected_length: int,
@@ -383,10 +383,10 @@ def test_slice_none_dims(
 
     (result_type,) = graph.output_types
     # Check that the output rank is correctly expanded by the None indices.
-    assert result_type.rank == expected_length
+    assert result_type.rank == expected_length  # type: ignore
 
     # Check that all the expanded dims are 1.
-    assert all(result_type.shape[i] == 1 for i in expected_none_indices)
+    assert all(result_type.shape[i] == 1 for i in expected_none_indices)  # type: ignore
 
 
 @pytest.mark.parametrize(
@@ -485,7 +485,7 @@ def test_slice_none_dims(
     ],
 )
 def test_slice_int_dims(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     indices: tuple[Any, ...],
     expected_shape: list[str | int],
@@ -500,15 +500,15 @@ def test_slice_int_dims(
     (result_type,) = graph.output_types
 
     # Check that the output rank is correctly expanded by the None indices.
-    assert result_type.rank == len(expected_shape)
+    assert result_type.rank == len(expected_shape)  # type: ignore
     assert all(
         dim == expected_dim
-        for dim, expected_dim in zip(result_type.shape, expected_shape)
+        for dim, expected_dim in zip(result_type.shape, expected_shape)  # type: ignore
         if isinstance(expected_dim, int)
     )
 
 
-def test_slice_invalid_start_stop(graph_builder) -> None:  # noqa: ANN001
+def test_slice_invalid_start_stop(graph_builder: GraphBuilder) -> None:
     """Checks that slicing with invalid start/stop/step raises an error."""
     input_type = TensorType(
         DType.float32, shape=["dim0"], device=DeviceRef.CPU()
@@ -522,10 +522,12 @@ def test_slice_invalid_start_stop(graph_builder) -> None:  # noqa: ANN001
                 "decreasing for negative step, but got start 2, stop 1 for step 1"
             ),
         ):
-            x[2:1]
+            x[2:1]  # type: ignore
 
 
-def test_slice_out_of_bounds_specific_error_message(graph_builder) -> None:  # noqa: ANN001
+def test_slice_out_of_bounds_specific_error_message(
+    graph_builder: GraphBuilder,
+) -> None:
     """Test that slicing with bounds larger than tensor dimensions raises an error."""
     with graph_builder(
         input_types=[
@@ -536,7 +538,7 @@ def test_slice_out_of_bounds_specific_error_message(graph_builder) -> None:  # n
             ValueError,
             match="rmo.slice stop index 1024 out of range for dimension size 3",
         ):
-            graph.inputs[0][:, 0:1024]
+            graph.inputs[0][:, 0:1024]  # type: ignore
 
 
 def gen_out_of_bounds_slice(dim_size: int, rand: random.Random) -> slice:
@@ -580,7 +582,7 @@ reasonable_static_tensor_type = tensor_types(
 
 @given(tensor_type=reasonable_static_tensor_type, rand=...)
 def test_slice_out_of_bounds(
-    graph_builder,  # noqa: ANN001
+    graph_builder: GraphBuilder,
     tensor_type: TensorType,
     rand: random.Random,
 ) -> None:
@@ -606,7 +608,7 @@ def test_slice_out_of_bounds(
             ops.slice_tensor(graph.inputs[0].tensor, index)
 
 
-def test_slice_zero_sized_tensor(graph_builder) -> None:  # noqa: ANN001
+def test_slice_zero_sized_tensor(graph_builder: GraphBuilder) -> None:
     """Test that slicing zero-sized tensors works correctly."""
     # Test case that was failing: slicing [0:0] on a zero-sized dimension
     with graph_builder(

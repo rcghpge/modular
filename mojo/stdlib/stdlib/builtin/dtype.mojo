@@ -18,7 +18,7 @@ These are Mojo built-ins, so you don't need to import them.
 
 from hashlib.hasher import Hasher
 from os import abort
-from sys import CompilationTarget, bitwidthof, sizeof
+from sys import CompilationTarget, bit_width_of, size_of
 from sys.intrinsics import _type_is_eq
 
 
@@ -79,10 +79,18 @@ struct DType(
     ```
     """
 
+    # ===-------------------------------------------------------------------===#
+    # Fields
+    # ===-------------------------------------------------------------------===#
+
     alias _mlir_type = __mlir_type.`!kgen.dtype`
 
-    var value: Self._mlir_type
+    var _mlir_value: Self._mlir_type
     """The underlying storage for the DType value."""
+
+    # ===-------------------------------------------------------------------===#
+    # Aliases
+    # ===-------------------------------------------------------------------===#
 
     alias invalid = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<invalid> : !kgen.dtype`
@@ -261,6 +269,10 @@ struct DType(
     )
     """Represents an IEEE754-2008 `binary64` floating point value."""
 
+    # ===-------------------------------------------------------------------===#
+    # Life cycle methods
+    # ===-------------------------------------------------------------------===#
+
     @always_inline("builtin")
     fn __init__(out self, *, mlir_value: Self._mlir_type):
         """Construct a DType from MLIR dtype.
@@ -268,7 +280,7 @@ struct DType(
         Args:
             mlir_value: The MLIR dtype.
         """
-        self.value = mlir_value
+        self._mlir_value = mlir_value
 
     @staticmethod
     fn _from_str(str: StringSlice) -> DType:
@@ -345,12 +357,9 @@ struct DType(
         return String.write(self)
 
     @no_inline
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats this dtype to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -429,7 +438,7 @@ struct DType(
         Returns:
             The kgen.dtype value.
         """
-        return self.value
+        return self._mlir_value
 
     @doc_private
     @staticmethod
@@ -444,14 +453,14 @@ struct DType(
     @always_inline("nodebug")
     fn _as_ui8(self) -> UInt8._mlir_type:
         return __mlir_op.`pop.cast_from_builtin`[_type = UInt8._mlir_type](
-            __mlir_op.`pop.dtype.to_ui8`(self.value)
+            __mlir_op.`pop.dtype.to_ui8`(self._mlir_value)
         )
 
     @doc_private
     @always_inline("nodebug")
     fn _match(self, mask: UInt8) -> Bool:
         var res = __mlir_op.`pop.cmp`[pred = __mlir_attr.`#pop<cmp_pred ne>`](
-            __mlir_op.`pop.simd.and`(self._as_ui8(), mask.value),
+            __mlir_op.`pop.simd.and`(self._as_ui8(), mask._mlir_value),
             __mlir_attr.`#pop.simd<0> : !pop.scalar<ui8>`,
         )
         return Bool(mlir_value=res)
@@ -519,7 +528,7 @@ struct DType(
         Args:
             hasher: The hasher instance.
         """
-        hasher._update_with_simd(UInt8(self._as_ui8()))
+        hasher._update_with_simd(UInt8(mlir_value=self._as_ui8()))
 
     @always_inline("nodebug")
     fn is_unsigned(self) -> Bool:
@@ -609,7 +618,7 @@ struct DType(
         return self.is_integral() or self.is_floating_point()
 
     @always_inline
-    fn sizeof(self) -> Int:
+    fn size_of(self) -> Int:
         """Returns the size in bytes of the current DType.
 
         Returns:
@@ -619,49 +628,50 @@ struct DType(
         if self._is_non_index_integral():
             return Int(
                 UInt8(
-                    __mlir_op.`pop.shl`(
-                        UInt8(1).value,
+                    mlir_value=__mlir_op.`pop.shl`(
+                        UInt8(1)._mlir_value,
                         __mlir_op.`pop.sub`(
                             __mlir_op.`pop.shr`(
                                 __mlir_op.`pop.simd.and`(
-                                    self._as_ui8(), _mIsNotInteger.value
+                                    self._as_ui8(),
+                                    _mIsNotInteger._mlir_value,
                                 ),
-                                UInt8(1).value,
+                                UInt8(1)._mlir_value,
                             ),
-                            UInt8(3).value,
+                            UInt8(3)._mlir_value,
                         ),
                     )
                 )
             )
 
         elif self is DType.bool:
-            return sizeof[DType.bool]()
+            return size_of[DType.bool]()
         elif self is DType.index:
-            return sizeof[DType.index]()
+            return size_of[DType.index]()
 
         elif self is DType.float8_e3m4:
-            return sizeof[DType.float8_e3m4]()
+            return size_of[DType.float8_e3m4]()
         elif self is DType.float8_e4m3fn:
-            return sizeof[DType.float8_e4m3fn]()
+            return size_of[DType.float8_e4m3fn]()
         elif self is DType.float8_e4m3fnuz:
-            return sizeof[DType.float8_e4m3fnuz]()
+            return size_of[DType.float8_e4m3fnuz]()
         elif self is DType.float8_e5m2:
-            return sizeof[DType.float8_e5m2]()
+            return size_of[DType.float8_e5m2]()
         elif self is DType.float8_e5m2fnuz:
-            return sizeof[DType.float8_e5m2fnuz]()
+            return size_of[DType.float8_e5m2fnuz]()
 
         elif self is DType.bfloat16:
-            return sizeof[DType.bfloat16]()
+            return size_of[DType.bfloat16]()
         elif self is DType.float16:
-            return sizeof[DType.float16]()
+            return size_of[DType.float16]()
 
         elif self is DType.float32:
-            return sizeof[DType.float32]()
+            return size_of[DType.float32]()
 
         elif self is DType.float64:
-            return sizeof[DType.float64]()
+            return size_of[DType.float64]()
 
-        return sizeof[DType.invalid]()
+        return size_of[DType.invalid]()
 
     @always_inline
     fn bitwidth(self) -> Int:
@@ -670,7 +680,7 @@ struct DType(
         Returns:
             Returns the size in bits of the current DType.
         """
-        return 8 * self.sizeof()
+        return 8 * self.size_of()
 
     # ===-------------------------------------------------------------------===#
     # Floating point generics
@@ -688,7 +698,7 @@ struct DType(
             The mantissa width.
         """
         constrained[dtype.is_floating_point(), "dtype must be floating point"]()
-        return bitwidthof[dtype]() - DType.exponent_width[dtype]() - 1
+        return bit_width_of[dtype]() - DType.exponent_width[dtype]() - 1
 
     @staticmethod
     @always_inline("nodebug")
@@ -1086,7 +1096,7 @@ fn _unsigned_integral_type_of[dtype: DType]() -> DType:
     if dtype.is_unsigned():
         return dtype
     elif dtype.is_integral():
-        return _uint_type_of_width[bitwidthof[dtype]()]()
+        return _uint_type_of_width[bit_width_of[dtype]()]()
 
     elif dtype.is_float8():
         return DType.uint8
@@ -1184,7 +1194,7 @@ fn _uint_type_of_width[width: Int]() -> DType:
 @always_inline
 fn _index_printf_format() -> StaticString:
     @parameter
-    if bitwidthof[Int]() == 32:
+    if bit_width_of[Int]() == 32:
         return "%d"
     elif CompilationTarget.is_windows():
         return "%lld"

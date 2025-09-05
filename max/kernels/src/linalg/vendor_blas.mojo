@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from sys import has_amd_gpu_accelerator, sizeof
+from sys import has_amd_gpu_accelerator, size_of
 from sys.ffi import _get_global_or_null, external_call
 
 import gpu._rocblas
@@ -123,7 +123,7 @@ struct Backend(Copyable, EqualityComparable, Movable, Writable):
     fn __str__(self) -> String:
         return String.write(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         if self is Self.AUTOMATIC:
             return writer.write("AUTOMATIC")
         if self is Self.CUBLAS:
@@ -887,7 +887,7 @@ fn _cublasLt_matmul[
             compute_desc,
             cublasLtMatmulDescAttributes_t.CUBLASLT_MATMUL_DESC_TRANSA,
             UnsafePointer(to=transa).bitcast[NoneType](),
-            sizeof[cublasOperation_t](),
+            size_of[cublasOperation_t](),
         ),
         msg="failed to set cublasLtMatmulDescAttribute for transa",
     )
@@ -896,7 +896,7 @@ fn _cublasLt_matmul[
             compute_desc,
             cublasLtMatmulDescAttributes_t.CUBLASLT_MATMUL_DESC_TRANSB,
             UnsafePointer(to=transb).bitcast[NoneType](),
-            sizeof[cublasOperation_t](),
+            size_of[cublasOperation_t](),
         ),
         msg="failed to set cublasLtMatmulDescAttribute for transb",
     )
@@ -963,7 +963,7 @@ fn _cublasLt_matmul[
             preference,
             Preference.MAX_WORKSPACE_BYTES,
             UnsafePointer(to=workspace_size).bitcast[NoneType](),
-            sizeof[Int64](),
+            size_of[Int64](),
         ),
         msg=(
             "failed to set cublasLtMatmulPreferenceAttribute for"
@@ -1168,7 +1168,7 @@ fn _hipblasLt_matmul[
             operationDesc,
             hipblasLtMatmulDescAttributes_t.TRANSA,
             UnsafePointer(to=transa).bitcast[NoneType](),
-            sizeof[hipblasOperation_t](),
+            size_of[hipblasOperation_t](),
         )
     )
     _check_hipblas_error(
@@ -1176,7 +1176,7 @@ fn _hipblasLt_matmul[
             operationDesc,
             hipblasLtMatmulDescAttributes_t.TRANSB,
             UnsafePointer(to=transb).bitcast[NoneType](),
-            sizeof[hipblasOperation_t](),
+            size_of[hipblasOperation_t](),
         )
     )
 

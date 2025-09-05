@@ -177,6 +177,51 @@ def test_stat():
     )
 
 
+# More elaborate tests in `os/path/test_basename.mojo`
+def test_name():
+    # Root directories
+    assert_equal("", Path("/").name())
+
+    # Empty strings
+    assert_equal("", Path("").name())
+
+    # Current directory (matching behavior of python, doesn't resolve `..` etc.)
+    assert_equal(".", Path(".").name())
+
+    # Parent directory
+    assert_equal("..", Path("..").name())
+
+    # Absolute paths
+    assert_equal("file", Path("/file").name())
+    assert_equal("file.txt", Path("/file.txt").name())
+    assert_equal("file", Path("/dir/file").name())
+    assert_equal("file", Path("/dir/subdir/file").name())
+
+    # Relative paths
+    assert_equal("file", Path("dir/file").name())
+    assert_equal("file", Path("dir/subdir/file").name())
+    assert_equal("file", Path("file").name())
+
+
+def test_parts():
+    var path_to_file = Path("/path/to/file")
+    assert_equal(path_to_file.parts(), path_to_file.path.split("/"))
+
+    var rel_path = Path("path/to/file")
+    assert_equal(rel_path.parts(), rel_path.path.split("/"))
+
+    var path_no_slash = Path("path")
+    assert_equal(path_no_slash.parts(), path_no_slash.path.split("/"))
+
+    var path_with_tail_slash = Path("path/")
+    assert_equal(
+        path_with_tail_slash.parts(), path_with_tail_slash.path.split("/")
+    )
+
+    var root_path = Path("/")
+    assert_equal(root_path.parts(), root_path.path.split("/"))
+
+
 def main():
     test_cwd()
     test_path()
@@ -189,3 +234,5 @@ def main():
     test_expand_user()
     test_home()
     test_stat()
+    test_name()
+    test_parts()

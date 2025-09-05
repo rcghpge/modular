@@ -39,12 +39,9 @@ struct _SourceLocation(Copyable, Movable, Stringable, Writable):
         """
         return String("At ", self, ": ", msg)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    fn write_to(self, mut writer: Some[Writer]):
         """
         Formats the source location to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
 
         Args:
             writer: The object to write to.
@@ -62,7 +59,7 @@ fn __source_location() -> _SourceLocation:
         The location information of the __source_location() call.
     """
     var line, col, file_name = __mlir_op.`kgen.source_loc`[
-        inlineCount = Int(0).value,
+        inlineCount = Int(0)._mlir_value,
         _type = (
             __mlir_type.index,
             __mlir_type.index,
@@ -70,7 +67,11 @@ fn __source_location() -> _SourceLocation:
         ),
     ]()
 
-    return _SourceLocation(line, col, StaticString(file_name))
+    return _SourceLocation(
+        Int(mlir_value=line),
+        Int(mlir_value=col),
+        StaticString(file_name),
+    )
 
 
 @always_inline("nodebug")
@@ -99,7 +100,7 @@ fn __call_location[*, inline_count: Int = 1]() -> _SourceLocation:
           function whose body __call_location() is used in) is called.
     """
     var line, col, file_name = __mlir_op.`kgen.source_loc`[
-        inlineCount = inline_count.value,
+        inlineCount = inline_count._mlir_value,
         _type = (
             __mlir_type.index,
             __mlir_type.index,
@@ -107,4 +108,8 @@ fn __call_location[*, inline_count: Int = 1]() -> _SourceLocation:
         ),
     ]()
 
-    return _SourceLocation(line, col, StaticString(file_name))
+    return _SourceLocation(
+        Int(mlir_value=line),
+        Int(mlir_value=col),
+        StaticString(file_name),
+    )
