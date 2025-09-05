@@ -14,7 +14,6 @@ jobs:
   sync:
     if: ${{ github.repository == 'rcghpge/modular' }}
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,25 +21,44 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Add upstream and fetch updates
+      - name: Add remotes and fetch
         run: |
+          set -euo pipefail
           git remote add upstream https://github.com/modular/modular.git 2>/dev/null || true
+          git fetch --prune origin
           git fetch --prune upstream
           git checkout main
 
-      - name: Git configs
+      - name: Check for diffs
+        id: detect
+        run: |
+          set -euo pipefail
+          BASE=$(git merge-base HEAD upstream/main || echo "")
+          if [ -n "$BASE" ]; then
+            BEHIND=$(git rev-list --right-only --count "${BASE}..upstream/main")
+          else
+            BEHIND=$(git rev-list --count upstream/main)
+          fi
+          echo "behind=${BEHIND}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git
+        if: ${{ steps.detect.outputs.behind != '0' }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Merge upstream/main to main
+      - name: Merge upstream/main into main
+        if: ${{ steps.detect.outputs.behind != '0' }}
         run: |
-          git merge --no-ff --no-edit upstream/main || exit 0
+          set -euo pipefail
+          git merge --no-ff --no-edit upstream/main
 
       - name: Push changes
+        if: ${{ steps.detect.outputs.behind != '0' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-          git push origin main
+          git push origin HEAD:main
