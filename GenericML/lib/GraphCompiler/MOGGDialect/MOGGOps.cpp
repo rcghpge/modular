@@ -3176,19 +3176,56 @@ LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
     return failure();
   }
 
-  // Build the data array.
-  // TODO: Find a more efficient way to build the constant / avoid using the
-  // stack.
-  MOGG::MojoValue dataU8 = state.builder.var(
-      MOGG::MojoValue(MOGG::HardcodedMojoSymbols::func_stack_allocation)(
-          {/*size=*/MOGG::MojoValue(uint64_t(rawValue.size())),
-           /*dtype=*/state.mlirDTypeToMojoType(DType::ui8)}));
-  for (uint64_t i = 0, e = rawValue.size(); i < e; ++i)
-    state.builder.assign(dataU8[i], uint64_t(rawValue[i]));
+  // We use pop.global_constant to emit inline constant data (as was used in the
+  // older KGEN path)
+  //
+  // Ideally we'd have this wrapped up in a nice function that we could just
+  // invoke on the Mojo side, but I wasn't able to figure out how to paramterize
+  // the raw mlir we're generating with the array size.
+  //
+  // Instead directly invoke pop.global_constant op via the __mlir_op machinery
+  // of Mojo.
+  //
+  static constexpr StringLiteral popArrayStr = "#pop.array<";
 
-  // Cast to NoneType (expected dtype for the buffers).
-  state.mlirValueToMojoValue[getResult()] = state.builder.var(dataU8.get(
-      MOGG::HardcodedMojoSymbols::func_UnsafePointer_bitcast)({"NoneType"}));
+  std::string arrayAttrStr;
+  // Multiply by 5 as the worst case since we can have at most 3 digits and the
+  // string ', '
+  arrayAttrStr.reserve(rawValue.size() * 5 + popArrayStr.size());
+  llvm::raw_string_ostream arrayAttrStream(arrayAttrStr);
+
+  // Build up the pop.array constant attribute
+  arrayAttrStream << popArrayStr;
+  llvm::interleave(
+      rawValue, arrayAttrStream,
+      // Cast to 'unsigned' as printing the uint8_t values directly prints them
+      // as chars.
+      [&](uint8_t value) { arrayAttrStream << static_cast<unsigned>(value); },
+      ", ");
+  arrayAttrStream << ">";
+
+  std::string popArrayTypeStr =
+      llvm::formatv("!pop.array<{0}, ui8>", rawValue.size()).str();
+  std::string kgenPtrTypeStr =
+      llvm::formatv("!kgen.pointer<array<{0}, ui8>>", rawValue.size()).str();
+
+  // Emit the __mlir_op.pop.global_constant operation
+  MOGG::MojoValue arrPtr = state.builder.var(MOGG::MojoValue(
+      llvm::formatv(
+          "__mlir_op.`pop.global_constant`[value = __mlir_attr[`{0}`, `: "
+          "{1}`], _type = __mlir_type[`{2}`]]()",
+          arrayAttrStream.str(), popArrayTypeStr, kgenPtrTypeStr)
+          .str()));
+
+  // Create UnsafePointer from the array pointer so we can easily bitcast to
+  // the expected pointer of NoneType.
+  MOGG::MojoValue altPtr = state.builder.var(MOGG::MojoValue("UnsafePointer")(
+      {}, {MOGG::MojoValue("value").equal(arrPtr)}));
+
+  // Bitcast to NoneType (expected dtype for the buffers).
+  state.mlirValueToMojoValue[getResult()] = state.builder.var(
+      altPtr.get("bitcast")({MOGG::MojoValue("NoneType")}, {}));
+
   return success();
 }
 
