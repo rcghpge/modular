@@ -55,7 +55,7 @@
 #else
 #define MAYBE_LOG_ASYNC_KERNEL(summary, operands, results) ((void)(summary))
 #define MAYBE_LOG_SYNC_KERNEL(summary, operands, results) ((void)(summary))
-#endif
+#endif // ENABLE_MGP_KERNEL_LOGGING
 
 using namespace M;
 using namespace M::GML;

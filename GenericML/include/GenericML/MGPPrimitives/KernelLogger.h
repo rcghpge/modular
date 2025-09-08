@@ -18,10 +18,6 @@
 namespace M {
 namespace MGP {
 
-/// Check if kernel logging is enabled via Runtime or MAX_LOG_KERNELS
-/// environment variable
-bool isKernelLoggingEnabled(AsyncRT::Runtime &runtime);
-
 /// Generate unique kernel ID to correlate async launches and completions for
 /// logging
 uint64_t generateKernelId();
