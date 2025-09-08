@@ -191,6 +191,25 @@ struct EmitMojoState {
     return MojoValue(
         HardcodedMojoSymbols::struct_SIMD)[{mlirDTypeToMojoType(dtype), width}];
   }
+
+  /// Looks at the named parameters of the output value of the function.
+  /// Returns the corresponding parameter name of the function if found.
+  static std::optional<MojoValue>
+  getOriginalResultParamNameFor(KGEN::GeneratorOp op, StringRef paramName) {
+    auto resultParams = op->getAttrOfType<ArrayAttr>(
+        KGEN::MOGGPreElab::kKernelResultParameterAttrName);
+    if (!resultParams)
+      return std::nullopt;
+
+    for (auto resultParam : resultParams) {
+      auto resultParamDict = cast<DictionaryAttr>(resultParam);
+      if (auto funcParamName =
+              resultParamDict.getAs<KGEN::ParamDeclRefAttr>(paramName))
+        return funcParamName.getName().str();
+    }
+
+    return std::nullopt;
+  }
 };
 } // namespace M::MOGG
 

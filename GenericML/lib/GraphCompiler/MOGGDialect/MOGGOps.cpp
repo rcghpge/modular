@@ -3127,8 +3127,8 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   // Get the lambda inputs
   SmallVector<MojoValue> inputs = state.getMojoValuesFor(getInputs());
 
-  auto mojoSymbolName = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredMojoElementwiseFunctionFor(getKernelName()));
+  auto function =
+      state.analysis.getRegisteredMojoElementwiseFunctionFor(getKernelName());
 
   auto outputs = getOutputs();
   if (outputs.size() != 1)
@@ -3136,8 +3136,25 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
         "elementwise with outputs size != 1 not supported for EmitMojo");
   Value outputVal = outputs.front();
 
+  // Get the lambda parameters if needed.
+  // For ops like mo.cast, where the output dtype differs, we need to explicitly
+  // specify the output dtype.
+  // TODO(GEX-2535): Avoid hardcoding the parameter name.
+  SmallVector<MojoValue> parameters;
+  constexpr StringLiteral simdDtypeParameterName = "dtype";
+  if (auto outDtypeParamName = state.getOriginalResultParamNameFor(
+          function, simdDtypeParameterName)) {
+    ErrorOr<DType> resultTyOr = M::MO::fromMLIRType(outputVal.getType());
+    if (resultTyOr.isError())
+      return emitError("invalid output type can't be converted to mojo dtype");
+    parameters.push_back(
+        outDtypeParamName->equal(state.mlirDTypeToMojoType(*resultTyOr)));
+  }
+
+  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
+
   state.mlirValueToMojoValue[outputVal] =
-      state.builder.var(mojoSymbolName({}, inputs));
+      state.builder.var(mojoSymbolName(parameters, inputs));
   return success();
 }
 
