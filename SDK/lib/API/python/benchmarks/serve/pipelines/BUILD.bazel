@@ -2,7 +2,34 @@ load("//bazel:api.bzl", "modular_py_test", "requirement")
 
 modular_py_test(
     name = "benchmarks",
-    srcs = glob(["*.py"]),
+    srcs = [
+        "test_benchmark_scheduler.py",
+        "test_benchmark_serialization.py",
+    ],
+    tags = ["manual"],
+    deps = [
+        "//SDK/lib/API/python/max/pipelines/core",
+        "//SDK/lib/API/python/max/serve",
+        requirement("pytest-benchmark"),
+        requirement("numpy"),
+        requirement("msgspec"),
+        requirement("pyzmq"),
+    ],
+)
+
+modular_py_test(
+    name = "benchmark_dispatch_service",
+    srcs = [
+        "conftest.py",
+        "test_benchmark_dispatch_service.py",
+    ],
+    env_inherit = [
+        "TARGET_HOST",
+        "TARGET_PORT",
+        "DISPATCHER_HOST",
+        "DISPATCHER_PORT",
+        "RUN_BENCHMARK",
+    ],
     tags = ["manual"],
     deps = [
         "//SDK/lib/API/python/max/pipelines/core",
