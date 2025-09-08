@@ -14,7 +14,6 @@
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
-#include "Metal/MetalDeviceContext.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
@@ -1098,4 +1097,10 @@ MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
   return version_;
 }
 
+ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
+  return DeviceContext::formatError(
+      __FILE__, __LINE__, __FUNCTION__,
+      "enablePeerAccess not implemented for this device API" +
+          Twine(peer.api()));
+}
 } // namespace M::AsyncRT

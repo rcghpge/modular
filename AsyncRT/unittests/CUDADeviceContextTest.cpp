@@ -343,8 +343,8 @@ $L__BB0_2:
                      << curDeviceId << "] is not accessible from GPU[0].";
       }
 
-      EXPECT_NO_ERR(srcCtx->enablePeerAccess(*dstCtx));
-      EXPECT_NO_ERR(dstCtx->enablePeerAccess(*srcCtx));
+      EXPECT_NO_ERR(srcCtx->device().enablePeerAccess(dstCtx->device()));
+      EXPECT_NO_ERR(dstCtx->device().enablePeerAccess(srcCtx->device()));
     }
 
     const size_t numElems = 256;

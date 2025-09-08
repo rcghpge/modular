@@ -125,6 +125,10 @@ public:
   size_t allocationAlignment() const;
 
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
+
+  // Enable peer access between devices.
+  virtual ErrorOrSuccess enablePeerAccess(const Device &peer) const;
+
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
   virtual ErrorOr<bool> supportsMulticast() const;
@@ -504,8 +508,6 @@ public:
   virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
-
-  virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 

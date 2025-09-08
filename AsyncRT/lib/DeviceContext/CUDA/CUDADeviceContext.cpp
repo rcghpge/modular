@@ -341,6 +341,45 @@ ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
   return canAccessPeer && isNativeAtomicSupported;
 }
 
+ErrorOrSuccess CUDADevice::enablePeerAccess(const Device &peer) const {
+  CUDA_WITH_DEV_ERR(*this);
+
+  const CUDADevice &peerCudaDev = CUDADevice::cast(peer);
+  ErrorOr<CUcontext> peerCtxOr = peerCudaDev.cudaContext();
+  if (peerCtxOr.isError())
+    return peerCtxOr.takeError();
+
+  ErrorOr<bool> canAccessOr = canAccess(peerCudaDev);
+  if (canAccessOr.isError())
+    return canAccessOr.takeError();
+  if (!*canAccessOr) {
+    return Error("Cannot enable peer access from GPU " + Twine(id()) +
+                 " to GPU " + Twine(peer.id()) +
+                 ": hardware does not support P2P access");
+  }
+
+  // Tolerate "already enabled" as success to keep idempotent.
+  CUDADriver::Result res = driver_.CtxEnablePeerAccess(*peerCtxOr, /*flags=*/0);
+  if (res != CUDADriver::SUCCESS) {
+    const char *name = nullptr;
+    driver_.GetErrorName(res, &name);
+    if (!(name && (Twine(name) == "CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED")))
+      return formatCUDAError(__FILE__, __LINE__, __FUNCTION__, res);
+  }
+
+  // Also allow access to the peer's stream-ordered allocation pool.
+  CUmemoryPool pool;
+  CUDA_CHECK_ERR(driver_.DeviceGetMemPool(&pool, peerCudaDev.cudaDevice()));
+
+  CUmemAccessDesc desc{};
+  desc.location.type = CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
+  desc.location.id = id();
+  desc.flags = CUmemAccess_flags::CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+  CUDA_CHECK_ERR(driver_.MemPoolSetAccess(pool, &desc, /*count=*/1));
+
+  return success();
+}
+
 ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
   int value = 0;
   CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
@@ -1556,29 +1595,6 @@ CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
   constexpr double nanosPerMillisecond = 1000.0 * 1000.0;
   double nanos = static_cast<double>(millis) * nanosPerMillisecond;
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
-}
-
-ErrorOrSuccess
-CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
-  CUDA_WITH_CTX_ERR(*this);
-  CUDA_CHECK_ERR(driver_.CtxEnablePeerAccess(
-      CUDADeviceContext::cast(peer).cudaContext(), 0));
-
-  // Also "enable peer access" for stream-ordered allocations.
-  // Do so by allowing this device to access the peer's current memory pool.
-  // NOTE: this only enables access to allocations from the peer's current
-  // memory pool, so other memory pools won't be accessible.
-  CUmemoryPool pool;
-  CUDA_CHECK_ERR(driver_.DeviceGetMemPool(
-      &pool, CUDADevice::cast(peer.device()).cudaDevice()));
-
-  CUmemAccessDesc desc{};
-  desc.location.type = CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
-  desc.location.id = device().id();
-  desc.flags = CUmemAccess_flags::CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  CUDA_CHECK_ERR(driver_.MemPoolSetAccess(pool, &desc, /*count=*/1));
-
-  return success();
 }
 
 ErrorOr<Device::MemInfo> CUDADeviceContext::getMemoryInfo() const {

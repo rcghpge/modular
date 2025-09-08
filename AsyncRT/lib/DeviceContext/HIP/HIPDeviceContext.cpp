@@ -337,6 +337,18 @@ ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const {
   return canAccess == 1;
 }
 
+ErrorOrSuccess HIPDevice::enablePeerAccess(const Device &peer) const {
+  const HIPDevice &peerHipDev = HIPDevice::cast(peer);
+  if (id() == peerHipDev.id()) {
+    // Enabling peer access to self is not allowed.
+    RAISE_ERROR("Cannot enable peer access to self");
+  }
+
+  HIP_WITH_DEV_ERR(*this);
+  HIP_CHECK_ERR(driver_.DeviceEnablePeerAccess(peerHipDev.hipDevice(), 0));
+  return success();
+}
+
 ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   HIP_WITH_DEV_ERR(*this);
   ErrorOr<hipDeviceAttribute_t> errorOrAttr = gethipDeviceAttribute(attr);
@@ -1286,23 +1298,6 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   constexpr double nanosPerMillisecond = 1000.0 * 1000.0;
   double nanos = static_cast<double>(millis) * nanosPerMillisecond;
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
-}
-
-ErrorOrSuccess
-HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
-  if (device().id() == peer.device().id()) {
-    // Enabling peer access to self is not allowed.
-    RAISE_ERROR("Cannot enable peer access to self");
-  }
-
-  const HIPDevice *peerDevice = HIPDevice::verified_cast(&peer.device());
-  if (peerDevice == nullptr) {
-    RAISE_ERROR("Peer is not a HIP device");
-  }
-
-  HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.DeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
-  return success();
 }
 
 ErrorOr<Device::MemInfo> HIPDeviceContext::getMemoryInfo() const {

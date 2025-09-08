@@ -64,6 +64,10 @@ public:
   ErrorOr<int> computeCapability() const override;
 
   ErrorOr<bool> canAccess(const Device &peer) const override;
+
+  // Enable peer access between this device and the peer device.
+  ErrorOrSuccess enablePeerAccess(const Device &peer) const override;
+
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
   static ErrorOr<int> numberOfGPUs();
@@ -301,8 +305,6 @@ public:
   ErrorOr<DeviceTimerRef> startTimer() const override;
   ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const override;
-
-  ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 

@@ -16,6 +16,7 @@
 #include "AsyncRT/lib/DeviceContext/HIP/HIPDriver.h"
 #include "Support/BinaryID.h"
 #include "Support/SymbolExport.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <chrono>
@@ -494,7 +495,37 @@ AsyncRT_DeviceContext_canAccess(bool *result, const DeviceContext *ctx,
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_enablePeerAccess(const DeviceContext *ctx,
                                        const DeviceContext *peer) {
-  return checkSuccess(ctx->enablePeerAccess(*peer));
+  return checkSuccess(ctx->device().enablePeerAccess(peer->device()));
+}
+
+// Enable peer access for all CUDA devices.
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_enableAllPeerAccess() {
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  if (numDevices <= 1)
+    return nullptr;
+
+  SmallVector<DeviceRef> devices;
+  devices.reserve(numDevices);
+  for (int id = 0; id < numDevices; ++id) {
+    ErrorOr<DeviceRef> devOr = Device::create(Device::cudaAPI, id);
+    if (devOr)
+      return strdup(devOr.getError());
+    devices.emplace_back(std::move(devOr.get()));
+  }
+
+  for (int i : llvm::seq(0, numDevices)) {
+    for (int j : llvm::seq(i + 1, numDevices)) {
+      // i -> j
+      if (ErrorOrSuccess errOr = devices[i]->enablePeerAccess(*devices[j]))
+        return strdup(errOr.getError());
+
+      // j -> i
+      if (ErrorOrSuccess errOr = devices[j]->enablePeerAccess(*devices[i]))
+        return strdup(errOr.getError());
+    }
+  }
+
+  return nullptr;
 }
 
 MODULAR_EXPORT const char *
