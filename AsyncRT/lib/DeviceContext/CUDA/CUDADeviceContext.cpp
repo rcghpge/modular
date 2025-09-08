@@ -979,7 +979,6 @@ CUDADeviceContext::~CUDADeviceContext() {
   // We will exit the CUDAContextScope before we force a push of the context
   // to be destroyed.
   CUDA_WITH_CTX(*this);
-  CUDA_CHECK(driver_.StreamSynchronize(stream_));
   // Synchronize to ensure that all of the chunks have been freed.
   CUDA_CHECK(driver_.StreamSynchronize(stream_));
   // We do not need to synchronize on possible work queued on this stream.
