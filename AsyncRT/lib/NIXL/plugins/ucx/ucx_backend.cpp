@@ -24,6 +24,7 @@
 #include "AsyncRT/NIXL/nixl_types.h"
 #include "AsyncRT/NIXL/plugins/ucx/ucx_backend.h"
 #include "AsyncRT/NIXL/utils/common/nixl_log.h"
+#include "AsyncRT/NIXL/utils/common/nixl_time.h"
 #include "AsyncRT/NIXL/utils/serdes/serdes.h"
 #include "AsyncRT/NIXL/utils/ucx/ucx_utils.h"
 #include "Support/ErrorOr.h"
@@ -219,6 +220,10 @@ private:
   nixlUcxIntReq head;
   const nixlUcxEngine &eng;
   size_t worker_id;
+  size_t num_bytes;
+  nixlTime::ns_t start_time_ns;
+  int device_id;
+  bool logged_completion;
 
   // Notification to be sent after completion of all requests.
   struct Notif {
@@ -230,8 +235,11 @@ private:
 public:
   std::optional<Notif> &notification() { return notif; }
 
-  nixlUcxBackendH(const nixlUcxEngine &eng_, size_t worker_id_)
-      : eng(eng_), worker_id(worker_id_) {}
+  nixlUcxBackendH(const nixlUcxEngine &eng_, size_t worker_id_,
+                  size_t num_bytes_, int device_id_)
+      : eng(eng_), worker_id(worker_id_), num_bytes(num_bytes_),
+        start_time_ns(nixlTime::getNs()), device_id(device_id_),
+        logged_completion(false) {}
 
   void append(nixlUcxIntReq *req) { head.link(req); }
 
@@ -307,6 +315,19 @@ public:
         append(req);
       }
       req = next_req;
+    }
+
+    if (out_ret == nixl_status_t::NIXL_SUCCESS && !logged_completion) {
+      logged_completion = true;
+      double mib = num_bytes / 1024.0 / 1024.0;
+      double gib = mib / 1024.0;
+      double endTimeNs = nixlTime::getNs();
+      double elapsedTimeNs = endTimeNs - start_time_ns;
+      double elapsedTimeMs = elapsedTimeNs / 1e6;
+      double bw = gib / elapsedTimeMs * 1000;
+      NIXL_DEBUG << llvm::format(
+          "Transfer of %.3f MiB took %.3f ms on Device %d (%.3f GiB/s)", mib,
+          elapsedTimeMs, device_id, bw);
     }
 
     return out_ret;
@@ -921,8 +942,14 @@ nixl_status_t nixlUcxEngine::prepXfer(const nixl_xfer_op_t &operation,
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
+  size_t numBytes = 0;
+  for (const nixlMetaDesc &desc : local)
+    numBytes += desc.len;
+  int deviceId = deviceCtx ? deviceCtx->device().id() : -1;
+
   /* TODO: try to get from a pool first */
-  nixlUcxBackendH *intHandle = new nixlUcxBackendH(*this, getWorkerId());
+  nixlUcxBackendH *intHandle =
+      new nixlUcxBackendH(*this, getWorkerId(), numBytes, deviceId);
 
   handle = (nixlBackendReqH *)intHandle;
   return nixl_status_t::NIXL_SUCCESS;
