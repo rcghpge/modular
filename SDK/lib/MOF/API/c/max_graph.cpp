@@ -105,16 +105,3 @@ MODULAR_API_EXPORT MlirLocation MAXG_opaqueFrameLocNew(
                                                         .decref = decref_fn});
   return wrap(loc);
 }
-
-MODULAR_API_EXPORT void *MAXG_opaqueFrameLocGetFrame(MlirLocation loc) {
-  if (!mlir::isa<OpaqueLoc>(unwrap(loc)))
-    return nullptr;
-
-  void *attrPtr = mlir::OpaqueLoc::getUnderlyingLocationOrNull<
-      RMO::PythonFrameAttr::ImplType *>(unwrap(loc));
-  if (!attrPtr)
-    return nullptr;
-
-  auto attr = RMO::PythonFrameAttr::getFromOpaquePointer(attrPtr);
-  return attr.frame();
-}

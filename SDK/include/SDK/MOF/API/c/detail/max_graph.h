@@ -33,7 +33,4 @@ MODULAR_API_EXPORT MlirLocation MAXG_opaqueFrameLocNew(
     MlirContext context, void *frame_ptr, char *(*to_str_fn)(void *),
     void (*incref_fn)(void *), void (*decref_fn)(void *));
 
-/// Returns the frame pointer from an opaque location or null.
-MODULAR_API_EXPORT void *MAXG_opaqueFrameLocGetFrame(MlirLocation loc);
-
 #endif // MOF_API_C_DETAIL_MAX_GRAPH_H
