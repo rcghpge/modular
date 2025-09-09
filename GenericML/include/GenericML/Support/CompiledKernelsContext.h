@@ -11,7 +11,6 @@
 #include "KGEN/ExecutionEngine/ExecutionEngine.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/BLAKE3.h"
 
 namespace M::GML {
 

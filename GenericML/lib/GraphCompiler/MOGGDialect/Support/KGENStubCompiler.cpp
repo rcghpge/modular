@@ -35,9 +35,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
 
-#include "xxh3.h"
-#include "xxhash.h"
-
 namespace M::MOGG {
 namespace {
 /// Helpers to compile the KGEN stubs to binary. This splits the compile to

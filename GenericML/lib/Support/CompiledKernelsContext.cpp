@@ -14,6 +14,7 @@
 #include "Support/Preprocessor.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/Object/Archive.h"
+#include "llvm/Support/xxhash.h"
 
 #define DEBUG_TYPE "compiled-kernels-context"
 
@@ -85,8 +86,8 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
   // We deal with these by loading into a dylib with a name derived from
   // the archive hash, and using the engine's atomic 'addIfAbsent' to
   // ensure that the dylib is created exactly once.
-  auto hash = llvm::BLAKE3::hash(binary);
-  std::string dylibName = llvm::toHex(hash);
+  std::string dylibName = llvm::utohexstr(llvm::xxh3_64bits(binary),
+                                          /*LowerCase=*/true, /*Width=*/16);
   auto buf = Buffer::get(
       StringRef(reinterpret_cast<const char *>(binary.data()), binary.size()));
 

@@ -14,6 +14,7 @@
 #include "Support/BinaryID.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/xxhash.h"
 
 #include "xxh3.h"
 #include "xxhash.h"
@@ -46,10 +47,9 @@ std::string M::MO::getMOGGCompilerVersionString() {
                                 M::MOGG::Embeddings::getMOGGEmbeddingID() +
                                 "-" + M::KGEN::getCompilerRTBinaryID() + "-" +
                                 M::getModularVersion().buildType;
-    return llvm::utohexstr(
-        XXH3_64bits(versionString.data(), versionString.size()),
-        /*LowerCase=*/true,
-        /*Width=*/16);
+    return llvm::utohexstr(llvm::xxh3_64bits(versionString),
+                           /*LowerCase=*/true,
+                           /*Width=*/16);
   }();
   return version;
 }
