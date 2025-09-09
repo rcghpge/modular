@@ -1300,7 +1300,24 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
-ErrorOr<Device::MemInfo> HIPDeviceContext::getMemoryInfo() const {
+ErrorOrSuccess
+HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
+  if (device().id() == peer.device().id()) {
+    // Enabling peer access to self is not allowed.
+    RAISE_ERROR("Cannot enable peer access to self");
+  }
+
+  const HIPDevice *peerDevice = HIPDevice::verified_cast(&peer.device());
+  if (peerDevice == nullptr) {
+    RAISE_ERROR("Peer is not a HIP device");
+  }
+
+  HIP_WITH_CTX_ERR(*this);
+  HIP_CHECK_ERR(driver_.DeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
+  return success();
+}
+
+ErrorOr<Device::MemInfo> HIPDeviceContext::getDeviceMemoryInfo() const {
   HIP_WITH_CTX(*this);
   // To get more accurate memory stats, ensure that at least all pending memory
   // allocations and frees have completed for this context's stream.

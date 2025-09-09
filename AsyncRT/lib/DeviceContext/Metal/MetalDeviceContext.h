@@ -152,7 +152,10 @@ public:
   stopTimer(const DeviceTimer &timer) const override;
 
   // Memory info
-  ErrorOr<Device::MemInfo> getMemoryInfo() const override;
+  ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
+
+  // Peer access
+  ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
 
   ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
       int *numBlocks, const DeviceFunction &func, int blockSize,

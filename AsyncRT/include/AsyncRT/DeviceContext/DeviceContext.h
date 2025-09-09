@@ -509,7 +509,9 @@ public:
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
 
-  virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
+  virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
+
+  ErrorOr<Device::MemInfo> getMemoryInfo() const;
 
   virtual ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
       int *numBlocks, const DeviceFunction &func, int blockSize,
@@ -549,6 +551,9 @@ public:
 
 protected:
   DeviceContext(const Device &device);
+
+  // Device-specific memory information (raw hardware memory)
+  virtual ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const = 0;
 
   // Low-level uncached allocation of memory.
   // REQUIRES: byteSize > 0

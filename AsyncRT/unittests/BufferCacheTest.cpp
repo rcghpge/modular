@@ -1733,4 +1733,56 @@ TEST_F(BufferCacheTest, HostBufferCacheIntegrationWithDeviceContext) {
   }
 }
 
+// BufferCache Memory Info Tests
+
+TEST_F(BufferCacheTest, GetMemoryInfoDisabledDefaults) {
+  ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "0");
+
+  CpuDeviceRef device = createTestDevice();
+  BufferCache &cache = device->bufferCache();
+
+  Device::MemInfo memInfo = cache.getMemoryInfo();
+
+  EXPECT_EQ(memInfo.total, 0);
+  EXPECT_EQ(memInfo.free, 0);
+}
+
+TEST_F(BufferCacheTest, GetMemoryInfoAccuracy) {
+  CpuDeviceRef device = createTestDevice();
+  BufferCache &cache = device->bufferCache();
+  BufferCacheFreeList &freeList = *cache.freeList();
+
+  // Get initial memory info
+  Device::MemInfo initialInfo = cache.getMemoryInfo();
+  EXPECT_GT(initialInfo.total, 0);
+  size_t initialFree = initialInfo.free;
+
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+  std::vector<void *> ptrs;
+
+  // Allocate some blocks
+  for (int i = 0; i < 3; i++) {
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
+    EXPECT_NE(ptr, nullptr);
+    ptrs.push_back(ptr);
+  }
+
+  // Get memory info after allocations
+  Device::MemInfo afterAllocInfo = cache.getMemoryInfo();
+  EXPECT_EQ(afterAllocInfo.total,
+            initialInfo.total); // Total should remain same
+  EXPECT_LE(afterAllocInfo.free,
+            initialFree); // Free should decrease or stay same
+
+  // Free the blocks
+  for (void *ptr : ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
+  }
+
+  // Get memory info after freeing
+  Device::MemInfo afterFreeInfo = cache.getMemoryInfo();
+  EXPECT_EQ(afterFreeInfo.total, initialInfo.total); // Total should remain same
+  EXPECT_GE(afterFreeInfo.free, afterAllocInfo.free); // Free should increase
+}
+
 } // namespace

@@ -650,6 +650,20 @@ size_t BufferCache::allocationAlignment() const { return alignmentOffset_ + 1; }
 
 bool BufferCache::isHost() const { return isHost_; }
 
+Device::MemInfo BufferCache::getMemoryInfo() const {
+  Device::MemInfo info;
+  std::lock_guard<std::mutex> lock(mu_);
+
+  info.total = maxCacheSize_;
+  info.free = maxCacheSize_ >= cacheSize_
+                  ? (maxCacheSize_ - cacheSize_) + freeSize_
+                  : freeSize_;
+
+  return info;
+}
+
+bool BufferCache::isEnabled() const { return maxCacheSize_ > 0; }
+
 bool BufferCache::allocateChunk() {
   if (shouldUseMaxSize()) {
     // Ensure that we have grown chunkSize_ to the maximum.

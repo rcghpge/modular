@@ -963,7 +963,12 @@ MetalDeviceContext::stopTimer(const DeviceTimer &timer) const {
          MetalDeviceTimer::cast(timer).cpu_start();
 }
 
-ErrorOr<Device::MemInfo> MetalDeviceContext::getMemoryInfo() const {
+ErrorOrSuccess
+MetalDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
+  RAISE_ERROR_MESSAGE("Metal enablePeerAccess not implemented");
+}
+
+ErrorOr<Device::MemInfo> MetalDeviceContext::getDeviceMemoryInfo() const {
 
   ErrorOrSuccess syncResult = synchronize();
   if (syncResult.isError()) {

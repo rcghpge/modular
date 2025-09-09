@@ -626,6 +626,18 @@ ErrorOrSuccess DeviceContext::setAsCurrent() const {
   return device().setCurrentDriverContext(driverContext());
 }
 
+MODULAR_CXX_EXPORT ErrorOr<Device::MemInfo>
+DeviceContext::getMemoryInfo() const {
+  // If we are using the buffer cache, get memory information from it.
+  BufferCache &cache = device().bufferCache();
+  if (cache.isEnabled()) {
+    return cache.getMemoryInfo();
+  }
+
+  // Otherwise, go directly to the device.
+  return getDeviceMemoryInfo();
+}
+
 void DeviceContext::setPendingError(Error err) const {
   {
     std::lock_guard<std::mutex> lock(mu_);

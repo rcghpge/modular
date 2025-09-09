@@ -649,4 +649,85 @@ TEST(DeviceContextTest, BufferCache) {
   EXPECT_NO_ERR(bufCache.free(bh));
 }
 
+TEST(DeviceContextTest, GetMemoryInfoWithoutBufferCache) {
+  // Test that getMemoryInfo returns device memory when buffer cache is disabled
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+
+  ASSIGN_NO_ERR(Device::MemInfo, memInfo, ctx->getMemoryInfo());
+  ASSIGN_NO_ERR(Device::MemInfo, deviceMemInfo, ctx->device().getMemoryInfo());
+
+  // Without buffer cache, context memory info should match device memory info
+  EXPECT_EQ(memInfo.total, deviceMemInfo.total);
+  EXPECT_EQ(memInfo.free, deviceMemInfo.free);
+}
+
+TEST(DeviceContextTest, GetMemoryInfoWithBufferCache) {
+  // Test that getMemoryInfo returns buffer cache memory when buffer cache is
+  // enabled
+  constexpr size_t maxCacheSize = 4 * 1024;
+
+  Device::MemInfo memInfo;
+  memInfo.free = 128 * maxCacheSize;
+  memInfo.total = 256 * maxCacheSize;
+
+  ScopedEnvVar env[] = {
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25"),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "25")};
+
+  // Create a CPU device with buffer cache enabled
+  CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  ASSIGN_NO_ERR(Device::MemInfo, contextMemInfo, ctx->getMemoryInfo());
+  ASSIGN_NO_ERR(Device::MemInfo, deviceMemInfo, ctx->device().getMemoryInfo());
+
+  // With buffer cache enabled, context memory info should differ from device
+  // memory info
+  EXPECT_NE(contextMemInfo.total, deviceMemInfo.total);
+  EXPECT_NE(contextMemInfo.free, deviceMemInfo.free);
+
+  // Context should report buffer cache limits, not device limits
+  size_t expectedCacheSize = (memInfo.total * 25) / 100;
+  EXPECT_EQ(contextMemInfo.total, expectedCacheSize);
+  EXPECT_EQ(contextMemInfo.free, expectedCacheSize);
+}
+
+TEST(DeviceContextTest, GetMemoryInfoDynamicUpdate) {
+  // Test that getMemoryInfo reflects allocations/frees in buffer cache
+  constexpr size_t maxCacheSize = 8 * 1024;
+  constexpr size_t allocSize = 1024;
+
+  Device::MemInfo memInfo;
+  memInfo.free = 128 * maxCacheSize;
+  memInfo.total = 256 * maxCacheSize;
+
+  ScopedEnvVar env[] = {
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25"),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "25")};
+
+  // Create a CPU device with buffer cache enabled
+  CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  // Get initial memory info
+  ASSIGN_NO_ERR(Device::MemInfo, initialMemInfo, ctx->getMemoryInfo());
+
+  // Allocate a buffer
+  ASSIGN_NO_ERR(DeviceBufferRef, buffer, ctx->enqueueCreateBuffer(allocSize));
+
+  // Memory info should show less free memory
+  ASSIGN_NO_ERR(Device::MemInfo, afterAllocMemInfo, ctx->getMemoryInfo());
+  EXPECT_LT(afterAllocMemInfo.free, initialMemInfo.free);
+  EXPECT_EQ(afterAllocMemInfo.total, initialMemInfo.total);
+
+  // Free the buffer (destructor releases it)
+  buffer.reset();
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  // Memory info should show more free memory again
+  ASSIGN_NO_ERR(Device::MemInfo, afterFreeMemInfo, ctx->getMemoryInfo());
+  EXPECT_GE(afterFreeMemInfo.free, afterAllocMemInfo.free);
+  EXPECT_EQ(afterFreeMemInfo.total, initialMemInfo.total);
+}
+
 } // namespace

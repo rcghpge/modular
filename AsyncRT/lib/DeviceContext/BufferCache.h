@@ -56,6 +56,12 @@ public:
 
   BufferCacheFreeList *freeList() const;
 
+  // Get memory information about the buffer cache
+  Device::MemInfo getMemoryInfo() const;
+
+  // Check if the buffer cache is enabled (has non-zero capacity)
+  bool isEnabled() const;
+
   // Factory methods configure the buffer cache based on defaults or the
   // environment.
   static BufferCache *onDevice(const Device &device, Device::MemInfo memInfo,
@@ -109,7 +115,7 @@ private:
   const size_t alignmentOffset_;
   const size_t alignmentMask_;
 
-  std::mutex mu_;
+  mutable std::mutex mu_;
   // List of all chunks allocated from the driver and their total size.
   size_t cacheSize_ = 0;
   Chunk *chunks_ = nullptr;
