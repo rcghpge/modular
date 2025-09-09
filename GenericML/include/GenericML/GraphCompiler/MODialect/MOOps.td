@@ -1728,7 +1728,7 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax", [MO_HostOnly]> {
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax", [MO_SingleDevice]> {
   let summary = "Logarithmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
