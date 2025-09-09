@@ -125,8 +125,8 @@ ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
 
     ErrorOr<MojoValue> maybeVal = inferCallback(paramName);
     if (maybeVal.isError()) {
-      function.emitError(Twine("Failed to infer kernel parameter ") +
-                         paramName);
+      function.emitError(Twine("Failed to infer kernel parameter `") +
+                         paramName + "`: " + maybeVal.getError());
       return maybeVal.takeError();
     }
 
@@ -188,11 +188,22 @@ EmitMojoState::inferDefaultKernelParamValue(Operation *callOp,
   if (auto kernelCallOp = dyn_cast<KernelCallInterface>(callOp)) {
     if (auto customParam = kernelCallOp.getKernelParams().get(paramName)) {
       // Convert it to mojo
+      // TODO: Convert custom mlir parameter to the right mojo parameter type is
+      // hardcoded here and brittle. Besides the param name, we would also need
+      // the type from the kernel infos to convert it correctly.
       if (auto strAttr = dyn_cast<StringAttr>(customParam))
         return MojoValue(strAttr.getValue()).quote();
       else if (auto boolAttr = dyn_cast<BoolAttr>(customParam))
         return boolAttr.getValue();
-      else
+      else if (auto intAttr = dyn_cast<IntegerAttr>(customParam))
+        return intAttr.getInt();
+      else if (auto arrAttr = dyn_cast<ArrayAttr>(customParam);
+               arrAttr && !arrAttr.empty() && isa<IntegerAttr>(arrAttr[0])) {
+        SmallVector<int64_t> values;
+        for (auto val : arrAttr)
+          values.push_back(cast<IntegerAttr>(val).getInt());
+        return EmitMojoState::getAsDimListMojoValue(values);
+      } else
         return Error("Unsupported custom param MLIR type");
     }
   }

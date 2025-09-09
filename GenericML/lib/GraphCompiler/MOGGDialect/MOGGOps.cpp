@@ -3239,22 +3239,32 @@ LogicalResult TensorGetShapeOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
-  // First operand is always a tensor.
-  auto tensorMojoValue = state.mlirValueToMojoValue[getOperand(0)];
-  // Rebind the tensor to ensure that all parameters are deduced.
-  auto inputTensorMojoValue = state.builder.var(tensorMojoValue.rebind(
-      MojoValue(HardcodedMojoSymbols::alias_InputTensor)
-          [MojoValue("static_spec")
-               .equal(tensorMojoValue.get("static_spec"))]));
-  auto inputMojoValues = state.getMojoValuesFor(getInputs());
-  inputMojoValues.front() = inputTensorMojoValue;
+  // Rebind all the input tensors to ensure that all parameters are deduced.
+  SmallVector<MojoValue> inputMojoValues;
+  for (Value val : getInputs())
+    inputMojoValues.push_back(state.getReboundInputTensorFor(val));
 
-  auto outputShapeParameter = state.builder.alias(
-      state.getStaticShapeAsMojoValue(getResult().getType()));
-  auto mojoSymbolName = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredMojoUpdateViewFunctionFor(getKernelName()));
-  state.mlirValueToMojoValue[getResult()] = state.builder.var(
-      mojoSymbolName({outputShapeParameter}, inputMojoValues));
+  KGEN::GeneratorOp function =
+      state.analysis.getRegisteredMojoUpdateViewFunctionFor(getKernelName());
+
+  // Infer the kernel parameters.
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    constexpr StringLiteral staticOutShapeParamName = "output_static_shape";
+    if (paramName == staticOutShapeParamName) {
+      return state.builder.alias(
+          state.getStaticShapeAsMojoValue(getResult().getType()));
+    }
+    return state.inferDefaultKernelParamValue(*this, paramName);
+  };
+  ErrorOr<llvm::SmallVector<MojoValue>> maybeParams =
+      EmitMojoState::inferKernelParameters(function, inferParam);
+  if (maybeParams.isError())
+    return emitError("Failed to infer all the kernel parameters");
+
+  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
+
+  state.mlirValueToMojoValue[getResult()] =
+      state.builder.var(mojoSymbolName(*maybeParams, inputMojoValues));
   return success();
 }
 

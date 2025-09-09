@@ -401,9 +401,16 @@ MOGGExpKernelBuilder::forwardParameters(const KernelAdaptor &adaptor) {
       }
     }
 
-    auto attrOrError = typeManager.lowerStaticDims(builder, values);
-    forwardedParameters.push_back(
-        NamedAttribute(paramName, attrOrError.takeValue()));
+    if (useExperimentalMojoPath()) {
+      // Build an ArrayAttr for EmitMojo.
+      forwardedParameters.push_back(
+          NamedAttribute(paramName, builder.getI64ArrayAttr(values)));
+    } else {
+      // Lower the dimensions to KGEN.
+      auto attrOrError = typeManager.lowerStaticDims(builder, values);
+      forwardedParameters.push_back(
+          NamedAttribute(paramName, attrOrError.takeValue()));
+    }
   };
   if (auto convOp = dyn_cast<MO::ConvOp>(moOp)) {
     extractConstantValues(convOp.getStrides(),
