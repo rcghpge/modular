@@ -14,6 +14,7 @@
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
+#include "Metal/MetalDeviceContext.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
