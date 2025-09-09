@@ -837,6 +837,14 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
       RAISE_ERROR_MESSAGE("Null argument at index " + std::to_string(i));
     }
 
+    if (argSize == 0) {
+      // TODO: Remove part about captured arguments from the message after
+      // MOCO-2399 is fixed.
+      RAISE_ERROR_MESSAGE("Unknown argument size at index " +
+                          std::to_string(i) +
+                          ". Captured arguments are not yet supported.");
+    }
+
     const size_t argSize = argSizes[i];
     MTL::Buffer *buf = nullptr;
     if (argSize == sizeof(void *)) {
