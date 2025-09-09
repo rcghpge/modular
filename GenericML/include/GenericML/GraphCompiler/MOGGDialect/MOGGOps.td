@@ -902,7 +902,8 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
 }
 
 def MOGG_CallOp : MOGG_Op<"call", [
-    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
   ]> {
   let summary = "Represents  KGEN function to call";
   let description = [{
@@ -1828,6 +1829,25 @@ def MOGG_BindToOp : MOGG_Op<"bind_to", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+}
+
+def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
+
+  let summary = "create a scalar constant value";
+  let description = [{
+
+
+    Example:
+
+    ```mlir
+    %cst2 = mogg.constant.scalar {value = 2 : si64} : !mo.scalar<si64>
+    ```
+  }];
+
+  let arguments = (ins TypedAttrInterface:$value);
+  let results = (outs MO_Scalar:$result);
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

@@ -20,7 +20,12 @@ enum class FusionType {
 
 inline bool willUltimatelyEmitMojo(MOGG::GenericCompiledRegionOp kernel) {
   return llvm::any_of(kernel.getOps(), [](auto &op) {
-    return isa<MOGG::EmitsMojoInterface>(op);
+    // MOGG::CallOp is a bit special for now, it's only supported for Affine
+    // View Ops for EmitMojo. As we move more and more things to EmitMojo, we'll
+    // be able to get rid of this condition.
+    // TODO: Use dedicated op for affine views and remove the check for
+    // MOGG::CallOp.
+    return isa<MOGG::EmitsMojoInterface>(op) && !isa<MOGG::CallOp>(op);
   });
 }
 

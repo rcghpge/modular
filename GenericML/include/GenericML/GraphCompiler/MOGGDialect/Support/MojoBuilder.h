@@ -33,6 +33,11 @@ public:
   MojoValue(StringRef str) : text(str) {}
   MojoValue(int64_t integer) : text(std::to_string(integer)) {}
   MojoValue(uint64_t integer) : text(std::to_string(integer)) {}
+  MojoValue(const llvm::APSInt &integer) {
+    SmallVector<char> chars;
+    integer.toString(chars);
+    this->text.assign(chars.begin(), chars.end());
+  }
   MojoValue(bool val) : text(val ? "True" : "False") {}
   MojoValue(const char *str) : text(str) {}
   ~MojoValue() = default;

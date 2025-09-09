@@ -73,6 +73,20 @@ struct FuseAffineViewsPass
     return true;
   }
 
+  static Value lowerScalarDim(Location &loc, OpBuilder builder, TypedAttr dim) {
+    if (!useExperimentalMojoPath())
+      return lowerDimToKGEN(loc, builder, dim);
+
+    if (auto intAttr = dyn_cast<IntegerAttr>(dim)) {
+      auto scalarTy = MO::ScalarType::get(intAttr.getContext(),
+                                          *MO::fromMLIRType(intAttr.getType()));
+      return builder.create<MOGG::ConstantScalarOp>(loc, scalarTy, intAttr);
+    } else {
+      ASSERT_STREAM(false, << "TODO: Support dynamic dimensions");
+      return nullptr;
+    }
+  }
+
   // Support fusion for new-style kernels which go directly to KGEN ops
   template <typename ViewOp>
   void fuseViewOpDimKGEN(MOGG::ExpKernelOp kernel, ViewOp viewOpUser,
@@ -108,14 +122,14 @@ struct FuseAffineViewsPass
       TypedAttr axis =
           viewOpUser.getType()
               .getDims()[viewOpUser.getAxis().getLimitedValue() + 1];
-      operands.push_back(lowerDimToKGEN(loc, builder, axis));
+      operands.push_back(lowerScalarDim(loc, builder, axis));
       funcName = Utils::SplitDimIndices;
     } else if (std::is_same_v<ViewOp, MO::MergeDimOp>) {
       TypedAttr axis =
           viewOpUser.getInput()
               .getType()
               .getDims()[viewOpUser.getAxis().getLimitedValue() + 1];
-      operands.push_back(lowerDimToKGEN(loc, builder, axis));
+      operands.push_back(lowerScalarDim(loc, builder, axis));
       funcName = Utils::MergeDimIndices;
     } else if (std::is_same_v<ViewOp, MO::AddSingletonDimOp>) {
       parameters.set("value", builder.getIndexAttr(0));

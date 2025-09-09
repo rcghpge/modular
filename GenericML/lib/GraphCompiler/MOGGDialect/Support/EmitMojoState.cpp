@@ -84,9 +84,27 @@ MojoValue EmitMojoState::getReboundOutputTensorFor(Value value,
   ASSERT_STREAM(
       bindLambdaOp.getBindKind() == MOGG::BindLambdaKind::OutputLambda,
       << "only output lambda supported");
+  Value bindLambdaInput = bindLambdaOp.getFusibleTensors().front();
   MojoValue lambdaParam = mlirValueToMojoValue.at(value);
-  MojoValue outputTensor =
-      mlirValueToMojoValue.at(bindLambdaOp.getFusibleTensors().front());
+  MojoValue outputTensor = mlirValueToMojoValue.at(bindLambdaInput);
+
+  auto fromType = dyn_cast<MO::TensorType>(bindLambdaInput.getType());
+  auto toType = dyn_cast<MO::TensorType>(value.getType());
+  if (fromType && toType &&
+      fromType.getRankNonZero() != toType.getRankNonZero()) {
+    // The rank differs after applying the lambda.
+    // This might happens because of AffineFusion.
+    // In that case the input must be reshaped to the output shape.
+    // TODO: Handle dynamic dimensions.
+    MojoValue shapeValue = getShapeAsIndexListMojoValue(toType);
+    MojoValue shapeParam = getStaticShapeAsMojoValue(toType);
+    MojoValue stridesParam = getStaticStridesAsMojoValue(toType);
+    outputTensor = builder.var(
+        MojoValue(HardcodedMojoSymbols::func_reshape_contiguous_buffer)(
+            {MojoValue("static_shape").equal(shapeParam),
+             MojoValue("static_stride").equal(stridesParam)},
+            {outputTensor, shapeValue}));
+  }
 
   // Rebuild a new spec.
   MojoValue newSpec = MojoValue(
@@ -96,6 +114,8 @@ MojoValue EmitMojoState::getReboundOutputTensorFor(Value value,
   auto spec = expectsComputeLambda
                   ? HardcodedMojoSymbols::alias_FusedComputeOutputTensor
                   : HardcodedMojoSymbols::alias_FusedOutputTensor;
+
+  // Rebind the value
   return builder.var(outputTensor.rebind(
       MojoValue(spec)[MojoValue("static_spec").equal(newSpec)]));
 }
@@ -181,31 +201,40 @@ static MojoValue getLambasHaveFusionValue(mlir::Operation *kernelCallOp) {
   });
 }
 
-ErrorOr<MojoValue>
-EmitMojoState::inferDefaultKernelParamValue(Operation *callOp,
-                                            StringRef paramName) {
+ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
+    Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
+
+  auto inferFromMliParam = [](Attribute customParam) -> ErrorOr<MojoValue> {
+    // Convert it to mojo
+    // TODO: Convert custom mlir parameter to the right mojo parameter type is
+    // hardcoded here and brittle. Besides the param name, we would also need
+    // the type from the kernel infos to convert it correctly.
+    if (auto strAttr = dyn_cast<StringAttr>(customParam))
+      return MojoValue(strAttr.getValue()).quote();
+    else if (auto boolAttr = dyn_cast<BoolAttr>(customParam))
+      return boolAttr.getValue();
+    else if (auto intAttr = dyn_cast<IntegerAttr>(customParam))
+      return intAttr.getInt();
+    else if (auto arrAttr = dyn_cast<ArrayAttr>(customParam);
+             arrAttr && !arrAttr.empty() && isa<IntegerAttr>(arrAttr[0])) {
+      SmallVector<int64_t> values;
+      for (auto val : arrAttr)
+        values.push_back(cast<IntegerAttr>(val).getInt());
+      return EmitMojoState::getAsDimListMojoValue(values);
+    } else
+      return Error("Unsupported custom param MLIR type");
+  };
+
   // Look at the provided list of kernel parameters first
-  if (auto kernelCallOp = dyn_cast<KernelCallInterface>(callOp)) {
-    if (auto customParam = kernelCallOp.getKernelParams().get(paramName)) {
-      // Convert it to mojo
-      // TODO: Convert custom mlir parameter to the right mojo parameter type is
-      // hardcoded here and brittle. Besides the param name, we would also need
-      // the type from the kernel infos to convert it correctly.
-      if (auto strAttr = dyn_cast<StringAttr>(customParam))
-        return MojoValue(strAttr.getValue()).quote();
-      else if (auto boolAttr = dyn_cast<BoolAttr>(customParam))
-        return boolAttr.getValue();
-      else if (auto intAttr = dyn_cast<IntegerAttr>(customParam))
-        return intAttr.getInt();
-      else if (auto arrAttr = dyn_cast<ArrayAttr>(customParam);
-               arrAttr && !arrAttr.empty() && isa<IntegerAttr>(arrAttr[0])) {
-        SmallVector<int64_t> values;
-        for (auto val : arrAttr)
-          values.push_back(cast<IntegerAttr>(val).getInt());
-        return EmitMojoState::getAsDimListMojoValue(values);
-      } else
-        return Error("Unsupported custom param MLIR type");
-    }
+  if (auto kernelCallOp = dyn_cast<KernelCallInterface>(callOp);
+      kernelCallOp && kernelCallOp.getKernelParams()) {
+    if (auto customParam = kernelCallOp.getKernelParams().get(paramName))
+      return inferFromMliParam(customParam);
+  }
+
+  if (customParamDict) {
+    if (auto customParam = customParamDict.get(paramName))
+      return inferFromMliParam(customParam);
   }
 
   // Some special parameters are common to all kernels.
@@ -219,6 +248,34 @@ EmitMojoState::inferDefaultKernelParamValue(Operation *callOp,
     return getLambasHaveFusionValue(callOp);
 
   return Error("Failed to infer parameter");
+}
+
+MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MO::TensorType tensorTy,
+                                                      ValueRange dynamicDims) {
+  // TODO: Make sure this is actually valid for dynamic cases.
+  // The dimensions operand only contains the dynamic ones in
+  // MOGGTensorInitOp. So instead we get the static ones from the type
+  // directly.
+
+  SmallVector<MojoValue> mojoDims;
+  unsigned nextDymDim = 0;
+  for (TypedAttr dim : tensorTy.getDims()) {
+    if (auto staticDim = dyn_cast<IntegerAttr>(dim)) {
+      mojoDims.push_back(MojoValue(staticDim.getSInt()));
+    } else {
+      ASSERT_STREAM(nextDymDim < dynamicDims.size(),
+                    "Missing dynamic dimension");
+      mojoDims.push_back(mlirValueToMojoValue[dynamicDims[nextDymDim++]]);
+    }
+  }
+  if (mojoDims.empty())
+    mojoDims.push_back(MojoValue(static_cast<int64_t>(1)));
+
+  MojoValue rankParam =
+      MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
+
+  return MojoValue(HardcodedMojoSymbols::struct_IndexList)({rankParam},
+                                                           mojoDims);
 }
 
 } // namespace M::MOGG

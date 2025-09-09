@@ -54,6 +54,8 @@ constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
     "managed_tensor_slice.simd_store_into_managed_tensor_slice";
 constexpr StringLiteral func_rebuild_static_tensor_specs_with_input_lambda =
     "managed_tensor_slice.rebuild_static_tensor_specs_with_input_lambda";
+constexpr StringLiteral func_reshape_contiguous_buffer =
+    "MOGGPrimitives.reshape_contiguous_buffer_v2";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
@@ -183,6 +185,9 @@ struct EmitMojoState {
         MOGG::getStridesForTensor(type, /*unknown=*/false));
   }
 
+  MojoValue getShapeAsIndexListMojoValue(MO::TensorType tensorTy,
+                                         ValueRange dynamicDims = {});
+
   /// Helper to simply forward a list of mlir::Value into their MojoValue mapped
   /// equivalents.
   SmallVector<MojoValue> getMojoValuesFor(ValueRange operands) {
@@ -243,8 +248,9 @@ struct EmitMojoState {
       std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
 
   /// Base function to infer all parameter values of a kernel.
-  ErrorOr<MojoValue> inferDefaultKernelParamValue(Operation *callOp,
-                                                  StringRef paramName);
+  ErrorOr<MojoValue>
+  inferDefaultKernelParamValue(Operation *callOp, StringRef paramName,
+                               DictionaryAttr customParamDict = nullptr);
 };
 } // namespace M::MOGG
 

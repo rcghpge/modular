@@ -322,6 +322,36 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
   return true;
 }
 
+LogicalResult CallOp::emitMojo(EmitMojoState &state) {
+  KGEN::GeneratorOp function =
+      state.analysis.getRegisteredMojoKernelFor(getMojoKernelTarget());
+  auto symbolName = state.getOriginalMojoNameFor(function);
+
+  SmallVector<MojoValue> mojoOperands = state.getMojoValuesFor(getOperands());
+
+  // Infer the kernel parameters.
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    return state.inferDefaultKernelParamValue(*this, paramName,
+                                              getKgenParamsAttr());
+  };
+  ErrorOr<llvm::SmallVector<MojoValue>> maybeParams =
+      EmitMojoState::inferKernelParameters(function, inferParam);
+  if (maybeParams.isError())
+    return emitError("Failed to infer all the kernel parameters");
+
+  auto results = getResults();
+  if (results.empty()) {
+    state.builder.call(symbolName, *maybeParams, mojoOperands);
+  } else if (results.size() == 1) {
+    state.mlirValueToMojoValue[results.front()] =
+        state.builder.var(symbolName(*maybeParams, mojoOperands));
+  } else {
+    return emitError("CallOp with multiple outputs not supported");
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // MOGG BindLambdaOp
 //===----------------------------------------------------------------------===//
@@ -609,6 +639,11 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
         auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
         const MojoValue &resultValue =
             state.mlirValueToMojoValue[outputOp.getOperand(0)];
+        // The lambda might also compute and return the indices.
+        const MojoValue &resultIndices =
+            outputOp->getNumOperands() > 1
+                ? state.mlirValueToMojoValue[outputOp.getOperand(1)]
+                : indicesInput;
 
         if (generateStoreForOutput) {
           // Store the output value.
@@ -616,7 +651,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
               HardcodedMojoSymbols::func_simd_store_into_managed_tensor_slice,
               ArrayRef<MojoValue>{
                   MojoValue("element_alignment").equal(alignmentParam)},
-              {fusedInputs.front(), indicesInput, resultValue});
+              {fusedInputs.front(), resultIndices, resultValue});
         } else {
           // Add the return statement.
           state.builder.returnsValue(resultValue);
@@ -3131,47 +3166,21 @@ LogicalResult AsyncDelOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
-
-  auto convertShapeOperand =
-      [](MO::TensorType tensorTy,
-         ArrayRef<MojoValue> dynamicDims) -> SmallVector<MojoValue> {
-    if (tensorTy.getRank() == 0)
-      return {MojoValue(static_cast<int64_t>(1))};
-
-    // TODO: Make sure this is actually valid for dynamic cases.
-    // The dimensions operand only contains the dynamic ones in
-    // MOGGTensorInitOp. So instead we get the static ones from the type
-    // directly.
-
-    SmallVector<MojoValue> mojoDims;
-    unsigned nextDymDim = 0;
-    for (TypedAttr dim : tensorTy.getDims()) {
-      if (auto staticDim = dyn_cast<IntegerAttr>(dim)) {
-        mojoDims.push_back(MojoValue(staticDim.getSInt()));
-      } else {
-        mojoDims.push_back(dynamicDims[nextDymDim++]);
-      }
-    }
-    return mojoDims;
-  };
-
   auto tensorTy = MO::dynCastFromTensorLike(getType());
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
-  MojoValue rankParam =
-      MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
   auto mutParam = getMut();
   auto ioParam = MojoValue(HardcodedMojoSymbols::struct_IO)
                      .get(MOGG::stringifyIOKind(getIo()));
+  MojoValue rankParam =
+      MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
   auto shapeParam =
       state.builder.alias(state.getStaticShapeAsMojoValue(tensorTy));
   auto stridesParam =
       state.builder.alias(state.getStaticStridesAsMojoValue(tensorTy));
   MojoValue alignmentParam(static_cast<uint64_t>(AsyncRT::getPreferredAlignment(
       MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
-  auto shapeVar =
-      state.builder.var(MojoValue(HardcodedMojoSymbols::struct_IndexList)(
-          {rankParam},
-          convertShapeOperand(tensorTy, state.getMojoValuesFor(getDims()))));
+  auto shapeVar = state.builder.var(
+      state.getShapeAsIndexListMojoValue(tensorTy, getDims()));
   auto moggTensorInit = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
   state.mlirValueToMojoValue[getResult()] = state.builder.var(
@@ -3421,6 +3430,19 @@ LogicalResult BindToOp::emitMojo(EmitMojoState &state) {
   state.mlirValueToMojoValue[getResult()] =
       state.mlirValueToMojoValue[getFusedTensor()];
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConstantScalarOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
+  if (auto intAttr = dyn_cast<IntegerAttr>(getValue())) {
+    state.mlirValueToMojoValue[getResult()] = MojoValue(intAttr.getAPSInt());
+    return success();
+  } else {
+    return emitError("TODO: unsupported scalar type");
+  }
 }
 
 //===----------------------------------------------------------------------===//
