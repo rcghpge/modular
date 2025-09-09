@@ -84,8 +84,6 @@ struct EmitMojoState {
 
   /// The Mojo builder used to generate teh text.
   MojoBuilder builder;
-  /// A mapping between mlir::Value to MojoValue (text).
-  mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
   /// The return actual values of the `mogg.generic.compiled.region`. This is
   /// only used by `AsyncReadyOp::emitMojo`.
   SmallVector<MojoValue> mojoReturnValues;
@@ -100,6 +98,26 @@ struct EmitMojoState {
   /// Keep track of the mojo arguments / parameters for the current function
   /// being lowered.
   FunctionBody currentFunctionBody;
+
+private:
+  /// A mapping between mlir::Value to MojoValue (text).
+  mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
+
+public:
+  /// Get the Mojovalue mapped to `val`.
+  const MojoValue &getMojoValueFor(Value val) const {
+    auto it = mlirValueToMojoValue.find(val);
+    ASSERT_STREAM(it != mlirValueToMojoValue.end(),
+                  << "value not bound to any MojoValue");
+    return it->second;
+  }
+
+  /// Set the mapping from `val` to `mojoVal`.
+  void setMojoValueFor(Value val, MojoValue mojoVal) {
+    auto inserted =
+        mlirValueToMojoValue.insert(std::make_pair(val, mojoVal)).second;
+    ASSERT_STREAM(inserted, << "value already bound to a MojoValue");
+  }
 
   /// Mark a value as being kept alive.
   /// Will generate `_ = value` at the end of the function.
@@ -192,7 +210,7 @@ struct EmitMojoState {
   /// equivalents.
   SmallVector<MojoValue> getMojoValuesFor(ValueRange operands) {
     return llvm::map_to_vector(
-        operands, [&](Value operand) { return mlirValueToMojoValue[operand]; });
+        operands, [&](Value operand) { return getMojoValueFor(operand); });
   }
 
   /// Get the corresponding rebind input ManagedTensorSlice object, applying

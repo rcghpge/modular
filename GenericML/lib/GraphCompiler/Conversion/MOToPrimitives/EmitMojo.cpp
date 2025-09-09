@@ -53,8 +53,9 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
         // 1. Inputs and DPS outputs
         // 2. Return values (chain and non DPS outputs)
         for (auto argument : kernelBody.getArguments()) {
-          state.mlirValueToMojoValue[argument] =
-              runtimeArgument[std::to_string(argument.getArgNumber())];
+          state.setMojoValueFor(
+              argument,
+              runtimeArgument[std::to_string(argument.getArgNumber())]);
         }
         // Return values, although in DPS form from the runtime's perspective,
         // are still in value semantics inside of the kernel. Therefore, there
@@ -109,7 +110,7 @@ LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
       [&](const MOGG::FunctionBody &functionBody) {
         for (auto &&[mlirArg, mojoArg] : llvm::zip(
                  kernelStub.getBody().getArguments(), functionBody.arguments)) {
-          state.mlirValueToMojoValue[mlirArg] = mojoArg;
+          state.setMojoValueFor(mlirArg, mojoArg);
         }
 
         errOccurred |=

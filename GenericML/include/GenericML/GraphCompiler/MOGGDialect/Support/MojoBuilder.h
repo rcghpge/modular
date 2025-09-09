@@ -63,7 +63,8 @@ public:
   std::string text;
 };
 
-inline auto &operator<<(std::ostream &os, const MojoValue &value) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const MojoValue &value) {
   return os << value.text;
 }
 
@@ -116,7 +117,7 @@ struct NamedMojoDef {
 /// mlir::Operation and mlir::Value.
 class MojoBuilder {
 public:
-  MojoBuilder() : variableCounter(0) {}
+  MojoBuilder() : ss(sourceStr), variableCounter(0) {}
   ~MojoBuilder() = default;
 
   /// Creates a function with the specified parameter and argument types. The
@@ -181,7 +182,7 @@ public:
   void import(const MojoValue &from, const MojoValue &import);
 
   /// Returns the generated Mojo module as a string.
-  std::string str() const { return ss.str(); };
+  const std::string &str() const { return sourceStr; };
 
   void increaseIdentation() {
     indentation.insert(indentation.size(), "    ", 4);
@@ -221,7 +222,8 @@ private:
                           ArrayRef<NamedMojoDef> operands,
                           std::optional<MojoValue> retType, FunctionBody &body);
 
-  std::stringstream ss;
+  std::string sourceStr;
+  llvm::raw_string_ostream ss;
   std::string indentation;
   uint32_t variableCounter;
 };

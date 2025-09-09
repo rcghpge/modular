@@ -9,38 +9,33 @@
 namespace M::MOGG {
 
 MojoValue MojoValue::operator[](ArrayRef<MojoValue> values) const {
-  std::stringstream stream;
+  std::string str;
+  llvm::raw_string_ostream stream(str);
   stream << text;
   if (!values.empty()) {
     stream << "[";
-    for (auto parameter : values.drop_back())
-      stream << parameter << ", ";
-    stream << values.back() << "]";
+    llvm::interleaveComma(values, stream);
+    stream << "]";
   }
 
-  return stream.str();
+  return str;
 }
 
 MojoValue MojoValue::operator()(ArrayRef<MojoValue> parameters,
                                 ArrayRef<MojoValue> operands) const {
-  std::stringstream stream;
+  std::string str;
+  llvm::raw_string_ostream stream(str);
   stream << text;
   if (!parameters.empty()) {
     stream << "[";
-    for (auto parameter : parameters.drop_back())
-      stream << parameter << ", ";
-    stream << parameters.back() << "]";
+    llvm::interleaveComma(parameters, stream);
+    stream << "]";
   }
 
-  if (operands.empty()) {
-    stream << "()";
-  } else {
-    stream << "(";
-    for (auto operand : operands.drop_back())
-      stream << operand << ", ";
-    stream << operands.back() << ")";
-  }
-  return stream.str();
+  stream << "(";
+  llvm::interleaveComma(operands, stream);
+  stream << ")";
+  return str;
 }
 
 MojoValue createTypedVar(const MojoValue &name, const MojoValue &type) {
@@ -65,37 +60,34 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
                                      ArrayRef<NamedMojoDef> operands,
                                      std::optional<MojoValue> retType,
                                      FunctionBody &body) {
-  std::stringstream stream;
+  std::string str;
+  llvm::raw_string_ostream stream(str);
   if (!parameters.empty()) {
     stream << "[";
-    for (auto [idx, param] : llvm::enumerate(parameters)) {
-      if (idx > 0)
-        stream << ", ";
+    llvm::interleaveComma(parameters, stream, [&](const NamedMojoDef &param) {
       MojoValue paramName = newVar(param.name);
       stream << paramName << " : " << param.type;
       if (param.defaultValue.has_value())
         stream << " = " << *param.defaultValue;
       body.parameters.push_back(paramName);
-    }
+    });
     stream << "]";
   }
 
   stream << "(";
-  for (auto [idx, operand] : llvm::enumerate(operands)) {
-    if (idx > 0)
-      stream << ", ";
+  llvm::interleaveComma(operands, stream, [&](const NamedMojoDef &operand) {
     MojoValue operandName = newVar(operand.name);
     stream << operandName << ": " << operand.type;
     if (operand.defaultValue.has_value())
       stream << " = " << *operand.defaultValue;
     body.arguments.push_back(operandName);
-  }
+  });
   stream << ")";
 
   if (retType.has_value())
     stream << " -> " << *retType;
   stream << ":";
-  return stream.str();
+  return str;
 }
 
 void MojoBuilder::fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,

@@ -343,8 +343,8 @@ LogicalResult CallOp::emitMojo(EmitMojoState &state) {
   if (results.empty()) {
     state.builder.call(symbolName, *maybeParams, mojoOperands);
   } else if (results.size() == 1) {
-    state.mlirValueToMojoValue[results.front()] =
-        state.builder.var(symbolName(*maybeParams, mojoOperands));
+    state.setMojoValueFor(results.front(), state.builder.var(symbolName(
+                                               *maybeParams, mojoOperands)));
   } else {
     return emitError("CallOp with multiple outputs not supported");
   }
@@ -548,10 +548,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> fusedInputs;
   for (Value input : getFusibleTensors()) {
     // Rebind each argument to an InputTensor
-    const auto &mojoInput = state.mlirValueToMojoValue[input];
-    auto rebindMojoInput = state.builder.var(mojoInput.rebind(
-        MojoValue(HardcodedMojoSymbols::alias_InputTensor)
-            [MojoValue("static_spec").equal(mojoInput.get("static_spec"))]));
+    MojoValue rebindMojoInput = state.getReboundInputTensorFor(input);
     fusedInputs.push_back(rebindMojoInput);
 
     // The Compiler doesn't know the body lambda is using the tensor, and can't
@@ -607,8 +604,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
           Value blockArg = lambdaBody->getArgument(i);
           if (i == 0 && generateStoreForOutput) {
             // For the output lambda, just map the argument to the last operand.
-            state.mlirValueToMojoValue[blockArg] =
-                functionBody.arguments.back();
+            state.setMojoValueFor(blockArg, functionBody.arguments.back());
           } else {
             // Do a load from the input tensor
             const auto &mojoInput = fusedInputs[i];
@@ -618,14 +614,12 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
                  MojoValue("element_alignment").equal(alignmentParam)},
                 {mojoInput, indicesInput});
             // Map the argument
-            state.mlirValueToMojoValue[blockArg] =
-                state.builder.var(loadedSimd);
+            state.setMojoValueFor(blockArg, state.builder.var(loadedSimd));
           }
         }
 
         // The last argument is the indices
-        state.mlirValueToMojoValue[lambdaBody->getArguments().back()] =
-            indicesInput;
+        state.setMojoValueFor(lambdaBody->getArguments().back(), indicesInput);
 
         // Lower block
         errOccurred |=
@@ -638,11 +632,11 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
 
         auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
         const MojoValue &resultValue =
-            state.mlirValueToMojoValue[outputOp.getOperand(0)];
+            state.getMojoValueFor(outputOp.getOperand(0));
         // The lambda might also compute and return the indices.
         const MojoValue &resultIndices =
             outputOp->getNumOperands() > 1
-                ? state.mlirValueToMojoValue[outputOp.getOperand(1)]
+                ? state.getMojoValueFor(outputOp.getOperand(1))
                 : indicesInput;
 
         if (generateStoreForOutput) {
@@ -662,7 +656,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
     return failure();
 
   // Bind the output to the lambda.
-  state.mlirValueToMojoValue[getOutput()] = lambdaParam;
+  state.setMojoValueFor(getOutput(), lambdaParam);
   return success();
 }
 
@@ -693,26 +687,30 @@ SmallVector<Value> CallForeachOp::getKernelDPSOutputs() {
 Type CallForeachOp::getKernelReturnOutput() { return nullptr; }
 
 LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
-  /// TODO: Look it up in the MojoLibraryAnalysis instead.
-  static const MojoValue targetParamName = "target";
+  auto function = state.analysis.getForeachKernel();
+  const MojoValue &bodyLambdaParam = state.getMojoValueFor(getInput());
 
-  const MojoValue &bodyLambdaParam = state.mlirValueToMojoValue[getInput()];
-  const MojoValue &outputValue = state.mlirValueToMojoValue[getOutput()];
-
+  // Get the kernel operands.
   auto contextInputs = getContext();
   if (contextInputs.size() != 1)
     return emitError(
         "Op must have exactly one context operand to be lowered to mojo");
-  const MojoValue &contextValue =
-      state.mlirValueToMojoValue[contextInputs.front()];
+  const MojoValue &contextValue = state.getMojoValueFor(contextInputs.front());
+  MojoValue rebindOutput = state.getReboundOutputTensorFor(getOutput());
 
-  MojoValue rebindOutput = state.builder.var(outputValue.rebind(
-      MojoValue(HardcodedMojoSymbols::alias_OutputTensor)
-          [MojoValue("static_spec").equal(outputValue.get("static_spec"))]));
-  MojoValue targetParamValue =
-      MO::getDeviceOrDefaultAny(getOperation()).getLabel();
-  auto mojoSymbolName =
-      state.getOriginalMojoNameFor(state.analysis.getForeachKernel());
+  // Infer the kernel parameters.
+  static const StringLiteral foreachBodyLambdaParamName = "func";
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    if (paramName == foreachBodyLambdaParamName)
+      return bodyLambdaParam;
+    return state.inferDefaultKernelParamValue(*this, paramName);
+  };
+  ErrorOr<llvm::SmallVector<MojoValue>> maybeParams =
+      EmitMojoState::inferKernelParameters(function, inferParam);
+  if (maybeParams.isError())
+    return emitError("Failed to infer all the kernel parameters");
+
+  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
   /// TODO: It's okay to assume it always raises because we control the Mojo but
   /// it would be better if we checked the function's signature instead. This
@@ -720,11 +718,8 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   /// it. When we move off of KGEN, we should do it.
   state.builder
       .try_([&]() {
-        state.builder.call(
-            mojoSymbolName,
-            {MojoValue("func").equal(bodyLambdaParam),
-             MojoValue("target").equal(targetParamValue.quote())},
-            {rebindOutput, contextValue});
+        state.builder.call(mojoSymbolName, *maybeParams,
+                           {rebindOutput, contextValue});
       })
       .except([&](const MojoValue &e) {
         /// TODO: Set an error on the context.
@@ -759,19 +754,24 @@ SmallVector<Value> CallMaterializeOp::getKernelDPSOutputs() {
 Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 
 LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
-  /// TODO: Look it up in the MojoLibraryAnalysis instead.
-  static const MojoValue targetParamName = "target";
+  auto function = state.analysis.getViewMaterializeKernel();
+
+  // Get the kernel operands.
   SmallVector<MojoValue> mojoOperands = {state.getMojoValuesFor(getOperands())};
   std::swap(mojoOperands[0], mojoOperands[1]);
   // Rebind the tensor to ensure that all parameters are deduced.
-  mojoOperands[0] = state.builder.var(mojoOperands[0].rebind(MojoValue(
-      HardcodedMojoSymbols::alias_OutputTensor)[MojoValue("static_spec")
-                                                    .equal(mojoOperands[0].get(
-                                                        "static_spec"))]));
-  MojoValue targetParamValue =
-      MO::getDeviceOrDefaultAny(getOperation()).getLabel();
-  auto mojoSymbolName =
-      state.getOriginalMojoNameFor(state.analysis.getViewMaterializeKernel());
+  mojoOperands[0] = state.getReboundOutputTensorFor(getOutput());
+
+  // Infer the kernel parameters.
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    return state.inferDefaultKernelParamValue(*this, paramName);
+  };
+  ErrorOr<llvm::SmallVector<MojoValue>> maybeParams =
+      EmitMojoState::inferKernelParameters(function, inferParam);
+  if (maybeParams.isError())
+    return emitError("Failed to infer all the kernel parameters");
+
+  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
   /// TODO: It's okay to assume it always raises because we control the Mojo but
   /// it would be better if we checked the function's signature instead. This
@@ -779,9 +779,7 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   /// it. When we move off of KGEN, we should do it.
   state.builder
       .try_([&]() {
-        state.builder.call(mojoSymbolName,
-                           {targetParamName.equal(targetParamValue.quote())},
-                           mojoOperands);
+        state.builder.call(mojoSymbolName, *maybeParams, mojoOperands);
       })
       .except([&](const MojoValue &e) {
         /// TODO: Set an error on the context.
@@ -857,7 +855,7 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
     kernelOperands.push_back(state.getReboundInputTensorFor(val));
   // And the optional context.
   if (auto maybeContext = getDeviceContext())
-    kernelOperands.push_back(state.mlirValueToMojoValue[maybeContext]);
+    kernelOperands.push_back(state.getMojoValueFor(maybeContext));
 
   // Infer the kernel parameters.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
@@ -1605,12 +1603,12 @@ LogicalResult AsScalarOp::verify() {
 }
 
 LogicalResult AsScalarOp::emitMojo(EmitMojoState &state) {
-  const MojoValue &input = state.mlirValueToMojoValue[getInput()];
+  const MojoValue &input = state.getMojoValueFor(getInput());
 
   auto moggAsScalar = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
   MOGG::MojoValue scalarValue = moggAsScalar(ArrayRef<MojoValue>{}, {input});
-  state.mlirValueToMojoValue[getResult()] = state.builder.var(scalarValue);
+  state.setMojoValueFor(getResult(), state.builder.var(scalarValue));
   return success();
 }
 
@@ -3143,9 +3141,9 @@ LogicalResult AsTupleOp::verify() {
 LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
   auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
-  state.mlirValueToMojoValue[getResult()] = state.builder.var(
-      moggAsyncUnpackFunc({state.mlirTypeToMojoType(getType())},
-                          state.mlirValueToMojoValue[getInput()]));
+  state.setMojoValueFor(getResult(), state.builder.var(moggAsyncUnpackFunc(
+                                         {state.mlirTypeToMojoType(getType())},
+                                         state.getMojoValueFor(getInput()))));
   return success();
 }
 
@@ -3156,8 +3154,7 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 LogicalResult AsyncDelOp::emitMojo(EmitMojoState &state) {
   auto moggAsyncDelFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
-  state.builder.call(moggAsyncDelFunc, {},
-                     state.mlirValueToMojoValue[getInput()]);
+  state.builder.call(moggAsyncDelFunc, {}, state.getMojoValueFor(getInput()));
   return success();
 }
 
@@ -3183,10 +3180,11 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       state.getShapeAsIndexListMojoValue(tensorTy, getDims()));
   auto moggTensorInit = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
-  state.mlirValueToMojoValue[getResult()] = state.builder.var(
-      moggTensorInit({dTypeParam, rankParam, mutParam, ioParam, shapeParam,
-                      stridesParam, alignmentParam},
-                     {state.mlirValueToMojoValue[getBuffer()], shapeVar}));
+  state.setMojoValueFor(getResult(),
+                        state.builder.var(moggTensorInit(
+                            {dTypeParam, rankParam, mutParam, ioParam,
+                             shapeParam, stridesParam, alignmentParam},
+                            {state.getMojoValueFor(getBuffer()), shapeVar})));
 
   return success();
 }
@@ -3199,8 +3197,9 @@ LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
   MojoValue func(getName().getLeafReference().str());
   if (getNumResults()) {
-    state.mlirValueToMojoValue[getResult(0)] =
-        state.builder.var(func({}, state.getMojoValuesFor(getOperands())));
+    state.setMojoValueFor(
+        getResult(0),
+        state.builder.var(func({}, state.getMojoValuesFor(getOperands()))));
   } else {
     state.builder.call(func, {}, state.getMojoValuesFor(getOperands()));
   }
@@ -3230,9 +3229,11 @@ LogicalResult TensorGetShapeOp::emitMojo(EmitMojoState &state) {
   auto stubOp = getOperation()->getParentOfType<KernelStubOp>();
   for (auto arg : stubOp.getBody().getArguments()) {
     if (arg.getType() == getTensor()) {
-      auto tensorMojoValue = state.mlirValueToMojoValue[arg];
-      state.mlirValueToMojoValue[getResult()] = tensorMojoValue.get(
-          HardcodedMojoSymbols::func_ManagedTensorslice_shape)();
+      auto tensorMojoValue = state.getMojoValueFor(arg);
+      state.setMojoValueFor(
+          getResult(),
+          tensorMojoValue.get(
+              HardcodedMojoSymbols::func_ManagedTensorslice_shape)());
 
       return success();
     }
@@ -3272,8 +3273,8 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
-  state.mlirValueToMojoValue[getResult()] =
-      state.builder.var(mojoSymbolName(*maybeParams, inputMojoValues));
+  state.setMojoValueFor(getResult(), state.builder.var(mojoSymbolName(
+                                         *maybeParams, inputMojoValues)));
   return success();
 }
 
@@ -3311,8 +3312,8 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
-  state.mlirValueToMojoValue[outputVal] =
-      state.builder.var(mojoSymbolName(parameters, inputs));
+  state.setMojoValueFor(outputVal,
+                        state.builder.var(mojoSymbolName(parameters, inputs)));
   return success();
 }
 
@@ -3381,9 +3382,8 @@ LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
       {}, {MOGG::MojoValue("value").equal(arrPtr)}));
 
   // Bitcast to NoneType (expected dtype for the buffers).
-  state.mlirValueToMojoValue[getResult()] = state.builder.var(
-      altPtr.get("bitcast")({MOGG::MojoValue("NoneType")}, {}));
-
+  state.setMojoValueFor(getResult(), state.builder.var(altPtr.get("bitcast")(
+                                         {MOGG::MojoValue("NoneType")}, {})));
   return success();
 }
 
@@ -3392,8 +3392,8 @@ LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
-  const MojoValue &tensor = state.mlirValueToMojoValue[getTensor()];
-  const MojoValue &indices = state.mlirValueToMojoValue[getIndices()];
+  const MojoValue &tensor = state.getMojoValueFor(getTensor());
+  const MojoValue &indices = state.getMojoValueFor(getIndices());
   const MojoValue &widthParam = state.currentFunctionBody.parameters[0];
   const MojoValue &alignmentParam = state.currentFunctionBody.parameters[1];
 
@@ -3406,7 +3406,7 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
           {MojoValue("simd_width").equal(widthParam),
            MojoValue("element_alignment").equal(alignmentParam)},
           {tensor, indices});
-  state.mlirValueToMojoValue[getOutputs()] = state.builder.var(loadedSimd);
+  state.setMojoValueFor(getOutputs(), state.builder.var(loadedSimd));
   return success();
 }
 
@@ -3416,8 +3416,10 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
   // Represent the empty buffer with a NULL pointer.
-  state.mlirValueToMojoValue[getResult()] = state.builder.var(MojoValue(
-      MOGG::HardcodedMojoSymbols::struct_UnsafePointer)({"NoneType"}, {}));
+  state.setMojoValueFor(
+      getResult(),
+      state.builder.var(MojoValue(
+          MOGG::HardcodedMojoSymbols::struct_UnsafePointer)({"NoneType"}, {})));
   return success();
 }
 
@@ -3427,8 +3429,7 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult BindToOp::emitMojo(EmitMojoState &state) {
   // Replace with the fused tensor by default.
-  state.mlirValueToMojoValue[getResult()] =
-      state.mlirValueToMojoValue[getFusedTensor()];
+  state.setMojoValueFor(getResult(), state.getMojoValueFor(getFusedTensor()));
   return success();
 }
 
@@ -3438,7 +3439,7 @@ LogicalResult BindToOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
   if (auto intAttr = dyn_cast<IntegerAttr>(getValue())) {
-    state.mlirValueToMojoValue[getResult()] = MojoValue(intAttr.getAPSInt());
+    state.setMojoValueFor(getResult(), MojoValue(intAttr.getAPSInt()));
     return success();
   } else {
     return emitError("TODO: unsupported scalar type");

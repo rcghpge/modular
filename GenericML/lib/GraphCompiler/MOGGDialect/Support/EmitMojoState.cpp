@@ -31,7 +31,7 @@ MojoValue EmitMojoState::getReboundInputTensorFor(Value value) {
   // TODO(GEX-2550): Get rid of this method and use `mlirValueToMojoValue` map.
   // Any other non-tensor inputs (scalar / opaque) don't need to be rebind.
   if (!isa<MO::TensorType, MO::BufferType>(value.getType()))
-    return mlirValueToMojoValue.at(value);
+    return getMojoValueFor(value);
 
   // Check if we need to substitute `value` with an empty tensor for the kernel
   // call.
@@ -44,7 +44,7 @@ MojoValue EmitMojoState::getReboundInputTensorFor(Value value) {
   auto bindLambdaOp = value.getDefiningOp<MOGG::BindLambdaOp>();
   if (!bindLambdaOp) {
     // No fusion, just rebind to InputTensor.
-    MojoValue inputTensor = mlirValueToMojoValue.at(value);
+    MojoValue inputTensor = getMojoValueFor(value);
     return builder.var(inputTensor.rebind(
         MojoValue(HardcodedMojoSymbols::alias_InputTensor)
             [MojoValue("static_spec").equal(inputTensor.get("static_spec"))]));
@@ -56,8 +56,8 @@ MojoValue EmitMojoState::getReboundInputTensorFor(Value value) {
   // Check if the input value must be replaced by an empty tensor.
   Value inputValue =
       emptyTensor ? emptyTensor : bindLambdaOp.getFusibleTensors().front();
-  MojoValue lambdaParam = mlirValueToMojoValue.at(value);
-  MojoValue inputTensor = mlirValueToMojoValue.at(inputValue);
+  MojoValue lambdaParam = getMojoValueFor(value);
+  MojoValue inputTensor = getMojoValueFor(inputValue);
 
   // Rebuild a new spec.
   MojoValue newSpec = MojoValue(
@@ -75,7 +75,7 @@ MojoValue EmitMojoState::getReboundOutputTensorFor(Value value,
   auto bindLambdaOp = value.getDefiningOp<MOGG::BindLambdaOp>();
   if (!bindLambdaOp) {
     // No fusion, just rebind to OutputTensor.
-    MojoValue outputTensor = mlirValueToMojoValue.at(value);
+    MojoValue outputTensor = getMojoValueFor(value);
     return builder.var(outputTensor.rebind(
         MojoValue(HardcodedMojoSymbols::alias_OutputTensor)
             [MojoValue("static_spec").equal(outputTensor.get("static_spec"))]));
@@ -85,8 +85,8 @@ MojoValue EmitMojoState::getReboundOutputTensorFor(Value value,
       bindLambdaOp.getBindKind() == MOGG::BindLambdaKind::OutputLambda,
       << "only output lambda supported");
   Value bindLambdaInput = bindLambdaOp.getFusibleTensors().front();
-  MojoValue lambdaParam = mlirValueToMojoValue.at(value);
-  MojoValue outputTensor = mlirValueToMojoValue.at(bindLambdaInput);
+  MojoValue lambdaParam = getMojoValueFor(value);
+  MojoValue outputTensor = getMojoValueFor(bindLambdaInput);
 
   auto fromType = dyn_cast<MO::TensorType>(bindLambdaInput.getType());
   auto toType = dyn_cast<MO::TensorType>(value.getType());
@@ -125,6 +125,10 @@ ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
   // First get the set of all parameters that can be inferred from the inputs.
   llvm::DenseSet<StringRef> inferByInputs;
+
+  DictionaryAttr defaultAttrs = function->getAttrOfType<DictionaryAttr>(
+      KGEN::MOGGPreElab::kKernelDefaultParameterAttrName);
+
   if (auto inputParams = function->getAttrOfType<ArrayAttr>(
           KGEN::MOGGPreElab::kKernelValueParameterAttrName)) {
     for (auto inputParam : inputParams) {
@@ -145,6 +149,13 @@ ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
 
     ErrorOr<MojoValue> maybeVal = inferCallback(paramName);
     if (maybeVal.isError()) {
+      if (defaultAttrs && defaultAttrs.contains(paramName)) {
+        // If there is already a default value we can skip it.
+        // TODO: It might be worth making the distinction between "we didn't
+        // found a parameter" vs we found it but the logic to infer its value
+        // failed. In the latter case we should still emit an error.
+        continue;
+      }
       function.emitError(Twine("Failed to infer kernel parameter `") +
                          paramName + "`: " + maybeVal.getError());
       return maybeVal.takeError();
@@ -265,7 +276,7 @@ MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MO::TensorType tensorTy,
     } else {
       ASSERT_STREAM(nextDymDim < dynamicDims.size(),
                     "Missing dynamic dimension");
-      mojoDims.push_back(mlirValueToMojoValue[dynamicDims[nextDymDim++]]);
+      mojoDims.push_back(getMojoValueFor(dynamicDims[nextDymDim++]));
     }
   }
   if (mojoDims.empty())
