@@ -48,11 +48,23 @@ constexpr StringLiteral func_to_managed_tensor_slice =
 constexpr StringLiteral func_UnsafePointer_bitcast = "bitcast";
 constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
     "managed_tensor_slice.simd_load_from_managed_tensor_slice";
+constexpr StringLiteral func_rebuild_static_tensor_specs_with_output_lambda =
+    "managed_tensor_slice.rebuild_static_tensor_specs_with_output_lambda";
+constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
+    "managed_tensor_slice.simd_store_into_managed_tensor_slice";
+constexpr StringLiteral func_rebuild_static_tensor_specs_with_input_lambda =
+    "managed_tensor_slice.rebuild_static_tensor_specs_with_input_lambda";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
 constexpr StringLiteral alias_OutputTensor =
     "managed_tensor_slice.OutputTensor";
+constexpr StringLiteral alias_FusedOutputTensor =
+    "managed_tensor_slice._FusedOutputTensor";
+constexpr StringLiteral alias_FusedComputeOutputTensor =
+    "managed_tensor_slice._FusedComputeOutputTensor";
+constexpr StringLiteral alias_FusedInputTensor =
+    "managed_tensor_slice._FusedInputTensor";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than
@@ -82,6 +94,10 @@ struct EmitMojoState {
   /// cases to detect the right lifetime. This is mostly around lambdas, and
   /// should be fixed by the new closures work.
   SmallVector<MojoValue> keepAliveValues;
+
+  /// Keep track of the mojo arguments / parameters for the current function
+  /// being lowered.
+  FunctionBody currentFunctionBody;
 
   /// Mark a value as being kept alive.
   /// Will generate `_ = value` at the end of the function.
@@ -174,6 +190,15 @@ struct EmitMojoState {
         operands, [&](Value operand) { return mlirValueToMojoValue[operand]; });
   }
 
+  /// Get the corresponding rebind input ManagedTensorSlice object, applying
+  /// lambda fusion.
+  MojoValue getReboundInputTensorFor(Value value);
+
+  /// Get the corresponding rebind output ManagedTensorSlice object, applying
+  /// lambda fusion.
+  MojoValue getReboundOutputTensorFor(Value value,
+                                      bool expectsComputeLambda = false);
+
   /// Returns the original Mojo name of the registered generator. The
   /// MOGGPreElab annotation will always tell you which .mojo file contains the
   /// generator. This is convenient for imports. Only packages need to be
@@ -210,6 +235,16 @@ struct EmitMojoState {
 
     return std::nullopt;
   }
+
+  /// Fill and return the list of inferred parameters to call `function`.
+  /// Call `inferCallback` for each parameter that needs to be inferred.
+  static ErrorOr<llvm::SmallVector<MojoValue>> inferKernelParameters(
+      KGEN::GeneratorOp function,
+      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
+
+  /// Base function to infer all parameter values of a kernel.
+  ErrorOr<MojoValue> inferDefaultKernelParamValue(Operation *callOp,
+                                                  StringRef paramName);
 };
 } // namespace M::MOGG
 

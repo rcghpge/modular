@@ -196,7 +196,9 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
 
 
 def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
-    AttrSizedOperandSegments, DeclareOpInterfaceMethods<MOGG_KernelCallInterface>]>  {
+    AttrSizedOperandSegments,
+    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]>  {
   let summary = "Call the registered `execute` function for a particular kernel";
   let description = [{
     This represents a call to the mojo implementation of `Kernel::execute`
@@ -305,7 +307,9 @@ def MOGG_CallViewOp : MOGG_Op<"call.view", [
   }];
 }
 
-def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [Pure]> {
+def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [
+    Pure,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
   let summary = "Converts a tensor that contains one element to a scalar";
   let description = [{
     Given a tensor with one element, ie with a shape of [] or [1], etc, convert
@@ -437,7 +441,8 @@ def MOGG_ExpKernelOp : MOGG_LowerableOp<"experimental.kernel", [
 }
 
 // lower to ManageTensorSlice.load
-def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">]> {
+def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
+    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
   let summary = "Load a value from mo.tensor at the given indices";
   let description = [{
      This operation represent a tensor load at the given indices. It is needed
@@ -1636,7 +1641,9 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   let description = [{
     This op defines a kernel that will eventually be compiled to Mojo text.
   }];
-  let arguments = (ins SymbolNameAttr:$name, OptionalAttr<TypeAttr>:$returnType);
+  let arguments = (ins SymbolNameAttr:$name,
+                       OptionalAttr<TypeAttr>:$returnType,
+                       OptionalAttr<StrAttr>:$summary);
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
@@ -1776,6 +1783,51 @@ def MOGG_InlineConstantBufferOp : MOGG_Op<"inline_constant_buffer", [
   let results = (outs MGP_DeviceBufferType:$result);
 
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
+}
+
+def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
+  Pure,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+]> {
+  let summary = "Represents an empty buffer (actually of size 1) allocated on the stack";
+  let description = [{
+    This op is used to build empty tensors objects passed to some kernels after fusion.
+  }];
+
+  let results = (outs MGP_DeviceBufferType:$result);
+
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+}
+
+def MOGG_BindToOp : MOGG_Op<"bind_to", [
+  Pure,
+  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+]> {
+  let summary = "Replace a fused tensor with a different (empty) tensor for the fused kernel call";
+  let description = [{
+    For some fusion types (eg input fusion), the kernel must take an empty tensor.
+    This is represented using this op
+    - the lambda will load using the `fusedTensor`
+    - the kernel call will take the `emptyTensor`.
+
+    Example:
+    ```
+      %empty_buff = mogg.empty_buffer : !mgp.buffer
+      %empty_tensor = mogg.tensor.__init__(%empty_buff) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[4, 5, 2, 3], f32>
+      %fused = mogg.bind (%tensor) input_lambda (%arg8: f32, %arg9: !pop.array<4, index>) {
+        mogg.output %arg8, %arg9 : f32, !pop.array<4, index>
+      }: (!mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
+      %bind_tensor = mogg.bind_to(%fused_tensor, %empty_tensor) : (!mo.tensor<[4, 5, 2, 3], f32>, !mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
+    ```
+  }];
+
+  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$fusedTensor,
+                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$boundTensor);
+  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

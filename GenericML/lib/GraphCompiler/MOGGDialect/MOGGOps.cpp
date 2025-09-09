@@ -18,6 +18,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
+#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
 #include "Support/AssertStream.h"
@@ -503,6 +504,9 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
 }
 
 LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
+
+  bool generateStoreForOutput = getBindKind() == BindLambdaKind::OutputLambda;
+
   // Build the corresponding lambda.
   MO::TensorType outputTy = MO::castFromTensorLike(getOutput().getType());
 
@@ -525,36 +529,68 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
     state.markAsKeepAlive(rebindMojoInput);
   }
 
+  std::optional<MojoValue> returnType = std::nullopt;
+  if (!generateStoreForOutput) {
+    returnType = EmitMojoState::getSIMDType(
+        outputTy.getDtype(), state.builder.newVar(widthParamName));
+  }
+
   bool errOccurred = false;
+  auto lambdaName = [&]() -> StringLiteral {
+    if (getBindKind() == BindLambdaKind::ElemwiseLambda)
+      return "body_lambda";
+    else if (getBindKind() == BindLambdaKind::InputLambda)
+      return "input_lambda";
+    else
+      return "output_lambda";
+  }();
+
+  SmallVector<NamedMojoDef> lambdaArguments = {NamedMojoDef(
+      "indices",
+      MojoValue(HardcodedMojoSymbols::struct_IndexList)[static_cast<int64_t>(
+          outputTy.getRankNonZero())])};
+  if (generateStoreForOutput) {
+    // Output lambda has an extra argument which is the kernel output.
+    MO::TensorType inputTy =
+        MO::castFromTensorLike(getFusibleTensors().front().getType());
+    lambdaArguments.push_back(NamedMojoDef(
+        "input",
+        EmitMojoState::getSIMDType(inputTy.getDtype(),
+                                   state.builder.newVar(widthParamName))));
+  }
 
   // The body lambda has with / alignment parameters and indices arguments.
   MojoValue lambdaParam = state.builder.lambda(
-      "body_lambda",
+      lambdaName,
       {NamedMojoDef(widthParamName, HardcodedMojoSymbols::struct_Int),
        NamedMojoDef("alignment", HardcodedMojoSymbols::struct_Int)},
-      {NamedMojoDef("indices",
-                    MojoValue(HardcodedMojoSymbols::struct_IndexList)
-                        [static_cast<int64_t>(outputTy.getRankNonZero())])},
-      /*returnType=*/
-      EmitMojoState::getSIMDType(outputTy.getDtype(),
-                                 state.builder.newVar(widthParamName)),
+      lambdaArguments, returnType,
       /*isInline=*/true,
       /*isParameter=*/true, [&](const MOGG::FunctionBody &functionBody) {
+        state.currentFunctionBody = functionBody;
         const MojoValue &widthParam = functionBody.parameters[0];
         const MojoValue &alignmentParam = functionBody.parameters[1];
         const MojoValue &indicesInput = functionBody.arguments[0];
 
         // Do all load for each inputs.
         for (unsigned i = 0; i < fusedInputs.size(); ++i) {
-          const auto &mojoInput = fusedInputs[i];
-          MOGG::MojoValue loadedSimd = MojoValue(
-              HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
-              {MojoValue("simd_width").equal(widthParam),
-               MojoValue("element_alignment").equal(alignmentParam)},
-              {mojoInput, indicesInput});
           Value blockArg = lambdaBody->getArgument(i);
-          // Map the argument
-          state.mlirValueToMojoValue[blockArg] = state.builder.var(loadedSimd);
+          if (i == 0 && generateStoreForOutput) {
+            // For the output lambda, just map the argument to the last operand.
+            state.mlirValueToMojoValue[blockArg] =
+                functionBody.arguments.back();
+          } else {
+            // Do a load from the input tensor
+            const auto &mojoInput = fusedInputs[i];
+            MOGG::MojoValue loadedSimd = MojoValue(
+                HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
+                {MojoValue("simd_width").equal(widthParam),
+                 MojoValue("element_alignment").equal(alignmentParam)},
+                {mojoInput, indicesInput});
+            // Map the argument
+            state.mlirValueToMojoValue[blockArg] =
+                state.builder.var(loadedSimd);
+          }
         }
 
         // The last argument is the indices
@@ -570,10 +606,21 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
         if (errOccurred)
           return;
 
-        // Add the return statement.
         auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
-        state.builder.returnsValue(
-            state.mlirValueToMojoValue[outputOp.getOperand(0)]);
+        const MojoValue &resultValue =
+            state.mlirValueToMojoValue[outputOp.getOperand(0)];
+
+        if (generateStoreForOutput) {
+          // Store the output value.
+          state.builder.call(
+              HardcodedMojoSymbols::func_simd_store_into_managed_tensor_slice,
+              ArrayRef<MojoValue>{
+                  MojoValue("element_alignment").equal(alignmentParam)},
+              {fusedInputs.front(), indicesInput, resultValue});
+        } else {
+          // Add the return statement.
+          state.builder.returnsValue(resultValue);
+        }
       });
 
   if (errOccurred)
@@ -729,10 +776,10 @@ LogicalResult CallExecuteOp::verify() {
 }
 
 Value CallExecuteOp::getDeviceContext() {
-  if (!getNumOperands())
+  if (getInputs().empty())
     return nullptr;
 
-  auto lastOperand = getOperands().back();
+  auto lastOperand = getInputs().back();
   if (isa<MOGG::ContextType>(lastOperand.getType()))
     return lastOperand;
 
@@ -752,6 +799,56 @@ SmallVector<Value> CallExecuteOp::getKernelInputs() {
 SmallVector<Value> CallExecuteOp::getKernelDPSOutputs() { return getOutputs(); }
 Type CallExecuteOp::getKernelReturnOutput() {
   return getRegRetTypeAttr() ? getRegRetTypeAttr().getValue() : nullptr;
+}
+
+LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
+  auto function =
+      state.analysis.getRegisteredMojoExecuteFunctionFor(getKernelName());
+  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
+      functionAdaptor(function);
+
+  SmallVector<MojoValue> kernelOperands;
+  // Go through and rebind all outputs.
+  for (auto [outputIdx, val] : llvm::enumerate(getKernelDPSOutputs())) {
+    kernelOperands.push_back(state.getReboundOutputTensorFor(
+        val,
+        /*expectsComputeLambda=*/functionAdaptor.outputArguments[outputIdx]
+            .isTensorWithIOSpec(
+                KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor)));
+  }
+
+  // Rebind the inputs.
+  for (Value val : getKernelInputs())
+    kernelOperands.push_back(state.getReboundInputTensorFor(val));
+  // And the optional context.
+  if (auto maybeContext = getDeviceContext())
+    kernelOperands.push_back(state.mlirValueToMojoValue[maybeContext]);
+
+  // Infer the kernel parameters.
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    return state.inferDefaultKernelParamValue(*this, paramName);
+  };
+  ErrorOr<llvm::SmallVector<MojoValue>> maybeParams =
+      EmitMojoState::inferKernelParameters(function, inferParam);
+  if (maybeParams.isError())
+    return emitError("Failed to infer all the kernel parameters");
+
+  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
+
+  /// TODO: It's okay to assume it always raises because we control the Mojo but
+  /// it would be better if we checked the function's signature instead. This
+  /// information is lost in KGEN and it's not worth adding an annotation for
+  /// it. When we move off of KGEN, we should do it.
+  state.builder
+      .try_([&]() {
+        state.builder.call(mojoSymbolName, *maybeParams, kernelOperands);
+      })
+      .except([&](const MojoValue &e) {
+        /// TODO: Set an error on the context.
+        state.builder.pass();
+      });
+
+  return success();
 }
 
 ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
@@ -835,7 +932,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       StringAttr::get(ctx, llvm::formatv("stub_{}", stubCounter++).str());
   auto kernelStub = builder.create<MOGG::KernelStubOp>(
       loc, stubName,
-      resultTypes.empty() ? nullptr : TypeAttr::get(resultTypes.front()));
+      resultTypes.empty() ? nullptr : TypeAttr::get(resultTypes.front()),
+      getSummaryAttr());
   kernelStub.getBody().takeBody(getExecBody());
 
   // This is a list of input operands in MGP but without the chain.
@@ -1014,6 +1112,85 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   outputs.push_back(readyChain);
   builder.create<MOGG::OutputOp>(getLoc(), outputs);
 
+  auto mgpBufferType = MGP::DeviceBufferType::get(device);
+
+  // Some operations needs to be lowered to work with EmitMojo.
+
+  auto lowerDeviceContextPlaceholder =
+      [&](MOGG::DeviceContextPlaceholderOp moggContext) {
+        Value moggContextArg = kernelStub.getBody().front().addArgument(
+            moggContext.getType(), moggContext.getLoc());
+        moggContext.replaceAllUsesWith(moggContextArg);
+
+        Value mgpContext =
+            loweringState.getExecuteDevice(moggContext.getDevice());
+        newKernel->insertOperands(newKernel.getNumOperands(), {mgpContext});
+        Value mgpContextArg =
+            regionBody.addArgument(mgpContext.getType(), mgpContext.getLoc());
+        // The MGP context to MOGG context conversion happens at the stub (no
+        // need for a conversion op since it's 1:1).
+        callStubOp->insertOperands(callStubOp.getNumOperands(), mgpContextArg);
+
+        // Update the kernel InOut semantics if needed.
+        if (newKernel.getInOutSignature().size() != 0) {
+          SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
+              1, InOutSignatureAttr::InOutSemantics::kNone);
+          InOutSignatureAttr oldSemantics = newKernel.getInOutSignature();
+          newKernel.setInOutSignatureAttr(oldSemantics.append(newSemantics));
+        }
+
+        moggContext.erase();
+      };
+
+  auto lowerBindInputLambdaOp = [&](MOGG::BindLambdaOp bindOp) {
+    builder.setInsertionPointAfter(bindOp);
+
+    Value fusedOutput = bindOp.getOutput();
+
+    // Replace the output of the lambda with an empty tensor
+    Value emptyBuffer =
+        builder.create<MOGG::EmptyBufferOp>(bindOp->getLoc(), mgpBufferType);
+    Value emptyTensor = builder.create<MOGG::TensorInitOp>(
+        loc, fusedOutput.getType(), emptyBuffer,
+        /*dynamicDimensions=*/ArrayRef<Value>{},
+        /*mut=*/BoolAttr::get(ctx, false),
+        /*io=*/IOKindAttr::get(ctx, IOKind::Input));
+
+    // Then make the substitution with the original input.
+    auto substituteOp = builder.create<MOGG::BindToOp>(
+        bindOp->getLoc(), fusedOutput.getType(), fusedOutput, emptyTensor);
+
+    // And finally replace it for the users of the lambda.
+    fusedOutput.replaceAllUsesExcept(substituteOp.getResult(), substituteOp);
+  };
+
+  auto lowerConstantOp = [&](MO::ConstantOp constantOp) {
+    builder.setInsertionPoint(constantOp);
+    Value bufferValue =
+        builder
+            .create<MOGG::InlineConstantBufferOp>(
+                constantOp->getLoc(), mgpBufferType, constantOp.getValue())
+            .getResult();
+    SmallVector<Value> dynamicDimensions;
+    Value constantValue = builder.create<MOGG::TensorInitOp>(
+        loc, constantOp.getResult().getType(), bufferValue,
+        /*dynamicDimensions=*/ArrayRef<Value>{},
+        /*mut=*/BoolAttr::get(ctx, false),
+        /*io=*/IOKindAttr::get(ctx, IOKind::Input));
+    constantOp.getResult().replaceAllUsesWith(constantValue);
+    constantOp->erase();
+  };
+
+  kernelStub.walk([&](mlir::Operation *op) {
+    if (auto moggContext = dyn_cast<MOGG::DeviceContextPlaceholderOp>(op))
+      lowerDeviceContextPlaceholder(moggContext);
+    else if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op);
+             bindOp && bindOp.getBindKind() == BindLambdaKind::InputLambda)
+      lowerBindInputLambdaOp(bindOp);
+    else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
+      lowerConstantOp(constantOp);
+  });
+
   // The following is to inform the lowering state of the values we have
   // created.
   builder.setInsertionPointAfter(newKernel);
@@ -1033,58 +1210,6 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   outputPlaceholdersOp.erase();
   if (scratchPlaceholdersOp)
     scratchPlaceholdersOp.erase();
-
-  kernelStub.walk([&](MOGG::DeviceContextPlaceholderOp moggContext) {
-    Value moggContextArg = kernelStub.getBody().front().addArgument(
-        moggContext.getType(), moggContext.getLoc());
-    moggContext.replaceAllUsesWith(moggContextArg);
-
-    Value mgpContext = loweringState.getExecuteDevice(moggContext.getDevice());
-    newKernel->insertOperands(newKernel.getNumOperands(), {mgpContext});
-    Value mgpContextArg =
-        regionBody.addArgument(mgpContext.getType(), mgpContext.getLoc());
-    // The MGP context to MOGG context conversion happens at the stub (no need
-    // for a conversion op since it's 1:1).
-    callStubOp->insertOperands(callStubOp.getNumOperands(), mgpContextArg);
-
-    // Update the kernel InOut semantics if needed.
-    if (newKernel.getInOutSignature().size() != 0) {
-      SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
-          1, InOutSignatureAttr::InOutSemantics::kNone);
-      InOutSignatureAttr oldSemantics = newKernel.getInOutSignature();
-      newKernel.setInOutSignatureAttr(oldSemantics.append(newSemantics));
-    }
-
-    moggContext.erase();
-  });
-
-  auto mgpBufferType = MGP::DeviceBufferType::get(device);
-
-  // Collect and  replace all inline MO::ConstantOp with InlineBuffer +
-  // MOGGTensorInitOp.
-  SmallVector<MO::ConstantOp> constantsToReplace;
-  kernelStub.walk([&](MO::ConstantOp constantOp) {
-    constantsToReplace.push_back(constantOp);
-  });
-
-  for (MO::ConstantOp constantOp : constantsToReplace) {
-    builder.setInsertionPoint(constantOp);
-    Value bufferValue =
-        builder
-            .create<MOGG::InlineConstantBufferOp>(
-                constantOp->getLoc(), mgpBufferType, constantOp.getValue())
-            .getResult();
-    SmallVector<Value> dynamicDimensions;
-    Value constantValue = builder.create<MOGG::TensorInitOp>(
-        loc, constantOp.getResult().getType(), bufferValue,
-        /*dynamicDimensions=*/ArrayRef<Value>{},
-        /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/IOKindAttr::get(ctx, IOKind::Input));
-    constantOp.getResult().replaceAllUsesWith(constantValue);
-    constantOp->erase();
-  }
-
-  builder.setInsertionPointAfter(newKernel);
 
   return success();
 }
@@ -1433,10 +1558,24 @@ OutputOp ExpKernelOp::getOutputOp() {
   return *output.begin();
 }
 
+//===----------------------------------------------------------------------===//
+// AsScalarOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult AsScalarOp::verify() {
   if (getInput().getType().getElementType() != getResult().getType().getDType())
     return emitError("Expected input and result to have the same data type");
 
+  return success();
+}
+
+LogicalResult AsScalarOp::emitMojo(EmitMojoState &state) {
+  const MojoValue &input = state.mlirValueToMojoValue[getInput()];
+
+  auto moggAsScalar = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+  MOGG::MojoValue scalarValue = moggAsScalar(ArrayRef<MojoValue>{}, {input});
+  state.mlirValueToMojoValue[getResult()] = state.builder.var(scalarValue);
   return success();
 }
 
@@ -3226,6 +3365,51 @@ LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
   state.mlirValueToMojoValue[getResult()] = state.builder.var(
       altPtr.get("bitcast")({MOGG::MojoValue("NoneType")}, {}));
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// LoadTensorOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
+  const MojoValue &tensor = state.mlirValueToMojoValue[getTensor()];
+  const MojoValue &indices = state.mlirValueToMojoValue[getIndices()];
+  const MojoValue &widthParam = state.currentFunctionBody.parameters[0];
+  const MojoValue &alignmentParam = state.currentFunctionBody.parameters[1];
+
+  // MOGGLoadOp is only used inside an output lambda
+  // Mark the tensor as keep alive to ensure it doesn't get deallocated.
+  state.markAsKeepAlive(tensor);
+
+  MOGG::MojoValue loadedSimd =
+      MojoValue(HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
+          {MojoValue("simd_width").equal(widthParam),
+           MojoValue("element_alignment").equal(alignmentParam)},
+          {tensor, indices});
+  state.mlirValueToMojoValue[getOutputs()] = state.builder.var(loadedSimd);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// EmptyBufferOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
+  // Represent the empty buffer with a NULL pointer.
+  state.mlirValueToMojoValue[getResult()] = state.builder.var(MojoValue(
+      MOGG::HardcodedMojoSymbols::struct_UnsafePointer)({"NoneType"}, {}));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BindToOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BindToOp::emitMojo(EmitMojoState &state) {
+  // Replace with the fused tensor by default.
+  state.mlirValueToMojoValue[getResult()] =
+      state.mlirValueToMojoValue[getFusedTensor()];
   return success();
 }
 
