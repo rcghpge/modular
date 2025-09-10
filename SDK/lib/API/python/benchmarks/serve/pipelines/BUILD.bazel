@@ -16,27 +16,3 @@ modular_py_test(
         requirement("pyzmq"),
     ],
 )
-
-modular_py_test(
-    name = "benchmark_dispatch_service",
-    srcs = [
-        "conftest.py",
-        "test_benchmark_dispatch_service.py",
-    ],
-    env_inherit = [
-        "TARGET_HOST",
-        "TARGET_PORT",
-        "DISPATCHER_HOST",
-        "DISPATCHER_PORT",
-        "RUN_BENCHMARK",
-    ],
-    tags = ["manual"],
-    deps = [
-        "//SDK/lib/API/python/max/pipelines/core",
-        "//SDK/lib/API/python/max/serve",
-        requirement("pytest-benchmark"),
-        requirement("numpy"),
-        requirement("msgspec"),
-        requirement("pyzmq"),
-    ],
-)
