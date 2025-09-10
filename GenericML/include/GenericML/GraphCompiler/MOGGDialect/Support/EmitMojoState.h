@@ -114,7 +114,7 @@ public:
 
   /// Set the mapping from `val` to `mojoVal`.
   void setMojoValueFor(Value val, MojoValue mojoVal) {
-    auto inserted =
+    [[maybe_unused]] auto inserted =
         mlirValueToMojoValue.insert(std::make_pair(val, mojoVal)).second;
     ASSERT_STREAM(inserted, << "value already bound to a MojoValue");
   }
