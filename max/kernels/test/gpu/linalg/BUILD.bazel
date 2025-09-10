@@ -10,6 +10,11 @@ _EXTRA_CONSTRAINTS = {
         "//conditions:default": [],
     }),
     "test_gemv_bf16.mojo": ["//:nvidia_gpu"],  # FIXME: KERN-1377
+    "test_gemv_tma.mojo": select({
+        "//:h100_gpu": ["//:h100_gpu"],
+        "//:b200_gpu": ["//:b200_gpu"],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     "test_grouped_matmul.mojo": select({
         "//:h100_gpu": ["//:h100_gpu"],
         "//:b200_gpu": ["//:b200_gpu"],
@@ -27,12 +32,8 @@ _EXTRA_CONSTRAINTS = {
     "test_matmul_sm100_warp_specialized_blockwise_fp8.mojo": ["//:b200_gpu"],
     "test_grouped_matmul_sm100_blockwise_fp8.mojo": ["//:b200_gpu"],
     "test_batched_matmul_sm100_scaled.mojo": ["//:b200_gpu"],
-    "test_matmul_sm100_0.mojo": ["//:b200_gpu"],
-    "test_matmul_sm100_1.mojo": ["//:b200_gpu"],
-    "test_matmul_sm100_2.mojo": ["//:b200_gpu"],
-    "test_matmul_sm100_3.mojo": ["//:b200_gpu"],
-    "test_matmul_sm100_4.mojo": ["//:b200_gpu"],
-    "test_matmul_sm100_5.mojo": ["//:b200_gpu"],
+    "test_matmul_sm100_epilogue.mojo": ["//:b200_gpu"],
+    "test_matmul_sm100.mojo": ["//:b200_gpu"],
     "test_matmul_tile_scheduler_sm100.mojo": ["//:b200_gpu"],
     "test_tma_wgmma.mojo": ["//:h100_gpu"],
     "test_tma_wgmma_with_multicast.mojo": ["//:h100_gpu"],
@@ -68,10 +69,9 @@ _GPU_MEMORY = {
     "test_matmul_sm90_hilbert.mojo": "1",
     "test_sm90_splitk.mojo": "1.5",
     "test_vendor_blas.mojo": "3",
-    "test_matmul_sm100_2.mojo": "1",
-    "test_matmul_sm100_4.mojo": "1",
-    "test_matmul_sm100_5.mojo": "1",
     "test_warp_specialization_gemm_with_cluster.mojo": "2",
+    "test_matmul_sm100.mojo": "3",
+    "test_matmul_sm100_epilogue.mojo": "3",
 }
 
 [

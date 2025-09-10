@@ -232,21 +232,21 @@ fn load_AB[
         a_tma_op.async_multicast_load[cta_group](
             a_smem_slice,
             tma_mbar[stage],
-            (UInt(iter_idx) * BK, a_gmem_slice_coord),
+            (UInt(UInt(iter_idx) * BK), UInt(a_gmem_slice_coord)),
             a_multicast_mask,
         )
 
         b_tma_op.async_multicast_load[cta_group](
             b_smem_slice,
             tma_mbar[stage],
-            (UInt(iter_idx) * BK, b_gmem_slice_coord),
+            (UInt(UInt(iter_idx) * BK), UInt(b_gmem_slice_coord)),
             b_multicast_mask,
         )
 
         a_scales_tma_op.async_copy[cta_group](
             a_scales_smem_tile,
             tma_mbar[stage],
-            (work_tile_coord[0] * BM, UInt(iter_idx)),
+            (UInt(work_tile_coord[0] * BM), UInt(iter_idx)),
         )
 
 
@@ -365,8 +365,8 @@ fn multi_stage_reg_epilogue[
             c_tma_op.async_store(
                 c_smem_split,
                 (
-                    coord_n,
-                    work_tile_coord[0] * BM,
+                    UInt(coord_n),
+                    UInt(work_tile_coord[0] * BM),
                 ),
             )
             c_tma_op.commit_group()
@@ -481,7 +481,7 @@ fn promote_accumulators[
 
     var index = accum_pipeline_consumer_state.index()
     var phase = accum_pipeline_consumer_state.phase()
-    var tmem_offset = index * stage_stride_cols
+    var tmem_offset = index * stage_stride_cols + tmem_addr
 
     var bm = work_tile_coord[0]
     var bn = work_tile_coord[1]
@@ -589,7 +589,7 @@ fn promote_accumulators[
         # column offset, moving right by 32 columns each time, since each num_stage stores two, 16 column submatrices
         # MMA has result in 32 rows per warp's data paths.
         # upper_frag is for rows 0-15, lower is for 16-31.
-        var stage_tmem_addr = tmem_addr + (stage * stageN) + tmem_offset
+        var stage_tmem_addr = tmem_offset + (stage * stageN)
         var upper_frag = tcgen05_ld[
             datapaths=data_paths,
             bits=bits,
@@ -604,7 +604,7 @@ fn promote_accumulators[
             repeat=repeats,
             dtype=accum_type,
             pack=False,
-        ](stage_tmem_addr | (16 << 16))
+        ](stage_tmem_addr + (16 << 16))
 
         tcgen05_load_wait()
 
@@ -747,8 +747,8 @@ fn blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
     )
 
     # For ld from TMEM, use same per-stage stride in column field.
-    alias TMEM_N = 512
-    alias stage_stride_cols = TMEM_N // num_accum_pipeline_stages
+    alias NUM_TMEM_COLS = 512
+    alias stage_stride_cols = NUM_TMEM_COLS // num_accum_pipeline_stages
 
     alias clc_throttle_producer_arv_count = TMA_LOAD_THREADS
     alias clc_throttle_consumer_arv_count = SCHEDULER_THREADS
@@ -989,8 +989,8 @@ fn blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
 
     # (peer_id, mma_coord_m, mma_coord_n)
     var peer_cta_coord = (
-        rank_m % cta_group,
-        rank_m // cta_group,
+        UInt(rank_m % cta_group),
+        UInt(rank_m // cta_group),
         rank_n,
     )  # v,m,n
 
@@ -1119,6 +1119,9 @@ fn blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
                     var accum_index = accum_pipeline_producer_state.index()
                     var accum_phase = accum_pipeline_producer_state.phase()
                     accum_empty_mbar[accum_index].wait(accum_phase)
+                    var tmem_offset = tmem_addr + (
+                        accum_index * stage_stride_cols
+                    )
 
                     consumer_main_loop[
                         block_tile_shape=block_tile_shape,
@@ -1127,9 +1130,8 @@ fn blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
                         cluster_shape = Index(
                             cluster_shape[0], cluster_shape[1], cluster_shape[2]
                         ),
-                        stage_stride_cols=stage_stride_cols,
                     ](
-                        tmem_addr,
+                        tmem_offset,
                         a_smem,
                         b_smem,
                         mma_mbar,
@@ -1138,7 +1140,6 @@ fn blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
                         mma_op,
                         elect_one_warp,
                         0,
-                        accum_index,
                     )
                     consumer_phase.step()
 
@@ -1207,7 +1208,7 @@ fn blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
                     consumer_phase,
                     work_tile_coord=(UInt(work_info.m), UInt(work_info.n)),
                     elect_one_warp=elect_one_warp,
-                    stage_stride_cols=stage_stride_cols,
+                    stage_stride_cols=UInt(stage_stride_cols),
                     k_iter=k_iter,
                     problem_shape=problem_shape,
                 )
@@ -1241,7 +1242,7 @@ fn blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
         _ = tmem_dealloc_mbar[].arrive()
 
 
-fn blackwell_matmul_tma_umma_warp_specialized_blockwise_fp8[
+fn sm100_warp_specialized_blockwise_fp8[
     c_type: DType,
     c_layout: Layout,
     a_type: DType,
@@ -1437,7 +1438,7 @@ fn blackwell_matmul_tma_umma_warp_specialized_blockwise_fp8[
         cta_group=cta_group,
         num_pipeline_stages=pipeline_stages,
         num_clc_pipeline_stages=num_clc_pipeline_stages,
-        num_accum_pipeline_stages=max_accum_pipeline_stages,
+        num_accum_pipeline_stages = UInt(max_accum_pipeline_stages),
         num_output_stages=num_output_stages,
         output_tile_shape=output_tile_shape,
     ]

@@ -87,7 +87,7 @@ fn is_benchmark() -> Bool:
 
 @fieldwise_init
 @register_passable("trivial")
-struct WarpRole(Copyable, Movable):
+struct WarpRole(ImplicitlyCopyable, Movable):
     var _role: Int32
 
     alias MainLoad = Self(4)
@@ -221,14 +221,14 @@ fn load_AB[
     a_tma_op.async_multicast_load[cta_group](
         a_smem_slice,
         tma_mbar[stage],
-        (UInt(iter_idx) * BK, a_gmem_slice_coord),
+        (UInt(iter_idx * BK), UInt(a_gmem_slice_coord)),
         a_multicast_mask,
     )
 
     b_tma_op.async_multicast_load[cta_group](
         b_smem_slice,
         tma_mbar[stage],
-        (UInt(iter_idx) * BK, b_gmem_slice_coord),
+        (UInt(iter_idx * BK), UInt(b_gmem_slice_coord)),
         b_multicast_mask,
     )
 
@@ -297,8 +297,12 @@ fn consumer_main_loop[
 
     tma_mbar[stage].wait(phase)
 
-    var a_smem_tile = a_smem_iter.next_unsafe(stage)[]
-    var b_smem_tile = b_smem_iter.next_unsafe(stage)[]
+    var a_smem_tile = a_smem_iter.next_unsafe(
+        rebind[a_smem_iter.linear_uint_type](stage)
+    )[]
+    var b_smem_tile = b_smem_iter.next_unsafe(
+        rebind[b_smem_iter.linear_uint_type](stage)
+    )[]
 
     if elect_one_sync():
         mma_op.mma(
@@ -558,7 +562,7 @@ fn store_C[
     # UMMA (tensor memory) → registers → shared memory → global memory
     # #           c_frag                   c_smem_tile      c_tma_op
 
-    if elect_one_warp and thread_idx.x < NUM_TMA_TILES:
+    if elect_one_warp and thread_idx.x < UInt(NUM_TMA_TILES):
         var row_start = block_idx.x * BM
         var col_start = block_idx.y * MMA_N + thread_idx.x * TMA_BN
 
@@ -573,7 +577,7 @@ fn store_C[
             alignment=128,
         ](c_smem_offset)
 
-        c_tma_op.async_store(c_tma_tile, (col_start, row_start))
+        c_tma_op.async_store(c_tma_tile, (UInt(col_start), UInt(row_start)))
         c_tma_op.commit_group()
         c_tma_op.wait_group[0]()
 
@@ -773,9 +777,9 @@ fn kernel_6[
 
     # (peer_id, mma_coord_m, mma_coord_n)
     var peer_cta_coord = (
-        rank_m % cta_group,
-        rank_m // cta_group,
-        rank_n,
+        UInt(rank_m % cta_group),
+        UInt(rank_m // cta_group),
+        UInt(rank_n),
     )  # v,m,n
 
     var a_multicast_mask: UInt16 = 0x0
@@ -814,7 +818,7 @@ fn kernel_6[
                     tma_mbar,
                     producer_phase,
                     peer_cta_coord,
-                    (block_idx.x, block_idx.y),
+                    (UInt(block_idx.x), UInt(block_idx.y)),
                     a_multicast_mask,
                     b_multicast_mask,
                     i,
@@ -887,14 +891,14 @@ fn blackwell_kernel_6[
     c_device: NDBuffer[c_type, 2, _, c_shape],
     a_device: NDBuffer[a_type, 2, _, a_shape],
     b_device: NDBuffer[b_type, 2, _, b_shape],
-    M: Int,
-    N: Int,
-    K: Int,
     ctx: DeviceContext,
 ) raises:
     var a = from_ndbuffer_row_major(a_device)
     var b = from_ndbuffer_row_major(b_device)
     var c = from_ndbuffer_row_major(c_device)
+    var M = c.dim[0]()
+    var N = c.dim[1]()
+    var K = a.dim[1]()
 
     constrained[
         transpose_b,
@@ -973,7 +977,7 @@ fn blackwell_kernel_6[
         b_swizzle=b_swizzle,
         c_swizzle=c_swizzle,
         cta_group=cta_group,
-        num_pipeline_stages=max_pipeline_stages,
+        num_pipeline_stages = UInt(max_pipeline_stages),
     ]
 
     ctx.enqueue_function[kernel](
@@ -1086,9 +1090,6 @@ def test_blackwell_kernel_6[
         c_device.tensor,
         a_device.tensor,
         b_device.tensor,
-        M,
-        N,
-        K,
         ctx,
     )
 
@@ -1111,9 +1112,6 @@ def test_blackwell_kernel_6[
                 c_device.tensor,
                 a_device.tensor,
                 b_device.tensor,
-                M,
-                N,
-                K,
                 ctx,
             )
 
@@ -1183,7 +1181,7 @@ fn make_dic_of_shapes() -> (
 ):
     var dic = Dict[Int, Tuple[Int, Int, Int], default_comp_time_hasher]()
     dic[0] = (4096, 4096, 4096)
-    return dic
+    return dic^
 
 
 fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:

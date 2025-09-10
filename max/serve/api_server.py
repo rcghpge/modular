@@ -26,7 +26,6 @@ from max.interfaces import PipelinesFactory, PipelineTask, PipelineTokenizer
 from max.pipelines.lib import PipelineConfig
 from max.serve.config import APIType, MetricRecordingMethod, Settings
 from max.serve.kvcache_agent import DispatcherFactory, TransportMessage
-from max.serve.pipelines.kvcache_worker import start_kv_cache_service
 from max.serve.pipelines.llm import (
     AudioGeneratorPipeline,
     TokenGeneratorPipeline,
@@ -55,7 +54,6 @@ logger = logging.getLogger("max.serve")
 @dataclass(frozen=True)
 class ServingTokenGeneratorSettings:
     # Pipeline config
-    model_name: str
     model_factory: PipelinesFactory
     pipeline_config: PipelineConfig
     tokenizer: PipelineTokenizer
@@ -70,7 +68,9 @@ async def lifespan(
 ):
     try:
         if not settings.disable_telemetry:
-            send_telemetry_log(serving_settings.model_name)
+            send_telemetry_log(
+                serving_settings.pipeline_config.model_config.model_name
+            )
     except Exception as e:
         logger.warning("Failed to send telemetry log: %s", e)
 
@@ -89,13 +89,6 @@ async def lifespan(
     logger.info("Starting server...")
     try:
         async with AsyncExitStack() as exit_stack:
-            if dispatcher_factory is not None:
-                logger.info("Starting Dispatch Service...")
-                await exit_stack.enter_async_context(
-                    start_kv_cache_service(settings, dispatcher_factory)
-                )
-                logger.info("Dispatch Service started.")
-
             # start telemetry worker and configure Metrics to use it
             metric_client = await exit_stack.enter_async_context(
                 start_telemetry_consumer(settings)
@@ -110,7 +103,6 @@ async def lifespan(
                     settings,
                     metric_client,
                     serving_settings.pipeline_task,
-                    dispatcher_factory,
                 )
             )
 
@@ -123,14 +115,16 @@ async def lifespan(
                 else None
             )
 
-            METRICS.pipeline_load(serving_settings.model_name)
+            METRICS.pipeline_load(
+                serving_settings.pipeline_config.model_config.model_name
+            )
             pipeline: TokenGeneratorPipeline | AudioGeneratorPipeline
             if serving_settings.pipeline_task in (
                 PipelineTask.TEXT_GENERATION,
                 PipelineTask.EMBEDDINGS_GENERATION,
             ):
                 pipeline = TokenGeneratorPipeline(
-                    model_name=serving_settings.model_name,
+                    model_name=serving_settings.pipeline_config.model_config.model_name,
                     tokenizer=serving_settings.tokenizer,
                     engine_queue=engine_queue,
                     lora_queue=lora_queue,
@@ -139,7 +133,7 @@ async def lifespan(
                 serving_settings.pipeline_task == PipelineTask.AUDIO_GENERATION
             ):
                 pipeline = AudioGeneratorPipeline(
-                    model_name=serving_settings.model_name,
+                    model_name=serving_settings.pipeline_config.model_config.model_name,
                     tokenizer=serving_settings.tokenizer,
                     engine_queue=engine_queue,
                     lora_queue=lora_queue,

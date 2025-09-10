@@ -56,7 +56,14 @@ alias DEFAULT_LEVEL = Level._from_str(
 
 
 @fieldwise_init
-struct Level(Copyable, Movable, Stringable, Writable):
+struct Level(
+    EqualityComparable,
+    Identifiable,
+    ImplicitlyCopyable,
+    Movable,
+    Stringable,
+    Writable,
+):
     """Represents logging severity levels.
 
     Defines the available logging levels in ascending order of severity.
@@ -92,17 +99,6 @@ struct Level(Copyable, Movable, Stringable, Writable):
             Bool: True if the levels are equal, False otherwise.
         """
         return self._value == other._value
-
-    fn __ne__(self, other: Self) -> Bool:
-        """Returns True if this level does not equal the other level.
-
-        Args:
-            other: The level to compare with.
-
-        Returns:
-            Bool: True if the levels are not equal, False otherwise.
-        """
-        return not (self == other)
 
     fn __gt__(self, other: Self) -> Bool:
         """Returns True if this level is greater than the other level.
@@ -158,17 +154,6 @@ struct Level(Copyable, Movable, Stringable, Writable):
             Bool: True if this level is identical to the other level, False otherwise.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Returns True if this level is not identical to the other level.
-
-        Args:
-            other: The level to compare with.
-
-        Returns:
-            Bool: True if this level is not identical to the other level, False otherwise.
-        """
-        return self != other
 
     @staticmethod
     fn _from_str(name: StringSlice) -> Self:

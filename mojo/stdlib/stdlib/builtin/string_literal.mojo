@@ -34,10 +34,9 @@ from python import ConvertibleToPython, PythonObject
 struct StringLiteral[value: __mlir_type.`!kgen.string`](
     Boolable,
     ConvertibleToPython,
-    Copyable,
     Defaultable,
-    ExplicitlyCopyable,
     FloatableRaising,
+    ImplicitlyCopyable,
     IntableRaising,
     Movable,
     PathLike,

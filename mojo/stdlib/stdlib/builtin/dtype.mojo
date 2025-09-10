@@ -30,10 +30,10 @@ alias _mIsFloat = UInt8(1 << 6)
 
 @register_passable("trivial")
 struct DType(
-    Copyable,
     EqualityComparable,
-    ExplicitlyCopyable,
     Hashable,
+    Identifiable,
+    ImplicitlyCopyable,
     KeyElement,
     Movable,
     Representable,
@@ -476,18 +476,6 @@ struct DType(
             True if the DTypes are the same and False otherwise.
         """
         return self == rhs
-
-    @always_inline("nodebug")
-    fn __isnot__(self, rhs: DType) -> Bool:
-        """Compares one DType to another for inequality.
-
-        Args:
-            rhs: The DType to compare against.
-
-        Returns:
-            True if the DTypes are the same and False otherwise.
-        """
-        return self != rhs
 
     @always_inline("nodebug")
     fn __eq__(self, rhs: DType) -> Bool:

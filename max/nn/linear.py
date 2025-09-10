@@ -39,6 +39,9 @@ from max.nn.float8_config import (
     Float8Config,
     Float8ScaleGranularity,
 )
+from max.nn.kernels import (
+    convert_weights_to_fp8_fnuz_if_needed,
+)
 
 from .clamp import clamp
 from .kernels import (
@@ -343,7 +346,7 @@ class Linear(Module, Shardable):
         Raises:
             ValueError: If the last dimension of ``x`` doesn't match ``in_dim``.
         """
-        weight: TensorValue = self.weight
+        weight: TensorValue = self.weight.to(x.device)
         if self.clip_weight:
             weight = clamp(weight, -self.clip_weight, self.clip_weight)
 
@@ -354,12 +357,18 @@ class Linear(Module, Shardable):
         elif self.float8_config:
             assert self.weight_scale is not None
             weight_scale: TensorValue = self.weight_scale
-            if self.input_scale is not None:
-                x = quantize_static_scaled_float8(x, self.input_scale)
 
-                input_scale: TensorValue = self.input_scale
+            weight, weight_scale = convert_weights_to_fp8_fnuz_if_needed(
+                weight, weight_scale
+            )
+
+            if self.input_scale is not None:
+                x = quantize_static_scaled_float8(
+                    x, self.input_scale, out_type=weight.dtype
+                )
+
                 res = matmul_static_scaled_float8(
-                    x, weight, input_scale, weight_scale
+                    x, weight, self.input_scale, weight_scale
                 )
             else:
                 x, x_scales = quantize_dynamic_scaled_float8(
@@ -367,8 +376,8 @@ class Linear(Module, Shardable):
                     self.float8_config.input_scale,
                     self.float8_config.weight_scale,
                     scales_type=weight_scale.dtype,
+                    out_type=weight.dtype,
                 )
-
                 if self.device:
                     weight_scale = weight_scale.to(self.device)
 
@@ -385,7 +394,7 @@ class Linear(Module, Shardable):
             res = x @ weight.T
 
         if self.bias is not None:
-            res += self.bias
+            res += self.bias.to(res.device)
         return res
 
 

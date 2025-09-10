@@ -774,7 +774,7 @@ fn sum[
 
 @fieldwise_init
 @register_passable("trivial")
-struct ReductionMethod:
+struct ReductionMethod(EqualityComparable, Identifiable):
     """Enumerates the supported reduction methods."""
 
     var _value: Int
@@ -795,17 +795,6 @@ struct ReductionMethod:
         """
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        """Checks if two ReductionMethod are not equal.
-
-        Args:
-            other: The other ReductionMethod to compare.
-
-        Returns:
-            True if the ReductionMethod are not equal, false otherwise.
-        """
-        return self._value != other._value
-
     fn __is__(self, other: Self) -> Bool:
         """Checks if two ReductionMethod are identical.
 
@@ -816,17 +805,6 @@ struct ReductionMethod:
             True if the ReductionMethod are identical, false otherwise.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Checks if two ReductionMethod are not identical.
-
-        Args:
-            other: The other ReductionMethod to compare.
-
-        Returns:
-            True if the ReductionMethod are not identical, false otherwise.
-        """
-        return self != other
 
 
 @always_inline

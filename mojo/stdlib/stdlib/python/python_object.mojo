@@ -114,8 +114,9 @@ struct _PyIter(Copyable):
 struct PythonObject(
     Boolable,
     ConvertibleToPython,
-    Copyable,
     Defaultable,
+    Identifiable,
+    ImplicitlyCopyable,
     Movable,
     SizedRaising,
     Writable,
@@ -362,7 +363,7 @@ struct PythonObject(
 
         @parameter
         for i in range(len(VariadicList(Ts))):
-            var obj = values[i].to_python_object()
+            var obj = values[i].copy().to_python_object()
             cpython.Py_IncRef(obj._obj_ptr)
             var result = cpython.PySet_Add(obj_ptr, obj._obj_ptr)
             if result == -1:
@@ -389,8 +390,8 @@ struct PythonObject(
             raise Error("internal error: PyDict_New failed")
 
         for i in range(len(keys)):
-            var key_obj = keys[i].to_python_object()
-            var val_obj = values[i].to_python_object()
+            var key_obj = keys[i].copy().to_python_object()
+            var val_obj = values[i].copy().to_python_object()
             var result = cpython.PyDict_SetItem(
                 dict_obj_ptr, key_obj._obj_ptr, val_obj._obj_ptr
             )
@@ -493,18 +494,6 @@ struct PythonObject(
         """
         ref cpy = Python().cpython()
         return cpy.Py_Is(self._obj_ptr, other._obj_ptr) != 0
-
-    fn __isnot__(self, other: PythonObject) -> Bool:
-        """Test if the PythonObject is not the `other` PythonObject, the same as `x is not y` in
-        Python.
-
-        Args:
-            other: The right-hand-side value in the comparison.
-
-        Returns:
-            True if they are not the same object and False otherwise.
-        """
-        return not (self is other)
 
     fn __getitem__(self, *args: PythonObject) raises -> PythonObject:
         """Return the value for the given key or keys.

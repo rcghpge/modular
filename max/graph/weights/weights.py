@@ -57,7 +57,7 @@ def _cast_to_dtype(
                 )
             ],
         ) as graph:
-            graph.output(graph.inputs[0].cast(new_dtype))  # type: ignore
+            graph.output(graph.inputs[0].tensor.cast(new_dtype))
 
         _CAST_MODEL = _INF_SESSION.load(graph)
 
@@ -215,7 +215,7 @@ class Weights(Protocol):
 
 
 @dataclasses.dataclass
-class WeightData:
+class WeightData(DLPackArray):
     """Container for weight tensor data with metadata.
 
     ``WeightData`` encapsulates a weight tensor along with its metadata,

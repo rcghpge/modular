@@ -41,7 +41,7 @@ fn random_numbers[
             result.append(random_float64(0, max).cast[dtype]())
         else:
             result.append(random_ui64(0, max).cast[dtype]())
-    return result
+    return result^
 
 
 fn assert_sorted_string(mut list: List[String]) raises:
@@ -484,7 +484,7 @@ fn test_sort_stress() raises:
 
 
 @fieldwise_init
-struct MyStruct(Copyable, Movable):
+struct MyStruct(ImplicitlyCopyable, Movable):
     var val: Int
 
 
@@ -534,7 +534,7 @@ def test_sort_strings():
 
 
 @fieldwise_init
-struct Person(Comparable, Copyable, Movable):
+struct Person(Comparable, ImplicitlyCopyable, Movable):
     var name: String
     var age: Int
 

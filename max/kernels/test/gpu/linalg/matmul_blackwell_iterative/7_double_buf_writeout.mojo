@@ -89,7 +89,7 @@ fn is_benchmark() -> Bool:
 
 @fieldwise_init
 @register_passable("trivial")
-struct WarpRole(Copyable, Movable):
+struct WarpRole(ImplicitlyCopyable, Movable):
     var _role: Int32
 
     alias MainLoad = Self(4)
@@ -223,14 +223,14 @@ fn load_AB[
     a_tma_op.async_multicast_load[cta_group](
         a_smem_slice,
         tma_mbar[stage],
-        (UInt(iter_idx) * BK, a_gmem_slice_coord),
+        (UInt(iter_idx * BK), UInt(a_gmem_slice_coord)),
         a_multicast_mask,
     )
 
     b_tma_op.async_multicast_load[cta_group](
         b_smem_slice,
         tma_mbar[stage],
-        (UInt(iter_idx) * BK, b_gmem_slice_coord),
+        (UInt(iter_idx * BK), UInt(b_gmem_slice_coord)),
         b_multicast_mask,
     )
 
@@ -299,8 +299,12 @@ fn consumer_main_loop[
 
     tma_mbar[stage].wait(phase)
 
-    var a_smem_tile = a_smem_iter.next_unsafe(stage)[]
-    var b_smem_tile = b_smem_iter.next_unsafe(stage)[]
+    var a_smem_tile = a_smem_iter.next_unsafe(
+        rebind[a_smem_iter.linear_uint_type](stage)
+    )[]
+    var b_smem_tile = b_smem_iter.next_unsafe(
+        rebind[b_smem_iter.linear_uint_type](stage)
+    )[]
 
     if elect_one_sync():
         mma_op.mma(
@@ -454,8 +458,8 @@ fn multi_stage_store_C[
             c_tma_op.async_store(
                 c_smem_tile,
                 (
-                    work_tile_coord[1] * MMA_N + stage * stageN,
-                    work_tile_coord[0] * BM,
+                    UInt(work_tile_coord[1] * MMA_N + stage * stageN),
+                    UInt(work_tile_coord[0] * BM),
                 ),
             )
             c_tma_op.commit_group()
@@ -674,9 +678,9 @@ fn kernel_7[
 
     # (peer_id, mma_coord_m, mma_coord_n)
     var peer_cta_coord = (
-        rank_m % cta_group,
-        rank_m // cta_group,
-        rank_n,
+        UInt(rank_m % cta_group),
+        UInt(rank_m // cta_group),
+        UInt(rank_n),
     )  # v,m,n
 
     var a_multicast_mask: UInt16 = 0x0
@@ -788,14 +792,14 @@ fn blackwell_kernel_7[
     c_device: NDBuffer[c_type, 2, _, c_shape],
     a_device: NDBuffer[a_type, 2, _, a_shape],
     b_device: NDBuffer[b_type, 2, _, b_shape],
-    M: Int,
-    N: Int,
-    K: Int,
     ctx: DeviceContext,
 ) raises:
     var a = from_ndbuffer_row_major(a_device)
     var b = from_ndbuffer_row_major(b_device)
     var c = from_ndbuffer_row_major(c_device)
+    var M = c.dim[0]()
+    var N = c.dim[1]()
+    var K = a.dim[1]()
 
     constrained[
         transpose_b,
@@ -878,7 +882,7 @@ fn blackwell_kernel_7[
         b_swizzle=b_swizzle,
         c_swizzle=c_swizzle,
         cta_group=cta_group,
-        num_pipeline_stages=num_pipeline_stages,
+        num_pipeline_stages = UInt(num_pipeline_stages),
         num_output_stages=num_output_stages,
         output_tile_shape=output_tile_shape,
     ]
@@ -988,9 +992,6 @@ def test_blackwell_kernel_7[
         c_device.tensor,
         a_device.tensor,
         b_device.tensor,
-        M,
-        N,
-        K,
         ctx,
     )
 
@@ -1021,9 +1022,6 @@ def test_blackwell_kernel_7[
                 c_device.tensor,
                 a_device.tensor,
                 b_device.tensor,
-                M,
-                N,
-                K,
                 ctx,
             )
 
@@ -1090,7 +1088,7 @@ fn make_shapes_dict() -> (
     var dic: Dict[Int, Tuple[Int, Int, Int], default_comp_time_hasher] = {
         0: (4096, 4096, 4096),
     }
-    return dic
+    return dic^
 
 
 fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:

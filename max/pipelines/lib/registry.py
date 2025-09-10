@@ -93,6 +93,7 @@ class SupportedArchitecture:
         multi_gpu_supported: bool = False,
         rope_type: RopeType = RopeType.none,
         weight_adapters: dict[WeightsFormat, WeightsAdapter] | None = None,
+        supports_prefix_caching: bool = True,
     ) -> None:
         """Represents a model architecture configuration for MAX pipelines.
 
@@ -159,6 +160,7 @@ class SupportedArchitecture:
         self.rope_type = rope_type
         self.weight_adapters = weight_adapters or {}
         self.task = task
+        self.supports_prefix_caching = supports_prefix_caching
 
     def __eq__(self, other: Any) -> bool:
         if other.__class__ == self.__class__:
@@ -406,7 +408,6 @@ class PipelineRegistry:
                 pipeline_config.model_config.model_path,
                 revision=pipeline_config.model_config.huggingface_model_revision,
                 max_length=max_length,
-                max_new_tokens=pipeline_config.max_new_tokens,
                 trust_remote_code=pipeline_config.model_config.trust_remote_code,
                 enable_llama_whitespace_fix=True,
             )
@@ -415,7 +416,6 @@ class PipelineRegistry:
                 model_path=pipeline_config.model_config.model_path,
                 revision=pipeline_config.model_config.huggingface_model_revision,
                 max_length=max_length,
-                max_new_tokens=pipeline_config.max_new_tokens,
                 trust_remote_code=pipeline_config.model_config.trust_remote_code,
                 pipeline_config=pipeline_config,
             )
@@ -481,7 +481,6 @@ class PipelineRegistry:
                 pipeline_config.model_config.model_path,
                 revision=pipeline_config.model_config.huggingface_model_revision,
                 max_length=max_length,
-                max_new_tokens=pipeline_config.max_new_tokens,
                 trust_remote_code=pipeline_config.model_config.trust_remote_code,
                 enable_llama_whitespace_fix=True,
             )
@@ -490,7 +489,6 @@ class PipelineRegistry:
                 model_path=pipeline_config.model_config.model_path,
                 revision=pipeline_config.model_config.huggingface_model_revision,
                 max_length=max_length,
-                max_new_tokens=pipeline_config.max_new_tokens,
                 trust_remote_code=pipeline_config.model_config.trust_remote_code,
                 pipeline_config=pipeline_config,
             )

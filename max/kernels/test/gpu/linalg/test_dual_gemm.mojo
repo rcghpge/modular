@@ -38,8 +38,8 @@ from utils.numerics import FPUtils
 
 
 fn binary_sub[
-    type: DType, width: Int
-](x: SIMD[type, width], y: SIMD[type, width]) -> SIMD[type, width]:
+    dtype: DType, width: Int
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[dtype, width]:
     return x - y
 
 
@@ -86,7 +86,7 @@ fn multistage_gemm_simple[
         c,
         a,
         b,
-        grid_dim=config.grid_dim(M, N),
+        grid_dim=config.grid_dim(UInt(M), UInt(N)),
         block_dim=config.block_dim(),
         shared_mem_bytes=config.shared_mem_usage(),
         func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(

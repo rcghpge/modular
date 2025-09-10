@@ -4,7 +4,7 @@ bazel_dep(name = "abseil-cpp", version = "20250127.1")
 bazel_dep(name = "apple_support", version = "1.22.1", repo_name = "build_bazel_apple_support")
 bazel_dep(name = "gazelle", version = "0.43.0")
 bazel_dep(name = "rules_go", version = "0.55.0", repo_name = "io_bazel_rules_go")
-bazel_dep(name = "rules_java", version = "8.15.0")
+bazel_dep(name = "rules_java", version = "8.15.2")
 bazel_dep(name = "aspect_bazel_lib", version = "2.19.2")
 bazel_dep(name = "aspect_rules_js", version = "2.4.1")
 bazel_dep(name = "bazel_skylib", version = "1.8.1")
@@ -16,7 +16,7 @@ bazel_dep(name = "opentelemetry-cpp", version = "1.19.0")
 bazel_dep(name = "opentelemetry-proto", version = "1.5.0")
 bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "protobuf", version = "31.1")
-bazel_dep(name = "rules_cc", version = "0.2.3")
+bazel_dep(name = "rules_cc", version = "0.2.4")
 bazel_dep(name = "rules_foreign_cc", version = "0.13.0")
 bazel_dep(name = "rules_mojo", version = "0.5.0")
 bazel_dep(name = "rules_multirun", version = "0.13.0")
@@ -117,6 +117,8 @@ single_version_override(
     patches = [
         # https://github.com/bazel-contrib/rules_foreign_cc/pull/1361
         "//bazel/public-patches:rules_foreign_cc_sysroot.patch",
+        # TODO: Remove next bump https://github.com/bazel-contrib/rules_foreign_cc/commit/7be022f9f14260c4b43c235a8dd75ac94c5be330
+        "//bazel/public-patches:rules_foreign_cc_bazel_out.patch",
     ],
 )
 
@@ -146,7 +148,10 @@ single_version_override(
         "//bazel/public-patches:protobuf-platforms.patch",
         # TODO: https://github.com/protocolbuffers/protobuf/commit/a5220488813040037e59b5625f953f2da7bf73a4
         "//bazel/public-patches:protobuf-windows.patch",
+        # TODO: https://github.com/protocolbuffers/protobuf/commit/27227205a3986987b7495078aaf7377b49dc38aa
+        "//bazel/public-patches:protobuf-debug-context.patch",
     ],
+    version = "31.1",  # TODO: Remove restriction next update
 )
 
 single_version_override(
@@ -350,17 +355,17 @@ http_archive(
 bazel_dep(name = "sysroot-jammy-aarch64")
 archive_override(
     module_name = "sysroot-jammy-aarch64",
-    integrity = "sha256-nq0vgIPVwMmExFFXd5UgmbLxYMnUbZ72s8oTJrwNYvY=",
+    integrity = "sha256-/gPauKjoBn4Wuy7UEYKKAQpqLHjohlf9U5XEH7bNM64=",
     urls = [
-        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-aarch64/4/9ead2f8083d5c0c984c4515777952099b2f160c9d46d9ef6b3ca1326bc0d62f6/sysroot-jammy-aarch64.tar.xz",
+        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-aarch64/5/fe03dab8a8e8067e16bb2ed411828a010a6a2c78e88657fd5395c41fb6cd33ae/sysroot-jammy-aarch64.tar.xz",
     ],
 )
 
 bazel_dep(name = "sysroot-jammy-x86_64")
 archive_override(
     module_name = "sysroot-jammy-x86_64",
-    integrity = "sha256-NyQeusV/yls9rw+uDrqs3E3zn1xGjQbXtWw3ClaHXQA=",
+    integrity = "sha256-6SU7cW9SeAMp1L2SbyxlUjebYa5nQ2ZwroqTnh5Mb1c=",
     urls = [
-        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-x86_64/4/37241ebac57fca5b3daf0fae0ebaacdc4df39f5c468d06d7b56c370a56875d00/sysroot-jammy-x86_64.tar.xz",
+        "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-x86_64/5/e9253b716f52780329d4bd926f2c6552379b61ae67436670ae8a939e1e4c6f57/sysroot-jammy-x86_64.tar.xz",
     ],
 )

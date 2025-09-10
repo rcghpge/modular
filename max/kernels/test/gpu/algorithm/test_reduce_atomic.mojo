@@ -21,7 +21,7 @@ from testing import assert_equal
 
 
 @fieldwise_init
-struct FillStrategy(Copyable, Movable):
+struct FillStrategy(ImplicitlyCopyable, Movable):
     var value: Int
 
     alias LINSPACE = Self(0)
@@ -43,7 +43,7 @@ fn reduce(
 ):
     var tid = global_idx.x
 
-    if tid >= len:
+    if tid >= UInt(len):
         return
 
     _ = Atomic.fetch_add(res_add, vec[tid])
@@ -86,7 +86,9 @@ fn run_reduce(fill_strategy: FillStrategy, ctx: DeviceContext) raises:
 
     var res_max_device = ctx.enqueue_create_buffer[F32](1).enqueue_fill(0)
 
-    ctx.enqueue_function[reduce](
+    alias kernel = reduce
+
+    ctx.enqueue_function_checked[kernel, kernel](
         res_add_device,
         res_min_device,
         res_max_device,

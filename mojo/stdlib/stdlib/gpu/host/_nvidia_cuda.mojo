@@ -175,7 +175,12 @@ struct TensorMapInterleave:
 @fieldwise_init("implicit")
 @register_passable("trivial")
 struct TensorMapSwizzle(
-    Copyable, EqualityComparable, Intable, Movable, Stringable, Writable
+    EqualityComparable,
+    ImplicitlyCopyable,
+    Intable,
+    Movable,
+    Stringable,
+    Writable,
 ):
     var _value: Int32
 
@@ -253,7 +258,7 @@ struct TMADescriptor(ImplicitlyCopyable):
 
 
 fn prefetch_tma_descriptor(desc_ptr: OpaquePointer):
-    __mlir_op.`nvvm.prefetch.tensormap`(
+    __mlir_op.`nvvm.prefetch`[tensormap = __mlir_attr.unit](
         to_llvm_ptr(desc_ptr),
     )
 

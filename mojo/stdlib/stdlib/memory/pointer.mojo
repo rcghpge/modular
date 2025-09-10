@@ -26,7 +26,9 @@ from memory import Pointer
 
 
 @register_passable("trivial")
-struct _GPUAddressSpace(Copyable, EqualityComparable, Movable):
+struct _GPUAddressSpace(
+    EqualityComparable, Identifiable, ImplicitlyCopyable, Movable
+):
     var _value: Int
 
     # See https://docs.nvidia.com/cuda/nvvm-ir-spec/#address-space
@@ -119,18 +121,6 @@ struct _GPUAddressSpace(Copyable, EqualityComparable, Movable):
         return self.value() == other.value()
 
     @always_inline("nodebug")
-    fn __isnot__(self, other: Self) -> Bool:
-        """Checks if the two address spaces are not equal.
-
-        Args:
-          other: The other address space value.
-
-        Returns:
-          True if the two address spaces are not equal and False otherwise.
-        """
-        return self.value() != other.value()
-
-    @always_inline("nodebug")
     fn __isnot__(self, other: AddressSpace) -> Bool:
         """Checks if the two address spaces are not equal.
 
@@ -145,7 +135,13 @@ struct _GPUAddressSpace(Copyable, EqualityComparable, Movable):
 
 @register_passable("trivial")
 struct AddressSpace(
-    Copyable, EqualityComparable, Intable, Movable, Stringable, Writable
+    EqualityComparable,
+    Identifiable,
+    ImplicitlyCopyable,
+    Intable,
+    Movable,
+    Stringable,
+    Writable,
 ):
     """Address space of the pointer."""
 
@@ -268,7 +264,7 @@ struct Pointer[
     type: AnyType,
     origin: Origin[mut],
     address_space: AddressSpace = AddressSpace.GENERIC,
-](Copyable, ExplicitlyCopyable, Movable, Stringable):
+](ImplicitlyCopyable, Movable, Stringable):
     """Defines a non-nullable safe pointer.
 
     For a comparison with other pointer types, see [Intro to

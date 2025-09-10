@@ -69,9 +69,11 @@ from .utils_gpu import MatmulConfig, block_swizzle
 
 @always_inline
 fn distance[
-    type: DType, //
-](arg0: UnsafePointer[Scalar[type]], arg1: UnsafePointer[Scalar[type]]) -> Int:
-    return (Int(arg0) - Int(arg1)) // size_of[arg1.type]()
+    dtype: DType, //
+](
+    arg0: UnsafePointer[Scalar[dtype]], arg1: UnsafePointer[Scalar[dtype]]
+) -> Int:
+    return (Int(arg0) - Int(arg1)) // dtype.size_of()
 
 
 @always_inline
@@ -781,19 +783,7 @@ fn multistage_gemm_kernel[
         alignment = a_smem.alignment,
         circular=True,
     ](
-        rebind[
-            __type_of(
-                LayoutTensorIter[
-                    a_type,
-                    Layout.row_major(BM, BK),
-                    MutableAnyOrigin,
-                    address_space = a_smem.address_space,
-                    alignment = a_smem.alignment,
-                    circular=True,
-                ]().ptr
-            )
-        ](a_smem)
-        + warp_k_part_id * a_smem_size,
+        a_smem + warp_k_part_id * a_smem_size,
         a_smem_size,
     )
 

@@ -46,7 +46,7 @@ trait Writer:
     from memory import Span
 
     @fieldwise_init
-    struct NewString(Writer, Writable, Copyable, Movable):
+    struct NewString(Writer, Writable, ImplicitlyCopyable, Movable):
         var s: String
 
         # Writer requirement to write a Span of Bytes
@@ -65,7 +65,7 @@ trait Writer:
 
 
     @fieldwise_init
-    struct Point(Writable, Copyable, Movable):
+    struct Point(Writable, ImplicitlyCopyable, Movable):
         var x: Int
         var y: Int
 

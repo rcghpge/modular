@@ -63,9 +63,7 @@ alias LIB_ACC_PATH = "/System/Library/Frameworks/Accelerate.framework/Accelerate
 # Library Load
 # ===-----------------------------------------------------------------------===#
 
-alias APPLE_ACCELERATE = _Global[
-    "APPLE_ACCELERATE", _OwnedDLHandle, _init_dylib
-]
+alias APPLE_ACCELERATE = _Global["APPLE_ACCELERATE", _init_dylib]
 
 
 fn _init_dylib() -> _OwnedDLHandle:
@@ -131,7 +129,7 @@ fn use_apple_accelerate_lib[
 
 @fieldwise_init
 @register_passable("trivial")
-struct _CBLASOrder(Copyable, Movable):
+struct _CBLASOrder(ImplicitlyCopyable, Movable):
     var value: Int32
     alias ROW_MAJOR = _CBLASOrder(101)
     alias COL_MAJOR = _CBLASOrder(102)
@@ -139,7 +137,7 @@ struct _CBLASOrder(Copyable, Movable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct _CBLASTranspose(Copyable, Movable):
+struct _CBLASTranspose(ImplicitlyCopyable, Movable):
     var value: Int32
     alias NO_TRANSPOSE = _CBLASTranspose(111)
     alias TRANSPOSE = _CBLASTranspose(112)

@@ -760,9 +760,10 @@ fn layer_norm[
     fn description_fn() -> String:
         return trace_arg("input", shape, dtype)
 
-    with Trace[TraceLevel.OP](
+    with Trace[TraceLevel.OP, target=target](
         "layer_norm",
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
 
         @parameter
@@ -910,7 +911,6 @@ fn rms_norm_gpu_warp_tiling_128[
     var row = block_row + (warp_id * 2) + sub_warp_id
     var local_tid = tid % half_warp_size
     var idx = local_tid * simd_width
-    var thread_m2 = Scalar[accum_type](0)
 
     with PDL():
         if row < num_rows and idx < num_cols:
@@ -963,7 +963,6 @@ fn rms_norm_gpu_warp_tiling[
     var tid = thread_idx.x
     var row = block_idx.x
     var idx = tid * simd_width
-    var thread_m2 = Scalar[accum_type](0)
 
     with PDL():
         if idx < num_cols:
@@ -1479,7 +1478,6 @@ fn rms_norm_fused_residual_add_gpu_warp_tiling[
     var tid = thread_idx.x
     var row = block_idx.x
     var idx = tid * simd_width
-    var thread_m2 = Scalar[accum_type](0)
 
     with PDL():
         if idx < num_cols:
@@ -1914,9 +1912,10 @@ fn rms_norm[
     fn description_fn() -> String:
         return trace_arg("input", shape, dtype)
 
-    with Trace[TraceLevel.OP](
+    with Trace[TraceLevel.OP, target=target](
         "rms_norm",
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         _rms_norm_impl[
             dtype,
@@ -2070,9 +2069,10 @@ fn rms_norm_fused_residual_add[
     fn description_fn() -> String:
         return trace_arg("input", shape, dtype)
 
-    with Trace[TraceLevel.OP](
+    with Trace[TraceLevel.OP, target=target](
         "rms_norm_fused_residual_add",
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         _rms_norm_fused_residual_add_impl[
             dtype,
@@ -2177,9 +2177,6 @@ fn group_norm_gpu_warp_tiling[
     var thread_mean = Scalar[accum_type]()
     var thread_m2 = Scalar[accum_type]()
     var thread_count = Scalar[accum_type]()
-
-    var num_rows = output.runtime_layout.shape.value[0]
-    var num_cols = output.runtime_layout.shape.value[1]
 
     with PDL():
         if idx + simd_width <= UInt(group_size):
@@ -2511,9 +2508,10 @@ fn group_norm[
     fn description_fn() -> String:
         return trace_arg("input", shape, dtype)
 
-    with Trace[TraceLevel.OP](
+    with Trace[TraceLevel.OP, target=target](
         "group_norm",
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         group_norm_gpu[
             dtype=dtype,

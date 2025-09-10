@@ -98,6 +98,9 @@ struct Counter[V: KeyElement, H: Hasher = default_hasher](
         for item in items:
             self._data[item.copy()] = self._data.get(item, 0) + 1
 
+    fn __copyinit__(out self, other: Self):
+        self._data = other._data.copy()
+
     @staticmethod
     fn fromkeys(keys: List[V, *_], value: Int) -> Self:
         """Create a new Counter from a list of keys and a default value.
@@ -116,7 +119,7 @@ struct Counter[V: KeyElement, H: Hasher = default_hasher](
         var result = Counter[V, H]()
         for key in keys:
             result[key] = value
-        return result
+        return result^
 
     # ===------------------------------------------------------------------=== #
     # Operator dunders
@@ -433,7 +436,7 @@ struct Counter[V: KeyElement, H: Hasher = default_hasher](
         for item in self.items():
             if item.value < 0:
                 result[item.key] = -item.value
-        return result
+        return result^
 
     # ===------------------------------------------------------------------=== #
     # Methods
@@ -561,7 +564,7 @@ struct Counter[V: KeyElement, H: Hasher = default_hasher](
         var items: List[CountTuple[V]] = List[CountTuple[V]]()
         for item in self._data.items():
             var t = CountTuple[V](item.key, UInt(item.value))
-            items.append(t)
+            items.append(t^)
 
         @parameter
         fn comparator(a: CountTuple[V], b: CountTuple[V]) -> Bool:
@@ -581,7 +584,7 @@ struct Counter[V: KeyElement, H: Hasher = default_hasher](
         for item in self._data.items():
             for _ in range(item.value):
                 elements.append(item.key.copy())
-        return elements
+        return elements^
 
     fn update(mut self, other: Self):
         """Update the Counter, like `dict.update()` but add counts instead of

@@ -18,14 +18,16 @@ from dataclasses import dataclass
 from max.interfaces import (
     EmbeddingsGenerator,
     EmbeddingsOutput,
+    MAXPullQueue,
+    MAXPushQueue,
+    RequestID,
+    Scheduler,
     SchedulerResult,
-    msgpack_numpy_decoder,
-    msgpack_numpy_encoder,
 )
 from max.pipelines.core import TextContext
 from max.profiler import traced
-from max.serve.queue.zmq_queue import ZmqPullSocket, ZmqPushSocket
-from max.serve.scheduler import Scheduler
+
+from .base import SchedulerProgress
 
 logger = logging.getLogger("max.serve")
 
@@ -43,32 +45,26 @@ class EmbeddingsScheduler(Scheduler):
         self,
         scheduler_config: EmbeddingsSchedulerConfig,
         pipeline: EmbeddingsGenerator,
-        request_zmq_endpoint: str,
-        response_zmq_endpoint: str,
-        cancel_zmq_endpoint: str,
+        request_queue: MAXPullQueue[tuple[RequestID, TextContext]],
+        response_queue: MAXPushQueue[
+            dict[RequestID, SchedulerResult[EmbeddingsOutput]]
+        ],
+        cancel_queue: MAXPullQueue[list[RequestID]],
     ) -> None:
         self.scheduler_config = scheduler_config
         self.pipeline = pipeline
-
-        self.request_q = ZmqPullSocket[tuple[str, TextContext]](
-            zmq_endpoint=request_zmq_endpoint,
-            deserialize=msgpack_numpy_decoder(tuple[str, TextContext]),
-        )
-        self.response_q = ZmqPushSocket[
-            dict[str, SchedulerResult[EmbeddingsOutput]]
-        ](
-            zmq_endpoint=response_zmq_endpoint,
-            serialize=msgpack_numpy_encoder(),
-        )
+        self.request_queue = request_queue
+        self.response_queue = response_queue
+        self.cancel_queue = cancel_queue
 
     @traced
-    def _create_batch_to_execute(self) -> dict[str, TextContext]:
+    def _create_batch_to_execute(self) -> dict[RequestID, TextContext]:
         max_batch_size_to_create = self.scheduler_config.max_batch_size
 
-        batch: dict[str, TextContext] = {}
+        batch: dict[RequestID, TextContext] = {}
         try:
             while max_batch_size_to_create > 0:
-                req_id, data = self.request_q.get_nowait()
+                req_id, data = self.request_queue.get_nowait()
                 batch[req_id] = data
                 max_batch_size_to_create -= 1
         except queue.Empty:
@@ -76,19 +72,24 @@ class EmbeddingsScheduler(Scheduler):
 
         return batch
 
-    def run_iteration(self) -> None:
-        """The Scheduler loop that creates batches and schedules them on GPU"""
+    def run_iteration(self) -> SchedulerProgress:
+        """The Scheduler loop that creates batches and schedules them on GPU
+
+        Returns:
+            SchedulerProgress: Indicates whether work was performed in this iteration.
+        """
         batch_to_execute = self._create_batch_to_execute()
         if len(batch_to_execute) == 0:
-            return
+            return SchedulerProgress.NO_PROGRESS
 
         self._schedule_encode(batch_to_execute)
+        return SchedulerProgress.MADE_PROGRESS
 
     @traced
     def _handle_terminated_responses(
         self,
-        batch_executed: dict[str, TextContext],
-        batch_response: dict[str, SchedulerResult[EmbeddingsOutput]],
+        batch_executed: dict[RequestID, TextContext],
+        batch_response: dict[RequestID, SchedulerResult[EmbeddingsOutput]],
     ) -> None:
         """Task that handles responses"""
         already_terminated = set()
@@ -101,14 +102,14 @@ class EmbeddingsScheduler(Scheduler):
 
     @traced
     def _schedule_encode(
-        self, batch_to_execute: dict[str, TextContext]
+        self, batch_to_execute: dict[RequestID, TextContext]
     ) -> None:
         # execute the batch
         batch_responses = self.pipeline.encode(batch_to_execute)
         # remove terminated requests from the batch
         self._handle_terminated_responses(batch_to_execute, batch_responses)
         # send the responses to the API process
-        self.response_q.put_nowait(
+        self.response_queue.put_nowait(
             {
                 request_id: SchedulerResult.create(response)
                 for request_id, response in batch_responses.items()

@@ -14,12 +14,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Literal, Optional
 
 from max._core.engine import Model
 from max.driver import Tensor
 from max.engine import InferenceSession
-from max.graph import Graph, TensorValue
+from max.graph import Graph
 from max.graph.weights import Weights, WeightsAdapter
 from max.nn.layer import Module
 
@@ -45,9 +45,6 @@ class Qwen3Model(LlamaModelBase):
     attention_bias: bool = False
     """Whether to use attention bias."""
 
-    logits_postprocessor: Callable[[TensorValue], TensorValue] | None = None
-    """Postprocessor for the logits."""
-
     state_dict: dict[str, Any]
     """Weights to load into the model."""
 
@@ -65,7 +62,6 @@ class Qwen3Model(LlamaModelBase):
             state_dict=state_dict,
             dtype=self.dtype,
             n_devices=len(self.devices),
-            logits_postprocessor=self.logits_postprocessor,
             norm_method=self.norm_method,
             attention_bias=self.attention_bias,
             cache_dtype=self.encoding.cache_dtype,
@@ -73,12 +69,12 @@ class Qwen3Model(LlamaModelBase):
             return_logits=self.return_logits,
         )
 
-        # Get Graph Inputs
-        graph_inputs = self.graph_inputs()
-
         # Build Graph
         nn_model: Module
         nn_model = Qwen3(model_config)
+
+        # Get Graph Inputs
+        graph_inputs = nn_model.input_types(self.kv_manager)
 
         # Load weights.
         nn_model.load_state_dict(

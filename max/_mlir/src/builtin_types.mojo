@@ -17,7 +17,7 @@ from .ir import Context, DialectType, Type
 
 
 @fieldwise_init
-struct FunctionType(Copyable, DialectType, Movable):
+struct FunctionType(DialectType, ImplicitlyCopyable, Movable):
     var ctx: Context
     var inputs: List[Type]
     var results: List[Type]
@@ -31,7 +31,12 @@ struct FunctionType(Copyable, DialectType, Movable):
             "nullary functions must use the context constructor",
         )
         var ctx = (inputs if len(inputs) else results)[0].context()
-        self = Self(ctx, inputs, results)
+        self = Self(ctx, inputs.copy(), results.copy())
+
+    fn __copyinit__(out self, existing: Self):
+        self.ctx = existing.ctx
+        self.inputs = existing.inputs.copy()
+        self.results = existing.results.copy()
 
     fn to_mlir(self) -> Type:
         return _c.BuiltinTypes.mlirFunctionTypeGet(
@@ -52,4 +57,4 @@ struct FunctionType(Copyable, DialectType, Movable):
             inputs.append(_c.BuiltinTypes.mlirFunctionTypeGetInput(type.c, i))
         for i in range(_c.BuiltinTypes.mlirFunctionTypeGetNumResults(type.c)):
             results.append(_c.BuiltinTypes.mlirFunctionTypeGetResult(type.c, i))
-        return Self(type.context(), inputs, results)
+        return Self(type.context(), inputs^, results^)

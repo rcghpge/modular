@@ -16,7 +16,7 @@ from collections import Optional
 
 
 @fieldwise_init
-struct Grid(Copyable, Movable, Stringable):
+struct Grid(ImplicitlyCopyable, Movable, Stringable):
     # ===-------------------------------------------------------------------===#
     # Fields
     # ===-------------------------------------------------------------------===#
@@ -24,6 +24,15 @@ struct Grid(Copyable, Movable, Stringable):
     var rows: Int
     var cols: Int
     var data: List[List[Int]]
+
+    # ===-------------------------------------------------------------------===#
+    # Lifecycle
+    # ===-------------------------------------------------------------------===#
+
+    fn __copyinit__(out self, existing: Self):
+        self.rows = existing.rows
+        self.cols = existing.cols
+        self.data = existing.data.copy()
 
     # ===-------------------------------------------------------------------===#
     # Indexing
@@ -88,9 +97,9 @@ struct Grid(Copyable, Movable, Stringable):
             for _col in range(cols):
                 # Generate a random 0 or 1 and append it to the row.
                 row_data.append(Int(random.random_si64(0, 1)))
-            data.append(row_data)
+            data.append(row_data^)
 
-        return Self(rows, cols, data)
+        return Self(rows, cols, data^)
 
     # ===-------------------------------------------------------------------===#
     # Methods
@@ -133,6 +142,6 @@ struct Grid(Copyable, Movable, Stringable):
                     new_state = 1
                 row_data.append(new_state)
 
-            next_generation.append(row_data)
+            next_generation.append(row_data^)
 
-        return Self(self.rows, self.cols, next_generation)
+        return Self(self.rows, self.cols, next_generation^)

@@ -29,8 +29,8 @@ from bit import next_power_of_two
 # ===-----------------------------------------------------------------------===#
 
 
-struct Deque[ElementType: ExplicitlyCopyable & Movable](
-    Boolable, ExplicitlyCopyable, Movable, Sized
+struct Deque[ElementType: Copyable & Movable](
+    Boolable, Copyable, Movable, Sized
 ):
     """Implements a double-ended queue.
 
@@ -128,7 +128,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
         self._shrink = shrink
 
         if elements is not None:
-            self.extend(elements.value())
+            self.extend(elements.take())
 
     fn __init__(out self, var *values: ElementType, __list_literal__: () = ()):
         """Constructs a deque from the given values.
@@ -164,25 +164,23 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
         # Remember how many elements we have.
         self._tail = args_length
 
-    fn copy(self) -> Self:
+    fn __copyinit__(out self, other: Self):
         """Creates a deepcopy of the given deque.
 
-        Returns:
-            A copy of the value.
+        Args:
+            other: The deque to copy.
         """
-        var copy = Self(
-            capacity=self._capacity,
-            min_capacity=self._min_capacity,
-            maxlen=self._maxlen,
-            shrink=self._shrink,
+        self = Self(
+            capacity=other._capacity,
+            min_capacity=other._min_capacity,
+            maxlen=other._maxlen,
+            shrink=other._shrink,
         )
-        for i in range(len(self)):
-            offset = self._physical_index(self._head + i)
-            (copy._data + i).init_pointee_copy((self._data + offset)[])
+        for i in range(len(other)):
+            offset = other._physical_index(other._head + i)
+            (self._data + i).init_pointee_copy((other._data + offset)[])
 
-        copy._tail = len(self)
-
-        return copy^
+        self._tail = len(other)
 
     fn __moveinit__(out self, deinit existing: Self):
         """Moves data of an existing deque into a new one.
@@ -270,7 +268,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
                 self.append(element.copy())
 
     fn __eq__[
-        T: EqualityComparable & ExplicitlyCopyable & Movable, //
+        T: EqualityComparable & Copyable & Movable, //
     ](self: Deque[T], other: Deque[T]) -> Bool:
         """Checks if two deques are equal.
 
@@ -295,7 +293,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
         return True
 
     fn __ne__[
-        T: EqualityComparable & ExplicitlyCopyable & Movable, //
+        T: EqualityComparable & Copyable & Movable, //
     ](self: Deque[T], other: Deque[T]) -> Bool:
         """Checks if two deques are not equal.
 
@@ -312,7 +310,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
         return not (self == other)
 
     fn __contains__[
-        T: EqualityComparable & ExplicitlyCopyable & Movable, //
+        T: EqualityComparable & Copyable & Movable, //
     ](self: Deque[T], value: T) -> Bool:
         """Verify if a given value is present in the deque.
 
@@ -401,7 +399,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
 
     @no_inline
     fn write_to[
-        T: Representable & ExplicitlyCopyable & Movable,
+        T: Representable & Copyable & Movable,
     ](self: Deque[T], mut writer: Some[Writer]):
         """Writes `my_deque.__str__()` to a `Writer`.
 
@@ -422,7 +420,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
 
     @no_inline
     fn __str__[
-        T: Representable & ExplicitlyCopyable & Movable, //
+        T: Representable & Copyable & Movable, //
     ](self: Deque[T]) -> String:
         """Returns a string representation of a `Deque`.
 
@@ -450,7 +448,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
 
     @no_inline
     fn __repr__[
-        T: Representable & ExplicitlyCopyable & Movable, //
+        T: Representable & Copyable & Movable, //
     ](self: Deque[T]) -> String:
         """Returns a string representation of a `Deque`.
 
@@ -527,7 +525,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
         self._tail = 0
 
     fn count[
-        T: EqualityComparable & ExplicitlyCopyable & Movable, //
+        T: EqualityComparable & Copyable & Movable, //
     ](self: Deque[T], value: T) -> Int:
         """Counts the number of occurrences of a `value` in the deque.
 
@@ -615,7 +613,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
             (src + i).move_pointee_into(self._data + self._head)
 
     fn index[
-        T: EqualityComparable & ExplicitlyCopyable & Movable, //
+        T: EqualityComparable & Copyable & Movable, //
     ](
         self: Deque[T],
         value: T,
@@ -709,7 +707,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
             self._realloc(self._capacity << 1)
 
     fn remove[
-        T: EqualityComparable & ExplicitlyCopyable & Movable, //
+        T: EqualityComparable & Copyable & Movable, //
     ](mut self: Deque[T], value: T) raises:
         """Removes the first occurrence of the `value`.
 
@@ -981,7 +979,7 @@ struct Deque[ElementType: ExplicitlyCopyable & Movable](
 @fieldwise_init
 struct _DequeIter[
     mut: Bool, //,
-    T: ExplicitlyCopyable & Movable,
+    T: Copyable & Movable,
     origin: Origin[mut],
     forward: Bool = True,
 ](Copyable, Iterator, Movable):
@@ -1000,7 +998,7 @@ struct _DequeIter[
     var src: Pointer[Deque[T], origin]
 
     fn __iter__(self) -> Self:
-        return self
+        return self.copy()
 
     @always_inline
     fn __has_next__(self) -> Bool:

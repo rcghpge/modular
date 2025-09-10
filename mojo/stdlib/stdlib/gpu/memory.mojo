@@ -67,7 +67,7 @@ alias AddressSpace = _GPUAddressSpace
 
 @fieldwise_init
 @register_passable("trivial")
-struct CacheOperation:
+struct CacheOperation(EqualityComparable, Identifiable):
     """Represents different GPU cache operation policies.
 
     This struct defines various caching behaviors for GPU memory operations,
@@ -137,17 +137,6 @@ struct CacheOperation:
         """
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        """Tests if two CacheOperation instances are not equal.
-
-        Args:
-            other: The CacheOperation to compare against.
-
-        Returns:
-            True if the operations are not equal, False otherwise.
-        """
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         """Tests if two CacheOperation instances are identical.
 
@@ -158,17 +147,6 @@ struct CacheOperation:
             True if the operations are identical, False otherwise.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Tests if two CacheOperation instances are not identical.
-
-        Args:
-            other: The CacheOperation to compare against.
-
-        Returns:
-            True if the operations are not identical, False otherwise.
-        """
-        return self != other
 
     @always_inline
     fn mnemonic(self) -> StaticString:
@@ -205,7 +183,7 @@ struct CacheOperation:
 
 @fieldwise_init
 @register_passable("trivial")
-struct CacheEviction:
+struct CacheEviction(EqualityComparable, Identifiable):
     """Represents cache eviction policies for GPU memory operations.
 
     This struct defines different cache eviction priorities that control how data is
@@ -273,17 +251,6 @@ struct CacheEviction:
         """
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        """Tests if two CacheEviction instances are not equal.
-
-        Args:
-            other: The CacheEviction to compare against.
-
-        Returns:
-            True if the eviction policies are not equal, False otherwise.
-        """
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         """Tests if two CacheEviction instances are identical.
 
@@ -294,17 +261,6 @@ struct CacheEviction:
             True if the eviction policies are identical, False otherwise.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Tests if two CacheEviction instances are not identical.
-
-        Args:
-            other: The CacheEviction to compare against.
-
-        Returns:
-            True if the eviction policies are not identical, False otherwise.
-        """
-        return self != other
 
     @always_inline
     fn mnemonic(self) -> StaticString:
@@ -336,7 +292,7 @@ struct CacheEviction:
 
 @fieldwise_init
 @register_passable("trivial")
-struct Fill:
+struct Fill(EqualityComparable, Identifiable):
     """Represents memory fill patterns for GPU memory operations.
 
     This struct defines different fill patterns that can be used when allocating or
@@ -366,17 +322,6 @@ struct Fill:
         """
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        """Tests if two Fill instances have different fill patterns.
-
-        Args:
-            other: The Fill instance to compare against.
-
-        Returns:
-            True if the fill patterns are different, False otherwise.
-        """
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         """Tests if two Fill instances are identical.
 
@@ -387,17 +332,6 @@ struct Fill:
             True if the fill patterns are identical, False otherwise.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Tests if two Fill instances are not identical.
-
-        Args:
-            other: The Fill instance to compare against.
-
-        Returns:
-            True if the fill patterns are not identical, False otherwise.
-        """
-        return self != other
 
     @no_inline
     fn __str__(self) -> String:
@@ -425,7 +359,9 @@ struct Fill:
 
 @fieldwise_init
 @register_passable("trivial")
-struct Consistency(Copyable, EqualityComparable, Movable):
+struct Consistency(
+    EqualityComparable, Identifiable, ImplicitlyCopyable, Movable
+):
     """Represents memory consistency models for GPU memory operations.
 
     This struct defines different memory consistency levels that control how memory
@@ -481,17 +417,6 @@ struct Consistency(Copyable, EqualityComparable, Movable):
         """
         return self == other
 
-    fn __isnot__(self, other: Self) -> Bool:
-        """Tests if two Consistency instances are not identical.
-
-        Args:
-            other: The Consistency instance to compare against.
-
-        Returns:
-            True if the consistency levels are not identical, False otherwise.
-        """
-        return self != other
-
     fn __str__(self) -> String:
         """Returns a string representation of the consistency level.
 
@@ -526,7 +451,7 @@ struct Consistency(Copyable, EqualityComparable, Movable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct ReduceOp:
+struct ReduceOp(EqualityComparable, Identifiable):
     """Represents reduction operations for parallel reduction algorithms.
 
     This struct defines different reduction operations that can be performed
@@ -577,17 +502,6 @@ struct ReduceOp:
         """
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        """Tests if two ReduceOp instances are not equal.
-
-        Args:
-            other: The ReduceOp instance to compare against.
-
-        Returns:
-            True if the reduction operations are different, False otherwise.
-        """
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         """Tests if two ReduceOp instances are identical.
 
@@ -598,17 +512,6 @@ struct ReduceOp:
             True if the reduction operations are identical, False otherwise.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Tests if two ReduceOp instances are not identical.
-
-        Args:
-            other: The ReduceOp instance to compare against.
-
-        Returns:
-            True if the reduction operations are not identical, False otherwise.
-        """
-        return self != other
 
     @no_inline
     fn __str__(self) -> String:

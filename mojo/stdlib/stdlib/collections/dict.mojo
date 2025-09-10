@@ -42,7 +42,7 @@ from sys.intrinsics import likely
 from memory import bitcast, memcpy
 
 
-alias KeyElement = ExplicitlyCopyable & Movable & Hashable & EqualityComparable
+alias KeyElement = Copyable & Movable & Hashable & EqualityComparable
 """A trait composition for types which implement all requirements of
 dictionary keys. Dict keys must minimally be Copyable, Movable, Hashable,
 and EqualityComparable for a hash map. Until we have references
@@ -53,7 +53,7 @@ they must also be copyable."""
 struct _DictEntryIter[
     mut: Bool, //,
     K: KeyElement,
-    V: ExplicitlyCopyable & Movable,
+    V: Copyable & Movable,
     H: Hasher,
     origin: Origin[mut],
     forward: Bool = True,
@@ -83,7 +83,7 @@ struct _DictEntryIter[
         self.src = Pointer(to=dict)
 
     fn __iter__(self) -> Self:
-        return self
+        return self.copy()
 
     @always_inline
     fn __has_next__(self) -> Bool:
@@ -111,7 +111,7 @@ struct _DictEntryIter[
 struct _DictKeyIter[
     mut: Bool, //,
     K: KeyElement,
-    V: ExplicitlyCopyable & Movable,
+    V: Copyable & Movable,
     H: Hasher,
     origin: Origin[mut],
     forward: Bool = True,
@@ -134,7 +134,7 @@ struct _DictKeyIter[
 
     @always_inline
     fn __iter__(self) -> Self:
-        return self
+        return self.copy()
 
     @always_inline
     fn __has_next__(self) -> Bool:
@@ -152,7 +152,7 @@ struct _DictKeyIter[
 struct _DictValueIter[
     mut: Bool, //,
     K: KeyElement,
-    V: ExplicitlyCopyable & Movable,
+    V: Copyable & Movable,
     H: Hasher,
     origin: Origin[mut],
     forward: Bool = True,
@@ -173,7 +173,7 @@ struct _DictValueIter[
     alias Element = V
 
     fn __iter__(self) -> Self:
-        return self
+        return self.copy()
 
     fn __reversed__(self) -> _DictValueIter[K, V, H, origin, False]:
         var src = self.iter.src
@@ -199,8 +199,8 @@ struct _DictValueIter[
 
 
 @fieldwise_init
-struct DictEntry[K: KeyElement, V: ExplicitlyCopyable & Movable, H: Hasher](
-    Copyable, ExplicitlyCopyable, Movable
+struct DictEntry[K: KeyElement, V: Copyable & Movable, H: Hasher](
+    Copyable, Movable
 ):
     """Store a key-value pair entry inside a dictionary.
 
@@ -344,9 +344,9 @@ struct _DictIndex(Movable):
         self.data.free()
 
 
-struct Dict[
-    K: KeyElement, V: ExplicitlyCopyable & Movable, H: Hasher = default_hasher
-](Boolable, Copyable, Defaultable, ExplicitlyCopyable, Movable, Sized):
+struct Dict[K: KeyElement, V: Copyable & Movable, H: Hasher = default_hasher](
+    Boolable, Copyable, Defaultable, Movable, Sized
+):
     """A container that stores key-value pairs.
 
     The `Dict` type is Mojo's primary associative collection, similar to
@@ -676,7 +676,7 @@ struct Dict[
         var my_dict = Dict[K, V, H]()
         for key in keys:
             my_dict[key.copy()] = value.copy()
-        return my_dict
+        return my_dict^
 
     @staticmethod
     fn fromkeys(
@@ -702,7 +702,7 @@ struct Dict[
         self._len = existing._len
         self._n_entries = existing._n_entries
         self._index = existing._index.copy_reserved(existing._reserved())
-        self._entries = existing._entries
+        self._entries = existing._entries.copy()
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -809,7 +809,7 @@ struct Dict[
     @no_inline
     fn __str__[
         T: KeyElement & Representable,
-        U: ExplicitlyCopyable & Movable & Representable, //,
+        U: Copyable & Movable & Representable, //,
     ](self: Dict[T, U]) -> String:
         """Returns a string representation of a `Dict`.
 
@@ -1094,7 +1094,7 @@ struct Dict[
         # We have memory available, we'll use everything.
         for _ in range(entries.capacity):
             entries.append(None)
-        return entries
+        return entries^
 
     fn _insert(mut self, var key: K, var value: V):
         self._insert(DictEntry[K, V, H](key^, value^))
@@ -1192,8 +1192,8 @@ struct Dict[
         self._n_entries = self._len
 
 
-struct OwnedKwargsDict[V: ExplicitlyCopyable & Movable](
-    Copyable, Defaultable, ExplicitlyCopyable, Movable, Sized
+struct OwnedKwargsDict[V: Copyable & Movable](
+    Copyable, Defaultable, Movable, Sized
 ):
     """Container used to pass owned variadic keyword arguments to functions.
 
@@ -1224,7 +1224,7 @@ struct OwnedKwargsDict[V: ExplicitlyCopyable & Movable](
         Args:
             existing: The existing keyword dictionary.
         """
-        self._dict = existing._dict
+        self._dict = existing._dict.copy()
 
     fn __moveinit__(out self, deinit existing: Self):
         """Move data of an existing keyword dictionary into a new one.

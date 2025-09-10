@@ -16,7 +16,7 @@ from os import abort
 
 @fieldwise_init
 @register_passable("trivial")
-struct LibraryProperty:
+struct LibraryProperty(EqualityComparable):
     var _value: Int32
     alias MAJOR_VERSION = Self(0)
     alias MINOR_VERSION = Self(1)
@@ -27,9 +27,6 @@ struct LibraryProperty:
 
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
-
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
 
     @no_inline
     fn __str__(self) -> String:
@@ -47,7 +44,7 @@ struct LibraryProperty:
 
 @fieldwise_init
 @register_passable("trivial")
-struct Status(Stringable, Writable):
+struct Status(EqualityComparable, Identifiable, Stringable, Writable):
     var _value: Int8
     alias CUFFT_INVALID_PLAN = Self(1)
     alias CUFFT_SUCCESS = Self(0)
@@ -73,14 +70,8 @@ struct Status(Stringable, Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -137,7 +128,7 @@ struct Status(Stringable, Writable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct Type(Stringable, Writable):
+struct Type(EqualityComparable, Identifiable, Stringable, Writable):
     var _value: Int8
     alias CUFFT_R2C = Self(0x2A)
     alias CUFFT_C2R = Self(0x2C)
@@ -152,14 +143,8 @@ struct Type(Stringable, Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -191,7 +176,7 @@ struct Type(Stringable, Writable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct Compatibility(Stringable, Writable):
+struct Compatibility(EqualityComparable, Identifiable, Stringable, Writable):
     var _value: Int8
     alias CUFFT_COMPATIBILITY_FFTW_PADDING = Self(0)
 
@@ -201,14 +186,8 @@ struct Compatibility(Stringable, Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -230,7 +209,7 @@ struct Compatibility(Stringable, Writable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct Property(Stringable, Writable):
+struct Property(EqualityComparable, Identifiable, Stringable, Writable):
     var _value: Int8
     alias NVFFT_PLAN_PROPERTY_INT64_PATIENT_JIT = Self(0)
     alias NVFFT_PLAN_PROPERTY_INT64_MAX_NUM_HOST_THREADS = Self(1)
@@ -241,14 +220,8 @@ struct Property(Stringable, Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):

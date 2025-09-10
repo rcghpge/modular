@@ -62,6 +62,7 @@ from .runtime_tuple import RuntimeTuple
 from .swizzle import Swizzle, make_ldmatrix_swizzle
 
 from builtin.device_passable import DevicePassable
+from builtin.dtype import _unsigned_integral_type_of
 
 
 fn _compute_distribute_layout[
@@ -270,10 +271,9 @@ struct LayoutTensor[
     masked: Bool = False,
     alignment: Int = align_of[dtype](),
 ](
-    Copyable,
+    ImplicitlyCopyable,
     DevicePassable,
     Movable,
-    ExplicitlyCopyable,
     Stringable,
     Writable,
     _Expable,
@@ -5251,7 +5251,7 @@ fn stack_allocation_like[
 
 
 @register_passable("trivial")
-struct ThreadScope(Copyable, Movable):
+struct ThreadScope(ImplicitlyCopyable, Movable):
     """Represents the scope of thread operations in GPU programming.
 
     This struct defines the scope at which thread operations are performed,
@@ -7422,10 +7422,14 @@ struct LayoutTensorIter[
     if needed for performance-critical operations.
     """
 
-    alias layout_uint_type = Scalar[layout_int_type]
+    alias layout_uint_type = Scalar[
+        _unsigned_integral_type_of[layout_int_type]()
+    ]
     """The unsigned integer type used for layout, based on layout and address space."""
 
-    alias linear_uint_type = Scalar[linear_idx_type]
+    alias linear_uint_type = Scalar[
+        _unsigned_integral_type_of[linear_idx_type]()
+    ]
     """The unsigned integer type used for indexing into memory."""
 
     var ptr: UnsafePointer[

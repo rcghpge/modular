@@ -33,7 +33,7 @@ from .optional import Optional
 @fieldwise_init
 struct _ListIter[
     mut: Bool, //,
-    T: ExplicitlyCopyable & Movable,
+    T: Copyable & Movable,
     hint_trivial_type: Bool,
     origin: Origin[mut],
     forward: Bool = True,
@@ -58,7 +58,7 @@ struct _ListIter[
 
     @always_inline
     fn __iter__(ref self) -> Self.IteratorType[__origin_of(self)]:
-        return self
+        return self.copy()
 
     @always_inline
     fn __has_next__(self) -> Bool:
@@ -82,14 +82,8 @@ struct _ListIter[
         return self.__next_ref__().copy()
 
 
-struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
-    Boolable,
-    Copyable,
-    Defaultable,
-    ExplicitlyCopyable,
-    Iterable,
-    Movable,
-    Sized,
+struct List[T: Copyable & Movable, hint_trivial_type: Bool = False](
+    Boolable, Copyable, Defaultable, Iterable, Movable, Sized
 ):
     """A dynamically-allocated and resizable list.
 
@@ -341,7 +335,7 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
         self._len = unsafe_uninit_length
 
     fn __copyinit__(out self, existing: Self):
-        """Creates a deepcopy of the given list.
+        """Creates a deep copy of the given list.
 
         Args:
             existing: The list to copy.
@@ -482,7 +476,7 @@ struct List[T: ExplicitlyCopyable & Movable, hint_trivial_type: Bool = False](
         var orig = self.copy()
         self.reserve(len(self) * x)
         for _ in range(x - 1):
-            self.extend(orig)
+            self.extend(Span(orig))
 
     fn __add__(self, var other: Self) -> Self:
         """Concatenates self with other and returns the result as a new list.

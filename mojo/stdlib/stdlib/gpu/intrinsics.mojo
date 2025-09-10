@@ -446,13 +446,33 @@ fn mulwide(a: Int32, b: Int32) -> Int64:
     return ai64 * bi64
 
 
+@always_inline
+fn get_ib_sts() -> Int32:
+    """Returns the IB status of the current thread.
+
+    Returns:
+        The IB status of the current thread.
+    """
+    if is_amd_gpu():
+        return inlined_assembly[
+            "s_getreg_b32 $0, hwreg(HW_REG_IB_STS);",
+            Int32,
+            constraints="=r",
+            has_side_effect=False,
+        ]()
+    else:
+        return 0
+
+
 # ===-----------------------------------------------------------------------===#
 # threadfence
 # ===-----------------------------------------------------------------------===#
 
 
 @fieldwise_init
-struct Scope(Copyable, EqualityComparable, Movable, Writable):
+struct Scope(
+    EqualityComparable, Identifiable, ImplicitlyCopyable, Movable, Writable
+):
     """Represents memory synchronization scope levels for GPU memory operations.
 
     Defines different scopes of memory visibility and synchronization, from
@@ -511,17 +531,6 @@ struct Scope(Copyable, EqualityComparable, Movable, Writable):
             True if the values are the same, False otherwise.
         """
         return self._value == other._value
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Checks if two `Scope` instances have different values.
-
-        Args:
-            other: The other `Scope` instance to compare with.
-
-        Returns:
-            True if the values are different, False otherwise.
-        """
-        return not (self is other)
 
     @no_inline
     fn write_to(self, mut w: Some[Writer]):
@@ -1137,3 +1146,44 @@ fn buffer_store[
     llvm_intrinsic[
         "llvm.amdgcn.raw.buffer.store", NoneType, has_side_effect=True
     ](store_val, dst_resource, vector_offset_bytes, scalar_offset_bytes, aux)
+
+
+# ===-----------------------------------------------------------------------===#
+# AMD LDS transpose reads (ds.read.tr*)
+# ===-----------------------------------------------------------------------===#
+
+
+@always_inline
+fn ds_read_tr16_b64[
+    dtype: DType, //,
+](
+    shared_ptr: UnsafePointer[
+        Scalar[dtype], address_space = AddressSpace.SHARED, **_
+    ]
+) -> SIMD[dtype, 4]:
+    """Reads a 64-bit LDS transpose block using TR16 layout and returns SIMD[dtype, 4] of 16-bit types.
+
+    Args:
+        shared_ptr: Pointer to the LDS transpose block.
+
+    Returns:
+        SIMD[dtype, 4] of 16-bit types.
+
+    Notes:
+        - Only supported on AMD GPUs.
+        - Maps directly to llvm.amdgcn.ds.read.tr16.b64 intrinsic.
+        - Result width is fixed to 4 elements of dtype.
+    """
+
+    constrained[
+        is_amd_gpu(),
+        "The ds_read_tr16_b64 function is only applicable on AMDGPU hardware.",
+    ]()
+    constrained[
+        size_of[dtype]() == 2,
+        "ds_read_tr16_b64 supports 16-bit dtypes.",
+    ]()
+
+    return llvm_intrinsic[
+        "llvm.amdgcn.ds.read.tr16.b64", SIMD[dtype, 4], has_side_effect=False
+    ](shared_ptr)

@@ -265,15 +265,18 @@ fn kernel_3[
                 a_tma_op.async_copy(
                     sub_a_smem_tile,
                     tma_mbar[0],
-                    (UInt(i) * BK + k, block_idx.y * BM),
+                    (UInt(i * BK + k), UInt(block_idx.y * BM)),
                 )
                 sub_b_smem_tile = sub_b_smem_tile_t(b_smem + b_offset)
                 b_tma_op.async_copy(
                     sub_b_smem_tile,
                     tma_mbar[0],
-                    (UInt(i) * BK + k, block_idx.x * BN) if transpose_b else (
-                        block_idx.x * BN,
-                        UInt(i) * BK + k,
+                    (
+                        UInt(i * BK + k),
+                        UInt(block_idx.x * BN),
+                    ) if transpose_b else (
+                        UInt(block_idx.x * BN),
+                        UInt(i * BK + k),
                     ),
                 )
         # wait for the copy to finish
@@ -378,14 +381,14 @@ fn kernel_2[
     c_device: NDBuffer[c_type, 2, _, c_shape],
     a_device: NDBuffer[a_type, 2, _, a_shape],
     b_device: NDBuffer[b_type, 2, _, b_shape],
-    M: Int,
-    N: Int,
-    K: Int,
     ctx: DeviceContext,
 ) raises:
     var a = from_ndbuffer_row_major(a_device)
     var b = from_ndbuffer_row_major(b_device)
     var c = from_ndbuffer_row_major(c_device)
+    var M = c.dim[0]()
+    var N = c.dim[1]()
+    var K = a.dim[1]()
 
     constrained[
         transpose_b,
@@ -460,7 +463,7 @@ fn get_dict_of_shapes(
 fn make_dict_of_shapes() -> Dict[Int, Tuple[Int, Int, Int]]:
     var dic = Dict[Int, Tuple[Int, Int, Int]]()
     dic[0] = (4096, 4096, 4096)
-    return dic
+    return dic^
 
 
 fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
@@ -592,9 +595,6 @@ def test_kernel_2[
         c_device.tensor,
         a_device.tensor,
         b_device.tensor,
-        M,
-        N,
-        K,
         ctx,
     )
 
@@ -614,9 +614,6 @@ def test_kernel_2[
                 c_device.tensor,
                 a_device.tensor,
                 b_device.tensor,
-                M,
-                N,
-                K,
                 ctx,
             )
 

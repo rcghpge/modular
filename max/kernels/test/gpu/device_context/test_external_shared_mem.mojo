@@ -38,7 +38,8 @@ fn test_external_shared_mem(ctx: DeviceContext) raises:
 
     ctx.enqueue_copy(res_device, res_host_ptr)
 
-    ctx.enqueue_function[dynamic_smem_kernel](
+    alias kernel = dynamic_smem_kernel
+    ctx.enqueue_function_checked[kernel, kernel](
         res_device,
         grid_dim=1,
         block_dim=16,
@@ -95,7 +96,7 @@ fn shared_memory_kernel(
     ]()
 
     # Load data into shared memory
-    if tid < len:
+    if tid < UInt(len):
         shared_data[thread_id] = input[tid]
     else:
         shared_data[thread_id] = 0.0
@@ -111,7 +112,7 @@ fn shared_memory_kernel(
         result += shared_data[thread_id + 1]
 
     # Write result back
-    if tid < len:
+    if tid < UInt(len):
         output[tid] = result
 
 
@@ -123,7 +124,7 @@ fn occupancy_test_kernel(
 ):
     """A simple kernel for testing occupancy - just copies input to output."""
     var tid = global_idx.x
-    if tid >= len:
+    if tid >= UInt(len):
         return
     output[tid] = input[tid] * 2.0
 
@@ -244,7 +245,8 @@ fn test_occupancy_max_active_blocks(ctx: DeviceContext) raises:
 
     # Launch the kernel
     var grid_dim = (length + optimal_block_size - 1) // optimal_block_size
-    ctx.enqueue_function[occupancy_test_kernel](
+    alias kernel = occupancy_test_kernel
+    ctx.enqueue_function_checked[kernel, kernel](
         input_device,
         output_device,
         length,

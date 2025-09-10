@@ -200,8 +200,7 @@ fn assert_equal[
 #   compared, then drop this overload.
 @always_inline
 fn assert_equal[
-    O1: ImmutableOrigin,
-    O2: ImmutableOrigin,
+    O1: Origin, O2: Origin
 ](
     lhs: List[StringSlice[O1]],
     rhs: List[StringSlice[O2]],
@@ -227,7 +226,7 @@ fn assert_equal[
 
     # Cast `rhs` to have the same origin as `lhs`, so that we can delegate to
     # `List.__ne__`.
-    var rhs_origin_casted = rebind[List[StringSlice[O1]]](rhs)
+    var rhs_origin_casted = rebind[List[StringSlice[O1]]](rhs).copy()
 
     if lhs != rhs_origin_casted:
         raise _assert_cmp_error["`left == right` comparison"](

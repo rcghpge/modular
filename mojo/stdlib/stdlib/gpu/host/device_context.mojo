@@ -207,7 +207,7 @@ struct _DeviceTimer:
 
 @fieldwise_init
 @register_passable("trivial")
-struct StreamPriorityRange(Copyable, Movable, Stringable, Writable):
+struct StreamPriorityRange(ImplicitlyCopyable, Movable, Stringable, Writable):
     var least: Int
     var greatest: Int
 
@@ -766,7 +766,7 @@ struct HostBuffer[dtype: DType](
 
 
 struct DeviceBuffer[dtype: DType](
-    Copyable, DevicePassable, Movable, Sized, Stringable, Writable
+    DevicePassable, ImplicitlyCopyable, Movable, Sized, Stringable, Writable
 ):
     """Represents a block of device-resident storage. For GPU devices, a device
     buffer is allocated in the device's global memory.
@@ -1386,7 +1386,7 @@ struct DeviceBuffer[dtype: DType](
 
 
 # @doc_private does not work on structs - see MOTO-992.
-struct DeviceStream(Copyable, Movable):
+struct DeviceStream(ImplicitlyCopyable, Movable):
     """Represents a CUDA/HIP stream for asynchronous GPU operations.
 
     A DeviceStream provides a queue for GPU operations that can execute concurrently
@@ -1737,7 +1737,7 @@ struct EventFlags:
         return Self(self._flags | other._flags)
 
 
-struct DeviceEvent(Copyable, Movable):
+struct DeviceEvent(ImplicitlyCopyable, Movable):
     """Represents a GPU event for synchronization between streams.
 
     A DeviceEvent allows for fine-grained synchronization between different
@@ -2311,6 +2311,8 @@ struct DeviceFunction[
         if num_captures > num_captures_static:
             dense_args_addrs = dense_args_addrs.alloc(num_captures + num_args)
             dense_args_sizes = dense_args_sizes.alloc(num_captures + num_args)
+            for i in range(num_captures + num_args):
+                dense_args_sizes[i] = 0
         else:
             dense_args_addrs = stack_allocation[
                 num_captures_static + num_args, OpaquePointer
@@ -2318,6 +2320,8 @@ struct DeviceFunction[
             dense_args_sizes = stack_allocation[
                 num_captures_static + num_args, UInt
             ]()
+            for i in range(num_captures_static + num_args):
+                dense_args_sizes[i] = 0
 
         @parameter
         for i in range(num_args):
@@ -2674,6 +2678,8 @@ struct DeviceFunction[
             dense_args_sizes = dense_args_sizes.alloc(
                 num_captures + num_passed_args
             )
+            for i in range(num_captures + num_passed_args):
+                dense_args_sizes[i] = 0
         else:
             dense_args_addrs = stack_allocation[
                 num_captures_static + num_passed_args, OpaquePointer
@@ -2681,6 +2687,8 @@ struct DeviceFunction[
             dense_args_sizes = stack_allocation[
                 num_captures_static + num_passed_args, UInt
             ]()
+            for i in range(num_captures_static + num_passed_args):
+                dense_args_sizes[i] = 0
         # Since we skip over zero sized declared dtypes when passing arguments
         # we need to know the current count arguments pushed.
         var translated_arg_idx = 0
@@ -2697,6 +2705,7 @@ struct DeviceFunction[
                 ).bitcast[NoneType]()
                 args[i]._to_device_type(first_word_addr)
                 dense_args_addrs[translated_arg_idx] = first_word_addr
+                dense_args_sizes[i] = UInt(size_of[actual_arg_type]())
                 translated_arg_idx += 1
 
         if cluster_dim:
@@ -3151,7 +3160,7 @@ struct DeviceExternalFunction:
 
 
 @register_passable
-struct DeviceContext(Copyable, Movable):
+struct DeviceContext(ImplicitlyCopyable, Movable):
     """Represents a single stream of execution on a particular accelerator
     (GPU).
 
@@ -6467,45 +6476,13 @@ struct DeviceContext(Copyable, Movable):
         # Now GPUs can directly access each other's memory
         ```
         """
-        # Get number of available devices
-        var num_devices = DeviceContext.number_of_devices()
-        if num_devices < 2:
-            return  # Nothing to do
-
-        # Create device contexts for all devices
-        var devices = List[DeviceContext](capacity=num_devices)
-        for i in range(num_devices):
-            devices.append(DeviceContext(device_id=i))
-
-        # Enable peer access between every pair of devices
-        for i in range(num_devices):
-            for j in range(num_devices):
-                if i == j:
-                    continue
-
-                # Check if peer access is possible.
-                if not devices[i].can_access(devices[j]):
-                    raise Error(
-                        "Cannot enable peer access from GPU "
-                        + String(i)
-                        + " to GPU "
-                        + String(j)
-                        + ": hardware does not support P2P access"
-                    )
-
-                try:
-                    devices[i].enable_peer_access(devices[j])
-                except e:
-                    # Ignore "already enabled" errors.
-                    if "PEER_ACCESS_ALREADY_ENABLED" not in String(e):
-                        raise Error(
-                            "Failed to enable peer access from GPU "
-                            + String(i)
-                            + " to GPU "
-                            + String(j)
-                            + ": "
-                            + String(e)
-                        )
+        # const char *AsyncRT_DeviceContext_enableAllPeerAccess()
+        _checked(
+            external_call[
+                "AsyncRT_DeviceContext_enableAllPeerAccess",
+                _CharPtr,
+            ]()
+        )
 
 
 struct DeviceMulticastBuffer[dtype: DType]:

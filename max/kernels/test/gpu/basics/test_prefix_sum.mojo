@@ -32,7 +32,7 @@ fn warp_prefix_sum_kernel[
     size: Int,
 ):
     var tid = global_idx.x
-    if tid >= size:
+    if tid >= UInt(size):
         return
     output[tid] = warp.prefix_sum[exclusive=exclusive](input[tid])
 
@@ -56,11 +56,10 @@ def test_warp_prefix_sum[exclusive: Bool](ctx: DeviceContext):
 
     # Launch kernel
     var grid_dim = ceildiv(size, BLOCK_SIZE)
-    ctx.enqueue_function[
-        warp_prefix_sum_kernel[dtype=dtype, exclusive=exclusive]
-    ](
-        out_device.unsafe_ptr(),
-        in_device.unsafe_ptr(),
+    alias kernel = warp_prefix_sum_kernel[dtype=dtype, exclusive=exclusive]
+    ctx.enqueue_function_checked[kernel, kernel](
+        out_device,
+        in_device,
         size,
         block_dim=BLOCK_SIZE,
         grid_dim=grid_dim,
@@ -102,7 +101,7 @@ fn block_prefix_sum_kernel[
     size: Int,
 ):
     var tid = global_idx.x
-    if tid >= size:
+    if tid >= UInt(size):
         return
     output[tid] = block.prefix_sum[exclusive=exclusive, block_size=block_size](
         input[tid]
@@ -130,13 +129,12 @@ def test_block_prefix_sum[exclusive: Bool](ctx: DeviceContext):
 
     # Launch kernel
     var grid_dim = ceildiv(size, BLOCK_SIZE)
-    ctx.enqueue_function[
-        block_prefix_sum_kernel[
-            dtype=dtype, block_size=BLOCK_SIZE, exclusive=exclusive
-        ]
-    ](
-        out_device.unsafe_ptr(),
-        in_device.unsafe_ptr(),
+    alias kernel = block_prefix_sum_kernel[
+        dtype=dtype, block_size=BLOCK_SIZE, exclusive=exclusive
+    ]
+    ctx.enqueue_function_checked[kernel, kernel](
+        out_device,
+        in_device,
         size,
         block_dim=BLOCK_SIZE,
         grid_dim=grid_dim,

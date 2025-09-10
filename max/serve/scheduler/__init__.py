@@ -12,21 +12,31 @@
 # ===----------------------------------------------------------------------=== #
 from __future__ import annotations
 
-from typing import TypeVar
+from typing import TypeVar, Union
 
-import zmq
-from max.interfaces import AudioGenerator, EmbeddingsGenerator, Pipeline
+from max.interfaces import (
+    AudioGenerator,
+    AudioGeneratorOutput,
+    EmbeddingsGenerator,
+    EmbeddingsOutput,
+    Pipeline,
+    RequestID,
+    Scheduler,
+    SchedulerResult,
+    TextGenerationOutput,
+)
 from max.nn.kv_cache import PagedKVCacheManager
-from max.pipelines.core import TTSContext
+from max.pipelines.core import TextAndVisionContext, TextContext, TTSContext
 from max.pipelines.lib import PipelineConfig, PipelineRole
 from max.serve.config import Settings
 from max.serve.kvcache_agent.dispatcher_client import DispatcherClient
+from max.serve.queue.zmq_queue import create_zmq_push_pull_queues
 
 from .audio_generation_scheduler import (
     AudioGenerationScheduler,
     AudioGenerationSchedulerConfig,
 )
-from .base import PrefillRequest, PrefillResponse, Scheduler
+from .base import PrefillRequest, PrefillResponse
 from .decode_scheduler import load_decode_scheduler
 from .embeddings_scheduler import EmbeddingsScheduler, EmbeddingsSchedulerConfig
 from .prefill_scheduler import load_prefill_scheduler
@@ -39,7 +49,6 @@ __all__ = [
     "EmbeddingsSchedulerConfig",
     "PrefillRequest",
     "PrefillResponse",
-    "Scheduler",
     "load_scheduler",
 ]
 
@@ -50,7 +59,6 @@ def load_scheduler(
     pipeline: Pipeline | EmbeddingsGenerator | AudioGenerator[TTSContext],
     pipeline_config: PipelineConfig,
     settings: Settings,
-    dispatcher_client: DispatcherClient | None = None,
 ) -> Scheduler:
     if isinstance(pipeline, EmbeddingsGenerator):
         embeddings_scheduler_config = EmbeddingsSchedulerConfig(
@@ -58,12 +66,26 @@ def load_scheduler(
             if pipeline_config.max_batch_size is not None
             else 1
         )
+
+        _, eb_request_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.request_zmq_endpoint,
+            payload_type=tuple[RequestID, TextContext],
+        )
+
+        eb_response_push_queue, _ = create_zmq_push_pull_queues(
+            endpoint=settings.response_zmq_endpoint,
+            payload_type=dict[RequestID, SchedulerResult[EmbeddingsOutput]],
+        )
+
+        _, eb_cancel_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.cancel_zmq_endpoint, payload_type=list[RequestID]
+        )
         return EmbeddingsScheduler(
             scheduler_config=embeddings_scheduler_config,
             pipeline=pipeline,
-            request_zmq_endpoint=settings.request_zmq_endpoint,
-            response_zmq_endpoint=settings.response_zmq_endpoint,
-            cancel_zmq_endpoint=settings.cancel_zmq_endpoint,
+            request_queue=eb_request_pull_queue,
+            response_queue=eb_response_push_queue,
+            cancel_queue=eb_cancel_pull_queue,
         )
     elif pipeline.__class__.__name__ == "AudioGeneratorPipeline":
         assert isinstance(pipeline, AudioGenerator)
@@ -86,46 +108,84 @@ def load_scheduler(
             min_batch_size_tg=pipeline_config.min_batch_size_tg,
             ce_delay_ms=pipeline_config.ce_delay_ms,
             enable_prioritize_first_decode=pipeline_config.enable_prioritize_first_decode,
+            data_parallel_degree=pipeline_config.model_config.data_parallel_degree,
+        )
+
+        _, ag_request_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.request_zmq_endpoint,
+            payload_type=tuple[RequestID, TTSContext],
+        )
+
+        ag_response_push_queue, _ = create_zmq_push_pull_queues(
+            endpoint=settings.response_zmq_endpoint,
+            payload_type=dict[RequestID, SchedulerResult[AudioGeneratorOutput]],
+        )
+
+        _, ag_cancel_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.cancel_zmq_endpoint, payload_type=list[RequestID]
         )
 
         return AudioGenerationScheduler(
             scheduler_config=token_gen_config,
             pipeline=pipeline,
-            request_zmq_endpoint=settings.request_zmq_endpoint,
-            response_zmq_endpoint=settings.response_zmq_endpoint,
-            cancel_zmq_endpoint=settings.cancel_zmq_endpoint,
+            request_queue=ag_request_pull_queue,
+            response_queue=ag_response_push_queue,
+            cancel_queue=ag_cancel_pull_queue,
             paged_manager=paged_manager,
         )
     elif pipeline_config.pipeline_role == PipelineRole.PrefillAndDecode:
         assert isinstance(pipeline, Pipeline)
+        _, pd_request_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.request_zmq_endpoint,
+            payload_type=tuple[
+                RequestID, Union[TextContext, TextAndVisionContext]
+            ],
+        )
+
+        pd_response_push_queue, _ = create_zmq_push_pull_queues(
+            endpoint=settings.response_zmq_endpoint,
+            payload_type=dict[RequestID, SchedulerResult[TextGenerationOutput]],
+        )
+
+        _, pd_cancel_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.cancel_zmq_endpoint, payload_type=list[RequestID]
+        )
         return load_text_generation_scheduler(
-            settings,
             pipeline,
             pipeline_config,
+            request_queue=pd_request_pull_queue,
+            response_queue=pd_response_push_queue,
+            cancel_queue=pd_cancel_pull_queue,
         )
     elif pipeline_config.pipeline_role == PipelineRole.DecodeOnly:
         assert isinstance(pipeline, Pipeline)
-        if dispatcher_client is None:
-            raise ValueError(
-                "Dispatcher client is required for decode scheduler"
-            )
+        _, ds_request_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.request_zmq_endpoint,
+            payload_type=tuple[
+                RequestID, Union[TextContext, TextAndVisionContext]
+            ],
+        )
+
+        ds_response_push_queue, _ = create_zmq_push_pull_queues(
+            endpoint=settings.response_zmq_endpoint,
+            payload_type=dict[RequestID, SchedulerResult[TextGenerationOutput]],
+        )
+
+        _, ds_cancel_pull_queue = create_zmq_push_pull_queues(
+            endpoint=settings.cancel_zmq_endpoint, payload_type=list[RequestID]
+        )
+
         return load_decode_scheduler(
-            settings,
             pipeline,
             pipeline_config,
-            dispatcher_client=dispatcher_client,
+            request_queue=ds_request_pull_queue,
+            response_queue=ds_response_push_queue,
+            cancel_queue=ds_cancel_pull_queue,
+            settings=settings,
         )
     elif pipeline_config.pipeline_role == PipelineRole.PrefillOnly:
         assert isinstance(pipeline, Pipeline)
-        if dispatcher_client is None:
-            raise ValueError(
-                "Dispatcher client is required for prefill scheduler"
-            )
-        return load_prefill_scheduler(
-            pipeline,
-            pipeline_config,
-            dispatcher_client=dispatcher_client,
-        )
+        return load_prefill_scheduler(pipeline, pipeline_config, settings)
     else:
         raise ValueError(
             f"No scheduler support for pipeline_role ({pipeline_config.pipeline_role})."

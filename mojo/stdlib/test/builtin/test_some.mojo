@@ -21,7 +21,7 @@ struct Foo[z: Int]:
 
 @fieldwise_init
 struct Bar[x: Int, //, y: Int, *, foo: Foo[x], bar: Foo[y] = Foo[y]()](
-    Intable, Copyable
+    Intable, ImplicitlyCopyable
 ):
     fn __int__(self) -> Int:
         return self.x + self.y + self.foo.z + self.bar.z
@@ -48,7 +48,7 @@ def test_some_param():
 
 
 fn takes_multiple_traits(x: Some[Intable & Copyable]) -> __type_of(x):
-    return x
+    return x.copy()
 
 
 def test_some_return():

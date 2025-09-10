@@ -30,9 +30,7 @@ alias CUDA_CURAND_LIBRARY_PATHS = List[Path](
     "/usr/local/cuda/lib64/libcurand.so.10",
 )
 
-alias CUDA_CURAND_LIBRARY = _Global[
-    "CUDA_CURAND_LIBRARY", _OwnedDLHandle, _init_dylib
-]
+alias CUDA_CURAND_LIBRARY = _Global["CUDA_CURAND_LIBRARY", _init_dylib]
 
 
 fn _init_dylib() -> _OwnedDLHandle:
@@ -180,7 +178,7 @@ fn curandGetProperty(
 
 @fieldwise_init
 @register_passable("trivial")
-struct curandRngType(Writable):
+struct curandRngType(EqualityComparable, Identifiable, Writable):
     """
     CURAND generator types
     ."""
@@ -205,14 +203,8 @@ struct curandRngType(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -534,7 +526,7 @@ alias curandGenerator_t = UnsafePointer[curandGenerator_st]
 
 @fieldwise_init
 @register_passable("trivial")
-struct curandMethod(Writable):
+struct curandMethod(EqualityComparable, Identifiable, Writable):
     """\\cond UNHIDE_ENUMS ."""
 
     var _value: Int8
@@ -559,14 +551,8 @@ struct curandMethod(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -696,7 +682,7 @@ alias curandMethod_t = curandMethod
 
 @fieldwise_init
 @register_passable("trivial")
-struct curandStatus(Writable):
+struct curandStatus(EqualityComparable, Identifiable, Writable):
     """
     CURAND function call status types
     ."""
@@ -722,14 +708,8 @@ struct curandStatus(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -775,7 +755,7 @@ struct curandStatus(Writable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct curandDirectionVectorSet(Writable):
+struct curandDirectionVectorSet(EqualityComparable, Identifiable, Writable):
     """
     CURAND choice of direction vector set
     ."""
@@ -792,14 +772,8 @@ struct curandDirectionVectorSet(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -1244,7 +1218,7 @@ alias curandDirectionVectors64_t = StaticTuple[UInt64, 64]
 
 @fieldwise_init
 @register_passable("trivial")
-struct curandOrdering(Writable):
+struct curandOrdering(EqualityComparable, Identifiable, Writable):
     """
     CURAND ordering of results in memory
     ."""
@@ -1263,14 +1237,8 @@ struct curandOrdering(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):

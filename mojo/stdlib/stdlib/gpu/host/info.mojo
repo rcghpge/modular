@@ -31,7 +31,7 @@ alias _KB = 1024
 
 @fieldwise_init
 @register_passable
-struct Vendor(Writable):
+struct Vendor(Identifiable, Writable):
     """Represents GPU vendors.
 
     This struct provides identifiers for different GPU vendors and utility
@@ -89,17 +89,6 @@ struct Vendor(Writable):
             True if vendors are identical, False otherwise.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """Negative identity comparison for vendors.
-
-        Args:
-            other: The Vendor to compare with.
-
-        Returns:
-            True if vendors are not identical, False otherwise.
-        """
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -610,7 +599,7 @@ fn _get_b100_target() -> _TargetType:
     return __mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `arch = "sm_100a", `,
-        `features = "+ptx86,+sm_100a", `,
+        `features = "+ptx88,+sm_100a", `,
         `tune_cpu = "sm_100a", `,
         `data_layout = "e-p3:32:32-p4:32:32-p5:32:32-p6:32:32-p7:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
         `index_bit_width = 64,`,
@@ -1287,7 +1276,7 @@ alias Radeon860m = GPUInfo(
 
 @fieldwise_init
 @register_passable
-struct GPUInfo(Stringable, Writable):
+struct GPUInfo(Identifiable, Stringable, Writable):
     """
     Comprehensive information about a GPU architecture.
 
@@ -1521,18 +1510,6 @@ struct GPUInfo(Stringable, Writable):
             True if both instances represent the same GPU model.
         """
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        """
-        Negative identity comparison operator for `GPUInfo` instances.
-
-        Args:
-            other: Another `GPUInfo` instance to compare against.
-
-        Returns:
-            True if instances represent different GPU models.
-        """
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):

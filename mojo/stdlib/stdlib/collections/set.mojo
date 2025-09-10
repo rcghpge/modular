@@ -399,7 +399,7 @@ struct Set[T: KeyElement, H: Hasher = default_hasher](
             A new set containing any elements which appear in either
             this set or the `other` set.
         """
-        var result = self
+        var result = self.copy()
         for o in other:
             result.add(o)
 

@@ -62,7 +62,7 @@ from layout.tensor_builder import LayoutTensorBuild as tb
 
 
 @fieldwise_init
-struct GEMVAlgorithm(Copyable, Movable, Stringable, Writable):
+struct GEMVAlgorithm(ImplicitlyCopyable, Movable, Stringable, Writable):
     var _value: Int
 
     alias GEMV_KERNEL = Self(0)
@@ -299,7 +299,7 @@ fn gemv_split_k[
             # of rows in the weight matrix.
             @parameter
             if check_bounds:
-                if i + tile_id_n >= n:
+                if i + tile_id_n >= UInt(n):
                     continue
             var b_vec = weight_tile.vectorize[1, simd_width]()[i, thread_idx.x]
             tile_w.store[simd_width](i, 0, rebind[WeightVecType](b_vec))
@@ -313,7 +313,7 @@ fn gemv_split_k[
             # tile_m is 1.
             @parameter
             if check_bounds:
-                if i + tile_id_m >= m:
+                if i + tile_id_m >= UInt(m):
                     continue
             var act_vec = act_tile.vectorize[1, simd_width]()[i, thread_idx.x]
 
@@ -621,7 +621,7 @@ fn gemv_gpu_dispatch[
                         k,
                         grid_dim=ceildiv(m, block_dim // WARP_SIZE),
                         block_dim=block_dim,
-                        attributes=launch_attributes,
+                        attributes=launch_attributes^,
                     )
                 else:
                     alias kernel = gemv_kernel_vector[
@@ -881,12 +881,12 @@ fn gemv[
     @always_inline
     @parameter
     fn input_fn[
-        type: DType, width: Int, rank: Int
-    ](idx: IndexList[rank]) -> SIMD[type, width]:
+        dtype: DType, width: Int, rank: Int
+    ](idx: IndexList[rank]) -> SIMD[dtype, width]:
         return (
-            a_buf.load[width=width](Index(idx[0], idx[1])).cast[type]()
-            * b_buf.load[width=width](idx[1]).cast[type]()
-        ).cast[type]()
+            a_buf.load[width=width](Index(idx[0], idx[1])).cast[dtype]()
+            * b_buf.load[width=width](idx[1]).cast[dtype]()
+        ).cast[dtype]()
 
     @always_inline
     @parameter
@@ -926,11 +926,11 @@ fn naive_gemv[
     c_size: Dim,
     a_shape: DimList,
     b_size: Dim,
-    type: DType,
+    dtype: DType,
 ](
-    c_buf: NDBuffer[mut=True, type, 1, _, c_size],
-    a_buf: NDBuffer[type, 2, _, a_shape],
-    b_buf: NDBuffer[type, 1, _, b_size],
+    c_buf: NDBuffer[mut=True, dtype, 1, _, c_size],
+    a_buf: NDBuffer[dtype, 2, _, a_shape],
+    b_buf: NDBuffer[dtype, 1, _, b_size],
 ):
     var M = a_buf.dim[0]()
     var K = a_buf.dim[1]()

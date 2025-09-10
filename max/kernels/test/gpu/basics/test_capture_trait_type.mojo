@@ -25,7 +25,7 @@ trait BaseT:
 
 @fieldwise_init
 @register_passable("trivial")
-struct ImplT(BaseT, Copyable, Movable):
+struct ImplT(BaseT, ImplicitlyCopyable, Movable):
     alias rank = 1
     var values: NDBuffer[DType.float32, Self.rank, MutableAnyOrigin]
 
@@ -43,7 +43,10 @@ def trait_repro_sub[t: BaseT](thing: t, ctx: DeviceContext, size: Int):
         var idx = thread_idx.x
         print(Float32(thing.get_val(idx)) * 2)
 
-    ctx.enqueue_function[kernel_fn](grid_dim=(1,), block_dim=(size))
+    alias kernel = kernel_fn
+    ctx.enqueue_function_checked[kernel, kernel](
+        grid_dim=(1,), block_dim=(size)
+    )
 
 
 def trait_repro(ctx: DeviceContext):

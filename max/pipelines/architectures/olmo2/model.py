@@ -13,11 +13,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Literal, Optional
 
 from max.driver import Tensor
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph, TensorValue
+from max.graph import DeviceRef, Graph
 from max.graph.weights import Weights, WeightsAdapter
 
 from ..llama3.model import LlamaModelBase
@@ -39,9 +39,6 @@ class Olmo2Model(LlamaModelBase):
 
     attention_bias: bool = False
     """Whether to use attention bias."""
-
-    logits_postprocessor: Callable[[TensorValue], TensorValue] | None = None
-    """Postprocessor for the logits."""
 
     state_dict: dict[str, Any]
     """Weights to load into the model."""
@@ -65,7 +62,6 @@ class Olmo2Model(LlamaModelBase):
             state_dict=state_dict,
             dtype=self.dtype,
             n_devices=len(self.devices),
-            logits_postprocessor=self.logits_postprocessor,
             norm_method=self.norm_method,
             attention_bias=self.attention_bias,
             cache_dtype=self.encoding.cache_dtype,
@@ -73,14 +69,14 @@ class Olmo2Model(LlamaModelBase):
             return_logits=self.return_logits,
         )
 
-        # Get Graph Inputs
-        graph_inputs = self.graph_inputs()
-
         # Build Graph - only single GPU for now
         if len(self.devices) > 1:
             raise NotImplementedError("Multi-GPU OLMo2 is not implemented yet")
 
         nn_model = Olmo2(model_config)
+
+        # Get Graph Inputs
+        graph_inputs = nn_model.input_types(self.kv_manager)
 
         # Load weights.
         nn_model.load_state_dict(

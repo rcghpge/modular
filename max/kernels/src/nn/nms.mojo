@@ -19,7 +19,7 @@ from utils import IndexList
 
 
 @fieldwise_init
-struct BoundingBox[dtype: DType](Copyable, Movable):
+struct BoundingBox[dtype: DType](ImplicitlyCopyable, Movable):
     var nw: SIMD[dtype, 2]
     var se: SIMD[dtype, 2]
 
@@ -249,6 +249,7 @@ fn non_max_suppression[
                 )
 
             @always_inline
+            @parameter
             fn sorted() -> Bool:
                 for i in range(len(box_idxs) - 1):
                     if (

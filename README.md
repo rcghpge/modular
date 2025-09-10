@@ -4,7 +4,7 @@
 [![Bandit](https://github.com/rcghpge/modular/actions/workflows/bandit.yml/badge.svg)](https://github.com/rcghpge/modular/actions/workflows/bandit.yml)
 
 <div align="center">
-    <img src="https://modular-assets.s3.amazonaws.com/images/GitHubBannerModular.png">
+    <img src="https://modular-assets.s3.amazonaws.com/images/modular_github_logo_bg.png">
 
   [About Modular] | [Get started] | [API docs] | [Contributing] | [Changelog]
 </div>

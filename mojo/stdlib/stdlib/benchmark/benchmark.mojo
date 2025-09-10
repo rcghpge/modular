@@ -149,7 +149,7 @@ from testing import assert_equal
 # ===-----------------------------------------------------------------------===#
 @fieldwise_init
 @register_passable("trivial")
-struct Batch(Copyable, Movable):
+struct Batch(ImplicitlyCopyable, Movable):
     """
     A batch of benchmarks, the benchmark.run() function works out how many
     iterations to run in each batch based the how long the previous iterations
@@ -224,16 +224,6 @@ struct Report(Copyable, Defaultable, Movable):
         """
         self.warmup_duration = 0
         self.runs = List[Batch]()
-
-    fn __copyinit__(out self, existing: Self):
-        """
-        Creates a shallow copy (it doesn't copy the data).
-
-        Args:
-            existing: The `Report` to copy.
-        """
-        self.warmup_duration = existing.warmup_duration
-        self.runs = existing.runs
 
     fn iters(self) -> Int:
         """
@@ -642,7 +632,7 @@ fn _run_impl(opts: _RunOptions) raises -> Report:
             i, report.runs[i], len(report.runs), opts
         ):
             report.runs[i]._mark_as_significant()
-    return report
+    return report^
 
 
 fn _is_significant_measurement(

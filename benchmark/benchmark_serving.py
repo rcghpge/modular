@@ -859,7 +859,7 @@ async def benchmark(
     if do_test_prompt:
         logger.info("Starting initial single prompt test run...")
         test_prompt: Union[str, list[dict]]
-        if args.num_chat_sessions:
+        if num_chat_sessions:
             test_question = chat_sessions[0].messages[0]
             test_answer = chat_sessions[0].messages[1]
             test_prompt = [
@@ -1280,10 +1280,8 @@ def main(args: argparse.Namespace) -> None:
 
     if args.base_url is not None:
         api_url = f"{args.base_url}{args.endpoint}"
-        base_url = f"{args.base_url}"
     else:
         api_url = f"http://{args.host}:{args.port}{args.endpoint}"
-        base_url = f"http://{args.host}:{args.port}"
 
     logger.info(f"getting tokenizer. api url: {api_url}")
     tokenizer = get_tokenizer(
@@ -1608,7 +1606,7 @@ def main(args: argparse.Namespace) -> None:
         output_lens_dict = {}
         output_lens_dict["args"] = {x: vars(args)[x] for x in args_to_save}
         output_lens_dict["output_lengths"] = benchmark_result["output_lens"]
-        with args.record_output_lengths as f:
+        with open(args.record_output_lengths, "w") as f:
             yaml.dump(output_lens_dict, f)
 
     logger.info("finished benchmark run: Success.")
@@ -1633,15 +1631,6 @@ def parse_args() -> argparse.Namespace:
             "Make sure that the MAX server is running and hosting a model "
             "before running this script."
         ),
-    )
-
-    # Additional arguments
-    parser.add_argument(
-        "--record-output-lengths",
-        type=argparse.FileType("w"),
-        default=None,
-        metavar="/path/to/save/outputs",
-        help="Save output lengths to given file in YAML format",
     )
 
     return parser.parse_args()

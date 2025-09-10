@@ -93,7 +93,8 @@ struct Dim(Stringable, Writable):
 
     @implicit
     fn __init__[
-        I0: Indexer & Copyable & Movable, I1: Indexer & Copyable & Movable, //
+        I0: Indexer & Copyable & Movable,
+        I1: Indexer & Copyable & Movable, //,
     ](out self, dims: (I0, I1)):
         """Initializes Dim with a tuple of two indexable values.
 

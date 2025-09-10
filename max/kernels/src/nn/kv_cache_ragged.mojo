@@ -107,6 +107,7 @@ fn generic_fused_qkv_matmul_kv_cache_cont_batch_ragged[
         + ".hdim_"
         + String(kv_collection.kv_params.head_size),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         return _fused_qkv_matmul_kv_cache_ragged[
             kv_collection.CacheType, target=target
@@ -171,6 +172,7 @@ fn generic_fused_qkv_matmul_kv_cache_paged_ragged[
     with Trace[TraceLevel.OP, target=target](
         name,
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         return _fused_qkv_matmul_kv_cache_ragged[
             kv_collection.CacheType,
@@ -240,6 +242,7 @@ fn generic_fused_qkv_matmul_kv_cache_paged_ragged_bias[
     with Trace[TraceLevel.OP, target=target](
         name,
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         return _fused_qkv_matmul_kv_cache_ragged_bias[
             kv_collection.CacheType,
@@ -317,6 +320,7 @@ fn generic_fused_qkv_matmul_kv_cache_paged_ragged_scale[
     with Trace[TraceLevel.OP, target=target](
         name,
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         return _fused_qkv_matmul_kv_cache_ragged_scale[
             kv_collection.CacheType,
@@ -563,6 +567,9 @@ fn _fused_qkv_matmul_kv_cache_ragged_impl[
     var qk_offset = q_dim + k_dim
     var batch_size = input_row_offsets.dim[0]() - 1
 
+    if batch_size == 0:
+        return
+
     @parameter
     @__copy_capture(q_dim, qk_offset, batch_size)
     @always_inline
@@ -700,6 +707,9 @@ fn _fused_qkv_matmul_kv_cache_ragged_impl_bias[
     var k_dim = kv_params.head_size * kv_params.num_heads
     var qk_offset = q_dim + k_dim
     var batch_size = input_row_offsets.dim[0]() - 1
+
+    if batch_size == 0:
+        return
 
     @parameter
     @__copy_capture(q_dim, qk_offset, batch_size)
@@ -839,6 +849,9 @@ fn _fused_qkv_matmul_kv_cache_ragged_impl_scale[
     var k_dim = kv_params.head_size * kv_params.num_heads
     var qk_offset = q_dim + k_dim
     var batch_size = input_row_offsets.dim[0]() - 1
+
+    if batch_size == 0:
+        return
 
     # Here we decide the quantization scheme for the QKV Tensor.
     alias use_per_tensor = (
@@ -1065,6 +1078,7 @@ fn kv_matmul_ragged_paged[
         + ".hdim_"
         + String(kv_collection.kv_params.head_size),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         return _matmul_kv_cache_ragged[target=target](
             hidden_state,
@@ -1275,6 +1289,7 @@ fn k_matmul_ragged_paged[
         + ".hdim_"
         + String(kv_collection.kv_params.head_size),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(ctx.get_device_context().id()),
     ):
         return _matmul_k_cache_ragged[target=target](
             hidden_state,
@@ -1770,6 +1785,7 @@ fn generic_fused_qk_rope_bshd_continuous_batch_ragged[
         + ".hdim_"
         + String(kv_collection.kv_params.head_size),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.get_device_context().id()),
     ):
 
         @parameter
@@ -1861,6 +1877,7 @@ fn generic_fused_qk_rope_bshd_paged_ragged[
     with Trace[TraceLevel.OP, target=target](
         name,
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.get_device_context().id()),
     ):
 
         @parameter
@@ -1946,6 +1963,7 @@ fn generic_flash_attention_kv_cache_ragged[
     with Trace[TraceLevel.OP, target=target](
         name,
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.get_device_context().id()),
     ):
         return _flash_attention_dispatch[
             target=target,
@@ -1983,6 +2001,11 @@ fn _flash_attention_dispatch[
 ) raises:
     var k = kv_cache.get_key_cache(Int(layer_idx))
     var v = kv_cache.get_value_cache(Int(layer_idx))
+
+    var has_inputs = q.dim[0]() > 0
+    if not has_inputs:
+        # no-op if there are no inputs
+        return
 
     @parameter
     @__copy_capture(k, v)
@@ -2083,6 +2106,7 @@ fn generic_flash_attention_kv_cache_ragged_sink[
     with Trace[TraceLevel.OP, target=target](
         name,
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.get_device_context().id()),
     ):
         return _flash_attention_dispatch[
             target=target,
@@ -2146,6 +2170,7 @@ fn generic_flare_mla_decode_kv_cache_ragged[
         + ".hdim_"
         + String(collection_t.kv_params.head_size),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.get_device_context().id()),
     ):
         return _flare_mla_decode_kv_cache_ragged[
             target=target,
@@ -2280,6 +2305,7 @@ fn generic_flare_mla_prefill_kv_cache_ragged[
         + ".hdim_"
         + String(collection_t.kv_params.head_size),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.get_device_context().id()),
     ):
         return _flare_mla_prefill_kv_cache_ragged[
             write_softmax_info=write_softmax_info,
@@ -2422,7 +2448,8 @@ fn generic_flare_mla_prefill_ragged_paged_plan[
     var k = kv_collection.get_key_cache(layer_idx_cast)
 
     with Trace[TraceLevel.OP, target=target](
-        "mo.mla.prefill.ragged.paged.plan"
+        "mo.mla.prefill.ragged.paged.plan",
+        task_id=Int(context.get_device_context().id()),
     ):
         mla_prefill_plan(
             buffer_row_offsets,
@@ -2625,6 +2652,7 @@ fn generic_cross_attention_kv_cache[
         + ".hdim_"
         + String(collection_t.kv_params.head_size),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=Int(context.get_device_context().id()),
     ):
         return _cross_attention_dispatch[
             target=target,

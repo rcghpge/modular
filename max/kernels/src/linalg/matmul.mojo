@@ -57,7 +57,7 @@ from .utils import (
 # - _run_inner_loop_i8mm()
 
 
-trait InnerMatmulKernel(Copyable):
+trait InnerMatmulKernel(ImplicitlyCopyable):
     fn __inner_matmul__[
         kernel_rows: Int,
         kernel_cols: Int,
@@ -184,7 +184,7 @@ struct TiledMatmul[
     c_shape: DimList,
     c_origin: MutableOrigin,
     algorithm: InnerMatmulKernel,
-](Copyable, Movable):
+](ImplicitlyCopyable, Movable):
     """Tiled matmul implementation integrating packing, inner loop and tile
     partitions.
 
@@ -826,6 +826,10 @@ fn matmul[
         "expected DeviceContext to be provided if target != cpu",
     )
 
+    # If any of the dimensions are 0, we can skip the kernel.
+    if c.dim[0]() == 0 or c.dim[1]() == 0:
+        return
+
     @always_inline
     @parameter
     fn description_fn() -> String:
@@ -852,6 +856,7 @@ fn matmul[
             ")" if _trace_description else "matmul",
         ](),
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=OptionalReg(Int(ctx.value().id())) if ctx else None,
     ):
 
         @parameter

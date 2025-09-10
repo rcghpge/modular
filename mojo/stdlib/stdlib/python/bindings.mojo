@@ -40,8 +40,8 @@ from builtin._startup import _ensure_current_or_global_runtime_init
 # ===-----------------------------------------------------------------------===#
 
 alias MOJO_PYTHON_TYPE_OBJECTS = _Global[
+    StorageType = Dict[StaticString, PythonObject],
     "MOJO_PYTHON_TYPE_OBJECTS",
-    Dict[StaticString, PythonObject],
     Dict[StaticString, PythonObject].__init__,
 ]
 """Mapping of Mojo type identifiers to unique `PyTypeObject*` binding
@@ -512,8 +512,10 @@ struct PythonModuleBuilder:
             declared functions or types to the module.
         """
 
-        Python.add_functions(self.module, self.functions)
-        self.functions.clear()
+        var functions = self.functions^
+        self.functions = List[PyMethodDef]()
+
+        Python.add_functions(self.module, functions^)
 
         for ref builder in self.type_builders:
             builder.finalize(self.module)
@@ -525,7 +527,7 @@ struct PythonModuleBuilder:
         return self.module
 
 
-struct PythonTypeBuilder(Copyable, Movable):
+struct PythonTypeBuilder(ImplicitlyCopyable, Movable):
     """A builder for a Python 'type' binding.
 
     This is typically used to build a type description of a `PyMojoObject[T]`.
@@ -576,6 +578,18 @@ struct PythonTypeBuilder(Copyable, Movable):
         self.basicsize = basicsize
         self._slots = {}
         self.methods = []
+
+    fn __copyinit__(out self, existing: Self):
+        """Copy an existing type builder.
+
+        Args:
+            existing: The existing type builder.
+        """
+        self.type_name = existing.type_name
+        self._type_id = existing._type_id
+        self.basicsize = existing.basicsize
+        self._slots = existing._slots.copy()
+        self.methods = existing.methods.copy()
 
     @staticmethod
     fn bind[T: Representable](type_name: StaticString) -> PythonTypeBuilder:

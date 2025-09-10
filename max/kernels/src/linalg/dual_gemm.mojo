@@ -54,7 +54,7 @@ from memory import memset_zero, stack_allocation
 from memory.pointer import _GPUAddressSpace as AddressSpace
 from register import register_internal
 from runtime.asyncrt import DeviceContextPtr
-from runtime.tracing import Trace, TraceLevel, trace_arg
+from runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
 
 from utils import StaticTuple
 from utils.index import Index, IndexList
@@ -522,18 +522,7 @@ fn multistage_dual_gemm_kernel[
         alignment = a_smem.alignment,
         circular=True,
     ](
-        rebind[
-            __type_of(
-                LayoutTensorIter[
-                    a_type,
-                    Layout.row_major(BM, BK),
-                    MutableAnyOrigin,
-                    address_space = a_smem.address_space,
-                    alignment = a_smem.alignment,
-                    circular=True,
-                ]().ptr
-            )
-        ](a_smem),
+        a_smem,
         a_smem_size,
     )
 
@@ -767,8 +756,8 @@ fn multistage_dual_gemm_kernel[
 
 
 fn swilu[
-    type: DType, width: Int
-](x: SIMD[type, width], y: SIMD[type, width]) -> SIMD[type, width]:
+    dtype: DType, width: Int
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[dtype, width]:
     return (x * y) / (1 + exp(-x))
 
 
@@ -1395,5 +1384,6 @@ fn swishGLU[
     with Trace[TraceLevel.OP, target=target](
         "swish_glu",
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        task_id=get_safe_task_id(ctx),
     ):
         dual_gemm[transpose_b=True](c, a, b0, b1, ctx=ctx.get_device_context())

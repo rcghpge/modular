@@ -33,7 +33,7 @@ from ._cpython import (
 )
 from .python_object import PythonObject
 
-alias _PYTHON_GLOBAL = _Global["Python", _PythonGlobal, _init_python_global]
+alias _PYTHON_GLOBAL = _Global["Python", _init_python_global]
 
 
 fn _init_python_global() -> _PythonGlobal:
@@ -67,7 +67,7 @@ fn _get_python_interface() -> Pointer[CPython, StaticConstantOrigin]:
     return Pointer(to=ptr2[])
 
 
-struct Python(Copyable, Defaultable):
+struct Python(Defaultable, ImplicitlyCopyable):
     """Provides methods that help you use Python code in Mojo."""
 
     var _impl: Pointer[CPython, StaticConstantOrigin]
@@ -373,7 +373,7 @@ struct Python(Copyable, Defaultable):
             if not key:
                 raise cpy.unsafe_get_error()
 
-            var val = entry.value.to_python_object()
+            var val = entry.value.copy().to_python_object()
             var errno = cpy.PyDict_SetItem(dict_obj, key, val._obj_ptr)
             cpy.Py_DecRef(key)
             if errno == -1:
@@ -434,8 +434,8 @@ struct Python(Copyable, Defaultable):
             raise Error("internal error: PyDict_New failed")
 
         for i in range(len(tuples)):
-            var key_obj = tuples[i][0].to_python_object()
-            var val_obj = tuples[i][1].to_python_object()
+            var key_obj = tuples[i][0].copy().to_python_object()
+            var val_obj = tuples[i][1].copy().to_python_object()
             var result = cpython.PyDict_SetItem(
                 dict_obj_ptr, key_obj._obj_ptr, val_obj._obj_ptr
             )
@@ -463,7 +463,7 @@ struct Python(Copyable, Defaultable):
         var obj_ptr = cpython.PyList_New(len(values))
 
         for i in range(len(values)):
-            var obj = values[i].to_python_object()
+            var obj = values[i].copy().to_python_object()
             cpython.Py_IncRef(obj._obj_ptr)
             _ = cpython.PyList_SetItem(obj_ptr, i, obj._obj_ptr)
         return PythonObject(from_owned=obj_ptr)
@@ -490,7 +490,7 @@ struct Python(Copyable, Defaultable):
 
         @parameter
         for i in range(len(VariadicList(Ts))):
-            var obj = values[i].to_python_object()
+            var obj = values[i].copy().to_python_object()
             cpython.Py_IncRef(obj._obj_ptr)
             _ = cpython.PyList_SetItem(obj_ptr, i, obj._obj_ptr)
         return PythonObject(from_owned=obj_ptr)
@@ -535,7 +535,7 @@ struct Python(Copyable, Defaultable):
 
         @parameter
         for i in range(len(VariadicList(Ts))):
-            var obj = values[i].to_python_object()
+            var obj = values[i].copy().to_python_object()
             cpython.Py_IncRef(obj._obj_ptr)
             _ = cpython.PyTuple_SetItem(obj_ptr, i, obj._obj_ptr)
         return PythonObject(from_owned=obj_ptr)

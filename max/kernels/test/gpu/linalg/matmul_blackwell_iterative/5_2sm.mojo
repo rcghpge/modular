@@ -307,14 +307,14 @@ fn kernel_5[
                 a_tma_op.async_multicast_load[cta_group](
                     a_smem_slice,
                     tma_mbar[0],
-                    (UInt(i) * BK + k, a_gmem_slice_coord),
+                    (UInt(i * BK + k), UInt(a_gmem_slice_coord)),
                     a_multicast_mask,
                 )
 
                 b_tma_op.async_multicast_load[cta_group](
                     b_smem_slice,
                     tma_mbar[0],
-                    (UInt(i) * BK + k, b_gmem_slice_coord),
+                    (UInt(i * BK + k), UInt(b_gmem_slice_coord)),
                     b_multicast_mask,
                 )
 
@@ -419,7 +419,7 @@ fn kernel_5[
                         UNKNOWN_VALUE,
                     ),
                 )
-            ](thread_idx.x % 32, i, 0, 0)
+            ](lane_id(), i, 0, 0)
 
             var d_reg_upper_packed = bitcast[DType.float32, 4](d_reg_upper)
             var d_reg_lower_packed = bitcast[DType.float32, 4](d_reg_lower)
@@ -442,7 +442,7 @@ fn kernel_5[
     # SMEM -> GMEM: Direct TMA store
     # UMMA (tensor memory) → registers → shared memory → global memory
     #           c_frag                   c_smem_tile      c_tma_op
-    if elect_one_warp and thread_idx.x < NUM_TMA_TILES:
+    if elect_one_warp and thread_idx.x < UInt(NUM_TMA_TILES):
         var row_start = block_idx.x * BM
 
         var col_start = block_idx.y * MMA_N + thread_idx.x * TMA_BN
@@ -458,7 +458,7 @@ fn kernel_5[
             alignment=128,
         ](c_smem_offset)
 
-        c_tma_op.async_store(c_tma_tile, (col_start, row_start))
+        c_tma_op.async_store(c_tma_tile, (UInt(col_start), UInt(row_start)))
         c_tma_op.commit_group()
         c_tma_op.wait_group[0]()
 
@@ -489,14 +489,14 @@ fn blackwell_kernel_5[
     c_device: NDBuffer[c_type, 2, _, c_shape],
     a_device: NDBuffer[a_type, 2, _, a_shape],
     b_device: NDBuffer[b_type, 2, _, b_shape],
-    M: Int,
-    N: Int,
-    K: Int,
     ctx: DeviceContext,
 ) raises:
     var a = from_ndbuffer_row_major(a_device)
     var b = from_ndbuffer_row_major(b_device)
     var c = from_ndbuffer_row_major(c_device)
+    var M = c.dim[0]()
+    var N = c.dim[1]()
+    var K = a.dim[1]()
 
     constrained[
         transpose_b,
@@ -676,9 +676,6 @@ def test_blackwell_kernel_5[
         c_device.tensor,
         a_device.tensor,
         b_device.tensor,
-        M,
-        N,
-        K,
         ctx,
     )
 
@@ -702,9 +699,6 @@ def test_blackwell_kernel_5[
                 c_device.tensor,
                 a_device.tensor,
                 b_device.tensor,
-                M,
-                N,
-                K,
                 ctx,
             )
 
@@ -772,7 +766,7 @@ fn make_dic_of_shapes() -> (
 ):
     var dic = Dict[Int, Tuple[Int, Int, Int], default_comp_time_hasher]()
     dic[0] = (4096, 4096, 4096)
-    return dic
+    return dic^
 
 
 fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:

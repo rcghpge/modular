@@ -18,9 +18,7 @@ from testing import assert_equal, assert_false, assert_true
 
 from utils import Variant
 
-alias TEST_VARIANT_POISON = _Global[
-    "TEST_VARIANT_POISON", Bool, _initialize_poison
-]
+alias TEST_VARIANT_POISON = _Global["TEST_VARIANT_POISON", _initialize_poison]
 
 
 fn _initialize_poison() -> Bool:
@@ -35,7 +33,7 @@ fn assert_no_poison() raises:
     assert_false(_poison_ptr().take_pointee())
 
 
-struct Poison(Copyable, Movable):
+struct Poison(ImplicitlyCopyable, Movable):
     fn __init__(out self):
         pass
 

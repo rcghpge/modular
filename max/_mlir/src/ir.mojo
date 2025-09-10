@@ -79,7 +79,7 @@ struct DialectRegistry(Defaultable):
 
 
 @register_passable("trivial")
-struct Dialect(Copyable, Movable):
+struct Dialect(ImplicitlyCopyable, Movable):
     alias cType = _c.IR.MlirDialect
     var c: Self.cType
 
@@ -99,7 +99,7 @@ struct Dialect(Copyable, Movable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct DialectHandle(Copyable, Movable):
+struct DialectHandle(ImplicitlyCopyable, Movable):
     alias cType = _c.IR.MlirDialectHandle
     var c: Self.cType
 
@@ -108,7 +108,7 @@ struct DialectHandle(Copyable, Movable):
 
 
 @register_passable("trivial")
-struct Context(Copyable, Defaultable, Movable):
+struct Context(Defaultable, ImplicitlyCopyable, Movable):
     alias cType = _c.IR.MlirContext
     var c: Self.cType
 
@@ -173,7 +173,7 @@ struct Context(Copyable, Defaultable, Movable):
         var result = _c.IR.mlirContextGetOrLoadDialect(
             self.c,
             StaticString(
-                ptr=dialect_name.unsafe_ptr(), length=len(dialect_name)
+                ptr=dialect_name.unsafe_ptr(), length=UInt(len(dialect_name))
             ),
         )
         return Optional(Dialect(result)) if result.ptr else None
@@ -186,7 +186,8 @@ struct Context(Copyable, Defaultable, Movable):
 
     fn is_registered_operation(self, opname: String) -> Bool:
         var result = _c.IR.mlirContextIsRegisteredOperation(
-            self.c, StaticString(ptr=opname.unsafe_ptr(), length=len(opname))
+            self.c,
+            StaticString(ptr=opname.unsafe_ptr(), length=UInt(len(opname))),
         )
         return result
 
@@ -210,7 +211,7 @@ struct Context(Copyable, Defaultable, Movable):
 
 
 @register_passable("trivial")
-struct Location(Copyable, Movable, Stringable, Writable):
+struct Location(ImplicitlyCopyable, Movable, Stringable, Writable):
     alias cType = _c.IR.MlirLocation
     var c: Self.cType
 
@@ -221,7 +222,7 @@ struct Location(Copyable, Movable, Stringable, Writable):
     fn __init__(out self, ctx: Context, filename: String, line: Int, col: Int):
         self.c = _c.IR.mlirLocationFileLineColGet(
             ctx.c,
-            StaticString(ptr=filename.unsafe_ptr(), length=len(filename)),
+            StaticString(ptr=filename.unsafe_ptr(), length=UInt(len(filename))),
             line,
             col,
         )
@@ -257,7 +258,7 @@ struct Location(Copyable, Movable, Stringable, Writable):
 
 
 @register_passable("trivial")
-struct Module(Copyable, Movable, Stringable, Writable):
+struct Module(ImplicitlyCopyable, Movable, Stringable, Writable):
     alias cType = _c.IR.MlirModule
     var c: Self.cType
 
@@ -279,7 +280,8 @@ struct Module(Copyable, Movable, Stringable, Writable):
     fn parse(ctx: Context, module: String) -> Self:
         # TODO: how can this fail?
         var c = _c.IR.mlirModuleCreateParse(
-            ctx.c, StaticString(ptr=module.unsafe_ptr(), length=len(module))
+            ctx.c,
+            StaticString(ptr=module.unsafe_ptr(), length=UInt(len(module))),
         )
         return Self(c)
 
@@ -311,7 +313,7 @@ struct Module(Copyable, Movable, Stringable, Writable):
 
 # Helper class with a bunch of implicit conversions for things that go on
 # Operations.
-struct _OpBuilderList[T: Copyable & Movable](Defaultable):
+struct _OpBuilderList[T: ImplicitlyCopyable & Movable](Defaultable):
     var elements: List[T]
 
     fn __init__(out self):
@@ -331,7 +333,7 @@ struct _OpBuilderList[T: Copyable & Movable](Defaultable):
 
 
 @fieldwise_init
-struct NamedAttribute(Copyable, Movable):
+struct NamedAttribute(ImplicitlyCopyable, Movable):
     alias cType = _c.IR.MlirNamedAttribute
     var name: Identifier
     var attr: Attribute
@@ -348,14 +350,18 @@ struct NamedAttribute(Copyable, Movable):
 
 
 @fieldwise_init
-struct _WriteState(Copyable, Movable):
+struct _WriteState(ImplicitlyCopyable, Movable):
     var handle: UnsafePointer[FileHandle]
     var errors: List[String]
+
+    fn __copyinit__(out self, existing: Self):
+        self.handle = existing.handle
+        self.errors = existing.errors.copy()
 
 
 # TODO: how to correctly destroy "owned" Operations?
 @register_passable("trivial")
-struct Operation(Copyable, Movable, Stringable, Writable):
+struct Operation(ImplicitlyCopyable, Movable, Stringable, Writable):
     alias cType = _c.IR.MlirOperation
     var c: Self.cType
 
@@ -377,7 +383,8 @@ struct Operation(Copyable, Movable, Stringable, Writable):
         successors: _OpBuilderList[Block] = _OpBuilderList[Block](),
     ):
         var state = _c.IR.mlirOperationStateGet(
-            StaticString(ptr=name.unsafe_ptr(), length=len(name)), location.c
+            StaticString(ptr=name.unsafe_ptr(), length=UInt(len(name))),
+            location.c,
         )
         Self._init_op_state(
             state,
@@ -404,7 +411,8 @@ struct Operation(Copyable, Movable, Stringable, Writable):
         successors: _OpBuilderList[Block] = _OpBuilderList[Block](),
     ) raises:
         var state = _c.IR.mlirOperationStateGet(
-            StaticString(ptr=name.unsafe_ptr(), length=len(name)), location.c
+            StaticString(ptr=name.unsafe_ptr(), length=UInt(len(name))),
+            location.c,
         )
         Self._init_op_state(
             state,
@@ -474,8 +482,10 @@ struct Operation(Copyable, Movable, Stringable, Writable):
     fn parse(ctx: Context, source: String, source_name: String) raises -> Self:
         var result = _c.IR.mlirOperationCreateParse(
             ctx.c,
-            StaticString(ptr=source.unsafe_ptr(), length=len(source)),
-            StaticString(ptr=source_name.unsafe_ptr(), length=len(source_name)),
+            StaticString(ptr=source.unsafe_ptr(), length=UInt(len(source))),
+            StaticString(
+                ptr=source_name.unsafe_ptr(), length=UInt(len(source_name))
+            ),
         )
         if not result.ptr:
             raise "Operation.parse failed"
@@ -553,26 +563,26 @@ struct Operation(Copyable, Movable, Stringable, Writable):
     fn set_inherent_attr(mut self, name: String, attr: Attribute):
         _c.IR.mlirOperationSetInherentAttributeByName(
             self.c,
-            StaticString(ptr=name.unsafe_ptr(), length=len(name)),
+            StaticString(ptr=name.unsafe_ptr(), length=UInt(len(name))),
             attr.c,
         )
 
     fn get_inherent_attr(self, name: String) -> Attribute:
         var result = _c.IR.mlirOperationGetInherentAttributeByName(
-            self.c, StaticString(ptr=name.unsafe_ptr(), length=len(name))
+            self.c, StaticString(ptr=name.unsafe_ptr(), length=UInt(len(name)))
         )
         return result
 
     fn set_discardable_attr(mut self, name: String, attr: Attribute):
         _c.IR.mlirOperationSetDiscardableAttributeByName(
             self.c,
-            StaticString(ptr=name.unsafe_ptr(), length=len(name)),
+            StaticString(ptr=name.unsafe_ptr(), length=UInt(len(name))),
             attr.c,
         )
 
     fn get_discardable_attr(self, name: String) -> Attribute:
         var result = _c.IR.mlirOperationGetDiscardableAttributeByName(
-            self.c, StaticString(ptr=name.unsafe_ptr(), length=len(name))
+            self.c, StaticString(ptr=name.unsafe_ptr(), length=UInt(len(name)))
         )
         return result
 
@@ -595,7 +605,7 @@ struct Operation(Copyable, Movable, Stringable, Writable):
 
 
 @register_passable("trivial")
-struct Identifier(Copyable, Movable, Stringable):
+struct Identifier(ImplicitlyCopyable, Movable, Stringable):
     alias cType = _c.IR.MlirIdentifier
     var c: Self.cType
 
@@ -606,7 +616,9 @@ struct Identifier(Copyable, Movable, Stringable):
     fn __init__(out self, ctx: Context, identifier: String):
         self.c = _c.IR.mlirIdentifierGet(
             ctx.c,
-            StaticString(ptr=identifier.unsafe_ptr(), length=len(identifier)),
+            StaticString(
+                ptr=identifier.unsafe_ptr(), length=UInt(len(identifier))
+            ),
         )
 
     fn __str__(self) -> String:
@@ -614,7 +626,7 @@ struct Identifier(Copyable, Movable, Stringable):
 
 
 @register_passable("trivial")
-struct Type(Copyable, Movable, Stringable, Writable):
+struct Type(ImplicitlyCopyable, Movable, Stringable, Writable):
     alias cType = _c.IR.MlirType
     var c: Self.cType
 
@@ -629,7 +641,7 @@ struct Type(Copyable, Movable, Stringable, Writable):
     @staticmethod
     fn parse(ctx: Context, s: String) raises -> Self:
         var result = _c.IR.mlirTypeParseGet(
-            ctx.c, StaticString(ptr=s.unsafe_ptr(), length=len(s))
+            ctx.c, StaticString(ptr=s.unsafe_ptr(), length=UInt(len(s)))
         )
         if not result.ptr:
             raise "Failed to parse type: " + s
@@ -646,7 +658,7 @@ struct Type(Copyable, Movable, Stringable, Writable):
 
 
 @register_passable("trivial")
-struct Value(Copyable, Movable, Stringable, Writable):
+struct Value(ImplicitlyCopyable, Movable, Stringable, Writable):
     alias cType = _c.IR.MlirValue
     var c: Self.cType
 
@@ -699,7 +711,7 @@ struct Value(Copyable, Movable, Stringable, Writable):
 
 
 @register_passable("trivial")
-struct Attribute(Copyable, Movable, Stringable, Writable):
+struct Attribute(ImplicitlyCopyable, Movable, Stringable, Writable):
     alias cType = _c.IR.MlirAttribute
     var c: Self.cType
 
@@ -717,7 +729,7 @@ struct Attribute(Copyable, Movable, Stringable, Writable):
     @staticmethod
     fn parse(ctx: Context, attr: String) raises -> Self:
         var result = _c.IR.mlirAttributeParseGet(
-            ctx.c, StaticString(ptr=attr.unsafe_ptr(), length=len(attr))
+            ctx.c, StaticString(ptr=attr.unsafe_ptr(), length=UInt(len(attr)))
         )
         if not result.ptr:
             raise "Failed to parse attribute:" + attr
@@ -731,7 +743,7 @@ struct Attribute(Copyable, Movable, Stringable, Writable):
 
 
 @register_passable("trivial")
-struct Block(Copyable, Movable, Stringable, Writable):
+struct Block(ImplicitlyCopyable, Movable, Stringable, Writable):
     alias cType = _c.IR.MlirBlock
     var c: Self.cType
 
@@ -801,7 +813,7 @@ struct Block(Copyable, Movable, Stringable, Writable):
 
 
 @register_passable("trivial")
-struct Region(Copyable, Defaultable, Movable):
+struct Region(Defaultable, ImplicitlyCopyable, Movable):
     alias cType = _c.IR.MlirRegion
     var c: Self.cType
 

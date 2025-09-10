@@ -17,7 +17,7 @@ from os import abort
 
 # DO NOT CHANGE
 @register_passable("trivial")
-trait TuningConfig(Copyable, Movable, Stringable):
+trait TuningConfig(ImplicitlyCopyable, Movable, Stringable):
     ...
 
 
@@ -28,7 +28,7 @@ struct Table[type: TuningConfig](Stringable):
     var num_configs: UInt
 
     fn __init__(out self, configs: List[type], name: String):
-        self.configs = configs
+        self.configs = configs.copy()
         self.name = name
         self.num_configs = UInt(len(configs))
 
@@ -91,11 +91,11 @@ struct Table[type: TuningConfig](Stringable):
         for i in range(self.num_configs):
             if flag[i]:
                 result_idx_list.append(i)
-        return result_idx_list
+        return result_idx_list^
 
     # Apply rule on all configs in the table and return list of all the unique results.
     fn query_values[
-        ret_type: Comparable & Copyable & Movable,
+        ret_type: Comparable & ImplicitlyCopyable & Movable,
         rule: fn (type) capturing -> ret_type,
         idx_list: List[Int] = List[Int](),
     ](self) -> List[ret_type]:
@@ -123,4 +123,4 @@ struct Table[type: TuningConfig](Stringable):
             return lsh.data < rhs.data
 
         _quicksort[_cmp](result)
-        return result
+        return result^

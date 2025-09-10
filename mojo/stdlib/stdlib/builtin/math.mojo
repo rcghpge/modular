@@ -73,7 +73,7 @@ fn abs[T: Absable](value: T) -> T:
 # ===----------------------------------------------------------------------=== #
 
 
-trait DivModable(Copyable, Movable):
+trait DivModable(ImplicitlyCopyable, Movable):
     """
     The `DivModable` trait describes a type that defines division and
     modulo operations returning both quotient and remainder.
@@ -197,11 +197,11 @@ fn max[T: Copyable & GreaterThanComparable](x: T, *ys: T) -> T:
     Returns:
         The maximum value from the input sequence.
     """
-    var res = x
+    var res = x.copy()
     for y in ys:
         if y > res:
-            res = y
-    return res
+            res = y.copy()
+    return res.copy()
 
 
 # ===----------------------------------------------------------------------=== #
@@ -282,11 +282,11 @@ fn min[T: Copyable & LessThanComparable](x: T, *ys: T) -> T:
     Returns:
         The minimum value from the input sequence.
     """
-    var res = x
+    var res = x.copy()
     for y in ys:
         if y < res:
-            res = y
-    return res
+            res = y.copy()
+    return res.copy()
 
 
 # ===----------------------------------------------------------------------=== #

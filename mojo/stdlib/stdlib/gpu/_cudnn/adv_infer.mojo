@@ -41,7 +41,7 @@ alias CUDA_CUDNN_ADV_INFER_LIBRARY_PATHS = List[Path](
 )
 
 alias CUDA_CUDNN_ADV_INFER_LIBRARY = _Global[
-    "CUDA_CUDNN_ADV_INFER_LIBRARY", _OwnedDLHandle, _init_dylib
+    "CUDA_CUDNN_ADV_INFER_LIBRARY", _init_dylib
 ]
 
 
@@ -222,7 +222,7 @@ fn cudnnGetRNNDescriptor_v6(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnForwardMode_t(Writable):
+struct cudnnForwardMode_t(EqualityComparable, Identifiable, Writable):
     var _value: Int8
     alias CUDNN_FWD_MODE_INFERENCE = Self(0)
     alias CUDNN_FWD_MODE_TRAINING = Self(1)
@@ -233,14 +233,8 @@ struct cudnnForwardMode_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -782,7 +776,7 @@ fn cudnnGetRNNDescriptor_v8(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnSeqDataAxis_t(Writable):
+struct cudnnSeqDataAxis_t(EqualityComparable, Identifiable, Writable):
     var _value: Int8
     alias CUDNN_SEQDATA_TIME_DIM = Self(0)
     alias CUDNN_SEQDATA_BATCH_DIM = Self(1)
@@ -795,14 +789,8 @@ struct cudnnSeqDataAxis_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):

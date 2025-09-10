@@ -29,7 +29,7 @@ from .shapes import get_sliding_window_out_dim
 # Pooling method.
 @fieldwise_init
 @register_passable("trivial")
-struct PoolMethod(Copyable, Movable):
+struct PoolMethod(ImplicitlyCopyable, Movable):
     var value: Int
     alias MAX = PoolMethod(0)  # Max pooling.
     alias AVG = PoolMethod(1)  # Average pooling not counting padded regions.
@@ -1186,17 +1186,17 @@ fn avg_pool_gpu[
 
 @always_inline
 fn avg_pool[
-    type: DType,
+    dtype: DType,
     int_type: DType,
     count_boundary: Bool = False,
     target: StaticString = "cpu",
 ](
-    input: LayoutTensor[type, **_],
+    input: LayoutTensor[dtype, **_],
     filter: LayoutTensor[int_type, **_],
     strides: LayoutTensor[int_type, **_],
     dilations: LayoutTensor[int_type, **_],
     paddings: LayoutTensor[int_type, **_],
-    output: LayoutTensor[mut=True, type, **_],
+    output: LayoutTensor[mut=True, dtype, **_],
     ceil_mode: Bool = False,
     ctx_ptr: DeviceContextPtr = DeviceContextPtr(),
 ) raises:
@@ -1216,16 +1216,16 @@ fn avg_pool[
 
 @always_inline
 fn max_pool[
-    type: DType,
+    dtype: DType,
     int_type: DType,
     target: StaticString = "cpu",
 ](
-    input: LayoutTensor[type, **_],
+    input: LayoutTensor[dtype, **_],
     filter: LayoutTensor[int_type, **_],
     strides: LayoutTensor[int_type, **_],
     dilations: LayoutTensor[int_type, **_],
     paddings: LayoutTensor[int_type, **_],
-    output: LayoutTensor[mut=True, type, **_],
+    output: LayoutTensor[mut=True, dtype, **_],
     ceil_mode: Bool = False,
     ctx_ptr: DeviceContextPtr = DeviceContextPtr(),
 ) raises:

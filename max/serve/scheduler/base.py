@@ -10,7 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from abc import ABC, abstractmethod
+import asyncio
+from enum import Enum
 from typing import Union
 
 import msgspec
@@ -19,18 +20,24 @@ from max.nn.kv_cache import KVTransferEngineMetadata, XferReqData
 from max.pipelines.core import TextAndVisionContext, TextContext
 
 
-class Scheduler(ABC):
-    """Abstract base class defining the interface for schedulers."""
+class SchedulerProgress(Enum):
+    """Indicates whether a scheduler made progress during an iteration."""
 
-    @abstractmethod
-    def run_iteration(self):
-        """The core scheduler routine that creates and executes batches.
+    MADE_PROGRESS = "made_progress"
+    NO_PROGRESS = "no_progress"
 
-        This method should implement the core scheduling logic including:
-        - Batch creation and management
-        - Request scheduling
-        """
-        pass
+
+async def sleep_with_backoff(count_no_progress: int):
+    """A basic strategy to avoid busy waiting.
+
+    This function sleeps with a linear backoff.
+    The first sleep of 0 enables other async threads to run but otherwise does not sleep.
+    The step size is 1ms because of limitations around asyncio to sleep with finer granularity.
+    The maximum sleep is 10ms because it resolves CPU usage overhead while maintaining minimal waiting.
+    """
+
+    ms_to_sleep = min(max(0, count_no_progress), 10)
+    await asyncio.sleep(ms_to_sleep * 0.001)
 
 
 class PrefillRequest(
@@ -65,6 +72,7 @@ class PrefillResponse(
     Attributes:
         id: Unique identifier for this request
         context: The input context containing the request data and state
+        transfer_metadata: The transfer metadata for the KV cache transfers
     """
 
     id: RequestID

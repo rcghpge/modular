@@ -333,7 +333,7 @@ struct BitSet[size: UInt](
                     right._words.unsafe_get(i),
                 )
 
-        return res
+        return res^
 
     fn union(self, other: Self) -> Self:
         """Returns a new bitset that is the union of `self` and `other`.

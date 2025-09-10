@@ -62,10 +62,9 @@ fn _dir_of_current_file_impl(file_name: StaticString) raises -> Path:
 
 struct Path(
     Boolable,
-    Copyable,
     EqualityComparable,
-    ExplicitlyCopyable,
     Hashable,
+    ImplicitlyCopyable,
     KeyElement,
     Movable,
     PathLike,
@@ -378,7 +377,7 @@ struct Path(
         for i in range(len(ls)):
             res.append(ls[i])
 
-        return res
+        return res^
 
     fn name(self) -> String:
         """Returns the name of the path.

@@ -45,6 +45,12 @@ class Backend(str, enum.Enum):
     sglang_chat = "sglang-chat"
 
 
+class Endpoint(str, enum.Enum):
+    completions = "/v1/completions"
+    chat_completions = "/v1/chat/completions"
+    ensemble_generate_stream = "/v2/models/ensemble/generate_stream"
+
+
 @dataclass
 class BaseBenchmarkConfig(MAXConfig):
     """Base configuration class containing parameters common to all benchmark types.
@@ -127,6 +133,7 @@ class BaseBenchmarkConfig(MAXConfig):
         return {
             # TODO: Propagate proper enum choices here than just the string values
             "backend": [backend.value for backend in Backend],
+            "endpoint": [endpoint.value for endpoint in Endpoint],
             "dataset_name": list(DATASET_REGISTRY.keys()),
             "random_distribution_type": ["uniform", "normal"],
         }
@@ -164,7 +171,7 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
     port: int = 8000
     """Server port."""
 
-    endpoint: str = "/v1/completions"
+    endpoint: str = Endpoint.chat_completions.value
     """API endpoint. Choices: /v1/completions, /v1/chat/completions, /v2/models/ensemble/generate_stream"""
 
     # Request configuration (serving-specific)
@@ -243,6 +250,9 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
     save_result: bool = False
     """Specify to save benchmark results to a json file."""
 
+    record_output_lengths: Optional[str] = None
+    """Path to save output lengths in YAML format."""
+
     result_dir: Optional[str] = None
     """Directory to save results."""
 
@@ -301,6 +311,7 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
             "save_result": "Specify to save benchmark results to a json file.",
             "result_dir": "Directory to save results.",
             "result_filename": "Custom filename (auto-generated if null).",
+            "record_output_lengths": "Path to save output lengths in YAML format.",
             "metadata": 'Key-value pairs for metadata (format: ["key=value", ...]).',
         }
         return {**base_help, **serving_help}

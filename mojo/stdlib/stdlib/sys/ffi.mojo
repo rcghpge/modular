@@ -13,6 +13,7 @@
 """Implements a foreign functions interface (FFI)."""
 
 from collections.string.string_slice import _get_kgen_string, get_static_string
+from memory import OwnedPointer
 from os import PathLike, abort
 from pathlib import Path
 from sys._libc import dlclose, dlerror, dlopen, dlsym
@@ -194,7 +195,7 @@ struct _OwnedDLHandle(Movable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct DLHandle(Boolable, Copyable, ExplicitlyCopyable, Movable):
+struct DLHandle(Boolable, Copyable, Movable):
     """Represents a dynamically linked library that can be loaded and unloaded.
 
     The library is loaded on initialization and unloaded by `close`.
@@ -482,7 +483,7 @@ struct DLHandle(Boolable, Copyable, ExplicitlyCopyable, Movable):
 
 @always_inline
 fn _get_dylib_function[
-    dylib_global: _Global[_, _OwnedDLHandle, _],
+    dylib_global: _Global[StorageType=_OwnedDLHandle, *_, **_],
     func_name: StaticString,
     result_type: AnyTrivialRegType,
 ]() -> result_type:
@@ -590,8 +591,8 @@ fn _find_dylib[name: StaticString = ""](*paths: Path) -> _OwnedDLHandle:
 # NOTE: This is vending shared mutable pointers to the client without locking.
 # This is not guaranteeing any sort of thread safety.
 struct _Global[
+    StorageType: Movable, //,
     name: StaticString,
-    StorageType: Movable,
     init_fn: fn () -> StorageType,
 ](Defaultable):
     alias ResultType = UnsafePointer[StorageType]
@@ -602,21 +603,19 @@ struct _Global[
     @staticmethod
     fn _init_wrapper() -> OpaquePointer:
         # Heap allocate space to store this "global"
-        var ptr = UnsafePointer[StorageType].alloc(1)
-
         # TODO:
         #   Any way to avoid the move, e.g. by calling this function
         #   with the ABI destination result pointer already set to `ptr`?
-        ptr.init_pointee_move(init_fn())
+        var ptr = OwnedPointer(init_fn())
 
-        return ptr.bitcast[NoneType]()
+        return ptr^.steal_data().bitcast[NoneType]()
 
     @staticmethod
     fn _deinit_wrapper(opaque_ptr: OpaquePointer):
         # Deinitialize and deallocate the storage.
-        var ptr = opaque_ptr.bitcast[StorageType]()
-        ptr.destroy_pointee()
-        ptr.free()
+        _ = OwnedPointer(
+            unsafe_from_raw_pointer=opaque_ptr.bitcast[StorageType]()
+        )
 
     @staticmethod
     fn get_or_create_ptr() -> Self.ResultType:

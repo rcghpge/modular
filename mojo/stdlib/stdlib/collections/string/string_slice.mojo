@@ -117,7 +117,7 @@ struct CodepointSliceIter[
 
     @doc_private
     fn __iter__(self) -> Self:
-        return self
+        return self.copy()
 
     @always_inline
     fn __has_next__(self) -> Bool:
@@ -340,7 +340,7 @@ struct CodepointsIter[mut: Bool, //, origin: Origin[mut]](
 
     @doc_private
     fn __iter__(self) -> Self:
-        return self
+        return self.copy()
 
     @always_inline
     fn __has_next__(self) -> Bool:
@@ -452,12 +452,11 @@ struct CodepointsIter[mut: Bool, //, origin: Origin[mut]](
 struct StringSlice[mut: Bool, //, origin: Origin[mut]](
     Boolable,
     ConvertibleToPython,
-    Copyable,
     Defaultable,
     EqualityComparable,
-    ExplicitlyCopyable,
     FloatableRaising,
     Hashable,
+    ImplicitlyCopyable,
     IntableRaising,
     KeyElement,
     Movable,

@@ -18,16 +18,19 @@ from __future__ import annotations
 import math
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import llguidance
 import msgspec
 import numpy as np
 import numpy.typing as npt
 from max.interfaces import (
+    BaseContext,
     GenerationStatus,
     InputContext,
     LogProbabilities,
+    PipelineTask,
+    RequestID,
     SamplingParams,
     TextGenerationOutput,
 )
@@ -101,8 +104,10 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
     _log_probabilities_data: dict[int, LogProbabilities] = msgspec.field(
         default_factory=dict
     )
+
     _is_initial_prompt: bool = msgspec.field(default=True)
     _draft_offset: int = msgspec.field(default=0)
+
     target_endpoint: str | None = msgspec.field(default=None)
 
     def __post_init__(self) -> None:
@@ -698,3 +703,19 @@ class TTSContext(TextContext):
             False otherwise.
         """
         return self.decoded_index < self._speech_token_end_idx - exclude_last_n
+
+
+def get_request_payload_from_pipeline_task(
+    pipeline_task: PipelineTask,
+) -> type[tuple[RequestID, BaseContext]]:
+    if pipeline_task in [
+        PipelineTask.TEXT_GENERATION,
+        PipelineTask.EMBEDDINGS_GENERATION,
+    ]:
+        return tuple[RequestID, Union[TextContext, TextAndVisionContext]]
+    elif pipeline_task in [PipelineTask.AUDIO_GENERATION]:
+        return tuple[RequestID, TTSContext]
+    else:
+        raise ValueError(
+            f"no request payload for pipeline task ({pipeline_task})"
+        )

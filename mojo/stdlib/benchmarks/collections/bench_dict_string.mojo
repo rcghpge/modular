@@ -163,7 +163,9 @@ struct KeysContainer[KeyEndType: DType = DType.uint32](
         var start = 0 if index == 0 else Int(self.keys_end[index - 1])
         var length = Int(self.keys_end[index]) - start
         return StringSlice(
-            unsafe_from_utf8=Span(ptr=self.keys.offset(start), length=length)
+            unsafe_from_utf8=Span(
+                ptr=self.keys.offset(start), length=UInt(length)
+            )
         )
 
     @always_inline
@@ -182,7 +184,7 @@ struct KeysContainer[KeyEndType: DType = DType.uint32](
         var keys = List[StringSlice[ImmutableAnyOrigin]](capacity=self.count)
         for i in range(self.count):
             keys.append(self[i])
-        return keys
+        return keys^
 
     fn print_keys(self):
         print("(" + String(self.count) + ")[", end="")
@@ -258,7 +260,7 @@ struct StringDict[
             memcpy(self.key_hashes, existing.key_hashes, self.capacity)
         else:
             self.key_hashes = UnsafePointer[Scalar[KeyCountType]].alloc(0)
-        self.values = existing.values
+        self.values = existing.values.copy()
         self.slot_to_index = UnsafePointer[Scalar[KeyCountType]].alloc(
             self.capacity
         )
@@ -307,7 +309,7 @@ struct StringDict[
                 @parameter
                 if caching_hashes:
                     self.key_hashes.store(slot, key_hash)
-                self.values.append(value)
+                self.values.append(value.copy())
                 self.count += 1
                 self.slot_to_index.store(
                     slot, SIMD[KeyCountType, 1](self.keys.count)
@@ -320,7 +322,8 @@ struct StringDict[
                 if other_key_hash == key_hash:
                     var other_key = self.keys[key_index - 1]
                     if other_key == key:
-                        self.values[key_index - 1] = value  # replace value
+                        # replace value
+                        self.values[key_index - 1] = value.copy()
 
                         @parameter
                         if destructive:
@@ -331,7 +334,8 @@ struct StringDict[
             else:
                 var other_key = self.keys[key_index - 1]
                 if other_key == key:
-                    self.values[key_index - 1] = value  # replace value
+                    # replace value
+                    self.values[key_index - 1] = value.copy()
 
                     @parameter
                     if destructive:
@@ -432,13 +436,13 @@ struct StringDict[
     fn get(self, key: StringSlice, default: V) -> V:
         var key_index = self._find_key_index(key)
         if key_index == 0:
-            return default
+            return default.copy()
 
         @parameter
         if destructive:
             if self._is_deleted(key_index - 1):
-                return default
-        return self.values[key_index - 1]
+                return default.copy()
+        return self.values[key_index - 1].copy()
 
     fn delete(mut self, key: StringSlice):
         @parameter
@@ -468,7 +472,7 @@ struct StringDict[
                     self.values[key_index] = update(None)
                     return
 
-            self.values[key_index] = update(self.values[key_index])
+            self.values[key_index] = update(self.values[key_index].copy())
 
     fn clear(mut self):
         self.values.clear()

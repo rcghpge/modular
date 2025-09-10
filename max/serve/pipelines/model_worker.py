@@ -25,15 +25,20 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, Callable
 
 import uvloop
-from max.interfaces import BaseContext, PipelinesFactory, PipelineTask
+from max.interfaces import (
+    BaseContext,
+    PipelinesFactory,
+    PipelineTask,
+    RequestID,
+)
+from max.pipelines.core import get_request_payload_from_pipeline_task
 from max.pipelines.lib import PipelineConfig
 from max.profiler import Tracer, traced
 from max.serve.config import MetricRecordingMethod, Settings
-from max.serve.kvcache_agent import DispatcherFactory
 from max.serve.pipelines.telemetry_worker import MetricClient
 from max.serve.process_control import ProcessControl, ProcessMonitor
-from max.serve.scheduler import load_scheduler
-from max.serve.scheduler.base import PayloadType
+from max.serve.scheduler import create_zmq_push_pull_queues, load_scheduler
+from max.serve.scheduler.base import SchedulerProgress, sleep_with_backoff
 from max.serve.scheduler.queues import EngineQueue
 from max.serve.telemetry.common import configure_logging, configure_metrics
 from max.serve.telemetry.metrics import METRICS
@@ -95,7 +100,6 @@ class ModelWorker:
         metric_client_factory: Callable[
             [], AbstractAsyncContextManager[MetricClient]
         ],
-        dispatcher_factory: DispatcherFactory[PayloadType] | None,
     ) -> None:
         """Runs a model worker process.
 
@@ -121,40 +125,33 @@ class ModelWorker:
             with record_ms(METRICS.model_load_time), Tracer("model_factory"):
                 pipeline = model_factory()
 
-            # create dispatcher client
-            dispatcher_client = None
-            if dispatcher_factory is not None:
-                assert pipeline_config.pipeline_role.uses_dispatch_service
-                logger.debug("Starting dispatcher client")
-                dispatcher_client = dispatcher_factory.create_client()
-                dispatcher_client.start()
-
             # Retrieve Scheduler.
             scheduler = load_scheduler(
                 pipeline,
                 pipeline_config,
                 settings,
-                dispatcher_client,
             )
 
             # Mark the start of the process, and run the scheduler.
             pc.set_started()
             logger.debug("Started model worker!")
 
+            count_no_progress = 0
             while not pc.is_canceled():
                 pc.beat()
                 try:
                     # This method must terminate in a reasonable amount of time
                     # so that the ProcessMonitor heartbeat is periodically run.
-                    scheduler.run_iteration()
+                    progress = scheduler.run_iteration()
+                    if progress == SchedulerProgress.NO_PROGRESS:
+                        await sleep_with_backoff(count_no_progress)
+                        count_no_progress += 1
+                    else:
+                        count_no_progress = 0
                 except Exception as e:
                     logger.exception("An error occurred during scheduling")
                     raise e
 
-            # Close the process.
-            pc.set_completed()
-            if dispatcher_client is not None:
-                dispatcher_client.stop()
         logger.debug("Stopped model worker!")
 
     @staticmethod
@@ -167,7 +164,6 @@ class ModelWorker:
         metric_client_factory: Callable[
             [], AbstractAsyncContextManager[MetricClient]
         ],
-        dispatcher_factory: DispatcherFactory[PayloadType] | None,
     ) -> None:
         """Primary entry point for running a ModelWorker process.
 
@@ -191,7 +187,6 @@ class ModelWorker:
                     pipeline_config,
                     settings,
                     metric_client_factory,
-                    dispatcher_factory,
                 )
             )
         except KeyboardInterrupt:
@@ -209,7 +204,6 @@ async def start_model_worker(
     settings: Settings,
     metric_client: MetricClient,
     pipeline_task: PipelineTask,
-    dispatcher_factory: DispatcherFactory[PayloadType] | None = None,
 ) -> AsyncGenerator[EngineQueue, None]:
     """Starts a model worker and associated process.
 
@@ -232,13 +226,27 @@ async def start_model_worker(
     pc = ProcessControl(
         mp_context, "model-worker", health_fail_s=settings.mw_health_fail_s
     )
-    engine_queue: EngineQueue[BaseContext, Any] = EngineQueue[BaseContext, Any](
-        mp_context,
-        worker_pc=pc,
-        request_zmq_endpoint=settings.request_zmq_endpoint,
-        response_zmq_endpoint=settings.response_zmq_endpoint,
-        cancel_zmq_endpoint=settings.cancel_zmq_endpoint,
-        pipeline_task=pipeline_task,
+
+    # Create Queues
+    request_push_queue, _ = create_zmq_push_pull_queues(
+        endpoint=settings.request_zmq_endpoint,
+        payload_type=get_request_payload_from_pipeline_task(pipeline_task),
+        use_pickle=False,
+        lazy=True,
+    )
+
+    _, response_pull_queue = create_zmq_push_pull_queues(
+        endpoint=settings.response_zmq_endpoint,
+        payload_type=pipeline_task.output_type,
+        use_pickle=False,
+        lazy=True,
+    )
+
+    cancel_push_queue, _ = create_zmq_push_pull_queues(
+        endpoint=settings.cancel_zmq_endpoint,
+        payload_type=list[RequestID],
+        use_pickle=False,
+        lazy=True,
     )
 
     logger.debug("Starting worker: %s", worker_name)
@@ -252,7 +260,6 @@ async def start_model_worker(
             pipeline_config,
             settings,
             metric_client.cross_process_factory(settings),
-            dispatcher_factory,
         ),
     )
     worker.start()
@@ -262,10 +269,15 @@ async def start_model_worker(
         poll_s=10e-3,
         max_time_s=settings.mw_timeout_s,
         unhealthy_poll_s=200e-3,
+        use_heartbeat=settings.use_heartbeat,
     )
 
-    if not settings.use_heartbeat:
-        engine_queue.use_process_healthcheck(worker)
+    engine_queue: EngineQueue[BaseContext, Any] = EngineQueue[BaseContext, Any](
+        worker_monitor=monitor,
+        request_queue=request_push_queue,
+        response_queue=response_pull_queue,
+        cancel_queue=cancel_push_queue,
+    )
 
     # before progressing, observe the worker process to be healthy or dead
     dt = asyncio.create_task(monitor.until_dead())

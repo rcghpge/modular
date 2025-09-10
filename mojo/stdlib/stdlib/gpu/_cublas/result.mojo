@@ -15,7 +15,7 @@ from os import abort
 
 
 @register_passable("trivial")
-struct Result(Writable):
+struct Result(EqualityComparable, Writable):
     var _value: Int32
     alias SUCCESS = Self(0)
     alias NOT_INITIALIZED = Self(1)
@@ -33,9 +33,6 @@ struct Result(Writable):
 
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
-
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
 
     @no_inline
     fn __str__(self) -> String:

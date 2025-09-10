@@ -195,7 +195,7 @@ struct ComputeType:
 
 @fieldwise_init
 @register_passable("trivial")
-struct Status(Writable):
+struct Status(EqualityComparable, Writable):
     var _value: Int32
 
     alias SUCCESS = Self(0)
@@ -220,9 +220,6 @@ struct Status(Writable):
 
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
-
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
 
     fn __int__(self) -> Int:
         return Int(self._value)

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import queue
 import time
 import uuid
 from typing import Union
@@ -20,6 +21,7 @@ from typing import Union
 from max.interfaces import (
     Pipeline,
     RequestID,
+    Scheduler,
     TextGenerationInputs,
     TextGenerationOutput,
 )
@@ -33,16 +35,17 @@ from max.pipelines.core import TextAndVisionContext, TextContext
 from max.pipelines.lib import PipelineConfig
 from max.pipelines.lib.pipeline import get_paged_manager
 from max.profiler import Tracer, traced
-from max.serve.kvcache_agent.dispatcher_base import MessageType, ReplyContext
-from max.serve.kvcache_agent.dispatcher_client import DispatcherClient
+from max.serve.config import Settings
+from max.serve.kvcache_agent.dispatcher_v2 import ClientIdentity
 from max.serve.scheduler.base import PrefillRequest, PrefillResponse
+from max.serve.scheduler.di_dispatchers import PrefillDispatcherServerV2
 from max.serve.scheduler.text_batch_constructor import (
     SchedulerOutput,
     TextBatchConstructor,
     TokenGenerationSchedulerConfig,
 )
 
-from .base import Scheduler
+from .base import SchedulerProgress
 from .utils import SchedulerLogger, maybe_restore_chunked_request
 
 logger = logging.getLogger("max.serve")
@@ -57,9 +60,8 @@ class PrefillScheduler(Scheduler):
         ],
         scheduler_config: TokenGenerationSchedulerConfig,
         paged_cache: PagedKVCacheManager,
-        *,
-        dispatcher_client: DispatcherClient,
-    ):
+        dispatcher: PrefillDispatcherServerV2,
+    ) -> None:
         self.pipeline = pipeline
         self.scheduler_config = scheduler_config
         self.paged_cache = paged_cache
@@ -68,21 +70,8 @@ class PrefillScheduler(Scheduler):
             str, tuple[Union[TextAndVisionContext, TextContext], XferReqData]
         ] = {}
         self.request_id_to_reply_context: dict[
-            str, tuple[ReplyContext, str, list[int]]
+            str, tuple[ClientIdentity, str, list[int]]
         ] = {}
-
-        self.dispatcher_client = dispatcher_client
-        self.dispatcher_client.register_request_handler(
-            MessageType.PREFILL_REQUEST, self.handle_prefill_request
-        )
-        self.dispatcher_client.register_request_handler(
-            MessageType.TRANSFER_ENGINE_REQUEST,
-            self.handle_transfer_engine_request,
-        )
-        self.dispatcher_client.register_request_handler(
-            MessageType.CANCEL_REQUEST,
-            self.handle_cancel_request,
-        )
 
         # Create Transfer Engine
         self.transfer_engine = KVTransferEngine(
@@ -99,17 +88,16 @@ class PrefillScheduler(Scheduler):
             paged_cache=paged_cache,
         )
         self.scheduler_logger = SchedulerLogger()
+        self.dispatcher = dispatcher
 
     @traced
-    def handle_cancel_request(
-        self, message: RequestID, _: ReplyContext
-    ) -> None:
+    def handle_cancel_request(self, message: RequestID) -> None:
         """Handles a cancel request by adding the request ID to the set of outstanding cancelled requests."""
         self.outstanding_cancelled_requests.add(message)
 
     @traced
     def handle_transfer_engine_request(
-        self, message: KVTransferEngineMetadata, reply_context: ReplyContext
+        self, message: KVTransferEngineMetadata, identity: ClientIdentity
     ) -> None:
         """Handles a engine registration request from the dispatcher."""
         logger.debug(f"connecting to remote transfer_engine: {message.name}")
@@ -119,14 +107,13 @@ class PrefillScheduler(Scheduler):
 
         self.transfer_engine.connect(message)
 
-        self.dispatcher_client.send_reply(
-            MessageType.TRANSFER_ENGINE_RESPONSE,
+        self.dispatcher.send_reply_nowait(
             self.transfer_engine.metadata,
-            reply_context,
+            identity,
         )
 
     def handle_prefill_request(
-        self, message: PrefillRequest, reply_context: ReplyContext
+        self, message: PrefillRequest, identity: ClientIdentity
     ) -> None:
         """Handles a prefill request from the dispatcher."""
         logger.debug("received request from decode node.")
@@ -139,7 +126,7 @@ class PrefillScheduler(Scheduler):
         context.reset()
         self.batch_constructor.ce_reqs[message.id] = context
         self.request_id_to_reply_context[message.id] = (
-            reply_context,
+            identity,
             message.transfer_engine_name,
             message.block_ids,
         )
@@ -182,7 +169,7 @@ class PrefillScheduler(Scheduler):
 
         # Send completed requests to decode queue.
         for req_id, context in batch.items():
-            reply_context, transfer_engine_name, dst_idxs = (
+            identity, transfer_engine_name, dst_idxs = (
                 self.request_id_to_reply_context.pop(req_id)
             )
 
@@ -229,20 +216,39 @@ class PrefillScheduler(Scheduler):
             assert context.start_idx > 0, (
                 f"Invalid Context: Expected start_idx to be greater than 0. Found: {context}"
             )
-            self.dispatcher_client.send_reply(
-                MessageType.PREFILL_RESPONSE,
+            self.dispatcher.send_reply_nowait(
                 PrefillResponse(
-                    id=req_id, context=context, transfer_metadata=xfer_data
+                    id=req_id,
+                    context=context,
+                    transfer_metadata=xfer_data,
                 ),
-                reply_context,
+                identity,
             )
 
-    def run_iteration(self) -> None:
+    def run_iteration(self) -> SchedulerProgress:
         """Main scheduling loop that processes prefill requests.
 
         Receives requests, creates batches, and schedules them for processing
         while handling errors and cancelled requests.
+
+        Returns:
+            SchedulerProgress: Indicates whether work was performed in this iteration.
         """
+
+        while True:
+            try:
+                request, identity = self.dispatcher.recv_request_nowait()
+            except queue.Empty:
+                break
+            if isinstance(request, RequestID):
+                self.handle_cancel_request(request)
+            elif isinstance(request, KVTransferEngineMetadata):
+                self.handle_transfer_engine_request(request, identity)
+            elif isinstance(request, PrefillRequest):
+                self.handle_prefill_request(request, identity)
+            else:
+                raise ValueError(f"Invalid request type: {request}")
+
         # Cleanup active transfers.
         self.cleanup_active_transfers()
 
@@ -255,7 +261,7 @@ class PrefillScheduler(Scheduler):
         # If the batch is empty, skip
         batch_size = batch_to_execute.batch_size
         if batch_size == 0:
-            return
+            return SchedulerProgress.NO_PROGRESS
 
         # Schedule the batch
         t0 = time.monotonic()
@@ -275,6 +281,8 @@ class PrefillScheduler(Scheduler):
             total_preemption_count=self.batch_constructor.total_preemption_count,
         )
 
+        return SchedulerProgress.MADE_PROGRESS
+
 
 def load_prefill_scheduler(
     pipeline: Pipeline[
@@ -282,7 +290,7 @@ def load_prefill_scheduler(
         TextGenerationOutput,
     ],
     pipeline_config: PipelineConfig,
-    dispatcher_client: DispatcherClient,
+    settings: Settings,
 ) -> PrefillScheduler:
     # Create Scheduler Config.
     scheduler_config = TokenGenerationSchedulerConfig.from_pipeline_config(
@@ -301,5 +309,7 @@ def load_prefill_scheduler(
         pipeline=pipeline,
         scheduler_config=scheduler_config,
         paged_cache=paged_cache,
-        dispatcher_client=dispatcher_client,
+        dispatcher=PrefillDispatcherServerV2(
+            bind_addr=settings.dispatcher_config.transport_config.bind_address
+        ),
     )

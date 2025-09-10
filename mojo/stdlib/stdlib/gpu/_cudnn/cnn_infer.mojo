@@ -45,7 +45,7 @@ alias CUDA_CUDNN_CNN_INFER_LIBRARY_PATHS = List[Path](
 )
 
 alias CUDA_CUDNN_CNN_INFER_LIBRARY = _Global[
-    "CUDA_CUDNN_CNN_INFER_LIBRARY", _OwnedDLHandle, _init_dylib
+    "CUDA_CUDNN_CNN_INFER_LIBRARY", _init_dylib
 ]
 
 
@@ -325,7 +325,7 @@ fn cudnnGetConvolution2dDescriptor(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnFusedOpsConstParamLabel_t(Writable):
+struct cudnnFusedOpsConstParamLabel_t(EqualityComparable, Writable):
     var _value: Int8
     alias CUDNN_PARAM_XDESC = Self(0)
     alias CUDNN_PARAM_XDATA_PLACEHOLDER = Self(1)
@@ -373,14 +373,8 @@ struct cudnnFusedOpsConstParamLabel_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -490,7 +484,7 @@ fn cudnnSetConvolutionReorderType(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnReorderType_t(Writable):
+struct cudnnReorderType_t(EqualityComparable, Identifiable, Writable):
     var _value: Int8
     alias CUDNN_DEFAULT_REORDER = Self(0)
     alias CUDNN_NO_REORDER = Self(1)
@@ -501,14 +495,8 @@ struct cudnnReorderType_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -631,7 +619,7 @@ fn cudnnGetConvolutionForwardAlgorithm_v7(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnFusedOps_t(Writable):
+struct cudnnFusedOps_t(EqualityComparable, Identifiable, Writable):
     var _value: Int8
     alias CUDNN_FUSED_SCALE_BIAS_ACTIVATION_CONV_BNSTATS = Self(0)
     alias CUDNN_FUSED_SCALE_BIAS_ACTIVATION_WGRAD = Self(1)
@@ -647,14 +635,8 @@ struct cudnnFusedOps_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -710,7 +692,9 @@ fn cudnnDestroyConvolutionDescriptor(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnFusedOpsPointerPlaceHolder_t(Writable):
+struct cudnnFusedOpsPointerPlaceHolder_t(
+    EqualityComparable, Identifiable, Writable
+):
     var _value: Int8
     alias CUDNN_PTR_NULL = Self(0)
     alias CUDNN_PTR_ELEM_ALIGNED = Self(1)
@@ -722,14 +706,8 @@ struct cudnnFusedOpsPointerPlaceHolder_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -822,7 +800,7 @@ fn cudnnGetConvolutionReorderType(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnFusedOpsVariantParamLabel_t(Writable):
+struct cudnnFusedOpsVariantParamLabel_t(EqualityComparable, Writable):
     var _value: Int8
     alias CUDNN_PTR_XDATA = Self(0)
     alias CUDNN_PTR_BN_EQSCALE = Self(1)
@@ -859,14 +837,8 @@ struct cudnnFusedOpsVariantParamLabel_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):
@@ -1336,7 +1308,7 @@ fn cudnnGetConvolutionForwardAlgorithmMaxCount(
 
 @fieldwise_init
 @register_passable("trivial")
-struct cudnnConvolutionMode_t(Writable):
+struct cudnnConvolutionMode_t(EqualityComparable, Identifiable, Writable):
     var _value: Int8
     alias CUDNN_CONVOLUTION = Self(0)
     alias CUDNN_CROSS_CORRELATION = Self(1)
@@ -1347,14 +1319,8 @@ struct cudnnConvolutionMode_t(Writable):
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
-
     fn __is__(self, other: Self) -> Bool:
         return self == other
-
-    fn __isnot__(self, other: Self) -> Bool:
-        return self != other
 
     @no_inline
     fn write_to(self, mut writer: Some[Writer]):

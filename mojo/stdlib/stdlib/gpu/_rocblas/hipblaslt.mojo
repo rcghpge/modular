@@ -29,7 +29,7 @@ alias hipblasLtMatmulPreference_t = OpaquePointer
 
 @fieldwise_init
 @register_passable("trivial")
-struct Status(Writable):
+struct Status(EqualityComparable, Writable):
     var _value: Int32
     alias SUCCESS = Self(0)
     alias NOT_INITIALIZED = Self(1)
@@ -48,9 +48,6 @@ struct Status(Writable):
 
     fn __eq__(self, other: Self) -> Bool:
         return self._value == other._value
-
-    fn __ne__(self, other: Self) -> Bool:
-        return not (self == other)
 
     @no_inline
     fn __str__(self) -> String:
@@ -245,9 +242,7 @@ alias HIPBLASLT_LIBRARY_PATHS = List[Path](
     "/opt/rocm/lib/libhipblaslt.so.0",
 )
 
-alias HIPBLASLT_LIBRARY = _Global[
-    "HIPBLASLT_LIBRARY", _OwnedDLHandle, _init_dylib
-]
+alias HIPBLASLT_LIBRARY = _Global["HIPBLASLT_LIBRARY", _init_dylib]
 
 
 fn _init_dylib() -> _OwnedDLHandle:
