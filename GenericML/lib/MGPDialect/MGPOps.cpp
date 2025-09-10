@@ -356,14 +356,6 @@ LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// BufferGetCachedOp
-//===----------------------------------------------------------------------===//
-
-SmallVector<Attribute> BufferGetCachedOp::getLiftableAttributes() {
-  return {getBBufferSlotAttr()};
-}
-
-//===----------------------------------------------------------------------===//
 // BufferRemoveCachedOp
 //===----------------------------------------------------------------------===//
 
@@ -847,13 +839,26 @@ LogicalResult CallOp::verify() {
 
   // Verify operand types match the execute block argument types.
   Block *executeBlock = targetModel.getExecuteBlock();
-  auto expectedArgTypes = executeBlock->getArgumentTypes();
+  // If the index was not yet added, remove the last operand of the execute
+  // block because that's the index.
+  auto expectedArgs =
+      executeBlock->getArguments().drop_back(!getIsGlobalizedIndex());
   auto actualArgTypes = getOperandTypes();
-  if (actualArgTypes != expectedArgTypes) {
+  if (expectedArgs.size() != actualArgTypes.size()) {
     return emitOpError() << "operand types " << actualArgTypes
                          << " do not match expected argument types "
-                         << expectedArgTypes << " of " << getModelAttr()
-                         << "'s execute block.";
+                         << executeBlock->getArgumentTypes() << " of "
+                         << getModelAttr() << "'s execute block.";
+  }
+
+  for (auto [expectedArg, actualArgType] :
+       llvm::zip(expectedArgs, actualArgTypes)) {
+    if (expectedArg.getType() != actualArgType) {
+      return emitOpError() << "operand types " << actualArgTypes
+                           << " do not match expected argument types "
+                           << executeBlock->getArgumentTypes() << " of "
+                           << getModelAttr() << "'s execute block.";
+    }
   }
 
   // Verify result types match the execute block result types.
@@ -1039,8 +1044,14 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
                     ArrayRef<NamedAttribute> extraAttrs) {
   MLIRContext *ctx = state.getContext();
 
-  if (isSubgraph)
+  SmallVector<Type> finalInputTypes(inputTypes.begin(), inputTypes.end());
+  SmallVector<Location> finalInputLocs(inputArgLocs.begin(),
+                                       inputArgLocs.end());
+  if (isSubgraph) {
     state.addAttribute(getIsSubgraphAttrName(state.name), UnitAttr::get(ctx));
+    finalInputTypes.push_back(IndexType::get(ctx));
+    finalInputLocs.push_back(state.location);
+  }
 
   DictionaryAttr extraAttrsDict =
       extraAttrs.empty() ? nullptr : DictionaryAttr::get(ctx, extraAttrs);
@@ -1049,8 +1060,8 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   });
   build(builder, state, ArrayAttr::get(ctx, deviceAttrs),
         StringAttr::get(ctx, frameworkName),
-        TypeAttr::get(builder.getFunctionType(inputTypes, outputTypes)), name,
-        isSubgraph ? builder.getUnitAttr() : nullptr, extraAttrsDict);
+        TypeAttr::get(builder.getFunctionType(finalInputTypes, outputTypes)),
+        name, isSubgraph ? builder.getUnitAttr() : nullptr, extraAttrsDict);
 
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
@@ -1064,7 +1075,7 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   executeRegion->emplaceBlock();
   for (auto type : implicitExecuteSignature(builder, devices).getInputs())
     executeRegion->addArgument(type, state.location);
-  for (auto [type, loc] : llvm::zip(inputTypes, inputArgLocs))
+  for (auto [type, loc] : llvm::zip(finalInputTypes, finalInputLocs))
     executeRegion->addArgument(type, loc);
 }
 
@@ -1145,6 +1156,15 @@ LogicalResult ModelOp::verifyRegions() {
 
     if (failed(checkOperandTypes(output, expectedResultTypes)))
       return failure();
+  }
+
+  if (getIsSubgraph()) {
+    auto argTypes = execBlock->getArgumentTypes();
+    if (argTypes.empty() ||
+        !isa<IndexType>(*(argTypes.begin() + argTypes.size() - 1))) {
+      return emitOpError() << "expected the last argument of a subgraph to be "
+                              "an index offset";
+    }
   }
 
   return success();

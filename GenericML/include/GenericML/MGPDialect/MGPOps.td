@@ -768,6 +768,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     }
     BlockArgument getExecuteChain() { return getExecuteBlock()->getArgument(0); }
     BlockArgument getExecuteWeightsRegistry() { return getExecuteBlock()->getArgument(2); }
+    BlockArgument getSubgraphIndex() { return getExecuteBlock()->getArguments().back(); }
 
     /// Retrieve the single ContextCreateOp from the init block.
     ContextCreateOp getInitContext();
@@ -850,8 +851,7 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
-def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
-    Pure, DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>]> {
+def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [Pure]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
   let description = [{
     Returns (a borrow of) the `!mgp.buffer` in the state slot with the given
@@ -866,15 +866,16 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
     ```mlir
     %ctx : !mgp.context
     %ch0 : !mef.chain
-    // Returns the buffer cached in slot index 42.
-    %buf = mgp.buffer.get_cached %ch0, %ctx[42] : !mgp.buffer<<"gpu", 3>>
+    %idx : index
+    // Returns the buffer cached in slot index.
+    %buf = mgp.buffer.get_cached %ch0, %ctx[%idx] : !mgp.buffer<<"gpu", 3>>
     %buf : !mgp.buffer<<"gpu", 3>>
     ```
   }];
 
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$bBufferSlot);         // 1
+                       Index:$bBufferSlot);         // 1
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` attr-dict
@@ -1037,7 +1038,8 @@ def MGP_CallOp : MGP_Op<"call"> {
   }];
   let arguments = (ins FlatSymbolRefAttr:$model,
                        DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
-                       Variadic<AnyType>:$operands);
+                       Variadic<AnyType>:$operands,
+                       DefaultValuedAttr<BoolAttr, "false">:$isGlobalizedIndex);
   let results = (outs Variadic<AnyType>:$results);
 
   let hasVerifier = 1;

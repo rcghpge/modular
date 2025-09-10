@@ -14,7 +14,7 @@
 // CHECK:       mef.output %[[CH_OUT]], %[[CTX]]
 // CHECK-NEXT:  } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context
 
-// CHECK:   %[[BUF:.*]] = mgp.buffer.get_cached %[[CH0]], %[[CTX]][2] : !mgp.buffer
+// CHECK:   %[[BUF:.*]] = mgp.buffer.get_cached %[[CH0]], %[[CTX]][{{.*}}] : !mgp.buffer
 // CHECK:   mef.output %[[CH0]], %[[BUF]] : !mef.chain, !mgp.buffer
 // CHECK: }
 

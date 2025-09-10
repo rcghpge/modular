@@ -196,7 +196,7 @@ class LowerAlignmentsPass
       } else if (auto bufferOp = dyn_cast<MGP::BufferGetCachedOp>(op)) {
         // Pass-through from caching system
         alignmentMap[bufferOp.getOutBuffer()] =
-            cacheAlignmentMap.at(bufferOp.getBBufferSlot());
+            alignmentMap[bufferOp.getBBufferSlot()];
       } else if (auto extractBufferOp =
                      dyn_cast<MGP::TensorExtractBufferOp>(op)) {
         // Pass-through from Tensor Value if it is something we created.

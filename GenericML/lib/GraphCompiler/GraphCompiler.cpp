@@ -319,7 +319,7 @@ void M::MO::buildMoToMgpPipeline(
   // runtime assert messages.
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
 
-  // pm.addPass(MGP::createGlobalizeSlotIndicesPass());
+  pm.addPass(MGP::createGlobalizeSlotIndicesPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
@@ -437,9 +437,10 @@ ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
   // Translate to MEF.
   ConcatenationTree result =
       translateMLIRToMEF(*moduleToRewrite, enableMEFMetadata);
-  if (result.getSize() == 0)
+  if (result.getSize() == 0) {
     return Error(Twine("Failed to convert model to MEF. ") +
                  diagnostics.formatMessage());
+  }
   // Serialize the ConcatenationTree to the result buffer.
   M::WriteableBufferRef outputBuffer = WriteableBuffer::get(
       0, maxAttributeAlignment().value(), result.getSize());

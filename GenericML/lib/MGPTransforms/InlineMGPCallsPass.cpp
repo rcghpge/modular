@@ -10,6 +10,7 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "KGEN/TransformUtils/CallGraphUtils.h"
 #include "KGEN/TransformUtils/SCCUtils.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/SymbolTable.h"
@@ -40,9 +41,6 @@ void offsetRuntimeSlot(Operation *op, uint64_t slotOffset) {
     } else if (auto runtimeCreateOp = dyn_cast<RuntimeCreateOp>(op)) {
       uint64_t oldSlot = runtimeCreateOp.getARuntimeSlot();
       runtimeCreateOp.setARuntimeSlot(oldSlot + slotOffset);
-    } else if (auto bufferGetCachedOp = dyn_cast<BufferGetCachedOp>(op)) {
-      uint64_t oldSlot = bufferGetCachedOp.getBBufferSlot();
-      bufferGetCachedOp.setBBufferSlot(oldSlot + slotOffset);
     } else if (auto bufferRemoveCachedOp = dyn_cast<BufferRemoveCachedOp>(op)) {
       uint64_t oldSlot = bufferRemoveCachedOp.getBufferSlot();
       bufferRemoveCachedOp.setBufferSlot(oldSlot + slotOffset);

@@ -87,9 +87,9 @@ func.func @buffer_cache(%ctx : !mgp.context, %ch0 : !mef.chain, %buf : !mgp.buff
 //
 
 // CHECK-LABEL: @buffer_get_cached
-func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.buffer.get_cached %{{.*}}, %{{.*}}[5] : !mgp.buffer<<"gpu", 3>>
-  %buf = mgp.buffer.get_cached %ch0, %ctx[5] : !mgp.buffer<<"gpu", 3>>
+func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mef.chain, %idx : index) {
+  // CHECK: %{{.*}} = mgp.buffer.get_cached %{{.*}}, %{{.*}}[{{.*}}] : !mgp.buffer<<"gpu", 3>>
+  %buf = mgp.buffer.get_cached %ch0, %ctx[%idx] : !mgp.buffer<<"gpu", 3>>
   mef.output %buf : !mgp.buffer<<"gpu", 3>>
 }
 

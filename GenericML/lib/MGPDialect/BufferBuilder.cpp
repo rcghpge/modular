@@ -8,6 +8,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 
 using namespace M;
@@ -339,9 +340,21 @@ Value MGPBufferBuilder::getCached(OpBuilder &builder, Location loc,
                                   TypedValue<MEF::ChainType> inChain,
                                   uint64_t bufferSlot,
                                   Type expectedBufferType) {
+  auto parentOp = builder.getBlock()->getParentOp();
+  if (!isa<ModelOp>(parentOp))
+    parentOp = parentOp->getParentOfType<MGP::ModelOp>();
+
+  auto modelOp = cast<ModelOp>(parentOp);
+  Value bufferSlotIndex =
+      builder.create<mlir::index::ConstantOp>(loc, bufferSlot);
+  if (modelOp.getIsSubgraph()) {
+    bufferSlotIndex = builder.create<mlir::index::AddOp>(
+        loc, bufferSlotIndex, modelOp.getSubgraphIndex());
+  }
+
   return builder.create<BufferGetCachedOp>(
       loc, expectedBufferType, /*inChain=*/inChain, /*theContext=*/context,
-      /*bBufferSlot=*/bufferSlot);
+      /*bBufferSlot=*/bufferSlotIndex);
 }
 
 Value MGPBufferBuilder::removeCached(OpBuilder &builder, Location loc,
