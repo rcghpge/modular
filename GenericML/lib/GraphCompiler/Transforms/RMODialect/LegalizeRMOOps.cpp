@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
@@ -341,6 +342,30 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
     rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
 
     op->erase();
+
+    return success();
+  }
+};
+
+struct LegalizeTransferOp : public OpRewritePattern<RMO::MOTransferOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RMO::MOTransferOp op,
+                                PatternRewriter &rewriter) const override {
+    // No dynamic dims permitted in RMO at this point: check that explicitly.
+    [[maybe_unused]] TensorType inTy =
+        cast<TensorType>(op.getInput().getType());
+    [[maybe_unused]] TensorType outTy =
+        cast<TensorType>(op.getResult().getType());
+    ASSERT_STREAM(!inTy.hasUnknownShape(),
+                  << "rmo.mo.transfer input must not have dynamic dims; got "
+                  << inTy);
+    ASSERT_STREAM(!outTy.hasUnknownShape(),
+                  << "rmo.mo.transfer result must not have dynamic dims; got "
+                  << outTy);
+
+    rewriter.replaceOpWithNewOp<MO::TransferOp>(
+        op, op.getInput(), outTy.getDeviceRef(), op.getInChain());
 
     return success();
   }
@@ -1439,6 +1464,9 @@ struct LegalizeRMOOps
     // Default lowering of MOAnalogue Operations.
     // Setting benefit to zero so that more specific patterns may override.
     blockPatterns.add<LegalizeRMOMOAnalogue>(context, /*benefit=*/0);
+
+    // Override for rmo.mo.transfer to handle chain and avoid param decls.
+    blockPatterns.add<LegalizeTransferOp>(context);
 
     blockPatterns.add<LegalizeMutableLoadOp, LegalizeMutableStoreOp,
                       LegalizeMutableStoreSliceOp>(context);

@@ -27,9 +27,11 @@ inline bool dependsOnlyOnProperty(
     if (!op)
       return false;
 
+    // Skip visited ops.
     if (!visited.insert(op).second)
       continue;
 
+    // Check the property if `op` has no operands.
     auto operands = op->getOperands();
     if (!llvm::range_size(operands)) {
       if (!propertyCheck(op))

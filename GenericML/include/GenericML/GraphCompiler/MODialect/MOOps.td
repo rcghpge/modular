@@ -90,7 +90,6 @@ def MO_IndexToTensorOp : MO_Op<"index.to_tensor", [
 //===----------------------------------------------------------------------===//
 def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
   Pure,
-  MO_SameOperandsAndResultShape,
   MO_PreservedDuringKernelLowering,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
@@ -116,12 +115,13 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
 
   let arguments = (ins
     MO_Tensor:$input,
-    DefaultValuedAttr<BoolAttr, "true">:$alwaysElideSameDeviceCopy
+    DefaultValuedAttr<BoolAttr, "true">:$alwaysElideSameDeviceCopy,
+    MO_Chain:$inChain
   );
-  let results = (outs MO_Tensor:$result);
+  let results = (outs MO_Tensor:$result, MO_Chain:$outChain);
 
   let assemblyFormat = [{
-    $input `:` qualified(type($input)) `to`
+    `[` $inChain `]` $input `:` qualified(type($input)) `to`
     custom<TransferResult>(ref(type($input)), type($result)) attr-dict
   }];
 
@@ -130,7 +130,7 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
 
   let builders = [
     OpBuilder<(ins "TensorValue":$input, "DeviceRefAttr":$destDevice,
-      CArg<"bool", "true">:$alwaysElideSameDeviceCopy)>,
+      "ChainValue":$inChain, CArg<"bool", "true">:$alwaysElideSameDeviceCopy)>,
   ];
 }
 

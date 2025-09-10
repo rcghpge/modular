@@ -219,15 +219,17 @@ mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.te
 //===----------------------------------------------------------------------===//
 
 mo.graph @transfer_dtype_mismatch(%arg0 : !mo.tensor<[3, 2], f32>) -> !mo.tensor<[3, 2], si32> {
+  %c0 = mo.chain.create()
   // expected-error @below {{expected result type to only differ from input type in device}}
-  %0 = "mo.transfer"(%arg0) : (!mo.tensor<[3, 2], f32>) -> !mo.tensor<[3, 2], si32>
-  mo.output %0 : !mo.tensor<[3, 2], si32>
+  %0:2 = "mo.transfer"(%arg0, %c0) : (!mo.tensor<[3, 2], f32>, !mo.chain) -> (!mo.tensor<[3, 2], si32>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[3, 2], si32>
 }
 
 // -----
 
 mo.graph @transfer_shape_mismatch(%arg0 : !mo.tensor<[3, 2], f32>) -> !mo.tensor<[5], f32> {
-  // expected-error @below {{op requires the same shape for all operands and results}}
-  %0 = "mo.transfer"(%arg0) : (!mo.tensor<[3, 2], f32>) -> !mo.tensor<[5], f32>
-  mo.output %0 : !mo.tensor<[5], f32>
+  %c0 = mo.chain.create()
+  // expected-error @below {{expected result type to only differ from input type in device}}
+  %0:2 = "mo.transfer"(%arg0, %c0) : (!mo.tensor<[3, 2], f32>, !mo.chain) -> (!mo.tensor<[5], f32>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[5], f32>
 }

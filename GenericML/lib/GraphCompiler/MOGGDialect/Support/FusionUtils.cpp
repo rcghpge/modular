@@ -8,6 +8,7 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
+#include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilderHelpers.h"
@@ -539,7 +540,7 @@ buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
 
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
   return dependsOnlyOnProperty(operation, [](mlir::Operation *op) -> bool {
-    if (!isa<MO::ConstantLike>(op))
+    if (!isa<MO::ConstantLike, MO::ChainCreateOp>(op))
       return false;
 
     auto extConst = dyn_cast<MO::ConstantExternalOp>(op);

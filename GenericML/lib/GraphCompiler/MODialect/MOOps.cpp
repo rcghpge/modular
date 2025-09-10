@@ -577,9 +577,11 @@ OpOperand &CallOp::getInChainMutable() {
 
 void TransferOp::build(OpBuilder &builder, OperationState &state,
                        TensorValue inputValue, DeviceRefAttr destDevice,
-                       bool alwaysElideSameDeviceCopy) {
-  build(builder, state, inputValue.getType().cloneWith(destDevice), inputValue,
-        alwaysElideSameDeviceCopy);
+                       ChainValue inChain, bool alwaysElideSameDeviceCopy) {
+  auto resultTy = inputValue.getType().cloneWith(destDevice);
+  auto chainTy = ChainType::get(builder.getContext());
+  build(builder, state, resultTy, chainTy, inputValue,
+        alwaysElideSameDeviceCopy, inChain);
 }
 
 LogicalResult TransferOp::verify() {
@@ -601,9 +603,14 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
   TypedValue<TensorType> input = op.getInput();
   TypedValue<TensorType> output = op.getResult();
   if (auto prevOp = input.getDefiningOp<TransferOp>()) {
-    TypedValue<TensorType> newInput = prevOp.getInput();
-    if (output.getType().getDeviceRef() == newInput.getType().getDeviceRef()) {
-      rewriter.replaceOp(op, newInput);
+    TypedValue<TensorType> prevOpInput = prevOp.getInput();
+    if (output.getType().getDeviceRef() ==
+        prevOpInput.getType().getDeviceRef()) {
+      rewriter.replaceOp(op, ValueRange{prevOpInput, prevOp.getInChain()});
+      if (prevOp->use_empty()) {
+        // Erase the now unused previous transfer as well.
+        rewriter.eraseOp(prevOp);
+      }
       return success();
     }
   }
@@ -611,7 +618,8 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
   // If the source and destination device are the same, we can elide.
   if (op.getAlwaysElideSameDeviceCopy() &&
       input.getType() == output.getType()) {
-    rewriter.replaceOp(op, input);
+    // Replace uses of `op`'s outChain with its inChain to preserve ordering.
+    rewriter.replaceOp(op, ValueRange{input, op.getInChain()});
     return success();
   }
 

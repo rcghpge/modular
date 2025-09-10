@@ -1973,3 +1973,37 @@ void MOMutableStoreSliceOp::getEffects(
   effects.emplace_back(mlir::MemoryEffects::Write::get(),
                        &getInBufferMutable());
 }
+
+//===----------------------------------------------------------------------===//
+// MOTransferOp
+//===----------------------------------------------------------------------===//
+
+void MOTransferOp::inferMOTypesImpl(
+    MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+    std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+    SmallVectorImpl<Type> &moResultTypes,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+    SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+  // Input tensor type (first operand for mo.transfer).
+  auto inputType = cast<TensorType>(operands.getInput().getType());
+  moOperandTypes.push_back(inputType);
+  moInputParamDecls.push_back({});
+
+  // Input chain type (second operand for mo.transfer).
+  Type chainType = operands.getInChain().getType();
+  moOperandTypes.push_back(chainType);
+  moInputParamDecls.push_back({});
+
+  // Result tensor type - same as input but potentially different device.
+  TensorType resultType = inputType;
+  if (rmoResults && !rmoResults->empty())
+    resultType = cast<TensorValue>((*rmoResults)[0]).getType();
+
+  moResultTypes.push_back(resultType);
+  moOutputParamDecls.push_back({});
+
+  // Output chain type.
+  moResultTypes.push_back(chainType);
+  moOutputParamDecls.push_back({});
+}

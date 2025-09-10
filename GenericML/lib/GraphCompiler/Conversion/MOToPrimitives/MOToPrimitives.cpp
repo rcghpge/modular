@@ -1213,15 +1213,18 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
 
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(transferOp.getInput());
+
+  // Respect explicit chain threading for transfer.
+  Value inChain =
+      loweringState.lookupExecuteLoweredValue(transferOp.getInChain());
+  inChain = opLoweringState.getGuardChain(inChain);
+
   FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
-      opLoweringState.createOutputStorage(loweringState.getExecuteChain(),
+      opLoweringState.createOutputStorage(inChain,
                                           {bufferizedInput.tensorSpec});
   if (failed(loweredOutputsStorageOr))
     return failure();
   auto &loweredOutputsStorage = *loweredOutputsStorageOr;
-
-  Value inChain =
-      opLoweringState.getGuardChain(loweringState.getExecuteChain());
 
   Value outChain = lowerTransferImpl(
       opLoweringState, loweringState.getHostDevice(), bufferizedInput,
@@ -1233,6 +1236,10 @@ LogicalResult MOGraphLowering::lowerTransfer(MO::TransferOp transferOp) {
            << dstType.getDeviceRef() << "' is not supported.";
 
   opLoweringState.createOutputs(outChain, loweredOutputsStorage);
+
+  // Map explicit outChain result.
+  loweringState.emplaceExecuteLoweredValue(transferOp.getOutChain(), outChain);
+
   return success();
 }
 

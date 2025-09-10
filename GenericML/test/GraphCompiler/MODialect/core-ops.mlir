@@ -362,70 +362,97 @@ mo.graph @external_constant_control_flow(%arg0: !mo.tensor<[], bool>) -> !mo.ten
 
 // CHECK-LABEL: mo.graph @transfer_to_explicit
 mo.graph @transfer_to_explicit(%arg0 : !mo.tensor<[3, 2], f32, gpu:3>) -> !mo.tensor<[3, 2], f32> {
-  // CHECK: %{{.*}} = mo.transfer %{{.*}} : !mo.tensor<[3, 2], f32, gpu:3> to <"cpu", 0>
-  %0 = mo.transfer %arg0 : !mo.tensor<[3, 2], f32, gpu:3> to <"cpu", 0>
+  // CHECK: %{{.*}} = mo.chain.create
+  // CHECK: %[[T:.*]], %[[CH:.*]] = mo.transfer[%{{.*}}] %{{.*}} : !mo.tensor<[3, 2], f32, gpu:3> to <"cpu", 0>
+  %ch0 = mo.chain.create()
+  %0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[3, 2], f32, gpu:3> to <"cpu", 0>
   mo.output %0 : !mo.tensor<[3, 2], f32>
 }
 
 // CHECK-LABEL: mo.graph @transfer_fold_explicit
 mo.graph @transfer_fold_explicit(%arg0 : !mo.tensor<[7], f32, gpu:3>) -> !mo.tensor<[7], f32, gpu:3> {
   // CHECK-NEXT: mo.output
-  %0 = mo.transfer %arg0 : !mo.tensor<[7], f32, gpu:3> to <"cpu", 0>
-  %1 = mo.transfer %0 : !mo.tensor<[7], f32> to <"gpu", 3>
-  mo.output %1 : !mo.tensor<[7], f32, gpu:3>
+  %ch0 = mo.chain.create()
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[7], f32, gpu:3> to <"cpu", 0>
+  %t1, %ch2 = mo.transfer[%ch1] %t0 : !mo.tensor<[7], f32> to <"gpu", 3>
+  mo.output %t1 : !mo.tensor<[7], f32, gpu:3>
+}
+
+// Checks that double transfers are only folded if the first transfer has a
+// single use.
+// CHECK-LABEL: mo.graph @transfer_fold_multi_uses
+// CHECK-SAME: ([[ARG0:%.*]]: !mo.tensor{{.*}} ->
+mo.graph @transfer_fold_multi_uses(%arg0 : !mo.tensor<[7], f32, gpu:3>) -> (!mo.tensor<[7], f32>, !mo.tensor<[7], f32, gpu:3>) {
+  // CHECK-NEXT: mo.chain.create
+  // CHECK-NEXT: mo.transfer{{.*}}[[ARG0]]
+  // CHECK-NEXT: mo.output
+  %ch0 = mo.chain.create()
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[7], f32, gpu:3> to <"cpu", 0>
+  %t1, %ch2 = mo.transfer[%ch1] %t0 : !mo.tensor<[7], f32> to <"gpu", 3>
+  mo.output %t0, %t1 : !mo.tensor<[7], f32>, !mo.tensor<[7], f32, gpu:3>
 }
 
 // CHECK-LABEL: mo.graph @transfer_elide_copy
 mo.graph @transfer_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, gpu:3> {
   // CHECK-NEXT: mo.output
-  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = true}
-  mo.output %0 : !mo.tensor<[4, 5], f32, gpu:3>
+  %ch0 = mo.chain.create()
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = true}
+  mo.output %t0 : !mo.tensor<[4, 5], f32, gpu:3>
 }
 
 // CHECK-LABEL: mo.graph @transfer_no_elide_with_flag
 mo.graph @transfer_no_elide_with_flag(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32> {
-  // CHECK-NEXT: mo.transfer
-  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"cpu", 0> {alwaysElideSameDeviceCopy = true}
-  // CHECK-NEXT: mo.output
-  mo.output %0 : !mo.tensor<[4, 5], f32>
+  // CHECK: %[[T:.*]], %[[C:.*]] = mo.transfer[%[[IN:.*]]] %{{.*}} : !mo.tensor<[4, 5], f32, gpu:3> to <"cpu", 0>
+  %ch0 = mo.chain.create()
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"cpu", 0> {alwaysElideSameDeviceCopy = true}
+  // CHECK-NEXT: mo.output %[[T]]
+  mo.output %t0 : !mo.tensor<[4, 5], f32>
 }
 
 // CHECK-LABEL: mo.graph @transfer_no_elide_copy
 mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, gpu:3> {
-  // CHECK-NEXT: mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3>
-  %0 = mo.transfer %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = false}
-  mo.output %0 : !mo.tensor<[4, 5], f32, gpu:3>
+  // CHECK: %[[T:.*]], %[[C:.*]] = mo.transfer[%[[IN:.*]]] %{{.*}} : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3>
+  %ch0 = mo.chain.create()
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = false}
+  mo.output %t0 : !mo.tensor<[4, 5], f32, gpu:3>
 }
 
 // CHECK-LABEL: mo.graph @transfer_cast_rotate
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], f32>) ->
-// CHECK-NEXT: %[[CAST:.*]] = mo.cast(%[[ARG0]]) : (!mo.tensor<[4096], f32>) -> !mo.tensor<[4096], bf16>
-// CHECK-NEXT: %[[GPU:.*]] = mo.transfer %[[CAST]] : !mo.tensor<[4096], bf16> to <"gpu", 0>
+// CHECK: %[[CAST:.*]] = mo.cast(%[[ARG0]]) : (!mo.tensor<[4096], f32>) -> !mo.tensor<[4096], bf16>
+// CHECK-NEXT: %[[GPU:.*]], %[[CH:.*]] = mo.transfer[%[[IN:.*]]] %[[CAST]] : !mo.tensor<[4096], bf16> to <"gpu", 0>
 // CHECK-NEXT: mo.output %[[GPU]]
 mo.graph @transfer_cast_rotate(%arg0 : !mo.tensor<[4096], f32>) -> !mo.tensor<[4096], bf16, gpu:0> {
-  %0 = mo.transfer %arg0 : !mo.tensor<[4096], f32> to <"gpu", 0>
-  %1 = mo.cast(%0) : (!mo.tensor<[4096], f32, gpu:0>) -> !mo.tensor<[4096], bf16, gpu:0>
+  %ch0 = mo.chain.create()
+  %0 = mo.cast(%arg0) : (!mo.tensor<[4096], f32>) -> !mo.tensor<[4096], bf16>
+  %1, %ch1 = mo.transfer[%ch0] %0 : !mo.tensor<[4096], bf16> to <"gpu", 0>
   mo.output %1 : !mo.tensor<[4096], bf16, gpu:0>
 }
 
 // CHECK-LABEL: mo.graph @transfer_cast_no_rotate1
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], bf16>) ->
-// CHECK-NEXT: %[[CPU:.*]] = mo.transfer %[[ARG0]]
+// CHECK-NEXT: %[[CH:.*]] = mo.chain.create
+// CHECK-NEXT: %[[CPU:.*]], %[[OCH:.*]] = mo.transfer[%[[CH]]]
+// CHECK-SAME: %[[ARG0]] : !mo.tensor<[4096], bf16> to <"gpu", 0>
 // CHECK-NEXT: %[[OUT:.*]] = mo.cast(%[[CPU]])
 // CHECK-NEXT: mo.output %[[OUT]]
 mo.graph @transfer_cast_no_rotate1(%arg0 : !mo.tensor<[4096], bf16>) -> !mo.tensor<[4096], f32, gpu:0> {
-  %0 = mo.transfer %arg0 : !mo.tensor<[4096], bf16> to <"gpu", 0>
+  %ch0 = mo.chain.create()
+  %0, %c1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4096], bf16> to <"gpu", 0>
   %1 = mo.cast(%0) : (!mo.tensor<[4096], bf16, gpu:0>) -> !mo.tensor<[4096], f32, gpu:0>
   mo.output %1 : !mo.tensor<[4096], f32, gpu:0>
 }
 
 // CHECK-LABEL: mo.graph @transfer_cast_no_rotate_2
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[4096], f32, gpu:0>) ->
-// CHECK-NEXT: %[[CPU:.*]] = mo.transfer %[[ARG0]]
+// CHECK-NEXT: %[[CH:.*]] = mo.chain.create
+// CHECK-NEXT: %[[CPU:.*]], %[[OCH:.*]] = mo.transfer[%[[CH]]]
+// CHECK-SAME: %[[ARG0]] : !mo.tensor<[4096], f32, gpu:0> to <"cpu", 0>
 // CHECK-NEXT: %[[OUT:.*]] = mo.cast(%[[CPU]])
 // CHECK-NEXT: mo.output %[[OUT]]
 mo.graph @transfer_cast_no_rotate_2(%arg0 : !mo.tensor<[4096], f32, gpu:0>) -> !mo.tensor<[4096], bf16> {
-  %0 = mo.transfer %arg0 : !mo.tensor<[4096], f32, gpu:0> to <"cpu", 0>
+  %ch0 = mo.chain.create()
+  %0, %c1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4096], f32, gpu:0> to <"cpu", 0>
   %1 = mo.cast(%0) : (!mo.tensor<[4096], f32>) -> !mo.tensor<[4096], bf16>
   mo.output %1 : !mo.tensor<[4096], bf16>
 }

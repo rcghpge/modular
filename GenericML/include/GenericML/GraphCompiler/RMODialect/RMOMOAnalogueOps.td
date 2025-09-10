@@ -2777,11 +2777,16 @@ def RMO_MOMutableStoreSliceOp : RMO_MOAnalogueOp<"mutable.store.slice", [
   }];
 }
 
-def RMO_MOTransferOp : RMO_MOAnaloguePureUnaryExplicitOutputOp<"transfer"> {
-  let results = (outs MO_Tensor:$result);
+def RMO_MOTransferOp : RMO_MOAnalogueOp<"transfer"> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ParamDecls:$outputParamDecls,
+    MO_Chain:$inChain
+  );
+  let results = (outs MO_Tensor:$result, MO_Chain:$outChain);
 
   let assemblyFormat = [{
-    $input `:` qualified(type($input)) `to`
+    `[` $inChain `]` $input `:` qualified(type($input)) `to`
     custom<TransferResult>(ref(type($input)), type($result)) attr-dict
   }];
 }
