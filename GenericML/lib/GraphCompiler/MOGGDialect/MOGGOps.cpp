@@ -1234,8 +1234,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   }
 
   opLoweringState.createOutputs(newKernel->getResult(0), loweredOutputsStorage);
-  if (maybeGetOutChain()) {
-    loweringState.emplaceExecuteLoweredValue(*maybeGetOutChain(),
+  if (auto chain = maybeGetOutChain()) {
+    loweringState.emplaceExecuteLoweredValue(std::move(*chain),
                                              newKernel.getResult(0));
   }
 
