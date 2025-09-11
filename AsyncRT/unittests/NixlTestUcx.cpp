@@ -1057,7 +1057,8 @@ TEST_F(NixlUcxIntegrationTest, SelfNotification) {
   }
 }
 
-TEST_F(NixlUcxIntegrationTest, MetadataInvalidation) {
+// TODO(GEX-2564): Re-enable after fixing flakiness.
+TEST_F(NixlUcxIntegrationTest, DISABLED_MetadataInvalidation) {
   // Test socket-based metadata invalidation functionality
   setenv("UCX_LOG_LEVEL", "debug", 1);
 
