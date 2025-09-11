@@ -500,14 +500,14 @@ AsyncRT_DeviceContext_enablePeerAccess(const DeviceContext *ctx,
 
 // Enable peer access for all CUDA devices.
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enableAllPeerAccess() {
-  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  int numDevices = Device::numberOfDevices(Device::gpuAPI);
   if (numDevices <= 1)
     return nullptr;
 
   SmallVector<DeviceRef> devices;
   devices.reserve(numDevices);
   for (int id = 0; id < numDevices; ++id) {
-    ErrorOr<DeviceRef> devOr = Device::create(Device::cudaAPI, id);
+    ErrorOr<DeviceRef> devOr = Device::create(Device::gpuAPI, id);
     if (devOr)
       return strdup(devOr.getError());
     devices.emplace_back(std::move(devOr.get()));
