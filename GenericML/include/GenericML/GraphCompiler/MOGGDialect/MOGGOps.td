@@ -120,7 +120,7 @@ def MOGG_SplitOp : MOGG_LowerableOp<"split", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 def MOGG_AsTupleOp
-    : MOGG_Op<"as_tuple", [Pure]> {
+    : MOGG_Op<"as_tuple", [Pure, DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
   let summary = "MOGG tuple creation operation";
   let description = [{
     This operation creates tuple of values that will be later been translated to

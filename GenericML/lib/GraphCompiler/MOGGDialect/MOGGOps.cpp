@@ -24,7 +24,6 @@
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
-#include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
@@ -843,16 +842,25 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> kernelOperands;
   // Go through and rebind all outputs.
   for (auto [outputIdx, val] : llvm::enumerate(getKernelDPSOutputs())) {
-    kernelOperands.push_back(state.getReboundOutputTensorFor(
-        val,
-        /*expectsComputeLambda=*/functionAdaptor.outputArguments[outputIdx]
-            .isTensorWithIOSpec(
-                KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor)));
+    if (auto asTupleOp = val.getDefiningOp<MOGG::AsTupleOp>()) {
+      kernelOperands.push_back(state.getMojoValueFor(val));
+    } else {
+      kernelOperands.push_back(state.getReboundOutputTensorFor(
+          val,
+          /*expectsComputeLambda=*/functionAdaptor.outputArguments[outputIdx]
+              .isTensorWithIOSpec(
+                  KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor)));
+    }
   }
 
   // Rebind the inputs.
-  for (Value val : getKernelInputs())
-    kernelOperands.push_back(state.getReboundInputTensorFor(val));
+  for (Value val : getKernelInputs()) {
+    if (auto asTupleOp = val.getDefiningOp<MOGG::AsTupleOp>()) {
+      kernelOperands.push_back(state.getMojoValueFor(val));
+    } else {
+      kernelOperands.push_back(state.getReboundInputTensorFor(val));
+    }
+  }
   // And the optional context.
   if (auto maybeContext = getDeviceContext())
     kernelOperands.push_back(state.getMojoValueFor(maybeContext));
@@ -3430,6 +3438,95 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
 LogicalResult BindToOp::emitMojo(EmitMojoState &state) {
   // Replace with the fused tensor by default.
   state.setMojoValueFor(getResult(), state.getMojoValueFor(getFusedTensor()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsTupleOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
+  SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getInputs());
+
+  ASSERT_STREAM(!inputValues.empty(), << "mogg.as_tuple op has no inputs");
+
+  SmallVector<KernelTerminator> callOps;
+  for (auto user : getResult().getUsers()) {
+    if (auto callOp = dyn_cast<MOGG::KernelTerminator>(user))
+      callOps.push_back(callOp);
+  }
+
+  ASSERT_STREAM(callOps.size() == 1, "Expected to find exactly one call op.");
+
+  auto kernelOutputs = callOps.front().getKernelDPSOutputs();
+  auto kernelInputs = callOps.front().getKernelInputs();
+
+  bool toInput = false;
+  bool toOutput = false;
+
+  for (auto kernelInput : kernelInputs)
+    toInput |= kernelInput == getResult();
+
+  for (auto kernelOutput : kernelOutputs)
+    toOutput |= kernelOutput == getResult();
+
+  // Use the EmitMojoState's built-in rebinding methods
+  SmallVector<MojoValue> reboundInputValues;
+  for (auto input : getInputs()) {
+    if (toInput)
+      reboundInputValues.push_back(state.getReboundInputTensorFor(input));
+    else if (toOutput)
+      reboundInputValues.push_back(state.getReboundOutputTensorFor(input));
+  }
+
+  // Create DynamicTensor variables for each input
+  SmallVector<MojoValue> dynamicTensorVars;
+  for (const auto &reboundInput : reboundInputValues) {
+    // Create a DynamicTensor from each rebound input (which is already rebuilt)
+    // var aN = DynamicTensor[dtype = varN.dtype, rank = varN.rank](
+    //     varN._ptr, varN.shape()
+    // )
+    MojoValue dynamicTensorConstructor = MojoValue(
+        "DynamicTensor")[{MojoValue("dtype").equal(reboundInput.get("dtype")),
+                          MojoValue("rank").equal(reboundInput.get("rank"))}];
+    MojoValue dynamicTensorValue = dynamicTensorConstructor(
+        {}, {reboundInput.get("_ptr"), reboundInput.get("shape")()});
+    dynamicTensorVars.push_back(state.builder.var(dynamicTensorValue));
+  }
+
+  // Create StaticTuple with the DynamicTensor variables
+  // var inputTup = StaticTuple[size=N](a1, a2, ..., aN)
+  MojoValue inputTupleConstructor = MojoValue("StaticTuple")[{
+      MojoValue("size").equal(std::to_string(dynamicTensorVars.size()))}];
+  MojoValue inputTupleValue = inputTupleConstructor({}, dynamicTensorVars);
+  MojoValue inputTupVar = state.builder.var(inputTupleValue);
+
+  // Create the static specs tuple
+  // alias inputSpecs = StaticTuple[size=N](
+  //     var1.static_spec, var2.static_spec, ..., varN.static_spec
+  // )
+  SmallVector<MojoValue> staticSpecs;
+  for (const auto &reboundInput : reboundInputValues) {
+    staticSpecs.push_back(reboundInput.get("static_spec"));
+  }
+  MojoValue staticSpecsConstructor = MojoValue("StaticTuple")[{
+      MojoValue("size").equal(std::to_string(staticSpecs.size()))}];
+  MojoValue staticSpecsValue = staticSpecsConstructor({}, staticSpecs);
+  MojoValue inputSpecsAlias = state.builder.alias(staticSpecsValue);
+
+  // Create the VariadicTensors
+  // var varInput = VariadicTensors[
+  //     io_spec = var1.io_spec, static_specs=inputSpecs
+  // ](inputTup)
+  // Note: Using the first rebound input's io_spec as they should all be the
+  // same
+  MojoValue variadicTensorsConstructor = MojoValue("VariadicTensors")[{
+      MojoValue("io_spec").equal(reboundInputValues[0].get("io_spec")),
+      MojoValue("static_specs").equal(inputSpecsAlias)}];
+  MojoValue variadicTensorsValue =
+      variadicTensorsConstructor({}, {inputTupVar});
+
+  state.setMojoValueFor(getResult(), state.builder.var(variadicTensorsValue));
   return success();
 }
 
