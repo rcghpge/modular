@@ -616,7 +616,7 @@ static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
 //===----------------------------------------------------------------------===//
 
 static void mgp_buffer_get_cached(Chain inChain, StateContext &theContext,
-                                  AsyncValueRef<uint64_t> bBufferSlot,
+                                  AsyncValueRef<size_t> bBufferSlot,
                                   Result<TensorBufferRef> outBuffer) {
   auto &stateSlot = theContext.getStateSlot(*bBufferSlot);
   ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);

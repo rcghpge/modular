@@ -155,10 +155,9 @@ class LowerAlignmentsPass
 
   // Try to lower block in dataflow order and populate the alignments with
   // additional information
-  void inferAndPopulateAlignments(
-      Block *block, llvm::DenseMap<Value, int64_t> alignmentMap,
-      llvm::DenseMap<uint64_t, int64_t> &cacheAlignmentMap,
-      OpBuilder &builder) {
+  void inferAndPopulateAlignments(Block *block,
+                                  llvm::DenseMap<Value, int64_t> &alignmentMap,
+                                  OpBuilder &builder) {
     // lambda to set alignmentMap from raw alignment
     auto setAlignmentFromRawAlignment = [&](uint64_t rawAlignment, Value value,
                                             DeviceRefAttr deviceRef) {
@@ -191,8 +190,6 @@ class LowerAlignmentsPass
             alignmentMap.at(bufferOp.getInBuffer());
       } else if (auto bufferOp = dyn_cast<MGP::BufferCacheOp>(op)) {
         // Pass-through to caching system
-        cacheAlignmentMap[bufferOp.getBBufferSlot()] =
-            alignmentMap.at(bufferOp.getBuffer());
       } else if (auto bufferOp = dyn_cast<MGP::BufferGetCachedOp>(op)) {
         // Pass-through from caching system
         alignmentMap[bufferOp.getOutBuffer()] =
@@ -234,8 +231,7 @@ class LowerAlignmentsPass
           for (auto &innerBlock : innerRegion.getBlocks()) {
             auto argAlignments =
                 createBlockArgAlignments(&innerBlock, alignmentMap);
-            inferAndPopulateAlignments(&innerBlock, argAlignments,
-                                       cacheAlignmentMap, builder);
+            inferAndPopulateAlignments(&innerBlock, argAlignments, builder);
           }
         }
       }
@@ -261,15 +257,13 @@ class LowerAlignmentsPass
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
     llvm::DenseMap<Value, int64_t> alignmentMap;
-    llvm::DenseMap<uint64_t, int64_t> cacheAlignmentMap;
     auto ctx = modelOp->getContext();
     OpBuilder builder(ctx);
     for (auto innerRegion : modelOp.getRegions()) {
       for (auto &innerBlock : innerRegion->getBlocks()) {
         auto argAlignments =
             createBlockArgAlignments(&innerBlock, alignmentMap);
-        inferAndPopulateAlignments(&innerBlock, argAlignments,
-                                   cacheAlignmentMap, builder);
+        inferAndPopulateAlignments(&innerBlock, argAlignments, builder);
       }
     }
     LLVM_DEBUG(llvm::dbgs() << "LowerAlignmentsPass: done\n");
