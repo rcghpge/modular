@@ -22,11 +22,16 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 from max._core.engine import Model
-from max.driver import Device, DLPackArray, Tensor
+from max.driver import Device, Tensor
 from max.dtype import DType
 from max.engine.api import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, TensorValue
-from max.graph.weights import Weights, WeightsAdapter
+from max.graph.weights import (
+    SafetensorWeights,
+    WeightData,
+    Weights,
+    WeightsAdapter,
+)
 from max.nn import (
     Module,
     ReturnLogits,
@@ -38,6 +43,9 @@ from max.nn.kv_cache import (
     KVCacheParams,
     estimate_kv_cache_size,
     load_kv_manager,
+)
+from max.pipelines.architectures.internvl.model import (
+    assert_image_embeddings_invariant,
 )
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
@@ -91,29 +99,28 @@ class Qwen2_5VLInputs(ModelInputs):
     return_n_logits: Tensor
     """Number of logits to return, used by speculative decoding for example."""
 
-    image_token_indices: list[Tensor]
-    """Per-device pre-computed indices of image tokens in the input sequence."""
-
     kv_cache_inputs: KVCacheInputs
     """KV cache inputs for the model."""
 
+    image_token_indices: list[Tensor] | None = None
+    """Per-device pre-computed indices of image tokens in the input sequence."""
     # Vision inputs.
-    pixel_values: Tensor | None = None
+    pixel_values: list[Tensor] | None = None
     """Pixel values for vision inputs."""
 
-    window_index: Tensor | None = None
+    window_index: list[Tensor] | None = None
     """Window indices for vision attention mechanism."""
 
-    vision_position_ids: Tensor | None = None
+    vision_position_ids: list[Tensor] | None = None
     """1D RoPE position IDs for the visual inputs."""
 
-    attention_mask_full: Tensor | None = None
+    attention_mask_full: list[Tensor] | None = None
     """Full attention masks for vision inputs."""
 
-    attention_mask_window: Tensor | None = None
+    attention_mask_window: list[Tensor] | None = None
     """Window attention masks for vision inputs."""
 
-    max_grid_size: Tensor | None = None
+    max_grid_size: list[Tensor] | None = None
     """Maximum grid size for vision inputs."""
 
     def __init__(
@@ -124,13 +131,13 @@ class Qwen2_5VLInputs(ModelInputs):
         position_ids: Tensor,
         return_n_logits: Tensor,
         kv_cache_inputs: KVCacheInputs,
-        image_token_indices: list[Tensor],
-        pixel_values: Tensor | None = None,
-        window_index: Tensor | None = None,
-        vision_position_ids: Tensor | None = None,
-        attention_mask_full: Tensor | None = None,
-        attention_mask_window: Tensor | None = None,
-        max_grid_size: Tensor | None = None,
+        image_token_indices: list[Tensor] | None = None,
+        pixel_values: list[Tensor] | None = None,
+        window_index: list[Tensor] | None = None,
+        vision_position_ids: list[Tensor] | None = None,
+        attention_mask_full: list[Tensor] | None = None,
+        attention_mask_window: list[Tensor] | None = None,
+        max_grid_size: list[Tensor] | None = None,
     ) -> None:
         self.signal_buffers = signal_buffers
         self.input_ids = input_ids
@@ -152,7 +159,9 @@ class Qwen2_5VLInputs(ModelInputs):
         return self.pixel_values is not None
 
 
-class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
+class Qwen2_5VLModel(
+    PipelineModel[TextAndVisionContext], KVCacheMixin[TextAndVisionContext]
+):
     """A Qwen2.5VL pipeline model for multimodal text generation."""
 
     vision_model: Model
@@ -164,7 +173,7 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
     model_config: Qwen2_5VLConfig | None
     """The Qwen2.5VL model configuration."""
 
-    _input_row_offsets_prealloc: Tensor
+    _input_row_offsets_prealloc: list[Tensor]
     """Pre-allocated per-device tensors for input row offsets in multi-step execution."""
 
     def __init__(
@@ -289,20 +298,41 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         assert self.pipeline_config.max_batch_size, (
             "Expected max_batch_size to be set"
         )
-        self._input_row_offsets_prealloc = Tensor.from_numpy(
-            np.arange(self.pipeline_config.max_batch_size + 1, dtype=np.uint32)
-        ).to(self.devices[0])
+        self._input_row_offsets_prealloc = [
+            Tensor.from_numpy(
+                np.arange(
+                    self.pipeline_config.max_batch_size + 1, dtype=np.uint32
+                )
+            ).to(dev)
+            for dev in self.devices
+        ]
 
         # Get LLM weights dictionary. Needed before model config generation
         # because we need to know if word embeddings are tied or not.
+        if not isinstance(self.weights, SafetensorWeights):
+            raise ValueError(
+                "Qwen2.5VL currently only supports safetensors weights"
+            )
         if self.adapter:
-            llm_state_dict = self.adapter(
+            model_state_dict = self.adapter(
                 dict(self.weights.items()),
             )
         else:
-            llm_state_dict = {
+            model_state_dict = {
                 key: value.data() for key, value in self.weights.items()
             }
+        # Get state dict for the vision encoder
+        vision_state_dict: dict[str, WeightData] = {}
+        llm_state_dict: dict[str, WeightData] = {}
+        for key, value in model_state_dict.items():
+            if key.startswith("vision_encoder."):
+                vision_state_dict[key] = value
+            elif key.startswith("language_model."):
+                llm_state_dict[key] = value
+            else:
+                raise ValueError(
+                    f"Key: {key} is not part of the vision or language model"
+                )
 
         # Generate Qwen2.5VL config from HuggingFace config
         qwen2_5vl_config = Qwen2_5VLConfig.generate(
@@ -317,14 +347,15 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         )
         self.model_config = qwen2_5vl_config
 
+        assert self.model_config is not None, "Model config must be initialized"
         self.model: Module = Qwen2_5VL(self.model_config)
-        self.model.load_state_dict(llm_state_dict, strict=True)
+        self.model.load_state_dict(model_state_dict, strict=True)
 
         logger.info("Building and compiling vision model...")
         before = time.perf_counter()
-        vision_graph, vision_model_state_dict = self._build_vision_graph()
+        vision_graph = self._build_vision_graph()
         vision_model = session.load(
-            vision_graph, weights_registry=vision_model_state_dict
+            vision_graph, weights_registry=vision_state_dict
         )
         after = time.perf_counter()
         logger.info(
@@ -333,9 +364,9 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
 
         logger.info("Building and compiling language model...")
         before = time.perf_counter()
-        language_graph, language_model_state_dict = self._build_language_graph()
+        language_graph = self._build_language_graph()
         language_model = session.load(
-            language_graph, weights_registry=language_model_state_dict
+            language_graph, weights_registry=llm_state_dict
         )
         after = time.perf_counter()
         logger.info(
@@ -344,103 +375,136 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
 
         return vision_model, language_model
 
-    def _build_vision_graph(self) -> tuple[Graph, dict[str, DLPackArray]]:
+    def _build_vision_graph(self) -> Graph:
         """Build the vision model graph for processing images.
 
-        Note: Qwen2.5VL's vision encoder is not distributed and runs on a single device.
+        Now supports multi-GPU processing for the vision encoder.
         """
 
         # Create Qwen2.5VL model and vision encoder
         assert isinstance(self.model, Qwen2_5VL)
         vision_encoder = self.model.vision_encoder
+        # Define vision graph input types - one per device
+        # vision_seq_len is the number of patches in all images and videos in the request
+        pixel_values_types = [
+            TensorType(
+                DType.float32,
+                shape=["vision_seq_len", vision_encoder.patch_embed.patch_dim],
+                device=DeviceRef.from_device(device),
+            )
+            for device in self.devices
+        ]
 
-        # Generate DeviceRef for the primary device (vision encoder runs on single device)
-        device_ref = DeviceRef.from_device(self.devices[0])
+        rot_pos_ids_types = [
+            TensorType(
+                DType.int64,
+                shape=["vision_seq_len", 2],
+                device=DeviceRef.from_device(device),
+            )
+            for device in self.devices
+        ]
 
-        # Define vision graph input types - single device only
-        pixel_values_type = TensorType(
-            DType.float32,
-            shape=["vision_seq_len", vision_encoder.patch_embed.image_dim],
-            device=device_ref,
-        )
+        window_index_types = [
+            TensorType(
+                DType.int64,
+                shape=["window_seq_len"],
+                device=DeviceRef.from_device(device),
+            )
+            for device in self.devices
+        ]
 
-        rot_pos_ids_type = TensorType(
-            DType.int64,
-            shape=["vision_seq_len", 2],
-            device=device_ref,
-        )
+        attention_mask_window_types = [
+            TensorType(
+                DType.float32,
+                shape=[1, "vision_seq_len", "vision_seq_len"],
+                device=DeviceRef.from_device(device),
+            )
+            for device in self.devices
+        ]
 
-        window_index_type = TensorType(
-            DType.int64,
-            shape=["window_seq_len"],
-            device=device_ref,
-        )
+        attention_mask_full_types = [
+            TensorType(
+                DType.float32,
+                shape=[1, "vision_seq_len", "vision_seq_len"],
+                device=DeviceRef.from_device(device),
+            )
+            for device in self.devices
+        ]
 
-        attention_mask_window_type = TensorType(
-            DType.float32,
-            shape=[1, "vision_seq_len", "vision_seq_len"],
-            device=device_ref,
-        )
+        max_grid_size_types = [
+            TensorType(
+                DType.int32,
+                shape=[],
+                device=DeviceRef.CPU(),
+            )
+            for device in self.devices
+        ]
 
-        attention_mask_full_type = TensorType(
-            DType.float32,
-            shape=[1, "vision_seq_len", "vision_seq_len"],
-            device=device_ref,
-        )
-
-        max_grid_size_type = TensorType(
-            DType.int32,
-            shape=[],
-            device=DeviceRef.CPU(),
+        # Create signal types for distributed communication
+        signals = Signals(
+            devices=(DeviceRef(d.label, d.id) for d in self.devices)
         )
 
         # Build the vision graph
         with Graph(
             "qwen2_5vl_vision",
-            input_types=(
-                pixel_values_type,
-                rot_pos_ids_type,
-                window_index_type,
-                attention_mask_window_type,
-                attention_mask_full_type,
-                max_grid_size_type,
+            input_types=tuple(
+                [
+                    *pixel_values_types,
+                    *rot_pos_ids_types,
+                    *window_index_types,
+                    *attention_mask_window_types,
+                    *attention_mask_full_types,
+                    *max_grid_size_types,
+                    *signals.input_types(),
+                ]
             ),
         ) as graph:
-            (
-                pixel_values,
-                rot_pos_ids,
-                window_index,
-                attention_mask_window,
-                attention_mask_full,
-                max_grid_size,
-            ) = graph.inputs
+            # Extract inputs
+            all_inputs = graph.inputs
+            n_devices = len(self.devices)
 
-            # Execute vision transformer using the vision encoder module
+            pixel_values_list = [inp.tensor for inp in all_inputs[:n_devices]]
+            rot_pos_ids_list = [
+                inp.tensor for inp in all_inputs[n_devices : 2 * n_devices]
+            ]
+            window_index_list = [
+                inp.tensor for inp in all_inputs[2 * n_devices : 3 * n_devices]
+            ]
+            attention_mask_window_list = [
+                inp.tensor for inp in all_inputs[3 * n_devices : 4 * n_devices]
+            ]
+            attention_mask_full_list = [
+                inp.tensor for inp in all_inputs[4 * n_devices : 5 * n_devices]
+            ]
+            max_grid_size_list = [
+                inp.tensor for inp in all_inputs[5 * n_devices : 6 * n_devices]
+            ]
+            signal_buffers = [inp.buffer for inp in all_inputs[6 * n_devices :]]
+
+            # Execute vision transformer using the vision encoder module with multi-GPU support
+            # For now, use the first device's inputs (keeping compatibility with single GPU approach)
+            # TODO: Implement proper multi-GPU execution when vision encoder is fully parallelized
             vision_outputs = vision_encoder(
-                pixel_values.tensor,
-                rot_pos_ids.tensor,
-                window_index.tensor,
-                attention_mask_window.tensor,
-                attention_mask_full.tensor,
-                max_grid_size.tensor,
+                pixel_values=pixel_values_list,
+                rot_pos_ids=rot_pos_ids_list,
+                window_index=window_index_list,
+                attention_mask_window=attention_mask_window_list,
+                attention_mask_full=attention_mask_full_list,
+                max_grid_size=max_grid_size_list,
+                signal_buffers=signal_buffers,
             )
 
             # Ensure we have a valid output
             assert vision_outputs is not None, (
                 "Vision encoder must return a valid output"
             )
-            graph.output(vision_outputs)
 
-        # Get state dict for the vision encoder
-        state_dict = self.model.state_dict()
-        vision_state_dict: dict[str, DLPackArray] = {}
-        for key, value in state_dict.items():
-            if key.startswith("vision_encoder."):
-                vision_state_dict[key] = value
+            graph.output(*vision_outputs)
 
-        return graph, vision_state_dict
+        return graph
 
-    def _build_language_graph(self) -> tuple[Graph, dict[str, DLPackArray]]:
+    def _build_language_graph(self) -> Graph:
         """Build the language model graph for text generation with image embeddings."""
 
         assert isinstance(self.model, Qwen2_5VL)
@@ -449,14 +513,9 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         # Generate DeviceRef
         device_ref = DeviceRef.from_device(self.devices[0])
 
-        language_state_dict: dict[str, DLPackArray] = {}
-        for key, value in self.model.state_dict().items():
-            if key.startswith("language_model."):
-                language_state_dict[key] = value
-
         input_ids_type = TensorType(
             DType.int64,
-            shape=["seq_len"],
+            shape=["total_seq_len"],
             device=device_ref,
         )
         return_n_logits_type = TensorType(
@@ -469,9 +528,9 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             TensorType(
                 DType.uint32,
                 shape=["input_row_offsets_len"],
-                device=DeviceRef(device.label, device.id),
+                device=DeviceRef.from_device(dev),
             )
-            for device in self.devices
+            for dev in self.devices
         ]
 
         signals = Signals(
@@ -503,7 +562,7 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         ]
         position_ids_type = TensorType(
             DType.uint32,
-            shape=[len(self.model_config.mrope_section), "seq_len"],
+            shape=[len(self.model_config.mrope_section), "total_seq_len"],
             device=device_ref,
         )
 
@@ -573,23 +632,25 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
                     kv_cache_inputs_unflattened
                 ),
                 input_row_offsets=input_row_offsets,
-                # TODO: add mrope_section to the model config
                 mrope_section=self.model_config.mrope_section,
             )
 
             graph.output(*outputs)
 
-        return graph, language_state_dict
+        return graph
 
     def _prepare_vision_inputs(
         self, context_batch: Sequence[TextAndVisionContext]
-    ) -> dict[str, Tensor] | None:
+    ) -> dict[str, list[Tensor]] | None:
         """Prepares vision inputs for vision processing including pixel values, window index, and position IDs."""
         pixel_values_list: list[npt.NDArray[np.floating[Any]]] = []
         image_grid_thw: list[npt.NDArray[np.integer[Any]]] = []
 
         for context in context_batch:
-            if context.pixel_values and context.needs_vision_encoding:
+            if context.needs_vision_encoding:
+                assert context.pixel_values is not None, (
+                    "image_pixel_values must be present"
+                )
                 pixel_values_list.extend(context.pixel_values)
                 assert context.extra_model_args["image_grid_thw"] is not None, (
                     "image_grid_thw must be present"
@@ -662,18 +723,25 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             np.array(vision_max_grid_size, dtype=np.int32)
         )
 
-        # Return all vision inputs as tensors on single device (device 0)
+        # Return all vision inputs as tensors distributed across devices
         vision_inputs = {
-            "pixel_values": pixel_values_tensor.to(self.devices[0]),
-            "window_index": window_index_tensor.to(self.devices[0]),
-            "position_ids": position_ids_tensor.to(self.devices[0]),
-            "attention_mask_full": attention_mask_full_tensor.to(
-                self.devices[0]
-            ),
-            "attention_mask_window": attention_mask_window_tensor.to(
-                self.devices[0]
-            ),
-            "max_grid_size": max_grid_size_tensor,
+            "pixel_values": [
+                pixel_values_tensor.to(device) for device in self.devices
+            ],
+            "window_index": [
+                window_index_tensor.to(device) for device in self.devices
+            ],
+            "position_ids": [
+                position_ids_tensor.to(device) for device in self.devices
+            ],
+            "attention_mask_full": [
+                attention_mask_full_tensor.to(device) for device in self.devices
+            ],
+            "attention_mask_window": [
+                attention_mask_window_tensor.to(device)
+                for device in self.devices
+            ],
+            "max_grid_size": [max_grid_size_tensor for _ in self.devices],
         }
 
         return vision_inputs
@@ -756,32 +824,42 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         image_embeddings: list[Tensor]
 
         if model_inputs.has_vision_inputs:
+            assert model_inputs.image_token_indices is not None
             assert model_inputs.pixel_values is not None
             assert model_inputs.vision_position_ids is not None
             assert model_inputs.window_index is not None
             assert model_inputs.attention_mask_window is not None
             assert model_inputs.attention_mask_full is not None
             assert model_inputs.max_grid_size is not None
+            assert model_inputs.image_token_indices is not None
 
-            # Execute vision model: pixel_values -> image_embeddings (single device)
+            # Execute vision model: pixel_values -> image_embeddings (multi-GPU)
+
             vision_outputs = self.vision_model.execute(
-                model_inputs.pixel_values,
-                model_inputs.vision_position_ids,
-                model_inputs.window_index,
-                model_inputs.attention_mask_window,
-                model_inputs.attention_mask_full,
-                model_inputs.max_grid_size,
+                *model_inputs.pixel_values,
+                *model_inputs.vision_position_ids,
+                *model_inputs.window_index,
+                *model_inputs.attention_mask_window,
+                *model_inputs.attention_mask_full,
+                *model_inputs.max_grid_size,
+                *model_inputs.signal_buffers,
             )
 
-            # Extract image embeddings from vision outputs and distribute to all devices
-            assert isinstance(vision_outputs[0], Tensor)
-            single_device_embeddings = vision_outputs[0]
+            # Extract image embeddings from vision outputs (one per device)
+            assert len(vision_outputs) == len(self.devices)
             image_embeddings = [
-                single_device_embeddings.to(device) for device in self.devices
+                output
+                for output in vision_outputs
+                if isinstance(output, Tensor)
             ]
+            image_token_indices = model_inputs.image_token_indices
+            assert_image_embeddings_invariant(
+                image_embeddings, image_token_indices
+            )
         else:
             # Initialize empty tensors for text-only mode
             image_embeddings = self._empty_image_embeddings
+            image_token_indices = self._empty_image_token_indices
 
         # Execute language model with text and image embeddings
         language_outputs = self.language_model.execute(
@@ -789,7 +867,7 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             model_inputs.return_n_logits,
             *model_inputs.input_row_offsets,
             *image_embeddings,
-            *model_inputs.image_token_indices,
+            *image_token_indices,
             model_inputs.position_ids,
             *model_inputs.signal_buffers,
             *model_inputs.kv_cache_inputs,
@@ -827,12 +905,9 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         # Extract individual vision input components
         pixel_values = vision_inputs["pixel_values"] if vision_inputs else None
         window_index = vision_inputs["window_index"] if vision_inputs else None
-
-        # we have to change position_ids to vision_position_ids
         vision_position_ids = (
             vision_inputs["position_ids"] if vision_inputs else None
         )
-
         attention_mask_full = (
             vision_inputs["attention_mask_full"] if vision_inputs else None
         )
@@ -852,8 +927,7 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             for device in self.devices
         ]
 
-        # we should generate position_ids for the decoder using numpy get_rope_index we have in data_processing.py
-        # make sure these values are correct in model config
+        # Generate position_ids for the decoder using numpy get_rope_index we have in data_processing.py
         assert self.model_config is not None, "Model config must be initialized"
 
         decoder_position_ids = []
@@ -909,7 +983,8 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         # Batch image token indices, offsetting for position in the batch.
         image_token_indices = self._batch_image_token_indices(context_batch)
 
-        # Mark that vision encoding is complete for all contexts in the batch
+        # Mark that vision encoding is complete for all contexts in the batch.
+        # This prevents re-encoding on subsequent calls.
         for ctx in context_batch:
             ctx.needs_vision_encoding = False
 
@@ -945,8 +1020,8 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
 
         row_offsets_size = old_row_offsets[0].shape[0]
         next_row_offsets = [
-            self._input_row_offsets_prealloc[:row_offsets_size].to(device)
-            for device in self.devices
+            offsets_prealloc[:row_offsets_size]
+            for offsets_prealloc in self._input_row_offsets_prealloc
         ]
 
         old_row_offsets_np = old_row_offsets[0].to_numpy()
@@ -967,14 +1042,20 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             position_ids=position_ids,
             kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
             return_n_logits=prev_model_inputs.return_n_logits,
-            image_token_indices=self._empty_image_token_indices,
+            image_token_indices=None,
             # Leave vision inputs empty since they are only processed on the
             # first step.
+            pixel_values=None,
+            window_index=None,
+            vision_position_ids=None,
+            attention_mask_full=None,
+            attention_mask_window=None,
+            max_grid_size=None,
         )
 
     def load_kv_manager(
         self, session: InferenceSession, available_cache_memory: int | None
-    ) -> KVCacheManager:
+    ) -> KVCacheManager[TextAndVisionContext]:
         """Loads and initializes the KVCacheManager for the Qwen2.5VL model."""
         return load_kv_manager(
             params=Qwen2_5VLConfig.get_kv_params(

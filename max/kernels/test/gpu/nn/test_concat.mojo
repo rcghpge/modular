@@ -137,7 +137,7 @@ fn test_concat_4_inputs_rank5[test_epilogue: Bool](ctx: DeviceContext) raises:
     )
     @parameter
     fn run_concat_inner_most_single_dim(ctx: DeviceContext) raises:
-        ctx.enqueue_function[kernel](
+        ctx.enqueue_function_checked[kernel, kernel](
             output_device_ref,
             StaticTuple[NDBuffer[dtype, rank, MutableAnyOrigin], 4](
                 input_0_device_ref,
@@ -161,7 +161,6 @@ fn test_concat_4_inputs_rank5[test_epilogue: Bool](ctx: DeviceContext) raises:
     ctx.enqueue_copy(output_host.data, output_device)
 
     fn validate_results() raises:
-        var validTest = True
         for i in range(d0):
             for j in range(d1):
                 for k in range(d2):
@@ -189,14 +188,10 @@ fn test_concat_4_inputs_rank5[test_epilogue: Bool](ctx: DeviceContext) raises:
                             or not_match_2
                             or not_match_3
                         ):
-                            validTest = False
-        if not validTest:
-            print("❌ Test failed!")
-            return
-        else:
-            print("✅ Test passed!")
+                            assert_true(False, msg="❌ Test failed!")
+                            return
 
-        assert_true(validTest)
+        print("✅ Test passed!")
 
     validate_results()
 

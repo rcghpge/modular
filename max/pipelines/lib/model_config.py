@@ -19,7 +19,7 @@ import os
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from huggingface_hub import constants as hf_hub_constants
 from max.driver import DeviceSpec, devices_exist, scan_available_devices
@@ -109,7 +109,7 @@ class MAXModelConfig(MAXModelConfigBase):
     force_download: bool = False
     """Whether to force download a given file if it's already present in the local cache."""
 
-    vision_config_overrides: dict = field(default_factory=dict)
+    vision_config_overrides: dict[str, Any] = field(default_factory=dict)
     """Model-specific vision configuration overrides. For example, for InternVL: {"max_dynamic_patch": 24}"""
 
     rope_type: Optional[RopeType] = None
@@ -353,6 +353,20 @@ class MAXModelConfig(MAXModelConfigBase):
                 )
             )
         return self._huggingface_config
+
+    def validate_prefix_caching_supported(
+        self, prefix_caching_supported: bool
+    ) -> None:
+        """Validates that the model architecture supports prefix caching.
+        Falls back to false by disabling it if the model architecture does not support it."""
+        if (
+            not prefix_caching_supported
+            and self._kv_cache_config.enable_prefix_caching
+        ):
+            logger.warning(
+                "Architecture does not support prefix caching, overriding enable_prefix_caching=False"
+            )
+            self._kv_cache_config.enable_prefix_caching = False
 
     def validate_multi_gpu_supported(self, multi_gpu_supported: bool) -> None:
         """Validates that the model architecture supports multi-GPU inference.

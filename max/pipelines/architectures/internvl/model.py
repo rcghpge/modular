@@ -177,7 +177,7 @@ class InternVLInputs(ModelInputs):
         return self.pixel_values is not None
 
 
-def _assert_image_embeddings_invariant(
+def assert_image_embeddings_invariant(
     image_embeddings: Sequence[Tensor], image_token_indices: Sequence[Tensor]
 ) -> None:
     # Check for shape mismatch that causes scatter_nd OOB access.
@@ -197,7 +197,9 @@ def _assert_image_embeddings_invariant(
         )
 
 
-class InternVLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
+class InternVLModel(
+    PipelineModel[TextAndVisionContext], KVCacheMixin[TextAndVisionContext]
+):
     """An InternVL pipeline model for multimodal text generation."""
 
     vision_model: Model
@@ -818,7 +820,7 @@ class InternVLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             ]
             image_token_indices = model_inputs.image_token_indices
 
-            _assert_image_embeddings_invariant(
+            assert_image_embeddings_invariant(
                 image_embeddings, image_token_indices
             )
         else:
@@ -933,7 +935,7 @@ class InternVLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
 
     def load_kv_manager(
         self, session: InferenceSession, available_cache_memory: int | None
-    ) -> KVCacheManager:
+    ) -> KVCacheManager[TextAndVisionContext]:
         """Loads and initializes the KVCacheManager for the InternVL model."""
         return load_kv_manager(
             params=InternVLConfig.get_kv_params(
