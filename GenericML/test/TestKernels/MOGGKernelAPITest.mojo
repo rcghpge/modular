@@ -1101,7 +1101,7 @@ struct ToTensorWrapper:
                 _,
                 spec.shape,
                 spec.strides,
-                alignment = spec.alignment,
+                alignment2 = spec.alignment,
                 address_space = spec.address_space,
                 exclusive = spec.exclusive,
             ](ptr, tensor.shape(), tensor._runtime_strides)
