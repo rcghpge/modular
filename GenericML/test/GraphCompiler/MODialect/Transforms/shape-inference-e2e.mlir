@@ -1001,7 +1001,7 @@ mo.graph @random_normal_const(
   %seed: !mo.tensor<[], si64>
 ) -> !mo.tensor<[?], f32>{
 
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.random.normal(%[[FLOAT]], %[[FLOAT]], %[[SEED]]) : ({{.*}}) -> !mo.tensor<[128], f32>
+  // CHECK: %[[RES:.*]] = mo.random.normal(%[[SIZE:.*]], %[[FLOAT]], %[[FLOAT]], %[[SEED]]) : ({{.*}}) -> !mo.tensor<[128], f32>
   %size = mo.constant {value = #M.dense_array<128> : tensor<1xsi64>} : !mo.tensor<[1], si64>
   %res = mo.random.normal(%size, %float, %float, %seed) :
         (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
@@ -1023,7 +1023,7 @@ mo.graph @random_normal_dyn<N>(
   %seed: !mo.tensor<[], si64>
 ) -> !mo.tensor<[?], f32>{
 
-  // CHECK-NEXT: %[[RES:.*]] = mo.static.random.normal(%[[FLOAT]], %[[FLOAT]], %[[SEED]]) : ({{.*}}) -> !mo.tensor<[[[N]]], f32>
+  // CHECK: %[[RES:.*]] = mo.random.normal(%[[SIZE:.*]], %[[FLOAT]], %[[FLOAT]], %[[SEED]]) : ({{.*}}) -> !mo.tensor<[[[N]]], f32>
   %size = mo.shape_of(%dummy) : (!mo.tensor<[N], f32>) -> !mo.tensor<[1], si64>
   %res = mo.random.normal(%size, %float, %float, %seed) :
         (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,

@@ -2853,47 +2853,6 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
   let hasFolder = 1;
 }
 
-def MOStatic_RandomNormalOp : MOStatic_TensorOp<"random.normal", [
-  MO_HostOnly
-]> {
-  let summary = "RandomNormal operation for parametric shapes";
-  let description = [{
-
-
-    Creates a tensor populated with random values from a normal distribution,
-    with the mean of the distribution equal to `mean` and the standard deviation
-    equal to `variance`. The shape of the result tensor must not be unknown or
-    contain unknown dimensions, but can be parametric.
-
-    Example:
-
-    ```mlir
-    %mean = mo.constant {
-      value = #M.dense_array<2.0> : tensor<1xf32> } : !mo.tensor<[], f32>
-    %variance = mo.constant {
-      value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
-    %seed = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
-    %res = mo.static.random.normal(%size, %mean, %variance, %seed) :
-          (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
-          !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    MO_RankedScalarFloatTensor:$mean,
-    MO_RankedScalarFloatTensor:$variance,
-    MO_RankedScalarIndexTensor:$seed,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_KnownTensor:$result);
-
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-
-  let hasVerifier = 1;
-}
-
 def MO_ConcatOp : MO_TensorOp<"concat", [
   DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
@@ -3890,8 +3849,6 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-
-  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

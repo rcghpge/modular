@@ -3029,21 +3029,6 @@ void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 //===----------------------------------------------------------------------===//
-// RandomNormalOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult RandomNormalOp::canonicalize(RandomNormalOp op,
-                                           PatternRewriter &rewriter) {
-  TensorType resTy = op.getType();
-  if (!resTy.hasUnknownShape() && op.getOutputParamDecls().empty()) {
-    rewriter.replaceOpWithNewOp<Static::RandomNormalOp>(
-        op, op.getType(), op.getMean(), op.getVariance(), op.getSeed());
-  }
-
-  return failure();
-}
-
-//===----------------------------------------------------------------------===//
 // ReduceMulOp
 //===----------------------------------------------------------------------===//
 
@@ -3619,22 +3604,6 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
                                        indicesValue.getType().getDtype());
   rewriter.replaceOpWithNewOp<SqueezeShapeOp>(op, op.getResult().getType(),
                                               op.getInputShape(), newIndices);
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Static::RandomNormalOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult Static::RandomNormalOp::verify() {
-  auto meanTy = getMean().getType();
-  auto varTy = getVariance().getType();
-  if (meanTy.getElementType() != varTy.getElementType())
-    return emitOpError("Expect mean and variance DTypes to be the same");
-
-  if (getResult().getType().hasUnknownShape())
-    return emitOpError("Output shape cannot be unknown");
-
   return success();
 }
 
