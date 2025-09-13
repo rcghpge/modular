@@ -31,7 +31,9 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
       typeManager(
           MOGG::TypeManager::get(ctx, mojoLibraryAnalysis).takeValue()) {
 
-  isAsync = MO::isOnHost(op) && !forceSync && !isa<MO::LayoutTransformOp>(op);
+  // TODO(GEX-2569): make `mo.transpose` async after enforcing high water mark.
+  isAsync = !forceSync && !isa<MO::LayoutTransformOp>(op) &&
+            !isa<MO::TransposeOp>(op);
 
   // Get ready for building ops.
   builder.setInsertionPoint(op);
