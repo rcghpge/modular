@@ -8,6 +8,7 @@
 """Llasa TTS command-line interface."""
 
 import asyncio
+from typing import Optional
 
 import click
 from max import driver
@@ -77,6 +78,13 @@ def strip_repetitive_silence(
     default="generated_audio.wav",
     help="Output audio file path",
 )
+@click.option(
+    "--max-tokens",
+    "-m",
+    type=int,
+    default=None,
+    help="Maximum number of tokens to generate (default: from config)",
+)
 @click.help_option("--help", "-h")
 def main(
     text: str,
@@ -86,6 +94,7 @@ def main(
     print_raw_text: bool,
     generate: bool,
     output: str,
+    max_tokens: Optional[int],
 ) -> None:
     """Llasa TTS - Text-to-Speech using Llama + XCodec2."""
     config = LlasaConfig()
@@ -113,7 +122,9 @@ def main(
         device_specs = [driver.DeviceSpec(id=0, device_type="gpu")]
         speech_lm = SpeechLM(config, device_specs=device_specs)
 
-        speech_tokens = asyncio.run(speech_lm.generate_speech_tokens(text))
+        speech_tokens = asyncio.run(
+            speech_lm.generate_speech_tokens(text, max_tokens)
+        )
 
         tokens_to_display = speech_tokens.tolist()
         if strip_silence:
@@ -127,7 +138,9 @@ def main(
         click.echo(f"Speech tokens: {tokens_to_display}")
 
         if print_raw_text:
-            raw_text = asyncio.run(speech_lm.generate_text_for_debugging(text))
+            raw_text = asyncio.run(
+                speech_lm.generate_text_for_debugging(text, max_tokens)
+            )
             click.echo(f"Raw generated text: {raw_text}")
         return
 
@@ -139,7 +152,10 @@ def main(
 
         click.echo("Generating audio with XCodec2...")
         try:
-            output_path = asyncio.run(tts.generate_and_save(text, output))
+            output_path = output if output else "generated_audio.wav"
+            output_path = asyncio.run(
+                tts.generate_and_save(text, output_path, max_tokens)
+            )
             click.echo(f"Audio generated successfully: {output_path}")
         except Exception as e:
             click.echo(f"Error generating audio: {e}")

@@ -27,7 +27,7 @@ class LlasaConfig:
 
     # Generation parameters (from HF model card)
     max_length: int = 2048
-    max_new_tokens: int = 200  # Shorter to see natural patterns
+    max_new_tokens: int = 500
     temperature: float = 1.0
     top_p: float = 1.0
 

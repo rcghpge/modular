@@ -120,6 +120,7 @@ class SpeechLM:
             max_new_tokens=max_tokens,
             temperature=self.config.temperature,
             top_p=self.config.top_p,
+            ignore_eos=False,  # Allow EOS token to stop generation
         )
 
         input_ids, _ = create_llasa_prompt(text, self.config)
