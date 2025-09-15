@@ -73,23 +73,28 @@ static bool shouldStartVisiting(DenseSet<Operation *> &visited,
     return false;
   }
 
-#if MODULAR_DEBUG
-  llvm::dbgs() << "model contains a dataflow cycle involving op:\n  ";
-  currOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
-  llvm::dbgs() << "\n";
+  bool alreadyVisited = visited.contains(currOp);
 
-  SmallVector<Operation *> stack;
-  findCycle(stack, currOp);
-  ModelOp modelOp = currOp->getParentOfType<ModelOp>();
-  if (modelOp) {
-    llvm::dbgs() << "within:\n";
-    llvm::dbgs() << "----------------------------------------\n";
-    modelOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
-    llvm::dbgs() << "\n----------------------------------------\n";
+#if MODULAR_DEBUG
+  if (alreadyVisited) {
+    llvm::dbgs() << "model contains a dataflow cycle involving op:\n  ";
+    currOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
+    llvm::dbgs() << "\n";
+
+    SmallVector<Operation *> stack;
+    findCycle(stack, currOp);
+    ModelOp modelOp = currOp->getParentOfType<ModelOp>();
+    if (modelOp) {
+      llvm::dbgs() << "within:\n";
+      llvm::dbgs() << "----------------------------------------\n";
+      modelOp->print(llvm::dbgs(),
+                     mlir::OpPrintingFlags().printGenericOpForm());
+      llvm::dbgs() << "\n----------------------------------------\n";
+    }
   }
 #endif
 
-  return !visited.contains(currOp);
+  return !alreadyVisited;
 }
 
 namespace {
