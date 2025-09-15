@@ -4,7 +4,6 @@ modular_py_library(
     name = "llasa_lib",
     srcs = [
         "__init__.py",
-        "audio_decoder.py",
         "config.py",
         "model.py",
         "prompt_template.py",

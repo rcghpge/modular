@@ -50,7 +50,6 @@ class SpeechLM:
             quantization_encoding=pipelines.SupportedEncoding[encoding],
             model_path=config.llama_model_path,
             max_length=config.max_length,
-            max_new_tokens=config.max_new_tokens,
             trust_remote_code=True,
         )
 

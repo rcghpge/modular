@@ -5,7 +5,6 @@ modular_py_library(
     srcs = [
         "__init__.py",
         "config.py",
-        "decoder.py",
         "istft.py",
         "layers.py",
         "residual_fsq.py",
@@ -19,7 +18,9 @@ modular_py_library(
     deps = [
         requirement("numpy"),
         requirement("huggingface-hub"),
+        "//SDK/lib/API/python/max/driver",
         "//SDK/lib/API/python/max/dtype",
+        "//SDK/lib/API/python/max/engine",
         "//SDK/lib/API/python/max/graph",
         "//SDK/lib/API/python/max/nn",
     ],

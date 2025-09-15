@@ -12,11 +12,12 @@ is needed, not the full audio→token encoding pipeline.
 """
 
 from .config import XCodec2Config
-from .decoder import XCodec2Decoder
 from .residual_fsq import ResidualFSQ
+from .xcodec2 import XCodec2, XCodec2Model
 
 __all__ = [
     "ResidualFSQ",
+    "XCodec2",
     "XCodec2Config",
-    "XCodec2Decoder",
+    "XCodec2Model",
 ]

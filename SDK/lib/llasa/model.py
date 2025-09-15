@@ -11,9 +11,9 @@ from __future__ import annotations
 import numpy as np
 from max import driver
 
-from .audio_decoder import AudioDecoder
 from .config import LlasaConfig
 from .speech_lm import SpeechLM
+from .xcodec2 import XCodec2Model
 
 
 class LlasaTTS:
@@ -39,7 +39,9 @@ class LlasaTTS:
         """
         self.config = config
         self.speech_lm = SpeechLM(config, device_specs, encoding)
-        self.audio_decoder = AudioDecoder(config)
+        self.audio_decoder = XCodec2Model(
+            config.xcodec2_config, model_path=config.xcodec2_model_path
+        )
 
     async def generate_audio(
         self,
