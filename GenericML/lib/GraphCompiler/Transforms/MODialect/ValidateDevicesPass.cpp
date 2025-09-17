@@ -40,9 +40,12 @@ struct ValidateDevicesPass
   bool isSupportedArchDTypeCombination(llvm::Triple::ArchType arch,
                                        DType dtype) {
     // Return True if the architecture does not support the data type.
-    // On CPUs, we currently do not support float16 or the float8*
-    // types. On ARM systems, we do not support bfloat16.
-    if (arch == llvm::Triple::ArchType::x86_64 && dtype == DType::bf16)
+    // On CPUs, we currently do not support the float8* type.
+    // On ARM systems, we do not support bfloat16 or float16.
+    // Note that CPU also does not truly support bf16 or f16, but are permitted
+    // for casting purposes.
+    if (arch == llvm::Triple::ArchType::x86_64 &&
+        (dtype == DType::bf16 || dtype == DType::f16))
       return true;
     if (llvm::is_contained(
             {llvm::Triple::ArchType::x86_64, llvm::Triple::ArchType::aarch64},
