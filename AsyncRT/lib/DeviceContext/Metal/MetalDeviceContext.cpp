@@ -827,7 +827,6 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   size_t numArgs = func.argumentCount();
   const MetalDevice &metalDevice = MetalDevice::cast(device());
   MTL::Device *mtlDevice = metalDevice.metalDevice();
-  SmallVector<MTL::Buffer *, 8> buffers;
 
   // 4) Bind all buffer arguments
   for (uint32_t i = 0; i < numArgs; ++i) {
