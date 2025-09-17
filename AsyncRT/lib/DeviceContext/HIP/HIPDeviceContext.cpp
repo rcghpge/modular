@@ -345,7 +345,21 @@ ErrorOrSuccess HIPDevice::enablePeerAccess(const Device &peer) const {
   }
 
   HIP_WITH_DEV_ERR(*this);
-  HIP_CHECK_ERR(driver_.DeviceEnablePeerAccess(peerHipDev.hipDevice(), 0));
+
+  // Tolerate "already enabled" as success to keep idempotent.
+  HIPDriver::Result res =
+      driver_.DeviceEnablePeerAccess(peerHipDev.hipDevice(), /*flags=*/0);
+  if (res != HIPDriver::SUCCESS) {
+    const char *name = nullptr;
+    driver_.GetErrorName(res, &name);
+    if (!(name && (Twine(name) == "hipErrorPeerAccessAlreadyEnabled")))
+      return formatHipError(__FILE__, __LINE__, __FUNCTION__, res);
+  }
+
+  // TODO: GEX-2583
+  // Allow access to the peer's stream-ordered allocation pool?
+  // CUDA does this, but HIP does not.
+
   return success();
 }
 
