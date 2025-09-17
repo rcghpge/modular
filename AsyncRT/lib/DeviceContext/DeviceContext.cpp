@@ -140,9 +140,10 @@ MODULAR_CXX_EXPORT size_t getPreferredAlignment(std::string label) {
 // ===== Device ===== //
 //
 Device::Device(API api, std::string name, int id, MemInfo memInfo,
-               size_t allocAlignment)
+               size_t allocAlignment, int64_t deviceMemoryLimit)
     : name_(std::move(name)), id_(id), api_(api),
-      bufferCache_(BufferCache::onDevice(*this, memInfo, allocAlignment)),
+      bufferCache_(BufferCache::onDevice(*this, memInfo, allocAlignment,
+                                         deviceMemoryLimit)),
       hostBufferCache_(BufferCache::onHost(*this, allocAlignment)) {}
 
 Device::~Device() {
@@ -190,7 +191,8 @@ MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
   return device.get()->allocationAlignment();
 }
 
-MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
+MODULAR_CXX_EXPORT ErrorOr<DeviceRef>
+Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
   // Only zero and positive values are allowed as device ids.
   if (id < 0) {
     RAISE_ERROR_MESSAGE("Device id must be positive. Got " + llvm::Twine(id));
@@ -209,7 +211,7 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
   std::string cudaError;
   if ((api == gpuAPI) || (api == cudaAPI)) {
-    ErrorOr<const Device &> device = CUDADevice::get(id);
+    ErrorOr<const Device &> device = CUDADevice::get(id, deviceMemoryLimit);
     if (!device.isError()) {
       return DeviceRef::copy(&device.get());
     } else if (api == cudaAPI)
@@ -219,7 +221,7 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
 
   std::string hipError;
   if ((api == gpuAPI) || (api == hipAPI)) {
-    ErrorOr<const Device &> device = HIPDevice::get(id);
+    ErrorOr<const Device &> device = HIPDevice::get(id, deviceMemoryLimit);
     if (!device.isError()) {
       // This disables full buffering when piping to a file if running
       // on AMD GPU. Without setting this `FileCheck` will have CPU
@@ -235,17 +237,19 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   std::string metalError;
   if ((api == gpuAPI) || (api == metalAPI)) {
 #ifdef MODULAR_MACOS
-    ErrorOr<const MetalDevice &> device = MetalDevice::get(id);
-    if (!device.isError())
+
+    ErrorOr<const MetalDevice &> device =
+        MetalDevice::get(id, deviceMemoryLimit);
+    if (!device.isError()) {
       return DeviceRef::copy(&device.get());
-    if (api == metalAPI)
+    } else if (api == metalAPI)
       return device.takeError();
     metalError = device.getError();
 #endif
   }
 
   if (api == cpuAPI) {
-    ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
+    ErrorOr<const CpuDevice &> device = CpuDevice::get(id, deviceMemoryLimit);
     if (device.isError())
       return device.takeError();
     return DeviceRef::copy(&device.get());
@@ -853,11 +857,11 @@ DeviceContext::create(StringRef api, int id) {
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
-DeviceContext::getOrCreate(StringRef api, int id) {
+DeviceContext::getOrCreate(StringRef api, int id, int64_t deviceMemoryLimit) {
   static std::mutex mu;
   static llvm::StringMap<const DeviceContext *> contextMap;
 
-  ErrorOr<DeviceRef> errDev = Device::create(api, id);
+  ErrorOr<DeviceRef> errDev = Device::create(api, id, deviceMemoryLimit);
   if (errDev.isError())
     return errDev.takeError();
 

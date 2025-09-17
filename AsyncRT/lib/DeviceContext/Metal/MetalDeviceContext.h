@@ -41,7 +41,8 @@ public:
   static constexpr API api = Device::metalAPI;
 
   MetalDevice(int id, MTL::Device *device, std::string name,
-              Device::MemInfo memInfo, size_t allocAlignment);
+              Device::MemInfo memInfo, size_t allocAlignment,
+              int64_t deviceMemoryLimit = -1);
   ~MetalDevice() override;
 
   ErrorOr<int> getApiVersion() const override;
@@ -69,7 +70,8 @@ public:
   createExternalStream(void *externalStream) const override;
 
   static const MetalDevice &cast(const Device &device);
-  static ErrorOr<const MetalDevice &> get(int id);
+  static ErrorOr<const MetalDevice &> get(int id,
+                                          int64_t deviceMemoryLimit = -1);
   static ErrorOr<int> numberOfGPUs();
 
   MTL::Device *metalDevice() const { return device_; }

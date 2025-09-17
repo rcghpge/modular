@@ -191,8 +191,11 @@ mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 } // namespace Driver
 } // namespace M
 
+/// `deviceMemoryLimit` is the maximum amount of memory in bytes that can be
+// allocated on the device. If it is -1, the device will apply defaults.
 MODULAR_DRIVER_EXPORT M::Driver::Device *
-M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status);
+M_createAcceleratorDevice(ssize_t gpuID, int64_t deviceMemoryLimit,
+                          M::Driver::Status *status);
 
 MODULAR_DRIVER_EXPORT M::Driver::Device *
 M_createCPUDevice(ssize_t numaId, M::Driver::Status *status);
