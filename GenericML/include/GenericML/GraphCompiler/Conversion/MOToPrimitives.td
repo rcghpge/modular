@@ -219,8 +219,19 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
             "option toggles on saveTemps.">
   ];
 
-  let dependentDialects = ["MOGG::MOGGDialect",
-                           "MGP::MGPDialect"];
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect",
+                          "M::KGEN::KGENDialect",
+                          "M::KGEN::LIT::LITDialect",
+                          "M::KGEN::POP::POPDialect",
+                          "M::HLCF::HLCFDialect",
+                          "M::DebugInfo::DebugInfoDialect",
+                          "mlir::NVVM::NVVMDialect",
+                          "mlir::ROCDL::ROCDLDialect",
+                          "mlir::index::IndexDialect",
+  ];
 }
 
 
