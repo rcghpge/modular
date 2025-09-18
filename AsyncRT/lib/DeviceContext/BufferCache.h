@@ -64,13 +64,8 @@ public:
 
   // Factory methods configure the buffer cache based on defaults or the
   // environment.
-  // `memInfo` contains the total and free memory of the device.
-  // Setting memInfo.free to 0 will disable the buffer cache.
-  // `memoryLimit` (bytes) is the maximum memory limit for the buffer cache.
-  // If -1, then the buffer cache will use the default memory limit.
-  // Note that BUFFER_CACHE_SIZE_LIMIT environment variable overrides this.
   static BufferCache *onDevice(const Device &device, Device::MemInfo memInfo,
-                               size_t alignment, int64_t memoryLimit = -1);
+                               size_t alignment);
   static BufferCache *onHost(const Device &device, size_t alignment);
 
 private:

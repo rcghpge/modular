@@ -282,12 +282,11 @@ M::Driver::makeCPUDevice() {
                                                              &M_destroyDevice};
 }
 
-static ErrorOr<Device *> createAccelerator(ssize_t gpuID,
-                                           int64_t deviceMemoryLimit = -1) {
+static ErrorOr<Device *> createAccelerator(ssize_t gpuID) {
   size_t id = gpuID >= 0 ? gpuID : 0;
 
-  ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::getOrCreate(
-                            AsyncRT::Device::gpuAPI, id, deviceMemoryLimit));
+  ASSIGN_OR_RETURN(
+      ctx, AsyncRT::DeviceContext::getOrCreate(AsyncRT::Device::gpuAPI, id));
   DeviceSpec spec;
   spec.ref.label = kGPULabel;
   spec.ref.id = gpuID;
@@ -301,9 +300,8 @@ static ErrorOr<Device *> createAccelerator(ssize_t gpuID,
 }
 
 MODULAR_DRIVER_EXPORT Device *
-M_createAcceleratorDevice(ssize_t gpuID, int64_t deviceMemoryLimit,
-                          M::Driver::Status *status) {
-  auto deviceOrError = createAccelerator(gpuID, deviceMemoryLimit);
+M_createAcceleratorDevice(ssize_t gpuID, M::Driver::Status *status) {
+  auto deviceOrError = createAccelerator(gpuID);
   if (deviceOrError.isError()) {
     status->errorOr = deviceOrError.takeError();
     return nullptr;

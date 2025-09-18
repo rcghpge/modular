@@ -58,10 +58,9 @@ namespace M::AsyncRT {
 // ===== MetalDevice ===== //
 //
 MetalDevice::MetalDevice(int id, MTL::Device *device, std::string name,
-                         Device::MemInfo memInfo, size_t allocAlignment,
-                         int64_t deviceMemoryLimit)
-    : Device(api, name, id, memInfo, allocAlignment, deviceMemoryLimit),
-      device_(device), memInfo_(memInfo), driverVersion_("0.0.0") {}
+                         Device::MemInfo memInfo, size_t allocAlignment)
+    : Device(api, name, id, memInfo, allocAlignment), device_(device),
+      memInfo_(memInfo), driverVersion_("0.0.0") {}
 
 MetalDevice::~MetalDevice() {
   if (device_) {
@@ -269,8 +268,7 @@ const MetalDevice &MetalDevice::cast(const Device &device) {
   return static_cast<const MetalDevice &>(device);
 }
 
-ErrorOr<const MetalDevice &> MetalDevice::get(int id,
-                                              int64_t deviceMemoryLimit) {
+ErrorOr<const MetalDevice &> MetalDevice::get(int id) {
   if (id != 0)
     RAISE_ERROR_MESSAGE("Apple Metal device only supports id == 0.");
 
@@ -294,8 +292,8 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
 
     size_t allocAlignment = 64;
 
-    metalDeviceInstance = RCRef<MetalDevice>::create(
-        id, device, name, memInfo, allocAlignment, deviceMemoryLimit);
+    metalDeviceInstance =
+        RCRef<MetalDevice>::create(id, device, name, memInfo, allocAlignment);
   }
 
   return *metalDeviceInstance;

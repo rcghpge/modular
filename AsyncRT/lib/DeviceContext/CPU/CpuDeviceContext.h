@@ -35,8 +35,7 @@ class CpuDevice : public Device {
 public:
   static constexpr API api = Device::cpuAPI;
 
-  CpuDevice(Device::MemInfo memInfo = Device::MemInfo(),
-            int64_t deviceMemoryLimit = -1);
+  CpuDevice(Device::MemInfo memInfo = Device::MemInfo());
   ~CpuDevice() override;
 
   ErrorOr<int> getApiVersion() const override;
@@ -65,7 +64,7 @@ public:
 
   static const CpuDevice &cast(const Device &device);
 
-  static ErrorOr<const CpuDevice &> get(int id, int64_t deviceMemoryLimit = -1);
+  static ErrorOr<const CpuDevice &> get(int id);
 };
 
 class CpuDeviceStream : public DeviceStream {

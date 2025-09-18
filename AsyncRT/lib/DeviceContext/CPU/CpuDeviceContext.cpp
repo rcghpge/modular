@@ -50,9 +50,8 @@ namespace M::AsyncRT {
 // ===== CpuDevice ===== //
 //
 // TODO(iposva): Consider using the actual device name.
-CpuDevice::CpuDevice(Device::MemInfo memInfo, int64_t deviceMemoryLimit)
-    : Device(api, "cpu", 0, memInfo, M::kPreferredMemoryAlignment,
-             deviceMemoryLimit) {}
+CpuDevice::CpuDevice(Device::MemInfo memInfo)
+    : Device(api, "cpu", 0, memInfo, M::kPreferredMemoryAlignment) {}
 
 CpuDevice::~CpuDevice() { bufferCache().clear(); }
 
@@ -150,13 +149,12 @@ const CpuDevice &CpuDevice::cast(const Device &device) {
   return static_cast<const CpuDevice &>(device);
 };
 
-ErrorOr<const CpuDevice &> CpuDevice::get(int id, int64_t deviceMemoryLimit) {
+ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
   if (id != 0) {
     RAISE_ERROR_MESSAGE("CPU device only supports id == 0.");
   }
 
-  static CpuDevice *device =
-      new CpuDevice(Device::MemInfo(), deviceMemoryLimit);
+  static CpuDevice *device = new CpuDevice();
   return *device;
 }
 
