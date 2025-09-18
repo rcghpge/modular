@@ -422,6 +422,8 @@ MOGGExpKernelBuilder::forwardParameters(const KernelAdaptor &adaptor) {
     extractConstantValues(convOp.getPaddings(),
                           MOGG::PARAMETER_CONV_STATIC_PADDING);
   } else if (auto sliceDimOp = dyn_cast<MO::SliceDimOp>(moOp)) {
+    extractConstantValues(sliceDimOp.getStart(),
+                          MOGG::PARAMETER_SLICE_DIM_STATIC_START);
     extractConstantValues(sliceDimOp.getStep(),
                           MOGG::PARAMETER_SLICE_DIM_STATIC_STEP);
   } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(moOp)) {
