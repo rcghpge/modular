@@ -2,10 +2,10 @@
 
 // Default allocator will notice the crash.
 // RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t.mef
-// RUN: not --crash mef-executor --allocator=leak-checker %t.mef 2>&1 | FileCheck %s
+// RUN: not mef-executor --allocator=leak-checker %t.mef 2>&1 | FileCheck %s
 
 // Profiling allocator works like the default.
-// RUN:  not --crash mef-executor -allocator=profiler %t.mef
+// RUN:  not mef-executor -allocator=profiler %t.mef
 
 // CHECK: --- Running 'test_leak_one_int32'
 grt.testcase @test_leak_one_int32 {
