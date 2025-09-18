@@ -62,6 +62,12 @@
   }                                                                            \
   type var = _err_or_##var.takeValue()
 
+#ifdef MODULAR_MACOS
+
+constexpr const char *kEnvKey = "MOJO_ENABLE_HAS_GPU_FOR_APPLE";
+std::optional<std::string> hasGpuForApple = llvm::sys::Process::GetEnv(kEnvKey);
+#endif
+
 namespace M::AsyncRT {
 
 DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)
@@ -235,12 +241,15 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   std::string metalError;
   if ((api == gpuAPI) || (api == metalAPI)) {
 #ifdef MODULAR_MACOS
-    ErrorOr<const MetalDevice &> device = MetalDevice::get(id);
-    if (!device.isError())
-      return DeviceRef::copy(&device.get());
-    if (api == metalAPI)
-      return device.takeError();
-    metalError = device.getError();
+
+    if (hasGpuForApple.has_value()) {
+      ErrorOr<const MetalDevice &> device = MetalDevice::get(id);
+      if (!device.isError()) {
+        return DeviceRef::copy(&device.get());
+      } else if (api == metalAPI)
+        return device.takeError();
+      metalError = device.getError();
+    }
 #endif
   }
 
@@ -938,9 +947,13 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
   }
   if ((api == gpuAPI) || (api == metalAPI)) {
 #ifdef MODULAR_MACOS
-    ErrorOr<int> count = MetalDevice::numberOfGPUs();
-    if (!count.isError())
-      return *count;
+
+    if (hasGpuForApple.has_value()) {
+      ErrorOr<int> count = MetalDevice::numberOfGPUs();
+      if (!count.isError())
+        return *count;
+    }
+
 #endif
   }
   if (api == cpuAPI) {

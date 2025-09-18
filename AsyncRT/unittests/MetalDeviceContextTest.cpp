@@ -202,22 +202,16 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1Device, in1Host));
   EXPECT_NO_ERR(ctx_->synchronize());
 
-  // Mimic how Mojo passes pointers
-  void *outPtr = outDevice->ptr();
-  void *in0Ptr = in0Device->ptr();
-  void *in1Ptr = in1Device->ptr();
-
   // Prepare arguments for direct call - use device buffer pointers directly
   uint64_t lengthValue = static_cast<uint64_t>(length);
-  void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-  size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                       sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+  void *args[] = {outDevice->ptr(), in0Device->ptr(), in1Device->ptr(),
+                  &lengthValue};
 
   // Execute kernel
   constexpr uint32_t blockDim = 256;
   EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(*libFunction, length / blockDim,
                                                 1, 1, blockDim, 1, 1, 0,
-                                                nullptr, 4, args, argSizes));
+                                                nullptr, 4, args));
 
   // Copy results back
   EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(outHost, *outDevice));
@@ -308,23 +302,16 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
     EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1Device, in1Host.data()));
     EXPECT_NO_ERR(ctx_->synchronize());
 
-    // Mimic how Mojo passes pointers
-    void *outPtr = outDevice->ptr();
-    void *in0Ptr = in0Device->ptr();
-    void *in1Ptr = in1Device->ptr();
-
     // Prepare arguments for direct call - use device buffer pointers directly
     uint64_t lengthValue = static_cast<uint64_t>(length);
-    void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-    size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                         sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+    void *args[] = {outDevice->ptr(), in0Device->ptr(), in1Device->ptr(),
+                    &lengthValue};
 
     // Execute kernel
     uint32_t gridSize =
         static_cast<uint32_t>((length + blockDim - 1) / blockDim);
-    EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(*libFunction, gridSize, 1, 1,
-                                                  blockDim, 1, 1, 0, nullptr, 4,
-                                                  args, argSizes));
+    EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+        *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args));
     EXPECT_NO_ERR(ctx_->synchronize());
 
     // Copy results back
@@ -427,16 +414,10 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
       EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1Device, in1Host.data()));
       EXPECT_NO_ERR(ctx_->synchronize());
 
-      // Mimic how Mojo passes pointers
-      void *outPtr = outDevice->ptr();
-      void *in0Ptr = in0Device->ptr();
-      void *in1Ptr = in1Device->ptr();
-
       // Prepare arguments
       uint64_t lengthValue = static_cast<uint64_t>(length);
-      void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-      size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                           sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+      void *args[] = {outDevice->ptr(), in0Device->ptr(), in1Device->ptr(),
+                      &lengthValue};
 
       // Time the kernel execution only
       std::chrono::high_resolution_clock::time_point startTime =
@@ -445,8 +426,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
       uint32_t gridSize =
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
-          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args,
-          argSizes));
+          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args));
       EXPECT_NO_ERR(ctx_->synchronize());
 
       std::chrono::high_resolution_clock::time_point endTime =
@@ -594,16 +574,10 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
       EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1Device, in1Host.data()));
       EXPECT_NO_ERR(ctx_->synchronize());
 
-      // Mimic how Mojo passes pointers
-      void *outPtr = outDevice->ptr();
-      void *in0Ptr = in0Device->ptr();
-      void *in1Ptr = in1Device->ptr();
-
       // Prepare arguments
       uint64_t lengthValue = static_cast<uint64_t>(length);
-      void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-      size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                           sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+      void *args[] = {outDevice->ptr(), in0Device->ptr(), in1Device->ptr(),
+                      &lengthValue};
 
       // Time the kernel execution only
       std::chrono::high_resolution_clock::time_point startTime =
@@ -612,8 +586,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
       uint32_t gridSize =
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
-          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args,
-          argSizes));
+          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args));
       EXPECT_NO_ERR(ctx_->synchronize());
 
       std::chrono::high_resolution_clock::time_point endTime =
