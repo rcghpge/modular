@@ -23,21 +23,6 @@ inline bool useExperimentalMojoPath() {
   return var.has_value() && var.value() == "1";
 }
 
-inline bool willUltimatelyEmitMojo(MOGG::GenericCompiledRegionOp kernel) {
-  return llvm::any_of(kernel.getOps(),
-                      [](auto &op) {
-                        // MOGG::CallOp is a bit special for now, it's only
-                        // supported for Affine View Ops for EmitMojo. As we
-                        // move more and more things to EmitMojo, we'll be able
-                        // to get rid of this condition.
-                        // TODO: Use dedicated op for affine views and remove
-                        // the check for MOGG::CallOp.
-                        return isa<MOGG::EmitsMojoInterface>(op) &&
-                               !isa<MOGG::CallOp>(op);
-                      }) &&
-         useExperimentalMojoPath();
-}
-
 /// Returns a compact, human readable 'summary' of op, which can be used
 /// at runtime for debugging and profiling.
 StringAttr getSummaryString(Operation *op);

@@ -168,7 +168,7 @@ struct EmitMojo
       auto lowerGenericCompiledRegionOps =
           [&](MOGG::GenericCompiledRegionOp kernel) {
             // If none of the ops emits Mojo, skip it.
-            if (willUltimatelyEmitMojo(kernel)) {
+            if (kernel.getEmitsMojo()) {
               auto kernelName =
                   lowerGenericCompiledRegionOp(kernel, state, builder);
               if (!kernelName)

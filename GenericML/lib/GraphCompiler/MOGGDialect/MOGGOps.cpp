@@ -1091,7 +1091,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       BoolAttr::get(ctx, getAllocIndices().empty() &&
                              !getIsAsync()), // canFuseIntoOther
       BoolAttr::get(ctx, true),              // canBeFusedInto
-      BoolAttr::get(ctx, false)              // canDuplicate
+      BoolAttr::get(ctx, false),             // canDuplicate
+      BoolAttr::get(ctx, true)               // emitsMojo
   );
   newKernel.setDeviceRef(device);
 
