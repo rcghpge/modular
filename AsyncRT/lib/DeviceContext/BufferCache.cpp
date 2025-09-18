@@ -10,7 +10,9 @@
 
 #include "BufferCache.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "Support/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include <atomic>
 #include <cstdint>
 #include <iostream>
@@ -21,6 +23,8 @@
 
 #define TWINE_PTR(ptr)                                                         \
   (llvm::Twine("0x") + llvm::Twine::utohexstr(reinterpret_cast<uintptr_t>(ptr)))
+
+static constexpr int KB = 1024; // NOLINT
 
 namespace M::AsyncRT {
 
@@ -609,10 +613,6 @@ void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
   }
 }
 
-static constexpr size_t KB = 1024;                       // NOLINT
-static constexpr size_t MB = 1024 * KB;                  // NOLINT
-[[maybe_unused]] static constexpr size_t GB = 1024 * MB; // NOLINT
-
 BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
                          size_t alignment, bool isHost)
     : device_(device), isHost_(isHost), maxCacheSize_(maxSize),
@@ -929,10 +929,11 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
       return Error(
           "[Use only buffer cache mode]: No room left in buffer cache: " +
           bufferCache_.getDeviceDescription() + " on " + TWINE_PTR(this) +
-          " (size: " + TWINE(size) +
-          " ; free: " + TWINE(bufferCache_.freeSize_) +
-          " ; cache_size: " + TWINE(bufferCache_.cacheSize_) +
-          " ; max_cache_size: " + TWINE(bufferCache_.maxCacheSize_) + ")");
+          " (size: " + humanMemorySize(size) +
+          " ; free: " + humanMemorySize(bufferCache_.freeSize_) +
+          " ; cache_size: " + humanMemorySize(bufferCache_.cacheSize_) +
+          " ; max_cache_size: " + humanMemorySize(bufferCache_.maxCacheSize_) +
+          ")");
     }
   }
 
@@ -1139,8 +1140,9 @@ BufferCache *BufferCache::onDevice(const Device &device,
   if (maxCacheSize > memInfo.free) {
     llvm::errs()
         << "DeviceContext.BufferCache: Requested maximum buffer cache size ("
-        << maxCacheSize << ") does not fit into available free memory ("
-        << memInfo.free << ").\n";
+        << humanMemorySize(maxCacheSize)
+        << ") does not fit into available free memory ("
+        << humanMemorySize(memInfo.free) << ").\n";
   }
 
   // Get chunk size as percentage of max cache size. Limit to between 0 and 100.
@@ -1157,12 +1159,13 @@ BufferCache *BufferCache::onDevice(const Device &device,
   auto result = new BufferCache(device, maxCacheSize, chunkSize, alignment,
                                 /* isHost = */ false);
   if (result->doLog_) {
-    result->logErr("initial memInfo(free: " + TWINE(memInfo.free) +
-                   ", total: " + TWINE(memInfo.total) + ")");
+    result->logErr("initial memInfo(free: " + humanMemorySize(memInfo.free) +
+                   ", total: " + humanMemorySize(memInfo.total) + ")");
   }
   return result;
 }
 BufferCache *BufferCache::onHost(const Device &device, size_t alignment) {
+
   size_t maxCacheSize = llvm::alignToPowerOf2(
       DeviceContext::configAsInt("host_buffer_cache_size", 0), 256 * KB);
   size_t chunkSize =
