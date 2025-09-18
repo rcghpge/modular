@@ -35,8 +35,17 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
   static const MOGG::MojoValue vOpaquePointer =
       MOGG::HardcodedMojoSymbols::alias_OpaquePointer;
 
-  /// TODO: Give it a different, unique name.
-  static constexpr StringLiteral kernelName = "foo_wrapper";
+  static constexpr StringLiteral baseKernelName = "kernel_wrapper";
+  // Just a static local var should be fine for now, but if we ever parallelize
+  // this function we should change this.
+  static int fooIdx = 0;
+
+  auto skernelName = llvm::formatv("{}_{}", baseKernelName, fooIdx++).str();
+  StringRef kernelName = skernelName;
+
+  // Clear any previous kernel's return values from the state
+  state.mojoReturnValues.clear();
+
   bool errOccurred = false;
   state.builder.fn(
       kernelName, {},
@@ -146,9 +155,9 @@ struct EmitMojo
       return;
     }
 
-    DenseSet<StringAttr> kernelsToLoad;
     OpBuilder builder(ctx);
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
+      DenseSet<StringAttr> kernelsToLoad;
       MOGG::EmitMojoState state(*analysisOr.takeValue());
       for (auto package : MOGG::HardcodedMojoSymbols::packagesToImport)
         state.builder.import(package, "*");
