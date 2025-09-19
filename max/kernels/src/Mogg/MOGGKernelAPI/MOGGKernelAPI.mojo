@@ -33,7 +33,7 @@ from math import (
     tanh,
 )
 from random import randn, seed
-from sys import bit_width_of, external_call, llvm_intrinsic
+from sys import external_call, llvm_intrinsic
 from sys.info import simd_width_of, size_of
 from sys.intrinsics import _type_is_eq
 
@@ -164,8 +164,9 @@ from nn.kv_cache_ragged import (
     kv_matmul_ragged_paged,
     unfused_qkv_matmul_ragged_paged_gguf_quantized,
     generic_kv_cache_radd_dispatch,
+    kv_cache_store_ragged,
 )
-from nn.mha import flash_attention
+from nn.mha import flash_attention, flash_attention_ragged
 from nn.mha_mask import MHAMask
 from nn.mha_score_mod import IdentityScoreMod, ScoreModTrait
 from nn.mha_utils import dispatch_mask_and_score_mod
@@ -190,6 +191,7 @@ from nn.resize import (
     resize_linear,
     resize_nearest_neighbor,
 )
+from nn.rope import rope_ragged
 
 from nn.bicubic import resize_bicubic
 from nn.roi_align import roi_align_nhwc
@@ -230,7 +232,7 @@ from quantization.qmatmul_k import (
     matmul_Q6_K_pack_b,
 )
 from runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
-from runtime.tracing import Trace, TraceLevel, get_safe_task_id
+from runtime.tracing import Trace, TraceLevel, trace_arg, get_safe_task_id
 from tensor_internal import (
     DynamicTensor,
     InputTensor,
@@ -1771,9 +1773,7 @@ struct StaticBroadcastTo:
         ],
     ):
         var x_runtime_strides = Self.build_view[out_rank](x)
-        return __type_of(result)(
-            x.unsafe_ptr(), output_shape, x_runtime_strides
-        )
+        return {x.unsafe_ptr(), output_shape, x_runtime_strides}
 
     @staticmethod
     fn execute[
@@ -1840,7 +1840,7 @@ struct StaticReshape:
             shape,
         )
 
-        return __type_of(result)(
+        return {
             view_buffer.ptr,
             rebind[IndexList[output_rank]](
                 view_buffer.runtime_layout.shape.value.canonicalize()
@@ -1848,7 +1848,7 @@ struct StaticReshape:
             rebind[IndexList[output_rank]](
                 view_buffer.runtime_layout.stride.value.canonicalize()
             ),
-        )
+        }
 
     @staticmethod
     fn execute[
@@ -1915,7 +1915,7 @@ struct Transpose:
             new_shape[i] = input.dim_size(dim)
             new_stride[i] = input.stride_length(dim)
 
-        return __type_of(result)(new_shape, new_stride)
+        return {new_shape, new_stride}
 
     @staticmethod
     fn get_view_strides[
@@ -1954,7 +1954,7 @@ struct Transpose:
         ],
     ):
         shape, strides = Self.transpose_in_place(input, permutations)
-        return __type_of(result)(input.unsafe_ptr(), shape, strides)
+        return {input.unsafe_ptr(), shape, strides}
 
     @staticmethod
     fn execute[
@@ -4142,35 +4142,6 @@ struct RandomNormal:
         return unrolled_shape
 
 
-@compiler.register("mo.static.random.normal")
-struct StaticRandomNormal:
-    @staticmethod
-    fn execute[
-        dtype: DType,
-        target: StaticString,
-    ](
-        output: FusedOutputTensor[dtype=dtype],
-        mean: Scalar[dtype],
-        variance: Scalar[dtype],
-        seed_value: Scalar,
-        ctx: DeviceContextPtr,
-    ) capturing raises:
-        @parameter
-        @always_inline
-        fn output_fn[
-            _width: Int,
-            _rank: Int,
-        ](coords: IndexList[_rank], val: SIMD[dtype, _width]):
-            output._lambda_store[width=_width](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](val),
-            )
-
-        random_normal[output_fn, target=target](
-            output.shape(), mean, variance, UInt64(seed_value), ctx
-        )
-
-
 @compiler.register("mo.random.uniform")
 struct RandomUniform:
     @staticmethod
@@ -5323,6 +5294,78 @@ struct PaddedFlashAttentionGPU:
                 scale,
                 ctx[],
                 valid_length=OptionalReg[valid_length_t](_valid_length),
+            )
+
+        dispatch_mask_and_score_mod[
+            mask_str,
+            score_mod_str,
+            _dispatch_flash_attention,
+            local_window_size,
+            num_kv_heads,
+        ]()
+
+
+@compiler.register("mo.mha.ragged.no_cache")
+struct RaggedFlashAttentionGPU:
+    @staticmethod
+    fn execute[
+        rank: Int, //,
+        target: StaticString,
+        mask_str: StaticString,
+        score_mod_str: StaticString,
+        local_window_size: Int = -1,
+    ](
+        output: OutputTensor[rank=rank],
+        q: InputTensor[rank=rank],
+        k: InputTensor[rank=rank],
+        v: InputTensor[rank=rank],
+        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
+        q_max_seq_len: InputTensor[dtype = DType.uint32, rank=1],
+        scale: Float32,
+        ctx: DeviceContextPtr,
+    ) raises:
+        """`mo.mha.ragged.no_cache` computes flash attention for ragged inputs without KV cache.
+
+        The inputs q, k, v are in ragged format with shape [total_seq_len, num_heads, head_dim].
+        input_row_offsets indicates where each sequence starts and ends in the ragged tensors.
+        """
+        constrained[is_gpu[target](), "only valid on GPUs"]()
+
+        var output_buffer = managed_tensor_slice_to_ndbuffer(output)
+        var q_buffer = managed_tensor_slice_to_ndbuffer(q)
+        var k_buffer = managed_tensor_slice_to_ndbuffer(k)
+        var v_buffer = managed_tensor_slice_to_ndbuffer(v)
+
+        alias input_row_offsets_t = ManagedTensorSlice[
+            IOUnknown,
+            static_spec = StaticTensorSpec[DType.uint32, 1].create_unknown(),
+        ]
+        _input_row_offsets = rebind[input_row_offsets_t](input_row_offsets)
+
+        alias num_kv_heads = k_buffer.shape.get[
+            1
+        ]() if k_buffer.shape.has_value[1]() else -1
+
+        @parameter
+        @__copy_capture(output_buffer, q_buffer, k_buffer, v_buffer)
+        fn _dispatch_flash_attention[
+            mask_t: MHAMask, score_mod_t: ScoreModTrait
+        ](mask: mask_t, score_mod: score_mod_t) raises:
+            alias use_score_mod = not _type_is_eq[
+                score_mod_t, IdentityScoreMod
+            ]()
+
+            flash_attention_ragged[use_score_mod=use_score_mod](
+                output_buffer,
+                q_buffer,
+                k_buffer,
+                v_buffer,
+                _input_row_offsets,
+                managed_tensor_slice_to_ndbuffer(q_max_seq_len),
+                mask,
+                score_mod,
+                scale,
+                ctx[],
             )
 
         dispatch_mask_and_score_mod[
@@ -6743,6 +6786,76 @@ struct Struct_fused_qk_rope_ragged_paged[interleaved: Bool]:
 
 
 # ===-----------------------------------------------------------------------===#
+# RoPE Ragged
+#
+# Expected kernel name format:
+# mo.rope.ragged
+# ===-----------------------------------------------------------------------===#
+
+
+@compiler.register("mo.rope.ragged")
+struct Struct_rope_ragged_paged[interleaved: Bool]:
+    @always_inline
+    @staticmethod
+    fn execute[
+        dtype: DType,
+        freq_dtype: DType, //,
+        target: StaticString,
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=3],
+        x: InputTensor[dtype=dtype, rank=3],
+        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
+        start_pos: InputTensor[dtype = DType.uint32, rank=1],
+        freqs_cis: InputTensor[dtype=freq_dtype, rank=2],
+        ctx: DeviceContextPtr,
+    ) raises:
+        @always_inline
+        @parameter
+        fn description_fn() -> String:
+            return String(";").join(
+                trace_arg("output", output.shape()),
+                trace_arg("x", x.shape()),
+                trace_arg("input_row_offsets", input_row_offsets.shape()),
+                trace_arg("start_pos", start_pos.shape()),
+                trace_arg("freqs_cis", freqs_cis.shape()),
+                "interleaved=" + String(interleaved),
+                "target=" + String(target),
+            )
+
+        @always_inline
+        @parameter
+        fn output_fn[
+            width: Int, alignment: Int
+        ](idx: IndexList[3], val: SIMD[dtype, width]) capturing -> None:
+            output._lambda_store[width=width, element_alignment=alignment](
+                idx,
+                rebind[SIMD[dtype, width]](val),
+            )
+
+        var device_ctx: Optional[DeviceContext] = None
+
+        @parameter
+        if is_gpu[target]():
+            device_ctx = ctx.get_device_context()
+
+        with Trace[TraceLevel.OP, target=target](
+            "mo.rope.ragged",
+            Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        ):
+            rope_ragged[
+                interleaved=interleaved,
+                target=target,
+                output_fn=output_fn,
+            ](
+                x.to_layout_tensor(),
+                input_row_offsets.to_layout_tensor(),
+                start_pos.to_layout_tensor(),
+                freqs_cis.to_layout_tensor(),
+                device_ctx,
+            )
+
+
+# ===-----------------------------------------------------------------------===#
 # MHA
 #
 # Expected kernel name format:
@@ -7415,6 +7528,75 @@ struct Struct_kv_collection_ctor_continuous_batching:
 
 
 # ===-----------------------------------------------------------------------===#
+# KV Cache Store
+#
+# Expected kernel name format:
+# mo.kv_cache.store.<continuous_batching/paged>.<ragged/padded>
+# ===-----------------------------------------------------------------------===#
+
+
+@compiler.register("mo.kv_cache.store.paged.ragged")
+struct Struct_kv_cache_store_paged:
+    @always_inline
+    @staticmethod
+    fn execute[
+        dtype: DType, target: StaticString, key_or_value: Int
+    ](
+        inputs: FusedInputTensor[dtype=dtype, rank=3],
+        blocks: MutableInputTensor[dtype=dtype, rank=6],
+        cache_lengths: InputTensor[dtype = DType.uint32, rank=1],
+        lookup_table: InputTensor[dtype = DType.uint32, rank=2],
+        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
+        max_lengths: InputTensor[dtype = DType.uint32, rank=2],
+        layer_idx: UInt32,
+        context: DeviceContextPtr,
+    ) raises:
+        alias page_size = blocks.static_spec.shape.get[3]()
+        alias head_dim = inputs.static_spec.shape.get[2]()
+        alias num_heads = inputs.static_spec.shape.get[1]()
+        var paged_kv_collection = generic_get_paged_cache[
+            kv_params = KVCacheStaticParams(UInt(num_heads), UInt(head_dim)),
+            page_size=page_size,
+        ](
+            managed_tensor_slice_to_ndbuffer(blocks),
+            managed_tensor_slice_to_ndbuffer(cache_lengths),
+            managed_tensor_slice_to_ndbuffer(lookup_table),
+            managed_tensor_slice_to_ndbuffer(max_lengths),
+        )
+
+        var cache: paged_kv_collection.CacheType
+
+        @parameter
+        if key_or_value == 0:
+            cache = paged_kv_collection.get_key_cache(Int(layer_idx))
+        else:
+            cache = paged_kv_collection.get_value_cache(Int(layer_idx))
+
+        var cuda_ctx: Optional[DeviceContext] = None
+
+        @parameter
+        if is_gpu[target]():
+            cuda_ctx = context.get_device_context()
+
+        @parameter
+        fn input_fn[
+            width: Int, alignment: Int
+        ](idx: IndexList[3]) capturing -> SIMD[dtype, width]:
+            return inputs._lambda_load[
+                width=width, element_alignment=alignment
+            ](
+                idx,
+            )
+
+        kv_cache_store_ragged[input_fn=input_fn, target=target](
+            cache,
+            inputs.shape(),
+            managed_tensor_slice_to_ndbuffer(input_row_offsets),
+            cuda_ctx,
+        )
+
+
+# ===-----------------------------------------------------------------------===#
 # LayoutTransforms
 # ===-----------------------------------------------------------------------===#
 
@@ -7770,7 +7952,7 @@ struct Struct_rms_norm_kv_cache_ragged_paged:
         layer_idx: UInt32,
         total_seq_len: UInt32,
         input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
-        weight_offset: Scalar[dtype],
+        weight_offset: Scalar[dtype=dtype],
         context: DeviceContextPtr,
     ) raises:
         rms_norm_kv_cache_ragged_paged[

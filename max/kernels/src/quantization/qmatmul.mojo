@@ -1210,16 +1210,14 @@ fn _matmul_qint4[
     alias alignment = align_of[SIMD[DType.float32, simd_width]]()
 
     var M = a.dim[0]()
-    var N = b.dim[0]()
     var K = a.dim[1]()
     var k_groups = K // group_size
 
     alias aq_type = kernel.aq_type()
 
-    var a_quant_base_ptr = UnsafePointer[
-        Scalar[aq_type],
-        alignment=alignment,
-    ].alloc(M * K)
+    var a_quant_base_ptr = UnsafePointer[Scalar[aq_type]].alloc(
+        M * K, alignment=alignment
+    )
     var a_scale_base_ptr = UnsafePointer[Float32].alloc(M * k_groups)
 
     var a_quant = NDBuffer[aq_type, 2](a_quant_base_ptr, Index(M, K))

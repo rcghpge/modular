@@ -66,7 +66,7 @@ fn count_leading_zeros[
     constrained[dtype.is_integral(), "must be integral"]()
 
     # HACK(#5003): remove this workaround
-    alias d = dtype if dtype is not DType.index else (
+    alias d = dtype if dtype is not DType.int else (
         DType.int32 if dtype.size_of() == 4 else DType.int64
     )
     return llvm_intrinsic["llvm.ctlz", SIMD[d, width], has_side_effect=False](
@@ -216,7 +216,7 @@ fn byte_swap[
     constrained[dtype.is_integral(), "must be integral"]()
 
     @parameter
-    if dtype.bitwidth() < 16:
+    if dtype.bit_width() < 16:
         return val
     return llvm_intrinsic["llvm.bswap", __type_of(val), has_side_effect=False](
         val
@@ -335,7 +335,7 @@ fn bit_width[
         A SIMD value where the element at position `i` equals the number of bits required to represent the integer at position `i` of the input.
     """
     constrained[dtype.is_integral(), "must be integral"]()
-    alias bitwidth = bit_width_of[dtype]()
+    alias bitwidth = dtype.bit_width()
 
     @parameter
     if dtype.is_unsigned():
@@ -362,7 +362,7 @@ fn log2_floor(val: Int) -> Int:
         The floor of the base-2 logarithm of the input value, which is equal to
         the position of the highest set bit. Returns -1 if val is 0 or negative.
     """
-    return Int(log2_floor(Scalar[DType.index](val)))
+    return Int(log2_floor(Scalar[DType.int](val)))
 
 
 @always_inline
@@ -398,7 +398,7 @@ fn log2_floor[
     """
     constrained[dtype.is_integral(), "dtype must be integral"]()
 
-    alias bitwidth = bit_width_of[dtype]()
+    alias bitwidth = dtype.bit_width()
     var res = bitwidth - count_leading_zeros(val) - 1
 
     @parameter

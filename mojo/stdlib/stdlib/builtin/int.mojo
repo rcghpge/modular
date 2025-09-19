@@ -22,7 +22,6 @@ from collections.string.string import (
 from collections.interval import IntervalElement
 from hashlib.hasher import Hasher
 from math import CeilDivable, Ceilable, Floorable, Truncable
-from sys import bit_width_of
 from sys.info import is_32bit
 
 from builtin.device_passable import DevicePassable
@@ -244,13 +243,13 @@ struct Int(
     # Aliases
     # ===-------------------------------------------------------------------===#
 
-    alias BITWIDTH = Int(bit_width_of[DType.index]())
+    alias BITWIDTH = Int(DType.int.bit_width())
     """The bit width of the integer type."""
 
-    alias MAX = Int(Scalar[DType.index].MAX)
+    alias MAX = Int(Scalar[DType.int].MAX)
     """Returns the maximum integer value."""
 
-    alias MIN = Int(Scalar[DType.index].MIN)
+    alias MIN = Int(Scalar[DType.int].MIN)
     """Returns the minimum value of type."""
 
     alias device_type: AnyTrivialRegType = Self
@@ -583,7 +582,7 @@ struct Int(
         """
         return Float64(self) / Float64(rhs)
 
-    @always_inline("builtin")
+    @always_inline("nodebug")
     fn __floordiv__(self, rhs: Int) -> Int:
         """Return the division of `self` and `rhs` rounded down to the nearest
         integer.
@@ -601,7 +600,7 @@ struct Int(
         var res = select(((rhs < 0) ^ (self < 0)) & (rem != 0), div - 1, div)
         return select(rhs == 0, 0, res)
 
-    @always_inline("builtin")
+    @always_inline("nodebug")
     fn __mod__(self, rhs: Int) -> Int:
         """Return the remainder of self divided by rhs.
 

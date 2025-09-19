@@ -63,7 +63,9 @@ def _rewrite_deps(deps):
     """Rewrite dependencies to use the open-source package names, or to come from the wheel."""
     new_deps = []
     for dep in deps:
-        if dep.startswith("//SDK/lib/API/python/"):
+        if dep.startswith("//SDK/lib/API/python/max/benchmark:"):
+            replaced_dep = dep.replace("//SDK/lib/API/python/max/benchmark:", "//benchmark:")
+        elif dep.startswith("//SDK/lib/API/python/"):
             replaced_dep = dep.replace("//SDK/lib/API/python/", "//")
             if replaced_dep in _DEPS_FROM_WHEEL:
                 replaced_dep = "@modular_wheel//:wheel"
@@ -161,6 +163,7 @@ def _noop(**_kwargs):
     pass
 
 modular_py_test = _noop
+modular_multi_py_version_test = _noop
 mojo_kgen_lib = _noop
 pkg_attributes = _noop
 pkg_filegroup = _noop

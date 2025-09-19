@@ -39,7 +39,7 @@ def test_dict_fromkeys():
     var expected_dict = Dict[String, Int]()
     expected_dict["a"] = 1
     expected_dict["b"] = 1
-    var dict = Dict.fromkeys(keys, 1)
+    var dict = Dict.fromkeys(materialize[keys](), 1)
 
     assert_equal(len(dict), len(expected_dict))
 
@@ -57,7 +57,7 @@ def test_dict_fromkeys_optional():
         "b": None,
         "c": None,
     }
-    var dict = Dict[_, Int].fromkeys(keys)
+    var dict = Dict[_, Int].fromkeys(materialize[keys]())
 
     assert_equal(len(dict), len(expected_dict))
 
@@ -185,6 +185,21 @@ def test_key_error():
         _ = dict.pop("a")
 
 
+def _test_iter_bounds[
+    I: Iterator, //
+](var dict_iter: I, dict_len: Int,):
+    var iter = dict_iter^
+    for i in range(dict_len):
+        var lower, upper = iter.bounds()
+        assert_equal(dict_len - i, lower)
+        assert_equal(dict_len - i, upper.value())
+        _ = iter.__next__()
+
+    var lower, upper = iter.bounds()
+    assert_equal(0, lower)
+    assert_equal(0, upper.value())
+
+
 def test_iter():
     var dict: Dict[String, Int] = {}
     dict["a"] = 1
@@ -195,6 +210,10 @@ def test_iter():
         keys += key
 
     assert_equal(keys, "ab")
+    _test_iter_bounds(dict.__iter__(), len(dict))
+
+    var empty_dict: Dict[String, Int] = {}
+    assert_equal(iter(empty_dict).__has_next__(), False)
 
 
 def test_iter_keys():
@@ -207,6 +226,7 @@ def test_iter_keys():
         keys += key
 
     assert_equal(keys, "ab")
+    _test_iter_bounds(dict.keys(), len(dict))
 
 
 def test_iter_values():
@@ -219,6 +239,7 @@ def test_iter_values():
         sum += value
 
     assert_equal(sum, 3)
+    _test_iter_bounds(dict.values(), len(dict))
 
 
 def test_iter_values_mut():
@@ -232,6 +253,7 @@ def test_iter_values_mut():
     assert_equal(2, dict["a"])
     assert_equal(3, dict["b"])
     assert_equal(2, len(dict))
+    _test_iter_bounds(dict.values(), len(dict))
 
 
 def test_iter_items():
@@ -247,6 +269,26 @@ def test_iter_items():
 
     assert_equal(keys, "ab")
     assert_equal(sum, 3)
+
+    # TODO: _DictItemIter does not conform to `Iterator` yet
+    # _test_iter_bounds(dict.values(), len(dict))
+
+
+def test_iter_take_items():
+    var dict: Dict[String, Int] = {}
+    dict["a"] = 1
+    dict["b"] = 2
+
+    var keys = String()
+    var sum = 0
+    for entry in dict.take_items():
+        keys += entry.key
+        sum += entry.value
+
+    assert_equal(keys, "ab")
+    assert_equal(sum, 3)
+    assert_equal(len(dict), 0)
+    assert_false(dict.take_items().__has_next__())
 
 
 def test_dict_contains():
@@ -416,9 +458,6 @@ def test_dict_update_empty_new():
 struct DummyKey(KeyElement):
     var value: Int
 
-    fn __copyinit__(out self, other: Self):
-        self.value = other.value
-
     fn __hash__[H: Hasher](self, mut hasher: H):
         return hasher.update(self.value)
 
@@ -552,12 +591,15 @@ def test_dict_popitem():
     dict["a"] = 1
     dict["b"] = 2
 
+    assert_equal(len(dict), 2)
     var item = dict.popitem()
     assert_equal(item.key, "b")
     assert_equal(item.value, 2)
+    assert_equal(len(dict), 1)
     item = dict.popitem()
     assert_equal(item.key, "a")
     assert_equal(item.value, 1)
+    assert_equal(len(dict), 0)
     with assert_raises(contains="KeyError"):
         _ = dict.popitem()
 
@@ -678,6 +720,24 @@ def test_dict_repr_wrap():
     )
 
 
+def test_popitem_no_copies():
+    var dict: Dict[String, CopyCounter] = {}
+    dict["a"] = CopyCounter()
+    dict["b"] = CopyCounter()
+
+    assert_equal(len(dict), 2)
+    var item = dict.popitem()
+    assert_equal(item.key, "b")
+    assert_equal(item.value.copy_count, 0)
+    assert_equal(len(dict), 1)
+    item = dict.popitem()
+    assert_equal(item.key, "a")
+    assert_equal(item.value.copy_count, 0)
+    assert_equal(len(dict), 0)
+    with assert_raises(contains="KeyError"):
+        _ = dict.popitem()
+
+
 def main():
     test_dict()
     test_dict_literals()
@@ -695,3 +755,4 @@ def main():
     test_compile_time_dict()
     test_dict_comprehension()
     test_dict_repr_wrap()
+    test_popitem_no_copies()

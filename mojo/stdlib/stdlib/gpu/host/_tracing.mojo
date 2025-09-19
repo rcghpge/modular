@@ -74,7 +74,7 @@ fn _on_error_msg() -> String:
             "Cannot find the GPU Tracing libraries. Please make sure that "
             "the library path is correctly set in one of the following paths ["
         ),
-        ", ".join(LIBRARY_PATHS),
+        ", ".join(materialize[LIBRARY_PATHS]()),
         (
             "]. You may need to make sure that you are using the non-slim"
             " version of the MAX container."
@@ -93,7 +93,9 @@ fn _init_dylib() -> _OwnedDLHandle:
         return abort[_OwnedDLHandle]("cannot load dylib when disabled")
 
     try:
-        var dylib = _try_find_dylib["GPU tracing library"](LIBRARY_PATHS)
+        var dylib = _try_find_dylib["GPU tracing library"](
+            materialize[LIBRARY_PATHS]()
+        )
 
         @parameter
         if has_nvidia_gpu_accelerator():

@@ -61,6 +61,7 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     c_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
+    block_swizzle_size: Int = 0,
     benchmark: Bool = False,
 ](ctx: DeviceContext, m: ValOrDim, n: ValOrDim, k: ValOrDim):
     var M = m.value
@@ -150,6 +151,7 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
         transpose_b=transpose_b,
         config=matmul_config,
         cta_group=2,
+        block_swizzle_size=block_swizzle_size,
     ](
         c_device.tensor,
         a_device.tensor,
@@ -336,8 +338,10 @@ def main():
                         @parameter
                         if mma_m_scale == 1 and mma_n_scale % 2 != 0:
                             continue
+
                         # TODO: support the increments of 8 for float 8 dtype at a later point
                         # currently it works with increments of BN = 32
+                        @parameter
                         if (
                             dtype == DType.float8_e4m3fn
                             and mma_n_scale % 4 != 0
@@ -359,6 +363,7 @@ def main():
                             cluster_shape = StaticTuple[Int32, 3](4, 4, 1),
                             a_swizzle=swizzle,
                             b_swizzle=swizzle,
+                            block_swizzle_size=8,
                         ](
                             ctx,
                             dynamic(1000),
@@ -375,6 +380,7 @@ def main():
                             cluster_shape = StaticTuple[Int32, 3](4, 4, 1),
                             a_swizzle=swizzle,
                             b_swizzle=swizzle,
+                            block_swizzle_size=4,
                         ](
                             ctx,
                             dynamic(512),
@@ -391,6 +397,7 @@ def main():
                             cluster_shape = StaticTuple[Int32, 3](4, 4, 1),
                             a_swizzle=swizzle,
                             b_swizzle=swizzle,
+                            block_swizzle_size=0,
                         ](
                             ctx,
                             dynamic(500),
@@ -407,6 +414,7 @@ def main():
                             cluster_shape = StaticTuple[Int32, 3](8, 2, 1),
                             a_swizzle=swizzle,
                             b_swizzle=swizzle,
+                            block_swizzle_size=2,
                         ](
                             ctx,
                             dynamic(1024),
@@ -423,6 +431,7 @@ def main():
                             cluster_shape = StaticTuple[Int32, 3](2, 2, 1),
                             a_swizzle=swizzle,
                             b_swizzle=swizzle,
+                            block_swizzle_size=4,
                         ](
                             ctx,
                             static[1024](),
@@ -439,6 +448,7 @@ def main():
                             cluster_shape = StaticTuple[Int32, 3](4, 4, 1),
                             a_swizzle=swizzle,
                             b_swizzle=swizzle,
+                            block_swizzle_size=1,
                         ](
                             ctx,
                             dynamic(8192),

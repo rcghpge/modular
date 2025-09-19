@@ -972,15 +972,12 @@ fn _matmul_common[
         # something to ensure we don't segfault.
         var c_ptr = UnsafePointer[Scalar[output_dtype]].alloc(TOTAL_SEQ_LEN * N)
 
-        c_nd = __type_of(c_nd)(
-            c_ptr,
-            IndexList[2](TOTAL_SEQ_LEN, N),
-        )
+        c_nd = {c_ptr, IndexList[2](TOTAL_SEQ_LEN, N)}
     else:
-        c_nd = __type_of(c_nd)(
+        c_nd = {
             UnsafePointer[Scalar[output_dtype]](),
             IndexList[2](TOTAL_SEQ_LEN, N),
-        )
+        }
 
     matmul[
         target=target,
@@ -1011,10 +1008,10 @@ fn _qmatmul_common[
     alias N = weight.shape.get[0]()
     var c_nd: NDBuffer[dtype, 2, MutableAnyOrigin, DimList(Dim(), N)]
 
-    c_nd = __type_of(c_nd)(
+    c_nd = {
         UnsafePointer[Scalar[dtype]](),
         IndexList[2](TOTAL_SEQ_LEN, N),
-    )
+    }
 
     matmul_gpu_qint4_impl[
         target=target,
@@ -1691,10 +1688,7 @@ fn _qmatmul_gguf_quantized_alloc_output[
     # something to ensure we don't segfault.
     var c_ptr = UnsafePointer[Scalar[DType.float32]].alloc(TOTAL_SEQ_LEN * N)
 
-    c_nd = __type_of(c_nd)(
-        c_ptr,
-        IndexList[2](TOTAL_SEQ_LEN, N),
-    )
+    c_nd = {c_ptr, IndexList[2](TOTAL_SEQ_LEN, N)}
 
     _qmatmul_gguf_quantized_common[
         quantization_encoding, elementwise_lambda_fn
@@ -2783,3 +2777,53 @@ fn generic_kv_cache_radd_dispatch[
         alias simd_width = simd_width_of[dtype, target=compile_target]()
 
         elementwise[do_radd, simd_width, target=target](a.dynamic_shape)
+
+
+fn kv_cache_store_ragged[
+    cache_t: KVCacheT, //,
+    target: StaticString,
+    input_fn: fn[width: Int, alignment: Int] (
+        idx: IndexList[3]
+    ) capturing -> SIMD[cache_t.dtype, width],
+](
+    cache: cache_t,
+    input_shape: IndexList[3],
+    input_row_offsets: NDBuffer[DType.uint32, 1, *_],
+    context: Optional[DeviceContext],
+) raises:
+    @parameter
+    @__copy_capture(input_row_offsets, cache)
+    fn write_to_cache[
+        width: Int, rank: Int, alignment: Int = 1
+    ](idx: IndexList[rank]):
+        var loaded_val = input_fn[width=width, alignment=alignment](
+            rebind[IndexList[3]](idx)
+        )
+        var batch_idx = get_batch_from_row_offsets(input_row_offsets, idx[0])
+        var token_idx = Int(idx[0] - input_row_offsets[batch_idx])
+        var h_idx, hd_idx = divmod(UInt(idx[1]), cache_t.kv_params.head_size)
+        var cache_length = cache.cache_length(batch_idx)
+        var cache_token_idx = token_idx + cache_length
+
+        cache.store(
+            batch_idx,
+            h_idx,
+            cache_token_idx,
+            hd_idx,
+            loaded_val,
+        )
+
+    @parameter
+    if is_gpu[target]():
+        debug_assert(context is not None, "ctx is None")
+        alias compile_target = get_gpu_target()
+        alias simd_width = simd_width_of[cache_t.dtype, target=compile_target]()
+
+        elementwise[write_to_cache, simd_width, target=target](
+            input_shape, context.value()
+        )
+    else:
+        alias compile_target = _current_target()
+        alias simd_width = simd_width_of[cache_t.dtype, target=compile_target]()
+
+        elementwise[write_to_cache, simd_width, target=target](input_shape)

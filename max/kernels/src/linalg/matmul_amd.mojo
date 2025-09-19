@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import OptionalReg
-from sys import align_of, simd_width_of, size_of
+from sys import align_of, simd_width_of
 
 from gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -28,19 +28,16 @@ from gpu.sync import (
     schedule_barrier,
     schedule_group_barrier,
 )
-from gpu.intrinsics import buffer_store
-from layout.element import Element
-from layout import IntTuple, Layout, LayoutTensor
+from layout import Layout, LayoutTensor
 from layout.layout import blocked_product
 from layout.layout_tensor import (
     UNKNOWN_VALUE,
     ThreadScope,
     copy_local_to_shared,
-    copy_dram_to_local,
-    copy_local_to_dram,
+    LayoutTensorIter,
 )
 from layout.swizzle import Swizzle
-from layout._utils import TensorCoreKGroup, get_amd_buffer_descriptor
+from layout.tensor_core import TiledTensorCore
 from memory import stack_allocation
 
 from utils import IndexList, StaticTuple
@@ -50,54 +47,13 @@ from ._multistage_gemm_gpu import warp_split_k_reduction
 from .utils import elementwise_epilogue_type
 from .utils_gpu import MatmulConfig
 
-
-@always_inline("nodebug")
-fn copy_local_to_dram_row_major[
-    dst_thread_layout: Layout,
-](dst: LayoutTensor, src: LayoutTensor, dst_base: LayoutTensor):
-    # TODO: This is a temporary hack, we need to support this in copy_local_to_dram instead.
-    # write c in row major order
-    var worker_idx = lane_id()
-
-    var dst_fragments = dst.distribute[dst_thread_layout](worker_idx)
-
-    var offset = (Int(dst.ptr) - Int(dst_base.ptr)) // size_of[dst.dtype]()
-    var descriptor = get_amd_buffer_descriptor(dst_base)
-    var dst_frag_offset = dst_fragments.distance(dst.ptr) + offset
-    alias num_stores_per_thread = dst_fragments.layout.size()
-    alias m = dst_fragments.shape[0]()
-    alias n = dst_fragments.shape[1]()
-
-    @parameter
-    for i in range(m):
-
-        @parameter
-        for j in range(n):
-            alias idx = Layout.col_major(m, n)([i, j])
-            alias src_idx = src.layout(idx)
-            alias dst_static_idx = dst_fragments.layout(idx)
-            var dst_idx = dst_frag_offset
-
-            constrained[
-                dst_fragments.layout.all_dims_known(),
-                "dst_fragments.layout must have known dimensions",
-            ]()
-            dst_idx += dst_static_idx
-
-            var src_element = Element[index_type = src.linear_idx_type].load(
-                src.ptr.offset(src_idx),
-                src.runtime_element_layout,
-            )
-
-            alias element_stride = dst_fragments.element_layout.stride[
-                1
-            ].value()
-            constrained[element_stride == 1, "element_stride must be 1"]()
-            buffer_store(
-                descriptor,
-                Int32(dst_idx),
-                src_element.element_data.cast[dst.dtype](),
-            )
+from .structuring import (
+    ScatterGatherAmd,
+    IteratorScatterGatherAmd,
+    SMemTileType,
+    SMemWarpTileType,
+    RegTileType,
+)
 
 
 struct MmaOpAMD[
@@ -109,13 +65,13 @@ struct MmaOpAMD[
     num_k_tiles: Int,
     num_m_mmas: Int,
     num_n_mmas: Int,
-    BK: Int,
-    WK: Int,
+    block_cols: Int,
+    warp_cols: Int,
 ]:
     alias swizzle = Swizzle(3, 0, 1)
     alias simd_width = simd_width_of[in_type]()
     alias alignment = align_of[SIMD[in_type, Self.simd_width]]()
-    alias tensor_core_mma = TensorCoreKGroup[
+    alias tensor_core_mma = TiledTensorCore[
         out_type,
         in_type,
         shape,
@@ -123,62 +79,41 @@ struct MmaOpAMD[
         transpose_b,
     ]()
 
-    alias SMemTileType[smem_layout: Layout] = LayoutTensor[
-        in_type,
-        smem_layout,
-        MutableAnyOrigin,
-        address_space = AddressSpace.SHARED,
-        alignment = Self.alignment,
+    alias reg_tile_layout[num_mmas: Int] = Layout.row_major(
+        num_mmas * num_k_tiles, Self.simd_width
+    )
+
+    alias RegTileType[num_mmas: Int] = RegTileType[
+        in_type, Self.reg_tile_layout[num_mmas]
     ]
-
-    alias RegTileType[num_mmas: Int] = LayoutTensor[
-        in_type,
-        Layout.row_major(num_mmas * num_k_tiles, Self.simd_width),
-        MutableAnyOrigin,
-        address_space = AddressSpace.LOCAL,
-        alignment = Self.alignment,
-    ]
-
-    # FIXME: find a better name for RegTileKType
-    alias RegTileKType[num_mmas: Int] = Self.RegTileType[
-        num_mmas
-    ].StaticSplitType[num_k_tiles]
-
-    alias SMemWarpTileType[
-        warp_rows: Int, smem_layout: Layout
-    ] = Self.SMemTileType[smem_layout].TileType[warp_rows, WK]
 
     # Register-level storage for matrix data during computation
-    var a_reg_tile: Self.RegTileKType[num_m_mmas]
-    var b_reg_tile: Self.RegTileKType[num_n_mmas]
+    var a_reg_tile: Self.RegTileType[num_m_mmas]
+    var b_reg_tile: Self.RegTileType[num_n_mmas]
 
-    alias OutRegTileType = LayoutTensor[
-        out_type,
-        Layout.row_major(num_m_mmas * num_n_mmas, 4),
-        MutableAnyOrigin,
-        address_space = AddressSpace.LOCAL,
-    ]
+    alias out_reg_layout = Layout.row_major(num_m_mmas * num_n_mmas, 4)
+    alias OutRegTileType = RegTileType[out_type, Self.out_reg_layout]
 
     # Accumulation registers for result
     var out_reg_tile: Self.OutRegTileType
 
     @always_inline
     @staticmethod
-    fn get_smem_layout[block_rows: Int, k_tile_size: Int]() -> Layout:
+    fn smem_tile_layout[block_rows: Int, k_tile_size: Int]() -> Layout:
         # Shared memory layout
         #
         # - base_layout: Layout.row_major(block_rows, k_tile_size) -> block_rows×k_tile_size tiles
         # - tiler_layout: Layout.row_major(1, num_repeats) -> repeat tiles num_repeats times horizontally
         # - smem_layout: blocked_product(base_layout, tiler_layout) -> tiled blocked layout
         #
-        # Resulting shape: block_rows×(k_tile_size × num_repeats) = block_rows×BK tensor
-        # Where BK = k_tile_size × num_repeats, k_tile_size = MMA_K × k_group_size
+        # Resulting shape: block_rows×(k_tile_size × num_repeats) = block_rows × block_cols tensor
+        # Where block_cols = k_tile_size × num_repeats, k_tile_size = MMA_K × k_group_size
         #
         # This creates num_repeats blocks of block_rows×k_tile_size arranged horizontally:
         # Within each k_tile_size-column block, elements are consecutive (stride 1)
         # Between blocks: stride = block_rows × k_tile_size
         #
-        # ASCII diagram for block_rows=64, k_tile_size=32, BK=64 (showing first 2 of 2 blocks):
+        # ASCII diagram for block_rows=64, k_tile_size=32, block_cols=64 (showing first 2 of 2 blocks):
         # ┌─────────────────────────────────────────────────────────────────────────┐
         # │         Block 0 (64×32)             │         Block 1 (64×32)           │
         # ├─────────────────────────────────────┼───────────────────────────────────┤
@@ -192,48 +127,36 @@ struct MmaOpAMD[
         # stride between blocks = block_rows × k_tile_size = 64 × 32 = 2048
 
         alias base_layout = Layout.row_major(block_rows, k_tile_size)
-        alias num_repeats = BK // k_tile_size
+        alias num_repeats = block_cols // k_tile_size
         alias tiler_layout = Layout.row_major(1, num_repeats)
         return blocked_product(base_layout, tiler_layout, coalesce_output=True)
 
     @always_inline
     fn __init__(out self):
-        self.a_reg_tile = (
-            Self.RegTileType[num_m_mmas].stack_allocation().split[num_k_tiles]()
-        )
-        self.b_reg_tile = (
-            Self.RegTileType[num_n_mmas].stack_allocation().split[num_k_tiles]()
-        )
+        self.a_reg_tile = Self.RegTileType[num_m_mmas].stack_allocation()
+        self.b_reg_tile = Self.RegTileType[num_n_mmas].stack_allocation()
         self.out_reg_tile = Self.OutRegTileType.stack_allocation()
 
     @always_inline
     fn mma[k_tile_idx: Int](self):
         Self.tensor_core_mma.mma[swap_a_b=True](
-            self.a_reg_tile[k_tile_idx],
-            self.b_reg_tile[k_tile_idx],
+            self.a_reg_tile.simd_tile[num_m_mmas](k_tile_idx),
+            self.b_reg_tile.simd_tile[num_n_mmas](k_tile_idx),
             self.out_reg_tile,
         )
 
     @always_inline
-    fn load_tile_from_smem[
+    fn load_tile_fragment[
         k_tile_idx: Int
-    ](
-        self,
-        a_smem_tiles: Self.SMemWarpTileType,
-        b_smem_tiles: Self.SMemWarpTileType,
-    ):
+    ](self, a_smem_tiles: SMemWarpTileType, b_smem_tiles: SMemWarpTileType,):
         Self.tensor_core_mma.mma_op.load_a[swizzle = Self.swizzle](
             a_smem_tiles,
-            self.a_reg_tile[k_tile_idx]
-            .tile[num_m_mmas, Self.simd_width](k_tile_idx, 0)
-            .vectorize[1, Self.simd_width](),
+            self.a_reg_tile.simd_tile[num_m_mmas](k_tile_idx).vectorize(),
             UInt(k_tile_idx),
         )
         Self.tensor_core_mma.mma_op.load_b[swizzle = Self.swizzle](
             b_smem_tiles,
-            self.b_reg_tile[k_tile_idx]
-            .tile[num_n_mmas, Self.simd_width](k_tile_idx, 0)
-            .vectorize[1, Self.simd_width](),
+            self.b_reg_tile.simd_tile[num_n_mmas](k_tile_idx).vectorize(),
             UInt(k_tile_idx),
         )
 
@@ -243,16 +166,16 @@ struct MmaOpAMD[
 
 
 struct MMATileBuffers[
-    tensor_origin: ImmutableOrigin, //,
-    smem_layout: Layout,
+    _dtype: DType,
     /,
+    smem_layout: Layout,
+    reg_tile_layout: Layout,
+    swizzle: Swizzle,
     tensor_type: __type_of(LayoutTensor),
     thread_layout: Layout,
-    block_rows: Int,
     warp_rows: Int,
+    warp_cols: Int,
     stride: Int,
-    num_mmas: Int,
-    mma_op_type: __type_of(MmaOpAMD),
 ]:
     """Manages memory for a single matrix (A or B) in GEMM computation.
 
@@ -264,31 +187,23 @@ struct MMATileBuffers[
 
     # Tensor types for different memory regions
 
-    # Shared memory allocation for matrix data shared across the block
-    alias SMemTileType = mma_op_type.SMemTileType[smem_layout]
+    # Shared memory tiles
+    alias SMemTileType = SMemTileType[_dtype, smem_layout]
     var smem_tile: Self.SMemTileType
 
-    # Tile view optimized for matrix multiplication acceleration (MMA) operations
-    var smem_warp_tile: mma_op_type.SMemWarpTileType[warp_rows, smem_layout]
+    # View on Shared memory tiles optimized for MmaOp
+    var smem_warp_tile: SMemWarpTileType[
+        _dtype, smem_layout, warp_rows, warp_cols
+    ]
 
-    # Buffer for loading data from global memory before transferring to shared memory
-    alias MMARegTileType = mma_op_type.RegTileType[num_mmas]
+    # Register tile fragments for data movement from GMEM to SMEM
+    alias MMARegTileType = RegTileType[_dtype, reg_tile_layout]
     var load_reg_tile: Self.MMARegTileType
-
-    # Global memory iterator for input tensor
-    alias iter_type = tensor_type.TileType[
-        block_rows, stride
-    ].TiledIteratorType[block_rows, mma_op_type.BK, axis=1]
-    var gmem_iter: Self.iter_type
-
-    var global_offset: UInt
-
-    var tensor: Pointer[tensor_type, tensor_origin]
 
     @always_inline
     fn __init__(
         out self,
-        ref [tensor_origin]tensor: tensor_type,
+        tensor: tensor_type,
         warp_idx: Int,
         warp_k_idx: Int,
         block_idx: Int,
@@ -302,18 +217,10 @@ struct MMATileBuffers[
             block_idx: The block index within the computation grid (used for warp tiling).
         """
         self.smem_tile = Self.SMemTileType.stack_allocation()
-        self.smem_warp_tile = self.smem_tile.tile[warp_rows, mma_op_type.WK](
+        self.smem_warp_tile = self.smem_tile.tile[warp_rows, warp_cols](
             warp_idx, warp_k_idx
         )
         self.load_reg_tile = Self.MMARegTileType.stack_allocation()
-        self.gmem_iter = tensor.tile[block_rows, stride](
-            block_idx, 0
-        ).tiled_iterator[block_rows, mma_op_type.BK, axis=1](0, 0)
-        self.global_offset = UInt(stride * (block_rows * block_idx))
-        # TODO: remove rebind once MOCO-1905 is fixed
-        self.tensor = rebind[Pointer[tensor_type, tensor_origin]](
-            Pointer(to=tensor)
-        )
 
     @always_inline
     fn copy_to_smem(self):
@@ -321,30 +228,11 @@ struct MMATileBuffers[
 
         Uses structured thread cooperation to efficiently transfer data.
         """
-        copy_local_to_shared[
-            thread_layout=thread_layout,
-            swizzle = mma_op_type.swizzle,
-            thread_scope = ThreadScope.BLOCK,
-            row_major=True,
-        ](
-            self.smem_tile.vectorize[1, mma_op_type.simd_width](),
-            self.load_reg_tile.vectorize[1, mma_op_type.simd_width](),
+        alias simd_width = simd_width_of[_dtype]()
+        copy_local_to_shared[thread_layout, swizzle, row_major=True](
+            self.smem_tile.vectorize(),
+            self.load_reg_tile.vectorize(),
         )
-
-    @always_inline
-    fn load_from_dram(mut self) -> None:
-        """Load data from global memory (DRAM) to thread-local memory."""
-        copy_dram_to_local[
-            src_thread_layout=thread_layout,
-            thread_scope = ThreadScope.BLOCK,
-        ](
-            self.load_reg_tile.vectorize[1, mma_op_type.simd_width](),
-            self.gmem_iter[].vectorize[1, mma_op_type.simd_width](),
-            self.tensor[],
-            self.global_offset,
-        )
-        self.global_offset += UInt(mma_op_type.BK)
-        self.gmem_iter._incr()
 
 
 @__llvm_metadata(
@@ -508,39 +396,73 @@ fn gemm_kernel_amd[
         num_k_tiles=num_k_tiles,
         num_m_mmas=num_m_mmas,
         num_n_mmas=num_n_mmas,
-        BK = Int(BK),
-        WK=WK,
+        block_cols=BK,
+        warp_cols=WK,
     ]()
 
+    alias thread_layout = get_thread_layout()
+
+    # A tensor tiles manager
     var a_tiles = MMATileBuffers[
-        mma_op.get_smem_layout[BM, k_tile_size](),
+        mma_op.in_type,
+        smem_layout = mma_op.smem_tile_layout[BM, k_tile_size](),
+        reg_tile_layout = mma_op.reg_tile_layout[num_m_mmas],
+        swizzle = mma_op.swizzle,
         tensor_type = __type_of(a),
-        thread_layout = get_thread_layout(),
-        block_rows=BM,
+        thread_layout=thread_layout,
         warp_rows=WM,
+        warp_cols=WK,
         stride=stride,
-        num_mmas=num_m_mmas,
-        mma_op_type = __type_of(mma_op),
     ](a, Int(warp_m), Int(warp_k), Int(block_idx.y))
 
+    # A tensor tile iterator
+    var a_gmem_iter = a.tile[BM, stride](block_idx.y, 0).tiled_iterator[
+        BM, BK, axis=1
+    ](0, 0)
+    # A tensor data movement delegate
+    var a_scatter_gather = IteratorScatterGatherAmd[thread_layout](
+        a, a_gmem_iter
+    )
+
+    # B tensor tiles manager
     var b_tiles = MMATileBuffers[
-        mma_op.get_smem_layout[BN, k_tile_size](),
+        mma_op.in_type,
+        smem_layout = mma_op.smem_tile_layout[BN, k_tile_size](),
+        reg_tile_layout = mma_op.reg_tile_layout[num_n_mmas],
+        swizzle = mma_op.swizzle,
         tensor_type = __type_of(b),
-        thread_layout = get_thread_layout(),
-        block_rows=BN,
+        thread_layout=thread_layout,
         warp_rows=WN,
+        warp_cols=WK,
         stride=stride,
-        num_mmas=num_n_mmas,
-        mma_op_type = __type_of(mma_op),
     ](b, Int(warp_n), Int(warp_k), Int(block_idx.x))
+
+    # B tensor tile iterator
+    var b_gmem_iter = b.tile[BN, stride](block_idx.x, 0).tiled_iterator[
+        BN, BK, axis=1
+    ](0, 0)
+    # B tensor data movement delegate
+    var b_scatter_gather = IteratorScatterGatherAmd[thread_layout](
+        b, b_gmem_iter
+    )
 
     # --- Helper functions for matrix operations ---
 
     @always_inline
     @parameter
     fn load_tiles_from_dram():
-        a_tiles.load_from_dram()
-        b_tiles.load_from_dram()
+        """Load tiles from input tensors to register tiles."""
+        a_scatter_gather.copy(
+            a_tiles.load_reg_tile.vectorize(),
+            a_gmem_iter,
+        )
+        a_gmem_iter._incr()
+
+        b_scatter_gather.copy(
+            b_tiles.load_reg_tile.vectorize(),
+            b_gmem_iter,
+        )
+        b_gmem_iter._incr()
 
     @always_inline
     @parameter
@@ -627,9 +549,7 @@ fn gemm_kernel_amd[
 
     # Stage 2: First tile preparation - Register loading and prefetching
     load_tiles_from_dram()
-    mma_op.load_tile_from_smem[0](
-        a_tiles.smem_warp_tile, b_tiles.smem_warp_tile
-    )
+    mma_op.load_tile_fragment[0](a_tiles.smem_warp_tile, b_tiles.smem_warp_tile)
 
     schedule_barrier()
 
@@ -638,7 +558,7 @@ fn gemm_kernel_amd[
 
         @parameter
         for k_tile_idx in range(1, num_k_tiles):
-            mma_op.load_tile_from_smem[k_tile_idx](
+            mma_op.load_tile_fragment[k_tile_idx](
                 a_tiles.smem_warp_tile, b_tiles.smem_warp_tile
             )
 
@@ -655,7 +575,7 @@ fn gemm_kernel_amd[
 
         barrier()
 
-        mma_op.load_tile_from_smem[0](
+        mma_op.load_tile_fragment[0](
             a_tiles.smem_warp_tile, b_tiles.smem_warp_tile
         )
 
@@ -665,7 +585,7 @@ fn gemm_kernel_amd[
 
     @parameter
     for k_tile_idx in range(1, num_k_tiles):
-        mma_op.load_tile_from_smem[k_tile_idx](
+        mma_op.load_tile_fragment[k_tile_idx](
             a_tiles.smem_warp_tile, b_tiles.smem_warp_tile
         )
 
@@ -683,7 +603,7 @@ fn gemm_kernel_amd[
 
     @parameter
     for k_tile_idx in range(0, num_k_tiles):
-        mma_op.load_tile_from_smem[k_tile_idx](
+        mma_op.load_tile_fragment[k_tile_idx](
             a_tiles.smem_warp_tile, b_tiles.smem_warp_tile
         )
 
@@ -710,6 +630,12 @@ fn gemm_kernel_amd[
         if warp_k != 0:
             return
 
+    alias output_thread_layout = Layout.col_major(16, 4)
+
+    var c_scatter_gather = ScatterGatherAmd[
+        output_thread_layout, thread_scope = ThreadScope.WARP
+    ](c)
+
     # --- Write results to output tensor ---
     # Output stage: Transfer results from registers to global memory
     var c_block_tile = c.tile[BM, BN](Int(block_idx.y), Int(block_idx.x))
@@ -719,8 +645,6 @@ fn gemm_kernel_amd[
     constrained[
         static_N != UNKNOWN_VALUE, "N should be known at compile time"
     ]()
-
-    alias output_thread_layout = Layout.col_major(16, 4)
 
     @parameter
     if Bool(elementwise_lambda_fn) or (static_N % BN != 0):
@@ -759,16 +683,16 @@ fn gemm_kernel_amd[
             )
 
             if m < M and n < N:
+                alias alignment = align_of[SIMD[c_type, 4]]()
+
                 var result_vec = (
                     c_reg_fragment.ptr.offset(src_idx)
                     .load[
                         width=4,
-                        alignment = align_of[SIMD[c_type, 4]](),
+                        alignment=alignment,
                     ]()
                     .cast[c_type]()
                 )
-
-                alias alignment = align_of[SIMD[c_type, 4]]()
 
                 @parameter
                 if elementwise_lambda_fn:
@@ -779,7 +703,7 @@ fn gemm_kernel_amd[
                     ]()
                     alias epilogue_fn = elementwise_lambda_fn.value()
 
-                    epilogue_fn[alignment = align_of[SIMD[c_type, 4]]()](
+                    epilogue_fn[alignment=alignment](
                         (Int(m), Int(n)), result_vec
                     )
                 else:
@@ -788,8 +712,7 @@ fn gemm_kernel_amd[
                     )
     else:
         # Direct copy to global memory
-        copy_local_to_dram_row_major[output_thread_layout](
+        c_scatter_gather.copy(
             c_warp_tile.vectorize[1, 4](),
             mma_op.out_reg_tile.vectorize[1, 4](),
-            c,
         )

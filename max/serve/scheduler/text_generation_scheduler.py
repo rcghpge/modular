@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Union
 
 from max.interfaces import (
     MAXPullQueue,
@@ -28,7 +27,7 @@ from max.interfaces import (
     drain_queue,
 )
 from max.nn.kv_cache import PagedKVCacheManager
-from max.pipelines.core import TextAndVisionContext, TextContext
+from max.pipelines.core import TextContext
 from max.pipelines.lib import PipelineConfig
 from max.pipelines.lib.pipeline import get_paged_manager
 from max.profiler import Tracer
@@ -55,18 +54,16 @@ class TokenGenerationScheduler(Scheduler):
         self,
         scheduler_config: TokenGenerationSchedulerConfig,
         pipeline: Pipeline[
-            TextGenerationInputs[Union[TextContext, TextAndVisionContext]],
+            TextGenerationInputs[TextContext],
             TextGenerationOutput,
         ],
         *,
-        request_queue: MAXPullQueue[
-            tuple[RequestID, Union[TextContext, TextAndVisionContext]]
-        ],
+        request_queue: MAXPullQueue[tuple[RequestID, TextContext]],
         response_queue: MAXPushQueue[
             dict[RequestID, SchedulerResult[TextGenerationOutput]]
         ],
         cancel_queue: MAXPullQueue[list[RequestID]],
-        paged_manager: PagedKVCacheManager | None = None,
+        paged_manager: PagedKVCacheManager[TextContext] | None = None,
     ) -> None:
         self.scheduler_config = scheduler_config
         self.pipeline = pipeline
@@ -184,13 +181,11 @@ class TokenGenerationScheduler(Scheduler):
 
 def load_text_generation_scheduler(
     pipeline: Pipeline[
-        TextGenerationInputs[Union[TextContext, TextAndVisionContext]],
+        TextGenerationInputs[TextContext],
         TextGenerationOutput,
     ],
     pipeline_config: PipelineConfig,
-    request_queue: MAXPullQueue[
-        tuple[RequestID, Union[TextContext, TextAndVisionContext]]
-    ],
+    request_queue: MAXPullQueue[tuple[RequestID, TextContext]],
     response_queue: MAXPushQueue[
         dict[RequestID, SchedulerResult[TextGenerationOutput]]
     ],

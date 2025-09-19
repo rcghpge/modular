@@ -162,10 +162,10 @@ fn load_AB[
         circular=False,
     ],
     mma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=16
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     tma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=16
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     producer_phase: PipelineState[num_pipeline_stages],
     peer_cta_coord: Tuple[UInt, UInt, UInt],
@@ -270,10 +270,10 @@ fn consumer_main_loop[
         circular=False,
     ],
     mma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=16
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     tma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=16
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     consumer_phase: PipelineState[pipeline_stages],
     mma_op: MmaOpSM100_SS[
@@ -656,9 +656,7 @@ fn kernel_6[
     ]
 
     base_ptr_smem = rebind[
-        UnsafePointer[
-            Scalar[a_type], address_space = AddressSpace.SHARED, alignment=128
-        ]
+        UnsafePointer[Scalar[a_type], address_space = AddressSpace.SHARED]
     ](
         external_memory[
             Scalar[a_type],
@@ -675,11 +673,9 @@ fn kernel_6[
     var b_smem_base = (a_smem_base + a_smem_size * num_pipeline_stages).bitcast[
         Scalar[b_type]
     ]()
-    var c_smem_base = (
-        (b_smem_base + b_smem_size * num_pipeline_stages)
-        .bitcast[Scalar[c_type]]()
-        .static_alignment_cast[128]()
-    )
+    var c_smem_base = (b_smem_base + b_smem_size * num_pipeline_stages).bitcast[
+        Scalar[c_type]
+    ]()
 
     var a_smem = LayoutTensorIter[
         a_type,
@@ -689,7 +685,7 @@ fn kernel_6[
         alignment=128,
         circular=False,
     ](
-        a_smem_base.static_alignment_cast[128](),
+        a_smem_base,
         a_smem_size * num_pipeline_stages,
     )
 
@@ -701,7 +697,7 @@ fn kernel_6[
         alignment=128,
         circular=False,
     ](
-        b_smem_base.static_alignment_cast[128](),
+        b_smem_base,
         b_smem_size * num_pipeline_stages,
     )
 
@@ -715,12 +711,12 @@ fn kernel_6[
     var tma_mbar_ptr = smem_pool
     # + num_pipeline_stages is 1 * num_pipeline_stage so 8 bytes for each barrier at each stage
     var mma_mbar_ptr = tma_mbar_ptr + (num_pipeline_stages)
-    var math_barrier_base = mma_mbar_ptr + (num_pipeline_stages)
-    var ptr_tmem_addr = (math_barrier_base + 1).bitcast[UInt32]()
+    var compute_barrier_base = mma_mbar_ptr + (num_pipeline_stages)
+    var ptr_tmem_addr = (compute_barrier_base + 1).bitcast[UInt32]()
 
     tma_mbar = tma_mbar_ptr.bitcast[SharedMemBarrier]()
     mma_mbar = mma_mbar_ptr.bitcast[SharedMemBarrier]()
-    math_barrier = math_barrier_base.bitcast[SharedMemBarrier]()
+    compute_barrier = compute_barrier_base.bitcast[SharedMemBarrier]()
 
     var elect_one_warp = thread_idx.x // WARP_SIZE == 0
     var elect_one_thread = elect_one_sync_with_mask()
@@ -747,7 +743,7 @@ fn kernel_6[
             mma_mbar[i].init(
                 cluster_shape[0] // cta_group + cluster_shape[1] - 1
             )
-        math_barrier[].init()
+        compute_barrier[].init()
 
     cluster_sync()
 
@@ -850,10 +846,10 @@ fn kernel_6[
 
         # mma arrive multicast will track completion of all mma prior to this barrier.
         if elect_one_sync():
-            mma_arrive_multicast[cta_group](math_barrier, mma_complete_mask)
+            mma_arrive_multicast[cta_group](compute_barrier, mma_complete_mask)
 
     if WarpRole.is_epilogue():
-        math_barrier[].wait()
+        compute_barrier[].wait()
 
         store_C[
             accum_type=accum_type,
@@ -949,7 +945,7 @@ fn blackwell_kernel_6[
     # - ptr_tmem_addr: 4 bytes → 8 bytes (padded)
     # - tma_mbar_ptr: 8 bytes
     # - mma_mbar_ptr: 8 bytes
-    # - math_barrier: 8 bytes (padded)
+    # - compute_barrier: 8 bytes (padded)
     # Total with alignment: 32 bytes
     # This is why we pad 32 bytes * num_pipeline_stages to the smem size
 

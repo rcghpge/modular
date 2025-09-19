@@ -18,6 +18,7 @@ from test_utils import (
     CopyCounter,
     DelCounter,
     MoveCounter,
+    TriviallyCopyableMoveCounter,
 )
 from testing import (
     assert_equal,
@@ -536,6 +537,18 @@ def test_list_extend_non_trivial():
     assert_equal(v1[4].move_count, 2)
 
 
+def test_list_extend_trivial_copy_nontrivial_move():
+    var v1 = List[TriviallyCopyableMoveCounter](capacity=1)
+    var v2 = List(TriviallyCopyableMoveCounter(0))
+
+    assert_equal(v2[0].move_count, 1)
+
+    v1.extend(v2^)
+
+    # `extend()` should call __moveinit__, not perform even a trivially copy.
+    assert_equal(v1[0].move_count, 2)
+
+
 def test_2d_dynamic_list():
     var list = List[List[Int]]()
 
@@ -640,6 +653,26 @@ def test_list_iter_mutable():
     assert_equal(9, sum)
 
 
+def _test_list_iter_bounds[I: Iterator](var list_iter: I, list_len: Int):
+    var iter = list_iter^
+
+    for i in range(list_len):
+        var lower, upper = iter.bounds()
+        assert_equal(list_len - i, lower)
+        assert_equal(list_len - i, upper.value())
+        _ = iter.__next__()
+
+    var lower, upper = iter.bounds()
+    assert_equal(0, lower)
+    assert_equal(0, upper.value())
+
+
+def test_list_iter_bounds():
+    var list = [1, 2, 3]
+    _test_list_iter_bounds(iter(list), len(list))
+    _test_list_iter_bounds(reversed(list), len(list))
+
+
 def test_list_span():
     var vs = [1, 2, 3]
 
@@ -710,7 +743,7 @@ def test_list_span():
 
 
 def test_list_realloc_trivial_types():
-    a = List[Int, hint_trivial_type=True]()
+    a = List[Int]()
     for i in range(100):
         a.append(i)
 
@@ -718,13 +751,25 @@ def test_list_realloc_trivial_types():
     for i in range(100):
         assert_equal(a[i], i)
 
-    b = List[Int8, hint_trivial_type=True]()
+    b = List[Int8]()
     for i in range(100):
         b.append(Int8(i))
 
     assert_equal(len(b), 100)
     for i in range(100):
         assert_equal(b[i], Int8(i))
+
+
+def test_list_realloc_trivial_copy_nontrivial_move():
+    var lst = List[TriviallyCopyableMoveCounter](capacity=1)
+
+    lst.append(TriviallyCopyableMoveCounter(0))
+    assert_equal(lst[0].move_count, 1)
+
+    lst.reserve(10)
+
+    # Reallocating the list should call __moveinit__(), not perform a copy.
+    assert_equal(lst[0].move_count, 2)
 
 
 def test_list_boolable():
@@ -866,22 +911,23 @@ def test_indexing():
 def test_list_dtor():
     var dtor_count = 0
 
-    var l = List[DelCounter]()
+    var ptr = UnsafePointer(to=dtor_count).origin_cast[False]()
+    var l = List[DelCounter[ptr.origin]]()
     assert_equal(dtor_count, 0)
 
-    l.append(DelCounter(UnsafePointer(to=dtor_count)))
+    l.append(DelCounter(ptr))
     assert_equal(dtor_count, 0)
 
     l^.__del__()
     assert_equal(dtor_count, 1)
 
 
-# Verify we skip calling destructors for the trivial elements
 def test_destructor_trivial_elements():
     var dtor_count = 0
 
-    var l = List[DelCounter, hint_trivial_type=True]()
-    l.append(DelCounter(UnsafePointer(to=dtor_count)))
+    var ptr = UnsafePointer(to=dtor_count).origin_cast[False]()
+    var l = List[DelCounter[ptr.origin, trivial_del=True]]()
+    l.append(DelCounter[ptr.origin, trivial_del=True](ptr))
 
     l^.__del__()
 
@@ -926,7 +972,7 @@ def test_uninit_ctor():
     assert_equal(list2[1], "world")
 
 
-def _test_copyinit_trivial_types[dt: DType, hint_trivial_type: Bool]():
+def _test_copyinit_trivial_types[dt: DType]():
     alias sizes = (1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
     assert_equal(len(sizes), 10)
     var test_current_size = 1
@@ -934,7 +980,7 @@ def _test_copyinit_trivial_types[dt: DType, hint_trivial_type: Bool]():
     @parameter
     for sizes_index in range(len(sizes)):
         alias current_size = sizes[sizes_index]
-        x = List[Scalar[dt], hint_trivial_type]()
+        x = List[Scalar[dt]]()
         for i in range(current_size):
             x.append(i)
         y = x.copy()
@@ -958,14 +1004,10 @@ def test_copyinit_trivial_types_dtypes():
         DType.int8,
         DType.bool,
     )
-    var test_index_dtype = 0
 
     @parameter
     for index_dtype in range(len(dtypes)):
-        _test_copyinit_trivial_types[dtypes[index_dtype], True]()
-        _test_copyinit_trivial_types[dtypes[index_dtype], False]()
-        test_index_dtype += 1
-    assert_equal(test_index_dtype, 7)
+        _test_copyinit_trivial_types[dtypes[index_dtype]]()
 
 
 def test_list_comprehension():
@@ -1010,14 +1052,17 @@ def main():
     test_list_append()
     test_list_extend()
     test_list_extend_non_trivial()
+    test_list_extend_trivial_copy_nontrivial_move()
     test_list_explicit_copy()
     test_no_extra_copies_with_sugared_set_by_field()
     test_list_copy_constructor()
     test_2d_dynamic_list()
     test_list_iter()
     test_list_iter_mutable()
+    test_list_iter_bounds()
     test_list_span()
     test_list_realloc_trivial_types()
+    test_list_realloc_trivial_copy_nontrivial_move()
     test_list_boolable()
     test_converting_list_to_string()
     test_list_count()

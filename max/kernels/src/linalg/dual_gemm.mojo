@@ -161,7 +161,7 @@ fn multistage_dual_mma[
     fn _mask_tensor_row(
         tensor: LayoutTensor, num_rows: Int, out result: __type_of(tensor)
     ):
-        return __type_of(tensor)(
+        return {
             tensor.ptr,
             RuntimeLayout[
                 element_type = tensor.layout_int_type,
@@ -172,7 +172,7 @@ fn multistage_dual_mma[
                 ](num_rows, tensor.dim[1]()),
                 tensor.runtime_layout.stride,
             ),
-        )
+        }
 
     @always_inline
     @parameter
@@ -509,17 +509,18 @@ fn multistage_dual_gemm_kernel[
 
     # Prepare circular shared memory buffer for A and B.
     # Each pipeline stage has its own buffer.
+    alias alignment = align_of[SIMD[a_type, simd_size]]()
     var a_smem = external_memory[
         Scalar[a_type],
         address_space = AddressSpace.SHARED,
-        alignment = align_of[SIMD[a_type, simd_size]](),
+        alignment=alignment,
     ]()
     alias a_smem_size = num_pipeline_stages * BM * BK
     var a_smem_iter = LayoutTensorIter[
         a_type,
         Layout.row_major(BM, BK),
         address_space = a_smem.address_space,
-        alignment = a_smem.alignment,
+        alignment=alignment,
         circular=True,
     ](
         a_smem,
@@ -575,14 +576,14 @@ fn multistage_dual_gemm_kernel[
         tb[accum_type]()
         .row_major[num_m_mmas * num_n_mmas, c_frag_size]()
         .local()
-        .alloc()
+        .alloc()  # ALIGN-TODO: alignment?
         .fill(0)
     )
     var c1_reg_tile = (
         tb[accum_type]()
         .row_major[num_m_mmas * num_n_mmas, c_frag_size]()
         .local()
-        .alloc()
+        .alloc()  # ALIGN-TODO: alignment?
         .fill(0)
     )
 
@@ -865,13 +866,13 @@ fn config_in_smem[
     var i = 0
     while c.shared_mem_usage() > max_smem:
         if c.block_tile_shape[1] >= 256:
-            c = __type_of(res)(
-                block_tile_shape=Index(
+            c = {
+                block_tile_shape = Index(
                     c.block_tile_shape[0],
                     c.block_tile_shape[1] // 2,
                     c.block_tile_shape[2],
                 ),
-                warp_tile_shape=Index(
+                warp_tile_shape = Index(
                     c.warp_tile_shape[0],
                     c.warp_tile_shape[1] if c.warp_tile_shape[1]
                     >= c.block_tile_shape[1]
@@ -879,17 +880,17 @@ fn config_in_smem[
                     // 2,
                     c.warp_tile_shape[2],
                 ),
-                num_pipeline_stages=c.num_pipeline_stages,
-                num_k_partitions=c.num_k_partitions,
-            )
+                num_pipeline_stages = c.num_pipeline_stages,
+                num_k_partitions = c.num_k_partitions,
+            }
         else:
-            c = __type_of(res)(
-                block_tile_shape=Index(
+            c = {
+                block_tile_shape = Index(
                     c.block_tile_shape[0] // 2,
                     c.block_tile_shape[1],
                     c.block_tile_shape[2],
                 ),
-                warp_tile_shape=Index(
+                warp_tile_shape = Index(
                     c.warp_tile_shape[0] if c.warp_tile_shape[0]
                     >= c.block_tile_shape[0]
                     // 2 else c.block_tile_shape[0]
@@ -897,9 +898,9 @@ fn config_in_smem[
                     c.warp_tile_shape[1],
                     c.warp_tile_shape[2],
                 ),
-                num_pipeline_stages=c.num_pipeline_stages,
-                num_k_partitions=c.num_k_partitions,
-            )
+                num_pipeline_stages = c.num_pipeline_stages,
+                num_k_partitions = c.num_k_partitions,
+            }
         i += 1
         if i > 8:
             abort("too many iterations")

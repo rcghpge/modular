@@ -75,7 +75,14 @@ class MAXModelConfig(MAXModelConfigBase):
     # it be Optional to check for None and then littering the codebase with
     # asserts just to keep mypy happy.
     model_path: str = ""
-    """:obj:`repo_id` of a Hugging Face model repository to use."""
+    """:obj:`repo_id` of a Hugging Face model repository to use. This is functionally equivalent to `model` flag."""
+
+    model: str = ""
+    """:obj:`repo_id` of a Hugging Face model repository to use.
+    The only entrypoint for this model attribute is via --model max cli flag. Everything under the hood
+    after this MAXModelConfig is initialized should be handled via model_path, for now.
+    See post_init for more details on how this is done.
+    """
 
     served_model_name: Optional[str] = None
     """Optional override for client-facing model name. Defaults to model_path."""
@@ -118,12 +125,6 @@ class MAXModelConfig(MAXModelConfigBase):
     use_subgraphs: bool = True
     """Whether to use subgraphs for the model. This could significantly reduce compile time especially for a large model with several identical blocks. Default is true."""
 
-    tensor_parallel_degree: int = 1
-    """Number of tensor-parallel replicas."""
-
-    pipeline_parallel_degree: int = 1
-    """Number of pipeline stages."""
-
     data_parallel_degree: int = 1
     """Data-parallelism parameter. The degree to which the model is replicated
     is dependent on the model type."""
@@ -153,6 +154,17 @@ class MAXModelConfig(MAXModelConfigBase):
     This is used to differentiate between different config sections in a single
     MAXConfig file."""
 
+    def __post_init__(self) -> None:
+        # if both are specified, throw an error.
+        if self.model_path != "" and self.model != "":
+            raise ValueError(
+                "model_path and model cannot both be specified. Please use only one of them."
+            )
+        elif self.model != "":
+            self.model_path = self.model
+        # We use self.model_path from here on out.
+        self.model = ""
+
     # TODO(zheng): This can't just be a __post_init__ method, because we need to
     # it also sets and updates other fields which may not be determined /
     # initialized in the default factory.
@@ -181,18 +193,6 @@ class MAXModelConfig(MAXModelConfigBase):
                 "--quantization-encoding must be provided when --allow-safetensors-weights-fp32-bf6-bidirectional-cast is enabled"
             )
 
-        # validate that the pipeline and tensor parallel degrees are set.
-        if self.pipeline_parallel_degree < 1:
-            raise ValueError("pipeline_parallel_degree must be greater than 0")
-        if self.tensor_parallel_degree < 1:
-            raise ValueError("tensor_parallel_degree must be greater than 0")
-        if self.pipeline_parallel_degree * self.tensor_parallel_degree > len(
-            self.device_specs
-        ):
-            raise ValueError(
-                "pipeline_parallel_degree * tensor_parallel_degree must be less than or equal to the number of devices"
-            )
-
         # Validate that the device_specs provided are available
         if not devices_exist(self.device_specs):
             available_devices = scan_available_devices()
@@ -209,7 +209,7 @@ class MAXModelConfig(MAXModelConfigBase):
         if len(self.weight_path) == 0:
             if self.model_path == "":
                 raise ValueError(
-                    "model-path must be provided and must be a valid Hugging Face repository"
+                    "model must be provided and must be a valid Hugging Face repository"
                 )
             elif not os.path.exists(os.path.expanduser(self.model_path)):
                 # Check if the model_path is a valid HuggingFace repository
@@ -354,20 +354,6 @@ class MAXModelConfig(MAXModelConfigBase):
             )
         return self._huggingface_config
 
-    def validate_prefix_caching_supported(
-        self, prefix_caching_supported: bool
-    ) -> None:
-        """Validates that the model architecture supports prefix caching.
-        Falls back to false by disabling it if the model architecture does not support it."""
-        if (
-            not prefix_caching_supported
-            and self._kv_cache_config.enable_prefix_caching
-        ):
-            logger.warning(
-                "Architecture does not support prefix caching, overriding enable_prefix_caching=False"
-            )
-            self._kv_cache_config.enable_prefix_caching = False
-
     def validate_multi_gpu_supported(self, multi_gpu_supported: bool) -> None:
         """Validates that the model architecture supports multi-GPU inference.
 
@@ -412,6 +398,19 @@ class MAXModelConfig(MAXModelConfigBase):
     def validate_and_resolve_rope_type(self, arch_rope_type: RopeType) -> None:
         if self.rope_type is None:
             self.rope_type = arch_rope_type
+
+    def validate_lora_compatibility(self) -> None:
+        """
+        Validates that LoRA configuration is compatible with model settings.
+
+        Raises:
+            ValueError: If LoRA is enabled but incompatible with current model configuration.
+        """
+        if self._kv_cache_config.enable_prefix_caching:
+            raise ValueError(
+                "LoRA is not compatible with prefix caching. "
+                "Please disable prefix caching by using the --no-enable-prefix-caching flag."
+            )
 
     def validate_and_resolve_with_resolved_quantization_encoding(
         self,
@@ -860,7 +859,8 @@ class MAXModelConfig(MAXModelConfigBase):
     @staticmethod
     def help() -> dict[str, str]:
         max_model_help = {
-            "model_path": "Specify the repository ID of a Hugging Face model repository to use. This is used to load both Tokenizers, architectures and model weights.",
+            "model_path": "Specify the repository ID of a Hugging Face model repository to use. This is used to load both Tokenizers, architectures and model weights. Equivalent to --model flag.",
+            "model": "Specify the repository ID of a Hugging Face model repository to use. This is used to load both Tokenizers, architectures and model weights.",
             "served_model_name": "Optional override for client-facing model name. Defaults to model_path.",
             "weight_path": "Provide an optional local path or path relative to the root of a Hugging Face repo to the model weights you want to use. This allows you to specify custom weights instead of using defaults. You may pass multiple, ie. `--weight-path=model-00001-of-00002.safetensors --weight-path=model-00002-of-00002.safetensors`",
             "quantization_encoding": "Define the weight encoding type for quantization. This can help optimize performance and memory usage during inference. ie. q4_k, bfloat16 etc.",
@@ -872,8 +872,6 @@ class MAXModelConfig(MAXModelConfigBase):
             "vision_config_overrides": "Model-specific vision configuration overrides. For example, for InternVL: {'max_dynamic_patch': 24}.",
             "rope_type": "Force using a specific rope type: 'none' | 'normal' | 'neox'. Only matters for GGUF weights.",
             "use_subgraphs": "Whether to use subgraphs for the model. This could significantly reduce compile time especially for a large model with several identical blocks. Default is true.",
-            "tensor_parallel_degree": "Number of tensor-parallel replicas (default: 1).",
-            "pipeline_parallel_degree": "Number of pipeline stages (default: 1).",
         }
 
         config_help = KVCacheConfig.help()

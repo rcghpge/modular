@@ -21,18 +21,14 @@ import logging
 import os
 import queue
 from collections.abc import Generator
-from typing import Generic, TypeVar
 
-import msgspec
-from max.interfaces import LoRARequest, LoRAResponse
+from max.interfaces import LoRARequest, LoRAResponse, RequestID
 from max.serve.queue.zmq_queue import ZmqPullSocket, ZmqPushSocket
 
 logger = logging.getLogger("max.serve")
 
-ReqId = TypeVar("ReqId")
 
-
-class LoRAQueue(Generic[ReqId]):
+class LoRAQueue:
     """Queue for managing LoRA adapter load/unload/list requests."""
 
     def __init__(
@@ -40,23 +36,23 @@ class LoRAQueue(Generic[ReqId]):
         request_zmq_endpoint: str,
         response_zmq_endpoint: str,
     ):
-        self._request_socket = ZmqPushSocket[tuple[ReqId, LoRARequest]](
+        self._request_socket = ZmqPushSocket[tuple[RequestID, LoRARequest]](
             endpoint=request_zmq_endpoint,
-            serialize=msgspec.msgpack.Encoder().encode,
+            payload_type=tuple[RequestID, LoRARequest],
         )
-        self._response_socket = ZmqPullSocket[tuple[ReqId, LoRAResponse]](
+        self._response_socket = ZmqPullSocket[tuple[RequestID, LoRAResponse]](
             endpoint=response_zmq_endpoint,
-            deserialize=msgspec.msgpack.Decoder(
-                type=tuple[ReqId, LoRAResponse]
-            ).decode,
+            payload_type=tuple[RequestID, LoRAResponse],
         )
 
-        self.pending_out_queues: dict[ReqId, asyncio.Queue] = {}
+        self.pending_out_queues: dict[
+            RequestID, asyncio.Queue[LoRAResponse]
+        ] = {}
 
     @contextlib.contextmanager
     def open_channel(
-        self, req_id: ReqId, request: LoRARequest
-    ) -> Generator[asyncio.Queue, None, None]:
+        self, req_id: RequestID, request: LoRARequest
+    ) -> Generator[asyncio.Queue[LoRAResponse], None, None]:
         try:
             if req_id in self.pending_out_queues:
                 raise RuntimeError(
@@ -65,7 +61,7 @@ class LoRAQueue(Generic[ReqId]):
                     "Please ensure that the `req_id` is unique for each request."
                 )
 
-            out_queue: asyncio.Queue = asyncio.Queue()
+            out_queue: asyncio.Queue[LoRAResponse] = asyncio.Queue()
             self.pending_out_queues[req_id] = out_queue
 
             # put_nowait will fail if the request_push_socket is unavailable
@@ -77,7 +73,7 @@ class LoRAQueue(Generic[ReqId]):
             del self.pending_out_queues[req_id]
 
     async def get_response(
-        self, req_id: ReqId, request: LoRARequest
+        self, req_id: RequestID, request: LoRARequest
     ) -> LoRAResponse:
         with self.open_channel(req_id, request) as queue:
             return await queue.get()

@@ -59,7 +59,7 @@ struct DType(
       for SIMD vectors, tensors, and other data structures
     - **Type parameters**: Pass `DType` values as compile-time parameters to
       parameterized types like `SIMD[dtype, size]`
-    - **Type introspection**: Call methods like `.bitwidth()`, `.is_floating_point()`
+    - **Type introspection**: Call methods like `.bit_width()`, `.is_floating_point()`
       to query type properties at compile time
     - **Type conversion**: Use in casting operations to convert between different
       numeric representations
@@ -74,7 +74,7 @@ struct DType(
     var dtype = data.dtype
 
     print("Is float:", dtype.is_floating_point())  # True
-    print("Bit width:", dtype.bitwidth())          # 16
+    print("Bit width:", dtype.bit_width())          # 16
     print("Is signed:", dtype.is_signed())         # True
     ```
     """
@@ -102,11 +102,25 @@ struct DType(
     )
     """Represents a boolean data type."""
 
+    # TODO(MSTDL-1851): Remove
+    @deprecated("Use `DType.int` instead.")
     alias index = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<index> : !kgen.dtype`
     )
     """Represents an integral type whose bitwidth is the maximum integral value
     on the system."""
+
+    alias int = DType(
+        mlir_value=__mlir_attr.`#kgen.dtype.constant<index> : !kgen.dtype`
+    )
+    """Represents an integral type whose bitwidth is the maximum integral value
+    on the system."""
+
+    alias uint = DType(
+        mlir_value=__mlir_attr.`#kgen.dtype.constant<uindex> : !kgen.dtype`
+    )
+    """Represents an unsigned integral type whose bitwidth is the maximum
+    unsigned integral value on the system."""
 
     alias _uint1 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui1> : !kgen.dtype`
@@ -293,8 +307,12 @@ struct DType(
             return Self._from_str(str.removeprefix("DType."))
         elif str == "bool":
             return DType.bool
-        elif str == "index":
-            return DType.index
+        elif str == "index":  # TODO(MSTDL-1851): Remove
+            return DType.int
+        elif str == "int":
+            return DType.int
+        elif str == "uint":
+            return DType.uint
 
         elif str == "uint8":
             return DType.uint8
@@ -367,8 +385,10 @@ struct DType(
 
         if self is DType.bool:
             return writer.write("bool")
-        elif self is DType.index:
-            return writer.write("index")
+        elif self is DType.int:
+            return writer.write("int")
+        elif self is DType.uint:
+            return writer.write("uint")
 
         elif self is DType.uint8:
             return writer.write("uint8")
@@ -525,7 +545,11 @@ struct DType(
         Returns:
             Returns True if the input type parameter is unsigned.
         """
-        return self._is_non_index_integral() and not self._match(_mIsSigned)
+        return (
+            self is DType.uint
+            or self._is_non_index_integral()
+            and not self._match(_mIsSigned)
+        )
 
     @always_inline("nodebug")
     fn is_signed(self) -> Bool:
@@ -554,7 +578,7 @@ struct DType(
         Returns:
             Returns True if the input type parameter is an integer.
         """
-        return self is DType.index or self._is_non_index_integral()
+        return self in (DType.int, DType.uint) or self._is_non_index_integral()
 
     @always_inline("nodebug")
     fn is_floating_point(self) -> Bool:
@@ -634,8 +658,10 @@ struct DType(
 
         elif self is DType.bool:
             return size_of[DType.bool]()
-        elif self is DType.index:
-            return size_of[DType.index]()
+        elif self is DType.int:
+            return size_of[DType.int]()
+        elif self is DType.uint:
+            return size_of[DType.uint]()
 
         elif self is DType.float8_e3m4:
             return size_of[DType.float8_e3m4]()
@@ -662,7 +688,7 @@ struct DType(
         return size_of[DType.invalid]()
 
     @always_inline
-    fn bitwidth(self) -> Int:
+    fn bit_width(self) -> Int:
         """Returns the size in bits of the current DType.
 
         Returns:
@@ -686,7 +712,7 @@ struct DType(
             The mantissa width.
         """
         constrained[dtype.is_floating_point(), "dtype must be floating point"]()
-        return bit_width_of[dtype]() - DType.exponent_width[dtype]() - 1
+        return dtype.bit_width() - DType.exponent_width[dtype]() - 1
 
     @staticmethod
     @always_inline("nodebug")
@@ -779,7 +805,8 @@ struct DType(
 
         # fmt: off
         alias dtypes = [
-            DType.index,
+            DType.int,
+            DType.uint,
             DType.uint8, DType.int8,
             DType.uint16, DType.int16,
             DType.uint32, DType.int32,
@@ -837,7 +864,7 @@ struct DType(
         Parameters:
             func: A parametrized on dtype function to dispatch.
         """
-        var bitwidth = self.bitwidth()
+        var bitwidth = self.bit_width()
         if bitwidth == 8:
             func[DType.uint8]()
         elif bitwidth == 16:
@@ -908,7 +935,7 @@ struct DType(
         if self is DType.bool:
             return __mlir_attr.i1
 
-        if self is DType.index:
+        if self is DType.int:
             return __mlir_attr.index
 
         if self is DType.uint8:
@@ -979,8 +1006,10 @@ struct DType(
         @parameter
         if _type_is_eq[T, SIMD[DType.bool, size]]():
             return DType.bool
-        elif _type_is_eq[T, SIMD[DType.index, size]]():
-            return DType.index
+        elif _type_is_eq[T, SIMD[DType.int, size]]():
+            return DType.int
+        elif _type_is_eq[T, SIMD[DType.uint, size]]():
+            return DType.uint
 
         elif _type_is_eq[T, SIMD[DType.uint8, size]]():
             return DType.uint8
@@ -1084,7 +1113,7 @@ fn _unsigned_integral_type_of[dtype: DType]() -> DType:
     if dtype.is_unsigned():
         return dtype
     elif dtype.is_integral():
-        return _uint_type_of_width[bit_width_of[dtype]()]()
+        return _uint_type_of_width[dtype.bit_width()]()
 
     elif dtype.is_float8():
         return DType.uint8
@@ -1193,9 +1222,7 @@ fn _index_printf_format() -> StaticString:
 @always_inline
 fn _get_dtype_printf_format[dtype: DType]() -> StaticString:
     @parameter
-    if dtype is DType.bool:
-        return _index_printf_format()
-    elif dtype is DType.index:
+    if dtype in (DType.bool, DType.int, DType.uint):
         return _index_printf_format()
 
     elif dtype is DType.uint8:

@@ -16,7 +16,7 @@ bazel_dep(name = "opentelemetry-cpp", version = "1.19.0")
 bazel_dep(name = "opentelemetry-proto", version = "1.5.0")
 bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "protobuf", version = "31.1")
-bazel_dep(name = "rules_cc", version = "0.2.4")
+bazel_dep(name = "rules_cc", version = "0.2.8")
 bazel_dep(name = "rules_foreign_cc", version = "0.13.0")
 bazel_dep(name = "rules_mojo", version = "0.5.0")
 bazel_dep(name = "rules_multirun", version = "0.13.0")
@@ -24,7 +24,7 @@ bazel_dep(name = "rules_pkg", version = "1.0.1")
 bazel_dep(name = "rules_proto", version = "7.0.2")
 bazel_dep(name = "rules_pycross", version = "0.8.0")
 bazel_dep(name = "rules_python", version = "1.5.1")
-bazel_dep(name = "rules_shell", version = "0.4.1")
+bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "with_cfg.bzl", version = "0.10.3")
 
 # TODO: Remove when transitives bump to this version or above
@@ -39,14 +39,10 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.2.0.2", dev_dependency = Tr
 # TODO: Remove when >0.6.0 is released
 archive_override(
     module_name = "rules_mojo",
-    integrity = "sha256-A1MAbMLCldUNaZGpz6/BphT5Bo6lKRbvjBOp0VF2wAM=",
-    patch_strip = 1,
-    patches = [
-        "//bazel/public-patches:rules_mojo_version.patch",
-    ],
-    strip_prefix = "rules_mojo-df228391385e0ea0179d45846ffdecfc68964011",
+    integrity = "sha256-zgnOpUJ8OY8T3lw2+x0wkXqtwKH5BH8BQPdn7pD7Pnc=",
+    strip_prefix = "rules_mojo-355c0ebc7aa5cf40f21388309be89401bee42461",
     urls = [
-        "https://github.com/modular/rules_mojo/archive/df228391385e0ea0179d45846ffdecfc68964011.tar.gz",
+        "https://github.com/modular/rules_mojo/archive/355c0ebc7aa5cf40f21388309be89401bee42461.tar.gz",
     ],
 )
 
@@ -74,6 +70,8 @@ single_version_override(
         # TODO: Should we submit this upstream or force our deps to directly
         # depend on the things that provide their pyi files?
         "//bazel/public-patches:rules_mypy_pyi_files.patch",
+        # https://github.com/bazel-contrib/rules_mypy/pull/118
+        "//bazel/public-patches:rules_mypy_pyinfo.patch",
     ],
 )
 
@@ -86,19 +84,13 @@ single_version_override(
     ],
 )
 
+# TODO: Remove once >0.8.0 is out
 archive_override(
     module_name = "rules_pycross",
-    integrity = "sha256-DnwyjQfpS9MRtk5Uh8UbPHvbXnbs38ciht55/pJRFZE=",
-    patch_strip = 1,
-    patches = [
-        # https://github.com/jvolkman/rules_pycross/pull/176
-        "//bazel/public-patches:rules_pycross_watch.patch",
-        # https://github.com/jvolkman/rules_pycross/pull/181
-        "//bazel/public-patches:rules_pycross_shebang.patch",
-    ],
-    strip_prefix = "rules_pycross-b4707803848b06ae264247bcba15ddf3ef4008e2",
+    integrity = "sha256-80I/HQ37qIGF7o632GMRKV7PK4/wpEvBGQyXJsnKkPo=",
+    strip_prefix = "rules_pycross-1d8bdc0e0a48ce338c0de8122c952af841d40d2d",
     urls = [
-        "https://github.com/jvolkman/rules_pycross/archive/b4707803848b06ae264247bcba15ddf3ef4008e2.tar.gz",
+        "https://github.com/jvolkman/rules_pycross/archive/1d8bdc0e0a48ce338c0de8122c952af841d40d2d.tar.gz",
     ],
 )
 
@@ -170,6 +162,8 @@ single_version_override(
         "//bazel/public-patches:grpc-no-macos-x86.patch",
         # TODO: Drop when logspew is fixed
         "//bazel/public-patches:grpc-warnings.patch",
+        # https://github.com/grpc/grpc/pull/40687
+        "//bazel/public-patches:grpc-rules-python.patch",
     ],
     version = "1.73.1",
 )

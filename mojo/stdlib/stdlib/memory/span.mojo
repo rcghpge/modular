@@ -35,7 +35,6 @@ struct _SpanIter[
     origin: Origin[mut],
     forward: Bool = True,
     address_space: AddressSpace = AddressSpace.GENERIC,
-    alignment: Int = align_of[T](),
 ](ImplicitlyCopyable, Movable):
     """Iterator for Span.
 
@@ -45,12 +44,11 @@ struct _SpanIter[
         origin: The origin of the `Span`.
         forward: The iteration direction. False is backwards.
         address_space: The address space associated with the underlying allocated memory.
-        alignment: The minimum alignment of the underlying pointer known statically.
 
     """
 
     var index: Int
-    var src: Span[T, origin, address_space=address_space, alignment=alignment]
+    var src: Span[T, origin, address_space=address_space]
 
     @always_inline
     fn __iter__(self) -> Self:
@@ -84,14 +82,7 @@ struct Span[
     origin: Origin[mut],
     *,
     address_space: AddressSpace = AddressSpace.GENERIC,
-    alignment: Int = align_of[T](),
-](
-    ImplicitlyCopyable,
-    Movable,
-    Sized,
-    Boolable,
-    Defaultable,
-):
+](Boolable, Defaultable, ImplicitlyCopyable, Movable, Sized):
     """A non-owning view of contiguous data.
 
     Parameters:
@@ -99,7 +90,6 @@ struct Span[
         T: The type of the elements in the span.
         origin: The origin of the Span.
         address_space: The address space associated with the allocated memory.
-        alignment: The minimum alignment of the underlying pointer known statically.
     """
 
     # Aliases
@@ -112,7 +102,6 @@ struct Span[
         mut=mut,
         origin=origin,
         address_space=address_space,
-        alignment=alignment,
     ]
     """The UnsafePointer type that corresponds to this `Span`."""
     # Fields
@@ -165,7 +154,6 @@ struct Span[
         self._data = (
             list.unsafe_ptr()
             .address_space_cast[address_space]()
-            .static_alignment_cast[alignment]()
             .origin_cast[mut, origin]()
         )
         self._len = list._len
@@ -188,7 +176,6 @@ struct Span[
             UnsafePointer(to=array)
             .bitcast[T]()
             .address_space_cast[address_space]()
-            .static_alignment_cast[alignment]()
             .origin_cast[mut, origin]()
         )
         self._len = size
@@ -243,40 +230,26 @@ struct Span[
     @always_inline
     fn __iter__(
         self,
-    ) -> _SpanIter[
-        T,
-        origin,
-        address_space=address_space,
-        alignment=alignment,
-    ]:
+    ) -> _SpanIter[T, origin, address_space=address_space,]:
         """Get an iterator over the elements of the `Span`.
 
         Returns:
             An iterator over the elements of the `Span`.
         """
-        return _SpanIter[
-            address_space=address_space,
-            alignment=alignment,
-        ](0, self)
+        return _SpanIter[address_space=address_space](0, self)
 
     @always_inline
     fn __reversed__(
         self,
-    ) -> _SpanIter[
-        T,
-        origin,
-        forward=False,
-        address_space=address_space,
-        alignment=alignment,
-    ]:
+    ) -> _SpanIter[T, origin, forward=False, address_space=address_space,]:
         """Iterate backwards over the `Span`.
 
         Returns:
             A reversed iterator of the `Span` elements.
         """
-        return _SpanIter[
-            forward=False, address_space=address_space, alignment=alignment
-        ](len(self), self)
+        return _SpanIter[forward=False, address_space=address_space](
+            len(self), self
+        )
 
     # ===------------------------------------------------------------------===#
     # Trait implementations
@@ -298,7 +271,6 @@ struct Span[
             Scalar[dtype],
             origin,
             address_space=address_space,
-            alignment=alignment,
         ],
         value: Scalar[dtype],
     ) -> Bool:
@@ -432,13 +404,7 @@ struct Span[
     @always_inline("builtin")
     fn unsafe_ptr(
         self,
-    ) -> UnsafePointer[
-        T,
-        mut=mut,
-        origin=origin,
-        address_space=address_space,
-        alignment=alignment,
-    ]:
+    ) -> UnsafePointer[T, mut=mut, origin=origin, address_space=address_space,]:
         """Retrieves a pointer to the underlying memory.
 
         Returns:
@@ -459,17 +425,13 @@ struct Span[
 
     @always_inline
     fn copy_from[
-        origin: MutableOrigin, other_alignment: Int, //
-    ](
-        self: Span[T, origin, alignment=alignment],
-        other: Span[T, _, alignment=other_alignment],
-    ):
+        origin: MutableOrigin, //
+    ](self: Span[T, origin], other: Span[T, _],):
         """
         Performs an element wise copy from all elements of `other` into all elements of `self`.
 
         Parameters:
             origin: The inferred mutable origin of the data within the Span.
-            other_alignment: The inferred alignment of the data within the Span.
 
         Args:
             other: The `Span` to copy all elements from.
@@ -492,18 +454,13 @@ struct Span[
     # accesses to the origin.
     @__unsafe_disable_nested_origin_exclusivity
     fn __eq__[
-        T: EqualityComparable & Copyable & Movable,
-        rhs_alignment: Int, //,
-    ](
-        self: Span[T, origin, alignment=alignment],
-        rhs: Span[T, _, alignment=rhs_alignment],
-    ) -> Bool:
+        T: EqualityComparable & Copyable & Movable, //,
+    ](self: Span[T, origin], rhs: Span[T, _],) -> Bool:
         """Verify if span is equal to another span.
 
         Parameters:
             T: The type of the elements must implement the
               traits `EqualityComparable`, `Copyable` and `Movable`.
-            rhs_alignment: The inferred alignment of the rhs span.
 
         Args:
             rhs: The span to compare against.
@@ -527,7 +484,7 @@ struct Span[
     @always_inline
     fn __ne__[
         T: EqualityComparable & Copyable & Movable, //
-    ](self: Span[T, origin, alignment=alignment], rhs: Span[T]) -> Bool:
+    ](self: Span[T, origin], rhs: Span[T]) -> Bool:
         """Verify if span is not equal to another span.
 
         Parameters:
@@ -542,9 +499,7 @@ struct Span[
         """
         return not self == rhs
 
-    fn fill[
-        origin: MutableOrigin, //
-    ](self: Span[T, origin, alignment=alignment], value: T):
+    fn fill[origin: MutableOrigin, //](self: Span[T, origin], value: T):
         """
         Fill the memory that a span references with a given value.
 
@@ -557,9 +512,7 @@ struct Span[
         for ref element in self:
             element = value.copy()
 
-    fn swap_elements(
-        self: Span[mut=True, T, alignment=alignment], a: UInt, b: UInt
-    ) raises:
+    fn swap_elements(self: Span[mut=True, T], a: UInt, b: UInt) raises:
         """
         Swap the values at indices `a` and `b`.
 
@@ -584,15 +537,13 @@ struct Span[
 
         var ptr = self.unsafe_ptr()
         var tmp = InlineArray[T, 1](uninitialized=True)
-        ptr.offset(a).move_pointee_into(tmp.unsafe_ptr())
-        ptr.offset(b).move_pointee_into(ptr.offset(a))
-        tmp.unsafe_ptr().move_pointee_into(ptr.offset(b))
+        tmp.unsafe_ptr().init_pointee_move_from(ptr.offset(a))
+        ptr.offset(a).init_pointee_move_from(ptr.offset(b))
+        ptr.offset(b).init_pointee_move_from(tmp.unsafe_ptr())
 
     @always_inline("nodebug")
     fn __merge_with__[
-        other_type: __type_of(
-            Span[T, _, address_space=address_space, alignment=alignment]
-        ),
+        other_type: __type_of(Span[T, _, address_space=address_space]),
     ](
         self,
         out result: Span[
@@ -600,7 +551,6 @@ struct Span[
             T,
             __origin_of(origin, other_type.origin),
             address_space=address_space,
-            alignment=alignment,
         ],
     ):
         """Returns a pointer merged with the specified `other_type`.
@@ -611,10 +561,10 @@ struct Span[
         Returns:
             A pointer merged with the specified `other_type`.
         """
-        return __type_of(result)(
-            ptr=self._data.origin_cast[result.mut, result.origin](),
-            length=UInt(self._len),
-        )
+        return {
+            ptr = self._data.origin_cast[result.mut, result.origin](),
+            length = UInt(self._len),
+        }
 
     fn reverse[
         dtype: DType, O: MutableOrigin, //
@@ -650,7 +600,7 @@ struct Span[
 
         if is_odd:
             var value = ptr[middle + 1]
-            (ptr + middle - 1).move_pointee_into(ptr + middle + 1)
+            (ptr + middle + 1).init_pointee_move_from(ptr + middle - 1)
             (ptr + middle - 1).init_pointee_move(value)
 
     fn apply[
@@ -738,15 +688,15 @@ struct Span[
             The amount of times the function returns `True`.
         """
 
-        alias simdwidth = simd_width_of[DType.index]()
+        alias simdwidth = simd_width_of[DType.int]()
         var ptr = self.unsafe_ptr()
         var length = len(self)
-        var countv = SIMD[DType.index, simdwidth](0)
-        var count = Scalar[DType.index](0)
+        var countv = SIMD[DType.int, simdwidth](0)
+        var count = Scalar[DType.int](0)
 
         @parameter
         fn do_count[width: Int](idx: Int):
-            var vec = func(ptr.load[width=width](idx)).cast[DType.index]()
+            var vec = func(ptr.load[width=width](idx)).cast[DType.int]()
 
             @parameter
             if width == 1:

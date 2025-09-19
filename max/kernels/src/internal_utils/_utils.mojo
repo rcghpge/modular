@@ -119,12 +119,12 @@ struct HostNDBuffer[
             dtype, Layout.row_major(IntTuple(shape)), MutableAnyOrigin
         ],
     ):
-        result = __type_of(result)(
+        result = {
             self.tensor.data,
             RuntimeLayout[__type_of(result).layout](
                 self.tensor.get_shape(), self.tensor.get_strides()
             ),
-        )
+        }
 
 
 @fieldwise_init
@@ -224,12 +224,12 @@ struct DeviceNDBuffer[
             dtype, Layout.row_major(IntTuple(shape)), __origin_of(self.buffer)
         ],
     ):
-        result = __type_of(result)(
+        result = {
             self.buffer,
             RuntimeLayout[__type_of(result).layout](
                 self.tensor.get_shape(), self.tensor.get_strides()
             ),
-        )
+        }
 
 
 # TODO: add address_space: AddressSpace = AddressSpace.GENERIC
@@ -444,7 +444,7 @@ fn env_get_shape[name: StaticString, default: StaticString]() -> List[Int]:
     """
     alias shape_str = env_get_string[name, default]()
     alias shape: List[Int] = parse_shape[shape_str]()
-    return shape
+    return materialize[shape]()
 
 
 fn int_list_to_tuple[x: List[Int]]() -> IndexList[len(x)]:
@@ -452,7 +452,8 @@ fn int_list_to_tuple[x: List[Int]]() -> IndexList[len(x)]:
 
     @parameter
     for i in range(len(x)):
-        t[i] = x[i]
+        alias xi = x[i]
+        t[i] = xi
     return t
 
 
@@ -735,7 +736,7 @@ struct Timer:
         )
 
 
-# TODO: limited support for 1D, generalize to nD
+# TODO: limited support for 1D, generalize to n-D
 fn init_vector_gpu[
     dtype: DType
 ](

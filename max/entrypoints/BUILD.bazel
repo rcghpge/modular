@@ -48,9 +48,16 @@ modular_py_library(
         "//SDK/lib/API/python/max/pipelines",
         "//SDK/lib/API/python/max/pipelines/architectures",
         "//SDK/lib/API/python/max/serve",
+        # These all point to the symlinked version of the benchmark directory.
+        "//SDK/lib/API/python/max/benchmark:benchmark_serving_lib",
+        requirement("aiohttp"),
         requirement("click"),
+        requirement("datasets"),
         requirement("huggingface-hub"),
+        requirement("jinja2"),
+        requirement("numpy"),
         requirement("pillow"),
+        requirement("tqdm"),
         requirement("transformers"),
         requirement("uvicorn"),
     ],
@@ -95,7 +102,7 @@ pkg_filegroup(
     name = "entrypoints_python",
     srcs = [
         ":python_files",
-        "//open-source/max/benchmark:python_files",
+        "//SDK/lib/API/python/max/benchmark:python_files",
     ],
 )
 

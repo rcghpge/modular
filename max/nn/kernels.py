@@ -929,6 +929,109 @@ def flash_attention_ragged(
     )[0].tensor
 
 
+def flash_attention_ragged_gpu(
+    q: TensorValue,
+    k: TensorValue,
+    v: TensorValue,
+    input_row_offsets: TensorValue,
+    max_seq_len: TensorValue,
+    mask_variant: MHAMaskVariant,
+    scale: float,
+    local_window_size: int = -1,
+) -> TensorValue:
+    """Computes flash attention for ragged inputs using GPU-optimized kernel
+    without a KV cache.
+
+    Args:
+        q: Query tensor of shape [total_seq_len, num_heads, head_dim] (ragged)
+        k: Key tensor of shape [total_seq_len, num_heads, head_dim] (ragged)
+        v: Value tensor of shape [total_seq_len, num_heads, head_dim] (ragged)
+        input_row_offsets: Tensor of shape [batch_size + 1] with dtype uint32.
+            Indicates where each sequence starts and ends in the ragged tensors.
+            The values should be a prefix sum (cumulative sum) of sequence lengths.
+        mask_variant: The mask variant to use for attention
+        scale: Scaling factor for attention scores
+        local_window_size: Local window size for sliding window attention
+
+    Returns:
+        Output tensor of shape [total_seq_len, num_heads, head_dim]
+    """
+    if q.dtype != k.dtype or q.dtype != v.dtype:
+        msg = (
+            "q, k, v must have matching dtypes. Got "
+            f"q.dtype={q.dtype}, k.dtype={k.dtype}, v.dtype={v.dtype}"
+        )
+        raise ValueError(msg)
+
+    expected_rank = 3
+    for name, tensor in [("q", q), ("k", k), ("v", v)]:
+        if tensor.rank != expected_rank:
+            msg = f"{name} must be rank {expected_rank}, got {tensor.rank}"
+            raise ValueError(msg)
+
+    # Validate head dimension matches across all inputs
+    head_dim = q.shape[-1]
+    if k.shape[-1] != head_dim or v.shape[-1] != head_dim:
+        msg = (
+            "All inputs must have same head_dim. Got "
+            f"q: {head_dim}, k: {k.shape[-1]}, v: {v.shape[-1]}"
+        )
+        raise ValueError(msg)
+
+    # Validate total sequence lengths match
+    if q.shape[0] != k.shape[0] or q.shape[0] != v.shape[0]:
+        msg = (
+            "q, k, v must have same total sequence length. Got "
+            f"q: {q.shape[0]}, k: {k.shape[0]}, v: {v.shape[0]}"
+        )
+        raise ValueError(msg)
+
+    # Validate num_heads match
+    if q.shape[1] != k.shape[1] or q.shape[1] != v.shape[1]:
+        msg = (
+            "q, k, v must have same num_heads. Got "
+            f"q: {q.shape[1]}, k: {k.shape[1]}, v: {v.shape[1]}"
+        )
+        raise ValueError(msg)
+
+    # Validate input_row_offsets
+    if input_row_offsets.dtype != DType.uint32:
+        msg = f"input_row_offsets must have dtype uint32, got {input_row_offsets.dtype}"
+        raise ValueError(msg)
+
+    if input_row_offsets.rank != 1:
+        msg = f"input_row_offsets must be rank 1, got {input_row_offsets.rank}"
+        raise ValueError(msg)
+
+    mha_mask_config = _MHA_MASK_CONFIG_DICT[mask_variant]
+    parameters: dict[str, int | str | DType] = {}
+    parameters["mask_str"] = mha_mask_config.attention_mask_variant.value
+    parameters["score_mod_str"] = (
+        mha_mask_config.positional_encoding_variant.value
+    )
+    parameters["local_window_size"] = local_window_size
+
+    op_name = "mo.mha.ragged.no_cache"
+    values = [q, k, v, input_row_offsets, max_seq_len]
+    values.append(
+        ops.constant(scale, dtype=DType.float32, device=DeviceRef.CPU())
+    )
+
+    return ops.custom(
+        op_name,
+        values=values,
+        out_types=[
+            TensorType(
+                dtype=q.dtype,
+                shape=q.shape,
+                device=q.device,
+            )
+        ],
+        parameters=parameters,
+        device=q.device,
+    )[0].tensor
+
+
 def flare_mla_decode_ragged(
     kv_params: KVCacheParams,
     input: TensorValue,
@@ -2547,7 +2650,9 @@ def sgmv_qkv_lora_kernel(
     kv_params: KVCacheParams,
     layer_idx: TensorValue,
     max_lora_seq_len: int,
+    max_rank: int,
     q_dim: int,
+    kv_dim: int,
     bias: TensorValue | None = None,
 ) -> TensorValue:
     """
@@ -2590,9 +2695,9 @@ def sgmv_qkv_lora_kernel(
         bias,
     )
 
-    qkv_out = sgmv_kernel(
-        v_qkv,
-        lora_b,
+    q_out = sgmv_kernel(
+        v_qkv[:, :max_rank],
+        lora_b[:, :q_dim, :],
         lora_ids,
         lora_ranks,
         lora_grouped_offsets,
@@ -2600,13 +2705,31 @@ def sgmv_qkv_lora_kernel(
         bias,
     )
 
-    q_out = qkv_out[:, :q_dim]
+    k_out = sgmv_kernel(
+        v_qkv[:, max_rank:],
+        lora_b[:, q_dim : q_dim + kv_dim, :],
+        lora_ids,
+        lora_ranks,
+        lora_grouped_offsets,
+        max_lora_seq_len,
+        bias,
+    )
+
+    v_out = sgmv_kernel(
+        v_qkv[:, 2 * max_rank :],
+        lora_b[:, q_dim + kv_dim :, :],
+        lora_ids,
+        lora_ranks,
+        lora_grouped_offsets,
+        max_lora_seq_len,
+        bias,
+    )
 
     ops.inplace_custom(
         "mo.kv_cache.ragged.paged.radd",
         device=input.device,
         values=[
-            qkv_out[:, q_dim:],
+            ops.concat([k_out, v_out], axis=1),
             kv_collection,
             input_row_offsets,
             ops.constant(0, DType.uint32, DeviceRef.CPU()),

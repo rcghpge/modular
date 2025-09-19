@@ -45,7 +45,7 @@ fn keep(val: Int):
     Args:
       val: The value to not optimize away.
     """
-    keep(Scalar[DType.index](val))
+    keep(Scalar[DType.int](val))
 
 
 @always_inline
@@ -73,9 +73,7 @@ fn keep[dtype: DType, simd_width: Int](val: SIMD[dtype, simd_width]):
         return
 
     var tmp = val
-    var tmp_ptr = UnsafePointer(to=tmp).origin_cast[
-        mut=False, origin=ImmutableAnyOrigin
-    ]()
+    var tmp_ptr = UnsafePointer(to=tmp).origin_cast[False, ImmutableAnyOrigin]()
 
     @parameter
     if (

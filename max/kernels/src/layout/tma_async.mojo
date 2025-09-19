@@ -364,14 +364,12 @@ struct SharedMemBarrier(ImplicitlyCopyable, Movable):
     @always_inline
     fn unsafe_ptr(
         ref [AddressSpace.SHARED]self,
-        out result: UnsafePointer[
-            Int64,
-            address_space = AddressSpace.SHARED,
-            alignment=8,
-            mut = Origin(__origin_of(self)).mut,
-            origin = __origin_of(self),
-        ],
-    ):
+    ) -> UnsafePointer[
+        Int64,
+        address_space = AddressSpace.SHARED,
+        mut = Origin(__origin_of(self)).mut,
+        origin = __origin_of(self),
+    ]:
         """Get an unsafe pointer to the barrier's memory location.
 
         Provides low-level access to the shared memory location storing the barrier state.
@@ -382,7 +380,7 @@ struct SharedMemBarrier(ImplicitlyCopyable, Movable):
             An unsafe pointer to the barrier's memory location in shared memory,
             properly typed and aligned for barrier operations.
         """
-        return __type_of(result)(UnsafePointer(to=self.mbar))
+        return {UnsafePointer(to=self.mbar)}
 
     @always_inline
     fn arrive_cluster(

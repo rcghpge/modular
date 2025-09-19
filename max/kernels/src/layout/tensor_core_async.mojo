@@ -270,7 +270,7 @@ fn select_k_atom[
         `Layout` - A core matrix layout optimized for tensor core operations.
     """
     alias a = _select_k_atom_bits[swizzle_mode]()
-    return upcast(a, dtype.bitwidth())
+    return upcast(a, dtype.bit_width())
 
 
 fn _checked_tile_shape[
@@ -343,7 +343,7 @@ fn tile_to_descriptor[
         # Tile a layout to ((8,m),(T,2)) shape to match the K-major wgmma descriptor
         alias T = _CM_ROW_BYTES // dtype.size_of()
         alias tiler = MakeLayoutList(Layout(_CM_NUM_ROWS), Layout(T))
-        return logical_divide(layout, tiler)
+        return logical_divide(layout, materialize[tiler]())
     else:
         # We are not using atom layout for MN-major layouts.
         return layout

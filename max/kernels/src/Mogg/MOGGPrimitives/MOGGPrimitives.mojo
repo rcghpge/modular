@@ -814,7 +814,7 @@ fn mgp_buffer_host_to_device[
 @no_inline
 fn mgp_buffer_get_cached(
     ctx: StateContext,
-    buffer_slot: Int,
+    buffer_slot: UInt,
     storage_ref_addr: UnsafePointer[OpaquePointer],
 ) raises -> NDBuffer[DType.uint8, 1, MutableAnyOrigin]:
     var buffer_size: UInt64 = 0
@@ -1236,7 +1236,7 @@ fn build_static_tensor_specs_tuple[
     array_of_specs: VariadicList[StaticTensorSpec[dtype, rank]],
     out result: StaticTuple[StaticTensorSpec[dtype, rank], size],
 ):
-    return __type_of(result)(array_of_specs)
+    return {array_of_specs}
 
 
 # TODO: this should take IOSpec as a param -- will require graph compiler changes

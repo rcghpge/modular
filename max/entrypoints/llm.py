@@ -22,10 +22,10 @@ import threading
 import uuid
 from collections.abc import Awaitable, Mapping, Sequence
 from threading import Thread
-from typing import Callable, NewType, TypeVar, cast
+from typing import Callable, TypeVar, cast
 
 import tqdm
-from max.interfaces import SamplingParams, TextGenerationRequest
+from max.interfaces import RequestID, SamplingParams, TextGenerationRequest
 from max.pipelines.lib import PIPELINE_REGISTRY, PipelineConfig
 from max.serve.config import Settings
 from max.serve.pipelines.llm import TokenGeneratorPipeline
@@ -33,16 +33,15 @@ from max.serve.pipelines.model_worker import start_model_worker
 from max.serve.pipelines.telemetry_worker import start_telemetry_consumer
 from max.serve.process_control import ProcessControl
 from max.serve.queue.lora_queue import LoRAQueue
+from max.serve.scheduler.queues import SchedulerZmqConfigs
 
 T = TypeVar("T")
 U = TypeVar("U")
 
-_RequestID = NewType("_RequestID", str)
-
 
 @dataclasses.dataclass
 class _Request:
-    id: _RequestID
+    id: RequestID
     prompts: Sequence[str]
     max_new_tokens: int | None
     use_tqdm: bool
@@ -62,7 +61,7 @@ class LLM:
     _pc: ProcessControl
     _async_runner: Thread
     _request_queue: queue.Queue[_Request]
-    _pending_requests: dict[_RequestID, queue.Queue[_Response]]
+    _pending_requests: dict[RequestID, queue.Queue[_Response]]
 
     def __init__(self, pipeline_config: PipelineConfig) -> None:
         settings = Settings(MAX_SERVE_OFFLINE_INFERENCE=True)
@@ -115,7 +114,7 @@ class LLM:
             prompts = (prompts,)
 
         request = _Request(
-            id=_RequestID(str(uuid.uuid4())),
+            id=str(uuid.uuid4()),
             prompts=prompts,
             max_new_tokens=max_new_tokens,
             use_tqdm=use_tqdm,
@@ -135,7 +134,7 @@ def _run_async_worker(
     pc: ProcessControl,
     pipeline_config: PipelineConfig,
     request_queue: queue.Queue[_Request],
-    pending_requests: Mapping[_RequestID, queue.Queue[_Response]],
+    pending_requests: Mapping[RequestID, queue.Queue[_Response]],
     settings: Settings,
 ) -> None:
     asyncio.run(
@@ -175,7 +174,7 @@ async def _async_worker(
     pc: ProcessControl,
     pipeline_config: PipelineConfig,
     request_queue: queue.Queue[_Request],
-    pending_requests: Mapping[_RequestID, queue.Queue[_Response]],
+    pending_requests: Mapping[RequestID, queue.Queue[_Response]],
     settings: Settings,
 ) -> None:
     tokenizer, model_factory = PIPELINE_REGISTRY.retrieve_factory(
@@ -195,6 +194,8 @@ async def _async_worker(
         if pipeline_config.lora_config
         else None
     )
+    # Create Queues
+    scheduler_zmq_configs = SchedulerZmqConfigs(pipeline_task)
     async with (
         start_telemetry_consumer(settings) as metric_client,
         start_model_worker(
@@ -202,13 +203,14 @@ async def _async_worker(
             pipeline_config=pipeline_config,
             settings=settings,
             metric_client=metric_client,
-            pipeline_task=pipeline_task,
-        ) as engine_queue,
+            scheduler_zmq_configs=scheduler_zmq_configs,
+        ) as worker_monitor,
         TokenGeneratorPipeline(
             model_name=model_name,
             tokenizer=tokenizer,
-            engine_queue=engine_queue,
             lora_queue=lora_queue,
+            worker_monitor=worker_monitor,
+            scheduler_zmq_configs=scheduler_zmq_configs,
         ) as pipeline,
     ):
         pc.set_started()
@@ -235,7 +237,10 @@ async def _async_worker(
 
                 # Generate this request until complete
                 tokens = await pipeline.all_tokens(gen_request)
-                return "".join(t.decoded_token for t in tokens)
+                return "".join(
+                    t.decoded_token if t.decoded_token is not None else ""
+                    for t in tokens
+                )
 
             responses = await _async_map(
                 all_tokens, request.prompts, use_tqdm=request.use_tqdm

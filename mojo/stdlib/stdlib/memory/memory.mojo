@@ -264,14 +264,14 @@ fn memcpy[
         # A fast version for the interpreter to evaluate
         # this function during compile time.
         llvm_intrinsic["llvm.memcpy", NoneType](
-            dest.bitcast[Byte]().origin_cast[origin=MutableAnyOrigin](),
-            src.bitcast[Byte]().origin_cast[origin=MutableAnyOrigin](),
+            dest.bitcast[Byte]().origin_cast[True, MutableAnyOrigin](),
+            src.bitcast[Byte]().origin_cast[True, MutableAnyOrigin](),
             n,
         )
     else:
         _memcpy_impl(
-            dest.bitcast[Byte]().origin_cast[origin=MutableAnyOrigin](),
-            src.bitcast[Byte]().origin_cast[mut=False](),
+            dest.bitcast[Byte]().origin_cast[True, MutableAnyOrigin](),
+            src.bitcast[Byte]().origin_cast[False](),
             n,
         )
 
@@ -377,7 +377,7 @@ fn stack_allocation[
     count: Int,
     dtype: DType,
     /,
-    alignment: Int = align_of[dtype]() if is_gpu() else 1,
+    alignment: Int = align_of[dtype](),
     address_space: AddressSpace = AddressSpace.GENERIC,
 ]() -> UnsafePointer[Scalar[dtype], address_space=address_space]:
     """Allocates data buffer space on the stack given a data type and number of
@@ -404,7 +404,7 @@ fn stack_allocation[
     type: AnyType,
     /,
     name: Optional[StaticString] = None,
-    alignment: Int = align_of[type]() if is_gpu() else 1,
+    alignment: Int = align_of[type](),
     address_space: AddressSpace = AddressSpace.GENERIC,
 ]() -> UnsafePointer[type, address_space=address_space]:
     """Allocates data buffer space on the stack given a data type and number of
@@ -434,7 +434,7 @@ fn stack_allocation[
                 count = count._mlir_value,
                 memoryType = __mlir_attr.`#pop<global_alloc_addr_space gpu_shared>`,
                 _type = UnsafePointer[
-                    type, address_space=address_space, alignment=alignment
+                    type, address_space=address_space
                 ]._mlir_type,
                 alignment = alignment._mlir_value,
             ]()
@@ -446,7 +446,7 @@ fn stack_allocation[
                 name = _get_kgen_string[global_name](),
                 count = count._mlir_value,
                 _type = UnsafePointer[
-                    type, address_space=address_space, alignment=alignment
+                    type, address_space=address_space
                 ]._mlir_type,
                 alignment = alignment._mlir_value,
             ]()
@@ -466,12 +466,10 @@ fn stack_allocation[
                 ]._mlir_type
             ](generic_ptr)
 
-    # Perofrm a stack allocation of the requested size, alignment, and type.
+    # Perform a stack allocation of the requested size, alignment, and type.
     return __mlir_op.`pop.stack_allocation`[
         count = count._mlir_value,
-        _type = UnsafePointer[
-            type, address_space=address_space, alignment=alignment
-        ]._mlir_type,
+        _type = UnsafePointer[type, address_space=address_space]._mlir_type,
         alignment = alignment._mlir_value,
     ]()
 
@@ -485,10 +483,8 @@ fn stack_allocation[
 fn _malloc[
     type: AnyType,
     /,
-    *,
-    alignment: Int = align_of[type]() if is_gpu() else 1,
-](size: Int, /) -> UnsafePointer[
-    type, address_space = AddressSpace.GENERIC, alignment=alignment
+](size: Int, /, *, alignment: Int = align_of[type]()) -> UnsafePointer[
+    type, address_space = AddressSpace.GENERIC
 ]:
     @parameter
     if is_gpu():

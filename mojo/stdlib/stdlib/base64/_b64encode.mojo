@@ -57,7 +57,7 @@ fn _6bit_to_byte[width: Int](input: Bytes[width]) -> Bytes[width]:
     constrained[width in [4, 8, 16, 32, 64], "width must be between 4 and 64"]()
 
     fn indices() -> IndexList[width]:
-        alias perm = [1, 0, 2, 1]
+        var perm = [1, 0, 2, 1]
         var res = IndexList[width]()
         for i in range(width // 4):
             for j in range(4):
@@ -269,7 +269,7 @@ fn _repeat_until[width: Int](v: SIMD) -> SIMD[v.dtype, width]:
 
     @parameter
     if width == v.size:
-        return v._refine[size=width]()
+        return v._refine[new_size=width]()
     return _repeat_until[width](v.join(v))
 
 

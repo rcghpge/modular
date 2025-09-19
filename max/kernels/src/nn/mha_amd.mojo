@@ -28,7 +28,6 @@ from gpu import (
     thread_idx,
 )
 from gpu import warp_id as get_warp_id
-from gpu.intrinsics import buffer_store
 from gpu.memory import AddressSpace
 from gpu.sync import (
     AMDScheduleBarrierMask,
@@ -37,7 +36,8 @@ from gpu.sync import (
 from memory import AddressSpace as BaseAddressSpace
 from layout import IntTuple, Layout, LayoutTensor
 from layout.layout import blocked_product
-from layout._utils import get_amd_buffer_descriptor, idx2crd, TensorCoreKGroup
+from layout._utils import idx2crd, make_amd_buffer_resource
+from layout.tensor_core import TiledTensorCore
 from layout.element import Element
 from layout.layout_tensor import (
     LayoutTensorIter,
@@ -81,7 +81,7 @@ fn copy_local_to_dram2[
     var dst_fragments = dst.distribute[dst_thread_layout](worker_idx)
 
     var offset = (Int(dst.ptr) - Int(dst_base.ptr)) // size_of[dst.dtype]()
-    var descriptor = get_amd_buffer_descriptor(dst_base)
+    var buffer = make_amd_buffer_resource(dst_base)
     var dst_frag_offset = dst_fragments.distance(dst.ptr) + offset
     alias num_stores_per_thread = dst_fragments.layout.size()
 
@@ -116,8 +116,7 @@ fn copy_local_to_dram2[
 
             @parameter
             if element_stride == 1:
-                buffer_store(
-                    descriptor,
+                buffer.store(
                     Int32(dst_idx),
                     src_element.element_data.cast[dst.dtype](),
                 )
@@ -127,8 +126,7 @@ fn copy_local_to_dram2[
                 for i in range(dst_fragments.element_layout.size()):
                     alias element_offset = dst_fragments.element_layout(i)
                     var src = src_element.element_data[i].cast[dst.dtype]()
-                    buffer_store(
-                        descriptor,
+                    buffer.store(
                         Int32(dst_idx + element_offset),
                         src,
                     )
@@ -340,11 +338,11 @@ struct KBuffer[
         var warp_tile = smem_tile.tile[Self.wtile_dim0, Self.wtile_dim1](
             wtile_coord0, wtile_coord1
         )
-        alias tensor_core_mma = TensorCoreKGroup[
+        alias tensor_core_mma = TiledTensorCore[
             accum_type,
             mma_input_type,
             mma_shape,
-            k_group_size=k_group_size,
+            group_size=k_group_size,
             transpose_b=transpose_b,
         ]()
         tensor_core_mma.mma_op.load_b[swizzle=swizzle](
@@ -1038,18 +1036,13 @@ struct SharedMemoryManager[
     ) -> UnsafePointer[
         Scalar[dtype],
         address_space = AddressSpace.SHARED,
-        alignment = Self.alignment,
     ]:
         return self.k_v_smem.bitcast[Scalar[dtype]]()
 
     @always_inline
     fn get_p_ptr(
         self,
-    ) -> UnsafePointer[
-        Scalar[dtype],
-        address_space = AddressSpace.SHARED,
-        alignment = Self.alignment,
-    ]:
+    ) -> UnsafePointer[Scalar[dtype], address_space = AddressSpace.SHARED,]:
         return self.p_smem.bitcast[Scalar[dtype]]()
 
     @always_inline
@@ -1064,7 +1057,7 @@ struct SharedMemoryManager[
         ],
     ):
         constrained[token_gen, "this function is only used for token_gen"]()
-        return __type_of(result)(self.k_v_smem, BN * depth)
+        return {self.k_v_smem, BN * depth}
 
     @always_inline
     fn get_v_iter(
@@ -1078,7 +1071,7 @@ struct SharedMemoryManager[
         ],
     ):
         constrained[token_gen, "this function is only used for token_gen"]()
-        return __type_of(result)(self.k_v_smem, BN * depth)
+        return {self.k_v_smem, BN * depth}
 
     @always_inline
     fn get_p_iter(
@@ -1091,10 +1084,7 @@ struct SharedMemoryManager[
             circular=True,
         ],
     ):
-        return __type_of(result)(
-            self.p_smem,
-            BM * BN,
-        )
+        return {self.p_smem, BM * BN}
 
     @always_inline
     fn get_warp_scratch_tensor(
@@ -1113,7 +1103,7 @@ struct SharedMemoryManager[
             "warp_scratch_tile is too large",
         ]()
         var ptr = self.k_v_smem.bitcast[Scalar[Self.accum_type]]()
-        return __type_of(result)(ptr if token_gen else __type_of(ptr)())
+        return {ptr if token_gen else {}}
 
 
 struct GlobalMemoryManager[
@@ -1184,10 +1174,7 @@ struct GlobalMemoryManager[
             masked=True,
         ],
     ):
-        return __type_of(result)(
-            ptr + Int(self.q_offset),
-            self.q_runtime_layout,
-        )
+        return {ptr + Int(self.q_offset), self.q_runtime_layout}
 
     @always_inline
     fn get_output_tensor[
@@ -1219,7 +1206,6 @@ struct GlobalMemoryManager[
             ptr.origin,
             masked=True,
             address_space = ptr.address_space,
-            alignment = ptr.alignment,
         ],
     ):
         # kv cache gmem has to clip num rows as runtime layout
@@ -1232,10 +1218,7 @@ struct GlobalMemoryManager[
             ),
         )
 
-        return __type_of(result)(
-            ptr,
-            kv_runtime_layout,
-        )
+        return {ptr, kv_runtime_layout}
 
 
 @always_inline
@@ -1299,7 +1282,7 @@ fn mha_single_batch_amd[
         tb[accum_type]()
         .row_major[num_m_mmas * num_n_mmas, output_frag_size]()
         .local()
-        .alloc()
+        .alloc()  # ALIGN-TODO: align?
         .fill(0)
     )
 
@@ -1341,9 +1324,10 @@ fn mha_single_batch_amd[
             Bool(sink_weights),
             "expect sink_weights to be non-null when sink=true",
         )
-        rowmax = rowmax.fill(
-            sink_weights.value()[Int(q_head_idx)].cast[accum_type]()
+        var sink_weight = (
+            sink_weights.value()[Int(q_head_idx)].cast[accum_type]() * log2e
         )
+        rowmax = rowmax.fill(sink_weight)
         rowsum = rowsum.fill(1)
     else:
         rowmax = rowmax.fill(min_or_neg_inf[accum_type]())
@@ -1437,11 +1421,11 @@ fn mha_single_batch_amd[
             smem_manager.get_kv_ptr[k_tile.dtype](),
         )
 
-        alias tensor_core_mma = TensorCoreKGroup[
+        alias tensor_core_mma = TiledTensorCore[
             accum_type,
             q_type,
             mma_shape,
-            k_group_size=k_group_size,
+            group_size=k_group_size,
             transpose_b=True,
         ]()
 
@@ -1654,11 +1638,11 @@ fn mma[
         b_smem_iter.layout.stride[0].value() // simd_width,
     ) if token_gen else Layout.row_major(num_threads // 4, 4)
 
-    alias tensor_core_mma = TensorCoreKGroup[
+    alias tensor_core_mma = TiledTensorCore[
         accum_type,
         mma_input_type,
         IndexList[3](MMA_M, MMA_N, MMA_K),
-        k_group_size=k_group_size,
+        group_size=k_group_size,
         transpose_b=transpose_b,
     ]()
 
@@ -1877,9 +1861,10 @@ fn mha_decoding_single_batch_amd[
             Bool(sink_weights),
             "expect sink_weights to be non-null when sink=true",
         )
-        rowmax = rowmax.fill(
-            sink_weights.value()[Int(q_head_idx)].cast[accum_type]()
+        var sink_weight = (
+            sink_weights.value()[Int(q_head_idx)].cast[accum_type]() * log2e
         )
+        rowmax = rowmax.fill(sink_weight)
         rowsum = rowsum.fill(1)
     else:
         rowmax = rowmax.fill(min_or_neg_inf[accum_type]())

@@ -88,18 +88,16 @@ alias elementwise_epilogue_type = fn[
 @always_inline
 fn _get_batch_dims[
     rank: Int
-](flat_index: Int, shape: IndexList[rank, **_]) -> __type_of(shape):
-    var out = __type_of(shape)()
+](flat_index: Int, shape: IndexList[rank, **_], out res: __type_of(shape)):
+    res = {}
     var curr_index = flat_index
 
     @parameter
     for idx in range(rank - 2):
         # Count from the back, skipping last two dims.
         alias i = rank - idx - 3
-        out[i] = curr_index % shape[i]
+        res[i] = curr_index % shape[i]
         curr_index //= shape[i]
-
-    return out
 
 
 # A utility to reshape NDBuffer with rank > 3 to rank-3.
@@ -149,7 +147,7 @@ fn _reshape_nd_buffer_with_batch_to_3d(
 fn _reshape_to_3d[layout: Layout]() -> Layout:
     alias rank = len(layout.shape)
 
-    # NOTE: need to cast becasue int tuple returns comptime int
+    # NOTE: need to cast because int tuple returns comptime int
     alias last = Int(layout.shape[rank - 1])
     alias second_last = Int(layout.shape[rank - 2])
 
@@ -553,9 +551,9 @@ fn _batched_matmul_cpu[
             var mh = align_up(m, 2)
             var a_packed_ptr = UnsafePointer[Scalar[a_type]]()
             if use_i8mm:
-                a_packed_ptr = UnsafePointer[
-                    Scalar[a_type], alignment=alignment
-                ].alloc(mh * kh)
+                a_packed_ptr = UnsafePointer[Scalar[a_type]].alloc(
+                    mh * kh, alignment=alignment
+                )
             var a_packed = NDBuffer[a_type, 2](a_packed_ptr, DimList(mh, kh))
 
             if use_i8mm:

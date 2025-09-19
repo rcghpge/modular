@@ -1051,7 +1051,9 @@ struct Bench(Stringable, Writable):
 
         # Write the timing labels
         if self.config.verbose_timing:
-            var labels = self.config.VERBOSE_TIMING_LABELS
+            var labels = materialize[
+                __type_of(self.config).VERBOSE_TIMING_LABELS
+            ]()
             # skip the met label
             for i in range(len(labels)):
                 writer.write(sep, labels[i])
@@ -1072,7 +1074,9 @@ struct Bench(Stringable, Writable):
                 writer.write(self.pad["-"](metric.value.max_width, ""))
 
             if self.config.verbose_timing:
-                var labels = self.config.VERBOSE_TIMING_LABELS
+                var labels = materialize[
+                    __type_of(self.config).VERBOSE_TIMING_LABELS
+                ]()
                 # skip the met label
                 for i in range(len(labels)):
                     writer.write(sep)
@@ -1168,11 +1172,9 @@ struct Bench(Stringable, Writable):
                         abort(String(e))
                 else:
                     try:
-                        # FIXME(MOCO-2394):
-                        #   This intermediate ref is needed to avoid the
-                        #   compiler unnecessarily inserting an implicit copy.
-                        ref entry = metrics[name]
-                        entry.max_width = max(width, metrics[name].max_width)
+                        metrics[name].max_width = max(
+                            width, metrics[name].max_width
+                        )
                         metrics[name].rates[i] = rate
                     except e:
                         abort(String(e))
@@ -1182,10 +1184,13 @@ struct Bench(Stringable, Writable):
         # If label is larger than any value, will pad to the label length
 
         var max_met = len(met_label)
-        var max_min = len(self.config.VERBOSE_TIMING_LABELS[0])
-        var max_mean = len(self.config.VERBOSE_TIMING_LABELS[1])
-        var max_max = len(self.config.VERBOSE_TIMING_LABELS[2])
-        var max_dur = len(self.config.VERBOSE_TIMING_LABELS[3])
+        alias ConfigType = __type_of(self.config)
+        # NOTE: We insert an explicit materialization for Int here to avoid
+        # materialize a more expensive `VERBOSE_TIMING_LABELS[]` object.
+        var max_min = materialize[len(ConfigType.VERBOSE_TIMING_LABELS[0])]()
+        var max_mean = materialize[len(ConfigType.VERBOSE_TIMING_LABELS[1])]()
+        var max_max = materialize[len(ConfigType.VERBOSE_TIMING_LABELS[2])]()
+        var max_dur = materialize[len(ConfigType.VERBOSE_TIMING_LABELS[3])]()
         for i in range(len(self.info_vec)):
             # TODO: Move met (ms) to the end of the table to align with verbose
             # timing, don't repeat `Mean (ms)`, and make sure it works with

@@ -478,12 +478,12 @@ fn _log2_floor(n: Int) -> Int:
 fn _log2_ceil(n: Int) -> Int:
     """Computes ceil(log_2(d))."""
 
-    return Int(_log2_ceil(Scalar[DType.index](n)))
+    return Int(_log2_ceil(Scalar[DType.int](n)))
 
 
 @always_inline
 fn _log2_ceil(n: Scalar) -> __type_of(n):
-    return __type_of(n)(ceil(log2(Float64(n))))
+    return {ceil(log2(Float64(n)))}
 
 
 def test_log2_floor():

@@ -83,7 +83,7 @@ fn _block_swizzle_by_scale[
     bx = bx + by // grid_dim.data[1] * (grid_dim.data[0] >> scale)
     by = by % grid_dim.data[1]
 
-    return __type_of(block_idx)(Int(bx), Int(by))
+    return {Int(bx), Int(by)}
 
 
 # ===------------------------------------------------------------------===#
@@ -399,7 +399,7 @@ fn select_config[
 
     alias opt_list = [_128x128_4, _256x64_4, _256x128_3]
 
-    for bmnk_stage in opt_list:
+    for bmnk_stage in materialize[opt_list]():
         var bm = bmnk_stage[0]
         var bn = bmnk_stage[1]
         var bk = bmnk_stage[2]

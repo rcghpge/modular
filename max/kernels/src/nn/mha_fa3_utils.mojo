@@ -271,7 +271,7 @@ struct MHAPosition[
             masked=True,
         ],
     ):
-        gmem_block = __type_of(gmem_block)(
+        gmem_block = {
             ptr + self.q_out_offset,
             __type_of(gmem_block.runtime_layout)(
                 __type_of(gmem_block.runtime_layout.shape)(
@@ -279,7 +279,7 @@ struct MHAPosition[
                 ),
                 __type_of(gmem_block.runtime_layout.stride)(Self.q_stride, 1),
             ),
-        )
+        }
 
     @always_inline
     fn mask_status[
@@ -335,7 +335,7 @@ struct MHAPosition[
 
     @always_inline
     fn get_start_and_end_for_partitions[
-        partition_t: MHAPartitionScheme, //, BN: Int
+        partition_t: MHAPartitionScheme, //,
     ](self, partition: partition_t) -> Tuple[UInt32, UInt32]:
         @parameter
         if partition_t.do_partition:
@@ -399,13 +399,13 @@ fn _get_position[
         # from kv_input_row_offsets. This is when num_keys != seq_len
         @parameter
         if KVInputRowOffsetsType.is_null:
-            num_keys = seq_len + cache_len
+            num_keys = seq_len + Int(start_pos)
         else:
             var kv_row_offsets = kv_input_row_offsets.value()
             kv_seq_start = Int(kv_row_offsets[Int(batch_idx)])
             kv_seq_end = Int(kv_row_offsets[Int(batch_idx) + 1])
             cur_kv_len = kv_seq_end - kv_seq_start
-            num_keys = cur_kv_len + cache_len
+            num_keys = cur_kv_len + Int(start_pos)
         q_row = seq_info.start_of_seq
 
     # NDBuffer inputs, homogeneous batching.
@@ -431,14 +431,7 @@ fn _get_position[
         q_row += seq_info.prompt_offset
         q_col = seq_info.head_idx * depth
         q_offset = Int(depth * q_num_heads) * Int(q_row) + Int(q_col)
-    ret = __type_of(ret)(
-        q_row,
-        q_col,
-        q_offset,
-        num_keys,
-        start_pos,
-        seq_info,
-    )
+    ret = {q_row, q_col, q_offset, num_keys, start_pos, seq_info}
 
 
 alias QTMATile[
@@ -726,22 +719,22 @@ fn produce[
         is_k_major=False,
     ],
     q_smem: UnsafePointer[
-        Scalar[qkv_type], address_space = AddressSpace.SHARED, alignment=128
+        Scalar[qkv_type], address_space = AddressSpace.SHARED
     ],
     kv_smem: UnsafePointer[
-        Scalar[qkv_type], address_space = AddressSpace.SHARED, alignment=128
+        Scalar[qkv_type], address_space = AddressSpace.SHARED
     ],
     produced_mbar_kv: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=8
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     consumed_mbar_kv: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=8
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     produced_mbar_q: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=8
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     consumed_mbar_q: UnsafePointer[
-        SharedMemBarrier, address_space = AddressSpace.SHARED, alignment=8
+        SharedMemBarrier, address_space = AddressSpace.SHARED
     ],
     kv_lut: KVLUTType,
     initial_position: MHAPosition[
@@ -819,7 +812,7 @@ fn produce[
         ],
     ):
         alias sz = BN * padded_depth
-        k_smem = __type_of(k_smem)(kv_smem + sz * idx)
+        k_smem = {kv_smem + sz * idx}
 
     @parameter
     @always_inline
@@ -836,7 +829,7 @@ fn produce[
         ],
     ):
         alias sz = BN * padded_depth
-        v_smem = __type_of(v_smem)(kv_smem + sz * idx)
+        v_smem = {kv_smem + sz * idx}
 
     @parameter
     @always_inline("nodebug")
@@ -898,7 +891,7 @@ fn produce[
 
     @parameter
     if PartitionType.do_partition:
-        startend = position.get_start_and_end_for_partitions[BN=BN](partition)
+        startend = position.get_start_and_end_for_partitions(partition)
         start = startend[0]
         end = startend[1]
         if start >= end:
@@ -920,7 +913,7 @@ fn produce[
 
     @parameter
     if not PartitionType.do_partition:
-        startend = position.get_start_and_end_for_partitions[BN=BN](partition)
+        startend = position.get_start_and_end_for_partitions(partition)
         start = startend[0]
         end = startend[1]
     var kv_tile_start_row: UInt32 = start
@@ -990,9 +983,9 @@ fn produce[
                         ),
                     )
                 kv_col = kv_lut.col_idx(position.kv_head_idx())
-                start, new_end = position.get_start_and_end_for_partitions[
-                    BN=BN
-                ](partition)
+                start, new_end = position.get_start_and_end_for_partitions(
+                    partition
+                )
                 kv_tile_start_row = start
                 end = new_end
             else:
@@ -1033,9 +1026,7 @@ fn output_reg_to_smem[
     local_warp_group_idx: UInt32,
     warp_x: UInt32,
     warp_y: UInt32,
-    q_smem: UnsafePointer[
-        Scalar[kv_type], address_space = AddressSpace.SHARED, alignment=128
-    ],
+    q_smem: UnsafePointer[Scalar[kv_type], address_space = AddressSpace.SHARED],
     output_reg_tile: LayoutTensor[
         accum_type,
         reg_layout,

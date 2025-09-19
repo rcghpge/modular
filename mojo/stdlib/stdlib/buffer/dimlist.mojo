@@ -21,6 +21,7 @@ from buffer import Dim
 """
 from utils import IndexList, StaticTuple
 from builtin.variadics import Variadic
+from math import CeilDivable, ceildiv
 
 # ===-----------------------------------------------------------------------===#
 # Dim
@@ -29,6 +30,7 @@ from builtin.variadics import Variadic
 
 @register_passable("trivial")
 struct Dim(
+    CeilDivable,
     Defaultable,
     EqualityComparable,
     ImplicitlyBoolable,
@@ -186,6 +188,22 @@ struct Dim(
         if not self or not rhs:
             return Dim()
         return Dim(self.get() * rhs.get())
+
+    @always_inline("nodebug")
+    fn __ceildiv__(self, rhs: Dim) -> Dim:
+        """Return the rounded-up result of dividing self by denominator dimension.
+
+        If either are unknown, the result is unknown as well.
+
+        Args:
+            rhs: The denominator dimension.
+
+        Returns:
+            The rounded-up result of dividing self by denominator dimension.
+        """
+        if self and rhs:
+            return Dim(ceildiv(self.get(), rhs.get()))
+        return Dim()
 
     @always_inline("nodebug")
     fn __imul__(mut self, rhs: Dim):
@@ -725,7 +743,7 @@ fn _make_tuple[
     for idx in range(size):
         tup = tup._replace[idx](result._int_type(values.at[idx]().get()))
 
-    return __type_of(result)(tup)
+    return {tup}
 
 
 @always_inline
@@ -756,4 +774,4 @@ fn _make_partially_static_index_list[
                 result._int_type(static_list.at[idx]().get())
             )
 
-    return __type_of(result)(tup)
+    return {tup}

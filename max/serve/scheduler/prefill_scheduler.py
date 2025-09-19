@@ -16,7 +16,6 @@ import logging
 import queue
 import time
 import uuid
-from typing import Union
 
 from max.interfaces import (
     Pipeline,
@@ -36,7 +35,7 @@ from max.pipelines.lib import PipelineConfig
 from max.pipelines.lib.pipeline import get_paged_manager
 from max.profiler import Tracer, traced
 from max.serve.config import Settings
-from max.serve.kvcache_agent.dispatcher_v2 import ClientIdentity
+from max.serve.queue.zmq_queue import ClientIdentity
 from max.serve.scheduler.base import PrefillRequest, PrefillResponse
 from max.serve.scheduler.di_dispatchers import PrefillDispatcherServerV2
 from max.serve.scheduler.text_batch_constructor import (
@@ -55,11 +54,11 @@ class PrefillScheduler(Scheduler):
     def __init__(
         self,
         pipeline: Pipeline[
-            TextGenerationInputs[Union[TextContext, TextAndVisionContext]],
+            TextGenerationInputs[TextContext],
             TextGenerationOutput,
         ],
         scheduler_config: TokenGenerationSchedulerConfig,
-        paged_cache: PagedKVCacheManager,
+        paged_cache: PagedKVCacheManager[TextContext],
         dispatcher: PrefillDispatcherServerV2,
     ) -> None:
         self.pipeline = pipeline
@@ -67,7 +66,7 @@ class PrefillScheduler(Scheduler):
         self.paged_cache = paged_cache
         # Initialize Scheduler state.
         self.active_transfers: dict[
-            str, tuple[Union[TextAndVisionContext, TextContext], XferReqData]
+            str, tuple[TextAndVisionContext | TextContext, XferReqData]
         ] = {}
         self.request_id_to_reply_context: dict[
             str, tuple[ClientIdentity, str, list[int]]
@@ -189,9 +188,6 @@ class PrefillScheduler(Scheduler):
             )
             assert len(src_idxs) == len(dst_idxs)
 
-            # Bump this back, so the token is returned.
-            context._completion_start_idx -= 1
-
             # Transfer only the blocks that are not already on decode node.
             num_already_cached_blocks = dst_idxs.count(-1)
             src_idxs = src_idxs[num_already_cached_blocks:]
@@ -219,7 +215,7 @@ class PrefillScheduler(Scheduler):
             self.dispatcher.send_reply_nowait(
                 PrefillResponse(
                     id=req_id,
-                    context=context,
+                    generated_token_id=context.last_generated_token,
                     transfer_metadata=xfer_data,
                 ),
                 identity,
@@ -286,7 +282,7 @@ class PrefillScheduler(Scheduler):
 
 def load_prefill_scheduler(
     pipeline: Pipeline[
-        TextGenerationInputs[Union[TextContext, TextAndVisionContext]],
+        TextGenerationInputs[TextContext],
         TextGenerationOutput,
     ],
     pipeline_config: PipelineConfig,

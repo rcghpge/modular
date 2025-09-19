@@ -51,7 +51,7 @@ fn _on_error_msg() -> String:
             "the CUDA toolkit is installed and that the library path is "
             "correctly set in one of the following paths ["
         ),
-        ", ".join(NVSHMEM_LIBRARY_PATHS),
+        ", ".join(materialize[NVSHMEM_LIBRARY_PATHS]()),
         (
             "]. You may need to make sure that you are using the non-slim"
             " version of the MAX container."
@@ -65,7 +65,7 @@ alias NVSHMEM_LIBRARY = _Global[
 
 
 fn _init_nvshmem_dylib() -> _OwnedDLHandle:
-    return _find_dylib["NVSHMEM"](NVSHMEM_LIBRARY_PATHS)
+    return _find_dylib["NVSHMEM"](materialize[NVSHMEM_LIBRARY_PATHS]())
 
 
 @always_inline
@@ -299,7 +299,7 @@ fn _dtype_to_nvshmem_type[
         return get_static_string[prefix, "int64", suffix, scope]()
     elif dtype is DType.uint64:
         return get_static_string[prefix, "uint64", suffix, scope]()
-    elif dtype is DType.index:
+    elif dtype is DType.int:
         return get_static_string[prefix, "size", suffix, scope]()
     else:
         return CompilationTarget.unsupported_target_error[

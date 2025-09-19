@@ -134,11 +134,11 @@ fn run_elementwise[
         // size_of[dtype]()
     )
 
-    var in_host_ptr = UnsafePointer[Scalar[dtype], alignment=align].alloc(
-        N_cache
+    var in_host_ptr = UnsafePointer[Scalar[dtype]].alloc(
+        N_cache, alignment=align
     )
-    var out_host_ptr = UnsafePointer[Scalar[dtype], alignment=align].alloc(
-        N_cache
+    var out_host_ptr = UnsafePointer[Scalar[dtype]].alloc(
+        N_cache, alignment=align
     )
 
     var in_host = NDBuffer[dtype, rank](in_host_ptr, dims)
@@ -237,7 +237,8 @@ fn list_to_static_tuple[x: List[Int]]() -> IndexList[len(x)]:
 
     @parameter
     for i in range(len(x)):
-        t[i] = x[i]
+        alias xi = x[i]
+        t[i] = xi
     return t
 
 

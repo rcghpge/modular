@@ -1266,13 +1266,13 @@ fn _continuous_batch_kv_cache_collection[
 ):
     # Marshal NDBuffers into arguments expected by the
     # ContinuousKVCacheCollection constructor.
-    return __type_of(result)(
-        blocks=blocks,
-        cache_lengths=cache_lengths,
-        lookup_table=lookup_table,
-        max_seq_length=max_lengths[Index(0, 0)],
-        max_cache_length=max_lengths[Index(0, 1)],
-    )
+    return {
+        blocks = blocks,
+        cache_lengths = cache_lengths,
+        lookup_table = lookup_table,
+        max_seq_length = max_lengths[Index(0, 0)],
+        max_cache_length = max_lengths[Index(0, 1)],
+    }
 
 
 @always_inline
@@ -1298,13 +1298,13 @@ fn generic_get_paged_cache[
     max_lengths: NDBuffer[DType.uint32, 2],
     out result: PagedKVCacheCollection[dtype, kv_params, page_size],
 ):
-    return __type_of(result)(
-        blocks=blocks,
-        cache_lengths=cache_lengths,
-        lookup_table=lookup_table,
-        max_seq_length=max_lengths[Index(0, 0)],
-        max_cache_length=max_lengths[Index(0, 1)],
-    )
+    return {
+        blocks = blocks,
+        cache_lengths = cache_lengths,
+        lookup_table = lookup_table,
+        max_seq_length = max_lengths[Index(0, 0)],
+        max_cache_length = max_lengths[Index(0, 1)],
+    }
 
 
 @always_inline
@@ -1316,18 +1316,9 @@ fn managed_tensor_slice_to_ndbuffer[
     MutableAnyOrigin,
     spec.shape,
     spec.strides,
-    alignment = spec.alignment,
+    alignment2 = spec.alignment,
     address_space = spec.address_space,
     exclusive = spec.exclusive,
 ]:
     var ptr = tensor._ptr.address_space_cast[spec.address_space]()
-    return NDBuffer[
-        spec.dtype,
-        spec.rank,
-        _,
-        spec.shape,
-        spec.strides,
-        alignment = spec.alignment,
-        address_space = spec.address_space,
-        exclusive = spec.exclusive,
-    ](ptr, tensor.shape(), tensor._runtime_strides)
+    return {ptr, tensor.shape(), tensor._runtime_strides}

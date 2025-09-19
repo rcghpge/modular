@@ -17,19 +17,23 @@ import logging
 import os
 import time
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from max.interfaces import (
     AudioGenerator,
     AudioGeneratorOutput,
+    InputContext,
     MAXPullQueue,
     MAXPushQueue,
-    Pipeline,
     RequestID,
     SchedulerResult,
     TextGenerationOutput,
 )
-from max.interfaces.pipeline import PipelineOutputType
+from max.interfaces.pipeline import (
+    Pipeline,
+    PipelineInputsType,
+    PipelineOutputType,
+)
 from max.interfaces.queue import drain_queue
 from max.nn.kv_cache import PagedKVCacheManager
 from max.pipelines.core import TTSContext
@@ -38,13 +42,14 @@ from max.support.human_readable_formatter import to_human_readable_latency
 
 from .text_batch_constructor import (
     BatchType,
-    ContextType,
     SchedulerOutput,
     TokenGenerationSchedulerConfig,
 )
 
 if TYPE_CHECKING:
     from .audio_generation_scheduler import AudioGenerationSchedulerOutput
+
+ContextType = TypeVar("ContextType", bound=InputContext)
 
 logger = logging.getLogger("max.serve")
 
@@ -80,7 +85,7 @@ class SchedulerLogger:
         self,
         sch_config: TokenGenerationSchedulerConfig,
         sch_output: SchedulerOutput,
-        paged_cache: PagedKVCacheManager | None,
+        paged_cache: PagedKVCacheManager[ContextType] | None,
         batch_creation_time_s: float,
         batch_execution_time_s: float,
         num_pending_reqs: int,
@@ -167,7 +172,7 @@ class SchedulerLogger:
                     f"Executed {batch_type.value} batch with {batch_size} reqs | "
                     f"Terminated: {terminated_reqs} reqs, "
                     f"Pending: {num_pending_reqs} reqs | "
-                    f"Target: {input_tokens}/{target_tokens_str} toks | "
+                    f"Input Tokens: {input_tokens}/{target_tokens_str} toks | "
                     f"Prompt Tput: {prompt_throughput_str}, "
                     f"Generation Tput: {generation_throughput_str} | "
                     f"Batch creation: {batch_creation_latency_str}, "
@@ -193,9 +198,7 @@ class SchedulerLogger:
 
             blocks_copied = paged_cache.num_blocks_copied
             if paged_cache.enable_kvcache_swapping_to_host:
-                blocks_copied_str = f"Blocks copied: {blocks_copied.d2d} D2D, {blocks_copied.h2d} H2D, {blocks_copied.d2h} D2H | "
-            elif paged_cache.enable_prefix_caching:
-                blocks_copied_str = f"Blocks copied: {blocks_copied.d2d} D2D | "
+                blocks_copied_str = f"Blocks copied: {blocks_copied.h2d} H2D, {blocks_copied.d2h} D2H | "
             paged_cache.reset_num_blocks_copied()
 
         used_blocks = paged_cache.total_num_pages - paged_cache.num_free_blocks
@@ -211,7 +214,7 @@ class SchedulerLogger:
                 f"Executed {batch_type.value} batch with {batch_size} reqs | "
                 f"Terminated: {terminated_reqs} reqs, "
                 f"Pending: {num_pending_reqs} reqs | "
-                f"Target: {input_tokens}/{target_tokens_str} toks | "
+                f"Input Tokens: {input_tokens}/{target_tokens_str} toks | "
                 f"Prompt Tput: {prompt_throughput_str}, "
                 f"Generation Tput: {generation_throughput_str} | "
                 f"Batch creation: {batch_creation_latency_str}, "
@@ -245,7 +248,8 @@ def release_terminated_requests(
     sch_output: SchedulerOutput | AudioGenerationSchedulerOutput,
     responses: dict[RequestID, TextGenerationOutput]
     | dict[RequestID, AudioGeneratorOutput],
-    pipeline: Pipeline | AudioGenerator[TTSContext],
+    pipeline: Pipeline[PipelineInputsType, PipelineOutputType]
+    | AudioGenerator[TTSContext],
     tg_reqs: dict[RequestID, ContextType] | dict[RequestID, TTSContext],
 ) -> None:
     for req_id, response in responses.items():
@@ -262,7 +266,8 @@ def release_cancelled_requests(
         dict[RequestID, SchedulerResult[PipelineOutputType]]
     ],
     tg_reqs: dict[RequestID, ContextType] | dict[RequestID, TTSContext],
-    pipeline: Pipeline | AudioGenerator[TTSContext],
+    pipeline: Pipeline[PipelineInputsType, PipelineOutputType]
+    | AudioGenerator[TTSContext],
 ) -> None:
     for req_ids in drain_queue(cancel_q):
         for req_id in req_ids:

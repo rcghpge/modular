@@ -199,19 +199,18 @@ fn sqrt(x: Int) -> Int:
 
 
 @always_inline
-fn _sqrt_nvvm(x: SIMD) -> __type_of(x):
+fn _sqrt_nvvm(x: SIMD, out res: __type_of(x)):
     constrained[
         x.dtype in (DType.float32, DType.float64), "must be f32 or f64 type"
     ]()
     alias instruction = "llvm.nvvm.sqrt.approx.ftz.f" if x.dtype is DType.float32 else "llvm.nvvm.sqrt.approx.d"
-    var res = __type_of(x)()
+    res = {}
 
     @parameter
     for i in range(x.size):
         res[i] = llvm_intrinsic[
             instruction, Scalar[x.dtype], has_side_effect=False
         ](x[i])
-    return res
 
 
 @always_inline
@@ -261,20 +260,19 @@ fn sqrt[
 
 
 @always_inline
-fn _isqrt_nvvm(x: SIMD) -> __type_of(x):
+fn _isqrt_nvvm(x: SIMD, out res: __type_of(x)):
     constrained[
         x.dtype in (DType.float32, DType.float64), "must be f32 or f64 type"
     ]()
 
     alias instruction = "llvm.nvvm.rsqrt.approx.ftz.f" if x.dtype is DType.float32 else "llvm.nvvm.rsqrt.approx.d"
-    var res = __type_of(x)()
+    res = {}
 
     @parameter
     for i in range(x.size):
         res[i] = llvm_intrinsic[
             instruction, Scalar[x.dtype], has_side_effect=False
         ](x[i])
-    return res
 
 
 @always_inline
@@ -320,20 +318,19 @@ fn isqrt[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
 
 
 @always_inline
-fn _recip_nvvm(x: SIMD) -> __type_of(x):
+fn _recip_nvvm(x: SIMD, out res: __type_of(x)):
     constrained[
         x.dtype in (DType.float32, DType.float64), "must be f32 or f64 type"
     ]()
 
     alias instruction = "llvm.nvvm.rcp.approx.ftz.f" if x.dtype is DType.float32 else "llvm.nvvm.rcp.approx.ftz.d"
-    var res = __type_of(x)()
+    res = {}
 
     @parameter
     for i in range(x.size):
         res[i] = llvm_intrinsic[
             instruction, Scalar[x.dtype], has_side_effect=False
         ](x[i])
-    return res
 
 
 @always_inline
@@ -1158,7 +1155,7 @@ fn iota[
     if width == 1:
         return offset
 
-    alias step_dtype = dtype if dtype.is_integral() else DType.index
+    alias step_dtype = dtype if dtype.is_integral() else DType.int
     var step: SIMD[step_dtype, width]
     if is_compile_time():
         step = 0
@@ -1219,7 +1216,7 @@ fn iota(mut v: List[Int, *_], offset: Int = 0):
         v: The list to fill with numbers.
         offset: The starting value to fill at index 0.
     """
-    var buff = v.unsafe_ptr().bitcast[Scalar[DType.index]]()
+    var buff = v.unsafe_ptr().bitcast[Scalar[DType.int]]()
     iota(buff, len(v), offset=offset)
 
 
@@ -1718,7 +1715,7 @@ fn atanh[dtype: DType, width: Int, //](x: SIMD[dtype, width]) -> __type_of(x):
     ]()
 
     @parameter
-    if bit_width_of[dtype]() <= 16:
+    if dtype.bit_width() <= 16:
         # We promote the input to float32 and then cast back to the original
         # type. This is done to avoid precision issues that can occur when
         # using the lower-precision floating-point types.
@@ -2780,15 +2777,14 @@ fn _call_ptx_intrinsic[
 
 
 @always_inline
-fn _call_amdgcn_intrinsic[intrin: StaticString](x: SIMD) -> __type_of(x):
-    var res = __type_of(x)()
+fn _call_amdgcn_intrinsic[intrin: StaticString](x: SIMD, out res: __type_of(x)):
+    res = {}
 
     @parameter
     for i in range(x.size):
         res[i] = llvm_intrinsic[intrin, Scalar[x.dtype], has_side_effect=False](
             x[i]
         )
-    return res
 
 
 @always_inline

@@ -16,15 +16,17 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import sys
+from collections.abc import Sequence
 from typing import Any, Callable, TypeVar
 
 import click
-from max.entrypoints.cli.entrypoint import configure_cli_logging
-from max.entrypoints.workers import start_workers
-from max.interfaces import SamplingParams
-from max.serve.config import Settings
-from max.serve.telemetry.common import configure_logging
+from click import shell_completion
 from typing_extensions import ParamSpec
+
+# Please keep all max imports inside their respective functions.
+# This is best practive to keep the CLI invocation fast
+
 
 logger = logging.getLogger("max.entrypoints")
 
@@ -90,7 +92,7 @@ class WithLazyPipelineOptions(click.Command):
 
     def shell_complete(
         self, ctx: click.Context, incomplete: str
-    ) -> list[click.shell_completion.CompletionItem]:
+    ) -> list[shell_completion.CompletionItem]:
         self._ensure_options_loaded()
         return super().shell_complete(ctx, incomplete)
 
@@ -130,20 +132,6 @@ class ModelGroup(click.Group):
     help="Show the MAX version and exit.",
 )
 @click.option(
-    "--verbose",
-    "-v",
-    is_flag=True,
-    default=False,
-    help="Enable verbose logging (DEBUG level).",
-)
-@click.option(
-    "--quiet",
-    "-q",
-    is_flag=True,
-    default=False,
-    help="Enable quiet logging (WARNING level only).",
-)
-@click.option(
     "--log-level",
     type=click.Choice(
         ["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False
@@ -151,11 +139,11 @@ class ModelGroup(click.Group):
     default="INFO",
     help="Set logging level explicitly (ignored if --verbose or --quiet is used).",
 )
-def main(
-    verbose: bool = False, quiet: bool = False, log_level: str = "INFO"
-) -> None:
+def main(log_level: str = "INFO") -> None:
+    from max.entrypoints.cli.entrypoint import configure_cli_logging
+
     # Configure logging first, before any other initialization
-    configure_cli_logging(level=log_level, quiet=quiet, verbose=verbose)
+    configure_cli_logging(level=log_level)
     configure_telemetry()
 
 
@@ -180,7 +168,7 @@ def common_server_options(func: Callable[_P, _R]) -> Callable[_P, _R]:
     @click.option(
         "--served-model-name",
         type=str,
-        help="Model name used in HTTP API. If unspecified, the model name is equal to --model-path",
+        help="Model name used in HTTP API. If unspecified, the model name is equal to --model",
     )
     @click.option(
         "--sim-failure",
@@ -244,8 +232,24 @@ def cli_serve(
     """
     from max.entrypoints.cli import serve_api_server_and_model_worker
     from max.entrypoints.cli.config import parse_task_flags
-    from max.interfaces import PipelineTask
+    from max.entrypoints.workers import start_workers
+    from max.interfaces import PipelineTask, SamplingParams
     from max.pipelines import AudioGenerationConfig, PipelineConfig
+    from max.serve.config import Settings
+    from max.serve.telemetry.common import configure_logging
+
+    # Initialize Settings for API Server
+    setting_kwargs: dict[str, Any] = {}
+    if port is not None:
+        setting_kwargs["MAX_SERVE_PORT"] = port
+
+    if log_prefix is not None:
+        setting_kwargs["MAX_SERVE_LOG_PREFIX"] = log_prefix
+
+    if headless is not None:
+        setting_kwargs["MAX_SERVE_HEADLESS"] = headless
+
+    settings = Settings(**setting_kwargs)
 
     # Initialize config, and serve.
     # Load tokenizer & pipeline.
@@ -259,30 +263,21 @@ def cli_serve(
 
     # Log Pipeline and Sampling Configuration
     if pretty_print_config:
+        # Log Pipeline Related Info
         pipeline_config.log_pipeline_info()
 
         # Log Default Sampling Configuration
         sampling_params = SamplingParams()
         sampling_params.log_sampling_info()
+
+        # Log API Server Related Info
+        settings.log_server_info()
     else:
         pipeline_config.log_basic_config()
 
     failure_percentage = None
     if sim_failure > 0:
         failure_percentage = sim_failure
-
-    # Initialize Settings
-    setting_kwargs: dict[str, Any] = {}
-    if port is not None:
-        setting_kwargs["MAX_SERVE_PORT"] = port
-
-    if log_prefix is not None:
-        setting_kwargs["MAX_SERVE_LOG_PREFIX"] = log_prefix
-
-    if headless is not None:
-        setting_kwargs["MAX_SERVE_HEADLESS"] = headless
-
-    settings = Settings(**setting_kwargs)
 
     # Configure Logging Globally
     configure_logging(settings)
@@ -296,9 +291,6 @@ def cli_serve(
         serve_api_server_and_model_worker(
             settings=settings,
             pipeline_config=pipeline_config,
-            profile=profile_serve,
-            failure_percentage=failure_percentage,
-            port=port,
             pipeline_task=PipelineTask(task),
         )
 
@@ -446,6 +438,57 @@ def cli_list(json: bool) -> None:
         list_pipelines_to_json()
     else:
         list_pipelines_to_console()
+
+
+# Because we already have an argparser for benchmark_serving.py, we shouldn't have
+# to maintain a whole list of benchmark_serving CLI arg options here. This makes
+# it harder to keep them in sync and is error prone. We unroll all the args
+# instead and let BenchmarkCommand (which wraps benchmark_serving.py) handle them.
+@main.command(
+    name="benchmark",
+    context_settings={
+        "ignore_unknown_options": True,
+        "allow_extra_args": True,
+        "help_option_names": [],
+    },
+)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cli_benchmark(args: Sequence[str]) -> None:
+    """Run benchmark tests on a serving model.
+
+    This command runs comprehensive benchmark tests on a model server to measure
+    performance metrics including throughput, latency, and resource utilization.
+    Make sure that the MAX server is running and hosting a model before running
+    this command.
+    """
+    # For benchmark command, we want to handle all arguments directly
+    # and bypass Click's argument processing
+    # args = ctx.params.get("args", [])
+
+    from max.benchmark.benchmark_serving import main as benchmark_main
+    from max.benchmark.benchmark_serving import (
+        parse_args as benchmark_parse_args,
+    )
+
+    logger.debug("Running benchmark subcommand with args: %s", args)
+    try:
+        argparse_namespace = benchmark_parse_args(args=args)
+
+        # Run the benchmark
+        click.echo("Starting benchmark...")
+        benchmark_main(argparse_namespace)
+        click.echo("Benchmark completed successfully!")
+    except SystemExit as e:
+        # argparse calls sys.exit() for help and errors, we need to handle this
+        if e.code == 0:
+            # Help was requested and printed, just return
+            return
+        else:
+            # There was an error, exit with the same code
+            sys.exit(e.code)
+    except Exception as e:
+        click.echo(f"Benchmark failed: {e}", err=True)
+        sys.exit(1)
 
 
 def print_version(

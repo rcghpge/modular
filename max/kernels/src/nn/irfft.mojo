@@ -125,7 +125,7 @@ fn _get_fft_plan[
         cached_plan_key,
         # we are bitcasting the integer plan to a void * to cache it,
         # because that's what KGEN_CompilerRT_InsertGlobal expects.
-        _unsafe_aliasing_address_to_pointer[DType.index](Int(plan)).bitcast[
+        _unsafe_aliasing_address_to_pointer[DType.int](Int(plan)).bitcast[
             NoneType
         ](),
     )
@@ -161,7 +161,7 @@ fn irfft[
         input: Complex input tensor (NDBuffer).
         output: Real output tensor (NDBuffer).
         n: Output signal size (if <= 0, computed as 2*(input.size(axis) - 1)).
-        buffer_size_mb: Esimated buffer size in MB.
+        buffer_size_mb: Estimated buffer size in MB.
         ctx: Device context.
     """
     constrained[
@@ -231,7 +231,7 @@ fn irfft[
 
         # Set up cuda stream.
         # Notice that we do not want to have this part of the cache
-        # The stream is set everytime the call is executed and we get the
+        # The stream is set every time the call is executed and we get the
         # stream from the context we are executing within
         check_error(cufftSetStream(plan, cuda_stream))
 
