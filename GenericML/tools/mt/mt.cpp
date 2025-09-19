@@ -126,10 +126,11 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
 }
 
 int main(int argc, char **argv) {
-  // Register all our command line options.  We expect that the subframeworks
-  // will not call InitLLVM, and that is the responsibility of the driver.
+  // Register all our command line options. Avoid calling InitLLVM as we don't
+  // want to register its signal handler. The Init::Init code will regsiter
+  // our signal handler.
   GenericDriverOptions options;
-  GenericDriverCLOptions parser(argc, argv, options);
+  GenericDriverCLOptions parser(argc, argv, options, /*skipInitLLVM=*/true);
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
