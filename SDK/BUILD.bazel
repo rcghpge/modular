@@ -65,6 +65,7 @@ modular_nanobind_library(
     deps = [
         ":max",
         "//:MLIRBindingsPythonHeaders",
+        "//Init",
         "//SDK:DLPackPython",
         "//SDK:DriverPython",
     ],
