@@ -106,22 +106,6 @@ protected:
               << Device::numberOfDevices(Device::gpuAPI) << " x "
               << (*device)->name() << "\n";
   }
-
-  void SetUp() override {
-    // Allocate the GPU device for this platform. Then check that we are running
-    // on a CUDA enabled platform, if not skip the CUDA specific tests in this
-    // fixture.
-
-    ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
-    if (device.isError())
-      // Have the tests deal with device errors.
-      return;
-
-    if ((*device)->api() != Device::cudaAPI) {
-      GTEST_SKIP() << "Skipping CUDA tests for GPU \"" << (*device)->vendor()
-                   << ":" << (*device)->api() << "\"";
-    }
-  }
 };
 
 TEST_F(CUDADeviceContextTest, DeviceExec) {
