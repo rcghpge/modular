@@ -164,7 +164,12 @@ nixlPluginManager::nixlPluginManager() {
     }
   }
 
-  NIXL_FATAL << "Unable to load CUDA or ROCm UCX backend";
+  if (loadPlugin("ucx_cpu") != nullptr) {
+    NIXL_INFO << "Loaded NIXL plugin_ucx_cpu";
+    return;
+  }
+
+  NIXL_FATAL << "Unable to load any UCX backends!";
 }
 
 nixlPluginManager &nixlPluginManager::getInstance() {

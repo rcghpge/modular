@@ -174,8 +174,11 @@ M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
 
 #else
 
-#error "Must pick one of CUDA or ROCm for UCX GPU transport. Neither picked."
-
+// For CPU builds
+M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
+                                                          int addrDeviceId) {
+  return success();
+}
 #endif
 
 /****************************************
