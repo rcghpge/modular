@@ -52,6 +52,31 @@ static inline bool isFusibleIntoOther(Operation *op) {
   return false;
 }
 
+static llvm::SetVector<MGP::DeviceContextType>
+getUsedContexts(MOGG::GenericCompiledRegionOp kernel) {
+  llvm::SetVector<MGP::DeviceContextType> devices;
+  for (auto operandTy : kernel.getOperandTypes()) {
+    if (auto ctx = dyn_cast<MGP::DeviceContextType>(operandTy))
+      devices.insert(ctx);
+  }
+
+  return devices;
+}
+
+/// Kernels that may have an identical execution device can still use input
+/// buffers that are located on different devices (ex:
+/// mgp.buffer.device_to_device). These kernels should not be sequence fused
+/// (see GEX-2590).
+static bool useSameContexts(MOGG::GenericCompiledRegionOp lhs,
+                            MOGG::GenericCompiledRegionOp rhs) {
+  auto lhsContexts = getUsedContexts(lhs);
+  auto rhsContexts = getUsedContexts(rhs);
+  if (lhsContexts.empty() || rhsContexts.empty())
+    return true;
+
+  return lhsContexts == rhsContexts;
+}
+
 // checkForDuplication controls if we should check duplication. If set, we check
 // that duplicationFlag is the same as getCanDuplicate for the parent op.
 template <bool checkForDuplication, bool duplicationFlag = false>
@@ -66,6 +91,9 @@ static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
     return false;
 
   if (!childRegion.getCanBeFusedInto())
+    return false;
+
+  if (!useSameContexts(parentRegion, childRegion))
     return false;
 
   if constexpr (checkForDuplication) {
