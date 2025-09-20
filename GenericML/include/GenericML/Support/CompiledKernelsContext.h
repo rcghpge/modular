@@ -106,7 +106,7 @@ struct CompiledKernelCall {
 // Each void* arg can be:
 //  - The underlying buffer of a TensorBufferRef (for
 //  `!mgp.buffer`s).
-//    The lifetime is managed by the C++ runtime, possibly my moving
+//    The lifetime is managed by the C++ runtime, possibly by moving
 //    references into a sub-task closure.
 //  - A `CompiledKernelABI::ABIList*` (for `!mgp.list`s). The lifetime is
 //    managed by the `CompiledKernelCall`, and the called kernel shim is

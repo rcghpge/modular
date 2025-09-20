@@ -445,7 +445,7 @@ static void mgp_buffer_plan(
 
     // Try to find the smallest memory block we can reuse
     MemoryBlock *bestBlock = nullptr;
-    for (auto &block : memoryBlocks) {
+    for (MemoryBlock &block : memoryBlocks) {
       if (canReuse(i, block) && allocSize <= block.size) {
         if (block.size < bestSize) {
           bestSize = block.size;

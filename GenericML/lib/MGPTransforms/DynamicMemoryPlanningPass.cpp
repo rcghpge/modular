@@ -105,10 +105,10 @@ class DynamicMemoryPlanningPass
         TensorBufferDialectInterface::getAllBufferBuilders(modelOp);
 
     ExecuteState execState(modelOp->getContext(), modelOp);
-    auto &execBuilder = execState.builder;
+    OpBuilder &execBuilder = execState.builder;
 
     // Get dependency tree for the current block
-    auto &tree = analysis.getDepTree(execState.execute);
+    DependencyTree &tree = analysis.getDepTree(execState.execute);
 
     llvm::MapVector<DeviceRefAttr, SmallVector<AllocInfo>> deviceToAllocs;
 
@@ -152,7 +152,7 @@ class DynamicMemoryPlanningPass
       if (ineligibleAlloc)
         continue;
 
-      auto &allocs = deviceToAllocs[allocOp.getDevice()];
+      SmallVector<AllocInfo> &allocs = deviceToAllocs[allocOp.getDevice()];
       allocs.push_back({allocOp, allocOp.getRuntimeSize(),
                         allocOp.getRawAlign(), minPre, maxPre, minPost,
                         maxPost});
@@ -208,7 +208,7 @@ class DynamicMemoryPlanningPass
           BufferPlanOp::create(execBuilder, loc, runtimeSizes, alignments,
                                minPres, minPosts, maxPres, maxPosts);
 
-      auto poolSize = bufferPlanOp.getHighWatermark();
+      TypedValue<IndexType> poolSize = bufferPlanOp.getHighWatermark();
 
       // Allocate a larger buffer.
       Value alloc = bufferBuilder->bufferAlloc(
