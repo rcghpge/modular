@@ -56,11 +56,8 @@ def _map_xcodec2_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
         if "weight" in weight_name and len(tensor_value.shape) == 3:
             tensor_np = tensor_value.to_numpy()
 
-            if "embed" in weight_name:
-                transposed_np = np.transpose(tensor_np, (2, 1, 0))
-                processed_tensor = Tensor.from_numpy(transposed_np)
-
-            elif "conv" in weight_name:
+            # Conv1D kernels: (out, in, k) -> (k, in, out) for MAX
+            if "embed" in weight_name or "conv" in weight_name:
                 transposed_np = np.transpose(tensor_np, (2, 1, 0))
                 processed_tensor = Tensor.from_numpy(transposed_np)
 
