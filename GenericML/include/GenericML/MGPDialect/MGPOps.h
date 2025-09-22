@@ -11,6 +11,7 @@
 #ifndef GENERICML_MGPDIALECT_MGPOPS_H
 #define GENERICML_MGPDIALECT_MGPOPS_H
 
+#include "GenericML/GraphCompiler/Interfaces/EmitsMojoInterface.h"
 #include "GenericML/MGPDialect/MGPAttrs.h"
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/MGPDialect/MGPOpInterfaces.h"

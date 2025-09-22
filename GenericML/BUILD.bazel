@@ -230,7 +230,7 @@ modular_cc_library(
         ":GraphCompilerConvertibleInterfacesIncGen",
         ":GraphCompilerEmitsMojoInterfacesIncGen",
         ":GraphCompilerInterfacesIncGen",
-        ":MGPDialect",
+        ":MGPDialect.headers",
         ":MODialect",
         ":MOGGDialect.headers",
         "//AsyncRT:DeviceContext",
@@ -806,7 +806,7 @@ modular_cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":GraphCompilerConversion",
-        ":MGPDialect",
+        ":MGPDialect.headers",
         ":MODialect",
         ":MOGGDialectEnumsIncGen",
         ":MOGGDialectIncGen",
@@ -873,6 +873,7 @@ td_library(
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
+        ":GraphCompilerInterfacesTdFiles",
         ":MODialectTdFiles",
         ":MOGGDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -940,6 +941,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/GenericML/MGPDialect/MGP.td",
     deps = [
+        ":GraphCompilerInterfacesTdFiles",
         ":MGPDialectTdFiles",
         "//GraphRT:GRTTdFiles",
     ],
@@ -1061,10 +1063,32 @@ gentbl_cc_library(
 )
 
 modular_cc_library(
+    name = "MGPDialect.headers",
+    hdrs = glob([
+        "include/GenericML/MGPDialect/*.h",
+        "include/GenericML/GraphCompiler/Interfaces/*.h",
+    ]),
+    tags = ["no-clang-tidy-headers"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":MGPDialectAttrsIncGen",
+        ":MGPDialectIncGen",
+        ":MGPDialectOpInterfacesIncGen",
+        ":MGPDialectTensorSpecIncGen",
+        ":MGPDialectTypeInterfacesIncGen",
+        ":MGPDialectTypesIncGen",
+        "//KGEN:KGENDialect",
+        "//KGEN:POPDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+modular_cc_library(
     name = "MGPDialect",
     srcs = glob(["lib/MGPDialect/*.cpp"]),
     hdrs = glob(["include/GenericML/MGPDialect/*.h"]),
     deps = [
+        ":GraphCompilerInterfaces",
         ":MGPDialectAttrsIncGen",
         ":MGPDialectIncGen",
         ":MGPDialectOpInterfacesIncGen",
