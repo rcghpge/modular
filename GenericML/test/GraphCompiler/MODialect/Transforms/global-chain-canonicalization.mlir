@@ -133,3 +133,54 @@ mo.graph @everything(%buf0: !bt, %buf1: !bt, %tensor: !tt)
 
   mo.output
 }
+
+// Tests that chain canonicalization works for single-chain call ops.
+// Note: the `mo.call` and `mo.mutable.load` can proceed in parallel.
+// CHECK-LABEL: mo.graph @call_single_chain
+// CHECK: [[CHAIN:%.*]] = mo.chain.create
+// CHECK: [[BUF2:%.*]] = mo.buffer.create
+// CHECK: [[CALL_CHAIN:%.*]] = mo.call @store_buffer([[BUF2]], %arg1, [[CHAIN]])
+// CHECK: [[LOAD:%.*]], [[LOAD_CHAIN:%.*]] = mo.mutable.load(%arg0, [[CHAIN]])
+// CHECK: mo.mutable.store([[BUF2]], [[LOAD]], [[CALL_CHAIN]])
+mo.graph @call_single_chain(%buf: !bt, %tensor: !tt)
+{
+  %ch0 = mo.chain.create()
+  %buf2 = mo.buffer.create : !bt
+  %ch1 = mo.call @store_buffer(%buf2, %tensor, %ch0) : (!bt, !tt, !ct) -> (!ct)
+  %loaded, %ch2 = mo.mutable.load(%buf, %ch1) : (!bt, !ct) -> (!tt, !ct)
+  %ch3 = mo.mutable.store(%buf2, %loaded, %ch2) : (!bt, !tt, !ct) -> (!ct)
+  mo.output
+}
+
+// Tests that chain canonicalization bails out for multi-chain call ops.
+// CHECK-LABEL: mo.graph @call_multi_chain
+// CHECK: [[BUF2:%.*]] = mo.buffer.create
+// CHECK: [[CALL:%.*]]:2 = mo.call @multi_chain_callee([[BUF2]], %arg1, %arg2, %arg3)
+// CHECK: mo.mutable.load(%arg0, [[CALL]]#0
+// CHECK: mo.output
+mo.graph @call_multi_chain(%buf: !bt, %tensor: !tt, %main: !ct, %dev: !ct)
+{
+  %buf2 = mo.buffer.create : !bt
+  %main_out, %dev_out = mo.call @multi_chain_callee(%buf2, %tensor, %main, %dev)
+      : (!bt, !tt, !ct, !ct) -> (!ct, !ct)
+  %loaded, %ch = mo.mutable.load(%buf, %main_out) : (!bt, !ct) -> (!tt, !ct)
+  %ch_store = mo.mutable.store(%buf2, %loaded, %ch) : (!bt, !tt, !ct) -> (!ct)
+  mo.output
+}
+
+mo.graph @store_buffer(%buf: !bt, %tensor: !tt, %ch_in: !ct)
+    -> (!bt, !ct) attributes {isSubgraph}
+{
+  %loaded, %ch1 = mo.mutable.load(%buf, %ch_in)
+      : (!bt, !ct) -> (!tt, !ct)
+  %updated = mo.add(%loaded, %tensor) : !tt
+  %ch2 = mo.mutable.store(%buf, %updated, %ch1)
+      : (!bt, !tt, !ct) -> (!ct)
+  mo.output %buf, %ch2 : !bt, !ct
+}
+
+mo.graph @multi_chain_callee(%buf: !bt, %tensor: !tt, %main: !ct, %dev: !ct)
+    -> (!bt, !ct, !ct) attributes {isSubgraph}
+{
+  mo.output %buf, %main, %dev : !bt, !ct, !ct
+}

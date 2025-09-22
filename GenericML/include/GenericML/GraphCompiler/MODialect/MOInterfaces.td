@@ -82,6 +82,26 @@ def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", [MemoryEffectsOp
   }];
 }
 
+// TODO(GEX-2598): Unify with MO_MutableOpInterface.
+def MO_MultiChainMutableOpInterface
+    : OpInterface<"MOMultiChainMutableOpInterface", [MO_MutableOpInterface]> {
+  let description = [{
+    Extension of MOMutableOpInterface for ops that may thread multiple chain
+    operands/results, for example per-device sequencing plus primary chain.
+    Implementers must treat the first element returned by the single in/out
+    chain MOMutableOpInterface methods as the primary/global chain.
+  }];
+  let cppNamespace = "::M::MO";
+
+  let methods = [
+    InterfaceMethod<"Populate all input chains in order (primary first)",
+      "llvm::SmallVector<::M::MO::ChainValue>", "getAllInChains", (ins)>,
+
+    InterfaceMethod<"Populate all output chains in order (primary first)",
+      "llvm::SmallVector<::M::MO::ChainValue>", "getAllOutChains", (ins)>
+  ];
+}
+
 def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
   let description = [{
     Interface for ops with an optional `#M.device_ref` attribute describing the

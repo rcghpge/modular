@@ -526,15 +526,19 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
   auto chainOutputCount = llvm::count_if(
       op->getResultTypes(), [](Type t) { return isa<MO::ChainType>(t); });
 
-  if (chainInputCount != 1) {
-    return op->emitError(
-        "Ops with buffer inputs must have exactly one chain input.");
-  }
-
-  if (chainOutputCount != 1) {
-    return op->emitError(
-        "Ops with buffer inputs must have exactly one chain output.");
-  }
+  const bool multiChain = isa<MOMultiChainMutableOpInterface>(op);
+  if (!multiChain && chainInputCount != 1)
+    return op->emitError("Non multi-chain ops with buffer inputs must have "
+                         "exactly one chain input.");
+  if (!multiChain && chainOutputCount != 1)
+    return op->emitError("Non multi-chain ops with buffer inputs must have "
+                         "exactly one chain output.");
+  if (multiChain && chainInputCount == 0)
+    return op->emitError("Multi-chain ops with buffer inputs must have at "
+                         "least one chain input.");
+  if (multiChain && chainOutputCount == 0)
+    return op->emitError("Multi-chain ops with buffer inputs must have at "
+                         "least one chain output.");
 
   if (!isa<ChainType>(op->getResults().back().getType())) {
     return op->emitError("A mo.chain must be the last output for ops "

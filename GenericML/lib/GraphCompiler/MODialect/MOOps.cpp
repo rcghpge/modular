@@ -523,25 +523,45 @@ LogicalResult CallOp::verify() {
 }
 
 std::optional<ChainValue> CallOp::maybeGetInChain() {
-  if (getNumOperands() == 0)
-    return std::nullopt;
-
-  auto firstOperand = getOperand(0);
-  if (auto chain = dyn_cast<ChainValue>(firstOperand))
-    return chain;
-
+  for (Value operand : getOperands()) {
+    if (auto chain = dyn_cast<ChainValue>(operand))
+      return chain;
+  }
   return std::nullopt;
 }
 
 std::optional<ChainValue> CallOp::maybeGetOutChain() {
-  if (getNumResults() == 0)
-    return std::nullopt;
-
-  auto finalResult = getResult(0);
-  if (auto chain = dyn_cast<ChainValue>(finalResult))
-    return chain;
-
+  for (Value result : getResults()) {
+    if (auto chain = dyn_cast<ChainValue>(result))
+      return chain;
+  }
   return std::nullopt;
+}
+
+SmallVector<ChainValue> CallOp::getAllInChains() {
+  SmallVector<ChainValue> chains;
+  for (Value operand : getOperands()) {
+    if (auto chain = dyn_cast<ChainValue>(operand))
+      chains.push_back(chain);
+  }
+
+  return chains;
+}
+
+SmallVector<ChainValue> CallOp::getAllOutChains() {
+  SmallVector<ChainValue> chains;
+  for (Value result : getResults()) {
+    if (auto chain = dyn_cast<ChainValue>(result))
+      chains.push_back(chain);
+  }
+
+  return chains;
+}
+
+static void assertSingleChain(ArrayRef<ChainValue> chains, StringRef which) {
+  ASSERT_STREAM(chains.size() == 1, << which
+                                    << " expects exactly one chain but found "
+                                    << chains.size() << ".");
 }
 
 bool CallOp::isInPlace() {
@@ -549,26 +569,30 @@ bool CallOp::isInPlace() {
 }
 
 ChainValue CallOp::getInChain() {
-  auto inChain = maybeGetInChain();
-  ASSERT_STREAM(inChain.has_value(), "Expected to find an input chain.");
-
-  return inChain.value();
+  SmallVector<ChainValue> chains = getAllInChains();
+  assertSingleChain(chains, "CallOp::getInChain");
+  return chains.front();
 }
 
 ChainValue CallOp::getOutChain() {
-  auto outChain = maybeGetOutChain();
-  ASSERT_STREAM(outChain.has_value(), "Expected to find an output chain.");
-
-  return outChain.value();
+  SmallVector<ChainValue> chains = getAllOutChains();
+  assertSingleChain(chains, "CallOp::getOutChain");
+  return chains.front();
 }
 
 OpOperand &CallOp::getInChainMutable() {
-  OpOperand &firstOpOperand = getOperation()->getOpOperand(0);
-
-  ASSERT_STREAM(isa<ChainValue>(firstOpOperand.get()),
-                "Expected to find an input chain as the first operand.");
-
-  return firstOpOperand;
+  OpOperand *chainOperand = nullptr;
+  for (OpOperand &operand : getOperation()->getOpOperands()) {
+    if (!isa<ChainValue>(operand.get()))
+      continue;
+    ASSERT_STREAM(chainOperand == nullptr,
+                  "CallOp::getInChainMutable expects exactly one input chain "
+                  "operand.");
+    chainOperand = &operand;
+  }
+  ASSERT_STREAM(chainOperand != nullptr,
+                "Expected to find an input chain operand.");
+  return *chainOperand;
 }
 
 //===----------------------------------------------------------------------===//

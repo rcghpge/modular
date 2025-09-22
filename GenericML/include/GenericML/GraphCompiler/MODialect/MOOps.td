@@ -257,6 +257,7 @@ def MO_CallOp : MO_ControlOp<"call", [
   HasParent<"MO::GraphOp">,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MO_MultiChainMutableOpInterface>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   MO_ExecutesOnHost
 ]> {

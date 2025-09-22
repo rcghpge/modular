@@ -26,9 +26,20 @@ namespace M::MO {
 using namespace M;
 using namespace M::MO;
 
-namespace {
+static bool hasSingleChain(MOMutableOpInterface mutOp) {
+  if (auto multi =
+          dyn_cast<MOMultiChainMutableOpInterface>(mutOp.getOperation())) {
+    if (multi.getAllInChains().size() != 1)
+      return false;
 
-mlir::DenseSet<Value> collectWriteEffectOperands(MOMutableOpInterface mutOp) {
+    if (multi.getAllOutChains().size() != 1)
+      return false;
+  }
+  return true;
+}
+
+static mlir::DenseSet<Value>
+collectWriteEffectOperands(MOMutableOpInterface mutOp) {
   SmallVector<mlir::MemoryEffects::EffectInstance> effects;
   mutOp.getEffects(effects);
 
@@ -51,8 +62,8 @@ mlir::DenseSet<Value> collectWriteEffectOperands(MOMutableOpInterface mutOp) {
 /// mutOp2 such that no data race is possible. This primarily comes
 /// down to checking that the ops don't share an operand that has a write effect
 /// on it.
-bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
-                                MOMutableOpInterface mutOp2) {
+static bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
+                                       MOMutableOpInterface mutOp2) {
   // Check that the ops don't share an operand they both have a write effect on.
   auto r1 = llvm::make_filter_range(mutOp1->getOperands(), isMutableOperand);
   auto r2 = llvm::make_filter_range(mutOp2->getOperands(), isMutableOperand);
@@ -92,6 +103,8 @@ bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
   return !hasSameOpaqueType;
 }
 
+namespace {
+
 struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
 
   CanonicalizeBufferOpSequences(MLIRContext *ctx)
@@ -108,6 +121,12 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
           op->getLoc(), "Expected op to be derived from MOMutableOpInterface");
     }
 
+    if (!hasSingleChain(mutOp)) {
+      return rewriter.notifyMatchFailure(
+          op->getLoc(),
+          "Mutable op has multiple chains; canonicalization not supported");
+    }
+
     auto inChain = mutOp.getInChain();
     auto outChain = mutOp.getOutChain();
 
@@ -115,7 +134,10 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
 
     auto rawParent = inChain.getDefiningOp();
 
-    auto parent = llvm::dyn_cast_or_null<MOMutableOpInterface>(rawParent);
+    auto parent = dyn_cast_if_present<MOMutableOpInterface>(rawParent);
+
+    if (parent && !hasSingleChain(parent))
+      parent = nullptr;
 
     if (parent && canSafelyReorderMutableOps(mutOp, parent)) {
       mutOp.getInChainMutable().set(parent.getInChain());
@@ -129,7 +151,7 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
 
       return success();
     } else if (auto chainCreateOp =
-                   dyn_cast_or_null<ChainCreateOp>(rawParent)) {
+                   dyn_cast_if_present<ChainCreateOp>(rawParent)) {
       mlir::BitVector eraseIdxs(chainCreateOp->getNumOperands());
 
       SmallVector<Value> newCreateOperands;
@@ -140,6 +162,8 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
           continue;
 
         auto upstreamOp = operand.getDefiningOp<MOMutableOpInterface>();
+        if (upstreamOp && !hasSingleChain(upstreamOp))
+          upstreamOp = nullptr;
         if (upstreamOp && canSafelyReorderMutableOps(mutOp, upstreamOp)) {
           eraseIdxs[idx] = true;
           newCreateOperands.push_back(operand);

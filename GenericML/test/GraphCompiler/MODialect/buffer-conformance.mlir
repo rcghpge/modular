@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
 mo.graph @missing_chain_input(%arg0: !mo.buffer<[10, 10], f32>) {
-  // expected-error @+1 {{Ops with buffer inputs must have exactly one chain input.}}
+  // expected-error @+1 {{Non multi-chain ops with buffer inputs must have exactly one chain input.}}
   %res = mo.custom {symbol = "foo"} (%arg0) : (!mo.buffer<[10, 10], f32>) -> (!mo.tensor<[10, 10], f32>)
   mo.output
 }
@@ -10,7 +10,7 @@ mo.graph @missing_chain_input(%arg0: !mo.buffer<[10, 10], f32>) {
 
 mo.graph @missing_chain_result(%arg0: !mo.buffer<[10, 10], f32>) {
   %ch0 = mo.chain.create()
-  // expected-error @+1 {{Ops with buffer inputs must have exactly one chain output}}
+  // expected-error @+1 {{Non multi-chain ops with buffer inputs must have exactly one chain output}}
   %res = mo.custom {symbol = "foo"} (%arg0, %ch0) : (!mo.buffer<[10, 10], f32>, !mo.chain) -> (!mo.tensor<[10, 10], f32>)
   mo.output
 }
