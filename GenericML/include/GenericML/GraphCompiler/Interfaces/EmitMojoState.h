@@ -3,8 +3,8 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-#ifndef GENERICML_GRAPH_COMPILER_MOGGSUPPORT_EMITMOJOSTATE_H
-#define GENERICML_GRAPH_COMPILER_MOGGSUPPORT_EMITMOJOSTATE_H
+#ifndef GENERICML_INTERFACES_EMITMOJOSTATE_H
+#define GENERICML_INTERFACES_EMITMOJOSTATE_H
 
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
@@ -272,4 +272,4 @@ public:
 };
 } // namespace M::MOGG
 
-#endif
+#endif // GENERICML_INTERFACES_EMITMOJOSTATE_H

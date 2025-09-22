@@ -20,6 +20,7 @@ include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
+include "GenericML/GraphCompiler/Interfaces/EmitsMojoInterface.td"
 include "GenericML/MGPDialect/MGPOpInterfaces.td"
 include "KGEN/KGENDialect/KGENInterfaces.td"
 include "KGEN/KGENDialect/KGENTypes.td"
@@ -120,7 +121,7 @@ def MOGG_SplitOp : MOGG_LowerableOp<"split", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 def MOGG_AsTupleOp
-    : MOGG_Op<"as_tuple", [Pure, DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
+    : MOGG_Op<"as_tuple", [Pure, DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "MOGG tuple creation operation";
   let description = [{
     This operation creates tuple of values that will be later been translated to
@@ -165,7 +166,7 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]>  {
+def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoInterface>]>  {
   let summary = "Calls into an outlined stub";
   let description = [{}];
   let arguments = (ins SymbolRefAttr:$name, Variadic<AnyType>:$inputs);
@@ -176,7 +177,7 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<MOGG_Emits
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]>  {
+    DeclareOpInterfaceMethods<EmitsMojoInterface>]>  {
   let summary = "call the registered foreach kernel";
   let description = [{
     This represents a call to the mojo implementation of `foreach` function. If
@@ -198,7 +199,7 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
 def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]>  {
+    DeclareOpInterfaceMethods<EmitsMojoInterface>]>  {
   let summary = "Call the registered `execute` function for a particular kernel";
   let description = [{
     This represents a call to the mojo implementation of `Kernel::execute`
@@ -228,7 +229,7 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 
 
 def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]>  {
   let summary = "Call the registered `view_copy_impl` function for materializing a view kernel";
   let description = [{
@@ -257,7 +258,7 @@ def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
 
 def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
     Pure,
     HasParent<"MOGG::BindLambdaOp">]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";
@@ -283,7 +284,7 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
 
 def MOGG_CallViewOp : MOGG_Op<"call.view", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
     Pure]> {
   let summary = "Call the corresponding `update_input_view` function for a particular kernel";
   let description = [{
@@ -309,7 +310,7 @@ def MOGG_CallViewOp : MOGG_Op<"call.view", [
 
 def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [
     Pure,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
+    DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "Converts a tensor that contains one element to a scalar";
   let description = [{
     Given a tensor with one element, ie with a shape of [] or [1], etc, convert
@@ -442,7 +443,7 @@ def MOGG_ExpKernelOp : MOGG_LowerableOp<"experimental.kernel", [
 
 // lower to ManageTensorSlice.load
 def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
+    DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "Load a value from mo.tensor at the given indices";
   let description = [{
      This operation represent a tensor load at the given indices. It is needed
@@ -473,7 +474,7 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
 
 def MOGG_BindLambdaOp : MOGG_Op<"bind", [
     SingleBlock,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
+    DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "Bind a fusion interface to a tensor";
   let description = [{
      This operation exposes a fusion interface to a tensor. It build the connection
@@ -904,7 +905,7 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
 
 def MOGG_CallOp : MOGG_Op<"call", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-    DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+    DeclareOpInterfaceMethods<EmitsMojoInterface>
   ]> {
   let summary = "Represents  KGEN function to call";
   let description = [{
@@ -1552,7 +1553,7 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
 
 def MOGG_TensorGetShapeOp: MOGG_Op<"tensor.shape", [
   Pure,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Gets the shape of a tensor";
   let arguments = (ins TypeAttr:$tensor);
@@ -1667,7 +1668,7 @@ def MOGG_MojoModuleOp : MOGG_Op<"mojo.module", []> {
 
 def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   Pure,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Represents the construction of a tensor";
   let description = [{
@@ -1689,7 +1690,7 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
 
 def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
   Pure,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let results = (outs ChainType:$output);
@@ -1710,7 +1711,7 @@ def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
 def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   Pure,
   SameOperandsAndResultType,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let arguments = (ins AnyType:$input);
@@ -1733,7 +1734,7 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
 }
 
 def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
   HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let arguments = (ins AnyType:$input);
@@ -1768,7 +1769,7 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
 
 def MOGG_InlineConstantBufferOp : MOGG_Op<"inline_constant_buffer", [
   Pure,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Represents a constant buffer value inlined inside the kernel";
   let description = [{
@@ -1789,7 +1790,7 @@ def MOGG_InlineConstantBufferOp : MOGG_Op<"inline_constant_buffer", [
 
 def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
   Pure,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Represents an empty buffer (actually of size 1) allocated on the stack";
   let description = [{
@@ -1803,7 +1804,7 @@ def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
 
 def MOGG_BindToOp : MOGG_Op<"bind_to", [
   Pure,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Replace a fused tensor with a different (empty) tensor for the fused kernel call";
   let description = [{
@@ -1833,7 +1834,7 @@ def MOGG_BindToOp : MOGG_Op<"bind_to", [
 }
 
 def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,
-  DeclareOpInterfaceMethods<MOGG_EmitsMojoInterface>]> {
+  DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
 
   let summary = "create a scalar constant value";
   let description = [{

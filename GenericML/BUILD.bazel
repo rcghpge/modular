@@ -201,6 +201,26 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "GraphCompilerEmitsMojoInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/GenericML/GraphCompiler/Interfaces/EmitsMojoInterface.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/GenericML/GraphCompiler/Interfaces/EmitsMojoInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GenericML/GraphCompiler/Interfaces/EmitsMojoInterface.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+    ],
+)
+
 modular_cc_library(
     name = "GraphCompilerInterfaces",
     srcs = glob(["lib/GraphCompiler/Interfaces/*.cpp"]),
@@ -208,6 +228,7 @@ modular_cc_library(
     deps = [
         ":GraphCompilerConversion",
         ":GraphCompilerConvertibleInterfacesIncGen",
+        ":GraphCompilerEmitsMojoInterfacesIncGen",
         ":GraphCompilerInterfacesIncGen",
         ":MGPDialect",
         ":MODialect",

@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"

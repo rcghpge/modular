@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGDialect/Support/EmitMojoState.h"
+#include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 
