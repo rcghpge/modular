@@ -14,6 +14,7 @@ import numpy as np
 from max import driver, pipelines
 from max.interfaces import (
     PipelineTask,
+    RequestID,
     SamplingParams,
     TextGenerationInputs,
     TextGenerationRequest,
@@ -101,7 +102,7 @@ class SpeechLM:
         self,
         text: str,
         max_tokens: int | None = None,
-        request_id: str = "llasa_generation",
+        request_id: RequestID = "llasa_generation",
     ) -> str:
         """Generate raw text from the model.
 
