@@ -657,6 +657,42 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
   return newOp->getResult(0);
 }
 
+void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
+                                        const mlir::BitVector &shouldPack) {
+  auto kernel = cast<MOGG::GenericCompiledRegionOp>(kernelOp);
+  OpBuilder builder{&kernel.getBody().front(),
+                    kernel.getBody().front().begin()};
+  auto loc = kernel->getLoc();
+  Operation *terminator = kernel.getBody().front().getTerminator();
+  SmallVector<Value> asyncValues;
+  for (auto v : kernel.getBody().getArguments()) {
+    // Do not attempt to unpack a chain as there is nothing that we could be
+    // doing with it internally but still decrement its async reference. Also,
+    // do not unpack certain arguments if the primitive being lowered requests
+    // it.
+    if (shouldPack.test(v.getArgNumber()) &&
+        !isa<MEF::ChainType>(v.getType())) {
+      auto unpackOp = builder.create<MOGG::AsyncUnpackOp>(loc, v);
+      v.replaceAllUsesExcept(unpackOp, unpackOp);
+    }
+    asyncValues.emplace_back(v);
+  }
+
+  builder.setInsertionPoint(terminator);
+  for (auto asyncValue : asyncValues)
+    builder.create<MOGG::AsyncDelOp>(loc, asyncValue);
+
+  for (Value v : terminator->getOperands()) {
+    // Do not attempt to pack chains as they are never actually unpacked.
+    // The only use of a chain is to be set by MOGG::CreateReadyChainOp
+    // which does not have operands.
+    if (isa<MEF::ChainType>(v.getType()))
+      continue;
+    auto packOp = builder.create<MOGG::AsyncPackOp>(loc, v);
+    v.replaceAllUsesExcept(packOp, packOp);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // MOOpLoweringState
 //===----------------------------------------------------------------------===//

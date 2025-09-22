@@ -1253,6 +1253,9 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (scratchPlaceholdersOp)
     scratchPlaceholdersOp.erase();
 
+  mlir::BitVector unpackItAll(regionBody.getNumArguments(), true);
+  loweringState.lowerMOGGABI(newKernel, unpackItAll);
+
   return success();
 }
 
