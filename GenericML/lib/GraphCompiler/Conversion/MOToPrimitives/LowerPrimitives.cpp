@@ -427,6 +427,110 @@ void LowerPrimitivesPass::runOnOperation() {
     return newOp->getResults();
   };
 
+/// TODO(GEX-2486): Implement them one-by-one and remove them from the list each
+/// time (the TEMPORARY defines).
+#define MGP_PRIMITIVES_TEMPORARY_EXCLUSION_LIST                                \
+  MGP::AssertOp, MGP::BufferAllocOp, MGP::BufferConcatOp,                      \
+      MGP::BufferConstantOp, MGP::BufferConstantExternalOp,                    \
+      MGP::BufferDeviceToDeviceOp, MGP::BufferDeviceToHostOp,                  \
+      MGP::BufferGetCachedOp, MGP::BufferGetSizeOp, MGP::BufferHostToDeviceOp, \
+      MGP::BufferRemoveCachedOp, MGP::BufferSetWithIndexOp,                    \
+      MGP::BufferSliceOp, MGP::BufferToBoolOp, MGP::BufferToIndexOp,           \
+      MGP::DebugPrintOp, MGP::DebugTensorPrintOp, MGP::SyncOp,                 \
+      MGP::TensorCreateOp, MGP::TensorExtractBufferOp,                         \
+      MGP::TensorExtractTensorSpecOp, MGP::CpuTensorSpecCreateOp,              \
+      MGP::TensorSpecGetDimOp
+#define DIALECT_TEMPORARY_EXCLUSION_LIST                                       \
+  mlir::index::IndexDialect, KGEN::POP::POPDialect
+
+  auto isPartOfAnotherDialect = [](Operation *op) {
+    if (isa_and_nonnull<mlir::index::IndexDialect, KGEN::POP::POPDialect>(
+            op->getDialect())) {
+      return true;
+    }
+
+    // Unsure if this appears in the IR today.
+    return isa<KGEN::ParamConstantOp>(op);
+  };
+  auto isPartOfATemporarilyExcludedDialect = [](Operation *op) {
+    if (isa_and_nonnull<DIALECT_TEMPORARY_EXCLUSION_LIST>(op->getDialect()))
+      return true;
+
+    return isa<KGEN::ParamConstantOp>(op);
+  };
+
+  if (MOGG::useExperimentalMojoPath()) {
+    const auto walkerFn = [&](Operation *op) {
+      // Skip any operations nested within a region.
+      if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
+        return mlir::WalkResult::skip();
+
+      // Constant external ops should not be lowered to mojo so they can be
+      // updated with a prefix during inlining.
+      if (isa<MGP::BufferConstantExternalOp>(op))
+        return mlir::WalkResult::advance();
+
+      if (isPartOfAnotherDialect(op)) {
+        if (isPartOfATemporarilyExcludedDialect(op))
+          return mlir::WalkResult::advance();
+      } else {
+        /// TODO(GEX-2588): Remove this. These are not part of the exclusion
+        /// list because they are not lowered in the KGEN codepath.
+        if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp,
+                MGP::BufferRemoveCachedOp, MGP::ModuleLoadOp,
+                MGP::ExecuteGenericOp>(op)) {
+          return mlir::WalkResult::advance();
+        }
+
+        bool implementsEmitsMojoInterface = isa<MOGG::EmitsMojoInterface>(op);
+        if (isa<MGP_PRIMITIVES_TEMPORARY_EXCLUSION_LIST>(op)) {
+          ASSERT_STREAM(
+              !implementsEmitsMojoInterface,
+              << op->getName()
+              << " emits Mojo but it was not removed from the exclusion list");
+          return mlir::WalkResult::advance();
+        }
+
+        if (!mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
+                op->getName().getStringRef())) {
+          // Operations that do not have a registration function can't be
+          // lowered to a kernel.
+          return mlir::WalkResult::advance();
+        }
+
+        ASSERT_STREAM(implementsEmitsMojoInterface,
+                      << op->getName()
+                      << " has a Mojo implementation but it does not implement "
+                         "the EmitsMojoInterface");
+      }
+      Location opLoc = op->getLoc();
+      OpBuilder builder{op};
+
+      auto newKernel =
+          wrapGenericRegionAround(builder, opLoc, op, cloneOperationBuilder);
+      if (newKernel.isError()) {
+        op->emitError(newKernel.takeError().get());
+        return mlir::WalkResult::interrupt();
+      }
+      newKernel->setEmitsMojo(true);
+
+      /// TODO(GEX-2588): Some of the operations covered by this issue will need
+      /// their inputs to stay in the async format (ex: mgp.buffer.cache).
+      mlir::BitVector unpackAllOperands(op->getNumOperands(), true);
+      MOGraphLoweringState::lowerMOGGABI(*newKernel, unpackAllOperands);
+
+      op->replaceAllUsesWith(*newKernel);
+      op->erase();
+
+      return mlir::WalkResult::skip();
+    };
+    if (model.walk</*Order=*/mlir::WalkOrder::PreOrder>(walkerFn)
+            .wasInterrupted()) {
+      signalPassFailure();
+      return;
+    }
+  }
+
   model.walk</*Order=*/mlir::WalkOrder::PreOrder>([&](Operation *op) {
     Location opLoc = op->getLoc();
     OpBuilder builder{op};
