@@ -119,6 +119,8 @@ Value MOGraphLoweringState::dimensionToIndex(OpBuilder &builder, Location loc,
                                                     dim);
 }
 
+// TODO(GEX-2597): restore after resolving primitive serialization.
+#ifndef MODULAR_PRODUCTION
 static Value assertSymbolicDimensionMatchesPreviousValue(
     OpBuilder &builder, Location loc, Value previousValue, Value newValue,
     KGEN::ParamDeclRefAttr symbolicDimension, unsigned argumentIndex) {
@@ -144,6 +146,7 @@ static Value assertSymbolicDimensionMatchesPreviousValue(
 
   return assertOp;
 }
+#endif // MODULAR_PRODUCTION
 
 ErrorOr<MOGraphLoweringState::ArgLoweringResult>
 MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
@@ -196,7 +199,7 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
       }
 
       OpBuilder &builder = getExecuteOpBuilder();
-      SmallVector<Value> assertChains;
+      [[maybe_unused]] SmallVector<Value> assertChains;
       for (auto [inDimParam, outDim] : llvm::zip(inDimParams, dynDims)) {
         // Only update the parameter mapping for the first parameter
         // occurrence.
@@ -204,6 +207,8 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
         auto loweredValue = indexToDimension(builder, loc, outDim);
 
         if (existingValue) {
+          // TODO(GEX-2597): restore after resolving primitive serialization.
+#ifndef MODULAR_PRODUCTION
           // If the parameter has been lowered previously, then assert that the
           // current instance is equal to the previously lowered value.
           auto assert = assertSymbolicDimensionMatchesPreviousValue(
@@ -211,6 +216,7 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
               inArg.getArgNumber());
 
           assertChains.push_back(assert);
+#endif // MODULAR_PRODUCTION
         } else {
           // Otherwise lower the dimension value and record the lowering.
           params.emplaceLowered(parentRegion, inDimParam, loweredValue);
