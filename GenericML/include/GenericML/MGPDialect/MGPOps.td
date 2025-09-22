@@ -312,6 +312,7 @@ def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
 def AssertOp : MGP_Op<"assert", [
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
   ]> {
   let summary = "Assert that a boolean condition is true.";
   let description = [{

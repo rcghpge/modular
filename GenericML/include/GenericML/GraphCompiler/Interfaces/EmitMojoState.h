@@ -28,10 +28,12 @@ constexpr StringLiteral struct_IO = "io_spec.IO";
 constexpr StringLiteral struct_IndexList = "IndexList";
 constexpr StringLiteral struct_StaticTensorSpec = "directives.StaticTensorSpec";
 constexpr StringLiteral struct_UnsafePointer = "unsafe_pointer.UnsafePointer";
+constexpr StringLiteral struct_String = "string.String";
 constexpr StringLiteral struct_DeviceContextPtr = "asyncrt.DeviceContextPtr";
 constexpr StringLiteral struct_ManagedTensorSlice =
     "managed_tensor_slice.ManagedTensorSlice";
 constexpr StringLiteral struct_Int = "Int";
+constexpr StringLiteral struct_Bool = "Bool";
 constexpr StringLiteral struct_DimList = "dimlist.DimList";
 constexpr StringLiteral struct_Dim = "Dim";
 constexpr StringLiteral struct_AddressSpace = "pointer.AddressSpace";
@@ -74,7 +76,8 @@ constexpr StringLiteral alias_FusedInputTensor =
 /// package that could change/be moved around.
 constexpr StringLiteral packagesToImport[] = {
     "MOGGPrimitives", "MOGGKernelAPI", "tensor_internal", "compiler_internal",
-    "utils",          "runtime",       "memory",          "buffer"};
+    "utils",          "runtime",       "memory",          "buffer",
+    "collections"};
 }; // namespace HardcodedMojoSymbols
 
 /// This struct holds all the necessary state to lower a MOGG operation into
@@ -141,7 +144,9 @@ public:
       return HardcodedMojoSymbols::alias_OpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_DeviceContextPtr;
-    } else if (isa<IntegerType>(mlirType)) {
+    } else if (auto integerTy = dyn_cast<IntegerType>(mlirType)) {
+      if (integerTy.getWidth() == 1)
+        return HardcodedMojoSymbols::struct_Bool;
       return HardcodedMojoSymbols::struct_Int;
     } else if (auto tensorType = dyn_cast<MO::TensorType>(mlirType)) {
       return mlirTensorTypeToMojoType(tensorType);

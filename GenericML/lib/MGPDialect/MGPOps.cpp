@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
@@ -417,6 +418,44 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult AssertOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::GeneratorOp generator =
+      state.analysis.getRegisteredMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(generator);
+
+  MOGG::MojoValue conditionVar = state.getMojoValueFor(getCond());
+  MOGG::MojoValue messageLiteral = MOGG::MojoValue(getMessage()).quote();
+  MOGG::MojoValue messageString = state.builder.var(MOGG::MojoValue(
+      MOGG::HardcodedMojoSymbols::struct_String)({}, {messageLiteral}));
+  MOGG::MojoValue messagePtr = messageString.get("unsafe_ptr")();
+  MOGG::MojoValue messageSize = messageString.get("__len__")();
+
+  state.builder
+      .try_([&]() {
+        state.builder.call(function, {},
+                           {conditionVar, messagePtr, messageSize});
+        auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
+            state.analysis.getRegisteredMojoKernelFor(
+                MOGG::AsyncReadyOp::getOperationName()));
+        state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
+      })
+      .except([&](const MOGG::MojoValue &e) {
+        auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
+            state.analysis.getRegisteredMojoKernelFor(
+                "builtin.create_error_async_values_and_destruct_error"));
+        /// TODO: This is too cumbersome. Add keyword arg support to function
+        /// calls in MojoBuilder. Also, consider adding a helper that creates an
+        /// `UnsafePointer` to any variable.
+        MOGG::MojoValue pointerToPointer = state.builder.var(
+            MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_UnsafePointer)(
+                {}, MOGG::MojoValue("to").equal(state.mojoReturnValues[0])));
+        state.builder.call(markAsyncErrorFunc, {},
+                           {pointerToPointer, MOGG::MojoValue(1), e});
+      });
+
+  return success();
+}
 
 SmallVector<Attribute> AssertOp::getLiftableAttributes() {
   return {getMessageAttr()};
