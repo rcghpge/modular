@@ -82,6 +82,7 @@ class XCodec2(nn.Module):
         self.fc_post_a = nn.Linear(
             config.vq_dim,  # 2048
             config.hidden_dim,  # 1024
+            has_bias=True,
             dtype=config.dtype,
             device=config.device,
         )
@@ -141,7 +142,6 @@ class XCodec2Model:
         self.config = config
         self.xcodec2 = XCodec2(config)
 
-        # Load weights
         weights = load_xcodec2_weights(str(model_path))
         self.xcodec2.load_state_dict(
             weights,

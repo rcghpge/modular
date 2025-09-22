@@ -43,7 +43,6 @@ def _map_xcodec2_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
         "conv1.bias",
         "conv2.bias",
         "fc_prior",
-        "fc_post_a.bias",
         "generator.head.istft.window",
     ]
 
