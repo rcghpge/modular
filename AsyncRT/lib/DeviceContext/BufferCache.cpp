@@ -1116,8 +1116,9 @@ void BufferCacheFreeList::freeDesc(BufferCache::Desc *desc) {
 }
 
 BufferCache *BufferCache::onDevice(const Device &device,
-                                   Device::MemInfo memInfo, size_t alignment) {
-  if (memInfo.free == 0) {
+                                   Device::MemInfo memInfo, size_t alignment,
+                                   int64_t memoryLimit) {
+  if (memInfo.free == 0 || memoryLimit == 0) {
     // Do not use buffer cache if buffer cache has been disabled by the calling
     // code (empty memInfo).
     // This is for example the case for CPU Device: We are relying on malloc
@@ -1125,17 +1126,44 @@ BufferCache *BufferCache::onDevice(const Device &device,
     return new BufferCache(device, 0, 0, alignment, false);
   }
 
-  bool isDefault = false;
-  size_t maxCacheSize = llvm::alignToPowerOf2(
-      DeviceContext::configAsInt("buffer_cache_size", 0, &isDefault), 256 * KB);
-  // If buffer_cache_size was not set, use a percentage of the available memory.
-  if (isDefault) {
-    maxCacheSize = llvm::alignToPowerOf2(
-        (memInfo.free *
-         DeviceContext::configAsInt("buffer_cache_size_percent", 99)) /
-            100,
-        256 * KB);
+  bool shouldUseDefaultInstead = false; // no explicit memory limit
+  if (memoryLimit > 0) {
+    // TODO:
+    // MOTR_LOG_DEBUG << "DeviceContext.BufferCache: " << device.name()
+    //              << " setting memory limit from absolute explicit spec\n";
+  } else {
+    memoryLimit = DeviceContext::configAsInt("buffer_cache_size", 0,
+                                             &shouldUseDefaultInstead);
+    if (!shouldUseDefaultInstead) {
+      // TODO:
+      // MOTR_LOG_DEBUG << "DeviceContext.BufferCache: " << device.name()
+      //              << " setting memory limit from buffer_cache_size env
+      //              var\n";
+    } // ... if this fails we use default, below.
   }
+
+  if (shouldUseDefaultInstead) {
+    // Neither explicit memory limit nor buffer_cache_size env var set
+    shouldUseDefaultInstead = false; // repurposing
+    int64_t percentMemoryLimit = DeviceContext::configAsInt(
+        "buffer_cache_size_percent", 0, &shouldUseDefaultInstead);
+    if (!shouldUseDefaultInstead) {
+      // TODO:
+      // MOTR_LOG_DEBUG << "DeviceContext.BufferCache: " << device.name()
+      //              << " setting memory limit from buffer_cache_size_percent
+      //              env var\n";
+    } else {
+      percentMemoryLimit = 99; // default percent of all free mem
+      // TODO:
+      // MOTR_LOG_DEBUG << "DeviceContext.BufferCache: " << device.name()
+      //              << " using default memory limit\n";
+    }
+    memoryLimit = (memInfo.free * percentMemoryLimit) / 100;
+  }
+  size_t maxCacheSize = llvm::alignToPowerOf2(memoryLimit, 256 * KB);
+  // TODO:
+  // MOTR_LOG_INFO << "DeviceContext.BufferCache: " << device.name()
+  //              << " final size = " << maxCacheSize << "\n";
 
   if (maxCacheSize > memInfo.free) {
     llvm::errs()
@@ -1150,7 +1178,8 @@ BufferCache *BufferCache::onDevice(const Device &device,
       std::max(static_cast<size_t>(0),
                std::min(static_cast<size_t>(100),
                         static_cast<size_t>(DeviceContext::configAsInt(
-                            "buffer_cache_chunk_percent", 2, &isDefault))));
+                            "buffer_cache_chunk_percent", 2,
+                            &shouldUseDefaultInstead))));
 
   size_t chunkSize = std::min(
       maxCacheSize,

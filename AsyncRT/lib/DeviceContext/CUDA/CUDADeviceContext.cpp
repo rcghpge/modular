@@ -213,9 +213,11 @@ static Error formatCUDAError(const char *file, int line, const char *func,
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        CUcontext context, std::string name,
-                       Device::MemInfo memInfo, size_t allocAlignment)
+                       Device::MemInfo memInfo, size_t allocAlignment,
+                       int64_t deviceMemoryLimit)
     // GEX-1416: Do not expect hardcoded number.
-    : Device(api, std::move(name), id, memInfo, allocAlignment),
+    : Device(api, std::move(name), id, memInfo, allocAlignment,
+             deviceMemoryLimit),
       driver_(driver), device_(device), context_(context) {}
 
 CUDADevice::~CUDADevice() {
@@ -487,7 +489,7 @@ const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 };
 
-ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
+ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   // On first call initialize devices and err. devices is only set if there was
   // no error during setup.
   static std::mutex mu;
@@ -539,7 +541,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
     CUDA_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
 
     device = new CUDADevice(driver, id, cuDevice, cuContext, name, memInfo,
-                            alignment);
+                            alignment, deviceMemoryLimit);
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;

@@ -155,7 +155,8 @@ public:
   static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);
 
-  static ErrorOr<DeviceRef> create(StringRef api, int id = 0);
+  static ErrorOr<DeviceRef> create(StringRef api, int id = 0,
+                                   int64_t deviceMemoryLimit = -1);
 
   /// Returns the vendor and compute_capability of the accelerator in the form
   /// of `vendor:compute_capability`. For example, an A100 GPU would return
@@ -173,7 +174,8 @@ public:
   virtual ErrorOrSuccess setCurrentDriverContext(void *ctx) const = 0;
 
 protected:
-  Device(API api, std::string name, int id, MemInfo memInfo, size_t alignment);
+  Device(API api, std::string name, int id, MemInfo memInfo, size_t alignment,
+         int64_t deviceMemoryLimit = -1);
 
 private:
   std::string name_;
@@ -525,7 +527,8 @@ public:
 
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
 
-  static ErrorOr<DeviceContextRef> getOrCreate(StringRef api, int id = 0);
+  static ErrorOr<DeviceContextRef> getOrCreate(StringRef api, int id = 0,
+                                               int64_t deviceMemoryLimit = -1);
 
   bool operator==(const DeviceContext &other) const;
   bool operator!=(const DeviceContext &other) const;

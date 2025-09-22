@@ -57,7 +57,7 @@ public:
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
              CUcontext context, std::string name, Device::MemInfo memInfo,
-             size_t allocAlignment);
+             size_t allocAlignment, int64_t deviceMemoryLimit = -1);
   ~CUDADevice() override;
 
   const CUDADriver &cudaDriver() const;
@@ -97,7 +97,8 @@ public:
   static const CUDADevice &cast(const Device &device);
 
   static ErrorOr<int> numberOfGPUs();
-  static ErrorOr<const CUDADevice &> get(int id);
+  static ErrorOr<const CUDADevice &> get(int id,
+                                         int64_t deviceMemoryLimit = -1);
 
   ErrorOr<CUevent> eventCachePop() const;
   void eventCachePush(CUevent event) const;
