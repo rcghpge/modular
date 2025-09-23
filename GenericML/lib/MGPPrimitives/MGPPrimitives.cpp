@@ -161,7 +161,15 @@ static void mgp_generic_execute(
   // Extract device hint from DeviceContext if present in operands.
   int deviceHint = deviceHintFor(operands);
 
-  if (eIsAsync.get()) {
+  // Launch the kernel on a new thread when:
+  // - isAsync = true: always run out of line.
+  // - Otherwise, sync kernel:
+  //   - Kernel has no device preference => run inline.
+  //   - Otherwise, kernel has device preference:
+  //     - Run out of line if we're on the wrong thread for this device.
+  //     - Otherwise, sync already on preferred device thread: run inline.
+  if (eIsAsync.get() ||
+      !runtime.getWorkQueue()->shouldRunInlineFor(deviceHint)) {
     // Allocate indirect results as GraphRT is expecting result async values to
     // be allocated. The kernel will set them to ready when it is finished. We
     // only need to do this for async primitives as they outlive this function.

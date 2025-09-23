@@ -32,8 +32,11 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
           MOGG::TypeManager::get(ctx, mojoLibraryAnalysis).takeValue()) {
 
   // TODO(GEX-2569): make `mo.transpose` async after enforcing high water mark.
-  isAsync = !forceSync && !isa<MO::LayoutTransformOp>(op) &&
-            !isa<MO::TransposeOp>(op);
+  // All GPU ops are sync to reduce primitive launch overhead, except
+  // allreduce.sum because it is both per-device and can block.
+  isAsync = isa<MO::AllReduceSumOp>(op) ||
+            (MO::isOnHost(op) && !forceSync &&
+             !isa<MO::LayoutTransformOp>(op) && !isa<MO::TransposeOp>(op));
 
   // Get ready for building ops.
   builder.setInsertionPoint(op);
