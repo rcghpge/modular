@@ -119,8 +119,6 @@ Value MOGraphLoweringState::dimensionToIndex(OpBuilder &builder, Location loc,
                                                     dim);
 }
 
-// TODO(GEX-2597): restore after resolving primitive serialization.
-#ifndef MODULAR_PRODUCTION
 static Value assertSymbolicDimensionMatchesPreviousValue(
     OpBuilder &builder, Location loc, Value previousValue, Value newValue,
     KGEN::ParamDeclRefAttr symbolicDimension, unsigned argumentIndex) {
@@ -141,18 +139,21 @@ static Value assertSymbolicDimensionMatchesPreviousValue(
       "of that dimension",
       symbolicDimension.getName().strref(), argumentIndex);
 
-  auto assertOp = builder.create<MGP::AssertOp>(
-      loc, isEqual, builder.getStringAttr(errorMessage));
-
-  return assertOp;
+  return MGP::AssertOp::create(builder, loc, isEqual,
+                               builder.getStringAttr(errorMessage));
 }
-#endif // MODULAR_PRODUCTION
 
 ErrorOr<MOGraphLoweringState::ArgLoweringResult>
 MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
                                BlockArgument outArg) {
   bool hasParams = false;
   Location loc = inArg.getLoc();
+
+  auto isSubgraphRegion = [](Region *region) {
+    if (auto graph = region->getParentOfType<MO::GraphOp>())
+      return graph.getIsSubgraph();
+    return false;
+  };
 
   Value loweredArg = outArg;
   if (auto argType = MO::dynCastFromTensorLike(inArg.getType())) {
@@ -199,24 +200,23 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
       }
 
       OpBuilder &builder = getExecuteOpBuilder();
-      [[maybe_unused]] SmallVector<Value> assertChains;
-      for (auto [inDimParam, outDim] : llvm::zip(inDimParams, dynDims)) {
+      SmallVector<Value> assertChains;
+      for (auto [inDimParam, outDim] : llvm::zip_equal(inDimParams, dynDims)) {
         // Only update the parameter mapping for the first parameter
         // occurrence.
         auto existingValue = params.lookupLowered(parentRegion, inDimParam);
         auto loweredValue = indexToDimension(builder, loc, outDim);
 
-        if (existingValue) {
-          // TODO(GEX-2597): restore after resolving primitive serialization.
-#ifndef MODULAR_PRODUCTION
+        if (existingValue && !isSubgraphRegion(parentRegion)) {
           // If the parameter has been lowered previously, then assert that the
           // current instance is equal to the previously lowered value.
+          // This check is only needed for entry-point graphs, as subgraphs
+          // will inherit correctness from their caller.
           auto assert = assertSymbolicDimensionMatchesPreviousValue(
               builder, loc, existingValue, loweredValue, inDimParam,
               inArg.getArgNumber());
 
           assertChains.push_back(assert);
-#endif // MODULAR_PRODUCTION
         } else {
           // Otherwise lower the dimension value and record the lowering.
           params.emplaceLowered(parentRegion, inDimParam, loweredValue);
