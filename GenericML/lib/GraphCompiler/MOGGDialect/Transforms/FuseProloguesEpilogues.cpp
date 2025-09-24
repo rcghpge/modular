@@ -20,30 +20,66 @@ namespace {
 
 // TODO(#22349): Remove checks when matmul/conv/concat kernels respect the
 // fusion contract.
-template <typename KernelTy>
-static bool containsMatmulOrConvOrConcat(KernelTy kernel) {
-  StringRef summary = kernel.getSummaryAttr().strref();
-  return (summary.contains(MO::ConcatOp::getOperationName()) ||
-          summary.contains(MO::MatmulOp::getOperationName()) ||
-          summary.contains(MO::BatchMatmulOp::getOperationName()) ||
-          summary.contains(MO::ConvOp::getOperationName()) ||
-          summary.contains(MO::ConvTransposeOp::getOperationName()));
+static bool containsMatmulOrConvOrConcat(MOGG::ExpKernelOp kernel) {
+  auto callExecuteOp =
+      dyn_cast<MOGG::CallExecuteOp>(kernel.getTerminator().getOperation());
+  if (!callExecuteOp)
+    return false;
+
+  auto kernelName = callExecuteOp.getKernelNameAttr().strref();
+
+  return (kernelName.contains(MO::ConcatOp::getOperationName()) ||
+          kernelName.contains(MO::MatmulOp::getOperationName()) ||
+          kernelName.contains(MO::BatchMatmulOp::getOperationName()) ||
+          kernelName.contains(MO::ConvOp::getOperationName()) ||
+          kernelName.contains(MO::ConvTransposeOp::getOperationName()));
 }
 
-template <typename KernelTy>
-static bool containsDistributedOp(KernelTy kernel) {
-  StringRef summary = kernel.getSummaryAttr().strref();
-  return (summary.contains(MO::AllGatherOp::getOperationName()) ||
-          summary.contains(MO::AllReduceSumOp::getOperationName()) ||
-          summary.contains(MO::MatmulAllReduceOp::getOperationName()));
+static bool containsDistributedOp(MOGG::ExpKernelOp kernel) {
+  auto callExecuteOp =
+      dyn_cast<MOGG::CallExecuteOp>(kernel.getTerminator().getOperation());
+  if (!callExecuteOp)
+    return false;
+
+  auto kernelName = callExecuteOp.getKernelNameAttr().strref();
+
+  return (kernelName.contains(MO::AllGatherOp::getOperationName()) ||
+          kernelName.contains(MO::AllReduceSumOp::getOperationName()) ||
+          kernelName.contains(MO::MatmulAllReduceOp::getOperationName()));
 }
 
-template <typename KernelTy>
-static bool containsMutableStore(KernelTy kernel) {
-  StringRef summary = kernel.getSummaryAttr().strref();
-  // TODO: we have a better way to check this under the new representation (by
-  // looking for call.elementwise["mo.mutable.store"]).
-  return summary.contains(MO::MutableStoreOp::getOperationName());
+static bool containsMutableStore(MOGG::ExpKernelOp kernel) {
+  for (auto bindOp : kernel.getOps<MOGG::BindLambdaOp>()) {
+    auto kind = bindOp.getBindKind();
+    if (kind != MOGG::BindLambdaKind::ElemwiseLambda &&
+        kind != MOGG::BindLambdaKind::OutputLambda)
+      continue;
+
+    for (auto elementwiseOp :
+         bindOp.getBody()->getOps<MOGG::CallElementwiseOp>()) {
+      if (elementwiseOp.getKernelNameAttr().strref() ==
+          MO::MutableStoreOp::getOperationName())
+        return true;
+    }
+  }
+
+  return false;
+}
+
+// Returns true if the two kernels share any operand of type mo.buffer.
+static bool haveSharedBufferOperand(MOGG::ExpKernelOp lhs,
+                                    MOGG::ExpKernelOp rhs) {
+  for (Value lhsOperand : lhs.getInputs()) {
+    if (!isa<MO::BufferType>(lhsOperand.getType()))
+      continue;
+    for (Value rhsOperand : rhs.getInputs()) {
+      if (!isa<MO::BufferType>(rhsOperand.getType()))
+        continue;
+      if (lhsOperand == rhsOperand)
+        return true;
+    }
+  }
+  return false;
 }
 
 static bool checkMutableFusible(std::optional<Value> proInChain,
@@ -229,10 +265,10 @@ struct FuseProloguesEpilogues
           continue;
 
         // TODO(GEX-2213): Come up with more general mechanisms for when fusion
-        // with kernels handling mutable values is permissible. (This might be a
-        // redundant check and should be revisited later after fully migrating
-        // to the new codegen path).
-        if (containsMutableStore(src) && !containsMatmulOrConvOrConcat(dst))
+        // with kernels handling mutable values is permissible.
+        // If the src contains a mutable store and the two kernels share any
+        // mo.buffer operand, bail out of fusion.
+        if (containsMutableStore(src) && haveSharedBufferOperand(src, dst))
           continue;
 
         // Check chain compatibility if both kernels have input and output

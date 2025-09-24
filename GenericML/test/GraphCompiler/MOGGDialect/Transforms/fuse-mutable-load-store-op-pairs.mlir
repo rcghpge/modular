@@ -90,8 +90,8 @@ mo.graph @store_to_fuse_has_sibling(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo
 
 // CHECK-LABEL: mo.graph @load_matmul_add_store
 // CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: [[loaded_tensor:%.*]], [[ch1:%.*]] = mo.mutable.load({{.*}}, [[ch0]])
-// CHECK: [[ch2:%.*]] = mogg.kernel ({{.*}}[[loaded_tensor]], {{.*}}, [[ch1]])
+// CHECK: [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load(%arg0, [[ch0]])
+// CHECK: [[ch1:%.*]] = mogg.kernel ({{.*}}[[outChain]])
 // CHECK: summary = "mo.matmul:{{[0-9]+}}+mo.add:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
 mo.graph @load_matmul_add_store(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tensor<[4, 4], f32>, %arg2: !mo.tensor<[4, 4], f32>) -> !mo.buffer<[4, 4], f32> {
   %ch0 = mo.chain.create()
@@ -106,11 +106,11 @@ mo.graph @load_matmul_add_store(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tenso
 
 // CHECK-LABEL: mo.graph @load_matmul_store_twice
 // CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: [[loaded_tensor1:%.*]], [[ch1:%.*]] = mo.mutable.load({{.*}}, [[ch0]])
-// CHECK: [[ch2:%.*]] = mogg.kernel ({{.*}}[[loaded_tensor1]], {{.*}}, [[ch1]])
+// CHECK: [[outTensor1:%.*]], [[outChain1:%.*]] = mo.mutable.load(%arg0, [[ch0]])
+// CHECK: [[ch1:%.*]] = mogg.kernel ({{.*}}[[outChain1]])
 // CHECK: summary = "mo.matmul:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
-// CHECK: [[loaded_tensor2:%.*]], [[ch3:%.*]] = mo.mutable.load({{.*}}, [[ch2]])
-// CHECK: [[ch4:%.*]] = mogg.kernel ({{.*}}[[loaded_tensor2]], {{.*}}, [[ch3]])
+// CHECK: [[outTensor2:%.*]], [[outChain2:%.*]] = mo.mutable.load(%arg0, [[ch1]])
+// CHECK: [[ch2:%.*]] = mogg.kernel ({{.*}}[[outChain2]])
 // CHECK: summary = "mo.matmul:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
 mo.graph @load_matmul_store_twice(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tensor<[4, 4], f32>, %arg2: !mo.tensor<[4, 4], f32>) -> !mo.buffer<[4, 4], f32> {
   %ch0 = mo.chain.create()
@@ -126,4 +126,38 @@ mo.graph @load_matmul_store_twice(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.ten
   %ch4 = mo.mutable.store(%buf0, %2, %ch3) : (!mo.buffer<[4, 4], f32>, !mo.tensor<[4, 4], f32>, !mo.chain) -> (!mo.chain)
 
   mo.output %buf0 : !mo.buffer<[4, 4], f32>
+}
+
+// CHECK-LABEL: mo.graph @write_layer_norm_store_same_buffer
+// CHECK: [[ch0:%.*]] = mo.chain.create()
+// CHECK: [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load(%arg0, [[ch0]])
+// CHECK: [[ch1:%.*]] = mogg.kernel ({{.*}}[[outChain]])
+// CHECK: summary = "mo.layer_norm:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
+mo.graph @write_layer_norm_store_same_buffer(%buf: !mo.buffer<[3, 2], f32>, %gamma: !mo.tensor<[2], f32>, %beta: !mo.tensor<[2], f32>, %eps: !mo.tensor<[], f32>) -> !mo.buffer<[3, 2], f32>
+{
+  %ch0 = mo.chain.create()
+
+  %loaded_tensor, %ch1 = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[3, 2], f32>, !mo.chain) -> (!mo.tensor<[3, 2], f32>, !mo.chain)
+  %normalized = mo.layer_norm(%loaded_tensor, %gamma, %beta, %eps) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
+  %ch2 = mo.mutable.store(%buf, %normalized, %ch1) : (!mo.buffer<[3, 2], f32>, !mo.tensor<[3, 2], f32>, !mo.chain) -> !mo.chain
+
+  mo.output %buf : !mo.buffer<[3, 2], f32>
+}
+
+// CHECK-LABEL: mo.graph @write_layer_norm_store_different_buffers
+// CHECK: [[ch0:%.*]] = mo.chain.create()
+// CHECK: [[ch1:%.*]] = mo.chain.create([[ch2:%.*]], [[ch0]])
+// CHECK: [[ch2]] = mogg.kernel ({{.*}}[[ch1]])
+// CHECK: summary = "mo.mutable.load:{{[0-9]+}}+mo.layer_norm:{{[0-9]+}}+mo.mutable.store:{{[0-9]+}}"
+mo.graph @write_layer_norm_store_different_buffers(%src_buf: !mo.buffer<[3, 2], f32>, %dst_buf: !mo.buffer<[3, 2], f32>, %gamma: !mo.tensor<[2], f32>, %beta: !mo.tensor<[2], f32>, %eps: !mo.tensor<[], f32>) -> !mo.buffer<[3, 2], f32>
+{
+  %ch0 = mo.chain.create()
+
+  %loaded_tensor, %ch1 = mo.mutable.load(%src_buf, %ch0) : (!mo.buffer<[3, 2], f32>, !mo.chain) -> (!mo.tensor<[3, 2], f32>, !mo.chain)
+
+  %normalized = mo.layer_norm(%loaded_tensor, %gamma, %beta, %eps) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
+
+  %ch2 = mo.mutable.store(%dst_buf, %normalized, %ch1) : (!mo.buffer<[3, 2], f32>, !mo.tensor<[3, 2], f32>, !mo.chain) -> !mo.chain
+
+  mo.output %dst_buf : !mo.buffer<[3, 2], f32>
 }
