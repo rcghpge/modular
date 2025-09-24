@@ -33,6 +33,10 @@ protected:
 // Enabling peer access to self must fail on the active GPU backend.
 TEST_F(GPUDeviceTest, EnablePeerAccessSelfErrors) {
   ASSIGN_NO_ERR(DeviceRef, d0, Device::create(Device::gpuAPI, 0));
+  // Skip test for Metal
+  if (d0->api() == Device::metalAPI) {
+    GTEST_SKIP() << "Metal not supported";
+  }
   EXPECT_ERR_MSG(d0->enablePeerAccess(*d0), "Cannot enable peer access");
 }
 
