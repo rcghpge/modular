@@ -5060,54 +5060,6 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [
 }
 
 //===----------------------------------------------------------------------===//
-// FenceOp
-//===----------------------------------------------------------------------===//
-
-def MO_FenceOp : MO_DeviceAgnosticTensorOp<"fence", [
-  AllTypesMatch<["inputs", "results"]>,
-  Commutative,
-  InferTypeOpAdaptor,
-  MO_PreservedDuringKernelLowering,
-  Pure
-]> {
-  let summary = "Value-semantics fence (identity on values)";
-  let description = [{
-    Acts as an IR anchor to express readiness/scheduling boundaries while
-    being a pure identity on SSA values.
-    This operation takes a variadic number of !mo.tensor inputs and returns the
-    same number of results with identical types.
-    The purpose of the op is to ensure that any output of mo.fence is ready
-    only when _all_ inputs are ready.
-
-    During lowering, this operation is converted to mgp.guard which enforces
-    ordering via chain propagation without modifying the execute chain.
-
-    Relation between similar ops:
-    - mo.fence: barrier identity (prevents reordering across a set of values).
-    - mo.guard: value identity with explicit chain argument for ordering.
-
-    Example:
-
-    ```mlir
-    %x : !mo.tensor<[N], f32>
-    %y : !mo.tensor<[N], f32>
-    %x2, %y2 = mo.fence(%x, %y) : !mo.tensor<[N], f32>, !mo.tensor<[N], f32>
-    ```
-  }];
-
-  let arguments = (ins Variadic<MO_Tensor>:$inputs);
-  let results   = (outs Variadic<MO_Tensor>:$results);
-
-  let assemblyFormat = [{
-    `(` $inputs `)` attr-dict `:` type($inputs)
-  }];
-
-  let hasCanonicalizer = 1;
-  let hasFolder = 1;
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
 // Buffer ops
 //===----------------------------------------------------------------------===//
 

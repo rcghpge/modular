@@ -216,9 +216,6 @@ public:
   /// Lowers mo.guard op
   LogicalResult lowerGuard(MO::GuardOp guardOp);
 
-  /// Lowers mo.fence op
-  LogicalResult lowerFence(MO::FenceOp fenceOp);
-
   /// Lowers mo.chain.create op
   LogicalResult lowerChainCreate(MO::ChainCreateOp);
 
@@ -1514,39 +1511,6 @@ LogicalResult MOGraphLowering::lowerGuard(MO::GuardOp guardOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerFence(MO::FenceOp fenceOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, fenceOp);
-
-  // Merge any operand-guarding chains with the execute chain (root).
-  // The getGuardChain call transitively preserves data dependencies from
-  // operand guards, ensuring they are respected without explicit merging.
-  Value inChain =
-      opLoweringState.getGuardChain(loweringState.getExecuteChain());
-
-  // Collect lowered inputs for the guard.
-  SmallVector<Value> loweredInputs;
-  loweredInputs.reserve(fenceOp.getInputs().size());
-  for (Value val : fenceOp.getInputs()) {
-    Value loweredInput = loweringState.lookupExecuteLoweredValue(val);
-    loweredInputs.push_back(loweredInput);
-  }
-
-  // Emit an mgp.guard, which is an identity on the values but enforces
-  // ordering via the chain.
-  auto mgpGuardOp =
-      opLoweringState.create<MGP::GuardOp>(inChain, loweredInputs);
-
-  // Map results back 1:1 and propagate the guarding chain to the results.
-  for (auto &&[origRes, loweredRes] :
-       llvm::zip(fenceOp.getResults(), mgpGuardOp.getResults())) {
-    loweringState.emplaceExecuteLoweredValue(origRes, loweredRes);
-    loweringState.guardValueWithChain(loweredRes, inChain);
-  }
-
-  // Value-only op: do not modify current execute chain.
-  return success();
-}
-
 LogicalResult
 MOGraphLowering::lowerChainCreate(MO::ChainCreateOp chainCreateOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, chainCreateOp);
@@ -2174,13 +2138,6 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto listSliceOp = dyn_cast<MO::ListSliceOp>(op)) {
       if (failed(lowerListSlice(listSliceOp)))
-        return failure();
-      continue;
-    }
-
-    // Lowers mo.fence to mgp.guard (value-semantics identity with ordering)
-    if (auto fenceOp = dyn_cast<MO::FenceOp>(op)) {
-      if (failed(lowerFence(fenceOp)))
         return failure();
       continue;
     }

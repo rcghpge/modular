@@ -430,34 +430,6 @@ def CanonicalizeChainSequences : Pass<"canonicalize-chain-sequences", "GraphOp">
   }];
 }
 
-def FloatConsumersThroughFence : Pass<"float-consumers-through-fence", "GraphOp"> {
-  let summary = "Float operations through mo.fence to expand fusion opportunities.";
-  let description = [{
-    This pass moves operations that consume fence outputs to before the fence,
-    allowing them to operate on the fence's inputs instead. This enables better
-    fusion opportunities for distributed operations guarded by mo.fence.
-
-    Given:
-    ```mlir
-    %fence = mo.fence(%x)
-    %result = mo.negative(%fence)
-    ```
-
-    Transforms to:
-    ```mlir
-    %result = mo.negative(%x)
-    %fence = mo.fence(%result)
-    ```
-
-    The transformation is applied conservatively:
-    - Only moves operations with single-use fence outputs
-    - Does not move mo.transfer operations (for correctness)
-    - Does not move terminators or other fence operations
-    - Only moves pure operations
-    - Ensures all operands of moved operations are moveable to avoid cycles
-  }];
-}
-
 def HoistConstantSubgraphsIntoParent : Pass<"hoist-constant-subgraphs-into-parent", "ModuleOp"> {
   let summary = "Hoist constant and constant-derived subgraphs to the parent graph.";
   let description = [{
