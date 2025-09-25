@@ -175,6 +175,11 @@ public:
   ErrorOrSuccess enqueueMetalCopy(MTL::Buffer *src, MTL::Buffer *dst,
                                   size_t size) const;
 
+  static const MetalDeviceContext *verified_cast(const DeviceContext *ctx);
+  MTL::Device *metalDevice() const {
+    return MetalDevice::cast(device()).metalDevice();
+  }
+
 private:
   MTL::CommandQueue *commandQueue_;
   // Memory allocation

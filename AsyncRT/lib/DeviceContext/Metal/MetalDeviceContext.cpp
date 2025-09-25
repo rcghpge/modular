@@ -1132,6 +1132,13 @@ MetalDeviceContext::getResourceOptions(Device::AllocMode mode) const {
          static_cast<MTL::ResourceOptions>(cache);
 }
 
+const MetalDeviceContext *
+MetalDeviceContext::verified_cast(const DeviceContext *ctx) {
+  if (ctx->device().api() != MetalDevice::api)
+    return nullptr;
+  return static_cast<const MetalDeviceContext *>(ctx);
+}
+
 //
 //
 // ===== MetalDeviceEvent ===== //

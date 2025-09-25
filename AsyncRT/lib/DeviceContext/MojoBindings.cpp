@@ -14,6 +14,7 @@
 #include "AsyncRT/lib/DeviceContext/CUDA/CUDADriver.h"
 #include "AsyncRT/lib/DeviceContext/HIP/HIPDeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/HIP/HIPDriver.h"
+#include "AsyncRT/lib/DeviceContext/Metal/MetalDeviceContext.h"
 #include "Support/BinaryID.h"
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/Sequence.h"
@@ -652,6 +653,28 @@ AsyncRT_DeviceStream_hip_stream(hipStream_t *result,
   }
   *result = verifiedStream->hipStream();
   return nullptr;
+}
+
+//
+// Raw Metal accessors
+//
+namespace MTL {
+class Device;
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_metal_device(MTL::Device **result,
+                                   const DeviceContext *ctx) {
+#ifdef MODULAR_MACOS
+  const MetalDeviceContext *verifiedCtx =
+      MetalDeviceContext::verified_cast(ctx);
+  if (verifiedCtx == nullptr)
+    return strdup("Not a MetalContext");
+  *result = verifiedCtx->metalDevice();
+  return nullptr;
+#else
+  return strdup("Not a MetalContext");
+#endif
 }
 
 //
