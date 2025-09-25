@@ -1246,3 +1246,26 @@ struct KernelWithDefaultParameter:
         print("rank_derived_from_other =", rank_derived_from_other)
         print("rank_derived_from_derived =", rank_derived_from_derived)
         x.store(IndexList[1](0), Scalar[DType.int32](0))
+
+
+@compiler.register("unique-parameters")
+struct UniqueParameters:
+    @always_inline
+    @staticmethod
+    fn execute[
+        dtype: DType,
+        num_heads: Int,
+        head_dim: Int,
+        page_size: Int,
+        target: StaticString,
+    ](
+        blocks: InputTensor[dtype=dtype, rank=6],
+        cache_lengths: InputTensor[dtype = DType.uint32, rank=1],
+        lookup_table: InputTensor[dtype = DType.uint32, rank=2],
+        max_lengths: InputTensor[dtype = DType.uint32, rank=2],
+    ) -> MyCustomScalarRegTrivialSI32:
+        @parameter
+        if page_size:
+            return MyCustomScalarRegTrivialSI32(0)
+        else:
+            return MyCustomScalarRegTrivialSI32(1)
