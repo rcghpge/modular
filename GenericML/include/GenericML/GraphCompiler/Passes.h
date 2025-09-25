@@ -194,7 +194,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "enable-compute-lambdas",
       llvm::cl::desc("If true, the Graph Compiler will generate compute "
                      "lambdas when possible"),
-      llvm::cl::init(false)};
+      llvm::cl::init(true)};
   // This is currently only used with the torch backend since lowering models
   // with torch.compile doesn't support passing cl options to MLIR utilities
   Option<std::string> mlirTimingOutDir{
