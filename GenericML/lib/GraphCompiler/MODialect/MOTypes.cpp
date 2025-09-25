@@ -563,8 +563,6 @@ TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
       getDeviceRef(), getMetadata());
 }
 
-bool TensorType::isDynamicallyRanked() const { return !hasRank(); }
-
 bool TensorType::hasRank() const {
   // Rank is only known if we have a concrete attribute
   if (llvm::isa<KGEN::UnknownAttr, KGEN::ParamDeclRefAttr>(getShapeAttr()))

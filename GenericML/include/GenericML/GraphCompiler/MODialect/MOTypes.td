@@ -137,7 +137,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     TensorType cloneWithUnknownDims(int64_t rank) const;
 
     /// Checks if the tensor is statically ranked.
-    bool isDynamicallyRanked() const;
     bool hasRank() const;
 
     /// Get the rank of the tensor. Fails if not statically ranked.
@@ -209,14 +208,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     static TensorType getScalarType(Type elementType,
       DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {});
 
-    /// Short-hand to create a signed integer scalar tensor type.
-    template<unsigned int width>
-    static TensorType getScalarSIntType(MLIRContext *ctx,
-        DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {}) {
-      return getScalarType(
-        IntegerType::get(ctx, width, IntegerType::Signed), deviceRef, metadata);
-    }
-
     /// Short-hand to create a SI64 vector tensor type.
     static TensorType getVectorSI64Type(MLIRContext *ctx, int64_t size,
       DeviceRefAttr deviceRef = {}, DictionaryAttr metadata = {});
@@ -274,7 +265,7 @@ def MO_Scalar : MO_Type<"Scalar", "scalar"> {
 // MO_Buffer
 //===----------------------------------------------------------------------===//
 
-def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface, MO_ShapedTypeInterface, 
+def MO_Buffer : MO_Type<"Buffer", "buffer", [MO_HasDeviceTypeInterface, MO_ShapedTypeInterface,
   DeclareTypeInterfaceMethods<MO_ShapedTypeInterface>]> {
   let summary = "Mutable tensor type.";
   let description = [{
