@@ -11,19 +11,19 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from collections.string.string_slice import _to_string_list
 from pathlib import _dir_of_current_file
-from random import random_float64, random_si64, random_ui64, seed, rand
+from random import rand, random_float64, random_si64, random_ui64, seed
 
 from builtin.sort import (
+    _heap_sort,
+    _insertion_sort,
     _quicksort,
     _small_sort,
-    _insertion_sort,
     _stable_sort,
-    _heap_sort,
 )
-from collections.string.string_slice import _to_string_list
-from testing import assert_equal, assert_false, assert_true
 from test_utils import CopyCounter
+from testing import assert_equal, assert_false, assert_true
 
 
 fn random_numbers[
@@ -77,7 +77,7 @@ fn test_sort_small_3() raises:
     fn _less_than(lhs: Int, rhs: Int) -> Bool:
         return lhs < rhs
 
-    _small_sort[length, Int, _less_than](list.unsafe_ptr())
+    _small_sort[length, Int, _less_than](list)
 
     var expected = [1, 2, 9]
     for i in range(length):
@@ -99,7 +99,7 @@ fn test_sort_small_5() raises:
     fn _less_than(lhs: Int, rhs: Int) -> Bool:
         return lhs < rhs
 
-    _small_sort[length, Int, _less_than](list.unsafe_ptr())
+    _small_sort[length, Int, _less_than](list)
 
     var expected = [1, 2, 3, 4, 9]
     for i in range(length):

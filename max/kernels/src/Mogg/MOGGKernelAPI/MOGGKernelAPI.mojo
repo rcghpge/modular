@@ -24,6 +24,7 @@ from math import (
     exp,
     floor,
     fma,
+    gcd,
     iota,
     isqrt,
     log,
@@ -33,7 +34,7 @@ from math import (
     tanh,
 )
 from random import randn, seed
-from sys import external_call, llvm_intrinsic
+from sys import align_of, external_call, llvm_intrinsic
 from sys.info import simd_width_of, size_of
 from sys.intrinsics import _type_is_eq
 
@@ -50,9 +51,9 @@ from algorithm.reduction import _reduce_generator
 from buffer import NDBuffer
 from buffer.dimlist import Dim, DimList
 from builtin.simd import _pow
-from compiler_internal import StaticTensorSpec
 from comm.allgather import allgather
 from comm.allreduce import MAX_GPUS, Signal, allreduce
+from compiler_internal import StaticTensorSpec
 from gpu.host import DeviceContext
 from gpu.host.info import is_cpu, is_gpu, is_valid_target
 from kv_cache.types import (
@@ -60,19 +61,19 @@ from kv_cache.types import (
     KVCacheStaticParams,
     PagedKVCacheCollection,
 )
-from layout import IntTuple, UNKNOWN_VALUE
+from layout import UNKNOWN_VALUE, IntTuple
 from layout.layout_tensor import Layout, LayoutTensor, RuntimeLayout
 from linalg.bmm import batched_matmul, batched_matmul_shape
-from linalg.distributed_matmul import matmul_allreduce
 from linalg.bmm import (
     elementwise_epilogue_type as batched_matmul_elementwise_epilogue_type,
 )
+from linalg.distributed_matmul import matmul_allreduce
 from linalg.dual_gemm import swishGLU
 from linalg.fp8_quantization import (
+    convert_e4m3fn_to_e4m3fnuz,
     matmul_dynamic_scaled_fp8,
     quantize_dynamic_scaled_fp8,
     quantize_static_scaled_fp8,
-    convert_e4m3fn_to_e4m3fnuz,
 )
 from linalg.grouped_matmul import grouped_matmul, grouped_matmul_vendor
 from linalg.matmul import matmul
@@ -91,6 +92,7 @@ from nn.arange import arange_shape
 from nn.argmaxmin import argmax, argmin
 from nn.argmaxmin_gpu import argmax_gpu, argmin_gpu
 from nn.argsort import argsort
+from nn.bicubic import resize_bicubic
 from nn.concat import _concat_cpu, concat, fused_concat
 from nn.conv import ConvInfoStatic, conv_gpu, conv_nhwc_direct, conv_shape
 from nn.conv import pack_filter as _pack_conv_filter
@@ -160,11 +162,11 @@ from nn.kv_cache_ragged import (
     generic_fused_qkv_matmul_kv_cache_paged_ragged,
     generic_fused_qkv_matmul_kv_cache_paged_ragged_bias,
     generic_fused_qkv_matmul_kv_cache_paged_ragged_scale,
+    generic_kv_cache_radd_dispatch,
     k_matmul_ragged_paged,
+    kv_cache_store_ragged,
     kv_matmul_ragged_paged,
     unfused_qkv_matmul_ragged_paged_gguf_quantized,
-    generic_kv_cache_radd_dispatch,
-    kv_cache_store_ragged,
 )
 from nn.mha import flash_attention, flash_attention_ragged
 from nn.mha_mask import MHAMask
@@ -191,10 +193,8 @@ from nn.resize import (
     resize_linear,
     resize_nearest_neighbor,
 )
-from nn.rope import rope_ragged
-
-from nn.bicubic import resize_bicubic
 from nn.roi_align import roi_align_nhwc
+from nn.rope import rope_ragged
 from nn.sampling import apply_penalties_to_logits, update_frequency_data
 from nn.slice import (
     copy_to_slice,
@@ -205,10 +205,9 @@ from nn.slice import (
 from nn.softmax import logsoftmax, softmax
 from nn.split import split
 from nn.tile import tile, tile_shape
-from nn.topk import top_k
 from nn.topk import fused_token_sampling_cpu as _fused_token_sampling_cpu
-from nn.topk import top_k_shape_impl
 from nn.topk import fused_token_sampling_gpu as _fused_token_sampling_gpu
+from nn.topk import top_k, top_k_shape_impl
 from nn.toppminp import min_p_sampling as min_p_sampling_cpu
 from nn.toppminp_gpu import min_p_sampling_gpu
 from quantization import (
@@ -232,9 +231,13 @@ from quantization.qmatmul_k import (
     matmul_Q6_K_pack_b,
 )
 from runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
-from runtime.tracing import Trace, TraceLevel, trace_arg, get_safe_task_id
+from runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
 from tensor_internal import (
     DynamicTensor,
+    ElementwiseBinaryComparisonOp,
+    ElementwiseBinaryOp,
+    ElementwiseUnaryMixedOp,
+    ElementwiseUnaryOp,
     InputTensor,
     InputVariadicTensors,
     IOSpec,
@@ -244,18 +247,14 @@ from tensor_internal import (
     OutputVariadicTensors,
     VariadicTensors,
     _input_fusion_hook_impl,
+    _mixed_precision_compute_output_fusion_hook_impl,
     _mixed_precision_input_fusion_hook_impl,
     _mixed_precision_output_fusion_hook_impl,
-    _mixed_precision_compute_output_fusion_hook_impl,
     _output_fusion_hook_impl,
     foreach,
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
     view_copy_impl,
-    ElementwiseBinaryOp,
-    ElementwiseBinaryComparisonOp,
-    ElementwiseUnaryOp,
-    ElementwiseUnaryMixedOp,
 )
 from tensor_internal.io_spec import IO
 from tensor_internal.managed_tensor_slice import _FusedComputeOutputTensor
@@ -282,7 +281,6 @@ from tensor_internal.transitional import managed_tensor_slice_to_ndbuffer
 from utils import IndexList, StaticTuple
 from utils.index import Index
 from utils.numerics import isinf, isnan
-
 
 # ===-----------------------------------------------------------------------===#
 # Helpers
@@ -2178,11 +2176,44 @@ struct SliceDim:
         return tuple_to_dimlist(new_strides)
 
     @staticmethod
+    fn get_view_alignment[
+        rank: Int, dtype: DType
+    ](
+        input_strides: DimList,
+        axis: Int,
+        input_alignment: Int,
+        start: Dim,
+        step: Dim,
+    ) -> Int:
+        # Ignore the case where the step is unknown / negative.
+        if not step.has_value() or step.get() < 0:
+            return 1
+
+        if axis == rank - 1:
+            # Slicing the inner-most dimension
+            # We need to know the exact offset to compute the alignment
+            if not start.has_value():
+                return 1
+
+            var offset = start.get() * step.get() * align_of[dtype]()
+            # Check if the offset is aligned
+            return gcd(input_alignment, offset)
+
+        else:
+            # Check if the inner-most dimension is aligned
+            var stride = input_strides.at[rank - 1]()
+            if not stride.has_value():
+                return 1
+            var offset = stride.get() * align_of[dtype]()
+            return gcd(input_alignment, offset)
+
+    @staticmethod
     fn update_input_view[
         dtype: DType,
         rank: Int, //,
         output_static_shape: DimList,
         axis: Int,
+        static_start: DimList,
         static_step: DimList,
     ](
         input: InputTensor[dtype=dtype, rank=rank],
@@ -2193,9 +2224,16 @@ struct SliceDim:
             static_spec = input.static_spec.with_layout_and_alignment[rank](
                 output_static_shape,
                 Self.get_view_strides[rank, axis](
-                    input._static_strides, static_step.at[0]()
+                    input._static_strides,
+                    static_step.at[0](),
                 ),
-                1,
+                Self.get_view_alignment[rank, dtype](
+                    input._static_strides,
+                    axis,
+                    input.alignment,
+                    static_start.at[0](),
+                    static_step.at[0](),
+                ),
             )
         ],
     ):
@@ -2223,6 +2261,7 @@ struct SliceDim:
         dtype: DType,
         rank: Int,
         axis: Int,
+        static_start: DimList,
         static_step: DimList,
     ](
         output: OutputTensor[dtype=dtype, rank=rank],
@@ -2233,7 +2272,7 @@ struct SliceDim:
         ctx: DeviceContextPtr,
     ) raises:
         var view_tensor = Self.update_input_view[
-            output._static_shape, axis, static_step
+            output._static_shape, axis, static_start, static_step
         ](input, starts, stops, steps)
 
         view_copy_impl[
@@ -4347,8 +4386,6 @@ struct Concat:
         inputs: FusedInputVariadicTensors[dtype, rank, *_],
         ctx: DeviceContextPtr,
     ) capturing raises:
-        var output_buf = managed_tensor_slice_to_ndbuffer(output)
-
         var input_shapes = StaticTuple[IndexList[rank], inputs.size]()
 
         @parameter
@@ -4389,7 +4426,7 @@ struct Concat:
         ](
             normalize_neg_index(Int(axis), rank),
             input_shapes,
-            output_buf,
+            output.to_layout_tensor(),
             ctx,
         )
 
@@ -4464,21 +4501,28 @@ struct ConcatFromList:
         constrained[
             target == "cpu", "only cpu is supported for concat_from_list"
         ]()
-        var output_buf = managed_tensor_slice_to_ndbuffer(output)
+
+        alias inputs_layout = Layout.row_major[rank]()
 
         # TODO: convert underlying kernel to accept lists of ManagedTensorSlice
-        var input_as_ndbuffer = List[NDBuffer[dtype, rank, MutableAnyOrigin]](
-            capacity=len(inputs)
-        )
+        var input_as_layout_tensor = List[
+            LayoutTensor[dtype, inputs_layout, MutableAnyOrigin]
+        ](capacity=len(inputs))
         for i in range(len(inputs)):
-            input_as_ndbuffer.append(
-                managed_tensor_slice_to_ndbuffer(inputs[i])
+            var lt = inputs[i].to_layout_tensor()
+            input_as_layout_tensor.append(
+                LayoutTensor[dtype, inputs_layout, MutableAnyOrigin](
+                    lt.ptr,
+                    RuntimeLayout[inputs_layout].row_major(
+                        lt.runtime_layout.shape.value.canonicalize()
+                    ),
+                )
             )
 
-        _concat_cpu[rank, dtype, None, False](
-            output_buf,
+        _concat_cpu[dtype, None, False](
+            output.to_layout_tensor(),
             normalize_neg_index(Int(axis), rank),
-            input_as_ndbuffer,
+            input_as_layout_tensor,
         )
 
     @staticmethod
@@ -5416,11 +5460,11 @@ struct NoMaskFlashAttentionCPU:
             return SIMD[dtype, width](0)
 
         nn_flash_attention[k_input_fn, v_input_fn, mask_input_fn](
-            managed_tensor_slice_to_ndbuffer(q),
+            q.to_layout_tensor(),
             k.shape(),
             v.shape(),
             IndexList[0](),
-            managed_tensor_slice_to_ndbuffer(output),
+            output.to_layout_tensor(),
             scale.cast[DType.float32](),
         )
 
@@ -5493,13 +5537,13 @@ struct WithMaskFlashAttentionSplitKVCPU:
             v_cache_input_fn,
             mask_input_fn,
         ](
-            managed_tensor_slice_to_ndbuffer(q),
+            q.to_layout_tensor(),
             k.shape(),
             v.shape(),
             k_cache.shape(),
             v_cache.shape(),
             mask.shape(),
-            managed_tensor_slice_to_ndbuffer(output),
+            output.to_layout_tensor(),
             scale.cast[DType.float32](),
         )
 
@@ -5561,11 +5605,11 @@ struct WithMaskFlashAttentionCPU:
             )
 
         nn_flash_attention[k_input_fn, v_input_fn, mask_input_fn](
-            managed_tensor_slice_to_ndbuffer(q),
+            q.to_layout_tensor(),
             k.shape(),
             v.shape(),
             mask.shape(),
-            managed_tensor_slice_to_ndbuffer(output),
+            output.to_layout_tensor(),
             scale.cast[DType.float32](),
         )
 
@@ -6026,137 +6070,6 @@ struct QMatmulGPURepackGPTQ_b4_g128_desc_act:
 
 
 @always_inline
-fn generic_fused_qkv_matmul_kv_cache_cont_batch_ragged_kernel_api[
-    target: StaticString,
-    dtype: DType,
-](
-    output: ManagedTensorSlice[dtype=dtype, rank=2],
-    hidden_state: ManagedTensorSlice[dtype=dtype, rank=2],
-    input_row_offsets: ManagedTensorSlice[dtype = DType.uint32, rank=1],
-    weight: ManagedTensorSlice[dtype=dtype, rank=2],
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    layer_idx: UInt32,
-    ctx: DeviceContextPtr,
-) raises:
-    """Performs a fused QKV matmul. Q outputs are written to the output argument
-    while K and V outputs are written in-place into k_cache and v_cache.
-
-    Args:
-        output: The pre-allocated output buffer for Q projections. K and V
-            projections are written in-place to k_cache and v_cache.
-        hidden_state: Tensor with shape (batch_size, seq_len, num_heads * head_size).
-        input_row_offsets: Tensor with shape (batch_size + 1,).
-            The value at each index is the start_idx of the corresponding batch in hidden_state.
-        weight: Tensor with shape (num_heads * head_size, num_kv_heads * head_size).
-        kv_collection: The historical KVCache for keys and values. The KVCache for
-            this layer is retrieved via layer_idx.
-        layer_idx: The index of the layer being executed. Used to retrieve the KVCache
-            for the given layer from kv_collection.
-        ctx: The call context pointer, passed by the graph compiler.
-    """
-    generic_fused_qkv_matmul_kv_cache_cont_batch_ragged[target=target](
-        managed_tensor_slice_to_ndbuffer(hidden_state),
-        managed_tensor_slice_to_ndbuffer(input_row_offsets),
-        managed_tensor_slice_to_ndbuffer(weight),
-        kv_collection,
-        layer_idx,
-        managed_tensor_slice_to_ndbuffer(output),
-        ctx,
-    )
-
-
-@compiler.register("mo.fused_qkv_matmul.ragged.continuous_batching")
-struct Struct_fused_qkv_matmul_ragged_continuous_batching:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType, num_heads: Int, head_dim: Int, //, target: StaticString
-    ](
-        output: OutputTensor[dtype=dtype, rank=2],
-        hidden_state: InputTensor[dtype=dtype, rank=2],
-        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
-        weight: InputTensor[dtype=dtype, rank=2],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        layer_idx: UInt32,
-        ctx: DeviceContextPtr,
-    ) raises:
-        generic_fused_qkv_matmul_kv_cache_cont_batch_ragged_kernel_api[target](
-            output,
-            hidden_state,
-            input_row_offsets,
-            weight,
-            kv_collection,
-            layer_idx,
-            ctx,
-        )
-
-
-@always_inline
-fn generic_fused_qkv_matmul_kv_cache_bshd_continuous_batch_kernel_api[
-    target: StaticString,
-    dtype: DType,
-](
-    output: ManagedTensorSlice[dtype=dtype, rank=3],
-    hidden_state: ManagedTensorSlice[dtype=dtype, rank=3],
-    weight: ManagedTensorSlice[dtype=dtype, rank=2],
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    layer_idx: UInt32,
-    ctx: DeviceContextPtr,
-) raises:
-    """Performs a fused QKV matmul. Q outputs are written to the output argument
-    while K and V outputs are written in-place into k_cache and v_cache.
-
-    Args:
-        output: The pre-allocated output buffer for Q projections. K and V
-            projections are written in-place to k_cache and v_cache.
-        hidden_state: Tensor with shape (batch_size, seq_len, num_heads * head_size).
-        weight: Tensor with shape (num_heads * head_size, num_kv_heads * head_size).
-        kv_collection: The historical KVCache for keys and values. The KVCache for
-            this layer is retrieved via layer_idx.
-        layer_idx: The index of the layer being executed. Used to retrieve the KVCache
-            for the given layer from kv_collection.
-        ctx: The call context pointer, passed by the graph compiler.
-    """
-    generic_fused_qkv_matmul_kv_cache_bshd_continuous_batch[target=target](
-        managed_tensor_slice_to_ndbuffer(hidden_state),
-        managed_tensor_slice_to_ndbuffer(weight),
-        kv_collection,
-        layer_idx,
-        managed_tensor_slice_to_ndbuffer(output),
-        ctx,
-    )
-
-
-@compiler.register("mo.fused_qkv_matmul.padded.continuous_batching")
-struct Struct_fused_qkv_matmul_padded_continuous_batching:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType, num_heads: Int, head_dim: Int, //, target: StaticString
-    ](
-        output: OutputTensor[dtype=dtype, rank=3],
-        hidden_state: InputTensor[dtype=dtype, rank=3],
-        weight: InputTensor[dtype=dtype, rank=2],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        layer_idx: UInt32,
-        ctx: DeviceContextPtr,
-    ) raises:
-        generic_fused_qkv_matmul_kv_cache_bshd_continuous_batch_kernel_api[
-            target
-        ](output, hidden_state, weight, kv_collection, layer_idx, ctx)
-
-
-@always_inline
 fn generic_fused_qkv_matmul_kv_cache_paged_ragged_kernel_api[
     dtype: DType,
     weight_type: DType,
@@ -6448,211 +6361,8 @@ struct Struct_fused_qkv_matmul_padded_ragged_bias_quantized:
 
 
 # ===-----------------------------------------------------------------------===#
-# Fused QK RoPE
-
-# Expected kernel name format:
-# mo.fused_qk_rope.<padded/ragged>.<continuous_batching/paged>
-# ===-----------------------------------------------------------------------===#
-
-
-@always_inline
-fn generic_fused_qk_rope_bshd_continuous_batch_kernel_api[
-    dtype: DType, //,
-    *,
-    interleaved: Bool,
-    target: StaticString,
-](
-    output: ManagedTensorSlice[dtype=dtype, rank=4],
-    q_proj: ManagedTensorSlice[dtype=dtype, rank=4],
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    freqs_cis: ManagedTensorSlice[dtype=dtype, rank=2],
-    layer_idx: UInt32,
-    ctx: DeviceContextPtr,
-) raises:
-    """Performs a fused RoPE projection for Q and K projections.
-
-    We have a manually fused QKV projection with mo.opaque types in our Llama model.
-    Due to a limitation in custom op definitions, we can't declare both a tensor
-    and opaque type as output from a custom kernel. This requires us to only note
-    Q_proj as an output from the QKV projection. If we immediately follow the
-    QKV proj kernel with a RoPE kernel applied to K, we'll get a race condition
-    because the graph compiler doesn't know about the dependency between these
-    kernels in the graph definition. Here we fuse the RoPE kernel applied to
-    Q_proj with K_proj, so K_proj RoPE is only executed after QKV completes.
-    """
-    generic_fused_qk_rope_bshd_continuous_batch[
-        interleaved=interleaved, target=target
-    ](
-        managed_tensor_slice_to_ndbuffer(q_proj),
-        kv_collection,
-        managed_tensor_slice_to_ndbuffer(freqs_cis),
-        layer_idx,
-        managed_tensor_slice_to_ndbuffer(output),
-        ctx,
-    )
-
-
-@compiler.register("mo.fused_qk_rope.padded.continuous_batching")
-struct Struct_fused_qk_rope_padded_continuous_batching[interleaved: Bool]:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType, num_heads: Int, head_dim: Int, //, target: StaticString
-    ](
-        output: OutputTensor[dtype=dtype, rank=4],
-        q_proj: InputTensor[dtype=dtype, rank=4],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        freqs_cis: InputTensor[dtype=dtype, rank=2],
-        layer_idx: UInt32,
-        ctx: DeviceContextPtr,
-    ) raises:
-        generic_fused_qk_rope_bshd_continuous_batch_kernel_api[
-            interleaved=interleaved, target=target
-        ](
-            output,
-            q_proj,
-            kv_collection,
-            freqs_cis,
-            layer_idx,
-            ctx,
-        )
-
-
-# ===-----------------------------------------------------------------------===#
 # Fused QK Rope Ragged
 # ===-----------------------------------------------------------------------===#
-
-
-@always_inline
-fn generic_fused_qk_rope_bshd_continuous_batch_ragged_kernel_api[
-    dtype: DType,
-    freq_dtype: DType, //,
-    *,
-    interleaved: Bool,
-    has_position_ids: Bool,
-    target: StaticString,
-    mrope_section: Optional[IntTuple] = None,
-](
-    output: ManagedTensorSlice[dtype=dtype, rank=3],
-    q_proj: ManagedTensorSlice[dtype=dtype, rank=3],
-    input_row_offsets: ManagedTensorSlice[dtype = DType.uint32, rank=1],
-    kv_collection: ContinuousBatchingKVCacheCollection,
-    freqs_cis: ManagedTensorSlice[dtype=freq_dtype, rank=2],
-    position_ids: ManagedTensorSlice[dtype = DType.uint32, rank=2],
-    layer_idx: UInt32,
-    ctx: DeviceContextPtr,
-) raises:
-    generic_fused_qk_rope_bshd_continuous_batch_ragged[
-        interleaved=interleaved,
-        has_position_ids=has_position_ids,
-        target=target,
-        mrope_section=mrope_section,
-    ](
-        managed_tensor_slice_to_ndbuffer(q_proj),
-        managed_tensor_slice_to_ndbuffer(input_row_offsets),
-        kv_collection,
-        managed_tensor_slice_to_ndbuffer(freqs_cis),
-        managed_tensor_slice_to_ndbuffer(position_ids),
-        layer_idx,
-        managed_tensor_slice_to_ndbuffer(output),
-        ctx,
-    )
-
-
-@compiler.register(
-    "mo.fused_qk_rope.ragged.continuous_batching.with_position_id"
-)
-struct Struct_fused_qk_rope_bshd_continuous_batch_ragged_with_position_id[
-    interleaved: Bool
-]:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType,
-        freq_dtype: DType,
-        num_heads: Int,
-        head_dim: Int,
-        mrope_section: StaticString, //,
-        target: StaticString,
-    ](
-        output: OutputTensor[dtype=dtype, rank=3],
-        q_proj: InputTensor[dtype=dtype, rank=3],
-        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        freqs_cis: InputTensor[dtype=freq_dtype, rank=2],
-        position_ids: InputTensor[dtype = DType.uint32, rank=2],
-        layer_idx: UInt32,
-        ctx: DeviceContextPtr,
-    ) raises:
-        generic_fused_qk_rope_bshd_continuous_batch_ragged_kernel_api[
-            interleaved=interleaved,
-            has_position_ids=True,
-            target=target,
-            mrope_section = Optional[IntTuple](
-                _unsafe_str_to_int_tuple[mrope_section]()
-            ),
-        ](
-            output,
-            q_proj,
-            input_row_offsets,
-            kv_collection,
-            freqs_cis,
-            position_ids,
-            layer_idx,
-            ctx,
-        )
-
-
-@compiler.register("mo.fused_qk_rope.ragged.continuous_batching")
-struct Struct_fused_qk_rope_bshd_continuous_batch_ragged[interleaved: Bool]:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType,
-        freq_dtype: DType,
-        num_heads: Int,
-        head_dim: Int, //,
-        target: StaticString,
-    ](
-        output: OutputTensor[dtype=dtype, rank=3],
-        q_proj: InputTensor[dtype=dtype, rank=3],
-        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        freqs_cis: InputTensor[dtype=freq_dtype, rank=2],
-        layer_idx: UInt32,
-        ctx: DeviceContextPtr,
-    ) raises:
-        # Dummy position_ids - won't be used since has_position_ids=False
-        var dummy_position_ids = DynamicTensor[dtype = DType.uint32, rank=2](
-            UnsafePointer[UInt32](), IndexList[2](0)
-        )
-        generic_fused_qk_rope_bshd_continuous_batch_ragged_kernel_api[
-            interleaved=interleaved, has_position_ids=False, target=target
-        ](
-            output,
-            q_proj,
-            input_row_offsets,
-            kv_collection,
-            freqs_cis,
-            dummy_position_ids,
-            layer_idx,
-            ctx,
-        )
 
 
 @always_inline
@@ -6861,130 +6571,6 @@ struct Struct_rope_ragged_paged[interleaved: Bool]:
 # Expected kernel name format:
 # mo.mha.<padded/ragged>.<continuous_batching/paged>
 # ===-----------------------------------------------------------------------===#
-
-
-@compiler.register("mo.mha.padded.continuous_batching.tensor_mask")
-struct Struct_mha_padded_continuous_batching_tensor_mask:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType,
-        num_heads: Int,
-        head_dim: Int, //,
-        score_mod_str: StaticString,
-        target: StaticString,
-    ](
-        output: OutputTensor[dtype=dtype, rank=4],
-        q: InputTensor[dtype=dtype, rank=4],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        layer_idx: UInt32,
-        mask: InputTensor[dtype=dtype],
-        valid_lengths: InputTensor[dtype = DType.uint32, rank=1],
-        scale: Float32,
-        context: DeviceContextPtr,
-    ) raises:
-        generic_flash_attention_kv_cache_padded_materialized_mask[
-            target=target,
-            score_mod_str=score_mod_str,
-        ](
-            managed_tensor_slice_to_ndbuffer(q),
-            kv_collection,
-            layer_idx,
-            managed_tensor_slice_to_ndbuffer(mask),
-            valid_lengths,
-            scale,
-            managed_tensor_slice_to_ndbuffer(output),
-            context,
-        )
-
-
-@compiler.register("mo.mha.padded.continuous_batching")
-struct Struct_mha_padded_continuous_batching:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType,
-        num_heads: Int,
-        head_dim: Int, //,
-        mask_str: StaticString,
-        score_mod_str: StaticString,
-        target: StaticString,
-        local_window_size: Int = -1,
-    ](
-        output: OutputTensor[dtype=dtype, rank=4],
-        q: InputTensor[dtype=dtype, rank=4],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        layer_idx: UInt32,
-        valid_lengths: InputTensor[dtype = DType.uint32, rank=1],
-        scale: Float32,
-        context: DeviceContextPtr,
-    ) raises:
-        generic_flash_attention_kv_cache_padded[
-            target=target,
-            mask_str=mask_str,
-            score_mod_str=score_mod_str,
-            local_window_size=local_window_size,
-        ](
-            managed_tensor_slice_to_ndbuffer(q),
-            kv_collection,
-            layer_idx,
-            valid_lengths,
-            scale,
-            managed_tensor_slice_to_ndbuffer(output),
-            context,
-        )
-
-
-@compiler.register("mo.mha.ragged.continuous_batching")
-struct Struct_mha_ragged_continuous_batching:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType,
-        num_heads: Int,
-        head_dim: Int, //,
-        mask_str: StaticString,
-        score_mod_str: StaticString,
-        target: StaticString,
-        local_window_size: Int = -1,
-    ](
-        output: OutputTensor[dtype=dtype, rank=3],
-        q: InputTensor[dtype=dtype, rank=3],
-        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        layer_idx: UInt32,
-        scale: Float32,
-        context: DeviceContextPtr,
-    ) raises:
-        generic_flash_attention_kv_cache_ragged[
-            target=target,
-            mask_str=mask_str,
-            score_mod_str=score_mod_str,
-            local_window_size=local_window_size,
-        ](
-            managed_tensor_slice_to_ndbuffer(q),
-            input_row_offsets,
-            kv_collection,
-            layer_idx,
-            scale,
-            managed_tensor_slice_to_ndbuffer(output),
-            context,
-        )
 
 
 @compiler.register("mo.mha.ragged.paged")
@@ -7474,60 +7060,6 @@ struct Struct_grouped_matmul_ragged:
 
 
 # ===-----------------------------------------------------------------------===#
-# KV Collection Constructors (Ctor)
-#
-# Expected kernel name format:
-# mo.kv_collection_ctor.<continuous_batching/paged>
-# ===-----------------------------------------------------------------------===#
-
-
-@always_inline
-fn generic_get_continuous_cache_kernel_api[
-    dtype: DType,
-    kv_params: KVCacheStaticParams,
-](
-    blocks: ManagedTensorSlice[dtype=dtype, rank=6],
-    cache_lengths: ManagedTensorSlice[dtype = DType.uint32, rank=1],
-    lookup_table: ManagedTensorSlice[dtype = DType.uint32, rank=1],
-    max_lengths: ManagedTensorSlice[dtype = DType.uint32, rank=2],
-) -> ContinuousBatchingKVCacheCollection[
-    dtype,
-    kv_params,
-]:
-    return generic_get_continuous_cache[dtype, kv_params](
-        managed_tensor_slice_to_ndbuffer(blocks),
-        managed_tensor_slice_to_ndbuffer(cache_lengths),
-        managed_tensor_slice_to_ndbuffer(lookup_table),
-        managed_tensor_slice_to_ndbuffer(max_lengths),
-    )
-
-
-@compiler.register("mo.kv_collection_ctor.continuous_batching")
-struct Struct_kv_collection_ctor_continuous_batching:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType, num_heads: Int, head_dim: Int, target: StaticString
-    ](
-        blocks: InputTensor[dtype=dtype, rank=6],
-        cache_lengths: InputTensor[dtype = DType.uint32, rank=1],
-        lookup_table: InputTensor[dtype = DType.uint32, rank=1],
-        max_lengths: InputTensor[dtype = DType.uint32, rank=2],
-    ) -> ContinuousBatchingKVCacheCollection[
-        dtype,
-        KVCacheStaticParams(UInt(num_heads), UInt(head_dim)),
-    ]:
-        return generic_get_continuous_cache[
-            kv_params = KVCacheStaticParams(UInt(num_heads), UInt(head_dim))
-        ](
-            managed_tensor_slice_to_ndbuffer(blocks),
-            managed_tensor_slice_to_ndbuffer(cache_lengths),
-            managed_tensor_slice_to_ndbuffer(lookup_table),
-            managed_tensor_slice_to_ndbuffer(max_lengths),
-        )
-
-
-# ===-----------------------------------------------------------------------===#
 # KV Cache Store
 #
 # Expected kernel name format:
@@ -7885,48 +7417,6 @@ struct PackMatmulBShapeFunc:
 # ===-----------------------------------------------------------------------===#
 
 
-@compiler.register("mo.rms_norm_kv_cache.ragged.continuous_batching")
-struct Struct_rms_norm_kv_cache_ragged_continuous_batching:
-    @always_inline
-    @staticmethod
-    fn execute[
-        dtype: DType,
-        num_heads: Int,
-        head_dim: Int,
-        multiply_before_cast: Bool,
-        per_head_norm: Bool, //,
-        target: StaticString,
-    ](
-        kv_collection: ContinuousBatchingKVCacheCollection[
-            dtype,
-            KVCacheStaticParams(
-                num_heads=UInt(num_heads), head_size=UInt(head_dim)
-            ),
-        ],
-        gamma: InputTensor[dtype=dtype, rank=1],
-        epsilon: Scalar[dtype],
-        layer_idx: UInt32,
-        total_seq_len: UInt32,
-        input_row_offsets: InputTensor[dtype = DType.uint32, rank=1],
-        weight_offset: Scalar[dtype=dtype],
-        context: DeviceContextPtr,
-    ) raises:
-        rms_norm_kv_cache_ragged_continuous_batching[
-            target=target,
-            multiply_before_cast=multiply_before_cast,
-            per_head_norm=per_head_norm,
-        ](
-            kv_collection,
-            managed_tensor_slice_to_ndbuffer(gamma),
-            epsilon,
-            weight_offset,
-            layer_idx,
-            total_seq_len,
-            managed_tensor_slice_to_ndbuffer(input_row_offsets),
-            context,
-        )
-
-
 @compiler.register("mo.rms_norm_kv_cache.ragged.paged")
 struct Struct_rms_norm_kv_cache_ragged_paged:
     @always_inline
@@ -7977,34 +7467,6 @@ struct Struct_rms_norm_kv_cache_ragged_paged:
 # Expected kernel name format:
 # mo.print_kv_cache.paged
 # ===-----------------------------------------------------------------------===#
-
-
-fn print_kv_cache_cont_batch_generic_kernel_api[
-    dtype: DType, //, target: StaticString
-](
-    valid_lengths: InputTensor[dtype = DType.uint32, rank=1],
-    kv_collection: ContinuousBatchingKVCacheCollection[dtype, _],
-    layer_idx: UInt32,
-    is_print_compact: InputTensor[dtype = DType.bool, rank=1],
-    context: DeviceContextPtr,
-) raises:
-    @parameter
-    if is_gpu[target]():
-        print_kv_cache_cont_batch_generic_gpu[target](
-            managed_tensor_slice_to_ndbuffer(valid_lengths),
-            kv_collection,
-            layer_idx,
-            is_print_compact[0],
-            context,
-        )
-    elif is_cpu[target]():
-        print_kv_cache_cont_batch_generic_cpu[target](
-            managed_tensor_slice_to_ndbuffer(valid_lengths),
-            kv_collection,
-            layer_idx,
-            is_print_compact[0],
-            context,
-        )
 
 
 fn print_kv_cache_paged_generic_kernel_api[

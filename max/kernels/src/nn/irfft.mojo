@@ -12,8 +12,10 @@
 # ===----------------------------------------------------------------------=== #
 """Inverse real FFT kernel using cuFFT."""
 
-from complex import ComplexFloat32
-from gpu._cufft.cufft import (
+from sys.ffi import external_call
+from sys.intrinsics import _unsafe_aliasing_address_to_pointer
+
+from _cufft.cufft import (
     cufftCreate,
     cufftEstimate1d,
     cufftExecC2R,
@@ -24,14 +26,12 @@ from gpu._cufft.cufft import (
     cufftSetStream,
     cufftSetWorkArea,
 )
-from gpu._cufft.types import Type
-from gpu._cufft.utils import check_error
+from _cufft.types import Type
+from _cufft.utils import check_error
+from complex import ComplexFloat32
 from gpu.host import DeviceContext
 from gpu.host._nvidia_cuda import CUDA
 from layout import LayoutTensor
-
-from sys.ffi import external_call
-from sys.intrinsics import _unsafe_aliasing_address_to_pointer
 
 
 # This should eventually be moved to ffi.mojo with a more general global cache method

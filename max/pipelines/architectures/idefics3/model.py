@@ -35,8 +35,8 @@ from max.graph.weights import (
 from max.nn import ReturnLogits
 from max.nn.kv_cache import (
     KVCacheInputs,
-    KVCacheManager,
     KVCacheParams,
+    PagedKVCacheManager,
     estimate_kv_cache_size,
     load_kv_manager,
 )
@@ -240,9 +240,7 @@ class Idefics3Inputs(ModelInputs):
         return self.pixel_values is not None
 
 
-class Idefics3Model(
-    PipelineModel[TextAndVisionContext], KVCacheMixin[TextAndVisionContext]
-):
+class Idefics3Model(PipelineModel[TextAndVisionContext], KVCacheMixin):
     """An Idefics3 pipeline model for multimodal text generation."""
 
     vision_model: Model
@@ -807,8 +805,8 @@ class Idefics3Model(
 
     def load_kv_manager(
         self, session: InferenceSession, available_cache_memory: int | None
-    ) -> KVCacheManager[TextAndVisionContext]:
-        """Loads and initializes the KVCacheManager for the Idefics3 model."""
+    ) -> PagedKVCacheManager:
+        """Loads and initializes the PagedKVCacheManager for the Idefics3 model."""
         return load_kv_manager(
             params=Idefics3Config.get_kv_params(
                 huggingface_config=self.huggingface_config,

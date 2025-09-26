@@ -22,8 +22,8 @@ from utils import IndexList
 
 from hashlib.hasher import Hasher
 
-from builtin.dtype import _int_type_of_width, _uint_type_of_width
 from builtin.device_passable import DevicePassable
+from builtin.dtype import _int_type_of_width, _uint_type_of_width
 
 from .static_tuple import StaticTuple
 
@@ -201,20 +201,6 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
             element_type.is_integral(), "Element type must be of integral type."
         ]()
         self.data = data
-
-    @doc_private
-    @always_inline
-    fn __init__(out self, value: __mlir_type.index):
-        """Constructs a sized 1 static int tuple of given the element value.
-
-        Args:
-            value: The initial value.
-        """
-        constrained[size == 1]()
-        constrained[
-            element_type.is_integral(), "Element type must be of integral type."
-        ]()
-        self = Int(mlir_value=value)
 
     @always_inline
     @implicit

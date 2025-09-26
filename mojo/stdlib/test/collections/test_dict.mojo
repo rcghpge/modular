@@ -12,9 +12,9 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections.dict import OwnedKwargsDict
-
-from test_utils import CopyCounter
 from hashlib import Hasher, default_comp_time_hasher
+
+from test_utils import CopyCounter, TestSuite
 from testing import assert_equal, assert_false, assert_raises, assert_true
 
 
@@ -275,20 +275,33 @@ def test_iter_items():
 
 
 def test_iter_take_items():
-    var dict: Dict[String, Int] = {}
-    dict["a"] = 1
-    dict["b"] = 2
+    var dict: Dict[Int, String] = {0: "a", 1: "b", 2: "c"}
 
-    var keys = String()
-    var sum = 0
+    var values = String()
+    var keys = 0
+
     for entry in dict.take_items():
         keys += entry.key
-        sum += entry.value
+        values += entry.value
 
-    assert_equal(keys, "ab")
-    assert_equal(sum, 3)
+    assert_equal(values, "abc")
+    assert_equal(keys, 3)
     assert_equal(len(dict), 0)
     assert_false(dict.take_items().__has_next__())
+
+    for i in range(3):
+        with assert_raises(contains="KeyError"):
+            _ = dict[i]
+
+
+def test_iter_take_items_empty():
+    var dict: Dict[Int, String] = {}
+
+    var count = 0
+    for _ in dict.take_items():
+        count += 1
+    assert_equal(len(dict), 0)
+    assert_equal(count, 0)
 
 
 def test_dict_contains():
@@ -526,6 +539,8 @@ def test_dict():
     test["test_mojo_issue_1729", test_mojo_issue_1729]()
     test["test dict or", test_dict_or]()
     test["test dict popitem", test_dict_popitem]()
+    test["test_iter_take_items", test_iter_take_items]()
+    test["test_iter_take_items_empty", test_iter_take_items_empty]()
 
 
 def test_taking_owned_kwargs_dict(var kwargs: OwnedKwargsDict[Int]):
@@ -739,20 +754,24 @@ def test_popitem_no_copies():
 
 
 def main():
-    test_dict()
-    test_dict_literals()
-    test_dict_fromkeys()
-    test_dict_fromkeys_optional()
-    test_dict_string_representation_string_int()
-    test_dict_string_representation_int_int()
-    test_owned_kwargs_dict()
-    test_bool_conversion()
-    test_find_get()
-    test_pop_string_values()
-    test_clear()
-    test_init_initial_capacity()
-    test_dict_setdefault()
-    test_compile_time_dict()
-    test_dict_comprehension()
-    test_dict_repr_wrap()
-    test_popitem_no_copies()
+    var suite = TestSuite()
+
+    suite.test[test_dict]()
+    suite.test[test_dict_literals]()
+    suite.test[test_dict_fromkeys]()
+    suite.test[test_dict_fromkeys_optional]()
+    suite.test[test_dict_string_representation_string_int]()
+    suite.test[test_dict_string_representation_int_int]()
+    suite.test[test_owned_kwargs_dict]()
+    suite.test[test_bool_conversion]()
+    suite.test[test_find_get]()
+    suite.test[test_pop_string_values]()
+    suite.test[test_clear]()
+    suite.test[test_init_initial_capacity]()
+    suite.test[test_dict_setdefault]()
+    suite.test[test_compile_time_dict]()
+    suite.test[test_dict_comprehension]()
+    suite.test[test_dict_repr_wrap]()
+    suite.test[test_popitem_no_copies]()
+
+    suite^.run()

@@ -41,10 +41,8 @@ from max.nn import LinearV1, ReturnLogits
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheInputSymbols,
-    KVCacheManager,
     KVCacheParams,
     KVCacheStrategy,
-    PaddedKVCacheInputs,
     PagedKVCacheManager,
     RaggedKVCacheInputs,
     build_max_lengths_tensor,
@@ -52,6 +50,7 @@ from max.nn.kv_cache import (
     infer_optimal_batch_size,
     load_kv_manager,
 )
+from max.nn.kv_cache.paged_cache.paged_cache import PagedCacheInputSymbols
 from max.nn.layer import Layer
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
@@ -88,7 +87,7 @@ class MultimodalKVCacheInputs(KVCacheInputs):
     vision_kv_cache_inputs: KVCacheInputs
 
 
-class MultimodalKVCacheManager(KVCacheManager[InputContext]):
+class MultimodalKVCacheManager(PagedKVCacheManager):
     """A lightweight wrapper around text and vision KV managers.
 
     Note on runtime and graph build time return types:
@@ -103,10 +102,10 @@ class MultimodalKVCacheManager(KVCacheManager[InputContext]):
       extensible KVCacheInput type.
     """
 
-    text_kv_manager: PagedKVCacheManager[InputContext]
+    text_kv_manager: PagedKVCacheManager
     """KV cache manager for text inputs."""
 
-    vision_kv_manager: PagedKVCacheManager[InputContext]
+    vision_kv_manager: PagedKVCacheManager
     """KV cache manager for image inputs."""
 
     def __init__(
@@ -178,17 +177,8 @@ class MultimodalKVCacheManager(KVCacheManager[InputContext]):
             page_size=page_size,
         )
 
-        # Call superclass after initializing modality KV managers since the
-        # superclass ctor calls methods that use the modality KV managers.
-        super().__init__(
-            params,
-            max_batch_size,
-            text_max_seq_len,
-            text_num_layers,
-            devices,
-            session,
-            is_ragged=True,
-        )
+        # Store language kvcache attributes.
+        self.text_kv_params = params
 
     @classmethod
     @final
@@ -275,7 +265,7 @@ class MultimodalKVCacheManager(KVCacheManager[InputContext]):
     @final
     def fetch(
         self, batch: Sequence[InputContext], num_steps: int = 1
-    ) -> Sequence[KVCacheInputs]:
+    ) -> Sequence[RaggedKVCacheInputs]:
         """Returns KV cache inputs for both modalities' KV managers."""
         # Here we call into the text KV manager's fetch method to update
         # its fetch metadata.
@@ -344,7 +334,7 @@ class MultimodalKVCacheManager(KVCacheManager[InputContext]):
         multimodal_kv_inputs = [
             MultimodalKVCacheInputs(text_fetch_results, vision_fetch_results)
         ]
-        return multimodal_kv_inputs
+        return cast(Sequence[RaggedKVCacheInputs], multimodal_kv_inputs)
 
     @final
     def input_symbols(
@@ -360,8 +350,12 @@ class MultimodalKVCacheManager(KVCacheManager[InputContext]):
         del devices, num_layers  # Unused.
 
         # Get input symbols from both managers
-        text_symbols = self.text_kv_manager.input_symbols()[0]
-        vision_symbols = self.vision_kv_manager.input_symbols()[0]
+        text_symbols = cast(
+            PagedCacheInputSymbols, self.text_kv_manager.input_symbols()[0]
+        )
+        vision_symbols = cast(
+            PagedCacheInputSymbols, self.vision_kv_manager.input_symbols()[0]
+        )
 
         # Rename conflicting symbolic dimensions in text symbols
         text_symbols.kv_blocks.shape[0] = SymbolicDim("text_total_num_pages")
@@ -391,22 +385,15 @@ class MultimodalKVCacheManager(KVCacheManager[InputContext]):
         # Step the text KV manager as usual for autoregressive text generation.
         self.text_kv_manager.step(batch)
 
-        # Keep the base class's state in sync with the text KV manager's.
-        super().step(batch)
-
     def external_claim(self, request_id: RequestID) -> None:
         """Reserves sequence IDs for the given request ID in both modalities' KV caches."""
         self.text_kv_manager.external_claim(request_id)
         self.vision_kv_manager.external_claim(request_id)
 
-        # Keep the base class's state in sync with the text KV manager's.
-        super().external_claim(request_id)
-
     def release(self, request_id: RequestID) -> None:
         """Marks the sequence complete for both modalities' KV caches."""
         self.text_kv_manager.release(request_id)
         self.vision_kv_manager.release(request_id)
-        super().release(request_id)
 
     def contains(self, request_id: RequestID) -> bool:
         """Returns whether `request_id` is in the KV cache."""
@@ -426,9 +413,9 @@ class MultimodalKVCacheManager(KVCacheManager[InputContext]):
 
     def increment_cache_lengths(
         self,
-        kv_cache_inputs: list[RaggedKVCacheInputs] | list[PaddedKVCacheInputs],
+        kv_cache_inputs: list[RaggedKVCacheInputs],
         prev_model_inputs: Iterable[Any],
-    ) -> list[RaggedKVCacheInputs] | list[PaddedKVCacheInputs]:
+    ) -> list[RaggedKVCacheInputs]:
         """Updates the cache lengths for multistep execution.
 
         This increments the text and vision KV cache lengths separately using
@@ -885,7 +872,7 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
         ]
         self.language_graph_input_size = len(input_types)
 
-        kv_params = self.kv_manager.params
+        kv_params = self.kv_manager.text_kv_params
         vision_kv_params = self.kv_manager.vision_kv_params
 
         return Graph(
@@ -1165,7 +1152,7 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
         self,
         session: InferenceSession,
         available_cache_memory: int,
-    ) -> KVCacheManager[InputContext]:
+    ) -> PagedKVCacheManager:
         """Loads KV cache management objects for Llama vision.
 
         Args:

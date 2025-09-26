@@ -41,8 +41,8 @@ Supported Data Types:
 
 Supported Matrix Shapes:
 ----------------------
-- NVIDIA: 16×8×8, 16×8×4, 16×8×16, 8×8×4, 16×8×32
-- AMD: 16×16×4, 16×16×16, 32×32×8
+- NVIDIA: 16x8x8, 16x8x4, 16x8x16, 8x8x4, 16x8x32
+- AMD: 16x16x4, 16x16x16, 32x32x8
 """
 
 from collections import OptionalReg
@@ -57,7 +57,7 @@ from sys import (
 from gpu import WARP_SIZE, lane_id, thread_idx
 from gpu.intrinsics import lop
 from gpu.memory import AddressSpace
-from gpu.mma import ld_matrix, mma, get_amd_fp8_dtype, get_amd_bf8_dtype
+from gpu.mma import get_amd_bf8_dtype, get_amd_fp8_dtype, ld_matrix, mma
 from layout._utils import load_to_simd
 from layout.int_tuple import product
 from layout.layout import Layout
@@ -156,18 +156,18 @@ struct TensorCore[
         out_type: The data type for output/accumulation operations.
         in_type: The data type for input matrix elements.
         shape: The shape parameters for the matrix operation in the form [M, N, K]
-               where M×N is the output shape and K is the inner dimension.
+               where MxN is the output shape and K is the inner dimension.
         transpose_b: Whether to transpose the B matrix before multiplication. Defaults to False.
 
     Note:
         Different shapes and data types are supported depending on the GPU hardware.
         For NVIDIA GPUs:
-          - float32: 16×8×8 or 16×8×4
-          - half-precision: 16×8×16
-          - float8: 16×8×32
+          - float32: 16x8x8 or 16x8x4
+          - half-precision: 16x8x16
+          - float8: 16x8x32
         For AMD GPUs:
-          - float32: 16×16×4
-          - half-precision: 16×16×16 or 32×32×8
+          - float32: 16x16x4
+          - half-precision: 16x16x16 or 32x32x8
     """
 
     # Layout reference => https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm80.hpp#L44.
@@ -215,15 +215,15 @@ struct TensorCore[
         pass
 
     @staticmethod
-    fn get_shapes[out_type: DType, in_type: DType]() -> List[IndexList[3]]:
+    fn get_shapes[_out_type: DType, _in_type: DType]() -> List[IndexList[3]]:
         """
         Get supported shapes for given data types.
 
         Returns a list of valid shapes for the specified output and input data types.
 
         Parameters:
-            out_type: The output/accumulation data type.
-            in_type: The input matrix data type.
+            _out_type: The output/accumulation data type.
+            _in_type: The input matrix data type.
 
         Returns:
             List[IndexList[3]]: Valid shapes for the matrix operations given the specified types.
@@ -234,14 +234,14 @@ struct TensorCore[
         """
 
         @parameter
-        if out_type is DType.float32 and in_type is DType.float32:
+        if _out_type is DType.float32 and _in_type is DType.float32:
             return List[IndexList[3]](shape_16x8x4, shape_16x8x8)
-        elif out_type is DType.float32 and in_type is DType.bfloat16:
+        elif _out_type is DType.float32 and _in_type is DType.bfloat16:
             return List[IndexList[3]](shape_16x8x8, shape_16x8x16)
-        elif out_type is DType.float32 and in_type is DType.float16:
+        elif _out_type is DType.float32 and _in_type is DType.float16:
             return List[IndexList[3]](shape_16x8x8, shape_8x8x4)
-        elif out_type is DType.float32 and (
-            in_type is DType.float8_e4m3fn or in_type is DType.float8_e5m2
+        elif _out_type is DType.float32 and (
+            _in_type is DType.float8_e4m3fn or _in_type is DType.float8_e5m2
         ):
             return List[IndexList[3]](shape_16x8x32)
         else:
@@ -1339,7 +1339,7 @@ fn get_mma_shape[
 
     Returns:
         An `IndexList[3]` containing the MMA dimensions in the format `[M, N, K]`,
-        where `M×N` is the output matrix size and `K` is the reduction dimension.
+        where `MxN` is the output matrix size and `K` is the reduction dimension.
     """
 
     @parameter

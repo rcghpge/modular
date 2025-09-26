@@ -184,9 +184,9 @@ fn make_layout(*layouts: Layout) -> Layout:
     """
     var shape = IntTuple()
     var stride = IntTuple()
-    for i in range(len(layouts)):
-        shape.append(layouts[i].shape)
-        stride.append(layouts[i].stride)
+    for layout in layouts:
+        shape.append(layout.shape)
+        stride.append(layout.stride)
     return Layout(shape, stride)
 
 
@@ -353,14 +353,14 @@ struct Layout(
     """The dimensions of the layout.
 
     This field defines the size of each dimension in the logical coordinate space.
-    For example, a shape of (3, 4) represents a 3×4 grid of elements.
+    For example, a shape of (3, 4) represents a 3x4 grid of elements.
     """
 
     var stride: IntTuple
     """The memory step sizes for each dimension.
 
     This field defines how many elements to skip in memory when moving one unit
-    in each dimension. For example, in a row-major 3×4 layout, the strides might
+    in each dimension. For example, in a row-major 3x4 layout, the strides might
     be (4, 1), meaning moving one unit in the first dimension requires skipping
     4 elements in memory, while moving one unit in the second dimension requires
     skipping 1 element.
@@ -1281,8 +1281,8 @@ fn composition(layout_a: Layout, tiler: LayoutList) -> Layout:
     ```
     """
     var result = Layout()
-    for i in range(len(tiler)):
-        result.append(composition(layout_a[i], tiler[i]))
+    for layout_item, tiler_item in zip(layout_a, tiler):
+        result.append(composition(layout_item, tiler_item))
 
     # Remainder if tiler is shorter.
     for i in range(len(tiler), len(layout_a)):

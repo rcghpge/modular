@@ -10,13 +10,20 @@ modular_py_test(
         ["**/*.py"],
         exclude = _MULTI_VERSION_TEST_SRCS,
     ),
-    data = ["//SDK/lib/API/python/tests/graph/testdata"],
-    env = {"TESTDATA_DIRECTORY": "SDK/lib/API/python/tests/graph/testdata"},
+    data = [
+        "//SDK/integration-test:test_user_op",
+        "//SDK/lib/API/python/tests/graph/testdata",
+    ],
+    env = {
+        "CUSTOM_OPS_PATH": "$(rootpath //SDK/integration-test:test_user_op)",
+        "MODULAR_PATH": ".",
+        "TESTDATA_DIRECTORY": "SDK/lib/API/python/tests/graph/testdata",
+    },
     imports = ["."],
-    target_compatible_with = select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),  # FIXME: MOCO-2411
+    mojo_deps = [
+        "//SDK/integration-test:test_user_op",
+        "@mojo//:stdlib",
+    ],
     deps = [
         "//SDK/lib/API/python/max/dtype",
         "//SDK/lib/API/python/max/engine",

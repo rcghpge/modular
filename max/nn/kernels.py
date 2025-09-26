@@ -22,6 +22,7 @@ from max.driver import accelerator_architecture_name
 from max.dtype import DType
 from max.graph import (
     BufferValue,
+    BufferValueLike,
     DeviceRef,
     Dim,
     TensorType,
@@ -1726,7 +1727,7 @@ def moe_create_indices(
         num_local_experts: The number of experts on this device.
 
     Returns:
-        A tuple of four tensors:
+        A tuple of five tensors:
         - token_expert_order: The reordered token indices, grouped by assigned expert.
         - expert_start_indices: The starting index for each expert's token group in
             the reordered sequence.
@@ -2388,13 +2389,15 @@ def update_frequency_data(
 
 
 def scatter_set_constant(
-    data: BufferValue,
-    indices: TensorValue,
+    data: BufferValueLike,
+    indices: TensorValueLike,
     fill_val: float,
 ) -> None:
     """
     Scatters values into a tensor at specified indices.
     """
+    data = BufferValue(data)
+    indices = TensorValue(indices)
 
     if data.rank != 2:
         raise ValueError(

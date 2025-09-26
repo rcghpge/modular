@@ -37,9 +37,7 @@ from fastapi.responses import JSONResponse, Response
 from httpx import AsyncClient
 from max.interfaces import (
     AudioGenerationRequest,
-    AudioGeneratorContext,
     GenerationStatus,
-    InputContext,
     LoRAOperation,
     LoRARequest,
     LoRAStatus,
@@ -52,6 +50,7 @@ from max.interfaces import (
     TextGenerationRequestTool,
     TextGenerationResponseFormat,
 )
+from max.pipelines.core.exceptions import InputError
 from max.profiler import Tracer, traced
 from max.serve.config import Settings
 from max.serve.parser import LlamaToolParser, parse_json_from_text
@@ -169,11 +168,11 @@ class OpenAIResponseGenerator(ABC, Generic[_T]):
 
 async def get_pipeline(
     request: Request, model_name: str
-) -> TokenGeneratorPipeline | AudioGeneratorPipeline[AudioGeneratorContext]:
+) -> TokenGeneratorPipeline | AudioGeneratorPipeline:
     app_state: State = request.app.state
-    pipeline: (
-        TokenGeneratorPipeline | AudioGeneratorPipeline[AudioGeneratorContext]
-    ) = app_state.pipeline
+    pipeline: TokenGeneratorPipeline | AudioGeneratorPipeline = (
+        app_state.pipeline
+    )
 
     models = [pipeline.model_name]
 
@@ -307,8 +306,20 @@ class OpenAIChatResponseGenerator(
         except Exception as e:
             # Note that for SSE, the server will have already responded with a
             # 200 when establishing the connection.
-            status_code = 400 if isinstance(e, ValueError) else 500
-            logger.exception("Exception in request %s", request.request_id)
+            if isinstance(e, InputError):
+                status_code = 400
+                logger.warning(
+                    "Input validation error in request %s: %s",
+                    request.request_id,
+                    str(e),
+                )
+            elif isinstance(e, ValueError):
+                status_code = 400
+                logger.exception("Exception in request %s", request.request_id)
+            else:
+                status_code = 500
+                logger.exception("Exception in request %s", request.request_id)
+
             error_response = ErrorResponse(
                 error=Error(
                     code=str(status_code), message=str(e), param="", type=""
@@ -512,9 +523,7 @@ class OpenAIEmbeddingsResponseGenerator:
 
 
 class OpenAISpeechResponseGenerator:
-    def __init__(
-        self, pipeline: AudioGeneratorPipeline[AudioGeneratorContext]
-    ) -> None:
+    def __init__(self, pipeline: AudioGeneratorPipeline) -> None:
         self.logger = logging.getLogger(
             "max.serve.router.OpenAISpeechResponseGenerator"
         )
@@ -720,7 +729,7 @@ async def openai_create_chat_completion(
             request_json
         )
         pipeline: (
-            TokenGeneratorPipeline | AudioGeneratorPipeline[InputContext]
+            TokenGeneratorPipeline | AudioGeneratorPipeline
         ) = await get_pipeline(request, completion_request.model)
         assert isinstance(pipeline, TokenGeneratorPipeline)
 
@@ -803,7 +812,7 @@ async def openai_create_chat_completion(
             # We set a large timeout for ping otherwise benchmarking scripts
             # such as sglang will fail in parsing the ping message.
             return EventSourceResponse(
-                response_generator.stream(token_request), ping=100000
+                response_generator.stream(token_request), ping=100000, sep="\n"
             )
 
         response = await response_generator.complete([token_request])
@@ -814,6 +823,11 @@ async def openai_create_chat_completion(
     except (TypeError, ValidationError) as e:
         logger.exception("TypeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except InputError as e:
+        logger.warning(
+            "Input validation error in request %s: %s", request_id, str(e)
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         logger.exception("ValueError in request %s", request_id)
         # NOTE(SI-722): These errors need to return more helpful details,
@@ -893,7 +907,7 @@ async def openai_create_embeddings(
             request_json = await request.json()
         embeddings_request = CreateEmbeddingRequest.model_validate(request_json)
         pipeline: (
-            TokenGeneratorPipeline | AudioGeneratorPipeline[InputContext]
+            TokenGeneratorPipeline | AudioGeneratorPipeline
         ) = await get_pipeline(request, embeddings_request.model)
         assert isinstance(pipeline, TokenGeneratorPipeline)
 
@@ -936,6 +950,11 @@ async def openai_create_embeddings(
     except (TypeError, ValidationError) as e:
         logger.exception("TypeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except InputError as e:
+        logger.warning(
+            "Input validation error in request %s: %s", request_id, str(e)
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         logger.exception("ValueError in request %s", request_id)
         # NOTE(SI-722): These errors need to return more helpful details,
@@ -1046,6 +1065,17 @@ class OpenAICompletionResponseGenerator(
                 status_code=status_code,
                 content={"detail": "Too Many Requests"},
                 headers={"Retry-After": "30"},
+            )
+        except InputError as e:
+            status_code = 400
+            logger.warning(
+                "Input validation error in request %s: %s",
+                request.request_id,
+                str(e),
+            )
+            yield JSONResponse(
+                status_code=status_code,
+                content={"detail": "Input validation error", "message": str(e)},
             )
         except ValueError as e:
             status_code = 500
@@ -1204,7 +1234,7 @@ async def openai_create_completion(
             ) / 1e6
 
         pipeline: (
-            TokenGeneratorPipeline | AudioGeneratorPipeline[InputContext]
+            TokenGeneratorPipeline | AudioGeneratorPipeline
         ) = await get_pipeline(request, completion_request.model)
         assert isinstance(pipeline, TokenGeneratorPipeline)
 
@@ -1266,7 +1296,9 @@ async def openai_create_completion(
             # We set a large timeout for ping otherwise benchmarking scripts
             # such as sglang will fail in parsing the ping message.
             return EventSourceResponse(
-                response_generator.stream(token_requests[0]), ping=100000
+                response_generator.stream(token_requests[0]),
+                ping=100000,
+                sep="\n",
             )
 
         resp = await response_generator.complete(token_requests)
@@ -1346,7 +1378,7 @@ async def create_streaming_audio_speech(
             request_json
         )
         pipeline: (
-            TokenGeneratorPipeline | AudioGeneratorPipeline[InputContext]
+            TokenGeneratorPipeline | AudioGeneratorPipeline
         ) = await get_pipeline(request, audio_generation_request.model)
         assert isinstance(pipeline, AudioGeneratorPipeline)
         sampling_params = SamplingParams(
@@ -1375,6 +1407,11 @@ async def create_streaming_audio_speech(
     except (TypeError, ValidationError) as e:
         logger.exception("TypeError in request %s", request_id)
         raise HTTPException(status_code=400, detail="Invalid JSON.") from e
+    except InputError as e:
+        logger.warning(
+            "Input validation error in request %s: %s", request_id, str(e)
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         logger.exception("ValueError in request %s", request_id)
         # NOTE(SI-722): These errors need to return more helpful details,

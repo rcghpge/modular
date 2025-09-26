@@ -39,8 +39,8 @@ from max.nn import (
 )
 from max.nn.kv_cache import (
     KVCacheInputs,
-    KVCacheManager,
     KVCacheParams,
+    PagedKVCacheManager,
     estimate_kv_cache_size,
     load_kv_manager,
 )
@@ -169,9 +169,7 @@ class Qwen2_5VLInputs(ModelInputs):
         return self.pixel_values is not None
 
 
-class Qwen2_5VLModel(
-    PipelineModel[TextAndVisionContext], KVCacheMixin[TextAndVisionContext]
-):
+class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
     """A Qwen2.5VL pipeline model for multimodal text generation."""
 
     vision_model: Model
@@ -349,6 +347,7 @@ class Qwen2_5VLModel(
             pipeline_config=self.pipeline_config,
             huggingface_config=self.huggingface_config,
             llm_state_dict=llm_state_dict,
+            vision_state_dict=vision_state_dict,
             dtype=self.dtype,
             n_devices=len(self.devices),
             cache_dtype=self.encoding.cache_dtype,
@@ -1032,14 +1031,18 @@ class Qwen2_5VLModel(
                 # compute the position ids for the next token.
                 ctx.extra_model_args["rope_delta"] = rope_delta
                 # the temp_position_ids is a 3D tensor, we need to flatten it to 2D
-
                 temp_position_ids = temp_position_ids.squeeze(1)
             else:
-                temp_position_ids = np.full(
-                    shape=(3, 1),  # hardcode to 3 for temporal, height, width
-                    fill_value=ctx.extra_model_args["rope_delta"].item()
-                    + ctx.current_length,
+                context_seq_length = ctx.next_tokens.shape[0]
+                temp_position_ids = np.arange(context_seq_length)
+                temp_position_ids = temp_position_ids.reshape(1, 1, -1)
+                temp_position_ids = np.tile(temp_position_ids, (3, 1, 1))
+                delta = (
+                    ctx.current_length
+                    + ctx.extra_model_args["rope_delta"].item()
                 )
+                temp_position_ids = temp_position_ids + delta
+                temp_position_ids = temp_position_ids.squeeze(1)
             decoder_position_ids.append(temp_position_ids)
 
         decoder_position_ids = np.concatenate(decoder_position_ids, axis=1)
@@ -1133,8 +1136,8 @@ class Qwen2_5VLModel(
 
     def load_kv_manager(
         self, session: InferenceSession, available_cache_memory: int | None
-    ) -> KVCacheManager[TextAndVisionContext]:
-        """Loads and initializes the KVCacheManager for the Qwen2.5VL model."""
+    ) -> PagedKVCacheManager:
+        """Loads and initializes the PagedKVCacheManager for the Qwen2.5VL model."""
         return load_kv_manager(
             params=Qwen2_5VLConfig.get_kv_params(
                 huggingface_config=self.huggingface_config,

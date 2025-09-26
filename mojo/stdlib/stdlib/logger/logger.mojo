@@ -38,9 +38,10 @@ stdout). Messages below the configured level will be silently ignored.
 """
 
 import sys
+from io.write import _WriteBufferStack
 from os import abort
 from sys.param_env import env_get_string
-from io.write import _WriteBufferStack
+
 from builtin._location import __call_location, _SourceLocation
 
 # ===-----------------------------------------------------------------------===#
@@ -286,7 +287,13 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
     @always_inline
     fn trace[
         *Ts: Writable
-    ](self, *values: *Ts, sep: StaticString = " ", end: StaticString = "\n"):
+    ](
+        self,
+        *values: *Ts,
+        sep: StaticString = " ",
+        end: StaticString = "\n",
+        location: Optional[_SourceLocation] = None,
+    ):
         """Logs a trace message.
 
         Parameters:
@@ -297,19 +304,29 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
             sep: The separator to use between values (defaults to a space).
             end: The string to append to the end of the message
                 (defaults to a newline).
+            location: The location of the error (defaults to `__call_location`).
         """
         alias target_level = Level.TRACE
 
         @parameter
         if not Self._is_disabled[target_level]():
             self._write_out[target_level](
-                values, sep=sep, end=end, location=__call_location()
+                values,
+                sep=sep,
+                end=end,
+                location=location.or_else(__call_location()),
             )
 
     @always_inline
     fn debug[
         *Ts: Writable
-    ](self, *values: *Ts, sep: StaticString = " ", end: StaticString = "\n"):
+    ](
+        self,
+        *values: *Ts,
+        sep: StaticString = " ",
+        end: StaticString = "\n",
+        location: Optional[_SourceLocation] = None,
+    ):
         """Logs a debug message.
 
         Parameters:
@@ -320,19 +337,29 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
             sep: The separator to use between values (defaults to a space).
             end: The string to append to the end of the message
                 (defaults to a newline).
+            location: The location of the error (defaults to `__call_location`).
         """
         alias target_level = Level.DEBUG
 
         @parameter
         if not Self._is_disabled[target_level]():
             self._write_out[target_level](
-                values, sep=sep, end=end, location=__call_location()
+                values,
+                sep=sep,
+                end=end,
+                location=location.or_else(__call_location()),
             )
 
     @always_inline
     fn info[
         *Ts: Writable
-    ](self, *values: *Ts, sep: StaticString = " ", end: StaticString = "\n"):
+    ](
+        self,
+        *values: *Ts,
+        sep: StaticString = " ",
+        end: StaticString = "\n",
+        location: Optional[_SourceLocation] = None,
+    ):
         """Logs an info message.
 
         Parameters:
@@ -343,19 +370,29 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
             sep: The separator to use between values (defaults to a space).
             end: The string to append to the end of the message
                 (defaults to a newline).
+            location: The location of the error (defaults to `__call_location`).
         """
         alias target_level = Level.INFO
 
         @parameter
         if not Self._is_disabled[target_level]():
             self._write_out[target_level](
-                values, sep=sep, end=end, location=__call_location()
+                values,
+                sep=sep,
+                end=end,
+                location=location.or_else(__call_location()),
             )
 
     @always_inline
     fn warning[
         *Ts: Writable
-    ](self, *values: *Ts, sep: StaticString = " ", end: StaticString = "\n"):
+    ](
+        self,
+        *values: *Ts,
+        sep: StaticString = " ",
+        end: StaticString = "\n",
+        location: Optional[_SourceLocation] = None,
+    ):
         """Logs a warning message.
 
         Parameters:
@@ -366,19 +403,29 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
             sep: The separator to use between values (defaults to a space).
             end: The string to append to the end of the message
                 (defaults to a newline).
+            location: The location of the error (defaults to `__call_location`).
         """
         alias target_level = Level.WARNING
 
         @parameter
         if not Self._is_disabled[target_level]():
             self._write_out[target_level](
-                values, sep=sep, end=end, location=__call_location()
+                values,
+                sep=sep,
+                end=end,
+                location=location.or_else(__call_location()),
             )
 
     @always_inline
     fn error[
         *Ts: Writable
-    ](self, *values: *Ts, sep: StaticString = " ", end: StaticString = "\n"):
+    ](
+        self,
+        *values: *Ts,
+        sep: StaticString = " ",
+        end: StaticString = "\n",
+        location: Optional[_SourceLocation] = None,
+    ):
         """Logs an error message.
 
         Parameters:
@@ -389,19 +436,29 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
             sep: The separator to use between values (defaults to a space).
             end: The string to append to the end of the message
                 (defaults to a newline).
+            location: The location of the error (defaults to `__call_location`).
         """
         alias target_level = Level.ERROR
 
         @parameter
         if not Self._is_disabled[target_level]():
             self._write_out[target_level](
-                values, sep=sep, end=end, location=__call_location()
+                values,
+                sep=sep,
+                end=end,
+                location=location.or_else(__call_location()),
             )
 
     @always_inline
     fn critical[
         *Ts: Writable
-    ](self, *values: *Ts, sep: StaticString = " ", end: StaticString = "\n"):
+    ](
+        self,
+        *values: *Ts,
+        sep: StaticString = " ",
+        end: StaticString = "\n",
+        location: Optional[_SourceLocation] = None,
+    ):
         """Logs a critical message and aborts execution.
 
         Parameters:
@@ -412,6 +469,7 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
             sep: The separator to use between values (defaults to a space).
             end: The string to append to the end of the message
                 (defaults to a newline).
+            location: The location of the error (defaults to `__call_location`).
 
         """
         alias target_level = Level.CRITICAL
@@ -419,13 +477,16 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
         @parameter
         if not Self._is_disabled[target_level]():
             self._write_out[target_level](
-                values, sep=sep, end=end, location=__call_location()
+                values,
+                sep=sep,
+                end=end,
+                location=location.or_else(__call_location()),
             )
 
         abort()
 
     fn _write_out[
-        level: Level
+        _level: Level
     ](
         self,
         values: VariadicPack[element_trait=Writable],
@@ -440,7 +501,7 @@ struct Logger[level: Level = DEFAULT_LEVEL](ImplicitlyCopyable):
         if self._prefix:
             buffer.write(self._prefix)
         else:
-            buffer.write(level, "::: ")
+            buffer.write(_level, "::: ")
 
         if self._source_location:
             buffer.write("[", location, "] ")

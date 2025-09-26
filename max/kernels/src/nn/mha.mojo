@@ -44,7 +44,7 @@ from gpu import (
 from gpu.host import DeviceContext
 from gpu.host import Dim as LaunchDim
 from gpu.host import FuncAttribute
-from gpu.host.info import A100, H100, B200, GPUInfo
+from gpu.host.info import A100, B200, H100, GPUInfo
 from gpu.memory import (
     AddressSpace,
     async_copy_commit_group,
@@ -58,9 +58,9 @@ from layout.layout import *
 from layout.layout_tensor import (
     LayoutTensor,
     LayoutTensorIter,
-    copy_local_to_shared,
     copy_dram_to_sram_async,
     copy_local_to_dram,
+    copy_local_to_shared,
     copy_sram_to_dram,
 )
 from layout.runtime_layout import RuntimeLayout, RuntimeTuple
@@ -68,14 +68,11 @@ from layout.swizzle import make_swizzle
 from layout.tensor_builder import LayoutTensorBuild as tb
 from layout.tensor_builder import static
 from layout.tensor_core import get_fragment_size, get_mma_shape
-from linalg._multistage_gemm_gpu import multistage_mma
 from linalg.bmm import batched_matmul
+from linalg.matmul.gpu._multistage_gemm_gpu import multistage_mma
 from linalg.transpose import transpose
 from memory import stack_allocation
-from nn.mha_amd import (
-    mha_decoding_single_batch_amd,
-    mha_single_batch_amd,
-)
+from nn.mha_amd import mha_decoding_single_batch_amd, mha_single_batch_amd
 from nn.mha_mask import MaterializedMask, MHAMask, TileMaskStatus
 from nn.mha_operand import (
     KVCacheMHAOperand,
@@ -3660,11 +3657,10 @@ fn mha_decoding_single_batch[
     # Apply softmax denumerator.
     @parameter
     for m_mma in range(num_m_mmas):
-        var rowsum_inv = Scalar[accum_type](1.0)
 
         @parameter
         if m_mma * MMA_M < group:
-            rowsum_inv = recip(rowsum[2 * m_mma])
+            var rowsum_inv = Scalar[accum_type](recip(rowsum[2 * m_mma]))
 
             @parameter
             for n_mma in range(num_n_mmas):
@@ -3673,7 +3669,7 @@ fn mha_decoding_single_batch[
 
         @parameter
         if m_mma * MMA_M + MMA_M // 2 < group:
-            rowsum_inv = recip(rowsum[2 * m_mma + 1])
+            var rowsum_inv = Scalar[accum_type](recip(rowsum[2 * m_mma + 1]))
 
             @parameter
             for n_mma in range(num_n_mmas):

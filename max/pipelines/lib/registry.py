@@ -30,7 +30,7 @@ from max.interfaces import (
     TextGenerationRequest,
 )
 from max.nn.kv_cache import KVCacheStrategy
-from max.pipelines.core import TextContext
+from max.pipelines.core import TextAndVisionContext, TextContext
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -55,7 +55,7 @@ logger = logging.getLogger("max.pipelines")
 
 PipelineTypes = Union[
     TextGenerationPipeline[TextContext],
-    EmbeddingsPipeline[TextContext],
+    EmbeddingsPipeline,
     AudioGeneratorPipeline,
     SpeculativeDecodingTextGenerationPipeline,
     SpeechTokenGenerationPipeline,
@@ -66,7 +66,7 @@ def get_pipeline_for_task(
     task: PipelineTask, pipeline_config: PipelineConfig
 ) -> (
     type[TextGenerationPipeline[TextContext]]
-    | type[EmbeddingsPipeline[TextContext]]
+    | type[EmbeddingsPipeline]
     | type[SpeculativeDecodingTextGenerationPipeline]
     | type[AudioGeneratorPipeline]
     | type[SpeechTokenGenerationPipeline]
@@ -75,7 +75,7 @@ def get_pipeline_for_task(
         if pipeline_config.draft_model_config is not None:
             return SpeculativeDecodingTextGenerationPipeline
         else:
-            return TextGenerationPipeline
+            return TextGenerationPipeline[TextContext]
     elif task == PipelineTask.EMBEDDINGS_GENERATION:
         return EmbeddingsPipeline
     elif task == PipelineTask.AUDIO_GENERATION:
@@ -167,6 +167,11 @@ class SupportedArchitecture:
         default_factory=dict
     )
     """A dictionary specifying required values for PipelineConfig options."""
+
+    context_validators: list[
+        Callable[[TextContext | TextAndVisionContext], None]
+    ] = field(default_factory=list)
+    """A list of callable context validators for the architecture."""
 
     @property
     def tokenizer_cls(self) -> type[PipelineTokenizer[Any, Any, Any]]:
@@ -409,6 +414,7 @@ class PipelineRegistry:
                 trust_remote_code=pipeline_config.model_config.trust_remote_code,
                 enable_llama_whitespace_fix=True,
                 chat_template=pipeline_config.retrieve_chat_template(),
+                context_validators=arch.context_validators,
             )
         else:
             tokenizer = arch.tokenizer(
@@ -418,6 +424,7 @@ class PipelineRegistry:
                 trust_remote_code=pipeline_config.model_config.trust_remote_code,
                 pipeline_config=pipeline_config,
                 chat_template=pipeline_config.retrieve_chat_template(),
+                context_validators=arch.context_validators,
             )
         # Cast tokenizer to the proper type for text generation pipeline compatibility
         typed_tokenizer = cast(

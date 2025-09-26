@@ -16,15 +16,14 @@ import logging
 import queue
 import time
 import uuid
+from collections import OrderedDict
 
 from max.interfaces import (
     MAXPullQueue,
     MAXPushQueue,
-    Pipeline,
     RequestID,
     Scheduler,
     SchedulerResult,
-    TextGenerationInputs,
     TextGenerationOutput,
 )
 from max.interfaces.queue import drain_queue
@@ -34,8 +33,8 @@ from max.nn.kv_cache import (
     PagedKVCacheManager,
     XferReqData,
 )
-from max.pipelines.core import TextContext
-from max.pipelines.lib import PipelineConfig
+from max.pipelines.core import TextAndVisionContext, TextContext
+from max.pipelines.lib import PipelineConfig, TextGenerationPipelineType
 from max.pipelines.lib.pipeline import get_paged_manager
 from max.profiler import Tracer, traced
 from max.serve.config import Settings
@@ -48,10 +47,9 @@ from .text_batch_constructor import (
     TokenGenerationSchedulerConfig,
 )
 from .utils import (
-    OrderedDict,
     SchedulerLogger,
     SchedulerOutput,
-    maybe_restore_chunked_request,
+    add_newly_encoded_reqs_to_tg_batch,
     release_terminated_requests,
 )
 
@@ -61,14 +59,11 @@ logger = logging.getLogger("max.serve")
 class DecodeScheduler(Scheduler):
     def __init__(
         self,
-        pipeline: Pipeline[
-            TextGenerationInputs[TextContext],
-            TextGenerationOutput,
-        ],
+        pipeline: TextGenerationPipelineType[TextContext],
         scheduler_config: TokenGenerationSchedulerConfig,
-        paged_manager: PagedKVCacheManager[TextContext],
+        paged_manager: PagedKVCacheManager,
         *,
-        request_queue: MAXPullQueue[tuple[RequestID, TextContext]],
+        request_queue: MAXPullQueue[TextContext | TextAndVisionContext],
         response_queue: MAXPushQueue[
             dict[RequestID, SchedulerResult[TextGenerationOutput]]
         ],
@@ -176,7 +171,9 @@ class DecodeScheduler(Scheduler):
 
     def reserve_memory_and_send_to_prefill(self) -> None:
         """Continuously pulls requests from the request queue and forwards them to the prefill node."""
-        self.pending_reqs |= dict(drain_queue(self.request_queue))
+        new_contexts = drain_queue(self.request_queue)
+        for context in new_contexts:
+            self.pending_reqs[context.request_id] = context
 
         while (
             self.pending_reqs
@@ -188,7 +185,9 @@ class DecodeScheduler(Scheduler):
             )
         ):
             # Pop off request queue
-            req_id, context = self.pending_reqs.popitem(last=False)
+            context = next(iter(self.pending_reqs.values()))
+            req_id = context.request_id
+            del self.pending_reqs[req_id]
 
             # Claim the slot with the paged manager
             if not self.paged_manager.contains(req_id):
@@ -196,7 +195,7 @@ class DecodeScheduler(Scheduler):
 
             # Prefetch memory for Context Encoding eagerly, this only needs to be
             # for one step.
-            if not self.paged_manager.prefetch(context, 1):
+            if not self.paged_manager.maybe_reserve(context, 1):
                 # If we don't have enough space in the paged manager
                 # return this to the request queue.
                 self.pending_reqs[req_id] = context
@@ -283,20 +282,12 @@ class DecodeScheduler(Scheduler):
             sch_output: The scheduler output containing the batch of requests to schedule.
         """
         assert sch_output.batch_size > 0
-        batch = sch_output.batch_inputs
-        responses = self.pipeline.execute(
-            TextGenerationInputs([batch], num_steps=sch_output.num_steps)
-        )
+        responses = self.pipeline.execute(sch_output.inputs)
 
-        # Even though this is CE specific, it is possible for decode_scheduler
-        # to execute CE if a request is preempted. We do not send such a preempted
-        # request back to prefill. Instead the decode worker just runs CE on the
-        # preempted request.
-        self.batch_constructor.tg_reqs |= batch
-        maybe_restore_chunked_request(
-            batch,
+        add_newly_encoded_reqs_to_tg_batch(
+            sch_output.inputs.batch,
             responses,
-            self.batch_constructor.ce_reqs,
+            self.batch_constructor,
         )
 
         # remove terminated requests from the batch
@@ -375,12 +366,9 @@ class DecodeScheduler(Scheduler):
 
 
 def load_decode_scheduler(
-    pipeline: Pipeline[
-        TextGenerationInputs[TextContext],
-        TextGenerationOutput,
-    ],
+    pipeline: TextGenerationPipelineType[TextContext],
     pipeline_config: PipelineConfig,
-    request_queue: MAXPullQueue[tuple[RequestID, TextContext]],
+    request_queue: MAXPullQueue[TextContext | TextAndVisionContext],
     response_queue: MAXPushQueue[
         dict[RequestID, SchedulerResult[TextGenerationOutput]]
     ],

@@ -17,7 +17,6 @@ bazel_dep(name = "opentelemetry-proto", version = "1.5.0")
 bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "protobuf", version = "31.1")
 bazel_dep(name = "rules_cc", version = "0.2.8")
-bazel_dep(name = "rules_foreign_cc", version = "0.13.0")
 bazel_dep(name = "rules_mojo", version = "0.5.0")
 bazel_dep(name = "rules_multirun", version = "0.13.0")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
@@ -28,6 +27,7 @@ bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "with_cfg.bzl", version = "0.10.3")
 
 # TODO: Remove when transitives bump to this version or above
+bazel_dep(name = "rules_foreign_cc", version = "0.13.0")  # NOTE: Avoid direct usage
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1")
 bazel_dep(name = "rules_apple", version = "3.22.0")
 bazel_dep(name = "rules_nodejs", version = "6.5.0")
@@ -36,13 +36,12 @@ bazel_dep(name = "protoc-gen-validate", version = "1.2.1.bcr.1")
 
 bazel_dep(name = "buildifier_prebuilt", version = "8.2.0.2", dev_dependency = True)
 
-# TODO: Remove when >0.6.0 is released
 archive_override(
     module_name = "rules_mojo",
-    integrity = "sha256-zgnOpUJ8OY8T3lw2+x0wkXqtwKH5BH8BQPdn7pD7Pnc=",
-    strip_prefix = "rules_mojo-355c0ebc7aa5cf40f21388309be89401bee42461",
+    integrity = "sha256-fOkBbbvPAZmBji2zJ7KSXxpvCgxSTi6buwMJal4zOEE=",
+    strip_prefix = "rules_mojo-ffd2636629835c1f1287dcf6846251e088eec1d8",
     urls = [
-        "https://github.com/modular/rules_mojo/archive/355c0ebc7aa5cf40f21388309be89401bee42461.tar.gz",
+        "https://github.com/modular/rules_mojo/archive/ffd2636629835c1f1287dcf6846251e088eec1d8.tar.gz",
     ],
 )
 
@@ -100,17 +99,6 @@ single_version_override(
     patches = [
         # https://github.com/aspect-build/rules_js/pull/2330
         "//bazel/public-patches:aspect_rules_js_toolchains.patch",
-    ],
-)
-
-single_version_override(
-    module_name = "rules_foreign_cc",
-    patch_strip = 1,
-    patches = [
-        # https://github.com/bazel-contrib/rules_foreign_cc/pull/1361
-        "//bazel/public-patches:rules_foreign_cc_sysroot.patch",
-        # TODO: Remove next bump https://github.com/bazel-contrib/rules_foreign_cc/commit/7be022f9f14260c4b43c235a8dd75ac94c5be330
-        "//bazel/public-patches:rules_foreign_cc_bazel_out.patch",
     ],
 )
 
@@ -290,10 +278,10 @@ mojo.gpu_toolchains(
         "Navi": "radeon",
         "AMD Radeon Graphics": "radeon",
         "AMD Radeon RX 6900 XT": "rx6900xt",
-        "Apple M1": "",  # TODO: Re-enable once we fix support
-        "Apple M2": "",  # TODO: Re-enable once we fix support
-        "Apple M3": "m3",
-        "Apple M4": "m4",
+        "Metal 1": "",  # Unsupported, macOS updates on any hardware get you to Metal 3+
+        "Metal 2": "",  # Unsupported, macOS updates on any hardware get you to Metal 3+
+        "Metal 3": "metal3",  # macOS 15
+        "Metal 4": "metal4",  # macOS 26
     },
     # GPU name -> target accelerator
     supported_gpus = {
@@ -314,10 +302,8 @@ mojo.gpu_toolchains(
         "rtx4090": "nvidia:89",
         "rtx5090": "nvidia:120a",
         "rx6900xt": "amdgpu:gfx1030",
-        "m1": "metal:1",
-        "m2": "metal:2",
-        "m3": "metal:3",
-        "m4": "metal:4",
+        "metal3": "metal:3",
+        "metal4": "metal:4",
     },
 )
 use_repo(mojo, "mojo_gpu_toolchains", "mojo_host_platform")
@@ -362,4 +348,22 @@ archive_override(
     urls = [
         "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/sysroot-jammy-x86_64/5/e9253b716f52780329d4bd926f2c6552379b61ae67436670ae8a939e1e4c6f57/sysroot-jammy-x86_64.tar.xz",
     ],
+)
+
+http_archive(
+    name = "clang-linux-x86_64",
+    sha256 = "4ec4349717c3e6c7ffa0777b6f7e8987af039e05f0a32af5316c3dd730496651",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-linux-x86_64/20.1.8/4ec4349717c3e6c7ffa0777b6f7e8987af039e05f0a32af5316c3dd730496651/llvm-linux-x86_64.tar.xz",
+)
+
+http_archive(
+    name = "clang-linux-aarch64",
+    sha256 = "5bda1756f6cfb7a3472b5a885acb8d747040662305922eb809154481f1222189",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-linux-aarch64/20.1.8/5bda1756f6cfb7a3472b5a885acb8d747040662305922eb809154481f1222189/llvm-linux-aarch64.tar.xz",
+)
+
+http_archive(
+    name = "clang-macos",
+    sha256 = "a871653a114657136ae0dc25d979046a800aa30d8951e82b00eb5720caf9b4a8",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-macos/20.1.8/a871653a114657136ae0dc25d979046a800aa30d8951e82b00eb5720caf9b4a8/llvm-macos.tar.xz",
 )

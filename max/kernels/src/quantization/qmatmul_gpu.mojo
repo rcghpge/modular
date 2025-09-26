@@ -11,9 +11,9 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from sys import align_of, is_nvidia_gpu, simd_width_of, size_of
 from collections import OptionalReg
 from math import ceildiv
+from sys import align_of, is_nvidia_gpu, simd_width_of, size_of
 
 from bit import log2_floor
 from buffer import NDBuffer
@@ -42,21 +42,18 @@ from layout.layout import *
 from layout.layout_tensor import (
     LayoutTensor,
     LayoutTensorIter,
-    copy_local_to_shared,
     copy_dram_to_sram,
     copy_dram_to_sram_async,
     copy_local_to_dram,
+    copy_local_to_shared,
     copy_sram_to_dram,
 )
 from layout.swizzle import Swizzle, make_ldmatrix_swizzle, make_swizzle
 from layout.tensor_builder import LayoutTensorBuild as tb
 from layout.tensor_core import TensorCore, get_fragment_size, get_mma_shape
-from linalg._multistage_gemm_gpu import warp_split_k_reduction
+from linalg.matmul.gpu._multistage_gemm_gpu import warp_split_k_reduction
 from linalg.utils import GemmShape, apply_epilogue, elementwise_epilogue_type
-from linalg.utils_gpu import (
-    MatmulConfig,
-    block_swizzle,
-)
+from linalg.utils_gpu import MatmulConfig, block_swizzle
 from memory.unsafe import bitcast
 from runtime.asyncrt import DeviceContextPtr
 
@@ -68,9 +65,9 @@ from utils.numerics import get_accum_type
 fn args_to_tuple[swap: Bool](arg_0: Int, arg_1: Int) -> Tuple[Int, Int]:
     @parameter
     if swap:
-        return Tuple(arg_1, arg_0)
+        return (arg_1, arg_0)
     else:
-        return Tuple(arg_0, arg_1)
+        return (arg_0, arg_1)
 
 
 @always_inline

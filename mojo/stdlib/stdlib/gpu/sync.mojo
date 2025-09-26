@@ -25,10 +25,11 @@ thread blocks and warps, and manage memory consistency across different memory s
 
 from os import abort
 from os.atomic import Consistency, fence
-from sys import is_amd_gpu, is_nvidia_gpu, llvm_intrinsic
+from sys import is_amd_gpu, is_apple_gpu, is_nvidia_gpu, llvm_intrinsic
 from sys._assembly import inlined_assembly
-from sys.param_env import env_get_bool
 from sys.info import CompilationTarget
+from sys.param_env import env_get_bool
+
 from gpu.intrinsics import Scope
 from memory.pointer import AddressSpace
 
@@ -132,6 +133,9 @@ fn barrier():
         fence[Consistency.RELEASE, scope="workgroup"]()
         llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
         fence[Consistency.ACQUIRE, scope="workgroup"]()
+    elif is_apple_gpu():
+        # threadgroup_barrier(mem_flags::mem_threadgroup)
+        llvm_intrinsic["llvm.air.wg.barrier", NoneType](Int32(2), Int32(1))
     else:
         return CompilationTarget.unsupported_target_error[operation="barrier"]()
 

@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from math import fma
 from sys import external_call
 
 from buffer import NDBuffer
@@ -18,19 +19,19 @@ from buffer.dimlist import Dim, DimList
 from compiler_internal import StaticTensorSpec
 from gpu.host import DeviceBuffer
 from gpu.host.info import is_cpu, is_gpu
-from math import fma
+from layout import UNKNOWN_VALUE, Layout, LayoutTensor, RuntimeLayout
 from memory import memcpy
 from nn.concat import concat
 from register import register_internal
 from runtime.asyncrt import DeviceContextPtr
-from tensor_internal.managed_tensor_slice import get_kernel_simd_width
-from tensor_internal.io_spec import IO
 from tensor_internal import (
     DynamicTensor,
     InputTensor,
     IOSpec,
     ManagedTensorSlice,
 )
+from tensor_internal.io_spec import IO
+from tensor_internal.managed_tensor_slice import get_kernel_simd_width
 from weights_registry import WeightsRegistry
 
 from utils import Index, IndexList, StaticTuple
@@ -714,13 +715,27 @@ fn mgp_buffer_concat[
     inputs: StaticTuple[NDBuffer[DType.uint8, 1, MutableAnyOrigin], *_],
     call_ctx: DeviceContextPtr,
 ) raises:
+    alias layout_1d = Layout.row_major(UNKNOWN_VALUE)
+    var output_lt = LayoutTensor[DType.uint8, layout_1d](
+        output.data,
+        RuntimeLayout[layout_1d].row_major(IndexList[1](len(output))),
+    )
+    var input_tensors = StaticTuple[
+        LayoutTensor[DType.uint8, layout_1d, MutableAnyOrigin],
+        inputs.size,
+    ]()
+    for i in range(len(inputs)):
+        input_tensors[i] = input_tensors.element_type(
+            inputs[i].data,
+            RuntimeLayout[layout_1d].row_major(IndexList[1](len(inputs[i]))),
+        )
     if len(output) < 4096:
-        concat[1, DType.uint8, True, bDevice, None](
-            output, 0, inputs, context=call_ctx
+        concat[inputs_layout=layout_1d, DType.uint8, True, bDevice, None](
+            output_lt, 0, input_tensors, context=call_ctx
         )
     else:
-        concat[1, DType.uint8, False, bDevice, None](
-            output, 0, inputs, context=call_ctx
+        concat[DType.uint8, False, bDevice, None](
+            output_lt, 0, input_tensors, context=call_ctx
         )
 
 
@@ -880,24 +895,6 @@ fn mgp_tensor_spec_create[
             shape[i] = runtimeDims[runtimeIndex]
             runtimeIndex = runtimeIndex + 1
     return shape
-
-
-@register_internal("mgp.tensor_spec.equal.static")
-@no_inline
-fn mgp_tensor_spec_equal_static[
-    spec_rank: Int, *rawDims: Dim
-](spec: IndexList[spec_rank]) -> Bool:
-    var dims: VariadicList[Dim] = rawDims
-    var numDims = len(dims)
-    if spec_rank != numDims:
-        return False
-    for i in range(numDims):
-        var dim = dims[i]
-        var expectedDim = spec[i]
-        if dim and dim != -1 and dim != expectedDim:
-            return False
-
-    return True
 
 
 @register_internal("mgp.tensor_spec.get_dim")

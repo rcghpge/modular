@@ -23,27 +23,27 @@ from sys import (
     simd_width_of,
     size_of,
 )
-from sys.intrinsics import PrefetchOptions
+from sys.intrinsics import PrefetchOptions, readfirstlane
 
 import gpu.memory as gpu_memory
 from algorithm import vectorize
 from bit import log2_floor
+from builtin.device_passable import DevicePassable
+from builtin.dtype import _unsigned_integral_type_of
 from gpu.host import DeviceBuffer, HostBuffer
 from gpu.host._nvidia_cuda import TensorMapSwizzle
 from gpu.id import block_dim, block_idx, lane_id, thread_idx
+from gpu.intrinsics import AMDBufferResource
 from gpu.memory import CacheEviction, Fill, async_copy
-from layout.element import Element, MemoryElement
-from layout.tma_async import _tma_desc_tile_layout
 from layout._fillers import BATCH_SIZE
 from layout._utils import make_amd_buffer_resource
-
+from layout.element import Element, MemoryElement
+from layout.tma_async import _tma_desc_tile_layout
 from memory import stack_allocation
 from memory.pointer import _GPUAddressSpace
 
 from utils import IndexList, StaticTuple
 from utils.index import Index
-from sys.intrinsics import readfirstlane
-from gpu.intrinsics import AMDBufferResource
 
 from .int_tuple import (
     _get_index_type,
@@ -53,8 +53,8 @@ from .int_tuple import (
     depth,
     fill_like,
     flatten,
-    propagate_unknown,
     product,
+    propagate_unknown,
     to_nest,
 )
 from .layout import *
@@ -62,9 +62,6 @@ from .runtime_layout import RuntimeLayout
 from .runtime_layout import make_layout as make_runtime_layout
 from .runtime_tuple import RuntimeTuple
 from .swizzle import Swizzle, make_ldmatrix_swizzle
-
-from builtin.device_passable import DevicePassable
-from builtin.dtype import _unsigned_integral_type_of
 
 
 fn _compute_distribute_layout[
@@ -842,23 +839,23 @@ struct LayoutTensor[
         new_dtype: DType,
         /,
         target_address_space: AddressSpace = Self.address_space,
-        element_layout: Layout = Self.element_layout,
+        _element_layout: Layout = Self.element_layout,
     ](self) -> Self.BitcastType[
-        new_dtype, target_address_space, element_layout
+        new_dtype, target_address_space, _element_layout
     ]:
         """Bitcast the underlying pointer to a new data type.
 
         Parameters:
             new_dtype: The new data type it is casting to.
             target_address_space: The address space of the returned `LayoutTensor`.
-            element_layout: The element layout of the returned `LayoutTensor`.
+            _element_layout: The element layout of the returned `LayoutTensor`.
 
         Returns:
             A new `LayoutTensor` with the same memory location but with the
             specified data type, address space, and element layout.
         """
         return Self.BitcastType[
-            new_dtype, target_address_space, element_layout
+            new_dtype, target_address_space, _element_layout
         ](
             self.ptr.bitcast[Scalar[new_dtype]]().address_space_cast[
                 target_address_space
@@ -985,6 +982,27 @@ struct LayoutTensor[
             The calculated memory offset as an integer.
         """
         return Self.stride[0]() * m + Self.stride[1]() * n
+
+    @always_inline
+    fn _offset(self, coords: IndexList) -> Int:
+        """Calculate the memory offset for a row-major tensor element.
+
+        Computes the linear memory offset based on the tensor's stride
+        configuration.
+
+        Args:
+            coords: The coordinates for the index.
+
+        Returns:
+            The calculated memory offset as an integer.
+        """
+        return Int(
+            self.runtime_layout(
+                RuntimeTuple[fill_like(self.layout.shape, UNKNOWN_VALUE)](
+                    coords
+                )
+            )
+        )
 
     @always_inline
     fn _elementwise_unary[
@@ -2036,8 +2054,8 @@ struct LayoutTensor[
             result in undefined behavior.
         """
 
-        alias alignment = align_of[SIMD[dtype, width]]()
-        return self.ptr.load[width=width, alignment=alignment](
+        alias _alignment = align_of[SIMD[dtype, width]]()
+        return self.ptr.load[width=width, alignment=_alignment](
             self._offset(m, n)
         )
 
@@ -2081,7 +2099,7 @@ struct LayoutTensor[
     @always_inline("nodebug")
     fn store[
         width: Int
-    ](mut self, coords: IndexList[**_], val: SIMD[dtype, width]):
+    ](self, coords: IndexList[*_, **_], val: SIMD[dtype, width]):
         """Store a SIMD vector to the tensor at the specified 2D coordinates.
 
         Performs a vectorized store operation to the tensor's memory, writing
@@ -2158,8 +2176,8 @@ struct LayoutTensor[
         - This operation modifies the tensor's data in-place.
         """
 
-        alias alignment = align_of[SIMD[dtype, width]]()
-        return self.ptr.store[alignment=alignment](self._offset(m, n), val)
+        alias _alignment = align_of[SIMD[dtype, width]]()
+        return self.ptr.store[alignment=_alignment](self._offset(m, n), val)
 
     @always_inline("nodebug")
     fn size(self) -> Int:
@@ -2741,19 +2759,19 @@ struct LayoutTensor[
         Parameters:
             tile_sizes: The dimensions of each tile along each axis of the
                 tensor. For example, in a 2D tensor, `tile[32, 32]` creates
-                32×32 tiles.
+                32x32 tiles.
 
         Args:
             tile_coords: The coordinates of the specific tile to extract. For
                 example, `tile[32, 32](1, 2)` extracts the tile at position
-                (1, 2) in the grid of 32×32 tiles.
+                (1, 2) in the grid of 32x32 tiles.
 
         Returns:
             A view into the original tensor representing the specified tile.
 
         Example:
 
-        For a 4×4 tensor with values:
+        For a 4x4 tensor with values:
 
         ```
         [1 2 3 4]
@@ -3010,7 +3028,7 @@ struct LayoutTensor[
         Parameters:
             tile_sizes: The dimensions of each tile along each axis of the
                 tensor. For example, in a 2D tensor, `tiled_iterator[32, 32]`
-                creates an iterator over 32×32 tiles.
+                creates an iterator over 32x32 tiles.
             axis: The axis along which the iterator will traverse. Default is 0
                 (first dimension). For example, with axis=0, the iterator will
                 move vertically through tiles.
@@ -3421,7 +3439,7 @@ struct LayoutTensor[
 
         Parameters:
             threads_layout: Defines the logical arrangement of threads (e.g.,
-                2×2 grid of 4 threads). This layout determines how the tensor is
+                2x2 grid of 4 threads). This layout determines how the tensor is
                 partitioned.
             axis: Optional. If specified, restricts distribution to only this
                 axis. For example, with axis=0 in a 2D thread layout, threads
@@ -3441,7 +3459,7 @@ struct LayoutTensor[
 
         Example:
 
-        For a 4×4 row-major tensor distributed across 4 threads in a 2×2 row-major grid:
+        For a 4x4 row-major tensor distributed across 4 threads in a 2x2 row-major grid:
 
         - Thread 0 will receive a LayoutTensor with a view into
             (0,0), (0,2), (2,0), (2,2) of the original tensor.
@@ -3870,11 +3888,13 @@ struct LayoutTensor[
 
     @always_inline
     fn _vectorize_2[
-        origin: ImmutableOrigin,  # FIXME: MOCO-1912
-        vector_shape: IntTuple[origin],
+        _origin: ImmutableOrigin,  # FIXME: MOCO-1912
+        vector_shape: IntTuple[_origin],
         check_rank: Bool = True,
         linear_vectorize: Bool = vector_shape.is_value(),
-    ](self) -> Self.ShapeVectorizedType[origin, vector_shape, linear_vectorize]:
+    ](self) -> Self.ShapeVectorizedType[
+        _origin, vector_shape, linear_vectorize
+    ]:
         """Experimental implementation of the generalized vectorize operation
         using IntTuple.
 
@@ -3882,7 +3902,7 @@ struct LayoutTensor[
         to specify the vector dimensions rather than variadic parameters.
 
         Parameters:
-            origin: The origin of the IntTuple.
+            _origin: The origin of the IntTuple.
             vector_shape: The dimensions of each vector unit as an IntTuple.
             check_rank: Whether to verify that vector_shape is congruent with
                 the tensor's shape. Defaults to True.
@@ -3902,7 +3922,7 @@ struct LayoutTensor[
         ]()
 
         alias vectorized_type = Self.ShapeVectorizedType[
-            origin, vector_shape, linear_vectorize
+            _origin, vector_shape, linear_vectorize
         ]
         runtime_shape = vectorized_type.RuntimeLayoutType.ShapeType()
         runtime_stride = vectorized_type.RuntimeLayoutType.StrideType()
@@ -3960,7 +3980,7 @@ struct LayoutTensor[
             )
 
             return Self.ShapeVectorizedType[
-                origin, vector_shape, linear_vectorize
+                _origin, vector_shape, linear_vectorize
             ](
                 self.ptr,
                 vectorized_type.RuntimeLayoutType(
@@ -4005,7 +4025,7 @@ struct LayoutTensor[
         Parameters:
             vector_shape: The dimensions of each vector unit along each axis of
                 the tensor. or example, in a 2D tensor, `vectorize[4, 4]` treats
-                4×4 blocks as vector units.
+                4x4 blocks as vector units.
 
         Returns:
             A view of the tensor with a vectorized layout, where each element in
@@ -4014,8 +4034,8 @@ struct LayoutTensor[
 
         Example:
 
-        For a 16×16 tensor, `vectorize[4, 4]` will produce a 4×4 tensor
-        where each element represents a 4×4 block from the original tensor.
+        For a 16x16 tensor, `vectorize[4, 4]` will produce a 4x4 tensor
+        where each element represents a 4x4 block from the original tensor.
 
         Performance:
 
@@ -4039,9 +4059,9 @@ struct LayoutTensor[
         """
 
         alias shape = IntTuple(vector_shape)
-        alias origin = __origin_of()  # FIXME: MOCO-1912
+        alias _origin = __origin_of()  # FIXME: MOCO-1912
         var ret = self._vectorize_2[
-            origin,
+            _origin,
             shape,
             check_rank=False,
             linear_vectorize=False,
@@ -4146,7 +4166,7 @@ struct LayoutTensor[
 
         Example:
 
-        For a 4×4 tensor, `t` with values:
+        For a 4x4 tensor, `t` with values:
 
         ```
         [1 2 3 4]
@@ -4258,7 +4278,7 @@ struct LayoutTensor[
 
         Example:
 
-        Given a 3×4×5 tensor, `t`, the following example extracts a 2×2 slice
+        Given a 3x4x5 tensor, `t`, the following example extracts a 2x2 slice
         from dimensions 0 and 2, with dimension 1 fixed at index 1.
 
         ```mojo
@@ -4372,7 +4392,7 @@ struct LayoutTensor[
 
         Example:
 
-        For a 3×4×5 tensor, `t`, the following example extracts a 1D slice from
+        For a 3x4x5 tensor, `t`, the following example extracts a 1D slice from
         dimension 0, with dimensions 1 and 2 fixed at indices 1 and 2:
 
         ```mojo
@@ -4452,14 +4472,14 @@ struct LayoutTensor[
 
         Example:
 
-        For a 2×3 tensor with values:
+        For a 2x3 tensor with values:
 
         ```
         [1 2 3]
         [4 5 6]
         ```
 
-        `transpose()` will produce a 3×2 tensor:
+        `transpose()` will produce a 3x2 tensor:
 
         ```
         [1 4]
@@ -4526,8 +4546,8 @@ struct LayoutTensor[
 
         Example:
 
-        Given a 2×6 row-major tensor, `reshape[Layout.col_major(3, 4)]()`
-        produces a 3×4 tensor with the same elements in column-major order.
+        Given a 2x6 row-major tensor, `reshape[Layout.col_major(3, 4)]()`
+        produces a 3x4 tensor with the same elements in column-major order.
 
         Performance:
 
@@ -4590,9 +4610,9 @@ struct LayoutTensor[
 
         Example:
 
-        For a 4×4 tensor with a standard row-major layout, composing with a
-        layout that represents a 2×2 tiling would result in a tensor that
-        logically views the data as 2×2 blocks.
+        For a 4x4 tensor with a standard row-major layout, composing with a
+        layout that represents a 2x2 tiling would result in a tensor that
+        logically views the data as 2x2 blocks.
 
         Performance:
 
@@ -5219,7 +5239,7 @@ struct LayoutTensor[
             print(tensor)  # Internally calls `write_to` with a StringWriter
         ```
 
-        Output for a 2×3 tensor:
+        Output for a 2x3 tensor:
 
         ```
         [[1.0, 1.0, 1.0],

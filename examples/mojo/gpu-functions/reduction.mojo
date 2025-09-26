@@ -11,25 +11,25 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from math import ceildiv
+from os.atomic import Atomic
+from random import randint
+from sys import has_accelerator, size_of
+
 from benchmark import (
     Bench,
     BenchConfig,
     Bencher,
     BenchId,
-    ThroughputMeasure,
     BenchMetric,
+    ThroughputMeasure,
 )
 from bit import log2_floor
-from math import ceildiv
-from memory import stack_allocation
-from os.atomic import Atomic
-from random import randint
-from sys import has_accelerator, size_of
-from testing import assert_equal
-
-from gpu import thread_idx, block_idx, block_dim, grid_dim, warp, barrier
+from gpu import barrier, block_dim, block_idx, grid_dim, thread_idx, warp
 from gpu.host import DeviceContext
-from gpu.memory import AddressSpace, load
+from gpu.memory import AddressSpace
+from memory import stack_allocation
+from testing import assert_equal
 
 # Initialize parameters
 # To achieve high bandwidth increase SIZE to large value
@@ -53,14 +53,14 @@ fn sum_kernel[
     ]()
     global_tid = block_idx.x * block_dim.x + thread_idx.x
     tid = thread_idx.x
-    threads_in_grid = TPB * grid_dim.x
+    threads_in_grid = TPB * NUM_BLOCKS
     var sum: Int32 = 0
 
     for i in range(global_tid, size, threads_in_grid):
         idx = i * batch_size
         # Load in a vectorized fashion and reduce the loaded SIMD vector
         if idx < size:
-            sum += load[width=batch_size](a, idx).reduce_add()
+            sum += a.load[width=batch_size](idx).reduce_add()
     sums[tid] = sum
     barrier()
 

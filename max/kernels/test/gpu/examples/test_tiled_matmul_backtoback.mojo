@@ -12,13 +12,13 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import OptionalReg
+from io.io import _printf
 from math import ceildiv
 from os import abort
 from sys import size_of
 from sys.info import align_of, simd_width_of
 
 from buffer.dimlist import Dim
-from io.io import _printf
 from gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
@@ -29,24 +29,21 @@ from gpu import (
     thread_idx,
 )
 from gpu.host import DeviceContext, FuncAttribute
-from gpu.memory import (
-    AddressSpace,
-    external_memory,
-)
+from gpu.memory import AddressSpace, external_memory
 from layout import Layout, LayoutTensor
 from layout._utils import ManagedLayoutTensor
 from layout.int_tuple import UNKNOWN_VALUE
 from layout.layout import size
 from layout.layout_tensor import (
     LayoutTensorIter,
-    copy_local_to_shared,
     copy_local_to_dram,
+    copy_local_to_shared,
     copy_sram_to_dram,
 )
 from layout.swizzle import make_swizzle
 from layout.tensor_builder import LayoutTensorBuild as tb
 from layout.tensor_core import get_fragment_size, get_mma_shape
-from linalg._multistage_gemm_gpu import multistage_mma
+from linalg.matmul.gpu._multistage_gemm_gpu import multistage_mma
 from linalg.utils import elementwise_epilogue_type
 from linalg.utils_gpu import block_swizzle
 from testing import assert_almost_equal

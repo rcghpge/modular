@@ -16,7 +16,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, no_type_check
 
-from max.interfaces import AudioGenerator, AudioGeneratorOutput
+from max.interfaces import (
+    AudioGenerationInputs,
+    AudioGenerationOutput,
+    Pipeline,
+    RequestID,
+)
 from max.nn import ReturnLogits
 from max.pipelines.core import TTSContext
 
@@ -25,8 +30,12 @@ if TYPE_CHECKING:
 
 from .pipeline import PipelineModel
 
+AudioGeneratorPipelineType = Pipeline[
+    AudioGenerationInputs[TTSContext], AudioGenerationOutput
+]
 
-class AudioGeneratorPipeline(AudioGenerator[TTSContext]):
+
+class AudioGeneratorPipeline(AudioGeneratorPipelineType):
     """Converts text to speech.
 
     This pipeline passes all of the work through to the PipelineModel.
@@ -61,12 +70,12 @@ class AudioGeneratorPipeline(AudioGenerator[TTSContext]):
         assert hasattr(self.pipeline_model, "speech_lm_pipeline")
         self.speech_lm_pipeline = self.pipeline_model.speech_lm_pipeline
 
-    def next_chunk(
-        self, batch: dict[str, TTSContext]
-    ) -> dict[str, AudioGeneratorOutput]:
+    def execute(
+        self, inputs: AudioGenerationInputs[TTSContext]
+    ) -> dict[RequestID, AudioGenerationOutput]:
         next_chunk = getattr(self.pipeline_model, "next_chunk")  # type: ignore[has-type]  # noqa: B009
-        return next_chunk(batch)
+        return next_chunk(inputs.batch)
 
-    def release(self, request_id: str) -> None:
+    def release(self, request_id: RequestID) -> None:
         release = getattr(self.pipeline_model, "release")  # type: ignore[has-type]  # noqa: B009
         release(request_id)

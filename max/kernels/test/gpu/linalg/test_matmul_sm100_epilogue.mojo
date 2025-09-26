@@ -11,8 +11,10 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 from collections import OptionalReg
+from random import random_si64
 from sys import align_of, size_of
-import linalg.vendor_blas
+
+import linalg.matmul.vendor.blas as vendor_blas
 from buffer.dimlist import DimList
 from gpu.host import DeviceContext
 from gpu.host._nvidia_cuda import TensorMapSwizzle
@@ -23,15 +25,14 @@ from internal_utils import (
     random,
 )
 from internal_utils._utils import ValOrDim, dynamic, static
-from linalg.matmul_sm100 import blackwell_matmul_tma_umma_warp_specialized
+from linalg.matmul.gpu.sm100.matmul import (
+    blackwell_matmul_tma_umma_warp_specialized,
+)
+from linalg.utils import elementwise_compute_lambda_type
 from linalg.utils_gpu import MatmulConfig
 
 from utils.index import Index, IndexList
-from linalg.utils import (
-    elementwise_compute_lambda_type,
-)
 from utils.static_tuple import StaticTuple
-from random import random_si64
 
 
 def test_matmul_sm100_epilogue[
@@ -154,9 +155,9 @@ def test_matmul_sm100_epilogue[
         cta_group=2,
         elementwise_compute_lambda_fn=optional_lambda_fn,
     ](
-        c_device.tensor,
-        a_device.tensor,
-        b_device.tensor,
+        c_device.to_layout_tensor(),
+        a_device.to_layout_tensor(),
+        b_device.to_layout_tensor(),
         ctx,
     )
 
