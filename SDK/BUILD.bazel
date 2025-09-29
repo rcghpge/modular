@@ -174,10 +174,12 @@ modular_shared_library(
     srcs = glob([
         "lib/API/c/**/*.cpp",
         "lib/MOF/API/**/*.cpp",
+        "lib/MOF/GraphBuilder/**/*.cpp",
     ]),
     hdrs = glob([
         "include/SDK/API/**/*.h",
         "include/SDK/MOF/API/**/*.h",
+        "include/SDK/MOF/GraphBuilder/**/*.h",
     ]),
     includes = ["include/SDK/API"],
     deps = [
