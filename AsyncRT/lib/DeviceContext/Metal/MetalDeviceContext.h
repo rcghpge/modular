@@ -81,6 +81,7 @@ public:
   void untrackBuffer(void *ptr) const;
   MTL::Buffer *getTrackedBuffer(const void *ptr) const;
   bool isTrackedBuffer(const void *ptr) const;
+  std::unordered_map<void *, MTL::Buffer *> getTrackedBuffers() const;
 
 private:
   MTL::Device *device_;

@@ -335,6 +335,13 @@ bool MetalDevice::isTrackedBuffer(const void *ptr) const {
   return ptrToBuffer_.find(const_cast<void *>(ptr)) != ptrToBuffer_.end();
 }
 
+std::unordered_map<void *, MTL::Buffer *>
+MetalDevice::getTrackedBuffers() const {
+  std::lock_guard<std::mutex> lock(bufferMapMutex_);
+  // return current copy of the tracked buffers.
+  return ptrToBuffer_;
+}
+
 //
 //
 // ===== MetalDeviceContext ===== //
@@ -880,19 +887,24 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     }
   }
 
-  // 5) Dispatch
+  // 5) Set resources that might be used by the kernel
+  // FIXME: only set resources that are used by the kernel
+  for (auto it : metalDevice.getTrackedBuffers())
+    encoder->useResource(it.second, MTL::ResourceUsageWrite);
+
+  // 6) Dispatch
   MTL::Size gridSize{gridX, gridY, gridZ};
   MTL::Size threadgroupSize{blockX, blockY, blockZ};
 
   encoder->dispatchThreadgroups(gridSize, threadgroupSize);
 
-  // 6) End encoding
+  // 7) End encoding
   encoder->endEncoding();
 
-  // 7) Commit and release
+  // 8) Commit and release
   cmdBuffer->commit();
 
-  // 8) Wait until completion. This is a blocking call therefore we have no pure
+  // 9) Wait until completion. This is a blocking call therefore we have no pure
   // asynchronous execution. Remove it with GEX-2503 fixed.
   cmdBuffer->waitUntilCompleted();
 
