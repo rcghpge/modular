@@ -4991,9 +4991,10 @@ def MO_AssertOp : MO_Op<"assert"> {
 }
 
 def MO_GuardOp : MO_Op<"guard", [
+  AllTypesMatch<["inputs", "results"]>,
   InferTypeOpAdaptor,
-  Pure,
-  MO_PreservedDuringKernelLowering
+  MO_PreservedDuringKernelLowering,
+  Pure
 ]> {
   let summary = "SSA-value guard operation";
   let description = [{
@@ -5027,8 +5028,8 @@ def MO_GuardOp : MO_Op<"guard", [
     `[` $chain `]` `(` $inputs `)` attr-dict `:` type($inputs)
   }];
 
-  let hasVerifier = 1;
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def MO_ChainCreateOp : MO_Op<"chain.create", [

@@ -4458,14 +4458,6 @@ LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
   return failure();
 }
 
-LogicalResult GuardOp::verify() {
-  if (getInputs().size() != getResults().size()) {
-    return emitError() << "Expected the number of inputs and outputs to be "
-                          "exactly the same";
-  }
-  return success();
-}
-
 LogicalResult
 GuardOp::inferReturnTypes(MLIRContext *context,
                           std::optional<Location> location, Adaptor adaptor,
@@ -4494,6 +4486,56 @@ LogicalResult GuardOp::fold(FoldAdaptor adaptor,
   results.insert(results.begin(), getInputs().begin(), getInputs().end());
 
   return success();
+}
+
+namespace {
+/// Canonicalization pattern that removes duplicate operands from guard
+/// operations.
+///
+/// For example, transforms:
+///   %r0, %r1, %r2, %r3 = mo.guard[%ch](%a, %b, %a, %b)
+/// Into:
+///   %f0, %f1 = mo.guard[%ch](%a, %b)
+struct DedupeGuardOperands : public OpRewritePattern<GuardOp> {
+  using OpRewritePattern<GuardOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GuardOp guard,
+                                PatternRewriter &rewriter) const override {
+    // Map each unique operand to the index of its first occurrence.
+    llvm::MapVector<Value, size_t> uniqueOperands;
+
+    for (auto [index, operand] : llvm::enumerate(guard.getInputs()))
+      uniqueOperands.try_emplace(operand, index);
+
+    // If all operands are already unique, nothing to do.
+    if (uniqueOperands.size() == guard.getInputs().size())
+      return rewriter.notifyMatchFailure(guard, "no duplicated operands");
+
+    // Create a new guard with only the unique operands.
+    auto chain = guard.getChain();
+    auto newOperands = llvm::to_vector(llvm::make_first_range(uniqueOperands));
+    auto newGuard =
+        GuardOp::create(rewriter, guard.getLoc(), chain, newOperands);
+
+    // Map each original result to the corresponding result from the new guard.
+    // For duplicate operands, multiple results will map to the same new result.
+    SmallVector<Value> newResults;
+    newResults.reserve(guard.getNumResults());
+
+    for (Value operand : guard.getInputs()) {
+      size_t index = uniqueOperands[operand];
+      newResults.push_back(newGuard.getResults()[index]);
+    }
+
+    rewriter.replaceOp(guard, newResults);
+    return success();
+  }
+};
+} // namespace
+
+void GuardOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                          MLIRContext *ctx) {
+  patterns.add<DedupeGuardOperands>(ctx);
 }
 
 /// Remove inputs that are the results of mosh.param.to_value on constant
