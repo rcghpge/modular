@@ -195,6 +195,114 @@ static bool valueDependsOnChain(Value start, Value target) {
   return false;
 }
 
+// Replaces `loadOutChain` with `loadInChain` in all chain.create ops on the
+// path from a mutable.load op to a kernel op.
+// Attempts to "detach" the load's outgoing chain from the kernel's incoming
+// chain by rewriting an exclusive path of `mo.chain.create` operations so they
+// consume the load's *input* chain instead.
+// Abandons the rewrite if the path contains anything other than single-use
+// chain.create ops.
+//
+// Enables fusion when the kernel depends on the load's out-chain through an
+// exclusive path of single-use chain.create operations.
+//
+// Problem: Direct fusion would create a cycle (kernel depends on load's
+//          out-chain, but load would be fused into kernel).
+// Solution: Rewrite chain.creates on the path to consume load's in-chain
+//           instead, "detaching" the load's out-chain from the dependency.
+//
+// Example:
+// BEFORE (fusion blocked):
+//   %t, %outCh = mo.mutable.load(buf, %inCh)
+//   %merged = mo.chain.create(%other, %outCh)  // kernel depends on %outCh
+//   %result = mo.custom(..., %t, %merged)      // can't fuse: creates cycle
+//
+// AFTER DETACHMENT (fusion enabled):
+//   %t, %outCh = mo.mutable.load(buf, %inCh)   // %outCh becomes dead
+//   %merged = mo.chain.create(%other, %inCh)   // %outCh → %inCh
+//   %result = mo.experimental.kernel(buf, ..., %merged)  // fused!
+//     {summary = "mo.mutable.load+custom__..."}
+//
+// Requires: %outCh and %merged have single use (exclusivity constraint).
+static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
+                                     Value kernelInChain) {
+  if (kernelInChain == loadOutChain) {
+    // Direct dependency: nothing to rewrite safely here.
+    return false;
+  }
+
+  // Collect every chain.create that sits on the unique path from the load's
+  // out-chain to the kernel's in-chain.
+  SmallVector<MO::ChainCreateOp> toRewrite;
+  llvm::SmallPtrSet<Operation *, 16> onPath;
+
+  // Returns:
+  //   * std::nullopt - this branch never reaches the load's out-chain.
+  //   * false        - the branch touches the load but fails exclusivity checks
+  //                    (non-chain.create op or extra users).
+  //   * true         - the branch is exclusively composed of single-use
+  //                    chain.create ops and is safe to rewrite.
+  std::function<std::optional<bool>(Value)> analyzeChainValue =
+      [&](Value v) -> std::optional<bool> {
+    if (v == loadOutChain)
+      return true;
+
+    auto chainCreate = v.getDefiningOp<MO::ChainCreateOp>();
+    if (!chainCreate)
+      return std::nullopt;
+
+    bool subtreeReachesLoad = false;
+    for (Value operand : chainCreate.getInputs()) {
+      if (operand == loadOutChain) {
+        subtreeReachesLoad = true;
+        continue;
+      }
+
+      if (std::optional<bool> pathStatus = analyzeChainValue(operand)) {
+        if (!*pathStatus) {
+          // Bail since dependency exists but is not exclusive.
+          return false;
+        }
+        // If we're here, pathStatus is true (on path and exclusive).
+        subtreeReachesLoad = true;
+      }
+    }
+
+    if (!subtreeReachesLoad) {
+      // This subtree is not on the load -> kernel path.
+      return std::nullopt;
+    }
+
+    // Check exclusivity for chain.creates that are on the path.
+    if (!chainCreate.getResult().hasOneUse()) {
+      // Bail since another user would observe rewiring the chain.
+      return false;
+    }
+
+    // Rewrite this chain.create since it reaches the load op and is exclusive.
+    if (onPath.insert(chainCreate.getOperation()).second)
+      toRewrite.push_back(chainCreate);
+
+    return true;
+  };
+
+  // Abort if any branch does not satisfy the exclusivity requirements.
+  if (analyzeChainValue(kernelInChain) != true)
+    return false;
+
+  // Rewrite each chain.create that was verified to be on the exclusive path to
+  // use the load's input chain instead of its output chain.
+  for (MO::ChainCreateOp chainCreate : toRewrite)
+    chainCreate->replaceUsesOfWith(loadOutChain, loadInChain);
+
+  // Sanity-check that the rewrite fully severed the dependency.
+  ASSERT_STREAM(!valueDependsOnChain(kernelInChain, loadOutChain),
+                "Expected exclusive chain path from mutable.load to kernel op "
+                "to be severed.");
+
+  return true;
+}
+
 void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
                     ExpKernelOp kernelOp, bool kernelHasLoadsOutputChain) {
   auto buffer = loadOp.getInBuffer();
@@ -212,7 +320,9 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   TypedValue<MO::ChainType> loadOutChain = loadOp.getOutChain();
   if (auto maybeKernelInChain = kernelOp.maybeGetInChain()) {
     if (*maybeKernelInChain != loadOutChain &&
-        valueDependsOnChain(*maybeKernelInChain, loadOutChain)) {
+        valueDependsOnChain(*maybeKernelInChain, loadOutChain) &&
+        !detachExclusiveChainPath(loadOutChain, loadOp.getInChain(),
+                                  *maybeKernelInChain)) {
       LLVM_DEBUG(loadOp.emitRemark() << "Skipping mutable load fusion to avoid "
                                         "introducing a chain cycle.");
       return;
