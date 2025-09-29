@@ -13,7 +13,9 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
+#include <functional>
 #include <optional>
 
 using namespace M;
@@ -58,7 +60,7 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   if (!kernelOp)
     return std::nullopt;
 
-  // At present the only kernels marked as elmementwise are the standard ones
+  // At present the only kernels marked as elementwise are the standard ones
   // you would expect (pure compute ops like mul,add,sqrt, etc.) and
   // mo.mutable.store.
   //
@@ -172,6 +174,27 @@ ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
   return newKernelOp;
 }
 
+// Checks if `start` depends on `target` transitively.
+static bool valueDependsOnChain(Value start, Value target) {
+  if (start == target)
+    return true;
+
+  SmallVector<Value> worklist{start};
+  llvm::SmallPtrSet<Value, 16> visited;
+  while (!worklist.empty()) {
+    Value current = worklist.pop_back_val();
+    if (!visited.insert(current).second)
+      continue;
+
+    if (current == target)
+      return true;
+
+    if (Operation *def = current.getDefiningOp())
+      worklist.append(def->operand_begin(), def->operand_end());
+  }
+  return false;
+}
+
 void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
                     ExpKernelOp kernelOp, bool kernelHasLoadsOutputChain) {
   auto buffer = loadOp.getInBuffer();
@@ -186,6 +209,16 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
 
   Block &kernelBody = *kernelOp.getBody();
 
+  TypedValue<MO::ChainType> loadOutChain = loadOp.getOutChain();
+  if (auto maybeKernelInChain = kernelOp.maybeGetInChain()) {
+    if (*maybeKernelInChain != loadOutChain &&
+        valueDependsOnChain(*maybeKernelInChain, loadOutChain)) {
+      LLVM_DEBUG(loadOp.emitRemark() << "Skipping mutable load fusion to avoid "
+                                        "introducing a chain cycle.");
+      return;
+    }
+  }
+
   kernelOp.insertInputsAt(argIdx, buffer);
   Value newBufferArg = kernelBody.getArgument(argIdx);
 
@@ -194,8 +227,7 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   kernelOp.eraseInputsAt(argIdx + 1);
 
   if (!kernelHasLoadsOutputChain) {
-    loadOp.getOutChain().replaceAllUsesWith(
-        kernelOp.maybeGetOutChain().value());
+    loadOutChain.replaceAllUsesWith(kernelOp.maybeGetOutChain().value());
 
     builder.setInsertionPoint(kernelOp);
 
@@ -375,7 +407,8 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
 
       if (kernelAlreadyHasDirectBufferInput(kernelOp, loadOp)) {
         // TODO: Unify all these cases
-        fuseLoadBuffer(builder, loadOp, kernelOp, true);
+        fuseLoadBuffer(builder, loadOp, kernelOp,
+                       /*kernelHasLoadsOutputChain=*/true);
       } else if (!kernelHasInOutChains(kernelOp)) {
         // Transform logic is a bit more involved if load fusion hasn't already
         // happened as we need to have the kernel both produce and consume a
@@ -385,14 +418,15 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
         // steps
         // -- rewriting the kernel body to accept and produce a chain and then
         // performing the re-write from mo.tensor -> mo.buffer for the
-        // appropriate opereand index.
+        // appropriate operand index.
         fuseLoadBufferAndChains(builder, loadOp, kernelOp);
       } else {
         // Transform is much simpler in the case that load fusion has already
         // occurred as we just need to re-write the kernel body to use a buffer
         // type (and possibly turn off input fusion for the buffer we're fusing
         // in).
-        fuseLoadBuffer(builder, loadOp, kernelOp, false);
+        fuseLoadBuffer(builder, loadOp, kernelOp,
+                       /*kernelHasLoadsOutputChain=*/false);
       }
     }
   }
