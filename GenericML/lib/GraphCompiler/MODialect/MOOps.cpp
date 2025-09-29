@@ -143,7 +143,7 @@ SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
     inputOp = inputOp->getOperand(0).getDefiningOp();
 
   // Handle concatenations of constant tensors.
-  if (auto concatOp = dyn_cast_or_null<ConcatOp>(inputOp)) {
+  if (auto concatOp = dyn_cast_if_present<ConcatOp>(inputOp)) {
     for (Value operand : concatOp.getInputs()) {
       TensorValue tensorOperand = cast<TensorValue>(operand);
       SmallVector<ConstantOp> operandConstantOps =
@@ -156,7 +156,7 @@ SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
   }
 
   // Handle ConstantOp last.
-  auto constantOp = dyn_cast_or_null<ConstantOp>(inputOp);
+  auto constantOp = dyn_cast_if_present<ConstantOp>(inputOp);
   if (!constantOp)
     return {};
 
@@ -215,7 +215,7 @@ M::MO::tryGetConstantIntVector(TensorValue val) {
 
 std::optional<SmallVector<int64_t>>
 M::MO::tryGetConstantIntVector(ListValue val) {
-  auto listCreateOp = dyn_cast_or_null<ListCreateOp>(val.getDefiningOp());
+  auto listCreateOp = dyn_cast_if_present<ListCreateOp>(val.getDefiningOp());
   if (!listCreateOp)
     return std::nullopt;
 
@@ -234,7 +234,7 @@ M::MO::tryGetConstantIntVector(ListValue val) {
 
 std::optional<SmallVector<APFloat>>
 M::MO::tryGetConstantAPFloatVector(ListValue val) {
-  auto listCreateOp = dyn_cast_or_null<ListCreateOp>(val.getDefiningOp());
+  auto listCreateOp = dyn_cast_if_present<ListCreateOp>(val.getDefiningOp());
   if (!listCreateOp)
     return std::nullopt;
 
@@ -253,7 +253,7 @@ M::MO::tryGetConstantAPFloatVector(ListValue val) {
 
 std::optional<SmallVector<APInt>>
 M::MO::tryGetConstantAPIntVector(ListValue val) {
-  auto listCreateOp = dyn_cast_or_null<ListCreateOp>(val.getDefiningOp());
+  auto listCreateOp = dyn_cast_if_present<ListCreateOp>(val.getDefiningOp());
   if (!listCreateOp)
     return std::nullopt;
 
@@ -2012,7 +2012,8 @@ LogicalResult ReshapeOp::verify() {
   if (result.failed())
     return result;
 
-  auto shapeInput = dyn_cast_or_null<ConstantOp>(getNewShape().getDefiningOp());
+  auto shapeInput =
+      dyn_cast_if_present<ConstantOp>(getNewShape().getDefiningOp());
   if (!shapeInput)
     return success();
 

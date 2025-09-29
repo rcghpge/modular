@@ -306,7 +306,7 @@ OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
   // If the condition is true, we return a chain attribute, otherwise we leave
   // the op as is and a pass can either check for failing asserts or it becomes
   // a guaranteed runtime failure.
-  if (auto boolAttr = dyn_cast_or_null<BoolAttr>(adaptor.getCond()))
+  if (auto boolAttr = dyn_cast_if_present<BoolAttr>(adaptor.getCond()))
     if (boolAttr.getValue())
       return ChainAttr::get(ChainType::get(getContext()));
   return {};
@@ -1058,7 +1058,7 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
                                           mlir::PatternRewriter &rewriter) {
   auto inChain = loadOp.getInChain();
   auto upstreamLoadOp =
-      dyn_cast_or_null<MutableLoadOp>(inChain.getDefiningOp());
+      dyn_cast_if_present<MutableLoadOp>(inChain.getDefiningOp());
 
   if (!upstreamLoadOp) {
     return rewriter.notifyMatchFailure(
