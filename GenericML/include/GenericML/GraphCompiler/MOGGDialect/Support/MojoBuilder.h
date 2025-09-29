@@ -121,12 +121,13 @@ public:
   MojoBuilder() : ss(sourceStr), variableCounter(0) {}
   ~MojoBuilder() = default;
 
-  /// Creates a function with the specified parameter and argument types. The
-  /// returned object is a RAII guard that will recover the original indentation
-  /// level when it goes out of scope.
+  /// Creates a function with the specified parameter and argument types, with
+  /// optional raises. The returned object is a RAII guard that will recover the
+  /// original indentation level when it goes out of scope.
   void fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
           ArrayRef<NamedMojoDef> arguments, std::optional<MojoValue> returnType,
-          bool exported, std::function<void(const FunctionBody &)> &&funcBody);
+          bool exported, bool raises,
+          std::function<void(const FunctionBody &)> &&funcBody);
 
   /// Creates a lambda with the specified parameter and argument types. The
   /// returned object is a RAII guard that will recover the original indentation
@@ -222,6 +223,11 @@ private:
   std::string funcDefBase(ArrayRef<NamedMojoDef> parameters,
                           ArrayRef<NamedMojoDef> operands,
                           std::optional<MojoValue> retType, FunctionBody &body);
+
+  std::string funcDefBase(ArrayRef<NamedMojoDef> parameters,
+                          ArrayRef<NamedMojoDef> operands,
+                          std::optional<MojoValue> retType, bool raises,
+                          FunctionBody &body);
 
   std::string sourceStr;
   llvm::raw_string_ostream ss;

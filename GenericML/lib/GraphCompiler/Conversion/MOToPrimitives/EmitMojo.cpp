@@ -9,7 +9,7 @@
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
@@ -51,7 +51,7 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
       kernelName, {},
       {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
        MOGG::NamedMojoDef("arg", vOpaquePointer)},
-      std::nullopt, true, [&](const MOGG::FunctionBody &functionBody) {
+      std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
         state.builder.comment(
             "This is the entry point of the kernel. The first argument is a "
             "pointer to a list of inputs and outputs. The second is a pointer "
@@ -75,10 +75,18 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
               runtimeArgument[std::to_string(i + kernel->getNumOperands())]);
         }
 
-        errOccurred |= llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {
-          return state.lowerOpToMojo(&op).failed();
-        });
-        state.genAllKeepAliveStatements();
+        state.builder
+            .try_([&]() {
+              errOccurred |=
+                  llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {
+                    return state.lowerOpToMojo(&op).failed();
+                  });
+              state.genAllKeepAliveStatements();
+            })
+            .except([&](const MOGG::MojoValue &e) {
+              /// TODO: Set an error on the context.
+              state.builder.pass();
+            });
       });
 
   if (errOccurred)
@@ -115,7 +123,7 @@ LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
 
   bool errOccurred = false;
   state.builder.fn(
-      kernelStub.getNameAttr().str(), {}, inputTypes, std::nullopt, false,
+      kernelStub.getNameAttr().str(), {}, inputTypes, std::nullopt, false, true,
       [&](const MOGG::FunctionBody &functionBody) {
         for (auto &&[mlirArg, mojoArg] : llvm::zip(
                  kernelStub.getBody().getArguments(), functionBody.arguments)) {

@@ -716,15 +716,9 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   /// it would be better if we checked the function's signature instead. This
   /// information is lost in KGEN and it's not worth adding an annotation for
   /// it. When we move off of KGEN, we should do it.
-  state.builder
-      .try_([&]() {
-        state.builder.call(mojoSymbolName, *maybeParams,
-                           {rebindOutput, contextValue});
-      })
-      .except([&](const MojoValue &e) {
-        /// TODO: Set an error on the context.
-        state.builder.pass();
-      });
+  state.builder.call(mojoSymbolName, *maybeParams,
+                     {rebindOutput, contextValue});
+  state.genAllKeepAliveStatements();
 
   return success();
 }
@@ -777,14 +771,8 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   /// it would be better if we checked the function's signature instead. This
   /// information is lost in KGEN and it's not worth adding an annotation for
   /// it. When we move off of KGEN, we should do it.
-  state.builder
-      .try_([&]() {
-        state.builder.call(mojoSymbolName, *maybeParams, mojoOperands);
-      })
-      .except([&](const MojoValue &e) {
-        /// TODO: Set an error on the context.
-        state.builder.pass();
-      });
+  state.builder.call(mojoSymbolName, *maybeParams, mojoOperands);
+  state.genAllKeepAliveStatements();
 
   return success();
 }
@@ -881,14 +869,8 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   /// it would be better if we checked the function's signature instead. This
   /// information is lost in KGEN and it's not worth adding an annotation for
   /// it. When we move off of KGEN, we should do it.
-  state.builder
-      .try_([&]() {
-        state.builder.call(mojoSymbolName, *maybeParams, kernelOperands);
-      })
-      .except([&](const MojoValue &e) {
-        /// TODO: Set an error on the context.
-        state.builder.pass();
-      });
+  state.builder.call(mojoSymbolName, *maybeParams, kernelOperands);
+  state.genAllKeepAliveStatements();
 
   return success();
 }

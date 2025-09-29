@@ -60,6 +60,13 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
                                      ArrayRef<NamedMojoDef> operands,
                                      std::optional<MojoValue> retType,
                                      FunctionBody &body) {
+  return funcDefBase(parameters, operands, retType, false, body);
+}
+
+std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
+                                     ArrayRef<NamedMojoDef> operands,
+                                     std::optional<MojoValue> retType,
+                                     bool raises, FunctionBody &body) {
   std::string str;
   llvm::raw_string_ostream stream(str);
   if (!parameters.empty()) {
@@ -86,6 +93,10 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
 
   if (retType.has_value())
     stream << " -> " << *retType;
+
+  if (raises)
+    stream << " raises";
+
   stream << ":";
   return str;
 }
@@ -93,6 +104,7 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
 void MojoBuilder::fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
                      ArrayRef<NamedMojoDef> arguments,
                      std::optional<MojoValue> returnType, bool exported,
+                     bool raises,
                      std::function<void(const FunctionBody &)> &&funcBody) {
   newline();
 
@@ -100,7 +112,8 @@ void MojoBuilder::fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
 
   if (exported)
     statement("@export");
-  statement("fn ", name, funcDefBase(parameters, arguments, returnType, body));
+  statement("fn ", name,
+            funcDefBase(parameters, arguments, returnType, raises, body));
 
   MojoBuilderScopeGuard guard(this);
   funcBody(body);
@@ -120,7 +133,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
   if (isInline)
     statement("@always_inline");
   statement("fn ", lambdaParam,
-            funcDefBase(parameters, arguments, returnType, body));
+            funcDefBase(parameters, arguments, returnType, false, body));
 
   MojoBuilderScopeGuard guard(this);
   lambdaBody(body);
