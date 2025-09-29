@@ -1745,7 +1745,6 @@ LogicalResult ConstantOp::verify() {
     return success();
   }
   if (valType != resType) {
-    llvm::errs() << " not equal emitting error\n";
     return emitOpError("element type of the value (")
            << valType << ") must match the element type of the result ("
            << resType << ")";
