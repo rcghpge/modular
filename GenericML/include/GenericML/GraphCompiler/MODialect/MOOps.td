@@ -3080,8 +3080,6 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
-
-  let hasCanonicalizeMethod = 1;
 }
 
 def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
@@ -3121,8 +3119,6 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
-
-  let hasCanonicalizeMethod = 1;
 }
 
 def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
@@ -3162,8 +3158,6 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
     functional-type(operands, results)
   }];
-
-  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//
