@@ -74,7 +74,7 @@ class SpeechLM:
             numpy array of speech token indices
         """
         generated_text = await self._generate_raw_text(
-            text, max_tokens, "llasa_speech_generation"
+            text, max_tokens, RequestID("llasa_speech_generation")
         )
         speech_tokens = self._extract_speech_tokens(generated_text)
         return np.array(speech_tokens, dtype=np.int32)
@@ -102,7 +102,7 @@ class SpeechLM:
         self,
         text: str,
         max_tokens: int | None = None,
-        request_id: RequestID = "llasa_generation",
+        request_id: RequestID = RequestID("llasa_generation"),
     ) -> str:
         """Generate raw text from the model.
 
@@ -165,5 +165,5 @@ class SpeechLM:
             Generated text output
         """
         return await self._generate_raw_text(
-            text, max_tokens, "llasa_debug_generation"
+            text, max_tokens, RequestID("llasa_debug_generation")
         )
