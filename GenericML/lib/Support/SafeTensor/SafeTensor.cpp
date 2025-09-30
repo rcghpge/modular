@@ -154,9 +154,8 @@ SafeTensor::get(RCRef<Driver::Device> device,
   // Read the header length from the beginning of the buffer (little-endian,
   // unaligned).
   uint64_t headerLength =
-      llvm::support::endian::read<uint64_t, llvm::endianness::little,
-                                  llvm::support::unaligned>(
-          parentBuffer->ptr());
+      llvm::support::endian::read<uint64_t, llvm::support::unaligned>(
+          parentBuffer->ptr(), llvm::endianness::little);
 
   LLVM_DEBUG(llvm::outs() << "headerLength = " << headerLength << "\n");
 
