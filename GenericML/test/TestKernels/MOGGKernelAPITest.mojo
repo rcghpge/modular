@@ -1245,7 +1245,7 @@ struct KernelWithDefaultParameter:
         print("rank_defaulted =", rank_defaulted)
         print("rank_derived_from_other =", rank_derived_from_other)
         print("rank_derived_from_derived =", rank_derived_from_derived)
-        x.store(IndexList[1](0), Scalar[DType.int32](0))
+        x.store(IndexList[1](0), Int32(0))
 
 
 @compiler.register("unique-parameters")
